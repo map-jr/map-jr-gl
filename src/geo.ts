@@ -39,6 +39,16 @@ export class Transform {
     maxZoom = 22;
     maxPitch = 60;
 
+    /**
+     * With 3D terrain: the height of the ground at the map centre, in (exaggerated) metres. The camera looks at that
+     * point rather than at sea level, so it rides over mountains instead of ending up inside them.
+     */
+    elevation = 0;
+    /** With 3D terrain: (exaggerated) ground height in metres at a mercator position, used to lift labels onto the surface. */
+    heightAt?: (mx: number, my: number) => number;
+    /** With 3D terrain: the lowest and highest ground in view, in the same metres. Tile selection covers both extremes. */
+    groundRange?: [number, number];
+
     get worldSize() { return TILE_SIZE * 2 ** this.zoom; }
     private get angle() { return -this.bearing * Math.PI / 180; }
 
@@ -60,7 +70,7 @@ export class Transform {
 
     /**
      * The camera model, shared by every projection below. A point (dx, dy) pixels from the centre on the map plane
-     * (and z pixels above it) is rotated by the bearing, tilted by the pitch, then seen in perspective from
+     * (and z pixels above the height of the ground at the centre) is rotated by the bearing, tilted by the pitch, then seen in perspective from
      * `cameraDistance` away. With no pitch this reduces to the plain 2D rotation.
      */
     private view(dx: number, dy: number, z = 0): [number, number, number] {
@@ -76,20 +86,41 @@ export class Transform {
         return [x, y];
     }
 
-    /** Screen pixels to the mercator position on the ground under them. */
-    screenToMerc(px: number, py: number): [number, number] {
+    /** Screen pixels to the mercator position on the ground under them (`z` pixels above the height of the map centre). */
+    screenToMerc(px: number, py: number, z = 0): [number, number] {
         const ws = this.worldSize, a = this.angle, cos = Math.cos(a), sin = Math.sin(a), p = this.pitch * Math.PI / 180, d = this.cameraDistance;
         const sx = px - this.width / 2, sy = py - this.height / 2;
-        // Invert the perspective for a point on the ground plane. Above the horizon there is no ground; clamp just below it.
+        // Invert the perspective for a point on that plane. Above the horizon there is no ground; clamp just below it.
         const denom = Math.max(Math.cos(p) * d + sy * Math.sin(p), d * 0.02);
-        const ry = sy * d / denom, rx = sx * (d - ry * Math.sin(p)) / d;
+        const ry = (sy * (d - z * Math.cos(p)) + d * z * Math.sin(p)) / denom, rx = sx * (d - ry * Math.sin(p) - z * Math.cos(p)) / d;
         return [mercX(this.lng) + (cos * rx + sin * ry) / ws, mercY(this.lat) + (-sin * rx + cos * ry) / ws];
     }
 
+    /** With 3D terrain: whether the ground hides a point on the surface (a label behind a ridge, say) from the camera. */
+    occluded(mx: number, my: number): boolean {
+        if (!this.heightAt || this.pitch < 1) return false;
+        const p = this.pitch * Math.PI / 180, d = this.cameraDistance, ws = this.worldSize, ppm = this.pixelsPerMetre, a = this.angle;
+        // The camera sits back from the map centre along the view direction, above the ground there.
+        const back = d * Math.sin(p) / ws, camX = mercX(this.lng) + Math.sin(a) * back, camY = mercY(this.lat) + Math.cos(a) * back;
+        const camH = this.elevation + d * Math.cos(p) / ppm, h = this.heightAt(mx, my), slack = (camH - this.elevation) * 0.02;
+        for (let i = 1; i < 24; i++) {
+            const t = i / 24 * 0.97; // stop short of the point itself
+            if (this.heightAt(camX + (mx - camX) * t, camY + (my - camY) * t) > camH + (h - camH) * t + slack) return true;
+        }
+        return false;
+    }
+
+    /** The screen's corners on the ground: one quad on flat ground, two (lowest and highest ground in view) with 3D terrain. */
+    private footprints(): [number, number][][] {
+        const ppm = this.pixelsPerMetre, planes = this.groundRange ? this.groundRange.map(h => (h - this.elevation) * ppm) : [0];
+        return planes.map(z => [[0, 0], [this.width, 0], [this.width, this.height], [0, this.height]].map(([x, y]) => this.screenToMerc(x, y, z)));
+    }
+
     /** A point in a tile (tile units, optional height in metres) to screen pixels. */
-    projectTile(id: TileID, x: number, y: number, metres = 0): [number, number] {
+    projectTile(id: TileID, x: number, y: number, metres?: number): [number, number] {
         const ws = this.worldSize, n = 2 ** id.z, s = ws / n / EXTENT;
-        const [sx, sy] = this.view((id.x + id.w * n) * ws / n - mercX(this.lng) * ws + x * s, id.y * ws / n - mercY(this.lat) * ws + y * s, metres * this.pixelsPerMetre);
+        metres ??= this.heightAt ? this.heightAt((id.x + x / EXTENT) / n, (id.y + y / EXTENT) / n) : this.elevation;
+        const [sx, sy] = this.view((id.x + id.w * n) * ws / n - mercX(this.lng) * ws + x * s, id.y * ws / n - mercY(this.lat) * ws + y * s, (metres - this.elevation) * this.pixelsPerMetre);
         return [sx, sy];
     }
 
@@ -101,11 +132,15 @@ export class Transform {
         const ox = (id.x + id.w * n) * ws / n - mercX(this.lng) * ws, oy = id.y * ws / n - mercY(this.lat) * ws;
         const tx = cos * ox - sin * oy, ty = sin * ox + cos * oy, kx = 2 * d / this.width, ky = -2 * d / this.height;
         // A tight depth range (everything visible at the steepest pitch fits) keeps depth precise even in a 16-bit buffer.
-        const near = d / 10, far = d * 4, A = (far + near) / (far - near), B = -2 * far * near / (far - near);
+        // With 3D terrain, ground far below the map centre is seen from higher up and so reaches further away.
+        const drop = this.groundRange ? Math.max(0, this.elevation - this.groundRange[0]) * ppm : 0;
+        const near = d / 10, far = Math.min(60, 4 * (1 + drop / (d * cp))) * d, A = (far + near) / (far - near), B = -2 * far * near / (far - near);
         // Rows: X = kx * xc, Y = ky * yc, W = depth, Z = A * depth + B (so Z/W runs -1..1 from near to far).
         const X = [cos * s * kx, -sin * s * kx, 0, tx * kx];
         const Y = [sin * s * cp * ky, cos * s * cp * ky, -ppm * sp * ky, ty * cp * ky];
         const W = [-sin * s * sp, -cos * s * sp, -ppm * cp, d - ty * sp];
+        // The ground at the map centre sits at height `elevation`: shift everything down by that much.
+        Y[3] -= Y[2] * this.elevation; W[3] -= W[2] * this.elevation;
         const Z = [A * W[0], A * W[1], A * W[2], A * W[3] + B];
         return new Float32Array([X[0], Y[0], Z[0], W[0], X[1], Y[1], Z[1], W[1], X[2], Y[2], Z[2], W[2], X[3], Y[3], Z[3], W[3]]);
     }
@@ -155,8 +190,7 @@ export class Transform {
         const z = Math.min(want, maxzoom), n = 2 ** z;
         if (this.pitch > 0.5) return this.coveringPitched(z);
         let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-        for (const [px, py] of [[0, 0], [this.width, 0], [0, this.height], [this.width, this.height]]) {
-            const [mx, my] = this.screenToMerc(px, py);
+        for (const [mx, my] of this.footprints().flat()) {
             x0 = Math.min(x0, mx); x1 = Math.max(x1, mx);
             y0 = Math.min(y0, my); y1 = Math.max(y1, my);
         }
@@ -176,17 +210,22 @@ export class Transform {
      * drawn much smaller, so tiles are chosen by descending a quadtree and stopping earlier the farther away a tile is.
      */
     private coveringPitched(maxZ: number): TileID[] {
-        const quad = [[0, 0], [this.width, 0], [this.width, this.height], [0, this.height]].map(([x, y]) => this.screenToMerc(x, y));
+        // The area to cover: the screen's footprint on the ground (with 3D terrain, the hull of its lowest and highest footprints).
+        const pts = this.footprints().flat().sort((p, q) => p[0] - q[0] || p[1] - q[1]);
+        const cross = (o: number[], p: number[], q: number[]) => (p[0] - o[0]) * (q[1] - o[1]) - (p[1] - o[1]) * (q[0] - o[0]);
+        const half = (list: [number, number][]) => { const h: [number, number][] = []; for (const p of list) { while (h.length >= 2 && cross(h[h.length - 2], h[h.length - 1], p) <= 0) h.pop(); h.push(p); } h.pop(); return h; };
+        const quad = pts.length > 4 ? [...half(pts), ...half([...pts].reverse())] : this.footprints()[0];
+        const mid = [quad.reduce((t, q) => t + q[0], 0) / quad.length, quad.reduce((t, q) => t + q[1], 0) / quad.length];
         const d = this.cameraDistance, ws = this.worldSize, cx = mercX(this.lng), cy = mercY(this.lat);
         const depthAt = (mx: number, my: number) => this.view((mx - cx) * ws, (my - cy) * ws)[2];
-        // Separating-axis test between the ground trapezoid and a tile's square.
+        // Separating-axis test between that convex area and a tile's square.
         const overlaps = (x0: number, y0: number, x1: number, y1: number) => {
             if (Math.max(...quad.map(q => q[0])) < x0 || Math.min(...quad.map(q => q[0])) > x1 || Math.max(...quad.map(q => q[1])) < y0 || Math.min(...quad.map(q => q[1])) > y1) return false;
-            for (let i = 0; i < 4; i++) {
-                const [ax, ay] = quad[i], [bx, by] = quad[(i + 1) % 4], nx = by - ay, ny = ax - bx;
+            for (let i = 0; i < quad.length; i++) {
+                const [ax, ay] = quad[i], [bx, by] = quad[(i + 1) % quad.length], nx = by - ay, ny = ax - bx;
                 const side = (x: number, y: number) => (x - ax) * nx + (y - ay) * ny;
-                const inside = Math.sign(side(quad[(i + 2) % 4][0], quad[(i + 2) % 4][1]));
-                if ([[x0, y0], [x1, y0], [x1, y1], [x0, y1]].every(([x, y]) => Math.sign(side(x, y)) === -inside)) return false;
+                const inside = Math.sign(side(mid[0], mid[1]));
+                if (inside && [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].every(([x, y]) => Math.sign(side(x, y)) === -inside)) return false;
             }
             return true;
         };

@@ -116,7 +116,9 @@ export interface SourceInfo {
 
 /** A style with everything network-dependent already resolved, so it can be posted to a worker as plain JSON. */
 export interface FontSource { family: string; src: string; weight?: string | number; style?: string; unicodeRange?: string }
-export interface ResolvedStyle { layers: LayerJSON[]; sources: Record<string, SourceInfo>; unsupported: string[]; sprite?: string; fonts?: FontSource[] }
+export interface ResolvedStyle { layers: LayerJSON[]; sources: Record<string, SourceInfo>; unsupported: string[]; sprite?: string; fonts?: FontSource[];
+    /** 3D terrain: the raster-dem source that shapes the ground, and how much to exaggerate it. */
+    terrain?: {source: string; exaggeration: number} }
 
 /**
  * Splits a style font name such as "Open Sans Semibold Italic" into a CSS family, weight and style, so text can be drawn
@@ -200,7 +202,9 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
             fonts.push({...face, src: base ? new URL(entry.url, base).href : entry.url, unicodeRange: entry['unicode-range']?.join(', ')});
         }
     }
-    return {layers, sources, unsupported: [...unsupported], sprite, fonts};
+    const rawTerrain = (style as any).terrain;
+    const terrain = rawTerrain?.source && sources[rawTerrain.source]?.type === 'raster-dem' ? {source: rawTerrain.source as string, exaggeration: rawTerrain.exaggeration ?? 1} : undefined;
+    return {layers, sources, unsupported: [...unsupported], sprite, fonts, terrain};
 }
 
 export function tileURL(src: SourceInfo, z: number, x: number, y: number) {

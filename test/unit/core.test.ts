@@ -380,3 +380,34 @@ test('tiles: nothing is requested below a source\'s minimum zoom', () => {
     tr.set([7.66, 45.98], 3, 0);
     assert.equal(tr.coveringTiles(9, 15).length, 0);
 });
+
+test('terrain: projections follow the ground height, and tile selection reaches low ground', () => {
+    const t = new Transform();
+    t.width = 800; t.height = 600;
+    t.set([7.66, 45.98], 13, 30, 55);
+    const flat = t.coveringTiles(0, 22).length;
+    // The map centre sits on a 3,000 m summit; a point on the ground at that height projects where it did before.
+    const before = t.projectTile({z: 13, x: 4270, y: 2915, w: 0, key: ''}, 2048, 2048);
+    t.elevation = 3000;
+    t.heightAt = () => 3000;
+    const same = t.projectTile({z: 13, x: 4270, y: 2915, w: 0, key: ''}, 2048, 2048);
+    assert.ok(Math.hypot(same[0] - before[0], same[1] - before[1]) < 1e-6);
+    // Sea level is now far below the centre: it appears lower on screen, and the view reaches more tiles down there.
+    const low = t.projectTile({z: 13, x: 4270, y: 2915, w: 0, key: ''}, 2048, 2048, 0);
+    assert.ok(low[1] > same[1] + 20);
+    t.groundRange = [0, 3000];
+    assert.ok(t.coveringTiles(0, 22).length > flat);
+    // Unprojecting onto a lower plane and projecting a point at that height are inverses.
+    const ppm = t.pixelsPerMetre, [mx, my] = t.screenToMerc(650, 200, -3000 * ppm), n = 2 ** 13;
+    const back = t.projectTile({z: 13, x: Math.floor(mx * n), y: Math.floor(my * n), w: 0, key: ''}, (mx * n % 1) * 4096, (my * n % 1) * 4096, 0);
+    assert.ok(Math.hypot(back[0] - 650, back[1] - 200) < 1e-3, String(back));
+    // A ridge between the camera and a point hides it.
+    const v = new Transform();
+    v.width = 800; v.height = 600;
+    v.set([7.66, 45.98], 13, 0, 55);
+    const cy = mercY(v.lat), target: [number, number] = [mercX(v.lng), cy - 0.0005];
+    v.heightAt = () => 0;
+    assert.equal(v.occluded(...target), false);
+    v.heightAt = (_x, y) => Math.abs(y - (cy - 0.00025)) < 0.00008 ? 9000 : 0;
+    assert.equal(v.occluded(...target), true);
+});

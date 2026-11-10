@@ -261,6 +261,21 @@ for (const mode of ['main', 'worker']) {
     check(`[${mode}] resize keeps the canvas matched to its container`, r.css[0] === 820 && r.css[1] === 560 && r.css[2] === 0 && r.css[3] === 0 && Math.abs(r.mid.x - 410) < 0.01 && Math.abs(r.mid.y - 280) < 0.01 && r.centre.lng === centreBefore.lng, JSON.stringify({css: r.css, mid: r.mid, before: centreBefore, after: r.centre}));
     await page.setViewportSize({width: 1000, height: 700});
     await page.waitForTimeout(300);
+    // 3D terrain: the ground rises, so a summit's label position moves up the screen once the map is tilted.
+    const terrain = await page.evaluate(async () => {
+        const m = window.map, peak = [7.6586, 45.9763];
+        m.jumpTo({center: [7.70, 45.99], zoom: 12, bearing: 0, pitch: 60});
+        const flat = m.project(peak);
+        m.setTerrain({source: 'dem', exaggeration: 1});
+        for (let i = 0; i < 150 && !(m.areTilesLoaded() && i > 20); i++) await new Promise(r => setTimeout(r, 100));
+        const centre = m.project(m.getCenter()), size = m.getContainer().getBoundingClientRect();
+        const out = {on: m.getTerrain()?.source, centre, mid: [size.width / 2, size.height / 2], loaded: m.areTilesLoaded()};
+        m.setTerrain(null);
+        m.jumpTo({pitch: 0});
+        return {...out, off: m.getTerrain(), flat};
+    });
+    check(`[${mode}] 3D terrain turns on and off, keeping the map centre in the middle`, terrain.on === 'dem' && terrain.off === null && terrain.loaded && Math.abs(terrain.centre.x - terrain.mid[0]) < 0.5 && Math.abs(terrain.centre.y - terrain.mid[1]) < 0.5, JSON.stringify(terrain));
+    await page.screenshot({path: `${out}/terrain-${mode}.png`});
     check(`[${mode}] no page errors`, errors.length === 0, errors.slice(0, 3).join(' | '));
     await page.close();
 }

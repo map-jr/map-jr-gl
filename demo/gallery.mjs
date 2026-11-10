@@ -94,6 +94,17 @@ const cards = [
             map.on('move', report);
             show();
         })},
+    {title: '3D terrain', text: 'The same elevation tiles raise the ground. The flat map is drawn onto each terrain tile and cached, buildings and labels sit on the surface, and labels behind a ridge are hidden. Drag with the right button (or two fingers) to tilt and turn.', readout: true,
+        make: (el, out, card) => when(base(el, {zoom: 12.4, center: [7.6586, 45.9763], pitch: 60, bearing: 25}), map => {
+            map.addLayer({id: 'relief', type: 'hillshade', source: 'dem', paint: {'hillshade-shadow-color': '#5a4a3a', 'hillshade-exaggeration': 0.4}}, 'water');
+            let exaggeration = 1.5;
+            const apply = () => { map.setTerrain(exaggeration ? {source: 'dem', exaggeration} : null); out(exaggeration ? `Terrain on, heights exaggerated ${exaggeration}x` : 'Terrain off'); };
+            const button = Object.assign(document.createElement('button'), {className: 'action', textContent: 'Change exaggeration'});
+            button.onclick = () => { exaggeration = {1.5: 3, 3: 0, 0: 1, 1: 1.5}[exaggeration]; apply(); };
+            card.querySelector('.text').appendChild(button);
+            map.on('stats', e => out(`${exaggeration ? `Terrain on, ${exaggeration}x` : 'Terrain off'}: ${e.fps.toFixed(0)} frames/s`));
+            apply();
+        })},
     {title: 'Features under the cursor, from tile data', text: 'queryFeatures needs no style layer: it reads what the tiles contain, including things this style does not draw.', readout: true,
         make: (el, out) => { const map = base(el, {zoom: 15.2}); out('Click the map');
             map.on('click', async e => { const f = await map.queryFeatures(e.lngLat, {radius: 4}); out(f.map(x => x.sourceLayer + (x.properties.name ? ` "${x.properties.name}"` : x.properties.class ? ` (${x.properties.class})` : '')).join(', ') || 'Nothing here'); }); return map; }},

@@ -11,7 +11,25 @@ vec4 toClip(vec2 t) { return u_matrix * vec4(t, 0.0, 1.0); }
 `;
 const FS_CLIP = 'if (v_tile.x < u_clip.x || v_tile.y < u_clip.y || v_tile.x > u_clip.z || v_tile.y > u_clip.w) discard;';
 
+// Ground height from an elevation tile, for vertex shaders. `u_demRect` is the part of the elevation image under this
+// tile (offset x, y and scale, then the image size in pixels); `u_exag` of zero means "no terrain here".
+const TERRAIN_GLSL = `uniform highp sampler2D u_dem; uniform vec4 u_demRect; uniform vec4 u_unpack; uniform float u_exag;
+float demAt(ivec2 p) { vec4 c = texelFetch(u_dem, clamp(p, ivec2(0), ivec2(int(u_demRect.w) - 1)), 0) * 255.0; return dot(c.rgb, u_unpack.rgb) - u_unpack.a; }
+float ground(vec2 uv) {
+  if (u_exag == 0.0) return 0.0;
+  vec2 p = (u_demRect.xy + uv * u_demRect.z) * u_demRect.w - 0.5, f = fract(p); ivec2 i = ivec2(floor(p));
+  return mix(mix(demAt(i), demAt(i + ivec2(1, 0)), f.x), mix(demAt(i + ivec2(0, 1)), demAt(i + ivec2(1, 1)), f.x), f.y) * u_exag;
+}
+`;
+
 const SHADERS = {
+    // 3D terrain: a grid over the tile, raised to the ground height and textured with the tile's flat layers.
+    terrain: [`uniform mat4 u_matrix; uniform float u_skirt; ${TERRAIN_GLSL}
+layout(location=0) in vec3 a_pos; out vec2 v_uv;
+void main() { v_uv = vec2(a_pos.x, 1.0 - a_pos.y); gl_Position = u_matrix * vec4(a_pos.xy * ${EXTENT}.0, ground(a_pos.xy) - a_pos.z * u_skirt, 1.0); }`, `
+uniform sampler2D u_drape; in vec2 v_uv; out vec4 o;
+void main() { o = texture(u_drape, v_uv); }`],
+
     fill: [`${VS_COMMON}
 layout(location=0) in vec2 a_pos; layout(location=1) in vec4 a_color; out vec4 v_color; out vec2 v_tile;
 void main() { v_tile = a_pos; v_color = a_color; gl_Position = toClip(a_pos); }`, `
@@ -107,9 +125,9 @@ void main() {
 }`],
 
     // Buildings: roofs and walls with a height in metres and a baked light level.
-    extrusion: [`uniform mat4 u_matrix;
+    extrusion: [`uniform mat4 u_matrix; ${TERRAIN_GLSL}
 layout(location=0) in vec4 a_v; layout(location=1) in vec4 a_color; out vec4 v_color; out vec2 v_tile;
-void main() { v_tile = a_v.xy; v_color = vec4(a_color.rgb * a_v.w, a_color.a); gl_Position = u_matrix * vec4(a_v.xyz, 1.0); }`, `
+void main() { v_tile = a_v.xy; v_color = vec4(a_color.rgb * a_v.w, a_color.a); gl_Position = u_matrix * vec4(a_v.xy, a_v.z + ground(a_v.xy / ${EXTENT}.0), 1.0); }`, `
 uniform vec4 u_color; uniform vec4 u_clip; in vec4 v_color; in vec2 v_tile; out vec4 o;
 void main() { ${FS_CLIP} vec4 c = v_color * u_color; o = vec4(c.rgb * c.a, c.a); }`],
 
@@ -206,11 +224,27 @@ interface GLBuffers {
     edgeVao?: WebGLVertexArrayObject; edgeCount?: number;
 }
 export interface GLTile {
+    /** Distinguishes this tile's contents from any other's, including an earlier build of the same tile. */
+    uid?: number;
     labels: Record<string, LabelSrc[]>; batches: Record<string, GLBuffers>;
     /** Raster tiles: the image. Elevation tiles: slopes derived from it. */
     tex?: WebGLTexture;
     /** Latitude of the tile's top and bottom edges, for hillshade. */
     lat?: [number, number];
+    /** Elevation tiles: the encoded heights as downloaded, their size in pixels and how to decode them. */
+    raw?: WebGLTexture; rawSize?: number; unpack?: number[];
+}
+
+/** The part of an elevation tile that lies under some other tile. */
+export interface DemRef { tex: WebGLTexture; rect: [number, number, number, number]; unpack: number[] }
+/** One tile of the 3D ground: where it is, the flat map view drawn onto it, and the heights that shape it. */
+export interface TerrainTile {
+    id: TileID; key: string; matrix: Float32Array;
+    /** A straight-down view of exactly this tile, and what each source contributes to it. */
+    view: Transform; items: Map<string, RenderItem<GLTile>[]>;
+    /** Changes whenever the picture on this tile would. */
+    signature: string;
+    dem: DemRef | null;
 }
 
 export interface Scene {
@@ -220,6 +254,8 @@ export interface Scene {
     labels: Placed[];
     atlas: GlyphAtlas;
     markers: MarkerBuffers[];
+    /** 3D terrain: the ground tiles to draw, and a lookup of the heights under any tile (for buildings). */
+    terrain?: {exaggeration: number; tiles: TerrainTile[]; dem(id: TileID): DemRef | null};
     /** Looks up a sprite or runtime image by name, for patterns. */
     icon?: (name: string) => {x: number; y: number; width: number; height: number; pixelRatio: number; custom?: boolean} | undefined;
 }
@@ -395,7 +431,7 @@ export class GLRenderer {
             batches[id] = {type: b.type, vao, count, color: !!b.color, scalar, bufs, edgeVao, edgeCount: b.type === 'fill' ? b.edges?.length : undefined};
         }
         gl.bindVertexArray(null);
-        return {labels: t.labels, batches};
+        return {uid: ++this.uids, labels: t.labels, batches};
     }
 
     /** The style's sprite sheet (icons for symbol layers). `scale` is its pixel density. */
@@ -415,7 +451,7 @@ export class GLRenderer {
         gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, !dem);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
         gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
-        const tile: GLTile = {labels: {}, batches: {}, tex};
+        const tile: GLTile = {uid: ++this.uids, labels: {}, batches: {}, tex};
         if (dem) {
             const n = 2 ** id.z, slopes = this.newTexture(), u = this.programs.demPrepare;
             gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, image.width, image.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
@@ -432,7 +468,8 @@ export class GLRenderer {
             gl.bindVertexArray(this.quad);
             gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
             gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-            gl.deleteTexture(tex);
+            tile.raw = tex; tile.rawSize = image.width;
+            tile.unpack = encoding === 'terrarium' ? [256, 1, 1 / 256, 32768] : [6553.6, 25.6, 0.1, 10000];
             tile.tex = slopes;
             tile.lat = [latFromMerc(id.y / n), latFromMerc((id.y + 1) / n)];
         }
@@ -441,6 +478,7 @@ export class GLRenderer {
 
     destroyTile(t: GLTile) {
         if (t.tex) this.gl.deleteTexture(t.tex);
+        if (t.raw) this.gl.deleteTexture(t.raw);
         for (const b of Object.values(t.batches)) {
             this.gl.deleteVertexArray(b.vao);
             if (b.edgeVao) this.gl.deleteVertexArray(b.edgeVao);
@@ -487,24 +525,14 @@ export class GLRenderer {
         gl.texSubImage2D(gl.TEXTURE_2D, 0, x, y, w, h, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
     }
 
-    render(s: Scene) {
-        const gl = this.gl, tr = s.tr, zoom = tr.zoom;
-        gl.viewport(0, 0, this.canvas.width, this.canvas.height);
-        gl.clearColor(0, 0, 0, 0);
-        gl.clear(gl.COLOR_BUFFER_BIT);
-        gl.enable(gl.BLEND);
-        gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-
-        let current: Program | null = null;
-        const use = (name: keyof typeof SHADERS) => {
-            const p = this.programs[name];
-            if (p !== current) {
-                gl.useProgram(p.prog);
-                gl.uniform2f(p.u.u_view, tr.width, tr.height);
-                current = p;
-            }
-            return p.u;
-        };
+    /**
+     * Draws the style's layers (not labels) for one view: the whole map, or with 3D terrain either the flat layers
+     * of one ground tile ('ground') or just the buildings standing on it ('buildings').
+     */
+    private drawLayers(s: Scene, tr: Transform, bySource: Map<string, RenderItem<GLTile>[]>, target: [number, number], pass: 'all' | 'ground' | 'buildings') {
+        const gl = this.gl, zoom = tr.zoom;
+        this.current = null;
+        const use = (name: keyof typeof SHADERS) => this.use(name, tr);
         const color = (L: CompiledLayer) => {
             const c = L.p.color.dd ? [1, 1, 1, 1] : L.p.color.eval(zoom), op = L.p.opacity.dd ? 1 : L.p.opacity.eval(zoom);
             return [c[0], c[1], c[2], c[3] * op];
@@ -532,6 +560,7 @@ export class GLRenderer {
 
         for (const L of s.layers) {
             if (!L.visible || zoom < L.minzoom || zoom >= L.maxzoom || L.type === 'symbol') continue;
+            if ((L.type === 'fill-extrusion') !== (pass === 'buildings') && pass !== 'all') continue;
             if (L.type === 'background' && L.p.pattern.eval(zoom)) {
                 const place = pattern(L.p.pattern.eval(zoom), L.p.opacity.eval(zoom));
                 if (!place) continue;
@@ -555,7 +584,7 @@ export class GLRenderer {
                 gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
                 continue;
             }
-            const items = s.items.get(L.source!);
+            const items = bySource.get(L.source!);
             if (!items) continue;
             if (L.type === 'raster' || L.type === 'hillshade') {
                 const u = use(L.type), p = L.p;
@@ -603,11 +632,16 @@ export class GLRenderer {
             let first = true;
             // Buildings are the one layer that needs depth sorting; everything else is painted back to front.
             const extrude = L.type === 'fill-extrusion', pending: (() => void)[] = [];
-            if (extrude) { gl.clear(gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT); gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL); }
+            if (extrude) {
+                // On 3D terrain the ground's depth is kept, so hills hide the buildings behind them.
+                gl.clear(s.terrain ? gl.STENCIL_BUFFER_BIT : gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
+                gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL);
+            }
             for (const it of items) {
                 const b = it.tile.batches[L.id];
                 if (!b) continue;
                 const u = use(b.type), m = it.matrix4;
+                if (extrude) this.bindDem(u, s.terrain ? s.terrain.dem(it.id) : null, s.terrain?.exaggeration ?? 0);
                 if (first) {
                     first = false;
                     gl.uniform4fv(u.u_color, color(L));
@@ -646,6 +680,7 @@ export class GLRenderer {
                     gl.colorMask(true, true, true, true);
                     pending.push(() => {
                         gl.uniformMatrix4fv(u.u_matrix, false, m);
+                        this.bindDem(u, s.terrain ? s.terrain.dem(it.id) : null, s.terrain?.exaggeration ?? 0);
                         gl.uniform4fv(u.u_clip, it.clip);
                         gl.bindVertexArray(b.vao);
                         if (!b.color) gl.vertexAttrib4f(1, 1, 1, 1, 1);
@@ -662,7 +697,7 @@ export class GLRenderer {
                     if (!b?.edgeVao) continue;
                     const u = use('edge');
                     gl.uniform4fv(u.u_color, col);
-                    gl.uniform2f(u.u_world, this.canvas.width, this.canvas.height);
+                    gl.uniform2f(u.u_world, target[0], target[1]);
                     gl.uniform1f(u.u_attr, b.color && !explicit ? 1 : 0);
                     gl.uniformMatrix4fv(u.u_matrix, false, it.matrix4);
                     gl.uniform4fv(u.u_clip, it.clip);
@@ -683,6 +718,137 @@ export class GLRenderer {
                 gl.disable(gl.DEPTH_TEST);
             }
         }
+
+        this.current = null;
+    }
+
+    private uids = 0;
+    private current: Program | null = null;
+    /** Selects a program, telling it the size of the view being drawn (the screen, or a terrain tile's texture). */
+    private use(name: keyof typeof SHADERS, tr: Transform) {
+        const p = this.programs[name];
+        if (p !== this.current) {
+            this.gl.useProgram(p.prog);
+            this.gl.uniform2f(p.u.u_view, tr.width, tr.height);
+            this.current = p;
+        }
+        return p.u;
+    }
+
+    /** Points a terrain-aware program at the heights under the tile about to be drawn. */
+    private bindDem(u: Record<string, WebGLUniformLocation>, dem: DemRef | null, exaggeration: number) {
+        const gl = this.gl;
+        gl.uniform1f(u.u_exag, dem ? exaggeration : 0);
+        gl.uniform1i(u.u_dem, 1);
+        if (!dem) return;
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, dem.tex);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.uniform4fv(u.u_demRect, dem.rect);
+        gl.uniform4fv(u.u_unpack, dem.unpack);
+    }
+
+    private drapes = new Map<string, {tex: WebGLTexture; size: number; signature: string; used: number}>();
+    private frame = 0;
+    private grid?: {vao: WebGLVertexArrayObject; count: number};
+
+    /** A 64 x 64 grid over a tile plus a skirt hanging from its edges, which hides the cracks between neighbouring tiles. */
+    private terrainGrid() {
+        if (this.grid) return this.grid;
+        const gl = this.gl, N = 64, pos: number[] = [], idx: number[] = [];
+        for (let y = 0; y <= N; y++) for (let x = 0; x <= N; x++) pos.push(x / N, y / N, 0);
+        for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) { const i = y * (N + 1) + x; idx.push(i, i + 1, i + N + 1, i + 1, i + N + 2, i + N + 1); }
+        const edge = (at: (k: number) => number) => {
+            for (let k = 0; k <= N; k++) {
+                const i = at(k), j = pos.length / 3;
+                pos.push(pos[i * 3], pos[i * 3 + 1], 1);
+                if (k < N) idx.push(i, at(k + 1), j, at(k + 1), j + 1, j);
+            }
+        };
+        edge(k => k); edge(k => N * (N + 1) + k); edge(k => k * (N + 1)); edge(k => k * (N + 1) + N);
+        const vao = gl.createVertexArray()!;
+        gl.bindVertexArray(vao);
+        gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(pos), gl.STATIC_DRAW);
+        gl.enableVertexAttribArray(0);
+        gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gl.createBuffer());
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(idx), gl.STATIC_DRAW);
+        return this.grid = {vao, count: idx.length};
+    }
+
+    /**
+     * 3D terrain, step one: bring each ground tile's picture up to date. The flat layers are drawn straight down into
+     * a texture per tile, which is kept until what it shows changes; panning and tilting then cost almost nothing.
+     */
+    private updateDrapes(s: Scene) {
+        const gl = this.gl;
+        // Per frame: a few out-of-date pictures are redrawn and a few missing ones drawn (all of them when starting from nothing).
+        let budget = 3, fresh = this.drapes.size ? 6 : Infinity, behind = false;
+        for (const t of s.terrain!.tiles) {
+            let d = this.drapes.get(t.key);
+            const size = Math.min(2048, Math.max(64, Math.round(t.view.width * this.dpr)));
+            if (d && d.signature === t.signature) { d.used = this.frame; continue; }
+            if (d && budget-- <= 0) { d.used = this.frame; behind = true; continue; }
+            if (!d && fresh-- <= 0) { behind = true; continue; }
+            if (!d || d.size !== size) {
+                if (d) gl.deleteTexture(d.tex);
+                const tex = this.newTexture();
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+                gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, size, size, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+                d = {tex, size, signature: '', used: this.frame};
+                this.drapes.set(t.key, d);
+            }
+            d.signature = t.signature; d.used = this.frame;
+            gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
+            gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, d.tex, 0);
+            gl.viewport(0, 0, size, size);
+            gl.clearColor(0, 0, 0, 0);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+            this.drawLayers(s, t.view, t.items, [size, size], 'ground');
+            gl.bindTexture(gl.TEXTURE_2D, d.tex);
+            gl.generateMipmap(gl.TEXTURE_2D);
+        }
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        for (const [key, d] of this.drapes) if (this.frame - d.used > 90) { gl.deleteTexture(d.tex); this.drapes.delete(key); }
+        return behind;
+    }
+
+    /** 3D terrain, step two: draw the ground tiles as raised meshes, with depth so near slopes hide far ones. */
+    private drawTerrain(s: Scene) {
+        const gl = this.gl, grid = this.terrainGrid(), u = this.use('terrain', s.tr);
+        gl.enable(gl.DEPTH_TEST);
+        gl.depthFunc(gl.LEQUAL);
+        gl.clear(gl.DEPTH_BUFFER_BIT);
+        gl.bindVertexArray(grid.vao);
+        gl.uniform1i(u.u_drape, 0);
+        for (const t of s.terrain!.tiles) {
+            const d = this.drapes.get(t.key);
+            if (!d) continue;
+            this.bindDem(u, t.dem, s.terrain!.exaggeration);
+            gl.bindTexture(gl.TEXTURE_2D, d.tex);
+            gl.uniformMatrix4fv(u.u_matrix, false, t.matrix);
+            gl.uniform1f(u.u_skirt, 40075016.686 / 2 ** t.id.z / 16 * Math.max(1, s.terrain!.exaggeration));
+            gl.drawElements(gl.TRIANGLES, grid.count, gl.UNSIGNED_SHORT, 0);
+        }
+        gl.disable(gl.DEPTH_TEST);
+    }
+
+    /** Draws a frame. Returns true if some terrain pictures are still out of date, so another frame is wanted. */
+    render(s: Scene): boolean {
+        const gl = this.gl, tr = s.tr;
+        this.frame++;
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+        const behind = s.terrain ? this.updateDrapes(s) : false;
+        gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+        gl.clearColor(0, 0, 0, 0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        this.current = null;
+        const target: [number, number] = [this.canvas.width, this.canvas.height];
+        if (s.terrain) { this.drawTerrain(s); this.drawLayers(s, tr, s.items, target, 'buildings'); }
+        else this.drawLayers(s, tr, s.items, target, 'all');
+        const use = (name: keyof typeof SHADERS) => this.use(name, tr);
 
         // Style-sheet icons and images added at runtime live in different textures.
         for (const custom of [false, true]) {
@@ -745,6 +911,7 @@ export class GLRenderer {
             }
         }
         gl.bindVertexArray(null);
+        return behind;
     }
 
     private iconQuads(labels: Placed[], custom: boolean): Float32Array {

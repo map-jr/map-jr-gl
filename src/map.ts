@@ -261,7 +261,7 @@ export class Map {
         if (e.type === 'camera') {
             const zoomed = e.zoom !== this.tr.zoom;
             const turned = e.bearing !== this.tr.bearing, tilted = e.pitch !== this.tr.pitch;
-            Object.assign(this.tr, {lng: e.lng, lat: e.lat, zoom: e.zoom, bearing: e.bearing, pitch: e.pitch});
+            Object.assign(this.tr, {lng: e.lng, lat: e.lat, zoom: e.zoom, bearing: e.bearing, pitch: e.pitch, elevation: e.elevation});
             this.tilesLoaded = false;
             if (!this.moving) this.fire('movestart');
             this.moving = true;
@@ -464,6 +464,11 @@ export class Map {
         return i;
     }
     getStyle() { return this.rawStyle ? structuredClone(this.rawStyle) : undefined; }
+    /** Turns 3D terrain on (`{source, exaggeration}`, naming a raster-dem source) or off (`null`). */
+    setTerrain(terrain: {source: string; exaggeration?: number} | null) {
+        return this.editStyle(s => { if (terrain) s.terrain = terrain; else delete s.terrain; this.fire('terrain', {terrain}); });
+    }
+    getTerrain(): {source: string; exaggeration?: number} | null { return this.rawStyle?.terrain ?? null; }
     async setStyle(style: unknown) {
         this.styleBase = typeof style === 'string' ? new URL(style, location.href).href : location.href;
         this.rawStyle = typeof style === 'string' ? await (await fetch(style)).json() : structuredClone(style);
