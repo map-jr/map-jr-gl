@@ -8,7 +8,7 @@ import {decodeElevation, sampleElevation, type QueriedFeature} from './query.ts'
 import type {TileBackend} from './tiles.ts';
 import {fetchTile} from './pmtiles.ts';
 
-export interface CameraOptions { center?: LngLatLike; zoom?: number; bearing?: number; pitch?: number }
+export interface CameraOptions { center?: LngLatLike; zoom?: number; bearing?: number; pitch?: number; /** Space at the edges covered by other things: top, right, bottom, left. */ padding?: [number, number, number, number] }
 export type {FontSource} from './style.ts';
 export interface EngineOptions extends CameraOptions {
     style: ResolvedStyle; width: number; height: number; dpr: number; fontFamily: string; fonts?: FontSource[];
@@ -48,7 +48,7 @@ export type Command =
     | {type: 'elevation'; id: number; lng: number; lat: number; source?: string; zoom?: number}
     | {type: 'repaint'};
 export type EngineEvent =
-    | {type: 'camera'; lng: number; lat: number; zoom: number; bearing: number; pitch: number; /** Ground height at the centre with 3D terrain, else 0. */ elevation: number; exaggeration: number; groundRange?: [number, number]; moving: boolean}
+    | {type: 'camera'; lng: number; lat: number; zoom: number; bearing: number; pitch: number; /** Ground height at the centre with 3D terrain, else 0. */ elevation: number; exaggeration: number; groundRange?: [number, number]; padding: [number, number, number, number]; moving: boolean}
     | {type: 'idle'}
     /** 3D terrain: the height grid of an elevation tile that has loaded (or, without `grid`, been dropped). */
     | {type: 'heights'; key: string; grid?: Float32Array}
@@ -347,7 +347,7 @@ export class Engine {
                 this.frame(performance.now());
                 this.emit({type: 'resized', width: c.width, height: c.height, dpr: c.dpr});
                 return;
-            case 'jump': this.stop(); tr.set(c.center, c.zoom, c.bearing, c.pitch); if (c.center || c.zoom !== undefined) this.centreGiven = true; break;
+            case 'jump': this.stop(); if (c.padding) tr.padding = c.padding; tr.set(c.center, c.zoom, c.bearing, c.pitch); if (c.center || c.zoom !== undefined) this.centreGiven = true; break;
             case 'ease': {
                 this.stop();
                 const to = new Transform();
@@ -356,7 +356,7 @@ export class Engine {
                 let db = to.bearing - tr.bearing;
                 db = ((db + 180) % 360 + 360) % 360 - 180;
                 this.ease = {
-                    from: [mercX(tr.lng), mercY(tr.lat), tr.zoom, tr.bearing, tr.pitch], to: [mercX(to.lng), mercY(to.lat), to.zoom, tr.bearing + db, to.pitch],
+                    from: [mercX(tr.lng), mercY(tr.lat), tr.zoom, tr.bearing, tr.pitch, ...tr.padding], to: [mercX(to.lng), mercY(to.lat), to.zoom, tr.bearing + db, to.pitch, ...(c.padding ?? tr.padding)],
                     start: performance.now(), duration: Math.max(1, c.duration), around: c.around,
                     anchor: c.around ? tr.unproject(c.around[0], c.around[1]) : undefined,
                 };
@@ -366,7 +366,7 @@ export class Engine {
             case 'pan': {
                 this.fling = null; this.ease = null;
                 const now = performance.now();
-                if (c.x === undefined || c.y === undefined) { tr.set(tr.unprojectFlat(tr.width / 2 - c.dx, tr.height / 2 - c.dy)); break; }
+                if (c.x === undefined || c.y === undefined) { tr.set(tr.unprojectFlat(tr.cx - c.dx, tr.cy - c.dy)); break; }
                 this.centreGiven = false;
                 // A drag holds on to the ground (and its height) where it began; each move puts that point under the pointer.
                 // (A new drag is recognised by a pause, or by the pointer not being where the held point is.)
@@ -547,6 +547,7 @@ export class Engine {
             const e = this.ease, t = Math.min(1, (now - e.start) / e.duration), k = defaultEasing(t);
             const v = e.from.map((f, i) => f + (e.to[i] - f) * k);
             tr.zoom = v[2];
+            tr.padding = [v[5], v[6], v[7], v[8]];
             tr.set(undefined, undefined, v[3], v[4]);
             if (e.around && e.anchor) tr.setLocationAt(e.anchor[0], e.anchor[1], e.around[0], e.around[1]);
             else { tr.lng = lngFromMerc(v[0]); tr.lat = latFromMerc(v[1]); }
@@ -589,7 +590,7 @@ export class Engine {
         }
         if (this.fling) {
             const f = this.fling, t = Math.min(1, (now - f.start) / f.duration), k = inertiaEasing(t);
-            tr.set(tr.unprojectFlat(tr.width / 2 - f.dx * (k - f.done), tr.height / 2 - f.dy * (k - f.done)));
+            tr.set(tr.unprojectFlat(tr.cx - f.dx * (k - f.done), tr.cy - f.dy * (k - f.done)));
             f.done = k;
             if (t >= 1) this.fling = null;
         }
@@ -799,7 +800,7 @@ export class Engine {
             for (const [key, t] of old.slice(0, this.tiles.size - MAX_TILES)) this.dropTile(key, t);
         }
 
-        const camera = `${tr.lng},${tr.lat},${tr.zoom},${tr.bearing},${tr.pitch},${Math.round(tr.elevation)},${this.exaggeration}`, cameraChanged = camera !== this.lastCamera;
+        const camera = `${tr.padding},${tr.lng},${tr.lat},${tr.zoom},${tr.bearing},${tr.pitch},${Math.round(tr.elevation)},${this.exaggeration}`, cameraChanged = camera !== this.lastCamera;
         if (cameraChanged) this.placeDirty = true;
 
         // Decide which labels show only every so often; in between they ride along with the map and fade.
@@ -874,7 +875,7 @@ export class Engine {
         if (cameraChanged || animating !== this.moving) {
             this.lastCamera = camera;
             this.moving = animating;
-            this.emit({type: 'camera', lng: tr.lng, lat: tr.lat, zoom: tr.zoom, bearing: tr.bearing, pitch: tr.pitch, elevation: tr.elevation, exaggeration: this.exaggeration, groundRange: tr.groundRange, moving: animating});
+            this.emit({type: 'camera', lng: tr.lng, lat: tr.lat, zoom: tr.zoom, bearing: tr.bearing, pitch: tr.pitch, elevation: tr.elevation, exaggeration: this.exaggeration, groundRange: tr.groundRange, padding: tr.padding, moving: animating});
         }
         const busy = animating || markersAnimating || fading || this.placeDirty || settling || behind;
         const idle = complete && !busy;

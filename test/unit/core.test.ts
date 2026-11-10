@@ -435,3 +435,18 @@ test('state: feature-state and global-state are read when tiles are built', asyn
     setFeatureStates('g', {});
     setGlobalState(undefined);
 });
+
+test('padding: the centre moves to the middle of the unpadded area, consistently for the CPU and the GPU', () => {
+    const t = new Transform();
+    t.width = 800; t.height = 600;
+    t.set([-74, 40.7], 12, 30, 50);
+    t.padding = [40, 0, 0, 300]; // a header and a left-hand panel
+    const [cx, cy] = t.project(-74, 40.7);
+    assert.ok(Math.abs(cx - 550) < 1e-6 && Math.abs(cy - 320) < 1e-6, `${cx},${cy}`);
+    const [lng, lat] = t.unproject(123, 456), [bx, by] = t.project(lng, lat);
+    assert.ok(Math.hypot(bx - 123, by - 456) < 1e-6);
+    // The matrix sent to the GPU puts a tile point where the CPU projection does.
+    const id = {z: 12, x: 1206, y: 1540, w: 0, key: ''}, m = t.tileMatrix4(id), [sx, sy] = t.projectTile(id, 1000, 3000);
+    const clip = [0, 1, 3].map(r => m[r] * 1000 + m[4 + r] * 3000 + m[12 + r]);
+    assert.ok(Math.abs((clip[0] / clip[2] + 1) / 2 * 800 - sx) < 1e-3 && Math.abs((1 - clip[1] / clip[2]) / 2 * 600 - sy) < 1e-3, `${clip} vs ${sx},${sy}`);
+});

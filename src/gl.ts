@@ -193,7 +193,7 @@ void main() {
 
     // Instanced markers. Mercator positions arrive as high + low float pairs and are subtracted from the centre
     // (split the same way) before anything else, which keeps sub-pixel precision at any zoom.
-    marker: [`uniform vec2 u_view; uniform vec4 u_center; uniform float u_world; uniform vec2 u_rot; uniform vec3 u_pitch;
+    marker: [`uniform vec2 u_view; uniform vec2 u_centre; uniform vec4 u_center; uniform float u_world; uniform vec2 u_rot; uniform vec3 u_pitch;
 uniform vec2 u_size; uniform vec2 u_offset; uniform vec2 u_tex;
 layout(location=0) in vec2 a_corner; layout(location=1) in vec4 a_merc; layout(location=2) in vec4 a_rect; layout(location=3) in vec2 a_scale;
 layout(location=4) in float a_height; uniform vec2 u_lift; // metres to pixels (exaggerated), and the height of the map centre in pixels
@@ -208,7 +208,7 @@ void main() {
   float k = u_pitch.z / (u_pitch.z - ry * u_pitch.y - z * u_pitch.x);
   vec2 corner = a_corner;
   // Markers stay upright and keep their size; a scale other than 1 grows them about their anchor point.
-  vec2 px = vec2(rx * k, (ry * u_pitch.x - z * u_pitch.y) * k) + u_view * 0.5 + (u_offset + corner * u_size) * a_scale.x;
+  vec2 px = vec2(rx * k, (ry * u_pitch.x - z * u_pitch.y) * k) + u_centre + (u_offset + corner * u_size) * a_scale.x;
   v_alpha = a_scale.y * u_opacity;
   v_uv = (a_rect.xy + corner * a_rect.zw) / u_tex;
   vec2 c = px / u_view * 2.0 - 1.0;
@@ -922,6 +922,7 @@ export class GLRenderer {
             gl.uniform1f(u.u_world, tr.worldSize);
             gl.uniform2f(u.u_rot, Math.cos(a), Math.sin(a));
             gl.uniform3f(u.u_pitch, Math.cos(p), Math.sin(p), tr.cameraDistance);
+            gl.uniform2f(u.u_centre, tr.cx, tr.cy);
             gl.uniform2f(u.u_lift, (s.terrain?.exaggeration ?? 0) * tr.pixelsPerMetre, s.terrain ? tr.elevation * tr.pixelsPerMetre : 0);
             for (const m of s.markers) {
                 gl.uniform2f(u.u_size, m.width, m.height);

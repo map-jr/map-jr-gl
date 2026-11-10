@@ -57,6 +57,14 @@ export class Transform {
     maxZoom = 22;
     maxPitch = 60;
     minPitch = 0;
+    /**
+     * Space at the edges (top, right, bottom, left, in pixels) covered by other things, such as a side panel. The map
+     * centre, and the point the camera looks at, sit in the middle of what is left.
+     */
+    padding: [number, number, number, number] = [0, 0, 0, 0];
+    /** Where on screen the map centre is drawn. */
+    get cx() { return this.width / 2 + (this.padding[3] - this.padding[1]) / 2; }
+    get cy() { return this.height / 2 + (this.padding[0] - this.padding[2]) / 2; }
     /** If set, the map centre is kept inside this box: west, south, east, north. */
     maxBounds: [number, number, number, number] | null = null;
 
@@ -102,7 +110,7 @@ export class Transform {
         const a = this.angle, cos = Math.cos(a), sin = Math.sin(a), p = this.pitch * Math.PI / 180, d = this.cameraDistance;
         const rx = cos * dx - sin * dy, ry = sin * dx + cos * dy;
         const depth = d - ry * Math.sin(p) - z * Math.cos(p), k = d / depth;
-        return [rx * k + this.width / 2, (ry * Math.cos(p) - z * Math.sin(p)) * k + this.height / 2, depth];
+        return [rx * k + this.cx, (ry * Math.cos(p) - z * Math.sin(p)) * k + this.cy, depth];
     }
 
     /** Mercator [0..1] coordinates to screen pixels (on the ground surface, with 3D terrain). */
@@ -115,7 +123,7 @@ export class Transform {
     /** Screen pixels to the mercator position on the ground under them (`z` pixels above the height of the map centre). */
     screenToMerc(px: number, py: number, z = 0): [number, number] {
         const ws = this.worldSize, a = this.angle, cos = Math.cos(a), sin = Math.sin(a), p = this.pitch * Math.PI / 180, d = this.cameraDistance;
-        const sx = px - this.width / 2, sy = py - this.height / 2;
+        const sx = px - this.cx, sy = py - this.cy;
         // Invert the perspective for a point on that plane. Above the horizon there is no ground; clamp just below it.
         const denom = Math.max(Math.cos(p) * d + sy * Math.sin(p), d * 0.02);
         const ry = (sy * (d - z * Math.cos(p)) + d * z * Math.sin(p)) / denom, rx = sx * (d - ry * Math.sin(p) - z * Math.cos(p)) / d;
@@ -185,6 +193,9 @@ export class Transform {
         const W = [-sin * s * sp, -cos * s * sp, -ppm * cp, d - ty * sp];
         // The ground at the map centre sits at height `elevation`: shift everything down by that much.
         Y[3] -= Y[2] * this.elevation; W[3] -= W[2] * this.elevation;
+        // Padding moves the point the camera looks at away from the middle of the screen.
+        const px = (this.cx - this.width / 2) * 2 / this.width, py = (this.cy - this.height / 2) * 2 / this.height;
+        for (let i = 0; i < 4; i++) { X[i] += W[i] * px; Y[i] -= W[i] * py; }
         const Z = [A * W[0], A * W[1], A * W[2], A * W[3] + B];
         return new Float32Array([X[0], Y[0], Z[0], W[0], X[1], Y[1], Z[1], W[1], X[2], Y[2], Z[2], W[2], X[3], Y[3], Z[3], W[3]]);
     }
@@ -223,7 +234,7 @@ export class Transform {
     recenterOnGround(): boolean {
         if (!this.heightAt) return false;
         const p = this.pitch * Math.PI / 180, d = this.cameraDistance, ppm = this.pixelsPerMetre;
-        const [mx, my] = this.screenToGround(this.width / 2, this.height / 2), h = this.heightAt(mx, my), z = (h - this.elevation) * ppm;
+        const [mx, my] = this.screenToGround(this.cx, this.cy), h = this.heightAt(mx, my), z = (h - this.elevation) * ppm;
         const dist = d - z / Math.cos(p); // camera to that point, in pixels at the current scale
         if (Math.abs(z) < 0.25 || dist < d * 0.05) return false;
         const lat = latFromMerc(clamp(my, 0, 1));
@@ -257,7 +268,7 @@ export class Transform {
         const ox = (id.x + id.w * n) * ws / n - mercX(this.lng) * ws;
         const oy = id.y * ws / n - mercY(this.lat) * ws;
         return [cos * s, sin * s, -sin * s, cos * s,
-            cos * ox - sin * oy + this.width / 2, sin * ox + cos * oy + this.height / 2];
+            cos * ox - sin * oy + this.cx, sin * ox + cos * oy + this.cy];
     }
 
     /** `tileSize` shifts the zoom level chosen: 256px tiles are fetched one level deeper than 512px ones. */

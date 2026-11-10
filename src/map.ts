@@ -266,7 +266,7 @@ export class Map {
         if (e.type === 'camera') {
             const zoomed = e.zoom !== this.tr.zoom;
             const turned = e.bearing !== this.tr.bearing, tilted = e.pitch !== this.tr.pitch;
-            Object.assign(this.tr, {lng: e.lng, lat: e.lat, zoom: e.zoom, bearing: e.bearing, pitch: e.pitch, elevation: e.elevation});
+            Object.assign(this.tr, {lng: e.lng, lat: e.lat, zoom: e.zoom, bearing: e.bearing, pitch: e.pitch, elevation: e.elevation, padding: e.padding});
             // With 3D terrain, positions on this thread follow the ground too (clicks, project/unproject, DOM markers).
             const k = e.exaggeration;
             this.tr.groundRange = e.groundRange;
@@ -399,20 +399,25 @@ export class Map {
         const {width: w, height: h} = this.tr, pts = [[0, 0], [w, 0], [0, h], [w, h]].map(([x, y]) => this.tr.unproject(x, y));
         return {west: Math.min(...pts.map(p => p[0])), south: Math.min(...pts.map(p => p[1])), east: Math.max(...pts.map(p => p[0])), north: Math.max(...pts.map(p => p[1]))};
     }
-    jumpTo(o: CameraOptions) {
+    jumpTo(o: CameraInput) {
         // Applied locally as well, so reads immediately after a write are correct even when the engine is in a worker.
+        const padding = o.padding === undefined ? undefined : paddingOf(o.padding);
+        if (padding) this.tr.padding = padding;
         this.tr.set(o.center, o.zoom, o.bearing, o.pitch);
-        this.post({type: 'jump', center: o.center && toLngLat(o.center), zoom: o.zoom, bearing: o.bearing, pitch: o.pitch});
+        this.post({type: 'jump', center: o.center && toLngLat(o.center), zoom: o.zoom, bearing: o.bearing, pitch: o.pitch, padding});
         return this;
     }
-    easeTo(o: CameraOptions & {duration?: number; around?: [number, number]}) {
+    easeTo(o: CameraInput & {duration?: number; around?: [number, number]}) {
         // Only plain camera values cross to the engine. Extra options written for MapLibre (such as an `easing`
         // function, which cannot be sent to a worker) are ignored rather than breaking the call.
         const {center, zoom, bearing, pitch, around} = o;
-        this.post({type: 'ease', duration: o.duration ?? 500, center: center && toLngLat(center), zoom, bearing, pitch, around});
+        this.post({type: 'ease', duration: o.duration ?? 500, center: center && toLngLat(center), zoom, bearing, pitch, around, padding: o.padding === undefined ? undefined : paddingOf(o.padding)});
         return this;
     }
-    flyTo(o: CameraOptions & {duration?: number}) { return this.easeTo({duration: 1200, ...o}); }
+    flyTo(o: CameraInput & {duration?: number}) { return this.easeTo({duration: 1200, ...o}); }
+    /** Space at the edges covered by other things (a side panel, a header). The map centre moves to the middle of what is left. */
+    setPadding(padding: PaddingInput) { return this.jumpTo({padding}); }
+    getPadding() { const [top, right, bottom, left] = this.tr.padding; return {top, right, bottom, left}; }
     setCenter(center: LngLatLike) { return this.jumpTo({center}); }
     setZoom(zoom: number) { return this.jumpTo({zoom}); }
     setBearing(bearing: number) { return this.jumpTo({bearing}); }
@@ -421,7 +426,7 @@ export class Map {
     resetNorthPitch(o: {duration?: number} = {}) { return this.easeTo({bearing: 0, pitch: 0, ...o}); }
     panTo(center: LngLatLike, o: {duration?: number} = {}) { return this.easeTo({center, ...o}); }
     panBy(offset: [number, number], o: {duration?: number} = {}) {
-        return this.easeTo({center: this.unproject([this.tr.width / 2 + offset[0], this.tr.height / 2 + offset[1]]), ...o});
+        return this.easeTo({center: this.unproject([this.tr.cx + offset[0], this.tr.cy + offset[1]]), ...o});
     }
     zoomTo(zoom: number, o: {duration?: number} = {}) { return this.easeTo({zoom, ...o}); }
     rotateTo(bearing: number, o: {duration?: number} = {}) { return this.easeTo({bearing, ...o}); }
@@ -433,7 +438,9 @@ export class Map {
         const [w, s, e, n] = bounds.flat() as number[];
         const pad = typeof o.padding === 'number' ? {top: o.padding, right: o.padding, bottom: o.padding, left: o.padding} : {top: 0, right: 0, bottom: 0, left: 0, ...o.padding};
         const x0 = mercX(w), x1 = mercX(e), y0 = mercY(n), y1 = mercY(s);
-        const availW = Math.max(1, this.tr.width - pad.left - pad.right), availH = Math.max(1, this.tr.height - pad.top - pad.bottom);
+        // The map's own padding already moves the centre; padding given here is on top of it.
+        const [pt, pr, pb, pl] = this.tr.padding;
+        const availW = Math.max(1, this.tr.width - pad.left - pad.right - pl - pr), availH = Math.max(1, this.tr.height - pad.top - pad.bottom - pt - pb);
         const zoom = Math.min(o.maxZoom ?? this.tr.maxZoom, Math.log2(Math.min(availW / Math.max(x1 - x0, 1e-12), availH / Math.max(y1 - y0, 1e-12)) / 512));
         // Shift the centre so the bounds sit in the middle of the unpadded area.
         const world = 512 * 2 ** zoom, cx = (x0 + x1) / 2 - (pad.left - pad.right) / 2 / world, cy = (y0 + y1) / 2 - (pad.top - pad.bottom) / 2 / world;
@@ -999,7 +1006,7 @@ export class Map {
             else if (k === '-') this.zoomOut();
             else if (k.startsWith('Arrow')) {
                 e.preventDefault();
-                const c = this.unproject({x: this.tr.width / 2 + (k === 'ArrowLeft' ? -step : k === 'ArrowRight' ? step : 0), y: this.tr.height / 2 + (k === 'ArrowUp' ? -step : k === 'ArrowDown' ? step : 0)});
+                const c = this.unproject({x: this.tr.cx + (k === 'ArrowLeft' ? -step : k === 'ArrowRight' ? step : 0), y: this.tr.cy + (k === 'ArrowUp' ? -step : k === 'ArrowDown' ? step : 0)});
                 this.easeTo({center: c, duration: 200});
             }
         });
@@ -1029,6 +1036,13 @@ async function rasterise(svg: string, w: number, h: number): Promise<Uint8Array>
     img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
     await img.decode();
     return pixels(img, w, h);
+}
+
+/** Padding as MapLibre takes it: one number for all sides, or any of the four sides. */
+export type PaddingInput = number | Partial<Record<'top' | 'right' | 'bottom' | 'left', number>>;
+type CameraInput = Omit<CameraOptions, 'padding'> & {padding?: PaddingInput};
+function paddingOf(p: PaddingInput): [number, number, number, number] {
+    return typeof p === 'number' ? [p, p, p, p] : [p.top ?? 0, p.right ?? 0, p.bottom ?? 0, p.left ?? 0];
 }
 
 /** Options for `addImage`, as in MapLibre, plus an explicit size in CSS pixels. */

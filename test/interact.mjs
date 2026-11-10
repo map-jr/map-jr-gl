@@ -262,6 +262,18 @@ for (const mode of ['main', 'worker']) {
     check(`[${mode}] resize keeps the canvas matched to its container`, r.css[0] === 820 && r.css[1] === 560 && r.css[2] === 0 && r.css[3] === 0 && Math.abs(r.mid.x - 410) < 0.01 && Math.abs(r.mid.y - 280) < 0.01 && r.centre.lng === centreBefore.lng, JSON.stringify({css: r.css, mid: r.mid, before: centreBefore, after: r.centre}));
     await page.setViewportSize({width: 1000, height: 700});
     await page.waitForTimeout(300);
+    // Padding: with a panel over the left 300px, the map centre is drawn in the middle of what remains.
+    const padded = await page.evaluate(async () => {
+        const m = window.map;
+        m.jumpTo({center: [-74.0065, 40.7085], zoom: 14, bearing: 0, pitch: 0});
+        m.setPadding({left: 300});
+        await new Promise(r => setTimeout(r, 300));
+        const size = m.getContainer().getBoundingClientRect(), at = m.project(m.getCenter()), pad = m.getPadding();
+        m.setPadding(0);
+        return {at, expected: [size.width / 2 + 150, size.height / 2], pad};
+    });
+    check(`[${mode}] setPadding moves the centre to the middle of the unpadded area`, Math.abs(padded.at.x - padded.expected[0]) < 0.5 && Math.abs(padded.at.y - padded.expected[1]) < 0.5 && padded.pad.left === 300, JSON.stringify(padded));
+
     // Feature state: set, read back and removed through the API, with tiles rebuilt in the background and no errors.
     const fs = await page.evaluate(async () => {
         const m = window.map, f = {source: 'omt', sourceLayer: 'building', id: 1};
