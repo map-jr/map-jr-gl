@@ -16,7 +16,7 @@ const mf = new Miniflare({
     compatibilityDate: '2025-01-01', bindings: {TILES: 'http://localhost:8080/tiles/{z}/{x}/{y}.pbf'},
 });
 let failed = false;
-for (const p of ['/map.svg', '/map.jpg', '/map.jpg']) {
+for (const p of ['/map.svg', '/map.jpg', '/map.jpg', '/contours.svg']) {
     const res = await mf.dispatchFetch('http://worker' + p), body = Buffer.from(await res.arrayBuffer());
     const ok = res.status === 200 && body.length > 10000;
     failed ||= !ok;

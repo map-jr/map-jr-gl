@@ -35,8 +35,8 @@ Mapbox Vector Tiles.
   respect safe areas, and attribution collapses to a button on small maps.
 - **Contour lines:** a `contour` source derives labelled contour lines from an elevation source in the tile
   workers, with intervals by zoom, a unit multiplier and overzoom, in the manner of maplibre-contour. They are
-  drawn in server output too: PNG elevation tiles are decoded by the library, and other formats through a
-  `decodeImage` option (for WebP on Node, `sharp`).
+  drawn in server output too: PNG and lossless WebP elevation tiles are decoded by the library, with no
+  browser or native module, so this works on Cloudflare; other formats go through a `decodeImage` option.
 - **Text along lines:** road and contour labels follow the curve of their line.
 - **Queries from tile data:** `map.queryFeatures(lngLatOrPoint, {sourceLayers, filter, radius, zoom, geometry})`
   returns features whether or not any layer draws them, even off screen. `map.queryElevation(lngLat)` reads

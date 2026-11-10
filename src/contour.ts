@@ -26,50 +26,14 @@ export interface Pixels { width: number; height: number; data: Uint8Array | Uint
 /** Turns an encoded image into pixels. Needed where there is no browser to do it, e.g. for WebP tiles on a server. */
 export type ImageDecoder = (bytes: Uint8Array) => Promise<Pixels> | Pixels;
 
-/** Decodes an 8-bit RGB or RGBA PNG without a browser (enough for elevation tiles). */
-export async function decodePNG(bytes: Uint8Array): Promise<Pixels> {
-    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-    if (view.getUint32(0) !== 0x89504e47) throw new Error('Not a PNG image; pass a decodeImage function for other formats');
-    let width = 0, height = 0, channels = 0;
-    const parts: Uint8Array[] = [];
-    for (let o = 8; o < bytes.length;) {
-        const len = view.getUint32(o), type = String.fromCharCode(...bytes.subarray(o + 4, o + 8));
-        if (type === 'IHDR') {
-            width = view.getUint32(o + 8); height = view.getUint32(o + 12);
-            const depth = bytes[o + 16], colour = bytes[o + 17];
-            if (depth !== 8 || (colour !== 2 && colour !== 6) || bytes[o + 20]) throw new Error('Only 8-bit RGB(A), non-interlaced PNG is supported; pass a decodeImage function');
-            channels = colour === 2 ? 3 : 4;
-        } else if (type === 'IDAT') parts.push(bytes.subarray(o + 8, o + 8 + len));
-        o += len + 12;
-    }
-    const raw = new Uint8Array(await new Response(new Blob(parts as BlobPart[]).stream().pipeThrough(new DecompressionStream('deflate'))).arrayBuffer());
-    const stride = width * channels, data = new Uint8Array(width * height * 4), prev = new Uint8Array(stride), row = new Uint8Array(stride);
-    for (let y = 0; y < height; y++) {
-        const filter = raw[y * (stride + 1)], src = raw.subarray(y * (stride + 1) + 1, (y + 1) * (stride + 1));
-        for (let i = 0; i < stride; i++) {
-            const a = i >= channels ? row[i - channels] : 0, b = prev[i], c = i >= channels ? prev[i - channels] : 0;
-            let pred = 0;
-            if (filter === 1) pred = a; else if (filter === 2) pred = b; else if (filter === 3) pred = (a + b) >> 1;
-            else if (filter === 4) { const p = a + b - c, pa = Math.abs(p - a), pb = Math.abs(p - b), pc = Math.abs(p - c); pred = pa <= pb && pa <= pc ? a : pb <= pc ? b : c; }
-            row[i] = src[i] + pred;
-        }
-        for (let x = 0; x < width; x++) {
-            const d = (y * width + x) * 4, r = x * channels;
-            data[d] = row[r]; data[d + 1] = row[r + 1]; data[d + 2] = row[r + 2]; data[d + 3] = channels === 4 ? row[r + 3] : 255;
-        }
-        prev.set(row);
-    }
-    return {width, height, data};
-}
-
 /**
- * Decodes an elevation tile image into metres. Uses `decode` if given, the browser's decoder where there is one,
- * and otherwise the built-in PNG decoder.
+ * Decodes an elevation tile image into metres, with `decode` if given (the server renderer passes its own decoders)
+ * and otherwise the browser's.
  */
 export async function decodeDEM(bytes: Uint8Array, encoding: string, decode?: ImageDecoder): Promise<DEM> {
     let px: Pixels;
     if (decode) px = await decode(bytes);
-    else if (typeof createImageBitmap === 'undefined' || typeof OffscreenCanvas === 'undefined') px = await decodePNG(bytes);
+    else if (typeof createImageBitmap === 'undefined' || typeof OffscreenCanvas === 'undefined') throw new Error('Decoding elevation tiles needs a browser, or a decodeImage function');
     else {
         const image = await createImageBitmap(new Blob([bytes as BlobPart]), {premultiplyAlpha: 'none', colorSpaceConversion: 'none'});
         const {width, height} = image; // read before close(), which zeroes them

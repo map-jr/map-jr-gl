@@ -10,8 +10,9 @@ import {queryTile, sampleElevation} from '../../src/query.ts';
 import {CollisionGrid, renderItems} from '../../src/placement.ts';
 import {fillTemplate, sizedSVG} from '../../src/markers.ts';
 import {renderToSVG} from '../../src/server.ts';
-import {decodePNG} from '../../src/contour.ts';
+import {decodePNG, decodeWebPLossless} from '../../src/webp.ts';
 import {deflateSync} from 'node:zlib';
+import {createHash} from 'node:crypto';
 
 // A real OpenMapTiles tile of lower Manhattan (© OpenStreetMap contributors, via OpenFreeMap).
 const TILE = {z: 14, x: 4823, y: 6160}, bytes = new Uint8Array(readFileSync(new URL('../fixtures/14-4823-6160.pbf', import.meta.url)));
@@ -360,4 +361,11 @@ test('server: PNG elevation tiles are decoded without a browser and contours are
         layers: [{id: 'c', type: 'line', source: 'contours', 'source-layer': 'contours', paint: {'line-color': '#963'}}]};
     const {svg} = await renderToSVG({style, width: 256, height: 256, center: [0, 0], zoom: 3, fetch: (async () => new Response(dem as BodyInit)) as typeof fetch});
     assert.match(svg, /<path[^>]*stroke="#996633"/);
+});
+
+test('server: lossless WebP elevation tiles decode to the same pixels as a reference decoder', () => {
+    // A Mapterhorn elevation tile (https://mapterhorn.com/attribution); the checksum is of the pixels libwebp produces.
+    const px = decodeWebPLossless(readFileSync(new URL('../fixtures/dem-12-1205-1539.webp', import.meta.url)));
+    assert.deepEqual([px.width, px.height], [512, 512]);
+    assert.equal(createHash('sha256').update(px.data).digest('hex'), '99c838ff762322359f7cd2e06a8eb4bec1bd0b6ef02ede07ae09facfe22e956f');
 });

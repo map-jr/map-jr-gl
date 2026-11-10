@@ -6,8 +6,9 @@ import {CollisionGrid, placeLabels, renderItems, type RenderItem} from './placem
 import {DEFAULT_FONT, EstimateShaper} from './text.ts';
 import {anchorOffset, type MarkerLayerOptions} from './markers.ts';
 import {renderSVG} from './svg.ts';
-import {decodePNG, type ImageDecoder} from './contour.ts';
-export {decodePNG, type ImageDecoder};
+import type {ImageDecoder} from './contour.ts';
+import {decodeImage, decodePNG, decodeWebPLossless} from './webp.ts';
+export {decodePNG, decodeWebPLossless, type ImageDecoder};
 
 export interface RenderOptions {
     /** A style object or URL, exactly as passed to the client-side map. */
@@ -34,9 +35,8 @@ export interface RenderOptions {
     ssrOverrides?: boolean;
     fetch?: typeof fetch;
     /**
-     * Decodes elevation tile images for contour sources. PNG tiles need nothing; for WebP pass a decoder, e.g.
-     * `async b => { const {data, info} = await sharp(b).ensureAlpha().raw().toBuffer({resolveWithObject: true}); return {width: info.width, height: info.height, data}; }`
-     * on Node (`sharp`). On Cloudflare Workers use a WebAssembly decoder.
+     * Decodes elevation tile images for contour sources. PNG and lossless WebP are built in; pass a function for
+     * anything else (lossy WebP, for instance), returning `{width, height, data}` with RGBA bytes.
      */
     decodeImage?: ImageDecoder;
 }
@@ -61,7 +61,7 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
 
     const builder = new TileBuilder(fetchFn);
     builder.setStyle(style.layers);
-    builder.decodeImage = o.decodeImage;
+    builder.decodeImage = o.decodeImage ?? decodeImage;
     builder.setContours(Object.fromEntries(Object.entries(style.sources).filter(([, s]) => s.contour).map(([name, s]) => [name, s.contour!])));
     for (const [name, src] of Object.entries(style.sources)) if (src.type === 'geojson') builder.setGeoJSON(name, src.data);
     const items = new Map<string, RenderItem<TileIR | TileImage>[]>(), all: RenderItem<TileIR>[] = [], urls: string[] = [];
