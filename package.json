@@ -27,7 +27,8 @@
     "esbuild": "^0.28.2",
     "maplibre-gl": "^6.17.0",
     "miniflare": "^4.20260730.0",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "vite": "^8.3.7"
   },
   "type": "module",
   "private": true,

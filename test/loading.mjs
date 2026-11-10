@@ -8,7 +8,7 @@ const check = (name, ok, detail = '') => { console.log(`${ok ? 'PASS' : 'FAIL'} 
 async function load(name, url, {expect, block} = {}) {
     const page = await browser.newPage({viewport: {width: 800, height: 500}});
     const requested = [], warnings = [];
-    page.on('request', r => { if (/tessera/.test(r.url())) requested.push(r.url().split('/').pop().replace(/-[A-Z0-9]{8}\.js/, '.js')); });
+    page.on('request', r => { if (/tessera/.test(r.url())) requested.push(r.url().split('/').pop().replace(/-[\w-]{8}\.js$/, '.js')); });
     page.on('console', m => { if (m.type() === 'warning') warnings.push(m.text()); });
     if (block) await page.route(block, r => r.abort());
     await page.goto(url);

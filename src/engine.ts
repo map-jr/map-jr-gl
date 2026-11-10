@@ -62,11 +62,18 @@ export type EngineEvent =
 
 /** Heights are kept on the CPU at this resolution per elevation tile: plenty for placing labels and the camera. */
 function sampleHeights(image: ImageBitmap, encoding: string): Float32Array {
-    const ctx = new OffscreenCanvas(HEIGHT_GRID, HEIGHT_GRID).getContext('2d', {willReadFrequently: true})!;
-    ctx.imageSmoothingEnabled = false; // heights are encoded in the colour channels, so pixels must not be blended
-    ctx.drawImage(image, 0, 0, HEIGHT_GRID, HEIGHT_GRID);
-    const px = ctx.getImageData(0, 0, HEIGHT_GRID, HEIGHT_GRID).data, out = new Float32Array(HEIGHT_GRID * HEIGHT_GRID);
-    for (let i = 0; i < out.length; i++) out[i] = decodeElevation(px, i * 4, encoding);
+    // Heights are encoded in the colour channels, so pixels must never be blended. Asking the canvas to shrink the
+    // image without smoothing is not enough (Safari blends regardless), so it is drawn at its own size and every
+    // n-th pixel is read.
+    const w = image.width, h = image.height;
+    const ctx = new OffscreenCanvas(w, h).getContext('2d', {willReadFrequently: true})!;
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(image, 0, 0);
+    const px = ctx.getImageData(0, 0, w, h).data, out = new Float32Array(HEIGHT_GRID * HEIGHT_GRID);
+    for (let j = 0; j < HEIGHT_GRID; j++) {
+        const y = Math.min(h - 1, Math.floor((j + 0.5) * h / HEIGHT_GRID));
+        for (let i = 0; i < HEIGHT_GRID; i++) out[j * HEIGHT_GRID + i] = decodeElevation(px, (y * w + Math.min(w - 1, Math.floor((i + 0.5) * w / HEIGHT_GRID))) * 4, encoding);
+    }
     return out;
 }
 
