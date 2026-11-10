@@ -61,7 +61,7 @@ void main() {
 
     circle: [`${VS_COMMON}
 layout(location=0) in vec2 a_corner; layout(location=1) in vec4 a_color; layout(location=2) in vec2 a_pos; layout(location=3) in float a_radius;
-uniform float u_radius; uniform float u_strokeWidth; uniform vec4 u_clip;
+uniform float u_radius; uniform float u_strokeWidth; uniform vec4 u_clip; uniform vec2 u_translate;
 out vec4 v_color; out vec2 v_off; out float v_r;
 void main() {
   v_r = a_radius * u_radius; v_color = a_color;
@@ -70,15 +70,17 @@ void main() {
   bool inside = a_pos.x >= u_clip.x && a_pos.y >= u_clip.y && a_pos.x < u_clip.z && a_pos.y < u_clip.w;
   vec4 c = toClip(a_pos);
   // Circles face the viewer: offset in screen pixels after projection.
-  c.xy += v_off * vec2(2.0, -2.0) / u_view * c.w;
+  c.xy += (v_off + u_translate) * vec2(2.0, -2.0) / u_view * c.w;
   gl_Position = inside ? c : vec4(2.0, 2.0, 2.0, 1.0);
 }`, `
-uniform vec4 u_color; uniform vec4 u_stroke; uniform float u_strokeWidth; in vec4 v_color; in vec2 v_off; in float v_r; out vec4 o;
+uniform vec4 u_color; uniform vec4 u_stroke; uniform float u_strokeWidth; uniform float u_blur; in vec4 v_color; in vec2 v_off; in float v_r; out vec4 o;
 void main() {
-  float d = length(v_off);
-  float fa = clamp(v_r - d + 0.5, 0.0, 1.0), sa = clamp(v_r + u_strokeWidth - d + 0.5, 0.0, 1.0);
+  float d = length(v_off), outer = v_r + u_strokeWidth;
+  // As in MapLibre, the antialiased (or blurred) edge sits inside the radius.
+  float w = max(u_blur * outer, 1.0);
+  float a = smoothstep(0.0, w, outer - d), st = u_strokeWidth < 0.01 ? 0.0 : smoothstep(-w, 0.0, d - v_r);
   vec4 c = v_color * u_color;
-  o = vec4(c.rgb * c.a, c.a) * fa + u_stroke * (sa - fa);
+  o = a * mix(vec4(c.rgb * c.a, c.a), u_stroke, st);
 }`],
 
     text: [`uniform vec2 u_view; uniform vec2 u_tex;
@@ -105,14 +107,16 @@ void main() { ${FS_CLIP} vec4 c = v_color * u_color; o = vec4(c.rgb * c.a, c.a);
     raster: [`${VS_COMMON}
 layout(location=0) in vec2 a_pos; out vec2 v_uv; out vec2 v_tile;
 void main() { v_uv = a_pos; v_tile = a_pos * ${EXTENT}.0; gl_Position = toClip(v_tile); }`, `
-uniform sampler2D u_image; uniform vec4 u_clip; uniform vec3 u_adjust; in vec2 v_uv; in vec2 v_tile; out vec4 o;
+uniform sampler2D u_image; uniform vec4 u_clip; uniform vec3 u_adjust; uniform vec2 u_bright; uniform vec3 u_spin; in vec2 v_uv; in vec2 v_tile; out vec4 o;
 void main() {
   ${FS_CLIP}
   vec4 c = texture(u_image, v_uv);
-  vec3 rgb = c.rgb;
+  vec3 rgb = c.a > 0.0 ? c.rgb / c.a : c.rgb;
+  rgb = vec3(dot(rgb, u_spin.xyz), dot(rgb, u_spin.zxy), dot(rgb, u_spin.yzx));
   rgb += ((rgb.r + rgb.g + rgb.b) / 3.0 - rgb) * u_adjust.y;
   rgb = (rgb - 0.5) * u_adjust.z + 0.5;
-  o = vec4(rgb, c.a) * u_adjust.x;
+  rgb = mix(vec3(u_bright.x), vec3(u_bright.y), rgb);
+  o = vec4(rgb * c.a, c.a) * u_adjust.x;
 }`],
 
     // Turns encoded elevation into slope (dz/dx, dz/dy), once per tile, so shading can sample it smoothly.
@@ -517,6 +521,9 @@ export class GLRenderer {
                 if (L.type === 'raster') {
                     const sat = p.saturation.eval(zoom), con = p.contrast.eval(zoom);
                     gl.uniform3f(u.u_adjust, p.opacity.eval(zoom), sat > 0 ? 1 - 1 / (1.001 - sat) : -sat, con > 0 ? 1 / (1 - con) : 1 + con);
+                    gl.uniform2f(u.u_bright, p.brightnessMin.eval(zoom), p.brightnessMax.eval(zoom));
+                    const h = p.hueRotate.eval(zoom) * Math.PI / 180, sn = Math.sin(h), cs = Math.cos(h);
+                    gl.uniform3f(u.u_spin, (2 * cs + 1) / 3, (-Math.sqrt(3) * sn - cs + 1) / 3, (Math.sqrt(3) * sn - cs + 1) / 3);
                 } else {
                     const pre = (c: number[]) => [c[0] * c[3], c[1] * c[3], c[2] * c[3], c[3]];
                     const azimuth = p.direction.eval(zoom) * Math.PI / 180 + (p.anchor.eval(zoom) === 'viewport' ? tr.bearing * Math.PI / 180 : 0);
@@ -554,7 +561,10 @@ export class GLRenderer {
                         gl.uniform4f(u.u_dash, dash?.[0] ?? 0, dash?.[1] ?? 0, dash?.[2] ?? 0, dash?.[3] ?? 0);
                     }
                     if (b.type === 'circle') {
-                        const sc = L.p.strokeColor.eval(zoom), a = sc[3] * (L.p.opacity.dd ? 1 : L.p.opacity.eval(zoom));
+                        const sc = L.p.strokeColor.eval(zoom), a = sc[3] * (L.p.strokeOpacity.dd ? 1 : L.p.strokeOpacity.eval(zoom));
+                        const tl = L.p.translate.eval(zoom) as number[];
+                        gl.uniform1f(u.u_blur, L.p.blur.dd ? 0 : L.p.blur.eval(zoom));
+                        gl.uniform2f(u.u_translate, tl?.[0] ?? 0, tl?.[1] ?? 0);
                         gl.uniform1f(u.u_radius, L.p.radius.dd ? 1 : L.p.radius.eval(zoom));
                         gl.uniform1f(u.u_strokeWidth, L.p.strokeWidth.eval(zoom));
                         gl.uniform4f(u.u_stroke, sc[0] * a, sc[1] * a, sc[2] * a, a);

@@ -53,7 +53,7 @@ Compared against MapLibre GL JS 6.x.
 - Sources: image, video, canvas; MapLibre Tiles (MLT). GeoJSON sources have no clustering, `promoteId` or line metrics.
 - Layers: heatmap, color-relief, custom layers. `fill-pattern` and `line-pattern` layers are hidden.
 - 3D terrain, sky, globe and other projections.
-- SDF (recolourable) sprite icons, `icon-color`, `text-halo-blur`, `line-offset`, `line-blur`, `line-gradient`.
+- SDF (recolourable) sprite icons, `icon-color`, `icon-text-fit`, `text-halo-blur`, `circle-pitch-alignment`, `circle-pitch-scale`, data-driven circle stroke and blur, `line-offset`, `line-blur`, `line-gradient`.
 - Feature state (`setFeatureState`), global state, `transformRequest`, `addProtocol`.
 - Hillshade and runtime-added bitmap images in server output.
 - Right-to-left text is handled by the browser, so the RTL plugin API does not exist.
@@ -65,6 +65,11 @@ Measured by the test scripts in this repository:
 - **Expressions:** `pnpm test:expressions` runs MapLibre's own expression fixtures. 279 of 425 runnable fixtures pass.
   The main gaps are `distance` and `within` (58 fixtures), collators, rich-text `format` objects, `feature-state`
   and `global-state`.
+- **Rendering:** `pnpm test:render` runs MapLibre's render tests (a style and an expected image each). Of 1,429
+  runnable tests, 422 match (at most 1% of pixels differ), 268 are close (at most 5%) and 739 differ; 331 are
+  skipped because they script the map or need a high pixel density. Text is drawn with browser fonts rather than
+  the tests' glyph files, so most tests with labels cannot match exactly. The largest feature gaps are
+  `icon-text-fit`, patterns, projections, sky, heatmap, global state and pitch-aligned circles.
 - **Map API:** see below.
 
 <!-- api:start -->

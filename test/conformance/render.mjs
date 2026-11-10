@@ -83,7 +83,7 @@ async function worker(queue) {
                     best = Math.min(best, bad / (a.length / 4));
                 }
                 return best;
-            }, {actual: shot.toString('base64'), urls: expected.map(f => `${origin}/tests/${id}/${f}`), width, height});
+            }, {actual: shot.toString('base64'), urls: expected.map(f => `${origin}/tests/${id.split("/").map(encodeURIComponent).join("/")}/${f}`), width, height});
             results.push({id, status: diff <= 0.01 ? 'pass' : diff <= 0.05 ? 'close' : 'fail', diff, errors: outcome.errors});
             if (saveDir) { mkdirSync(path.join(saveDir, id), {recursive: true}); writeFileSync(path.join(saveDir, id, 'actual.png'), shot); }
         } catch (err) {

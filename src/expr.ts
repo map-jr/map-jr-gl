@@ -322,6 +322,13 @@ export type PropKind = 'color' | 'number' | 'string' | 'discrete' | 'raw';
 
 function legacyFunction(v: any, flags: Flags, discrete = false): Fn {
     const stops: any[][] = v.stops ?? [];
+    if (stops[0]?.[0] && typeof stops[0][0] === 'object') {
+        // Zoom-and-property function: one property function per zoom level, blended across zoom.
+        const zooms = [...new Set(stops.map(s => s[0].zoom as number))].sort((a, b) => a - b);
+        const per = zooms.map(z => legacyFunction({...v, stops: stops.filter(s => s[0].zoom === z).map(s => [s[0].value, s[1]])}, flags, discrete));
+        flags.zoom = true;
+        return interpolator(1, zooms, per, c => c.zoom, discrete);
+    }
     const outs: Fn[] = stops.map(s => () => s[1]);
     if (v.property === undefined) {
         flags.zoom = true;
