@@ -97,8 +97,9 @@ export class Transform {
             cos * ox - sin * oy + this.width / 2, sin * ox + cos * oy + this.height / 2];
     }
 
-    coveringTiles(minzoom: number, maxzoom: number): TileID[] {
-        const z = clamp(Math.floor(this.zoom), minzoom, maxzoom), n = 2 ** z;
+    /** `tileSize` shifts the zoom level chosen: 256px tiles are fetched one level deeper than 512px ones. */
+    coveringTiles(minzoom: number, maxzoom: number, tileSize = TILE_SIZE): TileID[] {
+        const z = clamp(Math.floor(this.zoom + Math.log2(TILE_SIZE / tileSize)), minzoom, maxzoom), n = 2 ** z;
         let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
         for (const [px, py] of [[0, 0], [this.width, 0], [0, this.height], [this.width, this.height]]) {
             const [mx, my] = this.screenToMerc(px, py);

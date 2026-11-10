@@ -33,6 +33,13 @@ export interface LabelSrc {
     len: number;
     size0: number; size1: number; color: RGBA; halo: RGBA; haloWidth: number;
     font: string; maxWidth: number; spacing: number; offset: [number, number]; anchor: string; padding: number; overlap: boolean;
+    /** Text stays upright instead of following the line it is placed on (e.g. road shields). */
+    upright: boolean;
+    textOptional: boolean; ignore: boolean; varAnchor: string[] | null; radial: number;
+    icon?: {
+        name: string; size: number; offset: [number, number]; rotate: number; fit: string; fitPad: [number, number, number, number];
+        overlap: boolean; optional: boolean; upright: boolean;
+    };
 }
 export interface TileIR { layers: Record<string, Batch>; labels: Record<string, LabelSrc[]> }
 
@@ -41,6 +48,8 @@ export type GLBatch =
     | {type: 'line'; v: Float32Array; idx: Uint32Array; color?: Uint8Array; width?: Float32Array}
     | {type: 'circle'; pos: Int16Array; color?: Uint8Array; radius?: Float32Array};
 export interface TileGL { layers: Record<string, GLBatch>; labels: Record<string, LabelSrc[]> }
+/** A raster tile as the SVG backend sees it: just somewhere to load the image from. */
+export interface TileImage { href: string }
 
 /** "Noto Sans Bold Italic" -> "italic 700". The family is supplied by the host so fonts stay consistent per app. */
 function fontStyle(names: any): string {
@@ -81,24 +90,33 @@ export function buildTile(bytes: Uint8Array, z: number, layers: CompiledLayer[],
             for (const f of vl.features) {
                 ctx.f = f;
                 if (L.filter && !L.filter(ctx)) continue;
-                let text = p.field.eval(z, f);
-                if (text === null || text === undefined || text === '') continue;
-                text = String(text).replace(/\{([^}]+)\}/g, (_, k) => f.properties[k] ?? '').trim();
-                if (!text) continue;
+                const tokens = (v: unknown) => String(v ?? '').replace(/\{([^}]+)\}/g, (_, k) => f.properties[k] ?? '').trim();
+                let text = tokens(p.field.eval(z, f));
+                const iconName = tokens(p.icon.eval(z, f));
+                if (!text && !iconName) continue;
                 const tt = p.transform.eval(z, f);
                 if (tt === 'uppercase') text = text.toUpperCase(); else if (tt === 'lowercase') text = text.toLowerCase();
                 const color = p.color.eval(z, f) as RGBA, op = p.opacity.eval(z, f);
+                const along = p.placement.eval(z, f) !== 'point';
                 const base = {
                     text, size0: p.size.eval(z, f), size1: p.size.eval(z + 1, f),
                     color: [color[0], color[1], color[2], color[3] * op] as RGBA,
                     halo: p.haloColor.eval(z, f), haloWidth: p.haloWidth.eval(z, f), font: fontStyle(p.font.eval(z, f)),
                     maxWidth: p.maxWidth.eval(z, f), spacing: p.spacing.eval(z, f), offset: p.offset.eval(z, f), anchor: p.anchor.eval(z, f),
                     padding: p.padding.eval(z, f), overlap: !!p.overlap.eval(z, f),
+                    upright: p.textAlign.eval(z, f) === 'viewport', textOptional: !!p.textOptional.eval(z, f), ignore: !!p.ignore.eval(z, f),
+                    varAnchor: p.varAnchor.eval(z, f), radial: p.radial.eval(z, f),
+                    icon: iconName ? {
+                        name: iconName, size: p.iconSize.eval(z, f), offset: p.iconOffset.eval(z, f), rotate: p.iconRotate.eval(z, f),
+                        fit: p.iconFit.eval(z, f), fitPad: p.iconFitPad.eval(z, f), overlap: !!p.iconOverlap.eval(z, f),
+                        optional: !!p.iconOptional.eval(z, f), upright: p.iconAlign.eval(z, f) === 'viewport',
+                    } : undefined,
                 };
-                const g = geometry(f), along = p.placement.eval(z, f) !== 'point';
+                // symbol-spacing is in pixels; tiles are EXTENT units across TILE_SIZE pixels.
+                const g = geometry(f), spacing = p.symbolSpacing.eval(z, f) * EXTENT / 512;
                 let start = 0;
                 for (const end of g.ringEnds) {
-                    for (const a of anchors(g.coords, start, end, f.type, along)) {
+                    for (const a of anchors(g.coords, start, end, f.type, along, spacing, !!text)) {
                         if (a[0] >= 0 && a[0] < EXTENT && a[1] >= 0 && a[1] < EXTENT) labels.push({...base, x: a[0], y: a[1], angle: along ? a[2] : null, len: a[3]});
                     }
                     start = end;
@@ -145,7 +163,7 @@ export function buildTile(bytes: Uint8Array, z: number, layers: CompiledLayer[],
 }
 
 /** Yields [x, y, angle, length] label anchors for one ring. */
-function anchors(c: number[], start: number, end: number, type: number, along: boolean): number[][] {
+function anchors(c: number[], start: number, end: number, type: number, along: boolean, spacing: number, hasText: boolean): number[][] {
     if (type === 1) return [[c[start * 2], c[start * 2 + 1], 0, 0]];
     if (type === 3 && !along) {
         let a = 0, cx = 0, cy = 0;
@@ -166,7 +184,10 @@ function anchors(c: number[], start: number, end: number, type: number, along: b
         }
         return [c[end * 2 - 2], c[end * 2 - 1]];
     };
-    const n = along ? Math.max(1, Math.floor(len / 2500)) : 1, out: number[][] = [];
+    // Named lines always get one label; icon-only symbols (one-way arrows) need a reasonable run of line.
+    let n = along ? Math.floor(len / spacing) : 1;
+    if (!n) { if (!hasText && len < spacing / 4) return []; n = 1; }
+    const out: number[][] = [];
     for (let i = 0; i < n; i++) {
         const d = (i + 0.5) / n * len, span = Math.min(d, len - d, 250);
         const [x, y] = at(d), [ax, ay] = at(d - span), [bx, by] = at(d + span);

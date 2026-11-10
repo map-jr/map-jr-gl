@@ -1,6 +1,7 @@
-import {type Transform, apply} from './geo.ts';
+import {type Transform, EXTENT, apply} from './geo.ts';
 import type {CompiledLayer} from './style.ts';
-import type {Batch, TileIR} from './tile.ts';
+import type {Batch, TileImage, TileIR} from './tile.ts';
+import type {Sprite} from './style.ts';
 import type {Placed, RenderItem} from './placement.ts';
 import {EM} from './text.ts';
 import {anchorOffset, escapeXML, parseSVG, resolveVariants, type MarkerLayerOptions} from './markers.ts';
@@ -46,8 +47,10 @@ function pathData(b: Batch, f: number, close: boolean, box: number[], minSize: n
 export interface SVGScene {
     tr: Transform;
     layers: CompiledLayer[];
-    items: Map<string, RenderItem<TileIR>[]>;
+    items: Map<string, RenderItem<TileIR | TileImage>[]>;
     labels: Placed[];
+    /** Sprite sheet for icons; `image` may be a URL or a data URI. */
+    sprite?: Sprite | null;
     markers: MarkerLayerOptions[];
     fontFamily: string;
     /** Extra attributes for the root element, e.g. a data attribute the client looks for when hydrating. */
@@ -58,7 +61,7 @@ export interface SVGScene {
 export function renderSVG(s: SVGScene): string {
     const {tr} = s, zoom = tr.zoom;
     const defs: string[] = [], body: string[] = [];
-    const clipIds = new Map<RenderItem<TileIR>, string>();
+    const clipIds = new Map<RenderItem<TileIR | TileImage>, string>();
     for (const list of s.items.values()) {
         for (const it of list) {
             const id = 'c' + clipIds.size, [x0, y0, x1, y1] = it.clip;
@@ -75,7 +78,16 @@ export function renderSVG(s: SVGScene): string {
             body.push(`<rect width="100%" height="100%" fill="${hex(uniform!)}"${alpha('fill-opacity', uniform![3] * opacity)}/>`);
             continue;
         }
+        if (L.type === 'hillshade') continue; // needs elevation decoding; drawn by the client only for now
         for (const it of s.items.get(L.source!) ?? []) {
+            if ('href' in it.tile) {
+                if (L.type === 'raster') {
+                    const m = it.matrix.map((v, i) => i < 4 ? +(v * Q).toFixed(6) : +v.toFixed(2));
+                    body.push(`<g transform="matrix(${m.join(' ')})" clip-path="url(#${clipIds.get(it)})"${alpha('opacity', opacity)}>` +
+                        `<image href="${escapeXML(it.tile.href)}" width="${EXTENT / Q}" height="${EXTENT / Q}" preserveAspectRatio="none"/></g>`);
+                }
+                continue;
+            }
             const b = it.tile.layers[L.id];
             if (!b) continue;
             const n = b.geom.featEnds.length;
@@ -126,17 +138,30 @@ export function renderSVG(s: SVGScene): string {
         }
     }
 
-    if (s.labels.length) {
+    const icons = s.sprite ? s.labels.filter(l => l.icon) : [];
+    if (icons.length) {
+        const sp = s.sprite!;
+        defs.push(`<image id="sprite" href="${escapeXML(sp.image)}" width="${sp.width}" height="${sp.height}"/>`);
+        for (const {icon} of icons) {
+            const i = icon!, [sx, sy, sw, sh] = i.rect;
+            const rot = i.angle ? ` transform="rotate(${num(i.angle * 180 / Math.PI)} ${num(i.x)} ${num(i.y)})"` : '';
+            body.push(`<svg x="${num(i.x - i.w / 2)}" y="${num(i.y - i.h / 2)}" width="${num(i.w)}" height="${num(i.h)}" viewBox="${sx} ${sy} ${sw} ${sh}" preserveAspectRatio="none"${rot}><use href="#sprite"/></svg>`);
+        }
+    }
+
+    if (s.labels.some(l => l.shaped)) {
         body.push(`<g font-family="${escapeXML(s.fontFamily)}" text-anchor="middle" paint-order="stroke" stroke-linejoin="round">`);
         for (const l of s.labels) {
+            const shaped = l.shaped;
+            if (!shaped) continue;
             const src = l.src, k = l.size / EM, [style, weight] = src.font.includes(' ') ? src.font.split(' ') : ['', src.font];
             const halo = src.haloWidth > 0 && src.halo[3] > 0
                 ? ` stroke="${hex(src.halo)}" stroke-width="${num(src.haloWidth * 2)}"${alpha('stroke-opacity', src.halo[3])}` : '';
             const common = `font-size="${num(l.size)}"${weight !== '400' ? ` font-weight="${weight}"` : ''}${style ? ` font-style="${style}"` : ''}` +
                 `${src.spacing ? ` letter-spacing="${num(src.spacing * l.size)}"` : ''} fill="${hex(src.color)}"${alpha('fill-opacity', src.color[3])}${halo}`;
             const rot = l.angle ? ` transform="rotate(${num(l.angle * 180 / Math.PI)} ${num(l.x)} ${num(l.y)})"` : '';
-            l.shaped.lines.forEach((line, i) => {
-                const y = l.y + (-l.shaped.height / 2 + i * l.shaped.lineHeight + l.shaped.lineHeight * 0.5 + EM * 0.34) * k;
+            shaped.lines.forEach((line, i) => {
+                const y = l.y + (-shaped.height / 2 + i * shaped.lineHeight + shaped.lineHeight * 0.5 + EM * 0.34) * k;
                 body.push(`<text x="${num(l.x)}" y="${num(y)}"${rot} ${common}>${escapeXML(line.text)}</text>`);
             });
         }

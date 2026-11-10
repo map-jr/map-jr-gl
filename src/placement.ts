@@ -1,5 +1,5 @@
 import {type Mat, type Transform, type TileID, EXTENT, apply} from './geo.ts';
-import type {CompiledLayer} from './style.ts';
+import type {CompiledLayer, Sprite} from './style.ts';
 import type {LabelSrc} from './tile.ts';
 import {EM, type Shaped, type Shaper} from './text.ts';
 
@@ -14,10 +14,16 @@ export interface RenderItem<T> {
     tile: T;
 }
 
+export interface PlacedIcon {
+    /** Centre, size and rotation on screen. */
+    x: number; y: number; w: number; h: number; angle: number;
+    /** Source rectangle in the sprite sheet, in its pixels. */
+    rect: [number, number, number, number];
+}
 export interface Placed {
     /** Centre of the text block in screen pixels. */
     x: number; y: number;
-    angle: number; size: number; shaped: Shaped; src: LabelSrc;
+    angle: number; size: number; shaped: Shaped | null; src: LabelSrc; icon?: PlacedIcon;
 }
 
 export class CollisionGrid {
@@ -51,12 +57,20 @@ export class CollisionGrid {
     }
 }
 
+type Box = [number, number, number, number];
+function boxAround(x: number, y: number, w: number, h: number, angle: number, pad: number): Box {
+    const cos = Math.abs(Math.cos(angle)), sin = Math.abs(Math.sin(angle));
+    const hw = (w * cos + h * sin) / 2 + pad, hh = (w * sin + h * cos) / 2 + pad;
+    return [x - hw, y - hh, x + hw, y + hh];
+}
+
 /**
- * Chooses which labels to show. Layers later in the style win, matching MapLibre's priority order.
+ * Chooses which labels and icons to show. Layers later in the style win, matching MapLibre's priority order.
  * Runs fully from scratch each call; it is cheap enough for the label counts of a single viewport.
  */
 export function placeLabels(
     tr: Transform, items: RenderItem<{labels: Record<string, LabelSrc[]>}>[], layers: CompiledLayer[], shaper: Shaper, grid: CollisionGrid,
+    sprite?: Sprite | null,
 ): Placed[] {
     const out: Placed[] = [], seen = new Map<string, number[]>();
     const mapAngle = -tr.bearing * Math.PI / 180, margin = 100;
@@ -64,38 +78,79 @@ export function placeLabels(
         const L = layers[li];
         if (L.type !== 'symbol' || !L.visible || tr.zoom < L.minzoom || tr.zoom >= L.maxzoom) continue;
         for (const it of items) {
-            const labels = it.tile.labels[L.id];
+            const labels = it.tile.labels?.[L.id];
             if (!labels) continue;
             const t = Math.min(1, Math.max(0, tr.zoom - it.id.z));
             for (const l of labels) {
                 if (l.x < it.clip[0] || l.y < it.clip[1] || l.x >= it.clip[2] || l.y >= it.clip[3]) continue;
-                let [x, y] = apply(it.matrix, l.x, l.y);
-                if (x < -margin || y < -margin || x > tr.width + margin || y > tr.height + margin) continue;
-                const size = l.size0 + (l.size1 - l.size0) * t, s = size / EM;
-                const shaped = shaper.shape(l.text, l.font, l.angle === null ? l.maxWidth : 1e3, l.spacing);
-                const w = shaped.width * s, h = shaped.height * s;
-                if (!w) continue;
-                let angle = 0;
-                if (l.angle !== null) {
-                    if (l.len * it.scale < w * 1.15) continue; // the road is shorter than its name at this zoom
-                    angle = l.angle + mapAngle;
-                    angle = Math.atan2(Math.sin(angle), Math.cos(angle));
-                    if (angle > Math.PI / 2) angle -= Math.PI; else if (angle <= -Math.PI / 2) angle += Math.PI;
-                } else {
-                    x += l.offset[0] * size + (l.anchor.includes('left') ? w / 2 : l.anchor.includes('right') ? -w / 2 : 0);
-                    y += l.offset[1] * size + (l.anchor.includes('top') ? h / 2 : l.anchor.includes('bottom') ? -h / 2 : 0);
+                const [ax, ay] = apply(it.matrix, l.x, l.y);
+                if (ax < -margin || ay < -margin || ax > tr.width + margin || ay > tr.height + margin) continue;
+                const size = l.size0 + (l.size1 - l.size0) * t, s = size / EM, line = l.angle !== null;
+                const meta = l.icon ? sprite?.icons[l.icon.name] : undefined;
+                const shaped = l.text ? shaper.shape(l.text, l.font, line ? 1e3 : l.maxWidth, l.spacing) : null;
+                const w = shaped ? shaped.width * s : 0, h = shaped ? shaped.height * s : 0;
+                const hasText = w > 0;
+                if (!hasText && !meta) continue;
+                const lineAngle = line ? l.angle! + mapAngle : 0;
+
+                // Where the text could go: along the line, at one of several anchors, or at its fixed anchor.
+                let textAngle = 0, candidates: [number, number][] = [];
+                if (hasText) {
+                    const shift = (anchor: string, r: number): [number, number] => [
+                        anchor.includes('left') ? w / 2 + r : anchor.includes('right') ? -w / 2 - r : 0,
+                        anchor.includes('top') ? h / 2 + r : anchor.includes('bottom') ? -h / 2 - r : 0];
+                    if (line && !l.upright) {
+                        if (l.len * it.scale < w * 1.15) continue; // the road is shorter than its name at this zoom
+                        textAngle = Math.atan2(Math.sin(lineAngle), Math.cos(lineAngle));
+                        if (textAngle > Math.PI / 2) textAngle -= Math.PI; else if (textAngle <= -Math.PI / 2) textAngle += Math.PI;
+                        const oy = l.offset[1] * size;
+                        candidates = [[-Math.sin(textAngle) * oy, Math.cos(textAngle) * oy]];
+                    } else if (l.varAnchor?.length && !line) candidates = l.varAnchor.map(a => shift(a, l.radial * size));
+                    else {
+                        const [sx, sy] = line ? [0, 0] : shift(l.anchor, 0);
+                        candidates = [[l.offset[0] * size + sx, l.offset[1] * size + sy]];
+                    }
+                    // The same name often arrives from several tiles or road segments: keep them apart.
+                    const prev = seen.get(l.text), minDist = line ? 300 : 120;
+                    let dup = false;
+                    if (prev) for (let i = 0; i < prev.length && !dup; i += 2) dup = Math.hypot(prev[i] - ax, prev[i + 1] - ay) < minDist;
+                    if (dup) continue;
                 }
-                const cos = Math.abs(Math.cos(angle)), sin = Math.abs(Math.sin(angle));
-                const hw = (w * cos + h * sin) / 2 + l.padding, hh = (w * sin + h * cos) / 2 + l.padding;
-                // The same name often arrives from several tiles or road segments: keep them apart.
-                const prev = seen.get(l.text), minDist = l.angle !== null ? 300 : 120;
-                let dup = false;
-                if (prev) for (let i = 0; i < prev.length && !dup; i += 2) dup = Math.hypot(prev[i] - x, prev[i + 1] - y) < minDist;
-                if (dup) continue;
-                if (!l.overlap && grid.hits(x - hw, y - hh, x + hw, y + hh)) continue;
-                grid.insert(x - hw, y - hh, x + hw, y + hh);
-                if (prev) prev.push(x, y); else seen.set(l.text, [x, y]);
-                out.push({x, y, angle, size, shaped, src: l});
+                let textBox: Box | null = null, tx = ax, ty = ay;
+                for (const [dx, dy] of candidates) {
+                    const box = boxAround(ax + dx, ay + dy, w, h, textAngle, l.padding);
+                    if (l.overlap || !grid.hits(...box)) { textBox = box; tx = ax + dx; ty = ay + dy; break; }
+                }
+                if (hasText && !textBox && !(meta && l.textOptional)) continue;
+
+                let icon: PlacedIcon | undefined, iconBox: Box | null = null;
+                if (meta && l.icon) {
+                    const ic = l.icon, fit = hasText && textBox ? ic.fit : 'none';
+                    let iw = meta.width / meta.pixelRatio * ic.size, ih = meta.height / meta.pixelRatio * ic.size;
+                    let ix = ax + ic.offset[0] * ic.size, iy = ay + ic.offset[1] * ic.size;
+                    if (fit !== 'none') {
+                        // Stretch the icon around the text, e.g. a road shield around its number.
+                        const [pt, pr, pb, pl] = ic.fitPad.map(v => v * ic.size);
+                        if (fit !== 'height') { iw = w + pl + pr; ix = tx + (pr - pl) / 2; }
+                        if (fit !== 'width') { ih = h + pt + pb; iy = ty + (pb - pt) / 2; }
+                    }
+                    const angle = (line && !ic.upright ? lineAngle : 0) + ic.rotate * Math.PI / 180;
+                    const box = boxAround(ix, iy, iw, ih, angle, 1);
+                    if (ic.overlap || !grid.hits(...box)) {
+                        iconBox = box;
+                        icon = {x: ix, y: iy, w: iw, h: ih, angle, rect: [meta.x, meta.y, meta.width, meta.height]};
+                    } else if (!(hasText && textBox && ic.optional)) continue;
+                }
+                if (!textBox && !icon) continue;
+                if (!l.ignore) {
+                    if (textBox) grid.insert(...textBox);
+                    if (iconBox) grid.insert(...iconBox);
+                }
+                if (textBox) {
+                    const prev = seen.get(l.text);
+                    if (prev) prev.push(ax, ay); else seen.set(l.text, [ax, ay]);
+                }
+                out.push({x: tx, y: ty, angle: textAngle, size, shaped: textBox ? shaped : null, src: l, icon});
             }
         }
     }

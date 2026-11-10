@@ -1,7 +1,7 @@
 import {Transform, type LngLatLike} from './geo.ts';
-import {compileLayer, resolveStyle, tileURL, type CompiledLayer} from './style.ts';
+import {compileLayer, loadSprite, resolveStyle, tileURL, type CompiledLayer, type Sprite} from './style.ts';
 import {TileBuilder} from './tiles.ts';
-import type {TileIR} from './tile.ts';
+import type {TileImage, TileIR} from './tile.ts';
 import {CollisionGrid, placeLabels, renderItems, type RenderItem} from './placement.ts';
 import {DEFAULT_FONT, EstimateShaper} from './text.ts';
 import {anchorOffset, type MarkerLayerOptions} from './markers.ts';
@@ -19,6 +19,10 @@ export interface RenderOptions {
     fontFamily?: string;
     /** Return false to leave a style layer out of the server output, e.g. dense building footprints, to keep the markup small. */
     layerFilter?: (layerId: string) => boolean;
+    /** Embed raster tiles and the icon sheet as data URIs instead of linking to them. Needed when the SVG is rasterised. */
+    inlineImages?: boolean;
+    /** Use the high-density (@2x) icon sheet. */
+    highDensity?: boolean;
     fetch?: typeof fetch;
 }
 export interface RenderResult {
@@ -41,19 +45,37 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
 
     const builder = new TileBuilder(fetchFn);
     builder.setStyle(style.layers);
-    const items = new Map<string, RenderItem<TileIR>[]>(), all: RenderItem<TileIR>[] = [], urls: string[] = [];
-    let req = 0;
-    await Promise.all(Object.entries(style.sources).map(async ([name, src]) => {
-        const ideal = tr.coveringTiles(src.minzoom, src.maxzoom), loaded = new Map<string, TileIR>();
+    const items = new Map<string, RenderItem<TileIR | TileImage>[]>(), all: RenderItem<TileIR>[] = [], urls: string[] = [];
+    const dataURI = async (url: string) => {
+        const res = await fetchFn(url);
+        if (!res.ok) throw new Error(`Failed to load ${url}: ${res.status}`);
+        const bytes = new Uint8Array(await res.arrayBuffer());
+        let bin = '';
+        for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+        return `data:${res.headers.get('content-type') ?? 'image/png'};base64,${btoa(bin)}`;
+    };
+    let req = 0, sprite: Sprite | null = null;
+    const jobs = Object.entries(style.sources).map(async ([name, src]) => {
+        if (!layers.some(l => l.source === name && l.visible && tr.zoom >= l.minzoom && tr.zoom < l.maxzoom)) return;
+        if (src.type === 'raster-dem') return;
+        const ideal = tr.coveringTiles(src.minzoom, src.maxzoom, src.tileSize), loaded = new Map<string, TileIR | TileImage>();
         await Promise.all(ideal.filter((id, i) => ideal.findIndex(o => o.key === id.key) === i).map(async id => {
             const url = tileURL(src, id.z, id.x, id.y);
+            if (src.type === 'raster') { loaded.set(id.key, {href: o.inlineImages ? await dataURI(url) : url}); return; }
             urls.push(url);
             loaded.set(id.key, await builder.loadIR({id: req++, source: name, url, z: id.z, overscaled: id.z >= src.maxzoom}));
         }));
         const list = renderItems(tr, ideal, k => loaded.get(k));
         items.set(name, list);
-        all.push(...list);
-    }));
+        if (src.type === 'vector') all.push(...list as RenderItem<TileIR>[]);
+    });
+    if (style.sprite && layers.some(l => l.type === 'symbol')) {
+        jobs.push((async () => {
+            sprite = await loadSprite(style.sprite!, !!o.highDensity, fetchFn);
+            if (o.inlineImages) sprite.image = await dataURI(sprite.image);
+        })());
+    }
+    await Promise.all(jobs);
 
     const grid = new CollisionGrid();
     for (const m of o.markers ?? []) {
@@ -64,9 +86,9 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
             grid.insert(x + ox, y + oy, x + ox + m.width, y + oy + m.height);
         }
     }
-    const labels = placeLabels(tr, all, layers, new EstimateShaper(), grid);
+    const labels = placeLabels(tr, all, layers, new EstimateShaper(), grid, sprite);
     const svg = renderSVG({
-        tr, layers, items, labels, markers: o.markers ?? [], fontFamily: o.fontFamily ?? DEFAULT_FONT,
+        tr, layers, items, labels, sprite, markers: o.markers ?? [], fontFamily: o.fontFamily ?? DEFAULT_FONT,
         rootAttrs: 'data-tessera-ssr style="position:absolute;inset:0;width:100%;height:100%"',
     });
     return {svg, tiles: urls};
@@ -91,7 +113,7 @@ export interface ImageResult { image: Uint8Array; contentType: string; tiles: st
 
 /** Renders the first frame as a raster image: a fixed, predictable payload however dense the map data is. */
 export async function renderToImage(o: ImageOptions): Promise<ImageResult> {
-    const {svg, tiles} = await renderToSVG(o);
+    const {svg, tiles} = await renderToSVG({inlineImages: true, highDensity: (o.pixelRatio ?? 1) > 1, ...o});
     const format = o.format ?? 'jpeg', ratio = o.pixelRatio ?? 1;
     const plain = svg.replace(/ data-tessera-ssr style="[^"]*"/, '');
     const image = await o.rasteriser.render(`<div style="display:flex;width:${o.width}px;height:${o.height}px">${plain}</div>`, {

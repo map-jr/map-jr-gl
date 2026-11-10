@@ -1,5 +1,5 @@
 import {Transform, mercX, mercY, type LngLatLike, type TileID} from './geo.ts';
-import {compileLayer, tileURL, type CompiledLayer, type ResolvedStyle} from './style.ts';
+import {compileLayer, loadSprite, tileURL, type CompiledLayer, type ResolvedStyle, type Sprite} from './style.ts';
 import {GLRenderer, SPRITE_ATLAS, type GLTile} from './gl.ts';
 import {CollisionGrid, placeLabels, renderItems, type RenderItem} from './placement.ts';
 import {GlyphAtlas} from './text.ts';
@@ -29,7 +29,7 @@ export type EngineEvent =
     | {type: 'idle'}
     | {type: 'error'; message: string};
 
-interface TileState { state: 'loading' | 'ok' | 'error'; req: number; gl?: GLTile; used: number; backend: TileBackend }
+interface TileState { state: 'loading' | 'ok' | 'error'; gl?: GLTile; used: number; cancel(): void }
 interface MarkerLayer { width: number; height: number; offset: [number, number]; collide: boolean; merc: Float64Array; variant: Uint32Array }
 
 const raf: (cb: (t: number) => void) => unknown = globalThis.requestAnimationFrame
@@ -65,12 +65,16 @@ export class Engine {
     private spriteRects = new Map<number, [number, number, number, number]>();
     private spritePen = [1, 1, 0];
     private sprites = new Float32Array(24 * 256);
+    private sprite: Sprite | null = null;
+    private spriteUrl = '';
+    private dpr = 1;
 
     constructor(canvas: HTMLCanvasElement | OffscreenCanvas, o: EngineOptions, private backends: TileBackend[], private emit: (e: EngineEvent) => void) {
         this.renderer = new GLRenderer(canvas);
         this.atlas = new GlyphAtlas(o.fontFamily);
         this.tr.width = o.width;
         this.tr.height = o.height;
+        this.dpr = o.dpr;
         this.renderer.resize(o.width, o.height, o.dpr);
         this.tr.set(o.center, o.zoom, o.bearing);
         this.setStyle(o.style, true);
@@ -79,6 +83,10 @@ export class Engine {
     private setStyle(style: ResolvedStyle, reload: boolean) {
         this.style = style;
         this.layers = style.layers.map(compileLayer).filter((l): l is CompiledLayer => !!l);
+        if (style.sprite && style.sprite !== this.spriteUrl) {
+            this.spriteUrl = style.sprite;
+            this.loadIcons(style.sprite).catch(err => this.emit({type: 'error', message: String(err.message)}));
+        }
         if (reload) {
             for (const b of this.backends) b.setStyle(style.layers);
             for (const [key, t] of this.tiles) this.dropTile(key, t);
@@ -86,11 +94,22 @@ export class Engine {
         this.repaint();
     }
 
+    private async loadIcons(url: string) {
+        const sprite = await loadSprite(url, this.dpr > 1);
+        const res = await fetch(sprite.image);
+        if (!res.ok) throw new Error(`Failed to load sprite image ${sprite.image}: ${res.status}`);
+        const image = await createImageBitmap(await res.blob());
+        if (url !== this.spriteUrl) return;
+        this.renderer.setIcons(image, image.width, image.height);
+        this.sprite = sprite;
+        this.repaint();
+    }
+
     command(c: Command) {
         const tr = this.tr;
         switch (c.type) {
             case 'resize':
-                tr.width = c.width; tr.height = c.height;
+                tr.width = c.width; tr.height = c.height; this.dpr = c.dpr;
                 this.renderer.resize(c.width, c.height, c.dpr);
                 // Draw immediately: resizing clears the canvas, and waiting a frame would flash.
                 this.frame(performance.now());
@@ -195,24 +214,43 @@ export class Engine {
     }
 
     private dropTile(key: string, t: TileState) {
-        if (t.state === 'loading') t.backend.cancel(t.req);
+        if (t.state === 'loading') t.cancel();
         if (t.gl) this.renderer.destroyTile(t.gl);
         this.tiles.delete(key);
     }
 
     private request(source: string, id: TileID, key: string) {
-        const src = this.style.sources[source], backend = this.backends[this.nextBackend++ % this.backends.length];
-        const t: TileState = {state: 'loading', req: this.nextReq++, used: this.frameNo, backend};
+        const src = this.style.sources[source], url = tileURL(src, id.z, id.x, id.y);
+        const t: TileState = {state: 'loading', used: this.frameNo, cancel() {}};
         this.tiles.set(key, t);
-        backend.load({id: t.req, source, url: tileURL(src, id.z, id.x, id.y), z: id.z, overscaled: id.z >= src.maxzoom}).then(tile => {
+        let load: Promise<GLTile>;
+        if (src.type === 'vector') {
+            const backend = this.backends[this.nextBackend++ % this.backends.length], req = this.nextReq++;
+            t.cancel = () => backend.cancel(req);
+            load = backend.load({id: req, source, url, z: id.z, overscaled: id.z >= src.maxzoom}).then(tile => this.renderer.createTile(tile));
+        } else {
+            // Image tiles need no parsing, so the engine fetches and decodes them itself.
+            const ac = new AbortController(), dem = src.type === 'raster-dem';
+            t.cancel = () => ac.abort();
+            load = fetch(url, {signal: ac.signal}).then(async res => {
+                if (res.status === 404 || res.status === 204) return {labels: {}, batches: {}};
+                if (!res.ok) throw new Error(`Tile ${url}: HTTP ${res.status}`);
+                const image = await createImageBitmap(await res.blob(), dem ? {premultiplyAlpha: 'none', colorSpaceConversion: 'none'} : {});
+                if (this.tiles.get(key) !== t) { image.close(); return {labels: {}, batches: {}}; }
+                const tile = this.renderer.createImageTile(image, dem, id);
+                image.close();
+                return tile;
+            });
+        }
+        load.then(gl => {
             if (this.tiles.get(key) !== t) return;
-            t.gl = this.renderer.createTile(tile);
+            t.gl = gl;
             t.state = 'ok';
             this.repaint();
         }, err => {
             if (this.tiles.get(key) !== t) return;
             t.state = 'error';
-            if (err.message !== 'aborted') this.emit({type: 'error', message: err.message});
+            if (err.message !== 'aborted' && err.name !== 'AbortError') this.emit({type: 'error', message: err.message});
             this.repaint();
         });
     }
@@ -226,8 +264,10 @@ export class Engine {
         let complete = true;
         const wanted = new Set<string>();
         for (const source in this.style.sources) {
+            // Skip sources nothing visible draws from at this zoom (e.g. low-zoom relief imagery when zoomed in).
+            if (!this.layers.some(l => l.source === source && l.visible && tr.zoom >= l.minzoom && tr.zoom < l.maxzoom)) continue;
             const src = this.style.sources[source];
-            const ideal = tr.coveringTiles(src.minzoom, src.maxzoom);
+            const ideal = tr.coveringTiles(src.minzoom, src.maxzoom, src.tileSize);
             for (const id of ideal) {
                 const key = source + '|' + id.key;
                 wanted.add(key);
@@ -254,7 +294,7 @@ export class Engine {
 
         const grid = new CollisionGrid();
         const spriteCount = this.buildSprites(grid);
-        const labels = placeLabels(tr, all, this.layers, this.atlas, grid);
+        const labels = placeLabels(tr, all, this.layers, this.atlas, grid, this.sprite);
         this.renderer.render({tr, layers: this.layers, items, labels, atlas: this.atlas, sprites: this.sprites, spriteCount});
 
         const camera = `${tr.lng},${tr.lat},${tr.zoom},${tr.bearing}`;

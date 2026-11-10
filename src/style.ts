@@ -14,7 +14,18 @@ const SPEC: Record<string, Record<string, [string, PropKind, any]>> = {
         color: ['circle-color', 'color', '#000'], opacity: ['circle-opacity', 'number', 1], radius: ['circle-radius', 'number', 5],
         strokeColor: ['circle-stroke-color', 'color', '#000'], strokeWidth: ['circle-stroke-width', 'number', 0],
     },
+    raster: {opacity: ['raster-opacity', 'number', 1], saturation: ['raster-saturation', 'number', 0], contrast: ['raster-contrast', 'number', 0]},
+    hillshade: {
+        shadow: ['hillshade-shadow-color', 'color', '#000'], highlight: ['hillshade-highlight-color', 'color', '#fff'], accent: ['hillshade-accent-color', 'color', '#000'],
+        exaggeration: ['hillshade-exaggeration', 'number', 0.5], direction: ['hillshade-illumination-direction', 'number', 335],
+        anchor: ['hillshade-illumination-anchor', 'string', 'viewport'],
+    },
     symbol: {
+        icon: ['icon-image', 'string', ''], iconSize: ['icon-size', 'number', 1], iconOffset: ['icon-offset', 'raw', [0, 0]], iconRotate: ['icon-rotate', 'number', 0],
+        iconFit: ['icon-text-fit', 'string', 'none'], iconFitPad: ['icon-text-fit-padding', 'raw', [0, 0, 0, 0]], iconOverlap: ['icon-allow-overlap', 'raw', false],
+        iconOptional: ['icon-optional', 'raw', false], textOptional: ['text-optional', 'raw', false], iconAlign: ['icon-rotation-alignment', 'string', 'auto'],
+        textAlign: ['text-rotation-alignment', 'string', 'auto'], symbolSpacing: ['symbol-spacing', 'number', 250], varAnchor: ['text-variable-anchor', 'raw', null],
+        radial: ['text-radial-offset', 'number', 0], ignore: ['text-ignore-placement', 'raw', false],
         color: ['text-color', 'color', '#000'], opacity: ['text-opacity', 'number', 1],
         haloColor: ['text-halo-color', 'color', 'rgba(0,0,0,0)'], haloWidth: ['text-halo-width', 'number', 0],
         field: ['text-field', 'string', ''], size: ['text-size', 'number', 16], font: ['text-font', 'raw', ['Regular']],
@@ -51,10 +62,10 @@ export function compileLayer(l: LayerJSON): CompiledLayer | null {
     };
 }
 
-export interface SourceInfo { tiles: string[]; minzoom: number; maxzoom: number; attribution?: string }
+export interface SourceInfo { type: 'vector' | 'raster' | 'raster-dem'; tiles: string[]; minzoom: number; maxzoom: number; tileSize: number; attribution?: string }
 
 /** A style with everything network-dependent already resolved, so it can be posted to a worker as plain JSON. */
-export interface ResolvedStyle { layers: LayerJSON[]; sources: Record<string, SourceInfo>; unsupported: string[] }
+export interface ResolvedStyle { layers: LayerJSON[]; sources: Record<string, SourceInfo>; unsupported: string[]; sprite?: string }
 
 export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) => fetch(...a), base?: string): Promise<ResolvedStyle> {
     if (typeof style === 'string') {
@@ -66,7 +77,8 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
     }
     const sources: Record<string, SourceInfo> = {};
     for (const [name, raw] of Object.entries<any>(style.sources ?? {})) {
-        if (raw.type !== 'vector') continue;
+        if (raw.type !== 'vector' && raw.type !== 'raster' && raw.type !== 'raster-dem') continue;
+        if (raw.type === 'raster-dem' && (raw.encoding ?? 'mapbox') !== 'terrarium') continue; // only Terrarium-encoded elevation so far
         let src = raw;
         if (!src.tiles && src.url) {
             const url = base ? new URL(src.url, base).href : src.url;
@@ -77,7 +89,10 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
         } else if (base) {
             src = {...src, tiles: src.tiles.map((t: string) => decodeURI(new URL(t, base).href))};
         }
-        sources[name] = {tiles: src.tiles, minzoom: src.minzoom ?? 0, maxzoom: src.maxzoom ?? 14, attribution: src.attribution};
+        sources[name] = {
+            type: raw.type, tiles: src.tiles, minzoom: src.minzoom ?? 0, maxzoom: src.maxzoom ?? (raw.type === 'vector' ? 14 : 22),
+            tileSize: raw.type === 'vector' ? 512 : src.tileSize ?? 512, attribution: src.attribution,
+        };
     }
     const unsupported = new Set<string>();
     const layers = (style.layers as LayerJSON[]).filter(l => {
@@ -85,9 +100,24 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
         if (!ok) unsupported.add(l.type);
         return ok;
     });
-    return {layers, sources, unsupported: [...unsupported]};
+    const sprite = typeof style.sprite === 'string' ? (base ? new URL(style.sprite, base).href : style.sprite) : undefined;
+    return {layers, sources, unsupported: [...unsupported], sprite};
 }
 
 export function tileURL(src: SourceInfo, z: number, x: number, y: number) {
     return src.tiles[(x + y) % src.tiles.length].replace('{z}', String(z)).replace('{x}', String(x)).replace('{y}', String(y));
+}
+
+export interface SpriteIcon { x: number; y: number; width: number; height: number; pixelRatio: number }
+export interface Sprite { icons: Record<string, SpriteIcon>; image: string; width: number; height: number }
+
+/** Loads a sprite sheet's index. `image` is the URL of its PNG; the caller decides how to load pixels. */
+export async function loadSprite(url: string, highDensity: boolean, fetchFn: typeof fetch = (...a) => fetch(...a)): Promise<Sprite> {
+    const base = url + (highDensity ? '@2x' : '');
+    const res = await fetchFn(base + '.json');
+    if (!res.ok) throw new Error(`Failed to load sprite ${base}.json: ${res.status}`);
+    const icons = await res.json() as Record<string, SpriteIcon>;
+    let width = 0, height = 0;
+    for (const i of Object.values(icons)) { width = Math.max(width, i.x + i.width); height = Math.max(height, i.y + i.height); }
+    return {icons, image: base + '.png', width, height};
 }

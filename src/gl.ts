@@ -1,4 +1,4 @@
-import type {Transform} from './geo.ts';
+import {EXTENT, latFromMerc, type TileID, type Transform} from './geo.ts';
 import type {CompiledLayer} from './style.ts';
 import type {GLBatch, LabelSrc, TileGL} from './tile.ts';
 import type {Placed, RenderItem} from './placement.ts';
@@ -82,6 +82,62 @@ void main() {
   o = vec4(c.rgb * a, a);
 }`],
 
+    raster: [`${VS_COMMON}
+layout(location=0) in vec2 a_pos; out vec2 v_uv; out vec2 v_tile;
+void main() { v_uv = a_pos; v_tile = a_pos * ${EXTENT}.0; gl_Position = toClip(toScreen(v_tile)); }`, `
+uniform sampler2D u_image; uniform vec4 u_clip; uniform vec3 u_adjust; in vec2 v_uv; in vec2 v_tile; out vec4 o;
+void main() {
+  ${FS_CLIP}
+  vec4 c = texture(u_image, v_uv);
+  vec3 rgb = c.rgb;
+  rgb += ((rgb.r + rgb.g + rgb.b) / 3.0 - rgb) * u_adjust.y;
+  rgb = (rgb - 0.5) * u_adjust.z + 0.5;
+  o = vec4(rgb, c.a) * u_adjust.x;
+}`],
+
+    // Turns Terrarium-encoded elevation into slope (dz/dx, dz/dy), once per tile, so shading can sample it smoothly.
+    demPrepare: [`layout(location=0) in vec2 a_pos; out vec2 v_uv;
+void main() { v_uv = a_pos; gl_Position = vec4(a_pos * 2.0 - 1.0, 0.0, 1.0); }`, `
+uniform sampler2D u_dem; uniform float u_zoom; in vec2 v_uv; out vec4 o;
+float elev(ivec2 p, ivec2 size) {
+  vec4 c = texelFetch(u_dem, clamp(p, ivec2(0), size - 1), 0) * 255.0;
+  return c.r * 256.0 + c.g + c.b / 256.0 - 32768.0;
+}
+void main() {
+  ivec2 size = textureSize(u_dem, 0), p = ivec2(v_uv * vec2(size));
+  float a = elev(p + ivec2(-1, -1), size), b = elev(p + ivec2(0, -1), size), c = elev(p + ivec2(1, -1), size);
+  float d = elev(p + ivec2(-1, 0), size), f = elev(p + ivec2(1, 0), size);
+  float g = elev(p + ivec2(-1, 1), size), h = elev(p + ivec2(0, 1), size), i = elev(p + ivec2(1, 1), size);
+  float factor = u_zoom < 2.0 ? 0.4 : u_zoom < 4.5 ? 0.35 : 0.3;
+  float exaggeration = u_zoom < 15.0 ? (u_zoom - 15.0) * factor : 0.0;
+  // Elevation differences over 8 pixel widths; the mercator world is 2^25.2562 metres wide.
+  vec2 deriv = vec2((c + f + f + i) - (a + d + d + g), (g + h + h + i) - (a + b + b + c)) * float(size.x) / pow(2.0, exaggeration + (28.2562 - u_zoom));
+  // Flat ground is stored as 128/255, which 8 bits hold exactly.
+  o = clamp(vec4(deriv / 8.0 + 128.0 / 255.0, 1.0, 1.0), 0.0, 1.0);
+}`],
+
+    hillshade: [`${VS_COMMON}
+layout(location=0) in vec2 a_pos; out vec2 v_uv; out vec2 v_tile;
+void main() { v_uv = a_pos; v_tile = a_pos * ${EXTENT}.0; gl_Position = toClip(toScreen(v_tile)); }`, `
+uniform sampler2D u_image; uniform vec4 u_clip; uniform vec2 u_latrange; uniform vec2 u_light;
+uniform vec4 u_shadow; uniform vec4 u_highlight; uniform vec4 u_accent; in vec2 v_uv; in vec2 v_tile; out vec4 o;
+const float PI = 3.141592653589793;
+void main() {
+  ${FS_CLIP}
+  // Slopes are divided by cos(latitude) to undo the mercator projection's stretching.
+  float scaleFactor = cos(radians((u_latrange.x - u_latrange.y) * (1.0 - v_uv.y) + u_latrange.y));
+  vec2 deriv = (texture(u_image, v_uv).rg - 128.0 / 255.0) * 8.0 / scaleFactor;
+  float slope = atan(0.625 * length(deriv));
+  float aspect = deriv.x != 0.0 ? atan(deriv.y, -deriv.x) : PI / 2.0 * (deriv.y > 0.0 ? 1.0 : -1.0);
+  float intensity = u_light.x, azimuth = u_light.y + PI;
+  float base = 1.875 - intensity * 1.75, maxValue = 0.5 * PI;
+  float scaledSlope = intensity != 0.5 ? ((pow(base, slope) - 1.0) / (pow(base, maxValue) - 1.0)) * maxValue : slope;
+  vec4 accent = (1.0 - cos(scaledSlope)) * u_accent * clamp(intensity * 2.0, 0.0, 1.0);
+  float shade = abs(mod((aspect + azimuth) / PI + 0.5, 2.0) - 1.0);
+  vec4 shadeColor = mix(u_shadow, u_highlight, shade) * sin(scaledSlope) * clamp(intensity * 2.0, 0.0, 1.0);
+  o = accent * (1.0 - shadeColor.a) + shadeColor;
+}`],
+
     sprite: [`uniform vec2 u_view; uniform vec2 u_tex; layout(location=0) in vec4 a_v; out vec2 v_uv;
 void main() { v_uv = a_v.zw / u_tex; vec2 c = a_v.xy / u_view * 2.0 - 1.0; gl_Position = vec4(c.x, -c.y, 0.0, 1.0); }`, `
 uniform sampler2D u_img; in vec2 v_uv; out vec4 o; void main() { o = texture(u_img, v_uv); }`],
@@ -89,7 +145,13 @@ uniform sampler2D u_img; in vec2 v_uv; out vec4 o; void main() { o = texture(u_i
 
 interface Program { prog: WebGLProgram; u: Record<string, WebGLUniformLocation> }
 interface GLBuffers { type: GLBatch['type']; vao: WebGLVertexArrayObject; count: number; color: boolean; scalar: boolean; bufs: WebGLBuffer[] }
-export interface GLTile { labels: Record<string, LabelSrc[]>; batches: Record<string, GLBuffers> }
+export interface GLTile {
+    labels: Record<string, LabelSrc[]>; batches: Record<string, GLBuffers>;
+    /** Raster tiles: the image. Elevation tiles: slopes derived from it. */
+    tex?: WebGLTexture;
+    /** Latitude of the tile's top and bottom edges, for hillshade. */
+    lat?: [number, number];
+}
 
 export interface Scene {
     tr: Transform;
@@ -116,6 +178,10 @@ export class GLRenderer {
     private sdfTex: WebGLTexture;
     private sdfVersion = -1;
     private spriteTex: WebGLTexture;
+    private iconTex: WebGLTexture;
+    private iconSize: [number, number] = [1, 1];
+    private newTexture: () => WebGLTexture;
+    private fbo: WebGLFramebuffer;
     private dpr = 1;
 
     constructor(private canvas: HTMLCanvasElement | OffscreenCanvas) {
@@ -163,6 +229,9 @@ export class GLRenderer {
             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
             return t;
         };
+        this.newTexture = tex;
+        this.fbo = gl.createFramebuffer()!;
+        this.iconTex = tex();
         this.sdfTex = tex();
         this.spriteTex = tex();
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, SPRITE_ATLAS, SPRITE_ATLAS, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
@@ -245,7 +314,47 @@ export class GLRenderer {
         return {labels: t.labels, batches};
     }
 
+    /** The style's sprite sheet (icons for symbol layers). `scale` is its pixel density. */
+    setIcons(image: TexImageSource, width: number, height: number) {
+        const gl = this.gl;
+        gl.bindTexture(gl.TEXTURE_2D, this.iconTex);
+        gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+        gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+        this.iconSize = [width, height];
+    }
+
+    /** Wraps a decoded raster or elevation tile image as a drawable tile. */
+    createImageTile(image: ImageBitmap, dem: boolean, id: TileID): GLTile {
+        const gl = this.gl, tex = this.newTexture();
+        gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, !dem);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+        gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+        const tile: GLTile = {labels: {}, batches: {}, tex};
+        if (dem) {
+            const n = 2 ** id.z, slopes = this.newTexture(), u = this.programs.demPrepare;
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, image.width, image.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+            gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
+            gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, slopes, 0);
+            gl.viewport(0, 0, image.width, image.height);
+            gl.disable(gl.BLEND);
+            gl.useProgram(u.prog);
+            gl.activeTexture(gl.TEXTURE0);
+            gl.bindTexture(gl.TEXTURE_2D, tex);
+            gl.uniform1i(u.u.u_dem, 0);
+            gl.uniform1f(u.u.u_zoom, id.z);
+            gl.bindVertexArray(this.quad);
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+            gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+            gl.deleteTexture(tex);
+            tile.tex = slopes;
+            tile.lat = [latFromMerc(id.y / n), latFromMerc((id.y + 1) / n)];
+        }
+        return tile;
+    }
+
     destroyTile(t: GLTile) {
+        if (t.tex) this.gl.deleteTexture(t.tex);
         for (const b of Object.values(t.batches)) {
             this.gl.deleteVertexArray(b.vao);
             for (const buf of b.bufs) this.gl.deleteBuffer(buf);
@@ -297,6 +406,34 @@ export class GLRenderer {
             }
             const items = s.items.get(L.source!);
             if (!items) continue;
+            if (L.type === 'raster' || L.type === 'hillshade') {
+                const u = use(L.type), p = L.p;
+                gl.activeTexture(gl.TEXTURE0);
+                gl.uniform1i(u.u_image, 0);
+                gl.bindVertexArray(this.quad);
+                if (L.type === 'raster') {
+                    const sat = p.saturation.eval(zoom), con = p.contrast.eval(zoom);
+                    gl.uniform3f(u.u_adjust, p.opacity.eval(zoom), sat > 0 ? 1 - 1 / (1.001 - sat) : -sat, con > 0 ? 1 / (1 - con) : 1 + con);
+                } else {
+                    const pre = (c: number[]) => [c[0] * c[3], c[1] * c[3], c[2] * c[3], c[3]];
+                    const azimuth = p.direction.eval(zoom) * Math.PI / 180 + (p.anchor.eval(zoom) === 'viewport' ? tr.bearing * Math.PI / 180 : 0);
+                    gl.uniform2f(u.u_light, p.exaggeration.eval(zoom), azimuth);
+                    gl.uniform4fv(u.u_shadow, pre(p.shadow.eval(zoom)));
+                    gl.uniform4fv(u.u_highlight, pre(p.highlight.eval(zoom)));
+                    gl.uniform4fv(u.u_accent, pre(p.accent.eval(zoom)));
+                }
+                for (const it of items) {
+                    if (!it.tile.tex) continue;
+                    const m = it.matrix;
+                    gl.uniform3f(u.u_mx, m[0], m[2], m[4]);
+                    gl.uniform3f(u.u_my, m[1], m[3], m[5]);
+                    gl.uniform4fv(u.u_clip, it.clip);
+                    if (it.tile.lat) gl.uniform2fv(u.u_latrange, it.tile.lat);
+                    gl.bindTexture(gl.TEXTURE_2D, it.tile.tex);
+                    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+                }
+                continue;
+            }
             let first = true;
             for (const it of items) {
                 const b = it.tile.batches[L.id];
@@ -335,6 +472,19 @@ export class GLRenderer {
             }
         }
 
+        const icons = this.iconQuads(s.labels);
+        if (icons.length) {
+            const u = use('sprite');
+            gl.activeTexture(gl.TEXTURE0);
+            gl.bindTexture(gl.TEXTURE_2D, this.iconTex);
+            gl.uniform2f(u.u_tex, this.iconSize[0], this.iconSize[1]);
+            gl.uniform1i(u.u_img, 0);
+            gl.bindVertexArray(this.spriteVao);
+            gl.bindBuffer(gl.ARRAY_BUFFER, this.spriteBuf);
+            gl.bufferData(gl.ARRAY_BUFFER, icons, gl.DYNAMIC_DRAW);
+            gl.drawArrays(gl.TRIANGLES, 0, icons.length / 4);
+        }
+
         if (s.labels.length) {
             const quads = this.textQuads(s.labels); // shaping may add glyphs, so build quads before uploading the atlas
             gl.activeTexture(gl.TEXTURE0);
@@ -370,21 +520,39 @@ export class GLRenderer {
         gl.bindVertexArray(null);
     }
 
+    private iconQuads(labels: Placed[]): Float32Array {
+        const out = new Float32Array(labels.reduce((n, l) => n + (l.icon ? 24 : 0), 0));
+        let o = 0;
+        for (const {icon} of labels) {
+            if (!icon) continue;
+            const cos = Math.cos(icon.angle), sin = Math.sin(icon.angle), hw = icon.w / 2, hh = icon.h / 2, [sx, sy, sw, sh] = icon.rect;
+            for (const [cx, cy] of [[-1, -1], [1, -1], [-1, 1], [1, -1], [1, 1], [-1, 1]]) {
+                out[o++] = icon.x + cx * hw * cos - cy * hh * sin;
+                out[o++] = icon.y + cx * hw * sin + cy * hh * cos;
+                out[o++] = sx + (cx + 1) / 2 * sw;
+                out[o++] = sy + (cy + 1) / 2 * sh;
+            }
+        }
+        return out;
+    }
+
     private textQuads(labels: Placed[]): ArrayBuffer {
         let glyphCount = 0;
-        for (const l of labels) for (const line of l.shaped.lines) glyphCount += line.glyphs!.length;
+        for (const l of labels) if (l.shaped) for (const line of l.shaped.lines) glyphCount += line.glyphs!.length;
         const buf = new ArrayBuffer(glyphCount * 6 * 32), f = new Float32Array(buf), b = new Uint8Array(buf);
         let o = 0;
         const B = SDF_BUFFER;
         for (const l of labels) {
+            if (!l.shaped) continue;
+            const shaped = l.shaped;
             const s = l.size / EM, cos = Math.cos(l.angle), sin = Math.sin(l.angle), src = l.src;
             // Where the halo's outer edge sits in distance-field units, limited by how far the field extends.
             const hedge = src.haloWidth > 0 && src.halo[3] > 0 ? Math.max(0.75 - (B - 0.75) / SDF_RADIUS, 0.75 - src.haloWidth / s / SDF_RADIUS) : 2;
             const gamma = 0.7 / (SDF_RADIUS * s * this.dpr);
             const col = src.color.map(v => Math.round(v * 255)), halo = src.halo.map(v => Math.round(v * 255));
-            l.shaped.lines.forEach((line, i) => {
+            shaped.lines.forEach((line, i) => {
                 let pen = -line.width / 2;
-                const baseline = -l.shaped.height / 2 + i * l.shaped.lineHeight + l.shaped.lineHeight * 0.5 + EM * 0.34;
+                const baseline = -shaped.height / 2 + i * shaped.lineHeight + shaped.lineHeight * 0.5 + EM * 0.34;
                 for (const g of line.glyphs!) {
                     if (g.w) {
                         const x0 = (pen + g.left - B) * s, y0 = (baseline - g.top - B) * s, x1 = x0 + g.w * s, y1 = y0 + g.h * s;
