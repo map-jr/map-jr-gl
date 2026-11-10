@@ -1,10 +1,11 @@
 {
-  "name": "tessera",
+  "name": "tessera-map",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node test/interact.mjs .cache/shots",
+    "build": "tsc -p . && node build.mjs",
+    "demo": "node demo/serve.mjs"
   },
   "keywords": [],
   "author": "",
@@ -15,5 +16,6 @@
     "esbuild": "^0.28.2",
     "typescript": "^7.0.2"
   },
-  "type": "module"
+  "type": "module",
+  "private": true
 }

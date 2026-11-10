@@ -41,7 +41,8 @@ export function compileLayer(l: LayerJSON): CompiledLayer | null {
     return {
         id: l.id, type: l.type, source: l.source, sourceLayer: l['source-layer'],
         minzoom: l.minzoom ?? 0, maxzoom: l.maxzoom ?? 24,
-        visible: l.layout?.visibility !== 'none', filter: compileFilter(l.filter), p,
+        // Pattern fills need sprite images, which are not supported yet; hiding them beats drawing solid black.
+        visible: l.layout?.visibility !== 'none' && !l.paint?.['fill-pattern'] && !l.paint?.['line-pattern'], filter: compileFilter(l.filter), p,
     };
 }
 

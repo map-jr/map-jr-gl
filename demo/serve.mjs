@@ -1,0 +1,81 @@
+/** Demo server: client-only page, server-rendered page with hydration, and a caching tile proxy. */
+import http from 'node:http';
+import {readFile, writeFile, mkdir} from 'node:fs/promises';
+import {fileURLToPath} from 'node:url';
+import path from 'node:path';
+import makeStyle from './style.mjs';
+import {markers, view} from './markers.mjs';
+import {renderToSVG} from '../dist/server.js';
+
+const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+const port = +(process.env.PORT || 8080), origin = `http://localhost:${port}`;
+const cache = path.join(root, '.cache/tiles');
+const tilejson = await (await fetch('https://tiles.openfreemap.org/planet')).json();
+const style = makeStyle(`${origin}/tiles/{z}/{x}/{y}.pbf`, tilejson.attribution);
+
+async function tile(z, x, y) {
+    const file = path.join(cache, `${z}-${x}-${y}.pbf`);
+    try { return await readFile(file); } catch {}
+    const res = await fetch(tilejson.tiles[0].replace('{z}', z).replace('{x}', x).replace('{y}', y));
+    if (!res.ok) return null;
+    const buf = Buffer.from(await res.arrayBuffer());
+    await mkdir(cache, {recursive: true});
+    await writeFile(file, buf);
+    return buf;
+}
+
+const page = (body, head = '') => `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tessera demo</title>${head}<style>html,body{margin:0;height:100%;font-family:system-ui,sans-serif}#map{position:absolute;inset:0}
+#hud{position:absolute;left:8px;top:8px;z-index:2;background:#fff;padding:6px 10px;border-radius:6px;font-size:12px;box-shadow:0 1px 4px #0003}</style></head>
+<body>${body}</body></html>`;
+
+const client = (q) => `<script type="module">
+import {Map} from '/dist/tessera.js';
+import {markers, view} from '/demo/markers.mjs';
+const q = new URLSearchParams(location.search);
+const map = window.map = new Map({container: 'map', style: q.get('style') || ('/style.json' + (q.has('local') ? '?local' : '')), ...view,
+  ...(q.has('zoom') ? {zoom: +q.get('zoom')} : {}), ...(q.has('bearing') ? {bearing: +q.get('bearing')} : {}),
+  ...(q.has('center') ? {center: q.get('center').split(',').map(Number)} : {}), renderer: q.get('renderer') || 'auto'});
+const layer = q.has('nomarkers') ? null : map.addMarkerLayer(structuredClone(markers));
+const hud = document.getElementById('hud');
+const show = () => hud.textContent = 'renderer: ' + map.renderer + ' | zoom ' + map.getZoom().toFixed(2) + (map.loaded() ? '' : ' | loading');
+map.on('move', show); map.on('load', () => { show(); window.mapLoaded = true; }); map.on('idle', () => window.mapIdle = (window.mapIdle || 0) + 1);
+map.on('markerenter', e => e.layer.setProps(e.index, {stroke: '#222', strokeWidth: 3}));
+map.on('markerleave', e => e.layer.setProps(e.index, {stroke: '#fff', strokeWidth: 1.5}));
+map.on('markerclick', e => { window.lastMarkerClick = e.marker.props.label; hud.textContent = 'clicked marker ' + e.marker.props.label; });
+map.on('error', e => { (window.mapErrors ||= []).push(String(e.error?.message || e.error)); });
+</script>`;
+
+http.createServer(async (req, res) => {
+    const url = new URL(req.url, origin);
+    const send = (status, type, body, extra = {}) => { res.writeHead(status, {'content-type': type, 'access-control-allow-origin': '*', ...extra}); res.end(body); };
+    try {
+        const t = /^\/tiles\/(\d+)\/(\d+)\/(\d+)\.pbf$/.exec(url.pathname);
+        if (t) {
+            const buf = await tile(t[1], t[2], t[3]);
+            return buf ? send(200, 'application/x-protobuf', buf, {'cache-control': 'max-age=3600'}) : send(204, 'text/plain', '');
+        }
+        // ?local labels places in their local script instead of English, to exercise non-Latin text.
+        if (url.pathname === '/style.json') return send(200, 'application/json', JSON.stringify(style).replaceAll(url.searchParams.has('local') ? '["get","name:en"],' : '\u0000', ''));
+        if (url.pathname === '/') return send(200, 'text/html', page(`<div id="map"></div><div id="hud"></div>${client()}`));
+        if (url.pathname === '/ssr' || url.pathname === '/ssr.svg' || url.pathname === '/static') {
+            const width = +(url.searchParams.get('w') || 1000), height = +(url.searchParams.get('h') || 700);
+            const zoom = +(url.searchParams.get('zoom') || view.zoom), bearing = +(url.searchParams.get('bearing') || view.bearing);
+            const t0 = performance.now();
+            const {svg, tiles} = await renderToSVG({style, ...view, zoom, bearing, width, height, markers: url.searchParams.has('nomarkers') ? [] : [markers]});
+            const ms = (performance.now() - t0).toFixed(0);
+            if (url.pathname === '/ssr.svg') return send(200, 'image/svg+xml', svg, {'x-render-ms': ms});
+            const preload = tiles.map(u => `<link rel="preload" as="fetch" crossorigin href="${u}">`).join('');
+            const frame = `<div id="map" style="position:relative;width:${width}px;height:${height}px;inset:auto">${svg}</div><div id="hud">server render ${ms} ms, ${(svg.length / 1024).toFixed(0)} KB SVG</div>`;
+            // /static shows the server output alone; /ssr also loads the client, which takes over the same element.
+            return send(200, 'text/html', page(frame + (url.pathname === '/ssr' ? client() : ''), url.pathname === '/ssr' ? preload : ''));
+        }
+        if (url.pathname.startsWith('/dist/') || url.pathname.startsWith('/demo/')) {
+            return send(200, 'text/javascript', await readFile(path.join(root, url.pathname)));
+        }
+        send(404, 'text/plain', 'Not found');
+    } catch (err) {
+        console.error(err);
+        send(500, 'text/plain', String(err.stack));
+    }
+}).listen(port, () => console.log(`Demo at ${origin}  (also /ssr, /static, /ssr.svg)`));

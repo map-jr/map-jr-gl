@@ -7,6 +7,7 @@
  * a whole line at a time instead, letting the browser's own shaper do the work.
  */
 export const EM = 24;
+export const DEFAULT_FONT = '"Noto Sans", "Helvetica Neue", Arial, sans-serif';
 export const SDF_BUFFER = 4;
 export const SDF_RADIUS = 8;
 const LINE_HEIGHT = 1.2 * EM;
