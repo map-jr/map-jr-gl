@@ -191,7 +191,7 @@ export function renderSVG(s: SVGScene): string {
             shaped.lines.forEach((line, i) => {
                 const y = l.y + (-shaped.height / 2 + i * shaped.lineHeight + shaped.lineHeight * 0.5 + EM * 0.34) * k;
                 const x = l.x + src.justify * (line.width - shaped.width) / 2 * k;
-                body.push(`<text x="${num(x)}" y="${num(y)}"${rot} ${common}>${escapeXML(line.text)}</text>`);
+                body.push(`<text x="${num(x)}" y="${num(y)}"${rot} ${common}>${escapeXML(line.text.replace(/[\uE000-\uF8FF]/g, ''))}</text>`); // images inside text are not drawn in SVG output
             });
         }
         body.push('</g>');

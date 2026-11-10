@@ -117,7 +117,11 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
                 const iconName = tokens(p.icon.eval(z, f));
                 if (!text && !iconName) continue;
                 const tt = p.transform.eval(z, f);
-                if (tt === 'uppercase') text = text.toUpperCase(); else if (tt === 'lowercase') text = text.toLowerCase();
+                if (tt === 'uppercase' || tt === 'lowercase') {
+                    // (Image names inside the text are left as they are.)
+                    const change = (t: string) => tt === 'uppercase' ? t.toUpperCase() : t.toLowerCase();
+                    text = text.split(/(\uE000[^\uE001]*\uE001)/).map((part, i) => i % 2 ? part : change(part)).join('');
+                }
                 const color = p.color.eval(z, f) as RGBA, op = p.opacity.eval(z, f);
                 const along = p.placement.eval(z, f) !== 'point';
                 const base = {

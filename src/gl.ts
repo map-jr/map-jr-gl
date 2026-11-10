@@ -1022,7 +1022,7 @@ export class GLRenderer {
 
         // Style-sheet icons and images added at runtime live in different textures.
         for (const custom of [false, true]) {
-            const icons = this.iconQuads(s.labels, custom);
+            const icons = this.iconQuads(s.labels, custom, s.icon);
             if (!icons.length) continue;
             const u = use('sprite');
             gl.activeTexture(gl.TEXTURE0);
@@ -1086,7 +1086,7 @@ export class GLRenderer {
         return behind;
     }
 
-    private iconQuads(labels: Placed[], custom: boolean): Float32Array {
+    private iconQuads(labels: Placed[], custom: boolean, lookup?: Scene['icon']): Float32Array {
         const mine = labels.filter(l => l.icon && !!l.icon.custom === custom && l.opacity > 0);
         const out: number[] = [];
         for (const {icon, opacity} of mine) {
@@ -1104,6 +1104,30 @@ export class GLRenderer {
                     out.push(i.x + ox + dx * cos - dy * sin, i.y + oy + dx * sin + dy * cos, sx + gx[a + cx * 2], sy + gy[b + cy * 2], opacity * i.opacity, ...col);
                 }
             }
+        }
+        // Images inside label text (`format` with `image`): each sits on its line where a glyph would, at its own size.
+        if (lookup) for (const l of labels) {
+            const shaped = l.shaped;
+            if (!shaped || l.curve || l.opacity <= 0) continue;
+            const k = l.size / EM, cos = Math.cos(l.angle), sin = Math.sin(l.angle);
+            shaped.lines.forEach((line, row) => {
+                if (!line.glyphs?.some(g => g.image)) return;
+                let pen = l.src.justify < 0 ? -shaped.width / 2 : l.src.justify > 0 ? shaped.width / 2 - line.width : -line.width / 2;
+                const mid = -shaped.height / 2 + (row + 0.5) * shaped.lineHeight;
+                for (const g of line.glyphs) {
+                    const img = g.image ? lookup(g.image) : undefined;
+                    if (img && !!img.custom === custom) {
+                        const w = g.advance * k, h = g.imageHeight! * k, cx = (pen + g.advance / 2) * k, cy = mid * k;
+                        const snap = (v: number) => Math.round(v * this.dpr) / this.dpr;
+                        const x0 = l.angle === 0 ? snap(l.x + cx - w / 2) - l.x : cx - w / 2, y0 = l.angle === 0 ? snap(l.y + cy - h / 2) - l.y : cy - h / 2;
+                        for (const [ux, uy] of [[0, 0], [1, 0], [0, 1], [1, 0], [1, 1], [0, 1]]) {
+                            const dx = x0 + ux * w, dy = y0 + uy * h;
+                            out.push(l.x + dx * cos - dy * sin, l.y + dx * sin + dy * cos, img.x + ux * img.width, img.y + uy * img.height, l.opacity, 0, 0, 0, -1);
+                        }
+                    }
+                    pen += g.advance + l.src.spacing * EM;
+                }
+            });
         }
         return new Float32Array(out);
     }

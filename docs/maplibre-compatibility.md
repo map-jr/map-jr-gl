@@ -78,7 +78,7 @@ Properties:
 - Icon halos
 - `text-writing-mode`, `text-pitch-alignment`, `text-variable-anchor-offset`, `text-max-angle`
 - `symbol-z-order` and `symbol-avoid-edges`
-- Images and more than one font in one `format` text
+- More than one font, size or colour in one `format` text. Images in `format` text are available.
 
 Other:
 

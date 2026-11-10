@@ -96,7 +96,7 @@ export function placeLabels(
                 if (tr.heightAt) { const n = 2 ** it.id.z; if (tr.occluded((it.id.x + it.id.w * n + l.x / EXTENT) / n, (it.id.y + l.y / EXTENT) / n)) continue; }
                 const size = l.size0 + (l.size1 - l.size0) * t, s = size / EM, line = l.angle !== null;
                 const meta = l.icon ? icons?.(l.icon.name) : undefined;
-                const shaped = l.text ? shaper.shape(l.text, l.font, line ? 1e3 : l.maxWidth, l.spacing, l.lineHeight) : null;
+                const shaped = l.text ? shaper.shape(l.text, l.font, line ? 1e3 : l.maxWidth, l.spacing, l.lineHeight, l.size0) : null;
                 const w = shaped ? shaped.width * s : 0, h = shaped ? shaped.height * s : 0;
                 const hasText = w > 0;
                 if (!hasText && !meta) continue;

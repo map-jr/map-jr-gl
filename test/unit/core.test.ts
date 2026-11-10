@@ -454,3 +454,18 @@ test('padding: the centre moves to the middle of the unpadded area, consistently
     const clip = [0, 1, 3].map(r => m[r] * 1000 + m[4 + r] * 3000 + m[12 + r]);
     assert.ok(Math.abs((clip[0] / clip[2] + 1) / 2 * 800 - sx) < 1e-3 && Math.abs((1 - clip[1] / clip[2]) / 2 * 600 - sy) < 1e-3, `${clip} vs ${sx},${sy}`);
 });
+
+test('text: images in a format expression travel through the text and are measured as single units', async () => {
+    const {IMAGE_OPEN, IMAGE_CLOSE} = await import('../../src/expr.ts');
+    const {EstimateShaper, EM} = await import('../../src/text.ts');
+    const field = compileProp(['format', ['image', ['get', 'a']], {}, 'AB', {}, ['image', ['coalesce', ['get', 'missing'], '']], {}], 'string', '');
+    const text = field.eval(10, {type: 1, properties: {a: 'shield one'}});
+    assert.equal(text, `${IMAGE_OPEN}shield one${IMAGE_CLOSE}AB`, 'an image with no name leaves nothing behind');
+    // A shaper that knows the image is 40 pixels wide at 2x: at 16-pixel text that is 20 pixels, or 30 text units.
+    const shaper = new EstimateShaper();
+    shaper.images = name => name === 'shield one' ? {width: 40, height: 40, pixelRatio: 2} : undefined;
+    const plain = shaper.shape('AB', 'x', 100, 0, 1.2, 16).width;
+    assert.ok(Math.abs(shaper.shape(text, 'x', 100, 0, 1.2, 16).width - plain - 40 / 2 * EM / 16) < 1e-6);
+    // Without anyone to supply images (the server renderer), the image is simply left out.
+    assert.equal(new EstimateShaper().shape(text, 'x', 100, 0, 1.2, 16).width, plain);
+});

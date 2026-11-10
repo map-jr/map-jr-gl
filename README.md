@@ -28,12 +28,12 @@ These figures are written by `pnpm status`. They compare this library with MapLi
 
 | Measure | Result |
 |---|---|
-| Unit tests | 26 pass, 0 fail |
+| Unit tests | 27 pass, 0 fail |
 | MapLibre expression tests | 281 of 425 pass |
 | MapLibre `Map` methods | 104 of 150 are available |
 | MapLibre render tests | 512 of 1429 are the same (1% of pixels or less are different). 302 more are near (5% or less). |
-| Page script (gzip) | 29 KB. MapLibre GL JS: 299 KB. |
-| Worker script (gzip) | 46 KB. MapLibre GL JS: 145 KB. |
+| Page script (gzip) | 30 KB. MapLibre GL JS: 299 KB. |
+| Worker script (gzip) | 48 KB. MapLibre GL JS: 145 KB. |
 | Server renderer (gzip) | 27 KB |
 <!-- status:end -->
 
@@ -196,6 +196,8 @@ map.setMissingStyleImageResolver(name => {
 ```
 
 The OSM Americana shield library works with this library without changes. The gallery shows it.
+
+A label can contain images (`format` with `image`). Thus a road with two routes shows two shields side by side.
 
 ![Highway shields on a road map](docs/images/shields.jpg)
 

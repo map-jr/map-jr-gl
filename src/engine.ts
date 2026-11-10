@@ -172,6 +172,7 @@ export class Engine {
     constructor(canvas: HTMLCanvasElement | OffscreenCanvas, o: EngineOptions, private backends: TileBackend[], private emit: (e: EngineEvent) => void) {
         this.renderer = new GLRenderer(canvas, o.antialias);
         this.atlas = new GlyphAtlas(o.fontFamily);
+        this.atlas.images = name => this.icon(name);
         this.atlas.onReset = () => this.labels.clear();
         this.tr.width = o.width;
         this.tr.height = o.height;

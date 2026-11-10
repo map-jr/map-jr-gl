@@ -12,7 +12,15 @@ export const SDF_BUFFER = 4;
 export const SDF_RADIUS = 8;
 const LINE_HEIGHT = 1.2 * EM;
 
-export interface Glyph { x: number; y: number; w: number; h: number; left: number; top: number; advance: number }
+export interface Glyph {
+    x: number; y: number; w: number; h: number; left: number; top: number; advance: number;
+    /** An image in the text rather than a character: its name and height (in the same units as `advance`, which is its width). */
+    image?: string; imageHeight?: number;
+}
+/** Images that can appear inside text: their size in pixels, or undefined while one is not available yet. */
+export type ImageSizes = (name: string) => {width: number; height: number; pixelRatio: number} | undefined;
+// Inside the shaper each image in the text is one private-use character, so line breaking treats it as a single unit.
+const IMAGE_CHAR = 0xE100;
 export interface ShapedLine {
     text: string; width: number; glyphs?: Glyph[];
     /** The line split into the units that are positioned individually, with each one's advance. */
@@ -20,7 +28,7 @@ export interface ShapedLine {
 }
 /** All measurements are in pixels at a font size of EM. */
 export interface Shaped { lines: ShapedLine[]; width: number; height: number; lineHeight: number }
-export interface Shaper { shape(text: string, font: string, maxWidthEm: number, spacingEm: number, lineHeightEm?: number): Shaped }
+export interface Shaper { shape(text: string, font: string, maxWidthEm: number, spacingEm: number, lineHeightEm?: number, sizePx?: number): Shaped }
 
 const COMPLEX = /[֐-ࣿऀ-႟ក-៿יִ-﷿ﹰ-﻿]/;
 const IDEOGRAPH = /[⺀-鿿가-힯豈-﫿＀-￯]/;
@@ -74,17 +82,39 @@ abstract class BaseShaper implements Shaper {
     private cache = new Map<string, Shaped>();
     protected abstract line(text: string, font: string, spacing: number): ShapedLine;
 
-    shape(text: string, font: string, maxWidthEm: number, spacingEm: number, lineHeightEm = 1.2): Shaped {
-        const key = `${font}|${maxWidthEm}|${spacingEm}|${lineHeightEm}|${text}`, LINE_HEIGHT = lineHeightEm * EM;
+    /** Set by whoever can supply images, to allow them inside text. */
+    images?: ImageSizes;
+    /** Images in the text being shaped, by placeholder character, and how many text units one image pixel is. */
+    protected inline: string[] = [];
+    protected imageScale = 1;
+    protected missingImage = false;
+
+    shape(text: string, font: string, maxWidthEm: number, spacingEm: number, lineHeightEm = 1.2, sizePx = 16): Shaped {
+        const hasImages = text.includes('\uE000');
+        const key = `${font}|${maxWidthEm}|${spacingEm}|${lineHeightEm}|${hasImages ? sizePx : ''}|${text}`, LINE_HEIGHT = lineHeightEm * EM;
         let s = this.cache.get(key);
         if (!s) {
             if (this.cache.size > 5000) this.cache.clear();
             const spacing = spacingEm * EM;
+            this.inline = []; this.missingImage = false;
+            // An image is drawn at its own size whatever the text size, so its width in text units depends on that size.
+            this.imageScale = EM / sizePx;
+            if (hasImages) text = text.replace(/\uE000([^\uE001]*)\uE001/g, (_, name) => this.images ? String.fromCharCode(IMAGE_CHAR + this.inline.push(name) - 1) : '');
             const lines = wrap(text, maxWidthEm * EM, t => this.line(t, font, spacing).width).map(t => this.line(t, font, spacing));
             s = {lines, width: Math.max(...lines.map(l => l.width)), height: lines.length * LINE_HEIGHT, lineHeight: LINE_HEIGHT};
-            this.cache.set(key, s);
+            // Text waiting for an image is shaped again once the image has arrived.
+            if (!this.missingImage) this.cache.set(key, s);
         }
         return s;
+    }
+    /** The stand-in glyph for an image placeholder character, or null for an ordinary character. */
+    protected imageGlyph(part: string): Glyph | null {
+        const i = part.charCodeAt(0) - IMAGE_CHAR;
+        if (part.length !== 1 || i < 0 || i >= this.inline.length) return null;
+        const name = this.inline[i], img = this.images?.(name);
+        if (!img) { this.missingImage = true; return {x: 0, y: 0, w: 0, h: 0, left: 0, top: 0, advance: EM, image: name, imageHeight: EM}; }
+        const k = this.imageScale / img.pixelRatio;
+        return {x: 0, y: 0, w: 0, h: 0, left: 0, top: 0, advance: img.width * k, image: name, imageHeight: img.height * k};
     }
     reset() { this.cache.clear(); }
 }
@@ -96,7 +126,7 @@ export class EstimateShaper extends BaseShaper {
         const bold = /[6-9]00/.test(font) ? 1.06 : 1, chars: string[] = [], advances: number[] = [];
         for (const ch of text) {
             n++;
-            const a = IDEOGRAPH.test(ch) ? EM : /[iljtfr.,:;'|! ]/.test(ch) ? EM * 0.3 : /[mwMW@]/.test(ch) ? EM * 0.85 : /[A-Z0-9]/.test(ch) ? EM * 0.66 : EM * 0.54;
+            const a = this.imageGlyph(ch)?.advance ?? (IDEOGRAPH.test(ch) ? EM : /[iljtfr.,:;'|! ]/.test(ch) ? EM * 0.3 : /[mwMW@]/.test(ch) ? EM * 0.85 : /[A-Z0-9]/.test(ch) ? EM * 0.66 : EM * 0.54);
             w += a; chars.push(ch); advances.push(a * bold);
         }
         return {text, width: w * bold + spacing * Math.max(0, n - 1), chars, advances};
@@ -138,7 +168,7 @@ export class GlyphAtlas extends BaseShaper {
     protected line(text: string, font: string, spacing: number): ShapedLine {
         // One atlas entry per grapheme, or per whole line when the browser must shape it.
         const parts = COMPLEX.test(text) ? [text] : graphemes(text);
-        const glyphs = parts.map(p => this.glyph(p, font));
+        const glyphs = parts.map(p => this.imageGlyph(p) ?? this.glyph(p, font));
         let width = spacing * Math.max(0, glyphs.length - 1);
         for (const g of glyphs) width += g.advance;
         return {text, width, glyphs, chars: parts, advances: glyphs.map(g => g.advance)};

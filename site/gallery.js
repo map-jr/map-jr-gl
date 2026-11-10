@@ -3,11 +3,13 @@
 import {Map, NavigationControl, ScaleControl, FullscreenControl} from 'map-jr-gl';
 import makeStyle from '../demo/style.mjs';
 import {markers, photos, manyMarkers, dot, pin} from '../demo/markers.mjs';
-import {americanaShields, shieldImage} from './americana.js';
+import {americanaShields, shieldRow} from './americana.js';
 
 const STYLE = makeStyle('https://tiles.openfreemap.org/planet', '<a href="https://openfreemap.org">OpenFreeMap</a> <a href="https://www.openmaptiles.org/">© OpenMapTiles</a> Data from <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>');
 const NYC = [-74.0065, 40.7085], MATTERHORN = [7.6586, 45.9763];
-const base = (container, extra = {}) => new Map({container, style: structuredClone(STYLE), center: NYC, zoom: 13.6, attributionControl: {compact: true}, ...extra});
+// Add ?renderer=main (or worker) to the address to choose where the maps are drawn.
+const renderer = new URLSearchParams(location.search).get('renderer') ?? 'auto';
+const base = (container, extra = {}) => new Map({container, style: structuredClone(STYLE), center: NYC, zoom: 13.6, attributionControl: {compact: true}, renderer, ...extra});
 const loaded = map => new Promise(done => map.once('load', () => done(map)));
 const button = (row, label, onClick) => { const b = Object.assign(document.createElement('button'), {textContent: label}); b.onclick = () => onClick(b); row.actions.append(b); return b; };
 
@@ -83,7 +85,7 @@ const metres = await map.queryElevation(lngLat);`,
             row.out('Click the map to read the elevation'); return map; }},
 
     {id: 'shields', title: 'Icons made on demand: highway shields',
-        points: ['An icon that the style names but no sprite contains can be drawn when it is first necessary.', 'This row runs the OSM Americana shield library without changes. It draws the correct sign for each route network.', 'OpenMapTiles data (for example OpenFreeMap) already contains the route information.'],
+        points: ['An icon that the style names but no sprite contains can be drawn when it is first necessary.', 'This row runs the OSM Americana shield library without changes. It draws the correct sign for each route network, and puts the signs of a road with more than one route side by side.', 'OpenMapTiles data (for example OpenFreeMap) already contains the route information.'],
         code: `// A resolver gets the icon name and supplies the image. SVG is accepted.
 map.setMissingStyleImageResolver(name => {
   const [kind, network, ref] = name.split('|');
@@ -94,17 +96,21 @@ map.addLayer({id: 'shields', type: 'symbol', source: 'omt',
   'source-layer': 'transportation_name',
   layout: {
     'symbol-placement': 'line',
-    'icon-rotation-alignment': 'viewport',
-    'icon-image': ['concat', 'shield|', ['get', 'route_1_network'], '|', ['get', 'route_1_ref']],
+    'text-rotation-alignment': 'viewport',
+    // Images in the text put the shields of a road with two routes side by side.
+    'text-field': ['format',
+      ['image', ['concat', 'shield|', ['get', 'route_1_network'], '|', ['get', 'route_1_ref']]], {},
+      ['image', ['concat', 'shield|', ['get', 'route_2_network'], '|', ['get', 'route_2_ref']]], {}],
   }});`,
         make: async (el, row) => { const map = await loaded(base(el, {zoom: 10.2, center: [-74.05, 40.78]}));
             map.setLayoutProperty('road-shield', 'visibility', 'none');
-            map.addLayer({id: 'americana-shield', type: 'symbol', source: 'omt', 'source-layer': 'transportation_name', minzoom: 6, filter: ['has', 'route_1_network'],
-                layout: {'symbol-placement': 'line', 'symbol-spacing': 300, 'icon-rotation-alignment': 'viewport', 'icon-image': shieldImage(1)}});
+            row.out('Loading shield definitions');
+            await americanaShields(map);
             let drawn = 0;
             map.on('styleimagemissing', () => row.out(`${++drawn} different shields drawn`));
-            row.out('Loading shield definitions');
-            await americanaShields(map); return map; }},
+            map.addLayer({id: 'americana-shield', type: 'symbol', source: 'omt', 'source-layer': 'transportation_name', minzoom: 6, filter: ['has', 'route_1_network'],
+                layout: {'symbol-placement': 'line', 'symbol-spacing': 300, 'text-rotation-alignment': 'viewport', 'text-field': shieldRow(4), 'text-padding': 6}});
+            return map; }},
 
     {id: 'query', title: 'Ask the map what is at a position',
         points: ['queryFeatures reads the tile data directly. A style layer is not necessary, and hidden data is included.', 'Feature state changes how one feature looks, for example on hover.', 'GeoJSON sources update in place with setData.'],

@@ -89,6 +89,9 @@ export function featureStateOf(source: string | undefined, sourceLayer: string |
     return states && states[`${sourceLayer ?? ''}|${id}`];
 }
 
+/** An image inside label text (`format` with `image`) travels through the text as its name between these two characters. */
+export const IMAGE_OPEN = '\uE000', IMAGE_CLOSE = '\uE001', IMAGE_IN_TEXT = /\uE000([^\uE001]*)\uE001/g;
+
 function colorize(v: any): any {
     return typeof v === 'string' ? (parseColor(v) ?? v) : v;
 }
@@ -261,11 +264,17 @@ export function compileExpr(e: any, flags: Flags): Fn {
             return c => color([a[0](c) / 255, a[1](c) / 255, a[2](c) / 255, a[3] ? a[3](c) : 1]);
         }
         case 'format': {
-            // Rich text sections are flattened to plain text for now.
+            // Rich text is flattened to plain text, except for images, which stay in the string as markers (see
+            // IMAGE_OPEN) and are drawn in line with the text.
             const parts: Fn[] = [];
-            for (let i = 1; i < e.length; i++) if (typeof e[i] !== 'object' || Array.isArray(e[i])) parts.push(arg(i));
+            for (let i = 1; i < e.length; i++) {
+                const part = e[i];
+                if (Array.isArray(part) && part[0] === 'image') { const name = compileExpr(part[1], flags); parts.push(c => { const n = name(c); return n ? IMAGE_OPEN + n + IMAGE_CLOSE : ''; }); }
+                else if (typeof part !== 'object' || Array.isArray(part)) parts.push(arg(i));
+            }
             return c => parts.map(f => f(c) ?? '').join('');
         }
+        case 'image': return arg(1);
         case 'number-format': {
             const a = arg(1), o = e[2] ?? {}, cache = new Map<string, Intl.NumberFormat>();
             const opt = (k: string) => o[k] === undefined ? null : compileExpr(o[k], flags);

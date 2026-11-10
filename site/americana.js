@@ -46,6 +46,12 @@ async function loadShieldFonts(base = 'https://webfont.americanamap.org/noto/') 
     }));
 }
 
+/**
+ * A `text-field` that shows up to `count` shields side by side, one for each route that uses the road. Roads often
+ * carry more than one route (an Interstate and a US route, for example).
+ */
+export const shieldRow = (count = 4) => ['format', ...Array.from({length: count}, (_, i) => [['image', ['case', ['has', `route_${i + 1}_network`], shieldImage(i + 1), '']], {}]).flat()];
+
 /** Draws Americana shields for any image named by `shieldImage`. OpenMapTiles data (e.g. OpenFreeMap) carries what it needs. */
 export async function americanaShields(map, {shields = 'https://americanamap.org/shields.json', sprite = 'https://americanamap.org/sprites/sprite'} = {}) {
     const parser = {
@@ -53,10 +59,14 @@ export async function americanaShields(map, {shields = 'https://americanamap.org
         format: (network, ref, name) => `shield\n${network}\n${ref}\n${name}`,
     };
     await loadShieldFonts();
-    return new URLShieldRenderer(shields, parser)
+    const renderer = new URLShieldRenderer(shields, parser)
         .filterImageID(id => id.startsWith('shield\n'))
         // Walking, cycling and other non-road route networks are not highway shields.
         .filterNetwork(network => !/^[lrni][chimpw]n$/.test(network))
         .renderOnRepository(await spriteRepository(map, sprite))
         .renderOnMaplibreGL(map);
+    // The definitions download in the background. A shield that is asked for before they arrive is not drawn (and a
+    // map asks for each image only once), so wait for them before adding a layer that uses shields.
+    await new Promise(done => renderer.onShieldDefLoad(done));
+    return renderer;
 }
