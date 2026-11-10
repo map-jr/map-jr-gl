@@ -52,6 +52,24 @@ export type EngineEvent =
     | {type: 'imagemissing'; name: string}
     | {type: 'error'; message: string};
 
+const DATA_OPS = /"(get|has|id|properties|geometry-type|feature-state|property|line-progress|accumulated)"/;
+/**
+ * Describes what a source's tiles depend on: first the source itself, then everything about its layers that is baked
+ * into tile buffers (filters, layout, and paint values that vary per feature). Paint values that are the same for a
+ * whole layer are applied at draw time, so changing them needs no new tiles.
+ */
+function sourceSignature(style: ResolvedStyle, name: string): [string, string] {
+    const src = style.sources[name] as any, data = src.data;
+    const source = JSON.stringify({...src, data: undefined, features: data?.features?.length, kind: data?.type});
+    if (!isGeometrySource(src)) return [source, '']; // image tiles do not depend on layers
+    const layers = style.layers.filter(l => l.source === name).map(l => {
+        const paint = Object.entries(l.paint ?? {}).filter(([k, v]) =>
+            l.type === 'symbol' || l.type === 'fill-extrusion' || k === 'fill-antialias' || k === 'fill-outline-color' || k.endsWith('-pattern') || DATA_OPS.test(JSON.stringify(v)));
+        return [l.id, l.type, (l as any)['source-layer'], l.filter, l.minzoom, l.maxzoom, l.layout, paint, (l as any).metadata];
+    });
+    return [source, JSON.stringify(layers)];
+}
+
 interface TileState { state: 'loading' | 'ok' | 'error'; gl?: GLTile; used: number; cancel(): void; /** Shown, but built from data that has since changed. */ stale?: boolean; rebuilding?: boolean }
 interface MarkerLayer {
     width: number; height: number; offset: [number, number]; collide: boolean; merc: Float64Array; variant: Uint32Array;
@@ -142,6 +160,9 @@ export class Engine {
 
     private invalidate() { this.placeDirty = true; this.repaint(); }
 
+    /** Per source: what its tiles were fetched from, and what they were built with. */
+    private sourceSigs = new Map<string, [string, string]>();
+
     private setStyle(style: ResolvedStyle, reload: boolean) {
         this.style = style;
         this.layers = style.layers.map(compileLayer).filter((l): l is CompiledLayer => !!l);
@@ -156,7 +177,15 @@ export class Engine {
             const contours = Object.fromEntries(Object.entries(style.sources).filter(([, s]) => s.contour).map(([name, s]) => [name, s.contour!]));
             for (const b of this.backends) b.setContours(contours);
             for (const b of this.backends) b.setStyle(style.layers);
-            for (const [key, t] of this.tiles) this.dropTile(key, t);
+            // Only tiles whose contents the change can affect are touched. A changed source starts over; changed
+            // layers rebuild their source's tiles in place, so the old ones stay on screen until the new are ready.
+            const sigs = new Map(Object.keys(style.sources).map(name => [name, sourceSignature(style, name)]));
+            for (const [key, t] of this.tiles) {
+                const name = key.slice(0, key.lastIndexOf('|')), was = this.sourceSigs.get(name), now = sigs.get(name);
+                if (!was || !now || was[0] !== now[0]) this.dropTile(key, t);
+                else if (was[1] !== now[1]) t.stale = true;
+            }
+            this.sourceSigs = sigs;
         }
         this.invalidate();
     }

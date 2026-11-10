@@ -36,7 +36,7 @@ Compared against MapLibre GL JS 6.x.
 | Symbol layer order | Symbols draw at their position in the layer stack. | All symbol layers draw above all other layers. |
 | Label placement | Incremental, with cross-tile fading. | Re-decided about four times a second (faster while zooming), labels stay pinned and fade between decisions. |
 | Feature queries | `queryRenderedFeatures` is synchronous and returns what is drawn. | Not available. `queryFeatures` is asynchronous and returns what is in the tile data. |
-| Runtime style changes | Applied incrementally. | `addLayer`, `setPaintProperty` and similar rebuild the visible tiles, which can flash. |
+| Runtime style changes | Applied incrementally. | Paint values that are the same for a whole layer (a plain colour, width or opacity) are applied at once with no tile work. Changes that affect tile contents (filters, layout, per-feature paint values, adding or removing layers) rebuild only that source's tiles, in place: the old ones stay on screen until the new are ready. |
 | `fill-extrusion-opacity` | Buildings are composited as one translucent layer. | Same visual result by a different method (depth pre-pass and stencil). No light configuration (`setLight`); shading is fixed. |
 | Camera | Pitch up to 85°, roll, field-of-view control, padding. | Pitch up to 60°. No roll, field-of-view or padding options. |
 | Tile selection when pitched | Level of detail by distance. | The same idea with a simpler rule; distant tiles may differ by a level. |

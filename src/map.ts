@@ -502,7 +502,7 @@ export class Map {
         const layer = this.rawStyle?.layers.find((l: any) => l.id === layerId);
         if (!layer) throw new Error(`Layer "${layerId}" does not exist`);
         (layer[group] ??= {})[name] = value;
-        // Values are baked into tile buffers when data-driven, so tiles are rebuilt; cheap for the handful on screen.
+        // The engine works out whether this needs tiles rebuilt (per-feature values are baked into their buffers).
         this.restyle(true);
         return this;
     }

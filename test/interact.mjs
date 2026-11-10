@@ -86,7 +86,14 @@ for (const mode of ['main', 'worker']) {
     const img = await page.evaluate(() => window.map.addImage('star', '<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="gold"/></svg>').then(() => true, e => String(e)));
     check(`[${mode}] addImage accepts an SVG`, img === true, String(img));
 
+    // A colour that is the same for the whole layer is applied at draw time: no tiles are fetched or rebuilt.
+    let refetched = 0;
+    const count = r => { if (r.url().includes('/tiles/')) refetched++; };
+    page.on('request', count);
     await page.evaluate(() => { window.map.setPaintProperty('water', 'fill-color', '#e88'); });
+    await page.waitForTimeout(400);
+    page.off('request', count);
+    check(`[${mode}] setPaintProperty with a plain colour fetches no tiles`, refetched === 0, `${refetched} requests`);
     await idle(page);
     await page.waitForTimeout(300);
     await page.screenshot({path: `${out}/restyle-${mode}.png`});
