@@ -178,13 +178,17 @@ export class AttributionControl implements Control {
         toggle.setAttribute('aria-label', 'Toggle map data credits');
         toggle.addEventListener('click', () => toggle.setAttribute('aria-expanded', String(el.classList.toggle('maplibregl-compact-show'))));
         el.append(toggle, inner);
-        const collapse = () => { el.classList.remove('maplibregl-compact-show'); toggle.setAttribute('aria-expanded', 'false'); };
+        let interacted = false;
+        const collapse = () => { interacted = true; el.classList.remove('maplibregl-compact-show'); toggle.setAttribute('aria-expanded', 'false'); };
         this.update = () => {
             const html = [...new Set([...map.getAttributions(), ...[this.options.customAttribution ?? []].flat()])].join(' | ');
             inner.replaceChildren();
             sanitizeAttribution(html, inner);
             el.style.display = html ? '' : 'none';
-            el.classList.toggle('maplibregl-compact', this.options.compact ?? map.getContainer().clientWidth <= 640);
+            const compact = this.options.compact ?? map.getContainer().clientWidth <= 640;
+            // On small maps the credits start open, as MapLibre shows them, and fold away at the first drag.
+            if (compact && !el.classList.contains('maplibregl-compact') && !interacted) { el.classList.add('maplibregl-compact-show'); toggle.setAttribute('aria-expanded', 'true'); }
+            el.classList.toggle('maplibregl-compact', compact);
         };
         map.on('styledata', this.update);
         map.on('resize', this.update);

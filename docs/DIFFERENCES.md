@@ -18,6 +18,10 @@ Compared against MapLibre GL JS 6.x.
 | Web fonts for labels | Text is drawn from ordinary fonts: a `text-font` of "Open Sans Semibold" means family Open Sans at weight 600. Fonts come from the style's `font-faces`, the `fonts` option or `map.addFonts()`, and are loaded on the rendering thread. No glyph server is needed. |
 | `queryFeatures` | Finds features at a location from tile data. No style layer has to draw them, and the location may be off screen. Returns a promise. |
 | `queryElevation` | Elevation in metres at a location from a `raster-dem` source, without enabling terrain. Returns a promise. |
+| PMTiles built in | `url: "pmtiles://..."` on a vector, raster or elevation source reads a PMTiles v3 archive by range request. MapLibre needs a protocol plugin. |
+| Marker layer extras | Raster images inside marker SVGs, per-layer zoom ranges with cross-fade, `overlap: 'hide'`, `select()` (animated growth) and `openPopup()` (a pointed callout that labels reflow around). |
+| Frame statistics | A `stats` event reports frames per second and engine CPU time per frame. |
+| Slim build | `tessera-slim.js` keeps the engine out of the page's main-thread script and loads it as a worker file. |
 | Generated icons on the server | `renderToSVG({resolveImage})` is the server counterpart of `setMissingStyleImageResolver`; resolved SVG is embedded as vector artwork (e.g. highway shields). |
 | Themed controls without a stylesheet | Control styles are injected once and themed with `--map-control-*` custom properties. There is no CSS file to load. |
 
@@ -34,14 +38,17 @@ Compared against MapLibre GL JS 6.x.
 | `fill-extrusion-opacity` | Buildings are composited as one translucent layer. | Same visual result by a different method (depth pre-pass and stencil). No light configuration (`setLight`); shading is fixed. |
 | Camera | Pitch up to 85°, roll, field-of-view control, padding. | Pitch up to 60°. No roll, field-of-view or padding options. |
 | Tile selection when pitched | Level of detail by distance. | The same idea with a simpler rule; distant tiles may differ by a level. |
-| Events | Typed event classes; layer-scoped `map.on('click', layerId, fn)`. | Plain objects with `type`, `target`, `point`, `lngLat`. No layer-scoped listeners yet. |
-| `Marker`, `Popup` | DOM-based classes. | Not provided. Use marker layers, or position your own DOM with `map.project()`. |
+| Events | Typed event classes; layer-scoped `map.on('click', layerId, fn)`. | Plain objects with `type`, `target`, `point`, `lngLat`. Layer-scoped `click`, `mousemove`, `mouseenter`, `mouseleave` are supported and resolve asynchronously from tile data, so they arrive a moment after the pointer event. |
+| `Marker`, `Popup` | DOM-based classes. | Provided with the common subset of the API (position, popup, drag, anchor, offset). Popups have a short pop animation and no `maxWidth: 'none'` handling, class toggling or tracking of the pointer. |
+| Antialiasing | Off by default (`canvasContextAttributes.antialias`). | Off by default (`antialias: true` to enable). Polygon edges are smoothed in the shader either way. |
+| Touch gestures | Handler objects that can be enabled, disabled and configured. | The same gestures, always on; no per-handler configuration or cooperative-gestures mode. |
+| `easeTo` options | Accepts an `easing` function, `offset`, `padding`. | Uses MapLibre's default easing; those options are ignored (a function cannot be sent to a worker). |
 | Expressions | Full specification with type checking. | Evaluated without type checking; see coverage below. Errors that MapLibre reports at load may pass silently. |
 | Style validation | Validates styles and reports errors. | None. Unsupported layers and properties are skipped with a console warning. |
 
 ## Not supported yet
 
-- Sources: GeoJSON, image, video, canvas; PMTiles archives; MapLibre Tiles (MLT).
+- Sources: image, video, canvas; MapLibre Tiles (MLT). GeoJSON sources have no clustering, `promoteId` or line metrics.
 - Layers: heatmap, color-relief, custom layers. `fill-pattern` and `line-pattern` layers are hidden.
 - 3D terrain, sky, globe and other projections.
 - SDF (recolourable) sprite icons, `icon-color`, `text-halo-blur`, `line-offset`, `line-blur`, `line-gradient`.
@@ -65,7 +72,7 @@ Measured by the test scripts in this repository:
 
 **Supported:** `addControl`, `addImage`, `addLayer`, `addSource`, `areTilesLoaded`, `cameraForBounds`, `easeTo`, `fitBounds`, `flyTo`, `getBearing`, `getBounds`, `getCanvas`, `getCanvasContainer`, `getCenter`, `getContainer`, `getFilter`, `getLayer`, `getLayersOrder`, `getLayoutProperty`, `getMaxPitch`, `getMaxZoom`, `getMinPitch`, `getMinZoom`, `getPaintProperty`, `getPitch`, `getSource`, `getStyle`, `getZoom`, `hasControl`, `hasImage`, `isMoving`, `isStyleLoaded`, `jumpTo`, `listImages`, `loadImage`, `loaded`, `moveLayer`, `off`, `on`, `once`, `panBy`, `panTo`, `project`, `redraw`, `remove`, `removeControl`, `removeImage`, `removeLayer`, `removeSource`, `resetNorth`, `resetNorthPitch`, `resize`, `rotateTo`, `setBearing`, `setCenter`, `setFilter`, `setLayerZoomRange`, `setLayoutProperty`, `setMaxPitch`, `setMaxZoom`, `setMinZoom`, `setMissingStyleImageResolver`, `setPaintProperty`, `setPitch`, `setStyle`, `setZoom`, `snapToNorth`, `stop`, `triggerRepaint`, `unproject`, `zoomIn`, `zoomOut`, `zoomTo`
 
-**Only here:** `addFonts`, `addMarkerLayer`, `fire`, `queryElevation`, `queryFeatures`, `queryMarkers`, `removeMarkerLayer`, `setCursor`
+**Only here:** `addFonts`, `addMarkerLayer`, `fire`, `getAttributions`, `queryElevation`, `queryFeatures`, `queryMarkers`, `removeMarkerLayer`, `setCursor`
 
 **Missing:** `addSprite`, `applyTerrainChange`, `applyTransformChange`, `applyUpdatedTransform`, `calculateAnchoredCameraOptions`, `calculateCameraOptionsFromCameraLngLatAltRotation`, `calculateCameraOptionsFromTo`, `captureRotationPivot`, `clampCenterToGround`, `coveringTiles`, `fitScreenCoordinates`, `getAnisotropicFilterPitch`, `getCameraTargetElevation`, `getCenterClampedToGround`, `getCenterElevation`, `getFeatureState`, `getFontFaces`, `getGlobalState`, `getGlyphs`, `getImage`, `getLight`, `getMaxBounds`, `getPadding`, `getPixelRatio`, `getProjection`, `getRenderWorldCopies`, `getRoll`, `getSky`, `getSprite`, `getStyleUrl`, `getTerrain`, `getTransformForUpdate`, `getVerticalFieldOfView`, `getZoomSnap`, `holdElevation`, `isPitching`, `isRolling`, `isRotating`, `isSourceLoaded`, `isZooming`, `migrateProjection`, `moveCenterOntoTerrain`, `orbitRotationPivot`, `prepareNextFrame`, `putCenterBackOnTerrain`, `queryRenderedFeatures`, `querySourceFeatures`, `queryTerrainElevation`, `refreshTiles`, `releaseElevation`, `removeFeatureState`, `removeSprite`, `setAnisotropicFilterPitch`, `setCenterClampedToGround`, `setCenterElevation`, `setFeatureState`, `setFontFaces`, `setGlobalStateProperty`, `setGlyphs`, `setLight`, `setMaxBounds`, `setMinPitch`, `setPadding`, `setPixelRatio`, `setProjection`, `setRenderWorldCopies`, `setRoll`, `setSky`, `setSourceTileLodParams`, `setSprite`, `setTerrain`, `setTransformCameraUpdate`, `setTransformConstrain`, `setTransformRequest`, `setVerticalFieldOfView`, `setZoomSnap`, `updateImage`
 <!-- api:end -->

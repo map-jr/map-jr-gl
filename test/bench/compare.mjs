@@ -46,7 +46,6 @@ async function open(lib, markers) {
         await page.goto('http://bench.local/');
     } else {
         await page.goto(`http://localhost:8080/?renderer=${lib}&nomarkers&nocontrols&nofonts${process.env.BENCH_QUERY ?? ''}&style=${encodeURIComponent(STYLE)}`);
-        await page.evaluate(() => window.map.once('idle', () => { window.loadedAt = performance.now(); }));
     }
     await page.waitForFunction(() => window.loadedAt, null, {timeout: 120000});
     const load = await page.evaluate(() => window.loadedAt), loadStats = await read(page);

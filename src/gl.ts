@@ -1,4 +1,4 @@
-import {EXTENT, latFromMerc, type TileID, type Transform} from './geo.ts';
+import {EXTENT, latFromMerc, mercX, mercY, type TileID, type Transform} from './geo.ts';
 import type {CompiledLayer} from './style.ts';
 import type {GLBatch, LabelSrc, TileGL} from './tile.ts';
 import type {Placed, RenderItem} from './placement.ts';
@@ -159,6 +159,29 @@ void main() {
   o = accent * (1.0 - shadeColor.a) + shadeColor;
 }`],
 
+    // Instanced markers. Mercator positions arrive as high + low float pairs and are subtracted from the centre
+    // (split the same way) before anything else, which keeps sub-pixel precision at any zoom.
+    marker: [`uniform vec2 u_view; uniform vec4 u_center; uniform float u_world; uniform vec2 u_rot; uniform vec3 u_pitch;
+uniform vec2 u_size; uniform vec2 u_offset; uniform vec2 u_tex;
+layout(location=0) in vec2 a_corner; layout(location=1) in vec4 a_merc; layout(location=2) in vec4 a_rect; layout(location=3) in vec2 a_scale;
+uniform float u_opacity; out vec2 v_uv; out float v_alpha; // a_corner is 0 or 1 on each axis out vec2 v_uv; out float v_alpha;
+void main() {
+  float dx = (a_merc.x - u_center.x) + (a_merc.y - u_center.y);
+  dx -= floor(dx + 0.5); // nearest copy of the world
+  float dy = (a_merc.z - u_center.z) + (a_merc.w - u_center.w);
+  vec2 w = vec2(dx, dy) * u_world;
+  float rx = u_rot.x * w.x - u_rot.y * w.y, ry = u_rot.y * w.x + u_rot.x * w.y;
+  float k = u_pitch.z / (u_pitch.z - ry * u_pitch.y);
+  vec2 corner = a_corner;
+  // Markers stay upright and keep their size; a scale other than 1 grows them about their anchor point.
+  vec2 px = vec2(rx * k, ry * u_pitch.x * k) + u_view * 0.5 + (u_offset + corner * u_size) * a_scale.x;
+  v_alpha = a_scale.y * u_opacity;
+  v_uv = (a_rect.xy + corner * a_rect.zw) / u_tex;
+  vec2 c = px / u_view * 2.0 - 1.0;
+  gl_Position = a_scale.x > 0.0 && v_alpha > 0.0 ? vec4(c.x, -c.y, 0.0, 1.0) : vec4(2.0, 2.0, 2.0, 1.0);
+}`, `
+uniform sampler2D u_img; in vec2 v_uv; in float v_alpha; out vec4 o; void main() { o = texture(u_img, v_uv) * v_alpha; }`],
+
     sprite: [`uniform vec2 u_view; uniform vec2 u_tex; layout(location=0) in vec4 a_v; layout(location=1) in float a_alpha; out vec2 v_uv; out float v_alpha;
 void main() { v_uv = a_v.zw / u_tex; v_alpha = a_alpha; vec2 c = a_v.xy / u_view * 2.0 - 1.0; gl_Position = vec4(c.x, -c.y, 0.0, 1.0); }`, `
 uniform sampler2D u_img; in vec2 v_uv; in float v_alpha; out vec4 o; void main() { o = texture(u_img, v_uv) * v_alpha; }`],
@@ -183,12 +206,16 @@ export interface Scene {
     items: Map<string, RenderItem<GLTile>[]>;
     labels: Placed[];
     atlas: GlyphAtlas;
-    /** Marker quads: x, y, u, v, alpha per vertex, six vertices per marker, already in draw order. */
-    sprites: Float32Array;
-    spriteCount: number;
+    markers: MarkerBuffers[];
 }
 
 export const SPRITE_ATLAS = 2048;
+
+/** Floats per marker vertex: mercator x and y each split into high and low parts, atlas rectangle, corner, scale, opacity. */
+export const MARKER_STRIDE = 12;
+/** Each marker is four such vertices. */
+export const MARKER_FLOATS = MARKER_STRIDE * 4;
+export interface MarkerBuffers { vao: WebGLVertexArrayObject; buffer: WebGLBuffer; index: WebGLBuffer; count: number; width: number; height: number; offset: [number, number]; /** Whole-layer opacity, used to fade a layer in and out at the ends of its zoom range. */ opacity: number }
 
 export class GLRenderer {
     gl: WebGL2RenderingContext;
@@ -343,13 +370,12 @@ export class GLRenderer {
                 index(b.idx);
                 count = b.idx.length;
             } else {
-                gl.bindBuffer(gl.ARRAY_BUFFER, this.corners);
-                gl.enableVertexAttribArray(0);
-                gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
-                attr(2, b.pos, 2, gl.SHORT, false, 0, 0, true);
-                if (b.color) attr(1, b.color, 4, gl.UNSIGNED_BYTE, true, 0, 0, true);
-                if (b.radius) { attr(3, b.radius, 1, gl.FLOAT, false, 0, 0, true); scalar = true; }
-                count = b.pos.length / 2;
+                attr(2, b.pos, 2, gl.SHORT, false, 8, 0);
+                attr(0, b.pos, 2, gl.SHORT, false, 8, 4, false, true);
+                if (b.color) attr(1, b.color, 4, gl.UNSIGNED_BYTE, true);
+                if (b.radius) { attr(3, b.radius, 1, gl.FLOAT); scalar = true; }
+                index(b.idx);
+                count = b.idx.length;
             }
             batches[id] = {type: b.type, vao, count, color: !!b.color, scalar, bufs, edgeVao, edgeCount: b.type === 'fill' ? b.edges?.length : undefined};
         }
@@ -405,6 +431,38 @@ export class GLRenderer {
             if (b.edgeVao) this.gl.deleteVertexArray(b.edgeVao);
             for (const buf of b.bufs) this.gl.deleteBuffer(buf);
         }
+    }
+
+    /** Creates or replaces the GPU buffers for a marker layer. `data` holds MARKER_FLOATS floats per marker. */
+    setMarkers(old: MarkerBuffers | undefined, data: Float32Array, count: number, width: number, height: number, offset: [number, number]): MarkerBuffers {
+        const gl = this.gl;
+        if (old) this.removeMarkers(old);
+        const vao = gl.createVertexArray()!, buffer = gl.createBuffer()!;
+        gl.bindVertexArray(vao);
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+        gl.bufferData(gl.ARRAY_BUFFER, data, gl.DYNAMIC_DRAW);
+        for (const [loc, size, at] of [[1, 4, 0], [2, 4, 4], [0, 2, 8], [3, 2, 10]]) {
+            gl.enableVertexAttribArray(loc);
+            gl.vertexAttribPointer(loc, size, gl.FLOAT, false, MARKER_STRIDE * 4, at * 4);
+        }
+        // Plain indexed quads rather than instancing, which software renderers execute very slowly.
+        const idx = new Uint32Array(count * 6), index = gl.createBuffer()!;
+        for (let i = 0; i < count; i++) idx.set([i * 4, i * 4 + 1, i * 4 + 2, i * 4 + 1, i * 4 + 3, i * 4 + 2], i * 6);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, index);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, idx, gl.STATIC_DRAW);
+        gl.bindVertexArray(null);
+        return {vao, buffer, index, count, width, height, offset, opacity: 1};
+    }
+    removeMarkers(m: MarkerBuffers) { this.gl.deleteVertexArray(m.vao); this.gl.deleteBuffer(m.buffer); this.gl.deleteBuffer(m.index); }
+    /** Rewrites every marker's instance data in place, e.g. after overlap hiding re-decides what shows. */
+    updateMarkers(m: MarkerBuffers, data: Float32Array) {
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, m.buffer);
+        this.gl.bufferSubData(this.gl.ARRAY_BUFFER, 0, data);
+    }
+    /** Rewrites one marker's instance data, e.g. while its scale animates. */
+    updateMarker(m: MarkerBuffers, index: number, values: Float32Array) {
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, m.buffer);
+        this.gl.bufferSubData(this.gl.ARRAY_BUFFER, index * MARKER_FLOATS * 4, values);
     }
 
     /** Copies premultiplied RGBA pixels for one marker image into the sprite atlas. */
@@ -514,8 +572,7 @@ export class GLRenderer {
                     // Dashes are sized at whole zoom levels so they stretch, rather than crawl, while zooming.
                     gl.uniform1f(u.u_dashScale, it.scale / 2 ** (zoom - Math.floor(zoom)));
                 }
-                if (b.type === 'circle') gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, b.count);
-                else if (extrude) {
+                if (extrude) {
                     // Depth first, colour second: translucent buildings then blend once, with the nearest surface only.
                     gl.colorMask(false, false, false, false);
                     gl.drawElements(gl.TRIANGLES, b.count, gl.UNSIGNED_INT, 0);
@@ -600,16 +657,25 @@ export class GLRenderer {
             gl.drawArrays(gl.TRIANGLES, 0, n);
         }
 
-        if (s.spriteCount) {
-            const u = use('sprite');
+        if (s.markers.length) {
+            // Markers are positioned by the GPU from their map coordinates: nothing is recomputed per marker per frame.
+            const u = use('marker'), split = (v: number) => { const hi = Math.fround(v); return [hi, v - hi]; };
+            const a = -tr.bearing * Math.PI / 180, p = tr.pitch * Math.PI / 180;
             gl.activeTexture(gl.TEXTURE0);
             gl.bindTexture(gl.TEXTURE_2D, this.spriteTex);
-            gl.uniform2f(u.u_tex, SPRITE_ATLAS, SPRITE_ATLAS);
             gl.uniform1i(u.u_img, 0);
-            gl.bindVertexArray(this.spriteVao);
-            gl.bindBuffer(gl.ARRAY_BUFFER, this.spriteBuf);
-            gl.bufferData(gl.ARRAY_BUFFER, s.sprites.subarray(0, s.spriteCount * 30), gl.DYNAMIC_DRAW);
-            gl.drawArrays(gl.TRIANGLES, 0, s.spriteCount * 6);
+            gl.uniform2f(u.u_tex, SPRITE_ATLAS, SPRITE_ATLAS);
+            gl.uniform4f(u.u_center, ...split(mercX(tr.lng)) as [number, number], ...split(mercY(tr.lat)) as [number, number]);
+            gl.uniform1f(u.u_world, tr.worldSize);
+            gl.uniform2f(u.u_rot, Math.cos(a), Math.sin(a));
+            gl.uniform3f(u.u_pitch, Math.cos(p), Math.sin(p), tr.cameraDistance);
+            for (const m of s.markers) {
+                gl.uniform2f(u.u_size, m.width, m.height);
+                gl.uniform2f(u.u_offset, m.offset[0], m.offset[1]);
+                gl.uniform1f(u.u_opacity, m.opacity);
+                gl.bindVertexArray(m.vao);
+                gl.drawElements(gl.TRIANGLES, m.count * 6, gl.UNSIGNED_INT, 0);
+            }
         }
         gl.bindVertexArray(null);
     }

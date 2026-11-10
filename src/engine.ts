@@ -1,6 +1,6 @@
 import {EXTENT, Transform, bezier, clamp, latFromMerc, lngFromMerc, mercX, mercY, type LngLatLike, type TileID} from './geo.ts';
 import {compileLayer, loadSprite, tileURL, type CompiledLayer, type FontSource, type ResolvedStyle, type Sprite, type SpriteIcon} from './style.ts';
-import {GLRenderer, SPRITE_ATLAS, type GLTile} from './gl.ts';
+import {GLRenderer, MARKER_FLOATS, MARKER_STRIDE, SPRITE_ATLAS, type GLTile, type MarkerBuffers} from './gl.ts';
 import {CollisionGrid, placeLabels, renderItems, type Placed, type RenderItem} from './placement.ts';
 import {GlyphAtlas} from './text.ts';
 import {sampleElevation, type QueriedFeature} from './query.ts';
@@ -27,9 +27,13 @@ export type Command =
     | {type: 'stop'}
     | {type: 'limits'; minZoom: number; maxZoom: number; maxPitch: number}
     | {type: 'style'; style: ResolvedStyle; reload: boolean}
-    | {type: 'markers'; id: string; width: number; height: number; offset: [number, number]; collide: boolean;
+    | {type: 'markers'; id: string; width: number; height: number; offset: [number, number]; collide: boolean; minZoom: number; maxZoom: number; hideOverlaps: boolean;
         merc: Float64Array; variant: Uint32Array; images: MarkerImage[]}
     | {type: 'removeMarkers'; id: string}
+    /** Animates one marker to a new size, about its anchor point. */
+    | {type: 'markerScale'; id: string; index: number; scale: number; duration: number}
+    /** A screen-space box pinned to a map position that labels must keep clear of (e.g. an open callout). Omit `box` to remove it. */
+    | {type: 'obstacle'; id: string; merc?: [number, number]; box?: [number, number, number, number]}
     | {type: 'fonts'; fonts: FontSource[]}
     | {type: 'image'; name: string; w: number; h: number; width: number; height: number; data: Uint8Array}
     | {type: 'removeImage'; name: string}
@@ -49,7 +53,11 @@ export type EngineEvent =
     | {type: 'error'; message: string};
 
 interface TileState { state: 'loading' | 'ok' | 'error'; gl?: GLTile; used: number; cancel(): void; /** Shown, but built from data that has since changed. */ stale?: boolean }
-interface MarkerLayer { width: number; height: number; offset: [number, number]; collide: boolean; merc: Float64Array; variant: Uint32Array }
+interface MarkerLayer {
+    width: number; height: number; offset: [number, number]; collide: boolean; merc: Float64Array; variant: Uint32Array;
+    minZoom: number; maxZoom: number; hideOverlaps: boolean;
+    gpu?: MarkerBuffers; data?: Float32Array; scale?: Float32Array;
+}
 interface LabelState { placed: Placed; opacity: number; target: number }
 
 const raf: (cb: (t: number) => void) => unknown = globalThis.requestAnimationFrame
@@ -101,7 +109,8 @@ export class Engine {
     private markers = new Map<string, MarkerLayer>();
     private spriteRects = new Map<number, [number, number, number, number]>();
     private spritePen = [1, 1, 0];
-    private sprites = new Float32Array(30 * 256);
+    private markerAnims = new Map<string, {layer: string; index: number; from: number; to: number; start: number; duration: number}>();
+    private obstacles = new Map<string, {merc: [number, number]; box: [number, number, number, number]}>();
     private sprite: Sprite | null = null;
     private spriteUrl = '';
     private styleFonts = '';
@@ -241,11 +250,22 @@ export class Engine {
             case 'style': this.setStyle(c.style, c.reload); break;
             case 'markers': {
                 for (const img of c.images) { const rect = this.addSprite(img.w, img.h, img.data); if (rect) this.spriteRects.set(img.variant, rect); }
-                this.markers.set(c.id, c);
+                const previous = this.markers.get(c.id), layer: MarkerLayer = {...c, gpu: previous?.gpu};
+                this.markers.set(c.id, layer);
+                this.uploadMarkers(c.id, layer);
                 this.placeDirty = true;
                 break;
             }
-            case 'removeMarkers': this.markers.delete(c.id); this.placeDirty = true; break;
+            case 'removeMarkers': { const m = this.markers.get(c.id); if (m?.gpu) this.renderer.removeMarkers(m.gpu); this.markers.delete(c.id); this.placeDirty = true; break; }
+            case 'markerScale': {
+                const m = this.markers.get(c.id), from = m?.scale?.[c.index] ?? 1;
+                if (m) this.markerAnims.set(c.id + '|' + c.index, {layer: c.id, index: c.index, from, to: c.scale, start: performance.now(), duration: Math.max(1, c.duration)});
+                break;
+            }
+            case 'obstacle':
+                if (c.box && c.merc) this.obstacles.set(c.id, {merc: c.merc, box: c.box}); else this.obstacles.delete(c.id);
+                this.placeDirty = true;
+                break;
             case 'fonts': this.loadFonts(c.fonts); break;
             case 'image': {
                 const rect = this.addSprite(c.w, c.h, c.data);
@@ -467,7 +487,7 @@ export class Engine {
         if (!tr.width || !tr.height) return;
         const dt = Math.min(100, now - this.lastTime || 16);
         this.lastTime = now;
-        const animating = this.animate(now);
+        const cameraAnimating = this.animate(now), markersAnimating = this.animateMarkers(now), animating = cameraAnimating;
 
         const items = new Map<string, RenderItem<GLTile>[]>(), all: RenderItem<GLTile>[] = [];
         let complete = true;
@@ -522,7 +542,7 @@ export class Engine {
         const place = this.placeDirty && now - this.lastPlace >= (zooming ? ZOOMING_PLACE_INTERVAL : PLACE_INTERVAL);
         if (place) this.fade = zooming ? ZOOMING_FADE : FADE;
         const grid = place ? new CollisionGrid() : null;
-        const spriteCount = this.buildSprites(grid);
+        if (grid) this.reserve(grid);
         if (place) {
             this.placeDirty = false;
             this.lastPlace = now;
@@ -533,7 +553,7 @@ export class Engine {
                 // The glyph atlas filled up and was emptied part-way through: earlier labels now point at stale
                 // glyphs. Place again; the fresh atlas only has to hold this view's text.
                 const again = new CollisionGrid();
-                this.buildSprites(again);
+                this.reserve(again);
                 placed = placeLabels(tr, all, this.layers, this.atlas, again, this.icon);
             }
             for (const p of placed) {
@@ -554,14 +574,21 @@ export class Engine {
             const p = st.placed, [ax, ay] = tr.projectTile(p.tile, p.src.x, p.src.y), dx = ax - p.ax, dy = ay - p.ay;
             labels.push({...p, x: p.x + dx, y: p.y + dy, icon: p.icon && {...p.icon, x: p.icon.x + dx, y: p.icon.y + dy}, opacity: st.opacity});
         }
-        this.renderer.render({tr, layers: this.layers, items, labels, atlas: this.atlas, sprites: this.sprites, spriteCount});
+        const markers: MarkerBuffers[] = [];
+        for (const m of this.markers.values()) {
+            if (!m.gpu?.count) continue;
+            // Fade over the last fifth of a zoom level at either end of the layer's range, so paired layers cross-fade.
+            m.gpu.opacity = Math.max(0, Math.min(1, (tr.zoom - m.minZoom) / 0.2 + 1, (m.maxZoom - tr.zoom) / 0.2));
+            if (m.gpu.opacity > 0) markers.push(m.gpu);
+        }
+        this.renderer.render({tr, layers: this.layers, items, labels, atlas: this.atlas, markers});
 
         if (cameraChanged || animating !== this.moving) {
             this.lastCamera = camera;
             this.moving = animating;
             this.emit({type: 'camera', lng: tr.lng, lat: tr.lat, zoom: tr.zoom, bearing: tr.bearing, pitch: tr.pitch, moving: animating});
         }
-        const busy = animating || fading || this.placeDirty;
+        const busy = animating || markersAnimating || fading || this.placeDirty;
         const idle = complete && !busy;
         if (idle && !this.wasIdle) this.emit({type: 'idle'});
         this.wasIdle = idle;
@@ -577,37 +604,77 @@ export class Engine {
         if (!busy) this.stats.since = 0;
     }
 
-    /** Projects visible markers into screen-space quads and, when placing labels, reserves the boxes of colliding layers. */
-    private buildSprites(grid: CollisionGrid | null): number {
-        const tr = this.tr, ws = tr.worldSize, a = -tr.bearing * Math.PI / 180, cos = Math.cos(a), sin = Math.sin(a);
-        const cx = mercX(tr.lng), cy = mercY(tr.lat), hw = tr.width / 2, hh = tr.height / 2;
-        const pitch = tr.pitch * Math.PI / 180, cp = Math.cos(pitch), sp = Math.sin(pitch), cam = tr.cameraDistance;
-        let n = 0;
-        for (const m of this.markers.values()) {
-            const [ox, oy] = m.offset, w = m.width, h = m.height;
-            for (let i = 0; i < m.variant.length; i++) {
-                const rect = this.spriteRects.get(m.variant[i]);
-                if (!rect) continue;
-                let dx = m.merc[i * 2] - cx;
-                dx -= Math.round(dx); // nearest world copy
-                const wx = dx * ws, wy = (m.merc[i * 2 + 1] - cy) * ws;
-                const ry = sin * wx + cos * wy, k = cam / (cam - ry * sp); // perspective: markers stay upright and full size
-                const x = (cos * wx - sin * wy) * k + hw + ox, y = ry * cp * k + hh + oy;
-                if (x > tr.width || y > tr.height || x + w < 0 || y + h < 0) continue;
-                if (m.collide && grid) grid.insert(x, y, x + w, y + h);
-                if ((n + 1) * 30 > this.sprites.length) {
-                    const grown = new Float32Array(this.sprites.length * 2);
-                    grown.set(this.sprites);
-                    this.sprites = grown;
-                }
-                const s = this.sprites, [u0, v0, uw, vh] = rect, x1 = x + w, y1 = y + h, u1 = u0 + uw, v1 = v0 + vh;
-                let o = n * 30;
-                for (const [px, py, u, v] of [[x, y, u0, v0], [x1, y, u1, v0], [x, y1, u0, v1], [x1, y, u1, v0], [x1, y1, u1, v1], [x, y1, u0, v1]]) {
-                    s[o++] = px; s[o++] = py; s[o++] = u; s[o++] = v; s[o++] = 1;
-                }
-                n++;
+    /** Uploads a marker layer to the GPU. Markers whose image is not ready yet get a scale of zero (hidden). */
+    private uploadMarkers(id: string, m: MarkerLayer) {
+        const n = m.variant.length, data = m.data = new Float32Array(n * MARKER_FLOATS);
+        for (let i = 0; i < n; i++) {
+            const rect = this.spriteRects.get(m.variant[i]), x = m.merc[i * 2], y = m.merc[i * 2 + 1], xh = Math.fround(x), yh = Math.fround(y);
+            for (let k = 0; k < 4; k++) {
+                const o = i * MARKER_FLOATS + k * MARKER_STRIDE;
+                data[o] = xh; data[o + 1] = x - xh; data[o + 2] = yh; data[o + 3] = y - yh;
+                if (rect) data.set(rect, o + 4);
+                data[o + 8] = k & 1; data[o + 9] = k >> 1;
+                data[o + 10] = rect ? m.scale?.[i] ?? 1 : 0;
+                data[o + 11] = 1;
             }
         }
-        return n;
+        m.gpu = this.renderer.setMarkers(m.gpu, data, n, m.width, m.height, m.offset);
+    }
+
+    /** Sets one per-marker value (10 = scale, 11 = opacity) on all four of a marker's vertices. */
+    private setMarkerValue(m: MarkerLayer, i: number, field: 10 | 11, value: number) {
+        for (let k = 0; k < 4; k++) m.data![i * MARKER_FLOATS + k * MARKER_STRIDE + field] = value;
+    }
+
+    /** Advances marker size animations; returns true while any is running. */
+    private animateMarkers(now: number): boolean {
+        for (const [key, a] of this.markerAnims) {
+            const m = this.markers.get(a.layer);
+            if (!m?.gpu || !m.data || a.index >= m.variant.length) { this.markerAnims.delete(key); continue; }
+            const t = Math.min(1, (now - a.start) / a.duration), scale = a.from + (a.to - a.from) * inertiaEasing(t), o = a.index * MARKER_FLOATS;
+            (m.scale ??= new Float32Array(m.variant.length).fill(1))[a.index] = scale;
+            if (this.spriteRects.has(m.variant[a.index])) this.setMarkerValue(m, a.index, 10, scale);
+            this.renderer.updateMarker(m.gpu, a.index, m.data.subarray(o, o + MARKER_FLOATS));
+            if (m.collide) this.placeDirty = true;
+            if (t >= 1) this.markerAnims.delete(key);
+        }
+        return this.markerAnims.size > 0;
+    }
+
+    /** Reserves space in the label collision grid for markers that labels should avoid, and for registered obstacles. */
+    private reserve(grid: CollisionGrid) {
+        const tr = this.tr;
+        const zoom = tr.zoom;
+        for (const m of this.markers.values()) {
+            if (zoom < m.minZoom || zoom >= m.maxZoom) continue;
+            if (m.hideOverlaps && m.gpu && m.data) {
+                // Markers compete for space among themselves, first come first served, exactly as labels do.
+                const own = new CollisionGrid();
+                let changed = false;
+                for (let i = 0; i < m.variant.length; i++) {
+                    const s = m.scale?.[i] ?? 1, mx = m.merc[i * 2] + Math.round(mercX(tr.lng) - m.merc[i * 2]), [x, y] = tr.mercToScreen(mx, m.merc[i * 2 + 1]);
+                    const x0 = x + m.offset[0] * s, y0 = y + m.offset[1] * s, x1 = x0 + m.width * s, y1 = y0 + m.height * s;
+                    let show = 1;
+                    const was = m.data[i * MARKER_FLOATS + 11];
+                    if (x0 > tr.width || y0 > tr.height || x1 < 0 || y1 < 0) show = was; // off screen: leave as it was
+                    else if (own.hits(x0, y0, x1, y1)) show = 0;
+                    else { own.insert(x0, y0, x1, y1); if (m.collide) grid.insert(x0, y0, x1, y1); }
+                    if (was !== show) { this.setMarkerValue(m, i, 11, show); changed = true; }
+                }
+                if (changed) this.renderer.updateMarkers(m.gpu, m.data);
+                continue;
+            }
+            if (!m.collide) continue;
+            for (let i = 0; i < m.variant.length; i++) {
+                const s = m.scale?.[i] ?? 1, mx = m.merc[i * 2] + Math.round(mercX(tr.lng) - m.merc[i * 2]), [x, y] = tr.mercToScreen(mx, m.merc[i * 2 + 1]);
+                const x0 = x + m.offset[0] * s, y0 = y + m.offset[1] * s;
+                if (x0 > tr.width || y0 > tr.height || x0 + m.width * s < 0 || y0 + m.height * s < 0) continue;
+                grid.insert(x0, y0, x0 + m.width * s, y0 + m.height * s);
+            }
+        }
+        for (const o of this.obstacles.values()) {
+            const [x, y] = tr.mercToScreen(o.merc[0] + Math.round(mercX(tr.lng) - o.merc[0]), o.merc[1]);
+            grid.insert(x + o.box[0], y + o.box[1], x + o.box[2], y + o.box[3]);
+        }
     }
 }

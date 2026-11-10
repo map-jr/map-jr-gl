@@ -9,6 +9,8 @@ import {AttributionControl, CONTROL_CSS, type Control, type ControlPosition} fro
 import {Popup, type PopupOptions} from './overlays.ts';
 
 declare const __WORKER_SRC__: string;
+/** True in the slim build, which always renders in a worker loaded from `workerUrl` and so ships no engine of its own. */
+declare const __SLIM__: boolean;
 
 export interface MapOptions extends CameraOptions {
     container: HTMLElement | string;
@@ -56,16 +58,43 @@ export class MarkerLayer {
     }
     remove() { this.map.removeMarkerLayer(this.options.id); }
 
+    private selected: number | null = null;
+    private callout?: Popup;
+
     /**
-     * Opens a popup that grows out of one of this layer's markers. `content` is text, or a DOM node for rich content.
-     * `color` tints the start of the transition, usually the marker's own colour.
+     * Marks one marker as selected: it grows smoothly about its anchor point (pass null to clear). Labels move out
+     * of the way of the larger marker when the layer has `collide` set.
      */
-    openPopup(index: number, content: string | Node, options: PopupOptions & {color?: string} = {}) {
-        const o = this.options, [, oy] = anchorOffset(o.anchor, o.width, o.height);
-        // Anchor the popup at the marker's centre so it unfolds from where the marker is drawn.
-        const popup = new Popup({anchor: 'bottom', offset: [0, oy + o.height + 8], openFrom: {width: o.width, height: o.height, color: options.color}, ...options});
+    select(index: number | null, options: {scale?: number; duration?: number} = {}) {
+        const duration = options.duration ?? 180, id = this.options.id;
+        if (this.selected !== null && this.selected !== index) this.map._command({type: 'markerScale', id, index: this.selected, scale: 1, duration});
+        this.selected = index;
+        if (index !== null) this.map._command({type: 'markerScale', id, index, scale: options.scale ?? 1.35, duration});
+        return this;
+    }
+    getSelected() { return this.selected; }
+
+    /**
+     * Selects a marker and opens a callout pointing at it. Map labels reflow around the callout while it is open.
+     * `content` is text, or a DOM node for rich content. Closing the callout clears the selection.
+     */
+    openPopup(index: number, content: string | Node, options: PopupOptions & {scale?: number} = {}) {
+        const o = this.options, scale = options.scale ?? 1.35, [, oy] = anchorOffset(o.anchor, o.width, o.height), key = 'callout:' + o.id;
+        this.callout?.remove();
+        this.select(index, {scale});
+        // Sit just above the top of the enlarged marker.
+        const popup = this.callout = new Popup({anchor: 'bottom', offset: [0, oy * scale - 2], ...options});
         if (typeof content === 'string') popup.setText(content); else popup.setDOMContent(content);
-        return popup.setLngLat(this.data[index].lngLat).addTo(this.map);
+        popup.setLngLat(this.data[index].lngLat).addTo(this.map);
+        const box = popup.getBox(), [lng, lat] = this.data[index].lngLat;
+        if (box) this.map._command({type: 'obstacle', id: key, merc: [mercX(lng), mercY(lat)], box});
+        popup.on('close', () => {
+            if (this.callout !== popup) return;
+            this.callout = undefined;
+            this.map._command({type: 'obstacle', id: key});
+            if (this.selected === index) this.select(null);
+        });
+        return popup;
     }
 }
 
@@ -146,7 +175,10 @@ export class Map {
 
         let workerUrl = o.workerUrl, blobUrl: string | undefined;
         const spawn = () => {
-            if (!workerUrl) workerUrl = blobUrl = URL.createObjectURL(new Blob([__WORKER_SRC__], {type: 'text/javascript'}));
+            if (!workerUrl) {
+                if (__SLIM__) throw new Error('The slim build needs the `workerUrl` option (the URL of tessera-worker.js)');
+                workerUrl = blobUrl = URL.createObjectURL(new Blob([__WORKER_SRC__], {type: 'text/javascript'}));
+            }
             const w = new Worker(workerUrl);
             this.workers.push(w);
             return w;
@@ -176,8 +208,7 @@ export class Map {
                 this.canvas = fresh;
                 this.renderer = 'main';
                 try {
-                    const engine = new Engine(fresh, {...engineOptions, center: [this.tr.lng, this.tr.lat], zoom: this.tr.zoom, bearing: this.tr.bearing}, [new LocalBackend()], ev => this.onEngineEvent(ev));
-                    this.send = c => engine.command(c);
+                    this.startMainEngine(fresh, {...engineOptions, center: [this.tr.lng, this.tr.lat], zoom: this.tr.zoom, bearing: this.tr.bearing}, []);
                     for (const layer of this.markerLayers.values()) { this.variantIds.clear(); this._syncMarkers(layer); }
                     if (o.interactive !== false) this.bindInput();
                 } catch (err) { this.fire('error', {error: err}); }
@@ -186,9 +217,7 @@ export class Map {
             this.send = (c, transfer) => w.postMessage(c, transfer ?? []);
             this.renderer = 'worker';
         } else {
-            const backends: TileBackend[] = ports.length ? ports.map(p => new PortBackend(p)) : [new LocalBackend()];
-            const engine = new Engine(this.canvas, engineOptions, backends, e => this.onEngineEvent(e));
-            this.send = c => engine.command(c);
+            this.startMainEngine(this.canvas, engineOptions, ports);
         }
         if (blobUrl) URL.revokeObjectURL(blobUrl);
         this.ready = true;
@@ -201,6 +230,19 @@ export class Map {
         if (o.interactive !== false) this.bindInput();
         if (o.attributionControl !== false) this.addControl(new AttributionControl(o.attributionControl || {}));
     }
+
+    /** Runs the engine on this thread. Absent from the slim build, where the engine exists only in the worker file. */
+    private startMainEngine(canvas: HTMLCanvasElement, options: ConstructorParameters<typeof Engine>[1], ports: MessagePort[]) {
+        if (__SLIM__) throw new Error('This build renders only in a worker, which this browser or page does not allow');
+        else {
+            const backends: TileBackend[] = ports.length ? ports.map(p => new PortBackend(p)) : [new LocalBackend()];
+            const engine = new Engine(canvas, options, backends, e => this.onEngineEvent(e));
+            this.send = c => engine.command(c);
+        }
+    }
+
+    /** @internal Sends a command to the engine. */
+    _command(c: Command) { this.post(c); }
 
     private post(c: Command, transfer?: Transferable[]) {
         if (c.type !== 'query' && c.type !== 'elevation') this.tilesLoaded = false;
@@ -603,7 +645,7 @@ export class Map {
         const globalVariant = variant.map(v => local[v]);
         this.post({
             type: 'markers', id: o.id, width: o.width, height: o.height, offset: anchorOffset(o.anchor, o.width, o.height),
-            collide: !!o.collide, merc, variant: globalVariant, images,
+            collide: !!o.collide, minZoom: o.minZoom ?? -Infinity, maxZoom: o.maxZoom ?? Infinity, hideOverlaps: o.overlap === 'hide', merc, variant: globalVariant, images,
         }, [merc.buffer, globalVariant.buffer, ...images.map(i => i.data.buffer)]);
     }
 
@@ -631,8 +673,16 @@ export class Map {
         const layers = [...this.markerLayers.values()].reverse();
         for (const layer of layers) {
             const o = layer.options, [ox, oy] = anchorOffset(o.anchor, o.width, o.height);
+            if (this.tr.zoom < (o.minZoom ?? -Infinity) || this.tr.zoom >= (o.maxZoom ?? Infinity)) continue;
+            // Only markers whose position falls in the patch of map around the pointer can be under it; comparing raw
+            // coordinates first keeps this cheap with very many markers.
+            const reach = [[-o.width, -o.height], [o.width, -o.height], [-o.width, o.height], [o.width, o.height]].map(([dx, dy]) => this.tr.unproject(point.x + dx, point.y + dy));
+            const w = Math.min(...reach.map(r => r[0])), e = Math.max(...reach.map(r => r[0])), s = Math.min(...reach.map(r => r[1])), n = Math.max(...reach.map(r => r[1]));
+            const near = e - w < 180; // not when the view spans the antimeridian or most of the world
             for (let i = layer.data.length - 1; i >= 0; i--) {
-                const [x, y] = this.tr.project(...layer.data[i].lngLat);
+                const ll = layer.data[i].lngLat;
+                if (near && (ll[0] < w || ll[0] > e || ll[1] < s || ll[1] > n)) continue;
+                const [x, y] = this.tr.project(...ll);
                 if (point.x >= x + ox && point.x <= x + ox + o.width && point.y >= y + oy && point.y <= y + oy + o.height) return {layer, index: i, marker: layer.data[i]};
             }
         }
@@ -712,6 +762,7 @@ export class Map {
                     const da = f.a.y - g.start[0].y, db = f.b.y - g.start[1].y, sideways = Math.abs(f.a.x - g.start[0].x) + Math.abs(f.b.x - g.start[1].x);
                     const together = Math.sign(da) === Math.sign(db) && Math.abs(da) > 4 && Math.abs(db) > 4 && sideways < Math.abs(da) + Math.abs(db);
                     g.mode = together && Math.abs(f.a.y - f.b.y) < 120 && Math.abs(f.dist - g.dist) < 12 ? 'pitch' : 'pinch';
+                    if (!this.dragging) this.fire('dragstart');
                     this.dragging = true;
                 }
                 if (g.mode === 'pitch') this.post({type: 'rotate', delta: 0, pitch: -(f.mid.y - g.mid.y) * 0.5});

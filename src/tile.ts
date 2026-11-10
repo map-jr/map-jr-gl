@@ -55,7 +55,7 @@ export type GLBatch =
     | {type: 'fill'; pos: Int16Array; idx: Uint32Array; color?: Uint8Array; /** Polygon edges as vertex index pairs, drawn as one-pixel antialiased lines. */ edges?: Uint32Array}
     | {type: 'extrusion'; v: Float32Array; idx: Uint32Array; color?: Uint8Array}
     | {type: 'line'; v: Float32Array; idx: Uint32Array; color?: Uint8Array; width?: Float32Array}
-    | {type: 'circle'; pos: Int16Array; color?: Uint8Array; radius?: Float32Array};
+    | {type: 'circle'; /** x, y, cornerX, cornerY per vertex */ pos: Int16Array; idx: Uint32Array; color?: Uint8Array; radius?: Float32Array};
 export interface TileGL { layers: Record<string, GLBatch>; labels: Record<string, LabelSrc[]> }
 /** A raster tile as the SVG backend sees it: just somewhere to load the image from. */
 export interface TileImage { href: string }
@@ -222,16 +222,22 @@ function ringArea(c: Int16Array, start: number, end: number) {
 export function tessellate(b: Batch): GLBatch | null {
     const {coords, ringEnds, featEnds} = b.geom;
     if (b.type === 'circle') {
-        const out: GLBatch = {type: 'circle', pos: coords};
-        // Each point is its own ring, so per-feature values are repeated per ring.
-        const expand = <T extends Uint8Array | Float32Array>(src: T, size: number): T => {
-            const dst = new (src.constructor as any)(ringEnds.length * size) as T;
-            for (let f = 0, r = 0; f < featEnds.length; f++) for (; r < featEnds[f]; r++) for (let k = 0; k < size; k++) dst[r * size + k] = src[f * size + k];
-            return dst;
-        };
-        if (b.color) out.color = expand(b.color, 4);
-        if (b.radius) out.radius = expand(b.radius, 1);
-        return out;
+        // Four vertices per point (position plus which corner), drawn as ordinary indexed triangles. Instancing would
+        // be more compact but is many times slower on software renderers.
+        const n = ringEnds.length, pos = new Int16Array(n * 16), idx = new Uint32Array(n * 6);
+        const color = b.color ? new Uint8Array(n * 16) : undefined, radius = b.radius ? new Float32Array(n * 4) : undefined;
+        for (let f = 0, r = 0; f < featEnds.length; f++) {
+            for (; r < featEnds[f]; r++) {
+                const i = ringEnds[r] - 1;
+                for (let k = 0; k < 4; k++) {
+                    pos.set([coords[i * 2], coords[i * 2 + 1], k & 1 ? 1 : -1, k & 2 ? 1 : -1], (r * 4 + k) * 4);
+                    if (color) color.set(b.color!.subarray(f * 4, f * 4 + 4), (r * 4 + k) * 4);
+                    if (radius) radius[r * 4 + k] = b.radius![f];
+                }
+                idx.set([r * 4, r * 4 + 1, r * 4 + 2, r * 4 + 1, r * 4 + 3, r * 4 + 2], r * 6);
+            }
+        }
+        return {type: 'circle', pos, idx, color, radius};
     }
     const idx: number[] = [];
     if (b.type === 'fill') {

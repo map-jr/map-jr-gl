@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Tessera feature gallery</title>
+<style>
+  :root { color-scheme: light dark; --bg: #f6f5f2; --card: #fff; --ink: #1d1d1f; --muted: #6b6b70; --line: #e3e1dc; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #17181a; --card: #222326; --ink: #f1f1f3; --muted: #a2a2a8; --line: #34353a; } }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 system-ui, sans-serif; }
+  header { padding: 28px max(20px, env(safe-area-inset-left)) 8px; max-width: 1280px; margin: 0 auto; }
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  header p { margin: 0; color: var(--muted); max-width: 70ch; }
+  header a { color: inherit; }
+  main { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr)); gap: 18px; padding: 18px max(20px, env(safe-area-inset-left)) 48px; max-width: 1280px; margin: 0 auto; }
+  article { background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; }
+  article.wide { grid-column: 1 / -1; }
+  .map { height: 300px; position: relative; background: #e9e6df; }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line); }
+  .pair > * { height: 300px; position: relative; background: #e9e6df; overflow: hidden; }
+  .pair img, .pair svg { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .tag { position: absolute; left: 8px; top: 8px; z-index: 4; background: rgba(0, 0, 0, .62); color: #fff; font-size: 11px; padding: 2px 7px; border-radius: 10px; pointer-events: none; }
+  .text { padding: 12px 14px 14px; }
+  h2 { font-size: 15px; margin: 0 0 3px; }
+  .text p { margin: 0; color: var(--muted); font-size: 13px; }
+  .readout { margin-top: 8px; font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ink); min-height: 1.4em; overflow-wrap: anywhere; }
+  button.action { margin-top: 8px; font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); cursor: pointer; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Feature gallery</h1>
+  <p>Each card is a separate live map, created when it scrolls into view. Drag, pinch, scroll and right-drag (or two fingers) to tilt. <a href="/">Full-page demo</a></p>
+</header>
+<main id="cards"></main>
+<script type="module" src="/demo/gallery.mjs"></script>
+</body>
+</html>

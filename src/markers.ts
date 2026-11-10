@@ -10,6 +10,17 @@ export interface MarkerLayerOptions {
     anchor?: Anchor;
     /** When true, map labels avoid these markers. */
     collide?: boolean;
+    /**
+     * The zoom range in which the layer shows. Give the same data to two layers with different templates and ranges
+     * to change a marker's look with zoom, e.g. small dots when zoomed out and full pins when zoomed in.
+     */
+    minZoom?: number;
+    maxZoom?: number;
+    /**
+     * 'hide' drops markers that would overlap one already shown (earlier in `data` wins), re-deciding as the map
+     * moves, the way labels do. The default, 'show', draws every marker.
+     */
+    overlap?: 'show' | 'hide';
     data: MarkerInput[];
 }
 

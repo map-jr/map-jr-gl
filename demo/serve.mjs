@@ -34,13 +34,15 @@ const page = (body, head = '') => `<!doctype html><html><head><meta charset="utf
 <body>${body}</body></html>`;
 
 const client = (q) => `<script type="module">
-import {Map, NavigationControl, ScaleControl} from '/dist/tessera.js';
+// ?slim loads the small worker-only build, which fetches the engine as a separate worker file.
+const slim = new URLSearchParams(location.search).has('slim');
+const {Map, NavigationControl, ScaleControl} = await import(slim ? '/dist/tessera-slim.js' : '/dist/tessera.js');
 import {markers, view, photos, manyMarkers} from '/demo/markers.mjs';
 import {shield} from '/demo/shields.mjs';
 const q = new URLSearchParams(location.search);
 const map = window.map = new Map({container: 'map', style: q.get('style') || ('/style.json' + (q.has('local') ? '?local' : '')), ...view,
   ...(q.has('zoom') ? {zoom: +q.get('zoom')} : {}), ...(q.has('bearing') ? {bearing: +q.get('bearing')} : {}), ...(q.has('pitch') ? {pitch: +q.get('pitch')} : {}),
-  ...(q.has('center') ? {center: q.get('center').split(',').map(Number)} : {}), renderer: q.get('renderer') || 'auto', antialias: q.has('msaa'),
+  ...(q.has('center') ? {center: q.get('center').split(',').map(Number)} : {}), renderer: q.get('renderer') || 'auto', antialias: q.has('msaa'), ...(slim ? {workerUrl: '/dist/tessera-worker.js'} : {}),
   // Styles naming Open Sans get the real font; it loads on the rendering thread, so it works with worker rendering.
   fonts: q.has('nofonts') ? [] : ['normal', 'italic'].map(style => ({family: 'Open Sans', style, weight: '300 800',
     src: 'https://cdn.jsdelivr.net/fontsource/fonts/open-sans:vf@latest/latin-wght-' + style + '.woff2'}))});
@@ -54,23 +56,18 @@ const hud = document.getElementById('hud');
 let stats = '';
 const show = () => hud.textContent = 'renderer: ' + map.renderer + ' | zoom ' + map.getZoom().toFixed(2) + stats + (map.loaded() ? '' : ' | loading');
 map.on('stats', e => { stats = ' | ' + e.fps.toFixed(0) + ' fps, ' + e.frameMs.toFixed(1) + ' ms/frame'; show(); });
-map.on('move', show); map.on('load', () => { show(); window.mapLoaded = true; }); map.on('idle', () => window.mapIdle = (window.mapIdle || 0) + 1);
+map.on('move', show); map.on('load', () => { show(); window.mapLoaded = true; window.loadedAt = performance.now(); }); map.on('idle', () => window.mapIdle = (window.mapIdle || 0) + 1);
 map.on('markerenter', e => e.layer.setProps(e.index, {stroke: '#222', strokeWidth: 3}));
-map.on('markerleave', e => { if (window.selected?.layer !== e.layer || window.selected.index !== e.index) e.layer.setProps(e.index, {stroke: '#fff', strokeWidth: 1.5}); });
+map.on('markerleave', e => e.layer.setProps(e.index, {stroke: '#fff', strokeWidth: 1.5}));
 map.on('markerclick', e => {
   window.lastMarkerClick = e.marker.props.label;
-  // Touch has no hover, so a tap marks the marker as selected with the same outline hovering gives.
-  if (window.selected && window.selected.layer.data[window.selected.index]) window.selected.layer.setProps(window.selected.index, {stroke: '#fff', strokeWidth: 1.5});
-  window.selected = {layer: e.layer, index: e.index};
-  e.layer.setProps(e.index, {stroke: '#222', strokeWidth: 3});
   hud.textContent = 'clicked marker ' + (e.marker.props.label ?? e.marker.props.name);
-  // The popup grows out of the marker that was clicked, starting in the marker's colour.
+  // The marker grows and a callout points at it; map labels move out of the callout's way.
   const body = document.createElement('div');
   body.innerHTML = '<strong></strong><div style="color:#666;margin-top:2px"></div>';
   body.firstChild.textContent = e.marker.props.name ?? 'Marker ' + e.marker.props.label;
   body.lastChild.textContent = e.marker.lngLat.map(v => v.toFixed(4)).join(', ');
-  window.popup?.remove();
-  window.popup = e.layer.openPopup(e.index, body, {color: e.marker.props.color});
+  window.popup = e.layer.openPopup(e.index, body);
 });
 map.on('click', async e => {
   if (e.marker) return;
@@ -91,7 +88,8 @@ http.createServer(async (req, res) => {
         }
         // ?local labels places in their local script instead of English, to exercise non-Latin text.
         if (url.pathname === '/style.json') return send(200, 'application/json', JSON.stringify(style).replaceAll(url.searchParams.has('local') ? '["get","name:en"],' : '\u0000', ''));
-        if (url.pathname === '/') return send(200, 'text/html', page(`<div id="map"></div><div id="hud"></div>${client()}`));
+        if (url.pathname === '/gallery') return send(200, 'text/html', await readFile(path.join(root, 'demo/gallery.html')));
+        if (url.pathname === '/') return send(200, 'text/html', page(`<div id="map"></div><div id="hud"></div><a href="/gallery" style="position:absolute;left:8px;bottom:34px;z-index:2;background:#fff;padding:5px 10px;border-radius:6px;font-size:12px;box-shadow:0 1px 4px #0003;color:#222;text-decoration:none">Feature gallery</a>${client()}`));
         if (url.pathname === '/map.jpg') {
             const q = url.searchParams, ratio = +(q.get('ratio') || 1);
             const {image, contentType} = await renderToImage({style, ...view, zoom: +(q.get('zoom') || view.zoom), bearing: +(q.get('bearing') || 0),

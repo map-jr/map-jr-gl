@@ -29,7 +29,7 @@ export const photoPin = `<svg viewBox="0 0 48 56">
   <circle cx="24" cy="24" r="19" fill="none" stroke="#fff" stroke-width="1.500"/>
 </svg>`;
 export const photos = {
-    id: 'photos', svg: photoPin, width: 48, height: 56, anchor: 'bottom',
+    id: 'photos', svg: photoPin, width: 48, height: 56, anchor: 'bottom', collide: true,
     data: [
         {lngLat: [-74.0445, 40.6892], props: {color: '#2e9d5b', photo: 'https://tiles.openfreemap.org/natural_earth/ne2sr/5/9/12.png', name: 'Relief imagery, tile 5/9/12'}},
         {lngLat: [-73.9969, 40.7061], props: {color: '#2f7fd1', photo: 'https://tiles.openfreemap.org/natural_earth/ne2sr/4/4/6.png', name: 'Relief imagery, tile 4/4/6'}},
@@ -48,4 +48,30 @@ export function manyMarkers(count, [lng, lat] = view.center, spread = 0.6) {
         data.push({lngLat: [lng + r * Math.cos(a) * 1.3, lat + r * Math.sin(a)], props: {...base, color: colors[i % 5], label: String(i % 100)}});
     }
     return {id: 'many', svg: pin, width: 24, height: 31, anchor: 'bottom', data};
+}
+
+/** A plain dot, for showing the same places compactly when zoomed out. */
+export const dot = `<svg viewBox="0 0 12 12"><circle cx="6" cy="6" r="4.500" fill="{{color}}" stroke="#fff" stroke-width="1.500"/></svg>`;
+
+/** A cluster bubble: the count inside a circle. */
+export const bubble = `<svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="18" fill="#2f7fd1" fill-opacity=".25"/><circle cx="20" cy="20" r="13" fill="#2f7fd1" stroke="#fff" stroke-width="1.500"/>
+  <text x="20" y="24" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="700" fill="#fff">{{count}}</text></svg>`;
+
+/**
+ * Minimal grid clustering, to show that clustering can live outside the library: group points by screen-sized
+ * cells at the current zoom, and hand the map two marker layers' worth of data.
+ */
+export function cluster(points, zoom, cellPx = 70) {
+    const cells = new Map(), size = cellPx / (512 * 2 ** zoom);
+    for (const p of points) {
+        const x = (p.lngLat[0] + 180) / 360, s = Math.sin(p.lngLat[1] * Math.PI / 180), y = 0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI);
+        const key = Math.floor(x / size) + ':' + Math.floor(y / size), c = cells.get(key);
+        if (c) { c.n++; c.lng += p.lngLat[0]; c.lat += p.lngLat[1]; } else cells.set(key, {n: 1, lng: p.lngLat[0], lat: p.lngLat[1], first: p});
+    }
+    const clusters = [], singles = [];
+    for (const c of cells.values()) {
+        if (c.n === 1) singles.push(c.first);
+        else clusters.push({lngLat: [c.lng / c.n, c.lat / c.n], props: {count: c.n > 999 ? Math.round(c.n / 1000) + 'k' : String(c.n)}});
+    }
+    return {clusters, singles};
 }

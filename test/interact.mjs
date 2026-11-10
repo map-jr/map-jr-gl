@@ -203,7 +203,7 @@ for (const mode of ['main', 'worker']) {
     });
     await page.screenshot({path: `${out}/geojson-${mode}.png`});
     await page.mouse.click(gj.inside.x, gj.inside.y);
-    await page.mouse.click(60, 650); // outside the zone: must not fire
+    await page.mouse.click(760, 90); // outside the zone: must not fire
     await page.waitForFunction(() => window.zoneClicks.length > 0, null, {timeout: 5000}).catch(() => {});
     const gj2 = await page.evaluate(async () => {
         const m = window.map;
@@ -222,6 +222,7 @@ for (const mode of ['main', 'worker']) {
         const tip = marker.getElement().getBoundingClientRect(), at = m.project([-74.0065, 40.7085]);
         const open = document.querySelector('.maplibregl-popup-content')?.textContent;
         marker.remove();
+        await new Promise(r => setTimeout(r, 400)); // the popup plays a short closing animation before it is removed
         return {dx: Math.abs((tip.left + tip.right) / 2 - at.x), dy: Math.abs(tip.bottom - at.y), open, gone: !document.querySelector('.maplibregl-marker, .maplibregl-popup')};
     });
     check(`[${mode}] DOM Marker and Popup`, dom.dx < 1 && dom.dy < 1 && dom.open.startsWith('Hello') && dom.gone, JSON.stringify(dom));

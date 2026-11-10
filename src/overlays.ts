@@ -54,11 +54,8 @@ abstract class Overlay extends Evented {
 
 export interface PopupOptions {
     closeButton?: boolean; closeOnClick?: boolean; anchor?: OverlayAnchor; offset?: number | [number, number]; maxWidth?: string; className?: string;
-    /**
-     * Grow the popup out of something already on the map (typically the marker that was clicked) instead of just
-     * appearing: give that thing's size in pixels and, optionally, its colour. Closing plays the same in reverse.
-     */
-    openFrom?: {width: number; height: number; color?: string};
+    /** Set false to show and hide without the short pop animation. */
+    animate?: boolean;
 }
 
 export class Popup extends Overlay {
@@ -78,6 +75,15 @@ export class Popup extends Overlay {
         box.className = 'maplibregl-popup-content';
         box.style.cssText = `pointer-events:auto;position:relative;background:var(--map-popup-background,#fff);color:var(--map-popup-color,#222);border-radius:6px;padding:10px 12px;font:13px/1.4 system-ui,sans-serif;box-shadow:0 2px 10px rgba(0,0,0,.25);max-width:${options.maxWidth ?? '240px'};margin:8px`;
         box.appendChild(this.content);
+        // A small pointer on the side facing the anchor, so the callout visibly belongs to a place on the map.
+        const side = this.anchor.includes('bottom') ? 'bottom' : this.anchor.includes('top') ? 'top' : this.anchor === 'left' ? 'left' : this.anchor === 'right' ? 'right' : '';
+        if (side) {
+            const tip = document.createElement('div'), across = side === 'top' || side === 'bottom';
+            tip.className = 'maplibregl-popup-tip';
+            tip.style.cssText = `position:absolute;width:12px;height:12px;background:inherit;transform:rotate(45deg);${side}:-5px;` +
+                (across ? `left:${this.anchor.includes('left') ? '14px' : this.anchor.includes('right') ? 'calc(100% - 26px)' : 'calc(50% - 6px)'}` : 'top:calc(50% - 6px)');
+            box.appendChild(tip);
+        }
         if (options.closeButton !== false) {
             const b = Object.assign(document.createElement('button'), {type: 'button', textContent: '\u00d7', className: 'maplibregl-popup-close-button'});
             b.setAttribute('aria-label', 'Close popup');
@@ -92,6 +98,12 @@ export class Popup extends Overlay {
     setHTML(html: string) { this.content.innerHTML = html; return this; }
     setDOMContent(node: Node) { this.content.replaceChildren(node); return this; }
     isOpen() { return !!this.map; }
+    /** The popup's box relative to the map position it points at, in pixels: [left, top, right, bottom]. */
+    getBox(): [number, number, number, number] | null {
+        if (!this.map || !this.lngLat) return null;
+        const r = (this.el.firstElementChild as HTMLElement).getBoundingClientRect(), c = this.map.getContainer().getBoundingClientRect(), p = this.map.project(this.lngLat);
+        return [r.left - c.left - p.x, r.top - c.top - p.y, r.right - c.left - p.x, r.bottom - c.top - p.y];
+    }
     addTo(map: Map) {
         this.attach(map);
         // Deferred so the click that opened the popup does not immediately close it.
@@ -109,18 +121,13 @@ export class Popup extends Overlay {
         return this;
     }
 
-    /** Morphs between the size and colour of the thing the popup came from and the popup itself. */
+    /** A short pop from the pointer: the callout scales up from where it points (and back down when closing). */
     private transition(reverse: boolean): Animation | null {
-        const from = this.options.openFrom, box = this.el.firstElementChild as HTMLElement;
-        if (!from || !box.animate || matchMedia('(prefers-reduced-motion: reduce)').matches) return null;
-        const r = box.getBoundingClientRect();
-        if (!r.width || !r.height) return null;
-        // Scale about the edge nearest the anchor, so the popup appears to unfold from the marker's position.
-        const origin = `${this.anchor.includes('left') ? '0%' : this.anchor.includes('right') ? '100%' : '50%'} ${this.anchor.includes('top') ? '0%' : this.anchor.includes('bottom') ? '100%' : '50%'}`;
-        const small = {transform: `scale(${from.width / r.width}, ${from.height / r.height})`, borderRadius: `${r.width / 2}px`, backgroundColor: from.color ?? getComputedStyle(box).backgroundColor, color: 'transparent'};
-        const full = {transform: 'none', borderRadius: getComputedStyle(box).borderRadius, backgroundColor: getComputedStyle(box).backgroundColor, color: getComputedStyle(box).color};
-        box.style.transformOrigin = origin;
-        return box.animate(reverse ? [full, small] : [small, full], {duration: reverse ? 160 : 240, easing: 'cubic-bezier(.2,.8,.2,1)', fill: reverse ? 'forwards' : 'none'});
+        const box = this.el.firstElementChild as HTMLElement;
+        if (this.options.animate === false || !box.animate || matchMedia('(prefers-reduced-motion: reduce)').matches) return null;
+        box.style.transformOrigin = `${this.anchor.includes('left') ? '0%' : this.anchor.includes('right') ? '100%' : '50%'} ${this.anchor.includes('top') ? '0%' : this.anchor.includes('bottom') ? '100%' : '50%'}`;
+        const small = {transform: 'scale(0.6)', opacity: 0}, full = {transform: 'none', opacity: 1};
+        return box.animate(reverse ? [full, small] : [small, full], {duration: reverse ? 120 : 200, easing: 'cubic-bezier(.2,.9,.3,1.2)', fill: reverse ? 'forwards' : 'none'});
     }
 }
 
