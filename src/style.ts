@@ -13,6 +13,7 @@ const SPEC: Record<string, Record<string, [string, PropKind, any]>> = {
     line: {
         color: ['line-color', 'color', '#000'], opacity: ['line-opacity', 'number', 1], width: ['line-width', 'number', 1],
         gap: ['line-gap-width', 'number', 0], dash: ['line-dasharray', 'discrete', null], cap: ['line-cap', 'string', 'butt'], join: ['line-join', 'string', 'miter'],
+        offset: ['line-offset', 'number', 0], blur: ['line-blur', 'number', 0],
         layerOpacity: ['line-layer-opacity', 'number', 1], layerBlend: ['line-layer-blend', 'string', 'normal'],
     },
     'fill-extrusion': {

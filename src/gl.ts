@@ -80,7 +80,7 @@ void main() { ${FS_CLIP} vec4 c = v_color * u_color; float a = c.a * (1.0 - smoo
 
     line: [`${VS_COMMON}
 layout(location=0) in vec4 a_v; layout(location=1) in vec4 a_color; layout(location=2) in vec2 a_sd; layout(location=3) in float a_width;
-uniform float u_width; uniform float u_scale; uniform float u_gap;
+uniform float u_width; uniform float u_scale; uniform float u_gap; uniform float u_offset;
 uniform float u_cam;
 out vec4 v_color; out vec2 v_tile; out float v_d; out float v_hw; out float v_w; out float v_dist; out float v_persp;
 void main() {
@@ -88,17 +88,18 @@ void main() {
   // With a gap the line is two strokes of width w either side of an empty middle.
   v_hw = (u_gap > 0.0 ? u_gap * 0.5 + w : w * 0.5) + 0.5; v_d = a_sd.x * v_hw; v_w = w; v_dist = a_sd.y;
   v_color = vec4(a_color.rgb, a_color.a * min(1.0, w));
-  v_tile = a_v.xy + a_v.zw * v_hw / u_scale;
+  // line-offset moves the whole stroke sideways: along the same normal, whichever side of the line this vertex is on.
+  v_tile = a_v.xy + a_v.zw * (v_hw + sign(a_sd.x) * u_offset) / u_scale;
   gl_Position = toClip(v_tile);
   // Lines lie on the map, so a tilted view draws distant ones thinner; edge antialiasing must shrink to match.
   v_persp = gl_Position.w / u_cam;
 }`, `
-uniform vec4 u_color; uniform vec4 u_clip; uniform float u_gap; uniform vec4 u_dash; uniform float u_dashScale;
+uniform vec4 u_color; uniform vec4 u_clip; uniform float u_gap; uniform vec4 u_dash; uniform float u_dashScale; uniform float u_blur;
 in vec4 v_color; in vec2 v_tile; in float v_d; in float v_hw; in float v_w; in float v_dist; in float v_persp; out vec4 o;
 void main() {
   ${FS_CLIP}
   vec4 c = v_color * u_color;
-  float a = c.a * clamp((v_hw - abs(v_d)) / v_persp, 0.0, 1.0);
+  float a = c.a * clamp((v_hw - abs(v_d)) / (v_persp * (1.0 + u_blur)), 0.0, 1.0); // line-blur widens the soft edge
   if (u_gap > 0.0) a *= clamp((abs(v_d) - u_gap * 0.5 + 0.5) / v_persp, 0.0, 1.0);
   float period = u_dash.x + u_dash.y + u_dash.z + u_dash.w;
   if (period > 0.0) {
@@ -718,6 +719,8 @@ export class GLRenderer {
                         const dash = L.p.dash.eval(zoom) as number[] | null;
                         gl.uniform1f(u.u_width, L.p.width.dd ? 1 : L.p.width.eval(zoom));
                         gl.uniform1f(u.u_gap, L.p.gap.eval(zoom));
+                        gl.uniform1f(u.u_offset, L.p.offset.dd ? 0 : L.p.offset.eval(zoom));
+                        gl.uniform1f(u.u_blur, L.p.blur.dd ? 0 : L.p.blur.eval(zoom));
                         gl.uniform4f(u.u_dash, dash?.[0] ?? 0, dash?.[1] ?? 0, dash?.[2] ?? 0, dash?.[3] ?? 0);
                     }
                     if (b.type === 'circle') {
