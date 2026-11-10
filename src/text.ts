@@ -20,7 +20,7 @@ export interface ShapedLine {
 }
 /** All measurements are in pixels at a font size of EM. */
 export interface Shaped { lines: ShapedLine[]; width: number; height: number; lineHeight: number }
-export interface Shaper { shape(text: string, font: string, maxWidthEm: number, spacingEm: number): Shaped }
+export interface Shaper { shape(text: string, font: string, maxWidthEm: number, spacingEm: number, lineHeightEm?: number): Shaped }
 
 const COMPLEX = /[֐-ࣿऀ-႟ក-៿יִ-﷿ﹰ-﻿]/;
 const IDEOGRAPH = /[⺀-鿿가-힯豈-﫿＀-￯]/;
@@ -31,15 +31,41 @@ export function graphemes(s: string): string[] {
 }
 
 /** Greedy line breaking at spaces (and between ideographs), shared by the browser and server shapers. */
+/**
+ * Breaks text into lines the way MapLibre does: not by filling each line, but by choosing the breaks that leave the
+ * lines closest to one even width (so a label is a balanced block rather than a long line and a stub). A short last
+ * line is penalised less, a long one more. Widths ignore the spaces themselves, as MapLibre's do.
+ */
 function wrap(text: string, maxWidth: number, measure: (s: string) => number): string[] {
     const lines: string[] = [];
     for (const para of text.split('\n')) {
-        const words = para.split(/(?<=\s)|(?<=[⺀-鿿가-힯])|(?=[⺀-鿿가-힯])/);
-        let line = '';
-        for (const w of words) {
-            if (line && measure((line + w).trimEnd()) > maxWidth) { lines.push(line.trimEnd()); line = w; } else line += w;
+        const words = para.split(/(?<=\s)|(?<=[⺀-鿿가-힯])|(?=[⺀-鿿가-힯])/).filter(w => w.length);
+        // (The number of lines comes from the full width, spaces included; the break positions from widths without them.)
+        const widths = words.map(w => measure(w.trim())), total = measure(para);
+        if (!words.length) continue;
+        const target = total / Math.max(1, Math.ceil(total / maxWidth));
+        // best[i]: the least "badness" of any way of breaking before word i, and which earlier break it follows.
+        const best: {badness: number; prev: number; x: number}[] = [{badness: 0, prev: -1, x: 0}];
+        let x = 0;
+        for (let i = 1; i <= words.length; i++) {
+            x += widths[i - 1];
+            const last = i === words.length;
+            // Opening brackets prefer to start a line and closing ones to end it, so breaks beside them cost a little.
+            const penalty = !last && (/[(（]\s*$/.test(words[i - 1]) || /^[)）]/.test(words[i])) ? 50 : 0;
+            let choice = {badness: Infinity, prev: 0, x};
+            for (let j = 0; j < i; j++) {
+                const width = x - best[j].x;
+                let ragged = (width - target) ** 2;
+                if (last) ragged = width < target ? ragged / 2 : ragged * 2;
+                const badness = best[j].badness + ragged + penalty * penalty;
+                if (badness <= choice.badness) choice = {badness, prev: j, x};
+            }
+            best.push(choice);
         }
-        if (line.trim()) lines.push(line.trimEnd());
+        const cuts: number[] = [];
+        for (let i = words.length; i > 0; i = best[i].prev) cuts.unshift(i);
+        let from = 0;
+        for (const to of cuts) { const line = words.slice(from, to).join('').trim(); if (line) lines.push(line); from = to; }
     }
     return lines.length ? lines : [''];
 }
@@ -48,8 +74,8 @@ abstract class BaseShaper implements Shaper {
     private cache = new Map<string, Shaped>();
     protected abstract line(text: string, font: string, spacing: number): ShapedLine;
 
-    shape(text: string, font: string, maxWidthEm: number, spacingEm: number): Shaped {
-        const key = `${font}|${maxWidthEm}|${spacingEm}|${text}`;
+    shape(text: string, font: string, maxWidthEm: number, spacingEm: number, lineHeightEm = 1.2): Shaped {
+        const key = `${font}|${maxWidthEm}|${spacingEm}|${lineHeightEm}|${text}`, LINE_HEIGHT = lineHeightEm * EM;
         let s = this.cache.get(key);
         if (!s) {
             if (this.cache.size > 5000) this.cache.clear();

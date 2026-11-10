@@ -152,9 +152,9 @@ export class Transform {
         const p = this.pitch * Math.PI / 180, d = this.cameraDistance, ws = this.worldSize, ppm = this.pixelsPerMetre, a = this.angle;
         // The camera sits back from the map centre along the view direction, above the ground there.
         const back = d * Math.sin(p) / ws, camX = mercX(this.lng) + Math.sin(a) * back, camY = mercY(this.lat) + Math.cos(a) * back;
-        const camH = this.elevation + d * Math.cos(p) / ppm, h = this.heightAt(mx, my), slack = (camH - this.elevation) * 0.02;
-        for (let i = 1; i < 24; i++) {
-            const t = i / 24 * 0.97; // stop short of the point itself
+        const camH = this.elevation + d * Math.cos(p) / ppm, h = this.heightAt(mx, my), slack = (camH - this.elevation) * 0.008;
+        for (let i = 1; i < 40; i++) {
+            const t = i / 40 * 0.98; // stop short of the point itself
             if (this.heightAt(camX + (mx - camX) * t, camY + (my - camY) * t) > camH + (h - camH) * t + slack) return true;
         }
         return false;

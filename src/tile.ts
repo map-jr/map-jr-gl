@@ -45,13 +45,17 @@ export interface LabelSrc {
     size0: number; size1: number; color: RGBA; halo: RGBA; haloWidth: number; haloBlur: number;
     /** How the lines of a multi-line label align with each other: -1 left, 0 centre, 1 right. */
     justify: number;
+    /** `text-rotate`, in radians clockwise. */
+    rotate: number;
+    /** Line height in ems, and a fixed shift on screen in pixels. */
+    lineHeight: number; translate: [number, number];
     font: string; maxWidth: number; spacing: number; offset: [number, number]; anchor: string; padding: number; overlap: boolean;
     /** Text stays upright instead of following the line it is placed on (e.g. road shields). */
     upright: boolean;
     textOptional: boolean; ignore: boolean; varAnchor: string[] | null; radial: number;
     icon?: {
         name: string; size: number; /** Size at the next zoom level, to interpolate towards. */ size1: number; offset: [number, number]; rotate: number; fit: string; fitPad: [number, number, number, number];
-        opacity: number; anchor: string; color: RGBA;
+        opacity: number; anchor: string; color: RGBA; ignore: boolean; padding: number; translate: [number, number];
         overlap: boolean; optional: boolean; upright: boolean;
     };
 }
@@ -103,7 +107,7 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
         const p = L.p;
 
         if (L.type === 'symbol') {
-            const labels: LabelSrc[] = [];
+            const labels: LabelSrc[] = [], keys: number[] = [], sorted = p.sortKey.dd || p.sortKey.eval(z) !== 0;
             for (const f of vl.features) {
                 ctx.f = f;
                 f.state = featureStateOf(L.source, L.sourceLayer, f.id);
@@ -119,14 +123,14 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
                 const base = {
                     text, size0: p.size.eval(z, f), size1: p.size.eval(z + 1, f),
                     color: [color[0], color[1], color[2], color[3] * op] as RGBA,
-                    halo: p.haloColor.eval(z, f), haloWidth: p.haloWidth.eval(z, f), haloBlur: p.haloBlur.eval(z, f), justify: justification(p.justify.eval(z, f), p.anchor.eval(z, f)), font: fontStyle(p.font.eval(z, f)),
+                    halo: p.haloColor.eval(z, f), haloWidth: p.haloWidth.eval(z, f), haloBlur: p.haloBlur.eval(z, f), rotate: p.rotate.eval(z, f) * Math.PI / 180, justify: justification(p.justify.eval(z, f), p.anchor.eval(z, f)), font: fontStyle(p.font.eval(z, f)),
                     maxWidth: p.maxWidth.eval(z, f), spacing: p.spacing.eval(z, f), offset: p.offset.eval(z, f), anchor: p.anchor.eval(z, f),
-                    padding: p.padding.eval(z, f), overlap: !!p.overlap.eval(z, f),
+                    padding: p.padding.eval(z, f), overlap: overlaps(p.overlapMode.eval(z, f), p.overlap.eval(z, f)), lineHeight: p.lineHeight.eval(z, f), translate: p.translate.eval(z, f),
                     upright: p.textAlign.eval(z, f) === 'viewport', textOptional: !!p.textOptional.eval(z, f), ignore: !!p.ignore.eval(z, f),
                     varAnchor: p.varAnchor.eval(z, f), radial: p.radial.eval(z, f),
                     icon: iconName ? {
                         name: iconName, size: p.iconSize.eval(z, f), size1: p.iconSize.eval(z + 1, f), opacity: p.iconOpacity.eval(z, f), anchor: p.iconAnchor.eval(z, f), color: p.iconColor.eval(z, f), offset: p.iconOffset.eval(z, f), rotate: p.iconRotate.eval(z, f),
-                        fit: p.iconFit.eval(z, f), fitPad: p.iconFitPad.eval(z, f), overlap: !!p.iconOverlap.eval(z, f),
+                        fit: p.iconFit.eval(z, f), fitPad: p.iconFitPad.eval(z, f), overlap: overlaps(p.iconOverlapMode.eval(z, f), p.iconOverlap.eval(z, f)), ignore: !!p.iconIgnore.eval(z, f), padding: p.iconPadding.eval(z, f), translate: p.iconTranslate.eval(z, f),
                         optional: !!p.iconOptional.eval(z, f), upright: p.iconAlign.eval(z, f) === 'viewport',
                     } : undefined,
                 };
@@ -141,11 +145,14 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
                         const label: LabelSrc = {...base, x: a[0], y: a[1], angle: along ? a[2] : null, len: a[3]};
                         if (a.length > 4) { label.pathIndex = a[4]; label.path = a.slice(5); }
                         labels.push(label);
+                        if (sorted) keys.push(p.sortKey.eval(z, f));
                     }
                     start = end;
                     if (f.type === 3 && !along) break; // one label per polygon: outer ring only
                 }
             }
+            // symbol-sort-key: lower keys are placed first, so they win when labels compete for space.
+            if (sorted) { const order = labels.map((_, i) => i).sort((a, b) => keys[a] - keys[b] || a - b); out.labels[L.id] = order.map(i => labels[i]); continue; }
             if (labels.length) out.labels[L.id] = labels;
             continue;
         }
@@ -245,6 +252,9 @@ function ringArea(c: Int16Array, start: number, end: number) {
     for (let i = start, j = end - 1; i < end; j = i++) a += (c[j * 2] - c[i * 2]) * (c[i * 2 + 1] + c[j * 2 + 1]);
     return a;
 }
+
+/** `text-overlap` / `icon-overlap` ('never', 'always', 'cooperative') take precedence over the older allow-overlap flags. */
+const overlaps = (mode: string, allow: unknown) => mode ? mode !== 'never' : !!allow;
 
 /** `text-justify` as a number; `auto` follows the side the text is anchored on. */
 function justification(justify: string, anchor: string): number {

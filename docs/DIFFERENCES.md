@@ -59,7 +59,7 @@ Compared against MapLibre GL JS 6.x.
 - Sources: image, video, canvas; MapLibre Tiles (MLT). GeoJSON sources have no clustering, `promoteId` or line metrics.
 - Layers: heatmap, color-relief, custom layers. `fill-pattern` and `background-pattern` take a constant image (no per-feature patterns, no cross-fade between zoom levels, and a pitched background pattern is drawn flat); `line-pattern` layers are not drawn and `fill-extrusion-pattern` is ignored. Patterns are left out of server output.
 - Sky, globe and other projections.
-- SDF (recolourable) sprite icons, `icon-color`, the sprite `textFitWidth`/`textFitHeight` options, `circle-pitch-alignment`, `circle-pitch-scale`, data-driven circle stroke and blur, `line-offset`, `line-blur`, `line-gradient`.
+- Icon halos, the sprite `textFitWidth`/`textFitHeight` options, `circle-pitch-alignment`, `circle-pitch-scale`, data-driven circle stroke and blur, `line-offset`, `line-blur`, `line-gradient`, `text-writing-mode`, `text-pitch-alignment`, `text-variable-anchor-offset`, `text-max-angle`, `symbol-z-order`, `symbol-avoid-edges`. Inline images and mixed fonts in `format` text.
 - `transformRequest`, `addProtocol`.
 - Hillshade and runtime-added bitmap images in server output. Contours are drawn there; elevation tiles other than PNG and lossless WebP need a `decodeImage` function (see `RenderOptions`).
 - Right-to-left text is handled by the browser, so the RTL plugin API does not exist.
@@ -70,11 +70,12 @@ Measured by the test scripts in this repository:
 
 - **Expressions:** `pnpm test:expressions` runs MapLibre's own expression fixtures. 281 of 425 runnable fixtures pass.
   The main gaps are `distance` and `within` (58 fixtures), collators and rich-text `format` objects.
-- **Rendering:** `pnpm test:render` runs MapLibre's render tests (a style and an expected image each). Of 1,429
-  runnable tests, 433 match (at most 1% of pixels differ), 271 are close (at most 5%) and 725 differ; 331 are
-  skipped because they script the map or need a high pixel density. Text is drawn with browser fonts rather than
-  the tests' glyph files, so most tests with labels cannot match exactly. The largest feature gaps are
-  line and per-feature patterns, projections, sky, heatmap, global state and pitch-aligned circles.
+- **Rendering:** `pnpm test:render` runs MapLibre's render tests (a style and an expected image each), with the
+  fonts those tests use loaded as web fonts. Of 1,429 runnable tests, 454 match (at most 1% of pixels differ), 300
+  are close (at most 5%) and 675 differ; 331 are skipped because they script the map or need a high pixel density.
+  Text is rasterised by the browser rather than from MapLibre's glyph files, so most tests with labels land in
+  "close" rather than "match" even when the layout is identical. The largest feature gaps are projections, sky,
+  heatmap, line and per-feature patterns, layer-wide opacity and blending, and image sources.
 - **Map API:** see below.
 
 <!-- api:start -->

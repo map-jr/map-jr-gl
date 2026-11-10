@@ -94,7 +94,7 @@ export function placeLabels(
                 if (tr.heightAt) { const n = 2 ** it.id.z; if (tr.occluded((it.id.x + it.id.w * n + l.x / EXTENT) / n, (it.id.y + l.y / EXTENT) / n)) continue; }
                 const size = l.size0 + (l.size1 - l.size0) * t, s = size / EM, line = l.angle !== null;
                 const meta = l.icon ? icons?.(l.icon.name) : undefined;
-                const shaped = l.text ? shaper.shape(l.text, l.font, line ? 1e3 : l.maxWidth, l.spacing) : null;
+                const shaped = l.text ? shaper.shape(l.text, l.font, line ? 1e3 : l.maxWidth, l.spacing, l.lineHeight) : null;
                 const w = shaped ? shaped.width * s : 0, h = shaped ? shaped.height * s : 0;
                 const hasText = w > 0;
                 if (!hasText && !meta) continue;
@@ -133,6 +133,13 @@ export function placeLabels(
                         const [sx, sy] = line ? [0, 0] : shift(l.anchor, 0);
                         candidates = [[l.offset[0] * size + sx, l.offset[1] * size + sy]];
                     }
+                    if (!line && l.rotate) {
+                        // text-rotate turns the label about its anchor point, so the offset from the anchor turns with it.
+                        const c = Math.cos(l.rotate), sn = Math.sin(l.rotate);
+                        textAngle = l.rotate;
+                        candidates = candidates.map(([dx, dy]) => [dx * c - dy * sn, dx * sn + dy * c]);
+                    }
+                    if (l.translate[0] || l.translate[1]) candidates = candidates.map(([dx, dy]) => [dx + l.translate[0], dy + l.translate[1]]);
                     // The same name often arrives from several tiles or road segments: keep them apart.
                     const prev = seen.get(l.text), minDist = line ? 300 : 1;
                     let dup = false;
@@ -168,17 +175,16 @@ export function placeLabels(
                         }
                     }
                     const angle = (line && !ic.upright ? lineAngle : 0) + ic.rotate * Math.PI / 180;
-                    const box = boxAround(ix, iy, iw, ih, angle, 1);
+                    ix += ic.translate[0]; iy += ic.translate[1];
+                    const box = boxAround(ix, iy, iw, ih, angle, ic.padding);
                     if (ic.overlap || !grid.hits(...box)) {
                         iconBox = box;
                         icon = {x: ix, y: iy, w: iw, h: ih, angle, rect: [meta.x, meta.y, meta.width, meta.height], custom: meta.custom, name: ic.name, gx, gy, opacity: ic.opacity, color: meta.sdf ? ic.color : undefined};
                     } else if (!(hasText && textBox && ic.optional)) continue;
                 }
                 if (!textBox && !icon) continue;
-                if (!l.ignore) {
-                    if (textBox) grid.insert(...textBox);
-                    if (iconBox) grid.insert(...iconBox);
-                }
+                if (textBox && !l.ignore) grid.insert(...textBox);
+                if (iconBox && !l.icon!.ignore) grid.insert(...iconBox);
                 if (textBox) {
                     const prev = seen.get(l.text);
                     if (prev) prev.push(ax, ay); else seen.set(l.text, [ax, ay]);

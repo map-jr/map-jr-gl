@@ -25,9 +25,10 @@ float ground(vec2 uv) {
 
 const SHADERS = {
     // 3D terrain: a grid over the tile, raised to the ground height and textured with the tile's flat layers.
+    // `u_part` picks the part of the picture to show: all of it, or the tile's share of an ancestor's while its own is drawn.
     terrain: [`uniform mat4 u_matrix; uniform float u_skirt; ${TERRAIN_GLSL}
-layout(location=0) in vec3 a_pos; out vec2 v_uv;
-void main() { v_uv = vec2(a_pos.x, 1.0 - a_pos.y); gl_Position = u_matrix * vec4(a_pos.xy * ${EXTENT}.0, ground(a_pos.xy) - a_pos.z * u_skirt, 1.0); }`, `
+layout(location=0) in vec3 a_pos; uniform vec3 u_part; out vec2 v_uv;
+void main() { vec2 p = u_part.xy + a_pos.xy * u_part.z; v_uv = vec2(p.x, 1.0 - p.y); gl_Position = u_matrix * vec4(a_pos.xy * ${EXTENT}.0, ground(a_pos.xy) - a_pos.z * u_skirt, 1.0); }`, `
 uniform sampler2D u_drape; in vec2 v_uv; out vec4 o;
 void main() { o = texture(u_drape, v_uv); }`],
 
@@ -816,7 +817,8 @@ export class GLRenderer {
         let budget = 3, fresh = this.drapes.size ? 6 : Infinity, behind = false;
         for (const t of s.terrain!.tiles) {
             let d = this.drapes.get(t.key);
-            const size = Math.min(2048, Math.max(64, Math.round(t.view.width * this.dpr)));
+            // 1024 pixels a side at most (what MapLibre uses): larger pictures cost high-density phones frames for little gain.
+            const size = Math.min(1024, Math.max(64, Math.round(t.view.width * this.dpr)));
             if (d && d.signature === t.signature) { d.used = this.frame; continue; }
             if (d && !t.complete && d.signature.split('|')[0] === t.signature.split('|')[0]) { d.used = this.frame; continue; }
             if (d && budget-- <= 0) { d.used = this.frame; behind = true; continue; }
@@ -853,8 +855,15 @@ export class GLRenderer {
         gl.bindVertexArray(grid.vao);
         gl.uniform1i(u.u_drape, 0);
         for (const t of s.terrain!.tiles) {
-            const d = this.drapes.get(t.key);
+            let d = this.drapes.get(t.key), part = [0, 0, 1];
+            // No picture of its own yet: show its share of the nearest ancestor's rather than a hole.
+            for (let up = 1; !d && up <= 5 && up <= t.id.z; up++) {
+                const k = 2 ** up;
+                d = this.drapes.get(`${t.id.z - up}/${t.id.x >> up}/${t.id.y >> up}|${t.id.w}`);
+                if (d) { part = [(t.id.x % k) / k, (t.id.y % k) / k, 1 / k]; d.used = this.frame; }
+            }
             if (!d) continue;
+            gl.uniform3f(u.u_part, part[0], part[1], part[2]);
             this.bindDem(u, t.dem, s.terrain!.exaggeration, s.tr.elevation); // until its heights arrive, a tile lies level with the map centre
             gl.bindTexture(gl.TEXTURE_2D, d.tex);
             gl.uniformMatrix4fv(u.u_matrix, false, t.matrix);
