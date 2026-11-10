@@ -180,6 +180,12 @@ export function renderSVG(s: SVGScene): string {
                 ? ` stroke="${hex(src.halo)}" stroke-width="${num(src.haloWidth * 2)}"${alpha('stroke-opacity', src.halo[3])}` : '';
             const common = `font-size="${num(l.size)}"${family ? ` font-family="${escapeXML(`'${family}', ${s.fontFamily}`)}"` : ''}${weight !== '400' ? ` font-weight="${weight}"` : ''}${style ? ` font-style="${style}"` : ''}` +
                 `${src.spacing ? ` letter-spacing="${num(src.spacing * l.size)}"` : ''} fill="${hex(src.color)}"${alpha('fill-opacity', src.color[3])}${halo}`;
+            if (l.curve) {
+                // Text along a line: one position and rotation per character, which SVG text supports directly.
+                const c = l.curve, chars = shaped.lines[0].chars, at = (k: number) => chars.map((_, i) => num(c[i * 3 + k] + (k ? l.y : l.x))).join(' ');
+                body.push(`<text text-anchor="start" xml:space="preserve" x="${at(0)}" y="${at(1)}" rotate="${chars.map((_, i) => num(c[i * 3 + 2] * 180 / Math.PI)).join(' ')}" ${common}>${escapeXML(chars.join(''))}</text>`);
+                continue;
+            }
             const rot = l.angle ? ` transform="rotate(${num(l.angle * 180 / Math.PI)} ${num(l.x)} ${num(l.y)})"` : '';
             shaped.lines.forEach((line, i) => {
                 const y = l.y + (-shaped.height / 2 + i * shaped.lineHeight + shaped.lineHeight * 0.5 + EM * 0.34) * k;

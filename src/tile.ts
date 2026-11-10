@@ -39,6 +39,9 @@ export interface LabelSrc {
     angle: number | null;
     /** Length of the line the label sits on, in tile units. */
     len: number;
+    /** For text that follows a line: the nearby stretch of line as flat tile coordinates, and which of its points is the anchor. */
+    path?: number[];
+    pathIndex?: number;
     size0: number; size1: number; color: RGBA; halo: RGBA; haloWidth: number;
     font: string; maxWidth: number; spacing: number; offset: [number, number]; anchor: string; padding: number; overlap: boolean;
     /** Text stays upright instead of following the line it is placed on (e.g. road shields). */
@@ -127,8 +130,13 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
                 const g = geometry(f), spacing = p.symbolSpacing.eval(z, f) * EXTENT / 512;
                 let start = 0;
                 for (const end of g.ringEnds) {
-                    for (const a of anchors(g.coords, start, end, f.type, along, spacing, !!text)) {
-                        if (a[0] >= 0 && a[0] < EXTENT && a[1] >= 0 && a[1] < EXTENT) labels.push({...base, x: a[0], y: a[1], angle: along ? a[2] : null, len: a[3]});
+                    // Enough line either side of the anchor to lay the text along it at this tile's own zoom (8 tile units per pixel).
+                    const window = along && text && !base.upright ? text.length * Math.max(base.size0, base.size1) * 0.7 * 8 * 0.6 + 200 : 0;
+                    for (const a of anchors(g.coords, start, end, f.type, along, spacing, !!text, window)) {
+                        if (a[0] < 0 || a[0] >= EXTENT || a[1] < 0 || a[1] >= EXTENT) continue;
+                        const label: LabelSrc = {...base, x: a[0], y: a[1], angle: along ? a[2] : null, len: a[3]};
+                        if (a.length > 4) { label.pathIndex = a[4]; label.path = a.slice(5); }
+                        labels.push(label);
                     }
                     start = end;
                     if (f.type === 3 && !along) break; // one label per polygon: outer ring only
@@ -178,8 +186,8 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
     return out;
 }
 
-/** Yields [x, y, angle, length] label anchors for one ring. */
-function anchors(c: number[], start: number, end: number, type: number, along: boolean, spacing: number, hasText: boolean): number[][] {
+/** Yields [x, y, angle, length, (anchor index in path, ...path)] label anchors for one ring. */
+function anchors(c: number[], start: number, end: number, type: number, along: boolean, spacing: number, hasText: boolean, window = 0): number[][] {
     if (type === 1) return [[c[start * 2], c[start * 2 + 1], 0, 0]];
     if (type === 3 && !along) {
         let a = 0, cx = 0, cy = 0;
@@ -207,7 +215,22 @@ function anchors(c: number[], start: number, end: number, type: number, along: b
     for (let i = 0; i < n; i++) {
         const d = (i + 0.5) / n * len, span = Math.min(d, len - d, 250);
         const [x, y] = at(d), [ax, ay] = at(d - span), [bx, by] = at(d + span);
-        out.push([x, y, Math.atan2(by - ay, bx - ax), len]);
+        const anchor = [x, y, Math.atan2(by - ay, bx - ax), len];
+        if (along && window > 0) {
+            // The stretch of line around the anchor, for text that follows the curve: its points, then the index of the anchor among them.
+            const d0 = Math.max(0, d - window), d1 = Math.min(len, d + window), path = [...at(d0)];
+            let run = 0, index = -1;
+            for (let k = start + 1; k < end; k++) {
+                const before = run;
+                run += Math.hypot(c[k * 2] - c[k * 2 - 2], c[k * 2 + 1] - c[k * 2 - 1]);
+                if (index < 0 && d <= run && d >= before) { index = path.length / 2; path.push(x, y); }
+                if (run > d0 && run < d1 && run !== d) path.push(c[k * 2], c[k * 2 + 1]);
+            }
+            if (index < 0) { index = path.length / 2; path.push(x, y); }
+            path.push(...at(d1));
+            anchor.push(index, ...path.map(Math.round));
+        }
+        out.push(anchor);
     }
     return out;
 }

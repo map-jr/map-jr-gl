@@ -712,6 +712,27 @@ export class GLRenderer {
             const gamma = 0.7 / (SDF_RADIUS * s * this.dpr);
             const fade = (c: number[]) => [c[0] * 255, c[1] * 255, c[2] * 255, c[3] * 255 * l.opacity].map(Math.round);
             const col = fade(src.color), halo = fade(src.halo);
+            if (l.curve) {
+                // Text along a line: every glyph has its own origin and rotation.
+                shaped.lines[0].glyphs!.forEach((g, i) => {
+                    if (!g.w) return;
+                    const gx = l.x + l.curve![i * 3], gy = l.y + l.curve![i * 3 + 1], ga = l.curve![i * 3 + 2], gc = Math.cos(ga), gs = Math.sin(ga);
+                    const x0 = (g.left - B) * s, y0 = (-g.top - B) * s, x1 = x0 + g.w * s, y1 = y0 + g.h * s;
+                    for (const [cx, cy, u, v] of [[x0, y0, 0, 0], [x1, y0, 1, 0], [x0, y1, 0, 1], [x1, y0, 1, 0], [x1, y1, 1, 1], [x0, y1, 0, 1]]) {
+                        const fi = o / 4;
+                        f[fi] = gx + cx * gc - cy * gs;
+                        f[fi + 1] = gy + cx * gs + cy * gc;
+                        f[fi + 2] = g.x + u * g.w;
+                        f[fi + 3] = g.y + v * g.h;
+                        b.set(col, o + 16);
+                        b.set(halo, o + 20);
+                        f[fi + 6] = hedge;
+                        f[fi + 7] = gamma;
+                        o += 32;
+                    }
+                });
+                continue;
+            }
             shaped.lines.forEach((line, i) => {
                 let pen = -line.width / 2;
                 const baseline = -shaped.height / 2 + i * shaped.lineHeight + shaped.lineHeight * 0.5 + EM * 0.34;

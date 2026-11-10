@@ -13,7 +13,11 @@ export const SDF_RADIUS = 8;
 const LINE_HEIGHT = 1.2 * EM;
 
 export interface Glyph { x: number; y: number; w: number; h: number; left: number; top: number; advance: number }
-export interface ShapedLine { text: string; width: number; glyphs?: Glyph[] }
+export interface ShapedLine {
+    text: string; width: number; glyphs?: Glyph[];
+    /** The line split into the units that are positioned individually, with each one's advance. */
+    chars: string[]; advances: number[];
+}
 /** All measurements are in pixels at a font size of EM. */
 export interface Shaped { lines: ShapedLine[]; width: number; height: number; lineHeight: number }
 export interface Shaper { shape(text: string, font: string, maxWidthEm: number, spacingEm: number): Shaped }
@@ -63,12 +67,13 @@ abstract class BaseShaper implements Shaper {
 export class EstimateShaper extends BaseShaper {
     protected line(text: string, font: string, spacing: number): ShapedLine {
         let w = 0, n = 0;
-        const bold = /[6-9]00/.test(font) ? 1.06 : 1;
+        const bold = /[6-9]00/.test(font) ? 1.06 : 1, chars: string[] = [], advances: number[] = [];
         for (const ch of text) {
             n++;
-            w += IDEOGRAPH.test(ch) ? EM : /[iljtfr.,:;'|! ]/.test(ch) ? EM * 0.3 : /[mwMW@]/.test(ch) ? EM * 0.85 : /[A-Z0-9]/.test(ch) ? EM * 0.66 : EM * 0.54;
+            const a = IDEOGRAPH.test(ch) ? EM : /[iljtfr.,:;'|! ]/.test(ch) ? EM * 0.3 : /[mwMW@]/.test(ch) ? EM * 0.85 : /[A-Z0-9]/.test(ch) ? EM * 0.66 : EM * 0.54;
+            w += a; chars.push(ch); advances.push(a * bold);
         }
-        return {text, width: w * bold + spacing * Math.max(0, n - 1)};
+        return {text, width: w * bold + spacing * Math.max(0, n - 1), chars, advances};
     }
 }
 
@@ -110,7 +115,7 @@ export class GlyphAtlas extends BaseShaper {
         const glyphs = parts.map(p => this.glyph(p, font));
         let width = spacing * Math.max(0, glyphs.length - 1);
         for (const g of glyphs) width += g.advance;
-        return {text, width, glyphs};
+        return {text, width, glyphs, chars: parts, advances: glyphs.map(g => g.advance)};
     }
 
     /** Label fonts arrive as "style weight|family"; the family named by the style is tried before the map default. */
