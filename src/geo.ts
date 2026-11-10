@@ -33,13 +33,17 @@ export class Transform {
     lat = 0;
     zoom = 0;
     bearing = 0;
+    /** Camera tilt in degrees: 0 looks straight down. */
+    pitch = 0;
     minZoom = 0;
     maxZoom = 22;
+    maxPitch = 60;
 
     get worldSize() { return TILE_SIZE * 2 ** this.zoom; }
     private get angle() { return -this.bearing * Math.PI / 180; }
 
-    set(center: LngLatLike | undefined, zoom?: number, bearing?: number) {
+    set(center: LngLatLike | undefined, zoom?: number, bearing?: number, pitch?: number) {
+        if (pitch !== undefined) this.pitch = clamp(pitch, 0, this.maxPitch);
         if (center) {
             const [lng, lat] = toLngLat(center);
             this.lng = lng;
@@ -49,17 +53,60 @@ export class Transform {
         if (bearing !== undefined) this.bearing = ((bearing + 180) % 360 + 360) % 360 - 180;
     }
 
-    /** Mercator [0..1] coordinates to screen pixels. */
-    mercToScreen(mx: number, my: number): [number, number] {
-        const ws = this.worldSize, a = this.angle, cos = Math.cos(a), sin = Math.sin(a);
-        const dx = (mx - mercX(this.lng)) * ws, dy = (my - mercY(this.lat)) * ws;
-        return [cos * dx - sin * dy + this.width / 2, sin * dx + cos * dy + this.height / 2];
+    /** Distance from the camera to the map centre in pixels; fixes the field of view at MapLibre's 36.87 degrees. */
+    get cameraDistance() { return 0.5 / Math.tan(0.6435011087932844 / 2) * this.height; }
+    /** Pixels per metre of height at the map centre. */
+    get pixelsPerMetre() { return this.worldSize / (40075016.686 * Math.cos(this.lat * Math.PI / 180)); }
+
+    /**
+     * The camera model, shared by every projection below. A point (dx, dy) pixels from the centre on the map plane
+     * (and z pixels above it) is rotated by the bearing, tilted by the pitch, then seen in perspective from
+     * `cameraDistance` away. With no pitch this reduces to the plain 2D rotation.
+     */
+    private view(dx: number, dy: number, z = 0): [number, number, number] {
+        const a = this.angle, cos = Math.cos(a), sin = Math.sin(a), p = this.pitch * Math.PI / 180, d = this.cameraDistance;
+        const rx = cos * dx - sin * dy, ry = sin * dx + cos * dy;
+        const depth = d - ry * Math.sin(p) - z * Math.cos(p), k = d / depth;
+        return [rx * k + this.width / 2, (ry * Math.cos(p) - z * Math.sin(p)) * k + this.height / 2, depth];
     }
 
+    /** Mercator [0..1] coordinates to screen pixels. */
+    mercToScreen(mx: number, my: number): [number, number] {
+        const ws = this.worldSize, [x, y] = this.view((mx - mercX(this.lng)) * ws, (my - mercY(this.lat)) * ws);
+        return [x, y];
+    }
+
+    /** Screen pixels to the mercator position on the ground under them. */
     screenToMerc(px: number, py: number): [number, number] {
-        const ws = this.worldSize, a = this.angle, cos = Math.cos(a), sin = Math.sin(a);
-        const dx = px - this.width / 2, dy = py - this.height / 2;
-        return [mercX(this.lng) + (cos * dx + sin * dy) / ws, mercY(this.lat) + (-sin * dx + cos * dy) / ws];
+        const ws = this.worldSize, a = this.angle, cos = Math.cos(a), sin = Math.sin(a), p = this.pitch * Math.PI / 180, d = this.cameraDistance;
+        const sx = px - this.width / 2, sy = py - this.height / 2;
+        // Invert the perspective for a point on the ground plane. Above the horizon there is no ground; clamp just below it.
+        const denom = Math.max(Math.cos(p) * d + sy * Math.sin(p), d * 0.02);
+        const ry = sy * d / denom, rx = sx * (d - ry * Math.sin(p)) / d;
+        return [mercX(this.lng) + (cos * rx + sin * ry) / ws, mercY(this.lat) + (-sin * rx + cos * ry) / ws];
+    }
+
+    /** A point in a tile (tile units, optional height in metres) to screen pixels. */
+    projectTile(id: TileID, x: number, y: number, metres = 0): [number, number] {
+        const ws = this.worldSize, n = 2 ** id.z, s = ws / n / EXTENT;
+        const [sx, sy] = this.view((id.x + id.w * n) * ws / n - mercX(this.lng) * ws + x * s, id.y * ws / n - mercY(this.lat) * ws + y * s, metres * this.pixelsPerMetre);
+        return [sx, sy];
+    }
+
+    /** Tile units (x, y) and metres (z) to clip space, as a column-major 4x4 matrix for the GPU. */
+    tileMatrix4(id: TileID): Float32Array {
+        const ws = this.worldSize, n = 2 ** id.z, s = ws / n / EXTENT;
+        const a = this.angle, cos = Math.cos(a), sin = Math.sin(a), p = this.pitch * Math.PI / 180, cp = Math.cos(p), sp = Math.sin(p);
+        const d = this.cameraDistance, ppm = this.pixelsPerMetre;
+        const ox = (id.x + id.w * n) * ws / n - mercX(this.lng) * ws, oy = id.y * ws / n - mercY(this.lat) * ws;
+        const tx = cos * ox - sin * oy, ty = sin * ox + cos * oy, kx = 2 * d / this.width, ky = -2 * d / this.height;
+        const near = d / 50, far = d * 100, A = (far + near) / (far - near), B = -2 * far * near / (far - near);
+        // Rows: X = kx * xc, Y = ky * yc, W = depth, Z = A * depth + B (so Z/W runs -1..1 from near to far).
+        const X = [cos * s * kx, -sin * s * kx, 0, tx * kx];
+        const Y = [sin * s * cp * ky, cos * s * cp * ky, -ppm * sp * ky, ty * cp * ky];
+        const W = [-sin * s * sp, -cos * s * sp, -ppm * cp, d - ty * sp];
+        const Z = [A * W[0], A * W[1], A * W[2], A * W[3] + B];
+        return new Float32Array([X[0], Y[0], Z[0], W[0], X[1], Y[1], Z[1], W[1], X[2], Y[2], Z[2], W[2], X[3], Y[3], Z[3], W[3]]);
     }
 
     project(lng: number, lat: number): [number, number] {
@@ -98,8 +145,10 @@ export class Transform {
     }
 
     /** `tileSize` shifts the zoom level chosen: 256px tiles are fetched one level deeper than 512px ones. */
-    coveringTiles(minzoom: number, maxzoom: number, tileSize = TILE_SIZE): TileID[] {
-        const z = clamp(Math.floor(this.zoom + Math.log2(TILE_SIZE / tileSize)), minzoom, maxzoom), n = 2 ** z;
+    coveringTiles(minzoom: number, maxzoom: number, tileSize = TILE_SIZE, round = false): TileID[] {
+        // Image tiles switch level at the half-way point (as MapLibre does) so they are never stretched more than about 1.4x.
+        const z = clamp((round ? Math.round : Math.floor)(this.zoom + Math.log2(TILE_SIZE / tileSize)), minzoom, maxzoom), n = 2 ** z;
+        if (this.pitch > 0.5) return this.coveringPitched(z);
         let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
         for (const [px, py] of [[0, 0], [this.width, 0], [0, this.height], [this.width, this.height]]) {
             const [mx, my] = this.screenToMerc(px, py);
@@ -115,6 +164,41 @@ export class Transform {
         }
         const d = (t: TileID) => (t.x + t.w * n + 0.5 - cx) ** 2 + (t.y + 0.5 - cy) ** 2;
         return out.sort((a, b) => d(a) - d(b));
+    }
+
+    /**
+     * Tile cover for a tilted camera. The view is a trapezoid on the ground whose far edge covers much more area,
+     * drawn much smaller, so tiles are chosen by descending a quadtree and stopping earlier the farther away a tile is.
+     */
+    private coveringPitched(maxZ: number): TileID[] {
+        const quad = [[0, 0], [this.width, 0], [this.width, this.height], [0, this.height]].map(([x, y]) => this.screenToMerc(x, y));
+        const d = this.cameraDistance, ws = this.worldSize, cx = mercX(this.lng), cy = mercY(this.lat);
+        const depthAt = (mx: number, my: number) => this.view((mx - cx) * ws, (my - cy) * ws)[2];
+        // Separating-axis test between the ground trapezoid and a tile's square.
+        const overlaps = (x0: number, y0: number, x1: number, y1: number) => {
+            if (Math.max(...quad.map(q => q[0])) < x0 || Math.min(...quad.map(q => q[0])) > x1 || Math.max(...quad.map(q => q[1])) < y0 || Math.min(...quad.map(q => q[1])) > y1) return false;
+            for (let i = 0; i < 4; i++) {
+                const [ax, ay] = quad[i], [bx, by] = quad[(i + 1) % 4], nx = by - ay, ny = ax - bx;
+                const side = (x: number, y: number) => (x - ax) * nx + (y - ay) * ny;
+                const inside = Math.sign(side(quad[(i + 2) % 4][0], quad[(i + 2) % 4][1]));
+                if ([[x0, y0], [x1, y0], [x1, y1], [x0, y1]].every(([x, y]) => Math.sign(side(x, y)) === -inside)) return false;
+            }
+            return true;
+        };
+        const out: TileID[] = [];
+        const visit = (z: number, x: number, y: number, w: number) => {
+            const n = 2 ** z, x0 = (x + w * n) / n, y0 = y / n, x1 = x0 + 1 / n, y1 = y0 + 1 / n;
+            if (!overlaps(x0, y0, x1, y1)) return;
+            // Depth of the tile's nearest point decides how much detail it needs: half the on-screen scale, one level less.
+            const near = Math.min(depthAt(clamp(cx, x0, x1), clamp(cy, y0, y1)), depthAt(x0, y0), depthAt(x1, y0), depthAt(x0, y1), depthAt(x1, y1));
+            const wanted = maxZ - Math.max(0, Math.floor(Math.log2(Math.max(near, 1) / d) + 0.35));
+            if (z >= maxZ || z >= wanted) { out.push({z, x, y, w, key: `${z}/${x}/${y}`}); return; }
+            for (let i = 0; i < 4; i++) visit(z + 1, x * 2 + (i & 1), y * 2 + (i >> 1), w);
+        };
+        const w0 = Math.floor(Math.min(...quad.map(q => q[0]))), w1 = Math.floor(Math.max(...quad.map(q => q[0])));
+        for (let w = w0; w <= w1; w++) visit(0, 0, 0, w);
+        const dist = (t: TileID) => { const n = 2 ** t.z; return ((t.x + 0.5) / n + t.w - cx) ** 2 + ((t.y + 0.5) / n - cy) ** 2; };
+        return out.sort((a, b) => dist(a) - dist(b));
     }
 }
 

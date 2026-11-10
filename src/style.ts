@@ -8,8 +8,10 @@ const SPEC: Record<string, Record<string, [string, PropKind, any]>> = {
         color: ['line-color', 'color', '#000'], opacity: ['line-opacity', 'number', 1], width: ['line-width', 'number', 1],
         gap: ['line-gap-width', 'number', 0], dash: ['line-dasharray', 'discrete', null], cap: ['line-cap', 'string', 'butt'], join: ['line-join', 'string', 'miter'],
     },
-    // Without camera pitch a building extrusion is just its footprint, so it is drawn as a fill.
-    'fill-extrusion': {color: ['fill-extrusion-color', 'color', '#000'], opacity: ['fill-extrusion-opacity', 'number', 1]},
+    'fill-extrusion': {
+        color: ['fill-extrusion-color', 'color', '#000'], opacity: ['fill-extrusion-opacity', 'number', 1],
+        height: ['fill-extrusion-height', 'number', 0], base: ['fill-extrusion-base', 'number', 0],
+    },
     circle: {
         color: ['circle-color', 'color', '#000'], opacity: ['circle-opacity', 'number', 1], radius: ['circle-radius', 'number', 5],
         strokeColor: ['circle-stroke-color', 'color', '#000'], strokeWidth: ['circle-stroke-width', 'number', 0],
@@ -55,7 +57,7 @@ export function compileLayer(l: LayerJSON): CompiledLayer | null {
         p[k] = compileProp(l.paint?.[name] ?? l.layout?.[name], kind, def);
     }
     return {
-        id: l.id, type: l.type === 'fill-extrusion' ? 'fill' : l.type, source: l.source, sourceLayer: l['source-layer'],
+        id: l.id, type: l.type, source: l.source, sourceLayer: l['source-layer'],
         minzoom: l.minzoom ?? 0, maxzoom: l.maxzoom ?? 24,
         // Pattern fills need sprite images, which are not supported yet; hiding them beats drawing solid black.
         visible: l.layout?.visibility !== 'none' && !l.paint?.['fill-pattern'] && !l.paint?.['line-pattern'], filter: compileFilter(l.filter), p,

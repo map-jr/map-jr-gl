@@ -76,24 +76,32 @@ type Canvas2D = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 
 /** Single-channel SDF atlas with shelf packing. Works on the main thread and in workers (OffscreenCanvas). */
 export class GlyphAtlas extends BaseShaper {
-    readonly width = 1024;
-    readonly height = 1024;
+    readonly width = 2048;
+    readonly height = 2048;
     data = new Uint8Array(this.width * this.height);
     /** Bumped whenever pixels change, so the renderer knows to re-upload. */
     version = 0;
+    /** Rows changed since the renderer last uploaded, so it can send just those; null means everything. */
+    dirty: [number, number] | null = null;
+    /** How many times the atlas has been emptied. Shaped text from before a reset points at stale positions. */
+    resets = 0;
     private glyphs = new Map<string, Glyph>();
     /** Called when the atlas had to be emptied, invalidating any shaped text held elsewhere. */
     onReset?: () => void;
-    private ctx: Canvas2D;
+    private ctx!: Canvas2D;
     private penX = 1;
     private penY = 1;
     private shelf = 0;
 
     constructor(private family: string) {
         super();
+        this.ctx = this.newContext();
+    }
+
+    private newContext(): Canvas2D {
         const size = 256;
         const canvas = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(size, size) : Object.assign(document.createElement('canvas'), {width: size, height: size});
-        this.ctx = canvas.getContext('2d', {willReadFrequently: true}) as Canvas2D;
+        return canvas.getContext('2d', {willReadFrequently: true}) as Canvas2D;
     }
 
     protected line(text: string, font: string, spacing: number): ShapedLine {
@@ -112,10 +120,13 @@ export class GlyphAtlas extends BaseShaper {
     }
 
     /** Forgets every glyph, e.g. after a web font finishes loading and text must be redrawn with it. */
-    clear() {
+    clear(fontsChanged = false) {
+        // A canvas context remembers which font it resolved for a given font string, so after new fonts load it
+        // would keep drawing with the old fallback. A fresh context resolves them again.
+        if (fontsChanged) this.ctx = this.newContext();
         this.data.fill(0); this.glyphs.clear(); this.reset();
         this.penX = this.penY = 1; this.shelf = 0;
-        this.version++;
+        this.version++; this.resets++; this.dirty = null;
     }
 
     private glyph(text: string, font: string): Glyph {
@@ -151,6 +162,7 @@ export class GlyphAtlas extends BaseShaper {
             for (let row = 0; row < h; row++) this.data.set(sdf.subarray(row * w, row * w + w), (g.y + row) * this.width + g.x);
             this.penX += w + 1;
             this.shelf = Math.max(this.shelf, h);
+            if (this.dirty) { this.dirty[0] = Math.min(this.dirty[0], g.y); this.dirty[1] = Math.max(this.dirty[1], g.y + h); }
             this.version++;
         } else { g.w = g.h = 0; }
         this.glyphs.set(key, g);

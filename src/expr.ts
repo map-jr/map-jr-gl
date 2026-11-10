@@ -304,7 +304,7 @@ export function compileProp(v: any, kind: PropKind, def: any): Prop {
     let fn: Fn;
     if (v === undefined || v === null) v = def;
     if (kind !== 'raw' && Array.isArray(v) && typeof v[0] === 'string') fn = compileExpr(v, flags);
-    else if (kind !== 'raw' && v && typeof v === 'object' && !Array.isArray(v) && v.stops) fn = legacyFunction(v, flags, kind === 'discrete');
+    else if (kind !== 'raw' && v && typeof v === 'object' && !Array.isArray(v) && (v.stops || v.type === 'identity')) fn = legacyFunction(v, flags, kind === 'discrete');
     else { const k = v; fn = () => k; }
     const defColor = kind === 'color' ? (typeof def === 'string' ? parseColor(def) : def) ?? [0, 0, 0, 1] : null;
     const finish = kind === 'color'

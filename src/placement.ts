@@ -1,4 +1,4 @@
-import {type Mat, type Transform, type TileID, EXTENT, apply} from './geo.ts';
+import {type Mat, type Transform, type TileID, EXTENT} from './geo.ts';
 import type {CompiledLayer, SpriteIcon} from './style.ts';
 import type {LabelSrc} from './tile.ts';
 import {EM, type Shaped, type Shaper} from './text.ts';
@@ -7,6 +7,8 @@ import {EM, type Shaped, type Shaper} from './text.ts';
 export interface RenderItem<T> {
     id: TileID;
     matrix: Mat;
+    /** The same mapping with perspective, for the GPU. */
+    matrix4: Float32Array;
     /** Pixels per tile unit. */
     scale: number;
     /** Visible sub-rectangle in tile units; smaller than the full tile when a parent stands in for a missing child. */
@@ -82,7 +84,7 @@ export function placeLabels(
     icons?: IconLookup,
 ): Placed[] {
     const out: Placed[] = [], seen = new Map<string, number[]>();
-    const mapAngle = -tr.bearing * Math.PI / 180, margin = 100;
+    const margin = 100;
     for (let li = layers.length - 1; li >= 0; li--) {
         const L = layers[li];
         if (L.type !== 'symbol' || !L.visible || tr.zoom < L.minzoom || tr.zoom >= L.maxzoom) continue;
@@ -92,7 +94,7 @@ export function placeLabels(
             const t = Math.min(1, Math.max(0, tr.zoom - it.id.z));
             for (const l of labels) {
                 if (l.x < it.clip[0] || l.y < it.clip[1] || l.x >= it.clip[2] || l.y >= it.clip[3]) continue;
-                const [ax, ay] = apply(it.matrix, l.x, l.y);
+                const [ax, ay] = tr.projectTile(it.id, l.x, l.y);
                 if (ax < -margin || ay < -margin || ax > tr.width + margin || ay > tr.height + margin) continue;
                 const size = l.size0 + (l.size1 - l.size0) * t, s = size / EM, line = l.angle !== null;
                 const meta = l.icon ? icons?.(l.icon.name) : undefined;
@@ -100,7 +102,9 @@ export function placeLabels(
                 const w = shaped ? shaped.width * s : 0, h = shaped ? shaped.height * s : 0;
                 const hasText = w > 0;
                 if (!hasText && !meta) continue;
-                const lineAngle = line ? l.angle! + mapAngle : 0;
+                // Direction of the line on screen, found by projecting a second point a little way along it.
+                let lineAngle = 0;
+                if (line) { const [bx, by] = tr.projectTile(it.id, l.x + Math.cos(l.angle!) * 64, l.y + Math.sin(l.angle!) * 64); lineAngle = Math.atan2(by - ay, bx - ax); }
 
                 // Where the text could go: along the line, at one of several anchors, or at its fixed anchor.
                 let textAngle = 0, candidates: [number, number][] = [];
@@ -177,7 +181,7 @@ export const FULL_CLIP: [number, number, number, number] = [0, 0, EXTENT, EXTENT
 export function renderItems<T>(tr: Transform, ideal: TileID[], get: (key: string) => T | undefined): RenderItem<T>[] {
     const items: RenderItem<T>[] = [];
     const push = (id: TileID, clip: [number, number, number, number], tile: T) =>
-        items.push({id, matrix: tr.tileMatrix(id), scale: tr.tileScale(id.z), clip, tile});
+        items.push({id, matrix: tr.tileMatrix(id), matrix4: tr.tileMatrix4(id), scale: tr.tileScale(id.z), clip, tile});
     for (const id of ideal) {
         const tile = get(id.key);
         if (tile) { push(id, FULL_CLIP, tile); continue; }

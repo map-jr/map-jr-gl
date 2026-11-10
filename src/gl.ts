@@ -5,39 +5,41 @@ import type {Placed, RenderItem} from './placement.ts';
 import {EM, SDF_BUFFER, SDF_RADIUS, type GlyphAtlas} from './text.ts';
 
 const HEAD = '#version 300 es\nprecision highp float;\n';
-/** Shared vertex helpers: u_mx/u_my are the two rows of the tile-to-screen matrix, positions end up in CSS pixels. */
-const VS_COMMON = `uniform vec3 u_mx; uniform vec3 u_my; uniform vec2 u_view;
-vec4 toClip(vec2 px) { vec2 c = px / u_view * 2.0 - 1.0; return vec4(c.x, -c.y, 0.0, 1.0); }
-vec2 toScreen(vec2 t) { vec3 p = vec3(t, 1.0); return vec2(dot(u_mx, p), dot(u_my, p)); }
+/** Shared by the map-space programs: u_matrix takes tile units (and metres of height) to clip space. */
+const VS_COMMON = `uniform mat4 u_matrix; uniform vec2 u_view;
+vec4 toClip(vec2 t) { return u_matrix * vec4(t, 0.0, 1.0); }
 `;
 const FS_CLIP = 'if (v_tile.x < u_clip.x || v_tile.y < u_clip.y || v_tile.x > u_clip.z || v_tile.y > u_clip.w) discard;';
 
 const SHADERS = {
     fill: [`${VS_COMMON}
 layout(location=0) in vec2 a_pos; layout(location=1) in vec4 a_color; out vec4 v_color; out vec2 v_tile;
-void main() { v_tile = a_pos; v_color = a_color; gl_Position = toClip(toScreen(a_pos)); }`, `
+void main() { v_tile = a_pos; v_color = a_color; gl_Position = toClip(a_pos); }`, `
 uniform vec4 u_color; uniform vec4 u_clip; in vec4 v_color; in vec2 v_tile; out vec4 o;
 void main() { ${FS_CLIP} vec4 c = v_color * u_color; o = vec4(c.rgb * c.a, c.a); }`],
 
     line: [`${VS_COMMON}
 layout(location=0) in vec4 a_v; layout(location=1) in vec4 a_color; layout(location=2) in vec2 a_sd; layout(location=3) in float a_width;
 uniform float u_width; uniform float u_scale; uniform float u_gap;
-out vec4 v_color; out vec2 v_tile; out float v_d; out float v_hw; out float v_w; out float v_dist;
+uniform float u_cam;
+out vec4 v_color; out vec2 v_tile; out float v_d; out float v_hw; out float v_w; out float v_dist; out float v_persp;
 void main() {
   float w = a_width * u_width;
   // With a gap the line is two strokes of width w either side of an empty middle.
   v_hw = (u_gap > 0.0 ? u_gap * 0.5 + w : w * 0.5) + 0.5; v_d = a_sd.x * v_hw; v_w = w; v_dist = a_sd.y;
   v_color = vec4(a_color.rgb, a_color.a * min(1.0, w));
   v_tile = a_v.xy + a_v.zw * v_hw / u_scale;
-  gl_Position = toClip(toScreen(v_tile));
+  gl_Position = toClip(v_tile);
+  // Lines lie on the map, so a tilted view draws distant ones thinner; edge antialiasing must shrink to match.
+  v_persp = gl_Position.w / u_cam;
 }`, `
 uniform vec4 u_color; uniform vec4 u_clip; uniform float u_gap; uniform vec4 u_dash; uniform float u_dashScale;
-in vec4 v_color; in vec2 v_tile; in float v_d; in float v_hw; in float v_w; in float v_dist; out vec4 o;
+in vec4 v_color; in vec2 v_tile; in float v_d; in float v_hw; in float v_w; in float v_dist; in float v_persp; out vec4 o;
 void main() {
   ${FS_CLIP}
   vec4 c = v_color * u_color;
-  float a = c.a * clamp(v_hw - abs(v_d), 0.0, 1.0);
-  if (u_gap > 0.0) a *= clamp(abs(v_d) - u_gap * 0.5 + 0.5, 0.0, 1.0);
+  float a = c.a * clamp((v_hw - abs(v_d)) / v_persp, 0.0, 1.0);
+  if (u_gap > 0.0) a *= clamp((abs(v_d) - u_gap * 0.5 + 0.5) / v_persp, 0.0, 1.0);
   float period = u_dash.x + u_dash.y + u_dash.z + u_dash.w;
   if (period > 0.0) {
     // Dash lengths are in multiples of the line width; antialias each dash end over about a pixel.
@@ -58,7 +60,10 @@ void main() {
   float ext = v_r + u_strokeWidth + 1.0;
   v_off = a_corner * ext;
   bool inside = a_pos.x >= u_clip.x && a_pos.y >= u_clip.y && a_pos.x < u_clip.z && a_pos.y < u_clip.w;
-  gl_Position = inside ? toClip(toScreen(a_pos) + v_off) : vec4(2.0, 2.0, 2.0, 1.0);
+  vec4 c = toClip(a_pos);
+  // Circles face the viewer: offset in screen pixels after projection.
+  c.xy += v_off * vec2(2.0, -2.0) / u_view * c.w;
+  gl_Position = inside ? c : vec4(2.0, 2.0, 2.0, 1.0);
 }`, `
 uniform vec4 u_color; uniform vec4 u_stroke; uniform float u_strokeWidth; in vec4 v_color; in vec2 v_off; in float v_r; out vec4 o;
 void main() {
@@ -82,9 +87,16 @@ void main() {
   o = vec4(c.rgb * a, a);
 }`],
 
+    // Buildings: roofs and walls with a height in metres and a baked light level.
+    extrusion: [`uniform mat4 u_matrix;
+layout(location=0) in vec4 a_v; layout(location=1) in vec4 a_color; out vec4 v_color; out vec2 v_tile;
+void main() { v_tile = a_v.xy; v_color = vec4(a_color.rgb * a_v.w, a_color.a); gl_Position = u_matrix * vec4(a_v.xyz, 1.0); }`, `
+uniform vec4 u_color; uniform vec4 u_clip; in vec4 v_color; in vec2 v_tile; out vec4 o;
+void main() { ${FS_CLIP} vec4 c = v_color * u_color; o = vec4(c.rgb * c.a, c.a); }`],
+
     raster: [`${VS_COMMON}
 layout(location=0) in vec2 a_pos; out vec2 v_uv; out vec2 v_tile;
-void main() { v_uv = a_pos; v_tile = a_pos * ${EXTENT}.0; gl_Position = toClip(toScreen(v_tile)); }`, `
+void main() { v_uv = a_pos; v_tile = a_pos * ${EXTENT}.0; gl_Position = toClip(v_tile); }`, `
 uniform sampler2D u_image; uniform vec4 u_clip; uniform vec3 u_adjust; in vec2 v_uv; in vec2 v_tile; out vec4 o;
 void main() {
   ${FS_CLIP}
@@ -119,7 +131,7 @@ void main() {
 
     hillshade: [`${VS_COMMON}
 layout(location=0) in vec2 a_pos; out vec2 v_uv; out vec2 v_tile;
-void main() { v_uv = a_pos; v_tile = a_pos * ${EXTENT}.0; gl_Position = toClip(toScreen(v_tile)); }`, `
+void main() { v_uv = a_pos; v_tile = a_pos * ${EXTENT}.0; gl_Position = toClip(v_tile); }`, `
 uniform sampler2D u_image; uniform vec4 u_clip; uniform vec2 u_latrange; uniform vec2 u_light;
 uniform vec4 u_shadow; uniform vec4 u_highlight; uniform vec4 u_accent; in vec2 v_uv; in vec2 v_tile; out vec4 o;
 const float PI = 3.141592653589793;
@@ -186,7 +198,7 @@ export class GLRenderer {
     private dpr = 1;
 
     constructor(private canvas: HTMLCanvasElement | OffscreenCanvas) {
-        const gl = canvas.getContext('webgl2', {antialias: true, alpha: true, premultipliedAlpha: true, stencil: false, depth: false}) as WebGL2RenderingContext | null;
+        const gl = canvas.getContext('webgl2', {antialias: true, alpha: true, premultipliedAlpha: true, stencil: false, depth: true}) as WebGL2RenderingContext | null;
         if (!gl) throw new Error('WebGL2 is not available');
         this.gl = gl;
         for (const name in SHADERS) {
@@ -292,6 +304,11 @@ export class GLRenderer {
             let count = 0, scalar = false;
             if (b.type === 'fill') {
                 attr(0, b.pos, 2, gl.SHORT);
+                if (b.color) attr(1, b.color, 4, gl.UNSIGNED_BYTE, true);
+                index(b.idx);
+                count = b.idx.length;
+            } else if (b.type === 'extrusion') {
+                attr(0, b.v, 4, gl.FLOAT);
                 if (b.color) attr(1, b.color, 4, gl.UNSIGNED_BYTE, true);
                 index(b.idx);
                 count = b.idx.length;
@@ -402,8 +419,7 @@ export class GLRenderer {
                 const u = use('fill');
                 gl.bindVertexArray(this.quad);
                 gl.vertexAttrib4f(1, 1, 1, 1, 1);
-                gl.uniform3f(u.u_mx, tr.width, 0, 0);
-                gl.uniform3f(u.u_my, 0, tr.height, 0);
+                gl.uniformMatrix4fv(u.u_matrix, false, [2, 0, 0, 0, 0, -2, 0, 0, 0, 0, 1, 0, -1, 1, 0, 1]); // unit square -> whole screen
                 gl.uniform4f(u.u_clip, -1, -1, 2, 2);
                 gl.uniform4fv(u.u_color, color(L));
                 gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
@@ -429,9 +445,8 @@ export class GLRenderer {
                 }
                 for (const it of items) {
                     if (!it.tile.tex) continue;
-                    const m = it.matrix;
-                    gl.uniform3f(u.u_mx, m[0], m[2], m[4]);
-                    gl.uniform3f(u.u_my, m[1], m[3], m[5]);
+                    const m = it.matrix4;
+                    gl.uniformMatrix4fv(u.u_matrix, false, m);
                     gl.uniform4fv(u.u_clip, it.clip);
                     if (it.tile.lat) gl.uniform2fv(u.u_latrange, it.tile.lat);
                     gl.bindTexture(gl.TEXTURE_2D, it.tile.tex);
@@ -440,24 +455,26 @@ export class GLRenderer {
                 continue;
             }
             let first = true;
+            // Buildings are the one layer that needs depth sorting; everything else is painted back to front.
+            const extrude = L.type === 'fill-extrusion', pending: (() => void)[] = [];
+            if (extrude) { gl.clear(gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL); }
             if (L.type === 'fill' && L.p.outline && L.p.outline.eval(zoom)[3] > 0) {
                 // Drawn after the fill below would be more faithful, but outlines are 1px and sit on the fill's own edge.
                 const oc = L.p.outline.eval(zoom), op = L.p.opacity.dd ? 1 : L.p.opacity.eval(zoom);
                 for (const it of items) {
-                    const fill = it.tile.batches[L.id], b = it.tile.batches[L.id + OUTLINE], m = it.matrix;
+                    const fill = it.tile.batches[L.id], b = it.tile.batches[L.id + OUTLINE], m = it.matrix4;
                     for (const [batch, col] of [[fill, color(L)], [b, [oc[0], oc[1], oc[2], oc[3] * op]]] as const) {
                         if (!batch) continue;
                         const u = use(batch.type);
                         gl.uniform4fv(u.u_color, col);
-                        gl.uniform3f(u.u_mx, m[0], m[2], m[4]);
-                        gl.uniform3f(u.u_my, m[1], m[3], m[5]);
+                        gl.uniformMatrix4fv(u.u_matrix, false, m);
                         gl.uniform4fv(u.u_clip, it.clip);
                         gl.bindVertexArray(batch.vao);
                         if (batch.type === 'line' || !batch.color) gl.vertexAttrib4f(1, 1, 1, 1, 1);
                         gl.vertexAttrib1f(3, 1);
                         if (batch.type === 'line') {
                             gl.uniform1f(u.u_width, 1); gl.uniform1f(u.u_gap, 0); gl.uniform4f(u.u_dash, 0, 0, 0, 0);
-                            gl.uniform1f(u.u_scale, it.scale); gl.uniform1f(u.u_dashScale, 1);
+                            gl.uniform1f(u.u_scale, it.scale); gl.uniform1f(u.u_dashScale, 1); gl.uniform1f(u.u_cam, tr.cameraDistance);
                         }
                         gl.drawElements(gl.TRIANGLES, batch.count, gl.UNSIGNED_INT, 0);
                     }
@@ -467,7 +484,7 @@ export class GLRenderer {
             for (const it of items) {
                 const b = it.tile.batches[L.id];
                 if (!b) continue;
-                const u = use(b.type), m = it.matrix;
+                const u = use(b.type), m = it.matrix4;
                 if (first) {
                     first = false;
                     gl.uniform4fv(u.u_color, color(L));
@@ -484,8 +501,7 @@ export class GLRenderer {
                         gl.uniform4f(u.u_stroke, sc[0] * a, sc[1] * a, sc[2] * a, a);
                     }
                 }
-                gl.uniform3f(u.u_mx, m[0], m[2], m[4]);
-                gl.uniform3f(u.u_my, m[1], m[3], m[5]);
+                gl.uniformMatrix4fv(u.u_matrix, false, m);
                 gl.uniform4fv(u.u_clip, it.clip);
                 gl.bindVertexArray(b.vao);
                 // Attributes without a buffer read these constants, so shaders need no variants.
@@ -493,11 +509,28 @@ export class GLRenderer {
                 if (!b.scalar) gl.vertexAttrib1f(3, 1);
                 if (b.type === 'line') {
                     gl.uniform1f(u.u_scale, it.scale);
+                    gl.uniform1f(u.u_cam, tr.cameraDistance);
                     // Dashes are sized at whole zoom levels so they stretch, rather than crawl, while zooming.
                     gl.uniform1f(u.u_dashScale, it.scale / 2 ** (zoom - Math.floor(zoom)));
                 }
                 if (b.type === 'circle') gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, b.count);
-                else gl.drawElements(gl.TRIANGLES, b.count, gl.UNSIGNED_INT, 0);
+                else if (extrude) {
+                    // Depth first, colour second: translucent buildings then blend once, with the nearest surface only.
+                    gl.colorMask(false, false, false, false);
+                    gl.drawElements(gl.TRIANGLES, b.count, gl.UNSIGNED_INT, 0);
+                    gl.colorMask(true, true, true, true);
+                    pending.push(() => {
+                        gl.uniformMatrix4fv(u.u_matrix, false, m);
+                        gl.uniform4fv(u.u_clip, it.clip);
+                        gl.bindVertexArray(b.vao);
+                        if (!b.color) gl.vertexAttrib4f(1, 1, 1, 1, 1);
+                        gl.drawElements(gl.TRIANGLES, b.count, gl.UNSIGNED_INT, 0);
+                    });
+                } else gl.drawElements(gl.TRIANGLES, b.count, gl.UNSIGNED_INT, 0);
+            }
+            if (extrude) {
+                for (const draw of pending) draw();
+                gl.disable(gl.DEPTH_TEST);
             }
         }
 
@@ -521,8 +554,12 @@ export class GLRenderer {
             gl.activeTexture(gl.TEXTURE0);
             gl.bindTexture(gl.TEXTURE_2D, this.sdfTex);
             if (this.sdfVersion !== s.atlas.version) {
-                gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, s.atlas.width, s.atlas.height, 0, gl.RED, gl.UNSIGNED_BYTE, s.atlas.data);
-                this.sdfVersion = s.atlas.version;
+                const a = s.atlas, d = a.dirty;
+                // Usually only a few rows of new glyphs changed; send just those.
+                if (d && d[1] > d[0]) gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, d[0], a.width, d[1] - d[0], gl.RED, gl.UNSIGNED_BYTE, a.data.subarray(d[0] * a.width, d[1] * a.width));
+                else if (!d) gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, a.width, a.height, 0, gl.RED, gl.UNSIGNED_BYTE, a.data);
+                a.dirty = [a.height, 0];
+                this.sdfVersion = a.version;
             }
             const u = use('text');
             gl.uniform2f(u.u_tex, s.atlas.width, s.atlas.height);

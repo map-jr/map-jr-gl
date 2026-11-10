@@ -5,6 +5,7 @@ import type {QueriedFeature} from './query.ts';
 import {LocalBackend, PortBackend, type TileBackend} from './tiles.ts';
 import {anchorOffset, resolveVariants, sizedSVG, type MarkerInput, type MarkerLayerOptions} from './markers.ts';
 import {DEFAULT_FONT} from './text.ts';
+import {CONTROL_CSS, type Control, type ControlPosition} from './controls.ts';
 
 declare const __WORKER_SRC__: string;
 
@@ -30,6 +31,8 @@ export interface MapOptions extends CameraOptions {
     interactive?: boolean;
     minZoom?: number;
     maxZoom?: number;
+    /** Largest camera tilt allowed, in degrees (at most 60). */
+    maxPitch?: number;
 }
 
 export interface MapEvent { type: string; target: Map; point?: {x: number; y: number}; lngLat?: {lng: number; lat: number}; [key: string]: unknown }
@@ -91,7 +94,8 @@ export class Map {
         this.measure();
         this.canvas.style.width = this.tr.width + 'px';
         this.canvas.style.height = this.tr.height + 'px';
-        this.tr.set(options.center ?? [0, 0], options.zoom ?? 0, options.bearing ?? 0);
+        this.tr.maxPitch = options.maxPitch ?? 60;
+        this.tr.set(options.center ?? [0, 0], options.zoom ?? 0, options.bearing ?? 0, options.pitch ?? 0);
         this.start().catch(err => this.fire('error', {error: err}));
     }
 
@@ -110,7 +114,7 @@ export class Map {
         const tr = this.tr;
         const engineOptions = {
             style: this.style, width: tr.width, height: tr.height, dpr: this.dpr, fontFamily: o.fontFamily ?? DEFAULT_FONT, fonts: o.fonts,
-            center: [tr.lng, tr.lat] as [number, number], zoom: tr.zoom, bearing: tr.bearing,
+            center: [tr.lng, tr.lat] as [number, number], zoom: tr.zoom, bearing: tr.bearing, pitch: tr.pitch,
         };
 
         let workerUrl = o.workerUrl, blobUrl: string | undefined;
@@ -179,11 +183,14 @@ export class Map {
     private onEngineEvent(e: EngineEvent) {
         if (e.type === 'camera') {
             const zoomed = e.zoom !== this.tr.zoom;
-            Object.assign(this.tr, {lng: e.lng, lat: e.lat, zoom: e.zoom, bearing: e.bearing});
+            const turned = e.bearing !== this.tr.bearing, tilted = e.pitch !== this.tr.pitch;
+            Object.assign(this.tr, {lng: e.lng, lat: e.lat, zoom: e.zoom, bearing: e.bearing, pitch: e.pitch});
             if (!this.moving) this.fire('movestart');
             this.moving = true;
             this.fire('move');
             if (zoomed) this.fire('zoom');
+            if (turned) this.fire('rotate');
+            if (tilted) this.fire('pitch');
             if (!e.moving && !this.dragging) { this.moving = false; this.fire('moveend'); }
         } else if (e.type === 'idle') {
             if (!this.isLoaded) {
@@ -210,7 +217,8 @@ export class Map {
         const wrap: Listener = e => { this.off(type, wrap); fn(e); };
         return this.on(type, wrap);
     }
-    private fire(type: string, data: Record<string, unknown> = {}) {
+    /** Dispatches an event to listeners. Public so controls and plugins can raise their own. */
+    fire(type: string, data: Record<string, unknown> = {}) {
         const list = this.listeners[type];
         if (type === 'error' && !list?.length) console.error('[tessera]', data.error);
         if (list) for (const fn of [...list]) fn({type, target: this, ...data});
@@ -220,6 +228,9 @@ export class Map {
     getCenter() { return {lng: this.tr.lng, lat: this.tr.lat}; }
     getZoom() { return this.tr.zoom; }
     getBearing() { return this.tr.bearing; }
+    getPitch() { return this.tr.pitch; }
+    getMinZoom() { return this.tr.minZoom; }
+    getMaxZoom() { return this.tr.maxZoom; }
     getContainer() { return this.container; }
     getCanvas() { return this.canvas; }
     loaded() { return this.isLoaded; }
@@ -236,7 +247,7 @@ export class Map {
     }
     jumpTo(o: CameraOptions) {
         // Applied locally as well, so reads immediately after a write are correct even when the engine is in a worker.
-        this.tr.set(o.center, o.zoom, o.bearing);
+        this.tr.set(o.center, o.zoom, o.bearing, o.pitch);
         this.post({type: 'jump', ...o});
         return this;
     }
@@ -248,6 +259,9 @@ export class Map {
     setCenter(center: LngLatLike) { return this.jumpTo({center}); }
     setZoom(zoom: number) { return this.jumpTo({zoom}); }
     setBearing(bearing: number) { return this.jumpTo({bearing}); }
+    setPitch(pitch: number) { return this.jumpTo({pitch}); }
+    resetNorth(o: {duration?: number} = {}) { return this.easeTo({bearing: 0, ...o}); }
+    resetNorthPitch(o: {duration?: number} = {}) { return this.easeTo({bearing: 0, pitch: 0, ...o}); }
     zoomIn() { return this.easeTo({zoom: this.tr.zoom + 1, duration: 300}); }
     zoomOut() { return this.easeTo({zoom: this.tr.zoom - 1, duration: 300}); }
     triggerRepaint() { this.post({type: 'repaint'}); }
@@ -282,6 +296,32 @@ export class Map {
         this.restyle(true);
         return this;
     }
+
+    // ---- controls ----
+    private corners: Partial<Record<ControlPosition, HTMLElement>> = {};
+    private controls = new globalThis.Map<Control, HTMLElement>();
+    addControl(control: Control, position?: ControlPosition) {
+        const pos = position ?? control.getDefaultPosition?.() ?? 'top-right';
+        if (!document.getElementById('tessera-control-css')) {
+            document.head.appendChild(Object.assign(document.createElement('style'), {id: 'tessera-control-css', textContent: CONTROL_CSS}));
+        }
+        let corner = this.corners[pos];
+        if (!corner) {
+            corner = this.corners[pos] = document.createElement('div');
+            corner.className = 'maplibregl-ctrl-' + pos;
+            this.container.appendChild(corner);
+            this.cleanup.push(() => corner!.remove());
+        }
+        const el = control.onAdd(this);
+        this.controls.set(control, el);
+        corner.appendChild(el);
+        return this;
+    }
+    removeControl(control: Control) {
+        if (this.controls.delete(control)) control.onRemove(this);
+        return this;
+    }
+    hasControl(control: Control) { return this.controls.has(control); }
 
     // ---- fonts and images ----
     /** Loads more web fonts for labels after construction. See the `fonts` option. */
@@ -419,6 +459,9 @@ export class Map {
             this.post({type: 'stop'});
         });
         listen('pointermove', e => {
+            // A mouse button released where we could not see it (outside the window, over a native dialog) leaves a
+            // pointer we still think is down. No buttons pressed means the drag is over.
+            if (e.pointerType === 'mouse' && e.buttons === 0 && pointers.has(e.pointerId)) up(e);
             const p = pos(e), prev = pointers.get(e.pointerId);
             if (!prev) {
                 const hit = this.queryMarkers(p), was = this.hovered;
@@ -443,7 +486,7 @@ export class Map {
                     this.post({type: 'pan', dx: dx / 2, dy: dy / 2});
                 }
                 pinch = {dist, angle};
-            } else if (rotating) this.post({type: 'rotate', delta: -dx * 0.4});
+            } else if (rotating) this.post({type: 'rotate', delta: -dx * 0.4, pitch: -dy * 0.5}); // right- or ctrl-drag: turn and tilt
             else if (moved > 3) {
                 this.dragging = true;
                 this.post({type: 'pan', dx, dy});
@@ -471,6 +514,10 @@ export class Map {
         };
         listen('pointerup', up);
         listen('pointercancel', up);
+        listen('lostpointercapture', up);
+        const blur = () => { for (const id of [...pointers.keys()]) up({pointerId: id, type: 'blur'} as PointerEvent); };
+        window.addEventListener('blur', blur);
+        this.cleanup.push(() => window.removeEventListener('blur', blur));
         listen('wheel', e => {
             e.preventDefault();
             const p = pos(e), now = performance.now(), gap = now - lastWheel;
@@ -510,7 +557,8 @@ export class Map {
         const html = [...new Set(Object.values(this.style.sources).map(s => s.attribution).filter(Boolean))].join(' | ');
         if (!html) return;
         const div = document.createElement('div');
-        div.style.cssText = 'position:absolute;right:0;bottom:0;padding:2px 6px;font:11px/1.4 system-ui,sans-serif;background:rgba(255,255,255,.7);color:#333';
+        div.className = 'maplibregl-ctrl-attrib';
+        div.style.cssText = 'position:absolute;right:0;bottom:0;z-index:2;padding:2px 6px;font:11px/1.4 system-ui,sans-serif;background:rgba(255,255,255,.7);color:#333';
         // Attribution arrives as HTML from tile providers. Keep its text and links, and nothing else.
         const copy = (from: Node, to: Node) => {
             for (const node of from.childNodes) {
@@ -531,6 +579,7 @@ export class Map {
     }
 
     remove() {
+        for (const c of [...this.controls.keys()]) this.removeControl(c);
         this.observer?.disconnect();
         for (const fn of this.cleanup) fn();
         for (const w of this.workers) w.terminate();

@@ -1,4 +1,4 @@
-import {EXTENT, Transform, apply, bezier, clamp, latFromMerc, lngFromMerc, mercX, mercY, type LngLatLike, type TileID} from './geo.ts';
+import {EXTENT, Transform, bezier, clamp, latFromMerc, lngFromMerc, mercX, mercY, type LngLatLike, type TileID} from './geo.ts';
 import {compileLayer, loadSprite, tileURL, type CompiledLayer, type ResolvedStyle, type Sprite, type SpriteIcon} from './style.ts';
 import {GLRenderer, SPRITE_ATLAS, type GLTile} from './gl.ts';
 import {CollisionGrid, placeLabels, renderItems, type Placed, type RenderItem} from './placement.ts';
@@ -6,7 +6,7 @@ import {GlyphAtlas} from './text.ts';
 import {sampleElevation, type QueriedFeature} from './query.ts';
 import type {TileBackend} from './tiles.ts';
 
-export interface CameraOptions { center?: LngLatLike; zoom?: number; bearing?: number }
+export interface CameraOptions { center?: LngLatLike; zoom?: number; bearing?: number; pitch?: number }
 export interface FontSource { family: string; src: string; weight?: string | number; style?: string }
 export interface EngineOptions extends CameraOptions {
     style: ResolvedStyle; width: number; height: number; dpr: number; fontFamily: string; fonts?: FontSource[];
@@ -20,7 +20,7 @@ export type Command =
     | {type: 'pan'; dx: number; dy: number}
     | {type: 'zoom'; delta: number; x: number; y: number}
     | {type: 'wheel'; delta: number; x: number; y: number; kind: 'wheel' | 'trackpad'}
-    | {type: 'rotate'; delta: number}
+    | {type: 'rotate'; delta: number; pitch?: number}
     | {type: 'fling'; dx: number; dy: number; ms: number}
     | {type: 'stop'}
     | {type: 'style'; style: ResolvedStyle; reload: boolean}
@@ -34,7 +34,7 @@ export type Command =
     | {type: 'elevation'; id: number; lng: number; lat: number; source?: string; zoom?: number}
     | {type: 'repaint'};
 export type EngineEvent =
-    | {type: 'camera'; lng: number; lat: number; zoom: number; bearing: number; moving: boolean}
+    | {type: 'camera'; lng: number; lat: number; zoom: number; bearing: number; pitch: number; moving: boolean}
     | {type: 'idle'}
     /** A frame at a new canvas size has been drawn. */
     | {type: 'resized'; width: number; height: number}
@@ -51,6 +51,8 @@ const raf: (cb: (t: number) => void) => unknown = globalThis.requestAnimationFra
 const MAX_TILES = 160;
 /** How often labels are re-decided while the map moves, and how long they take to fade. Between decisions they stay pinned to the map. */
 const PLACE_INTERVAL = 250, FADE = 200;
+/** While the zoom is changing quickly labels crowd together (or thin out) fast, so decide and fade sooner. */
+const ZOOMING_PLACE_INTERVAL = 60, ZOOMING_FADE = 90;
 /** Camera feel, matching MapLibre's defaults so the map responds the way people expect. */
 const defaultEasing = bezier(0.25, 0.1, 0.25, 1), inertiaEasing = bezier(0, 0, 0.3, 1);
 const WHEEL_STEP = 4.000244140625, WHEEL_RATE = 1 / 450, TRACKPAD_RATE = 1 / 100;
@@ -87,6 +89,8 @@ export class Engine {
     private labels = new Map<string, LabelState>();
     private placeDirty = true;
     private lastPlace = -Infinity;
+    private placeZoom = 0;
+    private fade = FADE;
 
     private markers = new Map<string, MarkerLayer>();
     private spriteRects = new Map<number, [number, number, number, number]>();
@@ -102,12 +106,12 @@ export class Engine {
     constructor(canvas: HTMLCanvasElement | OffscreenCanvas, o: EngineOptions, private backends: TileBackend[], private emit: (e: EngineEvent) => void) {
         this.renderer = new GLRenderer(canvas);
         this.atlas = new GlyphAtlas(o.fontFamily);
-        this.atlas.onReset = () => this.relabel();
+        this.atlas.onReset = () => this.labels.clear();
         this.tr.width = o.width;
         this.tr.height = o.height;
         this.dpr = o.dpr;
         this.renderer.resize(o.width, o.height, o.dpr);
-        this.tr.set(o.center, o.zoom, o.bearing);
+        this.tr.set(o.center, o.zoom, o.bearing, o.pitch);
         this.setStyle(o.style, true);
         if (o.fonts?.length) this.loadFonts(o.fonts);
     }
@@ -152,7 +156,7 @@ export class Engine {
         Promise.all(fonts.map(async f => {
             const face = new FontFace(f.family, `url("${f.src}")`, {weight: String(f.weight ?? '400'), style: f.style ?? 'normal'});
             set.add(await face.load());
-        })).then(() => { this.atlas.clear(); this.relabel(); },
+        })).then(() => { this.atlas.clear(true); this.relabel(); },
             err => this.emit({type: 'error', message: `Could not load font: ${err.message}`}));
     }
 
@@ -177,16 +181,16 @@ export class Engine {
                 this.frame(performance.now());
                 this.emit({type: 'resized', width: c.width, height: c.height});
                 return;
-            case 'jump': this.stop(); tr.set(c.center, c.zoom, c.bearing); break;
+            case 'jump': this.stop(); tr.set(c.center, c.zoom, c.bearing, c.pitch); break;
             case 'ease': {
                 this.stop();
                 const to = new Transform();
-                Object.assign(to, {lng: tr.lng, lat: tr.lat, zoom: tr.zoom, bearing: tr.bearing, minZoom: tr.minZoom, maxZoom: tr.maxZoom});
-                to.set(c.center, c.zoom, c.bearing);
+                Object.assign(to, {lng: tr.lng, lat: tr.lat, zoom: tr.zoom, bearing: tr.bearing, pitch: tr.pitch, minZoom: tr.minZoom, maxZoom: tr.maxZoom});
+                to.set(c.center, c.zoom, c.bearing, c.pitch);
                 let db = to.bearing - tr.bearing;
                 db = ((db + 180) % 360 + 360) % 360 - 180;
                 this.ease = {
-                    from: [mercX(tr.lng), mercY(tr.lat), tr.zoom, tr.bearing], to: [mercX(to.lng), mercY(to.lat), to.zoom, tr.bearing + db],
+                    from: [mercX(tr.lng), mercY(tr.lat), tr.zoom, tr.bearing, tr.pitch], to: [mercX(to.lng), mercY(to.lat), to.zoom, tr.bearing + db, to.pitch],
                     start: performance.now(), duration: Math.max(1, c.duration), around: c.around,
                     anchor: c.around ? tr.unproject(c.around[0], c.around[1]) : undefined,
                 };
@@ -210,7 +214,7 @@ export class Engine {
                 this.wheel = {...(fresh ? {} : w), delta: (fresh ? 0 : w!.delta) + c.delta, kind: c.kind, x: c.x, y: c.y, lastEvent: now, doneAt: undefined};
                 break;
             }
-            case 'rotate': tr.set(undefined, undefined, tr.bearing + c.delta); break;
+            case 'rotate': tr.set(undefined, undefined, tr.bearing + c.delta, tr.pitch + (c.pitch ?? 0)); break;
             case 'fling': {
                 // Inertia: carry on at a fraction of the release speed and decelerate steadily.
                 const dist = Math.hypot(c.dx, c.dy), linearity = 0.3;
@@ -330,7 +334,7 @@ export class Engine {
             const e = this.ease, t = Math.min(1, (now - e.start) / e.duration), k = defaultEasing(t);
             const v = e.from.map((f, i) => f + (e.to[i] - f) * k);
             tr.zoom = v[2];
-            tr.set(undefined, undefined, v[3]);
+            tr.set(undefined, undefined, v[3], v[4]);
             if (e.around && e.anchor) tr.setLocationAt(e.anchor[0], e.anchor[1], e.around[0], e.around[1]);
             else { tr.lng = lngFromMerc(v[0]); tr.lat = latFromMerc(v[1]); }
             if (t >= 1) this.ease = null;
@@ -436,7 +440,7 @@ export class Engine {
             // Skip sources nothing visible draws from at this zoom (e.g. low-zoom relief imagery when zoomed in).
             if (!this.layers.some(l => l.source === source && l.visible && tr.zoom >= l.minzoom && tr.zoom < l.maxzoom)) continue;
             const src = this.style.sources[source];
-            const ideal = tr.coveringTiles(src.minzoom, src.maxzoom, src.tileSize);
+            const ideal = tr.coveringTiles(src.minzoom, src.maxzoom, src.tileSize, src.type !== 'vector');
             for (const id of ideal) {
                 const key = source + '|' + id.key;
                 wanted.add(key);
@@ -473,18 +477,29 @@ export class Engine {
             for (const [key, t] of old.slice(0, this.tiles.size - MAX_TILES)) this.dropTile(key, t);
         }
 
-        const camera = `${tr.lng},${tr.lat},${tr.zoom},${tr.bearing}`, cameraChanged = camera !== this.lastCamera;
+        const camera = `${tr.lng},${tr.lat},${tr.zoom},${tr.bearing},${tr.pitch}`, cameraChanged = camera !== this.lastCamera;
         if (cameraChanged) this.placeDirty = true;
 
         // Decide which labels show only every so often; in between they ride along with the map and fade.
-        const place = this.placeDirty && now - this.lastPlace >= PLACE_INTERVAL;
+        const zooming = Math.abs(tr.zoom - this.placeZoom) > 0.12;
+        const place = this.placeDirty && now - this.lastPlace >= (zooming ? ZOOMING_PLACE_INTERVAL : PLACE_INTERVAL);
+        if (place) this.fade = zooming ? ZOOMING_FADE : FADE;
         const grid = place ? new CollisionGrid() : null;
         const spriteCount = this.buildSprites(grid);
         if (place) {
             this.placeDirty = false;
             this.lastPlace = now;
-            const keep = new Set<string>();
-            for (const p of placeLabels(tr, all, this.layers, this.atlas, grid!, this.icon)) {
+            this.placeZoom = tr.zoom;
+            const keep = new Set<string>(), resets = this.atlas.resets;
+            let placed = placeLabels(tr, all, this.layers, this.atlas, grid!, this.icon);
+            if (this.atlas.resets !== resets) {
+                // The glyph atlas filled up and was emptied part-way through: earlier labels now point at stale
+                // glyphs. Place again; the fresh atlas only has to hold this view's text.
+                const again = new CollisionGrid();
+                this.buildSprites(again);
+                placed = placeLabels(tr, all, this.layers, this.atlas, again, this.icon);
+            }
+            for (const p of placed) {
                 keep.add(p.key);
                 const st = this.labels.get(p.key);
                 if (st) { st.placed = p; st.target = 1; } else this.labels.set(p.key, {placed: p, opacity: 0, target: 1});
@@ -495,11 +510,11 @@ export class Engine {
         let fading = false;
         for (const [key, st] of this.labels) {
             if (st.opacity !== st.target) {
-                st.opacity = st.target ? Math.min(1, st.opacity + dt / FADE) : Math.max(0, st.opacity - dt / FADE);
+                st.opacity = st.target ? Math.min(1, st.opacity + dt / this.fade) : Math.max(0, st.opacity - dt / this.fade);
                 fading ||= st.opacity !== st.target;
             }
             if (!st.opacity && !st.target) { this.labels.delete(key); continue; }
-            const p = st.placed, [ax, ay] = apply(tr.tileMatrix(p.tile), p.src.x, p.src.y), dx = ax - p.ax, dy = ay - p.ay;
+            const p = st.placed, [ax, ay] = tr.projectTile(p.tile, p.src.x, p.src.y), dx = ax - p.ax, dy = ay - p.ay;
             labels.push({...p, x: p.x + dx, y: p.y + dy, icon: p.icon && {...p.icon, x: p.icon.x + dx, y: p.icon.y + dy}, opacity: st.opacity});
         }
         this.renderer.render({tr, layers: this.layers, items, labels, atlas: this.atlas, sprites: this.sprites, spriteCount});
@@ -507,7 +522,7 @@ export class Engine {
         if (cameraChanged || animating !== this.moving) {
             this.lastCamera = camera;
             this.moving = animating;
-            this.emit({type: 'camera', lng: tr.lng, lat: tr.lat, zoom: tr.zoom, bearing: tr.bearing, moving: animating});
+            this.emit({type: 'camera', lng: tr.lng, lat: tr.lat, zoom: tr.zoom, bearing: tr.bearing, pitch: tr.pitch, moving: animating});
         }
         const busy = animating || fading || this.placeDirty;
         const idle = complete && !busy;
@@ -520,6 +535,7 @@ export class Engine {
     private buildSprites(grid: CollisionGrid | null): number {
         const tr = this.tr, ws = tr.worldSize, a = -tr.bearing * Math.PI / 180, cos = Math.cos(a), sin = Math.sin(a);
         const cx = mercX(tr.lng), cy = mercY(tr.lat), hw = tr.width / 2, hh = tr.height / 2;
+        const pitch = tr.pitch * Math.PI / 180, cp = Math.cos(pitch), sp = Math.sin(pitch), cam = tr.cameraDistance;
         let n = 0;
         for (const m of this.markers.values()) {
             const [ox, oy] = m.offset, w = m.width, h = m.height;
@@ -529,7 +545,8 @@ export class Engine {
                 let dx = m.merc[i * 2] - cx;
                 dx -= Math.round(dx); // nearest world copy
                 const wx = dx * ws, wy = (m.merc[i * 2 + 1] - cy) * ws;
-                const x = cos * wx - sin * wy + hw + ox, y = sin * wx + cos * wy + hh + oy;
+                const ry = sin * wx + cos * wy, k = cam / (cam - ry * sp); // perspective: markers stay upright and full size
+                const x = (cos * wx - sin * wy) * k + hw + ox, y = ry * cp * k + hh + oy;
                 if (x > tr.width || y > tr.height || x + w < 0 || y + h < 0) continue;
                 if (m.collide && grid) grid.insert(x, y, x + w, y + h);
                 if ((n + 1) * 30 > this.sprites.length) {

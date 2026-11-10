@@ -26,6 +26,9 @@ export interface Batch {
     join?: string;
     /** Fill layers with an explicit outline colour. */
     outline?: boolean;
+    /** Building extrusions: per-feature top and bottom heights in metres. */
+    height?: Float32Array;
+    base?: Float32Array;
 }
 export interface LabelSrc {
     x: number; y: number; text: string;
@@ -47,6 +50,7 @@ export interface TileIR { layers: Record<string, Batch>; labels: Record<string, 
 
 export type GLBatch =
     | {type: 'fill'; pos: Int16Array; idx: Uint32Array; color?: Uint8Array}
+    | {type: 'extrusion'; v: Float32Array; idx: Uint32Array; color?: Uint8Array}
     | {type: 'line'; v: Float32Array; idx: Uint32Array; color?: Uint8Array; width?: Float32Array}
     | {type: 'circle'; pos: Int16Array; color?: Uint8Array; radius?: Float32Array};
 export interface TileGL { layers: Record<string, GLBatch>; labels: Record<string, LabelSrc[]> }
@@ -133,7 +137,9 @@ export function buildTile(bytes: Uint8Array, z: number, layers: CompiledLayer[],
             continue;
         }
 
-        const want = L.type === 'fill' ? 3 : L.type === 'circle' ? 1 : 0;
+        const extrude = L.type === 'fill-extrusion', kind = extrude ? 'fill' : L.type;
+        const heights: number[] = [], bases: number[] = [];
+        const want = kind === 'fill' ? 3 : L.type === 'circle' ? 1 : 0;
         const coords: number[] = [], ringEnds: number[] = [], featEnds: number[] = [];
         const ddColor = p.color.dd || p.opacity.dd;
         const color: number[] = [], scalar: number[] = [];
@@ -154,14 +160,16 @@ export function buildTile(bytes: Uint8Array, z: number, layers: CompiledLayer[],
             featEnds.push(ringEnds.length);
             if (ddColor) pushColor(color, p.color.dd ? p.color.eval(z, f) : WHITE, p.opacity.dd ? p.opacity.eval(z, f) : 1);
             if (scalarProp?.dd) scalar.push(scalarProp.eval(z, f));
+            if (extrude) { heights.push(p.height.eval(z, f)); bases.push(p.base.eval(z, f)); }
         }
         if (!featEnds.length) continue;
         const batch: Batch = {
-            type: L.type as Batch['type'],
+            type: kind as Batch['type'],
             geom: {coords: Int16Array.from(coords), ringEnds: Uint32Array.from(ringEnds), featEnds: Uint32Array.from(featEnds)},
         };
         if (ddColor) batch.color = Uint8Array.from(color);
         if (scalarProp?.dd) batch[L.type === 'line' ? 'width' : 'radius'] = Float32Array.from(scalar);
+        if (extrude) { batch.height = Float32Array.from(heights); batch.base = Float32Array.from(bases); }
         if (L.type === 'line') { batch.cap = p.cap.eval(z); batch.join = p.join.eval(z); }
         if (L.type === 'fill' && p.outline && p.outline.eval(z)[3] > 0) batch.outline = true;
         out.layers[L.id] = batch;
@@ -226,36 +234,80 @@ export function tessellate(b: Batch): GLBatch | null {
     }
     const idx: number[] = [];
     if (b.type === 'fill') {
+        if (b.height) return tessellateExtrusion(b);
         const color = b.color ? new Uint8Array(coords.length * 2) : undefined;
-        for (let f = 0, r = 0; f < featEnds.length; f++) {
-            const first = r;
-            let polyStart = r, outerSign = 0;
-            const flush = (endRing: number) => {
-                if (endRing <= polyStart) return;
-                const p0 = polyStart ? ringEnds[polyStart - 1] : 0, p1 = ringEnds[endRing - 1];
-                const holes: number[] = [];
-                for (let h = polyStart; h < endRing - 1; h++) holes.push(ringEnds[h] - p0);
+        for (let f = 0; f < featEnds.length; f++) {
+            eachPolygon(b.geom, f, (p0, p1, holes) => {
                 const tris = earcut(coords.subarray(p0 * 2, p1 * 2) as any, holes);
                 for (let i = 0; i < tris.length; i++) idx.push(tris[i] + p0);
-            };
-            for (; r < featEnds[f]; r++) {
-                const area = ringArea(coords, r ? ringEnds[r - 1] : 0, ringEnds[r]);
-                if (!area) continue;
-                const sign = area > 0 ? 1 : -1;
-                if (r === first || !outerSign) outerSign = sign;
-                if (sign === outerSign && r > polyStart) { flush(r); polyStart = r; }
-            }
-            flush(r);
-            if (color) {
-                const p0 = first ? ringEnds[first - 1] : 0, p1 = r ? ringEnds[r - 1] : 0;
-                for (let i = p0; i < p1; i++) color.set(b.color!.subarray(f * 4, f * 4 + 4), i * 4);
-            }
+                if (color) for (let i = p0; i < p1; i++) color.set(b.color!.subarray(f * 4, f * 4 + 4), i * 4);
+            });
         }
         if (!idx.length) return null;
         return {type: 'fill', pos: coords, idx: Uint32Array.from(idx), color};
     }
 
     return tessellateLine(b);
+}
+
+/**
+ * Splits a feature's rings into polygons (an outer ring followed by its holes) and reports each as a point range
+ * plus hole offsets, the form earcut wants. Ring direction relative to the first ring tells outers from holes.
+ */
+function eachPolygon(g: Geom, f: number, cb: (p0: number, p1: number, holes: number[]) => void) {
+    const {coords, ringEnds, featEnds} = g, first = f ? featEnds[f - 1] : 0, last = featEnds[f];
+    let polyStart = first, outerSign = 0;
+    const flush = (endRing: number) => {
+        if (endRing <= polyStart) return;
+        const p0 = polyStart ? ringEnds[polyStart - 1] : 0, holes: number[] = [];
+        for (let h = polyStart; h < endRing - 1; h++) holes.push(ringEnds[h] - p0);
+        cb(p0, ringEnds[endRing - 1], holes);
+    };
+    for (let r = first; r < last; r++) {
+        const area = ringArea(coords, r ? ringEnds[r - 1] : 0, ringEnds[r]);
+        if (!area) continue;
+        const sign = area > 0 ? 1 : -1;
+        if (!outerSign) outerSign = sign;
+        if (sign === outerSign && r > polyStart) { flush(r); polyStart = r; }
+    }
+    flush(last);
+}
+
+/** Buildings: a roof at the feature's height and a wall under every edge, each vertex carrying a baked light level. */
+function tessellateExtrusion(b: Batch): GLBatch | null {
+    const {coords, featEnds} = b.geom, v: number[] = [], idx: number[] = [], color: number[] = [];
+    let count = 0;
+    for (let f = 0; f < featEnds.length; f++) {
+        const top = b.height![f], bottom = Math.min(b.base ? b.base[f] : 0, top);
+        const vert = (x: number, y: number, z: number, light: number) => {
+            v.push(x, y, z, light);
+            if (b.color) color.push(b.color[f * 4], b.color[f * 4 + 1], b.color[f * 4 + 2], b.color[f * 4 + 3]);
+            return count++;
+        };
+        eachPolygon(b.geom, f, (p0, p1, holes) => {
+            const roof = count, tris = earcut(coords.subarray(p0 * 2, p1 * 2) as any, holes);
+            for (let i = p0; i < p1; i++) vert(coords[i * 2], coords[i * 2 + 1], top, 1);
+            for (let i = 0; i < tris.length; i++) idx.push(roof + tris[i]);
+            if (top <= bottom) return;
+            const bounds = [0, ...holes, p1 - p0];
+            for (let r = 0; r + 1 < bounds.length; r++) {
+                const s = p0 + bounds[r], e = p0 + bounds[r + 1];
+                for (let i = s, j = e - 1; i < e; j = i++) {
+                    const ax = coords[j * 2], ay = coords[j * 2 + 1], bx = coords[i * 2], by = coords[i * 2 + 1], len = Math.hypot(bx - ax, by - ay);
+                    if (!len) continue;
+                    // Walls facing the light (from the north-west) are brighter; all are darker towards the ground.
+                    const light = 0.6 + 0.28 * Math.abs(((by - ay) * -0.6 - (bx - ax) * 0.8) / len);
+                    const q = vert(ax, ay, bottom, light * 0.9);
+                    vert(bx, by, bottom, light * 0.9); vert(bx, by, top, light); vert(ax, ay, top, light);
+                    idx.push(q, q + 1, q + 2, q, q + 2, q + 3);
+                }
+            }
+        });
+    }
+    if (!idx.length) return null;
+    const out: GLBatch = {type: 'extrusion', v: Float32Array.from(v), idx: Uint32Array.from(idx)};
+    if (b.color) out.color = Uint8Array.from(color);
+    return out;
 }
 
 const ARC_STEP = Math.PI / 5;

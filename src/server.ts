@@ -58,7 +58,7 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
     const jobs = Object.entries(style.sources).map(async ([name, src]) => {
         if (!layers.some(l => l.source === name && l.visible && tr.zoom >= l.minzoom && tr.zoom < l.maxzoom)) return;
         if (src.type === 'raster-dem') return;
-        const ideal = tr.coveringTiles(src.minzoom, src.maxzoom, src.tileSize), loaded = new Map<string, TileIR | TileImage>();
+        const ideal = tr.coveringTiles(src.minzoom, src.maxzoom, src.tileSize, src.type !== 'vector'), loaded = new Map<string, TileIR | TileImage>();
         await Promise.all(ideal.filter((id, i) => ideal.findIndex(o => o.key === id.key) === i).map(async id => {
             const url = tileURL(src, id.z, id.x, id.y);
             if (src.type === 'raster') { loaded.set(id.key, {href: o.inlineImages ? await dataURI(url) : url}); return; }
