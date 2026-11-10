@@ -65,7 +65,7 @@ Sources:
 
 Layers:
 
-- Heatmap, color relief and custom layers
+- Color relief and custom layers
 - `line-pattern` and `fill-extrusion-pattern`
 - Patterns that are different for each feature
 
@@ -79,6 +79,10 @@ Properties:
 - `text-writing-mode`, `text-pitch-alignment`, `text-variable-anchor-offset`, `text-max-angle`
 - `symbol-z-order` and `symbol-avoid-edges`
 - More than one font, size or colour in one `format` text. Images in `format` text are available.
+
+Layers that the server renderer does not draw:
+
+- Heatmap and relief shading
 
 Other:
 

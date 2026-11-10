@@ -161,21 +161,30 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
             continue;
         }
 
-        const extrude = L.type === 'fill-extrusion', kind = extrude ? 'fill' : L.type;
+        // A heatmap is made of the same points as a circle layer; each carries a weight where a circle carries a radius.
+        const extrude = L.type === 'fill-extrusion', heat = L.type === 'heatmap', kind = extrude ? 'fill' : heat ? 'circle' : L.type;
         const heights: number[] = [], bases: number[] = [];
-        const want = kind === 'fill' ? 3 : L.type === 'circle' ? 1 : 0;
+        const want = kind === 'fill' ? 3 : kind === 'circle' ? 1 : 0;
         const coords: number[] = [], ringEnds: number[] = [], featEnds: number[] = [];
         const ddColor = p.color.dd || p.opacity.dd;
         const color: number[] = [], scalar: number[] = [];
-        const scalarProp = L.type === 'line' ? p.width : L.type === 'circle' ? p.radius : null;
+        const scalarProp = L.type === 'line' ? p.width : heat ? p.weight : L.type === 'circle' ? p.radius : null;
         for (const f of vl.features) {
-            if (want ? f.type !== want : f.type === 1) continue;
+            // Circle and heatmap layers take any geometry: every vertex of a line or polygon is a point.
+            if (kind === 'circle' ? false : want ? f.type !== want : f.type === 1) continue;
             ctx.f = f;
                 f.state = featureStateOf(L.source, L.sourceLayer, f.id);
             if (L.filter && !L.filter(ctx)) continue;
             const g = geometry(f);
             let start = 0;
             for (const end of g.ringEnds) {
+                if (kind === 'circle') {
+                    for (let i = start; i < end; i++) { coords.push(g.coords[i * 2], g.coords[i * 2 + 1]); ringEnds.push(coords.length / 2); }
+                    // A polygon ring ends where it began, and MapLibre counts that corner twice.
+                    if (f.type === 3) { coords.push(g.coords[start * 2], g.coords[start * 2 + 1]); ringEnds.push(coords.length / 2); }
+                    start = end;
+                    continue;
+                }
                 for (let i = start * 2; i < end * 2; i++) coords.push(g.coords[i]);
                 // Polygon rings drawn as lines need an explicit closing point.
                 if (L.type === 'line' && f.type === 3) coords.push(g.coords[start * 2], g.coords[start * 2 + 1]);

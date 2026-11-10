@@ -1,4 +1,4 @@
-import {compileFilter, compileProp, type Fn, type Prop, type PropKind} from './expr.ts';
+import {colorRamp, compileFilter, compileProp, type Fn, type Prop, type PropKind} from './expr.ts';
 import {PM_PREFIX, archive} from './pmtiles.ts';
 import type {ContourConfig} from './contour.ts';
 
@@ -24,6 +24,11 @@ const SPEC: Record<string, Record<string, [string, PropKind, any]>> = {
         color: ['circle-color', 'color', '#000'], opacity: ['circle-opacity', 'number', 1], radius: ['circle-radius', 'number', 5],
         strokeColor: ['circle-stroke-color', 'color', '#000'], strokeWidth: ['circle-stroke-width', 'number', 0],
         strokeOpacity: ['circle-stroke-opacity', 'number', 1], blur: ['circle-blur', 'number', 0], translate: ['circle-translate', 'string', [0, 0]],
+    },
+    heatmap: {
+        // (`color` and `opacity` are also read by the code shared with other layer types; a heatmap's colour is its ramp.)
+        color: ['heatmap-no-such-property', 'raw', null], opacity: ['heatmap-opacity', 'number', 1],
+        weight: ['heatmap-weight', 'number', 1], intensity: ['heatmap-intensity', 'number', 1], radius: ['heatmap-radius', 'number', 30],
     },
     raster: {opacity: ['raster-opacity', 'number', 1], saturation: ['raster-saturation', 'number', 0], contrast: ['raster-contrast', 'number', 0],
         brightnessMin: ['raster-brightness-min', 'number', 0], brightnessMax: ['raster-brightness-max', 'number', 1], hueRotate: ['raster-hue-rotate', 'number', 0]},
@@ -89,10 +94,15 @@ export function applySSROverrides(layers: LayerJSON[]): LayerJSON[] {
     return out;
 }
 
+/** The style specification's default heatmap colours. */
+const HEATMAP_COLORS = ['interpolate', ['linear'], ['heatmap-density'], 0, 'rgba(0, 0, 255, 0)', 0.1, 'royalblue', 0.3, 'cyan', 0.5, 'lime', 0.7, 'yellow', 1, 'red'];
+
 export interface CompiledLayer {
     id: string; type: string; source?: string; sourceLayer?: string; minzoom: number; maxzoom: number;
     visible: boolean; filter: Fn | null; p: Record<string, Prop>;
     ssr?: SSROverrides;
+    /** Heatmap layers: the colour for each density (see colorRamp). */
+    ramp?: Uint8Array;
 }
 
 export function compileLayer(l: LayerJSON): CompiledLayer | null {
@@ -107,6 +117,7 @@ export function compileLayer(l: LayerJSON): CompiledLayer | null {
     const own = compileFilter(l.filter), extra = compileFilter(l.metadata?.['map-jr:and-filter']);
     return {
         ssr: l.metadata?.[SSR_KEY],
+        ramp: l.type === 'heatmap' ? colorRamp(l.paint?.['heatmap-color'] ?? HEATMAP_COLORS) : undefined,
         id: l.id, type: l.type, source: l.source, sourceLayer: l['source-layer'],
         minzoom: l.minzoom ?? 0, maxzoom: l.maxzoom ?? 24,
         // Pattern fills need sprite images, which are not supported yet; hiding them beats drawing solid black.

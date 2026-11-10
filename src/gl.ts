@@ -24,6 +24,8 @@ float ground(vec2 uv) {
 `;
 
 const SQUARE = [0, 0, EXTENT, 0, EXTENT, EXTENT, 0, EXTENT], ONES = [1, 1, 1, 1];
+/** Heatmap densities are accumulated at this fraction of the screen's resolution: the result is smooth anyway. */
+const HEAT_SCALE = 4;
 /** Perspective weights for a quadrilateral's corners, from where its diagonals cross (all 1 for a parallelogram). */
 function cornerWeights(c: number[]): number[] {
     const [x0, y0, x1, y1, x2, y2, x3, y3] = c, den = (x2 - x0) * (y3 - y1) - (y2 - y0) * (x3 - x1);
@@ -35,6 +37,30 @@ function cornerWeights(c: number[]): number[] {
 }
 
 const SHADERS = {
+    // Heatmap, step one: every point adds a soft bump (a Gaussian, scaled by its weight) to a density picture.
+    heat: [`${VS_COMMON}
+layout(location=0) in vec2 a_corner; layout(location=2) in vec2 a_pos; layout(location=3) in float a_weight;
+uniform float u_weight; uniform float u_intensity; uniform float u_radius; uniform vec4 u_clip;
+out vec2 v_ex; out float v_w;
+void main() {
+  v_w = a_weight * u_weight;
+  // The bump is drawn out to where it falls below what the picture can store, and no further.
+  float s = sqrt(max(0.0, -2.0 * log(${(1 / 255 / 16).toFixed(8)} / max(v_w * u_intensity * 0.3989422804, 1e-9)))) / 3.0;
+  v_ex = s * a_corner;
+  bool inside = a_pos.x >= u_clip.x && a_pos.y >= u_clip.y && a_pos.x < u_clip.z && a_pos.y < u_clip.w;
+  vec4 c = toClip(a_pos);
+  c.xy += v_ex * u_radius * vec2(2.0, -2.0) / u_view * c.w;
+  gl_Position = inside ? c : vec4(2.0, 2.0, 2.0, 1.0);
+}`, `
+uniform float u_intensity; in vec2 v_ex; in float v_w; out vec4 o;
+void main() { o = vec4(v_w * u_intensity * 0.3989422804 * exp(-4.5 * dot(v_ex, v_ex)), 0.0, 0.0, 1.0); }`],
+
+    // Heatmap, step two: the density picture is coloured through the layer's ramp.
+    heatColor: [`layout(location=0) in vec2 a_pos; out vec2 v_uv;
+void main() { v_uv = a_pos; gl_Position = vec4(a_pos * 2.0 - 1.0, 0.0, 1.0); }`, `
+uniform sampler2D u_heat; uniform sampler2D u_ramp; uniform float u_opacity; in vec2 v_uv; out vec4 o;
+void main() { o = texture(u_ramp, vec2(clamp(texture(u_heat, v_uv).r, 0.0, 1.0), 0.5)) * u_opacity; }`],
+
     // Draws a whole layer, rendered separately, onto the map in one go (layer-wide opacity and blending).
     composite: [`layout(location=0) in vec2 a_pos; out vec2 v_uv;
 void main() { v_uv = a_pos; gl_Position = vec4(a_pos * 2.0 - 1.0, 0.0, 1.0); }`, `
@@ -647,6 +673,7 @@ export class GLRenderer {
 
         for (const L of only ? [only] : s.layers) {
             if (!L.visible || zoom < L.minzoom || zoom >= L.maxzoom || L.type === 'symbol') continue;
+            if (L.type === 'heatmap') { if (pass !== 'buildings') this.drawHeatmap(L, tr, bySource.get(L.source!) ?? [], target); continue; }
             if (!only && (L.type === 'fill' || L.type === 'line') && pass !== 'buildings') {
                 // Layer-wide opacity and blending: the layer is drawn on its own first, so that overlapping features
                 // form one surface, and that surface is then put onto the map once.
@@ -873,6 +900,63 @@ export class GLRenderer {
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
         gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
         gl.enable(gl.BLEND);
+        this.current = null;
+    }
+
+    private heatTarget?: {fb: WebGLFramebuffer; tex: WebGLTexture; w: number; h: number};
+    private ramps = new WeakMap<Uint8Array, WebGLTexture>();
+    private floatTargets?: boolean;
+
+    private drawHeatmap(L: CompiledLayer, tr: Transform, items: RenderItem<GLTile>[], target: [number, number]) {
+        const gl = this.gl, zoom = tr.zoom, w = Math.max(1, Math.ceil(target[0] / HEAT_SCALE)), h = Math.max(1, Math.ceil(target[1] / HEAT_SCALE));
+        const back = gl.getParameter(gl.FRAMEBUFFER_BINDING) as WebGLFramebuffer | null;
+        // Densities add up past 1, so the picture holds half-float values where the browser can draw to them.
+        this.floatTargets ??= !!gl.getExtension('EXT_color_buffer_float') || !!gl.getExtension('EXT_color_buffer_half_float');
+        let t = this.heatTarget;
+        if (!t || t.w !== w || t.h !== h) {
+            if (t) { gl.deleteTexture(t.tex); gl.deleteFramebuffer(t.fb); }
+            const tex = this.newTexture(), fb = gl.createFramebuffer()!;
+            if (this.floatTargets) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, w, h, 0, gl.RGBA, gl.HALF_FLOAT, null);
+            else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+            gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+            gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+            t = this.heatTarget = {fb, tex, w, h};
+        }
+        gl.bindFramebuffer(gl.FRAMEBUFFER, t.fb);
+        gl.viewport(0, 0, w, h);
+        gl.clearColor(0, 0, 0, 0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.blendFunc(gl.ONE, gl.ONE);
+        let u = this.use('heat', tr);
+        gl.uniform1f(u.u_weight, L.p.weight.dd ? 1 : L.p.weight.eval(zoom));
+        gl.uniform1f(u.u_intensity, L.p.intensity.eval(zoom));
+        gl.uniform1f(u.u_radius, L.p.radius.dd ? 30 : L.p.radius.eval(zoom));
+        for (const it of items) {
+            const b = it.tile.batches[L.id];
+            if (!b) continue;
+            gl.uniformMatrix4fv(u.u_matrix, false, it.matrix4);
+            gl.uniform4fv(u.u_clip, it.clip);
+            gl.bindVertexArray(b.vao);
+            if (!b.scalar) gl.vertexAttrib1f(3, 1);
+            gl.drawElements(gl.TRIANGLES, b.count, b.indexType, 0);
+        }
+        gl.bindFramebuffer(gl.FRAMEBUFFER, back);
+        gl.viewport(0, 0, target[0], target[1]);
+        gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+        let ramp = this.ramps.get(L.ramp!);
+        if (!ramp) {
+            ramp = this.newTexture();
+            gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 256, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, L.ramp!);
+            this.ramps.set(L.ramp!, ramp);
+        }
+        u = this.use('heatColor', tr);
+        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, ramp);
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, t.tex);
+        gl.uniform1i(u.u_heat, 0); gl.uniform1i(u.u_ramp, 1);
+        gl.uniform1f(u.u_opacity, L.p.opacity.eval(zoom));
+        gl.bindVertexArray(this.quad);
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
         this.current = null;
     }
 

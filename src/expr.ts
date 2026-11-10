@@ -3,19 +3,14 @@
  * Covers the commonly used subset of the MapLibre expression language plus legacy filters and legacy `stops` functions.
  */
 export interface Feature { type: number; id?: number; properties: Record<string, any>; /** Set while a tile is built: the feature's state, for `feature-state`. */ state?: Record<string, unknown> }
-export interface Ctx { zoom: number; f: Feature | null }
+export interface Ctx { zoom: number; f: Feature | null; /** Heatmap colour ramps are evaluated over this, from 0 to 1. */ density?: number }
 export type Fn = (c: Ctx) => any;
 export interface Flags { dd: boolean; zoom: boolean }
 export type RGBA = [number, number, number, number];
 import {bezier} from './geo.ts';
 
-const NAMED: Record<string, string> = {
-    black: '#000', white: '#fff', red: '#f00', green: '#008000', blue: '#00f', yellow: '#ff0', gray: '#808080', grey: '#808080',
-    orange: '#ffa500', purple: '#800080', brown: '#a52a2a', pink: '#ffc0cb', cyan: '#0ff', magenta: '#f0f', silver: '#c0c0c0',
-    lightgray: '#d3d3d3', lightgrey: '#d3d3d3', darkgray: '#a9a9a9', darkgrey: '#a9a9a9', navy: '#000080', teal: '#008080',
-    olive: '#808000', maroon: '#800000', lime: '#0f0', aqua: '#0ff', beige: '#f5f5dc', ivory: '#fffff0', khaki: '#f0e68c',
-    lightblue: '#add8e6', lightgreen: '#90ee90', whitesmoke: '#f5f5f5', gainsboro: '#dcdcdc', dimgray: '#696969', tan: '#d2b48c',
-};
+// Every CSS colour name, as "name:hex" pairs in one string (much smaller in the bundle than an object literal).
+const NAMED: Record<string, string> = Object.fromEntries('aliceblue:f0f8ff antiquewhite:faebd7 aqua:0ff aquamarine:7fffd4 azure:f0ffff beige:f5f5dc bisque:ffe4c4 black:000 blanchedalmond:ffebcd blue:00f blueviolet:8a2be2 brown:a52a2a burlywood:deb887 cadetblue:5f9ea0 chartreuse:7fff00 chocolate:d2691e coral:ff7f50 cornflowerblue:6495ed cornsilk:fff8dc crimson:dc143c cyan:0ff darkblue:00008b darkcyan:008b8b darkgoldenrod:b8860b darkgray:a9a9a9 darkgreen:006400 darkgrey:a9a9a9 darkkhaki:bdb76b darkmagenta:8b008b darkolivegreen:556b2f darkorange:ff8c00 darkorchid:9932cc darkred:8b0000 darksalmon:e9967a darkseagreen:8fbc8f darkslateblue:483d8b darkslategray:2f4f4f darkslategrey:2f4f4f darkturquoise:00ced1 darkviolet:9400d3 deeppink:ff1493 deepskyblue:00bfff dimgray:696969 dimgrey:696969 dodgerblue:1e90ff firebrick:b22222 floralwhite:fffaf0 forestgreen:228b22 fuchsia:f0f gainsboro:dcdcdc ghostwhite:f8f8ff gold:ffd700 goldenrod:daa520 gray:808080 green:008000 greenyellow:adff2f grey:808080 honeydew:f0fff0 hotpink:ff69b4 indianred:cd5c5c indigo:4b0082 ivory:fffff0 khaki:f0e68c lavender:e6e6fa lavenderblush:fff0f5 lawngreen:7cfc00 lemonchiffon:fffacd lightblue:add8e6 lightcoral:f08080 lightcyan:e0ffff lightgoldenrodyellow:fafad2 lightgray:d3d3d3 lightgreen:90ee90 lightgrey:d3d3d3 lightpink:ffb6c1 lightsalmon:ffa07a lightseagreen:20b2aa lightskyblue:87cefa lightslategray:789 lightslategrey:789 lightsteelblue:b0c4de lightyellow:ffffe0 lime:0f0 limegreen:32cd32 linen:faf0e6 magenta:f0f maroon:800000 mediumaquamarine:66cdaa mediumblue:0000cd mediumorchid:ba55d3 mediumpurple:9370db mediumseagreen:3cb371 mediumslateblue:7b68ee mediumspringgreen:00fa9a mediumturquoise:48d1cc mediumvioletred:c71585 midnightblue:191970 mintcream:f5fffa mistyrose:ffe4e1 moccasin:ffe4b5 navajowhite:ffdead navy:000080 oldlace:fdf5e6 olive:808000 olivedrab:6b8e23 orange:ffa500 orangered:ff4500 orchid:da70d6 palegoldenrod:eee8aa palegreen:98fb98 paleturquoise:afeeee palevioletred:db7093 papayawhip:ffefd5 peachpuff:ffdab9 peru:cd853f pink:ffc0cb plum:dda0dd powderblue:b0e0e6 purple:800080 rebeccapurple:639 red:f00 rosybrown:bc8f8f royalblue:4169e1 saddlebrown:8b4513 salmon:fa8072 sandybrown:f4a460 seagreen:2e8b57 seashell:fff5ee sienna:a0522d silver:c0c0c0 skyblue:87ceeb slateblue:6a5acd slategray:708090 slategrey:708090 snow:fffafa springgreen:00ff7f steelblue:4682b4 tan:d2b48c teal:008080 thistle:d8bfd8 tomato:ff6347 turquoise:40e0d0 violet:ee82ee wheat:f5deb3 white:fff whitesmoke:f5f5f5 yellow:ff0 yellowgreen:9acd32'.split(' ').map(pair => { const [name, hex] = pair.split(':'); return [name, '#' + hex]; }));
 const colorCache = new Map<string, RGBA | null>();
 /** Arrays known to be colours, so interpolation can treat them differently from plain number arrays. */
 const COLORS = new WeakSet<object>();
@@ -92,6 +87,20 @@ export function featureStateOf(source: string | undefined, sourceLayer: string |
 /** An image inside label text (`format` with `image`) travels through the text as its name between these two characters. */
 export const IMAGE_OPEN = '\uE000', IMAGE_CLOSE = '\uE001', IMAGE_IN_TEXT = /\uE000([^\uE001]*)\uE001/g;
 
+/**
+ * A heatmap's colour for each density from 0 to 1, as 256 premultiplied RGBA pixels: the `heatmap-color` expression
+ * evaluated once, so the GPU only has to look colours up.
+ */
+export function colorRamp(expression: unknown): Uint8Array {
+    const fn = compileExpr(expression as any, {dd: false, zoom: false}), out = new Uint8Array(256 * 4), ctx: Ctx = {zoom: 0, f: null, density: 0};
+    for (let i = 0; i < 256; i++) {
+        ctx.density = i / 255;
+        const v = fn(ctx), c = Array.isArray(v) ? v : (typeof v === 'string' && parseColor(v)) || [0, 0, 0, 0];
+        out.set([c[0] * c[3] * 255, c[1] * c[3] * 255, c[2] * c[3] * 255, c[3] * 255], i * 4);
+    }
+    return out;
+}
+
 function colorize(v: any): any {
     return typeof v === 'string' ? (parseColor(v) ?? v) : v;
 }
@@ -152,6 +161,7 @@ export function compileExpr(e: any, flags: Flags): Fn {
         case 'properties': flags.dd = true; return c => c.f?.properties ?? {};
         case 'geometry-type': flags.dd = true; return c => GEOM[c.f?.type ?? 0];
         case 'zoom': flags.zoom = true; return c => c.zoom;
+        case 'heatmap-density': return c => c.density ?? 0;
         case 'feature-state': { const key = e[1]; flags.dd = true; return c => c.f?.state?.[key] ?? null; }
         case 'global-state': {
             // Read when evaluated, so one compiled style follows later changes. Marked like a zoom dependency so the
