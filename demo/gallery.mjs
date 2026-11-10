@@ -65,16 +65,34 @@ const cards = [
             map.on('click', async e => { const m = await map.queryElevation(e.lngLat); out(m === null ? 'No elevation data here' : `${m.toFixed(0)} m (${(m * 3.28084).toFixed(0)} ft) above sea level`); });
             out('Click the map (this is the Matterhorn)');
         })},
-    {title: 'Contour lines from elevation tiles', text: 'A built-in contour source turns elevation tiles into labelled contour lines in the tile workers. Intervals change with zoom; these are in feet.',
-        make: el => when(base(el, {zoom: 12.3, center: [7.6586, 45.9763]}), map => {
+    {title: 'Contour lines from elevation tiles', text: 'A built-in contour source turns elevation tiles into labelled contour lines in the tile workers. The interval changes at zooms 9, 11, 12, 14 and 15; the line below shows what is in force.', readout: true,
+        make: (el, out, card) => when(base(el, {zoom: 12.3, center: [7.6586, 45.9763]}), map => {
+            const thresholds = {
+                ft: {9: [500, 1000], 11: [200, 1000], 12: [100, 500], 14: [50, 200], 15: [20, 100]},
+                m: {9: [200, 1000], 11: [100, 500], 12: [50, 200], 14: [20, 100], 15: [10, 50]}};
+            let unit = 'ft';
             map.addLayer({id: 'relief', type: 'hillshade', source: 'dem', paint: {'hillshade-shadow-color': '#5a4a3a', 'hillshade-exaggeration': 0.35}}, 'water');
-            map.addSource('contours', {type: 'contour', source: 'dem', multiplier: 3.28084, overzoom: 1,
-                thresholds: {9: [500, 1000], 11: [200, 1000], 12: [100, 500], 14: [50, 200], 15: [20, 100]}});
-            map.addLayer({id: 'contour-lines', type: 'line', source: 'contours', 'source-layer': 'contours',
-                paint: {'line-color': 'hsla(25, 30%, 35%, 0.55)', 'line-width': ['match', ['get', 'level'], 1, 1.2, 0.5]}}, 'water');
-            map.addLayer({id: 'contour-labels', type: 'symbol', source: 'contours', 'source-layer': 'contours', filter: ['>', ['get', 'level'], 0],
-                layout: {'symbol-placement': 'line', 'text-size': 10, 'text-field': ['concat', ['number-format', ['get', 'ele'], {}], "'"], 'text-font': ['Noto Sans Bold']},
-                paint: {'text-color': '#6b5a48', 'text-halo-color': '#ffffff', 'text-halo-width': 1.5}});
+            const show = () => {
+                for (const id of ['contour-lines', 'contour-labels']) if (map.getLayer(id)) map.removeLayer(id);
+                if (map.getSource('contours')) map.removeSource('contours');
+                map.addSource('contours', {type: 'contour', source: 'dem', multiplier: unit === 'ft' ? 3.28084 : 1, overzoom: 1, thresholds: thresholds[unit]});
+                map.addLayer({id: 'contour-lines', type: 'line', source: 'contours', 'source-layer': 'contours',
+                    paint: {'line-color': 'hsla(25, 30%, 35%, 0.55)', 'line-width': ['match', ['get', 'level'], 1, 1.2, 0.5]}}, 'water');
+                map.addLayer({id: 'contour-labels', type: 'symbol', source: 'contours', 'source-layer': 'contours', filter: ['>', ['get', 'level'], 0],
+                    layout: {'symbol-placement': 'line', 'text-size': 10, 'text-field': ['concat', ['number-format', ['get', 'ele'], {}], unit === 'ft' ? "'" : ' m'], 'text-font': ['Noto Sans Bold']},
+                    paint: {'text-color': '#6b5a48', 'text-halo-color': '#ffffff', 'text-halo-width': 1.5}});
+                report();
+            };
+            const report = () => {
+                // Contour tiles are cut at whole zoom levels (up to 15), and the interval is the entry at or below that level.
+                const z = map.getZoom(), level = Math.min(15, Math.floor(z)), key = Object.keys(thresholds[unit]).map(Number).filter(k => k <= level).pop();
+                out(`Zoom ${z.toFixed(1)}: ` + (key === undefined ? 'no contours below zoom 9' : `a line every ${thresholds[unit][key][0]} ${unit}, bold and labelled every ${thresholds[unit][key][1]} ${unit}`));
+            };
+            const button = Object.assign(document.createElement('button'), {className: 'action', textContent: 'Switch to metres'});
+            button.onclick = () => { unit = unit === 'ft' ? 'm' : 'ft'; button.textContent = unit === 'ft' ? 'Switch to metres' : 'Switch to feet'; show(); };
+            card.querySelector('.text').appendChild(button);
+            map.on('move', report);
+            show();
         })},
     {title: 'Features under the cursor, from tile data', text: 'queryFeatures needs no style layer: it reads what the tiles contain, including things this style does not draw.', readout: true,
         make: (el, out) => { const map = base(el, {zoom: 15.2}); out('Click the map');
