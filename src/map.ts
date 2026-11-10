@@ -203,7 +203,10 @@ export class Map {
             if (zoomed) this.fire('zoom');
             if (turned) this.fire('rotate');
             if (tilted) this.fire('pitch');
-            if (!e.moving && !this.dragging) { this.moving = false; this.fire('moveend'); }
+            // After a drag is released with inertia, the last drag frame can report "not moving" before the inertia's
+            // first frame arrives. Movement has not ended until the inertia has been seen to start and then stop.
+            if (e.moving) this.awaitingInertia = false;
+            if (!e.moving && !this.dragging && !this.awaitingInertia) { this.moving = false; this.fire('moveend'); }
         } else if (e.type === 'idle') {
             this.tilesLoaded = true;
             if (!this.isLoaded) {
@@ -537,6 +540,7 @@ export class Map {
 
     // ---- input ----
     private dragging = false;
+    private awaitingInertia = false;
     private bindInput() {
         const el = this.canvas, pointers = new globalThis.Map<number, {x: number; y: number}>();
         const listen = <K extends keyof HTMLElementEventMap>(type: K, fn: (e: HTMLElementEventMap[K]) => void, opts?: AddEventListenerOptions) => {
@@ -605,7 +609,8 @@ export class Map {
             // Inertia from the last 60ms of movement; a pointer that stopped before release gives none.
             const now = performance.now(), last = samples[samples.length - 1];
             const first = samples.find(s => now - s.t <= 60) ?? last;
-            if (wasDragging && last && first !== last && now - last.t < 60) {
+            if (wasDragging && last && first !== last && now - last.t < 60 && (last.x !== first.x || last.y !== first.y)) {
+                this.awaitingInertia = true;
                 this.post({type: 'fling', dx: last.x - first.x, dy: last.y - first.y, ms: now - first.t});
             } else if (wasDragging) { this.moving = false; this.fire('moveend'); }
             if (moved <= 3 && e.type === 'pointerup' && e.button === 0) {
