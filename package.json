@@ -64,5 +64,10 @@
     "README.md",
     "docs"
   ],
-  "sideEffects": false
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/map-jr/map-jr-gl.git"
+  },
+  "homepage": "https://map-jr.github.io/map-jr-gl/"
 }

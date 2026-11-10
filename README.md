@@ -5,7 +5,7 @@ MapLibre GL JS.
 
 ![A 3D terrain map with relief shading and contour lines](docs/images/terrain.jpg)
 
-**[Open the live gallery](https://samargulies.github.io/map/)** to see each feature with the code that makes it.
+**[Open the live gallery](https://map-jr.github.io/map-jr-gl/)** to see each feature with the code that makes it.
 
 ## Why use this library
 
@@ -44,11 +44,11 @@ The library is new. Read [MapLibre compatibility](docs/maplibre-compatibility.md
 The package is not on npm at this time. Build it from this repository:
 
 ```bash
-git clone https://github.com/samargulies/map.git
+git clone https://github.com/map-jr/map-jr-gl.git
 ```
 
 ```bash
-cd map
+cd map-jr-gl
 ```
 
 ```bash
@@ -62,7 +62,7 @@ pnpm build
 The build writes the library to the `dist` folder. Then use one of these methods:
 
 - **With a bundler (Vite, webpack, Rollup, Parcel):** add the folder to your project as a dependency
-  (`pnpm add ../map`). Then import from `map-jr-gl`.
+  (`pnpm add ../map-jr-gl`). Then import from `map-jr-gl`.
 - **Without a bundler:** copy the `dist` folder to your web server. Then import `dist/map-jr-gl.js` in a module script.
 
 ## Use
