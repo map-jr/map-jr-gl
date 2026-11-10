@@ -22,6 +22,8 @@ export interface Batch {
     color?: Uint8Array;
     width?: Float32Array;
     radius?: Float32Array;
+    cap?: string;
+    join?: string;
 }
 export interface LabelSrc {
     x: number; y: number; text: string;
@@ -136,6 +138,7 @@ export function buildTile(bytes: Uint8Array, z: number, layers: CompiledLayer[],
         };
         if (ddColor) batch.color = Uint8Array.from(color);
         if (scalarProp?.dd) batch[L.type === 'line' ? 'width' : 'radius'] = Float32Array.from(scalar);
+        if (L.type === 'line') { batch.cap = p.cap.eval(z); batch.join = p.join.eval(z); }
         out.layers[L.id] = batch;
     }
     return out;
@@ -224,38 +227,83 @@ export function tessellate(b: Batch): GLBatch | null {
         return {type: 'fill', pos: coords, idx: Uint32Array.from(idx), color};
     }
 
-    // Lines: each vertex becomes a pair extruded along the (miter-scaled) normal in the vertex shader.
-    const v: number[] = [], color: number[] = [], width: number[] = [];
-    let pairs = 0;
-    for (let f = 0, r = 0; f < featEnds.length; f++) {
-        const pair = (x: number, y: number, nx: number, ny: number) => {
-            v.push(x, y, nx, ny, 1, x, y, -nx, -ny, -1);
-            if (b.color) for (let k = 0; k < 2; k++) color.push(b.color[f * 4], b.color[f * 4 + 1], b.color[f * 4 + 2], b.color[f * 4 + 3]);
-            if (b.width) width.push(b.width[f], b.width[f]);
-            return pairs++;
-        };
+    return tessellateLine(b);
+}
+
+const ARC_STEP = Math.PI / 5;
+
+/**
+ * Lines: each vertex becomes a pair extruded along its normal in the vertex shader. Vertex layout is
+ * x, y, normalX, normalY, side (-1..1 across the line, for edge antialiasing), distance along the line (for dashes).
+ */
+function tessellateLine(b: Batch): GLBatch | null {
+    const {coords, ringEnds, featEnds} = b.geom;
+    const v: number[] = [], idx: number[] = [], color: number[] = [], width: number[] = [];
+    const round = b.join === 'round', miter = !round && b.join !== 'bevel';
+    let count = 0, f = 0;
+    const vert = (x: number, y: number, nx: number, ny: number, side: number, dist: number) => {
+        v.push(x, y, nx, ny, side, dist);
+        if (b.color) color.push(b.color[f * 4], b.color[f * 4 + 1], b.color[f * 4 + 2], b.color[f * 4 + 3]);
+        if (b.width) width.push(b.width[f]);
+        return count++;
+    };
+    /** A fan around (x, y) sweeping `sweep` radians from angle `from`: used for round joins and caps. */
+    const fan = (x: number, y: number, from: number, sweep: number, dist: number) => {
+        const steps = Math.max(1, Math.ceil(Math.abs(sweep) / ARC_STEP)), centre = vert(x, y, 0, 0, 0, dist);
+        let prev = vert(x, y, Math.cos(from), Math.sin(from), 1, dist);
+        for (let k = 1; k <= steps; k++) {
+            const a = from + sweep * k / steps, cur = vert(x, y, Math.cos(a), Math.sin(a), 1, dist);
+            idx.push(centre, prev, cur);
+            prev = cur;
+        }
+    };
+    for (let r = 0; f < featEnds.length; f++) {
         for (; r < featEnds[f]; r++) {
-            const s = r ? ringEnds[r - 1] : 0, e = ringEnds[r];
-            let last = -1, px = 0, py = 0, pnx = 0, pny = 0, has = false;
-            const link = (p: number) => {
-                if (last >= 0) idx.push(last * 2, last * 2 + 1, p * 2, last * 2 + 1, p * 2 + 1, p * 2);
-                last = p;
-            };
-            for (let i = s; i < e; i++) {
-                const x = coords[i * 2], y = coords[i * 2 + 1];
-                if (i === s) { px = x; py = y; continue; }
-                const dx = x - px, dy = y - py, l = Math.hypot(dx, dy);
-                if (!l) continue;
-                const nx = -dy / l, ny = dx / l;
-                if (!has) link(pair(px, py, nx, ny));
-                else {
-                    const mx = pnx + nx, my = pny + ny, ml = Math.hypot(mx, my), cos = ml ? (mx * pnx + my * pny) / ml : 0;
-                    if (cos > 0.5) link(pair(px, py, mx / (ml * cos), my / (ml * cos)));
-                    else { link(pair(px, py, pnx, pny)); link(pair(px, py, nx, ny)); } // sharp turn: bevel
-                }
-                px = x; py = y; pnx = nx; pny = ny; has = true;
+            // Drop repeated points, then walk the segments.
+            const xs: number[] = [], ys: number[] = [];
+            for (let i = r ? ringEnds[r - 1] : 0; i < ringEnds[r]; i++) {
+                const x = coords[i * 2], y = coords[i * 2 + 1], n = xs.length;
+                if (!n || x !== xs[n - 1] || y !== ys[n - 1]) { xs.push(x); ys.push(y); }
             }
-            if (has) link(pair(px, py, pnx, pny));
+            const n = xs.length;
+            if (n < 2) continue;
+            let last = -1, dist = 0, pdx = 0, pdy = 0;
+            const pair = (x: number, y: number, nx: number, ny: number, ox = 0, oy = 0) => {
+                const a = vert(x, y, nx + ox, ny + oy, 1, dist);
+                vert(x, y, -nx + ox, -ny + oy, -1, dist);
+                if (last >= 0) idx.push(last, last + 1, a, last + 1, a + 1, a);
+                last = a;
+            };
+            for (let i = 0; i < n - 1; i++) {
+                const x = xs[i], y = ys[i], ex = xs[i + 1] - x, ey = ys[i + 1] - y, len = Math.hypot(ex, ey);
+                const dx = ex / len, dy = ey / len, nx = -dy, ny = dx;
+                if (i === 0) {
+                    if (b.cap === 'round') fan(x, y, Math.atan2(ny, nx), Math.PI, dist);
+                    pair(x, y, nx, ny, ...(b.cap === 'square' ? [-dx, -dy] : [0, 0]));
+                } else {
+                    const pnx = -pdy, pny = pdx, mx = pnx + nx, my = pny + ny, ml = Math.hypot(mx, my);
+                    const cos = ml ? (mx * pnx + my * pny) / ml : 0;
+                    if (cos > (miter ? 0.5 : 0.98)) pair(x, y, mx / (ml * cos), my / (ml * cos));
+                    else {
+                        // Two pairs at the corner give a bevel; a fan on the outer side rounds it off.
+                        pair(x, y, pnx, pny);
+                        if (round) {
+                            const outer = pnx * dx + pny * dy < 0 ? 1 : -1, a0 = Math.atan2(outer * pny, outer * pnx);
+                            let sweep = Math.atan2(outer * ny, outer * nx) - a0;
+                            if (sweep > Math.PI) sweep -= 2 * Math.PI; else if (sweep < -Math.PI) sweep += 2 * Math.PI;
+                            fan(x, y, a0, sweep, dist);
+                        }
+                        pair(x, y, nx, ny);
+                    }
+                }
+                dist += len;
+                pdx = dx; pdy = dy;
+                if (i === n - 2) {
+                    const px = xs[n - 1], py = ys[n - 1];
+                    pair(px, py, nx, ny, ...(b.cap === 'square' ? [dx, dy] : [0, 0]));
+                    if (b.cap === 'round') fan(px, py, Math.atan2(ny, nx), -Math.PI, dist);
+                }
+            }
         }
     }
     if (!idx.length) return null;

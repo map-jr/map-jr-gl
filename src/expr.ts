@@ -206,6 +206,17 @@ export function compileExpr(e: any, flags: Flags): Fn {
             for (let i = 1; i < e.length; i++) if (typeof e[i] !== 'object' || Array.isArray(e[i])) parts.push(arg(i));
             return c => parts.map(f => f(c) ?? '').join('');
         }
+        case 'number-format': {
+            const a = arg(1), o = e[2] ?? {}, cache = new Map<string, Intl.NumberFormat>();
+            const opt = (k: string) => o[k] === undefined ? null : compileExpr(o[k], flags);
+            const locale = opt('locale'), min = opt('min-fraction-digits'), max = opt('max-fraction-digits'), currency = opt('currency');
+            return c => {
+                const l = locale?.(c), mn = min?.(c), mx = max?.(c), cur = currency?.(c), key = `${l}|${mn}|${mx}|${cur}`;
+                let f = cache.get(key);
+                if (!f) cache.set(key, f = new Intl.NumberFormat(l ?? undefined, {minimumFractionDigits: mn ?? undefined, maximumFractionDigits: mx ?? undefined, ...(cur ? {style: 'currency', currency: cur} : {})}));
+                return f.format(a(c));
+            };
+        }
         case 'let': {
             // Variables are substituted structurally at compile time.
             let body = e[e.length - 1];
@@ -266,15 +277,16 @@ export function compileFilter(f: any): Fn | null {
 }
 
 export interface Prop { dd: boolean; zoom: boolean; eval(zoom: number, f?: Feature | null): any }
-export type PropKind = 'color' | 'number' | 'string' | 'raw';
+/** 'discrete' values (e.g. dash arrays) step between stops instead of interpolating. */
+export type PropKind = 'color' | 'number' | 'string' | 'discrete' | 'raw';
 
-function legacyFunction(v: any, flags: Flags): Fn {
+function legacyFunction(v: any, flags: Flags, discrete = false): Fn {
     const stops: any[][] = v.stops ?? [];
     const outs: Fn[] = stops.map(s => () => s[1]);
     if (v.property === undefined) {
         flags.zoom = true;
         const numeric = typeof stops[0]?.[1] === 'number' || typeof stops[0]?.[1] === 'string' && !!parseColor(stops[0][1]) || Array.isArray(stops[0]?.[1]);
-        return interpolator(v.base ?? 1, stops.map(s => s[0]), outs, c => c.zoom, !numeric || v.type === 'interval');
+        return interpolator(v.base ?? 1, stops.map(s => s[0]), outs, c => c.zoom, !numeric || discrete || v.type === 'interval');
     }
     flags.dd = true;
     const key = v.property, def = v.default ?? null;
@@ -292,7 +304,7 @@ export function compileProp(v: any, kind: PropKind, def: any): Prop {
     let fn: Fn;
     if (v === undefined || v === null) v = def;
     if (kind !== 'raw' && Array.isArray(v) && typeof v[0] === 'string') fn = compileExpr(v, flags);
-    else if (kind !== 'raw' && v && typeof v === 'object' && !Array.isArray(v) && v.stops) fn = legacyFunction(v, flags);
+    else if (kind !== 'raw' && v && typeof v === 'object' && !Array.isArray(v) && v.stops) fn = legacyFunction(v, flags, kind === 'discrete');
     else { const k = v; fn = () => k; }
     const defColor = kind === 'color' ? (typeof def === 'string' ? parseColor(def) : def) ?? [0, 0, 0, 1] : null;
     const finish = kind === 'color'

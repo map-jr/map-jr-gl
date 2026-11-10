@@ -102,6 +102,8 @@ export function renderSVG(s: SVGScene): string {
                 continue;
             }
             const fill = b.type === 'fill';
+            const gap = fill ? 0 : p.gap.eval(zoom), dash = fill ? null : p.dash.eval(zoom) as number[] | null;
+            if (gap > 0) continue; // a hollow stroke has no simple SVG equivalent; rare enough to leave to the client
             // The viewport in this tile's coordinates (plus a margin for stroke widths), to skip what is off screen.
             const [a, bb, c, dd, e, ff] = it.matrix, det = a * dd - bb * c, pad = 24 / it.scale;
             const corners = [[0, 0], [tr.width, 0], [0, tr.height], [tr.width, tr.height]].map(([x, y]) =>
@@ -112,12 +114,13 @@ export function renderSVG(s: SVGScene): string {
             for (let f = 0; f < n; f++) {
                 const [col, a] = styleOf(f), w = fill ? 0 : b.width ? b.width[f] : p.width.eval(zoom);
                 const key = fill ? `fill="${col}"${alpha('fill-opacity', a)}`
-                    : `stroke="${col}" stroke-width="${num(w)}"${alpha('stroke-opacity', a * Math.min(1, w))}`;
+                    : `stroke="${col}" stroke-width="${num(w)}"${alpha('stroke-opacity', a * Math.min(1, w))}` +
+                        (dash ? ` stroke-dasharray="${dash.map(d => num(d * Math.max(w, 0.5))).join(' ')}"` : '');
                 const d = pathData(b, f, fill, box, minSize, tol);
                 if (d) groups.set(key, (groups.get(key) ?? '') + d);
             }
             const m = it.matrix.map((v, i) => i < 4 ? +(v * Q).toFixed(6) : +v.toFixed(2));
-            body.push(`<g transform="matrix(${m.join(' ')})" clip-path="url(#${clipIds.get(it)})"${fill ? '' : ' fill="none"'}>`);
+            body.push(`<g transform="matrix(${m.join(' ')})" clip-path="url(#${clipIds.get(it)})"${fill ? '' : ` fill="none"${b.cap && b.cap !== 'butt' ? ` stroke-linecap="${b.cap}"` : ''}${b.join && b.join !== 'miter' ? ` stroke-linejoin="${b.join}"` : ''}`}>`);
             for (const [attrs, d] of groups) if (d) body.push(`<path ${attrs}${fill ? '' : ' vector-effect="non-scaling-stroke"'} d="${d}"/>`);
             body.push('</g>');
         }

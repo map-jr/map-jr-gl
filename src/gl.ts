@@ -20,17 +20,34 @@ uniform vec4 u_color; uniform vec4 u_clip; in vec4 v_color; in vec2 v_tile; out 
 void main() { ${FS_CLIP} vec4 c = v_color * u_color; o = vec4(c.rgb * c.a, c.a); }`],
 
     line: [`${VS_COMMON}
-layout(location=0) in vec4 a_v; layout(location=1) in vec4 a_color; layout(location=2) in float a_side; layout(location=3) in float a_width;
-uniform float u_width; uniform float u_scale;
-out vec4 v_color; out vec2 v_tile; out float v_d; out float v_hw;
+layout(location=0) in vec4 a_v; layout(location=1) in vec4 a_color; layout(location=2) in vec2 a_sd; layout(location=3) in float a_width;
+uniform float u_width; uniform float u_scale; uniform float u_gap;
+out vec4 v_color; out vec2 v_tile; out float v_d; out float v_hw; out float v_w; out float v_dist;
 void main() {
   float w = a_width * u_width;
-  v_hw = w * 0.5 + 0.5; v_d = a_side * v_hw; v_color = vec4(a_color.rgb, a_color.a * min(1.0, w));
+  // With a gap the line is two strokes of width w either side of an empty middle.
+  v_hw = (u_gap > 0.0 ? u_gap * 0.5 + w : w * 0.5) + 0.5; v_d = a_sd.x * v_hw; v_w = w; v_dist = a_sd.y;
+  v_color = vec4(a_color.rgb, a_color.a * min(1.0, w));
   v_tile = a_v.xy + a_v.zw * v_hw / u_scale;
   gl_Position = toClip(toScreen(v_tile));
 }`, `
-uniform vec4 u_color; uniform vec4 u_clip; in vec4 v_color; in vec2 v_tile; in float v_d; in float v_hw; out vec4 o;
-void main() { ${FS_CLIP} vec4 c = v_color * u_color; float a = c.a * clamp(v_hw - abs(v_d), 0.0, 1.0); o = vec4(c.rgb * a, a); }`],
+uniform vec4 u_color; uniform vec4 u_clip; uniform float u_gap; uniform vec4 u_dash; uniform float u_dashScale;
+in vec4 v_color; in vec2 v_tile; in float v_d; in float v_hw; in float v_w; in float v_dist; out vec4 o;
+void main() {
+  ${FS_CLIP}
+  vec4 c = v_color * u_color;
+  float a = c.a * clamp(v_hw - abs(v_d), 0.0, 1.0);
+  if (u_gap > 0.0) a *= clamp(abs(v_d) - u_gap * 0.5 + 0.5, 0.0, 1.0);
+  float period = u_dash.x + u_dash.y + u_dash.z + u_dash.w;
+  if (period > 0.0) {
+    // Dash lengths are in multiples of the line width; antialias each dash end over about a pixel.
+    float w = max(v_w, 0.5), t = mod(v_dist * u_dashScale / w, period);
+    float second = u_dash.x + u_dash.y;
+    float inDash = t < second ? min(t, u_dash.x - t) : min(t - second, second + u_dash.z - t);
+    a *= clamp(inDash * w + 0.5, 0.0, 1.0);
+  }
+  o = vec4(c.rgb * a, a);
+}`],
 
     circle: [`${VS_COMMON}
 layout(location=0) in vec2 a_corner; layout(location=1) in vec4 a_color; layout(location=2) in vec2 a_pos; layout(location=3) in float a_radius;
@@ -207,8 +224,8 @@ export class GLRenderer {
                 index(b.idx);
                 count = b.idx.length;
             } else if (b.type === 'line') {
-                attr(0, b.v, 4, gl.FLOAT, false, 20, 0);
-                attr(2, b.v, 1, gl.FLOAT, false, 20, 16, false, true);
+                attr(0, b.v, 4, gl.FLOAT, false, 24, 0);
+                attr(2, b.v, 2, gl.FLOAT, false, 24, 16, false, true);
                 if (b.color) attr(1, b.color, 4, gl.UNSIGNED_BYTE, true);
                 if (b.width) { attr(3, b.width, 1, gl.FLOAT); scalar = true; }
                 index(b.idx);
@@ -288,7 +305,12 @@ export class GLRenderer {
                 if (first) {
                     first = false;
                     gl.uniform4fv(u.u_color, color(L));
-                    if (b.type === 'line') gl.uniform1f(u.u_width, L.p.width.dd ? 1 : L.p.width.eval(zoom));
+                    if (b.type === 'line') {
+                        const dash = L.p.dash.eval(zoom) as number[] | null;
+                        gl.uniform1f(u.u_width, L.p.width.dd ? 1 : L.p.width.eval(zoom));
+                        gl.uniform1f(u.u_gap, L.p.gap.eval(zoom));
+                        gl.uniform4f(u.u_dash, dash?.[0] ?? 0, dash?.[1] ?? 0, dash?.[2] ?? 0, dash?.[3] ?? 0);
+                    }
                     if (b.type === 'circle') {
                         const sc = L.p.strokeColor.eval(zoom), a = sc[3] * (L.p.opacity.dd ? 1 : L.p.opacity.eval(zoom));
                         gl.uniform1f(u.u_radius, L.p.radius.dd ? 1 : L.p.radius.eval(zoom));
@@ -303,7 +325,11 @@ export class GLRenderer {
                 // Attributes without a buffer read these constants, so shaders need no variants.
                 if (!b.color) gl.vertexAttrib4f(1, 1, 1, 1, 1);
                 if (!b.scalar) gl.vertexAttrib1f(3, 1);
-                if (b.type === 'line') gl.uniform1f(u.u_scale, it.scale);
+                if (b.type === 'line') {
+                    gl.uniform1f(u.u_scale, it.scale);
+                    // Dashes are sized at whole zoom levels so they stretch, rather than crawl, while zooming.
+                    gl.uniform1f(u.u_dashScale, it.scale / 2 ** (zoom - Math.floor(zoom)));
+                }
                 if (b.type === 'circle') gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, b.count);
                 else gl.drawElements(gl.TRIANGLES, b.count, gl.UNSIGNED_INT, 0);
             }

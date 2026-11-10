@@ -1,11 +1,12 @@
 import {build} from 'esbuild';
 import {gzipSync, brotliCompressSync} from 'node:zlib';
-import {readFileSync, writeFileSync} from 'node:fs';
+import {mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 
 const common = {bundle: true, minify: true, target: 'es2022', logLevel: 'warning'};
 // The worker is built first and embedded in the main bundle, so the library is a single file to deploy.
 const worker = await build({...common, entryPoints: ['src/worker.ts'], format: 'iife', write: false});
 const workerSrc = worker.outputFiles[0].text;
+mkdirSync('dist', {recursive: true});
 writeFileSync('dist/tessera-worker.js', workerSrc);
 await build({...common, entryPoints: ['src/index.ts'], format: 'esm', outfile: 'dist/tessera.js', define: {__WORKER_SRC__: JSON.stringify(workerSrc)}});
 await build({...common, entryPoints: ['src/server.ts'], format: 'esm', platform: 'node', outfile: 'dist/server.js'});
