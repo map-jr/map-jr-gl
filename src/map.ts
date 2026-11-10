@@ -72,6 +72,10 @@ export class Map {
     private hovered: {layer: MarkerLayer; index: number} | null = null;
     private observer?: ResizeObserver;
     private cleanup: (() => void)[] = [];
+    private beforeStyle: (() => void)[] = [];
+    private imageNames = new Set<string>();
+    private imageResolver: ((id: string) => void | Promise<void>) | null = null;
+    private tilesLoaded = false;
     private pending = new globalThis.Map<number, {resolve(v: any): void; reject(e: Error): void}>();
     private nextQuery = 1;
     /** Which thread the engine ended up on. */
@@ -82,18 +86,21 @@ export class Map {
         if (!c) throw new Error('Map container not found');
         this.container = c;
         if (getComputedStyle(c).position === 'static') c.style.position = 'relative';
+        if (getComputedStyle(c).overflow === 'visible') c.style.overflow = 'hidden'; // a frame from before a shrink must not spill out
         this.canvas = document.createElement('canvas');
-        // Centred with an explicit pixel size rather than stretched to fit. With worker rendering the new frame arrives
-        // a moment after the container resizes; until then the old frame stays put and undistorted instead of wobbling.
-        this.canvas.style.cssText = 'position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);touch-action:none;outline:none';
+        // `object-fit: none` shows the canvas's current frame unscaled and centred, whatever size that frame is. With
+        // worker rendering a new frame arrives a moment after the container resizes; until it does, the old frame simply
+        // stays centred instead of being stretched to the new shape. The box is sized in device pixels and scaled back
+        // down so one frame pixel is one screen pixel.
+        this.canvas.style.cssText = 'position:absolute;left:0;top:0;transform-origin:0 0;object-fit:none;object-position:center;touch-action:none;outline:none;max-width:none';
         this.canvas.tabIndex = 0;
         // Server-rendered markup stays visible on top until the canvas has drawn the same view.
         c.insertBefore(this.canvas, c.firstChild);
         this.tr.minZoom = options.minZoom ?? 0;
         this.tr.maxZoom = options.maxZoom ?? 22;
         this.measure();
-        this.canvas.style.width = this.tr.width + 'px';
-        this.canvas.style.height = this.tr.height + 'px';
+        this.canvas.width = Math.round(this.tr.width * this.dpr);
+        this.canvas.height = Math.round(this.tr.height * this.dpr);
         this.tr.maxPitch = options.maxPitch ?? 60;
         this.tr.set(options.center ?? [0, 0], options.zoom ?? 0, options.bearing ?? 0, options.pitch ?? 0);
         this.start().catch(err => this.fire('error', {error: err}));
@@ -103,11 +110,13 @@ export class Map {
         const r = this.container.getBoundingClientRect();
         this.tr.width = r.width; this.tr.height = r.height;
         this.dpr = Math.min(globalThis.devicePixelRatio || 1, 3);
+        Object.assign(this.canvas.style, {width: this.dpr * 100 + '%', height: this.dpr * 100 + '%', transform: `scale(${1 / this.dpr})`});
     }
 
     private async start() {
         const o = this.options;
-        this.rawStyle = typeof o.style === 'string' ? await (await fetch(o.style)).json() : o.style;
+        this.rawStyle = typeof o.style === 'string' ? await (await fetch(o.style)).json() : structuredClone(o.style);
+        for (const fn of this.beforeStyle.splice(0)) fn();
         this.styleBase = typeof o.style === 'string' ? new URL(o.style, location.href).href : location.href;
         this.style = await resolveStyle(this.rawStyle, fetch, this.styleBase);
         if (this.style.unsupported.length) console.warn('[tessera] Skipping unsupported layer types: ' + this.style.unsupported.join(', '));
@@ -115,6 +124,7 @@ export class Map {
         const engineOptions = {
             style: this.style, width: tr.width, height: tr.height, dpr: this.dpr, fontFamily: o.fontFamily ?? DEFAULT_FONT, fonts: o.fonts,
             center: [tr.lng, tr.lat] as [number, number], zoom: tr.zoom, bearing: tr.bearing, pitch: tr.pitch,
+            minZoom: tr.minZoom, maxZoom: tr.maxZoom, maxPitch: tr.maxPitch,
         };
 
         let workerUrl = o.workerUrl, blobUrl: string | undefined;
@@ -177,6 +187,7 @@ export class Map {
     }
 
     private post(c: Command, transfer?: Transferable[]) {
+        if (c.type !== 'query' && c.type !== 'elevation') this.tilesLoaded = false;
         if (this.ready) this.send(c, transfer); else this.queue.push([c, transfer]);
     }
 
@@ -185,6 +196,7 @@ export class Map {
             const zoomed = e.zoom !== this.tr.zoom;
             const turned = e.bearing !== this.tr.bearing, tilted = e.pitch !== this.tr.pitch;
             Object.assign(this.tr, {lng: e.lng, lat: e.lat, zoom: e.zoom, bearing: e.bearing, pitch: e.pitch});
+            this.tilesLoaded = false;
             if (!this.moving) this.fire('movestart');
             this.moving = true;
             this.fire('move');
@@ -193,6 +205,7 @@ export class Map {
             if (tilted) this.fire('pitch');
             if (!e.moving && !this.dragging) { this.moving = false; this.fire('moveend'); }
         } else if (e.type === 'idle') {
+            this.tilesLoaded = true;
             if (!this.isLoaded) {
                 this.isLoaded = true;
                 this.container.querySelector('[data-tessera-ssr]')?.remove();
@@ -200,13 +213,17 @@ export class Map {
             }
             this.fire('idle');
         } else if (e.type === 'resized') {
-            this.canvas.style.width = e.width + 'px';
-            this.canvas.style.height = e.height + 'px';
+            this.fire('resize');
         } else if (e.type === 'result') {
             const p = this.pending.get(e.id);
             this.pending.delete(e.id);
             if (e.error) p?.reject(new Error(e.error)); else p?.resolve(e.value);
-        } else if (e.type === 'imagemissing') this.fire('styleimagemissing', {id: e.name});
+        } else if (e.type === 'imagemissing') {
+            // Give the resolver the first chance to supply the image; the event is for anything it leaves unresolved.
+            Promise.resolve(this.imageResolver?.(e.name)).catch(error => this.fire('error', {error})).then(() => {
+                if (!this.imageNames.has(e.name)) this.fire('styleimagemissing', {id: e.name});
+            });
+        }
         else if (e.type === 'error') this.fire('error', {error: new Error(e.message)});
     }
 
@@ -262,6 +279,40 @@ export class Map {
     setPitch(pitch: number) { return this.jumpTo({pitch}); }
     resetNorth(o: {duration?: number} = {}) { return this.easeTo({bearing: 0, ...o}); }
     resetNorthPitch(o: {duration?: number} = {}) { return this.easeTo({bearing: 0, pitch: 0, ...o}); }
+    panTo(center: LngLatLike, o: {duration?: number} = {}) { return this.easeTo({center, ...o}); }
+    panBy(offset: [number, number], o: {duration?: number} = {}) {
+        return this.easeTo({center: this.unproject([this.tr.width / 2 + offset[0], this.tr.height / 2 + offset[1]]), ...o});
+    }
+    zoomTo(zoom: number, o: {duration?: number} = {}) { return this.easeTo({zoom, ...o}); }
+    rotateTo(bearing: number, o: {duration?: number} = {}) { return this.easeTo({bearing, ...o}); }
+    snapToNorth(o: {duration?: number} = {}) { return Math.abs(this.tr.bearing) < 7 ? this.resetNorth(o) : this; }
+    stop() { this.post({type: 'stop'}); return this; }
+
+    /** The centre and zoom that fit `bounds` ([west, south, east, north] or [[west, south], [east, north]]) in view. */
+    cameraForBounds(bounds: [number, number, number, number] | [[number, number], [number, number]], o: {padding?: number | Partial<Record<'top' | 'right' | 'bottom' | 'left', number>>; maxZoom?: number} = {}) {
+        const [w, s, e, n] = bounds.flat() as number[];
+        const pad = typeof o.padding === 'number' ? {top: o.padding, right: o.padding, bottom: o.padding, left: o.padding} : {top: 0, right: 0, bottom: 0, left: 0, ...o.padding};
+        const x0 = mercX(w), x1 = mercX(e), y0 = mercY(n), y1 = mercY(s);
+        const availW = Math.max(1, this.tr.width - pad.left - pad.right), availH = Math.max(1, this.tr.height - pad.top - pad.bottom);
+        const zoom = Math.min(o.maxZoom ?? this.tr.maxZoom, Math.log2(Math.min(availW / Math.max(x1 - x0, 1e-12), availH / Math.max(y1 - y0, 1e-12)) / 512));
+        // Shift the centre so the bounds sit in the middle of the unpadded area.
+        const world = 512 * 2 ** zoom, cx = (x0 + x1) / 2 - (pad.left - pad.right) / 2 / world, cy = (y0 + y1) / 2 - (pad.top - pad.bottom) / 2 / world;
+        return {center: {lng: cx * 360 - 180, lat: Math.atan(Math.sinh(Math.PI * (1 - 2 * cy))) * 180 / Math.PI}, zoom, bearing: 0};
+    }
+    fitBounds(bounds: Parameters<Map['cameraForBounds']>[0], o: Parameters<Map['cameraForBounds']>[1] & {duration?: number} = {}) {
+        return this.easeTo({...this.cameraForBounds(bounds, o), duration: o.duration ?? 800});
+    }
+
+    private limits() { this.post({type: 'limits', minZoom: this.tr.minZoom, maxZoom: this.tr.maxZoom, maxPitch: this.tr.maxPitch}); return this; }
+    setMinZoom(z = 0) { this.tr.minZoom = z; return this.limits(); }
+    setMaxZoom(z = 22) { this.tr.maxZoom = z; return this.limits(); }
+    setMaxPitch(p = 60) { this.tr.maxPitch = Math.min(60, p); return this.limits(); }
+    getMaxPitch() { return this.tr.maxPitch; }
+    getMinPitch() { return 0; }
+    getCanvasContainer() { return this.container; }
+    isStyleLoaded() { return this.ready; }
+    areTilesLoaded() { return this.tilesLoaded; }
+    redraw() { this.triggerRepaint(); return this; }
     zoomIn() { return this.easeTo({zoom: this.tr.zoom + 1, duration: 300}); }
     zoomOut() { return this.easeTo({zoom: this.tr.zoom - 1, duration: 300}); }
     triggerRepaint() { this.post({type: 'repaint'}); }
@@ -279,6 +330,42 @@ export class Map {
             this.post({type: 'style', style, reload});
         }, err => this.fire('error', {error: err}));
     }
+    /** Runs a change to the style JSON now, or as soon as the style has been fetched. */
+    private editStyle(fn: (style: any) => void) {
+        if (this.rawStyle) { fn(this.rawStyle); this.restyle(true); } else this.beforeStyle.push(() => fn(this.rawStyle));
+        return this;
+    }
+    private layerIndex(style: any, id: string) {
+        const i = style.layers.findIndex((l: any) => l.id === id);
+        if (i < 0) throw new Error(`Layer "${id}" does not exist`);
+        return i;
+    }
+    getStyle() { return this.rawStyle ? structuredClone(this.rawStyle) : undefined; }
+    async setStyle(style: unknown) {
+        this.styleBase = typeof style === 'string' ? new URL(style, location.href).href : location.href;
+        this.rawStyle = typeof style === 'string' ? await (await fetch(style)).json() : structuredClone(style);
+        this.restyle(true);
+    }
+    getLayer(id: string) { return this.rawStyle?.layers.find((l: any) => l.id === id); }
+    getLayersOrder(): string[] { return this.rawStyle?.layers.map((l: any) => l.id) ?? []; }
+    getSource(id: string) { return this.rawStyle?.sources[id]; }
+    getPaintProperty(layerId: string, name: string) { return this.getLayer(layerId)?.paint?.[name]; }
+    getLayoutProperty(layerId: string, name: string) { return this.getLayer(layerId)?.layout?.[name]; }
+    getFilter(layerId: string) { return this.getLayer(layerId)?.filter; }
+    addSource(id: string, source: unknown) { return this.editStyle(s => { s.sources[id] = source; }); }
+    removeSource(id: string) { return this.editStyle(s => { delete s.sources[id]; }); }
+    addLayer(layer: {id: string}, beforeId?: string) {
+        return this.editStyle(s => { s.layers.splice(beforeId ? this.layerIndex(s, beforeId) : s.layers.length, 0, layer); });
+    }
+    removeLayer(id: string) { return this.editStyle(s => { s.layers.splice(this.layerIndex(s, id), 1); }); }
+    moveLayer(id: string, beforeId?: string) {
+        return this.editStyle(s => {
+            const [layer] = s.layers.splice(this.layerIndex(s, id), 1);
+            s.layers.splice(beforeId ? this.layerIndex(s, beforeId) : s.layers.length, 0, layer);
+        });
+    }
+    setLayerZoomRange(id: string, minzoom: number, maxzoom: number) { return this.editStyle(s => Object.assign(s.layers[this.layerIndex(s, id)], {minzoom, maxzoom})); }
+
     private setProp(group: 'paint' | 'layout', layerId: string, name: string, value: unknown) {
         const layer = this.rawStyle?.layers.find((l: any) => l.id === layerId);
         if (!layer) throw new Error(`Layer "${layerId}" does not exist`);
@@ -349,10 +436,25 @@ export class Map {
             width ??= (source as ImageBitmap).width as number; height ??= (source as ImageBitmap).height as number;
         }
         const w = Math.ceil(width * this.dpr), h = Math.ceil(height * this.dpr), data = pixels(drawable, w, h);
+        this.imageNames.add(name);
         this.post({type: 'image', name, w, h, width, height, data}, [data.buffer]);
         return this;
     }
-    removeImage(name: string) { this.post({type: 'removeImage', name}); return this; }
+    removeImage(name: string) { this.imageNames.delete(name); this.post({type: 'removeImage', name}); return this; }
+    hasImage(name: string) { return this.imageNames.has(name); }
+    listImages() { return [...this.imageNames]; }
+    /** Fetches and decodes an image, in the shape MapLibre returns it. */
+    async loadImage(url: string) {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`Failed to load image ${url}: ${res.status}`);
+        return {data: await createImageBitmap(await res.blob())};
+    }
+    /**
+     * Supplies images on demand. When a style asks for an `icon-image` nothing provides, the resolver is called with
+     * its name and may call `addImage` (it can be async). This is how generated icons such as highway shields work:
+     * encode what to draw in the name, and build the SVG for it here.
+     */
+    setMissingStyleImageResolver(resolver: ((id: string) => void | Promise<void>) | null) { this.imageResolver = resolver; return this; }
 
     // ---- queries ----
     private ask<T>(command: (id: number) => Command): Promise<T> {

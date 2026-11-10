@@ -51,6 +51,8 @@ export interface SVGScene {
     labels: Placed[];
     /** Sprite sheet for icons; `image` may be a URL or a data URI. */
     sprite?: Sprite | null;
+    /** Icons supplied as SVG by name (e.g. generated highway shields); emitted as vector symbols. */
+    images?: Map<string, {svg: string; width: number; height: number}>;
     markers: MarkerLayerOptions[];
     fontFamily: string;
     /** Extra attributes for the root element, e.g. a data attribute the client looks for when hydrating. */
@@ -124,7 +126,7 @@ export function renderSVG(s: SVGScene): string {
                 [(dd * (x - e) - c * (y - ff)) / det, (-bb * (x - e) + a * (y - ff)) / det]);
             const box = [Math.min(...corners.map(p => p[0])) - pad, Math.min(...corners.map(p => p[1])) - pad,
                 Math.max(...corners.map(p => p[0])) + pad, Math.max(...corners.map(p => p[1])) + pad];
-            const unitsPerPx = 1 / (it.scale * Q), minSize = 0.8 * unitsPerPx, tol = 0.6 * unitsPerPx;
+            const unitsPerPx = 1 / (it.scale * Q), minSize = (L.ssr?.minSize ?? 0.8) * unitsPerPx, tol = (L.ssr?.simplify ?? 0.6) * unitsPerPx;
             for (let f = 0; f < n; f++) {
                 const [col, a] = styleOf(f), w = fill ? 0 : b.width ? b.width[f] : p.width.eval(zoom);
                 const key = fill ? `fill="${col}"${alpha('fill-opacity', a)}${outline}`
@@ -140,7 +142,23 @@ export function renderSVG(s: SVGScene): string {
         }
     }
 
-    const icons = s.sprite ? s.labels.filter(l => l.icon) : [];
+    const vectorIcons = s.labels.filter(l => l.icon?.custom && s.images?.has(l.icon.name));
+    if (vectorIcons.length) {
+        const ids = new Map<string, string>();
+        for (const {icon} of vectorIcons) {
+            const i = icon!, img = s.images!.get(i.name)!;
+            let id = ids.get(i.name);
+            if (!id) {
+                id = 'i' + ids.size;
+                ids.set(i.name, id);
+                const {viewBox, inner} = parseSVG(img.svg);
+                defs.push(`<symbol id="${id}" viewBox="${viewBox ?? `0 0 ${img.width} ${img.height}`}" preserveAspectRatio="none">${inner}</symbol>`);
+            }
+            const rot = i.angle ? ` transform="rotate(${num(i.angle * 180 / Math.PI)} ${num(i.x)} ${num(i.y)})"` : '';
+            body.push(`<use href="#${id}" x="${num(i.x - i.w / 2)}" y="${num(i.y - i.h / 2)}" width="${num(i.w)}" height="${num(i.h)}"${rot}/>`);
+        }
+    }
+    const icons = s.sprite ? s.labels.filter(l => l.icon && !l.icon.custom) : [];
     if (icons.length) {
         const sp = s.sprite!;
         defs.push(`<image id="sprite" href="${escapeXML(sp.image)}" width="${sp.width}" height="${sp.height}"/>`);

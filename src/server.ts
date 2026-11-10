@@ -1,5 +1,5 @@
 import {Transform, type LngLatLike} from './geo.ts';
-import {compileLayer, loadSprite, resolveStyle, tileURL, type CompiledLayer, type Sprite} from './style.ts';
+import {applySSROverrides, compileLayer, loadSprite, resolveStyle, tileURL, type CompiledLayer, type Sprite} from './style.ts';
 import {TileBuilder} from './tiles.ts';
 import type {TileImage, TileIR} from './tile.ts';
 import {CollisionGrid, placeLabels, renderItems, type RenderItem} from './placement.ts';
@@ -23,6 +23,13 @@ export interface RenderOptions {
     inlineImages?: boolean;
     /** Use the high-density (@2x) icon sheet. */
     highDensity?: boolean;
+    /**
+     * Supplies icons the sprite sheet lacks, as SVG: the server-side counterpart of `map.setMissingStyleImageResolver`.
+     * Return undefined for names you do not handle. The SVG goes into the output as vector artwork.
+     */
+    resolveImage?: (name: string) => {svg: string; width: number; height: number} | undefined;
+    /** Set false to ignore the style's `tessera:ssr` layer overrides and render exactly what the client would. */
+    ssrOverrides?: boolean;
     fetch?: typeof fetch;
 }
 export interface RenderResult {
@@ -37,6 +44,7 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
     // Wrapped, not passed by reference: Cloudflare Workers reject calls to a detached global `fetch`.
     const fetchFn: typeof fetch = o.fetch ?? ((...a) => fetch(...a));
     const style = await resolveStyle(o.style, fetchFn);
+    if (o.ssrOverrides !== false) style.layers = applySSROverrides(style.layers);
     if (o.layerFilter) style.layers = style.layers.filter(l => o.layerFilter!(l.id));
     const layers = style.layers.map(compileLayer).filter((l): l is CompiledLayer => !!l);
     const tr = new Transform();
@@ -77,7 +85,7 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
     }
     await Promise.all(jobs);
 
-    const grid = new CollisionGrid();
+    const grid = new CollisionGrid(), images = new Map<string, {svg: string; width: number; height: number}>();
     for (const m of o.markers ?? []) {
         if (!m.collide) continue;
         const [ox, oy] = anchorOffset(m.anchor, m.width, m.height);
@@ -86,9 +94,15 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
             grid.insert(x + ox, y + oy, x + ox + m.width, y + oy + m.height);
         }
     }
-    const labels = placeLabels(tr, all, layers, new EstimateShaper(), grid, name => (sprite as Sprite | null)?.icons[name]);
+    const labels = placeLabels(tr, all, layers, new EstimateShaper(), grid, name => {
+        const fromSprite = (sprite as Sprite | null)?.icons[name];
+        if (fromSprite) return fromSprite;
+        if (!images.has(name)) { const img = o.resolveImage?.(name); if (img) images.set(name, img); else return undefined; }
+        const img = images.get(name)!;
+        return {x: 0, y: 0, width: img.width, height: img.height, pixelRatio: 1, custom: true};
+    });
     const svg = renderSVG({
-        tr, layers, items, labels, sprite, markers: o.markers ?? [], fontFamily: o.fontFamily ?? DEFAULT_FONT,
+        tr, layers, items, labels, sprite, images, markers: o.markers ?? [], fontFamily: o.fontFamily ?? DEFAULT_FONT,
         rootAttrs: 'data-tessera-ssr style="position:absolute;inset:0;width:100%;height:100%"',
     });
     return {svg, tiles: urls};

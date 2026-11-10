@@ -10,6 +10,7 @@ const pages = {
     elev: '/?nomarkers&style=https://whatismyelevation.com/styles/elevation-color.json',
     elevalps: '/?nomarkers&style=https://whatismyelevation.com/styles/elevation-color.json&center=7.6586,45.9763&zoom=11.3',
     elevlow: '/?nomarkers&style=https://whatismyelevation.com/styles/elevation-color.json&center=-105.2,39.8&zoom=6.2',
+    shields: '/?nomarkers&zoom=11.3&center=-74.05,40.74', shieldsstatic: '/static?nomarkers&zoom=11.3',
     rotated: '/?renderer=worker&bearing=35&zoom=15.4', low: '/?renderer=worker&zoom=10.5&nomarkers',
 };
 const browser = await chromium.launch({args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist']});

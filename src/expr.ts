@@ -7,6 +7,7 @@ export interface Ctx { zoom: number; f: Feature | null }
 export type Fn = (c: Ctx) => any;
 export interface Flags { dd: boolean; zoom: boolean }
 export type RGBA = [number, number, number, number];
+import {bezier} from './geo.ts';
 
 const NAMED: Record<string, string> = {
     black: '#000', white: '#fff', red: '#f00', green: '#008000', blue: '#00f', yellow: '#ff0', gray: '#808080', grey: '#808080',
@@ -16,11 +17,15 @@ const NAMED: Record<string, string> = {
     lightblue: '#add8e6', lightgreen: '#90ee90', whitesmoke: '#f5f5f5', gainsboro: '#dcdcdc', dimgray: '#696969', tan: '#d2b48c',
 };
 const colorCache = new Map<string, RGBA | null>();
+/** Arrays known to be colours, so interpolation can treat them differently from plain number arrays. */
+const COLORS = new WeakSet<object>();
+const color = (c: RGBA): RGBA => { COLORS.add(c); return c; };
 
 export function parseColor(input: string): RGBA | null {
     let c = colorCache.get(input);
     if (c !== undefined) return c;
     c = parseColorUncached(input.trim().toLowerCase());
+    if (c) COLORS.add(c);
     colorCache.set(input, c);
     return c;
 }
@@ -65,6 +70,8 @@ function warnOnce(msg: string) {
 
 function lerp(a: any, b: any, t: number): any {
     if (typeof a === 'number') return a + (b - a) * t;
+    // Colours interpolate channel by channel without premultiplying alpha, matching the current style specification.
+    if (COLORS.has(a) && COLORS.has(b)) return color(a.map((v: number, i: number) => v + (b[i] - v) * t) as RGBA);
     if (Array.isArray(a)) return a.map((v, i) => v + (b[i] - v) * t);
     return t < 1 ? a : b;
 }
@@ -74,7 +81,7 @@ function colorize(v: any): any {
     return typeof v === 'string' ? (parseColor(v) ?? v) : v;
 }
 
-function interpolator(base: number, stops: number[], outs: Fn[], input: Fn, step: boolean): Fn {
+function interpolator(base: number, stops: number[], outs: Fn[], input: Fn, step: boolean, ease?: (t: number) => number): Fn {
     const n = stops.length;
     return c => {
         const x = input(c);
@@ -84,7 +91,7 @@ function interpolator(base: number, stops: number[], outs: Fn[], input: Fn, step
         while (stops[i] <= x) i++;
         if (step) return colorize(outs[i - 1](c));
         const x0 = stops[i - 1], x1 = stops[i];
-        const t = base === 1 ? (x - x0) / (x1 - x0) : (base ** (x - x0) - 1) / (base ** (x1 - x0) - 1);
+        const t = ease ? ease((x - x0) / (x1 - x0)) : base === 1 ? (x - x0) / (x1 - x0) : (base ** (x - x0) - 1) / (base ** (x1 - x0) - 1);
         return lerp(colorize(outs[i - 1](c)), colorize(outs[i](c)), t);
     };
 }
@@ -93,13 +100,19 @@ const cmp: Record<string, (a: any, b: any) => boolean> = {
     '==': (a, b) => a === b, '!=': (a, b) => a !== b, '<': (a, b) => a < b, '<=': (a, b) => a <= b, '>': (a, b) => a > b, '>=': (a, b) => a >= b,
 };
 const math1: Record<string, (a: number) => number> = {
-    abs: Math.abs, ceil: Math.ceil, floor: Math.floor, round: Math.round, sqrt: Math.sqrt, ln: Math.log, log10: Math.log10, log2: Math.log2,
-    sin: Math.sin, cos: Math.cos, tan: Math.tan,
+    abs: Math.abs, ceil: Math.ceil, floor: Math.floor, sqrt: Math.sqrt, ln: Math.log, log10: Math.log10, log2: Math.log2,
+    sin: Math.sin, cos: Math.cos, tan: Math.tan, asin: Math.asin, acos: Math.acos, atan: Math.atan,
+    round: v => v < 0 ? -Math.round(-v) : Math.round(v), // halves round away from zero
 };
 
 export function compileExpr(e: any, flags: Flags): Fn {
     if (!Array.isArray(e)) {
         return () => e;
+    }
+    if (typeof e[0] !== 'string') {
+        // A plain array whose items may themselves be expressions, e.g. a text-offset of [0, ["get", "dy"]].
+        const items = e.map(x => compileExpr(x, flags));
+        return c => items.map(f => f(c));
     }
     const op = e[0];
     const arg = (i: number) => compileExpr(e[i], flags);
@@ -114,7 +127,12 @@ export function compileExpr(e: any, flags: Flags): Fn {
             const o = arg(2);
             return c => o(c)?.[k(c)] ?? null;
         }
-        case 'has': { flags.dd = true; const k = arg(1); return c => !!c.f && k(c) in c.f.properties; }
+        case 'has': {
+            const k = arg(1);
+            if (e.length > 2) { const o = arg(2); return c => { const obj = o(c); return !!obj && k(c) in obj; }; }
+            flags.dd = true;
+            return c => !!c.f && k(c) in c.f.properties;
+        }
         case 'id': flags.dd = true; return c => c.f?.id ?? null;
         case 'properties': flags.dd = true; return c => c.f?.properties ?? {};
         case 'geometry-type': flags.dd = true; return c => GEOM[c.f?.type ?? 0];
@@ -157,10 +175,22 @@ export function compileExpr(e: any, flags: Flags): Fn {
         case 'interpolate': case 'interpolate-hcl': case 'interpolate-lab': {
             const kind = e[1], input = arg(2), stops: number[] = [], outs: Fn[] = [];
             for (let i = 3; i + 1 < e.length; i += 2) { stops.push(e[i]); outs.push(arg(i + 1)); }
-            if (kind[0] === 'cubic-bezier') warnOnce('cubic-bezier interpolation is approximated as linear');
-            return interpolator(kind[0] === 'exponential' ? kind[1] : 1, stops, outs, input, false);
+            return interpolator(kind[0] === 'exponential' ? kind[1] : 1, stops, outs, input, false,
+                kind[0] === 'cubic-bezier' ? bezier(kind[1], kind[2], kind[3], kind[4]) : undefined);
         }
-        case 'to-string': { const a = arg(1); return c => { const v = a(c); return v === null || v === undefined ? '' : String(v); }; }
+        case 'to-string': {
+            const a = arg(1);
+            return c => {
+                const v = a(c);
+                if (v === null || v === undefined) return '';
+                if (COLORS.has(v)) return `rgba(${Math.round(v[0] * 255)},${Math.round(v[1] * 255)},${Math.round(v[2] * 255)},${v[3]})`;
+                return typeof v === 'object' ? JSON.stringify(v) : String(v);
+            };
+        }
+        case 'to-rgba': { const a = arg(1); return c => { const v = colorize(a(c)); return Array.isArray(v) ? [v[0] * 255, v[1] * 255, v[2] * 255, v[3]] : null; }; }
+        case 'join': { const a = arg(1), b = arg(2); return c => (a(c) ?? []).join(b(c) ?? ''); }
+        case 'split': { const a = arg(1), b = arg(2); return c => String(a(c) ?? '').split(b(c) ?? ''); }
+        case 'ln2': return () => Math.LN2;
         case 'to-number': case 'number': {
             const a = args();
             return c => {
@@ -169,7 +199,17 @@ export function compileExpr(e: any, flags: Flags): Fn {
             };
         }
         case 'to-boolean': { const a = arg(1); return c => !!a(c); }
-        case 'to-color': { const a = arg(1); return c => colorize(a(c)); }
+        case 'to-color': {
+            const a = args();
+            return c => {
+                for (const f of a) {
+                    const v = f(c);
+                    if (typeof v === 'string') { const p = parseColor(v); if (p) return p; } else if (COLORS.has(v)) return v;
+                    else if (Array.isArray(v) && v.length >= 3) return color([v[0] / 255, v[1] / 255, v[2] / 255, v[3] ?? 1]);
+                }
+                return null;
+            };
+        }
         case 'string': case 'boolean': case 'object': case 'array': {
             const a = args(), t = op === 'array' ? 'object' : op;
             return c => {
@@ -181,9 +221,9 @@ export function compileExpr(e: any, flags: Flags): Fn {
         case 'concat': { const a = args(); return c => a.map(f => f(c) ?? '').join(''); }
         case 'upcase': { const a = arg(1); return c => String(a(c) ?? '').toUpperCase(); }
         case 'downcase': { const a = arg(1); return c => String(a(c) ?? '').toLowerCase(); }
-        case 'length': { const a = arg(1); return c => a(c)?.length ?? 0; }
+        case 'length': { const a = arg(1); return c => { const v = a(c); return typeof v === 'string' ? [...v].length : v?.length ?? 0; }; }
         case 'in': { const a = arg(1), b = arg(2); return c => { const h = b(c); return h ? h.indexOf(a(c)) >= 0 : false; }; }
-        case 'index-of': { const a = arg(1), b = arg(2); return c => b(c)?.indexOf(a(c)) ?? -1; }
+        case 'index-of': { const a = arg(1), b = arg(2), from = e.length > 3 ? arg(3) : null; return c => b(c)?.indexOf(a(c), from ? from(c) : undefined) ?? -1; }
         case 'at': { const a = arg(1), b = arg(2); return c => b(c)?.[a(c)] ?? null; }
         case 'slice': { const a = args(); return c => a[0](c)?.slice(a[1](c), a[2] ? a[2](c) : undefined) ?? null; }
         case '+': { const a = args(); return c => a.reduce((s, f) => s + f(c), 0); }
@@ -198,7 +238,7 @@ export function compileExpr(e: any, flags: Flags): Fn {
         case 'e': return () => Math.E;
         case 'rgb': case 'rgba': {
             const a = args();
-            return c => [a[0](c) / 255, a[1](c) / 255, a[2](c) / 255, a[3] ? a[3](c) : 1];
+            return c => color([a[0](c) / 255, a[1](c) / 255, a[2](c) / 255, a[3] ? a[3](c) : 1]);
         }
         case 'format': {
             // Rich text sections are flattened to plain text for now.

@@ -5,6 +5,7 @@ import {fileURLToPath} from 'node:url';
 import path from 'node:path';
 import makeStyle from './style.mjs';
 import {markers, view} from './markers.mjs';
+import {shield} from './shields.mjs';
 import {renderToSVG, renderToImage} from '../dist/server.js';
 import {Renderer} from '@takumi-rs/core';
 
@@ -35,6 +36,7 @@ const page = (body, head = '') => `<!doctype html><html><head><meta charset="utf
 const client = (q) => `<script type="module">
 import {Map, NavigationControl, ScaleControl} from '/dist/tessera.js';
 import {markers, view} from '/demo/markers.mjs';
+import {shield} from '/demo/shields.mjs';
 const q = new URLSearchParams(location.search);
 const map = window.map = new Map({container: 'map', style: q.get('style') || ('/style.json' + (q.has('local') ? '?local' : '')), ...view,
   ...(q.has('zoom') ? {zoom: +q.get('zoom')} : {}), ...(q.has('bearing') ? {bearing: +q.get('bearing')} : {}), ...(q.has('pitch') ? {pitch: +q.get('pitch')} : {}),
@@ -42,6 +44,7 @@ const map = window.map = new Map({container: 'map', style: q.get('style') || ('/
   // Styles naming Open Sans get the real font; it loads on the rendering thread, so it works with worker rendering.
   fonts: q.has('nofonts') ? [] : ['normal', 'italic'].map(style => ({family: 'Open Sans', style, weight: '300 800',
     src: 'https://cdn.jsdelivr.net/fontsource/fonts/open-sans:vf@latest/latin-wght-' + style + '.woff2'}))});
+map.setMissingStyleImageResolver(id => { const s = shield(id); if (s) return map.addImage(id, s.svg, s); });
 if (!q.has('nocontrols')) map.addControl(new NavigationControl()).addControl(new ScaleControl(), 'bottom-left');
 const layer = q.has('nomarkers') ? null : map.addMarkerLayer(structuredClone(markers));
 const hud = document.getElementById('hud');
@@ -73,14 +76,14 @@ http.createServer(async (req, res) => {
         if (url.pathname === '/map.jpg') {
             const q = url.searchParams, ratio = +(q.get('ratio') || 1);
             const {image, contentType} = await renderToImage({style, ...view, zoom: +(q.get('zoom') || view.zoom), bearing: +(q.get('bearing') || 0),
-                width: +(q.get('w') || 1000), height: +(q.get('h') || 700), markers: q.has('nomarkers') ? [] : [markers], rasteriser, pixelRatio: ratio});
+                width: +(q.get('w') || 1000), height: +(q.get('h') || 700), resolveImage: shield, markers: q.has('nomarkers') ? [] : [markers], rasteriser, pixelRatio: ratio});
             return send(200, contentType, image, {'cache-control': 'max-age=3600'});
         }
         if (url.pathname === '/ssr' || url.pathname === '/ssr.svg' || url.pathname === '/static') {
             const width = +(url.searchParams.get('w') || 1000), height = +(url.searchParams.get('h') || 700);
             const zoom = +(url.searchParams.get('zoom') || view.zoom), bearing = +(url.searchParams.get('bearing') || view.bearing);
             const t0 = performance.now();
-            const {svg, tiles} = await renderToSVG({style, ...view, zoom, bearing, width, height, markers: url.searchParams.has('nomarkers') ? [] : [markers]});
+            const {svg, tiles} = await renderToSVG({style, ...view, zoom, bearing, width, height, resolveImage: shield, ssrOverrides: !url.searchParams.has('full'), markers: url.searchParams.has('nomarkers') ? [] : [markers]});
             const ms = (performance.now() - t0).toFixed(0);
             if (url.pathname === '/ssr.svg') return send(200, 'image/svg+xml', svg, {'x-render-ms': ms});
             const preload = tiles.map(u => `<link rel="preload" as="fetch" crossorigin href="${u}">`).join('');

@@ -100,7 +100,8 @@ export class Transform {
         const d = this.cameraDistance, ppm = this.pixelsPerMetre;
         const ox = (id.x + id.w * n) * ws / n - mercX(this.lng) * ws, oy = id.y * ws / n - mercY(this.lat) * ws;
         const tx = cos * ox - sin * oy, ty = sin * ox + cos * oy, kx = 2 * d / this.width, ky = -2 * d / this.height;
-        const near = d / 50, far = d * 100, A = (far + near) / (far - near), B = -2 * far * near / (far - near);
+        // A tight depth range (everything visible at the steepest pitch fits) keeps depth precise even in a 16-bit buffer.
+        const near = d / 10, far = d * 4, A = (far + near) / (far - near), B = -2 * far * near / (far - near);
         // Rows: X = kx * xc, Y = ky * yc, W = depth, Z = A * depth + B (so Z/W runs -1..1 from near to far).
         const X = [cos * s * kx, -sin * s * kx, 0, tx * kx];
         const Y = [sin * s * cp * ky, cos * s * cp * ky, -ppm * sp * ky, ty * cp * ky];

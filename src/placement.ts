@@ -23,6 +23,7 @@ export interface PlacedIcon {
     rect: [number, number, number, number];
     /** True for images added at runtime (drawn from the dynamic atlas) rather than the style's sprite sheet. */
     custom?: boolean;
+    name: string;
 }
 export interface Placed {
     /** Centre of the text block in screen pixels. */
@@ -151,7 +152,7 @@ export function placeLabels(
                     const box = boxAround(ix, iy, iw, ih, angle, 1);
                     if (ic.overlap || !grid.hits(...box)) {
                         iconBox = box;
-                        icon = {x: ix, y: iy, w: iw, h: ih, angle, rect: [meta.x, meta.y, meta.width, meta.height], custom: meta.custom};
+                        icon = {x: ix, y: iy, w: iw, h: ih, angle, rect: [meta.x, meta.y, meta.width, meta.height], custom: meta.custom, name: ic.name};
                     } else if (!(hasText && textBox && ic.optional)) continue;
                 }
                 if (!textBox && !icon) continue;

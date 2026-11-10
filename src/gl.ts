@@ -198,7 +198,7 @@ export class GLRenderer {
     private dpr = 1;
 
     constructor(private canvas: HTMLCanvasElement | OffscreenCanvas) {
-        const gl = canvas.getContext('webgl2', {antialias: true, alpha: true, premultipliedAlpha: true, stencil: false, depth: true}) as WebGL2RenderingContext | null;
+        const gl = canvas.getContext('webgl2', {antialias: true, alpha: true, premultipliedAlpha: true, stencil: true, depth: true}) as WebGL2RenderingContext | null;
         if (!gl) throw new Error('WebGL2 is not available');
         this.gl = gl;
         for (const name in SHADERS) {
@@ -457,7 +457,7 @@ export class GLRenderer {
             let first = true;
             // Buildings are the one layer that needs depth sorting; everything else is painted back to front.
             const extrude = L.type === 'fill-extrusion', pending: (() => void)[] = [];
-            if (extrude) { gl.clear(gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL); }
+            if (extrude) { gl.clear(gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT); gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL); }
             if (L.type === 'fill' && L.p.outline && L.p.outline.eval(zoom)[3] > 0) {
                 // Drawn after the fill below would be more faithful, but outlines are 1px and sit on the fill's own edge.
                 const oc = L.p.outline.eval(zoom), op = L.p.opacity.dd ? 1 : L.p.opacity.eval(zoom);
@@ -529,7 +529,15 @@ export class GLRenderer {
                 } else gl.drawElements(gl.TRIANGLES, b.count, gl.UNSIGNED_INT, 0);
             }
             if (extrude) {
+                // Colour pass: only the nearest surface, and each pixel once. Touching walls and stacked building parts
+                // share depths exactly; without the stencil they would blend twice in a speckled pattern.
+                gl.enable(gl.STENCIL_TEST);
+                gl.stencilFunc(gl.NOTEQUAL, 1, 0xff);
+                gl.stencilOp(gl.KEEP, gl.KEEP, gl.REPLACE);
+                gl.depthMask(false);
                 for (const draw of pending) draw();
+                gl.depthMask(true);
+                gl.disable(gl.STENCIL_TEST);
                 gl.disable(gl.DEPTH_TEST);
             }
         }

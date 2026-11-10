@@ -3,10 +3,14 @@
   "version": "1.0.0",
   "description": "",
   "scripts": {
-    "test": "node test/interact.mjs .cache/shots",
+    "test": "pnpm test:unit && pnpm test:expressions && pnpm test:api",
     "build": "tsc -p . && node build.mjs",
     "demo": "node demo/serve.mjs",
-    "test:cloudflare": "node test/cloudflare/run.mjs"
+    "test:cloudflare": "node test/cloudflare/run.mjs",
+    "test:unit": "node --experimental-transform-types --no-warnings --test test/unit/*.test.ts",
+    "test:expressions": "node test/conformance/expressions.mjs --min=279",
+    "test:api": "node test/conformance/api.mjs --min=73",
+    "test:browser": "node test/interact.mjs .cache/shots"
   },
   "keywords": [],
   "author": "",
@@ -17,6 +21,7 @@
     "@types/earcut": "^3.0.0",
     "earcut": "^3.2.4",
     "esbuild": "^0.28.2",
+    "maplibre-gl": "^6.17.0",
     "miniflare": "^4.20260730.0",
     "typescript": "^7.0.2"
   },

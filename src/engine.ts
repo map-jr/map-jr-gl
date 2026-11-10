@@ -1,5 +1,5 @@
 import {EXTENT, Transform, bezier, clamp, latFromMerc, lngFromMerc, mercX, mercY, type LngLatLike, type TileID} from './geo.ts';
-import {compileLayer, loadSprite, tileURL, type CompiledLayer, type ResolvedStyle, type Sprite, type SpriteIcon} from './style.ts';
+import {compileLayer, loadSprite, tileURL, type CompiledLayer, type FontSource, type ResolvedStyle, type Sprite, type SpriteIcon} from './style.ts';
 import {GLRenderer, SPRITE_ATLAS, type GLTile} from './gl.ts';
 import {CollisionGrid, placeLabels, renderItems, type Placed, type RenderItem} from './placement.ts';
 import {GlyphAtlas} from './text.ts';
@@ -7,9 +7,10 @@ import {sampleElevation, type QueriedFeature} from './query.ts';
 import type {TileBackend} from './tiles.ts';
 
 export interface CameraOptions { center?: LngLatLike; zoom?: number; bearing?: number; pitch?: number }
-export interface FontSource { family: string; src: string; weight?: string | number; style?: string }
+export type {FontSource} from './style.ts';
 export interface EngineOptions extends CameraOptions {
     style: ResolvedStyle; width: number; height: number; dpr: number; fontFamily: string; fonts?: FontSource[];
+    minZoom?: number; maxZoom?: number; maxPitch?: number;
 }
 export interface MarkerImage { variant: number; w: number; h: number; data: Uint8Array }
 export interface FeatureQuery { radius: number; zoom?: number; sources?: string[]; sourceLayers?: string[]; filter?: unknown; geometry?: boolean }
@@ -23,6 +24,7 @@ export type Command =
     | {type: 'rotate'; delta: number; pitch?: number}
     | {type: 'fling'; dx: number; dy: number; ms: number}
     | {type: 'stop'}
+    | {type: 'limits'; minZoom: number; maxZoom: number; maxPitch: number}
     | {type: 'style'; style: ResolvedStyle; reload: boolean}
     | {type: 'markers'; id: string; width: number; height: number; offset: [number, number]; collide: boolean;
         merc: Float64Array; variant: Uint32Array; images: MarkerImage[]}
@@ -37,7 +39,7 @@ export type EngineEvent =
     | {type: 'camera'; lng: number; lat: number; zoom: number; bearing: number; pitch: number; moving: boolean}
     | {type: 'idle'}
     /** A frame at a new canvas size has been drawn. */
-    | {type: 'resized'; width: number; height: number}
+    | {type: 'resized'; width: number; height: number; dpr: number}
     | {type: 'result'; id: number; value?: unknown; error?: string}
     | {type: 'imagemissing'; name: string}
     | {type: 'error'; message: string};
@@ -52,7 +54,7 @@ const MAX_TILES = 160;
 /** How often labels are re-decided while the map moves, and how long they take to fade. Between decisions they stay pinned to the map. */
 const PLACE_INTERVAL = 250, FADE = 200;
 /** While the zoom is changing quickly labels crowd together (or thin out) fast, so decide and fade sooner. */
-const ZOOMING_PLACE_INTERVAL = 60, ZOOMING_FADE = 90;
+const ZOOMING_PLACE_INTERVAL = 100, ZOOMING_FADE = 100;
 /** Camera feel, matching MapLibre's defaults so the map responds the way people expect. */
 const defaultEasing = bezier(0.25, 0.1, 0.25, 1), inertiaEasing = bezier(0, 0, 0.3, 1);
 const WHEEL_STEP = 4.000244140625, WHEEL_RATE = 1 / 450, TRACKPAD_RATE = 1 / 100;
@@ -98,6 +100,7 @@ export class Engine {
     private sprites = new Float32Array(30 * 256);
     private sprite: Sprite | null = null;
     private spriteUrl = '';
+    private styleFonts = '';
     private images = new Map<string, SpriteIcon & {custom: true}>();
     private missing = new Set<string>();
     private dem = new Map<string, Promise<{width: number; height: number; data: Uint8ClampedArray} | null>>();
@@ -111,6 +114,7 @@ export class Engine {
         this.tr.height = o.height;
         this.dpr = o.dpr;
         this.renderer.resize(o.width, o.height, o.dpr);
+        Object.assign(this.tr, {minZoom: o.minZoom ?? 0, maxZoom: o.maxZoom ?? 22, maxPitch: o.maxPitch ?? 60});
         this.tr.set(o.center, o.zoom, o.bearing, o.pitch);
         this.setStyle(o.style, true);
         if (o.fonts?.length) this.loadFonts(o.fonts);
@@ -132,6 +136,8 @@ export class Engine {
             this.spriteUrl = style.sprite;
             this.loadIcons(style.sprite).catch(err => this.emit({type: 'error', message: String(err.message)}));
         }
+        const faces = JSON.stringify(style.fonts ?? []);
+        if (style.fonts?.length && faces !== this.styleFonts) { this.styleFonts = faces; this.loadFonts(style.fonts); }
         if (reload) {
             for (const b of this.backends) b.setStyle(style.layers);
             for (const [key, t] of this.tiles) this.dropTile(key, t);
@@ -154,7 +160,7 @@ export class Engine {
     private loadFonts(fonts: FontSource[]) {
         const set = (globalThis as any).fonts ?? (globalThis as any).document?.fonts;
         Promise.all(fonts.map(async f => {
-            const face = new FontFace(f.family, `url("${f.src}")`, {weight: String(f.weight ?? '400'), style: f.style ?? 'normal'});
+            const face = new FontFace(f.family, `url("${f.src}")`, {weight: String(f.weight ?? '400'), style: f.style ?? 'normal', ...(f.unicodeRange ? {unicodeRange: f.unicodeRange} : {})});
             set.add(await face.load());
         })).then(() => { this.atlas.clear(true); this.relabel(); },
             err => this.emit({type: 'error', message: `Could not load font: ${err.message}`}));
@@ -172,6 +178,8 @@ export class Engine {
 
     command(c: Command) {
         const tr = this.tr;
+        // Whatever was asked, report when the map has settled again, so callers can wait on any change.
+        if (c.type !== 'query' && c.type !== 'elevation') this.wasIdle = false;
         switch (c.type) {
             case 'resize':
                 tr.width = c.width; tr.height = c.height; this.dpr = c.dpr;
@@ -179,7 +187,7 @@ export class Engine {
                 this.placeDirty = true;
                 // Draw immediately: resizing clears the canvas, and waiting a frame would flash.
                 this.frame(performance.now());
-                this.emit({type: 'resized', width: c.width, height: c.height});
+                this.emit({type: 'resized', width: c.width, height: c.height, dpr: c.dpr});
                 return;
             case 'jump': this.stop(); tr.set(c.center, c.zoom, c.bearing, c.pitch); break;
             case 'ease': {
@@ -224,6 +232,7 @@ export class Engine {
                 break;
             }
             case 'stop': this.stop(); break;
+            case 'limits': Object.assign(tr, {minZoom: c.minZoom, maxZoom: c.maxZoom, maxPitch: c.maxPitch}); tr.set(undefined, tr.zoom, undefined, tr.pitch); break;
             case 'style': this.setStyle(c.style, c.reload); break;
             case 'markers': {
                 for (const img of c.images) { const rect = this.addSprite(img.w, img.h, img.data); if (rect) this.spriteRects.set(img.variant, rect); }

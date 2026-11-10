@@ -40,12 +40,44 @@ const SPEC: Record<string, Record<string, [string, PropKind, any]>> = {
 
 export interface LayerJSON {
     id: string; type: string; source?: string; 'source-layer'?: string; minzoom?: number; maxzoom?: number;
-    filter?: any; paint?: Record<string, any>; layout?: Record<string, any>;
+    filter?: any; paint?: Record<string, any>; layout?: Record<string, any>; metadata?: Record<string, any>;
+}
+
+/**
+ * Per-layer adjustments for server-rendered output, read from `metadata["tessera:ssr"]` in the style. `metadata` is the
+ * style specification's extension point, so a style carrying these stays valid for MapLibre, which ignores them.
+ */
+export interface SSROverrides {
+    /** Leave the layer out of server output. */
+    hidden?: boolean;
+    /** An extra filter that features must also pass, e.g. to keep only major roads. */
+    filter?: unknown;
+    minzoom?: number; maxzoom?: number;
+    paint?: Record<string, unknown>; layout?: Record<string, unknown>;
+    /** Drop vertices closer together than this many pixels (default 0.6). */
+    simplify?: number;
+    /** Drop features smaller than this many pixels (default 0.8). */
+    minSize?: number;
+}
+export const SSR_KEY = 'tessera:ssr';
+
+/** Applies each layer's server overrides, returning the style layers to render on the server. */
+export function applySSROverrides(layers: LayerJSON[]): LayerJSON[] {
+    const out: LayerJSON[] = [];
+    for (const l of layers) {
+        const o = l.metadata?.[SSR_KEY] as SSROverrides | undefined;
+        if (!o) { out.push(l); continue; }
+        if (o.hidden) continue;
+        out.push({...l, minzoom: o.minzoom ?? l.minzoom, maxzoom: o.maxzoom ?? l.maxzoom, paint: {...l.paint, ...o.paint}, layout: {...l.layout, ...o.layout},
+            metadata: {...l.metadata, 'tessera:and-filter': o.filter}});
+    }
+    return out;
 }
 
 export interface CompiledLayer {
     id: string; type: string; source?: string; sourceLayer?: string; minzoom: number; maxzoom: number;
     visible: boolean; filter: Fn | null; p: Record<string, Prop>;
+    ssr?: SSROverrides;
 }
 
 export function compileLayer(l: LayerJSON): CompiledLayer | null {
@@ -56,18 +88,34 @@ export function compileLayer(l: LayerJSON): CompiledLayer | null {
         const [name, kind, def] = spec[k];
         p[k] = compileProp(l.paint?.[name] ?? l.layout?.[name], kind, def);
     }
+    // A server-only extra filter is compiled separately, so it can be an expression even when the layer's own filter is legacy syntax.
+    const own = compileFilter(l.filter), extra = compileFilter(l.metadata?.['tessera:and-filter']);
     return {
+        ssr: l.metadata?.[SSR_KEY],
         id: l.id, type: l.type, source: l.source, sourceLayer: l['source-layer'],
         minzoom: l.minzoom ?? 0, maxzoom: l.maxzoom ?? 24,
         // Pattern fills need sprite images, which are not supported yet; hiding them beats drawing solid black.
-        visible: l.layout?.visibility !== 'none' && !l.paint?.['fill-pattern'] && !l.paint?.['line-pattern'], filter: compileFilter(l.filter), p,
+        visible: l.layout?.visibility !== 'none' && !l.paint?.['fill-pattern'] && !l.paint?.['line-pattern'], filter: own && extra ? c => own(c) && extra(c) : own ?? extra, p,
     };
 }
 
 export interface SourceInfo { type: 'vector' | 'raster' | 'raster-dem'; tiles: string[]; minzoom: number; maxzoom: number; tileSize: number; attribution?: string; encoding?: 'terrarium' | 'mapbox' }
 
 /** A style with everything network-dependent already resolved, so it can be posted to a worker as plain JSON. */
-export interface ResolvedStyle { layers: LayerJSON[]; sources: Record<string, SourceInfo>; unsupported: string[]; sprite?: string }
+export interface FontSource { family: string; src: string; weight?: string | number; style?: string; unicodeRange?: string }
+export interface ResolvedStyle { layers: LayerJSON[]; sources: Record<string, SourceInfo>; unsupported: string[]; sprite?: string; fonts?: FontSource[] }
+
+/**
+ * Splits a style font name such as "Open Sans Semibold Italic" into a CSS family, weight and style, so text can be drawn
+ * with ordinary web fonts. The same split is applied to `text-font` values and to the names in a style's `font-faces`.
+ */
+export function parseFontName(name: string): {family: string; weight: number; style: 'normal' | 'italic'} {
+    const n = name.toLowerCase();
+    const weight = /black|heavy/.test(n) ? 900 : /extra ?bold/.test(n) ? 800 : /semi ?bold|demi/.test(n) ? 600 : /bold/.test(n) ? 700 :
+        /medium/.test(n) ? 500 : /light/.test(n) ? 300 : 400;
+    const family = name.replace(/\b(thin|extra ?light|light|regular|normal|book|medium|semi ?bold|demi ?bold|demi|extra ?bold|bold|black|heavy|italic|oblique)\b/gi, '').replace(/\s+/g, ' ').trim().replace(/["\\]/g, '');
+    return {family, weight, style: /italic|oblique/.test(n) ? 'italic' : 'normal'};
+}
 
 export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) => fetch(...a), base?: string): Promise<ResolvedStyle> {
     if (typeof style === 'string') {
@@ -103,7 +151,15 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
         return ok;
     });
     const sprite = typeof style.sprite === 'string' ? (base ? new URL(style.sprite, base).href : style.sprite) : undefined;
-    return {layers, sources, unsupported: [...unsupported], sprite};
+    // The style specification's `font-faces`: font files per `text-font` name, optionally limited to unicode ranges.
+    const fonts: FontSource[] = [];
+    for (const [name, value] of Object.entries<any>(style['font-faces'] ?? {})) {
+        const face = parseFontName(name);
+        for (const entry of typeof value === 'string' ? [{url: value}] : value) {
+            fonts.push({...face, src: base ? new URL(entry.url, base).href : entry.url, unicodeRange: entry['unicode-range']?.join(', ')});
+        }
+    }
+    return {layers, sources, unsupported: [...unsupported], sprite, fonts};
 }
 
 export function tileURL(src: SourceInfo, z: number, x: number, y: number) {

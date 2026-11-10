@@ -9,7 +9,7 @@ Mapbox Vector Tiles.
 ## What works
 
 - **Style spec subset:** `background`, `fill`, `line`, `circle`, `symbol`, `raster` and `hillshade` layers;
-  `fill-extrusion` drawn as flat footprints. Filters and expressions (including legacy filters and `stops`
+  `fill-extrusion` (3D buildings). Filters and expressions (including legacy filters and `stops`
   functions); zoom- and data-driven colour, opacity, width and radius.
 - **Lines:** round, square and butt caps; miter, bevel and round joins; dash arrays; gap width.
 - **Symbols:** text and sprite icons, icons stretched around text (road shields), icons along lines, variable
@@ -34,13 +34,23 @@ Mapbox Vector Tiles.
   A `styleimagemissing` event reports icon names nothing provides.
 - **Labels** are re-decided about four times a second while the map moves, stay pinned to the map in between,
   and fade in and out. A coarse overview of the current area is kept loaded so fast pans land on map, not blank.
-- **Camera and input:** wheel and trackpad handling and pan inertia follow MapLibre's model and constants. drag, inertia, wheel and pinch zoom, rotate, keyboard, `jumpTo` / `easeTo` / `flyTo`.
+- **Camera and input:** wheel and trackpad handling and pan inertia follow MapLibre's model and constants.
+  Pitch up to 60 degrees (right- or ctrl-drag), with `fill-extrusion` layers drawn as lit 3D buildings.
+- **Controls:** `map.addControl()` with MapLibre's control contract; `NavigationControl`, `ScaleControl`,
+  `FullscreenControl` and `GeolocateControl` are built in, themed with CSS custom properties.
+- **Generated icons:** `map.setMissingStyleImageResolver()` supplies images on demand, e.g. SVG highway shields
+  built from a name the style computes (`demo/shields.mjs`); `resolveImage` does the same on the server.
+- **Server-only style overrides:** a layer's `metadata["tessera:ssr"]` can hide it, filter it or coarsen it for
+  server output. drag, inertia, wheel and pinch zoom, rotate, keyboard, `jumpTo` / `easeTo` / `flyTo`.
+
+See [docs/DIFFERENCES.md](docs/DIFFERENCES.md) for a maintained list of additions, behaviour differences and gaps
+relative to MapLibre GL JS, including generated API coverage.
 
 ## Not there yet
 
-Labels that curve along lines, `queryRenderedFeatures` (see `queryFeatures`), GeoJSON sources, pattern fills,
-SDF icons, pitch, 3D terrain, sky, globe, heatmap. Hillshade and runtime-added images are not in server output,
-and hillshade tile edges can show faint seams. Symbol layers always draw above all other layers.
+Labels that curve along lines, `queryRenderedFeatures` (see `queryFeatures`), GeoJSON sources, PMTiles, pattern
+fills, SDF icons, 3D terrain, sky, globe, heatmap. Hillshade is not in server output, and its tile edges can show
+faint seams. Symbol layers always draw above all other layers.
 
 ## Try it
 
@@ -53,7 +63,8 @@ pnpm demo
 Then open `http://localhost:8080/` (client only; add `?renderer=main` or `?renderer=worker`),
 `/ssr` (server-rendered SVG, then hydrated; `/ssr?image` for a server-rendered JPEG) or `/static` (server output alone).
 Add `?style=<url>` to load any MapLibre style. The demo proxies and caches
-tiles from OpenFreeMap. `pnpm test` runs the browser checks against a running demo server.
+tiles from OpenFreeMap. `pnpm test` runs unit tests, MapLibre's expression fixtures and an API coverage check; `pnpm test:browser` and
+`pnpm test:cloudflare` run against a running demo server.
 
 ## Server rendering
 
