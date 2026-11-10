@@ -8,25 +8,30 @@ Mapbox Vector Tiles.
 
 ## What works
 
-- **Style spec subset:** `background`, `fill`, `line`, `circle` and `symbol` (text) layers; filters and
-  expressions (including legacy filters and `stops` functions); zoom- and data-driven colour, opacity,
-  width and radius.
+- **Style spec subset:** `background`, `fill`, `line`, `circle`, `symbol`, `raster` and `hillshade` layers;
+  `fill-extrusion` drawn as flat footprints. Filters and expressions (including legacy filters and `stops`
+  functions); zoom- and data-driven colour, opacity, width and radius.
+- **Lines:** round, square and butt caps; miter, bevel and round joins; dash arrays; gap width.
+- **Symbols:** text and sprite icons, icons stretched around text (road shields), icons along lines, variable
+  text anchors, point labels and straight labels along lines, wrapping, halos, collision.
+- **Sources:** vector tiles (MVT), raster tiles, Terrarium-encoded elevation tiles.
 - **Rendering engine with no DOM access.** It runs in a worker with `OffscreenCanvas` (the default when
   available) or on the main thread, behind the same message interface. `renderer: 'main' | 'worker' | 'auto'`.
 - **Text:** glyphs are rasterised from local fonts into a distance-field atlas, one grapheme at a time, and
   laid out by our own code. Arabic, Hebrew, Indic and Thai text is rasterised a line at a time so the browser
-  does the shaping. Point labels, straight labels along lines, wrapping, halos, collision.
+  does the shaping. A style's `glyphs` URL is not used; set `fontFamily` (and load a web font) to control the face.
 - **Marker layers:** an SVG template with `{{slots}}` per layer, drawn on the map canvas as textured quads,
   with hit testing, hover/click events and optional label avoidance.
-- **Server rendering:** `renderToSVG()` produces the first frame as SVG in plain Node (no browser, no GPU),
-  plus the list of tiles to preload. The client replaces the SVG once its canvas shows the same view.
+- **Server rendering:** `renderToSVG()` produces the first frame as SVG in plain JavaScript (Node, Cloudflare
+  Workers), and `renderToImage()` rasterises it to JPEG, WebP or PNG through [takumi](https://takumi.kane.tw).
+  The client replaces the server output once its canvas shows the same view.
 - **Camera and input:** drag, inertia, wheel and pinch zoom, rotate, keyboard, `jumpTo` / `easeTo` / `flyTo`.
 
 ## Not there yet
 
-Icons and sprites, pattern fills, dashed lines, labels that curve along lines, label fade animations,
-`queryRenderedFeatures`, GeoJSON and raster sources, pitch, terrain, globe, fill-extrusion, heatmap.
-Symbol layers always draw above all other layers.
+Labels that curve along lines, label fade animations, `queryRenderedFeatures`, GeoJSON sources, pattern fills,
+SDF icons, pitch, 3D terrain, sky, globe, heatmap. Hillshade is not in server output yet, and its tile edges
+can show faint seams. Symbol layers always draw above all other layers.
 
 ## Try it
 
@@ -37,8 +42,34 @@ pnpm demo
 ```
 
 Then open `http://localhost:8080/` (client only; add `?renderer=main` or `?renderer=worker`),
-`/ssr` (server-rendered, then hydrated) or `/static` (server output alone). The demo proxies and caches
+`/ssr` (server-rendered SVG, then hydrated; `/ssr?image` for a server-rendered JPEG) or `/static` (server output alone).
+Add `?style=<url>` to load any MapLibre style. The demo proxies and caches
 tiles from OpenFreeMap. `pnpm test` runs the browser checks against a running demo server.
+
+## Server rendering
+
+`renderToSVG` has no dependencies. `renderToImage` takes a takumi renderer that you create, so the same code
+runs with the native build on Node and the WebAssembly build on Cloudflare Workers:
+
+```js
+import {renderToImage} from './dist/server.js';
+import {Renderer} from '@takumi-rs/core';            // Node, Bun
+const {image, contentType} = await renderToImage({style, center, zoom, width: 1000, height: 700, rasteriser: new Renderer()});
+```
+
+```js
+import init, {Renderer} from '@takumi-rs/wasm';      // Cloudflare Workers
+import wasm from '@takumi-rs/wasm/takumi_wasm_bg.wasm';
+await init({module_or_path: wasm});
+```
+
+`test/cloudflare/` holds a complete Worker and a script that runs it in workerd through Miniflare
+(`pnpm test:cloudflare`, with the demo server running). The WebAssembly build is about 1.9 MB gzipped and only
+encodes lossy JPEG (its WebP is lossless), so use `format: 'jpeg'` there. A render takes a few hundred
+milliseconds of CPU, so cache the result.
+
+Dense city views produce large SVG (hundreds of KB); the image form is a fixed, smaller payload. Register fonts
+with the takumi renderer to control label typefaces and cover non-Latin scripts.
 
 ## Usage
 

@@ -24,6 +24,8 @@ export interface Batch {
     radius?: Float32Array;
     cap?: string;
     join?: string;
+    /** Fill layers with an explicit outline colour. */
+    outline?: boolean;
 }
 export interface LabelSrc {
     x: number; y: number; text: string;
@@ -157,6 +159,7 @@ export function buildTile(bytes: Uint8Array, z: number, layers: CompiledLayer[],
         if (ddColor) batch.color = Uint8Array.from(color);
         if (scalarProp?.dd) batch[L.type === 'line' ? 'width' : 'radius'] = Float32Array.from(scalar);
         if (L.type === 'line') { batch.cap = p.cap.eval(z); batch.join = p.join.eval(z); }
+        if (L.type === 'fill' && p.outline && p.outline.eval(z)[3] > 0) batch.outline = true;
         out.layers[L.id] = batch;
     }
     return out;
@@ -334,10 +337,31 @@ function tessellateLine(b: Batch): GLBatch | null {
     return out;
 }
 
+export const OUTLINE = '#outline';
+
+function closeRings(g: Geom): Geom {
+    const coords = new Int16Array(g.coords.length + g.ringEnds.length * 2), ringEnds = new Uint32Array(g.ringEnds.length);
+    let o = 0;
+    for (let r = 0; r < g.ringEnds.length; r++) {
+        const s = r ? g.ringEnds[r - 1] : 0, e = g.ringEnds[r];
+        coords.set(g.coords.subarray(s * 2, e * 2), o);
+        o += (e - s) * 2;
+        coords[o++] = g.coords[s * 2]; coords[o++] = g.coords[s * 2 + 1];
+        ringEnds[r] = o / 2;
+    }
+    return {coords, ringEnds, featEnds: g.featEnds};
+}
+
 export function toGL(ir: TileIR): {tile: TileGL; transfer: ArrayBuffer[]} {
     const tile: TileGL = {layers: {}, labels: ir.labels}, transfer = new Set<ArrayBuffer>();
     for (const id in ir.layers) {
-        const g = tessellate(ir.layers[id]);
+        const b = ir.layers[id];
+        if (b.outline) {
+            // Polygon outlines reuse the line renderer: same rings, closed, one pixel wide.
+            const line = tessellate({type: 'line', geom: closeRings(b.geom), join: 'miter', cap: 'butt'});
+            if (line) { tile.layers[id + OUTLINE] = line; for (const a of Object.values(line)) if (ArrayBuffer.isView(a)) transfer.add(a.buffer as ArrayBuffer); }
+        }
+        const g = tessellate(b);
         if (!g) continue;
         tile.layers[id] = g;
         for (const a of Object.values(g)) if (ArrayBuffer.isView(a)) transfer.add(a.buffer as ArrayBuffer);

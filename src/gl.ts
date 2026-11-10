@@ -1,6 +1,6 @@
 import {EXTENT, latFromMerc, type TileID, type Transform} from './geo.ts';
 import type {CompiledLayer} from './style.ts';
-import type {GLBatch, LabelSrc, TileGL} from './tile.ts';
+import {OUTLINE, type GLBatch, type LabelSrc, type TileGL} from './tile.ts';
 import type {Placed, RenderItem} from './placement.ts';
 import {EM, SDF_BUFFER, SDF_RADIUS, type GlyphAtlas} from './text.ts';
 
@@ -435,6 +435,30 @@ export class GLRenderer {
                 continue;
             }
             let first = true;
+            if (L.type === 'fill' && L.p.outline && L.p.outline.eval(zoom)[3] > 0) {
+                // Drawn after the fill below would be more faithful, but outlines are 1px and sit on the fill's own edge.
+                const oc = L.p.outline.eval(zoom), op = L.p.opacity.dd ? 1 : L.p.opacity.eval(zoom);
+                for (const it of items) {
+                    const fill = it.tile.batches[L.id], b = it.tile.batches[L.id + OUTLINE], m = it.matrix;
+                    for (const [batch, col] of [[fill, color(L)], [b, [oc[0], oc[1], oc[2], oc[3] * op]]] as const) {
+                        if (!batch) continue;
+                        const u = use(batch.type);
+                        gl.uniform4fv(u.u_color, col);
+                        gl.uniform3f(u.u_mx, m[0], m[2], m[4]);
+                        gl.uniform3f(u.u_my, m[1], m[3], m[5]);
+                        gl.uniform4fv(u.u_clip, it.clip);
+                        gl.bindVertexArray(batch.vao);
+                        if (batch.type === 'line' || !batch.color) gl.vertexAttrib4f(1, 1, 1, 1, 1);
+                        gl.vertexAttrib1f(3, 1);
+                        if (batch.type === 'line') {
+                            gl.uniform1f(u.u_width, 1); gl.uniform1f(u.u_gap, 0); gl.uniform4f(u.u_dash, 0, 0, 0, 0);
+                            gl.uniform1f(u.u_scale, it.scale); gl.uniform1f(u.u_dashScale, 1);
+                        }
+                        gl.drawElements(gl.TRIANGLES, batch.count, gl.UNSIGNED_INT, 0);
+                    }
+                }
+                continue;
+            }
             for (const it of items) {
                 const b = it.tile.batches[L.id];
                 if (!b) continue;
