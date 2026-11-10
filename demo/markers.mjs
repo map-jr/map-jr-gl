@@ -19,3 +19,33 @@ export const markers = {
     ],
 };
 export const view = {center: [-74.0065, 40.7085], zoom: 14.3, bearing: 0};
+
+/** A marker whose SVG contains a photograph: a raster image clipped to a circle inside vector artwork. */
+export const photoPin = `<svg viewBox="0 0 48 56">
+  <defs><clipPath id="c"><circle cx="24" cy="24" r="19"/></clipPath></defs>
+  <path d="M24 55 12 40h24z" fill="{{color}}"/>
+  <circle cx="24" cy="24" r="22.500" fill="{{color}}"/>
+  <image href="{{photo}}" x="5" y="5" width="38" height="38" preserveAspectRatio="xMidYMid slice" clip-path="url(#c)"/>
+  <circle cx="24" cy="24" r="19" fill="none" stroke="#fff" stroke-width="1.500"/>
+</svg>`;
+export const photos = {
+    id: 'photos', svg: photoPin, width: 48, height: 56, anchor: 'bottom',
+    data: [
+        {lngLat: [-74.0445, 40.6892], props: {color: '#2e9d5b', photo: 'https://tiles.openfreemap.org/natural_earth/ne2sr/5/9/12.png', name: 'Relief imagery, tile 5/9/12'}},
+        {lngLat: [-73.9969, 40.7061], props: {color: '#2f7fd1', photo: 'https://tiles.openfreemap.org/natural_earth/ne2sr/4/4/6.png', name: 'Relief imagery, tile 4/4/6'}},
+        {lngLat: [-74.0159, 40.7115], props: {color: '#d6453d', photo: 'https://tiles.openfreemap.org/natural_earth/ne2sr/6/18/24.png', name: 'Relief imagery, tile 6/18/24'}},
+    ],
+};
+
+/** Many markers for stress testing: `count` pins scattered around a centre, deterministic for a given count. */
+export function manyMarkers(count, [lng, lat] = view.center, spread = 0.6) {
+    let seed = 12345;
+    const rand = () => (seed = (seed * 1664525 + 1013904223) % 4294967296) / 4294967296;
+    const colors = ['#d6453d', '#2f7fd1', '#2e9d5b', '#8a4fd3', '#e08a1e'], data = [];
+    for (let i = 0; i < count; i++) {
+        // Square-root radius spreads points evenly over the disc instead of bunching at the centre.
+        const r = Math.sqrt(rand()) * spread, a = rand() * 2 * Math.PI;
+        data.push({lngLat: [lng + r * Math.cos(a) * 1.3, lat + r * Math.sin(a)], props: {...base, color: colors[i % 5], label: String(i % 100)}});
+    }
+    return {id: 'many', svg: pin, width: 24, height: 31, anchor: 'bottom', data};
+}

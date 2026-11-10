@@ -5,7 +5,8 @@ import type {QueriedFeature} from './query.ts';
 import {LocalBackend, PortBackend, type TileBackend} from './tiles.ts';
 import {anchorOffset, resolveVariants, sizedSVG, type MarkerInput, type MarkerLayerOptions} from './markers.ts';
 import {DEFAULT_FONT} from './text.ts';
-import {CONTROL_CSS, type Control, type ControlPosition} from './controls.ts';
+import {AttributionControl, CONTROL_CSS, type Control, type ControlPosition} from './controls.ts';
+import {Popup, type PopupOptions} from './overlays.ts';
 
 declare const __WORKER_SRC__: string;
 
@@ -33,6 +34,10 @@ export interface MapOptions extends CameraOptions {
     maxZoom?: number;
     /** Largest camera tilt allowed, in degrees (at most 60). */
     maxPitch?: number;
+    /** Data credits are shown by default; pass false to add your own, or options for the built-in control. */
+    attributionControl?: false | {compact?: boolean; customAttribution?: string | string[]};
+    /** Multisample antialiasing for the whole canvas. Smoother polygon edges, at a real cost in fill rate. */
+    antialias?: boolean;
 }
 
 export interface MapEvent { type: string; target: Map; point?: {x: number; y: number}; lngLat?: {lng: number; lat: number}; [key: string]: unknown }
@@ -50,6 +55,18 @@ export class MarkerLayer {
         return this;
     }
     remove() { this.map.removeMarkerLayer(this.options.id); }
+
+    /**
+     * Opens a popup that grows out of one of this layer's markers. `content` is text, or a DOM node for rich content.
+     * `color` tints the start of the transition, usually the marker's own colour.
+     */
+    openPopup(index: number, content: string | Node, options: PopupOptions & {color?: string} = {}) {
+        const o = this.options, [, oy] = anchorOffset(o.anchor, o.width, o.height);
+        // Anchor the popup at the marker's centre so it unfolds from where the marker is drawn.
+        const popup = new Popup({anchor: 'bottom', offset: [0, oy + o.height + 8], openFrom: {width: o.width, height: o.height, color: options.color}, ...options});
+        if (typeof content === 'string') popup.setText(content); else popup.setDOMContent(content);
+        return popup.setLngLat(this.data[index].lngLat).addTo(this.map);
+    }
 }
 
 export class Map {
@@ -124,7 +141,7 @@ export class Map {
         const engineOptions = {
             style: this.style, width: tr.width, height: tr.height, dpr: this.dpr, fontFamily: o.fontFamily ?? DEFAULT_FONT, fonts: o.fonts,
             center: [tr.lng, tr.lat] as [number, number], zoom: tr.zoom, bearing: tr.bearing, pitch: tr.pitch,
-            minZoom: tr.minZoom, maxZoom: tr.maxZoom, maxPitch: tr.maxPitch,
+            minZoom: tr.minZoom, maxZoom: tr.maxZoom, maxPitch: tr.maxPitch, antialias: o.antialias,
         };
 
         let workerUrl = o.workerUrl, blobUrl: string | undefined;
@@ -163,7 +180,6 @@ export class Map {
                     this.send = c => engine.command(c);
                     for (const layer of this.markerLayers.values()) { this.variantIds.clear(); this._syncMarkers(layer); }
                     if (o.interactive !== false) this.bindInput();
-                    this.addAttribution();
                 } catch (err) { this.fire('error', {error: err}); }
             };
             w.postMessage({role: 'engine', canvas: off, options: engineOptions, ports}, [off, ...ports]);
@@ -183,7 +199,7 @@ export class Map {
         this.observer = new ResizeObserver(() => this.resize());
         this.observer.observe(this.container);
         if (o.interactive !== false) this.bindInput();
-        this.addAttribution();
+        if (o.attributionControl !== false) this.addControl(new AttributionControl(o.attributionControl || {}));
     }
 
     private post(c: Command, transfer?: Transferable[]) {
@@ -316,11 +332,14 @@ export class Map {
     jumpTo(o: CameraOptions) {
         // Applied locally as well, so reads immediately after a write are correct even when the engine is in a worker.
         this.tr.set(o.center, o.zoom, o.bearing, o.pitch);
-        this.post({type: 'jump', ...o});
+        this.post({type: 'jump', center: o.center && toLngLat(o.center), zoom: o.zoom, bearing: o.bearing, pitch: o.pitch});
         return this;
     }
     easeTo(o: CameraOptions & {duration?: number; around?: [number, number]}) {
-        this.post({type: 'ease', duration: o.duration ?? 500, ...o});
+        // Only plain camera values cross to the engine. Extra options written for MapLibre (such as an `easing`
+        // function, which cannot be sent to a worker) are ignored rather than breaking the call.
+        const {center, zoom, bearing, pitch, around} = o;
+        this.post({type: 'ease', duration: o.duration ?? 500, center: center && toLngLat(center), zoom, bearing, pitch, around});
         return this;
     }
     flyTo(o: CameraOptions & {duration?: number}) { return this.easeTo({duration: 1200, ...o}); }
@@ -379,6 +398,7 @@ export class Map {
         resolveStyle(this.rawStyle, fetch, this.styleBase).then(style => {
             this.style = style;
             this.post({type: 'style', style, reload});
+            this.fire('styledata');
         }, err => this.fire('error', {error: err}));
     }
     /** Runs a change to the style JSON now, or as soon as the style has been fetched. */
@@ -556,7 +576,9 @@ export class Map {
 
     /** @internal Rasterises any new marker appearances and hands the layer to the engine. */
     async _syncMarkers(layer: MarkerLayer) {
-        const o = layer.options, {svgs, variant} = resolveVariants(o);
+        const o = layer.options, {svgs: resolved, variant} = resolveVariants(o);
+        // An SVG drawn as an image cannot fetch anything itself, so pictures it references are embedded first.
+        const svgs = await Promise.all(resolved.map(svg => this.embedImages(svg)));
         const w = Math.ceil(o.width * this.dpr), h = Math.ceil(o.height * this.dpr);
         const local = new Uint32Array(svgs.length), images: MarkerImage[] = [];
         await Promise.all(svgs.map(async (svg, i) => {
@@ -581,6 +603,25 @@ export class Map {
             type: 'markers', id: o.id, width: o.width, height: o.height, offset: anchorOffset(o.anchor, o.width, o.height),
             collide: !!o.collide, merc, variant: globalVariant, images,
         }, [merc.buffer, globalVariant.buffer, ...images.map(i => i.data.buffer)]);
+    }
+
+    private embedded = new globalThis.Map<string, Promise<string>>();
+    /** Replaces `<image href="https://...">` inside an SVG with the picture's data, fetched once per URL. */
+    private async embedImages(svg: string): Promise<string> {
+        const urls = [...new Set([...svg.matchAll(/<image\b[^>]*?\bhref\s*=\s*["'](https?:[^"']+|\/[^"']+)["']/g)].map(m => m[1]))];
+        for (const url of urls) {
+            let data = this.embedded.get(url);
+            if (!data) {
+                data = fetch(url.replace(/&#38;|&amp;/g, '&')).then(async res => {
+                    if (!res.ok) throw new Error(`Marker image ${url}: HTTP ${res.status}`);
+                    const blob = await res.blob();
+                    return new Promise<string>((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result as string); r.onerror = () => reject(r.error); r.readAsDataURL(blob); });
+                });
+                this.embedded.set(url, data);
+            }
+            svg = svg.split(url).join(await data.catch(error => { this.fire('error', {error}); return ''; }));
+        }
+        return svg;
     }
 
     /** Topmost marker under a screen point. Runs on the calling thread against the mirrored camera, so it is synchronous. */
@@ -652,6 +693,7 @@ export class Map {
                 pinch = {dist, angle};
             } else if (rotating) this.post({type: 'rotate', delta: -dx * 0.4, pitch: -dy * 0.5}); // right- or ctrl-drag: turn and tilt
             else if (moved > 3) {
+                if (!this.dragging) this.fire('dragstart');
                 this.dragging = true;
                 this.post({type: 'pan', dx, dy});
                 samples.push({t: performance.now(), x: p.x, y: p.y});
@@ -718,29 +760,9 @@ export class Map {
         });
     }
 
-    private addAttribution() {
-        const html = [...new Set(Object.values(this.style.sources).map(s => s.attribution).filter(Boolean))].join(' | ');
-        if (!html) return;
-        const div = document.createElement('div');
-        div.className = 'maplibregl-ctrl-attrib';
-        div.style.cssText = 'position:absolute;right:0;bottom:0;z-index:2;padding:2px 6px;font:11px/1.4 system-ui,sans-serif;background:rgba(255,255,255,.7);color:#333';
-        // Attribution arrives as HTML from tile providers. Keep its text and links, and nothing else.
-        const copy = (from: Node, to: Node) => {
-            for (const node of from.childNodes) {
-                if (node.nodeType === Node.TEXT_NODE) to.appendChild(document.createTextNode(node.textContent ?? ''));
-                else if (node instanceof Element) {
-                    const href = node.tagName === 'A' ? node.getAttribute('href') : null;
-                    if (href && /^https?:\/\//i.test(href)) {
-                        const a = Object.assign(document.createElement('a'), {href, target: '_blank', rel: 'noopener noreferrer'});
-                        a.style.color = 'inherit';
-                        copy(node, to.appendChild(a));
-                    } else copy(node, to);
-                }
-            }
-        };
-        copy(new DOMParser().parseFromString(html, 'text/html').body, div);
-        this.container.appendChild(div);
-        this.cleanup.push(() => div.remove());
+    /** Attribution strings (as provided, possibly HTML) of the sources in the current style. */
+    getAttributions(): string[] {
+        return [...new Set(Object.values(this.style?.sources ?? {}).map(s => s.attribution).filter((a): a is string => !!a))];
     }
 
     remove() {

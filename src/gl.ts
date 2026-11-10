@@ -1,6 +1,6 @@
 import {EXTENT, latFromMerc, type TileID, type Transform} from './geo.ts';
 import type {CompiledLayer} from './style.ts';
-import {OUTLINE, type GLBatch, type LabelSrc, type TileGL} from './tile.ts';
+import type {GLBatch, LabelSrc, TileGL} from './tile.ts';
 import type {Placed, RenderItem} from './placement.ts';
 import {EM, SDF_BUFFER, SDF_RADIUS, type GlyphAtlas} from './text.ts';
 
@@ -17,6 +17,14 @@ layout(location=0) in vec2 a_pos; layout(location=1) in vec4 a_color; out vec4 v
 void main() { v_tile = a_pos; v_color = a_color; gl_Position = toClip(a_pos); }`, `
 uniform vec4 u_color; uniform vec4 u_clip; in vec4 v_color; in vec2 v_tile; out vec4 o;
 void main() { ${FS_CLIP} vec4 c = v_color * u_color; o = vec4(c.rgb * c.a, c.a); }`],
+
+    // One-pixel antialiased lines along polygon edges: coverage falls off with distance from the ideal line.
+    edge: [`${VS_COMMON}
+layout(location=0) in vec2 a_pos; layout(location=1) in vec4 a_color; uniform vec2 u_world; uniform float u_attr;
+out vec4 v_color; out vec2 v_tile; out vec2 v_px;
+void main() { v_tile = a_pos; v_color = mix(vec4(1.0), a_color, u_attr); gl_Position = toClip(a_pos); v_px = (gl_Position.xy / gl_Position.w + 1.0) / 2.0 * u_world; }`, `
+uniform vec4 u_color; uniform vec4 u_clip; in vec4 v_color; in vec2 v_tile; in vec2 v_px; out vec4 o;
+void main() { ${FS_CLIP} vec4 c = v_color * u_color; float a = c.a * (1.0 - smoothstep(0.0, 1.0, length(v_px - gl_FragCoord.xy))); o = vec4(c.rgb * a, a); }`],
 
     line: [`${VS_COMMON}
 layout(location=0) in vec4 a_v; layout(location=1) in vec4 a_color; layout(location=2) in vec2 a_sd; layout(location=3) in float a_width;
@@ -157,7 +165,10 @@ uniform sampler2D u_img; in vec2 v_uv; in float v_alpha; out vec4 o; void main()
 };
 
 interface Program { prog: WebGLProgram; u: Record<string, WebGLUniformLocation> }
-interface GLBuffers { type: GLBatch['type']; vao: WebGLVertexArrayObject; count: number; color: boolean; scalar: boolean; bufs: WebGLBuffer[] }
+interface GLBuffers {
+    type: GLBatch['type']; vao: WebGLVertexArrayObject; count: number; color: boolean; scalar: boolean; bufs: WebGLBuffer[];
+    edgeVao?: WebGLVertexArrayObject; edgeCount?: number;
+}
 export interface GLTile {
     labels: Record<string, LabelSrc[]>; batches: Record<string, GLBuffers>;
     /** Raster tiles: the image. Elevation tiles: slopes derived from it. */
@@ -197,8 +208,8 @@ export class GLRenderer {
     private fbo: WebGLFramebuffer;
     private dpr = 1;
 
-    constructor(private canvas: HTMLCanvasElement | OffscreenCanvas) {
-        const gl = canvas.getContext('webgl2', {antialias: true, alpha: true, premultipliedAlpha: true, stencil: true, depth: true}) as WebGL2RenderingContext | null;
+    constructor(private canvas: HTMLCanvasElement | OffscreenCanvas, antialias = false) {
+        const gl = canvas.getContext('webgl2', {antialias, alpha: true, premultipliedAlpha: true, stencil: true, depth: true}) as WebGL2RenderingContext | null;
         if (!gl) throw new Error('WebGL2 is not available');
         this.gl = gl;
         for (const name in SHADERS) {
@@ -301,12 +312,24 @@ export class GLRenderer {
                 gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffer);
                 gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, data, gl.STATIC_DRAW);
             };
-            let count = 0, scalar = false;
+            let count = 0, scalar = false, edgeVao: WebGLVertexArrayObject | undefined;
             if (b.type === 'fill') {
                 attr(0, b.pos, 2, gl.SHORT);
                 if (b.color) attr(1, b.color, 4, gl.UNSIGNED_BYTE, true);
                 index(b.idx);
                 count = b.idx.length;
+                if (b.edges?.length) {
+                    // Same vertices, a second index list: edges cost no extra vertex memory.
+                    const [posBuf, colorBuf] = bufs;
+                    edgeVao = gl.createVertexArray()!;
+                    gl.bindVertexArray(edgeVao);
+                    gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
+                    gl.enableVertexAttribArray(0);
+                    gl.vertexAttribPointer(0, 2, gl.SHORT, false, 0, 0);
+                    if (b.color) { gl.bindBuffer(gl.ARRAY_BUFFER, colorBuf); gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 4, gl.UNSIGNED_BYTE, true, 0, 0); }
+                    index(b.edges);
+                    gl.bindVertexArray(vao);
+                }
             } else if (b.type === 'extrusion') {
                 attr(0, b.v, 4, gl.FLOAT);
                 if (b.color) attr(1, b.color, 4, gl.UNSIGNED_BYTE, true);
@@ -328,7 +351,7 @@ export class GLRenderer {
                 if (b.radius) { attr(3, b.radius, 1, gl.FLOAT, false, 0, 0, true); scalar = true; }
                 count = b.pos.length / 2;
             }
-            batches[id] = {type: b.type, vao, count, color: !!b.color, scalar, bufs};
+            batches[id] = {type: b.type, vao, count, color: !!b.color, scalar, bufs, edgeVao, edgeCount: b.type === 'fill' ? b.edges?.length : undefined};
         }
         gl.bindVertexArray(null);
         return {labels: t.labels, batches};
@@ -379,6 +402,7 @@ export class GLRenderer {
         if (t.tex) this.gl.deleteTexture(t.tex);
         for (const b of Object.values(t.batches)) {
             this.gl.deleteVertexArray(b.vao);
+            if (b.edgeVao) this.gl.deleteVertexArray(b.edgeVao);
             for (const buf of b.bufs) this.gl.deleteBuffer(buf);
         }
     }
@@ -458,29 +482,6 @@ export class GLRenderer {
             // Buildings are the one layer that needs depth sorting; everything else is painted back to front.
             const extrude = L.type === 'fill-extrusion', pending: (() => void)[] = [];
             if (extrude) { gl.clear(gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT); gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL); }
-            if (L.type === 'fill' && L.p.outline && L.p.outline.eval(zoom)[3] > 0) {
-                // Drawn after the fill below would be more faithful, but outlines are 1px and sit on the fill's own edge.
-                const oc = L.p.outline.eval(zoom), op = L.p.opacity.dd ? 1 : L.p.opacity.eval(zoom);
-                for (const it of items) {
-                    const fill = it.tile.batches[L.id], b = it.tile.batches[L.id + OUTLINE], m = it.matrix4;
-                    for (const [batch, col] of [[fill, color(L)], [b, [oc[0], oc[1], oc[2], oc[3] * op]]] as const) {
-                        if (!batch) continue;
-                        const u = use(batch.type);
-                        gl.uniform4fv(u.u_color, col);
-                        gl.uniformMatrix4fv(u.u_matrix, false, m);
-                        gl.uniform4fv(u.u_clip, it.clip);
-                        gl.bindVertexArray(batch.vao);
-                        if (batch.type === 'line' || !batch.color) gl.vertexAttrib4f(1, 1, 1, 1, 1);
-                        gl.vertexAttrib1f(3, 1);
-                        if (batch.type === 'line') {
-                            gl.uniform1f(u.u_width, 1); gl.uniform1f(u.u_gap, 0); gl.uniform4f(u.u_dash, 0, 0, 0, 0);
-                            gl.uniform1f(u.u_scale, it.scale); gl.uniform1f(u.u_dashScale, 1); gl.uniform1f(u.u_cam, tr.cameraDistance);
-                        }
-                        gl.drawElements(gl.TRIANGLES, batch.count, gl.UNSIGNED_INT, 0);
-                    }
-                }
-                continue;
-            }
             for (const it of items) {
                 const b = it.tile.batches[L.id];
                 if (!b) continue;
@@ -527,6 +528,23 @@ export class GLRenderer {
                         gl.drawElements(gl.TRIANGLES, b.count, gl.UNSIGNED_INT, 0);
                     });
                 } else gl.drawElements(gl.TRIANGLES, b.count, gl.UNSIGNED_INT, 0);
+            }
+            if (L.type === 'fill') {
+                // Edge pass: the style's outline colour if it has one, otherwise the fill's own colour as antialiasing.
+                const oc = L.p.outline.eval(zoom), explicit = oc[3] > 0, op = L.p.opacity.dd ? 1 : L.p.opacity.eval(zoom);
+                const col = explicit ? [oc[0], oc[1], oc[2], oc[3] * op] : color(L);
+                for (const it of items) {
+                    const b = it.tile.batches[L.id];
+                    if (!b?.edgeVao) continue;
+                    const u = use('edge');
+                    gl.uniform4fv(u.u_color, col);
+                    gl.uniform2f(u.u_world, this.canvas.width, this.canvas.height);
+                    gl.uniform1f(u.u_attr, b.color && !explicit ? 1 : 0);
+                    gl.uniformMatrix4fv(u.u_matrix, false, it.matrix4);
+                    gl.uniform4fv(u.u_clip, it.clip);
+                    gl.bindVertexArray(b.edgeVao);
+                    gl.drawElements(gl.LINES, b.edgeCount!, gl.UNSIGNED_INT, 0);
+                }
             }
             if (extrude) {
                 // Colour pass: only the nearest surface, and each pixel once. Touching walls and stacked building parts

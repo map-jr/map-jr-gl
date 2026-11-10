@@ -11,7 +11,7 @@ export interface CameraOptions { center?: LngLatLike; zoom?: number; bearing?: n
 export type {FontSource} from './style.ts';
 export interface EngineOptions extends CameraOptions {
     style: ResolvedStyle; width: number; height: number; dpr: number; fontFamily: string; fonts?: FontSource[];
-    minZoom?: number; maxZoom?: number; maxPitch?: number;
+    minZoom?: number; maxZoom?: number; maxPitch?: number; antialias?: boolean;
 }
 export interface MarkerImage { variant: number; w: number; h: number; data: Uint8Array }
 export interface FeatureQuery { radius: number; zoom?: number; sources?: string[]; sourceLayers?: string[]; filter?: unknown; geometry?: boolean }
@@ -109,7 +109,7 @@ export class Engine {
     private dpr = 1;
 
     constructor(canvas: HTMLCanvasElement | OffscreenCanvas, o: EngineOptions, private backends: TileBackend[], private emit: (e: EngineEvent) => void) {
-        this.renderer = new GLRenderer(canvas);
+        this.renderer = new GLRenderer(canvas, o.antialias);
         this.atlas = new GlyphAtlas(o.fontFamily);
         this.atlas.onReset = () => this.labels.clear();
         this.tr.width = o.width;

@@ -22,7 +22,8 @@ export class TileBuilder {
         const m = /^geojson:\/\/(.*)\/(\d+)\/(\d+)\/(\d+)$/.exec(url)!;
         return sliceGeoJSON(this.geojson.get(m[1]) ?? [], +m[2], +m[3], +m[4]);
     }
-    constructor(private fetchFn: typeof fetch = (...a) => fetch(...a)) {}
+    private fetchFn: typeof fetch;
+    constructor(fetchFn: typeof fetch = fetch) { this.fetchFn = (...a) => fetchFn(...a); }
 
     setStyle(layers: LayerJSON[]) {
         this.bySource.clear();

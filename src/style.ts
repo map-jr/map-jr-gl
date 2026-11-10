@@ -4,7 +4,7 @@ import {PM_PREFIX, archive} from './pmtiles.ts';
 /** Supported properties per layer type: [style-spec name, kind, default]. Anything else in a style is ignored. */
 const SPEC: Record<string, Record<string, [string, PropKind, any]>> = {
     background: {color: ['background-color', 'color', '#000'], opacity: ['background-opacity', 'number', 1]},
-    fill: {color: ['fill-color', 'color', '#000'], opacity: ['fill-opacity', 'number', 1], outline: ['fill-outline-color', 'color', 'rgba(0,0,0,0)']},
+    fill: {color: ['fill-color', 'color', '#000'], opacity: ['fill-opacity', 'number', 1], outline: ['fill-outline-color', 'color', 'rgba(0,0,0,0)'], antialias: ['fill-antialias', 'raw', true]},
     line: {
         color: ['line-color', 'color', '#000'], opacity: ['line-opacity', 'number', 1], width: ['line-width', 'number', 1],
         gap: ['line-gap-width', 'number', 0], dash: ['line-dasharray', 'discrete', null], cap: ['line-cap', 'string', 'butt'], join: ['line-join', 'string', 'miter'],

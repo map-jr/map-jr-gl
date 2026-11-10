@@ -58,7 +58,11 @@ function parseDirectory(b: Uint8Array): Entry[] {
 export class PMTiles {
     private header?: Promise<{h: PMHeader; root: Entry[]}>;
     private leaves = new Map<number, Promise<Entry[]>>();
-    constructor(readonly url: string, private fetchFn: Fetch = (...a) => fetch(...a)) {}
+    private fetchFn: Fetch;
+    constructor(readonly url: string, fetchFn: Fetch = fetch) {
+        // Always called as a plain function: browsers and Workers reject a global `fetch` invoked as a method of another object.
+        this.fetchFn = (...a) => fetchFn(...a);
+    }
 
     private async range(offset: number, length: number, signal?: AbortSignal): Promise<Uint8Array> {
         const res = await this.fetchFn(this.url, {headers: {Range: `bytes=${offset}-${offset + length - 1}`}, signal});

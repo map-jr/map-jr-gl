@@ -35,24 +35,37 @@ const page = (body, head = '') => `<!doctype html><html><head><meta charset="utf
 
 const client = (q) => `<script type="module">
 import {Map, NavigationControl, ScaleControl} from '/dist/tessera.js';
-import {markers, view} from '/demo/markers.mjs';
+import {markers, view, photos, manyMarkers} from '/demo/markers.mjs';
 import {shield} from '/demo/shields.mjs';
 const q = new URLSearchParams(location.search);
 const map = window.map = new Map({container: 'map', style: q.get('style') || ('/style.json' + (q.has('local') ? '?local' : '')), ...view,
   ...(q.has('zoom') ? {zoom: +q.get('zoom')} : {}), ...(q.has('bearing') ? {bearing: +q.get('bearing')} : {}), ...(q.has('pitch') ? {pitch: +q.get('pitch')} : {}),
-  ...(q.has('center') ? {center: q.get('center').split(',').map(Number)} : {}), renderer: q.get('renderer') || 'auto',
+  ...(q.has('center') ? {center: q.get('center').split(',').map(Number)} : {}), renderer: q.get('renderer') || 'auto', antialias: q.has('msaa'),
   // Styles naming Open Sans get the real font; it loads on the rendering thread, so it works with worker rendering.
   fonts: q.has('nofonts') ? [] : ['normal', 'italic'].map(style => ({family: 'Open Sans', style, weight: '300 800',
     src: 'https://cdn.jsdelivr.net/fontsource/fonts/open-sans:vf@latest/latin-wght-' + style + '.woff2'}))});
 map.setMissingStyleImageResolver(id => { const s = shield(id); if (s) return map.addImage(id, s.svg, s); });
 if (!q.has('nocontrols')) map.addControl(new NavigationControl()).addControl(new ScaleControl(), 'bottom-left');
 const layer = q.has('nomarkers') ? null : map.addMarkerLayer(structuredClone(markers));
+// ?photos adds markers with a photograph inside the SVG; ?markers=50000 adds that many pins to pan around.
+if (q.has('photos')) map.addMarkerLayer(structuredClone(photos));
+if (q.has('markers')) { const t0 = performance.now(); map.addMarkerLayer(manyMarkers(+q.get('markers'))); window.manyMs = performance.now() - t0; }
 const hud = document.getElementById('hud');
 const show = () => hud.textContent = 'renderer: ' + map.renderer + ' | zoom ' + map.getZoom().toFixed(2) + (map.loaded() ? '' : ' | loading');
 map.on('move', show); map.on('load', () => { show(); window.mapLoaded = true; }); map.on('idle', () => window.mapIdle = (window.mapIdle || 0) + 1);
 map.on('markerenter', e => e.layer.setProps(e.index, {stroke: '#222', strokeWidth: 3}));
 map.on('markerleave', e => e.layer.setProps(e.index, {stroke: '#fff', strokeWidth: 1.5}));
-map.on('markerclick', e => { window.lastMarkerClick = e.marker.props.label; hud.textContent = 'clicked marker ' + e.marker.props.label; });
+map.on('markerclick', e => {
+  window.lastMarkerClick = e.marker.props.label;
+  hud.textContent = 'clicked marker ' + (e.marker.props.label ?? e.marker.props.name);
+  // The popup grows out of the marker that was clicked, starting in the marker's colour.
+  const body = document.createElement('div');
+  body.innerHTML = '<strong></strong><div style="color:#666;margin-top:2px"></div>';
+  body.firstChild.textContent = e.marker.props.name ?? 'Marker ' + e.marker.props.label;
+  body.lastChild.textContent = e.marker.lngLat.map(v => v.toFixed(4)).join(', ');
+  window.popup?.remove();
+  window.popup = e.layer.openPopup(e.index, body, {color: e.marker.props.color});
+});
 map.on('click', async e => {
   if (e.marker) return;
   const [features, elevation] = await Promise.all([map.queryFeatures(e.lngLat), map.queryElevation(e.lngLat).catch(() => null)]);

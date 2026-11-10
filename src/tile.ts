@@ -27,6 +27,8 @@ export interface Batch {
     join?: string;
     /** Fill layers with an explicit outline colour. */
     outline?: boolean;
+    /** False when the style turns edge smoothing off for a fill layer. */
+    antialias?: boolean;
     /** Building extrusions: per-feature top and bottom heights in metres. */
     height?: Float32Array;
     base?: Float32Array;
@@ -50,7 +52,7 @@ export interface LabelSrc {
 export interface TileIR { layers: Record<string, Batch>; labels: Record<string, LabelSrc[]> }
 
 export type GLBatch =
-    | {type: 'fill'; pos: Int16Array; idx: Uint32Array; color?: Uint8Array}
+    | {type: 'fill'; pos: Int16Array; idx: Uint32Array; color?: Uint8Array; /** Polygon edges as vertex index pairs, drawn as one-pixel antialiased lines. */ edges?: Uint32Array}
     | {type: 'extrusion'; v: Float32Array; idx: Uint32Array; color?: Uint8Array}
     | {type: 'line'; v: Float32Array; idx: Uint32Array; color?: Uint8Array; width?: Float32Array}
     | {type: 'circle'; pos: Int16Array; color?: Uint8Array; radius?: Float32Array};
@@ -170,7 +172,7 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
         if (scalarProp?.dd) batch[L.type === 'line' ? 'width' : 'radius'] = Float32Array.from(scalar);
         if (extrude) { batch.height = Float32Array.from(heights); batch.base = Float32Array.from(bases); }
         if (L.type === 'line') { batch.cap = p.cap.eval(z); batch.join = p.join.eval(z); }
-        if (L.type === 'fill' && p.outline && p.outline.eval(z)[3] > 0) batch.outline = true;
+        if (L.type === 'fill') { batch.outline = p.outline.eval(z)[3] > 0; batch.antialias = p.antialias.eval(z) !== false; }
         out.layers[L.id] = batch;
     }
     return out;
@@ -243,7 +245,18 @@ export function tessellate(b: Batch): GLBatch | null {
             });
         }
         if (!idx.length) return null;
-        return {type: 'fill', pos: coords, idx: Uint32Array.from(idx), color};
+        // Without multisampling, triangle edges are jagged; a one-pixel line along every polygon edge smooths them
+        // (and carries the outline colour when the style sets one). Edges created by clipping at the tile border are skipped.
+        let edges: Uint32Array | undefined;
+        if (b.antialias !== false || b.outline) {
+            const list: number[] = [], out = (i: number, j: number, k: number) => (coords[i * 2 + k] <= 0 && coords[j * 2 + k] <= 0) || (coords[i * 2 + k] >= EXTENT && coords[j * 2 + k] >= EXTENT);
+            for (let r = 0; r < ringEnds.length; r++) {
+                const s = r ? ringEnds[r - 1] : 0, e = ringEnds[r];
+                for (let i = s, j = e - 1; i < e; j = i++) if (!out(i, j, 0) && !out(i, j, 1)) list.push(j, i);
+            }
+            edges = Uint32Array.from(list);
+        }
+        return {type: 'fill', pos: coords, idx: Uint32Array.from(idx), color, edges};
     }
 
     return tessellateLine(b);
@@ -392,30 +405,10 @@ function tessellateLine(b: Batch): GLBatch | null {
     return out;
 }
 
-export const OUTLINE = '#outline';
-
-function closeRings(g: Geom): Geom {
-    const coords = new Int16Array(g.coords.length + g.ringEnds.length * 2), ringEnds = new Uint32Array(g.ringEnds.length);
-    let o = 0;
-    for (let r = 0; r < g.ringEnds.length; r++) {
-        const s = r ? g.ringEnds[r - 1] : 0, e = g.ringEnds[r];
-        coords.set(g.coords.subarray(s * 2, e * 2), o);
-        o += (e - s) * 2;
-        coords[o++] = g.coords[s * 2]; coords[o++] = g.coords[s * 2 + 1];
-        ringEnds[r] = o / 2;
-    }
-    return {coords, ringEnds, featEnds: g.featEnds};
-}
-
 export function toGL(ir: TileIR): {tile: TileGL; transfer: ArrayBuffer[]} {
     const tile: TileGL = {layers: {}, labels: ir.labels}, transfer = new Set<ArrayBuffer>();
     for (const id in ir.layers) {
         const b = ir.layers[id];
-        if (b.outline) {
-            // Polygon outlines reuse the line renderer: same rings, closed, one pixel wide.
-            const line = tessellate({type: 'line', geom: closeRings(b.geom), join: 'miter', cap: 'butt'});
-            if (line) { tile.layers[id + OUTLINE] = line; for (const a of Object.values(line)) if (ArrayBuffer.isView(a)) transfer.add(a.buffer as ArrayBuffer); }
-        }
         const g = tessellate(b);
         if (!g) continue;
         tile.layers[id] = g;

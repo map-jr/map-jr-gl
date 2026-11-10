@@ -13,11 +13,20 @@ export interface Control {
 export type ControlPosition = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
 
 export const CONTROL_CSS = `
-:where(.maplibregl-ctrl-top-left,.maplibregl-ctrl-top-right,.maplibregl-ctrl-bottom-left,.maplibregl-ctrl-bottom-right){position:absolute;z-index:2;pointer-events:none;display:flex;flex-direction:column;gap:10px;padding:10px}
-:where(.maplibregl-ctrl-top-left){top:0;left:0;align-items:flex-start}
-:where(.maplibregl-ctrl-top-right){top:0;right:0;align-items:flex-end}
-:where(.maplibregl-ctrl-bottom-left){bottom:0;left:0;align-items:flex-start;flex-direction:column-reverse}
-:where(.maplibregl-ctrl-bottom-right){bottom:22px;right:0;align-items:flex-end;flex-direction:column-reverse}
+:where(.maplibregl-ctrl-top-left,.maplibregl-ctrl-top-right,.maplibregl-ctrl-bottom-left,.maplibregl-ctrl-bottom-right){position:absolute;z-index:2;pointer-events:none;display:flex;flex-direction:column;gap:10px;max-width:100%;box-sizing:border-box}
+:where(.maplibregl-ctrl-top-left){top:0;left:0;align-items:flex-start;padding:max(10px,env(safe-area-inset-top)) 10px 10px max(10px,env(safe-area-inset-left))}
+:where(.maplibregl-ctrl-top-right){top:0;right:0;align-items:flex-end;padding:max(10px,env(safe-area-inset-top)) max(10px,env(safe-area-inset-right)) 10px 10px}
+:where(.maplibregl-ctrl-bottom-left){bottom:0;left:0;align-items:flex-start;flex-direction:column-reverse;padding:10px 10px max(10px,env(safe-area-inset-bottom)) max(10px,env(safe-area-inset-left))}
+:where(.maplibregl-ctrl-bottom-right){bottom:0;right:0;align-items:flex-end;flex-direction:column-reverse;padding:10px 0 env(safe-area-inset-bottom) 10px}
+:where(.maplibregl-ctrl-bottom-right>.maplibregl-ctrl:not(.maplibregl-ctrl-attrib)){margin-right:max(10px,env(safe-area-inset-right))}
+:where(.maplibregl-ctrl-attrib){background:var(--map-attribution-background,rgba(255,255,255,.75));color:var(--map-control-color,#333);font-size:11px;line-height:1.4;padding:2px 6px;padding-right:max(6px,env(safe-area-inset-right));border-top-left-radius:4px;overflow-wrap:anywhere}
+:where(.maplibregl-ctrl-attrib a){color:inherit}
+:where(.maplibregl-ctrl-attrib.maplibregl-compact){display:flex;flex-direction:row-reverse;align-items:center;padding:0;margin:0 max(10px,env(safe-area-inset-right)) 10px 0;border-radius:14px;background:var(--map-control-background,#fff);box-shadow:0 0 0 1.5px rgba(0,0,0,.12)}
+:where(.maplibregl-ctrl-attrib.maplibregl-compact .maplibregl-ctrl-attrib-inner){display:none;padding:2px 4px 2px 10px}
+:where(.maplibregl-ctrl-attrib.maplibregl-compact.maplibregl-compact-show .maplibregl-ctrl-attrib-inner){display:block}
+:where(.maplibregl-ctrl-attrib-button){display:none;flex:none;width:28px;height:28px;border:0;border-radius:14px;background:none;color:inherit;font:italic 700 14px/28px Georgia,serif;cursor:pointer;padding:0}
+:where(.maplibregl-compact .maplibregl-ctrl-attrib-button){display:block}
+@media (pointer:coarse){:where(.maplibregl-compact .maplibregl-ctrl-attrib-button){width:36px;height:36px;border-radius:18px;line-height:36px}:where(.maplibregl-ctrl-attrib.maplibregl-compact){border-radius:18px}}
 :where(.maplibregl-ctrl){pointer-events:auto;font:12px/1.3 system-ui,sans-serif;color:var(--map-control-color,#222)}
 :where(.maplibregl-ctrl-group){background:var(--map-control-background,#fff);border-radius:var(--map-control-radius,6px);box-shadow:0 0 0 1.5px rgba(0,0,0,.12),0 1px 4px rgba(0,0,0,.15);overflow:hidden}
 :where(.maplibregl-ctrl-group button){display:flex;align-items:center;justify-content:center;width:var(--map-control-size,32px);height:var(--map-control-size,32px);padding:0;border:0;background:none;color:inherit;cursor:pointer}
@@ -26,6 +35,8 @@ export const CONTROL_CSS = `
 :where(.maplibregl-ctrl-group button:disabled){opacity:.35;cursor:default}
 :where(.maplibregl-ctrl-group button:focus-visible){outline:2px solid var(--map-control-focus,#2f7fd1);outline-offset:-2px}
 :where(.maplibregl-ctrl-scale){background:rgba(255,255,255,.75);border:1.5px solid var(--map-control-color,#333);border-top:0;padding:0 5px;font-size:10px;box-sizing:border-box;white-space:nowrap}
+/* Touch screens get finger-sized buttons. Kept last so it overrides the sizes above. */
+@media (pointer:coarse){:where(.maplibregl-ctrl-group button){width:var(--map-control-size,44px);height:var(--map-control-size,44px)}}
 `;
 
 const svg = (path: string, extra = '') => `<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" ${extra}>${path}</svg>`;
@@ -132,4 +143,56 @@ export class GeolocateControl implements Control {
         return el;
     }
     onRemove() { this.el?.remove(); }
+}
+
+/** Copies provider attribution HTML into an element, keeping only its text and http(s) links. */
+export function sanitizeAttribution(html: string, into: HTMLElement) {
+    const copy = (from: Node, to: Node) => {
+        for (const node of from.childNodes) {
+            if (node.nodeType === Node.TEXT_NODE) to.appendChild(document.createTextNode(node.textContent ?? ''));
+            else if (node instanceof Element) {
+                const href = node.tagName === 'A' ? node.getAttribute('href') : null;
+                if (href && /^https?:\/\//i.test(href)) copy(node, to.appendChild(Object.assign(document.createElement('a'), {href, target: '_blank', rel: 'noopener noreferrer'})));
+                else copy(node, to);
+            }
+        }
+    };
+    copy(new DOMParser().parseFromString(html, 'text/html').body, into);
+}
+
+/**
+ * Credits for the map's data. On narrow maps (phones) it collapses to a small "i" button that expands on tap, so the
+ * credits stay available without covering the map; `compact` forces either form.
+ */
+export class AttributionControl implements Control {
+    private el?: HTMLElement;
+    private update = () => {};
+    constructor(private options: {compact?: boolean; customAttribution?: string | string[]} = {}) {}
+    getDefaultPosition(): ControlPosition { return 'bottom-right'; }
+
+    onAdd(map: Map) {
+        const el = this.el = document.createElement('div'), inner = document.createElement('div');
+        el.className = 'maplibregl-ctrl maplibregl-ctrl-attrib';
+        inner.className = 'maplibregl-ctrl-attrib-inner';
+        const toggle = Object.assign(document.createElement('button'), {type: 'button', className: 'maplibregl-ctrl-attrib-button', textContent: 'i', title: 'Map data credits'});
+        toggle.setAttribute('aria-label', 'Toggle map data credits');
+        toggle.addEventListener('click', () => toggle.setAttribute('aria-expanded', String(el.classList.toggle('maplibregl-compact-show'))));
+        el.append(toggle, inner);
+        const collapse = () => { el.classList.remove('maplibregl-compact-show'); toggle.setAttribute('aria-expanded', 'false'); };
+        this.update = () => {
+            const html = [...new Set([...map.getAttributions(), ...[this.options.customAttribution ?? []].flat()])].join(' | ');
+            inner.replaceChildren();
+            sanitizeAttribution(html, inner);
+            el.style.display = html ? '' : 'none';
+            el.classList.toggle('maplibregl-compact', this.options.compact ?? map.getContainer().clientWidth <= 640);
+        };
+        map.on('styledata', this.update);
+        map.on('resize', this.update);
+        map.on('dragstart', collapse);
+        this.cleanup = () => { map.off('styledata', this.update); map.off('resize', this.update); map.off('dragstart', collapse); };
+        this.update();
+        return el;
+    }
+    private cleanup = () => {};
+    onRemove() { this.cleanup(); this.el?.remove(); }
 }

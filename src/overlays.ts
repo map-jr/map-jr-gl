@@ -52,7 +52,14 @@ abstract class Overlay extends Evented {
     }
 }
 
-export interface PopupOptions { closeButton?: boolean; closeOnClick?: boolean; anchor?: OverlayAnchor; offset?: number | [number, number]; maxWidth?: string; className?: string }
+export interface PopupOptions {
+    closeButton?: boolean; closeOnClick?: boolean; anchor?: OverlayAnchor; offset?: number | [number, number]; maxWidth?: string; className?: string;
+    /**
+     * Grow the popup out of something already on the map (typically the marker that was clicked) instead of just
+     * appearing: give that thing's size in pixels and, optionally, its colour. Closing plays the same in reverse.
+     */
+    openFrom?: {width: number; height: number; color?: string};
+}
 
 export class Popup extends Overlay {
     protected el = document.createElement('div');
@@ -89,13 +96,31 @@ export class Popup extends Overlay {
         this.attach(map);
         // Deferred so the click that opened the popup does not immediately close it.
         if (this.options.closeOnClick !== false) setTimeout(() => this.map?.on('click', this.closeOnMapClick));
+        this.transition(false);
         return this.fire('open');
     }
     remove() {
         if (!this.map) return this;
         this.map.off('click', this.closeOnMapClick);
-        this.detach();
-        return this.fire('close');
+        const finish = () => { this.detach(); this.fire('close'); };
+        const closing = this.transition(true);
+        // Stay attached (and tracking the map) until the closing animation has played.
+        if (closing) closing.finished.then(finish, finish); else finish();
+        return this;
+    }
+
+    /** Morphs between the size and colour of the thing the popup came from and the popup itself. */
+    private transition(reverse: boolean): Animation | null {
+        const from = this.options.openFrom, box = this.el.firstElementChild as HTMLElement;
+        if (!from || !box.animate || matchMedia('(prefers-reduced-motion: reduce)').matches) return null;
+        const r = box.getBoundingClientRect();
+        if (!r.width || !r.height) return null;
+        // Scale about the edge nearest the anchor, so the popup appears to unfold from the marker's position.
+        const origin = `${this.anchor.includes('left') ? '0%' : this.anchor.includes('right') ? '100%' : '50%'} ${this.anchor.includes('top') ? '0%' : this.anchor.includes('bottom') ? '100%' : '50%'}`;
+        const small = {transform: `scale(${from.width / r.width}, ${from.height / r.height})`, borderRadius: `${r.width / 2}px`, backgroundColor: from.color ?? getComputedStyle(box).backgroundColor, color: 'transparent'};
+        const full = {transform: 'none', borderRadius: getComputedStyle(box).borderRadius, backgroundColor: getComputedStyle(box).backgroundColor, color: getComputedStyle(box).color};
+        box.style.transformOrigin = origin;
+        return box.animate(reverse ? [full, small] : [small, full], {duration: reverse ? 160 : 240, easing: 'cubic-bezier(.2,.8,.2,1)', fill: reverse ? 'forwards' : 'none'});
     }
 }
 
