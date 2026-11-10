@@ -114,7 +114,7 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
     });
     const svg = renderSVG({
         tr, layers, items, labels, sprite, images, markers: o.markers ?? [], fontFamily: o.fontFamily ?? DEFAULT_FONT,
-        rootAttrs: 'data-tessera-ssr style="position:absolute;inset:0;width:100%;height:100%"',
+        rootAttrs: 'data-tessera-ssr="" style="position:absolute;inset:0;width:100%;height:100%"',
     });
     return {svg, tiles: urls};
 }
@@ -140,7 +140,7 @@ export interface ImageResult { image: Uint8Array; contentType: string; tiles: st
 export async function renderToImage(o: ImageOptions): Promise<ImageResult> {
     const {svg, tiles} = await renderToSVG({inlineImages: true, highDensity: (o.pixelRatio ?? 1) > 1, ...o});
     const format = o.format ?? 'jpeg', ratio = o.pixelRatio ?? 1;
-    const plain = svg.replace(/ data-tessera-ssr style="[^"]*"/, '');
+    const plain = svg.replace(/ data-tessera-ssr="" style="[^"]*"/, '');
     const image = await o.rasteriser.render(`<div style="display:flex;width:${o.width}px;height:${o.height}px">${plain}</div>`, {
         width: o.width * ratio, height: o.height * ratio, format, devicePixelRatio: ratio, // output size is in device pixels
         ...(format === 'png' ? {} : {quality: o.quality ?? 75}),

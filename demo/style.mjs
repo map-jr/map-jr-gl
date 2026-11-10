@@ -6,7 +6,8 @@ const isRoad = ['all', ['==', ['geometry-type'], 'LineString'], ['!', ['in', ['g
 export default (tiles, attribution) => ({
     version: 8,
     sources: {
-        omt: {type: 'vector', tiles: [tiles], minzoom: 0, maxzoom: 14, attribution},
+        // A tile URL template, or (without {z}) the URL of a TileJSON document that names the tiles.
+        omt: tiles.includes('{z}') ? {type: 'vector', tiles: [tiles], minzoom: 0, maxzoom: 14, attribution} : {type: 'vector', url: tiles, attribution},
         // Not drawn by any layer here; present so map.queryElevation() has data to read.
         dem: {type: 'raster-dem', tiles: ['https://tiles.mapterhorn.com/{z}/{x}/{y}.webp'], encoding: 'terrarium', tileSize: 512, maxzoom: 12},
     },

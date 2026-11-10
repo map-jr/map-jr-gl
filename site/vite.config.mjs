@@ -1,0 +1,12 @@
+// Builds the gallery as a static site (for GitHub Pages). The gallery imports the library by its package name, which
+// points at the built files in dist/, exactly as an application that installed the package would get it.
+import {defineConfig} from 'vite';
+import path from 'node:path';
+
+const root = path.dirname(new URL(import.meta.url).pathname);
+export default defineConfig({
+    root,
+    base: './', // works from any path, e.g. https://<user>.github.io/<repository>/
+    resolve: {alias: {'tessera-map': path.join(root, '../dist/tessera.js')}},
+    build: {outDir: path.join(root, '../site-dist'), emptyOutDir: true, target: 'es2022'},
+});

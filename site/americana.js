@@ -5,7 +5,7 @@
  * and somewhere to put the shields it draws. MapLibre gives it the style's sprite sheet for the first; here the
  * artwork comes from a sprite sheet loaded just for the purpose, so the map's own style can keep any sprite it likes.
  */
-import {URLShieldRenderer} from '/vendor/shields.js';
+import {URLShieldRenderer} from '@americana/maplibre-shield-generator';
 
 /** Loads a sprite sheet (the URL without "@2x.png" / ".json") and exposes it the way the shield library expects. */
 async function spriteRepository(map, spriteUrl) {

@@ -31,7 +31,8 @@ export function createWorker(o: LoadOptions = {}): Worker {
         return w;
     }
     // Bundlers that understand this pattern copy the worker file and rewrite the URL; loaded directly, it is simply the sibling file.
-    url ??= new URL('./tessera-worker.js', import.meta.url);
+    // (The marker comment stops this library's own build from rewriting the line; it is not in the published file.)
+    url ??= new URL(/* @vite-ignore */ './tessera-worker.js', import.meta.url);
     const abs = new URL(url, location.href);
     if (abs.origin === location.origin || abs.protocol === 'blob:' || abs.protocol === 'data:') return new Worker(abs);
     // Browsers refuse to start a worker from another origin (a CDN, say), but a same-origin stub may import one.

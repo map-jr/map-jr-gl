@@ -2,3 +2,6 @@ node_modules
 dist
 .cache
 .cache-server.log
+site-dist
+site/public/ssr.svg
+site/public/ssr.jpg
