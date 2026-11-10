@@ -7,8 +7,8 @@ export const isGeometrySource = (s: {type: string}) => s.type === 'vector' || s.
 
 /** Supported properties per layer type: [style-spec name, kind, default]. Anything else in a style is ignored. */
 const SPEC: Record<string, Record<string, [string, PropKind, any]>> = {
-    background: {color: ['background-color', 'color', '#000'], opacity: ['background-opacity', 'number', 1]},
-    fill: {color: ['fill-color', 'color', '#000'], opacity: ['fill-opacity', 'number', 1], outline: ['fill-outline-color', 'color', 'rgba(0,0,0,0)'], antialias: ['fill-antialias', 'raw', true]},
+    background: {color: ['background-color', 'color', '#000'], opacity: ['background-opacity', 'number', 1], pattern: ['background-pattern', 'string', '']},
+    fill: {color: ['fill-color', 'color', '#000'], opacity: ['fill-opacity', 'number', 1], outline: ['fill-outline-color', 'color', 'rgba(0,0,0,0)'], antialias: ['fill-antialias', 'raw', true], pattern: ['fill-pattern', 'string', '']},
     line: {
         color: ['line-color', 'color', '#000'], opacity: ['line-opacity', 'number', 1], width: ['line-width', 'number', 1],
         gap: ['line-gap-width', 'number', 0], dash: ['line-dasharray', 'discrete', null], cap: ['line-cap', 'string', 'butt'], join: ['line-join', 'string', 'miter'],
@@ -102,7 +102,7 @@ export function compileLayer(l: LayerJSON): CompiledLayer | null {
         id: l.id, type: l.type, source: l.source, sourceLayer: l['source-layer'],
         minzoom: l.minzoom ?? 0, maxzoom: l.maxzoom ?? 24,
         // Pattern fills need sprite images, which are not supported yet; hiding them beats drawing solid black.
-        visible: l.layout?.visibility !== 'none' && !l.paint?.['fill-pattern'] && !l.paint?.['line-pattern'], filter: own && extra ? c => own(c) && extra(c) : own ?? extra, p,
+        visible: l.layout?.visibility !== 'none' && !l.paint?.['line-pattern'], filter: own && extra ? c => own(c) && extra(c) : own ?? extra, p,
     };
 }
 
@@ -207,7 +207,13 @@ export function tileURL(src: SourceInfo, z: number, x: number, y: number) {
     return src.tiles[(x + y) % src.tiles.length].replace('{z}', String(z)).replace('{x}', String(x)).replace('{y}', String(y));
 }
 
-export interface SpriteIcon { x: number; y: number; width: number; height: number; pixelRatio: number }
+export interface SpriteIcon {
+    x: number; y: number; width: number; height: number; pixelRatio: number;
+    /** Ranges of the image (in its pixels) that may stretch when the icon is fitted around text; the rest keeps its size. */
+    stretchX?: [number, number][]; stretchY?: [number, number][];
+    /** The part of the image the text should sit inside: left, top, right, bottom. */
+    content?: [number, number, number, number];
+}
 export interface Sprite { icons: Record<string, SpriteIcon>; image: string; width: number; height: number }
 
 /** Loads a sprite sheet's index. `image` is the URL of its PNG; the caller decides how to load pixels. */

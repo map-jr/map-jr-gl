@@ -21,6 +21,8 @@ export interface PlacedIcon {
     x: number; y: number; w: number; h: number; angle: number;
     /** Source rectangle in the sprite sheet, in its pixels. */
     rect: [number, number, number, number];
+    /** For stretchable icons: (source pixel, screen pixel) pairs along each axis, measured from the icon's left/top edge. */
+    gx?: number[]; gy?: number[];
     /** True for images added at runtime (drawn from the dynamic atlas) rather than the style's sprite sheet. */
     custom?: boolean;
     name: string;
@@ -38,6 +40,20 @@ export interface Placed {
     ax: number; ay: number;
     opacity: number;
 }
+/**
+ * Sizes one axis of an icon so that its content range [c0, c1] (image pixels) becomes `target` screen pixels long,
+ * growing only the stretch zones. Returns the icon's length, where its content starts, and the cut points.
+ */
+function fitAxis(size: number, zones: [number, number][] | undefined, c0: number, c1: number, target: number, unit: number) {
+    const z = zones?.length ? zones : [[0, size] as [number, number]];
+    const stretchIn = (a: number, b: number) => z.reduce((sum, [s, e]) => sum + Math.max(0, Math.min(b, e) - Math.max(a, s)), 0);
+    const sIn = stretchIn(c0, c1), k = sIn > 0 ? Math.max(0, (target / unit - (c1 - c0 - sIn)) / sIn) : 1;
+    const map = (p: number) => { const st = stretchIn(0, p); return (p - st + st * k) * unit; };
+    const cuts: number[] = [];
+    for (const p of [...new Set([0, ...z.flat(), size])].sort((a, b) => a - b)) cuts.push(p, map(p));
+    return {len: map(size), off: map(c0), cuts};
+}
+
 export type IconLookup = (name: string) => (SpriteIcon & {custom?: boolean}) | undefined;
 
 export class CollisionGrid {
@@ -141,7 +157,7 @@ export function placeLabels(
                         candidates = [[l.offset[0] * size + sx, l.offset[1] * size + sy]];
                     }
                     // The same name often arrives from several tiles or road segments: keep them apart.
-                    const prev = seen.get(l.text), minDist = line ? 300 : 120;
+                    const prev = seen.get(l.text), minDist = line ? 300 : 1;
                     let dup = false;
                     if (prev) for (let i = 0; i < prev.length && !dup; i += 2) dup = Math.hypot(prev[i] - ax, prev[i + 1] - ay) < minDist;
                     if (dup) continue;
@@ -158,17 +174,25 @@ export function placeLabels(
                     const ic = l.icon, fit = hasText && textBox ? ic.fit : 'none';
                     let iw = meta.width / meta.pixelRatio * ic.size, ih = meta.height / meta.pixelRatio * ic.size;
                     let ix = ax + ic.offset[0] * ic.size, iy = ay + ic.offset[1] * ic.size;
+                    let gx: number[] | undefined, gy: number[] | undefined;
                     if (fit !== 'none') {
-                        // Stretch the icon around the text, e.g. a road shield around its number.
-                        const [pt, pr, pb, pl] = ic.fitPad.map(v => v * ic.size);
-                        if (fit !== 'height') { iw = w + pl + pr; ix = tx + (pr - pl) / 2; }
-                        if (fit !== 'width') { ih = h + pt + pb; iy = ty + (pb - pt) / 2; }
+                        // Stretch the icon around the text, e.g. a road shield around its number. Only the image's
+                        // stretch ranges grow; its content box ends up around the padded text.
+                        const [pt, pr, pb, pl] = ic.fitPad.map(v => v * ic.size), unit = ic.size / meta.pixelRatio, c = meta.content;
+                        if (fit !== 'height') {
+                            const f = fitAxis(meta.width, meta.stretchX, c?.[0] ?? 0, c?.[2] ?? meta.width, w + pl + pr, unit);
+                            iw = f.len; ix = tx - w / 2 - pl - f.off + iw / 2; gx = f.cuts;
+                        }
+                        if (fit !== 'width') {
+                            const f = fitAxis(meta.height, meta.stretchY, c?.[1] ?? 0, c?.[3] ?? meta.height, h + pt + pb, unit);
+                            ih = f.len; iy = ty - h / 2 - pt - f.off + ih / 2; gy = f.cuts;
+                        }
                     }
                     const angle = (line && !ic.upright ? lineAngle : 0) + ic.rotate * Math.PI / 180;
                     const box = boxAround(ix, iy, iw, ih, angle, 1);
                     if (ic.overlap || !grid.hits(...box)) {
                         iconBox = box;
-                        icon = {x: ix, y: iy, w: iw, h: ih, angle, rect: [meta.x, meta.y, meta.width, meta.height], custom: meta.custom, name: ic.name};
+                        icon = {x: ix, y: iy, w: iw, h: ih, angle, rect: [meta.x, meta.y, meta.width, meta.height], custom: meta.custom, name: ic.name, gx, gy};
                     } else if (!(hasText && textBox && ic.optional)) continue;
                 }
                 if (!textBox && !icon) continue;

@@ -51,9 +51,9 @@ Compared against MapLibre GL JS 6.x.
 ## Not supported yet
 
 - Sources: image, video, canvas; MapLibre Tiles (MLT). GeoJSON sources have no clustering, `promoteId` or line metrics.
-- Layers: heatmap, color-relief, custom layers. `fill-pattern` and `line-pattern` layers are hidden.
+- Layers: heatmap, color-relief, custom layers. `fill-pattern` and `background-pattern` take a constant image (no per-feature patterns, no cross-fade between zoom levels, and a pitched background pattern is drawn flat); `line-pattern` layers are not drawn and `fill-extrusion-pattern` is ignored. Patterns are left out of server output.
 - 3D terrain, sky, globe and other projections.
-- SDF (recolourable) sprite icons, `icon-color`, `icon-text-fit`, `text-halo-blur`, `circle-pitch-alignment`, `circle-pitch-scale`, data-driven circle stroke and blur, `line-offset`, `line-blur`, `line-gradient`.
+- SDF (recolourable) sprite icons, `icon-color`, the sprite `textFitWidth`/`textFitHeight` options, `text-halo-blur`, `circle-pitch-alignment`, `circle-pitch-scale`, data-driven circle stroke and blur, `line-offset`, `line-blur`, `line-gradient`.
 - Feature state (`setFeatureState`), global state, `transformRequest`, `addProtocol`.
 - Hillshade and runtime-added bitmap images in server output.
 - Right-to-left text is handled by the browser, so the RTL plugin API does not exist.

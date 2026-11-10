@@ -48,7 +48,7 @@ const cards = [
             map.addLayer({id: 'courier', type: 'circle', source: 'live', filter: ['==', ['geometry-type'], 'Point'], paint: {'circle-radius': 8, 'circle-color': '#e5484d', 'circle-stroke-color': '#fff', 'circle-stroke-width': 2}});
             map.on('click', 'zone', e => out(`Clicked "${e.features[0].properties.name}" at ${e.lngLat.lng.toFixed(4)}, ${e.lngLat.lat.toFixed(4)}`));
             out('Click inside the red zone');
-            const tick = () => { if (!el.isConnected) return; map.getSource('live')?.setData(ring(performance.now() / 1500)); setTimeout(tick, 50); };
+            const tick = () => { if (!el.isConnected) return; map.getSource('live')?.setData(ring(performance.now() / 4000)); requestAnimationFrame(tick); };
             setTimeout(tick, 500);
         })},
     {title: 'PMTiles archive', text: 'County and ZIP code boundaries read straight from a single static file with HTTP range requests.', readout: true,

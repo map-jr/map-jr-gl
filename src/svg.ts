@@ -77,6 +77,7 @@ export function renderSVG(s: SVGScene): string {
         if (L.type === 'hillshade') continue; // needs elevation decoding; drawn by the client only for now
         const p = L.p, opacity = p.opacity.dd ? 1 : p.opacity.eval(zoom);
         const uniform = !p.color || p.color.dd ? null : p.color.eval(zoom) as RGBA;
+        if ((L.type === 'background' || L.type === 'fill') && L.p.pattern.eval(zoom)) continue; // image patterns are not drawn in SVG output
         if (L.type === 'background') {
             body.push(`<rect width="100%" height="100%" fill="${hex(uniform!)}"${alpha('fill-opacity', uniform![3] * opacity)}/>`);
             continue;

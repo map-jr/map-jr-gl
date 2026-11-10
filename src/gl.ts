@@ -18,6 +18,15 @@ void main() { v_tile = a_pos; v_color = a_color; gl_Position = toClip(a_pos); }`
 uniform vec4 u_color; uniform vec4 u_clip; in vec4 v_color; in vec2 v_tile; out vec4 o;
 void main() { ${FS_CLIP} vec4 c = v_color * u_color; o = vec4(c.rgb * c.a, c.a); }`],
 
+    // Repeating image fill. The image is tiled in world pixels at whole zoom levels, so it stays put while panning
+    // and grows with the map between levels, as in MapLibre.
+    pattern: [`${VS_COMMON}
+layout(location=0) in vec2 a_pos; uniform mat3 u_pat; out vec2 v_p; out vec2 v_tile;
+void main() { v_tile = a_pos; v_p = (u_pat * vec3(a_pos, 1.0)).xy; gl_Position = toClip(a_pos); }`, `
+uniform sampler2D u_img; uniform vec4 u_rect; uniform vec2 u_tex; uniform vec2 u_fade; uniform vec4 u_clip; in vec2 v_p; in vec2 v_tile; out vec4 o;
+vec4 tile(vec2 p) { return texture(u_img, (u_rect.xy + clamp(fract(p) * u_rect.zw, vec2(0.5), u_rect.zw - 0.5)) / u_tex); }
+void main() { ${FS_CLIP} o = mix(tile(v_p), tile(v_p * 2.0), u_fade.x) * u_fade.y; }`],
+
     // One-pixel antialiased lines along polygon edges: coverage falls off with distance from the ideal line.
     edge: [`${VS_COMMON}
 layout(location=0) in vec2 a_pos; layout(location=1) in vec4 a_color; uniform vec2 u_world; uniform float u_attr;
@@ -211,6 +220,8 @@ export interface Scene {
     labels: Placed[];
     atlas: GlyphAtlas;
     markers: MarkerBuffers[];
+    /** Looks up a sprite or runtime image by name, for patterns. */
+    icon?: (name: string) => {x: number; y: number; width: number; height: number; pixelRatio: number; custom?: boolean} | undefined;
 }
 
 export const SPRITE_ATLAS = 2048;
@@ -499,8 +510,41 @@ export class GLRenderer {
             return [c[0], c[1], c[2], c[3] * op];
         };
 
+        // Selects the pattern program for an image; returns a function that positions the pattern, or null if the image is missing.
+        const Z = Math.floor(zoom), fade = zoom - Z;
+        const pattern = (name: string, opacity: number) => {
+            const img = s.icon?.(name);
+            if (!img) return null;
+            const u = use('pattern'), pw = img.width / img.pixelRatio, ph = img.height / img.pixelRatio;
+            gl.activeTexture(gl.TEXTURE0);
+            gl.bindTexture(gl.TEXTURE_2D, img.custom ? this.spriteTex : this.iconTex);
+            gl.uniform1i(u.u_img, 0);
+            gl.uniform2f(u.u_tex, img.custom ? SPRITE_ATLAS : this.iconSize[0], img.custom ? SPRITE_ATLAS : this.iconSize[1]);
+            gl.uniform4f(u.u_rect, img.x, img.y, img.width, img.height);
+            gl.uniform2f(u.u_fade, 0, opacity);
+            /** `m` maps the drawn coordinates to world pixels at zoom Z (column-major 3x3). */
+            return (m: number[]) => {
+                const fr = (v: number) => v - Math.floor(v);
+                gl.uniformMatrix3fv(u.u_pat, false, [m[0] / pw, m[1] / ph, 0, m[3] / pw, m[4] / ph, 0, fr(m[6] / pw), fr(m[7] / ph), 1]);
+                return u;
+            };
+        };
+
         for (const L of s.layers) {
             if (!L.visible || zoom < L.minzoom || zoom >= L.maxzoom || L.type === 'symbol') continue;
+            if (L.type === 'background' && L.p.pattern.eval(zoom)) {
+                const place = pattern(L.p.pattern.eval(zoom), L.p.opacity.eval(zoom));
+                if (!place) continue;
+                // Screen position -> world pixels at zoom Z, about the map centre (pitch is ignored for backgrounds).
+                const k = 2 ** -fade, b = tr.bearing * Math.PI / 180, cos = Math.cos(b) * k, sin = Math.sin(b) * k, w = tr.width, h = tr.height;
+                const cx = mercX(tr.lng) * 512 * 2 ** Z, cy = mercY(tr.lat) * 512 * 2 ** Z;
+                const u = place([cos * w, sin * w, 0, -sin * h, cos * h, 0, cx - (cos * w - sin * h) / 2, cy - (sin * w + cos * h) / 2, 1]);
+                gl.bindVertexArray(this.quad);
+                gl.uniformMatrix4fv(u.u_matrix, false, [2, 0, 0, 0, 0, -2, 0, 0, 0, 0, 1, 0, -1, 1, 0, 1]);
+                gl.uniform4f(u.u_clip, -1, -1, 2, 2);
+                gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+                continue;
+            }
             if (L.type === 'background') {
                 const u = use('fill');
                 gl.bindVertexArray(this.quad);
@@ -540,6 +584,19 @@ export class GLRenderer {
                     if (it.tile.lat) gl.uniform2fv(u.u_latrange, it.tile.lat);
                     gl.bindTexture(gl.TEXTURE_2D, it.tile.tex);
                     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+                }
+                continue;
+            }
+            if (L.type === 'fill' && L.p.pattern.eval(zoom)) {
+                const place = pattern(L.p.pattern.eval(zoom), L.p.opacity.dd ? 1 : L.p.opacity.eval(zoom));
+                if (place) for (const it of items) {
+                    const b = it.tile.batches[L.id];
+                    if (!b) continue;
+                    const px = 512 * 2 ** (Z - it.id.z), u = place([px / EXTENT, 0, 0, 0, px / EXTENT, 0, it.id.x * px, it.id.y * px, 1]);
+                    gl.uniformMatrix4fv(u.u_matrix, false, it.matrix4);
+                    gl.uniform4fv(u.u_clip, it.clip);
+                    gl.bindVertexArray(b.vao);
+                    gl.drawElements(gl.TRIANGLES, b.count, gl.UNSIGNED_INT, 0);
                 }
                 continue;
             }
@@ -692,19 +749,19 @@ export class GLRenderer {
 
     private iconQuads(labels: Placed[], custom: boolean): Float32Array {
         const mine = labels.filter(l => l.icon && !!l.icon.custom === custom && l.opacity > 0);
-        const out = new Float32Array(mine.length * 30);
-        let o = 0;
+        const out: number[] = [];
         for (const {icon, opacity} of mine) {
-            const i = icon!, cos = Math.cos(i.angle), sin = Math.sin(i.angle), hw = i.w / 2, hh = i.h / 2, [sx, sy, sw, sh] = i.rect;
-            for (const [cx, cy] of [[-1, -1], [1, -1], [-1, 1], [1, -1], [1, 1], [-1, 1]]) {
-                out[o++] = i.x + cx * hw * cos - cy * hh * sin;
-                out[o++] = i.y + cx * hw * sin + cy * hh * cos;
-                out[o++] = sx + (cx + 1) / 2 * sw;
-                out[o++] = sy + (cy + 1) / 2 * sh;
-                out[o++] = opacity;
+            const i = icon!, cos = Math.cos(i.angle), sin = Math.sin(i.angle), [sx, sy, sw, sh] = i.rect;
+            // Plain icons are one quad; stretched ones are a grid whose fixed cells keep their size.
+            const gx = i.gx ?? [0, 0, sw, i.w], gy = i.gy ?? [0, 0, sh, i.h];
+            for (let a = 0; a + 3 < gx.length; a += 2) for (let b = 0; b + 3 < gy.length; b += 2) {
+                for (const [cx, cy] of [[0, 0], [1, 0], [0, 1], [1, 0], [1, 1], [0, 1]]) {
+                    const dx = gx[a + cx * 2 + 1] - i.w / 2, dy = gy[b + cy * 2 + 1] - i.h / 2;
+                    out.push(i.x + dx * cos - dy * sin, i.y + dx * sin + dy * cos, sx + gx[a + cx * 2], sy + gy[b + cy * 2], opacity);
+                }
             }
         }
-        return out;
+        return new Float32Array(out);
     }
 
     private textQuads(labels: Placed[]): ArrayBuffer {

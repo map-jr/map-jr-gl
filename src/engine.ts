@@ -600,7 +600,7 @@ export class Engine {
             m.gpu.opacity = Math.max(0, Math.min(1, (tr.zoom - m.minZoom) / 0.2 + 1, (m.maxZoom - tr.zoom) / 0.2));
             if (m.gpu.opacity > 0) markers.push(m.gpu);
         }
-        this.renderer.render({tr, layers: this.layers, items, labels, atlas: this.atlas, markers});
+        this.renderer.render({tr, layers: this.layers, items, labels, atlas: this.atlas, markers, icon: this.icon});
 
         if (cameraChanged || animating !== this.moving) {
             this.lastCamera = camera;
