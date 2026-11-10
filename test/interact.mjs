@@ -27,7 +27,7 @@ for (const mode of ['main', 'worker']) {
     // Wheel zoom keeps the location under the cursor fixed.
     const anchor = await page.evaluate(() => window.map.unproject({x: 700, y: 200}));
     await page.mouse.move(700, 200); await page.mouse.wheel(0, -500);
-    await page.waitForTimeout(300);
+    await page.waitForFunction(() => window.map.getZoom() > 14.31, null, {timeout: 10000}).catch(() => {}); // the zoom has started
     await settle(page);
     const z = await page.evaluate(() => window.map.getZoom());
     const p = await page.evaluate(a => window.map.project(a), anchor);
