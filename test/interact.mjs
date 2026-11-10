@@ -262,6 +262,23 @@ for (const mode of ['main', 'worker']) {
     check(`[${mode}] resize keeps the canvas matched to its container`, r.css[0] === 820 && r.css[1] === 560 && r.css[2] === 0 && r.css[3] === 0 && Math.abs(r.mid.x - 410) < 0.01 && Math.abs(r.mid.y - 280) < 0.01 && r.centre.lng === centreBefore.lng, JSON.stringify({css: r.css, mid: r.mid, before: centreBefore, after: r.centre}));
     await page.setViewportSize({width: 1000, height: 700});
     await page.waitForTimeout(300);
+    // 3D terrain, as people use it: a dragged point of ground stays under the pointer on a tilted map, and nothing
+    // moves once the drag is over.
+    await page.evaluate(() => { const m = window.map; m.jumpTo({center: [7.70, 45.99], zoom: 12, bearing: 20, pitch: 60}); m.setTerrain({source: 'dem', exaggeration: 1.5}); });
+    await page.waitForTimeout(500);
+    await idle(page);
+    const from = {x: 640, y: 420}, held = await page.evaluate(q => window.map.unproject(q), from);
+    await page.mouse.move(from.x, from.y); await page.mouse.down();
+    for (let i = 1; i <= 12; i++) { await page.mouse.move(from.x - i * 10, from.y - i * 5); await page.waitForTimeout(25); }
+    await page.waitForTimeout(350);
+    const during = await page.evaluate(q => window.map.project([q.lng, q.lat]), held);
+    await page.mouse.up();
+    await page.waitForTimeout(1500);
+    const peakAt = () => page.evaluate(() => window.map.project([7.6586, 45.9763]));
+    const rest1 = await peakAt(); await page.waitForTimeout(1500); const rest2 = await peakAt();
+    check(`[${mode}] 3D terrain: a dragged point stays under the pointer, and the view is still afterwards`,
+        Math.hypot(during.x - (from.x - 120), during.y - (from.y - 60)) < 1.5 && Math.hypot(rest1.x - rest2.x, rest1.y - rest2.y) < 0.5, JSON.stringify({during, rest1, rest2}));
+    await page.evaluate(() => window.map.setTerrain(null));
     // 3D terrain: the ground rises, so a summit's label position moves up the screen once the map is tilted.
     const terrain = await page.evaluate(async () => {
         const m = window.map, peak = [7.6586, 45.9763];

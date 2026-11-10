@@ -818,7 +818,7 @@ export class Map {
                 }
                 if (g.mode === 'pitch') this.post({type: 'rotate', delta: 0, pitch: -(f.mid.y - g.mid.y) * 0.5});
                 else if (g.mode === 'pinch') {
-                    this.post({type: 'pan', dx: f.mid.x - g.mid.x, dy: f.mid.y - g.mid.y});
+                    this.post({type: 'pan', dx: f.mid.x - g.mid.x, dy: f.mid.y - g.mid.y, x: f.mid.x, y: f.mid.y});
                     if (f.dist > 0 && g.dist > 0) this.post({type: 'zoom', delta: Math.log2(f.dist / g.dist), x: f.mid.x, y: f.mid.y});
                     let turn = f.angle - g.angle;
                     turn = Math.atan2(Math.sin(turn), Math.cos(turn));
@@ -838,7 +838,7 @@ export class Map {
             else if (moved > 3 && pointers.size === 1) {
                 if (!this.dragging) this.fire('dragstart');
                 this.dragging = true;
-                this.post({type: 'pan', dx, dy});
+                this.post({type: 'pan', dx, dy, x: p.x, y: p.y});
                 samples.push({t: performance.now(), x: p.x, y: p.y});
                 while (samples.length > 2 && samples[0].t < performance.now() - 160) samples.shift();
             }

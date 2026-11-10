@@ -195,9 +195,43 @@ export class Transform {
         return [lngFromMerc(mx), latFromMerc(clamp(my, 0, 1))];
     }
 
+    /** Screen pixels to the position under them on the level plane through the map centre (ignoring 3D terrain). */
+    unprojectFlat(px: number, py: number): [number, number] {
+        const [mx, my] = this.screenToMerc(px, py);
+        return [lngFromMerc(mx), latFromMerc(clamp(my, 0, 1))];
+    }
+
+    /** With 3D terrain: where the camera itself is (mercator), and its height in the same metres as the terrain. */
+    cameraPosition(): [number, number, number] {
+        const p = this.pitch * Math.PI / 180, d = this.cameraDistance, back = d * Math.sin(p) / this.worldSize, a = this.angle;
+        return [mercX(this.lng) + Math.sin(a) * back, mercY(this.lat) + Math.cos(a) * back, this.elevation + d * Math.cos(p) / this.pixelsPerMetre];
+    }
+
+    /**
+     * With 3D terrain: makes the map centre the point of ground the camera is actually looking at, without moving
+     * the camera. The centre slides along the line of sight to the surface, and the zoom changes to match the new
+     * distance, so the picture stays exactly as it was. (This is what MapLibre does when a movement ends.)
+     * Returns whether anything changed.
+     */
+    recenterOnGround(): boolean {
+        if (!this.heightAt) return false;
+        const p = this.pitch * Math.PI / 180, d = this.cameraDistance, ppm = this.pixelsPerMetre;
+        const [mx, my] = this.screenToGround(this.width / 2, this.height / 2), h = this.heightAt(mx, my), z = (h - this.elevation) * ppm;
+        const dist = d - z / Math.cos(p); // camera to that point, in pixels at the current scale
+        if (Math.abs(z) < 0.25 || dist < d * 0.05) return false;
+        const lat = latFromMerc(clamp(my, 0, 1));
+        // The same distance in metres must come out as `d` pixels at the new zoom and latitude.
+        const zoom = Math.log2(d / (dist / ppm) * 40075016.686 * Math.cos(lat * Math.PI / 180) / TILE_SIZE);
+        this.lng = lngFromMerc(mx); this.lat = clamp(lat, -MAX_LAT, MAX_LAT);
+        this.zoom = clamp(zoom, this.minZoom, this.maxZoom);
+        this.elevation = h;
+        return true;
+    }
+
     /** Move the camera so that `lngLat` sits under screen point (px, py). Used for zoom-around-cursor. */
-    setLocationAt(lng: number, lat: number, px: number, py: number) {
-        const z = this.heightAt ? (this.heightAt(mercX(lng), mercY(lat)) - this.elevation) * this.pixelsPerMetre : 0;
+    setLocationAt(lng: number, lat: number, px: number, py: number, height?: number) {
+        height ??= this.heightAt ? this.heightAt(mercX(lng), mercY(lat)) : this.elevation;
+        const z = (height - this.elevation) * this.pixelsPerMetre;
         const [mx, my] = this.screenToMerc(px, py, z);
         const cx = mercX(this.lng) + mercX(lng) - mx;
         const cy = mercY(this.lat) + mercY(lat) - my;

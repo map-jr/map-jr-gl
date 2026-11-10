@@ -19,7 +19,8 @@ export type Command =
     | {type: 'resize'; width: number; height: number; dpr: number}
     | ({type: 'jump'} & CameraOptions)
     | ({type: 'ease'; duration: number; around?: [number, number]} & CameraOptions)
-    | {type: 'pan'; dx: number; dy: number}
+    /** Moves the map by a screen distance. With `x`, `y` (where the pointer now is) the ground first grabbed stays under the pointer, tilt, terrain and all. */
+    | {type: 'pan'; dx: number; dy: number; x?: number; y?: number}
     | {type: 'zoom'; delta: number; x: number; y: number}
     | {type: 'wheel'; delta: number; x: number; y: number; kind: 'wheel' | 'trackpad'}
     | {type: 'rotate'; delta: number; pitch?: number}
@@ -176,9 +177,14 @@ export class Engine {
 
     /** Counts elevation tiles arriving, so heights derived from them (under markers) are refreshed. */
     private demVersion = 0;
+    private grab: {lng: number; lat: number; at: number} | null = null;
+    /** 3D terrain: the centre was set by the API rather than reached by a gesture, so it keeps its position. */
+    private centreGiven = true;
+    private easeHeights: {ease: unknown; from: number} | null = null;
+    /** 3D terrain: height of the ground at the map centre in real (unexaggerated) metres. */
+    private rawElevation = 0;
     private lastPose = '';
     private movedAt = 0;
-    private hadTerrain = false;
     private markerHeightsAt = 0;
     /** 3D terrain: the exaggeration in force this frame (zero when looking straight down, or with no terrain). */
     private exaggeration = 0;
@@ -256,6 +262,7 @@ export class Engine {
     private sourceSigs = new Map<string, [string, string]>();
 
     private setStyle(style: ResolvedStyle, reload: boolean) {
+        if (JSON.stringify(style.terrain) !== JSON.stringify(this.style?.terrain)) this.centreGiven = true;
         this.style = style;
         this.styleVersion++;
         this.layers = style.layers.map(compileLayer).filter((l): l is CompiledLayer => !!l);
@@ -328,7 +335,7 @@ export class Engine {
                 this.frame(performance.now());
                 this.emit({type: 'resized', width: c.width, height: c.height, dpr: c.dpr});
                 return;
-            case 'jump': this.stop(); tr.set(c.center, c.zoom, c.bearing, c.pitch); break;
+            case 'jump': this.stop(); tr.set(c.center, c.zoom, c.bearing, c.pitch); if (c.center || c.zoom !== undefined) this.centreGiven = true; break;
             case 'ease': {
                 this.stop();
                 const to = new Transform();
@@ -341,19 +348,32 @@ export class Engine {
                     start: performance.now(), duration: Math.max(1, c.duration), around: c.around,
                     anchor: c.around ? tr.unproject(c.around[0], c.around[1]) : undefined,
                 };
+                this.centreGiven = !c.around;
                 break;
             }
             case 'pan': {
                 this.fling = null; this.ease = null;
-                const [lng, lat] = tr.unproject(tr.width / 2 - c.dx, tr.height / 2 - c.dy);
-                tr.set([lng, lat]);
+                const now = performance.now();
+                if (c.x === undefined || c.y === undefined) { tr.set(tr.unprojectFlat(tr.width / 2 - c.dx, tr.height / 2 - c.dy)); break; }
+                this.centreGiven = false;
+                // A drag holds on to the ground (and its height) where it began; each move puts that point under the pointer.
+                // (A new drag is recognised by a pause, or by the pointer not being where the held point is.)
+                const held = this.grab && now - this.grab.at < 300 ? tr.project(this.grab.lng, this.grab.lat) : null;
+                if (!held || Math.hypot(held[0] - (c.x - c.dx), held[1] - (c.y - c.dy)) > 24) {
+                    const [lng, lat] = tr.unproject(c.x - c.dx, c.y - c.dy);
+                    this.grab = {lng, lat, at: now};
+                }
+                tr.setLocationAt(this.grab!.lng, this.grab!.lat, c.x, c.y);
+                this.grab!.at = now;
                 break;
             }
             case 'zoom':
+                this.centreGiven = false;
                 this.stop();
                 this.zoomAround(tr.zoom + c.delta, c.x, c.y);
                 break;
             case 'wheel': {
+                this.centreGiven = false;
                 this.fling = null; this.ease = null;
                 const now = performance.now(), w = this.wheel;
                 // A pause ends the gesture: later scrolling starts from the zoom actually on screen.
@@ -367,6 +387,7 @@ export class Engine {
                 const dist = Math.hypot(c.dx, c.dy), linearity = 0.3;
                 if (!dist || c.ms <= 0) break;
                 const speed = Math.min(1400, dist * linearity / (c.ms / 1000)), seconds = speed / (2500 * linearity), amount = speed * seconds / 2;
+                this.grab = null;
                 this.fling = {dx: c.dx / dist * amount, dy: c.dy / dist * amount, start: performance.now(), duration: seconds * 1000, done: 0};
                 break;
             }
@@ -424,7 +445,7 @@ export class Engine {
         this.repaint();
     }
 
-    private stop() { this.ease = null; this.wheel = null; this.fling = null; }
+    private stop() { this.ease = null; this.wheel = null; this.fling = null; this.grab = null; }
 
     private zoomAround(zoom: number, x: number, y: number) {
         const [lng, lat] = this.tr.unproject(x, y);
@@ -548,8 +569,7 @@ export class Engine {
         }
         if (this.fling) {
             const f = this.fling, t = Math.min(1, (now - f.start) / f.duration), k = inertiaEasing(t);
-            const [lng, lat] = tr.unproject(tr.width / 2 - f.dx * (k - f.done), tr.height / 2 - f.dy * (k - f.done));
-            tr.set([lng, lat]);
+            tr.set(tr.unprojectFlat(tr.width / 2 - f.dx * (k - f.done), tr.height / 2 - f.dy * (k - f.done)));
             f.done = k;
             if (t >= 1) this.fling = null;
         }
@@ -639,21 +659,11 @@ export class Engine {
         const tilt = clamp(tr.pitch / 10, 0, 1);
         this.exaggeration = (this.style.terrain?.exaggeration ?? 0) * tilt * tilt * (3 - 2 * tilt);
         const terrain = this.exaggeration > 0 ? this.style.terrain : undefined;
-        let settling = false;
+        const settling = false;
         if (terrain) {
             tr.heightAt = this.heightAt;
-            const target = this.heightAt(mercX(tr.lng), mercY(tr.lat)), gap = target - tr.elevation;
-            // While the map is being moved the camera keeps its height (following every ridge under the centre would
-            // make the view bob); once it rests, it eases to the ground there.
-            const pose = `${tr.lng},${tr.lat},${tr.zoom}`;
-            if (pose !== this.lastPose) { this.lastPose = pose; this.movedAt = now; }
-            const moving = cameraAnimating || now - this.movedAt < 150, first = !this.hadTerrain;
-            settling = Math.abs(gap) > 0.5;
-            if (first) tr.elevation = target;
-            else if (!moving) tr.elevation = settling ? tr.elevation + gap * Math.min(1, dt / 250) : target;
-            // ...except upwards: moving into a mountainside, the camera climbs with the ground rather than passing through it.
-            else if (gap > 0) tr.elevation += gap * Math.min(1, dt / 100);
-            this.hadTerrain = true;
+            // The centre's height is remembered in real metres, so it shrinks and grows together with the relief.
+            tr.elevation = this.rawElevation * this.exaggeration;
             // The lowest and highest ground on the elevation tiles in use: valleys far below the centre (or peaks far
             // above it) reach further across the screen than flat ground would.
             let lo = tr.elevation, hi = tr.elevation;
@@ -662,7 +672,47 @@ export class Engine {
                 lo = Math.min(lo, t.range[0] * this.exaggeration); hi = Math.max(hi, t.range[1] * this.exaggeration);
             }
             tr.groundRange = [lo, hi];
-        } else { tr.heightAt = undefined; tr.groundRange = undefined; tr.elevation = 0; this.hadTerrain = false; }
+            // While the map is being moved the centre keeps its height: the camera goes where it is sent rather than
+            // bobbing over every ridge. At rest the centre is put back on the ground the camera is looking at, with
+            // the camera left exactly where it is, so nothing on screen moves when a gesture ends or heights arrive.
+            const pose = `${tr.lng},${tr.lat},${tr.zoom}`;
+            if (pose !== this.lastPose) { this.lastPose = pose; this.movedAt = now; }
+            const moving = cameraAnimating || now - this.movedAt < 150;
+            const known = (mx: number, my: number) => !!this.demTile(mx - Math.floor(mx), my, 30);
+            const e = this.ease;
+            if (e && !e.around) {
+                // An animation to a stated place: the centre's height eases to the ground there along with everything else.
+                if (this.easeHeights?.ease !== e) this.easeHeights = {ease: e, from: this.rawElevation};
+                if (known(e.to[0], e.to[1])) {
+                    const k = defaultEasing(clamp((now - e.start) / e.duration, 0, 1));
+                    tr.elevation = (this.easeHeights.from + (this.rawHeightAt(e.to[0], e.to[1]) - this.easeHeights.from) * k) * this.exaggeration;
+                }
+            } else if (!moving) {
+                if (this.centreGiven) {
+                    // The centre was set outright (jumpTo, the end of an animation, terrain switched on): it stays where
+                    // it was put and takes the height of the ground there, as soon as that is known.
+                    if (known(mercX(tr.lng), mercY(tr.lat))) { tr.elevation = this.heightAt(mercX(tr.lng), mercY(tr.lat)); this.centreGiven = false; }
+                } else if (tr.recenterOnGround()) this.lastPose = `${tr.lng},${tr.lat},${tr.zoom}`;
+            }
+            // Never inside the mountain: if the ground under the camera reaches it, the camera is lifted clear.
+            const [camX, camY, camH] = tr.cameraPosition(), clear = this.heightAt(camX, camY) + (camH - tr.elevation) * 0.05;
+            if (camH < clear) tr.elevation += clear - camH;
+            this.rawElevation = tr.elevation / this.exaggeration;
+        } else {
+            tr.heightAt = undefined; tr.groundRange = undefined; tr.elevation = 0;
+            const st = this.style.terrain, src = st && this.style.sources[st.source];
+            if (src) {
+                // Looking straight down the relief is not drawn, but the height under the centre is still tracked (it
+                // needs one elevation tile), so that tilting starts from the right place.
+                const z = clamp(Math.round(tr.zoom), src.minzoom, src.maxzoom), n = 2 ** z, mx = mercX(tr.lng) - Math.floor(mercX(tr.lng));
+                const id = {z, x: Math.floor(mx * n), y: clamp(Math.floor(mercY(tr.lat) * n), 0, n - 1), w: 0, key: ''};
+                id.key = `${z}/${id.x}/${id.y}`;
+                const key = st!.source + '|' + id.key, t = this.tiles.get(key);
+                wanted.add(key);
+                if (t) t.used = frameNo; else this.request(st!.source, id, key);
+                if (this.heights.size) this.rawElevation = this.rawHeightAt(mercX(tr.lng), mercY(tr.lat));
+            } else this.rawElevation = 0;
+        }
         const ground = terrain ? this.terrainTiles(wanted) : undefined;
         if (terrain && now - this.markerHeightsAt > 300) {
             // Markers stand on the ground: look up the height under each when its layer or the elevation data changes.
