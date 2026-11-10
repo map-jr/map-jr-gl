@@ -66,7 +66,7 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
     let req = 0, sprite: Sprite | null = null;
     const jobs = Object.entries(style.sources).map(async ([name, src]) => {
         if (!layers.some(l => l.source === name && l.visible && tr.zoom >= l.minzoom && tr.zoom < l.maxzoom)) return;
-        if (src.type === 'raster-dem') return;
+        if (src.type === 'raster-dem' || src.type === 'contour') return; // both need elevation tiles decoded, which a bare server cannot do
         const ideal = tr.coveringTiles(src.minzoom, src.maxzoom, src.tileSize, src.type === 'raster'), loaded = new Map<string, TileIR | TileImage>();
         await Promise.all(ideal.filter((id, i) => ideal.findIndex(o => o.key === id.key) === i).map(async id => {
             const url = tileURL(src, id.z, id.x, id.y);

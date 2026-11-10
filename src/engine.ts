@@ -1,5 +1,5 @@
 import {EXTENT, Transform, bezier, clamp, latFromMerc, lngFromMerc, mercX, mercY, type LngLatLike, type TileID} from './geo.ts';
-import {compileLayer, loadSprite, tileURL, type CompiledLayer, type FontSource, type ResolvedStyle, type Sprite, type SpriteIcon} from './style.ts';
+import {compileLayer, isGeometrySource, loadSprite, tileURL, type CompiledLayer, type FontSource, type ResolvedStyle, type Sprite, type SpriteIcon} from './style.ts';
 import {GLRenderer, MARKER_FLOATS, MARKER_STRIDE, SPRITE_ATLAS, type GLTile, type MarkerBuffers} from './gl.ts';
 import {CollisionGrid, placeLabels, renderItems, type Placed, type RenderItem} from './placement.ts';
 import {GlyphAtlas} from './text.ts';
@@ -153,6 +153,8 @@ export class Engine {
         if (style.fonts?.length && faces !== this.styleFonts) { this.styleFonts = faces; this.loadFonts(style.fonts); }
         if (reload) {
             for (const [name, src] of Object.entries(style.sources)) if (src.type === 'geojson') for (const b of this.backends) b.setGeoJSON(name, src.data);
+            const contours = Object.fromEntries(Object.entries(style.sources).filter(([, s]) => s.contour).map(([name, s]) => [name, s.contour!]));
+            for (const b of this.backends) b.setContours(contours);
             for (const b of this.backends) b.setStyle(style.layers);
             for (const [key, t] of this.tiles) this.dropTile(key, t);
         }
@@ -327,7 +329,7 @@ export class Engine {
 
     private async queryFeatures(c: Extract<Command, {type: 'query'}>): Promise<QueriedFeature[]> {
         const zoom = c.zoom ?? this.tr.zoom;
-        const jobs = Object.entries(this.style.sources).filter(([name, src]) => (src.type === 'vector' || src.type === 'geojson') && (!c.sources || c.sources.includes(name))).map(([name, src]) => {
+        const jobs = Object.entries(this.style.sources).filter(([name, src]) => isGeometrySource(src) && (!c.sources || c.sources.includes(name))).map(([name, src]) => {
             const z = clamp(Math.floor(zoom), src.minzoom, src.maxzoom), t = this.tileAt(c.lng, c.lat, z);
             // The tolerance is given in screen pixels at the queried zoom.
             const radius = c.radius * EXTENT / (512 * 2 ** (zoom - z));
@@ -441,7 +443,7 @@ export class Engine {
         const t: TileState = {state: 'loading', used: this.frameNo, cancel() {}};
         this.tiles.set(key, t);
         let load: Promise<GLTile>;
-        if (src.type === 'vector' || src.type === 'geojson') {
+        if (isGeometrySource(src)) {
             const backend = this.backends[this.nextBackend++ % this.backends.length], req = this.nextReq++;
             t.cancel = () => backend.cancel(req);
             load = backend.load({id: req, source, url, z: id.z, overscaled: id.z >= src.maxzoom}).then(tile => this.renderer.createTile(tile));

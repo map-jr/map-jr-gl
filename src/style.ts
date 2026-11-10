@@ -1,5 +1,9 @@
 import {compileFilter, compileProp, type Fn, type Prop, type PropKind} from './expr.ts';
 import {PM_PREFIX, archive} from './pmtiles.ts';
+import type {ContourConfig} from './contour.ts';
+
+/** Sources whose tiles are built into geometry by the tile workers (as opposed to images the engine draws directly). */
+export const isGeometrySource = (s: {type: string}) => s.type === 'vector' || s.type === 'geojson' || s.type === 'contour';
 
 /** Supported properties per layer type: [style-spec name, kind, default]. Anything else in a style is ignored. */
 const SPEC: Record<string, Record<string, [string, PropKind, any]>> = {
@@ -101,7 +105,9 @@ export function compileLayer(l: LayerJSON): CompiledLayer | null {
 }
 
 export interface SourceInfo {
-    type: 'vector' | 'raster' | 'raster-dem' | 'geojson';
+    type: 'vector' | 'raster' | 'raster-dem' | 'geojson' | 'contour';
+    /** Contour sources: how to derive lines from their elevation source. */
+    contour?: ContourConfig;
     /** GeoJSON sources carry their data; it is handed to the tile workers, which cut tiles from it. */
     data?: unknown; tiles: string[]; minzoom: number; maxzoom: number; tileSize: number; attribution?: string; encoding?: 'terrarium' | 'mapbox';
 }
@@ -161,6 +167,20 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
             type: raw.type, tiles: src.tiles, minzoom: src.minzoom ?? 0, maxzoom: src.maxzoom ?? (raw.type === 'vector' ? 14 : 22),
             tileSize: raw.type === 'vector' ? 512 : src.tileSize ?? 512, attribution: src.attribution,
             encoding: raw.type === 'raster-dem' ? (raw.encoding === 'terrarium' ? 'terrarium' : 'mapbox') : undefined,
+        };
+    }
+    // Contour sources (an extension to the style specification) are resolved last: each needs its elevation source.
+    for (const [name, raw] of Object.entries<any>(style.sources ?? {})) {
+        if (raw.type !== 'contour') continue;
+        const dem = sources[raw.source];
+        if (!dem || dem.type !== 'raster-dem') throw new Error(`Contour source "${name}" needs "source" to name a raster-dem source`);
+        const zooms = Object.keys(raw.thresholds ?? {}).map(Number);
+        sources[name] = {
+            type: 'contour', tiles: [`contour://${name}/{z}/{x}/{y}`], minzoom: Math.max(0, Math.min(...zooms, 24)), maxzoom: raw.maxzoom ?? 15, tileSize: 512, attribution: dem.attribution,
+            contour: {
+                tiles: dem.tiles, encoding: dem.encoding ?? 'mapbox', demMaxzoom: dem.maxzoom, demMinzoom: dem.minzoom, thresholds: raw.thresholds ?? {}, multiplier: raw.multiplier ?? 1,
+                overzoom: raw.overzoom ?? 1, contourLayer: raw.contourLayer ?? 'contours', elevationKey: raw.elevationKey ?? 'ele', levelKey: raw.levelKey ?? 'level',
+            },
         };
     }
     const unsupported = new Set<string>();

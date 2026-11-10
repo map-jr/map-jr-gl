@@ -65,6 +65,17 @@ const cards = [
             map.on('click', async e => { const m = await map.queryElevation(e.lngLat); out(m === null ? 'No elevation data here' : `${m.toFixed(0)} m (${(m * 3.28084).toFixed(0)} ft) above sea level`); });
             out('Click the map (this is the Matterhorn)');
         })},
+    {title: 'Contour lines from elevation tiles', text: 'A built-in contour source turns elevation tiles into labelled contour lines in the tile workers. Intervals change with zoom; these are in feet.',
+        make: el => when(base(el, {zoom: 12.3, center: [7.6586, 45.9763]}), map => {
+            map.addLayer({id: 'relief', type: 'hillshade', source: 'dem', paint: {'hillshade-shadow-color': '#5a4a3a', 'hillshade-exaggeration': 0.35}}, 'water');
+            map.addSource('contours', {type: 'contour', source: 'dem', multiplier: 3.28084, overzoom: 1,
+                thresholds: {9: [500, 1000], 11: [200, 1000], 12: [100, 500], 14: [50, 200], 15: [20, 100]}});
+            map.addLayer({id: 'contour-lines', type: 'line', source: 'contours', 'source-layer': 'contours',
+                paint: {'line-color': 'hsla(25, 30%, 35%, 0.55)', 'line-width': ['match', ['get', 'level'], 1, 1.2, 0.5]}}, 'water');
+            map.addLayer({id: 'contour-labels', type: 'symbol', source: 'contours', 'source-layer': 'contours', filter: ['>', ['get', 'level'], 0],
+                layout: {'symbol-placement': 'line', 'text-size': 10, 'text-field': ['concat', ['number-format', ['get', 'ele'], {}], "'"], 'text-font': ['Noto Sans Bold']},
+                paint: {'text-color': '#6b5a48', 'text-halo-color': '#ffffff', 'text-halo-width': 1.5}});
+        })},
     {title: 'Features under the cursor, from tile data', text: 'queryFeatures needs no style layer: it reads what the tiles contain, including things this style does not draw.', readout: true,
         make: (el, out) => { const map = base(el, {zoom: 15.2}); out('Click the map');
             map.on('click', async e => { const f = await map.queryFeatures(e.lngLat, {radius: 4}); out(f.map(x => x.sourceLayer + (x.properties.name ? ` "${x.properties.name}"` : x.properties.class ? ` (${x.properties.class})` : '')).join(', ') || 'Nothing here'); }); return map; }},

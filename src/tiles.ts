@@ -3,6 +3,7 @@ import {buildTile, toGL, type TileGL, type TileIR} from './tile.ts';
 import {queryTile, type QueriedFeature, type TileQuery} from './query.ts';
 import {fetchTile} from './pmtiles.ts';
 import {GEOJSON_PREFIX, prepareGeoJSON, sliceGeoJSON} from './geojson.ts';
+import {contourTile, decodeDEM, type ContourConfig, type DEM} from './contour.ts';
 
 export interface TileRequest { id: number; source: string; url: string; z: number; overscaled: boolean }
 
@@ -13,6 +14,27 @@ export class TileBuilder {
     /** Recently fetched tiles, kept so feature queries on visible tiles need no second download. */
     private recent = new Map<string, Uint8Array>();
     private geojson = new Map<string, ReturnType<typeof prepareGeoJSON>>();
+
+    private contours = new Map<string, ContourConfig>();
+    private dems = new Map<string, Promise<DEM | null>>();
+    /** Tells the builder how each contour source derives its lines. */
+    setContours(sources: Record<string, ContourConfig>) { this.contours = new Map(Object.entries(sources)); }
+
+    /** Elevation tiles are shared between neighbouring contour tiles, so decoded ones are kept for a while. */
+    private loadDEM = (url: string, encoding: string): Promise<DEM | null> => {
+        let dem = this.dems.get(url);
+        if (!dem) {
+            dem = fetchTile(url, this.fetchFn).then(bytes => bytes ? decodeDEM(bytes, encoding) : null);
+            this.dems.set(url, dem);
+            dem.catch(() => this.dems.delete(url));
+            if (this.dems.size > 40) this.dems.delete(this.dems.keys().next().value!);
+        }
+        return dem;
+    };
+    private contour(url: string) {
+        const m = /^contour:\/\/(.*)\/(\d+)\/(\d+)\/(\d+)$/.exec(url)!, cfg = this.contours.get(m[1]);
+        return cfg ? contourTile(cfg, +m[2], +m[3], +m[4], u => this.loadDEM(u, cfg.encoding)) : Promise.resolve({});
+    }
 
     /** Replaces a GeoJSON source's data. Its tiles are cut from this on demand. */
     setGeoJSON(source: string, data: unknown) { this.geojson.set(source, prepareGeoJSON(data)); }
@@ -37,6 +59,7 @@ export class TileBuilder {
 
     async loadIR(req: TileRequest): Promise<TileIR> {
         if (req.url.startsWith(GEOJSON_PREFIX)) return buildTile(this.slice(req.url), req.z, this.bySource.get(req.source) ?? [], req.overscaled);
+        if (req.url.startsWith('contour://')) return buildTile(await this.contour(req.url), req.z, this.bySource.get(req.source) ?? [], req.overscaled);
         const ac = new AbortController();
         this.aborts.set(req.id, ac);
         try {
@@ -60,6 +83,7 @@ export class TileBuilder {
     /** Queries a tile's raw features. The tile is fetched if it is not already at hand; it need not be on screen. */
     async query(url: string, q: TileQuery): Promise<QueriedFeature[]> {
         if (url.startsWith(GEOJSON_PREFIX)) return queryTile(this.slice(url), q);
+        if (url.startsWith('contour://')) return queryTile(await this.contour(url), q);
         let bytes = this.recent.get(url);
         if (!bytes) {
             const fetched = await fetchTile(url, this.fetchFn);
@@ -75,6 +99,7 @@ export class TileBuilder {
 export interface TileBackend {
     setStyle(layers: LayerJSON[]): void;
     setGeoJSON(source: string, data: unknown): void;
+    setContours(sources: Record<string, ContourConfig>): void;
     load(req: TileRequest): Promise<TileGL>;
     cancel(id: number): void;
     query(url: string, q: TileQuery): Promise<QueriedFeature[]>;
@@ -84,6 +109,7 @@ export class LocalBackend implements TileBackend {
     private builder = new TileBuilder();
     setStyle(layers: LayerJSON[]) { this.builder.setStyle(layers); }
     setGeoJSON(source: string, data: unknown) { this.builder.setGeoJSON(source, data); }
+    setContours(sources: Record<string, ContourConfig>) { this.builder.setContours(sources); }
     async load(req: TileRequest) { return toGL(await this.builder.loadIR(req)).tile; }
     cancel(id: number) { this.builder.cancel(id); }
     query(url: string, q: TileQuery) { return this.builder.query(url, q); }
@@ -105,6 +131,7 @@ export class PortBackend implements TileBackend {
     }
     setStyle(layers: LayerJSON[]) { this.port.postMessage({type: 'style', layers}); }
     setGeoJSON(source: string, data: unknown) { this.port.postMessage({type: 'geojson', source, data}); }
+    setContours(sources: Record<string, ContourConfig>) { this.port.postMessage({type: 'contours', sources}); }
     load(req: TileRequest) {
         return new Promise<TileGL>((resolve, reject) => {
             this.pending.set(req.id, {resolve, reject});
@@ -128,6 +155,7 @@ export function serveTiles(port: Port) {
         const m = e.data;
         if (m.type === 'style') builder.setStyle(m.layers);
         else if (m.type === 'geojson') builder.setGeoJSON(m.source, m.data);
+        else if (m.type === 'contours') builder.setContours(m.sources);
         else if (m.type === 'cancel') builder.cancel(m.id);
         else if (m.type === 'query') {
             builder.query(m.url, m.q).then(result => port.postMessage({id: m.id, result}), err => port.postMessage({id: m.id, error: String(err.message)}));

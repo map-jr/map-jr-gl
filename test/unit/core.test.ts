@@ -276,3 +276,47 @@ test('geojson: sources are cut into tiles, clipped, and render and query like ve
     assert.match(svg, /fill="#ff0000"/); assert.match(svg, /stroke="#00ff00" stroke-width="4"/); assert.match(svg, />Here<\/text>/);
     assert.deepEqual(tiles, []);
 });
+
+test('contours: isolines join into rings and open lines, with levels and seamless tile edges', async () => {
+    const {isolines, contourTile, thresholdsAt} = await import('../../src/contour.ts');
+    // A cone: height falls off with distance from the centre, so each level is one closed ring.
+    const n = 41, cone = new Float32Array(n * n);
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) cone[y * n + x] = 100 - Math.hypot(x - 20, y - 20) * 5;
+    const rings = isolines(cone, n, 25);
+    assert.ok([25, 50, 75].every(l => rings.has(l)));
+    for (const level of [25, 50, 75]) {
+        const lines = rings.get(level)!;
+        assert.equal(lines.length, 1, `level ${level} is a single line`);
+        const l = lines[0];
+        close(l[0], l[l.length - 2], 1e-9); close(l[1], l[l.length - 1], 1e-9); // closed
+        for (let i = 0; i < l.length; i += 2) close(Math.hypot(l[i] - 20, l[i + 1] - 20), (100 - level) / 5, 0.25); // on the right circle
+    }
+    // A plain slope gives straight open lines from edge to edge.
+    const slope = new Float32Array(n * n);
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) slope[y * n + x] = x * 10;
+    const open = isolines(slope, n, 100).get(200)!;
+    assert.equal(open.length, 1);
+    assert.deepEqual([open[0][0], open[0][open[0].length - 2]].sort(), [20, 20]);
+    assert.deepEqual([open[0][1], open[0][open[0].length - 1]].sort((a, b) => a - b), [0, 40]);
+
+    assert.deepEqual(thresholdsAt({9: [500, 1000], 12: [100, 500]}, 11), [500, 1000]);
+    assert.equal(thresholdsAt({9: [500, 1000]}, 8), null);
+
+    // Elevation as a smooth function of global position, served as 64px tiles at any zoom.
+    const P = 64, height = (gx: number, gy: number) => 1000 + 400 * Math.sin(gx * 7) + 300 * Math.cos(gy * 9);
+    const loadDEM = async (url: string) => {
+        const [z, x, y] = url.split('/').map(Number), data = new Float32Array(P * P), s = 2 ** z;
+        for (let j = 0; j < P; j++) for (let i = 0; i < P; i++) data[j * P + i] = height((x + (i + 0.5) / P) / s, (y + (j + 0.5) / P) / s);
+        return {width: P, height: P, data};
+    };
+    const cfg = {tiles: ['{z}/{x}/{y}'], encoding: 'terrarium', demMaxzoom: 12, demMinzoom: 0, thresholds: {0: [100, 500]}, multiplier: 1, overzoom: 0, contourLayer: 'contours', elevationKey: 'ele', levelKey: 'level'};
+    const tile = async (x: number, y: number) => (await contourTile(cfg, 3, x, y, loadDEM)).contours.features.map(f => { const c: number[] = [], e: number[] = []; f.geometry(4096, c, e); return {ele: f.properties.ele, level: f.properties.level, c}; });
+    const a = await tile(2, 3), b = await tile(3, 3);
+    assert.ok(a.length > 3 && b.length > 3);
+    assert.ok(a.every(f => f.ele % 100 === 0 && f.level === (f.ele % 500 === 0 ? 1 : 0)));
+    // Every line leaving the left tile through its right edge arrives in the right tile at the same height.
+    const ends = (fs: typeof a, edgeX: number) => fs.flatMap(f => [[f.c[0], f.c[1]], [f.c[f.c.length - 2], f.c[f.c.length - 1]]].filter(p => p[0] === edgeX).map(p => `${f.ele}@${p[1]}`)).sort();
+    const leaving = ends(a, 4096), arriving = ends(b, 0);
+    assert.ok(leaving.length > 0, 'some contours cross the shared edge');
+    assert.deepEqual(leaving, arriving);
+});
