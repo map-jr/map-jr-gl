@@ -30,7 +30,8 @@ const SPEC: Record<string, Record<string, [string, PropKind, any]>> = {
         anchor: ['hillshade-illumination-anchor', 'string', 'viewport'],
     },
     symbol: {
-        icon: ['icon-image', 'string', ''], iconSize: ['icon-size', 'number', 1], iconOffset: ['icon-offset', 'raw', [0, 0]], iconRotate: ['icon-rotate', 'number', 0],
+        icon: ['icon-image', 'string', ''], iconSize: ['icon-size', 'number', 1], iconOffset: ['icon-offset', 'string', [0, 0]], iconRotate: ['icon-rotate', 'number', 0],
+        iconOpacity: ['icon-opacity', 'number', 1], iconAnchor: ['icon-anchor', 'string', 'center'], iconColor: ['icon-color', 'color', '#000'],
         iconFit: ['icon-text-fit', 'string', 'none'], iconFitPad: ['icon-text-fit-padding', 'raw', [0, 0, 0, 0]], iconOverlap: ['icon-allow-overlap', 'raw', false],
         iconOptional: ['icon-optional', 'raw', false], textOptional: ['text-optional', 'raw', false], iconAlign: ['icon-rotation-alignment', 'string', 'auto'],
         textAlign: ['text-rotation-alignment', 'string', 'auto'], symbolSpacing: ['symbol-spacing', 'number', 250], varAnchor: ['text-variable-anchor', 'raw', null],
@@ -39,7 +40,7 @@ const SPEC: Record<string, Record<string, [string, PropKind, any]>> = {
         haloColor: ['text-halo-color', 'color', 'rgba(0,0,0,0)'], haloWidth: ['text-halo-width', 'number', 0], haloBlur: ['text-halo-blur', 'number', 0], justify: ['text-justify', 'string', 'center'],
         field: ['text-field', 'string', ''], size: ['text-size', 'number', 16], font: ['text-font', 'raw', ['Regular']],
         maxWidth: ['text-max-width', 'number', 10], spacing: ['text-letter-spacing', 'number', 0],
-        offset: ['text-offset', 'raw', [0, 0]], anchor: ['text-anchor', 'string', 'center'],
+        offset: ['text-offset', 'string', [0, 0]], anchor: ['text-anchor', 'string', 'center'],
         transform: ['text-transform', 'string', 'none'], padding: ['text-padding', 'number', 2],
         overlap: ['text-allow-overlap', 'raw', false], placement: ['symbol-placement', 'string', 'point'],
     },
@@ -222,6 +223,8 @@ export interface SpriteIcon {
     stretchX?: [number, number][]; stretchY?: [number, number][];
     /** The part of the image the text should sit inside: left, top, right, bottom. */
     content?: [number, number, number, number];
+    /** A single-channel distance field rather than a picture: drawn in `icon-color`, and sharp at any size. */
+    sdf?: boolean;
 }
 export interface Sprite { icons: Record<string, SpriteIcon>; image: string; width: number; height: number }
 

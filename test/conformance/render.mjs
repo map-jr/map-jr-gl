@@ -17,11 +17,24 @@ const testsDir = path.join(repo, 'test/integration/render/tests'), assets = path
 const types = {'.js': 'text/javascript', '.json': 'application/json', '.png': 'image/png', '.pbf': 'application/x-protobuf', '.mvt': 'application/x-protobuf', '.geojson': 'application/json', '.html': 'text/html'};
 const server = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://x'), p = decodeURIComponent(url.pathname);
-    const file = p.startsWith('/dist/') ? path.join(root, p) : p.startsWith('/tests/') ? path.join(testsDir, p.slice(7)) : p === '/' ? null : path.join(assets, p);
+    const file = p.startsWith('/dist/') ? path.join(root, p) : p.startsWith('/fonts/') ? path.join(fontDir, p.slice(7)) : p.startsWith('/tests/') ? path.join(testsDir, p.slice(7)) : p === '/' ? null : path.join(assets, p);
     if (!file) { res.writeHead(200, {'content-type': 'text/html'}); return res.end('<body style="margin:0;background:#fff"><div id="map"></div>'); }
     try { const body = readFileSync(file); res.writeHead(200, {'content-type': types[path.extname(file)] ?? 'application/octet-stream', 'access-control-allow-origin': '*'}); res.end(body); } catch { res.writeHead(404); res.end(); }
 }).listen(0);
 const origin = `http://localhost:${server.address().port}`;
+
+// MapLibre's tests draw text from glyph files for Open Sans and Noto Sans. This renderer uses web fonts, so the same
+// typefaces are fetched once and handed to each test's style; otherwise every test with a label would differ by font.
+const fontDir = path.join(root, '.cache/fonts');
+const fontFiles = {'open-sans.woff2': 'https://fonts.gstatic.com/s/opensans/v44/memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTS-muw.woff2', 'noto-sans.woff2': 'https://fonts.gstatic.com/s/notosans/v42/o-0mIpQlx3QUlC5A4PNB6Ryti20_6n1iPHjcz6L1SoM-jCpoiyD9A-9a6VI.woff2'};
+mkdirSync(fontDir, {recursive: true});
+for (const [name, url] of Object.entries(fontFiles)) {
+    if (existsSync(path.join(fontDir, name))) continue;
+    try { execSync(`curl -sfL -o "${path.join(fontDir, name)}" "${url}"`); } catch { console.warn(`Could not fetch ${name}; text will be drawn in a fallback font`); }
+}
+const fontFaces = {};
+if (existsSync(path.join(fontDir, 'open-sans.woff2'))) for (const n of ['Open Sans Semibold', 'Open Sans Bold', 'Open Sans Regular']) fontFaces[n] = `${origin}/fonts/open-sans.woff2`;
+if (existsSync(path.join(fontDir, 'noto-sans.woff2'))) for (const n of ['Noto Sans Regular', 'Noto Sans Latin']) fontFaces[n] = `${origin}/fonts/noto-sans.woff2`;
 
 const tests = [];
 const walk = dir => {
@@ -46,6 +59,7 @@ async function worker(queue) {
     await page.waitForFunction(() => window.tessera);
     for (let id; (id = queue.shift());) {
         const style = JSON.parse(readFileSync(path.join(testsDir, id, 'style.json'), 'utf8').replaceAll('local://', origin + '/')), meta = style.metadata?.test ?? {};
+        style['font-faces'] = {...fontFaces, ...style['font-faces']};
         const width = meta.width ?? 512, height = meta.height ?? 512;
         // Tests that script the map (setStyle, panning, waiting on events...) need MapLibre's test harness operations; only plain renders are run.
         const ops = (meta.operations ?? []).filter(o => o[0] !== 'wait');

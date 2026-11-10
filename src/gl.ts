@@ -216,9 +216,17 @@ void main() {
 }`, `
 uniform sampler2D u_img; in vec2 v_uv; in float v_alpha; out vec4 o; void main() { o = texture(u_img, v_uv) * v_alpha; }`],
 
-    sprite: [`uniform vec2 u_view; uniform vec2 u_tex; layout(location=0) in vec4 a_v; layout(location=1) in float a_alpha; out vec2 v_uv; out float v_alpha;
-void main() { v_uv = a_v.zw / u_tex; v_alpha = a_alpha; vec2 c = a_v.xy / u_view * 2.0 - 1.0; gl_Position = vec4(c.x, -c.y, 0.0, 1.0); }`, `
-uniform sampler2D u_img; in vec2 v_uv; in float v_alpha; out vec4 o; void main() { o = texture(u_img, v_uv) * v_alpha; }`],
+    // Icons. A colour with alpha >= 0 marks a distance-field icon, drawn in that colour with an edge that stays sharp.
+    sprite: [`uniform vec2 u_view; uniform vec2 u_tex; layout(location=0) in vec4 a_v; layout(location=1) in float a_alpha; layout(location=2) in vec4 a_color;
+out vec2 v_uv; out float v_alpha; out vec4 v_color;
+void main() { v_uv = a_v.zw / u_tex; v_alpha = a_alpha; v_color = a_color; vec2 c = a_v.xy / u_view * 2.0 - 1.0; gl_Position = vec4(c.x, -c.y, 0.0, 1.0); }`, `
+uniform sampler2D u_img; in vec2 v_uv; in float v_alpha; in vec4 v_color; out vec4 o;
+void main() {
+  vec4 t = texture(u_img, v_uv);
+  if (v_color.a < 0.0) { o = t * v_alpha; return; }
+  float g = max(fwidth(t.a) * 0.7, 0.01), a = smoothstep(0.75 - g, 0.75 + g, t.a) * v_color.a * v_alpha;
+  o = vec4(v_color.rgb * a, a);
+}`],
 };
 
 interface Program { prog: WebGLProgram; u: Record<string, WebGLUniformLocation> }
@@ -324,9 +332,11 @@ export class GLRenderer {
         gl.bindVertexArray(this.spriteVao);
         this.spriteBuf = buf(null);
         gl.enableVertexAttribArray(0);
-        gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 20, 0);
+        gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 36, 0);
         gl.enableVertexAttribArray(1);
-        gl.vertexAttribPointer(1, 1, gl.FLOAT, false, 20, 16);
+        gl.vertexAttribPointer(1, 1, gl.FLOAT, false, 36, 16);
+        gl.enableVertexAttribArray(2);
+        gl.vertexAttribPointer(2, 4, gl.FLOAT, false, 36, 20);
         gl.bindVertexArray(null);
 
         const tex = () => {
@@ -882,7 +892,7 @@ export class GLRenderer {
             gl.bindVertexArray(this.spriteVao);
             gl.bindBuffer(gl.ARRAY_BUFFER, this.spriteBuf);
             gl.bufferData(gl.ARRAY_BUFFER, icons, gl.DYNAMIC_DRAW);
-            gl.drawArrays(gl.TRIANGLES, 0, icons.length / 5);
+            gl.drawArrays(gl.TRIANGLES, 0, icons.length / 9);
         }
 
         if (s.labels.length) {
@@ -943,6 +953,7 @@ export class GLRenderer {
             const i = icon!, cos = Math.cos(i.angle), sin = Math.sin(i.angle), [sx, sy, sw, sh] = i.rect;
             // Plain icons are one quad; stretched ones are a grid whose fixed cells keep their size.
             const gx = i.gx ?? [0, 0, sw, i.w], gy = i.gy ?? [0, 0, sh, i.h];
+            const col = i.color ?? [0, 0, 0, -1];
             // Upright icons are placed on whole device pixels. Between pixels, the texture filter would smear fine
             // detail such as a one-pixel outline into its neighbours.
             const snap = (v: number) => Math.round(v * this.dpr) / this.dpr;
@@ -950,7 +961,7 @@ export class GLRenderer {
             for (let a = 0; a + 3 < gx.length; a += 2) for (let b = 0; b + 3 < gy.length; b += 2) {
                 for (const [cx, cy] of [[0, 0], [1, 0], [0, 1], [1, 0], [1, 1], [0, 1]]) {
                     const dx = gx[a + cx * 2 + 1] - i.w / 2, dy = gy[b + cy * 2 + 1] - i.h / 2;
-                    out.push(i.x + ox + dx * cos - dy * sin, i.y + oy + dx * sin + dy * cos, sx + gx[a + cx * 2], sy + gy[b + cy * 2], opacity);
+                    out.push(i.x + ox + dx * cos - dy * sin, i.y + oy + dx * sin + dy * cos, sx + gx[a + cx * 2], sy + gy[b + cy * 2], opacity * i.opacity, ...col);
                 }
             }
         }

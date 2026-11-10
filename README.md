@@ -128,7 +128,7 @@ against 26 KB for everything), so there is no need to plan imports around size. 
 
 ## Performance compared with MapLibre GL JS
 
-**On a real GPU.** Run `pnpm demo` and open `/bench`: it runs both libraries in your browser, one after another,
+**On a real GPU.** Run `pnpm demo` and open `/bench`: it runs both libraries in your browser, one after another (including a 3D terrain fly-around; `/bench?only=terrain` runs just that),
 with the same style, view and five-second pan, zoom and rotate. These results are from an Apple M4 in Chrome 157
 (Metal), at screen pixel ratio 2, reported by the project owner:
 

@@ -298,7 +298,7 @@ export class Map {
             this.fire('idle');
         } else if (e.type === 'heights') {
             if (e.grid) this.heights.set(e.key, e.grid); else this.heights.delete(e.key);
-            if (this.tr.heightAt) this.fire('move'); // overlays re-position onto the newly known ground
+            if (this.tr.heightAt && !this.moving) this.fire('move'); // overlays re-position onto the newly known ground (while moving, every frame does this anyway)
         } else if (e.type === 'stats') {
             this.fire('stats', {fps: e.fps, frameMs: e.frameMs});
         } else if (e.type === 'resized') {

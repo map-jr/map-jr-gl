@@ -50,7 +50,8 @@ export interface LabelSrc {
     upright: boolean;
     textOptional: boolean; ignore: boolean; varAnchor: string[] | null; radial: number;
     icon?: {
-        name: string; size: number; offset: [number, number]; rotate: number; fit: string; fitPad: [number, number, number, number];
+        name: string; size: number; /** Size at the next zoom level, to interpolate towards. */ size1: number; offset: [number, number]; rotate: number; fit: string; fitPad: [number, number, number, number];
+        opacity: number; anchor: string; color: RGBA;
         overlap: boolean; optional: boolean; upright: boolean;
     };
 }
@@ -124,7 +125,7 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
                     upright: p.textAlign.eval(z, f) === 'viewport', textOptional: !!p.textOptional.eval(z, f), ignore: !!p.ignore.eval(z, f),
                     varAnchor: p.varAnchor.eval(z, f), radial: p.radial.eval(z, f),
                     icon: iconName ? {
-                        name: iconName, size: p.iconSize.eval(z, f), offset: p.iconOffset.eval(z, f), rotate: p.iconRotate.eval(z, f),
+                        name: iconName, size: p.iconSize.eval(z, f), size1: p.iconSize.eval(z + 1, f), opacity: p.iconOpacity.eval(z, f), anchor: p.iconAnchor.eval(z, f), color: p.iconColor.eval(z, f), offset: p.iconOffset.eval(z, f), rotate: p.iconRotate.eval(z, f),
                         fit: p.iconFit.eval(z, f), fitPad: p.iconFitPad.eval(z, f), overlap: !!p.iconOverlap.eval(z, f),
                         optional: !!p.iconOptional.eval(z, f), upright: p.iconAlign.eval(z, f) === 'viewport',
                     } : undefined,

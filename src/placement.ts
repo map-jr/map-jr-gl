@@ -24,6 +24,9 @@ export interface PlacedIcon {
     rect: [number, number, number, number];
     /** For stretchable icons: (source pixel, screen pixel) pairs along each axis, measured from the icon's left/top edge. */
     gx?: number[]; gy?: number[];
+    opacity: number;
+    /** Set for distance-field icons, which are drawn in this colour. */
+    color?: number[];
     /** True for images added at runtime (drawn from the dynamic atlas) rather than the style's sprite sheet. */
     custom?: boolean;
     name: string;
@@ -145,14 +148,16 @@ export function placeLabels(
 
                 let icon: PlacedIcon | undefined, iconBox: Box | null = null;
                 if (meta && l.icon) {
-                    const ic = l.icon, fit = hasText && textBox ? ic.fit : 'none';
-                    let iw = meta.width / meta.pixelRatio * ic.size, ih = meta.height / meta.pixelRatio * ic.size;
-                    let ix = ax + ic.offset[0] * ic.size, iy = ay + ic.offset[1] * ic.size;
+                    const ic = l.icon, fit = hasText && textBox ? ic.fit : 'none', isize = ic.size + (ic.size1 - ic.size) * t;
+                    let iw = meta.width / meta.pixelRatio * isize, ih = meta.height / meta.pixelRatio * isize;
+                    // The anchor names the part of the icon that sits on the point.
+                    let ix = ax + ic.offset[0] * isize + (ic.anchor.includes('left') ? iw / 2 : ic.anchor.includes('right') ? -iw / 2 : 0);
+                    let iy = ay + ic.offset[1] * isize + (ic.anchor.includes('top') ? ih / 2 : ic.anchor.includes('bottom') ? -ih / 2 : 0);
                     let gx: number[] | undefined, gy: number[] | undefined;
                     if (fit !== 'none') {
                         // Stretch the icon around the text, e.g. a road shield around its number. Only the image's
                         // stretch ranges grow; its content box ends up around the padded text.
-                        const [pt, pr, pb, pl] = ic.fitPad.map(v => v * ic.size), unit = ic.size / meta.pixelRatio, c = meta.content;
+                        const [pt, pr, pb, pl] = ic.fitPad.map(v => v * isize), unit = isize / meta.pixelRatio, c = meta.content;
                         if (fit !== 'height') {
                             const f = fitAxis(meta.width, meta.stretchX, c?.[0] ?? 0, c?.[2] ?? meta.width, w + pl + pr, unit);
                             iw = f.len; ix = tx - w / 2 - pl - f.off + iw / 2; gx = f.cuts;
@@ -166,7 +171,7 @@ export function placeLabels(
                     const box = boxAround(ix, iy, iw, ih, angle, 1);
                     if (ic.overlap || !grid.hits(...box)) {
                         iconBox = box;
-                        icon = {x: ix, y: iy, w: iw, h: ih, angle, rect: [meta.x, meta.y, meta.width, meta.height], custom: meta.custom, name: ic.name, gx, gy};
+                        icon = {x: ix, y: iy, w: iw, h: ih, angle, rect: [meta.x, meta.y, meta.width, meta.height], custom: meta.custom, name: ic.name, gx, gy, opacity: ic.opacity, color: meta.sdf ? ic.color : undefined};
                     } else if (!(hasText && textBox && ic.optional)) continue;
                 }
                 if (!textBox && !icon) continue;

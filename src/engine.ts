@@ -231,17 +231,17 @@ export class Engine {
     /** 3D terrain: the ground tiles in view, each with a straight-down view of itself for drawing its picture. */
     private terrainTiles(wanted: Set<string>): TerrainTile[] {
         const tr = this.tr, terrain = this.style.terrain!, demSrc = this.style.sources[terrain.source], out: TerrainTile[] = [];
-        // Pictures are drawn for zoom levels an eighth apart and stretched in between, so zooming redraws them only now and then.
-        const zq = Math.round(tr.zoom * 8) / 8;
         const viewLit = this.layers.some(l => l.type === 'hillshade' && l.visible && l.p.anchor.eval(tr.zoom) === 'viewport');
         for (const id of tr.coveringTiles(0, 22, TILE_SIZE).slice(0, 96)) { // nearest first; a cap keeps odd views affordable
-            const n = 2 ** id.z, view = new Transform(), zt = Math.min(zq, id.z + 1);
+            // Each tile's picture is drawn once, at a fixed scale a little above the tile's own (it is shown at up to twice
+            // its size before finer tiles take over), and stretched as the map zooms. Zooming therefore redraws nothing.
+            const n = 2 ** id.z, view = new Transform(), zt = id.z + 0.75;
             view.width = view.height = TILE_SIZE * 2 ** (zt - id.z);
             view.lng = lngFromMerc((id.x + 0.5) / n); view.lat = latFromMerc((id.y + 0.5) / n); view.zoom = zt;
             const items = new Map<string, RenderItem<GLTile>[]>();
-            // Relief shading lit from the viewer's side turns with the map, so pictures containing it are redrawn every few degrees.
+            // Relief shading lit from the viewer's side turns with the map, so pictures containing it are redrawn when the map has turned a dozen degrees.
             let complete = true;
-            let signature = `${zt}|${this.styleVersion}|${viewLit ? Math.round(tr.bearing / 4) : ''}`;
+            let signature = `${zt}|${this.styleVersion}|${viewLit ? Math.round(tr.bearing / 12) : ''}`;
             for (const source in this.style.sources) {
                 const src = this.style.sources[source];
                 if (!this.layers.some(l => l.source === source && l.type !== 'symbol' && l.type !== 'fill-extrusion' && l.visible && zt >= l.minzoom && zt < l.maxzoom)) continue;

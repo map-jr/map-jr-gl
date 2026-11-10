@@ -32,21 +32,38 @@ const scenarios = [
         {name: `${n.toLocaleString()} markers: marker layer, worker`, lib: 'worker', markers: n},
     ])),
     ...(q.has('nomarkers') ? [] : [{name: '100,000 markers: marker layer, worker', lib: 'worker', markers: 100000}]),
+    // 3D terrain: the same style with an elevation source, relief shading and terrain, flown around the Matterhorn.
+    ...(q.has('noterrain') ? [] : [
+        {name: '3D terrain: MapLibre GL JS', lib: 'maplibre', terrain: true},
+        {name: '3D terrain: this library, main thread', lib: 'main', terrain: true},
+        {name: '3D terrain: this library, worker', lib: 'worker', terrain: true},
+    ]),
 ];
+const TERRAIN_VIEW = {center: [7.70, 45.99], zoom: 12, pitch: 60, bearing: 20}, TERRAIN_END = {center: [7.66, 45.975], zoom: 13.2, bearing: 110, pitch: 60};
+/** Adds elevation, relief shading and terrain to a style (Mapterhorn tiles, as in the gallery). */
+function withTerrain(style) {
+    style.sources.benchdem = {type: 'raster-dem', tiles: ['https://tiles.mapterhorn.com/{z}/{x}/{y}.webp'], encoding: 'terrarium', tileSize: 512, maxzoom: 12};
+    const firstSymbol = style.layers.findIndex(l => l.type === 'symbol');
+    style.layers.splice(firstSymbol < 0 ? style.layers.length : firstSymbol, 0, {id: 'bench-relief', type: 'hillshade', source: 'benchdem', paint: {'hillshade-exaggeration': 0.4}});
+    style.terrain = {source: 'benchdem', exaggeration: 1.5};
+    return style;
+}
 
 async function run(s) {
     stage.replaceChildren();
     const el = stage.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;inset:0'}));
     const style = await (await fetch(STYLE)).json();
     delete style.terrain; delete style.sky;
+    if (s.terrain) withTerrain(style);
+    const view = s.terrain ? TERRAIN_VIEW : VIEW;
     const t0 = performance.now();
     let map, frames = 0, stamps = [];
     const frame = () => { frames++; stamps.push(performance.now()); };
     if (s.lib === 'maplibre') {
-        map = new maplibre.Map({container: el, style, ...VIEW, attributionControl: false});
+        map = new maplibre.Map({container: el, style, ...view, attributionControl: false});
         map.on('render', frame);
     } else {
-        map = new tessera.Map({container: el, style, ...VIEW, renderer: s.lib, attributionControl: false});
+        map = new tessera.Map({container: el, style, ...view, renderer: s.lib, attributionControl: false});
         map.on('move', frame); // one camera report per frame drawn, whichever thread draws it
     }
     await new Promise(r => map.once('idle', r));
@@ -62,7 +79,7 @@ async function run(s) {
     await sleep(600);
     frames = 0; stamps = []; scripts.length = 0; blocked = Number.isNaN(blocked) ? NaN : 0;
     const a0 = performance.now();
-    map.easeTo({center: [-73.975, 40.735], zoom: 15.2, bearing: 40, duration: SECONDS * 1000});
+    map.easeTo({...(s.terrain ? TERRAIN_END : {center: [-73.975, 40.735], zoom: 15.2, bearing: 40}), duration: SECONDS * 1000});
     await sleep(SECONDS * 1000 + 100);
     // Count only frames drawn while the camera was animating: once it stops, a map that correctly stops drawing
     // would otherwise look slower than one that keeps redrawing an unchanged view.
@@ -79,7 +96,8 @@ const cells = r => [r.name + (r.add !== null ? ` (added in ${fmt(r.add)} ms)` : 
 const results = [];
 document.getElementById('run').onclick = async e => {
     e.target.disabled = true; tbody.replaceChildren(); results.length = 0;
-    const list = document.getElementById('markers').checked ? scenarios : scenarios.filter(s => !s.markers);
+    const only = q.get('only'); // e.g. ?only=terrain
+    const list = (document.getElementById('markers').checked ? scenarios : scenarios.filter(s => !s.markers)).filter(s => !only || s.name.toLowerCase().includes(only.toLowerCase()));
     for (const [i, s] of list.entries()) {
         status.textContent = `Running ${i + 1} of ${list.length}: ${s.name}`;
         try {
