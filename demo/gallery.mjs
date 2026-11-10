@@ -107,7 +107,7 @@ const cards = [
             show();
         })},
     {title: '3D terrain', text: 'The same elevation tiles raise the ground. The flat map is drawn onto each terrain tile and cached, buildings and labels sit on the surface, and labels behind a ridge are hidden. Drag with the right button (or two fingers) to tilt and turn.', readout: true,
-        make: (el, out, card) => when(base(el, {zoom: 12.4, center: [7.6586, 45.9763], pitch: 60, bearing: 25}), map => {
+        make: (el, out, card) => when(base(el, {zoom: 12.4, center: [7.6586, 45.9763], pitch: 60, bearing: 25}).setTerrain({source: 'dem', exaggeration: 1.5}), map => {
             map.addLayer({id: 'relief', type: 'hillshade', source: 'dem', paint: {'hillshade-shadow-color': '#5a4a3a', 'hillshade-exaggeration': 0.4}}, 'water');
             let exaggeration = 1.5;
             const apply = () => { map.setTerrain(exaggeration ? {source: 'dem', exaggeration} : null); out(exaggeration ? `Terrain on, heights exaggerated ${exaggeration}x` : 'Terrain off'); };

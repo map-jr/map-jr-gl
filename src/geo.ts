@@ -12,9 +12,9 @@ export interface TileID { z: number; x: number; y: number; w: number; key: strin
 export const HEIGHT_GRID = 128;
 /**
  * Ground height in metres at a mercator position, from height grids keyed "z/x/y": the deepest one at or above
- * zoom `from` that covers the point, or 0 if there is none.
+ * zoom `from` that covers the point, or `unknown` if there is none.
  */
-export function groundHeight(grids: Map<string, Float32Array>, mx: number, my: number, from: number, to = 0): number {
+export function groundHeight(grids: Map<string, Float32Array>, mx: number, my: number, from: number, to = 0, unknown = 0): number {
     mx -= Math.floor(mx);
     for (let z = from; z >= to; z--) {
         const n = 2 ** z, h = grids.get(`${z}/${Math.floor(mx * n)}/${Math.floor(my * n)}`);
@@ -23,7 +23,7 @@ export function groundHeight(grids: Map<string, Float32Array>, mx: number, my: n
         const x0 = Math.floor(fx), y0 = Math.floor(fy), x1 = Math.min(G - 1, x0 + 1), y1 = Math.min(G - 1, y0 + 1), tx = fx - x0, ty = fy - y0;
         return (h[y0 * G + x0] * (1 - tx) + h[y0 * G + x1] * tx) * (1 - ty) + (h[y1 * G + x0] * (1 - tx) + h[y1 * G + x1] * tx) * ty;
     }
-    return 0;
+    return unknown;
 }
 
 export const mercX = (lng: number) => (lng + 180) / 360;

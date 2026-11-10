@@ -267,7 +267,7 @@ export class Map {
             // With 3D terrain, positions on this thread follow the ground too (clicks, project/unproject, DOM markers).
             const k = e.exaggeration;
             this.tr.groundRange = e.groundRange;
-            this.tr.heightAt = k > 0 ? (mx, my) => groundHeight(this.heights, mx, my, 15) * k : undefined;
+            this.tr.heightAt = k > 0 ? (mx, my) => groundHeight(this.heights, mx, my, 15, 0, e.elevation / k) * k : undefined;
             this.tilesLoaded = false;
             if (!this.moving) this.fire('movestart');
             this.moving = true;

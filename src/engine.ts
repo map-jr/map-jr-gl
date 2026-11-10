@@ -180,6 +180,7 @@ export class Engine {
     private grab: {lng: number; lat: number; at: number} | null = null;
     /** 3D terrain: the centre was set by the API rather than reached by a gesture, so it keeps its position. */
     private centreGiven = true;
+    private unplacedSince = 0;
     private easeHeights: {ease: unknown; from: number} | null = null;
     /** 3D terrain: height of the ground at the map centre in real (unexaggerated) metres. */
     private rawElevation = 0;
@@ -209,7 +210,7 @@ export class Engine {
     private heights = new Map<string, Float32Array>();
     private rawHeightAt(mx: number, my: number): number {
         const src = this.style.terrain && this.style.sources[this.style.terrain.source];
-        return src ? groundHeight(this.heights, mx, my, src.maxzoom, src.minzoom) : 0; // always the most detailed data, so heights do not shift with zoom
+        return src ? groundHeight(this.heights, mx, my, src.maxzoom, src.minzoom, this.rawElevation) : 0; // where nothing is known yet, level with the centre; // always the most detailed data, so heights do not shift with zoom
     }
 
     /** The heights under a tile, for the GPU. */
@@ -225,17 +226,20 @@ export class Engine {
         const tr = this.tr, terrain = this.style.terrain!, demSrc = this.style.sources[terrain.source], out: TerrainTile[] = [];
         // Pictures are drawn for zoom levels an eighth apart and stretched in between, so zooming redraws them only now and then.
         const zq = Math.round(tr.zoom * 8) / 8;
+        const viewLit = this.layers.some(l => l.type === 'hillshade' && l.visible && l.p.anchor.eval(tr.zoom) === 'viewport');
         for (const id of tr.coveringTiles(0, 22, TILE_SIZE).slice(0, 96)) { // nearest first; a cap keeps odd views affordable
             const n = 2 ** id.z, view = new Transform(), zt = Math.min(zq, id.z + 1);
             view.width = view.height = TILE_SIZE * 2 ** (zt - id.z);
             view.lng = lngFromMerc((id.x + 0.5) / n); view.lat = latFromMerc((id.y + 0.5) / n); view.zoom = zt;
             const items = new Map<string, RenderItem<GLTile>[]>();
-            let signature = `${zt}|${this.styleVersion}`;
+            // Relief shading lit from the viewer's side turns with the map, so pictures containing it are redrawn every few degrees.
+            let complete = true;
+            let signature = `${zt}|${this.styleVersion}|${viewLit ? Math.round(tr.bearing / 4) : ''}`;
             for (const source in this.style.sources) {
                 const src = this.style.sources[source];
                 if (!this.layers.some(l => l.source === source && l.type !== 'symbol' && l.type !== 'fill-extrusion' && l.visible && zt >= l.minzoom && zt < l.maxzoom)) continue;
                 const ideal = view.coveringTiles(src.minzoom, src.maxzoom, src.tileSize, src.type === 'raster' || src.type === 'raster-dem');
-                for (const t of ideal) { const key = source + '|' + t.key; wanted.add(key); if (!this.tiles.has(key)) this.request(source, t, key); }
+                for (const t of ideal) { const key = source + '|' + t.key; wanted.add(key); if (!this.tiles.has(key)) this.request(source, t, key); if (this.tiles.get(key)?.state === 'loading') complete = false; }
                 const list = renderItems(view, ideal, k => {
                     const t = this.tiles.get(source + '|' + k);
                     if (t?.state !== 'ok') return undefined;
@@ -253,7 +257,7 @@ export class Engine {
                 const t = this.tiles.get(demKey);
                 if (t) t.used = this.frameNo; else this.request(terrain.source, {z: dz, x: Math.floor(id.x / k), y: Math.floor(id.y / k), w: 0, key: dk}, demKey);
             }
-            out.push({id, key: `${id.key}|${id.w}`, matrix: tr.tileMatrix4(id), view, items, signature, dem: this.demRef(id)});
+            out.push({id, key: `${id.key}|${id.w}`, matrix: tr.tileMatrix4(id), view, items, signature, complete, dem: this.demRef(id)});
         }
         return out;
     }
@@ -841,8 +845,15 @@ export class Engine {
             m.gpu.opacity = Math.max(0, Math.min(1, (tr.zoom - m.minZoom) / 0.2 + 1, (m.maxZoom - tr.zoom) / 0.2));
             if (m.gpu.opacity > 0) markers.push(m.gpu);
         }
-        const behind = this.renderer.render({tr, layers: this.layers, items, labels, atlas: this.atlas, markers, icon: this.icon,
-            terrain: ground && {exaggeration: this.exaggeration, tiles: ground, dem: this.demRef}});
+        // 3D terrain that has just been switched on, or a camera just sent somewhere new: until the height of the ground
+        // at the centre is known the camera cannot be placed, and drawing from sea level would show the wrong view and
+        // then jump. Keep what is on screen for a moment instead (but not for long, in case the data never comes).
+        const unplaced = !!terrain && this.centreGiven && !this.demTile(mercX(tr.lng) - Math.floor(mercX(tr.lng)), mercY(tr.lat), 30);
+        if (!unplaced) this.unplacedSince = 0; else if (!this.unplacedSince) this.unplacedSince = now;
+        const hold = unplaced && now - this.unplacedSince < 3000;
+        const behind = hold || this.renderer.render({tr, layers: this.layers, items, labels, atlas: this.atlas, markers, icon: this.icon,
+            // (Past the time limit and still unplaced: draw flat rather than raise terrain around a camera in the wrong place.)
+            terrain: ground && !unplaced ? {exaggeration: this.exaggeration, tiles: ground, dem: this.demRef} : undefined});
 
         if (cameraChanged || animating !== this.moving) {
             this.lastCamera = camera;

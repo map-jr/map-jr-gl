@@ -32,12 +32,27 @@ async function spriteRepository(map, spriteUrl) {
 /** The image name a shield is asked for by: network, ref and name on separate lines (none of them can contain one). */
 export const shieldImage = n => ['concat', 'shield\n', ['coalesce', ['get', `route_${n}_network`], ''], '\n', ['coalesce', ['get', `route_${n}_ref`], ''], '\n', ['coalesce', ['get', `route_${n}_name`], '']];
 
+/**
+ * The shield numerals are drawn in a condensed medium-weight face; without it the browser's default font is used and
+ * the shields look thin and badly fitted. These are the fonts americanamap.org itself loads.
+ */
+const FONTS = {'Noto Sans Condensed': 'NotoSans-CondensedMedium-PropNums', 'Noto Sans Armenian Condensed': 'NotoSansArmenian-CondensedMedium-PropNums'};
+async function loadShieldFonts(base = 'https://webfont.americanamap.org/noto/') {
+    await Promise.all(Object.entries(FONTS).map(async ([family, file]) => {
+        if ([...document.fonts].some(f => f.family.replace(/"/g, '') === family)) return;
+        const face = new FontFace(family, `url(${base}${file}.woff2) format("woff2")`, {weight: '500', style: 'normal'});
+        document.fonts.add(face);
+        await face.load().catch(() => {}); // a missing font only costs appearance
+    }));
+}
+
 /** Draws Americana shields for any image named by `shieldImage`. OpenMapTiles data (e.g. OpenFreeMap) carries what it needs. */
 export async function americanaShields(map, {shields = 'https://americanamap.org/shields.json', sprite = 'https://americanamap.org/sprites/sprite'} = {}) {
     const parser = {
         parse(id) { const [, network, ref, name] = id.split('\n'); return {network, ref, name}; },
         format: (network, ref, name) => `shield\n${network}\n${ref}\n${name}`,
     };
+    await loadShieldFonts();
     return new URLShieldRenderer(shields, parser)
         .filterImageID(id => id.startsWith('shield\n'))
         // Walking, cycling and other non-road route networks are not highway shields.

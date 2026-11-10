@@ -12,11 +12,12 @@ vec4 toClip(vec2 t) { return u_matrix * vec4(t, 0.0, 1.0); }
 const FS_CLIP = 'if (v_tile.x < u_clip.x || v_tile.y < u_clip.y || v_tile.x > u_clip.z || v_tile.y > u_clip.w) discard;';
 
 // Ground height from an elevation tile, for vertex shaders. `u_demRect` is the part of the elevation image under this
-// tile (offset x, y and scale, then the image size in pixels); `u_exag` of zero means "no terrain here".
-const TERRAIN_GLSL = `uniform highp sampler2D u_dem; uniform vec4 u_demRect; uniform vec4 u_unpack; uniform float u_exag;
+// tile (offset x, y and scale, then the image size in pixels); `u_exag` of zero means "no heights here (yet)", and
+// the ground is then taken to be level at `u_level`.
+const TERRAIN_GLSL = `uniform highp sampler2D u_dem; uniform vec4 u_demRect; uniform vec4 u_unpack; uniform float u_exag; uniform float u_level;
 float demAt(ivec2 p) { vec4 c = texelFetch(u_dem, clamp(p, ivec2(0), ivec2(int(u_demRect.w) - 1)), 0) * 255.0; return dot(c.rgb, u_unpack.rgb) - u_unpack.a; }
 float ground(vec2 uv) {
-  if (u_exag == 0.0) return 0.0;
+  if (u_exag == 0.0) return u_level;
   vec2 p = (u_demRect.xy + uv * u_demRect.z) * u_demRect.w - 0.5, f = fract(p); ivec2 i = ivec2(floor(p));
   return mix(mix(demAt(i), demAt(i + ivec2(1, 0)), f.x), mix(demAt(i + ivec2(0, 1)), demAt(i + ivec2(1, 1)), f.x), f.y) * u_exag;
 }
@@ -246,6 +247,8 @@ export interface TerrainTile {
     view: Transform; items: Map<string, RenderItem<GLTile>[]>;
     /** Changes whenever the picture on this tile would. */
     signature: string;
+    /** Whether everything the picture needs has loaded; a finished picture is not replaced by a partial one. */
+    complete: boolean;
     dem: DemRef | null;
 }
 
@@ -614,7 +617,7 @@ export class GLRenderer {
                     gl.uniform3f(u.u_spin, (2 * cs + 1) / 3, (-Math.sqrt(3) * sn - cs + 1) / 3, (Math.sqrt(3) * sn - cs + 1) / 3);
                 } else {
                     const pre = (c: number[]) => [c[0] * c[3], c[1] * c[3], c[2] * c[3], c[3]];
-                    const azimuth = p.direction.eval(zoom) * Math.PI / 180 + (p.anchor.eval(zoom) === 'viewport' ? tr.bearing * Math.PI / 180 : 0);
+                    const azimuth = p.direction.eval(zoom) * Math.PI / 180 + (p.anchor.eval(zoom) === 'viewport' ? s.tr.bearing * Math.PI / 180 : 0) // the map's bearing, also when drawing a terrain tile's picture;
                     gl.uniform2f(u.u_light, p.exaggeration.eval(zoom), azimuth);
                     gl.uniform4fv(u.u_shadow, pre(p.shadow.eval(zoom)));
                     gl.uniform4fv(u.u_highlight, pre(p.highlight.eval(zoom)));
@@ -656,7 +659,7 @@ export class GLRenderer {
                 const b = it.tile.batches[L.id];
                 if (!b) continue;
                 const u = use(b.type), m = it.matrix4;
-                if (extrude) this.bindDem(u, s.terrain ? s.terrain.dem(it.id) : null, s.terrain?.exaggeration ?? 0);
+                if (extrude) this.bindDem(u, s.terrain ? s.terrain.dem(it.id) : null, s.terrain?.exaggeration ?? 0, s.terrain ? s.tr.elevation : 0);
                 if (first) {
                     first = false;
                     gl.uniform4fv(u.u_color, color(L));
@@ -695,7 +698,7 @@ export class GLRenderer {
                     gl.colorMask(true, true, true, true);
                     pending.push(() => {
                         gl.uniformMatrix4fv(u.u_matrix, false, m);
-                        this.bindDem(u, s.terrain ? s.terrain.dem(it.id) : null, s.terrain?.exaggeration ?? 0);
+                        this.bindDem(u, s.terrain ? s.terrain.dem(it.id) : null, s.terrain?.exaggeration ?? 0, s.terrain ? s.tr.elevation : 0);
                         gl.uniform4fv(u.u_clip, it.clip);
                         gl.bindVertexArray(b.vao);
                         if (!b.color) gl.vertexAttrib4f(1, 1, 1, 1, 1);
@@ -751,9 +754,10 @@ export class GLRenderer {
     }
 
     /** Points a terrain-aware program at the heights under the tile about to be drawn. */
-    private bindDem(u: Record<string, WebGLUniformLocation>, dem: DemRef | null, exaggeration: number) {
+    private bindDem(u: Record<string, WebGLUniformLocation>, dem: DemRef | null, exaggeration: number, level = 0) {
         const gl = this.gl;
         gl.uniform1f(u.u_exag, dem ? exaggeration : 0);
+        gl.uniform1f(u.u_level, level);
         gl.uniform1i(u.u_dem, 1);
         if (!dem) return;
         gl.activeTexture(gl.TEXTURE1);
@@ -804,6 +808,7 @@ export class GLRenderer {
             let d = this.drapes.get(t.key);
             const size = Math.min(2048, Math.max(64, Math.round(t.view.width * this.dpr)));
             if (d && d.signature === t.signature) { d.used = this.frame; continue; }
+            if (d && !t.complete && d.signature.split('|')[0] === t.signature.split('|')[0]) { d.used = this.frame; continue; }
             if (d && budget-- <= 0) { d.used = this.frame; behind = true; continue; }
             if (!d && fresh-- <= 0) { behind = true; continue; }
             if (!d || d.size !== size) {
@@ -840,7 +845,7 @@ export class GLRenderer {
         for (const t of s.terrain!.tiles) {
             const d = this.drapes.get(t.key);
             if (!d) continue;
-            this.bindDem(u, t.dem, s.terrain!.exaggeration);
+            this.bindDem(u, t.dem, s.terrain!.exaggeration, s.tr.elevation); // until its heights arrive, a tile lies level with the map centre
             gl.bindTexture(gl.TEXTURE_2D, d.tex);
             gl.uniformMatrix4fv(u.u_matrix, false, t.matrix);
             gl.uniform1f(u.u_skirt, 40075016.686 / 2 ** t.id.z / 16 * Math.max(1, s.terrain!.exaggeration));
@@ -937,10 +942,14 @@ export class GLRenderer {
             const i = icon!, cos = Math.cos(i.angle), sin = Math.sin(i.angle), [sx, sy, sw, sh] = i.rect;
             // Plain icons are one quad; stretched ones are a grid whose fixed cells keep their size.
             const gx = i.gx ?? [0, 0, sw, i.w], gy = i.gy ?? [0, 0, sh, i.h];
+            // Upright icons are placed on whole device pixels. Between pixels, the texture filter would smear fine
+            // detail such as a one-pixel outline into its neighbours.
+            const snap = (v: number) => Math.round(v * this.dpr) / this.dpr;
+            const ox = i.angle === 0 ? snap(i.x - i.w / 2) - (i.x - i.w / 2) : 0, oy = i.angle === 0 ? snap(i.y - i.h / 2) - (i.y - i.h / 2) : 0;
             for (let a = 0; a + 3 < gx.length; a += 2) for (let b = 0; b + 3 < gy.length; b += 2) {
                 for (const [cx, cy] of [[0, 0], [1, 0], [0, 1], [1, 0], [1, 1], [0, 1]]) {
                     const dx = gx[a + cx * 2 + 1] - i.w / 2, dy = gy[b + cy * 2 + 1] - i.h / 2;
-                    out.push(i.x + dx * cos - dy * sin, i.y + dx * sin + dy * cos, sx + gx[a + cx * 2], sy + gy[b + cy * 2], opacity);
+                    out.push(i.x + ox + dx * cos - dy * sin, i.y + oy + dx * sin + dy * cos, sx + gx[a + cx * 2], sy + gy[b + cy * 2], opacity);
                 }
             }
         }
