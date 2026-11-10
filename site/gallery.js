@@ -1,6 +1,6 @@
 // The gallery: one live map per row, beside the code that makes it. Maps are created when they scroll into view, so
 // a phone is never asked for many WebGL contexts at once.
-import {Map, NavigationControl, ScaleControl, FullscreenControl} from 'tessera-map';
+import {Map, NavigationControl, ScaleControl, FullscreenControl} from 'map-jr-gl';
 import makeStyle from '../demo/style.mjs';
 import {markers, photos, manyMarkers, dot, pin} from '../demo/markers.mjs';
 import {americanaShields, shieldImage} from './americana.js';
@@ -14,7 +14,7 @@ const button = (row, label, onClick) => { const b = Object.assign(document.creat
 const rows = [
     {id: 'basic', title: 'A MapLibre style, drawn off the main thread',
         points: ['Reads the MapLibre style specification: sources, layers, expressions.', 'Draws in a worker when the browser allows it, so a busy page does not make the map stutter.', 'Zoom, compass, scale and fullscreen controls are included.'],
-        code: `import {Map, NavigationControl, ScaleControl} from 'tessera-map';
+        code: `import {Map, NavigationControl, ScaleControl} from 'map-jr-gl';
 
 const map = new Map({
   container: 'map',
@@ -143,7 +143,7 @@ map.addLayer({id: 'counties', type: 'line', source: 'admin',
 
     {id: 'server', title: 'The first picture, made on the server', pair: true,
         points: ['renderToSVG and renderToImage draw a map without a browser, on Node or in a Cloudflare Worker.', 'A page can show that picture immediately. The live map replaces it when it is ready.', 'The two pictures on the left were made when this site was built.'],
-        code: `import {renderToSVG, renderToImage} from 'tessera-map/server';
+        code: `import {renderToSVG, renderToImage} from 'map-jr-gl/server';
 
 const {svg} = await renderToSVG({
   style, center: [-74.0065, 40.7085], zoom: 14.3,

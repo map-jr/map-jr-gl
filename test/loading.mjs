@@ -8,7 +8,7 @@ const check = (name, ok, detail = '') => { console.log(`${ok ? 'PASS' : 'FAIL'} 
 async function load(name, url, {expect, block} = {}) {
     const page = await browser.newPage({viewport: {width: 800, height: 500}});
     const requested = [], warnings = [];
-    page.on('request', r => { if (/tessera/.test(r.url())) requested.push(r.url().split('/').pop().replace(/-[\w-]{8}\.js$/, '.js')); });
+    page.on('request', r => { if (/map-jr-gl/.test(r.url())) requested.push(r.url().split('/').pop().replace(/-[\w-]{8}\.js$/, '.js')); });
     page.on('console', m => { if (m.type() === 'warning') warnings.push(m.text()); });
     if (block) await page.route(block, r => r.abort());
     await page.goto(url);
@@ -21,10 +21,10 @@ async function load(name, url, {expect, block} = {}) {
 }
 
 const base = 'http://localhost:8080/?nomarkers&nocontrols&nofonts';
-await load('default: small entry, worker found beside it, no main-thread engine downloaded', base, {expect: {renderer: 'worker', files: ['tessera.js', 'tessera-worker.js'], not: ['tessera-engine-entry.js', 'tessera-standalone.js']}});
-await load('renderer "main": the engine chunk is fetched on demand', base + '&renderer=main', {expect: {renderer: 'main', files: ['tessera.js', 'tessera-engine-entry.js', 'tessera-worker.js']}});
-await load('standalone: one file, nothing else requested', base + '&standalone', {expect: {renderer: 'worker', files: ['tessera-standalone.js'], not: ['tessera-worker.js', 'tessera.js']}});
-await load('served from another origin (as from a CDN): worker starts through a same-origin stub', base + '&from=http://127.0.0.1:8080', {expect: {renderer: 'worker', files: ['tessera.js', 'tessera-worker.js']}});
-await load('worker file missing: falls back to the main thread and explains', base, {block: '**/tessera-worker.js', expect: {renderer: 'main', files: ['tessera.js', 'tessera-engine-entry.js'], warns: 'Workers are unavailable'}});
+await load('default: small entry, worker found beside it, no main-thread engine downloaded', base, {expect: {renderer: 'worker', files: ['map-jr-gl.js', 'map-jr-gl-worker.js'], not: ['map-jr-gl-engine-entry.js', 'map-jr-gl-standalone.js']}});
+await load('renderer "main": the engine chunk is fetched on demand', base + '&renderer=main', {expect: {renderer: 'main', files: ['map-jr-gl.js', 'map-jr-gl-engine-entry.js', 'map-jr-gl-worker.js']}});
+await load('standalone: one file, nothing else requested', base + '&standalone', {expect: {renderer: 'worker', files: ['map-jr-gl-standalone.js'], not: ['map-jr-gl-worker.js', 'map-jr-gl.js']}});
+await load('served from another origin (as from a CDN): worker starts through a same-origin stub', base + '&from=http://127.0.0.1:8080', {expect: {renderer: 'worker', files: ['map-jr-gl.js', 'map-jr-gl-worker.js']}});
+await load('worker file missing: falls back to the main thread and explains', base, {block: '**/map-jr-gl-worker.js', expect: {renderer: 'main', files: ['map-jr-gl.js', 'map-jr-gl-engine-entry.js'], warns: 'Workers are unavailable'}});
 await browser.close();
 process.exit(failed ? 1 : 0);

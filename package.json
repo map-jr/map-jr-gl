@@ -1,5 +1,5 @@
 {
-  "name": "tessera-map",
+  "name": "map-jr-gl",
   "version": "1.0.0",
   "description": "A small vector map renderer for the web with worker rendering, server rendering and canvas markers; reads MapLibre styles.",
   "scripts": {
@@ -44,20 +44,20 @@
   "exports": {
     ".": {
       "types": "./dist/types/index.d.ts",
-      "import": "./dist/tessera.js"
+      "import": "./dist/map-jr-gl.js"
     },
     "./standalone": {
       "types": "./dist/types/index.d.ts",
-      "import": "./dist/tessera-standalone.js"
+      "import": "./dist/map-jr-gl-standalone.js"
     },
     "./server": {
       "types": "./dist/types/server.d.ts",
       "import": "./dist/server.js"
     },
-    "./worker": "./dist/tessera-worker.js",
+    "./worker": "./dist/map-jr-gl-worker.js",
     "./package.json": "./package.json"
   },
-  "module": "./dist/tessera.js",
+  "module": "./dist/map-jr-gl.js",
   "types": "./dist/types/index.d.ts",
   "files": [
     "dist",

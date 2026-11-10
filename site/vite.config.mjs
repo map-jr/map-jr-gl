@@ -7,6 +7,6 @@ const root = path.dirname(new URL(import.meta.url).pathname);
 export default defineConfig({
     root,
     base: './', // works from any path, e.g. https://<user>.github.io/<repository>/
-    resolve: {alias: {'tessera-map': path.join(root, '../dist/tessera.js')}},
+    resolve: {alias: {'map-jr-gl': path.join(root, '../dist/map-jr-gl.js')}},
     build: {outDir: path.join(root, '../site-dist'), emptyOutDir: true, target: 'es2022'},
 });

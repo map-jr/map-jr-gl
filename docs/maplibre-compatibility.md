@@ -24,7 +24,7 @@ The [status table](../README.md#status) gives the current test results.
 | `queryElevation` | Gives the elevation at a position from a `raster-dem` source. |
 | Contour source | `type: 'contour'` makes contour lines from an elevation source. See [Terrain and elevation](terrain-and-elevation.md). |
 | PMTiles | A source address that starts with `pmtiles://` reads a PMTiles archive. No plugin is necessary. |
-| Changes for the server in the style | `metadata["tessera:ssr"]` on a layer changes that layer only on the server. |
+| Changes for the server in the style | `metadata["map-jr:ssr"]` on a layer changes that layer only on the server. |
 | Icons made when necessary | `setMissingStyleImageResolver` supplies an image for a name that the sprite does not contain. |
 | Frame data | The `stats` event gives the frames per second and the work for each frame. |
 | Controls without a CSS file | The library adds the styles for its controls. You change the colours with `--map-control-*` custom properties. |
@@ -52,6 +52,7 @@ The [status table](../README.md#status) gives the current test results.
 | Touch gestures | You can configure each gesture. | The same gestures. They are always on. |
 | Expressions | Checks the types. | Does not check the types. An expression that is not correct can give no error. |
 | Style validation | Reports errors in the style. | Does not validate. It writes a warning for each layer or property that it cannot draw. |
+| CSS class names | `maplibregl-*` | `map-jr-*`. Each element also has the `maplibregl-*` name, thus stylesheets and plugins for MapLibre GL JS continue to work. A control from a plugin gets the `map-jr-*` names when you add it. |
 | Plugins | | A plugin that only uses public methods usually works. A plugin that reads `map.style` or `map.painter` does not. |
 
 ## What is not available

@@ -29,14 +29,14 @@ async function tile(z, x, y) {
 }
 
 const page = (body, head = '') => `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Tessera demo</title>${head}<style>html,body{margin:0;height:100%;font-family:system-ui,sans-serif}#map{position:absolute;inset:0}
+<title>Map Jr. GL demo</title>${head}<style>html,body{margin:0;height:100%;font-family:system-ui,sans-serif}#map{position:absolute;inset:0}
 #hud{position:absolute;left:8px;top:8px;z-index:2;background:#fff;padding:6px 10px;border-radius:6px;font-size:12px;box-shadow:0 1px 4px #0003}</style></head>
 <body>${body}</body></html>`;
 
 const client = (q) => `<script type="module">
 // ?standalone loads the single-file build (worker embedded); ?from=<origin> loads the library from another origin, as a CDN would serve it.
 const params = new URLSearchParams(location.search);
-const {Map, NavigationControl, ScaleControl} = await import((params.get('from') ?? '') + (params.has('standalone') ? '/dist/tessera-standalone.js' : '/dist/tessera.js'));
+const {Map, NavigationControl, ScaleControl} = await import((params.get('from') ?? '') + (params.has('standalone') ? '/dist/map-jr-gl-standalone.js' : '/dist/map-jr-gl.js'));
 import {markers, view, photos, manyMarkers} from '/demo/markers.mjs';
 import {shield} from '/demo/shields.mjs';
 const q = new URLSearchParams(location.search);
@@ -120,7 +120,7 @@ http.createServer(async (req, res) => {
             const preload = tiles.map(u => `<link rel="preload" as="fetch" crossorigin href="${u}">`).join('');
             // ?image swaps the inline SVG for a server-rendered JPEG: a fixed payload however dense the data is.
             const first = url.searchParams.has('image')
-                ? `<img data-tessera-ssr alt="" src="/map.jpg?${url.searchParams}&w=${width}&h=${height}" style="position:absolute;inset:0;width:100%;height:100%">` : svg;
+                ? `<img data-map-jr-ssr alt="" src="/map.jpg?${url.searchParams}&w=${width}&h=${height}" style="position:absolute;inset:0;width:100%;height:100%">` : svg;
             const frame = `<div id="map" style="position:relative;width:${width}px;height:${height}px;inset:auto">${first}</div><div id="hud">server render ${ms} ms, ${(svg.length / 1024).toFixed(0)} KB SVG</div>`;
             // /static shows the server output alone; /ssr also loads the client, which takes over the same element.
             return send(200, 'text/html', page(frame + (url.pathname === '/ssr' ? client() : ''), url.pathname === '/ssr' ? preload : ''));

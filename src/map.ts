@@ -6,7 +6,7 @@ import type {TileBackend} from './tiles.ts';
 import {acquireTileWorkers, createWorker, workerReady, type LoadOptions} from './loader.ts';
 import {anchorOffset, resolveVariants, sizedSVG, type MarkerInput, type MarkerLayerOptions} from './markers.ts';
 import {DEFAULT_FONT} from './text.ts';
-import {AttributionControl, CONTROL_CSS, type Control, type ControlPosition} from './controls.ts';
+import {AttributionControl, CONTROL_CSS, adoptClasses, cls, type Control, type ControlPosition} from './controls.ts';
 import {Popup, type PopupOptions} from './overlays.ts';
 import {CollisionGrid} from './collision.ts';
 
@@ -187,7 +187,7 @@ export class Map {
         const sc = this.rawStyle;
         this.tr.set(o.center === undefined ? sc.center : undefined, o.zoom === undefined ? sc.zoom : undefined, o.bearing === undefined ? sc.bearing : undefined, o.pitch === undefined ? sc.pitch : undefined);
         this.style = await resolveStyle(this.rawStyle, fetch, this.styleBase);
-        if (this.style.unsupported.length) console.warn('[tessera] Skipping unsupported layer types: ' + this.style.unsupported.join(', '));
+        if (this.style.unsupported.length) console.warn('[map-jr-gl] Skipping unsupported layer types: ' + this.style.unsupported.join(', '));
         const tr = this.tr;
         const engineOptions = {
             style: this.style, width: tr.width, height: tr.height, dpr: this.dpr, fontFamily: o.fontFamily ?? DEFAULT_FONT, fonts: o.fonts,
@@ -202,7 +202,7 @@ export class Map {
             this.tilePool = await acquireTileWorkers(o);
             ports = this.tilePool.connect();
         } catch (err) {
-            console.warn(`[tessera] Workers are unavailable (${(err as Error).message}); running on the main thread. ` +
+            console.warn(`[map-jr-gl] Workers are unavailable (${(err as Error).message}); running on the main thread. ` +
                 'If the worker file is not next to the library, pass `workerUrl` or `createWorker`, or use the standalone build.');
         }
 
@@ -218,7 +218,7 @@ export class Map {
             w.onmessage = e => {
                 if (e.data.type !== 'fatal') return this.onEngineEvent(e.data);
                 // The worker could not create a WebGL2 context. A transferred canvas cannot be taken back, so swap in a new one.
-                console.warn('[tessera] Worker rendering unavailable, using the main thread: ' + e.data.message);
+                console.warn('[map-jr-gl] Worker rendering unavailable, using the main thread: ' + e.data.message);
                 const fresh = this.canvas.cloneNode() as HTMLCanvasElement;
                 this.canvas.replaceWith(fresh);
                 for (const fn of this.inputCleanup.splice(0)) fn();
@@ -292,7 +292,7 @@ export class Map {
             this.tilesLoaded = true;
             if (!this.isLoaded) {
                 this.isLoaded = true;
-                this.container.querySelector('[data-tessera-ssr]')?.remove();
+                this.container.querySelector('[data-map-jr-ssr]')?.remove();
                 this.fire('load');
             }
             this.fire('idle');
@@ -373,7 +373,7 @@ export class Map {
     /** Dispatches an event to listeners. Public so controls and plugins can raise their own. */
     fire(type: string, data: Record<string, unknown> = {}) {
         const list = this.listeners[type];
-        if (type === 'error' && !list?.length) console.error('[tessera]', data.error);
+        if (type === 'error' && !list?.length) console.error('[map-jr-gl]', data.error);
         if (list) for (const fn of [...list]) fn({type, target: this, ...data});
         if ((type === 'click' || type === 'mousemove') && this.layerListeners.length && data.point) this.dispatchLayerEvents(type, data).catch(error => this.fire('error', {error}));
     }
@@ -617,17 +617,18 @@ export class Map {
     private controls = new globalThis.Map<Control, HTMLElement>();
     addControl(control: Control, position?: ControlPosition) {
         const pos = position ?? control.getDefaultPosition?.() ?? 'top-right';
-        if (!document.getElementById('tessera-control-css')) {
-            document.head.appendChild(Object.assign(document.createElement('style'), {id: 'tessera-control-css', textContent: CONTROL_CSS}));
+        if (!document.getElementById('map-jr-control-css')) {
+            document.head.appendChild(Object.assign(document.createElement('style'), {id: 'map-jr-control-css', textContent: CONTROL_CSS}));
         }
         let corner = this.corners[pos];
         if (!corner) {
             corner = this.corners[pos] = document.createElement('div');
-            corner.className = 'maplibregl-ctrl-' + pos;
+            corner.className = cls('ctrl-' + pos);
             this.container.appendChild(corner);
             this.cleanup.push(() => corner!.remove());
         }
         const el = control.onAdd(this);
+        adoptClasses(el); // a control written for MapLibre GL JS gets this library's styles
         this.controls.set(control, el);
         corner.appendChild(el);
         return this;

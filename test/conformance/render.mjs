@@ -55,8 +55,8 @@ async function worker(queue) {
     const page = await context.newPage();
     if (process.env.RENDER_DEBUG) { page.on('response', r => { if (r.status() !== 200) console.log('HTTP', r.status(), r.url()); }); page.on('requestfailed', r => console.log('request failed', r.url(), r.failure()?.errorText)); page.on('console', m => console.log('console', m.text().slice(0, 300))); page.on('pageerror', e => console.log('pageerror', e.message.slice(0, 300))); }
     await page.goto(origin + '/');
-    await page.addScriptTag({type: 'module', content: `import * as t from '/dist/tessera.js'; window.tessera = t;`});
-    await page.waitForFunction(() => window.tessera);
+    await page.addScriptTag({type: 'module', content: `import * as t from '/dist/map-jr-gl.js'; window.mapjr = t;`});
+    await page.waitForFunction(() => window.mapjr);
     for (let id; (id = queue.shift());) {
         const style = JSON.parse(readFileSync(path.join(testsDir, id, 'style.json'), 'utf8').replaceAll('local://', origin + '/')), meta = style.metadata?.test ?? {};
         style['font-faces'] = {...fontFaces, ...style['font-faces']};
@@ -72,7 +72,7 @@ async function worker(queue) {
                 const el = document.getElementById('map');
                 Object.assign(el.style, {width: width + 'px', height: height + 'px', position: 'relative'});
                 const errors = [];
-                const map = window.map = new window.tessera.Map({container: el, style, renderer: 'main', attributionControl: false, interactive: false, tileWorkers: 1});
+                const map = window.map = new window.mapjr.Map({container: el, style, renderer: 'main', attributionControl: false, interactive: false, tileWorkers: 1});
                 map.on('error', e => errors.push(String(e.error?.message ?? e.error)));
                 await Promise.race([new Promise(r => map.once('idle', r)), new Promise((_, rej) => setTimeout(() => rej(new Error('timed out' + (errors.length ? ': ' + errors[0] : ''))), 8000))]);
                 await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));

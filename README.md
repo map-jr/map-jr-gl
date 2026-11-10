@@ -1,4 +1,4 @@
-# tessera-map
+# Map Jr. GL
 
 A small, fast map library for the web. It reads MapLibre styles and has an API that is almost the same as
 MapLibre GL JS.
@@ -62,8 +62,8 @@ pnpm build
 The build writes the library to the `dist` folder. Then use one of these methods:
 
 - **With a bundler (Vite, webpack, Rollup, Parcel):** add the folder to your project as a dependency
-  (`pnpm add ../map`). Then import from `tessera-map`.
-- **Without a bundler:** copy the `dist` folder to your web server. Then import `dist/tessera.js` in a module script.
+  (`pnpm add ../map`). Then import from `map-jr-gl`.
+- **Without a bundler:** copy the `dist` folder to your web server. Then import `dist/map-jr-gl.js` in a module script.
 
 ## Use
 
@@ -72,7 +72,7 @@ The build writes the library to the `dist` folder. Then use one of these methods
 ```html
 <div id="map" style="height: 400px"></div>
 <script type="module">
-  import {Map, NavigationControl} from 'tessera-map';
+  import {Map, NavigationControl} from 'map-jr-gl';
 
   const map = new Map({
     container: 'map',
@@ -94,7 +94,7 @@ No CSS file is necessary. The library adds the styles for its controls.
 
    ```js
    // import maplibregl from 'maplibre-gl';
-   import * as maplibregl from 'tessera-map';
+   import * as maplibregl from 'map-jr-gl';
    ```
 
 2. Remove the import of `maplibre-gl.css`.
@@ -171,7 +171,7 @@ not on the screen.
 ### Draw the first picture on the server
 
 ```js
-import {renderToSVG} from 'tessera-map/server';
+import {renderToSVG} from 'map-jr-gl/server';
 
 const {svg} = await renderToSVG({
   style: 'https://tiles.openfreemap.org/styles/liberty',
@@ -203,8 +203,8 @@ The OSM Americana shield library works with this library without changes. The ga
 
 The default configuration needs no settings.
 
-- The page loads `tessera.js`. This file is small.
-- The library starts a worker from `tessera-worker.js`. It finds this file adjacent to `tessera.js`. Bundlers copy
+- The page loads `map-jr-gl.js`. This file is small.
+- The library starts a worker from `map-jr-gl-worker.js`. It finds this file adjacent to `map-jr-gl.js`. Bundlers copy
   the file automatically.
 - If a worker cannot start, the library draws on the main thread and writes a warning. A map always appears.
 

@@ -113,7 +113,8 @@ for (const mode of ['main', 'worker']) {
     const ctl = await page.evaluate(() => {
         const control = {onAdd(map) { this.el = Object.assign(document.createElement('div'), {className: 'maplibregl-ctrl', id: 'third-party', textContent: 'z' + map.getZoom().toFixed(0)}); return this.el; }, onRemove() { this.el.remove(); }};
         window.map.addControl(control, 'top-left');
-        const added = !!document.querySelector('.maplibregl-ctrl-top-left #third-party');
+        // Found by MapLibre's class names (kept for compatibility), and given this library's own so its styles apply.
+        const added = !!document.querySelector('.maplibregl-ctrl-top-left #third-party') && !!document.querySelector('.map-jr-ctrl-top-left #third-party.map-jr-ctrl');
         window.map.removeControl(control);
         return {added, removed: !document.getElementById('third-party'), zoom: window.map.getZoom()};
     });
@@ -224,7 +225,7 @@ for (const mode of ['main', 'worker']) {
 
     // DOM marker and popup with MapLibre's API.
     const dom = await page.evaluate(async () => {
-        const {Marker, Popup} = await import('/dist/tessera.js'), m = window.map;
+        const {Marker, Popup} = await import('/dist/map-jr-gl.js'), m = window.map;
         const marker = new Marker({color: '#c00'}).setLngLat([-74.0065, 40.7085]).setPopup(new Popup({offset: 30}).setText('Hello')).addTo(m);
         marker.togglePopup();
         const tip = marker.getElement().getBoundingClientRect(), at = m.project([-74.0065, 40.7085]);
@@ -328,13 +329,13 @@ for (const mode of ['main', 'worker']) {
 
 // Hydration: server markup is visible before the client runs, then replaced once the canvas shows the same view.
 const page = await browser.newPage({viewport: {width: 1000, height: 700}});
-await page.route('**/dist/tessera.js', async r => { await new Promise(res => setTimeout(res, 800)); r.continue(); });
+await page.route('**/dist/map-jr-gl.js', async r => { await new Promise(res => setTimeout(res, 800)); r.continue(); });
 await page.goto('http://localhost:8080/ssr', {waitUntil: 'domcontentloaded'});
-check('[ssr] server SVG is in the initial HTML', await page.evaluate(() => !!document.querySelector('#map > svg[data-tessera-ssr]')));
+check('[ssr] server SVG is in the initial HTML', await page.evaluate(() => !!document.querySelector('#map > svg[data-map-jr-ssr]')));
 await page.screenshot({path: `${out}/ssr-before.png`});
 await page.waitForFunction(() => window.mapLoaded, null, {timeout: 30000});
 await page.waitForTimeout(300);
-check('[ssr] SVG removed after the client takes over', await page.evaluate(() => !document.querySelector('[data-tessera-ssr]') && !!document.querySelector('#map > canvas')));
+check('[ssr] SVG removed after the client takes over', await page.evaluate(() => !document.querySelector('[data-map-jr-ssr]') && !!document.querySelector('#map > canvas')));
 await page.screenshot({path: `${out}/ssr-after.png`});
 const preloads = await page.evaluate(() => document.querySelectorAll('link[rel=preload]').length);
 check('[ssr] tile preload links emitted', preloads > 0, `${preloads} links`);

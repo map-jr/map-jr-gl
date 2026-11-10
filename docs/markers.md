@@ -92,7 +92,7 @@ layer with `setData`. Do this again when the `moveend` event occurs.
 These classes have the API of MapLibre GL JS.
 
 ```js
-import {Marker, Popup} from 'tessera-map';
+import {Marker, Popup} from 'map-jr-gl';
 
 const marker = new Marker({draggable: true})
   .setLngLat([-74.006, 40.7128])

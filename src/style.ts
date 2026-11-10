@@ -59,7 +59,7 @@ export interface LayerJSON {
 }
 
 /**
- * Per-layer adjustments for server-rendered output, read from `metadata["tessera:ssr"]` in the style. `metadata` is the
+ * Per-layer adjustments for server-rendered output, read from `metadata["map-jr:ssr"]` in the style. `metadata` is the
  * style specification's extension point, so a style carrying these stays valid for MapLibre, which ignores them.
  */
 export interface SSROverrides {
@@ -74,7 +74,7 @@ export interface SSROverrides {
     /** Drop features smaller than this many pixels (default 0.8). */
     minSize?: number;
 }
-export const SSR_KEY = 'tessera:ssr';
+export const SSR_KEY = 'map-jr:ssr';
 
 /** Applies each layer's server overrides, returning the style layers to render on the server. */
 export function applySSROverrides(layers: LayerJSON[]): LayerJSON[] {
@@ -84,7 +84,7 @@ export function applySSROverrides(layers: LayerJSON[]): LayerJSON[] {
         if (!o) { out.push(l); continue; }
         if (o.hidden) continue;
         out.push({...l, minzoom: o.minzoom ?? l.minzoom, maxzoom: o.maxzoom ?? l.maxzoom, paint: {...l.paint, ...o.paint}, layout: {...l.layout, ...o.layout},
-            metadata: {...l.metadata, 'tessera:and-filter': o.filter}});
+            metadata: {...l.metadata, 'map-jr:and-filter': o.filter}});
     }
     return out;
 }
@@ -104,7 +104,7 @@ export function compileLayer(l: LayerJSON): CompiledLayer | null {
         p[k] = compileProp(l.paint?.[name] ?? l.layout?.[name], kind, def);
     }
     // A server-only extra filter is compiled separately, so it can be an expression even when the layer's own filter is legacy syntax.
-    const own = compileFilter(l.filter), extra = compileFilter(l.metadata?.['tessera:and-filter']);
+    const own = compileFilter(l.filter), extra = compileFilter(l.metadata?.['map-jr:and-filter']);
     return {
         ssr: l.metadata?.[SSR_KEY],
         id: l.id, type: l.type, source: l.source, sourceLayer: l['source-layer'],

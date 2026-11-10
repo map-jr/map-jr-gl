@@ -160,8 +160,8 @@ test('placement: collision grid and tile fallback', () => {
 
 test('style: server overrides hide layers, add filters and adjust detail', () => {
     const out = applySSROverrides([
-        {id: 'a', type: 'line', metadata: {'tessera:ssr': {hidden: true}}},
-        {id: 'b', type: 'line', filter: ['==', 'class', 'x'], paint: {'line-width': 1}, metadata: {'tessera:ssr': {filter: ['>', ['get', 'rank'], 2], paint: {'line-width': 3}, minSize: 5}}},
+        {id: 'a', type: 'line', metadata: {'map-jr:ssr': {hidden: true}}},
+        {id: 'b', type: 'line', filter: ['==', 'class', 'x'], paint: {'line-width': 1}, metadata: {'map-jr:ssr': {filter: ['>', ['get', 'rank'], 2], paint: {'line-width': 3}, minSize: 5}}},
         {id: 'c', type: 'fill'},
     ]);
     assert.deepEqual(out.map(l => l.id), ['b', 'c']);
@@ -184,7 +184,7 @@ test('server: renders a tile to SVG offline, with generated icons and overrides'
             {id: 'bg', type: 'background', paint: {'background-color': '#eee'}},
             {id: 'water', type: 'fill', source: 's', 'source-layer': 'water', paint: {'fill-color': '#0af'}},
             {id: 'roads', type: 'line', source: 's', 'source-layer': 'transportation', paint: {'line-color': '#fff', 'line-width': 2, 'line-dasharray': [2, 1]}},
-            {id: 'hidden', type: 'fill', source: 's', 'source-layer': 'building', paint: {'fill-color': '#123456'}, metadata: {'tessera:ssr': {hidden: true}}},
+            {id: 'hidden', type: 'fill', source: 's', 'source-layer': 'building', paint: {'fill-color': '#123456'}, metadata: {'map-jr:ssr': {hidden: true}}},
             {id: 'shields', type: 'symbol', source: 's', 'source-layer': 'transportation_name', filter: ['has', 'ref'], layout: {'icon-image': ['concat', 'ref-', ['get', 'ref']], 'symbol-placement': 'line'}},
             {id: 'names', type: 'symbol', source: 's', 'source-layer': 'transportation_name', layout: {'text-field': '{name}', 'symbol-placement': 'line'}, paint: {'text-halo-color': '#fff', 'text-halo-width': 1}},
         ],

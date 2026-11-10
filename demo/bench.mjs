@@ -1,5 +1,5 @@
 // In-browser benchmark: this library against MapLibre GL JS on the visitor's own GPU. See bench.html.
-import * as tessera from '/dist/tessera.js';
+import * as mapjr from '/dist/map-jr-gl.js';
 import * as maplibre from '/ml/maplibre-gl.mjs';
 import {manyMarkers} from '/demo/markers.mjs';
 
@@ -63,7 +63,7 @@ async function run(s) {
         map = new maplibre.Map({container: el, style, ...view, attributionControl: false});
         map.on('render', frame);
     } else {
-        map = new tessera.Map({container: el, style, ...view, renderer: s.lib, attributionControl: false});
+        map = new mapjr.Map({container: el, style, ...view, renderer: s.lib, attributionControl: false});
         map.on('move', frame); // one camera report per frame drawn, whichever thread draws it
     }
     await new Promise(r => map.once('idle', r));

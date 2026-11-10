@@ -10,7 +10,7 @@ It works on Node.js, on Cloudflare Workers, and in other JavaScript environments
 ## Make an SVG
 
 ```js
-import {renderToSVG} from 'tessera-map/server';
+import {renderToSVG} from 'map-jr-gl/server';
 
 const {svg, tiles} = await renderToSVG({
   style: 'https://tiles.openfreemap.org/styles/liberty',
@@ -52,7 +52,7 @@ is the Takumi renderer. There is one version for Node.js and one version for Web
 On Node.js:
 
 ```js
-import {renderToImage} from 'tessera-map/server';
+import {renderToImage} from 'map-jr-gl/server';
 import {Renderer} from '@takumi-rs/core';
 
 const {image, contentType} = await renderToImage({
@@ -66,7 +66,7 @@ const {image, contentType} = await renderToImage({
 On Cloudflare Workers:
 
 ```js
-import {renderToImage} from 'tessera-map/server';
+import {renderToImage} from 'map-jr-gl/server';
 import init, {Renderer} from '@takumi-rs/wasm';
 import wasm from '@takumi-rs/wasm/takumi_wasm_bg.wasm';
 
@@ -134,7 +134,7 @@ MapLibre GL JS ignores them, thus the style stays correct for the two libraries.
   "source": "omt",
   "source-layer": "building",
   "metadata": {
-    "tessera:ssr": {"hidden": true}
+    "map-jr:ssr": {"hidden": true}
   }
 }
 ```

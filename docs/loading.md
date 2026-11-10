@@ -7,19 +7,19 @@ This document tells you how the library loads its files and how to change that.
 Import the library. No settings are necessary.
 
 ```js
-import {Map} from 'tessera-map';
+import {Map} from 'map-jr-gl';
 
 const map = new Map({container: 'map', style: 'https://example.com/style.json', center: [-74, 40.7], zoom: 12});
 ```
 
 The library then does these steps:
 
-1. The page loads `tessera.js`. This file is small because it does not contain the renderer.
-2. The library starts a worker from `tessera-worker.js`. The worker contains the renderer.
+1. The page loads `map-jr-gl.js`. This file is small because it does not contain the renderer.
+2. The library starts a worker from `map-jr-gl-worker.js`. The worker contains the renderer.
 3. The worker draws the map on the canvas. The page thread only sends commands, for example "move" or "zoom".
 
-The library finds `tessera-worker.js` adjacent to `tessera.js`. The code for this is
-`new URL('./tessera-worker.js', import.meta.url)`. Vite, webpack 5, Rollup and Parcel know this code. They copy the
+The library finds `map-jr-gl-worker.js` adjacent to `map-jr-gl.js`. The code for this is
+`new URL('./map-jr-gl-worker.js', import.meta.url)`. Vite, webpack 5, Rollup and Parcel know this code. They copy the
 worker file to your build automatically.
 
 All maps on a page use the same group of workers to read tiles.
@@ -28,10 +28,10 @@ All maps on a page use the same group of workers to read tiles.
 
 | File | What loads it | When |
 |---|---|---|
-| `tessera.js` and one shared part | The page | Always |
-| `tessera-worker.js` | A worker | Always, at the same time as the page script |
-| `tessera-engine-entry-*.js` | The page | Only when the map draws on the main thread |
-| `tessera-standalone.js` | The page | Only when you import the one-file build |
+| `map-jr-gl.js` and one shared part | The page | Always |
+| `map-jr-gl-worker.js` | A worker | Always, at the same time as the page script |
+| `map-jr-gl-engine-entry-*.js` | The page | Only when the map draws on the main thread |
+| `map-jr-gl-standalone.js` | The page | Only when you import the one-file build |
 
 The [status table](../README.md#status) gives the current sizes.
 
@@ -50,10 +50,10 @@ a warning to the console that tells you what to change. A map always appears.
 
 | You want to | Do this |
 |---|---|
-| Put the worker file at a different address | `new Map({workerUrl: '/assets/tessera-worker.js'})` |
-| Use the worker syntax of your bundler | `new Map({createWorker: () => new Worker(new URL('tessera-map/worker', import.meta.url))})` |
+| Put the worker file at a different address | `new Map({workerUrl: '/assets/map-jr-gl-worker.js'})` |
+| Use the worker syntax of your bundler | `new Map({createWorker: () => new Worker(new URL('map-jr-gl/worker', import.meta.url))})` |
 | Use the same settings for all maps | Call `configure({workerUrl, createWorker, tileWorkers})` one time at the start |
-| Use one file only | `import {Map} from 'tessera-map/standalone'` |
+| Use one file only | `import {Map} from 'map-jr-gl/standalone'` |
 | Draw on the main thread | `new Map({renderer: 'main'})` |
 | Change the number of tile workers | `new Map({tileWorkers: 2})` |
 
@@ -64,7 +64,7 @@ widget or a sandbox. It is larger, and the page must load all of it before the m
 
 ### A content delivery network
 
-A browser does not start a worker from a different origin. When `tessera.js` comes from a different origin, the
+A browser does not start a worker from a different origin. When `map-jr-gl.js` comes from a different origin, the
 library starts the worker through a small script on your origin. No setting is necessary.
 
 If your page has a strict Content Security Policy, add `worker-src blob:` to it.
@@ -76,7 +76,7 @@ Vite configuration:
 
 ```js
 export default {
-  optimizeDeps: {exclude: ['tessera-map']},
+  optimizeDeps: {exclude: ['map-jr-gl']},
 };
 ```
 

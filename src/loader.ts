@@ -5,7 +5,7 @@
 declare const __WORKER_SRC__: string; // the worker's source, embedded only in the standalone build
 
 export interface LoadOptions {
-    /** URL of the worker script (tessera-worker.js). Defaults to the file beside the library's own module. */
+    /** URL of the worker script (map-jr-gl-worker.js). Defaults to the file beside the library's own module. */
     workerUrl?: string | URL;
     /**
      * Creates a worker yourself, for full control: bundler-specific imports (`new Worker(new URL(...), ...)`,
@@ -32,7 +32,7 @@ export function createWorker(o: LoadOptions = {}): Worker {
     }
     // Bundlers that understand this pattern copy the worker file and rewrite the URL; loaded directly, it is simply the sibling file.
     // (The marker comment stops this library's own build from rewriting the line; it is not in the published file.)
-    url ??= new URL(/* @vite-ignore */ './tessera-worker.js', import.meta.url);
+    url ??= new URL(/* @vite-ignore */ './map-jr-gl-worker.js', import.meta.url);
     const abs = new URL(url, location.href);
     if (abs.origin === location.origin || abs.protocol === 'blob:' || abs.protocol === 'data:') return new Worker(abs);
     // Browsers refuse to start a worker from another origin (a CDN, say), but a same-origin stub may import one.

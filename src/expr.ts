@@ -65,7 +65,7 @@ function parseColorUncached(s: string): RGBA | null {
 const GEOM = ['Unknown', 'Point', 'LineString', 'Polygon'];
 const warned = new Set<string>();
 function warnOnce(msg: string) {
-    if (!warned.has(msg)) { warned.add(msg); console.warn('[tessera] ' + msg); }
+    if (!warned.has(msg)) { warned.add(msg); console.warn('[map-jr-gl] ' + msg); }
 }
 
 function lerp(a: any, b: any, t: number): any {

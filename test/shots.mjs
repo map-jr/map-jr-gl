@@ -24,7 +24,7 @@ for (const [name, url] of Object.entries(pages)) {
     await page.goto('http://localhost:8080' + url);
     if (name !== 'static') await page.waitForFunction(() => window.mapLoaded, null, {timeout: 30000}).catch(() => logs.push('TIMEOUT waiting for load'));
     await page.waitForTimeout(400);
-    const info = name === 'static' ? {} : await page.evaluate(() => ({renderer: window.map?.renderer, errors: window.mapErrors, ssrLeft: !!document.querySelector('[data-tessera-ssr]')}));
+    const info = name === 'static' ? {} : await page.evaluate(() => ({renderer: window.map?.renderer, errors: window.mapErrors, ssrLeft: !!document.querySelector('[data-map-jr-ssr]')}));
     await page.screenshot({path: `${out}/${name}.png`});
     console.log(name, `${Date.now() - t0}ms`, JSON.stringify(info), logs.slice(0, 8).join(' | '));
     await page.close();

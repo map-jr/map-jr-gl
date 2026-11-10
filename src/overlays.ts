@@ -1,5 +1,6 @@
 import {toLngLat, type LngLatLike} from './geo.ts';
 import type {Map} from './map.ts';
+import {cls} from './controls.ts';
 
 /**
  * DOM overlays with MapLibre's `Marker` and `Popup` API, for the cases where real HTML is wanted (rich content,
@@ -76,16 +77,16 @@ export class Popup extends Overlay {
     constructor(private options: PopupOptions = {}) {
         super();
         this.anchor = options.anchor ?? 'bottom';
-        this.el.className = `maplibregl-popup ${options.className ?? ''}`.trim();
+        this.el.className = `${cls('popup')} ${options.className ?? ''}`.trim();
         this.el.style.cssText = 'z-index:3;pointer-events:none';
         const box = this.box;
-        box.className = 'maplibregl-popup-content';
+        box.className = cls('popup-content');
         box.style.cssText = `pointer-events:auto;position:relative;background:var(--map-popup-background,#fff);color:var(--map-popup-color,#222);border-radius:8px;padding:10px 12px;font:13px/1.4 system-ui,sans-serif;box-shadow:0 2px 12px rgba(0,0,0,.22);max-width:${options.maxWidth ?? '240px'};margin:8px`;
         box.appendChild(this.content);
-        this.tip.className = 'maplibregl-popup-tip';
+        this.tip.className = cls('popup-tip');
         box.appendChild(this.tip);
         if (options.closeButton !== false) {
-            const b = Object.assign(document.createElement('button'), {type: 'button', textContent: '\u00d7', className: 'maplibregl-popup-close-button'});
+            const b = Object.assign(document.createElement('button'), {type: 'button', textContent: '\u00d7', className: cls('popup-close-button')});
             b.setAttribute('aria-label', 'Close popup');
             b.style.cssText = 'position:absolute;top:0;right:2px;border:0;background:none;font-size:18px;line-height:22px;cursor:pointer;color:inherit;padding:0 4px';
             b.addEventListener('click', () => this.remove());
@@ -179,7 +180,7 @@ export class Marker extends Overlay {
             this.el.innerHTML = `<svg width="${27 * s}" height="${41 * s}" viewBox="0 0 27 41" style="display:block;filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))">` +
                 `<path d="M13.500 0C6 0 0 6 0 13.500 0 23 13.500 41 13.500 41S27 23 27 13.500C27 6 21 0 13.500 0z" fill="${options.color ?? '#3fb1ce'}"/><circle cx="13.500" cy="13.500" r="5.500" fill="#fff"/></svg>`;
         }
-        this.el.classList.add('maplibregl-marker');
+        this.el.classList.add('map-jr-marker', 'maplibregl-marker');
         this.el.style.zIndex = '3';
         this.el.addEventListener('click', e => { if (this.popup) { e.stopPropagation(); this.togglePopup(); } });
         this.el.addEventListener('pointerdown', e => this.startDrag(e));

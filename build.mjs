@@ -14,18 +14,18 @@ const run = (options, define = {__WORKER_SRC__: '""'}) => build({
 
 // The worker: tile parsing, and the whole rendering engine when a map renders off the main thread. A classic script,
 // so it can be started from a blob or another origin.
-await run({lib: {entry: 'src/worker.ts', formats: ['iife'], name: 'TesseraWorker', fileName: () => 'tessera-worker.js'}});
-const workerSrc = readFileSync('dist/tessera-worker.js', 'utf8');
+await run({lib: {entry: 'src/worker.ts', formats: ['iife'], name: 'MapJrWorker', fileName: () => 'map-jr-gl-worker.js'}});
+const workerSrc = readFileSync('dist/map-jr-gl-worker.js', 'utf8');
 
-// The default build. The page loads tessera.js, which is small; it finds tessera-worker.js beside itself, and the
+// The default build. The page loads map-jr-gl.js, which is small; it finds map-jr-gl-worker.js beside itself, and the
 // engine for main-thread rendering is a separate chunk that is only fetched if that path is taken.
 const esm = (input, extra = {}) => ({
-    rollupOptions: {input, preserveEntrySignatures: 'strict', output: {format: 'es', entryFileNames: '[name].js', chunkFileNames: 'tessera-[name]-[hash].js', ...extra}},
+    rollupOptions: {input, preserveEntrySignatures: 'strict', output: {format: 'es', entryFileNames: '[name].js', chunkFileNames: 'map-jr-gl-[name]-[hash].js', ...extra}},
 });
-await run(esm({tessera: 'src/index.ts'}));
+await run(esm({'map-jr-gl': 'src/index.ts'}));
 
 // Standalone: one self-contained file with the worker embedded, for places where shipping several files is awkward.
-await run(esm({'tessera-standalone': 'src/index.ts'}, {inlineDynamicImports: true}), {__WORKER_SRC__: JSON.stringify(workerSrc)});
+await run(esm({'map-jr-gl-standalone': 'src/index.ts'}, {inlineDynamicImports: true}), {__WORKER_SRC__: JSON.stringify(workerSrc)});
 // The server renderer (Node, Cloudflare Workers and other runtimes without a DOM).
 await run(esm({server: 'src/server.ts'}, {inlineDynamicImports: true}));
 
@@ -39,11 +39,11 @@ const withStaticImports = (name, read, seen = new Set()) => {
     return seen;
 };
 const fromDist = name => readFileSync('dist/' + name, 'utf8');
-const upfront = [...withStaticImports('tessera.js', fromDist)];
+const upfront = [...withStaticImports('map-jr-gl.js', fromDist)];
 report('page script, up front (' + upfront.join(' + ') + ')', Buffer.concat(upfront.map(f => readFileSync('dist/' + f))));
-report('tessera-worker.js (loaded in a worker)', readFileSync('dist/tessera-worker.js'));
-for (const f of readdirSync('dist').filter(f => /^tessera-.*-[\w-]{8}\.js$/.test(f))) if (!upfront.includes(f)) report(`${f} (main-thread engine, on demand)`, readFileSync('dist/' + f));
-report('tessera-standalone.js (everything in one file)', readFileSync('dist/tessera-standalone.js'));
+report('map-jr-gl-worker.js (loaded in a worker)', readFileSync('dist/map-jr-gl-worker.js'));
+for (const f of readdirSync('dist').filter(f => /^map-jr-gl-.*-[\w-]{8}\.js$/.test(f))) if (!upfront.includes(f)) report(`${f} (main-thread engine, on demand)`, readFileSync('dist/' + f));
+report('map-jr-gl-standalone.js (everything in one file)', readFileSync('dist/map-jr-gl-standalone.js'));
 report('server.js', readFileSync('dist/server.js'));
 
 if (process.argv.includes('--sizes')) {

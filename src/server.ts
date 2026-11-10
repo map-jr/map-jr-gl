@@ -31,7 +31,7 @@ export interface RenderOptions {
      * Return undefined for names you do not handle. The SVG goes into the output as vector artwork.
      */
     resolveImage?: (name: string) => {svg: string; width: number; height: number} | undefined;
-    /** Set false to ignore the style's `tessera:ssr` layer overrides and render exactly what the client would. */
+    /** Set false to ignore the style's `map-jr:ssr` layer overrides and render exactly what the client would. */
     ssrOverrides?: boolean;
     fetch?: typeof fetch;
     /**
@@ -114,7 +114,7 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
     });
     const svg = renderSVG({
         tr, layers, items, labels, sprite, images, markers: o.markers ?? [], fontFamily: o.fontFamily ?? DEFAULT_FONT,
-        rootAttrs: 'data-tessera-ssr="" style="position:absolute;inset:0;width:100%;height:100%"',
+        rootAttrs: 'data-map-jr-ssr="" style="position:absolute;inset:0;width:100%;height:100%"',
     });
     return {svg, tiles: urls};
 }
@@ -140,7 +140,7 @@ export interface ImageResult { image: Uint8Array; contentType: string; tiles: st
 export async function renderToImage(o: ImageOptions): Promise<ImageResult> {
     const {svg, tiles} = await renderToSVG({inlineImages: true, highDensity: (o.pixelRatio ?? 1) > 1, ...o});
     const format = o.format ?? 'jpeg', ratio = o.pixelRatio ?? 1;
-    const plain = svg.replace(/ data-tessera-ssr="" style="[^"]*"/, '');
+    const plain = svg.replace(/ data-map-jr-ssr="" style="[^"]*"/, '');
     const image = await o.rasteriser.render(`<div style="display:flex;width:${o.width}px;height:${o.height}px">${plain}</div>`, {
         width: o.width * ratio, height: o.height * ratio, format, devicePixelRatio: ratio, // output size is in device pixels
         ...(format === 'png' ? {} : {quality: o.quality ?? 75}),

@@ -92,7 +92,7 @@ const ms = v => v >= 100 ? v.toFixed(0) : v.toFixed(1);
 console.log(`Style: ${STYLE}\n`);
 console.log('| | Download (gzip) | Load to idle | Long tasks during load | Frames in 3 s animation | Main-thread script per frame (median / worst) | Long tasks during animation |');
 console.log('|---|---|---|---|---|---|---|');
-const sizes = {maplibre: `${+gz(path.join(mlDist, 'maplibre-gl.mjs')) + +gz(path.join(mlDist, 'maplibre-gl-worker.mjs'))} KB + ${gz(path.join(mlDist, 'maplibre-gl.css'))} KB CSS`, main: `${gz(path.join(root, 'dist/tessera.js'))} KB`, worker: `${gz(path.join(root, 'dist/tessera.js'))} KB`};
+const sizes = {maplibre: `${+gz(path.join(mlDist, 'maplibre-gl.mjs')) + +gz(path.join(mlDist, 'maplibre-gl-worker.mjs'))} KB + ${gz(path.join(mlDist, 'maplibre-gl.css'))} KB CSS`, main: `${gz(path.join(root, 'dist/map-jr-gl.js'))} KB`, worker: `${gz(path.join(root, 'dist/map-jr-gl.js'))} KB`};
 for (const r of rows) console.log(`| ${name[r.lib]} | ${sizes[r.lib]} | ${ms(r.load)} ms | ${ms(r.loadLong)} ms | ${r.frames} | ${ms(r.script)} / ${ms(r.worst)} ms | ${ms(r.long)} ms |`);
 console.log('\n| Markers | | Time to add | Frames in 3 s animation | Main-thread script per frame (median / worst) | Long tasks during animation |');
 console.log('|---|---|---|---|---|---|');
