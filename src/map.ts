@@ -727,7 +727,8 @@ export class Map {
                         g.rotating = Math.abs(total) * f.dist / 2 > 25;
                     } else this.post({type: 'rotate', delta: -turn * 180 / Math.PI});
                 }
-                g.dist = f.dist; g.angle = f.angle; g.mid = f.mid;
+                // Until the gesture is decided, keep measuring from where it began so no movement is lost.
+                if (g.mode !== 'undecided') { g.dist = f.dist; g.angle = f.angle; g.mid = f.mid; }
             } else if (tapDrag && pointers.size === 1) {
                 // Second tap held and dragged: down zooms in, up zooms out, around where the taps landed.
                 if (moved > 6) { tapDrag.zoomed = true; this.post({type: 'zoom', delta: dy * 0.01, x: tapDrag.x, y: tapDrag.y}); }
