@@ -148,7 +148,11 @@ export class Transform {
     /** `tileSize` shifts the zoom level chosen: 256px tiles are fetched one level deeper than 512px ones. */
     coveringTiles(minzoom: number, maxzoom: number, tileSize = TILE_SIZE, round = false): TileID[] {
         // Image tiles switch level at the half-way point (as MapLibre does) so they are never stretched more than about 1.4x.
-        const z = clamp((round ? Math.round : Math.floor)(this.zoom + Math.log2(TILE_SIZE / tileSize)), minzoom, maxzoom), n = 2 ** z;
+        const want = (round ? Math.round : Math.floor)(this.zoom + Math.log2(TILE_SIZE / tileSize));
+        // Below a source's minimum zoom nothing is drawn (as in MapLibre); shrinking its coarsest tiles would mean
+        // loading ever more of them the further out the map goes.
+        if (want < minzoom) return [];
+        const z = Math.min(want, maxzoom), n = 2 ** z;
         if (this.pitch > 0.5) return this.coveringPitched(z);
         let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
         for (const [px, py] of [[0, 0], [this.width, 0], [0, this.height], [this.width, this.height]]) {

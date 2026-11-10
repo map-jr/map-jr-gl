@@ -369,3 +369,14 @@ test('server: lossless WebP elevation tiles decode to the same pixels as a refer
     assert.deepEqual([px.width, px.height], [512, 512]);
     assert.equal(createHash('sha256').update(px.data).digest('hex'), '99c838ff762322359f7cd2e06a8eb4bec1bd0b6ef02ede07ae09facfe22e956f');
 });
+
+test('tiles: nothing is requested below a source\'s minimum zoom', () => {
+    const tr = new Transform();
+    tr.width = 800; tr.height = 600;
+    tr.set([7.66, 45.98], 8.9, 0);
+    assert.equal(tr.coveringTiles(9, 15).length, 0);
+    tr.set([7.66, 45.98], 9.1, 0);
+    assert.ok(tr.coveringTiles(9, 15).every(t => t.z === 9) && tr.coveringTiles(9, 15).length > 0);
+    tr.set([7.66, 45.98], 3, 0);
+    assert.equal(tr.coveringTiles(9, 15).length, 0);
+});
