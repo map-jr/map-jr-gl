@@ -1,6 +1,7 @@
 import {compileLayer, type CompiledLayer, type LayerJSON} from './style.ts';
 import {buildTile, toGL, type TileGL, type TileIR} from './tile.ts';
 import {queryTile, type QueriedFeature, type TileQuery} from './query.ts';
+import {fetchTile} from './pmtiles.ts';
 
 export interface TileRequest { id: number; source: string; url: string; z: number; overscaled: boolean }
 
@@ -26,10 +27,8 @@ export class TileBuilder {
         const ac = new AbortController();
         this.aborts.set(req.id, ac);
         try {
-            const res = await this.fetchFn(req.url, {signal: ac.signal});
-            if (res.status === 404 || res.status === 204) return {layers: {}, labels: {}};
-            if (!res.ok) throw new Error(`Tile ${req.url}: HTTP ${res.status}`);
-            const bytes = new Uint8Array(await res.arrayBuffer());
+            const bytes = await fetchTile(req.url, this.fetchFn, ac.signal);
+            if (!bytes) return {layers: {}, labels: {}};
             this.remember(req.url, bytes);
             return bytes.length ? buildTile(bytes, req.z, this.bySource.get(req.source) ?? [], req.overscaled) : {layers: {}, labels: {}};
         } finally {
@@ -49,10 +48,9 @@ export class TileBuilder {
     async query(url: string, q: TileQuery): Promise<QueriedFeature[]> {
         let bytes = this.recent.get(url);
         if (!bytes) {
-            const res = await this.fetchFn(url);
-            if (res.status === 404 || res.status === 204) return [];
-            if (!res.ok) throw new Error(`Tile ${url}: HTTP ${res.status}`);
-            bytes = new Uint8Array(await res.arrayBuffer());
+            const fetched = await fetchTile(url, this.fetchFn);
+            if (!fetched) return [];
+            bytes = fetched;
             this.remember(url, bytes);
         }
         return bytes.length ? queryTile(bytes, q) : [];

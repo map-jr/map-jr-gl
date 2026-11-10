@@ -1,4 +1,5 @@
 import {compileFilter, compileProp, type Fn, type Prop, type PropKind} from './expr.ts';
+import {PM_PREFIX, archive} from './pmtiles.ts';
 
 /** Supported properties per layer type: [style-spec name, kind, default]. Anything else in a style is ignored. */
 const SPEC: Record<string, Record<string, [string, PropKind, any]>> = {
@@ -129,14 +130,18 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
     for (const [name, raw] of Object.entries<any>(style.sources ?? {})) {
         if (raw.type !== 'vector' && raw.type !== 'raster' && raw.type !== 'raster-dem') continue;
         let src = raw;
-        if (!src.tiles && src.url) {
+        if (typeof src.url === 'string' && src.url.startsWith(PM_PREFIX)) {
+            // A PMTiles archive: its header supplies the zoom range, and tiles are addressed inside the archive.
+            const at = src.url.slice(PM_PREFIX.length), file = base ? new URL(at, base).href : at, info = await archive(file, fetchFn).info();
+            src = {minzoom: info.minzoom, maxzoom: info.maxzoom, attribution: info.attribution, ...raw, tiles: [`${PM_PREFIX}${file}/{z}/{x}/{y}`]};
+        } else if (!src.tiles && src.url) {
             const url = base ? new URL(src.url, base).href : src.url;
             const res = await fetchFn(url);
             if (!res.ok) throw new Error(`Failed to load source ${url}: ${res.status}`);
             src = {...await res.json(), ...Object.fromEntries(Object.entries(raw).filter(([k]) => k !== 'url'))};
             src.tiles = src.tiles.map((t: string) => decodeURI(new URL(t, url).href));
         } else if (base) {
-            src = {...src, tiles: src.tiles.map((t: string) => decodeURI(new URL(t, base).href))};
+            src = {...src, tiles: src.tiles.map((t: string) => t.startsWith(PM_PREFIX) ? t : decodeURI(new URL(t, base).href))};
         }
         sources[name] = {
             type: raw.type, tiles: src.tiles, minzoom: src.minzoom ?? 0, maxzoom: src.maxzoom ?? (raw.type === 'vector' ? 14 : 22),

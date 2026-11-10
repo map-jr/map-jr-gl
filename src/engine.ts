@@ -5,6 +5,7 @@ import {CollisionGrid, placeLabels, renderItems, type Placed, type RenderItem} f
 import {GlyphAtlas} from './text.ts';
 import {sampleElevation, type QueriedFeature} from './query.ts';
 import type {TileBackend} from './tiles.ts';
+import {fetchTile} from './pmtiles.ts';
 
 export interface CameraOptions { center?: LngLatLike; zoom?: number; bearing?: number; pitch?: number }
 export type {FontSource} from './style.ts';
@@ -309,10 +310,9 @@ export class Engine {
         let pixels = this.dem.get(url);
         if (!pixels) {
             pixels = (async () => {
-                const res = await fetch(url);
-                if (res.status === 404 || res.status === 204) return null;
-                if (!res.ok) throw new Error(`Tile ${url}: HTTP ${res.status}`);
-                const image = await createImageBitmap(await res.blob(), {premultiplyAlpha: 'none', colorSpaceConversion: 'none'});
+                const bytes = await fetchTile(url);
+                if (!bytes) return null;
+                const image = await createImageBitmap(new Blob([bytes as BlobPart]), {premultiplyAlpha: 'none', colorSpaceConversion: 'none'});
                 const canvas = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(image.width, image.height)
                     : Object.assign((globalThis as any).document.createElement('canvas'), {width: image.width, height: image.height});
                 const ctx = canvas.getContext('2d', {willReadFrequently: true});
@@ -412,10 +412,9 @@ export class Engine {
             // Image tiles need no parsing, so the engine fetches and decodes them itself.
             const ac = new AbortController(), dem = src.type === 'raster-dem';
             t.cancel = () => ac.abort();
-            load = fetch(url, {signal: ac.signal}).then(async res => {
-                if (res.status === 404 || res.status === 204) return {labels: {}, batches: {}};
-                if (!res.ok) throw new Error(`Tile ${url}: HTTP ${res.status}`);
-                const image = await createImageBitmap(await res.blob(), dem ? {premultiplyAlpha: 'none', colorSpaceConversion: 'none'} : {});
+            load = fetchTile(url, undefined, ac.signal).then(async bytes => {
+                if (!bytes) return {labels: {}, batches: {}};
+                const image = await createImageBitmap(new Blob([bytes as BlobPart]), dem ? {premultiplyAlpha: 'none', colorSpaceConversion: 'none'} : {});
                 if (this.tiles.get(key) !== t) { image.close(); return {labels: {}, batches: {}}; }
                 const tile = this.renderer.createImageTile(image, dem ? src.encoding ?? 'mapbox' : undefined, id);
                 image.close();

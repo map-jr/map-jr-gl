@@ -214,3 +214,33 @@ test('style: font-faces become web fonts keyed by family, weight and style', asy
         {family: 'Noto Sans', weight: 400, style: 'normal', src: 'https://fonts.test/khmer.ttf', unicodeRange: 'U+1780-17FF, U+19E0-19FF'},
     ]);
 });
+
+test('pmtiles: tiles are read from an archive by range request, through directories', async () => {
+    const {PMTiles, tileId, fetchTile} = await import('../../src/pmtiles.ts');
+    assert.deepEqual([tileId(0, 0, 0), tileId(1, 0, 0), tileId(1, 0, 1), tileId(1, 1, 1), tileId(1, 1, 0), tileId(2, 0, 0)], [0, 1, 2, 3, 4, 5]);
+    // Build a minimal archive: header, an uncompressed root directory with two tiles, then the tile data.
+    const varint = (n: number) => { const o = []; do { let b = n % 128; n = Math.floor(n / 128); if (n) b |= 0x80; o.push(b); } while (n); return o; };
+    const tiles = [{id: tileId(14, 4823, 6160), data: bytes.subarray(0, 5000)}, {id: tileId(14, 4824, 6160), data: bytes.subarray(5000, 5300)}].sort((a, b) => a.id - b.id);
+    const dir = [...varint(2), ...varint(tiles[0].id), ...varint(tiles[1].id - tiles[0].id), ...varint(1), ...varint(1),
+        ...varint(tiles[0].data.length), ...varint(tiles[1].data.length), ...varint(1), ...varint(0)];
+    const file = new Uint8Array(127 + dir.length + tiles[0].data.length + tiles[1].data.length), v = new DataView(file.buffer);
+    file.set(new TextEncoder().encode('PMTiles')); file[7] = 3;
+    const u64 = (o: number, n: number) => v.setUint32(o, n, true);
+    u64(8, 127); u64(16, dir.length); u64(56, 127 + dir.length);
+    file[97] = 1; file[98] = 1; file[99] = 1; file[100] = 14; file[101] = 14;
+    file.set(dir, 127); file.set(tiles[0].data, 127 + dir.length); file.set(tiles[1].data, 127 + dir.length + tiles[0].data.length);
+    const ranges: string[] = [];
+    const fetch = (async (_url: any, init: any) => {
+        const [, a, b] = /bytes=(\d+)-(\d+)/.exec(init.headers.Range)!;
+        ranges.push(init.headers.Range);
+        return new Response(file.subarray(+a, Math.min(file.length, +b + 1)), {status: 206});
+    }) as any;
+    const pm = new PMTiles('https://tiles.test/a.pmtiles', fetch);
+    assert.deepEqual(await pm.info().then(i => [i.type, i.minzoom, i.maxzoom]), ['mvt', 14, 14]);
+    const want = (id: number) => tiles.find(t => t.id === id)!.data;
+    assert.deepEqual(await pm.tile(14, 4823, 6160), want(tileId(14, 4823, 6160)));
+    assert.deepEqual(await pm.tile(14, 4824, 6160), want(tileId(14, 4824, 6160)));
+    assert.equal(await pm.tile(14, 1, 1), null);
+    assert.equal(ranges.filter(r => r === 'bytes=0-16383').length, 1, 'the header and root directory are fetched once');
+    assert.equal(await fetchTile('pmtiles://https://tiles.test/a.pmtiles/3/1/1', fetch), null);
+});
