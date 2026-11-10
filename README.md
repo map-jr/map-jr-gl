@@ -33,6 +33,9 @@ Mapbox Vector Tiles.
 - **Touch:** one-finger pan with inertia, pinch zoom, rotation only past a twist threshold, two-finger tilt,
   double-tap, two-finger tap and tap-and-drag zoom, as in MapLibre. Controls are finger-sized on touch screens,
   respect safe areas, and attribution collapses to a button on small maps.
+- **Contour lines:** a `contour` source derives labelled contour lines from an elevation source in the tile
+  workers, with intervals by zoom, a unit multiplier and overzoom, in the manner of maplibre-contour.
+- **Text along lines:** road and contour labels follow the curve of their line.
 - **Queries from tile data:** `map.queryFeatures(lngLatOrPoint, {sourceLayers, filter, radius, zoom, geometry})`
   returns features whether or not any layer draws them, even off screen. `map.queryElevation(lngLat)` reads
   metres from a `raster-dem` source (Terrarium or Mapbox encoding). Both return promises.
@@ -56,68 +59,97 @@ relative to MapLibre GL JS, including generated API coverage.
 
 ## Not there yet
 
-Labels that curve along lines, `queryRenderedFeatures` (see `queryFeatures`), clustering (shown in the gallery
-as application code), contour lines, pattern fills, SDF icons, 3D terrain, sky, globe, heatmap. Hillshade is not in server output, and its tile edges can show
+`queryRenderedFeatures` (see `queryFeatures`), clustering (shown in the gallery as application code), pattern fills, SDF icons, 3D terrain, sky, globe, heatmap. Hillshade is not in server output, and its tile edges can show
 faint seams. Symbol layers always draw above all other layers.
+
+## Loading the library
+
+**The default needs no configuration**, whether you import the built file directly or go through a bundler:
+
+```js
+import {Map} from 'tessera-map';            // in a built project
+// import {Map} from '/vendor/tessera/tessera.js';   // or straight from files you host, or a CDN
+new Map({container: 'map', style: 'https://example.com/style.json', center: [-74, 40.7], zoom: 12});
+```
+
+What happens by default, and why:
+
+- **The page loads a small script** (about 25 KB gzipped). The rendering engine is not in it.
+- **The engine runs in a worker**, loaded from `tessera-worker.js`, which the library finds next to its own file
+  (`new URL('./tessera-worker.js', import.meta.url)`). Bundlers that understand that pattern (Vite, webpack 5,
+  Parcel, Rollup) copy the file for you. Tile-parsing workers are shared by every map on the page.
+- **From another origin** (a CDN), browsers refuse to start a worker directly, so the library starts it through a
+  small same-origin stub. Nothing to configure, but a strict Content-Security-Policy must allow `worker-src blob:`.
+- **If workers cannot start** (the file was not copied, a policy forbids them, or the browser cannot draw WebGL2
+  in a worker), the map falls back to rendering on the main thread, fetches the engine as a separate chunk then, and
+  logs a warning saying what to change. A map always appears.
+
+When you want control:
+
+| Need | Use |
+|---|---|
+| Worker file lives somewhere else | `new Map({workerUrl: '/assets/tessera-worker.js'})` |
+| Your bundler has its own worker syntax | `createWorker: () => new Worker(new URL('tessera-map/worker', import.meta.url))`, or with Vite `import W from 'tessera-map/worker?worker'` and `createWorker: () => new W()` |
+| Same settings for every map | `configure({workerUrl, createWorker, tileWorkers})` once at start-up |
+| One file, no siblings (embeds, sandboxes, quick demos) | `import {Map} from 'tessera-map/standalone'` (90 KB gzipped; the worker is embedded and started from a blob) |
+| Render on the main thread on purpose | `renderer: 'main'` |
+| Number of tile-parsing workers | `tileWorkers: 2` |
+| Server rendering | `import {renderToSVG, renderToImage} from 'tessera-map/server'` |
+
+Notes for particular set-ups:
+
+- **Vite** pre-bundles dependencies in development, which hides the worker file from the automatic lookup. Add
+  `optimizeDeps: {exclude: ['tessera-map']}`, or pass `workerUrl`/`createWorker` as above. (If neither is done, the
+  fallback still gives you a working map on the main thread, with a console warning.)
+- **Frameworks that render on the server** (Next.js, Nuxt, SvelteKit, Astro): importing the library on the server is
+  safe, as it touches no browser API until `new Map()`. Create the map in a mount/effect hook. To show something
+  before JavaScript runs, render the first frame with `tessera-map/server` and let the map take over.
+- **TypeScript:** types ship with the package.
+
+| File | Loaded by | Gzip |
+|---|---|---|
+| `tessera.js` plus its shared chunk | the page, up front | 25 KB |
+| `tessera-worker.js` | a worker, in parallel | 38 KB |
+| `tessera-engine-entry-*.js` | the page, only for main-thread rendering | 28 KB |
+| `tessera-standalone.js` | the page, instead of all of the above | 90 KB |
+
+Importing selectively saves little (controls, markers and popups are about a kilobyte each: `Map` alone is 24 KB
+against 25 KB for everything), so there is no need to plan imports around size. `pnpm build --sizes` prints these.
 
 ## Performance compared with MapLibre GL JS
 
-Measured by `pnpm bench` (`test/bench/compare.mjs`): both libraries in the same headless Chromium, the same style
-(OpenFreeMap Liberty), the same 1000 × 700 view of lower Manhattan, and the same three-second pan, zoom and rotate.
+**On a real GPU.** Run `pnpm demo` and open `/bench`: it runs both libraries in your browser, one after another,
+with the same style, view and five-second pan, zoom and rotate. These results are from an Apple M4 in Chrome 157
+(Metal), at screen pixel ratio 2, reported by the project owner:
 
-**Read these with care.** Headless Chromium draws WebGL in software, so frame counts are low for both libraries and
-mostly reflect CPU rasterisation, not what a GPU would do; treat them as relative. Main-thread figures (script time,
-long tasks) are CPU work and carry over to real devices much better. Numbers are from a single run on one machine.
-This library also draws less than MapLibre for this style (no pattern fills, straight road labels only), which
-flatters it somewhat.
-
-| | Download (gzip) | Load to idle | Main thread blocked during load | Frames in 3 s | Main-thread script per frame (median / worst) |
-|---|---|---|---|---|---|
-| MapLibre GL JS 6.17 | 434 KB + 10 KB CSS | 2117 ms | 1044 ms | 22 | 7.3 / 19.0 ms |
-| This library, main thread | 84 KB | 1731 ms | 1140 ms | 20 | 4.3 / 16.8 ms |
-| This library, worker | 84 KB (or 22 KB + 35 KB worker, see below) | 1395 ms | 0 ms | 19 | 0 / 0 ms |
-
-With worker rendering the page's main thread does no map work at all, which is the point of it: the map cannot make
-the page janky and the page cannot make the map janky. MapLibre is a few frames ahead in raw frame count here.
-
-**Markers.** MapLibre's `Marker` is one DOM element per marker; a marker layer here is drawn on the canvas.
-
-| Markers | | Time to add | Frames in 3 s | Main-thread script per frame (median / worst) |
+| Scenario | Load to idle | Frames per second | Main-thread script per frame (median / worst) | Main thread blocked |
 |---|---|---|---|---|
-| 1,000 | MapLibre `Marker` (DOM) | 44 ms | 18 | 14.6 / 34.9 ms |
-| 1,000 | Marker layer, main thread | 3 ms | 20 | 3.9 / 10.5 ms |
-| 1,000 | Marker layer, worker | 5 ms | 18 | 0 / 0 ms |
-| 10,000 | MapLibre `Marker` (DOM) | 453 ms | 8 | 64.9 / 125 ms |
-| 10,000 | Marker layer, main thread | 29 ms | 19 | 4.7 / 21.4 ms |
-| 10,000 | Marker layer, worker | 21 ms | 18 | 0 / 0 ms |
-| 100,000 | Marker layer, worker | 209 ms | 16 | 0 / 0 ms |
+| MapLibre GL JS 6.17 | 781 ms | 60 | 3.0 / 9.3 ms | 0 ms |
+| This library, main thread | 469 ms | 60 | 2.2 / 11.3 ms | 0 ms |
+| This library, worker | 490 ms | 60 | 0 / 0 ms | 0 ms |
+| 1,000 markers: MapLibre `Marker` (DOM), added in 18 ms | | 60 | 2.6 / 9.8 ms | 0 ms |
+| 1,000 markers: marker layer, worker, added in 2 ms | | 60 | 0 / 0 ms | 0 ms |
+| 10,000 markers: MapLibre `Marker` (DOM), added in 194 ms | | 5.7 | 20.1 / 32.4 ms | 5220 ms |
+| 10,000 markers: marker layer, main thread, added in 11 ms | | 60 | 2.5 / 10.1 ms | 0 ms |
+| 10,000 markers: marker layer, worker, added in 10 ms | | 60 | 0 / 0 ms | 0 ms |
+| 100,000 markers: marker layer, worker, added in 141 ms | | 60 | 0 / 0 ms | 0 ms |
 
-MapLibre can also draw many points cheaply with a symbol or circle layer; this compares the two libraries' marker
-APIs, which is what most applications reach for first.
+Both libraries hold the display's 60 frames per second on this style; the differences are load time, how much of
+the main thread each uses, and what happens with many markers. (That run's page reported 59.2 for this library
+because it averaged over a short stretch after the animation ended, during which a stopped map rightly draws
+nothing; the page now counts only frames during the animation.) This library draws less than MapLibre for this
+style (no pattern fills), which helps it a little. MapLibre can also draw many points cheaply with a symbol or
+circle layer; the marker rows compare the two libraries' marker APIs.
 
-### Bundle sizes and what importing less buys
+**In software rendering.** `pnpm bench` runs a similar comparison in headless Chromium, where WebGL is drawn on the
+CPU. Frame counts there are low for both and only relative, but it is a useful check for machines without a usable
+GPU (virtual machines, remote desktops):
 
-`pnpm build --sizes` prints these (minified, then gzip):
-
-| What the page loads | Minified | Gzip |
-|---|---|---|
-| `tessera.js`: everything in one file, worker embedded | 228 KB | 84 KB |
-| `tessera-slim.js`: no engine on the main thread | 63 KB | 22 KB |
-| `tessera-worker.js`: fetched separately by the slim build | 94 KB | 35 KB |
-| Slim, importing only `Map` (tree-shaken by your bundler) | 58 KB | 20 KB |
-| Slim, `Map` plus navigation and scale controls | 60 KB | 21 KB |
-| Slim, `Map` plus `Marker` and `Popup` | 60 KB | 21 KB |
-
-Two conclusions. Picking individual imports saves very little, because controls, markers and popups are about a
-kilobyte each: nearly all the weight is the rendering engine. What does matter is where the engine goes. The
-all-in-one file carries it twice (once to run on the main thread as a fallback, once as embedded worker source);
-the slim build carries it zero times on the main thread and loads it as a worker file in parallel, so the page's own
-script is about a quarter of the size. The slim build needs `workerUrl` and a browser that supports worker rendering.
-
-```js
-import {Map} from './dist/tessera-slim.js';
-new Map({container: 'map', style, workerUrl: '/dist/tessera-worker.js'});
-```
+| | Load to idle | Frames in 3 s | Main-thread script per frame (median / worst) |
+|---|---|---|---|
+| MapLibre GL JS 6.17 | 2117 ms | 22 | 7.3 / 19.0 ms |
+| This library, main thread | 1731 ms | 20 | 4.3 / 16.8 ms |
+| This library, worker | 1395 ms | 19 | 0 / 0 ms |
 
 ## Try it
 
@@ -128,7 +160,8 @@ pnpm demo
 ```
 
 Then open `http://localhost:8080/gallery` for a page of small live maps, one per feature, or
-`http://localhost:8080/` (full page; add `?renderer=main` or `?renderer=worker`, `?markers=50000`, `?photos`, `?slim`),
+`http://localhost:8080/bench` to compare speed with MapLibre in your own browser, or
+`http://localhost:8080/` (full page; add `?renderer=main` or `?renderer=worker`, `?markers=50000`, `?photos`, `?standalone`),
 `/ssr` (server-rendered SVG, then hydrated; `/ssr?image` for a server-rendered JPEG) or `/static` (server output alone).
 Add `?style=<url>` to load any MapLibre style. The demo proxies and caches
 tiles from OpenFreeMap. `pnpm test` runs unit tests, MapLibre's expression fixtures and an API coverage check; `pnpm test:browser` and
@@ -162,7 +195,7 @@ with the takumi renderer to control label typefaces and cover non-Latin scripts.
 ## Usage
 
 ```js
-import {Map} from './dist/tessera.js';
+import {Map} from 'tessera-map';
 
 const map = new Map({container: 'map', style: 'https://tiles.openfreemap.org/styles/positron', center: [-74.006, 40.7128], zoom: 14});
 

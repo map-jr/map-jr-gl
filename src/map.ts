@@ -1,18 +1,16 @@
 import {Transform, mercX, mercY, toLngLat, type LngLatLike} from './geo.ts';
 import {resolveStyle, type ResolvedStyle} from './style.ts';
-import {Engine, type CameraOptions, type Command, type EngineEvent, type FeatureQuery, type FontSource, type MarkerImage} from './engine.ts';
+import type {CameraOptions, Command, EngineEvent, FeatureQuery, FontSource, MarkerImage} from './engine.ts';
 import type {QueriedFeature} from './query.ts';
-import {LocalBackend, PortBackend, type TileBackend} from './tiles.ts';
+import type {TileBackend} from './tiles.ts';
+import {acquireTileWorkers, createWorker, workerReady, type LoadOptions} from './loader.ts';
 import {anchorOffset, resolveVariants, sizedSVG, type MarkerInput, type MarkerLayerOptions} from './markers.ts';
 import {DEFAULT_FONT} from './text.ts';
 import {AttributionControl, CONTROL_CSS, type Control, type ControlPosition} from './controls.ts';
 import {Popup, type PopupOptions} from './overlays.ts';
 
-declare const __WORKER_SRC__: string;
-/** True in the slim build, which always renders in a worker loaded from `workerUrl` and so ships no engine of its own. */
-declare const __SLIM__: boolean;
 
-export interface MapOptions extends CameraOptions {
+export interface MapOptions extends CameraOptions, LoadOptions {
     container: HTMLElement | string;
     style: unknown;
     /**
@@ -20,9 +18,6 @@ export interface MapOptions extends CameraOptions {
      * 'main' renders on the page's own thread. 'auto' picks 'worker' when the browser supports it.
      */
     renderer?: 'auto' | 'worker' | 'main';
-    /** URL of the worker script. Defaults to a copy embedded in the bundle, loaded through a blob URL. */
-    workerUrl?: string;
-    tileWorkers?: number;
     /** Fallback CSS font-family for labels, used when the family a style names is not available. */
     fontFamily?: string;
     /**
@@ -133,6 +128,9 @@ export class Map {
     private hovered: {layer: MarkerLayer; index: number} | null = null;
     private observer?: ResizeObserver;
     private cleanup: (() => void)[] = [];
+    private inputCleanup: (() => void)[] = [];
+    private tilePool?: {connect(): MessagePort[]; release(): void};
+    private removed = false;
     private beforeStyle: (() => void)[] = [];
     private imageNames = new Set<string>();
     private imageResolver: ((id: string) => void | Promise<void>) | null = null;
@@ -188,53 +186,45 @@ export class Map {
             minZoom: tr.minZoom, maxZoom: tr.maxZoom, maxPitch: tr.maxPitch, antialias: o.antialias,
         };
 
-        let workerUrl = o.workerUrl, blobUrl: string | undefined;
-        const spawn = () => {
-            if (!workerUrl) {
-                if (__SLIM__) throw new Error('The slim build needs the `workerUrl` option (the URL of tessera-worker.js)');
-                workerUrl = blobUrl = URL.createObjectURL(new Blob([__WORKER_SRC__], {type: 'text/javascript'}));
-            }
-            const w = new Worker(workerUrl);
-            this.workers.push(w);
-            return w;
-        };
-        const tileWorkerCount = o.tileWorkers ?? Math.max(1, Math.min(4, (navigator.hardwareConcurrency || 4) - 2));
+        // Tile workers come from a pool shared by all maps. If workers cannot be started at all (the file is missing,
+        // or a security policy forbids them), everything still works on this thread, just less smoothly.
         let ports: MessagePort[] = [];
         try {
-            for (let i = 0; i < tileWorkerCount; i++) {
-                const ch = new MessageChannel();
-                spawn().postMessage({role: 'tiles', port: ch.port1}, [ch.port1]);
-                ports.push(ch.port2);
-            }
-        } catch {
-            ports = []; // e.g. a Content-Security-Policy that forbids blob workers: parse tiles on this thread instead
+            this.tilePool = await acquireTileWorkers(o);
+            ports = this.tilePool.connect();
+        } catch (err) {
+            console.warn(`[tessera] Workers are unavailable (${(err as Error).message}); running on the main thread. ` +
+                'If the worker file is not next to the library, pass `workerUrl` or `createWorker`, or use the standalone build.');
         }
 
         const wantWorker = o.renderer === 'worker' || (o.renderer ?? 'auto') === 'auto';
+        let engineWorker: Worker | null = null;
         if (wantWorker && ports.length && 'transferControlToOffscreen' in this.canvas) {
-            const off = this.canvas.transferControlToOffscreen(), w = spawn();
+            try { engineWorker = await workerReady(createWorker(o)); } catch { engineWorker = null; }
+        }
+        if (this.removed) { engineWorker?.terminate(); return; }
+        if (engineWorker) {
+            const off = this.canvas.transferControlToOffscreen(), w = engineWorker;
+            this.workers.push(w);
             w.onmessage = e => {
                 if (e.data.type !== 'fatal') return this.onEngineEvent(e.data);
                 // The worker could not create a WebGL2 context. A transferred canvas cannot be taken back, so swap in a new one.
                 console.warn('[tessera] Worker rendering unavailable, using the main thread: ' + e.data.message);
                 const fresh = this.canvas.cloneNode() as HTMLCanvasElement;
                 this.canvas.replaceWith(fresh);
-                for (const fn of this.cleanup.splice(0)) fn();
+                for (const fn of this.inputCleanup.splice(0)) fn();
                 this.canvas = fresh;
-                this.renderer = 'main';
-                try {
-                    this.startMainEngine(fresh, {...engineOptions, center: [this.tr.lng, this.tr.lat], zoom: this.tr.zoom, bearing: this.tr.bearing}, []);
+                this.startMainEngine(fresh, {...engineOptions, center: [this.tr.lng, this.tr.lat], zoom: this.tr.zoom, bearing: this.tr.bearing}, []).then(() => {
                     for (const layer of this.markerLayers.values()) { this.variantIds.clear(); this._syncMarkers(layer); }
                     if (o.interactive !== false) this.bindInput();
-                } catch (err) { this.fire('error', {error: err}); }
+                }, error => this.fire('error', {error}));
             };
             w.postMessage({role: 'engine', canvas: off, options: engineOptions, ports}, [off, ...ports]);
             this.send = (c, transfer) => w.postMessage(c, transfer ?? []);
             this.renderer = 'worker';
         } else {
-            this.startMainEngine(this.canvas, engineOptions, ports);
+            await this.startMainEngine(this.canvas, engineOptions, ports);
         }
-        if (blobUrl) URL.revokeObjectURL(blobUrl);
         this.ready = true;
         for (const [c, t] of this.queue) this.send(c, t);
         this.queue = [];
@@ -246,14 +236,13 @@ export class Map {
         if (o.attributionControl !== false) this.addControl(new AttributionControl(o.attributionControl || {}));
     }
 
-    /** Runs the engine on this thread. Absent from the slim build, where the engine exists only in the worker file. */
-    private startMainEngine(canvas: HTMLCanvasElement, options: ConstructorParameters<typeof Engine>[1], ports: MessagePort[]) {
-        if (__SLIM__) throw new Error('This build renders only in a worker, which this browser or page does not allow');
-        else {
-            const backends: TileBackend[] = ports.length ? ports.map(p => new PortBackend(p)) : [new LocalBackend()];
-            const engine = new Engine(canvas, options, backends, e => this.onEngineEvent(e));
-            this.send = c => engine.command(c);
-        }
+    /** Runs the engine on this thread. Its code is a separate chunk, fetched only when this path is taken. */
+    private async startMainEngine(canvas: HTMLCanvasElement, options: import('./engine.ts').EngineOptions, ports: MessagePort[]) {
+        const {Engine, LocalBackend, PortBackend} = await import('./engine-entry.ts');
+        const backends: TileBackend[] = ports.length ? ports.map(p => new PortBackend(p)) : [new LocalBackend()];
+        const engine = new Engine(canvas, options, backends, e => this.onEngineEvent(e));
+        this.send = c => engine.command(c);
+        this.renderer = 'main';
     }
 
     /** @internal Sends a command to the engine. */
@@ -711,7 +700,7 @@ export class Map {
         const el = this.canvas, pointers = new globalThis.Map<number, {x: number; y: number}>();
         const listen = <K extends keyof HTMLElementEventMap>(type: K, fn: (e: HTMLElementEventMap[K]) => void, opts?: AddEventListenerOptions) => {
             el.addEventListener(type, fn, opts);
-            this.cleanup.push(() => el.removeEventListener(type, fn, opts));
+            this.inputCleanup.push(() => el.removeEventListener(type, fn, opts));
         };
         const pos = (e: MouseEvent) => { const r = this.container.getBoundingClientRect(); return {x: e.clientX - r.left - this.container.clientLeft, y: e.clientY - r.top - this.container.clientTop}; };
         const mouseEvent = (type: string, e: MouseEvent, extra = {}) => {
@@ -847,7 +836,7 @@ export class Map {
         listen('lostpointercapture', up);
         const blur = () => { for (const id of [...pointers.keys()]) up({pointerId: id, type: 'blur'} as PointerEvent); };
         window.addEventListener('blur', blur);
-        this.cleanup.push(() => window.removeEventListener('blur', blur));
+        this.inputCleanup.push(() => window.removeEventListener('blur', blur));
         listen('wheel', e => {
             e.preventDefault();
             const p = pos(e), now = performance.now(), gap = now - lastWheel;
@@ -889,7 +878,10 @@ export class Map {
     }
 
     remove() {
+        this.removed = true;
         for (const c of [...this.controls.keys()]) this.removeControl(c);
+        for (const fn of this.inputCleanup) fn();
+        this.tilePool?.release();
         this.observer?.disconnect();
         for (const fn of this.cleanup) fn();
         for (const w of this.workers) w.terminate();

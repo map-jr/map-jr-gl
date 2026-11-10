@@ -5,3 +5,4 @@ export type {QueriedFeature} from './query.ts';
 export type {LngLatLike} from './geo.ts';
 export {AttributionControl, NavigationControl, ScaleControl, FullscreenControl, GeolocateControl, type Control, type ControlPosition} from './controls.ts';
 export {Marker, Popup, type MarkerOptions, type PopupOptions} from './overlays.ts';
+export {configure, type LoadOptions} from './loader.ts';

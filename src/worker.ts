@@ -3,6 +3,7 @@ import {PortBackend, serveTiles} from './tiles.ts';
 
 /** One worker script, two roles: a tile parser, or the host of the whole rendering engine. */
 const scope = self as unknown as {onmessage: ((e: MessageEvent) => void) | null; postMessage(m: unknown): void};
+// Engines hosted here, by the id the page gave each; one worker can serve tiles for many maps and host an engine too.
 scope.onmessage = e => {
     const m = e.data;
     if (m.role === 'tiles') serveTiles(m.port);
@@ -15,3 +16,6 @@ scope.onmessage = e => {
         }
     }
 };
+
+// Tells the page the script loaded and ran, so a missing or blocked worker file is noticed at once instead of silently hanging.
+scope.postMessage({type: 'hello'});

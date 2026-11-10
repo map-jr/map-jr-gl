@@ -34,15 +34,15 @@ const page = (body, head = '') => `<!doctype html><html><head><meta charset="utf
 <body>${body}</body></html>`;
 
 const client = (q) => `<script type="module">
-// ?slim loads the small worker-only build, which fetches the engine as a separate worker file.
-const slim = new URLSearchParams(location.search).has('slim');
-const {Map, NavigationControl, ScaleControl} = await import(slim ? '/dist/tessera-slim.js' : '/dist/tessera.js');
+// ?standalone loads the single-file build (worker embedded); ?from=<origin> loads the library from another origin, as a CDN would serve it.
+const params = new URLSearchParams(location.search);
+const {Map, NavigationControl, ScaleControl} = await import((params.get('from') ?? '') + (params.has('standalone') ? '/dist/tessera-standalone.js' : '/dist/tessera.js'));
 import {markers, view, photos, manyMarkers} from '/demo/markers.mjs';
 import {shield} from '/demo/shields.mjs';
 const q = new URLSearchParams(location.search);
 const map = window.map = new Map({container: 'map', style: q.get('style') || ('/style.json' + (q.has('local') ? '?local' : '')), ...view,
   ...(q.has('zoom') ? {zoom: +q.get('zoom')} : {}), ...(q.has('bearing') ? {bearing: +q.get('bearing')} : {}), ...(q.has('pitch') ? {pitch: +q.get('pitch')} : {}),
-  ...(q.has('center') ? {center: q.get('center').split(',').map(Number)} : {}), renderer: q.get('renderer') || 'auto', antialias: q.has('msaa'), ...(slim ? {workerUrl: '/dist/tessera-worker.js'} : {}),
+  ...(q.has('center') ? {center: q.get('center').split(',').map(Number)} : {}), renderer: q.get('renderer') || 'auto', antialias: q.has('msaa'),
   // Styles naming Open Sans get the real font; it loads on the rendering thread, so it works with worker rendering.
   fonts: q.has('nofonts') ? [] : ['normal', 'italic'].map(style => ({family: 'Open Sans', style, weight: '300 800',
     src: 'https://cdn.jsdelivr.net/fontsource/fonts/open-sans:vf@latest/latin-wght-' + style + '.woff2'}))});

@@ -1,17 +1,18 @@
 {
   "name": "tessera-map",
   "version": "1.0.0",
-  "description": "",
+  "description": "A small vector map renderer for the web with worker rendering, server rendering and canvas markers; reads MapLibre styles.",
   "scripts": {
     "test": "pnpm test:unit && pnpm test:expressions && pnpm test:api",
-    "build": "tsc -p . && node build.mjs",
+    "build": "tsc -p . && node build.mjs && tsc -p tsconfig.types.json",
     "demo": "node build.mjs && node demo/serve.mjs",
     "test:cloudflare": "node test/cloudflare/run.mjs",
     "test:unit": "node --experimental-transform-types --no-warnings --test test/unit/*.test.ts",
     "test:expressions": "node test/conformance/expressions.mjs --min=279",
     "test:api": "node test/conformance/api.mjs --min=73",
     "test:browser": "node test/interact.mjs .cache/shots",
-    "bench": "node test/bench/compare.mjs"
+    "bench": "node test/bench/compare.mjs",
+    "test:loading": "node test/loading.mjs"
   },
   "keywords": [],
   "author": "",
@@ -33,5 +34,29 @@
       "esbuild"
     ]
   },
-  "packageManager": "pnpm@10.28.0"
+  "packageManager": "pnpm@10.28.0",
+  "exports": {
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/tessera.js"
+    },
+    "./standalone": {
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/tessera-standalone.js"
+    },
+    "./server": {
+      "types": "./dist/types/server.d.ts",
+      "import": "./dist/server.js"
+    },
+    "./worker": "./dist/tessera-worker.js",
+    "./package.json": "./package.json"
+  },
+  "module": "./dist/tessera.js",
+  "types": "./dist/types/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "docs"
+  ],
+  "sideEffects": false
 }

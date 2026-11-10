@@ -64,8 +64,11 @@ async function run(s) {
     const a0 = performance.now();
     map.easeTo({center: [-73.975, 40.735], zoom: 15.2, bearing: 40, duration: SECONDS * 1000});
     await sleep(SECONDS * 1000 + 100);
-    const elapsed = (performance.now() - a0) / 1000, gaps = stamps.slice(1).map((t, i) => t - stamps[i]);
-    const result = {name: s.name, load, add, fps: frames / elapsed, worstGap: gaps.length ? Math.max(...gaps) : 0, script: median(scripts), worstScript: scripts.length ? Math.max(...scripts) : 0, blocked};
+    // Count only frames drawn while the camera was animating: once it stops, a map that correctly stops drawing
+    // would otherwise look slower than one that keeps redrawing an unchanged view.
+    const during = stamps.filter(t => t <= a0 + SECONDS * 1000), gaps = during.slice(1).map((t, i) => t - during[i]);
+    const span = during.length > 1 ? (during[during.length - 1] - during[0]) / 1000 : 1;
+    const result = {name: s.name, load, add, fps: Math.max(0, during.length - 1) / span, worstGap: gaps.length ? Math.max(...gaps) : 0, script: median(scripts), worstScript: scripts.length ? Math.max(...scripts) : 0, blocked};
     map.remove();
     await sleep(300);
     return result;

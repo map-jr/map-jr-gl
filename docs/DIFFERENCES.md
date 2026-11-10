@@ -21,7 +21,9 @@ Compared against MapLibre GL JS 6.x.
 | PMTiles built in | `url: "pmtiles://..."` on a vector, raster or elevation source reads a PMTiles v3 archive by range request. MapLibre needs a protocol plugin. |
 | Marker layer extras | Raster images inside marker SVGs, per-layer zoom ranges with cross-fade, `overlap: 'hide'`, `select()` (animated growth) and `openPopup()` (a pointed callout that labels reflow around). |
 | Frame statistics | A `stats` event reports frames per second and engine CPU time per frame. |
-| Slim build | `tessera-slim.js` keeps the engine out of the page's main-thread script and loads it as a worker file. |
+| Contour source | `type: "contour"` derives contour lines from a `raster-dem` source (`thresholds` by zoom, `multiplier`, `overzoom`, `contourLayer`, `elevationKey`, `levelKey`). MapLibre needs the maplibre-contour plugin. |
+| Popup placement | A popup without an `anchor` picks its side from the space available, and `offset` may be given per anchor. A popup opened from a marker layer reserves its space so labels move out from under it. |
+| Loading | The default entry is small and finds its worker file automatically; `workerUrl`, `createWorker`, `configure()` and a standalone single-file build cover other set-ups. MapLibre embeds or needs `setWorkerUrl`. |
 | Generated icons on the server | `renderToSVG({resolveImage})` is the server counterpart of `setMissingStyleImageResolver`; resolved SVG is embedded as vector artwork (e.g. highway shields). |
 | Themed controls without a stylesheet | Control styles are injected once and themed with `--map-control-*` custom properties. There is no CSS file to load. |
 
@@ -30,7 +32,7 @@ Compared against MapLibre GL JS 6.x.
 | Area | MapLibre GL JS | This library |
 |---|---|---|
 | Text rendering | Glyph ranges fetched from the style's `glyphs` URL as distance fields, shaped by the library; complex scripts need a plugin. | Glyphs are rasterised from local or loaded web fonts in the browser. Arabic, Hebrew, Indic and Thai lines are shaped by the browser. The `glyphs` URL is ignored. Text weight and line breaks can differ slightly from MapLibre's. |
-| Labels along lines | Glyphs follow the curve of the line. | Labels are straight, placed where the line is long enough; fewer road names appear. |
+| Labels along lines | Glyphs follow the curve of the line, with a configurable maximum angle. | Glyphs follow the curve; labels are dropped where the line bends more than about 35° between characters (`text-max-angle` is not read). Complex-script text stays straight. |
 | Symbol layer order | Symbols draw at their position in the layer stack. | All symbol layers draw above all other layers. |
 | Label placement | Incremental, with cross-tile fading. | Re-decided about four times a second (faster while zooming), labels stay pinned and fade between decisions. |
 | Feature queries | `queryRenderedFeatures` is synchronous and returns what is drawn. | Not available. `queryFeatures` is asynchronous and returns what is in the tile data. |

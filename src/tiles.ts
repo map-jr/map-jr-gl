@@ -157,6 +157,7 @@ export function serveTiles(port: Port) {
         else if (m.type === 'geojson') builder.setGeoJSON(m.source, m.data);
         else if (m.type === 'contours') builder.setContours(m.sources);
         else if (m.type === 'cancel') builder.cancel(m.id);
+        else if (m.type === 'close') { port.onmessage = null; (port as any).close?.(); }
         else if (m.type === 'query') {
             builder.query(m.url, m.q).then(result => port.postMessage({id: m.id, result}), err => port.postMessage({id: m.id, error: String(err.message)}));
         } else if (m.type === 'load') {
