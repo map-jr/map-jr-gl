@@ -521,13 +521,25 @@ export class Engine {
                     if (wanted.has(key)) continue;
                     wanted.add(key);
                     const t = this.tiles.get(key);
-                    if (t) t.used = frameNo; else this.request(source, {z, x: id.x >> dz, y: id.y >> dz, w: id.w, key: k}, key);
+                    const oid = {z, x: id.x >> dz, y: id.y >> dz, w: id.w, key: k};
+                    if (!t) this.request(source, oid, key);
+                    else {
+                        t.used = frameNo;
+                        // Keep the overview current too, or it would flash old data when it stands in for a missing tile.
+                        if (t.stale && t.state === 'ok' && !t.rebuilding) { t.stale = false; this.rebuild(source, oid, key, t); }
+                    }
                 }
             }
             const list = renderItems(tr, ideal, k => {
                 const t = this.tiles.get(source + '|' + k);
                 if (t?.state !== 'ok') return undefined;
                 t.used = frameNo;
+                if (t.stale && !t.rebuilding) {
+                    // A tile of another zoom level standing in for a missing one: bring its data up to date as well.
+                    const [z, x, y] = k.split('/').map(Number);
+                    t.stale = false;
+                    this.rebuild(source, {z, x, y, w: 0, key: k}, source + '|' + k, t);
+                }
                 return t.gl;
             });
             items.set(source, list);
