@@ -27,7 +27,7 @@ abstract class Overlay extends Evented {
     protected abstract el: HTMLElement;
     protected abstract anchor: OverlayAnchor;
     protected offset: [number, number] = [0, 0];
-    protected update = () => {
+    protected update: () => void = () => {
         if (!this.map || !this.lngLat) return;
         const p = this.map.project(this.lngLat);
         this.el.style.transform = `translate(${Math.round(p.x + this.offset[0])}px,${Math.round(p.y + this.offset[1])}px) ${ANCHOR_SHIFT[this.anchor]}`;
@@ -52,38 +52,38 @@ abstract class Overlay extends Evented {
     }
 }
 
+export type PopupOffset = number | [number, number] | Partial<Record<OverlayAnchor, [number, number]>>;
 export interface PopupOptions {
-    closeButton?: boolean; closeOnClick?: boolean; anchor?: OverlayAnchor; offset?: number | [number, number]; maxWidth?: string; className?: string;
-    /** Set false to show and hide without the short pop animation. */
+    closeButton?: boolean; closeOnClick?: boolean; maxWidth?: string; className?: string;
+    /**
+     * Which part of the popup sits at the map position. Leave it out and the popup picks for itself, as MapLibre's
+     * does: above the point by default, below when there is no room above, shifted sideways near the left and right edges.
+     */
+    anchor?: OverlayAnchor;
+    /** Distance from the map position: one number, an [x, y] pair, or a pair per anchor (so it can clear a marker on any side). */
+    offset?: PopupOffset;
+    /** Set false to show and hide without the short fade. */
     animate?: boolean;
 }
 
 export class Popup extends Overlay {
     protected el = document.createElement('div');
     protected anchor: OverlayAnchor;
+    private box = document.createElement('div');
+    private tip = document.createElement('div');
     private content = document.createElement('div');
     private closeOnMapClick = () => this.remove();
     constructor(private options: PopupOptions = {}) {
         super();
         this.anchor = options.anchor ?? 'bottom';
-        const o = options.offset ?? 0;
-        // A single number lifts the popup away from its anchor point (e.g. to clear a marker).
-        this.offset = typeof o === 'number' ? [0, this.anchor.includes('top') ? o : this.anchor.includes('bottom') ? -o : 0] : o;
         this.el.className = `maplibregl-popup ${options.className ?? ''}`.trim();
         this.el.style.cssText = 'z-index:3;pointer-events:none';
-        const box = document.createElement('div');
+        const box = this.box;
         box.className = 'maplibregl-popup-content';
-        box.style.cssText = `pointer-events:auto;position:relative;background:var(--map-popup-background,#fff);color:var(--map-popup-color,#222);border-radius:6px;padding:10px 12px;font:13px/1.4 system-ui,sans-serif;box-shadow:0 2px 10px rgba(0,0,0,.25);max-width:${options.maxWidth ?? '240px'};margin:8px`;
+        box.style.cssText = `pointer-events:auto;position:relative;background:var(--map-popup-background,#fff);color:var(--map-popup-color,#222);border-radius:8px;padding:10px 12px;font:13px/1.4 system-ui,sans-serif;box-shadow:0 2px 12px rgba(0,0,0,.22);max-width:${options.maxWidth ?? '240px'};margin:8px`;
         box.appendChild(this.content);
-        // A small pointer on the side facing the anchor, so the callout visibly belongs to a place on the map.
-        const side = this.anchor.includes('bottom') ? 'bottom' : this.anchor.includes('top') ? 'top' : this.anchor === 'left' ? 'left' : this.anchor === 'right' ? 'right' : '';
-        if (side) {
-            const tip = document.createElement('div'), across = side === 'top' || side === 'bottom';
-            tip.className = 'maplibregl-popup-tip';
-            tip.style.cssText = `position:absolute;width:12px;height:12px;background:inherit;transform:rotate(45deg);${side}:-5px;` +
-                (across ? `left:${this.anchor.includes('left') ? '14px' : this.anchor.includes('right') ? 'calc(100% - 26px)' : 'calc(50% - 6px)'}` : 'top:calc(50% - 6px)');
-            box.appendChild(tip);
-        }
+        this.tip.className = 'maplibregl-popup-tip';
+        box.appendChild(this.tip);
         if (options.closeButton !== false) {
             const b = Object.assign(document.createElement('button'), {type: 'button', textContent: '\u00d7', className: 'maplibregl-popup-close-button'});
             b.setAttribute('aria-label', 'Close popup');
@@ -92,7 +92,38 @@ export class Popup extends Overlay {
             box.appendChild(b);
         }
         this.el.appendChild(box);
+        this.applyAnchor(this.anchor);
+        // Positioning re-checks which side has room every time the map moves.
+        const position = this.update;
+        this.update = () => {
+            if (this.map && this.lngLat && !this.options.anchor) this.applyAnchor(this.chooseAnchor());
+            position();
+        };
     }
+
+    /** The pointer goes on the side facing the map position, and the offset for that side takes effect. */
+    private applyAnchor(anchor: OverlayAnchor) {
+        this.anchor = anchor;
+        const o = this.options.offset ?? 0;
+        this.offset = typeof o === 'number' ? [anchor.includes('left') ? o : anchor.includes('right') ? -o : 0, anchor.includes('top') ? o : anchor.includes('bottom') ? -o : 0]
+            : Array.isArray(o) ? o : o[anchor] ?? [0, 0];
+        const side = anchor.includes('bottom') ? 'bottom' : anchor.includes('top') ? 'top' : anchor === 'left' ? 'left' : anchor === 'right' ? 'right' : '';
+        const across = side === 'top' || side === 'bottom';
+        this.tip.style.cssText = !side ? 'display:none' : `position:absolute;width:12px;height:12px;background:inherit;transform:rotate(45deg);${side}:-5px;` +
+            (across ? `left:${anchor.includes('left') ? '14px' : anchor.includes('right') ? 'calc(100% - 26px)' : 'calc(50% - 6px)'}` : 'top:calc(50% - 6px)');
+        this.box.style.transformOrigin = `${anchor.includes('left') ? '0%' : anchor.includes('right') ? '100%' : '50%'} ${anchor.includes('top') ? '0%' : anchor.includes('bottom') ? '100%' : '50%'}`;
+    }
+
+    /** Above the point when it fits, otherwise below; hugging the left or right edge when the point is near one. */
+    private chooseAnchor(): OverlayAnchor {
+        const map = this.map!, p = map.project(this.lngLat!), c = map.getContainer(), w = this.box.offsetWidth + 16, h = this.box.offsetHeight + 16;
+        const o = this.options.offset, lift = typeof o === 'number' ? o : o && !Array.isArray(o) ? -(o.bottom?.[1] ?? 0) : 0;
+        const vertical = p.y - lift - h < 0 && p.y + h < c.clientHeight + 40 ? 'top' : 'bottom';
+        const horizontal = p.x - w / 2 < 0 ? '-left' : p.x + w / 2 > c.clientWidth ? '-right' : '';
+        return (vertical + horizontal) as OverlayAnchor;
+    }
+    getAnchor() { return this.anchor; }
+
     setText(text: string) { this.content.textContent = text; return this; }
     /** Sets HTML content. As in MapLibre, the caller is responsible for it being safe. */
     setHTML(html: string) { this.content.innerHTML = html; return this; }
@@ -101,7 +132,7 @@ export class Popup extends Overlay {
     /** The popup's box relative to the map position it points at, in pixels: [left, top, right, bottom]. */
     getBox(): [number, number, number, number] | null {
         if (!this.map || !this.lngLat) return null;
-        const r = (this.el.firstElementChild as HTMLElement).getBoundingClientRect(), c = this.map.getContainer().getBoundingClientRect(), p = this.map.project(this.lngLat);
+        const r = this.box.getBoundingClientRect(), c = this.map.getContainer().getBoundingClientRect(), p = this.map.project(this.lngLat);
         return [r.left - c.left - p.x, r.top - c.top - p.y, r.right - c.left - p.x, r.bottom - c.top - p.y];
     }
     addTo(map: Map) {
@@ -116,18 +147,17 @@ export class Popup extends Overlay {
         this.map.off('click', this.closeOnMapClick);
         const finish = () => { this.detach(); this.fire('close'); };
         const closing = this.transition(true);
-        // Stay attached (and tracking the map) until the closing animation has played.
+        // Stay attached (and tracking the map) until the fade has played.
         if (closing) closing.finished.then(finish, finish); else finish();
         return this;
     }
 
-    /** A short pop from the pointer: the callout scales up from where it points (and back down when closing). */
+    /** Fades in while easing a few pixels toward its resting place; the shape itself never changes. */
     private transition(reverse: boolean): Animation | null {
-        const box = this.el.firstElementChild as HTMLElement;
-        if (this.options.animate === false || !box.animate || matchMedia('(prefers-reduced-motion: reduce)').matches) return null;
-        box.style.transformOrigin = `${this.anchor.includes('left') ? '0%' : this.anchor.includes('right') ? '100%' : '50%'} ${this.anchor.includes('top') ? '0%' : this.anchor.includes('bottom') ? '100%' : '50%'}`;
-        const small = {transform: 'scale(0.6)', opacity: 0}, full = {transform: 'none', opacity: 1};
-        return box.animate(reverse ? [full, small] : [small, full], {duration: reverse ? 120 : 200, easing: 'cubic-bezier(.2,.9,.3,1.2)', fill: reverse ? 'forwards' : 'none'});
+        if (this.options.animate === false || !this.box.animate || matchMedia('(prefers-reduced-motion: reduce)').matches) return null;
+        const dy = this.anchor.includes('top') ? -6 : this.anchor.includes('bottom') ? 6 : 0, dx = this.anchor === 'left' ? -6 : this.anchor === 'right' ? 6 : 0;
+        const away = {transform: `translate(${dx}px, ${dy}px)`, opacity: 0}, rest = {transform: 'none', opacity: 1};
+        return this.box.animate(reverse ? [rest, away] : [away, rest], {duration: reverse ? 110 : 180, easing: 'ease-out', fill: reverse ? 'forwards' : 'none'});
     }
 }
 

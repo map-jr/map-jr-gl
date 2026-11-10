@@ -74,7 +74,9 @@ const cards = [
     {title: 'Worker rendering against a busy page', text: 'Both maps spin continuously. The button freezes this page\'s main thread for two seconds: the worker-rendered map keeps moving.', wide: true, pair: true,
         make: (el, out, card) => {
             const [a, b] = el.children, maps = [['worker', a], ['main', b]].map(([renderer, box]) => { box.insertAdjacentHTML('beforeend', `<span class="tag">renderer: ${renderer}</span>`); return base(box, {renderer, zoom: 14.2}); });
-            const spin = map => { let bearing = 0; const step = () => { if (!el.isConnected) return; bearing += 20; map.easeTo({bearing, duration: 1000}); setTimeout(step, 1000); }; map.once('load', step); };
+            // One long rotation per command, so the animation runs inside the engine and needs nothing from this page
+            // while it plays. (Re-issuing short animations from a timer would stop whenever the page is busy.)
+            const spin = map => { let bearing = 0; const step = () => { if (!el.isConnected) return; bearing += 170; map.easeTo({bearing, duration: 12000}); setTimeout(step, 12000); }; map.once('load', step); };
             maps.forEach(spin);
             const button = Object.assign(document.createElement('button'), {className: 'action', textContent: 'Block the main thread for 2 seconds'});
             button.onclick = () => { const end = performance.now() + 2000; while (performance.now() < end) { /* busy */ } };

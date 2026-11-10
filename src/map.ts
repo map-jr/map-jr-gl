@@ -79,16 +79,31 @@ export class MarkerLayer {
      * `content` is text, or a DOM node for rich content. Closing the callout clears the selection.
      */
     openPopup(index: number, content: string | Node, options: PopupOptions & {scale?: number} = {}) {
-        const o = this.options, scale = options.scale ?? 1.35, [, oy] = anchorOffset(o.anchor, o.width, o.height), key = 'callout:' + o.id;
+        const o = this.options, scale = options.scale ?? 1.35, [ox, oy] = anchorOffset(o.anchor, o.width, o.height), key = 'callout:' + o.id;
         this.callout?.remove();
         this.select(index, {scale});
-        // Sit just above the top of the enlarged marker.
-        const popup = this.callout = new Popup({anchor: 'bottom', offset: [0, oy * scale - 2], ...options});
+        // The enlarged marker's edges relative to its map position. The callout sits just clear of whichever edge it
+        // ends up beside: above by default, below or to one side when the marker is near the edge of the map.
+        const top = oy * scale - 2, bottom = (oy + o.height) * scale + 2, left = ox * scale, right = (ox + o.width) * scale;
+        const popup = this.callout = new Popup({offset: {
+            bottom: [0, top], 'bottom-left': [left, top], 'bottom-right': [right, top],
+            top: [0, bottom], 'top-left': [left, bottom], 'top-right': [right, bottom],
+        }, ...options});
         if (typeof content === 'string') popup.setText(content); else popup.setDOMContent(content);
         popup.setLngLat(this.data[index].lngLat).addTo(this.map);
-        const box = popup.getBox(), [lng, lat] = this.data[index].lngLat;
-        if (box) this.map._command({type: 'obstacle', id: key, merc: [mercX(lng), mercY(lat)], box});
+        const [lng, lat] = this.data[index].lngLat;
+        // Labels keep clear of the callout; told again if it flips to another side.
+        let side = '';
+        const reserve = () => {
+            if (popup.getAnchor() === side) return;
+            side = popup.getAnchor();
+            const box = popup.getBox();
+            if (box) this.map._command({type: 'obstacle', id: key, merc: [mercX(lng), mercY(lat)], box});
+        };
+        reserve();
+        this.map.on('moveend', reserve);
         popup.on('close', () => {
+            this.map.off('moveend', reserve);
             if (this.callout !== popup) return;
             this.callout = undefined;
             this.map._command({type: 'obstacle', id: key});

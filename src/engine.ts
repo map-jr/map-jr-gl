@@ -52,7 +52,7 @@ export type EngineEvent =
     | {type: 'imagemissing'; name: string}
     | {type: 'error'; message: string};
 
-interface TileState { state: 'loading' | 'ok' | 'error'; gl?: GLTile; used: number; cancel(): void; /** Shown, but built from data that has since changed. */ stale?: boolean }
+interface TileState { state: 'loading' | 'ok' | 'error'; gl?: GLTile; used: number; cancel(): void; /** Shown, but built from data that has since changed. */ stale?: boolean; rebuilding?: boolean }
 interface MarkerLayer {
     width: number; height: number; offset: [number, number]; collide: boolean; merc: Float64Array; variant: Uint32Array;
     minZoom: number; maxZoom: number; hideOverlaps: boolean;
@@ -250,7 +250,8 @@ export class Engine {
             case 'style': this.setStyle(c.style, c.reload); break;
             case 'markers': {
                 for (const img of c.images) { const rect = this.addSprite(img.w, img.h, img.data); if (rect) this.spriteRects.set(img.variant, rect); }
-                const previous = this.markers.get(c.id), layer: MarkerLayer = {...c, gpu: previous?.gpu};
+                // Re-sent data (e.g. after a property change) keeps each marker's current size when the count is unchanged.
+                const previous = this.markers.get(c.id), layer: MarkerLayer = {...c, gpu: previous?.gpu, scale: previous?.scale?.length === c.variant.length ? previous.scale : undefined};
                 this.markers.set(c.id, layer);
                 this.uploadMarkers(c.id, layer);
                 this.placeDirty = true;
@@ -280,7 +281,9 @@ export class Engine {
                 for (const b of this.backends) b.setGeoJSON(c.source, c.data);
                 for (const [key, t] of this.tiles) {
                     if (!key.startsWith(c.source + '|')) continue;
-                    if (t.state === 'ok' && t.used >= this.frameNo - 1) t.stale = true; else this.dropTile(key, t);
+                    // Tiles on screen or still loading are rebuilt in place once they can be; cancelling loads here
+                    // would starve a map that is being moved while its data updates.
+                    if (t.state === 'loading' || t.used >= this.frameNo - 1) t.stale = true; else this.dropTile(key, t);
                 }
                 break;
             }
@@ -471,13 +474,15 @@ export class Engine {
     /** Builds a tile again from changed data and swaps it in when ready; the old one stays on screen meanwhile. */
     private rebuild(source: string, id: TileID, key: string, t: TileState) {
         const src = this.style.sources[source], backend = this.backends[this.nextBackend++ % this.backends.length], req = this.nextReq++;
+        t.rebuilding = true; // one rebuild at a time per tile; data that changes meanwhile marks it stale again
         backend.load({id: req, source, url: tileURL(src, id.z, id.x, id.y), z: id.z, overscaled: id.z >= src.maxzoom}).then(tile => {
+            t.rebuilding = false;
             if (this.tiles.get(key) !== t) return;
             const old = t.gl;
             t.gl = this.renderer.createTile(tile);
             if (old) this.renderer.destroyTile(old);
             this.invalidate();
-        }, err => this.emit({type: 'error', message: err.message}));
+        }, err => { t.rebuilding = false; this.emit({type: 'error', message: err.message}); });
     }
 
     private stats = {since: 0, frames: 0, cpu: 0};
@@ -502,7 +507,7 @@ export class Engine {
                 wanted.add(key);
                 const t = this.tiles.get(key);
                 if (!t) this.request(source, id, key);
-                else if (t.stale) { t.stale = false; this.rebuild(source, id, key, t); }
+                else if (t.stale && t.state === 'ok' && !t.rebuilding) { t.stale = false; this.rebuild(source, id, key, t); }
                 if (!t || t.state === 'loading') complete = false;
             }
             // Keep a coarse overview of the same area loaded as well. It costs a tile or two and means fast pans

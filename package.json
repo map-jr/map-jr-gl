@@ -5,7 +5,7 @@
   "scripts": {
     "test": "pnpm test:unit && pnpm test:expressions && pnpm test:api",
     "build": "tsc -p . && node build.mjs",
-    "demo": "node demo/serve.mjs",
+    "demo": "node build.mjs && node demo/serve.mjs",
     "test:cloudflare": "node test/cloudflare/run.mjs",
     "test:unit": "node --experimental-transform-types --no-warnings --test test/unit/*.test.ts",
     "test:expressions": "node test/conformance/expressions.mjs --min=279",

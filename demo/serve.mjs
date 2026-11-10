@@ -79,7 +79,8 @@ map.on('error', e => { (window.mapErrors ||= []).push(String(e.error?.message ||
 
 http.createServer(async (req, res) => {
     const url = new URL(req.url, origin);
-    const send = (status, type, body, extra = {}) => { res.writeHead(status, {'content-type': type, 'access-control-allow-origin': '*', ...extra}); res.end(body); };
+    // no-store: the demo should always run the code that is on disk, never a cached copy from before a rebuild.
+    const send = (status, type, body, extra = {}) => { res.writeHead(status, {'content-type': type, 'access-control-allow-origin': '*', 'cache-control': 'no-store', ...extra}); res.end(body); };
     try {
         const t = /^\/tiles\/(\d+)\/(\d+)\/(\d+)\.pbf$/.exec(url.pathname);
         if (t) {
@@ -88,6 +89,12 @@ http.createServer(async (req, res) => {
         }
         // ?local labels places in their local script instead of English, to exercise non-Latin text.
         if (url.pathname === '/style.json') return send(200, 'application/json', JSON.stringify(style).replaceAll(url.searchParams.has('local') ? '["get","name:en"],' : '\u0000', ''));
+        if (url.pathname === '/bench') return send(200, 'text/html', await readFile(path.join(root, 'demo/bench.html')));
+        // MapLibre GL JS itself, for the side-by-side benchmark page.
+        if (url.pathname.startsWith('/ml/')) {
+            const file = path.join(root, 'node_modules/maplibre-gl/dist', path.basename(url.pathname));
+            return send(200, file.endsWith('.css') ? 'text/css' : 'text/javascript', await readFile(file));
+        }
         if (url.pathname === '/gallery') return send(200, 'text/html', await readFile(path.join(root, 'demo/gallery.html')));
         if (url.pathname === '/') return send(200, 'text/html', page(`<div id="map"></div><div id="hud"></div><a href="/gallery" style="position:absolute;left:8px;bottom:34px;z-index:2;background:#fff;padding:5px 10px;border-radius:6px;font-size:12px;box-shadow:0 1px 4px #0003;color:#222;text-decoration:none">Feature gallery</a>${client()}`));
         if (url.pathname === '/map.jpg') {

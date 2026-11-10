@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Benchmark against MapLibre GL JS</title>
+<link rel="stylesheet" href="/ml/maplibre-gl.css">
+<style>
+  body { margin: 0; font: 14px/1.45 system-ui, sans-serif; color: #1d1d1f; background: #f6f5f2; }
+  main { max-width: 1100px; margin: 0 auto; padding: 20px; }
+  h1 { font-size: 22px; margin: 0 0 6px; }
+  p { margin: 0 0 10px; color: #55555a; max-width: 80ch; }
+  #stage { width: 1000px; max-width: 100%; height: 700px; position: relative; background: #ddd; margin: 14px 0; border-radius: 8px; overflow: hidden; }
+  button { font: inherit; padding: 8px 16px; border-radius: 8px; border: 1px solid #c9c7c1; background: #fff; cursor: pointer; margin-right: 8px; }
+  button:disabled { opacity: .5; cursor: default; }
+  table { border-collapse: collapse; width: 100%; background: #fff; font-variant-numeric: tabular-nums; }
+  th, td { text-align: right; padding: 6px 10px; border-bottom: 1px solid #e5e3de; white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; white-space: normal; }
+  th { font-weight: 600; background: #efede8; }
+  #status, #env { font: 12px/1.5 ui-monospace, Menlo, monospace; color: #55555a; margin: 8px 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Benchmark against MapLibre GL JS</h1>
+  <p>Runs both libraries in <em>this</em> browser, on this machine's GPU, one after another: the same style, the same view and the same five-second pan, zoom and rotate. Keep this tab in front and leave the mouse alone while it runs (about a minute and a half).</p>
+  <div><button id="run">Run benchmark</button><button id="copy" disabled>Copy results as Markdown</button><label><input type="checkbox" id="markers" checked> include marker tests</label></div>
+  <div id="env"></div>
+  <div id="status">Idle.</div>
+  <div id="stage"></div>
+  <table id="results"><thead><tr><th>Scenario</th><th>Load to idle</th><th>Frames per second</th><th>Slowest frame gap</th><th>Main-thread script per frame (median / worst)</th><th>Main thread blocked</th></tr></thead><tbody></tbody></table>
+</main>
+<script type="module" src="/demo/bench.mjs"></script>
+</body>
+</html>
