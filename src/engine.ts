@@ -1,4 +1,5 @@
 import {EXTENT, HEIGHT_GRID, TILE_SIZE, Transform, bezier, groundHeight, clamp, latFromMerc, lngFromMerc, mercX, mercY, type LngLatLike, type TileID} from './geo.ts';
+import {setGlobalState} from './expr.ts';
 import {compileLayer, isGeometrySource, loadSprite, tileURL, type CompiledLayer, type FontSource, type ResolvedStyle, type Sprite, type SpriteIcon} from './style.ts';
 import {GLRenderer, MARKER_FLOATS, MARKER_STRIDE, SPRITE_ATLAS, type DemRef, type GLTile, type MarkerBuffers, type TerrainTile} from './gl.ts';
 import {CollisionGrid, placeLabels, renderItems, type Placed, type RenderItem} from './placement.ts';
@@ -26,7 +27,9 @@ export type Command =
     | {type: 'rotate'; delta: number; pitch?: number}
     | {type: 'fling'; dx: number; dy: number; ms: number}
     | {type: 'stop'}
-    | {type: 'limits'; minZoom: number; maxZoom: number; maxPitch: number}
+    | {type: 'limits'; minZoom: number; maxZoom: number; maxPitch: number; minPitch?: number; maxBounds?: [number, number, number, number] | null}
+    /** Throws away a source's tiles (all sources if none is named) and loads them again. */
+    | {type: 'refresh'; source?: string}
     | {type: 'style'; style: ResolvedStyle; reload: boolean}
     | {type: 'markers'; id: string; width: number; height: number; offset: [number, number]; collide: boolean; minZoom: number; maxZoom: number; hideOverlaps: boolean;
         merc: Float64Array; variant: Uint32Array; images: MarkerImage[]}
@@ -65,7 +68,7 @@ function sampleHeights(image: ImageBitmap, encoding: string): Float32Array {
     return out;
 }
 
-const DATA_OPS = /"(get|has|id|properties|geometry-type|feature-state|property|line-progress|accumulated)"/;
+const DATA_OPS = /"(get|has|id|properties|geometry-type|feature-state|global-state|property|line-progress|accumulated)"/;
 /**
  * Describes what a source's tiles depend on: first the source itself, then everything about its layers that is baked
  * into tile buffers (filters, layout, and paint values that vary per feature). Paint values that are the same for a
@@ -81,7 +84,9 @@ function sourceSignature(style: ResolvedStyle, name: string): [string, string] {
             l.type === 'symbol' || l.type === 'fill-extrusion' || k === 'fill-antialias' || k === 'fill-outline-color' || k.endsWith('-pattern') || DATA_OPS.test(JSON.stringify(v)));
         return [l.id, l.type, (l as any)['source-layer'], l.filter, l.minzoom, l.maxzoom, l.layout, paint, (l as any).metadata];
     });
-    return [source, JSON.stringify(layers)];
+    // Layers that read global state are rebuilt when it changes.
+    const json = JSON.stringify(layers);
+    return [source, json.includes('"global-state"') ? json + JSON.stringify(style.state ?? {}) : json];
 }
 
 interface TileState { state: 'loading' | 'ok' | 'error'; gl?: GLTile; /** Elevation tiles shaping 3D terrain: the lowest and highest ground on the tile, in metres. */ range?: [number, number]; used: number; cancel(): void; /** Shown, but built from data that has since changed. */ stale?: boolean; rebuilding?: boolean }
@@ -269,6 +274,7 @@ export class Engine {
         if (JSON.stringify(style.terrain) !== JSON.stringify(this.style?.terrain)) this.centreGiven = true;
         this.style = style;
         this.styleVersion++;
+        setGlobalState(style.state);
         this.layers = style.layers.map(compileLayer).filter((l): l is CompiledLayer => !!l);
         if (style.sprite && style.sprite !== this.spriteUrl) {
             this.spriteUrl = style.sprite;
@@ -280,7 +286,7 @@ export class Engine {
             for (const [name, src] of Object.entries(style.sources)) if (src.type === 'geojson') for (const b of this.backends) b.setGeoJSON(name, src.data);
             const contours = Object.fromEntries(Object.entries(style.sources).filter(([, s]) => s.contour).map(([name, s]) => [name, s.contour!]));
             for (const b of this.backends) b.setContours(contours);
-            for (const b of this.backends) b.setStyle(style.layers);
+            for (const b of this.backends) b.setStyle(style.layers, style.state);
             // Only tiles whose contents the change can affect are touched. A changed source starts over; changed
             // layers rebuild their source's tiles in place, so the old ones stay on screen until the new are ready.
             const sigs = new Map(Object.keys(style.sources).map(name => [name, sourceSignature(style, name)]));
@@ -396,7 +402,11 @@ export class Engine {
                 break;
             }
             case 'stop': this.stop(); break;
-            case 'limits': Object.assign(tr, {minZoom: c.minZoom, maxZoom: c.maxZoom, maxPitch: c.maxPitch}); tr.set(undefined, tr.zoom, undefined, tr.pitch); break;
+            case 'limits': Object.assign(tr, {minZoom: c.minZoom, maxZoom: c.maxZoom, maxPitch: c.maxPitch, minPitch: c.minPitch ?? 0, maxBounds: c.maxBounds ?? null}); tr.set(undefined, tr.zoom, undefined, tr.pitch); break;
+            case 'refresh':
+                for (const [key, t] of this.tiles) if (!c.source || key.startsWith(c.source + '|')) this.dropTile(key, t);
+                this.invalidate();
+                break;
             case 'style': this.setStyle(c.style, c.reload); break;
             case 'markers': {
                 for (const img of c.images) { const rect = this.addSprite(img.w, img.h, img.data); if (rect) this.spriteRects.set(img.variant, rect); }

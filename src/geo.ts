@@ -56,6 +56,9 @@ export class Transform {
     minZoom = 0;
     maxZoom = 22;
     maxPitch = 60;
+    minPitch = 0;
+    /** If set, the map centre is kept inside this box: west, south, east, north. */
+    maxBounds: [number, number, number, number] | null = null;
 
     /**
      * With 3D terrain: the height of the ground at the map centre, in (exaggerated) metres. The camera looks at that
@@ -71,14 +74,18 @@ export class Transform {
     private get angle() { return -this.bearing * Math.PI / 180; }
 
     set(center: LngLatLike | undefined, zoom?: number, bearing?: number, pitch?: number) {
-        if (pitch !== undefined) this.pitch = clamp(pitch, 0, this.maxPitch);
-        if (center) {
-            const [lng, lat] = toLngLat(center);
-            this.lng = lng;
-            this.lat = clamp(lat, -MAX_LAT, MAX_LAT);
-        }
+        if (pitch !== undefined) this.pitch = clamp(pitch, this.minPitch, this.maxPitch);
+        if (center) [this.lng, this.lat] = toLngLat(center);
+        this.constrain();
         if (zoom !== undefined) this.zoom = clamp(zoom, this.minZoom, this.maxZoom);
         if (bearing !== undefined) this.bearing = ((bearing + 180) % 360 + 360) % 360 - 180;
+    }
+
+    /** Keeps the centre on the map, and inside `maxBounds` if there are any. */
+    constrain() {
+        this.lat = clamp(this.lat, -MAX_LAT, MAX_LAT);
+        const b = this.maxBounds;
+        if (b) { this.lng = clamp(this.lng, b[0], b[2]); this.lat = clamp(this.lat, b[1], b[3]); }
     }
 
     /** Distance from the camera to the map centre in pixels; fixes the field of view at MapLibre's 36.87 degrees. */
@@ -236,7 +243,8 @@ export class Transform {
         const cx = mercX(this.lng) + mercX(lng) - mx;
         const cy = mercY(this.lat) + mercY(lat) - my;
         this.lng = lngFromMerc(cx);
-        this.lat = clamp(latFromMerc(clamp(cy, 0, 1)), -MAX_LAT, MAX_LAT);
+        this.lat = latFromMerc(clamp(cy, 0, 1));
+        this.constrain();
     }
 
     /** Pixels per tile unit for a tile at zoom z. */

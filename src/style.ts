@@ -118,7 +118,9 @@ export interface SourceInfo {
 export interface FontSource { family: string; src: string; weight?: string | number; style?: string; unicodeRange?: string }
 export interface ResolvedStyle { layers: LayerJSON[]; sources: Record<string, SourceInfo>; unsupported: string[]; sprite?: string; fonts?: FontSource[];
     /** 3D terrain: the raster-dem source that shapes the ground, and how much to exaggerate it. */
-    terrain?: {source: string; exaggeration: number} }
+    terrain?: {source: string; exaggeration: number};
+    /** Global state: the values `global-state` expressions read. */
+    state?: Record<string, unknown> }
 
 /**
  * Splits a style font name such as "Open Sans Semibold Italic" into a CSS family, weight and style, so text can be drawn
@@ -204,7 +206,10 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
     }
     const rawTerrain = (style as any).terrain;
     const terrain = rawTerrain?.source && sources[rawTerrain.source]?.type === 'raster-dem' ? {source: rawTerrain.source as string, exaggeration: rawTerrain.exaggeration ?? 1} : undefined;
-    return {layers, sources, unsupported: [...unsupported], sprite, fonts, terrain};
+    // `state` in a style gives each property a default; values set at runtime arrive already resolved.
+    const rawState = (style as any).state as Record<string, any> | undefined;
+    const state = rawState && Object.fromEntries(Object.entries(rawState).map(([k, v]) => [k, v && typeof v === 'object' && 'default' in v ? v.default : v]));
+    return {layers, sources, unsupported: [...unsupported], sprite, fonts, terrain, state};
 }
 
 export function tileURL(src: SourceInfo, z: number, x: number, y: number) {

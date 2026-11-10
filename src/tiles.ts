@@ -1,4 +1,5 @@
 import {compileLayer, type CompiledLayer, type LayerJSON} from './style.ts';
+import {setGlobalState} from './expr.ts';
 import {buildTile, toGL, type TileGL, type TileIR} from './tile.ts';
 import {queryTile, type QueriedFeature, type TileQuery} from './query.ts';
 import {fetchTile} from './pmtiles.ts';
@@ -49,7 +50,8 @@ export class TileBuilder {
     private fetchFn: typeof fetch;
     constructor(fetchFn: typeof fetch = fetch) { this.fetchFn = (...a) => fetchFn(...a); }
 
-    setStyle(layers: LayerJSON[]) {
+    setStyle(layers: LayerJSON[], state?: Record<string, unknown>) {
+        setGlobalState(state);
         this.bySource.clear();
         for (const json of layers) {
             const l = compileLayer(json);
@@ -99,7 +101,7 @@ export class TileBuilder {
 
 /** What the engine needs from wherever tiles are built. */
 export interface TileBackend {
-    setStyle(layers: LayerJSON[]): void;
+    setStyle(layers: LayerJSON[], state?: Record<string, unknown>): void;
     setGeoJSON(source: string, data: unknown): void;
     setContours(sources: Record<string, ContourConfig>): void;
     load(req: TileRequest): Promise<TileGL>;
@@ -109,7 +111,7 @@ export interface TileBackend {
 
 export class LocalBackend implements TileBackend {
     private builder = new TileBuilder();
-    setStyle(layers: LayerJSON[]) { this.builder.setStyle(layers); }
+    setStyle(layers: LayerJSON[], state?: Record<string, unknown>) { this.builder.setStyle(layers, state); }
     setGeoJSON(source: string, data: unknown) { this.builder.setGeoJSON(source, data); }
     setContours(sources: Record<string, ContourConfig>) { this.builder.setContours(sources); }
     async load(req: TileRequest) { return toGL(await this.builder.loadIR(req)).tile; }
@@ -131,7 +133,7 @@ export class PortBackend implements TileBackend {
             if (e.data.error) p.reject(new Error(e.data.error)); else p.resolve(e.data.tile ?? e.data.result);
         };
     }
-    setStyle(layers: LayerJSON[]) { this.port.postMessage({type: 'style', layers}); }
+    setStyle(layers: LayerJSON[], state?: Record<string, unknown>) { this.port.postMessage({type: 'style', layers, state}); }
     setGeoJSON(source: string, data: unknown) { this.port.postMessage({type: 'geojson', source, data}); }
     setContours(sources: Record<string, ContourConfig>) { this.port.postMessage({type: 'contours', sources}); }
     load(req: TileRequest) {
@@ -155,7 +157,7 @@ export function serveTiles(port: Port) {
     const builder = new TileBuilder();
     port.onmessage = async e => {
         const m = e.data;
-        if (m.type === 'style') builder.setStyle(m.layers);
+        if (m.type === 'style') builder.setStyle(m.layers, m.state);
         else if (m.type === 'geojson') builder.setGeoJSON(m.source, m.data);
         else if (m.type === 'contours') builder.setContours(m.sources);
         else if (m.type === 'cancel') builder.cancel(m.id);

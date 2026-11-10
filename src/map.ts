@@ -136,6 +136,9 @@ export class Map {
     private imageNames = new Set<string>();
     private imageResolver: ((id: string) => void | Promise<void>) | null = null;
     private tilesLoaded = false;
+    /** Global state values set at runtime, on top of the style's defaults. */
+    private globalState: Record<string, unknown> = {};
+    private zooming = false; private rotating = false; private pitching = false;
     /** Height grids of loaded elevation tiles (3D terrain), mirrored from the engine. */
     private heights = new globalThis.Map<string, Float32Array>();
     private pending = new globalThis.Map<number, {resolve(v: any): void; reject(e: Error): void}>();
@@ -272,13 +275,19 @@ export class Map {
             if (!this.moving) this.fire('movestart');
             this.moving = true;
             this.fire('move');
-            if (zoomed) this.fire('zoom');
-            if (turned) this.fire('rotate');
-            if (tilted) this.fire('pitch');
+            if (zoomed) { if (!this.zooming) this.fire('zoomstart'); this.zooming = true; this.fire('zoom'); }
+            if (turned) { if (!this.rotating) this.fire('rotatestart'); this.rotating = true; this.fire('rotate'); }
+            if (tilted) { if (!this.pitching) this.fire('pitchstart'); this.pitching = true; this.fire('pitch'); }
             // After a drag is released with inertia, the last drag frame can report "not moving" before the inertia's
             // first frame arrives. Movement has not ended until the inertia has been seen to start and then stop.
             if (e.moving) this.awaitingInertia = false;
-            if (!e.moving && !this.dragging && !this.awaitingInertia) { this.moving = false; this.fire('moveend'); }
+            if (!e.moving && !this.dragging && !this.awaitingInertia) {
+                this.moving = false;
+                if (this.zooming) { this.zooming = false; this.fire('zoomend'); }
+                if (this.rotating) { this.rotating = false; this.fire('rotateend'); }
+                if (this.pitching) { this.pitching = false; this.fire('pitchend'); }
+                this.fire('moveend');
+            }
         } else if (e.type === 'idle') {
             this.tilesLoaded = true;
             if (!this.isLoaded) {
@@ -434,12 +443,42 @@ export class Map {
         return this.easeTo({...this.cameraForBounds(bounds, o), duration: o.duration ?? 800});
     }
 
-    private limits() { this.post({type: 'limits', minZoom: this.tr.minZoom, maxZoom: this.tr.maxZoom, maxPitch: this.tr.maxPitch}); return this; }
+    private limits() { this.post({type: 'limits', minZoom: this.tr.minZoom, maxZoom: this.tr.maxZoom, maxPitch: this.tr.maxPitch, minPitch: this.tr.minPitch, maxBounds: this.tr.maxBounds}); return this; }
     setMinZoom(z = 0) { this.tr.minZoom = z; return this.limits(); }
     setMaxZoom(z = 22) { this.tr.maxZoom = z; return this.limits(); }
     setMaxPitch(p = 60) { this.tr.maxPitch = Math.min(60, p); return this.limits(); }
     getMaxPitch() { return this.tr.maxPitch; }
-    getMinPitch() { return 0; }
+    getMinPitch() { return this.tr.minPitch; }
+    setMinPitch(p = 0) { this.tr.minPitch = Math.max(0, Math.min(p, this.tr.maxPitch)); return this.limits(); }
+    /** Keeps the map centre inside a box (`[[west, south], [east, north]]`), or lifts the restriction with `null`. */
+    setMaxBounds(bounds?: [LngLatLike, LngLatLike] | [number, number, number, number] | null) {
+        const flat = bounds && (bounds as unknown[]).flat().map(v => typeof v === 'object' ? toLngLat(v as LngLatLike) : v).flat() as number[];
+        this.tr.maxBounds = flat ? [flat[0], flat[1], flat[2], flat[3]] : null;
+        return this.limits();
+    }
+    getMaxBounds() { const b = this.tr.maxBounds; return b && {getWest: () => b[0], getSouth: () => b[1], getEast: () => b[2], getNorth: () => b[3], toArray: () => [[b[0], b[1]], [b[2], b[3]]]}; }
+    getPixelRatio() { return this.dpr; }
+    getProjection() { return {type: 'mercator'}; }
+    getRenderWorldCopies() { return true; }
+    getRoll() { return 0; }
+    /** With 3D terrain: the (exaggerated) height of the ground at the map centre in metres; otherwise 0. */
+    getCenterElevation() { return this.tr.elevation; }
+    getCameraTargetElevation() { return this.tr.elevation; }
+    /** With 3D terrain: how far the ground at a position is above the ground at the map centre, in exaggerated metres (as in MapLibre); `null` without terrain. */
+    queryTerrainElevation(lngLat: LngLatLike): number | null {
+        const [lng, lat] = toLngLat(lngLat);
+        return this.tr.heightAt ? this.tr.heightAt(mercX(lng), mercY(lat)) - this.tr.elevation : null;
+    }
+    isZooming() { return this.zooming; }
+    isRotating() { return this.rotating; }
+    isPitching() { return this.pitching; }
+    /** Whether the tiles needed for the current view have loaded. (Tracked for the map as a whole, not per source.) */
+    isSourceLoaded(id: string) {
+        if (!this.rawStyle?.sources[id]) throw new Error(`There is no source with ID "${id}"`);
+        return this.tilesLoaded;
+    }
+    /** Loads a source's tiles again, e.g. after the data behind its URL changed. */
+    refreshTiles(sourceId: string) { this.post({type: 'refresh', source: sourceId}); return this; }
     getCanvasContainer() { return this.container; }
     isStyleLoaded() { return this.ready; }
     areTilesLoaded() { return this.tilesLoaded; }
@@ -457,6 +496,7 @@ export class Map {
     // ---- style ----
     private restyle(reload: boolean) {
         resolveStyle(this.rawStyle, fetch, this.styleBase).then(style => {
+            if (Object.keys(this.globalState).length) style.state = {...style.state, ...this.globalState};
             this.style = style;
             this.post({type: 'style', style, reload});
             this.fire('styledata');
@@ -473,6 +513,13 @@ export class Map {
         return i;
     }
     getStyle() { return this.rawStyle ? structuredClone(this.rawStyle) : undefined; }
+    /** The values `global-state` expressions read: the style's `state` defaults with anything set since. */
+    getGlobalState(): Record<string, unknown> { return {...this.style?.state, ...this.globalState}; }
+    /** Sets one global state value (`null` or `undefined` returns it to the style's default); layers that read it update. */
+    setGlobalStateProperty(name: string, value: unknown) {
+        if (value === null || value === undefined) delete this.globalState[name]; else this.globalState[name] = value;
+        return this.editStyle(() => {});
+    }
     /** Turns 3D terrain on (`{source, exaggeration}`, naming a raster-dem source) or off (`null`). */
     setTerrain(terrain: {source: string; exaggeration?: number} | null) {
         return this.editStyle(s => { if (terrain) s.terrain = terrain; else delete s.terrain; this.fire('terrain', {terrain}); });
@@ -600,6 +647,18 @@ export class Map {
         return this;
     }
     removeImage(name: string) { this.imageNames.delete(name); this.post({type: 'removeImage', name}); return this; }
+    /** Replaces an image added earlier; icons using it are redrawn. */
+    updateImage(name: string, source: Parameters<Map['addImage']>[1], options: ImageOptions = {}) {
+        if (!this.imageNames.has(name)) throw new Error(`There is no image with ID "${name}"`);
+        return this.removeImage(name).addImage(name, source, options);
+    }
+    getSprite() { const s = this.rawStyle?.sprite; return typeof s === 'string' ? [{id: 'default', url: s}] : s ?? []; }
+    setSprite(url: string | null) { return this.editStyle(s => { if (url) s.sprite = url; else delete s.sprite; }); }
+    getGlyphs() { return this.rawStyle?.glyphs ?? null; }
+    /** Stored with the style for compatibility. Text is drawn with web fonts, so glyph files are never fetched. */
+    setGlyphs(url: string | null) { return this.editStyle(s => { if (url) s.glyphs = url; else delete s.glyphs; }); }
+    getFontFaces() { return this.rawStyle?.['font-faces'] ?? {}; }
+    setFontFaces(faces: Record<string, unknown> | null) { return this.editStyle(s => { if (faces) s['font-faces'] = faces; else delete s['font-faces']; }); }
     hasImage(name: string) { return this.imageNames.has(name); }
     listImages() { return [...this.imageNames]; }
     /** Fetches and decodes an image, in the shape MapLibre returns it. */

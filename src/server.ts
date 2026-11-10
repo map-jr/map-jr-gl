@@ -60,7 +60,7 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
     tr.set(o.center, o.zoom, o.bearing ?? 0);
 
     const builder = new TileBuilder(fetchFn);
-    builder.setStyle(style.layers);
+    builder.setStyle(style.layers, style.state);
     builder.decodeImage = o.decodeImage ?? decodeImage;
     builder.setContours(Object.fromEntries(Object.entries(style.sources).filter(([, s]) => s.contour).map(([name, s]) => [name, s.contour!])));
     for (const [name, src] of Object.entries(style.sources)) if (src.type === 'geojson') builder.setGeoJSON(name, src.data);

@@ -77,6 +77,10 @@ function lerp(a: any, b: any, t: number): any {
 }
 
 /** Interpolation outputs written as colour strings are converted once, at compile time or first use. */
+/** The style's global state (`state` in the style, changed with `setGlobalStateProperty`), read by `global-state`. */
+let globalState: Record<string, unknown> = {};
+export function setGlobalState(state: Record<string, unknown> | undefined) { globalState = state ?? {}; }
+
 function colorize(v: any): any {
     return typeof v === 'string' ? (parseColor(v) ?? v) : v;
 }
@@ -137,6 +141,13 @@ export function compileExpr(e: any, flags: Flags): Fn {
         case 'properties': flags.dd = true; return c => c.f?.properties ?? {};
         case 'geometry-type': flags.dd = true; return c => GEOM[c.f?.type ?? 0];
         case 'zoom': flags.zoom = true; return c => c.zoom;
+        case 'global-state': {
+            // Read when evaluated, so one compiled style follows later changes. Marked like a zoom dependency so the
+            // value is never folded into a constant.
+            const key = e[1];
+            flags.zoom = true;
+            return () => globalState[key] ?? null;
+        }
         case '==': case '!=': case '<': case '<=': case '>': case '>=': {
             const a = arg(1), b = arg(2), f = cmp[op];
             return c => f(a(c), b(c));
