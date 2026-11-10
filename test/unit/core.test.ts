@@ -10,6 +10,8 @@ import {queryTile, sampleElevation} from '../../src/query.ts';
 import {CollisionGrid, renderItems} from '../../src/placement.ts';
 import {fillTemplate, sizedSVG} from '../../src/markers.ts';
 import {renderToSVG} from '../../src/server.ts';
+import {decodePNG} from '../../src/contour.ts';
+import {deflateSync} from 'node:zlib';
 
 // A real OpenMapTiles tile of lower Manhattan (© OpenStreetMap contributors, via OpenFreeMap).
 const TILE = {z: 14, x: 4823, y: 6160}, bytes = new Uint8Array(readFileSync(new URL('../fixtures/14-4823-6160.pbf', import.meta.url)));
@@ -319,4 +321,43 @@ test('contours: isolines join into rings and open lines, with levels and seamles
     const leaving = ends(a, 4096), arriving = ends(b, 0);
     assert.ok(leaving.length > 0, 'some contours cross the shared edge');
     assert.deepEqual(leaving, arriving);
+});
+
+/** A minimal RGB PNG (filter 0 or `filter` on every row; checksums are not verified by the decoder). */
+function makePNG(width: number, height: number, rgb: (x: number, y: number) => number[], filter = 0): Uint8Array {
+    const stride = width * 3, raw = new Uint8Array(height * (stride + 1));
+    for (let y = 0; y < height; y++) {
+        raw[y * (stride + 1)] = filter;
+        for (let x = 0; x < width; x++) {
+            const c = rgb(x, y), left = x && filter === 1 ? rgb(x - 1, y) : [0, 0, 0];
+            for (let k = 0; k < 3; k++) raw[y * (stride + 1) + 1 + x * 3 + k] = c[k] - left[k];
+        }
+    }
+    const chunk = (type: string, data: Uint8Array) => {
+        const out = new Uint8Array(data.length + 12);
+        new DataView(out.buffer).setUint32(0, data.length);
+        out.set([...type].map(c => c.charCodeAt(0)), 4); out.set(data, 8);
+        return out;
+    };
+    const head = new Uint8Array(13);
+    new DataView(head.buffer).setUint32(0, width); new DataView(head.buffer).setUint32(4, height);
+    head[8] = 8; head[9] = 2;
+    return Buffer.concat([new Uint8Array([0x89, 0x50, 0x4e, 0x47, 13, 10, 26, 10]), chunk('IHDR', head), chunk('IDAT', deflateSync(raw)), chunk('IEND', new Uint8Array())]);
+}
+
+test('server: PNG elevation tiles are decoded without a browser and contours are drawn', async () => {
+    const colour = (x: number, y: number) => [x * 7 % 256, y * 3 % 256, (x + y) % 256];
+    for (const filter of [0, 1]) {
+        const px = await decodePNG(makePNG(5, 4, colour, filter));
+        assert.deepEqual([px.width, px.height], [5, 4]);
+        assert.deepEqual([...px.data.subarray((2 * 5 + 3) * 4, (2 * 5 + 3) * 4 + 4)], [...colour(3, 2), 255]);
+    }
+    // A cone 0-1000 m high in terrarium encoding, the same for every tile.
+    const dem = makePNG(64, 64, (x, y) => { const e = Math.max(0, 1000 - Math.hypot(x - 32, y - 32) * 40) + 32768; return [Math.floor(e / 256), Math.floor(e) % 256, 0]; });
+    const style = {version: 8, sources: {
+        dem: {type: 'raster-dem', tiles: ['https://example.test/{z}/{x}/{y}.png'], encoding: 'terrarium', tileSize: 512, maxzoom: 12},
+        contours: {type: 'contour', source: 'dem', overzoom: 0, thresholds: {0: [100, 500]}}},
+        layers: [{id: 'c', type: 'line', source: 'contours', 'source-layer': 'contours', paint: {'line-color': '#963'}}]};
+    const {svg} = await renderToSVG({style, width: 256, height: 256, center: [0, 0], zoom: 3, fetch: (async () => new Response(dem as BodyInit)) as typeof fetch});
+    assert.match(svg, /<path[^>]*stroke="#996633"/);
 });

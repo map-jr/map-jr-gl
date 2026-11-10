@@ -34,7 +34,9 @@ Mapbox Vector Tiles.
   double-tap, two-finger tap and tap-and-drag zoom, as in MapLibre. Controls are finger-sized on touch screens,
   respect safe areas, and attribution collapses to a button on small maps.
 - **Contour lines:** a `contour` source derives labelled contour lines from an elevation source in the tile
-  workers, with intervals by zoom, a unit multiplier and overzoom, in the manner of maplibre-contour.
+  workers, with intervals by zoom, a unit multiplier and overzoom, in the manner of maplibre-contour. They are
+  drawn in server output too: PNG elevation tiles are decoded by the library, and other formats through a
+  `decodeImage` option (for WebP on Node, `sharp`).
 - **Text along lines:** road and contour labels follow the curve of their line.
 - **Queries from tile data:** `map.queryFeatures(lngLatOrPoint, {sourceLayers, filter, radius, zoom, geometry})`
   returns features whether or not any layer draws them, even off screen. `map.queryElevation(lngLat)` reads
@@ -59,7 +61,7 @@ relative to MapLibre GL JS, including generated API coverage.
 
 ## Not there yet
 
-`queryRenderedFeatures` (see `queryFeatures`), clustering (shown in the gallery as application code), pattern fills, SDF icons, 3D terrain, sky, globe, heatmap. Hillshade is not in server output, and its tile edges can show
+`queryRenderedFeatures` (see `queryFeatures`), clustering (shown in the gallery as application code), line patterns, SDF icons, 3D terrain, sky, globe, heatmap. Hillshade is not in server output, and its tile edges can show
 faint seams. Symbol layers always draw above all other layers.
 
 ## Loading the library

@@ -3,7 +3,7 @@ import {buildTile, toGL, type TileGL, type TileIR} from './tile.ts';
 import {queryTile, type QueriedFeature, type TileQuery} from './query.ts';
 import {fetchTile} from './pmtiles.ts';
 import {GEOJSON_PREFIX, prepareGeoJSON, sliceGeoJSON} from './geojson.ts';
-import {contourTile, decodeDEM, type ContourConfig, type DEM} from './contour.ts';
+import {contourTile, decodeDEM, type ContourConfig, type DEM, type ImageDecoder} from './contour.ts';
 
 export interface TileRequest { id: number; source: string; url: string; z: number; overscaled: boolean }
 
@@ -17,6 +17,8 @@ export class TileBuilder {
 
     private contours = new Map<string, ContourConfig>();
     private dems = new Map<string, Promise<DEM | null>>();
+    /** Image decoder for elevation tiles where there is no browser (server rendering). */
+    decodeImage?: ImageDecoder;
     /** Tells the builder how each contour source derives its lines. */
     setContours(sources: Record<string, ContourConfig>) { this.contours = new Map(Object.entries(sources)); }
 
@@ -24,7 +26,7 @@ export class TileBuilder {
     private loadDEM = (url: string, encoding: string): Promise<DEM | null> => {
         let dem = this.dems.get(url);
         if (!dem) {
-            dem = fetchTile(url, this.fetchFn).then(bytes => bytes ? decodeDEM(bytes, encoding) : null);
+            dem = fetchTile(url, this.fetchFn).then(bytes => bytes ? decodeDEM(bytes, encoding, this.decodeImage) : null);
             this.dems.set(url, dem);
             dem.catch(() => this.dems.delete(url));
             if (this.dems.size > 40) this.dems.delete(this.dems.keys().next().value!);

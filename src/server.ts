@@ -6,6 +6,8 @@ import {CollisionGrid, placeLabels, renderItems, type RenderItem} from './placem
 import {DEFAULT_FONT, EstimateShaper} from './text.ts';
 import {anchorOffset, type MarkerLayerOptions} from './markers.ts';
 import {renderSVG} from './svg.ts';
+import {decodePNG, type ImageDecoder} from './contour.ts';
+export {decodePNG, type ImageDecoder};
 
 export interface RenderOptions {
     /** A style object or URL, exactly as passed to the client-side map. */
@@ -31,6 +33,12 @@ export interface RenderOptions {
     /** Set false to ignore the style's `tessera:ssr` layer overrides and render exactly what the client would. */
     ssrOverrides?: boolean;
     fetch?: typeof fetch;
+    /**
+     * Decodes elevation tile images for contour sources. PNG tiles need nothing; for WebP pass a decoder, e.g.
+     * `async b => { const {data, info} = await sharp(b).ensureAlpha().raw().toBuffer({resolveWithObject: true}); return {width: info.width, height: info.height, data}; }`
+     * on Node (`sharp`). On Cloudflare Workers use a WebAssembly decoder.
+     */
+    decodeImage?: ImageDecoder;
 }
 export interface RenderResult {
     svg: string;
@@ -53,6 +61,8 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
 
     const builder = new TileBuilder(fetchFn);
     builder.setStyle(style.layers);
+    builder.decodeImage = o.decodeImage;
+    builder.setContours(Object.fromEntries(Object.entries(style.sources).filter(([, s]) => s.contour).map(([name, s]) => [name, s.contour!])));
     for (const [name, src] of Object.entries(style.sources)) if (src.type === 'geojson') builder.setGeoJSON(name, src.data);
     const items = new Map<string, RenderItem<TileIR | TileImage>[]>(), all: RenderItem<TileIR>[] = [], urls: string[] = [];
     const dataURI = async (url: string) => {
@@ -66,7 +76,7 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
     let req = 0, sprite: Sprite | null = null;
     const jobs = Object.entries(style.sources).map(async ([name, src]) => {
         if (!layers.some(l => l.source === name && l.visible && tr.zoom >= l.minzoom && tr.zoom < l.maxzoom)) return;
-        if (src.type === 'raster-dem' || src.type === 'contour') return; // both need elevation tiles decoded, which a bare server cannot do
+        if (src.type === 'raster-dem') return; // hillshading is drawn by the client only
         const ideal = tr.coveringTiles(src.minzoom, src.maxzoom, src.tileSize, src.type === 'raster'), loaded = new Map<string, TileIR | TileImage>();
         await Promise.all(ideal.filter((id, i) => ideal.findIndex(o => o.key === id.key) === i).map(async id => {
             const url = tileURL(src, id.z, id.x, id.y);

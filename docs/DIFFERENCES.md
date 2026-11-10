@@ -55,7 +55,7 @@ Compared against MapLibre GL JS 6.x.
 - 3D terrain, sky, globe and other projections.
 - SDF (recolourable) sprite icons, `icon-color`, the sprite `textFitWidth`/`textFitHeight` options, `text-halo-blur`, `circle-pitch-alignment`, `circle-pitch-scale`, data-driven circle stroke and blur, `line-offset`, `line-blur`, `line-gradient`.
 - Feature state (`setFeatureState`), global state, `transformRequest`, `addProtocol`.
-- Hillshade and runtime-added bitmap images in server output.
+- Hillshade and runtime-added bitmap images in server output. Contours are drawn there; elevation tiles that are not PNG need a `decodeImage` function (see `RenderOptions`).
 - Right-to-left text is handled by the browser, so the RTL plugin API does not exist.
 
 ## Conformance numbers
