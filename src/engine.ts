@@ -253,6 +253,32 @@ export class Engine {
         }
     }
 
+    private pictures = new Map<string, {url: string; gl?: GLTile}>();
+    /**
+     * An image source is one picture stretched between four corners. It is drawn like a tile: positioned relative to
+     * a tile near the view's centre (which keeps the numbers small and exact), reaching outside it as far as it needs.
+     */
+    private pictureItems(source: string, tr: Transform): RenderItem<GLTile>[] {
+        const src = this.style.sources[source];
+        let st = this.pictures.get(source);
+        if (!st || st.url !== src.url) {
+            if (st?.gl) this.renderer.destroyTile(st.gl);
+            const state: {url: string; gl?: GLTile} = st = {url: src.url!};
+            this.pictures.set(source, state);
+            fetch(src.url!).then(async res => {
+                if (!res.ok) throw new Error(`Failed to load image ${src.url}: ${res.status}`);
+                const image = await createImageBitmap(await res.blob());
+                if (this.pictures.get(source) === state) { state.gl = this.renderer.createImageTile(image, undefined, {z: 0, x: 0, y: 0, w: 0, key: '0/0/0'}); this.styleVersion++; this.invalidate(); }
+                image.close();
+            }).catch(err => this.emit({type: 'error', message: String(err.message)}));
+        }
+        if (!st.gl) return [];
+        const z = clamp(Math.floor(tr.zoom), 0, 22), n = 2 ** z, cx = mercX(tr.lng) * n, w = Math.floor(cx / n);
+        const id: TileID = {z, x: Math.floor(cx) - w * n, y: clamp(Math.floor(mercY(tr.lat) * n), 0, n - 1), w, key: ''};
+        const corners = src.coordinates!.flatMap(([lng, lat]) => [(mercX(lng) * n - (id.x + w * n)) * EXTENT, (mercY(lat) * n - id.y) * EXTENT]);
+        return [{id, corners, matrix: tr.tileMatrix(id), matrix4: tr.tileMatrix4(id), scale: tr.worldSize / n / EXTENT, clip: [-1e9, -1e9, 1e9, 1e9], tile: st.gl}];
+    }
+
     /** The heights under a tile, for the GPU. */
     private demRef = (id: TileID): DemRef | null => {
         const n = 2 ** id.z, found = this.demTile((id.x + 0.5) / n, (id.y + 0.5) / n, id.z);
@@ -283,6 +309,7 @@ export class Engine {
             for (const source in this.style.sources) {
                 const src = this.style.sources[source];
                 if (!this.layers.some(l => l.source === source && l.type !== 'symbol' && l.type !== 'fill-extrusion' && l.visible && zt >= l.minzoom && zt < l.maxzoom)) continue;
+                if (src.type === 'image') { const list = this.pictureItems(source, view); items.set(source, list); signature += `,${source}:${list[0]?.tile.uid ?? ''}`; continue; }
                 // Which level of tiles to draw follows the map's own zoom (not the picture's fixed scale), as it would without terrain.
                 cover.zoom = clamp(tr.zoom, id.z, zt);
                 cover.width = cover.height = TILE_SIZE * 2 ** (cover.zoom - id.z);
@@ -805,6 +832,7 @@ export class Engine {
             // Skip sources nothing visible draws from at this zoom (e.g. low-zoom relief imagery when zoomed in).
             if (!this.layers.some(l => l.source === source && l.visible && tr.zoom >= l.minzoom && tr.zoom < l.maxzoom)) continue;
             const src = this.style.sources[source];
+            if (src.type === 'image') { items.set(source, this.pictureItems(source, tr)); continue; }
             const ideal = tr.coveringTiles(src.minzoom, src.maxzoom, src.tileSize, src.type === 'raster' || src.type === 'raster-dem');
             for (const id of ideal) {
                 const key = source + '|' + id.key;

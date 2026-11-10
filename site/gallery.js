@@ -25,7 +25,9 @@ const map = new Map({
 map.addControl(new NavigationControl());
 map.addControl(new ScaleControl(), 'bottom-left');`,
         make: (el, row) => { const map = base(el).addControl(new NavigationControl()).addControl(new ScaleControl(), 'bottom-left').addControl(new FullscreenControl(), 'top-left');
-            map.on('stats', e => row.out(`${map.renderer} rendering, ${e.fps.toFixed(0)} frames per second`)); row.out(`${map.renderer} rendering`); return map; }},
+            map.on('stats', e => row.out(`${map.renderer} rendering, ${e.fps.toFixed(0)} frames per second`));
+            // Which thread draws is decided while the map starts, so it is reported once the map has loaded.
+            map.once('load', () => row.out(`${map.renderer} rendering`)); row.out('Starting'); return map; }},
 
     {id: 'markers', title: 'Tens of thousands of markers, drawn on the canvas',
         points: ['A marker layer is one SVG template with {{slots}} and a list of positions.', 'Markers are drawn by the GPU. 50,000 cost about the same as 50.', 'Layers can swap by zoom, hide overlaps, and open a callout that map labels move away from.'],

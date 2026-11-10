@@ -23,6 +23,17 @@ float ground(vec2 uv) {
 }
 `;
 
+const SQUARE = [0, 0, EXTENT, 0, EXTENT, EXTENT, 0, EXTENT], ONES = [1, 1, 1, 1];
+/** Perspective weights for a quadrilateral's corners, from where its diagonals cross (all 1 for a parallelogram). */
+function cornerWeights(c: number[]): number[] {
+    const [x0, y0, x1, y1, x2, y2, x3, y3] = c, den = (x2 - x0) * (y3 - y1) - (y2 - y0) * (x3 - x1);
+    if (Math.abs(den) < 1e-9) return ONES;
+    const t = ((x1 - x0) * (y3 - y1) - (y1 - y0) * (x3 - x1)) / den, ix = x0 + (x2 - x0) * t, iy = y0 + (y2 - y0) * t;
+    const d = [0, 1, 2, 3].map(i => Math.hypot(c[i * 2] - ix, c[i * 2 + 1] - iy));
+    if (d.some(v => v < 1e-9) || t <= 0 || t >= 1) return ONES; // not convex: fall back to plain stretching
+    return [(d[0] + d[2]) / d[2], (d[1] + d[3]) / d[3], (d[0] + d[2]) / d[0], (d[1] + d[3]) / d[1]];
+}
+
 const SHADERS = {
     // Draws a whole layer, rendered separately, onto the map in one go (layer-wide opacity and blending).
     composite: [`layout(location=0) in vec2 a_pos; out vec2 v_uv;
@@ -158,12 +169,18 @@ uniform vec4 u_color; uniform vec4 u_clip; in vec4 v_color; in vec2 v_tile; out 
 void main() { ${FS_CLIP} vec4 c = v_color * u_color; o = vec4(c.rgb * c.a, c.a); }`],
 
     raster: [`${VS_COMMON}
-layout(location=0) in vec2 a_pos; out vec2 v_uv; out vec2 v_tile;
-void main() { v_uv = a_pos; v_tile = a_pos * ${EXTENT}.0; gl_Position = toClip(v_tile); }`, `
-uniform sampler2D u_image; uniform vec4 u_clip; uniform vec3 u_adjust; uniform vec2 u_bright; uniform vec3 u_spin; in vec2 v_uv; in vec2 v_tile; out vec4 o;
+layout(location=0) in vec2 a_pos; uniform vec2 u_corners[4]; uniform vec4 u_q; out vec3 v_uvq; out vec2 v_tile;
+// A tile fills its square; an image source's picture is stretched between four given corners instead. For a shape
+// that is not a parallelogram the picture must be foreshortened as if seen in perspective: each corner carries a
+// weight q, and dividing by the interpolated weight in the fragment shader gives the right texture position.
+void main() {
+  float q = mix(mix(u_q.x, u_q.y, a_pos.x), mix(u_q.w, u_q.z, a_pos.x), a_pos.y);
+  v_uvq = vec3(a_pos * q, q);
+  v_tile = mix(mix(u_corners[0], u_corners[1], a_pos.x), mix(u_corners[3], u_corners[2], a_pos.x), a_pos.y); gl_Position = toClip(v_tile); }`, `
+uniform sampler2D u_image; uniform vec4 u_clip; uniform vec3 u_adjust; uniform vec2 u_bright; uniform vec3 u_spin; in vec3 v_uvq; in vec2 v_tile; out vec4 o;
 void main() {
   ${FS_CLIP}
-  vec4 c = texture(u_image, v_uv);
+  vec4 c = texture(u_image, v_uvq.xy / v_uvq.z);
   vec3 rgb = c.a > 0.0 ? c.rgb / c.a : c.rgb;
   rgb = vec3(dot(rgb, u_spin.xyz), dot(rgb, u_spin.zxy), dot(rgb, u_spin.yzx));
   rgb += ((rgb.r + rgb.g + rgb.b) / 3.0 - rgb) * u_adjust.y;
@@ -401,7 +418,7 @@ export class GLRenderer {
         const u: Record<string, WebGLUniformLocation> = {};
         for (let i = 0; i < gl.getProgramParameter(prog, gl.ACTIVE_UNIFORMS); i++) {
             const info = gl.getActiveUniform(prog, i)!;
-            u[info.name] = gl.getUniformLocation(prog, info.name)!;
+            u[info.name.replace(/\[0\]$/, '')] = gl.getUniformLocation(prog, info.name)!; // arrays are reported as "name[0]"
         }
         return {prog, u};
     }
@@ -681,6 +698,7 @@ export class GLRenderer {
                     gl.uniformMatrix4fv(u.u_matrix, false, m);
                     gl.uniform4fv(u.u_clip, it.clip);
                     if (it.tile.lat) gl.uniform2fv(u.u_latrange, it.tile.lat);
+                    if (L.type === 'raster') { gl.uniform2fv(u.u_corners, it.corners ?? SQUARE); gl.uniform4fv(u.u_q, it.corners ? cornerWeights(it.corners) : ONES); }
                     gl.bindTexture(gl.TEXTURE_2D, it.tile.tex);
                     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
                 }

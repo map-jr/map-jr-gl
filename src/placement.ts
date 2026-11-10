@@ -7,6 +7,8 @@ import {CollisionGrid} from './collision.ts';
 /** One tile (or part of one) scheduled for drawing this frame. */
 export interface RenderItem<T> {
     id: TileID;
+    /** Image sources: the picture's corners in this tile's units (x, y pairs, clockwise from top left). */
+    corners?: number[];
     matrix: Mat;
     /** The same mapping with perspective, for the GPU. */
     matrix4: Float32Array;

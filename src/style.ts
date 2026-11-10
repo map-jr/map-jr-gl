@@ -115,7 +115,9 @@ export function compileLayer(l: LayerJSON): CompiledLayer | null {
 }
 
 export interface SourceInfo {
-    type: 'vector' | 'raster' | 'raster-dem' | 'geojson' | 'contour';
+    type: 'vector' | 'raster' | 'raster-dem' | 'geojson' | 'contour' | 'image';
+    /** Image sources: the picture's address and where its corners go (top left, top right, bottom right, bottom left; longitude, latitude). */
+    url?: string; coordinates?: [number, number][];
     /** Contour sources: how to derive lines from their elevation source. */
     contour?: ContourConfig;
     /** GeoJSON sources carry their data; it is handed to the tile workers, which cut tiles from it. */
@@ -160,6 +162,10 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
                 data = await res.json();
             }
             sources[name] = {type: 'geojson', data, tiles: [`geojson://${name}/{z}/{x}/{y}`], minzoom: 0, maxzoom: raw.maxzoom ?? 18, tileSize: 512, attribution: raw.attribution};
+            continue;
+        }
+        if (raw.type === 'image' && raw.url && raw.coordinates?.length === 4) {
+            sources[name] = {type: 'image', url: base ? new URL(raw.url, base).href : raw.url, coordinates: raw.coordinates, tiles: [], minzoom: 0, maxzoom: 22, tileSize: 512};
             continue;
         }
         if (raw.type !== 'vector' && raw.type !== 'raster' && raw.type !== 'raster-dem') continue;

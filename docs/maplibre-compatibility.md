@@ -59,7 +59,7 @@ The [status table](../README.md#status) gives the current test results.
 
 Sources:
 
-- Image, video and canvas sources
+- Video and canvas sources
 - MapLibre Tiles (MLT)
 - Clusters, `promoteId` and line metrics in GeoJSON sources
 
