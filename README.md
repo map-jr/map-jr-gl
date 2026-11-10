@@ -164,8 +164,11 @@ Then open `http://localhost:8080/gallery` for a page of small live maps, one per
 `http://localhost:8080/` (full page; add `?renderer=main` or `?renderer=worker`, `?markers=50000`, `?photos`, `?standalone`),
 `/ssr` (server-rendered SVG, then hydrated; `/ssr?image` for a server-rendered JPEG) or `/static` (server output alone).
 Add `?style=<url>` to load any MapLibre style. The demo proxies and caches
-tiles from OpenFreeMap. `pnpm test` runs unit tests, MapLibre's expression fixtures and an API coverage check; `pnpm test:browser` and
-`pnpm test:cloudflare` run against a running demo server.
+tiles from OpenFreeMap. `pnpm test` runs unit tests, MapLibre's expression fixtures and an API coverage check. With the demo server
+running, `pnpm test:browser` exercises the map in Chromium, `pnpm test:loading` checks each way of loading the
+library, and `pnpm test:cloudflare` runs the server renderer inside Cloudflare's runtime. `pnpm test:render` runs
+MapLibre GL JS's own render tests (a style and an expected image each) against this renderer and reports how many
+match; it clones MapLibre's repository into `.cache/` on first use.
 
 ## Server rendering
 

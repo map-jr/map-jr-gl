@@ -177,6 +177,9 @@ export class Map {
         this.rawStyle = typeof o.style === 'string' ? await (await fetch(o.style)).json() : structuredClone(o.style);
         for (const fn of this.beforeStyle.splice(0)) fn();
         this.styleBase = typeof o.style === 'string' ? new URL(o.style, location.href).href : location.href;
+        // As in MapLibre, a style may carry its own starting camera; explicit options win.
+        const sc = this.rawStyle;
+        this.tr.set(o.center === undefined ? sc.center : undefined, o.zoom === undefined ? sc.zoom : undefined, o.bearing === undefined ? sc.bearing : undefined, o.pitch === undefined ? sc.pitch : undefined);
         this.style = await resolveStyle(this.rawStyle, fetch, this.styleBase);
         if (this.style.unsupported.length) console.warn('[tessera] Skipping unsupported layer types: ' + this.style.unsupported.join(', '));
         const tr = this.tr;
