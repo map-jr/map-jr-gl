@@ -7,6 +7,9 @@ const pages = {
     tokyo: '/?local&nomarkers&center=139.7671,35.6812&zoom=12.2', cairo: '/?local&nomarkers&center=31.2357,30.0444&zoom=11.5',
     delhi: '/?local&nomarkers&center=77.2090,28.6139&zoom=11.2', bangkok: '/?local&nomarkers&center=100.5018,13.7563&zoom=11.5',
     positron: '/?nomarkers&style=https://tiles.openfreemap.org/styles/positron', liberty: '/?nomarkers&style=https://tiles.openfreemap.org/styles/liberty',
+    elev: '/?nomarkers&style=https://whatismyelevation.com/styles/elevation-color.json',
+    elevalps: '/?nomarkers&style=https://whatismyelevation.com/styles/elevation-color.json&center=7.6586,45.9763&zoom=11.3',
+    elevlow: '/?nomarkers&style=https://whatismyelevation.com/styles/elevation-color.json&center=-105.2,39.8&zoom=6.2',
     rotated: '/?renderer=worker&bearing=35&zoom=15.4', low: '/?renderer=worker&zoom=10.5&nomarkers',
 };
 const browser = await chromium.launch({args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist']});

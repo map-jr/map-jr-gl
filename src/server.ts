@@ -30,7 +30,8 @@ export interface RenderResult {
 
 /** Renders the first frame of a map without a browser, for server-side rendering, static export or social images. */
 export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
-    const fetchFn = o.fetch ?? fetch;
+    // Wrapped, not passed by reference: Cloudflare Workers reject calls to a detached global `fetch`.
+    const fetchFn: typeof fetch = o.fetch ?? ((...a) => fetch(...a));
     const style = await resolveStyle(o.style, fetchFn);
     if (o.layerFilter) style.layers = style.layers.filter(l => o.layerFilter!(l.id));
     const layers = style.layers.map(compileLayer).filter((l): l is CompiledLayer => !!l);
@@ -69,6 +70,35 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
         rootAttrs: 'data-tessera-ssr style="position:absolute;inset:0;width:100%;height:100%"',
     });
     return {svg, tiles: urls};
+}
+
+/**
+ * The part of takumi's `Renderer` this library uses. Pass an instance from `@takumi-rs/core` (Node, Bun) or
+ * `@takumi-rs/wasm` (Cloudflare Workers and other edge runtimes); nothing is imported here, so the choice is yours.
+ */
+export interface Rasteriser {
+    render(source: string, options: Record<string, unknown>): Promise<Uint8Array>;
+}
+export interface ImageOptions extends RenderOptions {
+    rasteriser: Rasteriser;
+    /** 'jpeg' is the compact choice everywhere. Lossy 'webp' is smaller still but only the native build supports it. */
+    format?: 'jpeg' | 'webp' | 'png';
+    quality?: number;
+    /** Output pixels per CSS pixel, for sharp results on high-density screens. */
+    pixelRatio?: number;
+}
+export interface ImageResult { image: Uint8Array; contentType: string; tiles: string[] }
+
+/** Renders the first frame as a raster image: a fixed, predictable payload however dense the map data is. */
+export async function renderToImage(o: ImageOptions): Promise<ImageResult> {
+    const {svg, tiles} = await renderToSVG(o);
+    const format = o.format ?? 'jpeg', ratio = o.pixelRatio ?? 1;
+    const plain = svg.replace(/ data-tessera-ssr style="[^"]*"/, '');
+    const image = await o.rasteriser.render(`<div style="display:flex;width:${o.width}px;height:${o.height}px">${plain}</div>`, {
+        width: o.width * ratio, height: o.height * ratio, format, devicePixelRatio: ratio, // output size is in device pixels
+        ...(format === 'png' ? {} : {quality: o.quality ?? 75}),
+    });
+    return {image, contentType: 'image/' + format, tiles};
 }
 
 export {renderSVG} from './svg.ts';

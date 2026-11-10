@@ -51,7 +51,7 @@ export interface SourceInfo { tiles: string[]; minzoom: number; maxzoom: number;
 /** A style with everything network-dependent already resolved, so it can be posted to a worker as plain JSON. */
 export interface ResolvedStyle { layers: LayerJSON[]; sources: Record<string, SourceInfo>; unsupported: string[] }
 
-export async function resolveStyle(style: any, fetchFn: typeof fetch = fetch, base?: string): Promise<ResolvedStyle> {
+export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) => fetch(...a), base?: string): Promise<ResolvedStyle> {
     if (typeof style === 'string') {
         const url = base ? new URL(style, base).href : style;
         const res = await fetchFn(url);

@@ -5,7 +5,10 @@ import {fileURLToPath} from 'node:url';
 import path from 'node:path';
 import makeStyle from './style.mjs';
 import {markers, view} from './markers.mjs';
-import {renderToSVG} from '../dist/server.js';
+import {renderToSVG, renderToImage} from '../dist/server.js';
+import {Renderer} from '@takumi-rs/core';
+
+const rasteriser = new Renderer();
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const port = +(process.env.PORT || 8080), origin = `http://localhost:${port}`;
@@ -58,6 +61,12 @@ http.createServer(async (req, res) => {
         // ?local labels places in their local script instead of English, to exercise non-Latin text.
         if (url.pathname === '/style.json') return send(200, 'application/json', JSON.stringify(style).replaceAll(url.searchParams.has('local') ? '["get","name:en"],' : '\u0000', ''));
         if (url.pathname === '/') return send(200, 'text/html', page(`<div id="map"></div><div id="hud"></div>${client()}`));
+        if (url.pathname === '/map.jpg') {
+            const q = url.searchParams, ratio = +(q.get('ratio') || 1);
+            const {image, contentType} = await renderToImage({style, ...view, zoom: +(q.get('zoom') || view.zoom), bearing: +(q.get('bearing') || 0),
+                width: +(q.get('w') || 1000), height: +(q.get('h') || 700), markers: q.has('nomarkers') ? [] : [markers], rasteriser, pixelRatio: ratio});
+            return send(200, contentType, image, {'cache-control': 'max-age=3600'});
+        }
         if (url.pathname === '/ssr' || url.pathname === '/ssr.svg' || url.pathname === '/static') {
             const width = +(url.searchParams.get('w') || 1000), height = +(url.searchParams.get('h') || 700);
             const zoom = +(url.searchParams.get('zoom') || view.zoom), bearing = +(url.searchParams.get('bearing') || view.bearing);
@@ -66,7 +75,10 @@ http.createServer(async (req, res) => {
             const ms = (performance.now() - t0).toFixed(0);
             if (url.pathname === '/ssr.svg') return send(200, 'image/svg+xml', svg, {'x-render-ms': ms});
             const preload = tiles.map(u => `<link rel="preload" as="fetch" crossorigin href="${u}">`).join('');
-            const frame = `<div id="map" style="position:relative;width:${width}px;height:${height}px;inset:auto">${svg}</div><div id="hud">server render ${ms} ms, ${(svg.length / 1024).toFixed(0)} KB SVG</div>`;
+            // ?image swaps the inline SVG for a server-rendered JPEG: a fixed payload however dense the data is.
+            const first = url.searchParams.has('image')
+                ? `<img data-tessera-ssr alt="" src="/map.jpg?${url.searchParams}&w=${width}&h=${height}" style="position:absolute;inset:0;width:100%;height:100%">` : svg;
+            const frame = `<div id="map" style="position:relative;width:${width}px;height:${height}px;inset:auto">${first}</div><div id="hud">server render ${ms} ms, ${(svg.length / 1024).toFixed(0)} KB SVG</div>`;
             // /static shows the server output alone; /ssr also loads the client, which takes over the same element.
             return send(200, 'text/html', page(frame + (url.pathname === '/ssr' ? client() : ''), url.pathname === '/ssr' ? preload : ''));
         }

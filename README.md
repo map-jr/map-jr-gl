@@ -31,14 +31,14 @@ Symbol layers always draw above all other layers.
 ## Try it
 
 ```bash
-npm install
-npm run build
-npm run demo
+pnpm install
+pnpm build
+pnpm demo
 ```
 
 Then open `http://localhost:8080/` (client only; add `?renderer=main` or `?renderer=worker`),
 `/ssr` (server-rendered, then hydrated) or `/static` (server output alone). The demo proxies and caches
-tiles from OpenFreeMap. `npm test` runs the browser checks against a running demo server.
+tiles from OpenFreeMap. `pnpm test` runs the browser checks against a running demo server.
 
 ## Usage
 
