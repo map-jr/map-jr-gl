@@ -25,13 +25,22 @@ Mapbox Vector Tiles.
 - **Server rendering:** `renderToSVG()` produces the first frame as SVG in plain JavaScript (Node, Cloudflare
   Workers), and `renderToImage()` rasterises it to JPEG, WebP or PNG through [takumi](https://takumi.kane.tw).
   The client replaces the server output once its canvas shows the same view.
-- **Camera and input:** drag, inertia, wheel and pinch zoom, rotate, keyboard, `jumpTo` / `easeTo` / `flyTo`.
+- **Queries from tile data:** `map.queryFeatures(lngLatOrPoint, {sourceLayers, filter, radius, zoom, geometry})`
+  returns features whether or not any layer draws them, even off screen. `map.queryElevation(lngLat)` reads
+  metres from a `raster-dem` source (Terrarium or Mapbox encoding). Both return promises.
+- **Fonts and images:** the `fonts` option (or `addFonts`) loads web fonts on the rendering thread; a style's
+  `text-font` of "Open Sans Semibold" maps to family Open Sans at weight 600, with `fontFamily` as fallback.
+  `map.addImage(name, svgOrUrlOrBitmap)` adds icons at runtime, SVG included, rasterised at screen density.
+  A `styleimagemissing` event reports icon names nothing provides.
+- **Labels** are re-decided about four times a second while the map moves, stay pinned to the map in between,
+  and fade in and out. A coarse overview of the current area is kept loaded so fast pans land on map, not blank.
+- **Camera and input:** wheel and trackpad handling and pan inertia follow MapLibre's model and constants. drag, inertia, wheel and pinch zoom, rotate, keyboard, `jumpTo` / `easeTo` / `flyTo`.
 
 ## Not there yet
 
-Labels that curve along lines, label fade animations, `queryRenderedFeatures`, GeoJSON sources, pattern fills,
-SDF icons, pitch, 3D terrain, sky, globe, heatmap. Hillshade is not in server output yet, and its tile edges
-can show faint seams. Symbol layers always draw above all other layers.
+Labels that curve along lines, `queryRenderedFeatures` (see `queryFeatures`), GeoJSON sources, pattern fills,
+SDF icons, pitch, 3D terrain, sky, globe, heatmap. Hillshade and runtime-added images are not in server output,
+and hillshade tile edges can show faint seams. Symbol layers always draw above all other layers.
 
 ## Try it
 

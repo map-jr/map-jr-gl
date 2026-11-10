@@ -82,6 +82,8 @@ export class GlyphAtlas extends BaseShaper {
     /** Bumped whenever pixels change, so the renderer knows to re-upload. */
     version = 0;
     private glyphs = new Map<string, Glyph>();
+    /** Called when the atlas had to be emptied, invalidating any shaped text held elsewhere. */
+    onReset?: () => void;
     private ctx: Canvas2D;
     private penX = 1;
     private penY = 1;
@@ -103,12 +105,26 @@ export class GlyphAtlas extends BaseShaper {
         return {text, width, glyphs};
     }
 
+    /** Label fonts arrive as "style weight|family"; the family named by the style is tried before the map default. */
+    private css(font: string) {
+        const [variant, family] = font.split('|');
+        return `${variant} ${EM}px ${family ? `"${family}", ` : ''}${this.family}`;
+    }
+
+    /** Forgets every glyph, e.g. after a web font finishes loading and text must be redrawn with it. */
+    clear() {
+        this.data.fill(0); this.glyphs.clear(); this.reset();
+        this.penX = this.penY = 1; this.shelf = 0;
+        this.version++;
+    }
+
     private glyph(text: string, font: string): Glyph {
         const key = font + '|' + text;
         let g = this.glyphs.get(key);
         if (g) return g;
         const ctx = this.ctx, B = SDF_BUFFER;
-        ctx.font = `${font} ${EM}px ${this.family}`;
+        const css = this.css(font);
+        ctx.font = css;
         const m = ctx.measureText(text);
         const left = Math.ceil(m.actualBoundingBoxLeft), top = Math.ceil(m.actualBoundingBoxAscent);
         const gw = Math.max(0, left + Math.ceil(m.actualBoundingBoxRight)), gh = Math.max(0, top + Math.ceil(m.actualBoundingBoxDescent));
@@ -118,7 +134,7 @@ export class GlyphAtlas extends BaseShaper {
             if (ctx.canvas.width < w || ctx.canvas.height < h) {
                 ctx.canvas.width = Math.max(ctx.canvas.width, w);
                 ctx.canvas.height = Math.max(ctx.canvas.height, h);
-                ctx.font = `${font} ${EM}px ${this.family}`;
+                ctx.font = css;
             }
             ctx.clearRect(0, 0, w, h);
             ctx.textBaseline = 'alphabetic';
@@ -128,8 +144,8 @@ export class GlyphAtlas extends BaseShaper {
             if (this.penX + w + 1 > this.width) { this.penX = 1; this.penY += this.shelf + 1; this.shelf = 0; }
             if (this.penY + h + 1 > this.height) {
                 // Atlas full: start over. Shaped text holds glyph references, so drop those too.
-                this.data.fill(0); this.glyphs.clear(); this.reset();
-                this.penX = this.penY = 1; this.shelf = 0;
+                this.clear();
+                this.onReset?.();
             }
             g.x = this.penX; g.y = this.penY;
             for (let row = 0; row < h; row++) this.data.set(sdf.subarray(row * w, row * w + w), (g.y + row) * this.width + g.x);

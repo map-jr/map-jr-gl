@@ -95,13 +95,14 @@ void main() {
   o = vec4(rgb, c.a) * u_adjust.x;
 }`],
 
-    // Turns Terrarium-encoded elevation into slope (dz/dx, dz/dy), once per tile, so shading can sample it smoothly.
+    // Turns encoded elevation into slope (dz/dx, dz/dy), once per tile, so shading can sample it smoothly.
     demPrepare: [`layout(location=0) in vec2 a_pos; out vec2 v_uv;
 void main() { v_uv = a_pos; gl_Position = vec4(a_pos * 2.0 - 1.0, 0.0, 1.0); }`, `
-uniform sampler2D u_dem; uniform float u_zoom; in vec2 v_uv; out vec4 o;
+uniform sampler2D u_dem; uniform float u_zoom; uniform vec4 u_unpack; in vec2 v_uv; out vec4 o;
 float elev(ivec2 p, ivec2 size) {
   vec4 c = texelFetch(u_dem, clamp(p, ivec2(0), size - 1), 0) * 255.0;
-  return c.r * 256.0 + c.g + c.b / 256.0 - 32768.0;
+  c.a = -1.0;
+  return dot(c, u_unpack);
 }
 void main() {
   ivec2 size = textureSize(u_dem, 0), p = ivec2(v_uv * vec2(size));
@@ -138,9 +139,9 @@ void main() {
   o = accent * (1.0 - shadeColor.a) + shadeColor;
 }`],
 
-    sprite: [`uniform vec2 u_view; uniform vec2 u_tex; layout(location=0) in vec4 a_v; out vec2 v_uv;
-void main() { v_uv = a_v.zw / u_tex; vec2 c = a_v.xy / u_view * 2.0 - 1.0; gl_Position = vec4(c.x, -c.y, 0.0, 1.0); }`, `
-uniform sampler2D u_img; in vec2 v_uv; out vec4 o; void main() { o = texture(u_img, v_uv); }`],
+    sprite: [`uniform vec2 u_view; uniform vec2 u_tex; layout(location=0) in vec4 a_v; layout(location=1) in float a_alpha; out vec2 v_uv; out float v_alpha;
+void main() { v_uv = a_v.zw / u_tex; v_alpha = a_alpha; vec2 c = a_v.xy / u_view * 2.0 - 1.0; gl_Position = vec4(c.x, -c.y, 0.0, 1.0); }`, `
+uniform sampler2D u_img; in vec2 v_uv; in float v_alpha; out vec4 o; void main() { o = texture(u_img, v_uv) * v_alpha; }`],
 };
 
 interface Program { prog: WebGLProgram; u: Record<string, WebGLUniformLocation> }
@@ -159,7 +160,7 @@ export interface Scene {
     items: Map<string, RenderItem<GLTile>[]>;
     labels: Placed[];
     atlas: GlyphAtlas;
-    /** Marker quads: x, y, u, v per vertex, six vertices per marker, already in draw order. */
+    /** Marker quads: x, y, u, v, alpha per vertex, six vertices per marker, already in draw order. */
     sprites: Float32Array;
     spriteCount: number;
 }
@@ -217,7 +218,9 @@ export class GLRenderer {
         gl.bindVertexArray(this.spriteVao);
         this.spriteBuf = buf(null);
         gl.enableVertexAttribArray(0);
-        gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 0, 0);
+        gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 20, 0);
+        gl.enableVertexAttribArray(1);
+        gl.vertexAttribPointer(1, 1, gl.FLOAT, false, 20, 16);
         gl.bindVertexArray(null);
 
         const tex = () => {
@@ -325,7 +328,8 @@ export class GLRenderer {
     }
 
     /** Wraps a decoded raster or elevation tile image as a drawable tile. */
-    createImageTile(image: ImageBitmap, dem: boolean, id: TileID): GLTile {
+    createImageTile(image: ImageBitmap, encoding: string | undefined, id: TileID): GLTile {
+        const dem = !!encoding;
         const gl = this.gl, tex = this.newTexture();
         gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, !dem);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
@@ -343,6 +347,7 @@ export class GLRenderer {
             gl.bindTexture(gl.TEXTURE_2D, tex);
             gl.uniform1i(u.u.u_dem, 0);
             gl.uniform1f(u.u.u_zoom, id.z);
+            gl.uniform4fv(u.u.u_unpack, encoding === 'terrarium' ? [256, 1, 1 / 256, 32768] : [6553.6, 25.6, 0.1, 10000]);
             gl.bindVertexArray(this.quad);
             gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
             gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -496,17 +501,19 @@ export class GLRenderer {
             }
         }
 
-        const icons = this.iconQuads(s.labels);
-        if (icons.length) {
+        // Style-sheet icons and images added at runtime live in different textures.
+        for (const custom of [false, true]) {
+            const icons = this.iconQuads(s.labels, custom);
+            if (!icons.length) continue;
             const u = use('sprite');
             gl.activeTexture(gl.TEXTURE0);
-            gl.bindTexture(gl.TEXTURE_2D, this.iconTex);
-            gl.uniform2f(u.u_tex, this.iconSize[0], this.iconSize[1]);
+            gl.bindTexture(gl.TEXTURE_2D, custom ? this.spriteTex : this.iconTex);
+            gl.uniform2f(u.u_tex, custom ? SPRITE_ATLAS : this.iconSize[0], custom ? SPRITE_ATLAS : this.iconSize[1]);
             gl.uniform1i(u.u_img, 0);
             gl.bindVertexArray(this.spriteVao);
             gl.bindBuffer(gl.ARRAY_BUFFER, this.spriteBuf);
             gl.bufferData(gl.ARRAY_BUFFER, icons, gl.DYNAMIC_DRAW);
-            gl.drawArrays(gl.TRIANGLES, 0, icons.length / 4);
+            gl.drawArrays(gl.TRIANGLES, 0, icons.length / 5);
         }
 
         if (s.labels.length) {
@@ -538,23 +545,24 @@ export class GLRenderer {
             gl.uniform1i(u.u_img, 0);
             gl.bindVertexArray(this.spriteVao);
             gl.bindBuffer(gl.ARRAY_BUFFER, this.spriteBuf);
-            gl.bufferData(gl.ARRAY_BUFFER, s.sprites.subarray(0, s.spriteCount * 24), gl.DYNAMIC_DRAW);
+            gl.bufferData(gl.ARRAY_BUFFER, s.sprites.subarray(0, s.spriteCount * 30), gl.DYNAMIC_DRAW);
             gl.drawArrays(gl.TRIANGLES, 0, s.spriteCount * 6);
         }
         gl.bindVertexArray(null);
     }
 
-    private iconQuads(labels: Placed[]): Float32Array {
-        const out = new Float32Array(labels.reduce((n, l) => n + (l.icon ? 24 : 0), 0));
+    private iconQuads(labels: Placed[], custom: boolean): Float32Array {
+        const mine = labels.filter(l => l.icon && !!l.icon.custom === custom && l.opacity > 0);
+        const out = new Float32Array(mine.length * 30);
         let o = 0;
-        for (const {icon} of labels) {
-            if (!icon) continue;
-            const cos = Math.cos(icon.angle), sin = Math.sin(icon.angle), hw = icon.w / 2, hh = icon.h / 2, [sx, sy, sw, sh] = icon.rect;
+        for (const {icon, opacity} of mine) {
+            const i = icon!, cos = Math.cos(i.angle), sin = Math.sin(i.angle), hw = i.w / 2, hh = i.h / 2, [sx, sy, sw, sh] = i.rect;
             for (const [cx, cy] of [[-1, -1], [1, -1], [-1, 1], [1, -1], [1, 1], [-1, 1]]) {
-                out[o++] = icon.x + cx * hw * cos - cy * hh * sin;
-                out[o++] = icon.y + cx * hw * sin + cy * hh * cos;
+                out[o++] = i.x + cx * hw * cos - cy * hh * sin;
+                out[o++] = i.y + cx * hw * sin + cy * hh * cos;
                 out[o++] = sx + (cx + 1) / 2 * sw;
                 out[o++] = sy + (cy + 1) / 2 * sh;
+                out[o++] = opacity;
             }
         }
         return out;
@@ -573,7 +581,8 @@ export class GLRenderer {
             // Where the halo's outer edge sits in distance-field units, limited by how far the field extends.
             const hedge = src.haloWidth > 0 && src.halo[3] > 0 ? Math.max(0.75 - (B - 0.75) / SDF_RADIUS, 0.75 - src.haloWidth / s / SDF_RADIUS) : 2;
             const gamma = 0.7 / (SDF_RADIUS * s * this.dpr);
-            const col = src.color.map(v => Math.round(v * 255)), halo = src.halo.map(v => Math.round(v * 255));
+            const fade = (c: number[]) => [c[0] * 255, c[1] * 255, c[2] * 255, c[3] * 255 * l.opacity].map(Math.round);
+            const col = fade(src.color), halo = fade(src.halo);
             shaped.lines.forEach((line, i) => {
                 let pen = -line.width / 2;
                 const baseline = -shaped.height / 2 + i * shaped.lineHeight + shaped.lineHeight * 0.5 + EM * 0.34;

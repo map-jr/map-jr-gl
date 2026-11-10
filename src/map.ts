@@ -1,6 +1,7 @@
 import {Transform, mercX, mercY, toLngLat, type LngLatLike} from './geo.ts';
 import {resolveStyle, type ResolvedStyle} from './style.ts';
-import {Engine, type CameraOptions, type Command, type EngineEvent, type MarkerImage} from './engine.ts';
+import {Engine, type CameraOptions, type Command, type EngineEvent, type FeatureQuery, type FontSource, type MarkerImage} from './engine.ts';
+import type {QueriedFeature} from './query.ts';
 import {LocalBackend, PortBackend, type TileBackend} from './tiles.ts';
 import {anchorOffset, resolveVariants, sizedSVG, type MarkerInput, type MarkerLayerOptions} from './markers.ts';
 import {DEFAULT_FONT} from './text.ts';
@@ -18,8 +19,14 @@ export interface MapOptions extends CameraOptions {
     /** URL of the worker script. Defaults to a copy embedded in the bundle, loaded through a blob URL. */
     workerUrl?: string;
     tileWorkers?: number;
-    /** CSS font-family used for all labels. */
+    /** Fallback CSS font-family for labels, used when the family a style names is not available. */
     fontFamily?: string;
+    /**
+     * Web fonts to load for labels, e.g. `{family: 'Open Sans', src: '/fonts/open-sans.woff2', weight: '300 800'}`.
+     * A style's `text-font` of "Open Sans Semibold" then renders in that family at weight 600. Fonts are loaded on
+     * the rendering thread, so they work with worker rendering, which cannot see fonts loaded by the page's CSS.
+     */
+    fonts?: FontSource[];
     interactive?: boolean;
     minZoom?: number;
     maxZoom?: number;
@@ -62,6 +69,8 @@ export class Map {
     private hovered: {layer: MarkerLayer; index: number} | null = null;
     private observer?: ResizeObserver;
     private cleanup: (() => void)[] = [];
+    private pending = new globalThis.Map<number, {resolve(v: any): void; reject(e: Error): void}>();
+    private nextQuery = 1;
     /** Which thread the engine ended up on. */
     renderer: 'worker' | 'main' = 'main';
 
@@ -71,13 +80,17 @@ export class Map {
         this.container = c;
         if (getComputedStyle(c).position === 'static') c.style.position = 'relative';
         this.canvas = document.createElement('canvas');
-        this.canvas.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;touch-action:none;outline:none';
+        // Centred with an explicit pixel size rather than stretched to fit. With worker rendering the new frame arrives
+        // a moment after the container resizes; until then the old frame stays put and undistorted instead of wobbling.
+        this.canvas.style.cssText = 'position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);touch-action:none;outline:none';
         this.canvas.tabIndex = 0;
         // Server-rendered markup stays visible on top until the canvas has drawn the same view.
         c.insertBefore(this.canvas, c.firstChild);
         this.tr.minZoom = options.minZoom ?? 0;
         this.tr.maxZoom = options.maxZoom ?? 22;
         this.measure();
+        this.canvas.style.width = this.tr.width + 'px';
+        this.canvas.style.height = this.tr.height + 'px';
         this.tr.set(options.center ?? [0, 0], options.zoom ?? 0, options.bearing ?? 0);
         this.start().catch(err => this.fire('error', {error: err}));
     }
@@ -96,7 +109,7 @@ export class Map {
         if (this.style.unsupported.length) console.warn('[tessera] Skipping unsupported layer types: ' + this.style.unsupported.join(', '));
         const tr = this.tr;
         const engineOptions = {
-            style: this.style, width: tr.width, height: tr.height, dpr: this.dpr, fontFamily: o.fontFamily ?? DEFAULT_FONT,
+            style: this.style, width: tr.width, height: tr.height, dpr: this.dpr, fontFamily: o.fontFamily ?? DEFAULT_FONT, fonts: o.fonts,
             center: [tr.lng, tr.lat] as [number, number], zoom: tr.zoom, bearing: tr.bearing,
         };
 
@@ -179,7 +192,15 @@ export class Map {
                 this.fire('load');
             }
             this.fire('idle');
-        } else if (e.type === 'error') this.fire('error', {error: new Error(e.message)});
+        } else if (e.type === 'resized') {
+            this.canvas.style.width = e.width + 'px';
+            this.canvas.style.height = e.height + 'px';
+        } else if (e.type === 'result') {
+            const p = this.pending.get(e.id);
+            this.pending.delete(e.id);
+            if (e.error) p?.reject(new Error(e.error)); else p?.resolve(e.value);
+        } else if (e.type === 'imagemissing') this.fire('styleimagemissing', {id: e.name});
+        else if (e.type === 'error') this.fire('error', {error: new Error(e.message)});
     }
 
     // ---- events ----
@@ -262,6 +283,62 @@ export class Map {
         return this;
     }
 
+    // ---- fonts and images ----
+    /** Loads more web fonts for labels after construction. See the `fonts` option. */
+    addFonts(fonts: FontSource[]) { this.post({type: 'fonts', fonts}); return this; }
+
+    /**
+     * Makes an image available to `icon-image` under `name`. `source` may be an SVG document (rasterised at the
+     * screen's pixel density, so it stays sharp), an image URL, or anything drawable such as an ImageBitmap or canvas.
+     * `width`/`height` are the display size in CSS pixels; they default to the image's natural size.
+     */
+    async addImage(name: string, source: string | CanvasImageSource, size: {width?: number; height?: number} = {}) {
+        let drawable: CanvasImageSource, width = size.width, height = size.height;
+        if (typeof source === 'string') {
+            const img = new Image();
+            if (source.trimStart().startsWith('<')) {
+                const vb = /viewBox\s*=\s*["']\s*[\d.-]+[\s,]+[\d.-]+[\s,]+([\d.]+)[\s,]+([\d.]+)/.exec(source);
+                width ??= vb ? +vb[1] : 24; height ??= vb ? +vb[2] : 24;
+                img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(sizedSVG(source, width, height));
+            } else { img.crossOrigin = 'anonymous'; img.src = source; }
+            await img.decode();
+            width ??= img.naturalWidth; height ??= img.naturalHeight;
+            drawable = img;
+        } else {
+            drawable = source;
+            width ??= (source as ImageBitmap).width as number; height ??= (source as ImageBitmap).height as number;
+        }
+        const w = Math.ceil(width * this.dpr), h = Math.ceil(height * this.dpr), data = pixels(drawable, w, h);
+        this.post({type: 'image', name, w, h, width, height, data}, [data.buffer]);
+        return this;
+    }
+    removeImage(name: string) { this.post({type: 'removeImage', name}); return this; }
+
+    // ---- queries ----
+    private ask<T>(command: (id: number) => Command): Promise<T> {
+        return new Promise((resolve, reject) => {
+            const id = this.nextQuery++;
+            this.pending.set(id, {resolve, reject});
+            this.post(command(id));
+        });
+    }
+
+    /**
+     * Finds features at a location straight from the tile data. Unlike `queryRenderedFeatures`, nothing has to be
+     * drawn: features need no style layer, and the location may be off screen (the tile is fetched if necessary).
+     * `at` is a longitude/latitude, or a screen position as `{x, y}`.
+     */
+    queryFeatures(at: LngLatLike | {x: number; y: number}, options: Partial<FeatureQuery> = {}): Promise<QueriedFeature[]> {
+        const [lng, lat] = 'x' in at ? this.tr.unproject(at.x, at.y) : toLngLat(at);
+        return this.ask(id => ({type: 'query', id, lng, lat, radius: 3, ...options}));
+    }
+
+    /** Ground elevation in metres at a location, read from the style's elevation (raster-dem) source; null where there is no data. */
+    queryElevation(at: LngLatLike | {x: number; y: number}, options: {source?: string; zoom?: number} = {}): Promise<number | null> {
+        const [lng, lat] = 'x' in at ? this.tr.unproject(at.x, at.y) : toLngLat(at);
+        return this.ask(id => ({type: 'elevation', id, lng, lat, ...options}));
+    }
+
     // ---- markers ----
     addMarkerLayer(options: MarkerLayerOptions): MarkerLayer {
         const layer = new MarkerLayer(this, options);
@@ -324,12 +401,15 @@ export class Map {
             el.addEventListener(type, fn, opts);
             this.cleanup.push(() => el.removeEventListener(type, fn, opts));
         };
-        const pos = (e: MouseEvent) => { const r = el.getBoundingClientRect(); return {x: e.clientX - r.left, y: e.clientY - r.top}; };
+        const pos = (e: MouseEvent) => { const r = this.container.getBoundingClientRect(); return {x: e.clientX - r.left - this.container.clientLeft, y: e.clientY - r.top - this.container.clientTop}; };
         const mouseEvent = (type: string, e: MouseEvent, extra = {}) => {
             const point = pos(e);
             this.fire(type, {point, lngLat: this.unproject(point), originalEvent: e, ...extra});
         };
         let rotating = false, moved = 0, samples: {t: number; x: number; y: number}[] = [], pinch: {dist: number; angle: number} | null = null;
+        // Wheel events do not say what produced them. As MapLibre does, tell mouse wheels from trackpads by their
+        // deltas and timing, because the two need different handling to feel right.
+        let wheelKind: 'wheel' | 'trackpad' | null = null, lastWheel = 0, held = 0, heldTimer: ReturnType<typeof setTimeout> | undefined;
 
         listen('pointerdown', e => {
             el.setPointerCapture(e.pointerId);
@@ -358,7 +438,7 @@ export class Map {
                 const [a, b] = [...pointers.values()], dist = Math.hypot(a.x - b.x, a.y - b.y), angle = Math.atan2(b.y - a.y, b.x - a.x);
                 const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2;
                 if (pinch) {
-                    this.post({type: 'zoom', delta: Math.log2(dist / pinch.dist), x: cx, y: cy, smooth: false});
+                    this.post({type: 'zoom', delta: Math.log2(dist / pinch.dist), x: cx, y: cy});
                     this.post({type: 'rotate', delta: -(angle - pinch.angle) * 180 / Math.PI});
                     this.post({type: 'pan', dx: dx / 2, dy: dy / 2});
                 }
@@ -368,7 +448,7 @@ export class Map {
                 this.dragging = true;
                 this.post({type: 'pan', dx, dy});
                 samples.push({t: performance.now(), x: p.x, y: p.y});
-                if (samples.length > 6) samples.shift();
+                while (samples.length > 2 && samples[0].t < performance.now() - 160) samples.shift();
             }
         });
         const up = (e: PointerEvent) => {
@@ -377,9 +457,11 @@ export class Map {
             if (pointers.size) return;
             const wasDragging = this.dragging;
             this.dragging = false;
-            const now = performance.now(), first = samples.find(s => now - s.t < 120), last = samples[samples.length - 1];
-            if (wasDragging && first && last && last.t - first.t > 10) {
-                this.post({type: 'fling', vx: (last.x - first.x) / (last.t - first.t), vy: (last.y - first.y) / (last.t - first.t)});
+            // Inertia from the last 60ms of movement; a pointer that stopped before release gives none.
+            const now = performance.now(), last = samples[samples.length - 1];
+            const first = samples.find(s => now - s.t <= 60) ?? last;
+            if (wasDragging && last && first !== last && now - last.t < 60) {
+                this.post({type: 'fling', dx: last.x - first.x, dy: last.y - first.y, ms: now - first.t});
             } else if (wasDragging) { this.moving = false; this.fire('moveend'); }
             if (moved <= 3 && e.type === 'pointerup' && e.button === 0) {
                 const hit = this.queryMarkers(pos(e));
@@ -391,10 +473,24 @@ export class Map {
         listen('pointercancel', up);
         listen('wheel', e => {
             e.preventDefault();
-            const p = pos(e), scale = e.deltaMode === 1 ? 40 : 1;
-            // Pinch gestures on trackpads arrive as ctrl+wheel with small deltas; treat them as direct manipulation.
-            if (e.ctrlKey) this.post({type: 'zoom', delta: -e.deltaY * scale / 100, x: p.x, y: p.y, smooth: false});
-            else this.post({type: 'zoom', delta: -e.deltaY * scale / 250, x: p.x, y: p.y, smooth: true});
+            const p = pos(e), now = performance.now(), gap = now - lastWheel;
+            let value = e.deltaMode === 1 ? e.deltaY * 40 : e.deltaY;
+            lastWheel = now;
+            const send = (v: number) => this.post({type: 'wheel', delta: -v, x: p.x, y: p.y, kind: wheelKind!});
+            if (value !== 0 && value % 4.000244140625 === 0) wheelKind = 'wheel';
+            else if (value !== 0 && Math.abs(value) < 4) wheelKind = 'trackpad';
+            else if (gap > 400) {
+                // First event after a pause and ambiguous: wait a moment to see whether more follow quickly.
+                wheelKind = null;
+                held = value;
+                heldTimer = setTimeout(() => { wheelKind = 'wheel'; heldTimer = undefined; send(held); }, 40);
+                return;
+            } else if (!wheelKind) {
+                wheelKind = Math.abs(gap * value) < 200 ? 'trackpad' : 'wheel';
+                if (heldTimer) { clearTimeout(heldTimer); heldTimer = undefined; value += held; }
+            }
+            if (e.shiftKey) value /= 4;
+            if (wheelKind && value) send(value);
         }, {passive: false});
         listen('dblclick', e => { const p = pos(e); this.easeTo({zoom: this.tr.zoom + (e.shiftKey ? -1 : 1), around: [p.x, p.y], duration: 300}); });
         listen('contextmenu', e => e.preventDefault());
@@ -411,11 +507,25 @@ export class Map {
     }
 
     private addAttribution() {
-        const text = [...new Set(Object.values(this.style.sources).map(s => s.attribution).filter(Boolean))].join(' | ').replace(/<[^>]*>/g, '');
-        if (!text) return;
+        const html = [...new Set(Object.values(this.style.sources).map(s => s.attribution).filter(Boolean))].join(' | ');
+        if (!html) return;
         const div = document.createElement('div');
-        div.textContent = text;
-        div.style.cssText = 'position:absolute;right:0;bottom:0;padding:2px 6px;font:11px/1.4 system-ui,sans-serif;background:rgba(255,255,255,.7);color:#333;pointer-events:none';
+        div.style.cssText = 'position:absolute;right:0;bottom:0;padding:2px 6px;font:11px/1.4 system-ui,sans-serif;background:rgba(255,255,255,.7);color:#333';
+        // Attribution arrives as HTML from tile providers. Keep its text and links, and nothing else.
+        const copy = (from: Node, to: Node) => {
+            for (const node of from.childNodes) {
+                if (node.nodeType === Node.TEXT_NODE) to.appendChild(document.createTextNode(node.textContent ?? ''));
+                else if (node instanceof Element) {
+                    const href = node.tagName === 'A' ? node.getAttribute('href') : null;
+                    if (href && /^https?:\/\//i.test(href)) {
+                        const a = Object.assign(document.createElement('a'), {href, target: '_blank', rel: 'noopener noreferrer'});
+                        a.style.color = 'inherit';
+                        copy(node, to.appendChild(a));
+                    } else copy(node, to);
+                }
+            }
+        };
+        copy(new DOMParser().parseFromString(html, 'text/html').body, div);
         this.container.appendChild(div);
         this.cleanup.push(() => div.remove());
     }
@@ -434,10 +544,14 @@ async function rasterise(svg: string, w: number, h: number): Promise<Uint8Array>
     const img = new Image();
     img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
     await img.decode();
+    return pixels(img, w, h);
+}
+
+function pixels(source: CanvasImageSource, w: number, h: number): Uint8Array {
     const canvas = document.createElement('canvas');
     canvas.width = w; canvas.height = h;
     const ctx = canvas.getContext('2d', {willReadFrequently: true})!;
-    ctx.drawImage(img, 0, 0, w, h);
+    ctx.drawImage(source, 0, 0, w, h);
     const px = ctx.getImageData(0, 0, w, h).data, out = new Uint8Array(px.length);
     for (let i = 0; i < px.length; i += 4) {
         const a = px[i + 3] / 255;

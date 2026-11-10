@@ -38,7 +38,10 @@ import {markers, view} from '/demo/markers.mjs';
 const q = new URLSearchParams(location.search);
 const map = window.map = new Map({container: 'map', style: q.get('style') || ('/style.json' + (q.has('local') ? '?local' : '')), ...view,
   ...(q.has('zoom') ? {zoom: +q.get('zoom')} : {}), ...(q.has('bearing') ? {bearing: +q.get('bearing')} : {}),
-  ...(q.has('center') ? {center: q.get('center').split(',').map(Number)} : {}), renderer: q.get('renderer') || 'auto'});
+  ...(q.has('center') ? {center: q.get('center').split(',').map(Number)} : {}), renderer: q.get('renderer') || 'auto',
+  // Styles naming Open Sans get the real font; it loads on the rendering thread, so it works with worker rendering.
+  fonts: q.has('nofonts') ? [] : ['normal', 'italic'].map(style => ({family: 'Open Sans', style, weight: '300 800',
+    src: 'https://cdn.jsdelivr.net/fontsource/fonts/open-sans:vf@latest/latin-wght-' + style + '.woff2'}))});
 const layer = q.has('nomarkers') ? null : map.addMarkerLayer(structuredClone(markers));
 const hud = document.getElementById('hud');
 const show = () => hud.textContent = 'renderer: ' + map.renderer + ' | zoom ' + map.getZoom().toFixed(2) + (map.loaded() ? '' : ' | loading');
@@ -46,6 +49,11 @@ map.on('move', show); map.on('load', () => { show(); window.mapLoaded = true; })
 map.on('markerenter', e => e.layer.setProps(e.index, {stroke: '#222', strokeWidth: 3}));
 map.on('markerleave', e => e.layer.setProps(e.index, {stroke: '#fff', strokeWidth: 1.5}));
 map.on('markerclick', e => { window.lastMarkerClick = e.marker.props.label; hud.textContent = 'clicked marker ' + e.marker.props.label; });
+map.on('click', async e => {
+  if (e.marker) return;
+  const [features, elevation] = await Promise.all([map.queryFeatures(e.lngLat), map.queryElevation(e.lngLat).catch(() => null)]);
+  hud.textContent = (elevation === null ? '' : elevation.toFixed(0) + ' m | ') + features.map(f => f.sourceLayer + (f.properties.name ? ' "' + f.properties.name + '"' : '')).join(', ');
+});
 map.on('error', e => { (window.mapErrors ||= []).push(String(e.error?.message || e.error)); });
 </script>`;
 

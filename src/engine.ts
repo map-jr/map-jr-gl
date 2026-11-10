@@ -1,40 +1,59 @@
-import {Transform, mercX, mercY, type LngLatLike, type TileID} from './geo.ts';
-import {compileLayer, loadSprite, tileURL, type CompiledLayer, type ResolvedStyle, type Sprite} from './style.ts';
+import {EXTENT, Transform, apply, bezier, clamp, latFromMerc, lngFromMerc, mercX, mercY, type LngLatLike, type TileID} from './geo.ts';
+import {compileLayer, loadSprite, tileURL, type CompiledLayer, type ResolvedStyle, type Sprite, type SpriteIcon} from './style.ts';
 import {GLRenderer, SPRITE_ATLAS, type GLTile} from './gl.ts';
-import {CollisionGrid, placeLabels, renderItems, type RenderItem} from './placement.ts';
+import {CollisionGrid, placeLabels, renderItems, type Placed, type RenderItem} from './placement.ts';
 import {GlyphAtlas} from './text.ts';
+import {sampleElevation, type QueriedFeature} from './query.ts';
 import type {TileBackend} from './tiles.ts';
 
 export interface CameraOptions { center?: LngLatLike; zoom?: number; bearing?: number }
+export interface FontSource { family: string; src: string; weight?: string | number; style?: string }
 export interface EngineOptions extends CameraOptions {
-    style: ResolvedStyle; width: number; height: number; dpr: number; fontFamily: string;
+    style: ResolvedStyle; width: number; height: number; dpr: number; fontFamily: string; fonts?: FontSource[];
 }
 export interface MarkerImage { variant: number; w: number; h: number; data: Uint8Array }
+export interface FeatureQuery { radius: number; zoom?: number; sources?: string[]; sourceLayers?: string[]; filter?: unknown; geometry?: boolean }
 export type Command =
     | {type: 'resize'; width: number; height: number; dpr: number}
     | ({type: 'jump'} & CameraOptions)
     | ({type: 'ease'; duration: number; around?: [number, number]} & CameraOptions)
     | {type: 'pan'; dx: number; dy: number}
-    | {type: 'zoom'; delta: number; x: number; y: number; smooth: boolean}
+    | {type: 'zoom'; delta: number; x: number; y: number}
+    | {type: 'wheel'; delta: number; x: number; y: number; kind: 'wheel' | 'trackpad'}
     | {type: 'rotate'; delta: number}
-    | {type: 'fling'; vx: number; vy: number}
+    | {type: 'fling'; dx: number; dy: number; ms: number}
     | {type: 'stop'}
     | {type: 'style'; style: ResolvedStyle; reload: boolean}
     | {type: 'markers'; id: string; width: number; height: number; offset: [number, number]; collide: boolean;
         merc: Float64Array; variant: Uint32Array; images: MarkerImage[]}
     | {type: 'removeMarkers'; id: string}
+    | {type: 'fonts'; fonts: FontSource[]}
+    | {type: 'image'; name: string; w: number; h: number; width: number; height: number; data: Uint8Array}
+    | {type: 'removeImage'; name: string}
+    | ({type: 'query'; id: number; lng: number; lat: number} & FeatureQuery)
+    | {type: 'elevation'; id: number; lng: number; lat: number; source?: string; zoom?: number}
     | {type: 'repaint'};
 export type EngineEvent =
     | {type: 'camera'; lng: number; lat: number; zoom: number; bearing: number; moving: boolean}
     | {type: 'idle'}
+    /** A frame at a new canvas size has been drawn. */
+    | {type: 'resized'; width: number; height: number}
+    | {type: 'result'; id: number; value?: unknown; error?: string}
+    | {type: 'imagemissing'; name: string}
     | {type: 'error'; message: string};
 
 interface TileState { state: 'loading' | 'ok' | 'error'; gl?: GLTile; used: number; cancel(): void }
 interface MarkerLayer { width: number; height: number; offset: [number, number]; collide: boolean; merc: Float64Array; variant: Uint32Array }
+interface LabelState { placed: Placed; opacity: number; target: number }
 
 const raf: (cb: (t: number) => void) => unknown = globalThis.requestAnimationFrame
     ? cb => globalThis.requestAnimationFrame(cb) : cb => setTimeout(() => cb(performance.now()), 16);
 const MAX_TILES = 160;
+/** How often labels are re-decided while the map moves, and how long they take to fade. Between decisions they stay pinned to the map. */
+const PLACE_INTERVAL = 250, FADE = 200;
+/** Camera feel, matching MapLibre's defaults so the map responds the way people expect. */
+const defaultEasing = bezier(0.25, 0.1, 0.25, 1), inertiaEasing = bezier(0, 0, 0.3, 1);
+const WHEEL_STEP = 4.000244140625, WHEEL_RATE = 1 / 450, TRACKPAD_RATE = 1 / 100;
 
 /**
  * Everything that happens per frame: camera animation, tile selection, label placement and drawing.
@@ -57,28 +76,50 @@ export class Engine {
     private moving = false;
 
     private ease: {from: number[]; to: number[]; start: number; duration: number; around?: [number, number]; anchor?: [number, number]} | null = null;
-    private wheel: {target: number; x: number; y: number} | null = null;
-    private fling: {vx: number; vy: number} | null = null;
+    private wheel: {
+        delta: number; kind: 'wheel' | 'trackpad'; x: number; y: number; lastEvent: number;
+        target?: number; start?: number; easing?: (t: number) => number; doneAt?: number;
+    } | null = null;
+    private prevWheelEase: {start: number; easing: (t: number) => number} | null = null;
+    private fling: {dx: number; dy: number; start: number; duration: number; done: number} | null = null;
     private lastTime = 0;
+
+    private labels = new Map<string, LabelState>();
+    private placeDirty = true;
+    private lastPlace = -Infinity;
 
     private markers = new Map<string, MarkerLayer>();
     private spriteRects = new Map<number, [number, number, number, number]>();
     private spritePen = [1, 1, 0];
-    private sprites = new Float32Array(24 * 256);
+    private sprites = new Float32Array(30 * 256);
     private sprite: Sprite | null = null;
     private spriteUrl = '';
+    private images = new Map<string, SpriteIcon & {custom: true}>();
+    private missing = new Set<string>();
+    private dem = new Map<string, Promise<{width: number; height: number; data: Uint8ClampedArray} | null>>();
     private dpr = 1;
 
     constructor(canvas: HTMLCanvasElement | OffscreenCanvas, o: EngineOptions, private backends: TileBackend[], private emit: (e: EngineEvent) => void) {
         this.renderer = new GLRenderer(canvas);
         this.atlas = new GlyphAtlas(o.fontFamily);
+        this.atlas.onReset = () => this.relabel();
         this.tr.width = o.width;
         this.tr.height = o.height;
         this.dpr = o.dpr;
         this.renderer.resize(o.width, o.height, o.dpr);
         this.tr.set(o.center, o.zoom, o.bearing);
         this.setStyle(o.style, true);
+        if (o.fonts?.length) this.loadFonts(o.fonts);
     }
+
+    /** Throws away placed labels (their shaped text is stale) and places again from scratch. */
+    private relabel() {
+        this.labels.clear();
+        this.lastPlace = -Infinity;
+        this.invalidate();
+    }
+
+    private invalidate() { this.placeDirty = true; this.repaint(); }
 
     private setStyle(style: ResolvedStyle, reload: boolean) {
         this.style = style;
@@ -91,7 +132,7 @@ export class Engine {
             for (const b of this.backends) b.setStyle(style.layers);
             for (const [key, t] of this.tiles) this.dropTile(key, t);
         }
-        this.repaint();
+        this.invalidate();
     }
 
     private async loadIcons(url: string) {
@@ -102,8 +143,28 @@ export class Engine {
         if (url !== this.spriteUrl) return;
         this.renderer.setIcons(image, image.width, image.height);
         this.sprite = sprite;
-        this.repaint();
+        this.invalidate();
     }
+
+    /** Loads web fonts into whichever thread the engine runs on, then redraws all text with them. */
+    private loadFonts(fonts: FontSource[]) {
+        const set = (globalThis as any).fonts ?? (globalThis as any).document?.fonts;
+        Promise.all(fonts.map(async f => {
+            const face = new FontFace(f.family, `url("${f.src}")`, {weight: String(f.weight ?? '400'), style: f.style ?? 'normal'});
+            set.add(await face.load());
+        })).then(() => { this.atlas.clear(); this.relabel(); },
+            err => this.emit({type: 'error', message: `Could not load font: ${err.message}`}));
+    }
+
+    private icon = (name: string) => {
+        const found = this.images.get(name) ?? this.sprite?.icons[name];
+        // Ask the page for images the style names but nothing provides (once each, and only after the sprite has had its chance).
+        if (!found && (this.sprite || !this.spriteUrl) && !this.missing.has(name)) {
+            this.missing.add(name);
+            this.emit({type: 'imagemissing', name});
+        }
+        return found;
+    };
 
     command(c: Command) {
         const tr = this.tr;
@@ -111,8 +172,10 @@ export class Engine {
             case 'resize':
                 tr.width = c.width; tr.height = c.height; this.dpr = c.dpr;
                 this.renderer.resize(c.width, c.height, c.dpr);
+                this.placeDirty = true;
                 // Draw immediately: resizing clears the canvas, and waiting a frame would flash.
                 this.frame(performance.now());
+                this.emit({type: 'resized', width: c.width, height: c.height});
                 return;
             case 'jump': this.stop(); tr.set(c.center, c.zoom, c.bearing); break;
             case 'ease': {
@@ -136,27 +199,49 @@ export class Engine {
                 break;
             }
             case 'zoom':
-                this.fling = null; this.ease = null;
-                if (c.smooth) {
-                    const target = Math.min(tr.maxZoom, Math.max(tr.minZoom, (this.wheel?.target ?? tr.zoom) + c.delta));
-                    this.wheel = {target, x: c.x, y: c.y};
-                } else this.zoomAround(tr.zoom + c.delta, c.x, c.y);
+                this.stop();
+                this.zoomAround(tr.zoom + c.delta, c.x, c.y);
                 break;
+            case 'wheel': {
+                this.fling = null; this.ease = null;
+                const now = performance.now(), w = this.wheel;
+                // A pause ends the gesture: later scrolling starts from the zoom actually on screen.
+                const fresh = !w || (w.doneAt !== undefined && now - w.doneAt > 200);
+                this.wheel = {...(fresh ? {} : w), delta: (fresh ? 0 : w!.delta) + c.delta, kind: c.kind, x: c.x, y: c.y, lastEvent: now, doneAt: undefined};
+                break;
+            }
             case 'rotate': tr.set(undefined, undefined, tr.bearing + c.delta); break;
             case 'fling': {
-                // Cap the speed so a very fast flick cannot throw the map across the world.
-                const k = Math.min(1, 3 / Math.hypot(c.vx, c.vy));
-                this.fling = {vx: c.vx * k, vy: c.vy * k};
+                // Inertia: carry on at a fraction of the release speed and decelerate steadily.
+                const dist = Math.hypot(c.dx, c.dy), linearity = 0.3;
+                if (!dist || c.ms <= 0) break;
+                const speed = Math.min(1400, dist * linearity / (c.ms / 1000)), seconds = speed / (2500 * linearity), amount = speed * seconds / 2;
+                this.fling = {dx: c.dx / dist * amount, dy: c.dy / dist * amount, start: performance.now(), duration: seconds * 1000, done: 0};
                 break;
             }
             case 'stop': this.stop(); break;
             case 'style': this.setStyle(c.style, c.reload); break;
             case 'markers': {
-                for (const img of c.images) this.addSprite(img);
+                for (const img of c.images) { const rect = this.addSprite(img.w, img.h, img.data); if (rect) this.spriteRects.set(img.variant, rect); }
                 this.markers.set(c.id, c);
+                this.placeDirty = true;
                 break;
             }
-            case 'removeMarkers': this.markers.delete(c.id); break;
+            case 'removeMarkers': this.markers.delete(c.id); this.placeDirty = true; break;
+            case 'fonts': this.loadFonts(c.fonts); break;
+            case 'image': {
+                const rect = this.addSprite(c.w, c.h, c.data);
+                if (rect) this.images.set(c.name, {x: rect[0], y: rect[1], width: c.w, height: c.h, pixelRatio: c.w / c.width, custom: true});
+                this.placeDirty = true;
+                break;
+            }
+            case 'removeImage': this.images.delete(c.name); this.placeDirty = true; break;
+            case 'query':
+                this.queryFeatures(c).then(value => this.emit({type: 'result', id: c.id, value}), err => this.emit({type: 'result', id: c.id, error: String(err.message)}));
+                return;
+            case 'elevation':
+                this.queryElevation(c).then(value => this.emit({type: 'result', id: c.id, value}), err => this.emit({type: 'result', id: c.id, error: String(err.message)}));
+                return;
             case 'repaint': break;
         }
         this.repaint();
@@ -170,15 +255,67 @@ export class Engine {
         this.tr.setLocationAt(lng, lat, x, y);
     }
 
-    private addSprite(img: MarkerImage) {
+    /** Copies an image into the dynamic atlas shared by markers and runtime-added icons. */
+    private addSprite(w: number, h: number, data: Uint8Array): [number, number, number, number] | null {
         const pen = this.spritePen;
-        if (pen[0] + img.w + 1 > SPRITE_ATLAS) { pen[0] = 1; pen[1] += pen[2] + 1; pen[2] = 0; }
-        if (pen[1] + img.h + 1 > SPRITE_ATLAS) { this.emit({type: 'error', message: 'Marker image atlas is full'}); return; }
-        this.renderer.uploadSprite(pen[0], pen[1], img.w, img.h, img.data);
-        this.spriteRects.set(img.variant, [pen[0], pen[1], img.w, img.h]);
-        pen[0] += img.w + 1;
-        pen[2] = Math.max(pen[2], img.h);
+        if (pen[0] + w + 1 > SPRITE_ATLAS) { pen[0] = 1; pen[1] += pen[2] + 1; pen[2] = 0; }
+        if (pen[1] + h + 1 > SPRITE_ATLAS) { this.emit({type: 'error', message: 'Image atlas is full'}); return null; }
+        this.renderer.uploadSprite(pen[0], pen[1], w, h, data);
+        const rect: [number, number, number, number] = [pen[0], pen[1], w, h];
+        pen[0] += w + 1;
+        pen[2] = Math.max(pen[2], h);
+        return rect;
     }
+
+    // ---- queries: answered from tile data, independent of what is drawn ----
+
+    private tileAt(lng: number, lat: number, z: number) {
+        const n = 2 ** z, mx = ((mercX(lng) % 1) + 1) % 1 * n, my = clamp(mercY(lat), 0, 1 - 1e-9) * n;
+        return {x: Math.floor(mx), y: Math.floor(my), u: mx - Math.floor(mx), v: my - Math.floor(my)};
+    }
+
+    private async queryFeatures(c: Extract<Command, {type: 'query'}>): Promise<QueriedFeature[]> {
+        const zoom = c.zoom ?? this.tr.zoom;
+        const jobs = Object.entries(this.style.sources).filter(([name, src]) => src.type === 'vector' && (!c.sources || c.sources.includes(name))).map(([name, src]) => {
+            const z = clamp(Math.floor(zoom), src.minzoom, src.maxzoom), t = this.tileAt(c.lng, c.lat, z);
+            // The tolerance is given in screen pixels at the queried zoom.
+            const radius = c.radius * EXTENT / (512 * 2 ** (zoom - z));
+            return this.backends[this.nextBackend++ % this.backends.length].query(tileURL(src, z, t.x, t.y), {
+                source: name, z, x: t.x, y: t.y, px: t.u * EXTENT, py: t.v * EXTENT, radius,
+                sourceLayers: c.sourceLayers, filter: c.filter, geometry: c.geometry,
+            });
+        });
+        return (await Promise.all(jobs)).flat();
+    }
+
+    private async queryElevation(c: Extract<Command, {type: 'elevation'}>): Promise<number | null> {
+        const entry = Object.entries(this.style.sources).find(([name, src]) => src.type === 'raster-dem' && (!c.source || c.source === name));
+        if (!entry) throw new Error('No elevation (raster-dem) source in the style');
+        const src = entry[1], z = clamp(Math.floor(c.zoom ?? src.maxzoom), src.minzoom, src.maxzoom), t = this.tileAt(c.lng, c.lat, z);
+        const url = tileURL(src, z, t.x, t.y);
+        let pixels = this.dem.get(url);
+        if (!pixels) {
+            pixels = (async () => {
+                const res = await fetch(url);
+                if (res.status === 404 || res.status === 204) return null;
+                if (!res.ok) throw new Error(`Tile ${url}: HTTP ${res.status}`);
+                const image = await createImageBitmap(await res.blob(), {premultiplyAlpha: 'none', colorSpaceConversion: 'none'});
+                const canvas = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(image.width, image.height)
+                    : Object.assign((globalThis as any).document.createElement('canvas'), {width: image.width, height: image.height});
+                const ctx = canvas.getContext('2d', {willReadFrequently: true});
+                ctx.drawImage(image, 0, 0);
+                image.close();
+                return ctx.getImageData(0, 0, canvas.width, canvas.height) as ImageData;
+            })();
+            this.dem.set(url, pixels);
+            pixels.catch(() => this.dem.delete(url));
+            if (this.dem.size > 16) this.dem.delete(this.dem.keys().next().value!);
+        }
+        const p = await pixels;
+        return p ? sampleElevation(p.data, p.width, p.height, t.u, t.v, src.encoding ?? 'mapbox') : null;
+    }
+
+    // ---- frame loop ----
 
     repaint() {
         if (this.scheduled) return;
@@ -188,29 +325,59 @@ export class Engine {
 
     /** Advances camera animations; returns true while any is still running. */
     private animate(now: number): boolean {
-        const tr = this.tr, dt = Math.min(50, now - this.lastTime || 16);
-        this.lastTime = now;
+        const tr = this.tr;
         if (this.ease) {
-            const e = this.ease, t = Math.min(1, (now - e.start) / e.duration), k = 1 - (1 - t) ** 3;
+            const e = this.ease, t = Math.min(1, (now - e.start) / e.duration), k = defaultEasing(t);
             const v = e.from.map((f, i) => f + (e.to[i] - f) * k);
             tr.zoom = v[2];
             tr.set(undefined, undefined, v[3]);
             if (e.around && e.anchor) tr.setLocationAt(e.anchor[0], e.anchor[1], e.around[0], e.around[1]);
-            else { tr.lng = v[0] * 360 - 180; tr.lat = Math.atan(Math.sinh(Math.PI * (1 - 2 * v[1]))) * 180 / Math.PI; }
+            else { tr.lng = lngFromMerc(v[0]); tr.lat = latFromMerc(v[1]); }
             if (t >= 1) this.ease = null;
         }
-        if (this.wheel) {
-            const w = this.wheel, d = w.target - tr.zoom;
-            if (Math.abs(d) < 0.002) { this.zoomAround(w.target, w.x, w.y); this.wheel = null; } else this.zoomAround(tr.zoom + d * (1 - Math.exp(-dt / 70)), w.x, w.y);
+        const w = this.wheel;
+        if (w && w.doneAt === undefined) {
+            if (w.delta) {
+                // Each batch of scrolling multiplies the scale by up to 2, saturating smoothly for big deltas.
+                const rate = w.kind === 'wheel' && Math.abs(w.delta) > WHEEL_STEP ? WHEEL_RATE : TRACKPAD_RATE;
+                let scale = 2 / (1 + Math.exp(-Math.abs(w.delta * rate)));
+                if (w.delta < 0) scale = 1 / scale;
+                w.target = clamp((w.target ?? tr.zoom) + Math.log2(scale), tr.minZoom, tr.maxZoom);
+                if (w.kind === 'wheel') {
+                    // Mouse wheels arrive in coarse steps: ease to the target, starting at the speed already under way.
+                    w.start = tr.zoom;
+                    let easing = defaultEasing;
+                    const prev = this.prevWheelEase;
+                    if (prev) {
+                        const t = (now - prev.start) / 200, speed = prev.easing(t + 0.01) - prev.easing(t);
+                        const x = 0.27 / Math.sqrt(speed * speed + 0.0001) * 0.01;
+                        easing = bezier(x, Math.sqrt(0.27 * 0.27 - x * x), 0.25, 1);
+                    }
+                    this.prevWheelEase = {start: now, easing};
+                    w.easing = easing;
+                }
+                w.delta = 0;
+            }
+            if (w.target !== undefined) {
+                let done = true, zoom = w.target;
+                if (w.kind === 'wheel' && w.start !== undefined && w.easing) {
+                    const t = Math.min((now - w.lastEvent + 5) / 200, 1);
+                    zoom = w.start + (w.target - w.start) * w.easing(Math.max(0, t));
+                    done = t >= 1;
+                }
+                // Trackpads report fine-grained deltas, so they are applied directly: any smoothing would feel like lag.
+                this.zoomAround(zoom, w.x, w.y);
+                if (done) w.doneAt = now;
+            }
         }
         if (this.fling) {
-            const f = this.fling, decay = Math.exp(-dt / 180);
-            const [lng, lat] = tr.unproject(tr.width / 2 - f.vx * dt, tr.height / 2 - f.vy * dt);
+            const f = this.fling, t = Math.min(1, (now - f.start) / f.duration), k = inertiaEasing(t);
+            const [lng, lat] = tr.unproject(tr.width / 2 - f.dx * (k - f.done), tr.height / 2 - f.dy * (k - f.done));
             tr.set([lng, lat]);
-            f.vx *= decay; f.vy *= decay;
-            if (Math.hypot(f.vx, f.vy) < 0.02) this.fling = null;
+            f.done = k;
+            if (t >= 1) this.fling = null;
         }
-        return !!(this.ease || this.wheel || this.fling);
+        return !!(this.ease || (this.wheel && this.wheel.doneAt === undefined) || this.fling);
     }
 
     private dropTile(key: string, t: TileState) {
@@ -237,7 +404,7 @@ export class Engine {
                 if (!res.ok) throw new Error(`Tile ${url}: HTTP ${res.status}`);
                 const image = await createImageBitmap(await res.blob(), dem ? {premultiplyAlpha: 'none', colorSpaceConversion: 'none'} : {});
                 if (this.tiles.get(key) !== t) { image.close(); return {labels: {}, batches: {}}; }
-                const tile = this.renderer.createImageTile(image, dem, id);
+                const tile = this.renderer.createImageTile(image, dem ? src.encoding ?? 'mapbox' : undefined, id);
                 image.close();
                 return tile;
             });
@@ -246,7 +413,7 @@ export class Engine {
             if (this.tiles.get(key) !== t) return;
             t.gl = gl;
             t.state = 'ok';
-            this.repaint();
+            this.invalidate();
         }, err => {
             if (this.tiles.get(key) !== t) return;
             t.state = 'error';
@@ -258,6 +425,8 @@ export class Engine {
     private frame(now: number) {
         const tr = this.tr, frameNo = ++this.frameNo;
         if (!tr.width || !tr.height) return;
+        const dt = Math.min(100, now - this.lastTime || 16);
+        this.lastTime = now;
         const animating = this.animate(now);
 
         const items = new Map<string, RenderItem<GLTile>[]>(), all: RenderItem<GLTile>[] = [];
@@ -274,6 +443,18 @@ export class Engine {
                 const t = this.tiles.get(key);
                 if (!t) this.request(source, id, key);
                 if (!t || t.state === 'loading') complete = false;
+            }
+            // Keep a coarse overview of the same area loaded as well. It costs a tile or two and means fast pans
+            // and zoom-outs land on blurry map rather than on nothing.
+            const dz = Math.min(3, ideal.length ? ideal[0].z - src.minzoom : 0);
+            if (dz > 0) {
+                for (const id of ideal) {
+                    const z = id.z - dz, k = `${z}/${id.x >> dz}/${id.y >> dz}`, key = source + '|' + k;
+                    if (wanted.has(key)) continue;
+                    wanted.add(key);
+                    const t = this.tiles.get(key);
+                    if (t) t.used = frameNo; else this.request(source, {z, x: id.x >> dz, y: id.y >> dz, w: id.w, key: k}, key);
+                }
             }
             const list = renderItems(tr, ideal, k => {
                 const t = this.tiles.get(source + '|' + k);
@@ -292,25 +473,51 @@ export class Engine {
             for (const [key, t] of old.slice(0, this.tiles.size - MAX_TILES)) this.dropTile(key, t);
         }
 
-        const grid = new CollisionGrid();
+        const camera = `${tr.lng},${tr.lat},${tr.zoom},${tr.bearing}`, cameraChanged = camera !== this.lastCamera;
+        if (cameraChanged) this.placeDirty = true;
+
+        // Decide which labels show only every so often; in between they ride along with the map and fade.
+        const place = this.placeDirty && now - this.lastPlace >= PLACE_INTERVAL;
+        const grid = place ? new CollisionGrid() : null;
         const spriteCount = this.buildSprites(grid);
-        const labels = placeLabels(tr, all, this.layers, this.atlas, grid, this.sprite);
+        if (place) {
+            this.placeDirty = false;
+            this.lastPlace = now;
+            const keep = new Set<string>();
+            for (const p of placeLabels(tr, all, this.layers, this.atlas, grid!, this.icon)) {
+                keep.add(p.key);
+                const st = this.labels.get(p.key);
+                if (st) { st.placed = p; st.target = 1; } else this.labels.set(p.key, {placed: p, opacity: 0, target: 1});
+            }
+            for (const [key, st] of this.labels) if (!keep.has(key)) st.target = 0;
+        }
+        const labels: Placed[] = [];
+        let fading = false;
+        for (const [key, st] of this.labels) {
+            if (st.opacity !== st.target) {
+                st.opacity = st.target ? Math.min(1, st.opacity + dt / FADE) : Math.max(0, st.opacity - dt / FADE);
+                fading ||= st.opacity !== st.target;
+            }
+            if (!st.opacity && !st.target) { this.labels.delete(key); continue; }
+            const p = st.placed, [ax, ay] = apply(tr.tileMatrix(p.tile), p.src.x, p.src.y), dx = ax - p.ax, dy = ay - p.ay;
+            labels.push({...p, x: p.x + dx, y: p.y + dy, icon: p.icon && {...p.icon, x: p.icon.x + dx, y: p.icon.y + dy}, opacity: st.opacity});
+        }
         this.renderer.render({tr, layers: this.layers, items, labels, atlas: this.atlas, sprites: this.sprites, spriteCount});
 
-        const camera = `${tr.lng},${tr.lat},${tr.zoom},${tr.bearing}`;
-        if (camera !== this.lastCamera || animating !== this.moving) {
+        if (cameraChanged || animating !== this.moving) {
             this.lastCamera = camera;
             this.moving = animating;
             this.emit({type: 'camera', lng: tr.lng, lat: tr.lat, zoom: tr.zoom, bearing: tr.bearing, moving: animating});
         }
-        const idle = complete && !animating;
+        const busy = animating || fading || this.placeDirty;
+        const idle = complete && !busy;
         if (idle && !this.wasIdle) this.emit({type: 'idle'});
         this.wasIdle = idle;
-        if (animating) this.repaint();
+        if (busy) this.repaint();
     }
 
-    /** Projects visible markers into screen-space quads and, for colliding layers, reserves their boxes. */
-    private buildSprites(grid: CollisionGrid): number {
+    /** Projects visible markers into screen-space quads and, when placing labels, reserves the boxes of colliding layers. */
+    private buildSprites(grid: CollisionGrid | null): number {
         const tr = this.tr, ws = tr.worldSize, a = -tr.bearing * Math.PI / 180, cos = Math.cos(a), sin = Math.sin(a);
         const cx = mercX(tr.lng), cy = mercY(tr.lat), hw = tr.width / 2, hh = tr.height / 2;
         let n = 0;
@@ -324,19 +531,17 @@ export class Engine {
                 const wx = dx * ws, wy = (m.merc[i * 2 + 1] - cy) * ws;
                 const x = cos * wx - sin * wy + hw + ox, y = sin * wx + cos * wy + hh + oy;
                 if (x > tr.width || y > tr.height || x + w < 0 || y + h < 0) continue;
-                if (m.collide) grid.insert(x, y, x + w, y + h);
-                if ((n + 1) * 24 > this.sprites.length) {
+                if (m.collide && grid) grid.insert(x, y, x + w, y + h);
+                if ((n + 1) * 30 > this.sprites.length) {
                     const grown = new Float32Array(this.sprites.length * 2);
                     grown.set(this.sprites);
                     this.sprites = grown;
                 }
-                const s = this.sprites, o = n * 24, [u0, v0, uw, vh] = rect, x1 = x + w, y1 = y + h, u1 = u0 + uw, v1 = v0 + vh;
-                s[o] = x; s[o + 1] = y; s[o + 2] = u0; s[o + 3] = v0;
-                s[o + 4] = x1; s[o + 5] = y; s[o + 6] = u1; s[o + 7] = v0;
-                s[o + 8] = x; s[o + 9] = y1; s[o + 10] = u0; s[o + 11] = v1;
-                s[o + 12] = x1; s[o + 13] = y; s[o + 14] = u1; s[o + 15] = v0;
-                s[o + 16] = x1; s[o + 17] = y1; s[o + 18] = u1; s[o + 19] = v1;
-                s[o + 20] = x; s[o + 21] = y1; s[o + 22] = u0; s[o + 23] = v1;
+                const s = this.sprites, [u0, v0, uw, vh] = rect, x1 = x + w, y1 = y + h, u1 = u0 + uw, v1 = v0 + vh;
+                let o = n * 30;
+                for (const [px, py, u, v] of [[x, y, u0, v0], [x1, y, u1, v0], [x, y1, u0, v1], [x1, y, u1, v0], [x1, y1, u1, v1], [x, y1, u0, v1]]) {
+                    s[o++] = px; s[o++] = py; s[o++] = u; s[o++] = v; s[o++] = 1;
+                }
                 n++;
             }
         }

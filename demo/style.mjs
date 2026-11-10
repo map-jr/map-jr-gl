@@ -5,7 +5,11 @@ const isRoad = ['all', ['==', ['geometry-type'], 'LineString'], ['!', ['in', ['g
 
 export default (tiles, attribution) => ({
     version: 8,
-    sources: {omt: {type: 'vector', tiles: [tiles], minzoom: 0, maxzoom: 14, attribution}},
+    sources: {
+        omt: {type: 'vector', tiles: [tiles], minzoom: 0, maxzoom: 14, attribution},
+        // Not drawn by any layer here; present so map.queryElevation() has data to read.
+        dem: {type: 'raster-dem', tiles: ['https://tiles.mapterhorn.com/{z}/{x}/{y}.webp'], encoding: 'terrarium', tileSize: 512, maxzoom: 12},
+    },
     layers: [
         {id: 'background', type: 'background', paint: {'background-color': '#f4f1ea'}},
         {id: 'landcover', type: 'fill', source: 'omt', 'source-layer': 'landcover',

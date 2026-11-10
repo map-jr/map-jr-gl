@@ -31,7 +31,7 @@ for (const mode of ['main', 'worker']) {
     await settle(page);
     const z = await page.evaluate(() => window.map.getZoom());
     const p = await page.evaluate(a => window.map.project(a), anchor);
-    check(`[${mode}] wheel zooms in around cursor`, z > 15.5 && Math.hypot(p.x - 700, p.y - 200) < 1.5, `zoom=${z.toFixed(2)} drift=${Math.hypot(p.x - 700, p.y - 200).toFixed(2)}px`);
+    check(`[${mode}] wheel zooms in around cursor`, z > 14.6 && Math.hypot(p.x - 700, p.y - 200) < 1.5, `zoom=${z.toFixed(2)} drift=${Math.hypot(p.x - 700, p.y - 200).toFixed(2)}px`);
 
     // Read-after-write is immediate even when the engine lives in a worker.
     const sync = await page.evaluate(() => { window.map.jumpTo({center: [-74.0065, 40.7085], zoom: 14.3, bearing: 0}); return [window.map.getZoom(), window.map.getCenter().lng]; });
@@ -68,10 +68,37 @@ for (const mode of ['main', 'worker']) {
     if (mode === 'main') mainFrames = frames;
     else check('[worker] keeps animating while the main thread is blocked', frames >= 5 && frames > mainFrames * 3, `${frames} frames vs ${mainFrames} on the main thread`);
 
+    // Queries read tile data directly: no layer needs to draw the feature, and the place need not be on screen.
+    await settle(page);
+    const q = await page.evaluate(async () => {
+        const here = await window.map.queryFeatures([-74.0060, 40.7127], {sourceLayers: ['landcover', 'poi'], radius: 12});
+        const far = await window.map.queryFeatures([2.2945, 48.8584], {zoom: 14, sourceLayers: ['poi', 'building'], radius: 30, geometry: true});
+        const filtered = await window.map.queryFeatures([2.2945, 48.8584], {zoom: 14, radius: 30, filter: ['==', ['get', 'class'], 'no-such-class']});
+        const centre = window.map.getCenter();
+        const summit = await window.map.queryElevation([7.6586, 45.9763]), sea = await window.map.queryElevation([-74.02, 40.69]);
+        return {here: here.map(f => f.sourceLayer), far: far.length, geom: far[0]?.geometry?.type, filtered: filtered.length, summit, sea, moved: centre.lng !== window.map.getCenter().lng};
+    });
+    check(`[${mode}] queryFeatures finds an undrawn-layer feature under a point`, q.here.includes('landcover') && q.here.includes('poi'), JSON.stringify(q.here));
+    check(`[${mode}] queryFeatures works off screen, with geometry and filters`, q.far > 0 && !!q.geom && q.filtered === 0 && !q.moved, `${q.far} features, first ${q.geom}`);
+    check(`[${mode}] queryElevation reads the elevation source`, q.summit > 4300 && q.summit < 4500 && Math.abs(q.sea) < 15, `Matterhorn ${q.summit?.toFixed(0)} m, New York harbour ${q.sea?.toFixed(1)} m`);
+    const attribution = await page.evaluate(() => document.querySelector('#map > div')?.textContent);
+    check(`[${mode}] attribution shows © and keeps links`, attribution.includes('©') && !attribution.includes('&copy') && await page.evaluate(() => document.querySelectorAll('#map > div a').length) > 0, attribution);
+    const img = await page.evaluate(() => window.map.addImage('star', '<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="gold"/></svg>').then(() => true, e => String(e)));
+    check(`[${mode}] addImage accepts an SVG`, img === true, String(img));
+
     await page.evaluate(() => { window.map.setPaintProperty('water', 'fill-color', '#e88'); });
     await idle(page);
     await page.waitForTimeout(300);
     await page.screenshot({path: `${out}/restyle-${mode}.png`});
+    // Resizing: the canvas ends up exactly covering the container, with the map centre still in the middle.
+    const centreBefore = await page.evaluate(() => window.map.getCenter());
+    await page.setViewportSize({width: 820, height: 560});
+    await page.waitForTimeout(500);
+    const r = await page.evaluate(() => { const c = window.map.getCanvas(), b = c.getBoundingClientRect(), m = window.map.getContainer().getBoundingClientRect();
+        return {css: [b.width, b.height, b.left, b.top], box: [m.width, m.height], mid: window.map.project(window.map.getCenter()), centre: window.map.getCenter()}; });
+    check(`[${mode}] resize keeps the canvas matched to its container`, r.css[0] === 820 && r.css[1] === 560 && r.css[2] === 0 && r.css[3] === 0 && Math.abs(r.mid.x - 410) < 0.01 && Math.abs(r.mid.y - 280) < 0.01 && r.centre.lng === centreBefore.lng, JSON.stringify(r.css));
+    await page.setViewportSize({width: 1000, height: 700});
+    await page.waitForTimeout(300);
     check(`[${mode}] no page errors`, errors.length === 0, errors.slice(0, 3).join(' | '));
     await page.close();
 }

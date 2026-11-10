@@ -62,7 +62,7 @@ export function compileLayer(l: LayerJSON): CompiledLayer | null {
     };
 }
 
-export interface SourceInfo { type: 'vector' | 'raster' | 'raster-dem'; tiles: string[]; minzoom: number; maxzoom: number; tileSize: number; attribution?: string }
+export interface SourceInfo { type: 'vector' | 'raster' | 'raster-dem'; tiles: string[]; minzoom: number; maxzoom: number; tileSize: number; attribution?: string; encoding?: 'terrarium' | 'mapbox' }
 
 /** A style with everything network-dependent already resolved, so it can be posted to a worker as plain JSON. */
 export interface ResolvedStyle { layers: LayerJSON[]; sources: Record<string, SourceInfo>; unsupported: string[]; sprite?: string }
@@ -78,7 +78,6 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
     const sources: Record<string, SourceInfo> = {};
     for (const [name, raw] of Object.entries<any>(style.sources ?? {})) {
         if (raw.type !== 'vector' && raw.type !== 'raster' && raw.type !== 'raster-dem') continue;
-        if (raw.type === 'raster-dem' && (raw.encoding ?? 'mapbox') !== 'terrarium') continue; // only Terrarium-encoded elevation so far
         let src = raw;
         if (!src.tiles && src.url) {
             const url = base ? new URL(src.url, base).href : src.url;
@@ -92,6 +91,7 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
         sources[name] = {
             type: raw.type, tiles: src.tiles, minzoom: src.minzoom ?? 0, maxzoom: src.maxzoom ?? (raw.type === 'vector' ? 14 : 22),
             tileSize: raw.type === 'vector' ? 512 : src.tileSize ?? 512, attribution: src.attribution,
+            encoding: raw.type === 'raster-dem' ? (raw.encoding === 'terrarium' ? 'terrarium' : 'mapbox') : undefined,
         };
     }
     const unsupported = new Set<string>();

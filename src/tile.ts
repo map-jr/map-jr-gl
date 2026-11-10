@@ -53,12 +53,16 @@ export interface TileGL { layers: Record<string, GLBatch>; labels: Record<string
 /** A raster tile as the SVG backend sees it: just somewhere to load the image from. */
 export interface TileImage { href: string }
 
-/** "Noto Sans Bold Italic" -> "italic 700". The family is supplied by the host so fonts stay consistent per app. */
+/**
+ * "Open Sans Semibold Italic" -> "italic 600|Open Sans": CSS style and weight, then the family named by the style.
+ * The family is tried first and the map's `fontFamily` is the fallback, so styles work with or without their fonts loaded.
+ */
 function fontStyle(names: any): string {
-    const n = String(Array.isArray(names) ? names[0] : names).toLowerCase();
+    const name = String(Array.isArray(names) ? names[0] : names), n = name.toLowerCase();
     const weight = /black|heavy/.test(n) ? 900 : /extra ?bold/.test(n) ? 800 : /semi ?bold|demi/.test(n) ? 600 : /bold/.test(n) ? 700 :
         /medium/.test(n) ? 500 : /light/.test(n) ? 300 : 400;
-    return (/italic|oblique/.test(n) ? 'italic ' : '') + weight;
+    const family = name.replace(/\b(thin|extra ?light|light|regular|normal|book|medium|semi ?bold|demi ?bold|demi|extra ?bold|bold|black|heavy|italic|oblique)\b/gi, '').replace(/\s+/g, ' ').trim();
+    return (/italic|oblique/.test(n) ? 'italic ' : '') + weight + '|' + family.replace(/["\\]/g, '');
 }
 
 function pushColor(out: number[], c: RGBA, alpha: number) {

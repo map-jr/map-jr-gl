@@ -86,7 +86,7 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
             grid.insert(x + ox, y + oy, x + ox + m.width, y + oy + m.height);
         }
     }
-    const labels = placeLabels(tr, all, layers, new EstimateShaper(), grid, sprite);
+    const labels = placeLabels(tr, all, layers, new EstimateShaper(), grid, name => (sprite as Sprite | null)?.icons[name]);
     const svg = renderSVG({
         tr, layers, items, labels, sprite, markers: o.markers ?? [], fontFamily: o.fontFamily ?? DEFAULT_FONT,
         rootAttrs: 'data-tessera-ssr style="position:absolute;inset:0;width:100%;height:100%"',

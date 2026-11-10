@@ -1,5 +1,5 @@
 import {type Mat, type Transform, type TileID, EXTENT, apply} from './geo.ts';
-import type {CompiledLayer, Sprite} from './style.ts';
+import type {CompiledLayer, SpriteIcon} from './style.ts';
 import type {LabelSrc} from './tile.ts';
 import {EM, type Shaped, type Shaper} from './text.ts';
 
@@ -19,12 +19,21 @@ export interface PlacedIcon {
     x: number; y: number; w: number; h: number; angle: number;
     /** Source rectangle in the sprite sheet, in its pixels. */
     rect: [number, number, number, number];
+    /** True for images added at runtime (drawn from the dynamic atlas) rather than the style's sprite sheet. */
+    custom?: boolean;
 }
 export interface Placed {
     /** Centre of the text block in screen pixels. */
     x: number; y: number;
     angle: number; size: number; shaped: Shaped | null; src: LabelSrc; icon?: PlacedIcon;
+    /** Identity that survives between placements (and between a tile and its parent), for fading. */
+    key: string;
+    tile: TileID;
+    /** Where the label's map anchor was on screen when placed, so it can be moved with the map between placements. */
+    ax: number; ay: number;
+    opacity: number;
 }
+export type IconLookup = (name: string) => (SpriteIcon & {custom?: boolean}) | undefined;
 
 export class CollisionGrid {
     private cells = new Map<number, number[]>();
@@ -70,7 +79,7 @@ function boxAround(x: number, y: number, w: number, h: number, angle: number, pa
  */
 export function placeLabels(
     tr: Transform, items: RenderItem<{labels: Record<string, LabelSrc[]>}>[], layers: CompiledLayer[], shaper: Shaper, grid: CollisionGrid,
-    sprite?: Sprite | null,
+    icons?: IconLookup,
 ): Placed[] {
     const out: Placed[] = [], seen = new Map<string, number[]>();
     const mapAngle = -tr.bearing * Math.PI / 180, margin = 100;
@@ -86,7 +95,7 @@ export function placeLabels(
                 const [ax, ay] = apply(it.matrix, l.x, l.y);
                 if (ax < -margin || ay < -margin || ax > tr.width + margin || ay > tr.height + margin) continue;
                 const size = l.size0 + (l.size1 - l.size0) * t, s = size / EM, line = l.angle !== null;
-                const meta = l.icon ? sprite?.icons[l.icon.name] : undefined;
+                const meta = l.icon ? icons?.(l.icon.name) : undefined;
                 const shaped = l.text ? shaper.shape(l.text, l.font, line ? 1e3 : l.maxWidth, l.spacing) : null;
                 const w = shaped ? shaped.width * s : 0, h = shaped ? shaped.height * s : 0;
                 const hasText = w > 0;
@@ -138,7 +147,7 @@ export function placeLabels(
                     const box = boxAround(ix, iy, iw, ih, angle, 1);
                     if (ic.overlap || !grid.hits(...box)) {
                         iconBox = box;
-                        icon = {x: ix, y: iy, w: iw, h: ih, angle, rect: [meta.x, meta.y, meta.width, meta.height]};
+                        icon = {x: ix, y: iy, w: iw, h: ih, angle, rect: [meta.x, meta.y, meta.width, meta.height], custom: meta.custom};
                     } else if (!(hasText && textBox && ic.optional)) continue;
                 }
                 if (!textBox && !icon) continue;
@@ -150,7 +159,9 @@ export function placeLabels(
                     const prev = seen.get(l.text);
                     if (prev) prev.push(ax, ay); else seen.set(l.text, [ax, ay]);
                 }
-                out.push({x: tx, y: ty, angle: textAngle, size, shaped: textBox ? shaped : null, src: l, icon});
+                const n = 2 ** it.id.z, q = 2 ** 22;
+                const key = `${L.id}|${l.text}|${l.icon?.name ?? ''}|${Math.round((it.id.x + l.x / EXTENT) / n * q)},${Math.round((it.id.y + l.y / EXTENT) / n * q)},${it.id.w}`;
+                out.push({x: tx, y: ty, angle: textAngle, size, shaped: textBox ? shaped : null, src: l, icon, key, tile: it.id, ax, ay, opacity: 1});
             }
         }
     }
@@ -179,10 +190,15 @@ export function renderItems<T>(tr: Transform, ideal: TileID[], get: (key: string
             found = true;
         }
         if (found) continue;
-        for (let i = 0; i < 4; i++) {
-            const z = id.z + 1, x = id.x * 2 + (i & 1), y = id.y * 2 + (i >> 1), child = get(`${z}/${x}/${y}`);
-            if (child) push({z, x, y, w: id.w, key: `${z}/${x}/${y}`}, FULL_CLIP, child);
-        }
+        // Zooming out: stand in with whatever deeper tiles are loaded, two levels down at most.
+        const below = (z: number, x: number, y: number, depth: number) => {
+            for (let i = 0; i < 4; i++) {
+                const cz = z + 1, cx = x * 2 + (i & 1), cy = y * 2 + (i >> 1), key = `${cz}/${cx}/${cy}`, child = get(key);
+                if (child) push({z: cz, x: cx, y: cy, w: id.w, key}, FULL_CLIP, child);
+                else if (depth > 1) below(cz, cx, cy, depth - 1);
+            }
+        };
+        below(id.z, id.x, id.y, 2);
     }
     return items;
 }
