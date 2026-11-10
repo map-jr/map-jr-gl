@@ -35,7 +35,8 @@ Mapbox Vector Tiles.
   respect safe areas, and attribution collapses to a button on small maps.
 - **3D terrain:** `terrain` in the style, or `map.setTerrain({source, exaggeration})`, raises the ground from a
   `raster-dem` source. Each terrain tile's flat picture is cached, so panning and tilting do not redraw the map;
-  buildings and labels sit on the surface and labels behind a ridge are hidden.
+  buildings, labels and markers sit on the surface, clicks and `project`/`unproject` follow it, and labels behind
+  a ridge are hidden.
 - **Contour lines:** a `contour` source derives labelled contour lines from an elevation source in the tile
   workers, with intervals by zoom, a unit multiplier and overzoom, in the manner of maplibre-contour. They are
   drawn in server output too: PNG and lossless WebP elevation tiles are decoded by the library, with no

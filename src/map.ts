@@ -1,4 +1,4 @@
-import {Transform, mercX, mercY, toLngLat, type LngLatLike} from './geo.ts';
+import {Transform, groundHeight, mercX, mercY, toLngLat, type LngLatLike} from './geo.ts';
 import {resolveStyle, type ResolvedStyle} from './style.ts';
 import type {CameraOptions, Command, EngineEvent, FeatureQuery, FontSource, MarkerImage} from './engine.ts';
 import type {QueriedFeature} from './query.ts';
@@ -136,6 +136,8 @@ export class Map {
     private imageNames = new Set<string>();
     private imageResolver: ((id: string) => void | Promise<void>) | null = null;
     private tilesLoaded = false;
+    /** Height grids of loaded elevation tiles (3D terrain), mirrored from the engine. */
+    private heights = new globalThis.Map<string, Float32Array>();
     private pending = new globalThis.Map<number, {resolve(v: any): void; reject(e: Error): void}>();
     private nextQuery = 1;
     /** Which thread the engine ended up on. */
@@ -262,6 +264,10 @@ export class Map {
             const zoomed = e.zoom !== this.tr.zoom;
             const turned = e.bearing !== this.tr.bearing, tilted = e.pitch !== this.tr.pitch;
             Object.assign(this.tr, {lng: e.lng, lat: e.lat, zoom: e.zoom, bearing: e.bearing, pitch: e.pitch, elevation: e.elevation});
+            // With 3D terrain, positions on this thread follow the ground too (clicks, project/unproject, DOM markers).
+            const k = e.exaggeration;
+            this.tr.groundRange = e.groundRange;
+            this.tr.heightAt = k > 0 ? (mx, my) => groundHeight(this.heights, mx, my, 15) * k : undefined;
             this.tilesLoaded = false;
             if (!this.moving) this.fire('movestart');
             this.moving = true;
@@ -281,6 +287,9 @@ export class Map {
                 this.fire('load');
             }
             this.fire('idle');
+        } else if (e.type === 'heights') {
+            if (e.grid) this.heights.set(e.key, e.grid); else this.heights.delete(e.key);
+            if (this.tr.heightAt) this.fire('move'); // overlays re-position onto the newly known ground
         } else if (e.type === 'stats') {
             this.fire('stats', {fps: e.fps, frameMs: e.frameMs});
         } else if (e.type === 'resized') {

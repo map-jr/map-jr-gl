@@ -1,4 +1,4 @@
-import {EXTENT, TILE_SIZE, Transform, bezier, clamp, latFromMerc, lngFromMerc, mercX, mercY, type LngLatLike, type TileID} from './geo.ts';
+import {EXTENT, HEIGHT_GRID, TILE_SIZE, Transform, bezier, groundHeight, clamp, latFromMerc, lngFromMerc, mercX, mercY, type LngLatLike, type TileID} from './geo.ts';
 import {compileLayer, isGeometrySource, loadSprite, tileURL, type CompiledLayer, type FontSource, type ResolvedStyle, type Sprite, type SpriteIcon} from './style.ts';
 import {GLRenderer, MARKER_FLOATS, MARKER_STRIDE, SPRITE_ATLAS, type DemRef, type GLTile, type MarkerBuffers, type TerrainTile} from './gl.ts';
 import {CollisionGrid, placeLabels, renderItems, type Placed, type RenderItem} from './placement.ts';
@@ -42,8 +42,10 @@ export type Command =
     | {type: 'elevation'; id: number; lng: number; lat: number; source?: string; zoom?: number}
     | {type: 'repaint'};
 export type EngineEvent =
-    | {type: 'camera'; lng: number; lat: number; zoom: number; bearing: number; pitch: number; /** Ground height at the centre with 3D terrain, else 0. */ elevation: number; moving: boolean}
+    | {type: 'camera'; lng: number; lat: number; zoom: number; bearing: number; pitch: number; /** Ground height at the centre with 3D terrain, else 0. */ elevation: number; exaggeration: number; groundRange?: [number, number]; moving: boolean}
     | {type: 'idle'}
+    /** 3D terrain: the height grid of an elevation tile that has loaded (or, without `grid`, been dropped). */
+    | {type: 'heights'; key: string; grid?: Float32Array}
     /** About once a second while drawing: frames drawn per second and the engine's average CPU time per frame. */
     | {type: 'stats'; fps: number; frameMs: number}
     /** A frame at a new canvas size has been drawn. */
@@ -53,7 +55,6 @@ export type EngineEvent =
     | {type: 'error'; message: string};
 
 /** Heights are kept on the CPU at this resolution per elevation tile: plenty for placing labels and the camera. */
-const HEIGHT_GRID = 128;
 function sampleHeights(image: ImageBitmap, encoding: string): Float32Array {
     const ctx = new OffscreenCanvas(HEIGHT_GRID, HEIGHT_GRID).getContext('2d', {willReadFrequently: true})!;
     ctx.imageSmoothingEnabled = false; // heights are encoded in the colour channels, so pixels must not be blended
@@ -82,11 +83,13 @@ function sourceSignature(style: ResolvedStyle, name: string): [string, string] {
     return [source, JSON.stringify(layers)];
 }
 
-interface TileState { state: 'loading' | 'ok' | 'error'; gl?: GLTile; /** Elevation tiles: a coarse grid of heights in metres, for lifting labels and the camera. */ heights?: Float32Array; range?: [number, number]; used: number; cancel(): void; /** Shown, but built from data that has since changed. */ stale?: boolean; rebuilding?: boolean }
+interface TileState { state: 'loading' | 'ok' | 'error'; gl?: GLTile; /** Elevation tiles shaping 3D terrain: the lowest and highest ground on the tile, in metres. */ range?: [number, number]; used: number; cancel(): void; /** Shown, but built from data that has since changed. */ stale?: boolean; rebuilding?: boolean }
 interface MarkerLayer {
     width: number; height: number; offset: [number, number]; collide: boolean; merc: Float64Array; variant: Uint32Array;
     minZoom: number; maxZoom: number; hideOverlaps: boolean;
     gpu?: MarkerBuffers; data?: Float32Array; scale?: Float32Array;
+    /** 3D terrain: which buffers and which set of elevation tiles the markers' ground heights were last worked out for. */
+    heightsFor?: MarkerBuffers; heightsVersion?: number;
 }
 interface LabelState { placed: Placed; opacity: number; target: number }
 
@@ -171,36 +174,41 @@ export class Engine {
         this.invalidate();
     }
 
+    /** Counts elevation tiles arriving, so heights derived from them (under markers) are refreshed. */
+    private demVersion = 0;
+    private lastPose = '';
+    private movedAt = 0;
+    private hadTerrain = false;
+    private markerHeightsAt = 0;
     /** 3D terrain: the exaggeration in force this frame (zero when looking straight down, or with no terrain). */
     private exaggeration = 0;
     /** Counts changes to the style and its images, so cached terrain pictures know when they are out of date. */
     private styleVersion = 0;
     private invalidate() { this.placeDirty = true; this.repaint(); }
 
-    /** The deepest loaded elevation tile at or above `id` that has `what`, with the tile and how far up it is. */
-    private demTile(x: number, y: number, z: number, what: 'heights' | 'gl'): {t: TileState; z: number} | null {
+    /** The deepest loaded elevation tile at or above a position, and its zoom. */
+    private demTile(x: number, y: number, z: number): {t: TileState; z: number} | null {
         const terrain = this.style.terrain, src = terrain && this.style.sources[terrain.source];
         if (!src) return null;
         for (let tz = Math.min(z, src.maxzoom); tz >= src.minzoom; tz--) {
             const n = 2 ** tz, t = this.tiles.get(`${terrain!.source}|${tz}/${Math.floor(x * n)}/${Math.floor(y * n)}`);
-            if (t?.state === 'ok' && (what === 'heights' ? t.heights : t.gl?.raw)) return {t, z: tz};
+            if (t?.state === 'ok' && t.gl?.raw) return {t, z: tz};
         }
         return null;
     }
 
     /** Ground height at a mercator position in metres (exaggerated), from the best elevation tile loaded so far. */
-    private heightAt = (mx: number, my: number): number => {
-        const found = this.demTile(mx - Math.floor(mx), my, Math.round(this.tr.zoom) + 1, 'heights');
-        if (!found) return 0;
-        const n = 2 ** found.z, G = HEIGHT_GRID, h = found.t.heights!;
-        const fx = clamp(((mx - Math.floor(mx)) * n % 1) * G - 0.5, 0, G - 1), fy = clamp((my * n % 1) * G - 0.5, 0, G - 1);
-        const x0 = Math.floor(fx), y0 = Math.floor(fy), x1 = Math.min(G - 1, x0 + 1), y1 = Math.min(G - 1, y0 + 1), tx = fx - x0, ty = fy - y0;
-        return ((h[y0 * G + x0] * (1 - tx) + h[y0 * G + x1] * tx) * (1 - ty) + (h[y1 * G + x0] * (1 - tx) + h[y1 * G + x1] * tx) * ty) * this.exaggeration;
-    };
+    private heightAt = (mx: number, my: number): number => this.rawHeightAt(mx, my) * this.exaggeration;
+    /** Height grids of the loaded elevation tiles, keyed "z/x/y"; mirrored to the page so it can project onto the ground too. */
+    private heights = new Map<string, Float32Array>();
+    private rawHeightAt(mx: number, my: number): number {
+        const src = this.style.terrain && this.style.sources[this.style.terrain.source];
+        return src ? groundHeight(this.heights, mx, my, src.maxzoom, src.minzoom) : 0; // always the most detailed data, so heights do not shift with zoom
+    }
 
     /** The heights under a tile, for the GPU. */
     private demRef = (id: TileID): DemRef | null => {
-        const n = 2 ** id.z, found = this.demTile((id.x + 0.5) / n, (id.y + 0.5) / n, id.z, 'gl');
+        const n = 2 ** id.z, found = this.demTile((id.x + 0.5) / n, (id.y + 0.5) / n, id.z);
         if (!found) return null;
         const k = 2 ** (id.z - found.z), gl = found.t.gl!;
         return {tex: gl.raw!, rect: [(id.x % k) / k, (id.y % k) / k, 1 / k, gl.rawSize!], unpack: gl.unpack!};
@@ -211,7 +219,7 @@ export class Engine {
         const tr = this.tr, terrain = this.style.terrain!, demSrc = this.style.sources[terrain.source], out: TerrainTile[] = [];
         // Pictures are drawn for zoom levels an eighth apart and stretched in between, so zooming redraws them only now and then.
         const zq = Math.round(tr.zoom * 8) / 8;
-        for (const id of tr.coveringTiles(0, 22, TILE_SIZE)) {
+        for (const id of tr.coveringTiles(0, 22, TILE_SIZE).slice(0, 96)) { // nearest first; a cap keeps odd views affordable
             const n = 2 ** id.z, view = new Transform(), zt = Math.min(zq, id.z + 1);
             view.width = view.height = TILE_SIZE * 2 ** (zt - id.z);
             view.lng = lngFromMerc((id.x + 0.5) / n); view.lat = latFromMerc((id.y + 0.5) / n); view.zoom = zt;
@@ -551,6 +559,7 @@ export class Engine {
         if (t.state === 'loading') t.cancel();
         if (t.gl) this.renderer.destroyTile(t.gl);
         this.tiles.delete(key);
+        if (t.range) { const k = key.slice(key.lastIndexOf('|') + 1); this.heights.delete(k); this.emit({type: 'heights', key: k}); }
     }
 
     private request(source: string, id: TileID, key: string) {
@@ -572,10 +581,13 @@ export class Engine {
                 if (this.tiles.get(key) !== t) { image.close(); return {labels: {}, batches: {}}; }
                 const tile = this.renderer.createImageTile(image, dem ? src.encoding ?? 'mapbox' : undefined, id);
                 if (dem && this.style.terrain?.source === source) {
-                    t.heights = sampleHeights(image, src.encoding ?? 'mapbox');
+                    const grid = sampleHeights(image, src.encoding ?? 'mapbox');
                     let lo = Infinity, hi = -Infinity;
-                    for (const h of t.heights) { if (h < lo) lo = h; if (h > hi) hi = h; }
+                    for (const h of grid) { if (h < lo) lo = h; if (h > hi) hi = h; }
                     t.range = [lo, hi];
+                    this.heights.set(id.key, grid);
+                    this.emit({type: 'heights', key: id.key, grid});
+                    this.demVersion++;
                 }
                 image.close();
                 return tile;
@@ -630,8 +642,17 @@ export class Engine {
         if (terrain) {
             tr.heightAt = this.heightAt;
             const target = this.heightAt(mercX(tr.lng), mercY(tr.lat)), gap = target - tr.elevation;
+            // While the map is being moved the camera keeps its height (following every ridge under the centre would
+            // make the view bob); once it rests, it eases to the ground there.
+            const pose = `${tr.lng},${tr.lat},${tr.zoom}`;
+            if (pose !== this.lastPose) { this.lastPose = pose; this.movedAt = now; }
+            const moving = cameraAnimating || now - this.movedAt < 150, first = !this.hadTerrain;
             settling = Math.abs(gap) > 0.5;
-            tr.elevation = settling ? tr.elevation + gap * Math.min(1, dt / 120) : target;
+            if (first) tr.elevation = target;
+            else if (!moving) tr.elevation = settling ? tr.elevation + gap * Math.min(1, dt / 250) : target;
+            // ...except upwards: moving into a mountainside, the camera climbs with the ground rather than passing through it.
+            else if (gap > 0) tr.elevation += gap * Math.min(1, dt / 100);
+            this.hadTerrain = true;
             // The lowest and highest ground on the elevation tiles in use: valleys far below the centre (or peaks far
             // above it) reach further across the screen than flat ground would.
             let lo = tr.elevation, hi = tr.elevation;
@@ -640,8 +661,19 @@ export class Engine {
                 lo = Math.min(lo, t.range[0] * this.exaggeration); hi = Math.max(hi, t.range[1] * this.exaggeration);
             }
             tr.groundRange = [lo, hi];
-        } else { tr.heightAt = undefined; tr.groundRange = undefined; tr.elevation = 0; }
+        } else { tr.heightAt = undefined; tr.groundRange = undefined; tr.elevation = 0; this.hadTerrain = false; }
         const ground = terrain ? this.terrainTiles(wanted) : undefined;
+        if (terrain && now - this.markerHeightsAt > 300) {
+            // Markers stand on the ground: look up the height under each when its layer or the elevation data changes.
+            for (const m of this.markers.values()) {
+                if (!m.gpu || (m.heightsFor === m.gpu && m.heightsVersion === this.demVersion)) continue;
+                const metres = new Float32Array(m.gpu.count);
+                for (let i = 0; i < metres.length; i++) metres[i] = this.rawHeightAt(m.merc[i * 2], m.merc[i * 2 + 1]);
+                this.renderer.setMarkerHeights(m.gpu, metres);
+                m.heightsFor = m.gpu; m.heightsVersion = this.demVersion;
+                this.markerHeightsAt = now;
+            }
+        }
         for (const source in this.style.sources) {
             // Skip sources nothing visible draws from at this zoom (e.g. low-zoom relief imagery when zoomed in).
             if (!this.layers.some(l => l.source === source && l.visible && tr.zoom >= l.minzoom && tr.zoom < l.maxzoom)) continue;
@@ -696,7 +728,7 @@ export class Engine {
             for (const [key, t] of old.slice(0, this.tiles.size - MAX_TILES)) this.dropTile(key, t);
         }
 
-        const camera = `${tr.lng},${tr.lat},${tr.zoom},${tr.bearing},${tr.pitch},${Math.round(tr.elevation)}`, cameraChanged = camera !== this.lastCamera;
+        const camera = `${tr.lng},${tr.lat},${tr.zoom},${tr.bearing},${tr.pitch},${Math.round(tr.elevation)},${this.exaggeration}`, cameraChanged = camera !== this.lastCamera;
         if (cameraChanged) this.placeDirty = true;
 
         // Decide which labels show only every so often; in between they ride along with the map and fade.
@@ -764,7 +796,7 @@ export class Engine {
         if (cameraChanged || animating !== this.moving) {
             this.lastCamera = camera;
             this.moving = animating;
-            this.emit({type: 'camera', lng: tr.lng, lat: tr.lat, zoom: tr.zoom, bearing: tr.bearing, pitch: tr.pitch, elevation: tr.elevation, moving: animating});
+            this.emit({type: 'camera', lng: tr.lng, lat: tr.lat, zoom: tr.zoom, bearing: tr.bearing, pitch: tr.pitch, elevation: tr.elevation, exaggeration: this.exaggeration, groundRange: tr.groundRange, moving: animating});
         }
         const busy = animating || markersAnimating || fading || this.placeDirty || settling || behind;
         const idle = complete && !busy;

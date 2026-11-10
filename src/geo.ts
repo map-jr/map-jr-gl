@@ -8,6 +8,24 @@ export type LngLatLike = [number, number] | {lng: number; lat: number};
 
 export interface TileID { z: number; x: number; y: number; w: number; key: string }
 
+/** With 3D terrain, heights are kept on the CPU as one grid of this many samples a side per elevation tile. */
+export const HEIGHT_GRID = 128;
+/**
+ * Ground height in metres at a mercator position, from height grids keyed "z/x/y": the deepest one at or above
+ * zoom `from` that covers the point, or 0 if there is none.
+ */
+export function groundHeight(grids: Map<string, Float32Array>, mx: number, my: number, from: number, to = 0): number {
+    mx -= Math.floor(mx);
+    for (let z = from; z >= to; z--) {
+        const n = 2 ** z, h = grids.get(`${z}/${Math.floor(mx * n)}/${Math.floor(my * n)}`);
+        if (!h) continue;
+        const G = HEIGHT_GRID, fx = clamp((mx * n % 1) * G - 0.5, 0, G - 1), fy = clamp((my * n % 1) * G - 0.5, 0, G - 1);
+        const x0 = Math.floor(fx), y0 = Math.floor(fy), x1 = Math.min(G - 1, x0 + 1), y1 = Math.min(G - 1, y0 + 1), tx = fx - x0, ty = fy - y0;
+        return (h[y0 * G + x0] * (1 - tx) + h[y0 * G + x1] * tx) * (1 - ty) + (h[y1 * G + x0] * (1 - tx) + h[y1 * G + x1] * tx) * ty;
+    }
+    return 0;
+}
+
 export const mercX = (lng: number) => (lng + 180) / 360;
 export const mercY = (lat: number) => {
     const s = Math.sin(lat * Math.PI / 180);
@@ -80,9 +98,10 @@ export class Transform {
         return [rx * k + this.width / 2, (ry * Math.cos(p) - z * Math.sin(p)) * k + this.height / 2, depth];
     }
 
-    /** Mercator [0..1] coordinates to screen pixels. */
+    /** Mercator [0..1] coordinates to screen pixels (on the ground surface, with 3D terrain). */
     mercToScreen(mx: number, my: number): [number, number] {
-        const ws = this.worldSize, [x, y] = this.view((mx - mercX(this.lng)) * ws, (my - mercY(this.lat)) * ws);
+        const z = this.heightAt ? (this.heightAt(mx, my) - this.elevation) * this.pixelsPerMetre : 0;
+        const ws = this.worldSize, [x, y] = this.view((mx - mercX(this.lng)) * ws, (my - mercY(this.lat)) * ws, z);
         return [x, y];
     }
 
@@ -94,6 +113,22 @@ export class Transform {
         const denom = Math.max(Math.cos(p) * d + sy * Math.sin(p), d * 0.02);
         const ry = (sy * (d - z * Math.cos(p)) + d * z * Math.sin(p)) / denom, rx = sx * (d - ry * Math.sin(p) - z * Math.cos(p)) / d;
         return [mercX(this.lng) + (cos * rx + sin * ry) / ws, mercY(this.lat) + (-sin * rx + cos * ry) / ws];
+    }
+
+    /**
+     * Screen pixels to the mercator position of the ground actually seen there: with 3D terrain, the nearest point
+     * of the surface along the view ray.
+     */
+    screenToGround(px: number, py: number): [number, number] {
+        if (!this.heightAt) return this.screenToMerc(px, py);
+        // Walk the view ray from the highest ground down to the lowest and stop where it first goes under the surface,
+        // then narrow that step down. (Raising or lowering the assumed plane moves along the ray.)
+        const ppm = this.pixelsPerMetre, [lo, hi] = this.groundRange ?? [this.elevation, this.elevation];
+        const below = (h: number) => { const m = this.screenToMerc(px, py, (h - this.elevation) * ppm); return this.heightAt!(m[0], m[1]) >= h; };
+        let a = hi + 1, b = lo - 1;
+        for (let i = 1; i <= 96; i++) { const h = hi + (lo - hi) * i / 96; if (below(h)) { b = h; break; } a = h; }
+        for (let i = 0; i < 12; i++) { const mid = (a + b) / 2; if (below(mid)) b = mid; else a = mid; }
+        return this.screenToMerc(px, py, ((a + b) / 2 - this.elevation) * ppm);
     }
 
     /** With 3D terrain: whether the ground hides a point on the surface (a label behind a ridge, say) from the camera. */
@@ -112,7 +147,9 @@ export class Transform {
 
     /** The screen's corners on the ground: one quad on flat ground, two (lowest and highest ground in view) with 3D terrain. */
     private footprints(): [number, number][][] {
-        const ppm = this.pixelsPerMetre, planes = this.groundRange ? this.groundRange.map(h => (h - this.elevation) * ppm) : [0];
+        // Ground level with the camera or above it has no sensible footprint, so heights are capped well below the camera.
+        const ppm = this.pixelsPerMetre, top = this.cameraDistance * Math.cos(this.pitch * Math.PI / 180) * 0.6;
+        const planes = this.groundRange ? this.groundRange.map(h => Math.min(top, (h - this.elevation) * ppm)) : [0];
         return planes.map(z => [[0, 0], [this.width, 0], [this.width, this.height], [0, this.height]].map(([x, y]) => this.screenToMerc(x, y, z)));
     }
 
@@ -154,13 +191,14 @@ export class Transform {
     }
 
     unproject(px: number, py: number): [number, number] {
-        const [mx, my] = this.screenToMerc(px, py);
+        const [mx, my] = this.screenToGround(px, py);
         return [lngFromMerc(mx), latFromMerc(clamp(my, 0, 1))];
     }
 
     /** Move the camera so that `lngLat` sits under screen point (px, py). Used for zoom-around-cursor. */
     setLocationAt(lng: number, lat: number, px: number, py: number) {
-        const [mx, my] = this.screenToMerc(px, py);
+        const z = this.heightAt ? (this.heightAt(mercX(lng), mercY(lat)) - this.elevation) * this.pixelsPerMetre : 0;
+        const [mx, my] = this.screenToMerc(px, py, z);
         const cx = mercX(this.lng) + mercX(lng) - mx;
         const cy = mercY(this.lat) + mercY(lat) - my;
         this.lng = lngFromMerc(cx);

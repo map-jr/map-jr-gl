@@ -123,7 +123,8 @@ for (const mode of ['main', 'worker']) {
     await page.mouse.move(500, 400); await page.mouse.down(); await page.mouse.move(520, 420, {steps: 3});
     await page.evaluate(() => window.map.getCanvas().dispatchEvent(new PointerEvent('pointermove', {pointerId: 1, pointerType: 'mouse', buttons: 0, clientX: 530, clientY: 430, bubbles: true})));
     await settle(page);
-    const c1 = await page.evaluate(() => window.map.getCenter());
+    // The release may start a short glide; wait until the centre has really stopped changing before comparing.
+    const c1 = await page.evaluate(async () => { let c = window.map.getCenter(); for (let i = 0; i < 40; i++) { await new Promise(r => setTimeout(r, 200)); const n = window.map.getCenter(); if (n.lng === c.lng && n.lat === c.lat) break; c = n; } return c; });
     await page.evaluate(() => window.map.getCanvas().dispatchEvent(new PointerEvent('pointermove', {pointerId: 1, pointerType: 'mouse', buttons: 0, clientX: 700, clientY: 600, bubbles: true})));
     await page.waitForTimeout(300);
     const c2 = await page.evaluate(() => window.map.getCenter());
@@ -269,12 +270,14 @@ for (const mode of ['main', 'worker']) {
         m.setTerrain({source: 'dem', exaggeration: 1});
         for (let i = 0; i < 150 && !(m.areTilesLoaded() && i > 20); i++) await new Promise(r => setTimeout(r, 100));
         const centre = m.project(m.getCenter()), size = m.getContainer().getBoundingClientRect();
-        const out = {on: m.getTerrain()?.source, centre, mid: [size.width / 2, size.height / 2], loaded: m.areTilesLoaded()};
+        // On the raised ground a summit appears higher up the screen, and screen points convert both ways.
+        const lifted = m.project(peak), ground = m.unproject({x: 600, y: 300}), again = m.project(ground);
+        const out = {on: m.getTerrain()?.source, lift: flat.y - lifted.y, roundTrip: Math.hypot(again.x - 600, again.y - 300), centre, mid: [size.width / 2, size.height / 2], loaded: m.areTilesLoaded()};
         m.setTerrain(null);
         m.jumpTo({pitch: 0});
         return {...out, off: m.getTerrain(), flat};
     });
-    check(`[${mode}] 3D terrain turns on and off, keeping the map centre in the middle`, terrain.on === 'dem' && terrain.off === null && terrain.loaded && Math.abs(terrain.centre.x - terrain.mid[0]) < 0.5 && Math.abs(terrain.centre.y - terrain.mid[1]) < 0.5, JSON.stringify(terrain));
+    check(`[${mode}] 3D terrain turns on and off, keeping the map centre in the middle`, terrain.on === 'dem' && terrain.off === null && terrain.loaded && terrain.lift > 30 && terrain.roundTrip < 1 && Math.abs(terrain.centre.x - terrain.mid[0]) < 0.5 && Math.abs(terrain.centre.y - terrain.mid[1]) < 0.5, JSON.stringify(terrain));
     await page.screenshot({path: `${out}/terrain-${mode}.png`});
     check(`[${mode}] no page errors`, errors.length === 0, errors.slice(0, 3).join(' | '));
     await page.close();
