@@ -8,6 +8,7 @@ import {anchorOffset, resolveVariants, sizedSVG, type MarkerInput, type MarkerLa
 import {DEFAULT_FONT} from './text.ts';
 import {AttributionControl, CONTROL_CSS, type Control, type ControlPosition} from './controls.ts';
 import {Popup, type PopupOptions} from './overlays.ts';
+import {CollisionGrid} from './collision.ts';
 
 
 export interface MapOptions extends CameraOptions, LoadOptions {
@@ -686,11 +687,28 @@ export class Map {
             const reach = [[-o.width, -o.height], [o.width, -o.height], [-o.width, o.height], [o.width, o.height]].map(([dx, dy]) => this.tr.unproject(point.x + dx, point.y + dy));
             const w = Math.min(...reach.map(r => r[0])), e = Math.max(...reach.map(r => r[0])), s = Math.min(...reach.map(r => r[1])), n = Math.max(...reach.map(r => r[1]));
             const near = e - w < 180; // not when the view spans the antimeridian or most of the world
+            // Layers that hide overlapping markers: the same first-come-first-served decision the renderer makes,
+            // worked out only once something is actually under the pointer.
+            let shown: Set<number> | null = null;
+            const visible = (index: number) => {
+                if (o.overlap !== 'hide') return true;
+                if (!shown) {
+                    shown = new Set();
+                    const grid = new CollisionGrid();
+                    for (let i = 0; i < layer.data.length; i++) {
+                        const [x, y] = this.tr.project(...layer.data[i].lngLat), x0 = x + ox, y0 = y + oy, x1 = x0 + o.width, y1 = y0 + o.height;
+                        if (x0 > this.tr.width || y0 > this.tr.height || x1 < 0 || y1 < 0 || grid.hits(x0, y0, x1, y1)) continue;
+                        grid.insert(x0, y0, x1, y1);
+                        shown.add(i);
+                    }
+                }
+                return shown.has(index);
+            };
             for (let i = layer.data.length - 1; i >= 0; i--) {
                 const ll = layer.data[i].lngLat;
                 if (near && (ll[0] < w || ll[0] > e || ll[1] < s || ll[1] > n)) continue;
                 const [x, y] = this.tr.project(...ll);
-                if (point.x >= x + ox && point.x <= x + ox + o.width && point.y >= y + oy && point.y <= y + oy + o.height) return {layer, index: i, marker: layer.data[i]};
+                if (point.x >= x + ox && point.x <= x + ox + o.width && point.y >= y + oy && point.y <= y + oy + o.height && visible(i)) return {layer, index: i, marker: layer.data[i]};
             }
         }
         return null;

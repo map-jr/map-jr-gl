@@ -76,7 +76,7 @@ new Map({container: 'map', style: 'https://example.com/style.json', center: [-74
 
 What happens by default, and why:
 
-- **The page loads a small script** (about 25 KB gzipped). The rendering engine is not in it.
+- **The page loads a small script** (about 26 KB gzipped). The rendering engine is not in it.
 - **The engine runs in a worker**, loaded from `tessera-worker.js`, which the library finds next to its own file
   (`new URL('./tessera-worker.js', import.meta.url)`). Bundlers that understand that pattern (Vite, webpack 5,
   Parcel, Rollup) copy the file for you. Tile-parsing workers are shared by every map on the page.
@@ -93,7 +93,7 @@ When you want control:
 | Worker file lives somewhere else | `new Map({workerUrl: '/assets/tessera-worker.js'})` |
 | Your bundler has its own worker syntax | `createWorker: () => new Worker(new URL('tessera-map/worker', import.meta.url))`, or with Vite `import W from 'tessera-map/worker?worker'` and `createWorker: () => new W()` |
 | Same settings for every map | `configure({workerUrl, createWorker, tileWorkers})` once at start-up |
-| One file, no siblings (embeds, sandboxes, quick demos) | `import {Map} from 'tessera-map/standalone'` (90 KB gzipped; the worker is embedded and started from a blob) |
+| One file, no siblings (embeds, sandboxes, quick demos) | `import {Map} from 'tessera-map/standalone'` (94 KB gzipped; the worker is embedded and started from a blob) |
 | Render on the main thread on purpose | `renderer: 'main'` |
 | Number of tile-parsing workers | `tileWorkers: 2` |
 | Server rendering | `import {renderToSVG, renderToImage} from 'tessera-map/server'` |
@@ -110,13 +110,13 @@ Notes for particular set-ups:
 
 | File | Loaded by | Gzip |
 |---|---|---|
-| `tessera.js` plus its shared chunk | the page, up front | 25 KB |
-| `tessera-worker.js` | a worker, in parallel | 38 KB |
-| `tessera-engine-entry-*.js` | the page, only for main-thread rendering | 28 KB |
-| `tessera-standalone.js` | the page, instead of all of the above | 90 KB |
+| `tessera.js` plus its shared chunk | the page, up front | 26 KB |
+| `tessera-worker.js` | a worker, in parallel | 40 KB |
+| `tessera-engine-entry-*.js` | the page, only for main-thread rendering | 29 KB |
+| `tessera-standalone.js` | the page, instead of all of the above | 94 KB |
 
 Importing selectively saves little (controls, markers and popups are about a kilobyte each: `Map` alone is 24 KB
-against 25 KB for everything), so there is no need to plan imports around size. `pnpm build --sizes` prints these.
+against 26 KB for everything), so there is no need to plan imports around size. `pnpm build --sizes` prints these.
 
 ## Performance compared with MapLibre GL JS
 
