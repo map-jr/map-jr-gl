@@ -138,6 +138,57 @@ for (const mode of ['main', 'worker']) {
     check(`[${mode}] addLayer/removeLayer and fitBounds`, api.added && api.removed && api.fits && api.zoom > 13 && api.zoom < 16, JSON.stringify(api));
     check(`[${mode}] missing-image resolver supplied generated shields`, api.images > 0, `${api.images} shield images`);
 
+    // Touch gestures, driven with synthetic touch pointers.
+    await page.evaluate(() => {
+        window.map.jumpTo({center: [-74.0065, 40.7085], zoom: 14, bearing: 0, pitch: 0});
+        const c = window.map.getCanvas();
+        window.touch = (type, id, x, y) => c.dispatchEvent(new PointerEvent(type, {pointerId: id, pointerType: 'touch', isPrimary: id === 11, clientX: x, clientY: y, button: 0, buttons: type === 'pointerup' ? 0 : 1, bubbles: true}));
+        // Moves two fingers from one pair of positions to another over several steps, then lifts them.
+        window.twoFingers = async (from, to, steps = 8) => {
+            window.touch('pointerdown', 11, ...from[0]); window.touch('pointerdown', 12, ...from[1]);
+            for (let i = 1; i <= steps; i++) {
+                const t = i / steps, at = k => [from[k][0] + (to[k][0] - from[k][0]) * t, from[k][1] + (to[k][1] - from[k][1]) * t];
+                window.touch('pointermove', 11, ...at(0)); window.touch('pointermove', 12, ...at(1));
+                await new Promise(r => setTimeout(r, 16));
+            }
+            window.touch('pointerup', 11, ...to[0]); window.touch('pointerup', 12, ...to[1]);
+            await new Promise(r => setTimeout(r, 400));
+        };
+        window.cam = () => ({zoom: window.map.getZoom(), bearing: window.map.getBearing(), pitch: window.map.getPitch()});
+    });
+    await idle(page);
+    const t = await page.evaluate(async () => {
+        const out = {};
+        await window.twoFingers([[400, 350], [600, 350]], [[300, 350], [700, 350]]); // spread to twice the distance
+        out.pinch = window.cam();
+        await window.twoFingers([[400, 350], [600, 350]], [[400, 345], [600, 355]]); // a slight twist, as any pinch has
+        out.smallTwist = window.cam();
+        await window.twoFingers([[400, 350], [600, 350]], [[430, 280], [570, 420]]); // a deliberate turn
+        out.turn = window.cam();
+        window.map.jumpTo({bearing: 0});
+        await window.twoFingers([[450, 400], [550, 400]], [[450, 320], [550, 320]]); // both fingers up together
+        out.tilt = window.cam();
+        window.map.jumpTo({pitch: 0, zoom: 14});
+        const tap = async (x, y) => { window.touch('pointerdown', 11, x, y); window.touch('pointerup', 11, x, y); await new Promise(r => setTimeout(r, 60)); };
+        await tap(500, 350); await tap(500, 350);
+        await new Promise(r => setTimeout(r, 600));
+        out.doubleTap = window.cam();
+        window.touch('pointerdown', 11, 450, 350); window.touch('pointerdown', 12, 550, 350); window.touch('pointerup', 11, 450, 350); window.touch('pointerup', 12, 550, 350);
+        await new Promise(r => setTimeout(r, 600));
+        out.twoFingerTap = window.cam();
+        await new Promise(r => setTimeout(r, 400));
+        await tap(500, 350);
+        window.touch('pointerdown', 11, 500, 350);
+        for (let y = 350; y <= 450; y += 10) { window.touch('pointermove', 11, 500, y); await new Promise(r => setTimeout(r, 16)); }
+        window.touch('pointerup', 11, 500, 450);
+        await new Promise(r => setTimeout(r, 400));
+        out.tapDrag = window.cam();
+        return out;
+    });
+    check(`[${mode}] touch: pinch zooms without rotating on a slight twist`, Math.abs(t.pinch.zoom - 15) < 0.05 && t.pinch.bearing === 0 && t.smallTwist.bearing === 0, JSON.stringify([t.pinch, t.smallTwist]));
+    check(`[${mode}] touch: a deliberate twist rotates, two fingers moving up tilts`, Math.abs(t.turn.bearing) > 10 && t.tilt.pitch > 20 && Math.abs(t.tilt.bearing) < 0.01, JSON.stringify([t.turn, t.tilt]));
+    check(`[${mode}] touch: double-tap zooms in, two-finger tap zooms out, tap-and-drag zooms`, Math.abs(t.doubleTap.zoom - 15) < 0.02 && Math.abs(t.twoFingerTap.zoom - 14) < 0.02 && t.tapDrag.zoom > 14.5, JSON.stringify([t.doubleTap.zoom, t.twoFingerTap.zoom, t.tapDrag.zoom]));
+
     // GeoJSON source added at runtime, hit through a layer-scoped click, then replaced with setData.
     await page.evaluate(() => window.map.jumpTo({center: [-74.0065, 40.7085], zoom: 14.3, bearing: 0, pitch: 0}));
     const gj = await page.evaluate(async () => {

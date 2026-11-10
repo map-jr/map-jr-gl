@@ -231,6 +231,8 @@ export class Map {
                 this.fire('load');
             }
             this.fire('idle');
+        } else if (e.type === 'stats') {
+            this.fire('stats', {fps: e.fps, frameMs: e.frameMs});
         } else if (e.type === 'resized') {
             this.fire('resize');
         } else if (e.type === 'result') {
@@ -656,12 +658,30 @@ export class Map {
         // deltas and timing, because the two need different handling to feel right.
         let wheelKind: 'wheel' | 'trackpad' | null = null, lastWheel = 0, held = 0, heldTimer: ReturnType<typeof setTimeout> | undefined;
 
+        // Touch gestures, matching MapLibre's set: one-finger pan, pinch to zoom and (past a threshold) rotate,
+        // two fingers moving vertically together to tilt, double-tap to zoom in, two-finger tap to zoom out, and
+        // double-tap-then-drag to zoom with one hand.
+        let gesture: {mode: 'undecided' | 'pinch' | 'pitch'; dist: number; angle: number; startAngle: number; rotating: boolean; mid: {x: number; y: number}; start: {x: number; y: number}[]; t0: number; travel: number} | null = null;
+        let lastTap = {t: 0, x: 0, y: 0}, tapDrag: {x: number; y: number; zoomed: boolean} | null = null, suppressClick = false, lastPointerType = 'mouse';
+        const twoFingers = () => { const [a, b] = [...pointers.values()]; return {a, b, dist: Math.hypot(a.x - b.x, a.y - b.y), angle: Math.atan2(b.y - a.y, b.x - a.x), mid: {x: (a.x + b.x) / 2, y: (a.y + b.y) / 2}}; };
+
         listen('pointerdown', e => {
-            el.setPointerCapture(e.pointerId);
-            pointers.set(e.pointerId, pos(e));
+            try { el.setPointerCapture(e.pointerId); } catch { /* synthetic events have no capturable pointer */ }
+            const p = pos(e), now = performance.now();
+            lastPointerType = e.pointerType;
+            pointers.set(e.pointerId, p);
             rotating = e.button === 2 || e.ctrlKey;
             moved = 0; samples = []; pinch = null;
             this.post({type: 'stop'});
+            if (pointers.size === 1) {
+                suppressClick = false;
+                // A second tap landing soon after and near the first starts a double-tap (or tap-and-drag zoom).
+                tapDrag = e.pointerType === 'touch' && now - lastTap.t < 300 && Math.hypot(p.x - lastTap.x, p.y - lastTap.y) < 30 ? {x: p.x, y: p.y, zoomed: false} : null;
+            } else if (pointers.size === 2) {
+                const f = twoFingers();
+                tapDrag = null;
+                gesture = {mode: 'undecided', dist: f.dist, angle: f.angle, startAngle: f.angle, rotating: false, mid: f.mid, start: [{...f.a}, {...f.b}], t0: now, travel: 0};
+            }
         });
         listen('pointermove', e => {
             // A mouse button released where we could not see it (outside the window, over a native dialog) leaves a
@@ -682,17 +702,37 @@ export class Map {
             pointers.set(e.pointerId, p);
             const dx = p.x - prev.x, dy = p.y - prev.y;
             moved += Math.abs(dx) + Math.abs(dy);
-            if (pointers.size === 2) {
-                const [a, b] = [...pointers.values()], dist = Math.hypot(a.x - b.x, a.y - b.y), angle = Math.atan2(b.y - a.y, b.x - a.x);
-                const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2;
-                if (pinch) {
-                    this.post({type: 'zoom', delta: Math.log2(dist / pinch.dist), x: cx, y: cy});
-                    this.post({type: 'rotate', delta: -(angle - pinch.angle) * 180 / Math.PI});
-                    this.post({type: 'pan', dx: dx / 2, dy: dy / 2});
+            if (pointers.size === 2 && gesture) {
+                const g = gesture, f = twoFingers();
+                g.travel += Math.abs(dx) + Math.abs(dy);
+                // Decide what the gesture is once both fingers have moved (events arrive one finger at a time).
+                const moved2 = (k: 0 | 1) => Math.hypot((k ? f.b : f.a).x - g.start[k].x, (k ? f.b : f.a).y - g.start[k].y);
+                if (g.mode === 'undecided' && g.travel > 8 && ((moved2(0) > 3 && moved2(1) > 3) || g.travel > 40)) {
+                    // Tilt: both fingers travel vertically in the same direction while staying side by side.
+                    const da = f.a.y - g.start[0].y, db = f.b.y - g.start[1].y, sideways = Math.abs(f.a.x - g.start[0].x) + Math.abs(f.b.x - g.start[1].x);
+                    const together = Math.sign(da) === Math.sign(db) && Math.abs(da) > 4 && Math.abs(db) > 4 && sideways < Math.abs(da) + Math.abs(db);
+                    g.mode = together && Math.abs(f.a.y - f.b.y) < 120 && Math.abs(f.dist - g.dist) < 12 ? 'pitch' : 'pinch';
+                    this.dragging = true;
                 }
-                pinch = {dist, angle};
+                if (g.mode === 'pitch') this.post({type: 'rotate', delta: 0, pitch: -(f.mid.y - g.mid.y) * 0.5});
+                else if (g.mode === 'pinch') {
+                    this.post({type: 'pan', dx: f.mid.x - g.mid.x, dy: f.mid.y - g.mid.y});
+                    if (f.dist > 0 && g.dist > 0) this.post({type: 'zoom', delta: Math.log2(f.dist / g.dist), x: f.mid.x, y: f.mid.y});
+                    let turn = f.angle - g.angle;
+                    turn = Math.atan2(Math.sin(turn), Math.cos(turn));
+                    if (!g.rotating) {
+                        // Ignore small twists, which every pinch has: rotation starts once the fingers have swept about 25px of arc.
+                        let total = f.angle - g.startAngle;
+                        total = Math.atan2(Math.sin(total), Math.cos(total));
+                        g.rotating = Math.abs(total) * f.dist / 2 > 25;
+                    } else this.post({type: 'rotate', delta: -turn * 180 / Math.PI});
+                }
+                g.dist = f.dist; g.angle = f.angle; g.mid = f.mid;
+            } else if (tapDrag && pointers.size === 1) {
+                // Second tap held and dragged: down zooms in, up zooms out, around where the taps landed.
+                if (moved > 6) { tapDrag.zoomed = true; this.post({type: 'zoom', delta: dy * 0.01, x: tapDrag.x, y: tapDrag.y}); }
             } else if (rotating) this.post({type: 'rotate', delta: -dx * 0.4, pitch: -dy * 0.5}); // right- or ctrl-drag: turn and tilt
-            else if (moved > 3) {
+            else if (moved > 3 && pointers.size === 1) {
                 if (!this.dragging) this.fire('dragstart');
                 this.dragging = true;
                 this.post({type: 'pan', dx, dy});
@@ -703,18 +743,34 @@ export class Map {
         const up = (e: PointerEvent) => {
             if (!pointers.delete(e.pointerId)) return;
             pinch = null;
+            const now = performance.now();
+            if (gesture) {
+                // Two fingers down and up again quickly, without moving: zoom out.
+                if (gesture.mode === 'undecided' && now - gesture.t0 < 300 && gesture.travel < 12) this.easeTo({zoom: this.tr.zoom - 1, around: [gesture.mid.x, gesture.mid.y], duration: 300});
+                gesture = null;
+                suppressClick = true; // the finger still down must not pan-fling or click when it lifts
+                samples = [];
+            }
             if (pointers.size) return;
             const wasDragging = this.dragging;
             this.dragging = false;
+            if (tapDrag) {
+                if (!tapDrag.zoomed) this.easeTo({zoom: this.tr.zoom + 1, around: [tapDrag.x, tapDrag.y], duration: 300});
+                tapDrag = null;
+                lastTap.t = 0;
+                if (wasDragging) { this.moving = false; this.fire('moveend'); }
+                return;
+            }
             // Inertia from the last 60ms of movement; a pointer that stopped before release gives none.
-            const now = performance.now(), last = samples[samples.length - 1];
+            const last = samples[samples.length - 1];
             const first = samples.find(s => now - s.t <= 60) ?? last;
             if (wasDragging && last && first !== last && now - last.t < 60 && (last.x !== first.x || last.y !== first.y)) {
                 this.awaitingInertia = true;
                 this.post({type: 'fling', dx: last.x - first.x, dy: last.y - first.y, ms: now - first.t});
             } else if (wasDragging) { this.moving = false; this.fire('moveend'); }
-            if (moved <= 3 && e.type === 'pointerup' && e.button === 0) {
-                const hit = this.queryMarkers(pos(e));
+            if (moved <= 3 && e.type === 'pointerup' && e.button === 0 && !suppressClick) {
+                const at = pos(e), hit = this.queryMarkers(at);
+                if (e.pointerType === 'touch') lastTap = {t: now, x: at.x, y: at.y};
                 if (hit) mouseEvent('markerclick', e, hit);
                 mouseEvent('click', e, {marker: hit});
             }
@@ -746,7 +802,7 @@ export class Map {
             if (e.shiftKey) value /= 4;
             if (wheelKind && value) send(value);
         }, {passive: false});
-        listen('dblclick', e => { const p = pos(e); this.easeTo({zoom: this.tr.zoom + (e.shiftKey ? -1 : 1), around: [p.x, p.y], duration: 300}); });
+        listen('dblclick', e => { if (lastPointerType === 'touch') return; /* touch double-taps are handled above, uniformly across browsers */ const p = pos(e); this.easeTo({zoom: this.tr.zoom + (e.shiftKey ? -1 : 1), around: [p.x, p.y], duration: 300}); });
         listen('contextmenu', e => e.preventDefault());
         listen('keydown', e => {
             const step = 100, k = e.key;

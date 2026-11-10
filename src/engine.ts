@@ -40,6 +40,8 @@ export type Command =
 export type EngineEvent =
     | {type: 'camera'; lng: number; lat: number; zoom: number; bearing: number; pitch: number; moving: boolean}
     | {type: 'idle'}
+    /** About once a second while drawing: frames drawn per second and the engine's average CPU time per frame. */
+    | {type: 'stats'; fps: number; frameMs: number}
     /** A frame at a new canvas size has been drawn. */
     | {type: 'resized'; width: number; height: number; dpr: number}
     | {type: 'result'; id: number; value?: unknown; error?: string}
@@ -458,8 +460,10 @@ export class Engine {
         }, err => this.emit({type: 'error', message: err.message}));
     }
 
+    private stats = {since: 0, frames: 0, cpu: 0};
+
     private frame(now: number) {
-        const tr = this.tr, frameNo = ++this.frameNo;
+        const tr = this.tr, frameNo = ++this.frameNo, began = performance.now();
         if (!tr.width || !tr.height) return;
         const dt = Math.min(100, now - this.lastTime || 16);
         this.lastTime = now;
@@ -562,6 +566,15 @@ export class Engine {
         if (idle && !this.wasIdle) this.emit({type: 'idle'});
         this.wasIdle = idle;
         if (busy) this.repaint();
+        const st = this.stats, end = performance.now();
+        st.frames++; st.cpu += end - began;
+        if (!st.since) st.since = began;
+        else if (end - st.since >= 1000) {
+            this.emit({type: 'stats', fps: st.frames / ((end - st.since) / 1000), frameMs: st.cpu / st.frames});
+            this.stats = {since: end, frames: 0, cpu: 0};
+        }
+        // After a pause the next burst of frames starts a fresh measurement instead of averaging in the idle time.
+        if (!busy) this.stats.since = 0;
     }
 
     /** Projects visible markers into screen-space quads and, when placing labels, reserves the boxes of colliding layers. */

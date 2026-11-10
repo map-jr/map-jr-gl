@@ -51,12 +51,18 @@ const layer = q.has('nomarkers') ? null : map.addMarkerLayer(structuredClone(mar
 if (q.has('photos')) map.addMarkerLayer(structuredClone(photos));
 if (q.has('markers')) { const t0 = performance.now(); map.addMarkerLayer(manyMarkers(+q.get('markers'))); window.manyMs = performance.now() - t0; }
 const hud = document.getElementById('hud');
-const show = () => hud.textContent = 'renderer: ' + map.renderer + ' | zoom ' + map.getZoom().toFixed(2) + (map.loaded() ? '' : ' | loading');
+let stats = '';
+const show = () => hud.textContent = 'renderer: ' + map.renderer + ' | zoom ' + map.getZoom().toFixed(2) + stats + (map.loaded() ? '' : ' | loading');
+map.on('stats', e => { stats = ' | ' + e.fps.toFixed(0) + ' fps, ' + e.frameMs.toFixed(1) + ' ms/frame'; show(); });
 map.on('move', show); map.on('load', () => { show(); window.mapLoaded = true; }); map.on('idle', () => window.mapIdle = (window.mapIdle || 0) + 1);
 map.on('markerenter', e => e.layer.setProps(e.index, {stroke: '#222', strokeWidth: 3}));
-map.on('markerleave', e => e.layer.setProps(e.index, {stroke: '#fff', strokeWidth: 1.5}));
+map.on('markerleave', e => { if (window.selected?.layer !== e.layer || window.selected.index !== e.index) e.layer.setProps(e.index, {stroke: '#fff', strokeWidth: 1.5}); });
 map.on('markerclick', e => {
   window.lastMarkerClick = e.marker.props.label;
+  // Touch has no hover, so a tap marks the marker as selected with the same outline hovering gives.
+  if (window.selected && window.selected.layer.data[window.selected.index]) window.selected.layer.setProps(window.selected.index, {stroke: '#fff', strokeWidth: 1.5});
+  window.selected = {layer: e.layer, index: e.index};
+  e.layer.setProps(e.index, {stroke: '#222', strokeWidth: 3});
   hud.textContent = 'clicked marker ' + (e.marker.props.label ?? e.marker.props.name);
   // The popup grows out of the marker that was clicked, starting in the marker's colour.
   const body = document.createElement('div');
