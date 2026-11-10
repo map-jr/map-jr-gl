@@ -121,6 +121,7 @@ export class Engine {
     private labels = new Map<string, LabelState>();
     private placeDirty = true;
     private lastPlace = -Infinity;
+    private placeAngle = 0;
     private placeZoom = 0;
     private fade = FADE;
 
@@ -595,6 +596,7 @@ export class Engine {
             this.placeDirty = false;
             this.lastPlace = now;
             this.placeZoom = tr.zoom;
+            this.placeAngle = -tr.bearing * Math.PI / 180;
             const keep = new Set<string>(), resets = this.atlas.resets;
             let placed = placeLabels(tr, all, this.layers, this.atlas, grid!, this.icon);
             if (this.atlas.resets !== resets) {
@@ -613,6 +615,7 @@ export class Engine {
         }
         const labels: Placed[] = [];
         let fading = false;
+        const turn = -tr.bearing * Math.PI / 180 - this.placeAngle, tc = Math.cos(turn), ts = Math.sin(turn);
         for (const [key, st] of this.labels) {
             if (st.opacity !== st.target) {
                 st.opacity = st.target ? Math.min(1, st.opacity + dt / this.fade) : Math.max(0, st.opacity - dt / this.fade);
@@ -620,6 +623,19 @@ export class Engine {
             }
             if (!st.opacity && !st.target) { this.labels.delete(key); continue; }
             const p = st.placed, [ax, ay] = tr.projectTile(p.tile, p.src.x, p.src.y), dx = ax - p.ax, dy = ay - p.ay;
+            if (turn && p.src.angle !== null && !p.src.upright) {
+                // Text along a line turns with the map between placements; otherwise it would hold its old angle and
+                // then snap, which reads as rocking while the map rotates.
+                const ox = p.x - p.ax, oy = p.y - p.ay;
+                let curve = p.curve;
+                if (curve) {
+                    curve = curve.slice();
+                    for (let i = 0; i < curve.length; i += 3) { const cx = curve[i], cy = curve[i + 1]; curve[i] = cx * tc - cy * ts; curve[i + 1] = cx * ts + cy * tc; curve[i + 2] += turn; }
+                }
+                labels.push({...p, x: ax + ox * tc - oy * ts, y: ay + ox * ts + oy * tc, angle: p.angle + turn, curve, opacity: st.opacity,
+                    icon: p.icon && {...p.icon, x: ax + (p.icon.x - p.ax) * tc - (p.icon.y - p.ay) * ts, y: ay + (p.icon.x - p.ax) * ts + (p.icon.y - p.ay) * tc, angle: p.icon.angle + turn}});
+                continue;
+            }
             labels.push({...p, x: p.x + dx, y: p.y + dy, icon: p.icon && {...p.icon, x: p.icon.x + dx, y: p.icon.y + dy}, opacity: st.opacity});
         }
         const markers: MarkerBuffers[] = [];
