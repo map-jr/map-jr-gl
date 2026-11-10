@@ -42,7 +42,9 @@ export interface LabelSrc {
     /** For text that follows a line: the nearby stretch of line as flat tile coordinates, and which of its points is the anchor. */
     path?: number[];
     pathIndex?: number;
-    size0: number; size1: number; color: RGBA; halo: RGBA; haloWidth: number;
+    size0: number; size1: number; color: RGBA; halo: RGBA; haloWidth: number; haloBlur: number;
+    /** How the lines of a multi-line label align with each other: -1 left, 0 centre, 1 right. */
+    justify: number;
     font: string; maxWidth: number; spacing: number; offset: [number, number]; anchor: string; padding: number; overlap: boolean;
     /** Text stays upright instead of following the line it is placed on (e.g. road shields). */
     upright: boolean;
@@ -115,7 +117,7 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
                 const base = {
                     text, size0: p.size.eval(z, f), size1: p.size.eval(z + 1, f),
                     color: [color[0], color[1], color[2], color[3] * op] as RGBA,
-                    halo: p.haloColor.eval(z, f), haloWidth: p.haloWidth.eval(z, f), font: fontStyle(p.font.eval(z, f)),
+                    halo: p.haloColor.eval(z, f), haloWidth: p.haloWidth.eval(z, f), haloBlur: p.haloBlur.eval(z, f), justify: justification(p.justify.eval(z, f), p.anchor.eval(z, f)), font: fontStyle(p.font.eval(z, f)),
                     maxWidth: p.maxWidth.eval(z, f), spacing: p.spacing.eval(z, f), offset: p.offset.eval(z, f), anchor: p.anchor.eval(z, f),
                     padding: p.padding.eval(z, f), overlap: !!p.overlap.eval(z, f),
                     upright: p.textAlign.eval(z, f) === 'viewport', textOptional: !!p.textOptional.eval(z, f), ignore: !!p.ignore.eval(z, f),
@@ -239,6 +241,12 @@ function ringArea(c: Int16Array, start: number, end: number) {
     let a = 0;
     for (let i = start, j = end - 1; i < end; j = i++) a += (c[j * 2] - c[i * 2]) * (c[i * 2 + 1] + c[j * 2 + 1]);
     return a;
+}
+
+/** `text-justify` as a number; `auto` follows the side the text is anchored on. */
+function justification(justify: string, anchor: string): number {
+    const side = justify === 'auto' ? anchor : justify;
+    return side.includes('left') ? -1 : side.includes('right') ? 1 : 0;
 }
 
 /** Expands a neutral batch into vertex and index buffers for the GPU. */

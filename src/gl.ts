@@ -93,13 +93,13 @@ void main() {
 }`],
 
     text: [`uniform vec2 u_view; uniform vec2 u_tex;
-layout(location=0) in vec4 a_v; layout(location=1) in vec4 a_color; layout(location=2) in vec4 a_halo; layout(location=3) in vec2 a_params;
-out vec2 v_uv; out vec4 v_color; out vec4 v_halo; out vec2 v_params;
+layout(location=0) in vec4 a_v; layout(location=1) in vec4 a_color; layout(location=2) in vec4 a_halo; layout(location=3) in vec3 a_params;
+out vec2 v_uv; out vec4 v_color; out vec4 v_halo; out vec3 v_params;
 void main() { v_uv = a_v.zw / u_tex; v_color = a_color; v_halo = a_halo; v_params = a_params;
   vec2 c = a_v.xy / u_view * 2.0 - 1.0; gl_Position = vec4(c.x, -c.y, 0.0, 1.0); }`, `
-uniform sampler2D u_sdf; uniform bool u_pass; in vec2 v_uv; in vec4 v_color; in vec4 v_halo; in vec2 v_params; out vec4 o;
+uniform sampler2D u_sdf; uniform bool u_pass; in vec2 v_uv; in vec4 v_color; in vec4 v_halo; in vec3 v_params; out vec4 o;
 void main() {
-  float d = texture(u_sdf, v_uv).r, g = v_params.y;
+  float d = texture(u_sdf, v_uv).r, g = u_pass ? v_params.z : v_params.y;
   float edge = u_pass ? v_params.x : 0.75;
   vec4 c = u_pass ? v_halo : v_color;
   float a = c.a * smoothstep(edge - g, edge + g, d);
@@ -275,9 +275,9 @@ export class GLRenderer {
         this.textVao = gl.createVertexArray()!;
         gl.bindVertexArray(this.textVao);
         this.textBuf = buf(null);
-        for (const [loc, size, type, norm, off] of [[0, 4, gl.FLOAT, false, 0], [1, 4, gl.UNSIGNED_BYTE, true, 16], [2, 4, gl.UNSIGNED_BYTE, true, 20], [3, 2, gl.FLOAT, false, 24]] as const) {
+        for (const [loc, size, type, norm, off] of [[0, 4, gl.FLOAT, false, 0], [1, 4, gl.UNSIGNED_BYTE, true, 16], [2, 4, gl.UNSIGNED_BYTE, true, 20], [3, 3, gl.FLOAT, false, 24]] as const) {
             gl.enableVertexAttribArray(loc);
-            gl.vertexAttribPointer(loc, size, type, norm, 32, off);
+            gl.vertexAttribPointer(loc, size, type, norm, 36, off);
         }
         this.spriteVao = gl.createVertexArray()!;
         gl.bindVertexArray(this.spriteVao);
@@ -717,7 +717,7 @@ export class GLRenderer {
             gl.bindVertexArray(this.textVao);
             gl.bindBuffer(gl.ARRAY_BUFFER, this.textBuf);
             gl.bufferData(gl.ARRAY_BUFFER, quads, gl.DYNAMIC_DRAW);
-            const n = quads.byteLength / 32;
+            const n = quads.byteLength / 36;
             gl.uniform1i(u.u_pass, 1);
             gl.drawArrays(gl.TRIANGLES, 0, n);
             gl.uniform1i(u.u_pass, 0);
@@ -767,7 +767,7 @@ export class GLRenderer {
     private textQuads(labels: Placed[]): ArrayBuffer {
         let glyphCount = 0;
         for (const l of labels) if (l.shaped) for (const line of l.shaped.lines) glyphCount += line.glyphs!.length;
-        const buf = new ArrayBuffer(glyphCount * 6 * 32), f = new Float32Array(buf), b = new Uint8Array(buf);
+        const buf = new ArrayBuffer(glyphCount * 6 * 36), f = new Float32Array(buf), b = new Uint8Array(buf);
         let o = 0;
         const B = SDF_BUFFER;
         for (const l of labels) {
@@ -776,7 +776,7 @@ export class GLRenderer {
             const s = l.size / EM, cos = Math.cos(l.angle), sin = Math.sin(l.angle), src = l.src;
             // Where the halo's outer edge sits in distance-field units, limited by how far the field extends.
             const hedge = src.haloWidth > 0 && src.halo[3] > 0 ? Math.max(0.75 - (B - 0.75) / SDF_RADIUS, 0.75 - src.haloWidth / s / SDF_RADIUS) : 2;
-            const gamma = 0.7 / (SDF_RADIUS * s * this.dpr);
+            const gamma = 0.7 / (SDF_RADIUS * s * this.dpr), haloGamma = gamma + src.haloBlur * 1.19 / s / SDF_RADIUS;
             const fade = (c: number[]) => [c[0] * 255, c[1] * 255, c[2] * 255, c[3] * 255 * l.opacity].map(Math.round);
             const col = fade(src.color), halo = fade(src.halo);
             if (l.curve) {
@@ -795,13 +795,14 @@ export class GLRenderer {
                         b.set(halo, o + 20);
                         f[fi + 6] = hedge;
                         f[fi + 7] = gamma;
-                        o += 32;
+                        f[fi + 8] = haloGamma;
+                        o += 36;
                     }
                 });
                 continue;
             }
             shaped.lines.forEach((line, i) => {
-                let pen = -line.width / 2;
+                let pen = src.justify < 0 ? -shaped.width / 2 : src.justify > 0 ? shaped.width / 2 - line.width : -line.width / 2;
                 const baseline = -shaped.height / 2 + i * shaped.lineHeight + shaped.lineHeight * 0.5 + EM * 0.34;
                 for (const g of line.glyphs!) {
                     if (g.w) {
@@ -816,7 +817,8 @@ export class GLRenderer {
                             b.set(halo, o + 20);
                             f[fi + 6] = hedge;
                             f[fi + 7] = gamma;
-                            o += 32;
+                        f[fi + 8] = haloGamma;
+                            o += 36;
                         }
                     }
                     pen += g.advance + src.spacing * EM;
