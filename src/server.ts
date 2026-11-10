@@ -53,6 +53,7 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
 
     const builder = new TileBuilder(fetchFn);
     builder.setStyle(style.layers);
+    for (const [name, src] of Object.entries(style.sources)) if (src.type === 'geojson') builder.setGeoJSON(name, src.data);
     const items = new Map<string, RenderItem<TileIR | TileImage>[]>(), all: RenderItem<TileIR>[] = [], urls: string[] = [];
     const dataURI = async (url: string) => {
         const res = await fetchFn(url);
@@ -66,16 +67,16 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
     const jobs = Object.entries(style.sources).map(async ([name, src]) => {
         if (!layers.some(l => l.source === name && l.visible && tr.zoom >= l.minzoom && tr.zoom < l.maxzoom)) return;
         if (src.type === 'raster-dem') return;
-        const ideal = tr.coveringTiles(src.minzoom, src.maxzoom, src.tileSize, src.type !== 'vector'), loaded = new Map<string, TileIR | TileImage>();
+        const ideal = tr.coveringTiles(src.minzoom, src.maxzoom, src.tileSize, src.type === 'raster'), loaded = new Map<string, TileIR | TileImage>();
         await Promise.all(ideal.filter((id, i) => ideal.findIndex(o => o.key === id.key) === i).map(async id => {
             const url = tileURL(src, id.z, id.x, id.y);
             if (src.type === 'raster') { loaded.set(id.key, {href: o.inlineImages ? await dataURI(url) : url}); return; }
-            urls.push(url);
+            if (src.type === 'vector') urls.push(url);
             loaded.set(id.key, await builder.loadIR({id: req++, source: name, url, z: id.z, overscaled: id.z >= src.maxzoom}));
         }));
         const list = renderItems(tr, ideal, k => loaded.get(k));
         items.set(name, list);
-        if (src.type === 'vector') all.push(...list as RenderItem<TileIR>[]);
+        if (src.type !== 'raster') all.push(...list as RenderItem<TileIR>[]);
     });
     if (style.sprite && layers.some(l => l.type === 'symbol')) {
         jobs.push((async () => {

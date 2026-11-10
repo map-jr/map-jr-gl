@@ -2,6 +2,7 @@ import {compileLayer, type CompiledLayer, type LayerJSON} from './style.ts';
 import {buildTile, toGL, type TileGL, type TileIR} from './tile.ts';
 import {queryTile, type QueriedFeature, type TileQuery} from './query.ts';
 import {fetchTile} from './pmtiles.ts';
+import {GEOJSON_PREFIX, prepareGeoJSON, sliceGeoJSON} from './geojson.ts';
 
 export interface TileRequest { id: number; source: string; url: string; z: number; overscaled: boolean }
 
@@ -11,6 +12,16 @@ export class TileBuilder {
     private aborts = new Map<number, AbortController>();
     /** Recently fetched tiles, kept so feature queries on visible tiles need no second download. */
     private recent = new Map<string, Uint8Array>();
+    private geojson = new Map<string, ReturnType<typeof prepareGeoJSON>>();
+
+    /** Replaces a GeoJSON source's data. Its tiles are cut from this on demand. */
+    setGeoJSON(source: string, data: unknown) { this.geojson.set(source, prepareGeoJSON(data)); }
+
+    /** GeoJSON tiles are addressed as geojson://source/z/x/y and built from memory, not fetched. */
+    private slice(url: string) {
+        const m = /^geojson:\/\/(.*)\/(\d+)\/(\d+)\/(\d+)$/.exec(url)!;
+        return sliceGeoJSON(this.geojson.get(m[1]) ?? [], +m[2], +m[3], +m[4]);
+    }
     constructor(private fetchFn: typeof fetch = (...a) => fetch(...a)) {}
 
     setStyle(layers: LayerJSON[]) {
@@ -24,6 +35,7 @@ export class TileBuilder {
     }
 
     async loadIR(req: TileRequest): Promise<TileIR> {
+        if (req.url.startsWith(GEOJSON_PREFIX)) return buildTile(this.slice(req.url), req.z, this.bySource.get(req.source) ?? [], req.overscaled);
         const ac = new AbortController();
         this.aborts.set(req.id, ac);
         try {
@@ -46,6 +58,7 @@ export class TileBuilder {
 
     /** Queries a tile's raw features. The tile is fetched if it is not already at hand; it need not be on screen. */
     async query(url: string, q: TileQuery): Promise<QueriedFeature[]> {
+        if (url.startsWith(GEOJSON_PREFIX)) return queryTile(this.slice(url), q);
         let bytes = this.recent.get(url);
         if (!bytes) {
             const fetched = await fetchTile(url, this.fetchFn);
@@ -60,6 +73,7 @@ export class TileBuilder {
 /** What the engine needs from wherever tiles are built. */
 export interface TileBackend {
     setStyle(layers: LayerJSON[]): void;
+    setGeoJSON(source: string, data: unknown): void;
     load(req: TileRequest): Promise<TileGL>;
     cancel(id: number): void;
     query(url: string, q: TileQuery): Promise<QueriedFeature[]>;
@@ -68,6 +82,7 @@ export interface TileBackend {
 export class LocalBackend implements TileBackend {
     private builder = new TileBuilder();
     setStyle(layers: LayerJSON[]) { this.builder.setStyle(layers); }
+    setGeoJSON(source: string, data: unknown) { this.builder.setGeoJSON(source, data); }
     async load(req: TileRequest) { return toGL(await this.builder.loadIR(req)).tile; }
     cancel(id: number) { this.builder.cancel(id); }
     query(url: string, q: TileQuery) { return this.builder.query(url, q); }
@@ -88,6 +103,7 @@ export class PortBackend implements TileBackend {
         };
     }
     setStyle(layers: LayerJSON[]) { this.port.postMessage({type: 'style', layers}); }
+    setGeoJSON(source: string, data: unknown) { this.port.postMessage({type: 'geojson', source, data}); }
     load(req: TileRequest) {
         return new Promise<TileGL>((resolve, reject) => {
             this.pending.set(req.id, {resolve, reject});
@@ -110,6 +126,7 @@ export function serveTiles(port: Port) {
     port.onmessage = async e => {
         const m = e.data;
         if (m.type === 'style') builder.setStyle(m.layers);
+        else if (m.type === 'geojson') builder.setGeoJSON(m.source, m.data);
         else if (m.type === 'cancel') builder.cancel(m.id);
         else if (m.type === 'query') {
             builder.query(m.url, m.q).then(result => port.postMessage({id: m.id, result}), err => port.postMessage({id: m.id, error: String(err.message)}));

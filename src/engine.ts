@@ -33,6 +33,7 @@ export type Command =
     | {type: 'fonts'; fonts: FontSource[]}
     | {type: 'image'; name: string; w: number; h: number; width: number; height: number; data: Uint8Array}
     | {type: 'removeImage'; name: string}
+    | {type: 'geojson'; source: string; data: unknown}
     | ({type: 'query'; id: number; lng: number; lat: number} & FeatureQuery)
     | {type: 'elevation'; id: number; lng: number; lat: number; source?: string; zoom?: number}
     | {type: 'repaint'};
@@ -45,7 +46,7 @@ export type EngineEvent =
     | {type: 'imagemissing'; name: string}
     | {type: 'error'; message: string};
 
-interface TileState { state: 'loading' | 'ok' | 'error'; gl?: GLTile; used: number; cancel(): void }
+interface TileState { state: 'loading' | 'ok' | 'error'; gl?: GLTile; used: number; cancel(): void; /** Shown, but built from data that has since changed. */ stale?: boolean }
 interface MarkerLayer { width: number; height: number; offset: [number, number]; collide: boolean; merc: Float64Array; variant: Uint32Array }
 interface LabelState { placed: Placed; opacity: number; target: number }
 
@@ -140,6 +141,7 @@ export class Engine {
         const faces = JSON.stringify(style.fonts ?? []);
         if (style.fonts?.length && faces !== this.styleFonts) { this.styleFonts = faces; this.loadFonts(style.fonts); }
         if (reload) {
+            for (const [name, src] of Object.entries(style.sources)) if (src.type === 'geojson') for (const b of this.backends) b.setGeoJSON(name, src.data);
             for (const b of this.backends) b.setStyle(style.layers);
             for (const [key, t] of this.tiles) this.dropTile(key, t);
         }
@@ -250,6 +252,16 @@ export class Engine {
                 break;
             }
             case 'removeImage': this.images.delete(c.name); this.placeDirty = true; break;
+            case 'geojson': {
+                // New data for one source: keep drawing its current tiles and rebuild them in place, so nothing blinks.
+                if (this.style.sources[c.source]) this.style.sources[c.source].data = c.data;
+                for (const b of this.backends) b.setGeoJSON(c.source, c.data);
+                for (const [key, t] of this.tiles) {
+                    if (!key.startsWith(c.source + '|')) continue;
+                    if (t.state === 'ok' && t.used >= this.frameNo - 1) t.stale = true; else this.dropTile(key, t);
+                }
+                break;
+            }
             case 'query':
                 this.queryFeatures(c).then(value => this.emit({type: 'result', id: c.id, value}), err => this.emit({type: 'result', id: c.id, error: String(err.message)}));
                 return;
@@ -290,7 +302,7 @@ export class Engine {
 
     private async queryFeatures(c: Extract<Command, {type: 'query'}>): Promise<QueriedFeature[]> {
         const zoom = c.zoom ?? this.tr.zoom;
-        const jobs = Object.entries(this.style.sources).filter(([name, src]) => src.type === 'vector' && (!c.sources || c.sources.includes(name))).map(([name, src]) => {
+        const jobs = Object.entries(this.style.sources).filter(([name, src]) => (src.type === 'vector' || src.type === 'geojson') && (!c.sources || c.sources.includes(name))).map(([name, src]) => {
             const z = clamp(Math.floor(zoom), src.minzoom, src.maxzoom), t = this.tileAt(c.lng, c.lat, z);
             // The tolerance is given in screen pixels at the queried zoom.
             const radius = c.radius * EXTENT / (512 * 2 ** (zoom - z));
@@ -404,7 +416,7 @@ export class Engine {
         const t: TileState = {state: 'loading', used: this.frameNo, cancel() {}};
         this.tiles.set(key, t);
         let load: Promise<GLTile>;
-        if (src.type === 'vector') {
+        if (src.type === 'vector' || src.type === 'geojson') {
             const backend = this.backends[this.nextBackend++ % this.backends.length], req = this.nextReq++;
             t.cancel = () => backend.cancel(req);
             load = backend.load({id: req, source, url, z: id.z, overscaled: id.z >= src.maxzoom}).then(tile => this.renderer.createTile(tile));
@@ -434,6 +446,18 @@ export class Engine {
         });
     }
 
+    /** Builds a tile again from changed data and swaps it in when ready; the old one stays on screen meanwhile. */
+    private rebuild(source: string, id: TileID, key: string, t: TileState) {
+        const src = this.style.sources[source], backend = this.backends[this.nextBackend++ % this.backends.length], req = this.nextReq++;
+        backend.load({id: req, source, url: tileURL(src, id.z, id.x, id.y), z: id.z, overscaled: id.z >= src.maxzoom}).then(tile => {
+            if (this.tiles.get(key) !== t) return;
+            const old = t.gl;
+            t.gl = this.renderer.createTile(tile);
+            if (old) this.renderer.destroyTile(old);
+            this.invalidate();
+        }, err => this.emit({type: 'error', message: err.message}));
+    }
+
     private frame(now: number) {
         const tr = this.tr, frameNo = ++this.frameNo;
         if (!tr.width || !tr.height) return;
@@ -448,12 +472,13 @@ export class Engine {
             // Skip sources nothing visible draws from at this zoom (e.g. low-zoom relief imagery when zoomed in).
             if (!this.layers.some(l => l.source === source && l.visible && tr.zoom >= l.minzoom && tr.zoom < l.maxzoom)) continue;
             const src = this.style.sources[source];
-            const ideal = tr.coveringTiles(src.minzoom, src.maxzoom, src.tileSize, src.type !== 'vector');
+            const ideal = tr.coveringTiles(src.minzoom, src.maxzoom, src.tileSize, src.type === 'raster' || src.type === 'raster-dem');
             for (const id of ideal) {
                 const key = source + '|' + id.key;
                 wanted.add(key);
                 const t = this.tiles.get(key);
                 if (!t) this.request(source, id, key);
+                else if (t.stale) { t.stale = false; this.rebuild(source, id, key, t); }
                 if (!t || t.state === 'loading') complete = false;
             }
             // Keep a coarse overview of the same area loaded as well. It costs a tile or two and means fast pans

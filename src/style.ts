@@ -100,7 +100,11 @@ export function compileLayer(l: LayerJSON): CompiledLayer | null {
     };
 }
 
-export interface SourceInfo { type: 'vector' | 'raster' | 'raster-dem'; tiles: string[]; minzoom: number; maxzoom: number; tileSize: number; attribution?: string; encoding?: 'terrarium' | 'mapbox' }
+export interface SourceInfo {
+    type: 'vector' | 'raster' | 'raster-dem' | 'geojson';
+    /** GeoJSON sources carry their data; it is handed to the tile workers, which cut tiles from it. */
+    data?: unknown; tiles: string[]; minzoom: number; maxzoom: number; tileSize: number; attribution?: string; encoding?: 'terrarium' | 'mapbox';
+}
 
 /** A style with everything network-dependent already resolved, so it can be posted to a worker as plain JSON. */
 export interface FontSource { family: string; src: string; weight?: string | number; style?: string; unicodeRange?: string }
@@ -128,6 +132,16 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
     }
     const sources: Record<string, SourceInfo> = {};
     for (const [name, raw] of Object.entries<any>(style.sources ?? {})) {
+        if (raw.type === 'geojson') {
+            let data = raw.data;
+            if (typeof data === 'string') {
+                const url = base ? new URL(data, base).href : data, res = await fetchFn(url);
+                if (!res.ok) throw new Error(`Failed to load GeoJSON ${url}: ${res.status}`);
+                data = await res.json();
+            }
+            sources[name] = {type: 'geojson', data, tiles: [`geojson://${name}/{z}/{x}/{y}`], minzoom: 0, maxzoom: raw.maxzoom ?? 18, tileSize: 512, attribution: raw.attribution};
+            continue;
+        }
         if (raw.type !== 'vector' && raw.type !== 'raster' && raw.type !== 'raster-dem') continue;
         let src = raw;
         if (typeof src.url === 'string' && src.url.startsWith(PM_PREFIX)) {

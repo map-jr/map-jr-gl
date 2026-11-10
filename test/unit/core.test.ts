@@ -244,3 +244,35 @@ test('pmtiles: tiles are read from an archive by range request, through director
     assert.equal(ranges.filter(r => r === 'bytes=0-16383').length, 1, 'the header and root directory are fetched once');
     assert.equal(await fetchTile('pmtiles://https://tiles.test/a.pmtiles/3/1/1', fetch), null);
 });
+
+test('geojson: sources are cut into tiles, clipped, and render and query like vector tiles', async () => {
+    const {prepareGeoJSON, sliceGeoJSON} = await import('../../src/geojson.ts');
+    const n = 2 ** 14, lng = (x: number) => x / n * 360 - 180, lat = (y: number) => Math.atan(Math.sinh(Math.PI * (1 - 2 * y / n))) * 180 / Math.PI;
+    // A square covering the middle half of tile 14/4823/6160, a line crossing the whole tile and beyond, and a point.
+    const square = [[TILE.x + 0.25, TILE.y + 0.25], [TILE.x + 0.75, TILE.y + 0.25], [TILE.x + 0.75, TILE.y + 0.75], [TILE.x + 0.25, TILE.y + 0.75], [TILE.x + 0.25, TILE.y + 0.25]].map(([x, y]) => [lng(x), lat(y)]);
+    const data = {type: 'FeatureCollection', features: [
+        {type: 'Feature', id: 7, properties: {kind: 'area'}, geometry: {type: 'Polygon', coordinates: [square]}},
+        {type: 'Feature', properties: {kind: 'route'}, geometry: {type: 'LineString', coordinates: [[lng(TILE.x - 2), lat(TILE.y + 0.5)], [lng(TILE.x + 3), lat(TILE.y + 0.5)]]}},
+        {type: 'Feature', properties: {kind: 'stop', name: 'Here'}, geometry: {type: 'Point', coordinates: [lng(TILE.x + 0.5), lat(TILE.y + 0.5)]}},
+    ]};
+    const prepared = prepareGeoJSON(data), tile = sliceGeoJSON(prepared, TILE.z, TILE.x, TILE.y)._geojson.features;
+    assert.equal(tile.length, 3);
+    const geom = (f: any) => { const c: number[] = [], e: number[] = []; f.geometry(4096, c, e); return c; };
+    assert.deepEqual(geom(tile[0]), [1024, 1024, 3072, 1024, 3072, 3072, 1024, 3072]);
+    assert.deepEqual(geom(tile[1]), [-128, 2048, 4224, 2048], 'lines are clipped to the tile plus its buffer');
+    assert.deepEqual(geom(tile[2]), [2048, 2048]);
+    assert.equal(sliceGeoJSON(prepared, TILE.z, TILE.x + 1, TILE.y)._geojson.features.length, 1, 'the neighbouring tile only gets the line');
+    assert.deepEqual(sliceGeoJSON(prepared, TILE.z, TILE.x + 9, TILE.y), {});
+
+    const hits = queryTile(sliceGeoJSON(prepared, TILE.z, TILE.x, TILE.y), {source: 'g', ...TILE, px: 1500, py: 1500, radius: 10});
+    assert.deepEqual(hits.map(h => [h.properties.kind, h.id]), [['area', 7]]);
+
+    const style = {version: 8, sources: {g: {type: 'geojson', data}}, layers: [
+        {id: 'fill', type: 'fill', source: 'g', filter: ['==', ['get', 'kind'], 'area'], paint: {'fill-color': '#ff0000'}},
+        {id: 'line', type: 'line', source: 'g', filter: ['==', ['get', 'kind'], 'route'], paint: {'line-color': '#00ff00', 'line-width': 4}},
+        {id: 'label', type: 'symbol', source: 'g', filter: ['has', 'name'], layout: {'text-field': ['get', 'name']}},
+    ]};
+    const {svg, tiles} = await renderToSVG({style, center: [lng(TILE.x + 0.5), lat(TILE.y + 0.5)], zoom: 14, width: 300, height: 300, fetch: (async () => { throw new Error('no network expected'); }) as any});
+    assert.match(svg, /fill="#ff0000"/); assert.match(svg, /stroke="#00ff00" stroke-width="4"/); assert.match(svg, />Here<\/text>/);
+    assert.deepEqual(tiles, []);
+});

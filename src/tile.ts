@@ -1,6 +1,7 @@
 import earcut from 'earcut';
 import {EXTENT} from './geo.ts';
-import {decodeVectorTile, type VTFeature} from './mvt.ts';
+import {decodeVectorTile} from './mvt.ts';
+import {GEOJSON_LAYER} from './geojson.ts';
 import {parseFontName, type CompiledLayer} from './style.ts';
 import type {Feature, RGBA} from './expr.ts';
 
@@ -69,10 +70,14 @@ function pushColor(out: number[], c: RGBA, alpha: number) {
 
 const WHITE: RGBA = [1, 1, 1, 1];
 
-export function buildTile(bytes: Uint8Array, z: number, layers: CompiledLayer[], overscaled: boolean): TileIR {
-    const vt = decodeVectorTile(bytes);
-    const geomCache = new Map<VTFeature, {coords: number[]; ringEnds: number[]}>();
-    const geometry = (f: VTFeature) => {
+/** A decoded tile: named layers of features. Vector tiles and sliced GeoJSON both take this shape. */
+export type TileLayers = Record<string, {features: TileFeature[]}>;
+export interface TileFeature extends Feature { geometry(extent: number, coords: number[], ringEnds: number[]): number }
+
+export function buildTile(data: Uint8Array | TileLayers, z: number, layers: CompiledLayer[], overscaled: boolean): TileIR {
+    const vt: TileLayers = data instanceof Uint8Array ? decodeVectorTile(data) : data;
+    const geomCache = new Map<TileFeature, {coords: number[]; ringEnds: number[]}>();
+    const geometry = (f: TileFeature) => {
         let g = geomCache.get(f);
         if (!g) { g = {coords: [], ringEnds: []}; f.geometry(EXTENT, g.coords, g.ringEnds); geomCache.set(f, g); }
         return g;
@@ -85,7 +90,7 @@ export function buildTile(bytes: Uint8Array, z: number, layers: CompiledLayer[],
         // A tile is drawn from its own zoom up to the next one (further if it is the source's deepest level).
         if (L.minzoom >= z + 1 && !overscaled) continue;
         if (L.maxzoom <= z) continue;
-        const vl = vt[L.sourceLayer!];
+        const vl = vt[L.sourceLayer ?? GEOJSON_LAYER];
         if (!vl) continue;
         const p = L.p;
 

@@ -138,6 +138,60 @@ for (const mode of ['main', 'worker']) {
     check(`[${mode}] addLayer/removeLayer and fitBounds`, api.added && api.removed && api.fits && api.zoom > 13 && api.zoom < 16, JSON.stringify(api));
     check(`[${mode}] missing-image resolver supplied generated shields`, api.images > 0, `${api.images} shield images`);
 
+    // GeoJSON source added at runtime, hit through a layer-scoped click, then replaced with setData.
+    await page.evaluate(() => window.map.jumpTo({center: [-74.0065, 40.7085], zoom: 14.3, bearing: 0, pitch: 0}));
+    const gj = await page.evaluate(async () => {
+        const m = window.map, box = (w, s, e, n, name) => ({type: 'Feature', properties: {name}, geometry: {type: 'Polygon', coordinates: [[[w, s], [e, s], [e, n], [w, n], [w, s]]]}});
+        m.addSource('zones', {type: 'geojson', data: {type: 'FeatureCollection', features: [box(-74.012, 40.706, -74.004, 40.711, 'first')]}});
+        m.addLayer({id: 'zones-fill', type: 'fill', source: 'zones', paint: {'fill-color': '#e11', 'fill-opacity': 0.5}});
+        window.zoneClicks = [];
+        m.on('click', 'zones-fill', e => window.zoneClicks.push(e.features[0].properties.name));
+        await new Promise(r => m.once('idle', r));
+        const inside = m.project([-74.008, 40.7085]), found = await m.queryFeatures(inside, {sources: ['zones']});
+        return {inside, found: found.map(f => f.properties.name)};
+    });
+    await page.screenshot({path: `${out}/geojson-${mode}.png`});
+    await page.mouse.click(gj.inside.x, gj.inside.y);
+    await page.mouse.click(60, 650); // outside the zone: must not fire
+    await page.waitForFunction(() => window.zoneClicks.length > 0, null, {timeout: 5000}).catch(() => {});
+    const gj2 = await page.evaluate(async () => {
+        const m = window.map;
+        m.getSource('zones').setData({type: 'FeatureCollection', features: [{type: 'Feature', properties: {name: 'second'}, geometry: {type: 'Point', coordinates: [-74.008, 40.7085]}}]});
+        await new Promise(r => setTimeout(r, 600));
+        return (await m.queryFeatures([-74.008, 40.7085], {sources: ['zones'], radius: 5})).map(f => f.type + ':' + f.properties.name);
+    });
+    check(`[${mode}] GeoJSON source, layer click event and setData`, gj.found[0] === 'first' && JSON.stringify(await page.evaluate(() => window.zoneClicks)) === '["first"]' && gj2[0] === 'Point:second', JSON.stringify({found: gj.found, clicks: await page.evaluate(() => window.zoneClicks), after: gj2}));
+    await page.evaluate(() => { window.map.removeLayer('zones-fill'); window.map.removeSource('zones'); });
+
+    // DOM marker and popup with MapLibre's API.
+    const dom = await page.evaluate(async () => {
+        const {Marker, Popup} = await import('/dist/tessera.js'), m = window.map;
+        const marker = new Marker({color: '#c00'}).setLngLat([-74.0065, 40.7085]).setPopup(new Popup({offset: 30}).setText('Hello')).addTo(m);
+        marker.togglePopup();
+        const tip = marker.getElement().getBoundingClientRect(), at = m.project([-74.0065, 40.7085]);
+        const open = document.querySelector('.maplibregl-popup-content')?.textContent;
+        marker.remove();
+        return {dx: Math.abs((tip.left + tip.right) / 2 - at.x), dy: Math.abs(tip.bottom - at.y), open, gone: !document.querySelector('.maplibregl-marker, .maplibregl-popup')};
+    });
+    check(`[${mode}] DOM Marker and Popup`, dom.dx < 1 && dom.dy < 1 && dom.open.startsWith('Hello') && dom.gone, JSON.stringify(dom));
+
+    // A PMTiles archive as a vector source, read by range requests.
+    const pm = await page.evaluate(async () => {
+        const m = window.map;
+        m.addSource('admin', {type: 'vector', url: 'pmtiles://https://tiles.whatismyelevation.com/2025-state-county-zip.pmtiles'});
+        m.addLayer({id: 'counties', type: 'line', source: 'admin', 'source-layer': 'county_features', paint: {'line-color': '#70c', 'line-width': 2}});
+        // Adding the source first fetches the archive's header, so poll until the source answers queries.
+        for (let i = 0; i < 40; i++) {
+            const found = await m.queryFeatures([-74.0065, 40.7085], {sources: ['admin'], sourceLayers: ['county_features']});
+            if (found.length) return found.map(f => f.properties.NAME);
+            await new Promise(r => setTimeout(r, 250));
+        }
+        return [];
+    });
+    check(`[${mode}] PMTiles archive source`, pm.includes('New York'), JSON.stringify(pm));
+    await page.evaluate(() => { window.map.removeLayer('counties'); window.map.removeSource('admin'); });
+    await idle(page);
+
     // Resizing: the canvas ends up exactly covering the container, with the map centre still in the middle.
     await idle(page); // the camera must be at rest, or the centre legitimately changes underneath the comparison
     const centreBefore = await page.evaluate(() => window.map.getCenter());

@@ -231,17 +231,65 @@ export class Map {
     }
 
     // ---- events ----
-    on(type: string, fn: Listener) { (this.listeners[type] ??= []).push(fn); return this; }
-    off(type: string, fn: Listener) { this.listeners[type] = (this.listeners[type] ?? []).filter(f => f !== fn); return this; }
+    /**
+     * `on(type, listener)`, or `on(type, layerId, listener)` to hear `click`, `mousemove`, `mouseenter` and
+     * `mouseleave` only where that style layer's features are, with the features on the event as `e.features`.
+     */
+    on(type: string, a: string | Listener, b?: Listener) {
+        if (typeof a === 'string') this.layerListeners.push({type, layer: a, fn: b!}); else (this.listeners[type] ??= []).push(a);
+        return this;
+    }
+    off(type: string, a: string | Listener, b?: Listener) {
+        if (typeof a === 'string') this.layerListeners = this.layerListeners.filter(l => !(l.type === type && l.layer === a && l.fn === b));
+        else this.listeners[type] = (this.listeners[type] ?? []).filter(f => f !== a);
+        return this;
+    }
+    private layerListeners: {type: string; layer: string; fn: Listener}[] = [];
+    private hoveredLayers = new Set<string>();
+    private hoverBusy = false;
+
+    /** Features of one style layer at a screen point, found from tile data using the layer's source, source layer and filter. */
+    private async layerFeatures(layerId: string, point: {x: number; y: number}) {
+        const layer = this.getLayer(layerId);
+        if (!layer || layer.layout?.visibility === 'none') return [];
+        const z = this.tr.zoom;
+        if (z < (layer.minzoom ?? 0) || z >= (layer.maxzoom ?? 24)) return [];
+        // Thin things get a little slack so they can be hit; areas must actually contain the point.
+        const radius = layer.type === 'fill' || layer.type === 'fill-extrusion' ? 0 : layer.type === 'line' ? 5 : 8;
+        const found = await this.queryFeatures(point, {sources: [layer.source], sourceLayers: layer['source-layer'] ? [layer['source-layer']] : undefined, filter: layer.filter, radius, geometry: true});
+        return found.map(f => ({...f, layer}));
+    }
+
+    private async dispatchLayerEvents(kind: 'click' | 'mousemove', data: Record<string, unknown>) {
+        const point = data.point as {x: number; y: number};
+        const wanted = kind === 'click' ? ['click'] : ['mousemove', 'mouseenter', 'mouseleave'];
+        const layers = [...new Set(this.layerListeners.filter(l => wanted.includes(l.type)).map(l => l.layer))];
+        if (!layers.length || (kind === 'mousemove' && this.hoverBusy)) return;
+        this.hoverBusy = kind === 'mousemove';
+        try {
+            for (const layer of layers) {
+                const features = await this.layerFeatures(layer, point), hit = features.length > 0;
+                const emit = (type: string) => { for (const l of this.layerListeners) if (l.type === type && l.layer === layer) l.fn({type, target: this, ...data, features}); };
+                if (kind === 'click') { if (hit) emit('click'); continue; }
+                const was = this.hoveredLayers.has(layer);
+                if (hit && !was) { this.hoveredLayers.add(layer); emit('mouseenter'); }
+                if (hit) emit('mousemove');
+                if (!hit && was) { this.hoveredLayers.delete(layer); emit('mouseleave'); }
+            }
+        } finally { if (kind === 'mousemove') this.hoverBusy = false; }
+    }
     once(type: string, fn: Listener) {
         const wrap: Listener = e => { this.off(type, wrap); fn(e); };
         return this.on(type, wrap);
     }
+    /** The cursor shown over the map, e.g. 'pointer' while hovering something clickable; '' restores the default. */
+    setCursor(cursor: string) { this.canvas.style.cursor = cursor; return this; }
     /** Dispatches an event to listeners. Public so controls and plugins can raise their own. */
     fire(type: string, data: Record<string, unknown> = {}) {
         const list = this.listeners[type];
         if (type === 'error' && !list?.length) console.error('[tessera]', data.error);
         if (list) for (const fn of [...list]) fn({type, target: this, ...data});
+        if ((type === 'click' || type === 'mousemove') && this.layerListeners.length && data.point) this.dispatchLayerEvents(type, data).catch(error => this.fire('error', {error}));
     }
 
     // ---- camera ----
@@ -351,7 +399,17 @@ export class Map {
     }
     getLayer(id: string) { return this.rawStyle?.layers.find((l: any) => l.id === id); }
     getLayersOrder(): string[] { return this.rawStyle?.layers.map((l: any) => l.id) ?? []; }
-    getSource(id: string) { return this.rawStyle?.sources[id]; }
+    /** The source's specification. GeoJSON sources also get MapLibre's `setData(data)` to replace their contents. */
+    getSource(id: string) {
+        const spec = this.rawStyle?.sources[id];
+        if (!spec || spec.type !== 'geojson') return spec;
+        return {...spec, id, setData: (data: unknown) => this.setGeoJSON(id, data)};
+    }
+    private async setGeoJSON(id: string, data: unknown) {
+        this.rawStyle.sources[id].data = data;
+        if (typeof data === 'string') { const res = await fetch(new URL(data, this.styleBase)); data = await res.json(); }
+        this.post({type: 'geojson', source: id, data});
+    }
     getPaintProperty(layerId: string, name: string) { return this.getLayer(layerId)?.paint?.[name]; }
     getLayoutProperty(layerId: string, name: string) { return this.getLayer(layerId)?.layout?.[name]; }
     getFilter(layerId: string) { return this.getLayer(layerId)?.filter; }

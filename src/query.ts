@@ -1,6 +1,8 @@
 import {EXTENT, latFromMerc, lngFromMerc} from './geo.ts';
 import {decodeVectorTile} from './mvt.ts';
+import {GEOJSON_LAYER} from './geojson.ts';
 import {compileFilter} from './expr.ts';
+import type {TileLayers} from './tile.ts';
 
 /** A feature found by a query. It comes straight from the tile data, whether or not any style layer draws it. */
 export interface QueriedFeature {
@@ -30,8 +32,8 @@ function segmentDistSq(px: number, py: number, ax: number, ay: number, bx: numbe
 }
 
 /** Finds every feature in a vector tile at (or within `radius` of) a position. */
-export function queryTile(bytes: Uint8Array, q: TileQuery): QueriedFeature[] {
-    const out: QueriedFeature[] = [], layers = decodeVectorTile(bytes), filter = compileFilter(q.filter), r2 = q.radius * q.radius;
+export function queryTile(data: Uint8Array | TileLayers, q: TileQuery): QueriedFeature[] {
+    const out: QueriedFeature[] = [], layers: TileLayers = data instanceof Uint8Array ? decodeVectorTile(data) : data, filter = compileFilter(q.filter), r2 = q.radius * q.radius;
     const n = 2 ** q.z, toLngLat = (x: number, y: number) => [lngFromMerc((q.x + x / EXTENT) / n), latFromMerc((q.y + y / EXTENT) / n)];
     for (const name in layers) {
         if (q.sourceLayers && !q.sourceLayers.includes(name)) continue;
@@ -53,7 +55,7 @@ export function queryTile(bytes: Uint8Array, q: TileQuery): QueriedFeature[] {
                 start = end;
             }
             if (!hit && !inside) continue;
-            const feature: QueriedFeature = {source: q.source, sourceLayer: name, id: f.id, type: TYPES[f.type], properties: f.properties};
+            const feature: QueriedFeature = {source: q.source, sourceLayer: name === GEOJSON_LAYER ? '' : name, id: f.id, type: TYPES[f.type], properties: f.properties};
             if (q.geometry) {
                 const rings: number[][][] = [];
                 start = 0;
