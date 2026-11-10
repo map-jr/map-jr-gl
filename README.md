@@ -37,6 +37,9 @@ Mapbox Vector Tiles.
   MapLibre's `styleimagemissing` event). OSM Americana's shield library runs unmodified on top of this, drawing
   its 1,900 route networks from the data OpenMapTiles/OpenFreeMap tiles already carry; `demo/americana.mjs` is
   the 40-line adapter and the gallery shows it.
+- **Layer-wide opacity and blending:** `fill-layer-opacity`, `line-layer-opacity` and the `-layer-blend` modes
+  (multiply, screen, overlay, color, luminosity, plus-lighter) draw a layer as one surface, so overlapping roads
+  or polygons do not darken where they cross.
 - **3D terrain:** `terrain` in the style, or `map.setTerrain({source, exaggeration})`, raises the ground from a
   `raster-dem` source. Each terrain tile's flat picture is cached, so panning and tilting do not redraw the map;
   buildings, labels and markers sit on the surface, clicks and `project`/`unproject` follow it, and labels behind

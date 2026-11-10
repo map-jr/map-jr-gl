@@ -184,6 +184,8 @@ export class Engine {
 
     /** Counts elevation tiles arriving, so heights derived from them (under markers) are refreshed. */
     private demVersion = 0;
+    private meshHeights = new Map<string, {data: Float32Array; version: number; used: number}>();
+    private meshBehind = false;
     private grab: {lng: number; lat: number; at: number} | null = null;
     /** 3D terrain: the centre was set by the API rather than reached by a gesture, so it keeps its position. */
     private centreGiven = true;
@@ -220,6 +222,30 @@ export class Engine {
         return src ? groundHeight(this.heights, mx, my, src.maxzoom, src.minzoom, this.rawElevation) : 0; // where nothing is known yet, level with the centre; // always the most detailed data, so heights do not shift with zoom
     }
 
+    /**
+     * Heights at the 65 x 65 corners of a ground tile's mesh. Nearly all of them lie inside one elevation tile's grid
+     * and are read straight from it; only points on the far edges (which belong to the neighbouring tiles) and tiles
+     * with no single grid under them go through the general lookup.
+     */
+    private fillMesh(data: Float32Array, id: TileID) {
+        const n = 2 ** id.z, G = HEIGHT_GRID, src = this.style.sources[this.style.terrain!.source];
+        let grid: Float32Array | undefined, gz = Math.min(id.z, src.maxzoom);
+        for (; gz >= src.minzoom && !grid; gz--) grid = this.heights.get(`${gz}/${id.x >> (id.z - gz)}/${id.y >> (id.z - gz)}`);
+        gz++;
+        // Where finer data than this is loaded for part of the tile, the general lookup would use it; keep the two consistent
+        // by only taking the fast path when the grid found is at the deepest level the source has for this tile.
+        const direct = grid && gz === Math.min(id.z, src.maxzoom), k = 2 ** (id.z - gz), ox = (id.x % k) / k, oy = (id.y % k) / k;
+        for (let j = 0; j <= 64; j++) {
+            for (let i = 0; i <= 64; i++) {
+                if (direct && i < 64 && j < 64) {
+                    const fx = clamp((ox + i / 64 / k) * G - 0.5, 0, G - 1), fy = clamp((oy + j / 64 / k) * G - 0.5, 0, G - 1);
+                    const x0 = Math.floor(fx), y0 = Math.floor(fy), x1 = Math.min(G - 1, x0 + 1), y1 = Math.min(G - 1, y0 + 1), tx = fx - x0, ty = fy - y0;
+                    data[j * 65 + i] = (grid![y0 * G + x0] * (1 - tx) + grid![y0 * G + x1] * tx) * (1 - ty) + (grid![y1 * G + x0] * (1 - tx) + grid![y1 * G + x1] * tx) * ty;
+                } else data[j * 65 + i] = this.rawHeightAt((id.x + i / 64) / n, Math.min((id.y + j / 64) / n, 1 - 1e-12));
+            }
+        }
+    }
+
     /** The heights under a tile, for the GPU. */
     private demRef = (id: TileID): DemRef | null => {
         const n = 2 ** id.z, found = this.demTile((id.x + 0.5) / n, (id.y + 0.5) / n, id.z);
@@ -231,6 +257,9 @@ export class Engine {
     /** 3D terrain: the ground tiles in view, each with a straight-down view of itself for drawing its picture. */
     private terrainTiles(wanted: Set<string>): TerrainTile[] {
         const tr = this.tr, terrain = this.style.terrain!, demSrc = this.style.sources[terrain.source], out: TerrainTile[] = [];
+        let meshBudget = 4;
+        this.meshBehind = false;
+        for (const [k, m] of this.meshHeights) if (this.frameNo - m.used > 120) this.meshHeights.delete(k);
         const viewLit = this.layers.some(l => l.type === 'hillshade' && l.visible && l.p.anchor.eval(tr.zoom) === 'viewport');
         for (const id of tr.coveringTiles(0, 22, TILE_SIZE).slice(0, 96)) { // nearest first; a cap keeps odd views affordable
             // Each tile's picture is drawn once, at a fixed scale a little above the tile's own (it is shown at up to twice
@@ -238,6 +267,8 @@ export class Engine {
             const n = 2 ** id.z, view = new Transform(), zt = id.z + 0.75;
             view.width = view.height = TILE_SIZE * 2 ** (zt - id.z);
             view.lng = lngFromMerc((id.x + 0.5) / n); view.lat = latFromMerc((id.y + 0.5) / n); view.zoom = zt;
+            const cover = new Transform();
+            Object.assign(cover, {lng: view.lng, lat: view.lat});
             const items = new Map<string, RenderItem<GLTile>[]>();
             // Relief shading lit from the viewer's side turns with the map, so pictures containing it are redrawn when the map has turned a dozen degrees.
             let complete = true;
@@ -245,7 +276,10 @@ export class Engine {
             for (const source in this.style.sources) {
                 const src = this.style.sources[source];
                 if (!this.layers.some(l => l.source === source && l.type !== 'symbol' && l.type !== 'fill-extrusion' && l.visible && zt >= l.minzoom && zt < l.maxzoom)) continue;
-                const ideal = view.coveringTiles(src.minzoom, src.maxzoom, src.tileSize, src.type === 'raster' || src.type === 'raster-dem');
+                // Which level of tiles to draw follows the map's own zoom (not the picture's fixed scale), as it would without terrain.
+                cover.zoom = clamp(tr.zoom, id.z, zt);
+                cover.width = cover.height = TILE_SIZE * 2 ** (cover.zoom - id.z);
+                const ideal = cover.coveringTiles(src.minzoom, src.maxzoom, src.tileSize, src.type === 'raster' || src.type === 'raster-dem');
                 for (const t of ideal) { const key = source + '|' + t.key; wanted.add(key); if (!this.tiles.has(key)) this.request(source, t, key); if (this.tiles.get(key)?.state === 'loading') complete = false; }
                 const list = renderItems(view, ideal, k => {
                     const t = this.tiles.get(source + '|' + k);
@@ -257,14 +291,28 @@ export class Engine {
                 // The picture depends on exactly these tiles (and which build of each), so that is what identifies it.
                 for (const it of list) signature += `,${it.id.key}:${it.tile.uid}`;
             }
-            // The heights themselves: make sure the elevation tile for this ground tile is on its way.
-            const dz = Math.min(id.z, demSrc.maxzoom), k = 2 ** (id.z - dz), dk = `${dz}/${Math.floor(id.x / k)}/${Math.floor(id.y / k)}`, demKey = terrain.source + '|' + dk;
-            if (dz >= demSrc.minzoom) {
+            // The heights themselves: make sure the elevation tile for this ground tile is on its way. Where the source
+            // has no tile at that level (the request failed), the nearest level above that does have one is used.
+            for (let dz = Math.min(id.z, demSrc.maxzoom); dz >= demSrc.minzoom; dz--) {
+                const k = 2 ** (id.z - dz), dk = `${dz}/${Math.floor(id.x / k)}/${Math.floor(id.y / k)}`, demKey = terrain.source + '|' + dk;
                 wanted.add(demKey);
                 const t = this.tiles.get(demKey);
-                if (t) t.used = this.frameNo; else this.request(terrain.source, {z: dz, x: Math.floor(id.x / k), y: Math.floor(id.y / k), w: 0, key: dk}, demKey);
+                if (!t) { this.request(terrain.source, {z: dz, x: Math.floor(id.x / k), y: Math.floor(id.y / k), w: 0, key: dk}, demKey); break; }
+                t.used = this.frameNo;
+                if (t.state === 'loading' || t.range) break; // otherwise it failed or came back empty: try the level above
             }
-            out.push({id, key: `${id.key}|${id.w}`, matrix: tr.tileMatrix4(id), view, items, signature, complete, dem: this.demRef(id)});
+            // Heights for the tile's mesh, looked up by position in data all tiles share (so edges meet exactly), and
+            // refreshed a few tiles per frame when new elevation data arrives.
+            const tkey = `${id.key}|${id.w}`;
+            let mesh = this.meshHeights.get(tkey);
+            if (!mesh || (mesh.version !== this.demVersion && meshBudget-- > 0)) {
+                const data = mesh?.data ?? new Float32Array(65 * 65);
+                this.fillMesh(data, id);
+                this.meshHeights.set(tkey, mesh = {data, version: this.demVersion, used: 0});
+            }
+            if (mesh.version !== this.demVersion) this.meshBehind = true;
+            mesh.used = this.frameNo;
+            out.push({id, key: tkey, matrix: tr.tileMatrix4(id), view, items, signature, complete, dem: this.demRef(id), heights: mesh.data, heightsVersion: mesh.version});
         }
         return out;
     }
@@ -877,7 +925,7 @@ export class Engine {
             this.moving = animating;
             this.emit({type: 'camera', lng: tr.lng, lat: tr.lat, zoom: tr.zoom, bearing: tr.bearing, pitch: tr.pitch, elevation: tr.elevation, exaggeration: this.exaggeration, groundRange: tr.groundRange, padding: tr.padding, moving: animating});
         }
-        const busy = animating || markersAnimating || fading || this.placeDirty || settling || behind;
+        const busy = animating || markersAnimating || fading || this.placeDirty || settling || behind || this.meshBehind;
         const idle = complete && !busy;
         if (idle && !this.wasIdle) this.emit({type: 'idle'});
         this.wasIdle = idle;

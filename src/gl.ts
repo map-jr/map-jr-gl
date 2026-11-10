@@ -24,11 +24,34 @@ float ground(vec2 uv) {
 `;
 
 const SHADERS = {
+    // Draws a whole layer, rendered separately, onto the map in one go (layer-wide opacity and blending).
+    composite: [`layout(location=0) in vec2 a_pos; out vec2 v_uv;
+void main() { v_uv = a_pos; gl_Position = vec4(a_pos * 2.0 - 1.0, 0.0, 1.0); }`, `
+uniform sampler2D u_layer; uniform sampler2D u_below; uniform float u_opacity; uniform int u_mode; in vec2 v_uv; out vec4 o;
+// Blend modes that cannot be expressed as a GPU blend function work from a copy of what is underneath
+// (formulas from the W3C Compositing specification). 1: overlay, 2: color, 3: luminosity.
+float lum(vec3 c) { return dot(c, vec3(0.3, 0.59, 0.11)); }
+vec3 setLum(vec3 c, float l) {
+  c += l - lum(c);
+  float lo = min(c.r, min(c.g, c.b)), hi = max(c.r, max(c.g, c.b)), m = lum(c);
+  if (lo < 0.0) c = m + (c - m) * m / (m - lo);
+  if (hi > 1.0) c = m + (c - m) * (1.0 - m) / (hi - m);
+  return c;
+}
+vec3 overlay(vec3 b, vec3 s) { return mix(2.0 * b * s, 1.0 - 2.0 * (1.0 - b) * (1.0 - s), step(0.5, b)); }
+void main() {
+  vec4 s = texture(u_layer, v_uv) * u_opacity;
+  if (u_mode == 0) { o = s; return; }
+  vec4 b = texture(u_below, v_uv);
+  vec3 sc = s.a > 0.0 ? s.rgb / s.a : vec3(0.0), bc = b.a > 0.0 ? b.rgb / b.a : vec3(0.0);
+  vec3 mixed = u_mode == 1 ? overlay(bc, sc) : u_mode == 2 ? setLum(sc, lum(bc)) : setLum(bc, lum(sc));
+  o = vec4((1.0 - s.a) * b.rgb + (1.0 - b.a) * s.rgb + s.a * b.a * mixed, s.a + b.a - s.a * b.a);
+}`],
     // 3D terrain: a grid over the tile, raised to the ground height and textured with the tile's flat layers.
     // `u_part` picks the part of the picture to show: all of it, or the tile's share of an ancestor's while its own is drawn.
-    terrain: [`uniform mat4 u_matrix; uniform float u_skirt; ${TERRAIN_GLSL}
-layout(location=0) in vec3 a_pos; uniform vec3 u_part; out vec2 v_uv;
-void main() { vec2 p = u_part.xy + a_pos.xy * u_part.z; v_uv = vec2(p.x, 1.0 - p.y); gl_Position = u_matrix * vec4(a_pos.xy * ${EXTENT}.0, ground(a_pos.xy) - a_pos.z * u_skirt, 1.0); }`, `
+    terrain: [`uniform mat4 u_matrix; uniform float u_skirt; uniform float u_exag;
+layout(location=0) in vec3 a_pos; layout(location=1) in float a_height; uniform vec3 u_part; out vec2 v_uv;
+void main() { vec2 p = u_part.xy + a_pos.xy * u_part.z; v_uv = vec2(p.x, 1.0 - p.y); gl_Position = u_matrix * vec4(a_pos.xy * ${EXTENT}.0, a_height * u_exag - a_pos.z * u_skirt, 1.0); }`, `
 uniform sampler2D u_drape; in vec2 v_uv; out vec4 o;
 void main() { o = texture(u_drape, v_uv); }`],
 
@@ -258,6 +281,11 @@ export interface TerrainTile {
     signature: string;
     /** Whether everything the picture needs has loaded; a finished picture is not replaced by a partial one. */
     complete: boolean;
+    /**
+     * Ground heights in metres at the corners of a 64 x 64 grid over the tile (65 x 65 values, row by row), and a
+     * number that changes when they do. They come from data shared between tiles, so neighbours agree along their edges.
+     */
+    heights: Float32Array; heightsVersion: number;
     dem: DemRef | null;
 }
 
@@ -558,7 +586,10 @@ export class GLRenderer {
      * Draws the style's layers (not labels) for one view: the whole map, or with 3D terrain either the flat layers
      * of one ground tile ('ground') or just the buildings standing on it ('buildings').
      */
-    private drawLayers(s: Scene, tr: Transform, bySource: Map<string, RenderItem<GLTile>[]>, target: [number, number], pass: 'all' | 'ground' | 'buildings') {
+    private layerTarget?: {fb: WebGLFramebuffer; tex: WebGLTexture; w: number; h: number};
+    private belowTex?: WebGLTexture;
+
+    private drawLayers(s: Scene, tr: Transform, bySource: Map<string, RenderItem<GLTile>[]>, target: [number, number], pass: 'all' | 'ground' | 'buildings', only?: CompiledLayer) {
         const gl = this.gl, zoom = tr.zoom;
         this.current = null;
         const use = (name: keyof typeof SHADERS) => this.use(name, tr);
@@ -587,8 +618,17 @@ export class GLRenderer {
             };
         };
 
-        for (const L of s.layers) {
+        for (const L of only ? [only] : s.layers) {
             if (!L.visible || zoom < L.minzoom || zoom >= L.maxzoom || L.type === 'symbol') continue;
+            if (!only && (L.type === 'fill' || L.type === 'line') && pass !== 'buildings') {
+                // Layer-wide opacity and blending: the layer is drawn on its own first, so that overlapping features
+                // form one surface, and that surface is then put onto the map once.
+                const opacity = L.p.layerOpacity.eval(zoom), blend = L.p.layerBlend.eval(zoom) as string;
+                if (opacity < 1 || blend !== 'normal') {
+                    if (opacity > 0) this.compositeLayer(s, tr, bySource, target, pass, L, opacity, blend);
+                    continue;
+                }
+            }
             if ((L.type === 'fill-extrusion') !== (pass === 'buildings') && pass !== 'all') continue;
             if (L.type === 'background' && L.p.pattern.eval(zoom)) {
                 const place = pattern(L.p.pattern.eval(zoom), L.p.opacity.eval(zoom));
@@ -764,6 +804,48 @@ export class GLRenderer {
         return p.u;
     }
 
+    private compositeLayer(s: Scene, tr: Transform, bySource: Map<string, RenderItem<GLTile>[]>, target: [number, number], pass: 'all' | 'ground' | 'buildings', L: CompiledLayer, opacity: number, blend: string) {
+        const gl = this.gl, [w, h] = target, back = gl.getParameter(gl.FRAMEBUFFER_BINDING) as WebGLFramebuffer | null;
+        let t = this.layerTarget;
+        if (!t || t.w !== w || t.h !== h) {
+            if (t) { gl.deleteTexture(t.tex); gl.deleteFramebuffer(t.fb); }
+            const tex = this.newTexture(), fb = gl.createFramebuffer()!;
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+            gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+            gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+            t = this.layerTarget = {fb, tex, w, h};
+        }
+        gl.bindFramebuffer(gl.FRAMEBUFFER, t.fb);
+        gl.clearColor(0, 0, 0, 0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        this.drawLayers(s, tr, bySource, target, pass, L);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, back);
+        const u = this.use('composite', tr), mode = ['overlay', 'color', 'luminosity'].indexOf(blend) + 1;
+        gl.uniform1i(u.u_mode, mode);
+        if (mode) {
+            // These modes compute the result from the colours underneath, so those are copied and the output replaces them.
+            this.belowTex ??= this.newTexture();
+            gl.activeTexture(gl.TEXTURE1);
+            gl.bindTexture(gl.TEXTURE_2D, this.belowTex);
+            gl.copyTexImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 0, 0, w, h, 0);
+            gl.uniform1i(u.u_below, 1);
+            gl.disable(gl.BLEND);
+        }
+        // Colours are premultiplied. Multiply is exact over an opaque map, which is what lies beneath in practice.
+        if (blend === 'multiply') gl.blendFunc(gl.DST_COLOR, gl.ONE_MINUS_SRC_ALPHA);
+        else if (blend === 'screen') gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_COLOR);
+        else if (blend === 'plus-lighter') gl.blendFunc(gl.ONE, gl.ONE);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, t.tex);
+        gl.uniform1i(u.u_layer, 0);
+        gl.uniform1f(u.u_opacity, opacity);
+        gl.bindVertexArray(this.quad);
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+        gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+        gl.enable(gl.BLEND);
+        this.current = null;
+    }
+
     /** Points a terrain-aware program at the heights under the tile about to be drawn. */
     private bindDem(u: Record<string, WebGLUniformLocation>, dem: DemRef | null, exaggeration: number, level = 0) {
         const gl = this.gl;
@@ -780,7 +862,8 @@ export class GLRenderer {
 
     private drapes = new Map<string, {tex: WebGLTexture; size: number; signature: string; used: number}>();
     private frame = 0;
-    private grid?: {vao: WebGLVertexArrayObject; count: number};
+    private grid?: {vao: WebGLVertexArrayObject; count: number; /** For each skirt vertex, the grid vertex it hangs from. */ skirt: number[]};
+    private meshHeights = new Map<string, {buffer: WebGLBuffer; version: number; used: number}>();
 
     /** A 64 x 64 grid over a tile plus a skirt hanging from its edges, which hides the cracks between neighbouring tiles. */
     private terrainGrid() {
@@ -788,9 +871,11 @@ export class GLRenderer {
         const gl = this.gl, N = 64, pos: number[] = [], idx: number[] = [];
         for (let y = 0; y <= N; y++) for (let x = 0; x <= N; x++) pos.push(x / N, y / N, 0);
         for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) { const i = y * (N + 1) + x; idx.push(i, i + 1, i + N + 1, i + 1, i + N + 2, i + N + 1); }
+        const skirt: number[] = [];
         const edge = (at: (k: number) => number) => {
             for (let k = 0; k <= N; k++) {
                 const i = at(k), j = pos.length / 3;
+                skirt.push(i);
                 pos.push(pos[i * 3], pos[i * 3 + 1], 1);
                 if (k < N) idx.push(i, at(k + 1), j, at(k + 1), j + 1, j);
             }
@@ -804,7 +889,7 @@ export class GLRenderer {
         gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gl.createBuffer());
         gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(idx), gl.STATIC_DRAW);
-        return this.grid = {vao, count: idx.length};
+        return this.grid = {vao, count: idx.length, skirt};
     }
 
     /**
@@ -813,8 +898,9 @@ export class GLRenderer {
      */
     private updateDrapes(s: Scene) {
         const gl = this.gl;
-        // Per frame: a few out-of-date pictures are redrawn and a few missing ones drawn (all of them when starting from nothing).
-        let budget = 3, fresh = this.drapes.size ? 6 : Infinity, behind = false;
+        // Per frame: a couple of out-of-date pictures are redrawn and a few missing ones drawn (all of them when starting
+        // from nothing). A missing one shows its ancestor's picture meanwhile, so spreading the work costs no holes.
+        let budget = 2, fresh = this.drapes.size ? 3 : Infinity, behind = false;
         for (const t of s.terrain!.tiles) {
             let d = this.drapes.get(t.key);
             // 1024 pixels a side at most (what MapLibre uses): larger pictures cost high-density phones frames for little gain.
@@ -853,7 +939,9 @@ export class GLRenderer {
         gl.depthFunc(gl.LEQUAL);
         gl.clear(gl.DEPTH_BUFFER_BIT);
         gl.bindVertexArray(grid.vao);
+        gl.enableVertexAttribArray(1);
         gl.uniform1i(u.u_drape, 0);
+        gl.uniform1f(u.u_exag, s.terrain!.exaggeration);
         for (const t of s.terrain!.tiles) {
             let d = this.drapes.get(t.key), part = [0, 0, 1];
             // No picture of its own yet: show its share of the nearest ancestor's rather than a hole.
@@ -864,12 +952,25 @@ export class GLRenderer {
             }
             if (!d) continue;
             gl.uniform3f(u.u_part, part[0], part[1], part[2]);
-            this.bindDem(u, t.dem, s.terrain!.exaggeration, s.tr.elevation); // until its heights arrive, a tile lies level with the map centre
+            // The tile's heights, uploaded when they change.
+            let mh = this.meshHeights.get(t.key);
+            if (!mh) this.meshHeights.set(t.key, mh = {buffer: gl.createBuffer()!, version: -1, used: 0});
+            mh.used = this.frame;
+            gl.bindBuffer(gl.ARRAY_BUFFER, mh.buffer);
+            if (mh.version !== t.heightsVersion) {
+                const all = new Float32Array(t.heights.length + grid.skirt.length);
+                all.set(t.heights);
+                grid.skirt.forEach((from, k) => { all[t.heights.length + k] = t.heights[from]; });
+                gl.bufferData(gl.ARRAY_BUFFER, all, gl.DYNAMIC_DRAW);
+                mh.version = t.heightsVersion;
+            }
+            gl.vertexAttribPointer(1, 1, gl.FLOAT, false, 0, 0);
             gl.bindTexture(gl.TEXTURE_2D, d.tex);
             gl.uniformMatrix4fv(u.u_matrix, false, t.matrix);
             gl.uniform1f(u.u_skirt, 40075016.686 / 2 ** t.id.z / 16 * Math.max(1, s.terrain!.exaggeration));
             gl.drawElements(gl.TRIANGLES, grid.count, gl.UNSIGNED_SHORT, 0);
         }
+        for (const [key, mh] of this.meshHeights) if (this.frame - mh.used > 90) { gl.deleteBuffer(mh.buffer); this.meshHeights.delete(key); }
         gl.disable(gl.DEPTH_TEST);
     }
 

@@ -75,7 +75,7 @@ Measured by the test scripts in this repository:
   are close (at most 5%) and 675 differ; 331 are skipped because they script the map or need a high pixel density.
   Text is rasterised by the browser rather than from MapLibre's glyph files, so most tests with labels land in
   "close" rather than "match" even when the layout is identical. The largest feature gaps are projections, sky,
-  heatmap, line and per-feature patterns, layer-wide opacity and blending, and image sources.
+  heatmap, line and per-feature patterns, and image sources.
 - **Map API:** see below.
 
 <!-- api:start -->
