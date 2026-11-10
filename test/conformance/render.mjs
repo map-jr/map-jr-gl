@@ -110,6 +110,11 @@ const queue = [...selected];
 await Promise.all(Array.from({length: 4}, () => worker(queue)));
 await browser.close();
 server.close();
+// A full run (no filter) records its totals, which the README's status block is written from.
+if (!filter && limit === Infinity) {
+    const n = st => results.filter(r => r.status === st).length;
+    writeFileSync(path.join(root, 'test/conformance/render-result.json'), JSON.stringify({match: n('pass'), close: n('close'), differ: n('fail'), errored: n('error'), skipped: n('skipped'), run: results.length - n('skipped')}, null, 2) + '\n');
+}
 
 const count = s => results.filter(r => r.status === s).length, ran = results.length - count('skipped');
 console.log(`MapLibre render tests: ${count('pass')} match (within 1% of pixels), ${count('close')} close (within 5%), ${count('fail')} differ, ${count('error')} errored, of ${ran} run; ${count('skipped')} skipped (scripted or high-density)`);

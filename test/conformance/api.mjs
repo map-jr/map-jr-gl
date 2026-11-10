@@ -28,11 +28,11 @@ console.log(`MapLibre Map API coverage: ${have.length} of ${theirs.size} methods
 console.log(`Ours only: ${extra.join(', ')}`);
 if (process.argv.includes('--missing')) console.log(`Missing: ${missing.join(', ')}`);
 if (process.argv.includes('--write')) {
-    // Keep the differences document's method lists in step with the code.
-    const file = path.join(root, 'docs/DIFFERENCES.md'), doc = readFileSync(file, 'utf8');
+    // Keep the compatibility document's method lists in step with the code.
+    const file = path.join(root, 'docs/maplibre-compatibility.md'), doc = readFileSync(file, 'utf8');
     const list = names => names.map(n => '`' + n + '`').join(', ');
-    const block = `<!-- api:start -->\n## Map API coverage\n\n${have.length} of ${theirs.size} public methods of MapLibre's \`Map\` exist here (${(100 * have.length / theirs.size).toFixed(0)}%).\n\n` +
-        `**Supported:** ${list(have)}\n\n**Only here:** ${list(extra)}\n\n**Missing:** ${list(missing)}\n<!-- api:end -->`;
+    const block = `<!-- api:start -->\n${have.length} of the ${theirs.size} public methods of the MapLibre \`Map\` class are available (${(100 * have.length / theirs.size).toFixed(0)}%).\n\n` +
+        `**Available:** ${list(have)}\n\n**Only in this library:** ${list(extra)}\n\n**Not available:** ${list(missing)}\n<!-- api:end -->`;
     writeFileSync(file, doc.replace(/<!-- api:start -->[\s\S]*<!-- api:end -->/, block));
 }
 const min = +(process.argv.find(a => a.startsWith('--min='))?.slice(6) ?? 0);

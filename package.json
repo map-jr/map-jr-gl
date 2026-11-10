@@ -8,6 +8,7 @@
     "demo": "node build.mjs && node scripts/site.mjs && node demo/serve.mjs",
     "site": "node build.mjs && node scripts/site.mjs",
     "screenshots": "node scripts/screenshots.mjs",
+    "status": "node scripts/status.mjs",
     "test:cloudflare": "node test/cloudflare/run.mjs",
     "test:unit": "node --experimental-transform-types --no-warnings --test test/unit/*.test.ts",
     "test:expressions": "node test/conformance/expressions.mjs --min=281",
@@ -15,7 +16,7 @@
     "test:browser": "node test/interact.mjs .cache/shots",
     "bench": "node test/bench/compare.mjs",
     "test:loading": "node test/loading.mjs",
-    "test:render": "node test/conformance/render.mjs --min=440"
+    "test:render": "node test/conformance/render.mjs --min=495"
   },
   "keywords": [],
   "author": "",
