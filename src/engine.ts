@@ -6,6 +6,7 @@ import {CollisionGrid, placeLabels, renderItems, type Placed, type RenderItem} f
 import {GlyphAtlas} from './text.ts';
 import {decodeElevation, sampleElevation, type QueriedFeature} from './query.ts';
 import type {TileBackend} from './tiles.ts';
+import type {TileGL} from './tile.ts';
 import {fetchTile} from './pmtiles.ts';
 
 export interface CameraOptions { center?: LngLatLike; zoom?: number; bearing?: number; pitch?: number; /** Space at the edges covered by other things: top, right, bottom, left. */ padding?: [number, number, number, number] }
@@ -251,6 +252,26 @@ export class Engine {
                 } else data[j * 65 + i] = this.rawHeightAt((id.x + i / 64) / n, Math.min((id.y + j / 64) / n, 1 - 1e-12));
             }
         }
+    }
+
+    /**
+     * Tiles built by the workers, waiting to be sent to the GPU. Sending is the most expensive thing the drawing
+     * thread does when tiles arrive, and several often arrive together, so each frame sends only a limited amount.
+     */
+    private uploads: {tile: TileGL; bytes: number; done(gl: GLTile): void}[] = [];
+    private upload(tile: TileGL): Promise<GLTile> {
+        let bytes = 0;
+        for (const b of Object.values(tile.layers)) for (const v of Object.values(b)) if (ArrayBuffer.isView(v)) bytes += v.byteLength;
+        return new Promise(done => { this.uploads.push({tile, bytes, done}); this.repaint(); });
+    }
+    private flushUploads() {
+        // About 1.5 MB a frame, and always at least one tile so that progress is certain.
+        for (let budget = 1.5e6; this.uploads.length && budget > 0;) {
+            const u = this.uploads.shift()!;
+            budget -= u.bytes;
+            u.done(this.renderer.createTile(u.tile));
+        }
+        if (this.uploads.length) this.repaint();
     }
 
     private pictures = new Map<string, {url: string; gl?: GLTile}>();
@@ -694,7 +715,7 @@ export class Engine {
         if (isGeometrySource(src)) {
             const backend = this.backends[this.nextBackend++ % this.backends.length], req = this.nextReq++;
             t.cancel = () => backend.cancel(req);
-            load = backend.load({id: req, source, url, z: id.z, overscaled: id.z >= src.maxzoom}).then(tile => this.renderer.createTile(tile));
+            load = backend.load({id: req, source, url, z: id.z, overscaled: id.z >= src.maxzoom}).then(tile => this.upload(tile));
         } else {
             // Image tiles need no parsing, so the engine fetches and decodes them itself.
             const ac = new AbortController(), dem = src.type === 'raster-dem';
@@ -752,6 +773,7 @@ export class Engine {
         const dt = Math.min(100, now - this.lastTime || 16);
         this.lastTime = now;
         const cameraAnimating = this.animate(now), markersAnimating = this.animateMarkers(now), animating = cameraAnimating;
+        this.flushUploads();
 
         const items = new Map<string, RenderItem<GLTile>[]>(), all: RenderItem<GLTile>[] = [];
         let complete = true;

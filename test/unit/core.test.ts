@@ -5,7 +5,7 @@ import {readFileSync} from 'node:fs';
 import {Transform, bezier, mercX, mercY} from '../../src/geo.ts';
 import {compileExpr, compileFilter, compileProp, parseColor} from '../../src/expr.ts';
 import {applySSROverrides, compileLayer} from '../../src/style.ts';
-import {buildTile, tessellate, type Batch} from '../../src/tile.ts';
+import {LINE_VERTEX, buildTile, tessellate, type Batch} from '../../src/tile.ts';
 import {queryTile, sampleElevation} from '../../src/query.ts';
 import {CollisionGrid, renderItems} from '../../src/placement.ts';
 import {fillTemplate, sizedSVG} from '../../src/markers.ts';
@@ -101,8 +101,12 @@ test('tessellation: lines and buildings produce well-formed meshes', () => {
     const geom = {coords: Int16Array.from([0, 0, 100, 0, 100, 100]), ringEnds: Uint32Array.from([3]), featEnds: Uint32Array.from([1])};
     for (const [cap, join] of [['butt', 'miter'], ['round', 'round'], ['square', 'bevel']]) {
         const line = tessellate({type: 'line', geom, cap, join}) as any;
-        assert.equal(line.v.length % 6, 0);
-        assert.ok(line.idx.length % 3 === 0 && Math.max(...line.idx) < line.v.length / 6, `${cap}/${join}`);
+        // Vertices are packed, LINE_VERTEX bytes each: position, sideways direction, side, distance along the line.
+        assert.equal(line.v.length % LINE_VERTEX, 0);
+        assert.ok(line.idx.length % 3 === 0 && Math.max(...line.idx) < line.v.length / LINE_VERTEX, `${cap}/${join}`);
+        const view = new DataView(line.v.buffer, line.v.byteOffset), last = line.v.length - LINE_VERTEX;
+        assert.deepEqual([view.getInt16(0, true), view.getInt16(2, true)], [0, 0], 'first vertex is at the line start');
+        assert.ok(Math.abs(view.getFloat32(last + 12, true) - 200) < 1e-3, 'the last vertex is 200 units along the line');
     }
     const box = {coords: Int16Array.from([0, 0, 10, 0, 10, 10, 0, 10]), ringEnds: Uint32Array.from([4]), featEnds: Uint32Array.from([1])};
     const building = tessellate({type: 'fill', geom: box, height: Float32Array.from([30]), base: Float32Array.from([0])}) as any;

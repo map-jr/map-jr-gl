@@ -64,7 +64,7 @@ export interface TileIR { layers: Record<string, Batch>; labels: Record<string, 
 export type GLBatch =
     | {type: 'fill'; pos: Int16Array; idx: Uint32Array; color?: Uint8Array; /** Polygon edges as vertex index pairs, drawn as one-pixel antialiased lines. */ edges?: Uint32Array}
     | {type: 'extrusion'; v: Float32Array; idx: Uint32Array; color?: Uint8Array}
-    | {type: 'line'; v: Float32Array; idx: Uint32Array; color?: Uint8Array; width?: Float32Array}
+    | {type: 'line'; /** Packed vertices, LINE_VERTEX bytes each: see tessellateLine. */ v: Uint8Array; idx: Uint32Array; color?: Uint8Array; width?: Float32Array}
     | {type: 'circle'; /** x, y, cornerX, cornerY per vertex */ pos: Int16Array; idx: Uint32Array; color?: Uint8Array; radius?: Float32Array};
 export interface TileGL { layers: Record<string, GLBatch>; labels: Record<string, LabelSrc[]> }
 /** A raster tile as the SVG backend sees it: just somewhere to load the image from. */
@@ -378,6 +378,13 @@ const ARC_STEP = Math.PI / 5;
  * Lines: each vertex becomes a pair extruded along its normal in the vertex shader. Vertex layout is
  * x, y, normalX, normalY, side (-1..1 across the line, for edge antialiasing), distance along the line (for dashes).
  */
+/**
+ * A line vertex is 16 bytes: position x, y (int16, tile units); the direction to push it sideways (int16, times
+ * LINE_NORMAL; it is longer than 1 at a mitred corner); which side of the line it is on (int16: -1, 0, 1); two unused
+ * bytes; and the distance along the line (float32, for dashes).
+ */
+export const LINE_VERTEX = 16, LINE_NORMAL = 8192;
+
 function tessellateLine(b: Batch): GLBatch | null {
     const {coords, ringEnds, featEnds} = b.geom;
     const v: number[] = [], idx: number[] = [], color: number[] = [], width: number[] = [];
@@ -449,7 +456,15 @@ function tessellateLine(b: Batch): GLBatch | null {
         }
     }
     if (!idx.length) return null;
-    const out: GLBatch = {type: 'line', v: Float32Array.from(v), idx: Uint32Array.from(idx)};
+    // Packed to 16 bytes a vertex (it was 24 as plain floats): lines are most of a tile, and every byte is uploaded.
+    const packed = new ArrayBuffer(count * LINE_VERTEX), view = new DataView(packed);
+    for (let i = 0, o = 0; i < count; i++, o += LINE_VERTEX) {
+        view.setInt16(o, Math.round(v[i * 6]), true); view.setInt16(o + 2, Math.round(v[i * 6 + 1]), true);
+        view.setInt16(o + 4, Math.round(v[i * 6 + 2] * LINE_NORMAL), true); view.setInt16(o + 6, Math.round(v[i * 6 + 3] * LINE_NORMAL), true);
+        view.setInt16(o + 8, v[i * 6 + 4], true);
+        view.setFloat32(o + 12, v[i * 6 + 5], true);
+    }
+    const out: GLBatch = {type: 'line', v: new Uint8Array(packed), idx: Uint32Array.from(idx)};
     if (b.color) out.color = Uint8Array.from(color);
     if (b.width) out.width = Float32Array.from(width);
     return out;

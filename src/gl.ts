@@ -1,6 +1,6 @@
 import {EXTENT, latFromMerc, mercX, mercY, type TileID, type Transform} from './geo.ts';
 import type {CompiledLayer} from './style.ts';
-import type {GLBatch, LabelSrc, TileGL} from './tile.ts';
+import {LINE_VERTEX, type GLBatch, type LabelSrc, type TileGL} from './tile.ts';
 import type {Placed, RenderItem} from './placement.ts';
 import {EM, SDF_BUFFER, SDF_RADIUS, type GlyphAtlas} from './text.ts';
 
@@ -90,11 +90,12 @@ uniform vec4 u_color; uniform vec4 u_clip; in vec4 v_color; in vec2 v_tile; in v
 void main() { ${FS_CLIP} vec4 c = v_color * u_color; float a = c.a * (1.0 - smoothstep(0.0, 1.0, length(v_px - gl_FragCoord.xy))); o = vec4(c.rgb * a, a); }`],
 
     line: [`${VS_COMMON}
-layout(location=0) in vec4 a_v; layout(location=1) in vec4 a_color; layout(location=2) in vec2 a_sd; layout(location=3) in float a_width;
+layout(location=0) in vec4 a_packed; layout(location=1) in vec4 a_color; layout(location=2) in float a_side; layout(location=3) in float a_width; layout(location=4) in float a_dist;
 uniform float u_width; uniform float u_scale; uniform float u_gap; uniform float u_offset;
 uniform float u_cam;
 out vec4 v_color; out vec2 v_tile; out float v_d; out float v_hw; out float v_w; out float v_dist; out float v_persp;
 void main() {
+  vec4 a_v = vec4(a_packed.xy, a_packed.zw / 8192.0); vec2 a_sd = vec2(a_side, a_dist);
   float w = a_width * u_width;
   // With a gap the line is two strokes of width w either side of an empty middle.
   v_hw = (u_gap > 0.0 ? u_gap * 0.5 + w : w * 0.5) + 0.5; v_d = a_sd.x * v_hw; v_w = w; v_dist = a_sd.y;
@@ -273,7 +274,7 @@ void main() {
 
 interface Program { prog: WebGLProgram; u: Record<string, WebGLUniformLocation> }
 interface GLBuffers {
-    type: GLBatch['type']; vao: WebGLVertexArrayObject; count: number; color: boolean; scalar: boolean; bufs: WebGLBuffer[];
+    type: GLBatch['type']; vao: WebGLVertexArrayObject; count: number; /** UNSIGNED_SHORT or UNSIGNED_INT. */ indexType: number; color: boolean; scalar: boolean; bufs: WebGLBuffer[];
     edgeVao?: WebGLVertexArrayObject; edgeCount?: number;
 }
 export interface GLTile {
@@ -446,14 +447,18 @@ export class GLRenderer {
                 gl.vertexAttribPointer(loc, size, type, norm, stride, offset);
                 if (instanced) gl.vertexAttribDivisor(loc, 1);
             };
+            // Indices are sent as 16-bit numbers whenever the batch has few enough vertices: half the bytes.
+            let vertices = Infinity, indexType: number = gl.UNSIGNED_INT;
             const index = (data: Uint32Array) => {
                 const buffer = gl.createBuffer()!;
                 bufs.push(buffer);
                 gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffer);
-                gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, data, gl.STATIC_DRAW);
+                indexType = vertices <= 65536 ? gl.UNSIGNED_SHORT : gl.UNSIGNED_INT;
+                gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, vertices <= 65536 ? new Uint16Array(data) : data, gl.STATIC_DRAW);
             };
             let count = 0, scalar = false, edgeVao: WebGLVertexArrayObject | undefined;
             if (b.type === 'fill') {
+                vertices = b.pos.length / 2;
                 attr(0, b.pos, 2, gl.SHORT);
                 if (b.color) attr(1, b.color, 4, gl.UNSIGNED_BYTE, true);
                 index(b.idx);
@@ -471,18 +476,22 @@ export class GLRenderer {
                     gl.bindVertexArray(vao);
                 }
             } else if (b.type === 'extrusion') {
+                vertices = b.v.length / 4;
                 attr(0, b.v, 4, gl.FLOAT);
                 if (b.color) attr(1, b.color, 4, gl.UNSIGNED_BYTE, true);
                 index(b.idx);
                 count = b.idx.length;
             } else if (b.type === 'line') {
-                attr(0, b.v, 4, gl.FLOAT, false, 24, 0);
-                attr(2, b.v, 2, gl.FLOAT, false, 24, 16, false, true);
+                attr(0, b.v, 4, gl.SHORT, false, LINE_VERTEX, 0);
+                attr(2, b.v, 1, gl.SHORT, false, LINE_VERTEX, 8, false, true);
+                attr(4, b.v, 1, gl.FLOAT, false, LINE_VERTEX, 12, false, true);
+                vertices = b.v.length / LINE_VERTEX;
                 if (b.color) attr(1, b.color, 4, gl.UNSIGNED_BYTE, true);
                 if (b.width) { attr(3, b.width, 1, gl.FLOAT); scalar = true; }
                 index(b.idx);
                 count = b.idx.length;
             } else {
+                vertices = b.pos.length / 4;
                 attr(2, b.pos, 2, gl.SHORT, false, 8, 0);
                 attr(0, b.pos, 2, gl.SHORT, false, 8, 4, false, true);
                 if (b.color) attr(1, b.color, 4, gl.UNSIGNED_BYTE, true);
@@ -490,7 +499,7 @@ export class GLRenderer {
                 index(b.idx);
                 count = b.idx.length;
             }
-            batches[id] = {type: b.type, vao, count, color: !!b.color, scalar, bufs, edgeVao, edgeCount: b.type === 'fill' ? b.edges?.length : undefined};
+            batches[id] = {type: b.type, vao, count, indexType, color: !!b.color, scalar, bufs, edgeVao, edgeCount: b.type === 'fill' ? b.edges?.length : undefined};
         }
         gl.bindVertexArray(null);
         return {uid: ++this.uids, labels: t.labels, batches};
@@ -713,7 +722,7 @@ export class GLRenderer {
                     gl.uniformMatrix4fv(u.u_matrix, false, it.matrix4);
                     gl.uniform4fv(u.u_clip, it.clip);
                     gl.bindVertexArray(b.vao);
-                    gl.drawElements(gl.TRIANGLES, b.count, gl.UNSIGNED_INT, 0);
+                    gl.drawElements(gl.TRIANGLES, b.count, b.indexType, 0);
                 }
                 continue;
             }
@@ -766,7 +775,7 @@ export class GLRenderer {
                 if (extrude) {
                     // Depth first, colour second: translucent buildings then blend once, with the nearest surface only.
                     gl.colorMask(false, false, false, false);
-                    gl.drawElements(gl.TRIANGLES, b.count, gl.UNSIGNED_INT, 0);
+                    gl.drawElements(gl.TRIANGLES, b.count, b.indexType, 0);
                     gl.colorMask(true, true, true, true);
                     pending.push(() => {
                         gl.uniformMatrix4fv(u.u_matrix, false, m);
@@ -774,9 +783,9 @@ export class GLRenderer {
                         gl.uniform4fv(u.u_clip, it.clip);
                         gl.bindVertexArray(b.vao);
                         if (!b.color) gl.vertexAttrib4f(1, 1, 1, 1, 1);
-                        gl.drawElements(gl.TRIANGLES, b.count, gl.UNSIGNED_INT, 0);
+                        gl.drawElements(gl.TRIANGLES, b.count, b.indexType, 0);
                     });
-                } else gl.drawElements(gl.TRIANGLES, b.count, gl.UNSIGNED_INT, 0);
+                } else gl.drawElements(gl.TRIANGLES, b.count, b.indexType, 0);
             }
             if (L.type === 'fill') {
                 // Edge pass: the style's outline colour if it has one, otherwise the fill's own colour as antialiasing.
@@ -792,7 +801,7 @@ export class GLRenderer {
                     gl.uniformMatrix4fv(u.u_matrix, false, it.matrix4);
                     gl.uniform4fv(u.u_clip, it.clip);
                     gl.bindVertexArray(b.edgeVao);
-                    gl.drawElements(gl.LINES, b.edgeCount!, gl.UNSIGNED_INT, 0);
+                    gl.drawElements(gl.LINES, b.edgeCount!, b.indexType, 0);
                 }
             }
             if (extrude) {
