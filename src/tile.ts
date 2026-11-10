@@ -3,7 +3,7 @@ import {EXTENT} from './geo.ts';
 import {decodeVectorTile} from './mvt.ts';
 import {GEOJSON_LAYER} from './geojson.ts';
 import {parseFontName, type CompiledLayer} from './style.ts';
-import type {Feature, RGBA} from './expr.ts';
+import {featureStateOf, type Feature, type RGBA} from './expr.ts';
 
 /**
  * Renderer-neutral tile geometry: flat rings in tile units plus per-feature paint values.
@@ -105,6 +105,7 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
             const labels: LabelSrc[] = [];
             for (const f of vl.features) {
                 ctx.f = f;
+                f.state = featureStateOf(L.source, L.sourceLayer, f.id);
                 if (L.filter && !L.filter(ctx)) continue;
                 const tokens = (v: unknown) => String(v ?? '').replace(/\{([^}]+)\}/g, (_, k) => f.properties[k] ?? '').trim();
                 let text = tokens(p.field.eval(z, f));
@@ -158,6 +159,7 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
         for (const f of vl.features) {
             if (want ? f.type !== want : f.type === 1) continue;
             ctx.f = f;
+                f.state = featureStateOf(L.source, L.sourceLayer, f.id);
             if (L.filter && !L.filter(ctx)) continue;
             const g = geometry(f);
             let start = 0;

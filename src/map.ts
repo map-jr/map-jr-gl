@@ -513,6 +513,33 @@ export class Map {
         return i;
     }
     getStyle() { return this.rawStyle ? structuredClone(this.rawStyle) : undefined; }
+    // ---- feature state ----
+    private featureStates: Record<string, Record<string, Record<string, unknown>>> = {};
+    private sendFeatureState(source: string) { this.post({type: 'featureState', source, states: this.featureStates[source] ?? {}}); return this; }
+    /**
+     * Merges `state` into a feature's state, which `feature-state` expressions in paint properties read (hover and
+     * selection highlights). The feature needs an `id`. Tiles showing the source are rebuilt in the background.
+     */
+    setFeatureState(feature: {source: string; sourceLayer?: string; id: number | string}, state: Record<string, unknown>) {
+        const states = this.featureStates[feature.source] ??= {}, key = `${feature.sourceLayer ?? ''}|${feature.id}`;
+        states[key] = {...states[key], ...state};
+        return this.sendFeatureState(feature.source);
+    }
+    getFeatureState(feature: {source: string; sourceLayer?: string; id: number | string}): Record<string, unknown> {
+        return {...this.featureStates[feature.source]?.[`${feature.sourceLayer ?? ''}|${feature.id}`]};
+    }
+    /** Removes one key of a feature's state, a feature's whole state (no `key`), or all state of a source (no `id`). */
+    removeFeatureState(target: {source: string; sourceLayer?: string; id?: number | string}, key?: string) {
+        const states = this.featureStates[target.source];
+        if (!states) return this;
+        const prefix = `${target.sourceLayer ?? ''}|`;
+        for (const k of Object.keys(states)) {
+            if (target.id !== undefined ? k !== prefix + target.id : target.sourceLayer !== undefined && !k.startsWith(prefix)) continue;
+            if (key !== undefined && target.id !== undefined) delete states[k][key]; else delete states[k];
+        }
+        return this.sendFeatureState(target.source);
+    }
+
     /** The values `global-state` expressions read: the style's `state` defaults with anything set since. */
     getGlobalState(): Record<string, unknown> { return {...this.style?.state, ...this.globalState}; }
     /** Sets one global state value (`null` or `undefined` returns it to the style's default); layers that read it update. */

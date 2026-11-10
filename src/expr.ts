@@ -2,7 +2,7 @@
  * Style expressions compiled once into plain closures (no interpreter objects, no `new Function`, so CSP-safe).
  * Covers the commonly used subset of the MapLibre expression language plus legacy filters and legacy `stops` functions.
  */
-export interface Feature { type: number; id?: number; properties: Record<string, any> }
+export interface Feature { type: number; id?: number; properties: Record<string, any>; /** Set while a tile is built: the feature's state, for `feature-state`. */ state?: Record<string, unknown> }
 export interface Ctx { zoom: number; f: Feature | null }
 export type Fn = (c: Ctx) => any;
 export interface Flags { dd: boolean; zoom: boolean }
@@ -81,6 +81,14 @@ function lerp(a: any, b: any, t: number): any {
 let globalState: Record<string, unknown> = {};
 export function setGlobalState(state: Record<string, unknown> | undefined) { globalState = state ?? {}; }
 
+/** Feature state by source, then by "sourceLayer|id" (`setFeatureState`). Tiles are rebuilt when it changes. */
+const featureStates: Record<string, Record<string, Record<string, unknown>>> = {};
+export function setFeatureStates(source: string, states: Record<string, Record<string, unknown>>) { featureStates[source] = states; }
+export function featureStateOf(source: string | undefined, sourceLayer: string | undefined, id: number | undefined): Record<string, unknown> | undefined {
+    const states = source !== undefined && id !== undefined ? featureStates[source] : undefined;
+    return states && states[`${sourceLayer ?? ''}|${id}`];
+}
+
 function colorize(v: any): any {
     return typeof v === 'string' ? (parseColor(v) ?? v) : v;
 }
@@ -141,6 +149,7 @@ export function compileExpr(e: any, flags: Flags): Fn {
         case 'properties': flags.dd = true; return c => c.f?.properties ?? {};
         case 'geometry-type': flags.dd = true; return c => GEOM[c.f?.type ?? 0];
         case 'zoom': flags.zoom = true; return c => c.zoom;
+        case 'feature-state': { const key = e[1]; flags.dd = true; return c => c.f?.state?.[key] ?? null; }
         case 'global-state': {
             // Read when evaluated, so one compiled style follows later changes. Marked like a zoom dependency so the
             // value is never folded into a constant.

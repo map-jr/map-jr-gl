@@ -262,6 +262,20 @@ for (const mode of ['main', 'worker']) {
     check(`[${mode}] resize keeps the canvas matched to its container`, r.css[0] === 820 && r.css[1] === 560 && r.css[2] === 0 && r.css[3] === 0 && Math.abs(r.mid.x - 410) < 0.01 && Math.abs(r.mid.y - 280) < 0.01 && r.centre.lng === centreBefore.lng, JSON.stringify({css: r.css, mid: r.mid, before: centreBefore, after: r.centre}));
     await page.setViewportSize({width: 1000, height: 700});
     await page.waitForTimeout(300);
+    // Feature state: set, read back and removed through the API, with tiles rebuilt in the background and no errors.
+    const fs = await page.evaluate(async () => {
+        const m = window.map, f = {source: 'omt', sourceLayer: 'building', id: 1};
+        m.setPaintProperty('building', 'fill-color', ['case', ['boolean', ['feature-state', 'hover'], false], '#f00', '#ddd']);
+        m.setFeatureState(f, {hover: true}); m.setFeatureState(f, {picked: 1});
+        const both = m.getFeatureState(f);
+        m.removeFeatureState(f, 'hover');
+        const one = m.getFeatureState(f);
+        m.removeFeatureState({source: 'omt'});
+        await new Promise(r => setTimeout(r, 400));
+        return {both, one, none: m.getFeatureState(f)};
+    });
+    check(`[${mode}] feature state is set, merged and removed`, fs.both.hover === true && fs.both.picked === 1 && !('hover' in fs.one) && fs.one.picked === 1 && Object.keys(fs.none).length === 0, JSON.stringify(fs));
+
     // 3D terrain, as people use it: a dragged point of ground stays under the pointer on a tilted map, and nothing
     // moves once the drag is over.
     await page.evaluate(() => { const m = window.map; m.jumpTo({center: [7.70, 45.99], zoom: 12, bearing: 20, pitch: 60}); m.setTerrain({source: 'dem', exaggeration: 1.5}); });

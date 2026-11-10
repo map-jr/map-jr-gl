@@ -42,6 +42,8 @@ export type Command =
     | {type: 'image'; name: string; w: number; h: number; width: number; height: number; data: Uint8Array; stretchX?: [number, number][]; stretchY?: [number, number][]; content?: [number, number, number, number]}
     | {type: 'removeImage'; name: string}
     | {type: 'geojson'; source: string; data: unknown}
+    /** Replaces the feature state of one source ("sourceLayer|id" -> state); its tiles are rebuilt in place. */
+    | {type: 'featureState'; source: string; states: Record<string, Record<string, unknown>>}
     | ({type: 'query'; id: number; lng: number; lat: number} & FeatureQuery)
     | {type: 'elevation'; id: number; lng: number; lat: number; source?: string; zoom?: number}
     | {type: 'repaint'};
@@ -448,6 +450,10 @@ export class Engine {
                 }
                 break;
             }
+            case 'featureState':
+                for (const b of this.backends) b.setFeatureState(c.source, c.states);
+                for (const [key, t] of this.tiles) if (key.startsWith(c.source + '|')) t.stale = true;
+                break;
             case 'query':
                 this.queryFeatures(c).then(value => this.emit({type: 'result', id: c.id, value}), err => this.emit({type: 'result', id: c.id, error: String(err.message)}));
                 return;

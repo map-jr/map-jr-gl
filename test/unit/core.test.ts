@@ -411,3 +411,27 @@ test('terrain: projections follow the ground height, and tile selection reaches 
     v.heightAt = (_x, y) => Math.abs(y - (cy - 0.00025)) < 0.00008 ? 9000 : 0;
     assert.equal(v.occluded(...target), true);
 });
+
+test('state: feature-state and global-state are read when tiles are built', async () => {
+    const {prepareGeoJSON, sliceGeoJSON} = await import('../../src/geojson.ts');
+    const {setFeatureStates, setGlobalState} = await import('../../src/expr.ts');
+    const n = 2 ** 14, lng = (x: number) => x / n * 360 - 180, lat = (y: number) => Math.atan(Math.sinh(Math.PI * (1 - 2 * y / n))) * 180 / Math.PI;
+    const box = (x: number) => [[x, 0.2], [x + 0.2, 0.2], [x + 0.2, 0.4], [x, 0.4], [x, 0.2]].map(([dx, dy]) => [lng(TILE.x + dx), lat(TILE.y + dy)]);
+    const data = {type: 'FeatureCollection', features: [1, 2].map(id => ({type: 'Feature', id, properties: {}, geometry: {type: 'Polygon', coordinates: [box(id * 0.3)]}}))};
+    const layer = compileLayer({id: 'fill', type: 'fill', source: 'g', paint: {
+        'fill-color': ['case', ['boolean', ['feature-state', 'hover'], false], '#ff0000', ['coalesce', ['global-state', 'base'], '#0000ff']]}})!;
+    // The colours baked into the tile for each of the two squares, as [r, g, b] bytes.
+    const colours = () => {
+        const tile = buildTile(sliceGeoJSON(prepareGeoJSON(data), TILE.z, TILE.x, TILE.y), TILE.z, [layer], false);
+        const c = tile.layers.fill.color!;
+        return [[c[0], c[1], c[2]], [c[4], c[5], c[6]]];
+    };
+    setGlobalState({});
+    assert.deepEqual(colours(), [[0, 0, 255], [0, 0, 255]]);
+    setFeatureStates('g', {'|2': {hover: true}});
+    assert.deepEqual(colours(), [[0, 0, 255], [255, 0, 0]]);
+    setGlobalState({base: '#00ff00'});
+    assert.deepEqual(colours(), [[0, 255, 0], [255, 0, 0]]);
+    setFeatureStates('g', {});
+    setGlobalState(undefined);
+});

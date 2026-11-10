@@ -1,5 +1,5 @@
 import {compileLayer, type CompiledLayer, type LayerJSON} from './style.ts';
-import {setGlobalState} from './expr.ts';
+import {setFeatureStates, setGlobalState} from './expr.ts';
 import {buildTile, toGL, type TileGL, type TileIR} from './tile.ts';
 import {queryTile, type QueriedFeature, type TileQuery} from './query.ts';
 import {fetchTile} from './pmtiles.ts';
@@ -103,6 +103,8 @@ export class TileBuilder {
 export interface TileBackend {
     setStyle(layers: LayerJSON[], state?: Record<string, unknown>): void;
     setGeoJSON(source: string, data: unknown): void;
+    /** Replaces the feature state of one source: "sourceLayer|id" -> state. */
+    setFeatureState(source: string, states: Record<string, Record<string, unknown>>): void;
     setContours(sources: Record<string, ContourConfig>): void;
     load(req: TileRequest): Promise<TileGL>;
     cancel(id: number): void;
@@ -113,6 +115,7 @@ export class LocalBackend implements TileBackend {
     private builder = new TileBuilder();
     setStyle(layers: LayerJSON[], state?: Record<string, unknown>) { this.builder.setStyle(layers, state); }
     setGeoJSON(source: string, data: unknown) { this.builder.setGeoJSON(source, data); }
+    setFeatureState(source: string, states: Record<string, Record<string, unknown>>) { setFeatureStates(source, states); }
     setContours(sources: Record<string, ContourConfig>) { this.builder.setContours(sources); }
     async load(req: TileRequest) { return toGL(await this.builder.loadIR(req)).tile; }
     cancel(id: number) { this.builder.cancel(id); }
@@ -135,6 +138,7 @@ export class PortBackend implements TileBackend {
     }
     setStyle(layers: LayerJSON[], state?: Record<string, unknown>) { this.port.postMessage({type: 'style', layers, state}); }
     setGeoJSON(source: string, data: unknown) { this.port.postMessage({type: 'geojson', source, data}); }
+    setFeatureState(source: string, states: Record<string, Record<string, unknown>>) { this.port.postMessage({type: 'featureState', source, states}); }
     setContours(sources: Record<string, ContourConfig>) { this.port.postMessage({type: 'contours', sources}); }
     load(req: TileRequest) {
         return new Promise<TileGL>((resolve, reject) => {
@@ -159,6 +163,7 @@ export function serveTiles(port: Port) {
         const m = e.data;
         if (m.type === 'style') builder.setStyle(m.layers, m.state);
         else if (m.type === 'geojson') builder.setGeoJSON(m.source, m.data);
+        else if (m.type === 'featureState') setFeatureStates(m.source, m.states);
         else if (m.type === 'contours') builder.setContours(m.sources);
         else if (m.type === 'cancel') builder.cancel(m.id);
         else if (m.type === 'close') { port.onmessage = null; (port as any).close?.(); }
