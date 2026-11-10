@@ -2,6 +2,7 @@
 import {Map, Marker, Popup, NavigationControl, ScaleControl, FullscreenControl} from '/dist/tessera.js';
 import {markers, photos, manyMarkers, dot, bubble, pin, cluster} from '/demo/markers.mjs';
 import {shield} from '/demo/shields.mjs';
+import {americanaShields, shieldImage} from '/demo/americana.mjs';
 
 const NYC = [-74.0065, 40.7085];
 const base = (container, extra = {}) => new Map({container, style: '/style.json', center: NYC, zoom: 13.6, attributionControl: {compact: true}, ...extra});
@@ -64,6 +65,17 @@ const cards = [
             map.addLayer({id: 'relief', type: 'hillshade', source: 'dem', paint: {'hillshade-shadow-color': '#5a4a3a', 'hillshade-exaggeration': 0.6}}, 'water');
             map.on('click', async e => { const m = await map.queryElevation(e.lngLat); out(m === null ? 'No elevation data here' : `${m.toFixed(0)} m (${(m * 3.28084).toFixed(0)} ft) above sea level`); });
             out('Click the map (this is the Matterhorn)');
+        })},
+    {title: 'OSM Americana highway shields', text: 'The Americana shield library, unmodified, drawing shields for the route data OpenFreeMap tiles already carry: Interstates, US and state routes, parkways, and some 1,900 networks worldwide. Pan to another country to see its signs.', readout: true,
+        make: (el, out) => when(base(el, {zoom: 10.2, center: [-74.05, 40.78]}), async map => {
+            map.setLayoutProperty('road-shield', 'visibility', 'none');
+            map.addLayer({id: 'americana-shield', type: 'symbol', source: 'omt', 'source-layer': 'transportation_name', minzoom: 6,
+                filter: ['has', 'route_1_network'],
+                layout: {'symbol-placement': 'line', 'symbol-spacing': 300, 'icon-rotation-alignment': 'viewport', 'icon-image': shieldImage(1), 'icon-size': 1}});
+            let drawn = 0;
+            map.on('styleimagemissing', () => out(`${++drawn} different shields drawn so far`));
+            out('Loading shield definitions');
+            await americanaShields(map);
         })},
     {title: 'Contour lines from elevation tiles', text: 'A built-in contour source turns elevation tiles into labelled contour lines in the tile workers. The interval changes at zooms 9, 11, 12, 14 and 15; the line below shows what is in force.', readout: true,
         make: (el, out, card) => when(base(el, {zoom: 12.3, center: [7.6586, 45.9763]}), map => {

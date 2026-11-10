@@ -35,7 +35,7 @@ export type Command =
     /** A screen-space box pinned to a map position that labels must keep clear of (e.g. an open callout). Omit `box` to remove it. */
     | {type: 'obstacle'; id: string; merc?: [number, number]; box?: [number, number, number, number]}
     | {type: 'fonts'; fonts: FontSource[]}
-    | {type: 'image'; name: string; w: number; h: number; width: number; height: number; data: Uint8Array}
+    | {type: 'image'; name: string; w: number; h: number; width: number; height: number; data: Uint8Array; stretchX?: [number, number][]; stretchY?: [number, number][]; content?: [number, number, number, number]}
     | {type: 'removeImage'; name: string}
     | {type: 'geojson'; source: string; data: unknown}
     | ({type: 'query'; id: number; lng: number; lat: number} & FeatureQuery)
@@ -395,7 +395,8 @@ export class Engine {
             case 'fonts': this.loadFonts(c.fonts); break;
             case 'image': {
                 const rect = this.addSprite(c.w, c.h, c.data);
-                if (rect) this.images.set(c.name, {x: rect[0], y: rect[1], width: c.w, height: c.h, pixelRatio: c.w / c.width, custom: true});
+                if (rect) this.images.set(c.name, {x: rect[0], y: rect[1], width: c.w, height: c.h, pixelRatio: c.w / c.width, custom: true, stretchX: c.stretchX, stretchY: c.stretchY, content: c.content});
+                this.styleVersion++;
                 this.placeDirty = true;
                 break;
             }

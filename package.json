@@ -19,6 +19,7 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
+    "@americana/maplibre-shield-generator": "^0.2.1",
     "@takumi-rs/core": "^2.20.0",
     "@takumi-rs/wasm": "^2.20.0",
     "@types/earcut": "^3.0.0",

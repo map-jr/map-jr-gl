@@ -566,8 +566,8 @@ export class Map {
      * screen's pixel density, so it stays sharp), an image URL, or anything drawable such as an ImageBitmap or canvas.
      * `width`/`height` are the display size in CSS pixels; they default to the image's natural size.
      */
-    async addImage(name: string, source: string | CanvasImageSource, size: {width?: number; height?: number} = {}) {
-        let drawable: CanvasImageSource, width = size.width, height = size.height;
+    async addImage(name: string, source: string | CanvasImageSource | ImageData | {width: number; height: number; data: Uint8Array | Uint8ClampedArray}, options: ImageOptions = {}) {
+        let drawable: CanvasImageSource, width = options.width, height = options.height, sourceWidth = 0;
         if (typeof source === 'string') {
             const img = new Image();
             if (source.trimStart().startsWith('<')) {
@@ -576,15 +576,27 @@ export class Map {
                 img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(sizedSVG(source, width, height));
             } else { img.crossOrigin = 'anonymous'; img.src = source; }
             await img.decode();
-            width ??= img.naturalWidth; height ??= img.naturalHeight;
+            width ??= img.naturalWidth / (options.pixelRatio ?? 1); height ??= img.naturalHeight / (options.pixelRatio ?? 1);
+            sourceWidth = img.naturalWidth;
             drawable = img;
+        } else if ('data' in source) {
+            // Raw pixels, as MapLibre accepts (ImageData or {width, height, data}): put them on a canvas to draw from.
+            const canvas = document.createElement('canvas');
+            canvas.width = sourceWidth = source.width; canvas.height = source.height;
+            canvas.getContext('2d')!.putImageData(new ImageData(new Uint8ClampedArray(source.data), source.width, source.height), 0, 0);
+            width ??= source.width / (options.pixelRatio ?? 1); height ??= source.height / (options.pixelRatio ?? 1);
+            drawable = canvas;
         } else {
             drawable = source;
-            width ??= (source as ImageBitmap).width as number; height ??= (source as ImageBitmap).height as number;
+            sourceWidth = (source as ImageBitmap).width as number;
+            width ??= sourceWidth / (options.pixelRatio ?? 1); height ??= (source as ImageBitmap).height as number / (options.pixelRatio ?? 1);
         }
         const w = Math.ceil(width * this.dpr), h = Math.ceil(height * this.dpr), data = pixels(drawable, w, h);
+        // Stretch ranges and the content box are given in the source image's pixels; the stored copy may be another size.
+        const k = sourceWidth ? w / sourceWidth : 1, scale = (v?: number[]) => v?.map(n => n * k);
         this.imageNames.add(name);
-        this.post({type: 'image', name, w, h, width, height, data}, [data.buffer]);
+        this.post({type: 'image', name, w, h, width, height, data, stretchX: options.stretchX?.map(r => scale(r) as [number, number]), stretchY: options.stretchY?.map(r => scale(r) as [number, number]),
+            content: scale(options.content) as [number, number, number, number] | undefined}, [data.buffer]);
         return this;
     }
     removeImage(name: string) { this.imageNames.delete(name); this.post({type: 'removeImage', name}); return this; }
@@ -931,6 +943,15 @@ async function rasterise(svg: string, w: number, h: number): Promise<Uint8Array>
     img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
     await img.decode();
     return pixels(img, w, h);
+}
+
+/** Options for `addImage`, as in MapLibre, plus an explicit size in CSS pixels. */
+export interface ImageOptions {
+    width?: number; height?: number;
+    /** How many image pixels make one CSS pixel (2 for a "@2x" image). */
+    pixelRatio?: number;
+    /** For icons fitted around text: the ranges that may stretch and the box the text sits in, in image pixels. */
+    stretchX?: [number, number][]; stretchY?: [number, number][]; content?: [number, number, number, number];
 }
 
 function pixels(source: CanvasImageSource, w: number, h: number): Uint8Array {

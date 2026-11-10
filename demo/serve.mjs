@@ -95,6 +95,7 @@ http.createServer(async (req, res) => {
             const file = path.join(root, 'node_modules/maplibre-gl/dist', path.basename(url.pathname));
             return send(200, file.endsWith('.css') ? 'text/css' : 'text/javascript', await readFile(file));
         }
+        if (url.pathname === '/vendor/shields.js') return send(200, 'text/javascript', await readFile(path.join(root, 'node_modules/@americana/maplibre-shield-generator/dist/index.js')));
         if (url.pathname === '/gallery') return send(200, 'text/html', await readFile(path.join(root, 'demo/gallery.html')));
         if (url.pathname === '/') return send(200, 'text/html', page(`<div id="map"></div><div id="hud"></div><a href="/gallery" style="position:absolute;left:8px;bottom:34px;z-index:2;background:#fff;padding:5px 10px;border-radius:6px;font-size:12px;box-shadow:0 1px 4px #0003;color:#222;text-decoration:none">Feature gallery</a>${client()}`));
         if (url.pathname === '/map.jpg') {

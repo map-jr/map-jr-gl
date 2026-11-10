@@ -33,6 +33,10 @@ Mapbox Vector Tiles.
 - **Touch:** one-finger pan with inertia, pinch zoom, rotation only past a twist threshold, two-finger tilt,
   double-tap, two-finger tap and tap-and-drag zoom, as in MapLibre. Controls are finger-sized on touch screens,
   respect safe areas, and attribution collapses to a button on small maps.
+- **Highway shields:** icons can be generated on demand from their name (`setMissingStyleImageResolver`, or
+  MapLibre's `styleimagemissing` event). OSM Americana's shield library runs unmodified on top of this, drawing
+  its 1,900 route networks from the data OpenMapTiles/OpenFreeMap tiles already carry; `demo/americana.mjs` is
+  the 40-line adapter and the gallery shows it.
 - **3D terrain:** `terrain` in the style, or `map.setTerrain({source, exaggeration})`, raises the ground from a
   `raster-dem` source. Each terrain tile's flat picture is cached, so panning and tilting do not redraw the map;
   buildings, labels and markers sit on the surface, clicks and `project`/`unproject` follow it, and labels behind
