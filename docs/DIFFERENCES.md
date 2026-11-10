@@ -66,10 +66,10 @@ Measured by the test scripts in this repository:
   The main gaps are `distance` and `within` (58 fixtures), collators, rich-text `format` objects, `feature-state`
   and `global-state`.
 - **Rendering:** `pnpm test:render` runs MapLibre's render tests (a style and an expected image each). Of 1,429
-  runnable tests, 422 match (at most 1% of pixels differ), 268 are close (at most 5%) and 739 differ; 331 are
+  runnable tests, 433 match (at most 1% of pixels differ), 271 are close (at most 5%) and 725 differ; 331 are
   skipped because they script the map or need a high pixel density. Text is drawn with browser fonts rather than
   the tests' glyph files, so most tests with labels cannot match exactly. The largest feature gaps are
-  `icon-text-fit`, patterns, projections, sky, heatmap, global state and pitch-aligned circles.
+  line and per-feature patterns, projections, sky, heatmap, global state and pitch-aligned circles.
 - **Map API:** see below.
 
 <!-- api:start -->
