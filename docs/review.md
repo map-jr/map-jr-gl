@@ -55,6 +55,32 @@ value that the library cannot do (a globe, a sky, a roll). A wrapper then does n
 
 This was not done. It is a decision for the owner.
 
+## A decision for the owner: the renderer in Safari
+
+In WebKit (the engine of Safari) the renderer in a worker draws fewer frames than the renderer on the main thread.
+These are the frames that the engine drew for each second, on a macOS machine of the workflow `Browsers`, in three
+measurements of the terrain scenario and one of the street map:
+
+| Scenario | Main thread | Worker | MapLibre GL JS (frames that the page counted) |
+|---|---|---|---|
+| Street map | 69 | 61 | 57 |
+| 3D terrain | 52, 66, 61 | 40, 55, 42 | 53, 56, 50 |
+
+The engine's own time for a frame is small in the two cases (2 to 6 ms), so the cause is not the code of the
+library. It is probably the cost for WebKit to show a canvas that a worker draws. The measurements of the owner on
+an iPhone showed the same order. Chromium and Firefox do not have this difference; in Firefox the worker is much
+faster than the main thread.
+
+The choices:
+
+1. Keep the worker as the default in each browser (as now). The page thread stays free, which is the main promise of
+   the library, but Safari draws 10 to 25% fewer frames in heavy scenes.
+2. Use the main thread by default in Safari (`renderer: 'auto'` would select it there). Safari then draws as many
+   frames as MapLibre GL JS or more, but a busy page can make the map stutter, as with MapLibre GL JS.
+3. Keep the worker, and tell users of terrain on Safari about `renderer: 'main'`.
+
+This was not changed. Each choice is one line in `src/map.ts` (where `wantWorker` is set).
+
 ## Findings from the cross-browser runs
 
 The workflow `Browsers` runs the benchmark and the behaviour tests in Chromium, Firefox and WebKit on Linux, macOS
@@ -62,7 +88,7 @@ and Windows. Its results are on the branch `bench-results`. These points are for
 
 | Finding | State |
 |---|---|
-| 3D terrain was slower in a worker than on the main thread in each browser, and slower than MapLibre GL JS in WebKit (the engine of Safari). This agrees with what the owner saw on an iPhone. | The causes were work on the CPU for each frame (mesh heights, the source tiles of each ground tile) and ground textures that were made again while the map turned. They are corrected. The next runs show the new numbers. |
+| 3D terrain was slower than MapLibre GL JS in WebKit (the engine of Safari), and each repeated measurement was slower than the one before. This agrees with what the owner saw on an iPhone. | Corrected. The causes: work on the CPU for each frame (mesh heights, the source tiles of each ground tile); ground textures that were made again while the map turned, and one in each frame of a movement; and memory on the GPU that was not given back (removed maps, and ground textures that were made and deleted all the time). On the main thread, terrain in WebKit now draws as many frames as MapLibre GL JS. For the worker, see the decision above. |
 | WebKit did not load web fonts inside a worker, so labels used a fallback font. | Corrected: the engine fetches the font file and gives the browser its bytes. |
 | Elevation tiles are decoded in tile workers with `OffscreenCanvas`. Safari before version 16.4 (March 2023) does not have it in workers. | Not changed. Terrain, relief shading and contours do not work there (they did not before, for the same reason). The library has its own PNG and WebP decoders for the server; to use them in the browser adds about 2.5 KB to the worker. |
 | In WebKit, the test of wheel zoom finds the place under the pointer some hundred pixels away after the zoom. The wheel event itself has the correct position. | Open. It was not seen in Chromium or in Firefox. It needs a look in Safari on a Mac: zoom with a mouse wheel and see if the place under the pointer stays. |
