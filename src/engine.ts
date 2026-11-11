@@ -1045,9 +1045,12 @@ export class Engine {
         for (const [key, t] of this.tiles) {
             if (t.state === 'loading' && !wanted.has(key)) this.dropTile(key, t);
         }
-        if (this.tiles.size > MAX_TILES) {
+        // How many tiles are kept follows what the view needs: three times that many, so that the view can go back and
+        // forth without new downloads. A small screen keeps fewer tiles, and so uses less memory on the GPU.
+        const keep = clamp(wanted.size * 3 + 16, 48, MAX_TILES);
+        if (this.tiles.size > keep) {
             const old = [...this.tiles].filter(([, t]) => t.used !== frameNo && t.state !== 'loading').sort((a, b) => a[1].used - b[1].used);
-            for (const [key, t] of old.slice(0, this.tiles.size - MAX_TILES)) this.dropTile(key, t);
+            for (const [key, t] of old.slice(0, this.tiles.size - keep)) this.dropTile(key, t);
         }
 
         const camera = `${tr.padding},${tr.lng},${tr.lat},${tr.zoom},${tr.bearing},${tr.pitch},${Math.round(tr.elevation)},${this.exaggeration}`, cameraChanged = camera !== this.lastCamera;
