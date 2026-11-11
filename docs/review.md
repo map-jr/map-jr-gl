@@ -128,7 +128,7 @@ Examined on 2026-11-11. Not worth it now.
 
 ## Findings from a trial in a real project (elevation-next)
 
-The owner allowed a trial in the project `samargulies/elevation-next` (Nuxt 4, 30 pages with maps). The trial is the
+The owner allowed a trial in the project `samargulies/elevation-next` (Nuxt 4, a map on most pages; MapLibre GL JS 5.24). The trial is the
 branch `try-map-jr-gl` of that project. It is not merged, and it has no pull request.
 
 What the trial changed in the project:
@@ -161,7 +161,8 @@ Not checked in the trial:
   The map component did not start on them, and there was no error from the library. The cause is probably data that
   the page waits for.
 - Marker drag, the compare view, and the animation of the snow and rain pages.
-- A production build of the project, and its size against the build with MapLibre.
+- A production build of the project. For the size, by the files of the packages: MapLibre GL JS is 276 KB gzip
+  and its CSS 10 KB; the entry for MapLibre code is 28 KB on the page and 58 KB for the worker.
 - Any device. The pages ran in Chromium with software WebGL only.
 
 ## Size budgets
