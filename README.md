@@ -28,13 +28,13 @@ These figures are written by `pnpm status`. They compare this library with MapLi
 
 | Measure | Result |
 |---|---|
-| Unit tests | 29 pass, 0 fail |
-| MapLibre expression tests | 331 of 425 pass |
+| Unit tests | 30 pass, 0 fail |
+| MapLibre expression tests | 330 of 425 pass |
 | MapLibre `Map` methods | 104 of 150 are available |
 | MapLibre render tests | 600 of 1429 are the same (1% of pixels or less are different). 300 more are near (5% or less). |
 | Page script (gzip) | 24 KB. MapLibre GL JS: 299 KB. |
-| Worker script (gzip) | 55 KB. MapLibre GL JS: 145 KB. |
-| Server renderer (gzip) | 32 KB |
+| Worker script (gzip) | 56 KB. MapLibre GL JS: 145 KB. |
+| Server renderer (gzip) | 33 KB |
 <!-- status:end -->
 
 The library is new. Read [MapLibre compatibility](docs/maplibre-compatibility.md) before you use it in production.

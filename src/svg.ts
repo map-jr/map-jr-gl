@@ -3,7 +3,7 @@ import type {CompiledLayer} from './style.ts';
 import type {Batch, TileImage, TileIR} from './tile.ts';
 import type {Sprite} from './style.ts';
 import type {Placed, RenderItem} from './placement.ts';
-import {BASELINE, EM} from './text.ts';
+import {lineMiddle, BASELINE, EM} from './text.ts';
 import {anchorOffset, escapeXML, parseSVG, resolveVariants, type MarkerLayerOptions} from './markers.ts';
 import type {RGBA} from './expr.ts';
 
@@ -189,9 +189,11 @@ export function renderSVG(s: SVGScene): string {
             }
             const rot = l.angle ? ` transform="rotate(${num(l.angle * 180 / Math.PI)} ${num(l.x)} ${num(l.y)})"` : '';
             shaped.lines.forEach((line, i) => {
-                const y = l.y + (-shaped.height / 2 + i * shaped.lineHeight + shaped.lineHeight * 0.5 + EM * BASELINE) * k;
+                const y = l.y + (lineMiddle(shaped, i) + EM * BASELINE * (line.scale ?? 1)) * k;
                 const x = l.x + (l.justify ?? src.justify) * (line.width - shaped.width) / 2 * k;
-                body.push(`<text x="${num(x)}" y="${num(y)}"${rot} ${common}>${escapeXML(line.text.replace(/[\uE000-\uF8FF]/g, ''))}</text>`); // images inside text are not drawn in SVG output
+                // Rich text: a line is drawn in the size of its largest section (sizes inside a line are not drawn).
+                const own = line.scale && line.scale !== 1 ? ` style="font-size:${num(l.size * line.scale)}px"` : '';
+                body.push(`<text x="${num(x)}" y="${num(y)}"${rot}${own} ${common}>${escapeXML(line.text.replace(/[\uE000-\uF8FF]/g, ''))}</text>`); // images inside text are not drawn in SVG output
             });
         }
         body.push('</g>');

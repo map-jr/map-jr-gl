@@ -78,7 +78,7 @@ Properties:
 - Icon halos
 - `text-writing-mode`, `text-pitch-alignment`, `text-max-angle`
 - `symbol-z-order` and `symbol-avoid-edges`
-- More than one font, size or colour in one `format` text. Images in `format` text are available.
+- `vertical-align` in `format` text. Sizes, fonts, colours and images in `format` text are available. The SVG output of the server draws each line in one size.
 
 Layers that the server renderer does not draw:
 

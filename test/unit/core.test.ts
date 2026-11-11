@@ -505,3 +505,13 @@ test('GeoJSON clusters: points join at low zoom and divide at the expansion zoom
     // promoteId: a property becomes the id of the feature.
     assert.equal(prepareSource(data, {promoteId: 'n'}).features[2].id, 4);
 });
+
+test('rich text: a section of format with a font scale is wider or narrower, and makes its line taller', async () => {
+    const {EstimateShaper, EM} = await import('../../src/text.ts');
+    const text = (scale: number) => compileExpr(['format', 'AB', {'font-scale': scale}, '\n', {}, 'AB', {}], {dd: false, zoom: false})({zoom: 0, f: null}) as string;
+    const shaper = new EstimateShaper(), plain = shaper.shape('AB\nAB', 'x', 100, 0, 1.2, 16), big = shaper.shape(text(2), 'x', 100, 0, 1.2, 16);
+    assert.ok(Math.abs(big.lines[0].width - 2 * plain.lines[0].width) < 1e-6);
+    assert.ok(Math.abs(big.lines[1].width - plain.lines[1].width) < 1e-6);
+    assert.ok(Math.abs(big.height - (2 + 1) * 1.2 * EM) < 1e-6, 'the first line is two times as tall');
+    assert.deepEqual(big.lines[0].chars, ['A', 'B'], 'the style characters are not part of the text');
+});

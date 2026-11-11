@@ -85,6 +85,8 @@ export function featureStateOf(source: string | undefined, sourceLayer: string |
 }
 
 /** An image inside label text (`format` with `image`) travels through the text as its name between these two characters. */
+/** Rich text (`format` with options): the size, font and colour of the text that follows, between these two characters. */
+export const STYLE_OPEN = '\uE002', STYLE_CLOSE = '\uE003';
 export const IMAGE_OPEN = '\uE000', IMAGE_CLOSE = '\uE001', IMAGE_IN_TEXT = /\uE000([^\uE001]*)\uE001/g;
 
 /**
@@ -370,7 +372,19 @@ export function compileExpr(e: any, flags: Flags): Fn {
             for (let i = 1; i < e.length; i++) {
                 const part = e[i];
                 if (Array.isArray(part) && part[0] === 'image') { const name = compileExpr(part[1], flags); parts.push(c => { const n = name(c); return n ? IMAGE_OPEN + n + IMAGE_CLOSE : ''; }); }
-                else if (typeof part !== 'object' || Array.isArray(part)) parts.push(arg(i));
+                else if (typeof part !== 'object' || Array.isArray(part)) {
+                    // The options after a section change its size, font or colour. They go in the string as a marker
+                    // before the section (see STYLE_OPEN); an empty marker after the section ends them.
+                    const text = arg(i), o = e[i + 1], styled = o && typeof o === 'object' && !Array.isArray(o) && (o['font-scale'] != null || o['text-font'] != null || o['text-color'] != null);
+                    if (!styled) { parts.push(text); continue; }
+                    const scale = compileExpr(o['font-scale'] ?? null, flags), font = compileExpr(o['text-font'] ?? null, flags), tint = compileExpr(o['text-color'] ?? null, flags);
+                    parts.push(c => {
+                        const t = text(c);
+                        if (t == null || t === '') return '';
+                        const f = font(c), col = colorize(tint(c));
+                        return `${STYLE_OPEN}${scale(c) ?? ''}|${Array.isArray(f) ? f[0] : f ?? ''}|${Array.isArray(col) ? col.join(',') : ''}${STYLE_CLOSE}${t}${STYLE_OPEN}${STYLE_CLOSE}`;
+                    });
+                }
             }
             return c => parts.map(f => f(c) ?? '').join('');
         }

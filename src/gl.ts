@@ -2,7 +2,7 @@ import {EXTENT, latFromMerc, mercX, mercY, type TileID, type Transform} from './
 import type {CompiledLayer} from './style.ts';
 import {LINE_VERTEX, type GLBatch, type LabelSrc, type TileGL} from './tile.ts';
 import type {Placed, RenderItem} from './placement.ts';
-import {BASELINE, EM, SDF_BUFFER, SDF_RADIUS, type GlyphAtlas} from './text.ts';
+import {lineMiddle, BASELINE, EM, SDF_BUFFER, SDF_RADIUS, type GlyphAtlas} from './text.ts';
 
 const HEAD = '#version 300 es\nprecision highp float;\n';
 /** Shared by the map-space programs: u_matrix takes tile units (and metres of height) to clip space. */
@@ -1267,7 +1267,7 @@ export class GLRenderer {
                 if (!line.glyphs?.some(g => g.image)) return;
                 const justify = l.justify ?? l.src.justify;
                 let pen = justify < 0 ? -shaped.width / 2 : justify > 0 ? shaped.width / 2 - line.width : -line.width / 2;
-                const mid = -shaped.height / 2 + (row + 0.5) * shaped.lineHeight;
+                const mid = lineMiddle(shaped, row);
                 for (const g of line.glyphs) {
                     const img = g.image ? lookup(g.image) : undefined;
                     if (img && !!img.custom === custom) {
@@ -1330,8 +1330,8 @@ export class GLRenderer {
                 for (let i = 0; i < glyphs.length; i++) {
                     const g = glyphs[i];
                     if (!g.w) continue;
-                    const ga = curve[i * 3 + 2], x0 = (g.left - B) * s, y0 = (-g.top - B) * s;
-                    glyph(g, l.x + curve[i * 3], l.y + curve[i * 3 + 1], Math.cos(ga), Math.sin(ga), x0, y0, x0 + g.w * s, y0 + g.h * s);
+                    const k = s * (g.scale ?? 1), ga = curve[i * 3 + 2], x0 = (g.left - B) * k, y0 = (-g.top - B) * k;
+                    glyph(g, l.x + curve[i * 3], l.y + curve[i * 3 + 1], Math.cos(ga), Math.sin(ga), x0, y0, x0 + g.w * k, y0 + g.h * k);
                 }
                 continue;
             }
@@ -1339,11 +1339,20 @@ export class GLRenderer {
             for (let i = 0; i < shaped.lines.length; i++) {
                 const line = shaped.lines[i];
                 let pen = justify < 0 ? -shaped.width / 2 : justify > 0 ? shaped.width / 2 - line.width : -line.width / 2;
-                const baseline = -shaped.height / 2 + i * shaped.lineHeight + shaped.lineHeight * 0.5 + EM * BASELINE;
+                const baseline = lineMiddle(shaped, i) + EM * BASELINE * (line.scale ?? 1);
                 for (const g of line.glyphs!) {
                     if (g.w) {
-                        const x0 = (pen + g.left - B) * s, y0 = (baseline - g.top - B) * s;
-                        glyph(g, l.x, l.y, cos, sin, x0, y0, x0 + g.w * s, y0 + g.h * s);
+                        if (g.scale || g.color) {
+                            // Rich text: this glyph has its own size or colour. The label's values come back after it.
+                            const k = g.scale ?? 1, x0 = (pen + (g.left - B) * k) * s, y0 = (baseline - (g.top + B) * k) * s, keep = [c0, c1, c2, gamma, haloGamma, hedge];
+                            if (g.color) { c0 = Math.round(g.color[0] * 255); c1 = Math.round(g.color[1] * 255); c2 = Math.round(g.color[2] * 255); }
+                            gamma /= k; haloGamma /= k; if (hedge < 2) hedge = Math.max(0.75 - (B - 0.75) / SDF_RADIUS, 0.75 - src.haloWidth / (s * k) / SDF_RADIUS);
+                            glyph(g, l.x, l.y, cos, sin, x0, y0, x0 + g.w * k * s, y0 + g.h * k * s);
+                            [c0, c1, c2, gamma, haloGamma, hedge] = keep;
+                        } else {
+                            const x0 = (pen + g.left - B) * s, y0 = (baseline - g.top - B) * s;
+                            glyph(g, l.x, l.y, cos, sin, x0, y0, x0 + g.w * s, y0 + g.h * s);
+                        }
                     }
                     pen += g.advance + step;
                 }

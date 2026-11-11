@@ -9,6 +9,8 @@
 /** How far below the middle of a line the baseline is, in ems. The value puts text where MapLibre draws it. */
 export const BASELINE = 0.38;
 
+import {parseFontName} from './style.ts';
+
 export const EM = 24;
 export const DEFAULT_FONT = '"Noto Sans", "Helvetica Neue", Arial, sans-serif';
 export const SDF_BUFFER = 4;
@@ -19,18 +21,32 @@ export interface Glyph {
     x: number; y: number; w: number; h: number; left: number; top: number; advance: number;
     /** An image in the text rather than a character: its name and height (in the same units as `advance`, which is its width). */
     image?: string; imageHeight?: number;
+    /** Rich text: the size of this glyph relative to the text size, and its own colour. */
+    scale?: number; color?: number[];
 }
 /** Images that can appear inside text: their size in pixels, or undefined while one is not available yet. */
 export type ImageSizes = (name: string) => {width: number; height: number; pixelRatio: number} | undefined;
 // Inside the shaper each image in the text is one private-use character, so line breaking treats it as a single unit.
 const IMAGE_CHAR = 0xE100;
+// Rich text: one private-use character before each character of a styled section names its style.
+const STYLE_CHAR = 0xE800, STYLE_CHARS = /[\uE800-\uEFFF]/g;
+interface TextStyle { scale: number; font?: string; color?: number[] }
 export interface ShapedLine {
     text: string; width: number; glyphs?: Glyph[];
     /** The line split into the units that are positioned individually, with each one's advance. */
     chars: string[]; advances: number[];
+    /** Rich text: the largest glyph scale in the line. The line is that much taller. Absent for plain text. */
+    scale?: number;
+    /** The distance from the top of the text to the top of this line. Absent for plain text, where lines are equal. */
+    top?: number;
 }
 /** All measurements are in pixels at a font size of EM. */
 export interface Shaped { lines: ShapedLine[]; width: number; height: number; lineHeight: number }
+/** The middle of line `i`, from the middle of the text. Lines of rich text can have different heights. */
+export function lineMiddle(shaped: Shaped, i: number): number {
+    const line = shaped.lines[i];
+    return -shaped.height / 2 + (line.top ?? i * shaped.lineHeight) + shaped.lineHeight * (line.scale ?? 1) / 2;
+}
 export interface Shaper { shape(text: string, font: string, maxWidthEm: number, spacingEm: number, lineHeightEm?: number, sizePx?: number): Shaped }
 
 const COMPLEX = /[֐-ࣿऀ-႟ក-៿יִ-﷿ﹰ-﻿]/;
@@ -50,7 +66,7 @@ export function graphemes(s: string): string[] {
 function wrap(text: string, maxWidth: number, measure: (s: string) => number): string[] {
     const lines: string[] = [];
     for (const para of text.split('\n')) {
-        const words = para.split(/(?<=\s)|(?<=[⺀-鿿가-힯])|(?=[⺀-鿿가-힯])/).filter(w => w.length);
+        const words = para.split(/(?<=\s)|(?<=[⺀-鿿가-힯])|(?<![\uE800-\uEFFF])(?=[⺀-鿿가-힯])|(?=[\uE800-\uEFFF][⺀-鿿가-힯])/).filter(w => w.length);
         // (The number of lines comes from the full width, spaces included; the break positions from widths without them.)
         const widths = words.map(w => measure(w.trim())), total = measure(para);
         if (!words.length) continue;
@@ -91,24 +107,67 @@ abstract class BaseShaper implements Shaper {
     protected inline: string[] = [];
     protected imageScale = 1;
     protected missingImage = false;
+    /** Rich text: the styles in the text being shaped, by style character. */
+    protected styles: TextStyle[] = [];
 
     shape(text: string, font: string, maxWidthEm: number, spacingEm: number, lineHeightEm = 1.2, sizePx = 16): Shaped {
-        const hasImages = text.includes('\uE000');
+        const hasImages = text.includes('\uE000'), hasStyles = text.includes('\uE002');
         const key = `${font}|${maxWidthEm}|${spacingEm}|${lineHeightEm}|${hasImages ? sizePx : ''}|${text}`, LINE_HEIGHT = lineHeightEm * EM;
         let s = this.cache.get(key);
         if (!s) {
             if (this.cache.size > 5000) this.cache.clear();
             const spacing = spacingEm * EM;
-            this.inline = []; this.missingImage = false;
+            this.inline = []; this.missingImage = false; this.styles = [];
             // An image is drawn at its own size whatever the text size, so its width in text units depends on that size.
             this.imageScale = EM / sizePx;
             if (hasImages) text = text.replace(/\uE000([^\uE001]*)\uE001/g, (_, name) => this.images ? String.fromCharCode(IMAGE_CHAR + this.inline.push(name) - 1) : '');
+            if (hasStyles) text = this.markStyles(text);
             const lines = wrap(text, maxWidthEm * EM, t => this.line(t, font, spacing).width).map(t => this.line(t, font, spacing));
-            s = {lines, width: Math.max(...lines.map(l => l.width)), height: lines.length * LINE_HEIGHT, lineHeight: LINE_HEIGHT};
+            let height = lines.length * LINE_HEIGHT;
+            if (hasStyles) {
+                // A line is as tall as its largest text, as in MapLibre.
+                height = 0;
+                for (const l of lines) { l.scale ??= l.glyphs?.length ? Math.max(...l.glyphs.map(g => g.scale ?? 1)) : 1; l.top = height; height += LINE_HEIGHT * l.scale; }
+            }
+            s = {lines, width: Math.max(...lines.map(l => l.width)), height, lineHeight: LINE_HEIGHT};
             // Text waiting for an image is shaped again once the image has arrived.
             if (!this.missingImage) this.cache.set(key, s);
         }
         return s;
+    }
+    /** Puts a style character before each character of the styled sections, so that a part of the text keeps its styles. */
+    private markStyles(text: string): string {
+        let out = '', mark = '';
+        for (const part of text.split(/(\uE002[^\uE003]*\uE003)/)) {
+            if (part[0] === '\uE002') {
+                const [scale, font, color] = part.slice(1, -1).split('|');
+                if (!scale && !font && !color) { mark = ''; continue; }
+                const f = font ? parseFontName(font) : null;
+                this.styles.push({scale: +scale || 1, font: f ? (f.style === 'italic' ? 'italic ' : '') + f.weight + '|' + f.family : undefined, color: color ? color.split(',').map(Number) : undefined});
+                mark = String.fromCharCode(STYLE_CHAR + this.styles.length - 1);
+            } else out += mark ? graphemes(part).map(g => g === '\n' ? g : mark + g).join('') : part;
+        }
+        return out;
+    }
+    /** The style named by a style character, or undefined for another character. */
+    protected styleOf(part: string): TextStyle | undefined {
+        const i = part.charCodeAt(0) - STYLE_CHAR;
+        return part.length === 1 && i >= 0 ? this.styles[i] : undefined;
+    }
+    /** Makes the glyphs of a line from its characters: the shared code of the shapers for rich text. */
+    protected styled(parts: string[], glyph: (part: string, font?: string) => Glyph): {glyphs: Glyph[]; chars: string[]} {
+        const glyphs: Glyph[] = [], chars: string[] = [];
+        let style: TextStyle | undefined;
+        for (const p of parts) {
+            const st = this.styleOf(p);
+            if (st) { style = st; continue; }
+            if (p.charCodeAt(0) >= STYLE_CHAR && p.charCodeAt(0) < 0xF000 && p.length === 1) continue; // a style that is not known
+            const g = glyph(p, style?.font);
+            glyphs.push(style ? {...g, advance: g.advance * style.scale, imageHeight: g.imageHeight, scale: style.scale, color: style.color} : g);
+            chars.push(p);
+            style = undefined;
+        }
+        return {glyphs, chars};
     }
     /** The stand-in glyph for an image placeholder character, or null for an ordinary character. */
     protected imageGlyph(part: string): Glyph | null {
@@ -127,12 +186,16 @@ export class EstimateShaper extends BaseShaper {
     protected line(text: string, font: string, spacing: number): ShapedLine {
         let w = 0, n = 0;
         const bold = /[6-9]00/.test(font) ? 1.06 : 1, chars: string[] = [], advances: number[] = [];
+        let scale = 1, largest = 0;
         for (const ch of text) {
+            const style = this.styleOf(ch);
+            if (style) { scale = style.scale; continue; }
             n++;
-            const a = this.imageGlyph(ch)?.advance ?? (IDEOGRAPH.test(ch) ? EM : /[iljtfr.,:;'|! ]/.test(ch) ? EM * 0.3 : /[mwMW@]/.test(ch) ? EM * 0.85 : /[A-Z0-9]/.test(ch) ? EM * 0.66 : EM * 0.54);
+            const a = scale * (this.imageGlyph(ch)?.advance ?? (IDEOGRAPH.test(ch) ? EM : /[iljtfr.,:;'|! ]/.test(ch) ? EM * 0.3 : /[mwMW@]/.test(ch) ? EM * 0.85 : /[A-Z0-9]/.test(ch) ? EM * 0.66 : EM * 0.54));
+            largest = Math.max(largest, scale); scale = 1;
             w += a; chars.push(ch); advances.push(a * bold);
         }
-        return {text, width: w * bold + spacing * Math.max(0, n - 1), chars, advances};
+        return {text, width: w * bold + spacing * Math.max(0, n - 1), chars, advances, scale: this.styles.length ? largest || 1 : undefined};
     }
 }
 
@@ -170,11 +233,12 @@ export class GlyphAtlas extends BaseShaper {
 
     protected line(text: string, font: string, spacing: number): ShapedLine {
         // One atlas entry per grapheme, or per whole line when the browser must shape it.
-        const parts = COMPLEX.test(text) ? [text] : graphemes(text);
-        const glyphs = parts.map(p => this.imageGlyph(p) ?? this.glyph(p, font));
+        // (Text that the browser shapes as a whole line has one style.)
+        const parts = COMPLEX.test(text) ? [text.replace(STYLE_CHARS, '')] : graphemes(text);
+        const {glyphs, chars} = this.styled(parts, (p, own) => this.imageGlyph(p) ?? this.glyph(p, own ?? font));
         let width = spacing * Math.max(0, glyphs.length - 1);
         for (const g of glyphs) width += g.advance;
-        return {text, width, glyphs, chars: parts, advances: glyphs.map(g => g.advance)};
+        return {text, width, glyphs, chars, advances: glyphs.map(g => g.advance)};
     }
 
     /** Label fonts arrive as "style weight|family"; the family named by the style is tried before the map default. */
