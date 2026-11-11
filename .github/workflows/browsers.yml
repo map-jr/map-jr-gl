@@ -8,9 +8,10 @@ on:
   workflow_dispatch:
 permissions:
   contents: write
+# A run takes longer than the time between pushes, so a run that has started is left to finish. A newer push waits.
 concurrency:
   group: browsers
-  cancel-in-progress: true
+  cancel-in-progress: false
 jobs:
   run:
     strategy:
