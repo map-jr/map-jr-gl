@@ -59,7 +59,7 @@ try {
     await page.close();
     page = await browser.newPage({viewport: {width: 900, height: 600}});
     const warnings = [], errors = [];
-    page.on('console', m => { if (/hydrat|mismatch/i.test(m.text())) warnings.push(m.text().split('\n')[0]); });
+    page.on('console', m => { if (/warn|error/.test(m.type()) && /hydrat|mismatch/i.test(m.text())) warnings.push(m.text().split('\n')[0]); });
     page.on('pageerror', e => errors.push(e.message));
     await page.goto(origin + '/?ssr');
     await page.waitForFunction(() => window.ready);
@@ -72,7 +72,7 @@ try {
     await page.close();
     // The page from a server without the ssr prop: an empty element from the server, then the map with its controls.
     page = await browser.newPage({viewport: {width: 900, height: 600}});
-    page.on('console', m => { if (/hydrat|mismatch/i.test(m.text())) warnings.push(m.text().split('\n')[0]); });
+    page.on('console', m => { if (/warn|error/.test(m.type()) && /hydrat|mismatch/i.test(m.text())) warnings.push(m.text().split('\n')[0]); });
     page.on('pageerror', e => errors.push(e.message));
     await page.goto(origin + '/?bare');
     await page.waitForFunction(() => window.t?.loads > 0, null, {timeout: 60000});
@@ -125,6 +125,8 @@ try {
         return {pinOk: !!pin && Math.abs(pin[0] - (frame.x + at.x)) < 3 && Math.abs(pin[1] - (frame.y + at.y)) < 3, tip, movedOk: !!moved && Math.abs(moved[0] - (frame.x + expect.x)) < 3, closed: t.closed, tipGone: !document.getElementById('own-tip')};
     });
     check('browser: MapOverlay puts own content and a popup at a position, follows its prop, and closes', overlays.pinOk && overlays.tip && overlays.movedOk && overlays.closed === 1 && overlays.tipGone, JSON.stringify(overlays));
+    await page.evaluate(() => { window.t.pin.value = [-73.5, 41]; }); // (the element of the pin must not be under the click)
+    await page.waitForTimeout(400);
     await page.mouse.move(400, 250); await page.waitForTimeout(300); await page.mouse.click(400, 250); await page.waitForTimeout(600);
     const click = await page.evaluate(() => ({clicks: window.t.clicks.length, features: Array.isArray(window.t.clicks[0]?.features)}));
     check('browser: a click is an event of the component, with the features there', click.clicks === 1 && click.features, JSON.stringify(click));
