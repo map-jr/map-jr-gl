@@ -4,7 +4,7 @@ import {compileLayer, isGeometrySource, loadSprite, tileURL, type CompiledLayer,
 import {GLRenderer, MARKER_FLOATS, MARKER_STRIDE, SPRITE_ATLAS, type DemRef, type GLTile, type MarkerBuffers, type TerrainTile} from './gl.ts';
 import {CollisionGrid, placeLabels, renderItems, type Placed, type RenderItem} from './placement.ts';
 import {GlyphAtlas} from './text.ts';
-import {decodeElevation, sampleElevation, type QueriedFeature} from './query.ts';
+import {decodeElevation, sampleElevation, type QueriedFeature, type QuerySet} from './query.ts';
 import type {TileBackend} from './tiles.ts';
 import type {TileGL} from './tile.ts';
 import {fetchTile} from './pmtiles.ts';
@@ -46,6 +46,8 @@ export type Command =
     /** Replaces the feature state of one source ("sourceLayer|id" -> state); its tiles are rebuilt in place. */
     | {type: 'featureState'; source: string; states: Record<string, Record<string, unknown>>}
     | ({type: 'query'; id: number; lng: number; lat: number} & FeatureQuery)
+    /** Features that style layers draw, in a rectangle of the screen. Each set is one style layer (its radius is in pixels). */
+    | {type: 'queryRendered'; id: number; box: [number, number, number, number]; sets: (QuerySet & {source: string})[]; geometry?: boolean}
     | {type: 'elevation'; id: number; lng: number; lat: number; source?: string; zoom?: number}
     | {type: 'repaint'};
 export type EngineEvent =
@@ -566,6 +568,9 @@ export class Engine {
                 for (const b of this.backends) b.setFeatureState(c.source, c.states);
                 for (const [key, t] of this.tiles) if (key.startsWith(c.source + '|')) t.stale = true;
                 break;
+            case 'queryRendered':
+                this.queryRendered(c).then(value => this.emit({type: 'result', id: c.id, value}), err => this.emit({type: 'result', id: c.id, error: String(err.message)}));
+                break;
             case 'query':
                 this.queryFeatures(c).then(value => this.emit({type: 'result', id: c.id, value}), err => this.emit({type: 'result', id: c.id, error: String(err.message)}));
                 return;
@@ -602,6 +607,35 @@ export class Engine {
     private tileAt(lng: number, lat: number, z: number) {
         const n = 2 ** z, mx = ((mercX(lng) % 1) + 1) % 1 * n, my = clamp(mercY(lat), 0, 1 - 1e-9) * n;
         return {x: Math.floor(mx), y: Math.floor(my), u: mx - Math.floor(mx), v: my - Math.floor(my)};
+    }
+
+    /** The features that the given style layers draw in a rectangle of the screen, from the tiles of the present zoom. */
+    private async queryRendered(c: Extract<Command, {type: 'queryRendered'}>): Promise<QueriedFeature[]> {
+        const tr = this.tr, [x0, y0, x1, y1] = c.box, jobs: Promise<QueriedFeature[]>[] = [];
+        // The rectangle on the ground. When the map is turned or tilted, this is the rectangle around its four corners.
+        const corners = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].map(([x, y]) => { const [lng, lat] = tr.unproject(x, y); return [mercX(lng), clamp(mercY(lat), 0, 1)]; });
+        const west = Math.min(...corners.map(p => p[0])), east = Math.max(...corners.map(p => p[0])), north = Math.min(...corners.map(p => p[1])), south = Math.max(...corners.map(p => p[1]));
+        for (const [name, src] of Object.entries(this.style.sources)) {
+            const sets = c.sets.filter(s => s.source === name);
+            if (!sets.length || !isGeometrySource(src)) continue;
+            const z = clamp(Math.floor(tr.zoom), src.minzoom, src.maxzoom), n = 2 ** z, scale = EXTENT / (512 * 2 ** (tr.zoom - z));
+            const tx0 = Math.floor(west * n), tx1 = Math.floor(east * n), ty0 = clamp(Math.floor(north * n), 0, n - 1), ty1 = clamp(Math.floor(south * n), 0, n - 1);
+            if ((tx1 - tx0 + 1) * (ty1 - ty0 + 1) > 256) throw new Error('The query covers too many tiles');
+            for (let tx = tx0; tx <= tx1; tx++) for (let ty = ty0; ty <= ty1; ty++) {
+                const box: [number, number, number, number] = [(west * n - tx) * EXTENT, (north * n - ty) * EXTENT, (east * n - tx) * EXTENT, (south * n - ty) * EXTENT];
+                jobs.push(this.backends[this.nextBackend++ % this.backends.length].query(tileURL(src, z, ((tx % n) + n) % n, ty), {
+                    source: name, z, x: ((tx % n) + n) % n, y: ty, px: 0, py: 0, radius: 0, box, geometry: c.geometry,
+                    sets: sets.map(s => ({layer: s.layer, sourceLayer: s.sourceLayer, filter: s.filter, also: s.also, radius: s.radius * scale})),
+                }));
+            }
+        }
+        // A feature with an id that is in two tiles is given one time.
+        const seen = new Set<string>();
+        return (await Promise.all(jobs)).flat().filter(f => {
+            if (f.id === undefined) return true;
+            const key = `${f.layer}|${f.source}|${f.sourceLayer}|${f.id}`;
+            return seen.has(key) ? false : (seen.add(key), true);
+        });
     }
 
     private async queryFeatures(c: Extract<Command, {type: 'query'}>): Promise<QueriedFeature[]> {

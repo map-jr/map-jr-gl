@@ -32,10 +32,13 @@ export function adoptClasses(root: Element) {
 
 export const CONTROL_CSS = `
 :where(.map-jr-ctrl-top-left,.map-jr-ctrl-top-right,.map-jr-ctrl-bottom-left,.map-jr-ctrl-bottom-right){position:absolute;z-index:2;pointer-events:none;display:flex;flex-direction:column;gap:10px;max-width:100%;box-sizing:border-box}
-:where(.map-jr-ctrl-top-left){top:0;left:0;align-items:flex-start;padding:max(10px,env(safe-area-inset-top)) 10px 10px max(10px,env(safe-area-inset-left))}
-:where(.map-jr-ctrl-top-right){top:0;right:0;align-items:flex-end;padding:max(10px,env(safe-area-inset-top)) max(10px,env(safe-area-inset-right)) 10px 10px}
-:where(.map-jr-ctrl-bottom-left){bottom:0;left:0;align-items:flex-start;flex-direction:column-reverse;padding:10px 10px max(10px,env(safe-area-inset-bottom)) max(10px,env(safe-area-inset-left))}
-:where(.map-jr-ctrl-bottom-right){bottom:0;right:0;align-items:flex-end;flex-direction:column-reverse;padding:10px 0 env(safe-area-inset-bottom) 10px}
+:where(.map-jr-ctrl-top-left){top:0;left:0;align-items:flex-start;padding:10px 10px 10px max(10px,env(safe-area-inset-left))}
+:where(.map-jr-ctrl-top-right){top:0;right:0;align-items:flex-end;padding:10px max(10px,env(safe-area-inset-right)) 10px 10px}
+:where(.map-jr-ctrl-bottom-left){bottom:0;left:0;align-items:flex-start;flex-direction:column-reverse;padding:10px 10px 10px max(10px,env(safe-area-inset-left))}
+:where(.map-jr-ctrl-bottom-right){bottom:0;right:0;align-items:flex-end;flex-direction:column-reverse;padding:10px 0 0 10px}
+:where(.map-jr-fills) :where(.map-jr-ctrl-top-left,.map-jr-ctrl-top-right){padding-top:max(10px,env(safe-area-inset-top))}
+:where(.map-jr-fills) :where(.map-jr-ctrl-bottom-left){padding-bottom:max(10px,env(safe-area-inset-bottom))}
+:where(.map-jr-fills) :where(.map-jr-ctrl-bottom-right){padding-bottom:env(safe-area-inset-bottom)}
 :where(.map-jr-ctrl-bottom-right>.map-jr-ctrl:not(.map-jr-ctrl-attrib)){margin-right:max(10px,env(safe-area-inset-right))}
 :where(.map-jr-ctrl-attrib){background:var(--map-attribution-background,rgba(255,255,255,.75));color:var(--map-control-color,#333);font-size:11px;line-height:1.4;padding:2px 6px;padding-right:max(6px,env(safe-area-inset-right));border-top-left-radius:4px;overflow-wrap:anywhere}
 :where(.map-jr-ctrl-attrib a){color:inherit}

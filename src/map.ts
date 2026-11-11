@@ -39,6 +39,14 @@ export interface MapOptions extends CameraOptions, LoadOptions {
     antialias?: boolean;
 }
 
+export type PointLike = {x: number; y: number} | [number, number];
+export interface RenderedQueryOptions { layers?: string[]; filter?: unknown; validate?: boolean }
+/** A feature from `queryRenderedFeatures` or `querySourceFeatures`: GeoJSON, with its source, its style layer and its state. */
+export interface RenderedFeature {
+    type: 'Feature'; id?: number | string; geometry: {type: string; coordinates: unknown}; properties: Record<string, unknown>;
+    source: string; sourceLayer?: string; layer?: unknown; state: Record<string, unknown>;
+}
+
 export interface MapEvent { type: string; target: Map; point?: {x: number; y: number}; lngLat?: {lng: number; lat: number}; [key: string]: unknown }
 type Listener = (e: MapEvent) => void;
 
@@ -175,6 +183,9 @@ export class Map {
     private measure() {
         const r = this.container.getBoundingClientRect();
         this.tr.width = r.width; this.tr.height = r.height;
+        // Space for the browser's bars at the top and bottom of the screen is only for a map that fills the screen. On a
+        // map in a page, that space changes while the page scrolls (Safari hides its toolbar), and the controls would move.
+        this.container.classList.toggle('map-jr-fills', r.height >= globalThis.innerHeight - 1 && document.documentElement.scrollHeight <= globalThis.innerHeight + 1);
         this.dpr = Math.min(globalThis.devicePixelRatio || 1, 3);
         Object.assign(this.canvas.style, {width: this.dpr * 100 + '%', height: this.dpr * 100 + '%', transform: `scale(${1 / this.dpr})`});
     }
@@ -756,6 +767,44 @@ export class Map {
     queryFeatures(at: LngLatLike | {x: number; y: number}, options: Partial<FeatureQuery> = {}): Promise<QueriedFeature[]> {
         const [lng, lat] = 'x' in at ? this.tr.unproject(at.x, at.y) : toLngLat(at);
         return this.ask(id => ({type: 'query', id, lng, lat, radius: 3, ...options}));
+    }
+
+    /**
+     * The features that the style layers draw at a point or in a rectangle of the screen (the whole map when no
+     * geometry is given), from the top layer down. The arguments and the features are those of MapLibre GL JS. One
+     * difference: the result is a promise, because the tile data is in a worker. Thus write
+     * `await map.queryRenderedFeatures(...)`.
+     */
+    async queryRenderedFeatures(geometry?: PointLike | [PointLike, PointLike] | RenderedQueryOptions, options: RenderedQueryOptions = {}): Promise<RenderedFeature[]> {
+        const point = (p: PointLike): [number, number] => Array.isArray(p) ? [p[0], p[1]] : [p.x, p.y];
+        const isPoint = (g: unknown): g is PointLike => !!g && (Array.isArray(g) ? typeof g[0] === 'number' : typeof (g as {x?: unknown}).x === 'number');
+        let box: [number, number, number, number];
+        if (isPoint(geometry)) { const [x, y] = point(geometry); box = [x, y, x, y]; }
+        else if (Array.isArray(geometry)) { const [a, b] = [point(geometry[0] as PointLike), point(geometry[1] as PointLike)]; box = [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[0], b[0]), Math.max(a[1], b[1])]; }
+        else { box = [0, 0, this.tr.width, this.tr.height]; if (geometry) options = geometry as RenderedQueryOptions; }
+        const only = options.layers ? new Set(options.layers) : null, z = this.tr.zoom, layers: any[] = this.rawStyle?.layers ?? [];
+        const number = (v: unknown, fallback: number) => typeof v === 'number' ? v : fallback;
+        const sets = layers.filter(l => l.source && (!only || only.has(l.id)) && l.layout?.visibility !== 'none' && z >= (l.minzoom ?? 0) && z < (l.maxzoom ?? 24)
+            && this.rawStyle.sources[l.source] && !/raster|image/.test(this.rawStyle.sources[l.source].type) && !/raster|hillshade|heatmap/.test(l.type)).map(l => ({
+            layer: l.id as string, source: l.source as string, sourceLayer: l['source-layer'] as string | undefined, filter: l.filter, also: options.filter,
+            // How far from its geometry a feature is drawn, in pixels: half the line width, the circle radius, a part of an icon or text.
+            radius: l.type === 'line' ? Math.max(2, number(l.paint?.['line-width'], 4) / 2) : l.type === 'circle' ? number(l.paint?.['circle-radius'], 5) + number(l.paint?.['circle-stroke-width'], 0) : l.type === 'symbol' ? 10 : 0,
+        }));
+        if (!sets.length) return [];
+        const found = await this.ask<QueriedFeature[]>(id => ({type: 'queryRendered', id, box, sets, geometry: true}));
+        const order = new globalThis.Map(layers.map((l, i) => [l.id, i]));
+        return found.sort((a, b) => order.get(b.layer!)! - order.get(a.layer!)!).map(f => ({
+            type: 'Feature', id: f.id, geometry: f.geometry!, properties: f.properties, source: f.source, sourceLayer: f.sourceLayer || undefined,
+            layer: this.getLayer(f.layer!), state: f.id === undefined ? {} : this.getFeatureState({source: f.source, sourceLayer: f.sourceLayer || undefined, id: f.id}),
+        }));
+    }
+
+    /** The features of a source in the tiles of the present view. As `queryRenderedFeatures`, the result is a promise. */
+    async querySourceFeatures(sourceId: string, options: {sourceLayer?: string; filter?: unknown} = {}): Promise<RenderedFeature[]> {
+        const sets = [{layer: '', source: sourceId, sourceLayer: options.sourceLayer, filter: options.filter, radius: 0}];
+        const found = await this.ask<QueriedFeature[]>(id => ({type: 'queryRendered', id, box: [0, 0, this.tr.width, this.tr.height], sets, geometry: true}));
+        return found.map(f => ({type: 'Feature', id: f.id, geometry: f.geometry!, properties: f.properties, source: f.source, sourceLayer: f.sourceLayer || undefined,
+            state: f.id === undefined ? {} : this.getFeatureState({source: f.source, sourceLayer: f.sourceLayer || undefined, id: f.id})}));
     }
 
     /** Ground elevation in metres at a location, read from the style's elevation (raster-dem) source; null where there is no data. */

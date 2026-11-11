@@ -298,6 +298,26 @@ for (const mode of ['main', 'worker']) {
     });
     check(`[${mode}] feature state is set, merged and removed`, fs.both.hover === true && fs.both.picked === 1 && !('hover' in fs.one) && fs.one.picked === 1 && Object.keys(fs.none).length === 0, JSON.stringify(fs));
 
+    // queryRenderedFeatures, as in MapLibre but with a promise: at a point, in a box, and with a list of layers.
+    const rendered = await page.evaluate(async () => {
+        const m = window.map, c = m.getCenter(), p = m.project(c);
+        m.addSource('asked', {type: 'geojson', data: {type: 'FeatureCollection', features: [
+            {type: 'Feature', id: 7, properties: {kind: 'spot'}, geometry: {type: 'Point', coordinates: [c.lng, c.lat]}},
+            {type: 'Feature', id: 8, properties: {kind: 'far'}, geometry: {type: 'Point', coordinates: [c.lng + 0.01, c.lat]}}]}});
+        m.addLayer({id: 'asked', type: 'circle', source: 'asked', paint: {'circle-radius': 6}});
+        let at = [];
+        for (let i = 0; i < 40 && !at.length; i++) { await new Promise(r => setTimeout(r, 100)); at = await m.queryRenderedFeatures(p, {layers: ['asked']}); }
+        const far = m.project([c.lng + 0.01, c.lat]);
+        const box = await m.queryRenderedFeatures([[p.x - 5, p.y - 20], [far.x + 5, p.y + 20]], {layers: ['asked']});
+        const all = await m.queryRenderedFeatures(), filtered = await m.queryRenderedFeatures({layers: ['asked'], filter: ['==', ['get', 'kind'], 'far']});
+        const source = await m.querySourceFeatures('asked');
+        const out = {point: at.map(f => f.id), layer: at[0]?.layer?.id, geometry: at[0]?.geometry?.type, box: box.map(f => f.id).sort(), all: all.length, top: all[0]?.layer?.id, filtered: filtered.map(f => f.id), source: source.length};
+        m.removeLayer('asked'); m.removeSource('asked');
+        return out;
+    });
+    check(`[${mode}] queryRenderedFeatures: a point, a box, all layers (top layer first), a filter; querySourceFeatures`,
+        rendered.point.join() === '7' && rendered.layer === 'asked' && rendered.geometry === 'Point' && rendered.box.join() === '7,8' && rendered.all > 10 && rendered.top === 'asked' && rendered.filtered.join() === '8' && rendered.source === 2, JSON.stringify(rendered));
+
     // GeoJSON clusters: the tiles show one cluster for near points, and the source answers questions about it.
     const clusters = await page.evaluate(async () => {
         const m = window.map, c = m.getCenter();

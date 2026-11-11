@@ -88,7 +88,9 @@ export class Popup extends Overlay {
         if (options.closeButton !== false) {
             const b = Object.assign(document.createElement('button'), {type: 'button', textContent: '\u00d7', className: cls('popup-close-button')});
             b.setAttribute('aria-label', 'Close popup');
-            b.style.cssText = 'position:absolute;top:0;right:2px;border:0;background:none;font-size:18px;line-height:22px;cursor:pointer;color:inherit;padding:0 4px';
+            b.style.cssText = 'position:absolute;top:3px;right:3px;width:22px;height:22px;border:0;border-radius:4px;background:none;font:18px/22px system-ui,sans-serif;text-align:center;cursor:pointer;color:inherit;opacity:.7;padding:0;margin:0';
+            // The text keeps clear of the button.
+            box.style.paddingRight = '30px';
             b.addEventListener('click', () => this.remove());
             box.appendChild(b);
         }
