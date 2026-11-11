@@ -178,19 +178,28 @@ for (const mode of ['main', 'worker']) {
         await window.twoFingers([[450, 400], [550, 400]], [[450, 320], [550, 320]]); // both fingers up together
         out.tilt = window.cam();
         window.map.jumpTo({pitch: 0, zoom: 14});
+        // Waits for an animation to end. A fixed time is not sufficient when software rendering is slow.
+        const still = async () => {
+            await new Promise(r => setTimeout(r, 400));
+            for (let i = 0, quiet = 0, z = window.cam().zoom; i < 40 && quiet < 2; i++) {
+                await new Promise(r => setTimeout(r, 150));
+                const now = window.cam().zoom;
+                quiet = Math.abs(now - z) < 1e-6 && !window.map.isMoving() ? quiet + 1 : 0;
+                z = now;
+            }
+        };
         const tap = async (x, y) => { window.touch('pointerdown', 11, x, y); window.touch('pointerup', 11, x, y); await new Promise(r => setTimeout(r, 60)); };
         await tap(500, 350); await tap(500, 350);
-        await new Promise(r => setTimeout(r, 600));
+        await still();
         out.doubleTap = window.cam();
         window.touch('pointerdown', 11, 450, 350); window.touch('pointerdown', 12, 550, 350); window.touch('pointerup', 11, 450, 350); window.touch('pointerup', 12, 550, 350);
-        await new Promise(r => setTimeout(r, 600));
+        await still();
         out.twoFingerTap = window.cam();
-        await new Promise(r => setTimeout(r, 400));
         await tap(500, 350);
         window.touch('pointerdown', 11, 500, 350);
         for (let y = 350; y <= 450; y += 10) { window.touch('pointermove', 11, 500, y); await new Promise(r => setTimeout(r, 16)); }
         window.touch('pointerup', 11, 500, 450);
-        await new Promise(r => setTimeout(r, 400));
+        await still();
         out.tapDrag = window.cam();
         return out;
     });
