@@ -53,7 +53,7 @@ a warning to the console that says what to change. A map always appears.
 | Put the worker file at a different URL | `new Map({workerUrl: '/assets/map-jr-gl-worker.js'})` |
 | Use the worker syntax of your bundler | `new Map({createWorker: () => new Worker(new URL('map-jr-gl/worker', import.meta.url))})` |
 | Use the same settings for all maps | Call `configure({workerUrl, createWorker, tileWorkers})` one time at the start |
-| Use one file only | `import {Map} from 'map-jr-gl/standalone'` |
+| Use one file only | `import {createMap} from 'map-jr-gl/standalone'` (the main API and its controls), or `import {Map} from 'map-jr-gl/maplibre-compat/standalone'` |
 | Draw on the main thread | `new Map({renderer: 'main'})` |
 | Change the number of tile workers | `new Map({tileWorkers: 2})` |
 

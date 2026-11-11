@@ -36,7 +36,7 @@ const page = (body, head = '') => `<!doctype html><html><head><meta charset="utf
 const client = (q) => `<script type="module">
 // ?standalone loads the single-file build (worker embedded); ?from=<origin> loads the library from another origin, as a CDN would serve it.
 const params = new URLSearchParams(location.search);
-const {Map, NavigationControl, ScaleControl} = await import((params.get('from') ?? '') + (params.has('standalone') ? '/dist/map-jr-gl-standalone.js' : '/dist/map-jr-gl-maplibre-compat.js'));
+const {Map, NavigationControl, ScaleControl} = await import((params.get('from') ?? '') + (params.has('standalone') ? '/dist/map-jr-gl-maplibre-compat-standalone.js' : '/dist/map-jr-gl-maplibre-compat.js'));
 import {markers, view, photos, manyMarkers} from '/demo/markers.mjs';
 import {shield} from '/demo/shields.mjs';
 const q = new URLSearchParams(location.search);

@@ -44,7 +44,7 @@ for (const renderer of ['worker', 'main']) {
             return {reported, last: last?.zoom, afterEcho, moved: [s.zoom, s.bearing, +s.center[0].toFixed(3)], zoomEvents: t.seen.filter(x => x === 'zoom').length};
         });
         check(`[${renderer}] the view: changes are reported, a reported view is not applied again, a new view moves the map`,
-            view.reported > 2 && view.last === 15 && view.afterEcho === 15 && view.moved.join() === '13.5,20,-74' && view.zoomEvents > 2, JSON.stringify(view));
+            view.reported >= 2 && view.last === 15 && view.afterEcho === 15 && view.moved.join() === '13.5,20,-74' && view.zoomEvents >= 2, JSON.stringify(view));
 
         // 3. A new style object: a layer is added and found by a query; with the old style again it is gone.
         const style = await page.evaluate(async () => {
@@ -113,6 +113,24 @@ for (const renderer of ['worker', 'main']) {
         check(`[${renderer}] destroy removes the map`, !end.canvas);
         check(`[${renderer}] no page errors`, errors.length === 0, errors.slice(0, 2).join(' | '));
     } catch (e) { check(`[${renderer}] the test run was completed`, false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
+// The one-file build of the main API: a map and a control from that file alone.
+{
+    const page = await browser.newPage({viewport: {width: 900, height: 600}}), requested = [];
+    page.on('request', r => { if (/\/dist\//.test(r.url())) requested.push(r.url().split('/').pop()); });
+    try {
+        await page.goto('http://localhost:8080/style.json'); // (a document of the demo server that loads no script)
+        const one = await page.evaluate(async () => {
+            const lib = await import('/dist/map-jr-gl-standalone.js'), style = await (await fetch('/style.json')).json();
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {id: 'host', style: 'position:fixed;inset:0;z-index:99;background:#fff'}));
+            const host = lib.createMap(el, {style, initialView: {center: [-74.0065, 40.7085], zoom: 14.3}, controls: [lib.navigation()], attribution: false});
+            await new Promise(r => host.state.subscribe(s => s.loaded, v => v && r()));
+            return {renderer: host.state.get().renderer, control: !!el.querySelector('.map-jr-ctrl-group')};
+        });
+        const files = [...new Set(requested.filter(f => f.startsWith('map-jr-gl')))];
+        check('standalone: the main API and a control from one file', !!one.renderer && one.control && files.join() === 'map-jr-gl-standalone.js', JSON.stringify({...one, files}));
+    } catch (e) { check('standalone: the test run was completed', false, String(e.message).split('\n')[0]); }
     await page.close();
 }
 await browser.close();

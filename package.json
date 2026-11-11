@@ -69,8 +69,12 @@
       "import": "./dist/vue.js"
     },
     "./standalone": {
-      "types": "./dist/types/maplibre-compat.d.ts",
+      "types": "./dist/types/standalone.d.ts",
       "import": "./dist/map-jr-gl-standalone.js"
+    },
+    "./maplibre-compat/standalone": {
+      "types": "./dist/types/maplibre-compat.d.ts",
+      "import": "./dist/map-jr-gl-maplibre-compat-standalone.js"
     },
     "./server": {
       "types": "./dist/types/server.d.ts",

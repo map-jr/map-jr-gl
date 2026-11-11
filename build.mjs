@@ -62,7 +62,9 @@ const esm = (input, extra = {}) => ({
 await run(esm({'map-jr-gl': 'src/index.ts', 'map-jr-gl-maplibre-compat': 'src/maplibre-compat.ts', vue: 'src/vue.ts', controls: 'src/control-specs.ts'}));
 
 // Standalone: one self-contained file with the worker embedded, for places where shipping several files is awkward.
-await run(esm({'map-jr-gl-standalone': 'src/maplibre-compat.ts'}, {codeSplitting: false}), {__WORKER_SRC__: JSON.stringify(workerSrc)});
+// (One for each of the two APIs.)
+await run(esm({'map-jr-gl-standalone': 'src/standalone.ts'}, {codeSplitting: false}), {__WORKER_SRC__: JSON.stringify(workerSrc)});
+await run(esm({'map-jr-gl-maplibre-compat-standalone': 'src/maplibre-compat.ts'}, {codeSplitting: false}), {__WORKER_SRC__: JSON.stringify(workerSrc)});
 // The server renderer (Node, Cloudflare Workers and other runtimes without a DOM).
 await run(esm({server: 'src/server.ts'}, {codeSplitting: false}), undefined, [allInOne]);
 
