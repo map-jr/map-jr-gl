@@ -182,7 +182,15 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
         let grows = false;
         const progress: number[] | null = L.type === 'line' && L.ramp ? [] : null;
         const scalarProp = L.type === 'line' ? p.width : heat ? p.weight : L.type === 'circle' ? p.radius : null;
-        for (const f of vl.features) {
+        // A sort key puts the features of the layer in order: larger keys are drawn later, above the others.
+        let features = vl.features;
+        const sortKey = (L.type === 'fill' || L.type === 'line' || L.type === 'circle') && p.sortKey.dd ? p.sortKey : null;
+        if (sortKey) {
+            const keyed: {f: (typeof features)[number]; key: number; i: number}[] = [];
+            for (let i = 0; i < features.length; i++) keyed.push({f: features[i], key: +sortKey.eval(z, features[i]) || 0, i});
+            features = keyed.sort((a, b) => a.key - b.key || a.i - b.i).map(k => k.f);
+        }
+        for (const f of features) {
             // Circle and heatmap layers take any geometry: every vertex of a line or polygon is a point.
             if (kind === 'circle' ? false : want ? f.type !== want : f.type === 1) continue;
             ctx.f = f;

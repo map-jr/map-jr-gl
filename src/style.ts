@@ -10,21 +10,24 @@ export const isGeometrySource = (s: {type: string}) => s.type === 'vector' || s.
 const SPEC: Record<string, Record<string, [string, PropKind, any]>> = {
     background: {color: ['background-color', 'color', '#000'], opacity: ['background-opacity', 'number', 1], pattern: ['background-pattern', 'string', '']},
     fill: {color: ['fill-color', 'color', '#000'], opacity: ['fill-opacity', 'number', 1], outline: ['fill-outline-color', 'color', 'rgba(0,0,0,0)'], antialias: ['fill-antialias', 'raw', true], pattern: ['fill-pattern', 'string', ''],
+        translate: ['fill-translate', 'string', [0, 0]], translateAnchor: ['fill-translate-anchor', 'string', 'map'], sortKey: ['fill-sort-key', 'number', 0],
         layerOpacity: ['fill-layer-opacity', 'number', 1], layerBlend: ['fill-layer-blend', 'string', 'normal']},
     line: {
         color: ['line-color', 'color', '#000'], opacity: ['line-opacity', 'number', 1], width: ['line-width', 'number', 1],
         gap: ['line-gap-width', 'number', 0], pattern: ['line-pattern', 'string', ''], dash: ['line-dasharray', 'discrete', null], cap: ['line-cap', 'string', 'butt'], join: ['line-join', 'string', 'miter'],
         offset: ['line-offset', 'number', 0], blur: ['line-blur', 'number', 0],
+        translate: ['line-translate', 'string', [0, 0]], translateAnchor: ['line-translate-anchor', 'string', 'map'], sortKey: ['line-sort-key', 'number', 0],
         layerOpacity: ['line-layer-opacity', 'number', 1], layerBlend: ['line-layer-blend', 'string', 'normal'],
     },
     'fill-extrusion': {
         color: ['fill-extrusion-color', 'color', '#000'], opacity: ['fill-extrusion-opacity', 'number', 1],
         height: ['fill-extrusion-height', 'number', 0], base: ['fill-extrusion-base', 'number', 0],
+        translate: ['fill-extrusion-translate', 'string', [0, 0]], translateAnchor: ['fill-extrusion-translate-anchor', 'string', 'map'],
     },
     circle: {
         color: ['circle-color', 'color', '#000'], opacity: ['circle-opacity', 'number', 1], radius: ['circle-radius', 'number', 5],
         strokeColor: ['circle-stroke-color', 'color', '#000'], strokeWidth: ['circle-stroke-width', 'number', 0],
-        strokeOpacity: ['circle-stroke-opacity', 'number', 1], blur: ['circle-blur', 'number', 0], translate: ['circle-translate', 'string', [0, 0]],
+        strokeOpacity: ['circle-stroke-opacity', 'number', 1], blur: ['circle-blur', 'number', 0], translate: ['circle-translate', 'string', [0, 0]], sortKey: ['circle-sort-key', 'number', 0],
     },
     heatmap: {
         // (`color` and `opacity` are also read by the code shared with other layer types; a heatmap's colour is its ramp.)

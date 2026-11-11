@@ -184,6 +184,21 @@ export function compileExpr(e: any, flags: Flags): Fn {
     const args = (from = 1) => e.slice(from).map((x: any) => compileExpr(x, flags)) as Fn[];
     switch (op) {
         case 'literal': { const v = e[1]; return () => v; }
+        case 'collator': {
+            const o = e[1] ?? {}, caseFn = compileExpr(o['case-sensitive'] ?? false, flags), marks = compileExpr(o['diacritic-sensitive'] ?? false, flags), locale = compileExpr(o.locale ?? null, flags);
+            const made = new Map<string, Intl.Collator>();
+            return c => {
+                const cs = !!caseFn(c), ds = !!marks(c), lang = locale(c), key = `${cs}|${ds}|${lang}`;
+                let k = made.get(key);
+                if (!k) {
+                    const options: Intl.CollatorOptions = {sensitivity: cs ? (ds ? 'variant' : 'case') : ds ? 'accent' : 'base', usage: 'search'};
+                    try { k = new Intl.Collator(lang ?? undefined, options); } catch { k = new Intl.Collator(undefined, options); } // a language tag that the browser does not know
+                    made.set(key, k);
+                }
+                return k;
+            };
+        }
+        case 'resolved-locale': { const k = arg(1); return c => { const v = k(c); return v instanceof Intl.Collator ? v.resolvedOptions().locale : null; }; }
         case 'semiliteral': {
             // An array whose items can be expressions; other values are literals.
             const v = e[1];
@@ -221,6 +236,11 @@ export function compileExpr(e: any, flags: Flags): Fn {
         }
         case '==': case '!=': case '<': case '<=': case '>': case '>=': {
             const a = arg(1), b = arg(2), f = cmp[op];
+            if (e.length > 3) {
+                // With a collator, texts are compared by the rules of a language (for example, without case).
+                const collator = arg(3);
+                return c => { const x = a(c), y = b(c), k = collator(c); return k instanceof Intl.Collator && typeof x === 'string' && typeof y === 'string' ? f(k.compare(x, y), 0) : f(x, y); };
+            }
             return c => f(a(c), b(c));
         }
         case 'all': { const a = args(); return c => a.every(f => f(c)); }

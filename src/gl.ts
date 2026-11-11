@@ -780,6 +780,20 @@ export class GLRenderer {
                 continue;
             }
             let first = true;
+            // fill-translate, line-translate and fill-extrusion-translate move the layer by screen pixels. The anchor
+            // says if the direction turns with the map (the default) or stays fixed on the screen.
+            const tl = L.type === 'fill' || L.type === 'line' || L.type === 'fill-extrusion' ? L.p.translate.eval(zoom) as number[] | null : null;
+            let tx = tl?.[0] ?? 0, ty = tl?.[1] ?? 0;
+            if ((tx || ty) && L.p.translateAnchor.eval(zoom) === 'viewport') {
+                const a = -tr.bearing * Math.PI / 180, c = Math.cos(a), sn = Math.sin(a);
+                [tx, ty] = [tx * c + ty * sn, -tx * sn + ty * c];
+            }
+            const moved = (it: RenderItem<GLTile>) => {
+                if (!tx && !ty) return it.matrix4;
+                const m = Float32Array.from(it.matrix4), x = tx / it.scale, y = ty / it.scale;
+                for (let i = 0; i < 4; i++) m[12 + i] += m[i] * x + m[4 + i] * y;
+                return m;
+            };
             // Buildings are the one layer that needs depth sorting; everything else is painted back to front.
             const extrude = L.type === 'fill-extrusion', pending: (() => void)[] = [];
             if (extrude) {
@@ -790,7 +804,7 @@ export class GLRenderer {
             for (const it of items) {
                 const b = it.tile.batches[L.id];
                 if (!b) continue;
-                const u = use(b.type), m = it.matrix4;
+                const u = use(b.type), m = moved(it);
                 if (extrude) this.bindDem(u, s.terrain ? s.terrain.dem(it.id) : null, s.terrain?.exaggeration ?? 0, s.terrain ? s.tr.elevation : 0);
                 if (first) {
                     first = false;
@@ -874,7 +888,7 @@ export class GLRenderer {
                     gl.uniform4fv(u.u_color, col);
                     gl.uniform2f(u.u_world, target[0], target[1]);
                     gl.uniform1f(u.u_attr, b.color && !explicit ? 1 : 0);
-                    gl.uniformMatrix4fv(u.u_matrix, false, it.matrix4);
+                    gl.uniformMatrix4fv(u.u_matrix, false, moved(it));
                     gl.uniform4fv(u.u_clip, it.clip);
                     gl.bindVertexArray(b.edgeVao);
                     gl.drawElements(gl.LINES, b.edgeCount!, b.indexType, 0);
