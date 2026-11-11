@@ -237,6 +237,11 @@ These results are from an Apple M4 computer with Chrome 157. Each test moved the
 On an iPhone (Safari, iOS 27), 3D terrain is slower than MapLibre GL JS: 54 to 58 frames per second, compared
 with 60.
 
+Each change is also measured automatically in Chromium, Firefox and WebKit on Linux, macOS and Windows, next to
+MapLibre GL JS. The newest results are in the branch
+[`bench-results`](https://github.com/map-jr/map-jr-gl/tree/bench-results). Those computers are virtual machines,
+so use the results to compare the libraries, not as the speed of a real device.
+
 To run the benchmark on your computer, run `pnpm demo` and open `http://localhost:8080/bench`.
 
 ## Documents
