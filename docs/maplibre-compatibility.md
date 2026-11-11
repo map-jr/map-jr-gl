@@ -81,7 +81,8 @@ Properties:
 - `circle-pitch-alignment` and `circle-pitch-scale`
 - Circle stroke and blur that are different for each feature
 - `icon-halo-blur`. Icon halos are available for distance-field (SDF) icons.
-- `text-writing-mode`, `text-pitch-alignment`
+- `text-writing-mode`
+- `text-pitch-alignment` with a value other than `auto`. On a tilted map, text along a line lies on the ground and other text is upright, which is what `auto` gives in MapLibre GL JS.
 - `symbol-z-order` and `symbol-avoid-edges`
 - An icon together with text that follows a curved line. The text is drawn without the icon.
 - `vertical-align` in `format` text. Sizes, fonts, colours and images in `format` text are available. The SVG output of the server draws each line in one size.

@@ -1390,13 +1390,16 @@ export class GLRenderer {
         const B = SDF_BUFFER;
         // The state of the label in work. `glyph` reads it, so that no objects are made for each glyph.
         let hedge = 0, gamma = 0, haloGamma = 0, c0 = 0, c1 = 0, c2 = 0, c3 = 0, h0 = 0, h1 = 0, h2 = 0, h3 = 0;
-        /** One glyph: two triangles about the origin (ox, oy), turned by the angle whose cosine and sine are given. */
-        const glyph = (g: {x: number; y: number; w: number; h: number}, ox: number, oy: number, cos: number, sin: number, x0: number, y0: number, x1: number, y1: number) => {
+        /**
+         * One glyph: two triangles about the origin (ox, oy). (cos, sin) is where one pixel along the text goes on the
+         * screen, and (px, py) one pixel down the text: a turn by an angle, or the ground of a tilted map.
+         */
+        const glyph = (g: {x: number; y: number; w: number; h: number}, ox: number, oy: number, cos: number, sin: number, x0: number, y0: number, x1: number, y1: number, px = -sin, py = cos) => {
             for (let k = 0; k < 6; k++) {
                 const right = k === 1 || k === 3 || k === 4, low = k === 2 || k === 4 || k === 5;
                 const cx = right ? x1 : x0, cy = low ? y1 : y0, fi = o >> 2;
-                f[fi] = ox + cx * cos - cy * sin;
-                f[fi + 1] = oy + cx * sin + cy * cos;
+                f[fi] = ox + cx * cos + cy * px;
+                f[fi + 1] = oy + cx * sin + cy * py;
                 f[fi + 2] = right ? g.x + g.w : g.x;
                 f[fi + 3] = low ? g.y + g.h : g.y;
                 b[o + 16] = c0; b[o + 17] = c1; b[o + 18] = c2; b[o + 19] = c3;
@@ -1423,8 +1426,8 @@ export class GLRenderer {
                 for (let i = 0; i < glyphs.length; i++) {
                     const g = glyphs[i];
                     if (!g.w) continue;
-                    const k = s * (g.scale ?? 1), ga = curve[i * 3 + 2], x0 = (g.left - B) * k, y0 = (-g.top - B) * k;
-                    glyph(g, l.x + curve[i * 3], l.y + curve[i * 3 + 1], Math.cos(ga), Math.sin(ga), x0, y0, x0 + g.w * k, y0 + g.h * k);
+                    const k = s * (g.scale ?? 1), ga = curve[i * 3 + 2], x0 = (g.left - B) * k, y0 = (-g.top - B) * k, along = l.ground?.[i * 3] ?? 1;
+                    glyph(g, l.x + curve[i * 3], l.y + curve[i * 3 + 1], Math.cos(ga) * along, Math.sin(ga) * along, x0, y0, x0 + g.w * k, y0 + g.h * k, l.ground?.[i * 3 + 1], l.ground?.[i * 3 + 2]);
                 }
                 continue;
             }

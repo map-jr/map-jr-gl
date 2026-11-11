@@ -19,6 +19,10 @@ const VIEWS = [
     {name: 'world', center: [10, 30], zoom: 1.6}, {name: 'country', center: [10.4, 51.2], zoom: 5.3}, {name: 'city', center: [13.4, 52.52], zoom: 11.2},
     {name: 'streets', center: [-74.0065, 40.7085], zoom: 14.6}, {name: 'close', center: [13.4, 52.52], zoom: 17.4}, {name: 'tilted', center: [-74.0065, 40.7085], zoom: 15.7, pitch: 55, bearing: 30},
 ];
+// --only=<style>,<style> and --view=<view> draw a part of the set (the table in the document then is not written).
+const only = process.argv.find(a => a.startsWith('--only='))?.slice(7).split(','), oneView = process.argv.find(a => a.startsWith('--view='))?.slice(7);
+if (only) for (const name of Object.keys(STYLES)) if (!only.includes(name)) delete STYLES[name];
+if (oneView) VIEWS.splice(0, VIEWS.length, ...VIEWS.filter(v => v.name === oneView));
 mkdirSync(out, {recursive: true});
 const browser = await launch(), rows = [];
 for (const [styleName, style] of Object.entries(STYLES)) {
@@ -65,7 +69,7 @@ rows.sort((a, b) => b.diff - a.diff);
 writeFileSync(path.join(out, 'result.json'), JSON.stringify(rows, null, 1));
 for (const r of rows) console.log(`${String(r.diff).padStart(5)}%  ${r.style} ${r.view}  ${r.file}`);
 
-if (process.argv.includes('--write')) {
+if (process.argv.includes('--write') && !only && !oneView) {
     // One row for each style, one column for each view.
     const lines = ['<!-- styles:start -->', '## Public styles that were drawn', '',
         'These styles were drawn with MapLibre GL JS and with this library by `node test/conformance/styles.mjs --write`, at',

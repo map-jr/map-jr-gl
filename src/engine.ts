@@ -1117,12 +1117,16 @@ export class Engine {
                 // Text along a line turns with the map between placements; otherwise it would hold its old angle and
                 // then snap, which reads as rocking while the map rotates.
                 const ox = p.x - p.ax, oy = p.y - p.ay;
-                let curve = p.curve;
+                let curve = p.curve, ground = p.ground;
                 if (curve) {
                     curve = curve.slice();
                     for (let i = 0; i < curve.length; i += 3) { const cx = curve[i], cy = curve[i + 1]; curve[i] = cx * tc - cy * ts; curve[i + 1] = cx * ts + cy * tc; curve[i + 2] += turn; }
                 }
-                labels.push({...p, x: ax + ox * tc - oy * ts, y: ay + ox * ts + oy * tc, angle: p.angle + turn, curve, opacity: st.opacity,
+                if (ground) {
+                    ground = ground.slice();
+                    for (let i = 0; i < ground.length; i += 3) { const cx = ground[i + 1], cy = ground[i + 2]; ground[i + 1] = cx * tc - cy * ts; ground[i + 2] = cx * ts + cy * tc; }
+                }
+                labels.push({...p, x: ax + ox * tc - oy * ts, y: ay + ox * ts + oy * tc, angle: p.angle + turn, curve, ground, opacity: st.opacity,
                     icon: p.icon && {...p.icon, x: ax + (p.icon.x - p.ax) * tc - (p.icon.y - p.ay) * ts, y: ay + (p.icon.x - p.ax) * ts + (p.icon.y - p.ay) * tc, angle: p.icon.angle + turn}});
                 continue;
             }

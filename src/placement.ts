@@ -45,6 +45,11 @@ export interface Placed {
     alpha?: number;
     /** Text following a line: for each glyph, where its baseline starts relative to the label's anchor, and its rotation (x, y, angle triples). */
     curve?: number[];
+    /**
+     * Text following a line on a tilted map lies on the ground. For each glyph: the length on the screen of one pixel of
+     * text along the line, and the direction on the screen of one pixel of text across it (scale, x, y triples).
+     */
+    ground?: number[];
     /** Identity that survives between placements (and between a tile and its parent), for fading. */
     key: string;
     tile: TileID;
@@ -136,7 +141,9 @@ export function placeLabels(
                         anchor.includes('top') ? h / 2 + r : anchor.includes('bottom') ? -h / 2 - r : 0];
                     if (line && !l.upright && l.path && shaped!.lines.length === 1 && shaped!.lines[0].chars.length > 1) {
                         // Follow the line: each glyph sits on the path at its own distance from the anchor, turned to the path's direction.
-                        const curved = followLine(tr, it, l, shaped!.lines[0], s, ax, ay, w, h, grid);
+                        // (On a tilted map the text lies on the ground, and the ground gives it the whole perspective. As in MapLibre,
+                        // its size on the ground takes half of that away again, so far text stays readable.)
+                        const curved = followLine(tr, it, l, shaped!.lines[0], s, ax, ay, w, h, grid, tr.pitch ? s / persp / persp : 0);
                         if (!curved) continue;
                         const prev = seen.get(l.text);
                         if (prev) { let dup = false; for (let i = 0; i < prev.length && !dup; i += 3) dup = Math.hypot(prev[i] - ax, prev[i + 1] - ay) < 300; if (dup) continue; }
@@ -145,7 +152,7 @@ export function placeLabels(
                         if (prev) prev.push(ax, ay, itemNo); else seen.set(l.text, [ax, ay, itemNo]);
                         const n = 2 ** it.id.z, q = 2 ** 22;
                         const key = `${L.id}|${l.text}||${Math.round((it.id.x + l.x / EXTENT) / n * q)},${Math.round((it.id.y + l.y / EXTENT) / n * q)},${it.id.w}`;
-                        out.push({x: ax, y: ay, angle: 0, size, shaped, src: l, curve: curved.curve, key, tile: it.id, ax, ay, opacity: 1, alpha});
+                        out.push({x: ax, y: ay, angle: 0, size: curved.ground ? size / persp / persp : size, shaped, src: l, curve: curved.curve, ground: curved.ground, key, tile: it.id, ax, ay, opacity: 1, alpha});
                         continue;
                     }
                     if (line && !l.upright) {
@@ -272,36 +279,47 @@ export function placeLabels(
  * collision boxes, or null when the text does not fit or the line bends too sharply to read.
  */
 function followLine(
-    tr: Transform, it: RenderItem<unknown>, l: LabelSrc, line: {advances: number[]}, s: number, ax: number, ay: number, w: number, h: number, _grid: CollisionGrid,
-): {curve: number[]; boxes: Box[]} | null {
+    tr: Transform, it: RenderItem<unknown>, l: LabelSrc, line: {advances: number[]}, s: number, ax: number, ay: number, w: number, h: number, _grid: CollisionGrid, flat = 0,
+): {curve: number[]; ground?: number[]; boxes: Box[]} | null {
     const path = l.path!, n = path.length / 2;
-    let xs: number[] = [], ys: number[] = [];
-    for (let i = 0; i < n; i++) { const [x, y] = tr.projectTile(it.id, path[i * 2], path[i * 2 + 1]); xs.push(x); ys.push(y); }
+    // The points of the line: on the screen, and in the tile (for lengths on the ground).
+    let xs: number[] = [], ys: number[] = [], us: number[] = [], vs: number[] = [];
+    for (let i = 0; i < n; i++) { const u = path[i * 2], v = path[i * 2 + 1], [x, y] = tr.projectTile(it.id, u, v); xs.push(x); ys.push(y); us.push(u); vs.push(v); }
     let anchorIndex = l.pathIndex!;
     // Text should read left to right: run the path in whichever direction heads rightwards overall.
-    if (xs[n - 1] < xs[0]) { xs = xs.reverse(); ys = ys.reverse(); anchorIndex = n - 1 - anchorIndex; }
-    const cum = [0];
-    for (let i = 1; i < n; i++) cum.push(cum[i - 1] + Math.hypot(xs[i] - xs[i - 1], ys[i] - ys[i - 1]));
+    if (xs[n - 1] < xs[0]) { xs = xs.reverse(); ys = ys.reverse(); us = us.reverse(); vs = vs.reverse(); anchorIndex = n - 1 - anchorIndex; }
+    // Distances along the line. Flat text is measured on the ground, in pixels of the map without tilt: each glyph then
+    // takes the length on the screen that its piece of ground has.
+    const cum = [0], k = flat && it.scale, size = flat || s;
+    for (let i = 1; i < n; i++) cum.push(cum[i - 1] + (k ? Math.hypot(us[i] - us[i - 1], vs[i] - vs[i - 1]) * k : Math.hypot(xs[i] - xs[i - 1], ys[i] - ys[i - 1])));
+    w *= size / s;
     const start = cum[anchorIndex] - w / 2;
     if (start < 0 || start + w > cum[n - 1]) return null; // not enough line for the text at this zoom
-    const spacing = l.spacing * EM * s, shift = (l.offset[1] + BASELINE) * EM * s; // drop the baseline so the text is centred on the line
-    const curve: number[] = [], boxes: Box[] = [];
-    let seg = 1, pen = start, last = NaN;
+    const spacing = l.spacing * EM * size, shift = (l.offset[1] + BASELINE) * EM * size; // drop the baseline so the text is centred on the line
+    const curve: number[] = [], boxes: Box[] = [], ground: number[] = [];
+    let seg = 1, pen = start, last = NaN, across = 0, bx = 0, by = 0;
     for (const advance of line.advances) {
-        const a = advance * s, mid = pen + a / 2;
+        const a = advance * size, mid = pen + a / 2;
         while (seg < n - 1 && cum[seg] < mid) seg++;
         const len = cum[seg] - cum[seg - 1] || 1, dx = (xs[seg] - xs[seg - 1]) / len, dy = (ys[seg] - ys[seg - 1]) / len, angle = Math.atan2(dy, dx);
         // A sharp bend inside the text makes it unreadable. The limit is `text-max-angle`: 45 degrees by default,
         // for which a turn of 0.6 radians between neighbours gives the results nearest to MapLibre's.
         if (!Number.isNaN(last)) { let d = angle - last; d = Math.atan2(Math.sin(d), Math.cos(d)); if (Math.abs(d) > 0.6 * (l.maxAngle ?? 45) / 45) return null; }
         last = angle;
+        if (!k) { bx = -dy; by = dx; }
+        else if (across !== seg) {
+            // Where a step across the line on the ground goes on the screen (found once for each piece of the line).
+            const [qx, qy] = tr.projectTile(it.id, us[seg - 1] - (vs[seg] - vs[seg - 1]) * k / len * 64, vs[seg - 1] + (us[seg] - us[seg - 1]) * k / len * 64);
+            bx = (qx - xs[seg - 1]) / k / 64; by = (qy - ys[seg - 1]) / k / 64; across = seg;
+        }
         const t = mid - cum[seg - 1], cx = xs[seg - 1] + dx * t, cy = ys[seg - 1] + dy * t;
-        curve.push(cx - dx * a / 2 - dy * shift - ax, cy - dy * a / 2 + dx * shift - ay, angle);
+        curve.push(cx - dx * a / 2 + bx * shift - ax, cy - dy * a / 2 + by * shift - ay, angle);
+        if (k) ground.push(Math.hypot(dx, dy), bx, by);
         const r = h / 2 + l.padding;
         boxes.push([cx - r, cy - r, cx + r, cy + r]);
         pen += a + spacing;
     }
-    return {curve, boxes};
+    return {curve, ground: k ? ground : undefined, boxes};
 }
 
 export const FULL_CLIP: [number, number, number, number] = [0, 0, EXTENT, EXTENT];

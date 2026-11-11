@@ -44,15 +44,15 @@ many labels. A larger number shows something that the library draws wrongly or n
 
 | Style | world | country | city | streets | close | tilted |
 |---|---|---|---|---|---|---|
-| [liberty](https://tiles.openfreemap.org/styles/liberty) | 3.4 | 2.8 | 2.5 | 5.9 | 1.1 | 6 |
-| [bright](https://tiles.openfreemap.org/styles/bright) | 3.3 | 2.7 | 2.5 | 5.5 | 1 | 6.9 |
-| [positron](https://tiles.openfreemap.org/styles/positron) | 3.3 | 2.7 | 2.4 | 2.5 | 0.7 | 4.6 |
-| [versatiles](https://tiles.versatiles.org/assets/styles/colorful/style.json) | 0 | 4.1 | 2.6 | 4.3 | 0.6 | 4.8 |
+| [liberty](https://tiles.openfreemap.org/styles/liberty) | 3.4 | 2.8 | 2.5 | 5.9 | 1.1 | 5.2 |
+| [bright](https://tiles.openfreemap.org/styles/bright) | 3.3 | 2.7 | 2.5 | 5.5 | 1 | 5.6 |
+| [positron](https://tiles.openfreemap.org/styles/positron) | 3.3 | 2.7 | 2.4 | 2.5 | 0.7 | 3.5 |
+| [versatiles](https://tiles.versatiles.org/assets/styles/colorful/style.json) | 0 | 4.1 | 2.6 | 4.3 | 0.6 | 4 |
 | [demotiles](https://demotiles.maplibre.org/style.json) | 0.7 | 0.6 | 0 | 0 | 0 | 0 |
-| [voyager](https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json) | 0 | 1 | 0.4 | 1.2 | 0.4 | 2.2 |
-| [darkmatter](https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json) | 0 | 1.1 | 0.4 | 1.3 | 0.3 | 1.4 |
-| [dark](https://tiles.openfreemap.org/styles/dark) | 1.7 | 1.6 | 1 | 0.8 | 0.1 | 1.1 |
-| [shortbread](https://vector.openstreetmap.org/styles/shortbread/colorful.json) | 0 | 4 | 2.8 | 4 | 0.3 | 4.8 |
+| [voyager](https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json) | 0 | 1 | 0.4 | 1.2 | 0.4 | 2 |
+| [darkmatter](https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json) | 0 | 1.1 | 0.4 | 1.3 | 0.3 | 1 |
+| [dark](https://tiles.openfreemap.org/styles/dark) | 1.7 | 1.6 | 1 | 0.8 | 0.1 | 0.9 |
+| [shortbread](https://vector.openstreetmap.org/styles/shortbread/colorful.json) | 0 | 4 | 2.8 | 4 | 0.3 | 3.8 |
 
 The views: world (zoom 1.6), country (zoom 5.3), city (zoom 11.2), streets (zoom 14.6), close (zoom 17.4), tilted (zoom 15.7, tilted).
 <!-- styles:end -->
