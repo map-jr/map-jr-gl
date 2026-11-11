@@ -4,7 +4,14 @@ const out = process.argv[2];
 const browser = await launch();
 let failed = 0, mainFrames = 0;
 const check = (name, ok, detail = '') => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${name} ${detail}`); if (!ok) failed++; };
-const settle = (page) => page.waitForFunction(() => !window.map.isMoving(), null, {polling: 100}).then(() => page.waitForTimeout(150));
+// The map is settled when it does not move and the camera has been the same for a quarter of a second. (A browser
+// can report that the mouse was released before the page has handled the events, so `isMoving()` alone can be
+// false before a drag and its inertia have started.)
+const settle = (page) => page.waitForFunction(() => {
+    const m = window.map, c = m.getCenter(), pose = [c.lng, c.lat, m.getZoom(), m.getBearing(), m.getPitch(), m.isMoving()].join();
+    if (pose !== window.settlePose) { window.settlePose = pose; window.settleAt = performance.now(); }
+    return !m.isMoving() && performance.now() - window.settleAt > 250;
+}, null, {polling: 50});
 const idle = (page) => page.waitForFunction(() => window.map.areTilesLoaded() && !window.map.isMoving(), null, {polling: 50, timeout: 30000});
 
 for (const mode of ['main', 'worker']) {
@@ -20,6 +27,7 @@ for (const mode of ['main', 'worker']) {
     // Drag pan: the point under the cursor should follow it.
     const before = await page.evaluate(() => window.map.getCenter());
     await page.mouse.move(500, 350); await page.mouse.down(); await page.mouse.move(400, 300, {steps: 8}); await page.mouse.up();
+    await page.waitForFunction(b => window.map.getCenter().lng !== b.lng, before, {timeout: 5000}).catch(() => {}); // the drag has reached the page
     await settle(page);
     const after = await page.evaluate(() => window.map.getCenter());
     check(`[${mode}] drag pans east and south`, after.lng > before.lng && after.lat < before.lat, `Δlng=${(after.lng - before.lng).toFixed(5)} Δlat=${(after.lat - before.lat).toFixed(5)}`);
