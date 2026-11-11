@@ -187,6 +187,59 @@ Not checked in the trial:
   and its CSS 10 KB; the entry for MapLibre code is 28 KB on the page and 58 KB for the worker.
 - Any device. The pages ran in Chromium with software WebGL only.
 
+## Font glyphs from the style (`glyphs`): investigation
+
+The owner asked to investigate support for the font glyphs of a style, in the entry for MapLibre code and possibly
+in the main entry.
+
+**How text works now.** The engine draws each glyph with the 2D canvas of the browser, from a font of the device or
+a web font (the options `fonts` and `fontFamily`), and makes a distance field from that image (`GlyphAtlas` in
+`src/text.ts`). The `glyphs` URL of the style is not used. The names in `text-font` select only the weight and the
+slant.
+
+**What this costs.** The typeface is not the one that the style names, unless the page gives the font files with
+`fonts`. The widths of the glyphs differ from MapLibre's, so line breaks and collisions differ a little. The look
+differs between devices. In the trial, the project's style names Open Sans and the map showed another sans-serif.
+
+**What support needs.**
+
+1. A reader for the glyph files (protobuf: for each glyph an id, a 24-pixel distance field with a border of 3, and
+   its metrics). The library has a protobuf reader for vector tiles already.
+2. A third shaper beside the two that exist (`GlyphAtlas`, `EstimateShaper`): it takes the metrics and the distance
+   fields from the files. The files come 256 characters at a time for each font stack, so a label waits for its
+   ranges and is placed again when they arrive.
+3. The halo and fill shaders stay: they read a distance field already. The scale of the field differs (radius 8 at
+   24 pixels), which is one constant for each atlas.
+4. Characters that the files do not have (most CJK text) keep the present method, as MapLibre does with
+   `localIdeographFontFamily`.
+
+**Estimate of size:** about 1.5 KB gzip. It can be a file that loads on demand, so a map that does not use it does
+not pay.
+
+**Recommendation.**
+
+- Entry for MapLibre code: on by default when the style has `glyphs`. The goal of that entry is the same result
+  as MapLibre, and text is the largest visible difference that remains. Many render tests of text are "close" and
+  not "match" for this reason only.
+- Main entry: off by default, on with an option (for example `text: 'glyphs'`). The default stays the fonts of
+  the device: no requests for fonts, and labels show at once.
+- Not started. Say if you want it.
+
+## Markers of the entry for MapLibre code lag behind the map (worker renderer)
+
+A `Marker` is an HTML element on the page. The camera moves in the engine, which is in a worker. The page learns the
+new camera from a message after the frame, so the element moves one or two frames after the canvas. There is no lag
+when the engine is on the main thread (`renderer: 'main'`), and none for the markers of the main entry (`markers`),
+which the engine draws.
+
+Ways to remove the lag in the entry for MapLibre code, not done:
+
+1. The engine draws the default pin of a `Marker` that has no element of its own. The page keeps a transparent
+   element in its place for clicks and drags. This is exact, and it covers the usual case.
+2. For a drag with the pointer, the page can work out the new camera itself before the engine answers. The element
+   is then at most one frame ahead of the map and not behind it. This does not help for movements that the engine
+   makes (a fling, `easeTo`).
+
 ## Size budgets
 
 | Decision | Reason | To change it |
