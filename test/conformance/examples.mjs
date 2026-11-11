@@ -29,8 +29,10 @@ const server = http.createServer((req, res) => {
             if (page[1] === 'mapjr') html = html.replace(/<link[^>]*maplibre-gl\.css[^>]*>/g, '');
             return send(html, 'text/html');
         }
-        if (p === '/maplibre/dist/maplibre-gl-dev.mjs') return send(`export * from '/ml/maplibre-gl.mjs';\nimport {setWorkerUrl} from '/ml/maplibre-gl.mjs';\nsetWorkerUrl('/ml/maplibre-gl-worker.mjs');`, 'text/javascript');
-        if (p === '/mapjr/dist/maplibre-gl-dev.mjs') return send(`export * from '/dist/map-jr-gl.js';\nexport {default} from '/dist/map-jr-gl.js';`, 'text/javascript');
+        // (The map of the page is kept in `window.shownMap`, so that the runner can wait until it has loaded.)
+        const keep = lib => `import * as lib from '${lib}';\nexport * from '${lib}';\nexport class Map extends lib.Map { constructor(options) { super(options); window.shownMap = this; } }\n`;
+        if (p === '/maplibre/dist/maplibre-gl-dev.mjs') return send(keep('/ml/maplibre-gl.mjs') + `lib.setWorkerUrl('/ml/maplibre-gl-worker.mjs');`, 'text/javascript');
+        if (p === '/mapjr/dist/maplibre-gl-dev.mjs') return send(keep('/dist/map-jr-gl.js') + `export {default} from '/dist/map-jr-gl.js';`, 'text/javascript');
         const file = p.startsWith('/ml/') ? path.join(root, 'node_modules/maplibre-gl/dist', p.slice(4)) : p.startsWith('/dist/') ? path.join(root, p)
             : /^\/(maplibre|mapjr)\/dist\/maplibre-gl\.css$/.test(p) ? path.join(root, 'node_modules/maplibre-gl/dist/maplibre-gl.css')
             : path.join(root, '.cache/maplibre-gl-js', p.replace(/^\/(maplibre|mapjr)\//, '')); // other files of the repository that a page uses
@@ -50,13 +52,16 @@ async function shoot(context, name, variant) {
     try {
         await page.goto(`${origin}/${variant}/test/examples/${name}.html`, {waitUntil: 'load', timeout: 30000});
         await page.waitForLoadState('networkidle', {timeout: 15000}).catch(() => {});
-        await page.waitForTimeout(3500);
+        // The map has loaded, all its tiles are there and it does not move. (A page that animates the map never gets
+        // there: its image is taken after the time limit.)
+        await page.waitForFunction(() => { const m = window.shownMap; return m && m.loaded() && m.areTilesLoaded() && !m.isMoving(); }, null, {timeout: 20000, polling: 250}).catch(() => {});
+        await page.waitForTimeout(2500);
         await page.screenshot({path: file});
     } catch (e) { errors.push('the page did not load: ' + String(e.message).split('\n')[0]); }
     await page.close();
     return {file: existsSync(file) ? file : null, errors: [...new Set(errors)]};
 }
-await Promise.all(Array.from({length: 4}, async () => {
+await Promise.all(Array.from({length: 2}, async () => {
     const context = await browser.newContext({viewport: {width: 800, height: 500}});
     for (let name; (name = queue.shift());) {
         const theirs = await shoot(context, name, 'maplibre'), ours = await shoot(context, name, 'mapjr');

@@ -13,7 +13,9 @@ export function removeProtocol(name: string) { protocols.delete(name); for (cons
 
 /** The data that a protocol returned, as bytes: tiles come as buffers, and JSON as objects or text. */
 export function toBytes(data: unknown): ArrayBuffer {
-    if (data instanceof ArrayBuffer) return data;
+    // (A copy: the bytes go to a worker, and the buffer of the protocol must stay whole. A protocol can give the same
+    // buffer for two requests, or keep it.)
+    if (data instanceof ArrayBuffer) return data.slice(0);
     if (ArrayBuffer.isView(data)) return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
     return new TextEncoder().encode(typeof data === 'string' ? data : JSON.stringify(data)).buffer as ArrayBuffer;
 }

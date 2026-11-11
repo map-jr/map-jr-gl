@@ -731,6 +731,8 @@ export class Map {
     /** The source's specification. GeoJSON sources also get MapLibre's `setData(data)` to replace their contents. */
     getSource(id: string) {
         const spec = this.rawStyle?.sources[id];
+        // An image source can get another image or other corners, as in MapLibre.
+        if (spec?.type === 'image') return {...spec, id, updateImage: (o: {url?: string; coordinates?: unknown}) => this.editStyle(() => { Object.assign(spec, o); }), setCoordinates: (coordinates: unknown) => this.editStyle(() => { spec.coordinates = coordinates; })};
         if (!spec || spec.type !== 'geojson') return spec;
         const clusters = async () => {
             const index = (await this.clusterIndex(id)).clusters;

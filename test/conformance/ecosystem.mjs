@@ -117,7 +117,7 @@ console.log(`${ready} of ${read} packages use only API that this library has.`);
 for (const kind of ['exports', 'methods', 'events']) console.log(`Missing ${kind}: ${top(kind).map(([n, who]) => `${n} (${who.length})`).join(', ')}`);
 if (process.argv.includes('--write')) {
     // The results of the plugins that were run (written by plugins.mjs) stay in the document.
-    const file = path.join(root, 'docs/ecosystem.md'), ran = existsSync(file) ? /<!-- plugins:start -->[\s\S]*<!-- (styles|plugins):end -->/.exec(readFileSync(file, 'utf8'))?.[0] : undefined;
+    const file = path.join(root, 'docs/ecosystem.md'), ran = existsSync(file) ? /<!-- plugins:start -->[\s\S]*<!-- (examples|styles|plugins):end -->/.exec(readFileSync(file, 'utf8'))?.[0] : undefined;
     const at = lines.indexOf('## What is missing most often');
     if (ran) lines.splice(at, 0, ran, '');
     writeFileSync(file, lines.join('\n'));

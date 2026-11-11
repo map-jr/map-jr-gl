@@ -170,8 +170,10 @@ export class PortBackend implements TileBackend {
     constructor(private port: Port) {
         port.onmessage = e => {
             // The worker asks about a request: pass the question on, and the answer back.
+            // (The answer can carry the number that the engine gave the question. The worker must get its own number back:
+            // each worker counts its questions separately.)
             if (e.data.type === 'resource') {
-                this.ask?.(e.data.url, e.data.kind).then(a => a, (err): RequestAnswer => ({error: String(err.message)})).then(a => port.postMessage({type: 'resourceResult', id: e.data.id, ...a}, a.data ? [a.data] : []));
+                this.ask?.(e.data.url, e.data.kind).then(a => a, (err): RequestAnswer => ({error: String(err.message)})).then(a => port.postMessage({...a, type: 'resourceResult', id: e.data.id}, a.data ? [a.data] : []));
                 return;
             }
             const p = this.pending.get(e.data.id);

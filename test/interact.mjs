@@ -39,14 +39,6 @@ for (const mode of ['main', 'worker']) {
     const after = await page.evaluate(() => window.map.getCenter());
     check(`[${mode}] drag pans east and south`, after.lng > before.lng && after.lat < before.lat, `Δlng=${(after.lng - before.lng).toFixed(5)} Δlat=${(after.lat - before.lat).toFixed(5)}`);
 
-    // A drag that ends with a very small movement gives a glide that is over in less than one frame. The map must
-    // still report the end of the movement.
-    await page.mouse.move(500, 350); await page.mouse.down(); await page.mouse.move(470, 340, {steps: 4}); await page.waitForTimeout(120);
-    await page.mouse.move(471, 340); await page.mouse.up();
-    const ended = await page.waitForFunction(() => !window.map.isMoving(), null, {timeout: 4000}).then(() => true, () => false);
-    check(`[${mode}] a drag with a very short glide ends (isMoving is false again)`, ended);
-    await settle(page);
-
     // Wheel zoom keeps the location under the cursor fixed.
     const anchor = await page.evaluate(() => window.map.unproject({x: 700, y: 200}));
     // (What the browser reports for the wheel is kept: browsers differ here, and a failure then explains itself.)
@@ -59,6 +51,14 @@ for (const mode of ['main', 'worker']) {
     const z = await page.evaluate(() => window.map.getZoom());
     const p = await page.evaluate(a => window.map.project(a), anchor);
     check(`[${mode}] wheel zooms in around cursor`, z > 14.6 && Math.hypot(p.x - 700, p.y - 200) < 1.5, `zoom=${z.toFixed(2)} drift=${Math.hypot(p.x - 700, p.y - 200).toFixed(2)}px at ${p.x.toFixed(0)},${p.y.toFixed(0)}; before the wheel the place was at ${beforeWheel}; wheel events (x/y/deltaY/mode/ctrl): ${(await page.evaluate(() => window.wheels.slice(0, 4))).join(' ')}`);
+
+    // A drag that ends with a very small movement gives a glide that is over in less than one frame. The map must
+    // still report the end of the movement.
+    await page.mouse.move(500, 350); await page.mouse.down(); await page.mouse.move(470, 340, {steps: 4}); await page.waitForTimeout(120);
+    await page.mouse.move(470.6, 340); await page.mouse.move(471.2, 340); await page.mouse.up();
+    const ended = await page.waitForFunction(() => !window.map.isMoving(), null, {timeout: 4000}).then(() => true, () => false);
+    check(`[${mode}] a drag with a very short glide ends (isMoving is false again)`, ended);
+    await settle(page);
 
     // Read-after-write is immediate even when the engine lives in a worker.
     const sync = await page.evaluate(() => { window.map.jumpTo({center: [-74.0065, 40.7085], zoom: 14.3, bearing: 0}); return [window.map.getZoom(), window.map.getCenter().lng]; });
@@ -398,14 +398,18 @@ for (const mode of ['main', 'worker']) {
         m.jumpTo({center: [c.lng + 0.3, c.lat + 0.2]}); // a place with tiles that are not loaded, so that tile requests go through the transform
         let found = [];
         for (let i = 0; i < 50 && !kinds.has('Tile'); i++) await new Promise(r => setTimeout(r, 100));
+        // Each tile of the new place must arrive. (The tile workers ask the page about each request. With more than one
+        // worker, an answer went back with the wrong number, and some tiles never finished.)
+        let arrived = false;
+        for (let i = 0; i < 100 && !arrived; i++) { await new Promise(r => setTimeout(r, 100)); arrived = m.areTilesLoaded(); }
         m.jumpTo({center: c});
         for (let i = 0; i < 50 && !found.length; i++) { await new Promise(r => setTimeout(r, 100)); found = await m.queryRenderedFeatures({layers: ['made']}); }
         const tiles = performance.getEntriesByType('resource').filter(e => e.name.includes('seen=1')).length;
         m.removeLayer('made'); m.removeSource('made'); m.setTransformRequest(null); mod.removeProtocol('made');
-        return {from: found[0]?.properties.from, kinds: [...kinds].sort(), tiles};
+        return {from: found[0]?.properties.from, kinds: [...kinds].sort(), tiles, arrived};
     });
-    check(`[${mode}] transformRequest changes tile requests made in workers, and addProtocol supplies data for a URL`,
-        requests.from === 'made://point?seen=1' && requests.kinds.includes('Tile') && requests.kinds.includes('Source'), JSON.stringify(requests));
+    check(`[${mode}] transformRequest changes tile requests made in workers (each tile arrives), and addProtocol supplies data for a URL`,
+        requests.from === 'made://point?seen=1' && requests.kinds.includes('Tile') && requests.kinds.includes('Source') && requests.arrived, JSON.stringify(requests));
 
     // A lost WebGL context (phones take it away to save memory): the map starts again with the same view and data.
     // The context can only be reached from the page when the engine is on the main thread.

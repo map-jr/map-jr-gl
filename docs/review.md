@@ -3,6 +3,21 @@
 This document lists decisions that were made without the owner, for a later review. Each entry says what was
 decided, why, and how to change it.
 
+## Start here
+
+Decisions that wait for you:
+
+1. **The renderer in Safari** (worker or main thread). See [the section below](#a-decision-for-the-owner-the-renderer-in-safari). The newer measurements make the worker a better default than before.
+2. **Methods that are accepted but have no effect**, for framework wrappers. See [the proposal below](#a-proposal-methods-that-are-accepted-but-have-no-effect). `getSky()` was added without your decision, because react-map-gl does not work without it.
+3. **The worker is at its budget** (58.0 KB of 58 KB). Each new feature now needs bytes from another place. Two build steps already shorten names (private members, shader variables). A third step can shorten the names of the fields that the tile workers and the engine send to each other. It was not done: it needs the types of the compiler to be safe, and the compiler in use (TypeScript 7) does not give them to a script.
+4. **The budget of the engine for the main thread** went from 54 KB to 55 KB when the PMTiles reader left the page script. See [Size budgets](#size-budgets).
+
+To try on your iPhone, because the test machines cannot show it:
+
+1. The terrain example in the gallery: pan to new ground and zoom. A tilted terrain view now loads about half of the tiles that it loaded before, and each ground image is drawn once.
+2. A tilted street map: road names now lie on the ground.
+3. A drag with a slow release: `moveend` now fires each time.
+
 ## Size budgets
 
 | Decision | Reason | To change it |
@@ -128,6 +143,9 @@ which are corrected:
 | The page "Display and style rich text labels" stopped with an exception: it changes a layer that the style does not have. MapLibre GL JS gives an `error` event for that and continues. | `setLayoutProperty`, `setPaintProperty`, `setFilter`, `moveLayer` and `removeLayer` give an `error` event for a layer that does not exist. |
 | After a change of the style, raster and elevation tiles were sent to be built again as vector tiles. That gave errors such as "Unsupported protobuf wire type 4" (the pages with contour lines and with satellite images). | Only tiles of geometry are built again. |
 | The page "Add a WMS source" drew no tiles: its tile URL has `{bbox-epsg-3857}`, which the library did not fill in. | The library fills it in with the edges of the tile in Web Mercator metres. |
+| With `addProtocol` or `transformRequest`, some tiles never finished loading. Each tile worker asks the page about a request and counts its questions separately; the answer went back with the number of the engine. With one tile worker the numbers are the same, so the tests (which use one) did not show it. The page "Add contour lines" (the plugin maplibre-contour) showed it. | Each worker gets its own number back. A browser test with the usual number of workers checks that each tile arrives. |
+| A protocol can give its data in a buffer that is larger than the data (zeros after the end), and can give the same buffer two times. The library read past the end of a vector tile, and it took the buffer away from the protocol when it sent the bytes to a worker. | The reader of vector tiles stops at the zeros. The page sends a copy of the buffer. |
+| The page "Animate a series of images" calls `updateImage` on an image source. | Image sources have `updateImage` and `setCoordinates`. |
 | The view could go past the top or the bottom of the world (a map at zoom 0 with a centre at 32 degrees north showed an empty band above the Arctic). | The centre is limited so that the view stays inside the world, as in MapLibre GL JS. |
 | With a steep tilt, the ground at the map centre was drawn with the style of the zoom level below that of the map: layers that start at the zoom of the map were missing there. | Each ground image uses the style of the zoom level of the map. |
 

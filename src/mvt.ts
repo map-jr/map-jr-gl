@@ -148,6 +148,8 @@ export function decodeVectorTile(bytes: Uint8Array): Record<string, VTLayer> {
     const layers: Record<string, VTLayer> = {};
     while (p.pos < p.end) {
         const tag = p.varint();
+        // (Some programs give a tile in a larger buffer, with zeros after its end. No field has the number 0.)
+        if (!tag) break;
         if (tag >> 3 === 3) {
             const l = new VTLayer(p.sub());
             if (l.features.length) layers[l.name] = l;
