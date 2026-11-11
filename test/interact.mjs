@@ -503,7 +503,14 @@ for (const mode of ['main', 'worker']) {
         m.jumpTo({pitch: 0});
         return {...out, off: m.getTerrain(), flat};
     });
-    check(`[${mode}] 3D terrain turns on and off, keeping the map centre in the middle`, terrain.on === 'dem' && terrain.off === null && terrain.loaded && terrain.lift > 30 && terrain.roundTrip < 1 && Math.abs(terrain.centre.x - terrain.mid[0]) < 0.5 && Math.abs(terrain.centre.y - terrain.mid[1]) < 0.5, JSON.stringify(terrain));
+    // Elevation tiles are decoded in the tile workers, which needs OffscreenCanvas there. Safari before 16.4 and the
+    // WebKit build for Windows do not have it: the map then has no heights, and these two tests have nothing to test.
+    const decodes = await page.evaluate(() => new Promise(resolve => {
+        const w = new Worker(URL.createObjectURL(new Blob(['postMessage(typeof OffscreenCanvas !== "undefined" && typeof createImageBitmap !== "undefined")'])));
+        w.onmessage = e => resolve(e.data); w.onerror = () => resolve(false);
+    }));
+    if (!decodes) console.log(`INFO  [${mode}] not tested in this browser (no OffscreenCanvas in workers): 3D terrain heights, relief shading`);
+    else check(`[${mode}] 3D terrain turns on and off, keeping the map centre in the middle`, terrain.on === 'dem' && terrain.off === null && terrain.loaded && terrain.lift > 30 && terrain.roundTrip < 1 && Math.abs(terrain.centre.x - terrain.mid[0]) < 0.5 && Math.abs(terrain.centre.y - terrain.mid[1]) < 0.5, JSON.stringify(terrain));
     await page.screenshot({path: `${out}/terrain-${mode}.png`});
     // The `hash` option: the fragment of the URL gives the camera at the start, a movement writes it, and a change of the
     // fragment moves the map.
@@ -541,7 +548,7 @@ for (const mode of ['main', 'worker']) {
         m.removeLayer('test-relief');
         return seen;
     });
-    check(`[${mode}] image tiles are not built again as geometry`, imageErrors.length === 0, imageErrors.slice(0, 2).join(' | '));
+    if (decodes) check(`[${mode}] image tiles are not built again as geometry`, imageErrors.length === 0, imageErrors.slice(0, 2).join(' | '));
     check(`[${mode}] no page errors`, errors.length === 0, errors.slice(0, 3).join(' | '));
     await page.close();
   } catch (err) {
