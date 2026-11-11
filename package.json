@@ -16,7 +16,7 @@
     "test:browser": "node test/interact.mjs .cache/shots",
     "bench": "node test/bench/compare.mjs",
     "test:loading": "node test/loading.mjs",
-    "test:render": "node test/conformance/render.mjs --min=610"
+    "test:render": "node test/conformance/render.mjs --min=625"
   },
   "keywords": [],
   "author": "",
