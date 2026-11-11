@@ -10,6 +10,7 @@
 export const BASELINE = 0.38;
 
 import {parseFontName} from './resolve.ts';
+import {Pbf} from './mvt.ts';
 
 export const EM = 24;
 export {DEFAULT_FONT} from './resolve.ts';
@@ -41,7 +42,7 @@ export interface ShapedLine {
     top?: number;
 }
 /** All measurements are in pixels at a font size of EM. */
-export interface Shaped { lines: ShapedLine[]; width: number; height: number; lineHeight: number }
+export interface Shaped { lines: ShapedLine[]; width: number; height: number; lineHeight: number; /** A glyph file of the text is on its way: the text is not drawn yet. */ wait?: boolean }
 /** The middle of line `i`, from the middle of the text. Lines of rich text can have different heights. */
 export function lineMiddle(shaped: Shaped, i: number): number {
     const line = shaped.lines[i];
@@ -111,6 +112,8 @@ abstract class BaseShaper implements Shaper {
     protected inline: string[] = [];
     protected imageScale = 1;
     protected missingImage = false;
+    /** A glyph of the text in work waits for its glyph file (see `GlyphAtlas`). */
+    protected waiting = false;
     /** Rich text: the styles in the text being shaped, by style character. */
     protected styles: TextStyle[] = [];
 
@@ -121,7 +124,7 @@ abstract class BaseShaper implements Shaper {
         if (!s) {
             if (this.cache.size > 5000) this.cache.clear();
             const spacing = spacingEm * EM;
-            this.inline = []; this.missingImage = false; this.styles = [];
+            this.inline = []; this.missingImage = this.waiting = false; this.styles = [];
             // An image is drawn at its own size whatever the text size, so its width in text units depends on that size.
             this.imageScale = EM / sizePx;
             if (hasImages) text = text.replace(/\uE000([^\uE001]*)\uE001/g, (_, name) => this.images ? String.fromCharCode(IMAGE_CHAR + this.inline.push(name) - 1) : '');
@@ -134,8 +137,9 @@ abstract class BaseShaper implements Shaper {
                 for (const l of lines) { l.scale ??= l.glyphs?.length ? Math.max(...l.glyphs.map(g => g.scale ?? 1)) : 1; l.top = height; height += LINE_HEIGHT * l.scale; }
             }
             s = {lines, width: Math.max(...lines.map(l => l.width)), height, lineHeight: LINE_HEIGHT};
-            // Text waiting for an image is shaped again once the image has arrived.
-            if (!this.missingImage) this.cache.set(key, s);
+            // Text waiting for an image or for a glyph file is shaped again once that has arrived.
+            if (this.waiting) s.wait = true;
+            if (!this.missingImage && !this.waiting) this.cache.set(key, s);
         }
         return s;
     }
@@ -147,7 +151,7 @@ abstract class BaseShaper implements Shaper {
                 const [scale, font, color] = part.slice(1, -1).split('|');
                 if (!scale && !font && !color) { mark = ''; continue; }
                 const f = font ? parseFontName(font) : null;
-                this.styles.push({scale: +scale || 1, font: f ? (f.style === 'italic' ? 'italic ' : '') + f.weight + '|' + f.family : undefined, color: color ? color.split(',').map(Number) : undefined});
+                this.styles.push({scale: +scale || 1, font: f ? (f.style === 'italic' ? 'italic ' : '') + f.weight + '|' + f.family + '|' + font : undefined, color: color ? color.split(',').map(Number) : undefined});
                 mark = String.fromCharCode(STYLE_CHAR + this.styles.length - 1);
             } else out += mark ? graphemes(part).map(g => g === '\n' ? g : mark + g).join('') : part;
         }
@@ -245,7 +249,7 @@ export class GlyphAtlas extends BaseShaper {
         return {text, width, glyphs, chars, advances: glyphs.map(g => g.advance)};
     }
 
-    /** Label fonts arrive as "style weight|family"; the family named by the style is tried before the map default. */
+    /** Label fonts arrive as "style weight|family|font stack"; the family named by the style is tried before the map default. */
     private css(font: string) {
         const [variant, family] = font.split('|');
         return `${variant} ${EM}px ${family ? `"${family}", ` : ''}${this.family}`;
@@ -261,10 +265,72 @@ export class GlyphAtlas extends BaseShaper {
         this.version++; this.resets++; this.dirty = null;
     }
 
+    /**
+     * The glyphs of the style (`glyphs`: a URL with `{fontstack}` and `{range}`), as MapLibre uses them. A file has the
+     * glyphs of 256 characters of one font stack, each as a distance field of the same kind as this atlas has, with
+     * its measures. Text is then the same on each device, and its widths are those of MapLibre. A character that the
+     * files do not have (most ideographs, emoji) and text that the browser must shape are drawn with the canvas.
+     */
+    glyphsURL?: string;
+    fetchGlyphs?: (url: string) => Promise<Response>;
+    /** Called when a glyph file has arrived: text that waited for it can be shaped now. */
+    onGlyphs?: () => void;
+    /** How many glyph files are on their way. */
+    loading = 0;
+    /** By font stack and range: the glyphs of a file by character, 0 while it is on its way, null when there is none. */
+    private ranges = new Map<string, Map<number, {bitmap?: Uint8Array; [field: number]: number}> | 0 | null>();
+    private fromFile(text: string, stack: string): Glyph | null | undefined {
+        const code = text.codePointAt(0)!;
+        if (text.length > (code > 0xFFFF ? 2 : 1)) return null;
+        const range = code >> 8, key = stack + '|' + range;
+        let glyphs = this.ranges.get(key);
+        if (glyphs === undefined) {
+            this.ranges.set(key, glyphs = 0);
+            this.loading++;
+            this.fetchGlyphs!(this.glyphsURL!.replace('{fontstack}', encodeURIComponent(stack)).replace('{range}', `${range * 256}-${range * 256 + 255}`))
+                .then(res => res.ok ? res.arrayBuffer() : null).then(bytes => bytes && readGlyphs(new Uint8Array(bytes)), () => null)
+                .then(found => { this.ranges.set(key, found); this.loading--; this.onGlyphs?.(); });
+        }
+        if (!glyphs) return glyphs === 0 ? undefined : null;
+        const f = glyphs.get(code);
+        if (!f) return null;
+        // (The files have a border of 3 pixels about each glyph, the atlas one of SDF_BUFFER.)
+        const pad = SDF_BUFFER - 3, gw = (f[3] ?? 0) + 6, w = gw + 2 * pad, h = (f[4] ?? 0) + 6 + 2 * pad;
+        const g: Glyph = {x: 0, y: 0, w: 0, h: 0, left: f[5] ?? 0, top: (f[6] ?? 0) + 17 + BASELINE * EM, advance: f[7] ?? 0};
+        if (f.bitmap) {
+            const cell = new Uint8Array(w * h);
+            for (let row = 0; row < h - 2 * pad; row++) cell.set(f.bitmap.subarray(row * gw, row * gw + gw), (row + pad) * w + pad);
+            this.pack(g, cell, w, h);
+        }
+        return g;
+    }
+    /** Puts the distance field of a glyph into the atlas. */
+    private pack(g: Glyph, sdf: Uint8Array, w: number, h: number) {
+        if (this.penX + w + 1 > this.width) { this.penX = 1; this.penY += this.shelf + 1; this.shelf = 0; }
+        if (this.penY + h + 1 > this.height) {
+            // Atlas full: start over. Shaped text holds glyph references, so drop those too.
+            this.clear();
+            this.onReset?.();
+        }
+        g.x = this.penX; g.y = this.penY; g.w = w; g.h = h;
+        for (let row = 0; row < h; row++) this.data.set(sdf.subarray(row * w, row * w + w), (g.y + row) * this.width + g.x);
+        this.penX += w + 1;
+        this.shelf = Math.max(this.shelf, h);
+        if (this.dirty) { this.dirty[0] = Math.min(this.dirty[0], g.y); this.dirty[1] = Math.max(this.dirty[1], g.y + h); }
+        this.version++;
+    }
+
     private glyph(text: string, font: string): Glyph {
         const key = font + '|' + text;
         let g = this.glyphs.get(key);
         if (g) return g;
+        const stack = this.glyphsURL && font.split('|')[2];
+        if (stack) {
+            const found = this.fromFile(text, stack);
+            // (A glyph that waits for its file is not kept: the text is shaped again when the file is there.)
+            if (found === undefined) { this.waiting = true; return {x: 0, y: 0, w: 0, h: 0, left: 0, top: 0, advance: EM / 2}; }
+            if (found) { this.glyphs.set(key, found); return found; }
+        }
         const ctx = this.ctx, B = SDF_BUFFER;
         const css = this.css(font);
         ctx.font = css;
@@ -283,23 +349,34 @@ export class GlyphAtlas extends BaseShaper {
             ctx.textBaseline = 'alphabetic';
             ctx.fillStyle = '#000';
             ctx.fillText(text, B + left, B + top);
-            const sdf = toSDF(ctx.getImageData(0, 0, w, h).data, w, h);
-            if (this.penX + w + 1 > this.width) { this.penX = 1; this.penY += this.shelf + 1; this.shelf = 0; }
-            if (this.penY + h + 1 > this.height) {
-                // Atlas full: start over. Shaped text holds glyph references, so drop those too.
-                this.clear();
-                this.onReset?.();
-            }
-            g.x = this.penX; g.y = this.penY;
-            for (let row = 0; row < h; row++) this.data.set(sdf.subarray(row * w, row * w + w), (g.y + row) * this.width + g.x);
-            this.penX += w + 1;
-            this.shelf = Math.max(this.shelf, h);
-            if (this.dirty) { this.dirty[0] = Math.min(this.dirty[0], g.y); this.dirty[1] = Math.max(this.dirty[1], g.y + h); }
-            this.version++;
+            this.pack(g, toSDF(ctx.getImageData(0, 0, w, h).data, w, h), w, h);
         } else { g.w = g.h = 0; }
         this.glyphs.set(key, g);
         return g;
     }
+}
+
+/** Reads a glyph file: for each glyph a record of its fields by number (1 id, 3 width, 4 height, 5 left, 6 top, 7 advance) and its bitmap. */
+function readGlyphs(bytes: Uint8Array) {
+    const out = new Map<number, {bitmap?: Uint8Array; [field: number]: number}>(), file = new Pbf(bytes);
+    while (file.pos < file.end) {
+        const tag = file.varint();
+        if (tag !== 10) { file.skip(tag & 7); continue; }
+        const stack = file.sub();
+        while (stack.pos < stack.end) {
+            const t = stack.varint();
+            if (t !== 26) { stack.skip(t & 7); continue; }
+            const g = stack.sub(), glyph: {bitmap?: Uint8Array; [field: number]: number} = {};
+            while (g.pos < g.end) {
+                const k = g.varint(), field = k >> 3;
+                if (field === 2) { const len = g.varint(); glyph.bitmap = bytes.subarray(g.pos, g.pos += len); }
+                else if (k & 7) g.skip(k & 7);
+                else glyph[field] = field === 5 || field === 6 ? g.svarint() : g.varint();
+            }
+            out.set(glyph[1], glyph);
+        }
+    }
+    return out;
 }
 
 const INF = 1e20;

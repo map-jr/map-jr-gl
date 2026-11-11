@@ -20,7 +20,7 @@
     "test:loading": "node test/loading.mjs",
     "test:vue": "node test/vue.mjs",
     "test:react": "node test/react.mjs",
-    "test:render": "node test/conformance/render.mjs --min=680"
+    "test:render": "node test/conformance/render.mjs --min=800"
   },
   "keywords": [],
   "author": "",

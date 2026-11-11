@@ -37,6 +37,12 @@ export interface MapOptions extends CameraOptions, LoadOptions {
      * the rendering thread, so they work with worker rendering, which cannot see fonts loaded by the page's CSS.
      */
     fonts?: FontSource[];
+    /**
+     * `false`: do not load the glyph files of the style (`glyphs`). Text is then drawn with the fonts of the device
+     * or with the web fonts of `fonts`: no requests for fonts, and the labels show at once. The default is to load
+     * them, as MapLibre does, unless `fonts` is given.
+     */
+    glyphs?: boolean;
     interactive?: boolean;
     /** Changes a request before the library makes it, as in MapLibre: a new URL, headers or credentials. */
     transformRequest?: RequestTransform | null;
@@ -275,6 +281,7 @@ export class Map {
         const sc = this.rawStyle;
         if (o.center === undefined && o.zoom === undefined && o.bearing === undefined && o.pitch === undefined && !o.bounds) this.tr.set(sc.center, sc.zoom, sc.bearing, sc.pitch);
         this.resolved = await resolveStyle(this.rawStyle, fetch, this.styleBase);
+        if (!(o.glyphs ?? !o.fonts)) this.resolved.glyphs = undefined;
         if (this.resolved.unsupported.length) console.warn('[map-jr-gl] Skipping unsupported layer types: ' + this.resolved.unsupported.join(', '));
         const tr = this.tr;
         const engineOptions = {
@@ -673,6 +680,7 @@ export class Map {
             if (Object.keys(this.globalState).length) style.state = {...style.state, ...this.globalState};
             this.resolved = style;
             this.restyled = turn;
+            if (!(this.options.glyphs ?? !this.options.fonts)) style.glyphs = undefined;
             if (this.toggled.size) style.layers = style.layers.map(l => this.toggled.has(l.id) ? {...l, keep: true} : l);
             this.post({type: 'style', style, reload, versions});
             this.styleEvents(this.newStyle);

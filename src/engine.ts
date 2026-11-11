@@ -199,6 +199,8 @@ export class Engine {
         this.atlas = new GlyphAtlas(o.fontFamily);
         this.atlas.images = name => this.icon(name);
         this.atlas.onReset = () => this.labels.clear();
+        this.atlas.fetchGlyphs = this.fetchAs('Glyphs');
+        this.atlas.onGlyphs = () => this.relabel();
         this.tr.width = o.width;
         this.tr.height = o.height;
         this.dpr = o.dpr;
@@ -511,6 +513,7 @@ export class Engine {
         }
         const faces = JSON.stringify(style.fonts ?? []);
         if (style.fonts?.length && faces !== this.styleFonts) { this.styleFonts = faces; this.loadFonts(style.fonts); }
+        if (style.glyphs !== this.atlas.glyphsURL) { this.atlas.glyphsURL = style.glyphs; this.atlas.clear(); this.relabel(); }
         if (reload) {
             for (const [name, src] of Object.entries(style.sources)) if (src.type === 'geojson') for (const b of this.backends) b.setGeoJSON(name, src.data, src.options, src.maxzoom);
             // The page has read the first bytes of each PMTiles archive: the readers of the tiles do not fetch them again.
@@ -1283,7 +1286,7 @@ export class Engine {
             this.emit({type: 'camera', lng: tr.lng, lat: tr.lat, zoom: tr.zoom, bearing: tr.bearing, pitch: tr.pitch, elevation: tr.elevation, exaggeration: this.exaggeration, groundRange: tr.groundRange, padding: tr.padding, moving: animating});
         }
         const busy = animating || markersAnimating || fading || this.placeDirty || behind || this.meshBehind;
-        const idle = complete && !busy && !settling && !this.spritePending && !this.contourWait;
+        const idle = complete && !busy && !settling && !this.spritePending && !this.contourWait && !this.atlas.loading;
         if (settling && !busy) setTimeout(() => this.repaint(), 200);
         if (this.contourWait) { this.contourWait = false; setTimeout(() => this.repaint(), CONTOUR_WAIT + 20); }
         if (this.reportFrames) this.emit({type: 'frame'});

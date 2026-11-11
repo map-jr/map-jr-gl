@@ -1,5 +1,5 @@
 /** Minimal protobuf reader and Mapbox Vector Tile decoder. */
-class Pbf {
+export class Pbf {
     pos = 0;
     constructor(public buf: Uint8Array, public end = buf.length) {}
 
@@ -20,7 +20,7 @@ class Pbf {
     skip(wire: number) {
         if (wire === 0) this.varint();
         else if (wire === 1) this.pos += 8;
-        else if (wire === 2) this.pos += this.varint();
+        else if (wire === 2) this.pos = this.varint() + this.pos; // (the length is read first: it moves `pos`)
         else if (wire === 5) this.pos += 4;
         else throw new Error('Unsupported protobuf wire type ' + wire);
     }

@@ -20,9 +20,9 @@ const sizes = [
     ['page script, up front (' + [...page].length + ' files)', gz(page), 27.5],
     // The same for the entry that is a replacement for MapLibre GL JS (`map-jr-gl/maplibre-compat`).
     ['page script of maplibre-compat, up front (' + [...compat].length + ' files)', gz(compat), 30],
-    ['map-jr-gl-worker.js', gz(['map-jr-gl-worker.js']), 59],
+    ['map-jr-gl-worker.js', gz(['map-jr-gl-worker.js']), 60],
     // Only when the engine runs on the main thread (no worker is possible).
-    ['engine on the main thread, on demand', gz(engine), 56],
+    ['engine on the main thread, on demand', gz(engine), 57],
 ];
 let ok = true;
 for (const [name, kb, budget] of sizes) {

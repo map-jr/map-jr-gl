@@ -156,6 +156,29 @@ for (const renderer of ['worker', 'main']) {
     } catch (e) { check(`[${renderer}] the test run was completed`, false, String(e.message).split('\n')[0]); }
     await page.close();
 }
+// The glyph files of the style: asked for by default, with the font stack and the range in the URL; not with `glyphs: false`.
+// (The test server has no glyph files: the text then uses the fonts of the device, and the map still becomes idle.)
+{
+    const page = await browser.newPage({viewport: {width: 900, height: 600}});
+    try {
+        const asked = [];
+        await page.route(/\/test-glyphs\//, route => { asked.push(decodeURIComponent(new URL(route.request().url()).pathname)); route.fulfill({status: 404, body: ''}); });
+        await page.goto('http://localhost:8080/style.json');
+        const run = glyphs => page.evaluate(async glyphs => {
+            const lib = await import('/dist/map-jr-gl.js'), style = await (await fetch('/style.json')).json();
+            style.glyphs = '/test-glyphs/{fontstack}/{range}.pbf';
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99;background:#fff'}));
+            const host = lib.createMap(el, {style, initialView: {center: [-74.0065, 40.7085], zoom: 14.3}, attribution: false, ...(glyphs === false ? {glyphs} : {})});
+            const loaded = await Promise.race([new Promise(r => host.state.subscribe(s => s.loaded, v => v && r(true))), new Promise(r => setTimeout(() => r(false), 20000))]);
+            host.destroy(); el.remove();
+            return loaded;
+        }, glyphs);
+        const withFiles = await run(), count = asked.length, without = await run(false);
+        check('glyph files of the style: asked for by default, not with glyphs: false, and a map without them still loads',
+            withFiles && without && count > 0 && asked.length === count && asked.every(u => /^\/test-glyphs\/[^/]+\/\d+-\d+\.pbf$/.test(u)), JSON.stringify({withFiles, without, count, later: asked.length - count, first: asked[0]}));
+    } catch (e) { check('glyph files: the test run was completed', false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
 // The action and the store for Svelte, called as Svelte calls them (they do not need the Svelte package).
 {
     const page = await browser.newPage({viewport: {width: 900, height: 600}});

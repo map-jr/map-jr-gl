@@ -22,7 +22,7 @@ A small, fast map library for the web. It reads MapLibre styles. It has two entr
   elevation source. You do not need a plugin.
 - **It answers questions about the data.** `queryFeatures` reads the tile data directly. You do not need a style
   layer.
-- **It uses web fonts.** Text is drawn with the fonts of the browser. You do not need glyph files.
+- **Fonts as the style gives them, or none to download.** Text uses the glyph files of the style, as MapLibre GL JS does. With `glyphs: false`, text uses the fonts of the browser: no requests for fonts.
 - **It is easy to change to.** Most MapLibre GL JS code works after you change the import to
   `map-jr-gl/maplibre-compat`.
 - **It works with MapLibre plugins.** mapbox-gl-draw, terra-draw, the compare and sync-move plugins and others run
@@ -41,7 +41,7 @@ These figures are written by `pnpm status`. They compare this library with MapLi
 | MapLibre plugins, run in a browser | 15 of 15 work (see [Plugins and frameworks](docs/ecosystem.md)) |
 | Plugins and frameworks, read from npm | 17 of 26 use only API that the library has |
 | Example pages of the MapLibre documentation, with this library in place of MapLibre | 110 of 142 work. Most of the others need a globe, another projection or a custom 3D layer. |
-| MapLibre render tests | 693 of 1429 are the same (1% of pixels or less are different). 311 more are near (5% or less). |
+| MapLibre render tests | 818 of 1429 are the same (1% of pixels or less are different). 279 more are near (5% or less). |
 | Page script (gzip) | 30 KB. MapLibre GL JS: 299 KB. |
 | Worker script (gzip) | 59 KB. MapLibre GL JS: 145 KB. |
 | Server renderer (gzip) | 35 KB |

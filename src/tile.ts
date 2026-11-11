@@ -83,10 +83,10 @@ export interface TileGL { layers: Record<string, GLBatch>; labels: Record<string
 /** A raster tile as the SVG backend sees it: just somewhere to load the image from. */
 export interface TileImage { href: string }
 
-/** "Open Sans Semibold Italic" -> "italic 600|Open Sans": CSS style and weight, then the family named by the style. */
+/** "Open Sans Semibold Italic" -> "italic 600|Open Sans|Open Sans Semibold Italic": CSS style and weight, the family named by the style, and the font stack (for the glyph files of the style). */
 function fontStyle(names: any): string {
     const f = parseFontName(String(Array.isArray(names) ? names[0] : names));
-    return (f.style === 'italic' ? 'italic ' : '') + f.weight + '|' + f.family;
+    return (f.style === 'italic' ? 'italic ' : '') + f.weight + '|' + f.family + '|' + (Array.isArray(names) ? names.join(',') : names);
 }
 
 function pushColor(out: number[], c: RGBA, alpha: number) {

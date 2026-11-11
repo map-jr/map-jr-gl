@@ -70,6 +70,8 @@ export interface MapSetup {
     renderer?: 'auto' | 'worker' | 'main';
     fonts?: FontSource[];
     fontFamily?: string;
+    /** `false`: do not load the glyph files of the style; text uses the fonts of the device. The default loads them, unless `fonts` is given. */
+    glyphs?: boolean;
     interactive?: boolean;
     antialias?: boolean;
     attribution?: false | {compact?: boolean; customAttribution?: string | string[]};
@@ -149,7 +151,7 @@ function extended(style: any, extend?: StyleExtension) {
 export function createMap(container: HTMLElement | string, spec: MapSpec): MapHost {
     const first = {...spec.initialView, ...spec.view};
     const options: MapOptions = {
-        container, style: spec.style, ...first, renderer: spec.renderer, fonts: spec.fonts, fontFamily: spec.fontFamily, interactive: spec.interactive, antialias: spec.antialias, hash: spec.hash,
+        container, style: spec.style, ...first, renderer: spec.renderer, fonts: spec.fonts, fontFamily: spec.fontFamily, glyphs: spec.glyphs, interactive: spec.interactive, antialias: spec.antialias, hash: spec.hash,
         attributionControl: spec.attribution, minZoom: spec.minZoom, maxZoom: spec.maxZoom, maxPitch: spec.maxPitch,
     };
     for (const k in options) if ((options as any)[k] === undefined) delete (options as any)[k];

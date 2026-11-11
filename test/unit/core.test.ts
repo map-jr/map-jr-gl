@@ -128,7 +128,7 @@ test('tiles: a real tile builds layers and labels from a style', () => {
     assert.ok(ir.layers.buildings.height!.some(h => h > 50), 'building heights come from the data');
     const label = ir.labels.names[0];
     assert.ok(label.text.length > 0 && label.angle !== null);
-    assert.equal(label.font, 'italic 600|Open Sans');
+    assert.equal(label.font, 'italic 600|Open Sans|Open Sans Semibold Italic');
 });
 
 test('queries: features are found from raw tile data, with filters and geometry', () => {

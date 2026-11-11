@@ -131,6 +131,7 @@ export function placeLabels(
                 const alpha = L.p.opacity.dd ? 1 : L.p.opacity.eval(tr.zoom);
                 const meta = l.icon ? icons?.(l.icon.name) : undefined;
                 const shaped = l.text ? shaper.shape(l.text, l.font, line ? 1e3 : l.maxWidth, l.spacing, l.lineHeight, l.size0) : null;
+                if (shaped?.wait) continue; // its glyph file is on its way
                 const w = shaped ? shaped.width * s : 0, h = shaped ? shaped.height * s : 0;
                 const hasText = w > 0;
                 if (!hasText && !meta) continue;

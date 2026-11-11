@@ -202,6 +202,12 @@ Not checked in the trial:
 
 ## Font glyphs from the style (`glyphs`): investigation
 
+**Done on 2026-11-11**, as the owner asked: on by default in both entries, and off with `glyphs: false` (or when
+`fonts` is given). The MapLibre render tests went from 693 to 818 matches. Cost: 0.6 KB in the worker and 0.7 KB in
+the engine for the main thread. The reader found a fault in the protobuf reader (a skipped field with a length lost
+one byte), which is fixed. The text below is the investigation from before the work.
+
+
 The owner asked to investigate support for the font glyphs of a style, in the entry for MapLibre code and possibly
 in the main entry.
 
@@ -265,6 +271,7 @@ Ways to remove the lag in the entry for MapLibre code, not done:
 | The budget of the page script of `maplibre-compat` went from 29 KB to 29.5 KB; the file set is 29.1 KB. The page script of the main entry is 26.7 KB (budget 27 KB). | The state of each source (loaded or not) and the numbers on commands are in the core map class, which both entries contain. | — |
 | The budget of the engine for the main thread went from 55.5 KB to 56 KB; the file is 55.5 KB. The worker is 58.4 KB (budget 58.5 KB). | Faults from the trial in elevation-next: the state of each source, the first bytes of PMTiles archives, letters on tilted roads, sharp ground images during a movement. | — |
 | Budgets after the work on the replay: page script 27 → 27.5 KB (27.2 KB now), page script of `maplibre-compat` 29.5 → 30 KB (29.6 KB), worker 58.5 → 59 KB (58.6 KB). | See fault 11 in the findings from the trial: the state of each source, kept network results of sources, tiles of hidden layers. | — |
+| Budgets for the glyph files: worker 59 → 60 KB (59.4 KB now), engine for the main thread 56 → 57 KB (56.2 KB). | The owner asked for glyph files of the style. | The option `glyphs: false` does not make the files smaller: the code is in the engine. A file that loads on demand is possible, but then the first labels wait for one more request. |
 | The build gives short names to private class members and to the names in the shaders (uniforms, attributes, varyings, local variables), and takes the spaces from around the operators in the shaders (`scripts/private-names.mjs`, `build.mjs`). The budgets did not change. | The minifier does not shorten property names, and it does not look into GLSL text. The steps make the worker about 1.1 KB smaller (gzip). The features of this night used that room: the worker is 57.7 KB. A name is shortened only when each use of it is a `private` declaration or `this.name`, so message fields, options and browser properties keep their names. | Remove `privates` from the plugins in `build.mjs`. |
 
 ## `queryRenderedFeatures` gives two kinds of result

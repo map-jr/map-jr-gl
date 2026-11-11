@@ -66,6 +66,7 @@ These fields are read only when the map is made:
 |---|---|
 | `renderer` | `'auto'` (the default), `'worker'` or `'main'`: the thread that draws. See [Loading](loading.md). |
 | `fonts`, `fontFamily` | Web fonts for the labels. |
+| `glyphs` | `false`: do not load the glyph files of the style (its `glyphs` URL). Text then uses the fonts of the device or the web fonts of `fonts`: no requests for fonts, and labels show at once. The default loads the glyph files, unless `fonts` is given. |
 | `interactive` | `false` for a map that the user cannot move. |
 | `antialias` | Multisample antialiasing for the canvas. |
 | `attribution` | `false` to show the credits yourself, or options for the built-in credits. |

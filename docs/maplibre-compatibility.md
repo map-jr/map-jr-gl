@@ -22,7 +22,7 @@ The [status table](../README.md#status) gives the current test results.
 | Server rendering | `renderToSVG` and `renderToImage` draw a map without a browser. See [Server rendering](server-rendering.md). |
 | Marker layers | `addMarkerLayer` draws many SVG markers on the canvas. See [Markers](markers.md). |
 | SVG images | `addImage` accepts an SVG string. The image is sharp on each screen. |
-| Web fonts | Text uses the fonts of the browser. The style can give font files in `font-faces`. You do not need glyph files. |
+| Fonts | Text uses the glyph files of the style (`glyphs`), as in MapLibre GL JS. A style without `glyphs` needs no glyph files: text then uses the fonts of the browser. The option `glyphs: false` selects that for each style. The style can also give font files in `font-faces`. |
 | `queryFeatures` | Finds features at a position from the tile data. You do not need a style layer. |
 | `queryElevation` | Gives the elevation at a position from a `raster-dem` source. |
 | Contour source | `type: 'contour'` makes contour lines from an elevation source. See [Terrain and elevation](terrain-and-elevation.md). |
@@ -36,7 +36,7 @@ The [status table](../README.md#status) gives the current test results.
 
 | Subject | MapLibre GL JS | This library |
 |---|---|---|
-| Text | Reads glyph files from the `glyphs` URL. | Draws text with web fonts. The `glyphs` URL is not used. Line breaks are the same as in MapLibre GL JS. The weight of the text can look a small quantity different. |
+| Text | Reads glyph files from the `glyphs` URL. | The same: glyphs and their widths come from the glyph files. Three cases use the fonts of the browser: a character that the files do not have (most ideographs, emoji), text that the browser must shape (Arabic, Hebrew, Indic scripts), and a map with `glyphs: false` or with `fonts`. A label waits for its glyph file, as in MapLibre GL JS. |
 | Text on lines | Each character follows the line. The style sets the largest angle. | Each character follows the line. A label does not show where the line turns more than about 35 degrees between characters. |
 | Order of symbol layers | A symbol layer draws at its position in the layer list. | All symbol layers draw above all other layers. |
 | Label placement | Changes gradually, tile by tile. | The library decides about four times each second. Labels fade between decisions. |
