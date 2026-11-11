@@ -22,11 +22,11 @@ package, so they work with each version of Svelte.
     markers: [pins],
     controls: [navigation()],
   });
-  const state = $derived(map && mapState(map));
+  const live = $derived(map && mapState(map));
 </script>
 
 <div use:mapJr={{description, ready: host => map = host}} style="height: 400px"></div>
-{#if state}<p>Zoom {$state.view.zoom.toFixed(1)}</p>{/if}
+{#if live}<p>Zoom {$live.view.zoom.toFixed(1)}</p>{/if}
 ```
 
 - `mapJr` is an action. It makes the map in the element, gives the map each new description, and removes the map

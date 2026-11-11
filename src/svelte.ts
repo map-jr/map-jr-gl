@@ -11,7 +11,7 @@
  * ```
  * `mapJr` is an action: Svelte calls it with the element, calls `update` when the description is another object, and
  * `destroy` when the element goes. It does not need the Svelte package, so it works with each version of Svelte.
- * `mapState(map)` gives the state of the map as a Svelte store (`$state.view.zoom` in a component).
+ * `mapState(map)` gives the state of the map as a Svelte store (`const live = mapState(map)`, then `$live.view.zoom`).
  */
 import {createMap, type MapHost, type MapSpec, type MapState} from './host.ts';
 
