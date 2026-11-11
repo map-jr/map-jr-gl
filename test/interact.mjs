@@ -270,7 +270,8 @@ for (const mode of ['main', 'worker']) {
         const tip = marker.getElement().getBoundingClientRect(), at = m.project([-74.0065, 40.7085]);
         const open = document.querySelector('.maplibregl-popup-content')?.textContent;
         marker.remove();
-        await new Promise(r => setTimeout(r, 400)); // the popup plays a short closing animation before it is removed
+        // The popup plays a short closing animation before it is removed. (A slow machine can take longer than the animation.)
+        for (let i = 0; i < 30 && document.querySelector('.maplibregl-marker, .maplibregl-popup'); i++) await new Promise(r => setTimeout(r, 100));
         return {dx: Math.abs((tip.left + tip.right) / 2 - at.x), dy: Math.abs(tip.bottom - at.y), open, gone: !document.querySelector('.maplibregl-marker, .maplibregl-popup')};
     });
     check(`[${mode}] DOM Marker and Popup`, dom.dx < 1 && dom.dy < 1 && dom.open.startsWith('Hello') && dom.gone, JSON.stringify(dom));
