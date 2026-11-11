@@ -43,10 +43,13 @@ jobs:
           PORT=8080 node demo/serve.mjs &
           for i in $(seq 1 30); do curl -s -o /dev/null http://localhost:8080/ && break; sleep 1; done
           mkdir -p results
-          node test/bench/browsers.mjs results || echo "benchmark script failed" > "results/${{ runner.os }}-${{ matrix.browser }}-failed.txt"
+          # Firefox runs with a window (see test/launch.mjs). On Linux, xvfb is the display.
+          if [ "${{ matrix.browser }}" = firefox ]; then export HEADED=1; fi
+          run=""; if [ "${{ runner.os }}" = Linux ]; then run="xvfb-run -a"; fi
+          $run node test/bench/browsers.mjs results || echo "benchmark script failed" > "results/${{ runner.os }}-${{ matrix.browser }}-failed.txt"
           # The behaviour tests, in this browser. Failures are recorded; they do not stop the run.
           name="$(node -e "console.log(require('os').platform())")-${{ matrix.browser }}"
-          (node test/interact.mjs results/shots 2>&1 | grep -E "^(PASS|FAIL)" | cut -c1-300 > "results/$name-tests.txt") || true
+          ($run node test/interact.mjs results/shots 2>&1 | grep -E "^(PASS|FAIL)" | cut -c1-300 > "results/$name-tests.txt") || true
           rm -rf results/shots
           cat results/*.md >> "$GITHUB_STEP_SUMMARY" || true
       - uses: actions/upload-artifact@v4

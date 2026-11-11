@@ -15,5 +15,7 @@ export function launch() {
         ? ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] : ['--ignore-gpu-blocklist', '--enable-gpu'];
     // Firefox without a GPU refuses WebGL unless it is told to use its software renderer.
     const firefoxUserPrefs = {'webgl.force-enabled': true, 'webgl.disable-fail-if-major-performance-caveat': true, 'webgl.enable-webgl2': true, 'gfx.webrender.software': true};
-    return type.launch(browserName === 'firefox' ? {firefoxUserPrefs} : {args});
+    // Firefox without a window draws a few frames each second on the page's thread, which makes each test time out.
+    // HEADED=1 opens a window (on Linux that needs a display, for example xvfb-run).
+    return type.launch(browserName === 'firefox' ? {firefoxUserPrefs, headless: !process.env.HEADED} : {args});
 }
