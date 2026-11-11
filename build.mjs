@@ -57,9 +57,9 @@ const esm = (input, extra = {}) => ({
 await run(esm({'map-jr-gl': 'src/index.ts'}));
 
 // Standalone: one self-contained file with the worker embedded, for places where shipping several files is awkward.
-await run(esm({'map-jr-gl-standalone': 'src/index.ts'}, {inlineDynamicImports: true}), {__WORKER_SRC__: JSON.stringify(workerSrc)});
+await run(esm({'map-jr-gl-standalone': 'src/index.ts'}, {codeSplitting: false}), {__WORKER_SRC__: JSON.stringify(workerSrc)});
 // The server renderer (Node, Cloudflare Workers and other runtimes without a DOM).
-await run(esm({server: 'src/server.ts'}, {inlineDynamicImports: true}), undefined, [allInOne]);
+await run(esm({server: 'src/server.ts'}, {codeSplitting: false}), undefined, [allInOne]);
 
 const kb = n => (n / 1024).toFixed(1).padStart(6);
 const report = (label, bytes) => console.log(label.padEnd(46), `${kb(bytes.length)} KB min ${kb(gzipSync(bytes, {level: 9}).length)} KB gzip ${kb(brotliCompressSync(bytes).length)} KB brotli`);

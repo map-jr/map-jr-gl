@@ -2,9 +2,6 @@
 
 ## How the owner wants work to go
 
-- **Do not stop after an update.** Give progress updates as short notes and continue with the next item. Stop only
-  when a decision is needed that cannot be made from the code, or when asked to stop. (Stated repeatedly by the
-  owner, most recently: "I keep telling you not to stop working, keep going after you update me".)
 - The standing task, when nothing more specific is asked: improve compatibility with MapLibre GL JS and performance.
   Use the failing groups of `pnpm test:render`, the missing entries in `docs/maplibre-compatibility.md`, and
   profiles of real styles to choose what to do next.

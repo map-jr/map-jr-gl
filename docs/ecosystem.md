@@ -67,7 +67,7 @@ runs each page two times: with MapLibre GL JS, and with this library in its plac
 A page works when this library gives no error that MapLibre GL JS does not give, and at most 12 percent of the
 pixels of the two images differ clearly (labels and controls are drawn in different ways).
 
-**109 of 142 pages work.** 23 give an error, 10 draw a different image, 0 were not compared.
+**110 of 142 pages work.** 23 give an error, 9 draw a different image, 0 were not compared.
 
 | Example page | Result | Pixels that differ | First error of this library |
 |---|---|---|---|
@@ -79,30 +79,29 @@ pixels of the two images differ clearly (labels and controls are drawn in differ
 | add-a-custom-layer-with-tiles-to-a-globe | error | 49.3 | [map-jr-gl] TypeError: map.setProjection is not a function |
 | add-a-multidirectional-hillshade-layer | differs | 56.4 |  |
 | add-a-simple-custom-layer-on-a-globe | error | 14.6 | [map-jr-gl] TypeError: map.setProjection is not a function |
-| add-a-video | differs | 28.4 |  |
+| add-a-video | differs | 28.3 |  |
 | add-custom-layers-that-follow-the-terrain | error | 81.4 | Cannot read properties of undefined (reading 'fromLngLat') |
-| add-live-realtime-data | differs | 48.9 |  |
+| add-live-realtime-data | differs | 44.8 |  |
 | animate-an-icon-on-the-gpu | error | 0.7 | Failed to construct 'ImageData': The input data has zero elements. |
-| animate-map-camera-around-a-point | differs | 50.6 |  |
+| animate-map-camera-around-a-point | differs | 50.1 |  |
 | animate-symbol-to-follow-the-mouse | error | 2.2 | maplibregl.GlobeControl is not a constructor |
-| create-a-heatmap-layer-on-a-globe-with-terrain-elevation | error | 19.5 | maplibregl.GlobeControl is not a constructor |
-| create-deckgl-layer-using-rest-api | differs | 14.1 |  |
+| create-a-heatmap-layer-on-a-globe-with-terrain-elevation | error | 19.7 | maplibregl.GlobeControl is not a constructor |
 | customize-the-map-transform-constrain | differs | 94.6 |  |
 | display-a-globe-with-a-fill-extrusion-layer | error | 14.2 | maplibregl.GlobeControl is not a constructor |
 | display-a-globe-with-a-vector-map | error | 23 | [map-jr-gl] TypeError: map.setProjection is not a function |
-| display-a-globe-with-an-atmosphere | differs | 47.1 |  |
-| display-a-hybrid-satellite-map-with-terrain-elevation | error | 18.4 | maplibregl.GlobeControl is not a constructor |
+| display-a-globe-with-an-atmosphere | differs | 47.2 |  |
+| display-a-hybrid-satellite-map-with-terrain-elevation | error | 19.2 | maplibregl.GlobeControl is not a constructor |
 | display-a-map-in-a-polar-stereographic-projection | error | 87.2 | maplibregl.addProjection is not a function |
 | display-a-map-in-utm-zone-32n | error | 69.4 | maplibregl.addProjection is not a function |
-| display-a-map-with-mlt | error | 11.1 | [map-jr-gl] Error: Unsupported protobuf wire type 6 |
+| display-a-map-with-mlt | error | 11.1 | [map-jr-gl] Error: Unsupported protobuf wire type 3 |
 | display-geojson-in-a-polar-stereographic-projection | error | 86.8 | maplibregl.importScriptInWorkers is not a function |
 | enter-a-360-photosphere | error | 69.1 | The requested module 'maplibre-gl' does not provide an export named 'MercatorCoordinate' |
 | level-of-detail-control | error | 28.1 | map.setSourceTileLodParams is not a function |
 | navigate-the-map-with-game-like-controls | differs | 37.6 |  |
 | raycast-3d-tiles-using-threejs | error | 93.7 | The requested module 'maplibre-gl' does not provide an export named 'MercatorCoordinate' |
 | set-center-point-above-ground | differs | 95.6 |  |
-| sky-fog-terrain | error | 26.6 | maplibregl.GlobeControl is not a constructor |
-| walk-around-a-map-in-first-person | error | 51.3 | Cannot read properties of undefined (reading 'fromLngLat') |
+| sky-fog-terrain | error | 26.7 | maplibregl.GlobeControl is not a constructor |
+| walk-around-a-map-in-first-person | error | 47.3 | Cannot read properties of undefined (reading 'fromLngLat') |
 | zoom-and-planet-size-relation-on-globe | error | 21.5 | [map-jr-gl] TypeError: map.setProjection is not a function |
 <!-- examples:end -->
 

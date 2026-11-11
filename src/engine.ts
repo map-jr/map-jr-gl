@@ -933,7 +933,7 @@ export class Engine {
             t.gl = gl;
             t.state = 'ok';
             t.rev = ++this.tilesVersion;
-            this.invalidate();
+            if (t.used >= 0) this.invalidate();
         }, err => {
             if (this.tiles.get(key) !== t) return;
             t.state = 'error';
@@ -1109,8 +1109,10 @@ export class Engine {
                     wanted.add(key);
                     const t = this.tiles.get(key);
                     const oid = {z, x, y, w: id.w, key: k};
-                    if (!t) this.request(source, oid, key);
-                    else {
+                    // (The overview waits until the tiles of the view have loaded: its tiles are large, and they would take
+                    // the connections and the tile workers from the tiles that the view needs.)
+                    // (`used` below 0: a tile that no frame has needed yet. Its arrival changes nothing in the image.)
+                    if (!t) { if (complete) { this.request(source, oid, key); const made = this.tiles.get(key); if (made) made.used = -1; } } else {
                         t.used = frameNo;
                         // Keep the overview current too, or it would flash old data when it stands in for a missing tile.
                         this.refresh(source, oid, key, t);
