@@ -56,6 +56,16 @@ else try {
     result.bench = await page.evaluate(() => window.benchResults);
     result.table = await page.evaluate(() => [...document.querySelectorAll('#results tr')].map(tr => [...tr.cells].map(c => c.textContent)));
     await page.close();
+    // The machines of the workflow share their GPU with others, and one measurement can be far off. The terrain
+    // scenarios are measured two more times, so that a reader can tell a real difference from a slow moment.
+    for (const again of ['second', 'third']) {
+        const p2 = await browser.newPage({viewport: {width: 1000, height: 700}});
+        await p2.goto(`${base}/bench?auto&only=terrain&seconds=${process.env.BENCH_SECONDS ?? 4}`);
+        await p2.waitForFunction(() => window.benchResults, null, {timeout: 5 * 60000, polling: 1000});
+        const rows = await p2.evaluate(() => [...document.querySelectorAll('#results tbody tr')].map(tr => [...tr.cells].map(c => c.textContent)));
+        for (const r of rows) { r[0] += ` (${again} measurement)`; result.table.push(r); }
+        await p2.close();
+    }
 } catch (e) { result.errors.push('bench: ' + String(e.message).split('\n')[0]); }
 await browser.close();
 
