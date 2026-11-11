@@ -247,6 +247,8 @@ export interface SpriteIcon {
     stretchX?: [number, number][]; stretchY?: [number, number][];
     /** The part of the image the text should sit inside: left, top, right, bottom. */
     content?: [number, number, number, number];
+    /** How each axis follows the text when the icon is fitted around it. `proportional` keeps the shape of the content box. */
+    textFitWidth?: 'stretchOrShrink' | 'stretchOnly' | 'proportional'; textFitHeight?: 'stretchOrShrink' | 'stretchOnly' | 'proportional';
     /** A single-channel distance field rather than a picture: drawn in `icon-color`, and sharp at any size. */
     sdf?: boolean;
 }

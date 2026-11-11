@@ -196,16 +196,27 @@ export function placeLabels(
                     let gx: number[] | undefined, gy: number[] | undefined;
                     if (fit !== 'none') {
                         // Stretch the icon around the text, e.g. a road shield around its number. Only the image's
-                        // stretch ranges grow; its content box ends up around the padded text.
+                        // stretch ranges grow; its content box ends up around the padded text. As in MapLibre, the
+                        // icon's own anchor is not used: an axis that is not fitted keeps its size, centred on the text.
                         const [pt, pr, pb, pl] = ic.fitPad.map(v => v * isize), unit = isize / meta.pixelRatio, c = meta.content;
+                        const ox = ic.offset[0] * isize, oy = ic.offset[1] * isize;
+                        // The box the content must fill, relative to the label's point.
+                        let left = tx - ax - w / 2 - pl, top = ty - ay - h / 2 - pt, cw = w + pl + pr, ch = h + pt + pb;
+                        if (c && fit === 'both') {
+                            // Sprites can ask for the content box to keep its shape, or to grow only.
+                            const ratio = (c[2] - c[0]) / (c[3] - c[1]), fw = meta.textFitWidth ?? 'stretchOrShrink', fh = meta.textFitHeight ?? 'stretchOrShrink';
+                            if (fh === 'proportional') {
+                                if (fw === 'proportional' || (fw === 'stretchOnly' && cw / ch < ratio)) { const n = Math.ceil(ch * ratio); left *= n / cw; cw = n; }
+                            } else if (fw === 'proportional' && fh === 'stretchOnly' && ratio !== 0 && cw / ch > ratio) { const n = Math.ceil(cw / ratio); top *= n / ch; ch = n; }
+                        }
                         if (fit !== 'height') {
-                            const f = fitAxis(meta.width, meta.stretchX, c?.[0] ?? 0, c?.[2] ?? meta.width, w + pl + pr, unit);
-                            iw = f.len; ix = tx - w / 2 - pl - f.off + iw / 2; gx = f.cuts;
-                        }
+                            const f = fitAxis(meta.width, meta.stretchX, c?.[0] ?? 0, c?.[2] ?? meta.width, cw, unit);
+                            iw = f.len; ix = ax + left - f.off + iw / 2 + ox; gx = f.cuts;
+                        } else ix = tx + ox;
                         if (fit !== 'width') {
-                            const f = fitAxis(meta.height, meta.stretchY, c?.[1] ?? 0, c?.[3] ?? meta.height, h + pt + pb, unit);
-                            ih = f.len; iy = ty - h / 2 - pt - f.off + ih / 2; gy = f.cuts;
-                        }
+                            const f = fitAxis(meta.height, meta.stretchY, c?.[1] ?? 0, c?.[3] ?? meta.height, ch, unit);
+                            ih = f.len; iy = ay + top - f.off + ih / 2 + oy; gy = f.cuts;
+                        } else iy = ty + oy;
                     }
                     const angle = (line && !ic.upright ? lineAngle : 0) + ic.rotate * Math.PI / 180;
                     ix += ic.translate[0]; iy += ic.translate[1];
