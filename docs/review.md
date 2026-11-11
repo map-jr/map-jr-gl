@@ -55,7 +55,7 @@ Not done yet, in the order that I propose:
 2. **The features under the pointer found by the engine.** Now the page makes one query for each pointer position.
 3. **More of the map class into the compatibility class**: the layer and source methods (`addLayer`, `setPaintProperty`
    and others), when the main API has its own path for a change of the style. This makes the main entry smaller.
-4. **A check in the owner's Nuxt application.** The tests use Vue's server renderer directly. A small Nuxt 4 application was also built for production and opened in a browser on 2026-11-11: the server put the SVG into the page, and the map took it over without an error. That application is not in the repository.
+4. **A check in the owner's Nuxt application.** The tests use Vue's server renderer directly. A small Nuxt 4 application was also built for production and opened in a browser on 2026-11-11, with `v-model:view`, markers, controls, a `MapOverlay`, and the `ssr` prop with overrides: the server put the SVG and the credits into the page, the map took them over without an error, the controls and the overlay showed, and a marker pushed to the data in place appeared. That application is not in the repository.
 5. **A component for Svelte, and an adapter for Solid.**
 
 ### The switch in the gallery for the code of each form
