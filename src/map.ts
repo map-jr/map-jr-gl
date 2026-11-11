@@ -190,6 +190,8 @@ export class Map {
     protected imageNames = new Set<string>();
     private imageResolver: ((id: string) => void | Promise<void>) | null = null;
     private tilesLoaded = false;
+    /** The sources whose tiles for the view are all loaded, as the engine tells it. */
+    private loadedSources = new Set<string>();
     /** Global state values set at runtime, on top of the style's defaults. */
     private globalState: Record<string, unknown> = {};
     protected zooming = false; protected rotating = false; protected pitching = false;
@@ -412,6 +414,12 @@ export class Map {
             this.restart();
         } else if (e.type === 'frame') {
             this.fire('render');
+        } else if (e.type === 'source') {
+            if (!e.loaded) this.loadedSources.delete(e.source);
+            else if (this.rawStyle?.sources[e.source]) {
+                this.loadedSources.add(e.source);
+                for (const type of ['sourcedata', 'data']) this.fire(type, {dataType: 'source', sourceId: e.source, isSourceLoaded: true, source: this.rawStyle.sources[e.source]});
+            }
         } else if (e.type === 'idle') {
             this.tilesLoaded = true;
             if (!this.isLoaded) {
@@ -599,7 +607,7 @@ export class Map {
     /** Whether the tiles needed for the current view have loaded. (Tracked for the map as a whole, not per source.) */
     isSourceLoaded(id: string) {
         if (!this.rawStyle?.sources[id]) throw new Error(`There is no source with ID "${id}"`);
-        return this.tilesLoaded;
+        return this.tilesLoaded || this.loadedSources.has(id);
     }
     /** Loads a source's tiles again, e.g. after the data behind its URL changed. */
     refreshTiles(sourceId: string) { this.post({type: 'refresh', source: sourceId}); return this; }
@@ -774,7 +782,7 @@ export class Map {
         if (typeof data === 'string') { const res = await this.fetchAs('Source')(new URL(data, this.styleBase)); data = await res.json(); }
         this.post({type: 'geojson', source: id, data});
     }
-    addSource(id: string, source: unknown) { return this.editStyle(s => { s.sources[id] = source; }); }
+    addSource(id: string, source: unknown) { this.loadedSources.delete(id); return this.editStyle(s => { s.sources[id] = source; }); }
     removeSource(id: string) { return this.editStyle(s => { delete s.sources[id]; }); }
     addLayer(layer: {id: string}, beforeId?: string) {
         return this.editStyle(s => { s.layers.splice(beforeId ? this.layerIndex(s, beforeId) : s.layers.length, 0, layer); });

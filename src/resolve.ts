@@ -27,7 +27,7 @@ export interface SourceInfo {
     /** Contour sources: how to derive lines from their elevation source. */
     contour?: ContourConfig;
     /** GeoJSON sources carry their data; it is handed to the tile workers, which cut tiles from it. */
-    data?: unknown; /** GeoJSON sources: clusters and the id property. */ options?: GeoJSONOptions; tiles: string[]; minzoom: number; maxzoom: number; tileSize: number; attribution?: string; /** The rows of tiles are counted from the south (`scheme: 'tms'`). */ tms?: boolean; encoding?: 'terrarium' | 'mapbox';
+    data?: unknown; /** GeoJSON sources: clusters and the id property. */ options?: GeoJSONOptions; tiles: string[]; minzoom: number; maxzoom: number; tileSize: number; attribution?: string; /** A PMTiles archive: its URL and its first bytes (header and root directory). */ head?: {url: string; bytes: Uint8Array}; /** The rows of tiles are counted from the south (`scheme: 'tms'`). */ tms?: boolean; encoding?: 'terrarium' | 'mapbox';
     /** The area that has tiles: west, south, east, north. A tile outside it is not requested. */
     bounds?: number[];
 }
@@ -84,7 +84,7 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
             // A PMTiles archive: its header supplies the zoom range, and tiles are addressed inside the archive.
             const {archive} = await import('./pmtiles-info.ts');
             const at = src.url.slice(PM_PREFIX.length), file = base ? new URL(at, base).href : at, info = await archive(file, fetchFn).info();
-            src = {minzoom: info.minzoom, maxzoom: info.maxzoom, attribution: info.attribution, ...raw, tiles: [`${PM_PREFIX}${file}/{z}/{x}/{y}`]};
+            src = {minzoom: info.minzoom, maxzoom: info.maxzoom, attribution: info.attribution, ...raw, tiles: [`${PM_PREFIX}${file}/{z}/{x}/{y}`], head: info.head && {url: file, bytes: info.head}};
         } else if (!src.tiles && src.url) {
             const url = base ? new URL(src.url, base).href : src.url;
             const res = await fetchFn(url);
@@ -98,6 +98,7 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
             type: raw.type, tiles: src.tiles, minzoom: src.minzoom ?? 0, maxzoom: src.maxzoom ?? (raw.type === 'vector' ? 14 : 22),
             tileSize: raw.type === 'vector' ? 512 : src.tileSize ?? 512, attribution: src.attribution, tms: src.scheme === 'tms', bounds: src.bounds,
             encoding: raw.type === 'raster-dem' ? (src.encoding === 'terrarium' ? 'terrarium' : 'mapbox') : undefined, // (from the source or from its TileJSON)
+            head: src.head,
         };
     }
     // Contour sources (an extension to the style specification) are resolved last: each needs its elevation source.

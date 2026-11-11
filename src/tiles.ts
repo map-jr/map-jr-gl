@@ -4,7 +4,7 @@ import {buildTile, packLabels, toGL, unpackLabels, type TileGL, type TileIR} fro
 import {decodeElevation, queryTile, type QueriedFeature, type TileQuery} from './query.ts';
 import {HEIGHT_GRID} from './geo.ts';
 import {fetchWith, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
-import {fetchTile} from './pmtiles.ts';
+import {fetchTile, heads} from './pmtiles.ts';
 import {GEOJSON_PREFIX, prepareSource, sliceGeoJSON, type GeoJSONOptions, type PreparedSource} from './geojson.ts';
 import {contourTile, decodeDEM, decodePixels, type ContourConfig, type DEM, type ImageDecoder} from './contour.ts';
 
@@ -144,6 +144,8 @@ export interface TileBackend {
     /** Replaces the feature state of one source: "sourceLayer|id" -> state. */
     setFeatureState(source: string, states: Record<string, Record<string, unknown>>): void;
     setContours(sources: Record<string, ContourConfig>): void;
+    /** The first bytes of a PMTiles archive, which the page has read already. */
+    setHead(url: string, bytes: Uint8Array): void;
     load(req: TileRequest): Promise<TileGL>;
     cancel(id: number): void;
     query(url: string, q: TileQuery): Promise<QueriedFeature[]>;
@@ -157,6 +159,7 @@ export class LocalBackend implements TileBackend {
     setGeoJSON(source: string, data: unknown, options?: GeoJSONOptions, maxzoom?: number) { this.builder.setGeoJSON(source, data, options, maxzoom); }
     setFeatureState(source: string, states: Record<string, Record<string, unknown>>) { setFeatureStates(source, states); }
     setContours(sources: Record<string, ContourConfig>) { this.builder.setContours(sources); }
+    setHead(url: string, bytes: Uint8Array) { heads.set(url, bytes); }
     async load(req: TileRequest) { return toGL(await this.builder.loadIR(req)).tile; }
     cancel(id: number) { this.builder.cancel(id); }
     query(url: string, q: TileQuery) { return this.builder.query(url, q); }
@@ -194,6 +197,7 @@ export class PortBackend implements TileBackend {
     setGeoJSON(source: string, data: unknown, options?: GeoJSONOptions, maxzoom?: number) { this.port.postMessage({type: 'geojson', source, data, options, maxzoom}); }
     setFeatureState(source: string, states: Record<string, Record<string, unknown>>) { this.port.postMessage({type: 'featureState', source, states}); }
     setContours(sources: Record<string, ContourConfig>) { this.port.postMessage({type: 'contours', sources}); }
+    setHead(url: string, bytes: Uint8Array) { this.port.postMessage({type: 'head', url, bytes}); }
     load(req: TileRequest) {
         return new Promise<TileGL>((resolve, reject) => {
             this.pending.set(req.id, {resolve, reject});
@@ -224,6 +228,7 @@ export function serveTiles(port: Port) {
         else if (m.type === 'geojson') builder.setGeoJSON(m.source, m.data, m.options, m.maxzoom);
         else if (m.type === 'featureState') setFeatureStates(m.source, m.states);
         else if (m.type === 'contours') builder.setContours(m.sources);
+        else if (m.type === 'head') heads.set(m.url, m.bytes);
         else if (m.type === 'cancel') builder.cancel(m.id);
         else if (m.type === 'close') { port.onmessage = null; (port as any).close?.(); }
         else if (m.type === 'query') {

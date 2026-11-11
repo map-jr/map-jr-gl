@@ -15,6 +15,14 @@ export class Map extends CoreMap {
         return this;
     }
     private warned = new Set<string>();
+    /** One warning for code that used the array of a query without `await`, when the array was not complete. */
+    private incomplete(name: string, had: number, has: number) {
+        if (this.warned.has(name)) return;
+        this.warned.add(name);
+        console.warn(`[map-jr-gl] ${name}: the result was used without \`await\`, and it was not complete (${had} of ${has} features). `
+            + `The tile data is in a worker, so the complete result is a promise. Change\n    const features = map.${name}(...);\nto\n    const features = await map.${name}(...);\n`
+            + `This form also works in MapLibre GL JS. Without \`await\`, the array has the features only in some cases: see "Feature queries" in docs/maplibre-compatibility.md.`);
+    }
     setProjection(projection?: {type?: unknown} | null) { return this.unsupported('setProjection', !projection || projection.type === 'mercator'); }
     setSky(sky?: object | null) { return this.unsupported('setSky', !sky || !Object.keys(sky).length); }
     setRenderWorldCopies(copies?: boolean | null) { return this.unsupported('setRenderWorldCopies(false)', copies !== false); }
@@ -130,8 +138,12 @@ export class Map extends CoreMap {
         const spec = this.rawStyle?.sources[sourceId], data = spec?.type === 'geojson' && this.geoData(sourceId);
         let now: QueriedFeature[] = [];
         if (data && this.syncQuery) try { now = this.syncQuery.queryGeoJSON(sourceId, {...spec, data}, this.tr, box, sets); } catch { /* the promise has the complete result or the error */ }
-        const result = features(now), all = this.ask<QueriedFeature[]>(id => ({type: 'queryRendered', id, box, sets, geometry: true})).then(features);
-        Object.defineProperty(result, 'then', {value: (done?: (v: RenderedFeature[]) => unknown, failed?: (e: unknown) => unknown) => all.then(done, failed)});
+        let awaited = false;
+        const result = features(now), had = now.length, all = this.ask<QueriedFeature[]>(id => ({type: 'queryRendered', id, box, sets, geometry: true})).then(found => {
+            if (!awaited && found.length !== had) this.incomplete('querySourceFeatures', had, found.length);
+            return features(found);
+        });
+        Object.defineProperty(result, 'then', {value: (done?: (v: RenderedFeature[]) => unknown, failed?: (e: unknown) => unknown) => { awaited = true; return all.then(done, failed); }});
         return result as RenderedFeature[] & PromiseLike<RenderedFeature[]>;
     }
 
@@ -165,6 +177,7 @@ export class Map extends CoreMap {
         // Later: all the sources, from the engine.
         const later = sets.length ? this.ask<QueriedFeature[]>(id => ({type: 'queryRendered', id, box, sets, geometry: true})).then(found => {
             this.keep(key, found);
+            if (!awaited && this.summary(found) !== given) this.incomplete('queryRenderedFeatures', now.length, found.length);
             // The array that the caller got at once was not the complete result. Code that reads the array asks again
             // on `idle` (and the map is idle, or will be): tell it, and the same question then has the answer at once.
             if (this.summary(found) !== given && !this.again) {
@@ -173,7 +186,8 @@ export class Map extends CoreMap {
             }
             return features([...found]);
         }) : Promise.resolve([]);
-        Object.defineProperty(result, 'then', {value: (done?: (v: RenderedFeature[]) => unknown, failed?: (e: unknown) => unknown) => later.then(done, failed)});
+        let awaited = false;
+        Object.defineProperty(result, 'then', {value: (done?: (v: RenderedFeature[]) => unknown, failed?: (e: unknown) => unknown) => { awaited = true; return later.then(done, failed); }});
         return result as RenderedFeature[] & PromiseLike<RenderedFeature[]>;
     }
     /**

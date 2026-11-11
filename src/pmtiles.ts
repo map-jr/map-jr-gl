@@ -55,8 +55,11 @@ function parseDirectory(b: Uint8Array): Entry[] {
     return entries;
 }
 
+/** The first bytes of archives (header and root directory) that another thread has read already, by URL. */
+export const heads = new Map<string, Uint8Array>();
+
 export class PMTiles {
-    private header?: Promise<{h: PMHeader; root: Entry[]}>;
+    private header?: Promise<{h: PMHeader; root: Entry[]; first: Uint8Array}>;
     private leaves = new Map<number, Promise<Entry[]>>();
     private fetchFn: Fetch;
     constructor(readonly url: string, fetchFn: Fetch = fetch) {
@@ -75,7 +78,7 @@ export class PMTiles {
     private open() {
         return this.header ??= (async () => {
             // The header and (almost always) the whole root directory fit in the first 16 KB.
-            const first = await this.range(0, 16384), v = new DataView(first.buffer, first.byteOffset, first.byteLength);
+            const first = heads.get(this.url) ?? await this.range(0, 16384), v = new DataView(first.buffer, first.byteOffset, first.byteLength);
             if (String.fromCharCode(...first.subarray(0, 7)) !== 'PMTiles' || first[7] !== 3) throw new Error(`${this.url} is not a PMTiles v3 archive`);
             const u64 = (o: number) => v.getUint32(o, true) + v.getUint32(o + 4, true) * 2 ** 32;
             const h: PMHeader = {
@@ -84,14 +87,17 @@ export class PMTiles {
             };
             const end = h.rootOffset + h.rootLength;
             const rootBytes = end <= first.length ? first.subarray(h.rootOffset, end) : await this.range(h.rootOffset, h.rootLength);
-            return {h, root: parseDirectory(await inflate(rootBytes, h.internalCompression))};
+            return {h, root: parseDirectory(await inflate(rootBytes, h.internalCompression)), first};
         })().catch(err => { this.header = undefined; throw err; });
     }
 
     async info() {
-        const {h} = await this.open();
-        const meta = h.metaLength ? JSON.parse(new TextDecoder().decode(await inflate(await this.range(h.metaOffset, h.metaLength), h.internalCompression))) : {};
-        return {type: TILE_TYPES[h.tileType] ?? '', minzoom: h.minZoom, maxzoom: h.maxZoom, attribution: meta.attribution as string | undefined, metadata: meta};
+        const {h, first} = await this.open(), end = h.metaOffset + h.metaLength, rootEnd = h.rootOffset + h.rootLength;
+        // (The metadata is in the first bytes too, for most archives: no second request.)
+        const meta = h.metaLength ? JSON.parse(new TextDecoder().decode(await inflate(end <= first.length ? first.subarray(h.metaOffset, end) : await this.range(h.metaOffset, h.metaLength), h.internalCompression))) : {};
+        return {type: TILE_TYPES[h.tileType] ?? '', minzoom: h.minZoom, maxzoom: h.maxZoom, attribution: meta.attribution as string | undefined, metadata: meta,
+            /** The header and the root directory, for the threads that read the tiles (see `heads`). */
+            head: rootEnd <= first.length ? first.slice(0, rootEnd) : undefined};
     }
 
     /** One tile's bytes (decompressed), or null when the archive has no such tile. */

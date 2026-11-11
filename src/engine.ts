@@ -9,7 +9,7 @@ import {fetchWith, type Ask, type RequestAnswer, type RequestRules} from './requ
 import {decodeElevation, sampleElevation, tilesUnderBox, type QueriedFeature, type QuerySet} from './query.ts';
 import type {TileBackend, TileRequest} from './tiles.ts';
 import type {TileGL} from './tile.ts';
-import {fetchTile} from './pmtiles.ts';
+import {fetchTile, heads} from './pmtiles.ts';
 
 export interface CameraOptions { center?: LngLatLike; zoom?: number; bearing?: number; pitch?: number; /** Space at the edges covered by other things: top, right, bottom, left. */ padding?: [number, number, number, number] }
 export type {FontSource} from './style.ts';
@@ -62,6 +62,8 @@ export type Command =
 export type EngineEvent =
     | {type: 'camera'; lng: number; lat: number; zoom: number; bearing: number; pitch: number; /** Ground height at the centre with 3D terrain, else 0. */ elevation: number; exaggeration: number; groundRange?: [number, number]; padding: [number, number, number, number]; moving: boolean}
     | {type: 'idle'}
+    /** The tiles of a source for the view are all loaded, or are no longer all loaded. */
+    | {type: 'source'; source: string; loaded: boolean}
     /** 3D terrain: the height grid of an elevation tile that has loaded (or, without `grid`, been dropped). */
     | {type: 'heights'; key: string; grid?: Float32Array}
     /** About once a second while drawing: frames drawn per second and the engine's average CPU time per frame. */
@@ -86,7 +88,7 @@ const DATA_OPS = /"(get|has|id|properties|geometry-type|feature-state|global-sta
 function sourceSignature(style: ResolvedStyle, name: string): [string, string] {
     const src = style.sources[name] as any, data = src.data;
     // Elevation tiles keep extra data when they shape 3D terrain, so switching terrain on or off starts them over.
-    const source = JSON.stringify({...src, data: undefined, features: data?.features?.length, kind: data?.type, terrain: style.terrain?.source === name});
+    const source = JSON.stringify({...src, head: undefined, data: undefined, features: data?.features?.length, kind: data?.type, terrain: style.terrain?.source === name});
     if (!isGeometrySource(src)) return [source, '']; // image tiles do not depend on layers
     const layers = style.layers.filter(l => l.source === name).map(l => {
         const paint = Object.entries(l.paint ?? {}).filter(([k, v]) =>
@@ -492,6 +494,7 @@ export class Engine {
     }
 
     /** Per source: what its tiles were fetched from, and what they were built with. */
+    private sourceLoaded = new Map<string, boolean>();
     private sourceSigs = new Map<string, [string, string]>();
 
     private setStyle(style: ResolvedStyle, reload: boolean) {
@@ -512,6 +515,8 @@ export class Engine {
         if (style.fonts?.length && faces !== this.styleFonts) { this.styleFonts = faces; this.loadFonts(style.fonts); }
         if (reload) {
             for (const [name, src] of Object.entries(style.sources)) if (src.type === 'geojson') for (const b of this.backends) b.setGeoJSON(name, src.data, src.options, src.maxzoom);
+            // The page has read the first bytes of each PMTiles archive: the readers of the tiles do not fetch them again.
+            for (const {head} of Object.values(style.sources)) if (head && !heads.has(head.url)) { heads.set(head.url, head.bytes); for (const b of this.backends) b.setHead(head.url, head.bytes); }
             const contours = Object.fromEntries(Object.entries(style.sources).filter(([, s]) => s.contour).map(([name, s]) => [name, s.contour!]));
             for (const b of this.backends) b.setContours(contours);
             for (const b of this.backends) b.setStyle(style.layers, style.state);
@@ -1006,7 +1011,7 @@ export class Engine {
         this.flushUploads();
 
         const items = new Map<string, RenderItem<GLTile>[]>(), all: RenderItem<GLTile>[] = [];
-        let complete = true;
+        let complete = true; const loading = new Set<string>();
         const wanted = new Set<string>();
         // 3D terrain: the camera follows the ground under the map centre, easing so that newly loaded heights do not jolt it.
         // Seen from straight above, relief changes nothing that matters, so the flat (sharper, cheaper) path is used; the
@@ -1098,6 +1103,7 @@ export class Engine {
                 if (!t) this.request(source, id, key);
                 else this.refresh(source, id, key, t);
                 if (!t || t.state === 'loading') complete = false;
+                if (!t || t.state === 'loading' || t.stale || t.rebuilding) loading.add(source);
                 // The server does not have this image tile: the nearest tile above it that the server has is drawn in its
                 // place (as in MapLibre GL JS, at most 10 levels above). One level is requested at a time.
                 for (let m = t, z = id.z, x = id.x, y = id.y; m?.missing && z > src.minzoom && z > id.z - 10;) {
@@ -1145,6 +1151,11 @@ export class Engine {
         }
         for (const [key, t] of this.tiles) {
             if (t.state === 'loading' && !wanted.has(key)) this.dropTile(key, t);
+        }
+        // Tell the page when the tiles of a source are all there (the map can be busy with other sources still).
+        for (const source in this.style.sources) {
+            const loaded = !loading.has(source);
+            if (this.sourceLoaded.get(source) !== loaded) { this.sourceLoaded.set(source, loaded); this.emit({type: 'source', source, loaded}); }
         }
         // How many tiles are kept follows what the view needs: three times that many, so that the view can go back and
         // forth without new downloads. A small screen keeps fewer tiles, and so uses less memory on the GPU.
