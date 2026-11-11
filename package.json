@@ -20,7 +20,7 @@
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "devDependencies": {
     "@americana/maplibre-shield-generator": "^0.2.1",
     "@takumi-rs/core": "^2.20.0",
@@ -62,6 +62,9 @@
   "files": [
     "dist",
     "README.md",
+    "LICENSE",
+    "ACKNOWLEDGEMENTS.md",
+    "THIRD-PARTY-LICENSES.md",
     "docs"
   ],
   "sideEffects": false,

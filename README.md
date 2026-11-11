@@ -243,6 +243,16 @@ To do the test on your computer, run `pnpm demo` and open `http://localhost:8080
   available.
 - [Development](docs/development.md): how to build, test and measure the library.
 
-## Licence
+## How this project is made
 
-ISC.
+An AI coding assistant wrote almost all the code of this project ("vibe coding"). A person gave the directions and
+examined the results. No person examined each line of the code. Read [Acknowledgements](ACKNOWLEDGEMENTS.md) for
+more information, and do your own tests before you use the library for important work.
+
+## Licence and acknowledgements
+
+The licence is MIT. See [LICENSE](LICENSE).
+
+The library follows [MapLibre GL JS](https://github.com/maplibre/maplibre-gl-js) (BSD-3-Clause) but contains none of
+its files. [Acknowledgements](ACKNOWLEDGEMENTS.md) lists the projects that this library uses or follows.
+[THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md) contains their licence texts.
