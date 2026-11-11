@@ -9,6 +9,26 @@ have a problem, and a method in the list is possibly used only in a part of the 
 
 **17 of 26 packages** use only parts of the API that this library has.
 
+<!-- plugins:start -->
+## Plugins that were run
+
+These plugins were run with this library in a browser by `node test/conformance/plugins.mjs --write`. Each one has a
+short scenario in `test/conformance/plugins/`. The plugin imports `maplibre-gl` and gets this library.
+
+**8 of 8 scenarios pass.**
+
+| Plugin | Result | What the scenario found |
+|---|---|---|
+| @mapbox/mapbox-gl-draw 1.5.2 | Pass | added 1, selected by a click: 1, moved by a drag: true, the map panned: false |
+| terra-draw 1.39.0, terra-draw-maplibre-gl-adapter 1.5.0 | Pass | features after one click: 1 |
+| @maplibre/maplibre-gl-compare 0.5.0 | Pass | slider at 200, zooms 14.00 and 14.00 |
+| @mapbox/mapbox-gl-sync-move 0.4.0 | Pass | the second map is at 10.00, 50.00, zoom 6.00 |
+| pmtiles 4.5.0 | Pass | addProtocol and removeProtocol accepted the protocol |
+| maplibre-gl-opacity 1.8.0 | Pass | the control is in the page: true; fill-opacity after the slider: 0.7 |
+| @maplibre/maplibre-gl-inspect 1.9.0 | Pass | the inspect view is on; the style has 49 layers |
+| @watergis/maplibre-gl-export 6.0.0 | Pass | the control is in the page |
+<!-- plugins:end -->
+
 ## What is missing most often
 
 | Missing | Kind | Packages that use it |
