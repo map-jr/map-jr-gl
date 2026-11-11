@@ -13,5 +13,7 @@ export function launch() {
     // uses the GPU of the machine, if there is one.
     const args = browserName !== 'chromium' ? [] : os.platform() === 'linux'
         ? ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] : ['--ignore-gpu-blocklist', '--enable-gpu'];
-    return type.launch({args});
+    // Firefox without a GPU refuses WebGL unless it is told to use its software renderer.
+    const firefoxUserPrefs = {'webgl.force-enabled': true, 'webgl.disable-fail-if-major-performance-caveat': true, 'webgl.enable-webgl2': true, 'gfx.webrender.software': true};
+    return type.launch(browserName === 'firefox' ? {firefoxUserPrefs} : {args});
 }

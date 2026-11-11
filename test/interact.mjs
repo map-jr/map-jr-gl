@@ -8,6 +8,7 @@ const settle = (page) => page.waitForFunction(() => !window.map.isMoving(), null
 const idle = (page) => page.waitForFunction(() => window.map.areTilesLoaded() && !window.map.isMoving(), null, {polling: 50, timeout: 30000});
 
 for (const mode of ['main', 'worker']) {
+  try {
     const page = await browser.newPage({viewport: {width: 1000, height: 700}});
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
@@ -25,12 +26,14 @@ for (const mode of ['main', 'worker']) {
 
     // Wheel zoom keeps the location under the cursor fixed.
     const anchor = await page.evaluate(() => window.map.unproject({x: 700, y: 200}));
+    // (What the browser reports for the wheel is kept: browsers differ here, and a failure then explains itself.)
+    await page.evaluate(() => { window.wheels = []; window.map.on('wheel', e => window.wheels.push([e.point.x, e.point.y, e.originalEvent.deltaY, e.originalEvent.deltaMode, e.originalEvent.ctrlKey].join('/'))); });
     await page.mouse.move(700, 200); await page.mouse.wheel(0, -500);
     await page.waitForFunction(() => window.map.getZoom() > 14.31, null, {timeout: 10000}).catch(() => {}); // the zoom has started
     await settle(page);
     const z = await page.evaluate(() => window.map.getZoom());
     const p = await page.evaluate(a => window.map.project(a), anchor);
-    check(`[${mode}] wheel zooms in around cursor`, z > 14.6 && Math.hypot(p.x - 700, p.y - 200) < 1.5, `zoom=${z.toFixed(2)} drift=${Math.hypot(p.x - 700, p.y - 200).toFixed(2)}px`);
+    check(`[${mode}] wheel zooms in around cursor`, z > 14.6 && Math.hypot(p.x - 700, p.y - 200) < 1.5, `zoom=${z.toFixed(2)} drift=${Math.hypot(p.x - 700, p.y - 200).toFixed(2)}px at ${p.x.toFixed(0)},${p.y.toFixed(0)} wheel events (x/y/deltaY/mode/ctrl): ${(await page.evaluate(() => window.wheels.slice(0, 4))).join(' ')}`);
 
     // Read-after-write is immediate even when the engine lives in a worker.
     const sync = await page.evaluate(() => { window.map.jumpTo({center: [-74.0065, 40.7085], zoom: 14.3, bearing: 0}); return [window.map.getZoom(), window.map.getCenter().lng]; });
@@ -452,6 +455,10 @@ for (const mode of ['main', 'worker']) {
     await page.screenshot({path: `${out}/terrain-${mode}.png`});
     check(`[${mode}] no page errors`, errors.length === 0, errors.slice(0, 3).join(' | '));
     await page.close();
+  } catch (err) {
+    // A browser that stops the run (a timeout, a feature that is not there) is reported as one failure.
+    check(`[${mode}] the test run was completed`, false, String(err.message).split('\n')[0]);
+  }
 }
 
 // Hydration: server markup is visible before the client runs, then replaced once the canvas shows the same view.

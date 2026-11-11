@@ -493,7 +493,10 @@ export class Engine {
         const set = (globalThis as any).fonts ?? (globalThis as any).document?.fonts;
         this.spritePending++; // fonts are also part of the first complete picture
         Promise.all(fonts.map(async f => {
-            const face = new FontFace(f.family, `url("${f.src}")`, {weight: String(f.weight ?? '400'), style: f.style ?? 'normal', ...(f.unicodeRange ? {unicodeRange: f.unicodeRange} : {})});
+            // The font file is fetched here and given to the browser as bytes. WebKit (Safari) does not load a font from a
+            // URL inside a worker, and the labels then used a fallback font.
+            const bytes = await (await this.fetchAs('Font')(f.src)).arrayBuffer();
+            const face = new FontFace(f.family, bytes, {weight: String(f.weight ?? '400'), style: f.style ?? 'normal', ...(f.unicodeRange ? {unicodeRange: f.unicodeRange} : {})});
             set.add(await face.load());
         })).then(() => { this.atlas.clear(true); this.relabel(); },
             err => this.emit({type: 'error', message: `Could not load font: ${err.message}`})).finally(() => { this.spritePending--; this.invalidate(); });
