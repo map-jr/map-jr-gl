@@ -204,7 +204,7 @@ export class Engine {
         this.tr.height = o.height;
         this.dpr = o.dpr;
         this.renderer.resize(o.width, o.height, o.dpr);
-        Object.assign(this.tr, {minZoom: o.minZoom ?? 0, maxZoom: o.maxZoom ?? 22, maxPitch: o.maxPitch ?? 60});
+        Object.assign(this.tr, {minZoom: o.minZoom ?? -2, maxZoom: o.maxZoom ?? 22, maxPitch: o.maxPitch ?? 60});
         this.tr.set(o.center, o.zoom, o.bearing, o.pitch);
         this.setStyle(o.style, true);
         if (o.fonts?.length) this.loadFonts(o.fonts);
@@ -829,7 +829,7 @@ export class Engine {
                 const rate = w.kind === 'wheel' && Math.abs(w.delta) > WHEEL_STEP ? WHEEL_RATE : TRACKPAD_RATE;
                 let scale = 2 / (1 + Math.exp(-Math.abs(w.delta * rate)));
                 if (w.delta < 0) scale = 1 / scale;
-                w.target = clamp((w.target ?? tr.zoom) + Math.log2(scale), tr.minZoom, tr.maxZoom);
+                w.target = clamp((w.target ?? tr.zoom) + Math.log2(scale), tr.zoomFloor, tr.maxZoom);
                 if (w.kind === 'wheel') {
                     // Mouse wheels arrive in coarse steps: ease to the target, starting at the speed already under way.
                     w.start = tr.zoom;

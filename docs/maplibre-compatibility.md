@@ -42,6 +42,7 @@ The [status table](../README.md#status) gives the current test results.
 | Style changes | Applied step by step. | A paint value that is the same for all of a layer is applied immediately. Other changes build the tiles of that source again. The old tiles stay on the screen until the new tiles are ready. |
 | 3D terrain | Draws terrain at each tilt. | Draws a flat map when you look vertically down. See [Terrain and elevation](terrain-and-elevation.md). |
 | Camera | Tilt to 85 degrees. Roll. Field of view. | Tilt to 60 degrees. No roll. A fixed field of view. Padding is available. |
+| The lowest zoom | `minZoom` is -2 by default. The world is never less tall than the map. | The same. |
 | `setMaxBounds` | Keeps all of the view in the bounds. | Keeps the map centre in the bounds. |
 | The `hash` option | The camera in the fragment of the URL. | The same, with the same format. |
 | Tile URLs | `{z}`, `{x}`, `{y}`, `{bbox-epsg-3857}`, `{quadkey}`, `{ratio}`, `{prefix}`; the `scheme` `tms`. | `{z}`, `{x}`, `{y}`, `{bbox-epsg-3857}` (for WMS servers), `{quadkey}`; the `scheme` `tms`. Not `{ratio}` and `{prefix}`. |

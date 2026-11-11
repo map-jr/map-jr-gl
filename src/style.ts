@@ -122,7 +122,7 @@ export function compileLayer(l: LayerJSON): CompiledLayer | null {
         group: l.type === 'symbol' ? JSON.stringify([l.source, l['source-layer'], l.minzoom, l.maxzoom, l.filter, l.layout]) : undefined,
         ramp: l.type === 'heatmap' ? colorRamp(l.paint?.['heatmap-color'] ?? HEATMAP_COLORS) : l.type === 'line' && l.paint?.['line-gradient'] ? colorRamp(l.paint['line-gradient']) : undefined,
         id: l.id, type: l.type, source: l.source, sourceLayer: l['source-layer'],
-        minzoom: l.minzoom ?? 0, maxzoom: l.maxzoom ?? 24,
+        minzoom: l.minzoom ?? -2, maxzoom: l.maxzoom ?? 24,
         // Pattern fills need sprite images, which are not supported yet; hiding them beats drawing solid black.
         visible: l.layout?.visibility !== 'none', filter: own && extra ? c => own(c) && extra(c) : own ?? extra, p,
     };

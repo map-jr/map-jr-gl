@@ -212,7 +212,7 @@ export class Map {
         this.canvas.tabIndex = 0;
         // Server-rendered markup stays visible on top until the canvas has drawn the same view.
         c.insertBefore(this.canvas, c.firstChild);
-        this.tr.minZoom = options.minZoom ?? 0;
+        this.tr.minZoom = options.minZoom ?? -2;
         this.tr.maxZoom = options.maxZoom ?? 22;
         this.measure();
         this.canvas.width = Math.round(this.tr.width * this.dpr);
@@ -589,7 +589,7 @@ export class Map {
     }
 
     private limits() { this.post({type: 'limits', minZoom: this.tr.minZoom, maxZoom: this.tr.maxZoom, maxPitch: this.tr.maxPitch, minPitch: this.tr.minPitch, maxBounds: this.tr.maxBounds}); return this; }
-    setMinZoom(z = 0) { this.tr.minZoom = z; return this.limits(); }
+    setMinZoom(z = -2) { this.tr.minZoom = z; return this.limits(); }
     setMaxZoom(z = 22) { this.tr.maxZoom = z; return this.limits(); }
     setMaxPitch(p = 60) { this.tr.maxPitch = Math.min(60, p); return this.limits(); }
     getMaxPitch() { return this.tr.maxPitch; }
@@ -721,6 +721,8 @@ export class Map {
     }
     /** Turns 3D terrain on (`{source, exaggeration}`, naming a raster-dem source) or off (`null`). */
     setTerrain(terrain: {source: string; exaggeration?: number} | null) {
+        // (Without terrain the positions on this thread are flat at once, before the engine answers.)
+        if (!terrain) { this.tr.heightAt = undefined; this.tr.elevation = 0; }
         return this.editStyle(s => { if (terrain) s.terrain = terrain; else delete s.terrain; this.fire('terrain', {terrain}); });
     }
     getTerrain(): {source: string; exaggeration?: number} | null { return this.rawStyle?.terrain ?? null; }

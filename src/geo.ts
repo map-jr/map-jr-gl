@@ -67,7 +67,7 @@ export class Transform {
     bearing = 0;
     /** Camera tilt in degrees: 0 looks straight down. */
     pitch = 0;
-    minZoom = 0;
+    minZoom = -2;
     maxZoom = 22;
     maxPitch = 60;
     minPitch = 0;
@@ -103,10 +103,15 @@ export class Transform {
         if (bearing !== undefined) this.bearing = ((bearing + 180) % 360 + 360) % 360 - 180;
     }
 
+    /** The lowest zoom: `minZoom`, or the zoom at which the world is as tall as the view. */
+    get zoomFloor() { return Math.max(this.minZoom, Math.log2(this.height / TILE_SIZE)); }
+
     /** Keeps the centre on the map, and inside `maxBounds` if there are any. */
     constrain() {
         // As in MapLibre, the view does not go past the top or the bottom of the world (when the world is taller than the view).
         // (A latitude that needs no change is left exactly as it was given.)
+        // The world is never less tall than the view: the zoom stops there (as in MapLibre).
+        this.zoom = Math.max(this.zoom, this.zoomFloor);
         const half = Math.min(0.5, this.height / 2 / this.worldSize), y = mercY(this.lat = clamp(this.lat, -MAX_LAT, MAX_LAT)), inside = clamp(y, half, 1 - half);
         if (inside !== y) this.lat = latFromMerc(inside);
         const b = this.maxBounds;
@@ -291,7 +296,8 @@ export class Transform {
     /** `tileSize` shifts the zoom level chosen: 256px tiles are fetched one level deeper than 512px ones. */
     coveringTiles(minzoom: number, maxzoom: number, tileSize = TILE_SIZE, round = false): TileID[] {
         // Image tiles switch level at the half-way point (as MapLibre does) so they are never stretched more than about 1.4x.
-        const want = (round ? Math.round : Math.floor)(this.zoom + Math.log2(TILE_SIZE / tileSize));
+        // (Below zoom 0 the tiles of zoom 0 are drawn smaller.)
+        const want = Math.max(0, (round ? Math.round : Math.floor)(this.zoom + Math.log2(TILE_SIZE / tileSize)));
         // Below a source's minimum zoom nothing is drawn (as in MapLibre); shrinking its coarsest tiles would mean
         // loading ever more of them the further out the map goes.
         if (want < minzoom) return [];
