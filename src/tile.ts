@@ -107,6 +107,9 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
     };
     const out: TileIR = {layers: {}, labels: {}};
     const ctx = {zoom: z, f: null as Feature | null};
+    // A size is found at this zoom and at the next, and the map mixes the two. A tile that is built for the zoom of the
+    // map (see `buildZoom` in the engine) has the correct size already.
+    const z1 = z % 1 ? z : z + 1;
 
     for (const L of layers) {
         if (L.type === 'background' || !L.visible) continue;
@@ -141,7 +144,7 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
                 // (The flag is named for the usual case at a point: the symbol stays upright when the map turns.)
                 const turns = (alignment: unknown) => along ? alignment === 'viewport' : alignment !== 'map';
                 const base = {
-                    text, size0: p.size.eval(z, f), size1: p.size.eval(z + 1, f),
+                    text, size0: p.size.eval(z, f), size1: p.size.eval(z1, f),
                     color: [color[0], color[1], color[2], color[3] * op] as RGBA,
                     halo: [haloColor[0], haloColor[1], haloColor[2], haloColor[3] * op] as RGBA, haloWidth: p.haloWidth.eval(z, f), haloBlur: p.haloBlur.eval(z, f), rotate: p.rotate.eval(z, f) * Math.PI / 180, justify: justification(p.justify.eval(z, f), p.anchor.eval(z, f)), font: fontStyle(p.font.eval(z, f)),
                     maxWidth: p.maxWidth.eval(z, f), spacing: p.spacing.eval(z, f), offset: p.offset.eval(z, f), anchor: p.anchor.eval(z, f),
@@ -149,7 +152,7 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
                     upright: turns(p.textAlign.eval(z, f)), textOptional: !!p.textOptional.eval(z, f), ignore: !!p.ignore.eval(z, f),
                     varAnchor: p.varAnchor.eval(z, f), radial: p.radial.eval(z, f), varOffset: p.varOffset.eval(z, f), maxAngle: p.maxAngle.eval(z, f), justifyAuto: p.justify.eval(z, f) === 'auto',
                     icon: iconName ? {
-                        name: iconName, size: p.iconSize.eval(z, f), size1: p.iconSize.eval(z + 1, f), opacity: p.iconOpacity.dd ? p.iconOpacity.eval(z, f) : 1, anchor: p.iconAnchor.eval(z, f), color: p.iconColor.eval(z, f), halo: p.iconHalo.eval(z, f), haloWidth: p.iconHaloWidth.eval(z, f), offset: p.iconOffset.eval(z, f), rotate: p.iconRotate.eval(z, f),
+                        name: iconName, size: p.iconSize.eval(z, f), size1: p.iconSize.eval(z1, f), opacity: p.iconOpacity.dd ? p.iconOpacity.eval(z, f) : 1, anchor: p.iconAnchor.eval(z, f), color: p.iconColor.eval(z, f), halo: p.iconHalo.eval(z, f), haloWidth: p.iconHaloWidth.eval(z, f), offset: p.iconOffset.eval(z, f), rotate: p.iconRotate.eval(z, f),
                         fit: p.iconFit.eval(z, f), fitPad: p.iconFitPad.eval(z, f), overlap: overlaps(p.iconOverlapMode.eval(z, f), p.iconOverlap.eval(z, f)), ignore: !!p.iconIgnore.eval(z, f), padding: p.iconPadding.eval(z, f), translate: p.iconTranslate.eval(z, f),
                         optional: !!p.iconOptional.eval(z, f), upright: turns(p.iconAlign.eval(z, f)),
                     } : undefined,
@@ -222,7 +225,7 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
             featEnds.push(ringEnds.length);
             if (ddColor) pushColor(color, p.color.dd ? p.color.eval(z, f) : WHITE, p.opacity.dd ? p.opacity.eval(z, f) : 1);
             if (scalarProp?.dd) {
-                const now = scalarProp.eval(z, f), next = heat ? now : scalarProp.eval(z + 1, f);
+                const now = scalarProp.eval(z, f), next = heat ? now : scalarProp.eval(z1, f);
                 scalar.push(now); scalar1.push(next);
                 if (next !== now) grows = true;
             }

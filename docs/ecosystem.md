@@ -59,6 +59,68 @@ many labels. A larger number shows something that the library draws wrongly or n
 The views: world (zoom 1.6), country (zoom 5.3), city (zoom 11.2), streets (zoom 14.6), close (zoom 17.4), tilted (zoom 15.7, tilted).
 <!-- styles:end -->
 
+<!-- examples:start -->
+## The example pages of MapLibre GL JS
+
+The documentation of MapLibre GL JS has an example page for each common task. `node test/conformance/examples.mjs --write`
+runs each page two times: with MapLibre GL JS, and with this library in its place (the page itself is not changed).
+A page works when this library gives no error that MapLibre GL JS does not give, and at most 12 percent of the
+pixels of the two images differ clearly (labels and controls are drawn in different ways).
+
+**94 of 142 pages work.** 27 give an error, 21 draw a different image, 0 were not compared.
+
+| Example page | Result | Pixels that differ | First error of this library |
+|---|---|---|---|
+| add-3d-terrain-from-quantized-mesh-tiles | error | 21.1 | [map-jr-gl] Error: The source image could not be decoded. |
+| add-3d-tiles-3d-objects-and-models-using-threejs | error | 13.7 | The requested module 'maplibre-gl' does not provide an export named 'MercatorCoordinate' |
+| add-a-3d-model-with-babylonjs | error | 0.8 | Cannot read properties of undefined (reading 'fromLngLat') |
+| add-a-cog-raster-source | error | 49.8 | [map-jr-gl] AggregateError: Request failed |
+| add-a-color-relief-layer | differs | 99.1 |  |
+| add-a-custom-layer-with-tiles-to-a-globe | error | 49.3 | [map-jr-gl] TypeError: map.setProjection is not a function |
+| add-a-multidirectional-hillshade-layer | differs | 56.4 |  |
+| add-a-pattern-to-a-polygon | differs | 18.3 |  |
+| add-a-simple-custom-layer-on-a-globe | error | 14.2 | [map-jr-gl] TypeError: map.setProjection is not a function |
+| add-a-stretchable-image-to-the-map | differs | 15 |  |
+| add-a-video | differs | 28.9 |  |
+| add-a-wms-source | error | 94.7 | [map-jr-gl] Error: Tile https://ows.terrestris.de/osm/service?service=WMS&request=GetMap&version=1.1.1&layers=TOPO-WMS%2COSM-Overlay-WMS&styles=&format=image%2F |
+| add-contour-lines | error | 8.2 | [map-jr-gl] Error: Unsupported protobuf wire type 4 |
+| add-custom-layers-that-follow-the-terrain | error | 81.4 | Cannot read properties of undefined (reading 'fromLngLat') |
+| add-live-realtime-data | differs | 29.7 |  |
+| animate-a-point-along-a-route | differs | 40 |  |
+| animate-a-series-of-images | error | 3.8 | map.getSource(...).updateImage is not a function |
+| animate-map-camera-around-a-point | differs | 48.7 |  |
+| animate-symbol-to-follow-the-mouse | error | 2.2 | maplibregl.GlobeControl is not a constructor |
+| create-a-heatmap-layer-on-a-globe-with-terrain-elevation | error | 39.3 | maplibregl.GlobeControl is not a constructor |
+| customize-the-map-transform-constrain | differs | 94.6 |  |
+| display-a-globe-with-a-fill-extrusion-layer | error | 24.6 | maplibregl.GlobeControl is not a constructor |
+| display-a-globe-with-a-vector-map | error | 23 | [map-jr-gl] TypeError: map.setProjection is not a function |
+| display-a-globe-with-an-atmosphere | differs | 36.7 |  |
+| display-a-hybrid-satellite-map-with-terrain-elevation | error | 89.2 | [map-jr-gl] TypeError: Cannot read properties of undefined (reading 'bearing') |
+| display-a-map-in-a-polar-stereographic-projection | error | 87.2 | maplibregl.addProjection is not a function |
+| display-a-map-in-utm-zone-32n | error | 71.4 | maplibregl.addProjection is not a function |
+| display-a-map-with-mlt | error | 11.1 | [map-jr-gl] Error: Unsupported protobuf wire type 6 |
+| display-a-remote-svg-symbol | differs | 40.6 |  |
+| display-and-style-rich-text-labels | error | 5.6 | Layer "label_country" does not exist |
+| display-buildings-in-3d | differs | 46.2 |  |
+| display-geojson-in-a-polar-stereographic-projection | error | 86.8 | maplibregl.importScriptInWorkers is not a function |
+| enter-a-360-photosphere | error | 69.1 | The requested module 'maplibre-gl' does not provide an export named 'MercatorCoordinate' |
+| filter-within-a-layer | differs | 13.3 |  |
+| interactive-layer-blending | differs | 35 |  |
+| jump-to-a-series-of-locations | differs | 13.3 |  |
+| level-of-detail-control | error | 28.1 | map.setSourceTileLodParams is not a function |
+| navigate-the-map-with-game-like-controls | differs | 37.6 |  |
+| raycast-3d-tiles-using-threejs | error | 95.3 | The requested module 'maplibre-gl' does not provide an export named 'MercatorCoordinate' |
+| restrict-map-panning-to-an-area | differs | 48.2 |  |
+| set-center-point-above-ground | differs | 95.6 |  |
+| sky-fog-terrain | error | 26.6 | maplibregl.GlobeControl is not a constructor |
+| toggle-deckgl-layer | error | 0.2 | [map-jr-gl] TypeError: Failed to fetch |
+| variable-label-placement | differs | 14.3 |  |
+| variable-label-placement-with-offset | differs | 14.1 |  |
+| visualize-population-density | differs | 15.1 |  |
+| walk-around-a-map-in-first-person | error | 55.1 | Cannot read properties of undefined (reading 'fromLngLat') |
+| zoom-and-planet-size-relation-on-globe | error | 21.5 | [map-jr-gl] TypeError: map.setProjection is not a function |
+<!-- examples:end -->
+
 ## What is missing most often
 
 | Missing | Kind | Packages that use it |
