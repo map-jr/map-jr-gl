@@ -444,26 +444,17 @@ export class Engine {
             made.used = this.frameNo;
             for (const k of made.keys) wanted.add(k);
             const {view, items, signature, complete} = made;
-            // The heights themselves: make sure the elevation tile for this ground tile is on its way. Where the source
-            // has no tile at that level (the request failed), the nearest level above that does have one is used.
-            // The elevation tile is one level coarser than the ground tile, as in MapLibre: one of its pixels is then half
-            // of a cell of the mesh, which is enough, and one elevation tile serves four ground tiles.
-            // (Not needed when a layer on the ground, such as relief shading, draws from the same source: the tiles that it
-            // loads for this ground give the heights too.)
-            const shared = (t: TileID) => {
-                const key = terrain.source + '|' + t.key, dem = touches(t, id) && this.tiles.get(key);
-                if (!dem || (dem.state !== 'loading' && !dem.range)) return false;
-                // (The tile can be one that this loop asked for in an earlier frame: it must stay in use.)
-                wanted.add(key); dem.used = this.frameNo;
-                return true;
-            };
-            if (!this.viewCover(terrain.source).some(shared)) for (let dz = Math.max(demSrc.minzoom, Math.min(id.z - 1, demSrc.maxzoom)); dz >= demSrc.minzoom; dz--) {
-                const k = 2 ** (id.z - dz), dk = `${dz}/${Math.floor(id.x / k)}/${Math.floor(id.y / k)}`, demKey = terrain.source + '|' + dk;
+            // The heights themselves: make sure the elevation tiles for this ground tile are on their way. They are the
+            // tiles that the view selects for the source, which are also the ones that relief shading of the same source
+            // draws: the two then load one set of tiles, also when the relief layer is added after the terrain. Where the
+            // source has no tile at a level (the request failed), the nearest level above that does have one is used.
+            for (const t of this.viewCover(terrain.source)) if (touches(t, id)) for (let dz = t.z; dz >= demSrc.minzoom; dz--) {
+                const x = t.x >> t.z - dz, y = t.y >> t.z - dz, dk = `${dz}/${x}/${y}`, demKey = terrain.source + '|' + dk;
                 wanted.add(demKey);
-                const t = this.tiles.get(demKey);
-                if (!t) { this.request(terrain.source, {z: dz, x: Math.floor(id.x / k), y: Math.floor(id.y / k), w: 0, key: dk}, demKey); break; }
-                t.used = this.frameNo;
-                if (t.state === 'loading' || t.range) break; // otherwise it failed or came back empty: try the level above
+                const dem = this.tiles.get(demKey);
+                if (!dem) { this.request(terrain.source, {z: dz, x, y, w: 0, key: dk}, demKey); break; }
+                dem.used = this.frameNo;
+                if (dem.state === 'loading' || dem.range) break; // otherwise it failed or came back empty: try the level above
             }
             // Heights for the tile's mesh, looked up by position in data all tiles share (so edges meet exactly), and
             // refreshed a few tiles per frame when new elevation data arrives.

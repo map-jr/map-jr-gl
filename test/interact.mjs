@@ -487,6 +487,25 @@ for (const mode of ['main', 'worker']) {
     const rest1 = await peakAt(); await page.waitForTimeout(1500); const rest2 = await peakAt();
     check(`[${mode}] 3D terrain: a dragged point stays under the pointer, and the view is still afterwards`,
         Math.hypot(during.x - (from.x - 120), during.y - (from.y - 60)) < 1.5 && Math.hypot(rest1.x - rest2.x, rest1.y - rest2.y) < 0.5, JSON.stringify({during, rest1, rest2}));
+    // A drag over ground whose elevation tiles have not arrived (a slow connection) must still move the map, at each
+    // step. (Reported from an iPhone: the map stopped panning at a tile with no terrain yet.)
+    const slow = /mapterhorn/, late = async route => { await new Promise(r => setTimeout(r, 2500)); route.continue().catch(() => {}); };
+    await page.route(slow, late);
+    await page.evaluate(() => window.map.jumpTo({center: [8.45, 46.55], zoom: 12, bearing: 20, pitch: 60})); // ground that is not loaded
+    await page.waitForTimeout(400);
+    const centres = [];
+    for (let k = 0; k < 3; k++) {
+        await page.mouse.move(500, 200); await page.mouse.down();
+        for (let i = 1; i <= 10; i++) { await page.mouse.move(500 + i * 4, 200 + i * 20); await page.waitForTimeout(30); }
+        await page.waitForTimeout(250);
+        centres.push(await page.evaluate(() => { const c = window.map.getCenter(); return [c.lng, c.lat]; }));
+        await page.mouse.up(); await page.waitForTimeout(300);
+    }
+    await page.unroute(slow, late);
+    // Each drag pulls the far ground towards the viewer by a good part of the view: the centre goes on each time.
+    const moved = centres.map((c, i) => Math.hypot(c[0] - (i ? centres[i - 1][0] : 8.45), c[1] - (i ? centres[i - 1][1] : 46.55)));
+    check(`[${mode}] 3D terrain: a drag moves the map over ground whose elevation has not arrived`, moved.every(d => d > 0.01), JSON.stringify(moved.map(d => +d.toFixed(4))));
+    await idle(page).catch(() => {});
     await page.evaluate(() => window.map.setTerrain(null));
     // 3D terrain: the ground rises, so a summit's label position moves up the screen once the map is tilted.
     const terrain = await page.evaluate(async () => {

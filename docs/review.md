@@ -166,6 +166,33 @@ which are corrected:
 | The view could go past the top or the bottom of the world (a map at zoom 0 with a centre at 32 degrees north showed an empty band above the Arctic). | The centre is limited so that the view stays inside the world, as in MapLibre GL JS. |
 | With a steep tilt, the ground at the map centre was drawn with the style of the zoom level below that of the map: layers that start at the zoom of the map were missing there. | Each ground image uses the style of the zoom level of the map. |
 
+## Two reports from the iPhone that are open
+
+After the changes to 3D terrain, the owner reported from an iPhone:
+
+1. The first view fills in significantly slower.
+2. The map stops panning when it reaches a tile with no terrain yet.
+
+Neither one shows on the development machine (Chromium, software GPU):
+
+| What was tried | Result |
+|---|---|
+| The first view of the gallery's terrain example at the size of a phone, the version of the day before against the present one, with fast tiles and with tiles that take 1.5 seconds each | The present version is complete sooner in each run, and asks for a third of the elevation tiles. |
+| Pans by mouse and by touch into ground whose elevation tiles take 4 to 5 seconds | The centre moves at each step. |
+| A drag of a point on a summit while the map centre is in a valley | The map follows. |
+| A CPU profile of a pan into ground without elevation | No long task; less script time than the day before. |
+
+What was done:
+
+- The mesh of the ground now asks for the same elevation tiles as relief shading. Before, when the relief layer was
+  added after the terrain (as the gallery does), the two loaded two sets of elevation tiles.
+- A browser test now pans over ground whose elevation tiles are slow. The workflow `Browsers` runs it in WebKit and
+  Firefox too.
+
+To find the cause, these facts from the phone would help: if the first view is slow in each example or only with
+terrain; and what "stops" is: the map does not follow the finger, the glide after the finger lifts ends at once, or
+the picture freezes for a moment.
+
 ## Findings from the cross-browser runs
 
 The workflow `Browsers` runs the benchmark and the behaviour tests in Chromium, Firefox and WebKit on Linux, macOS
