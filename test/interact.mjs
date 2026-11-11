@@ -571,6 +571,24 @@ for (const mode of ['main', 'worker']) {
         return seen;
     });
     if (decodes) check(`[${mode}] image tiles are not built again as geometry`, imageErrors.length === 0, imageErrors.slice(0, 2).join(' | '));
+
+    // A tile of the deepest level of its source has only the labels of the layers that show near the zoom of the map.
+    // When the map goes to a much higher zoom, the tile is built again and the labels of the other layers come.
+    // (The labels are found in the image: with the layer hidden, the image is another.)
+    await page.evaluate(async () => {
+        const m = window.map;
+        m.jumpTo({center: [-74.0065, 40.7085], zoom: 14.3, pitch: 0, bearing: 0});
+        m.addLayer({id: 'test-deep', type: 'symbol', source: 'omt', 'source-layer': 'poi', minzoom: 17, layout: {'text-field': ['get', 'name'], 'text-size': 14, 'text-allow-overlap': true}, paint: {'text-color': '#f00'}});
+        await Promise.race([new Promise(r => m.once('idle', r)), new Promise(r => setTimeout(r, 8000))]);
+        m.jumpTo({zoom: 17.3});
+    });
+    await page.waitForTimeout(3000);
+    const part = {x: 200, y: 150, width: 600, height: 400}, withLabels = await page.screenshot({clip: part});
+    await page.evaluate(() => window.map.setLayoutProperty('test-deep', 'visibility', 'none'));
+    await page.waitForTimeout(1500);
+    const without = await page.screenshot({clip: part});
+    await page.evaluate(() => window.map.removeLayer('test-deep'));
+    check(`[${mode}] labels of a layer for high zooms come after a zoom far past the deepest tiles`, !withLabels.equals(without));
     check(`[${mode}] no page errors`, errors.length === 0, errors.slice(0, 3).join(' | '));
     await page.close();
   } catch (err) {

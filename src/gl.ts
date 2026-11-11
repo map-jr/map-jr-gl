@@ -486,15 +486,16 @@ export class GLRenderer {
 
     private link(vs: string, fs: string, name: string): Program {
         const gl = this.gl, prog = gl.createProgram()!;
-        for (const [type, src] of [[gl.VERTEX_SHADER, vs], [gl.FRAGMENT_SHADER, fs]] as const) {
-            const s = gl.createShader(type)!;
+        // (The state of each shader is not read: that would wait for its compilation. A fault shows when the program is linked.)
+        const shaders = [[gl.VERTEX_SHADER, vs], [gl.FRAGMENT_SHADER, fs]].map(([type, src]) => {
+            const s = gl.createShader(type as number)!;
             gl.shaderSource(s, HEAD + src);
             gl.compileShader(s);
-            if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(`Shader "${name}": ${gl.getShaderInfoLog(s)}`);
             gl.attachShader(prog, s);
-        }
+            return s;
+        });
         gl.linkProgram(prog);
-        if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(`Program "${name}": ${gl.getProgramInfoLog(prog)}`);
+        if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(`Program "${name}": ${gl.getProgramInfoLog(prog)} ${shaders.map(s => gl.getShaderInfoLog(s))}`);
         const u: Record<string, WebGLUniformLocation> = {};
         for (let i = 0; i < gl.getProgramParameter(prog, gl.ACTIVE_UNIFORMS); i++) {
             const info = gl.getActiveUniform(prog, i)!;

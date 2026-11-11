@@ -24,7 +24,8 @@ const {parseAst} = await import(pathToFileURL(createRequire(createRequire(import
 const src = path.resolve(import.meta.dirname, '../src');
 const INTERNAL = ['heightAt', 'cameraDistance', 'pixelsPerMetre', 'worldSize', 'screenToMerc', 'screenToGround', 'coveringTiles', 'projectTile', 'mercToScreen',
     'createImageTile', 'createTile', 'destroyTile', 'setLocationAt', 'updateMarker', 'setMarkerHeights', 'setMarkers', 'missingImage', 'tileMatrix4', 'tileMatrix',
-    'tileScale', 'cameraPosition', 'unprojectFlat', 'recenterOnGround', 'imageScale', 'imageGlyph', 'uploadSprite', 'setIcons', 'zoomFloor'];
+    'tileScale', 'cameraPosition', 'unprojectFlat', 'recenterOnGround', 'imageScale', 'imageGlyph', 'uploadSprite', 'setIcons', 'zoomFloor',
+    'varint', 'svarint', 'skip', 'constrain', 'occluded', 'loadIR', 'styleOf', 'onReset', 'resets', 'expansionZoom', 'setFetch', 'dirty', 'hits', 'command', 'leaves'];
 
 /** Calls `fn` for each node of a syntax tree, with its parent. */
 function walk(node, fn, parent = null) {

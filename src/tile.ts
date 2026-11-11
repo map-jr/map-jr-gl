@@ -97,7 +97,7 @@ const WHITE: RGBA = [1, 1, 1, 1];
 export type TileLayers = Record<string, {features: TileFeature[]}>;
 export interface TileFeature extends Feature { geometry(extent: number, coords: number[], ringEnds: number[]): number }
 
-export function buildTile(data: Uint8Array | TileLayers, z: number, layers: CompiledLayer[], overscaled: boolean): TileIR {
+export function buildTile(data: Uint8Array | TileLayers, z: number, layers: CompiledLayer[], overscaled: number | false): TileIR {
     const vt: TileLayers = data instanceof Uint8Array ? decodeVectorTile(data) : data;
     const geomCache = new Map<TileFeature, {coords: number[]; ringEnds: number[]}>();
     const geometry = (f: TileFeature) => {
@@ -113,8 +113,9 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
 
     for (const L of layers) {
         if (L.type === 'background' || !L.visible) continue;
-        // A tile is drawn from its own zoom up to the next one (further if it is the source's deepest level).
-        if (L.minzoom >= z + 1 && !overscaled) continue;
+        // A tile is drawn from its own zoom up to the next one. A tile of the source's deepest level is drawn further: it has
+        // all the shapes, and the labels of the layers that show up to one level above the zoom of the map.
+        if (L.minzoom >= (overscaled === false ? z + 1 : L.type === 'symbol' ? overscaled + 2 : 99)) continue;
         if (L.maxzoom <= z) continue;
         const vl = vt[L.sourceLayer ?? GEOJSON_LAYER];
         if (!vl) continue;
@@ -323,7 +324,7 @@ export function packLabels(labels: Record<string, LabelSrc[]>): PackedLabels {
 }
 export function unpackLabels(packed: PackedLabels): Record<string, LabelSrc[]> {
     const out: Record<string, LabelSrc[]> = {};
-    for (const id in packed) out[id] = packed[id].own.map(([i, own]) => (i < 0 ? own : Object.assign(Object.create(packed[id].shared[i]), own)) as LabelSrc);
+    for (const id in packed) out[id] = packed[id].own.map(([i, own]) => (i < 0 ? own : Object.setPrototypeOf(own, packed[id].shared[i])) as LabelSrc);
     return out;
 }
 

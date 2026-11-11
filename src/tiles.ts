@@ -11,7 +11,8 @@ import {contourTile, decodeDEM, decodePixels, type ContourConfig, type DEM, type
 /** An elevation tile to fetch, and what comes back: its pixels for the GPU, and its heights on a coarse grid with their range. */
 export interface ElevationRequest { id: number; url: string; encoding: string }
 export interface ElevationTile { width: number; height: number; pixels: Uint8Array; grid: Float32Array; lo: number; hi: number }
-export interface TileRequest { id: number; source: string; url: string; z: number; overscaled: boolean }
+/** `overscaled`: for a tile of the deepest level of its source, the zoom of the map that the tile is built for. */
+export interface TileRequest { id: number; source: string; url: string; z: number; overscaled: number | false }
 
 /** Fetches and parses tiles. The same class backs tile workers, the main-thread fallback and server rendering. */
 export class TileBuilder {

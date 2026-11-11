@@ -29,7 +29,7 @@ export type ImageDecoder = (bytes: Uint8Array) => Promise<Pixels> | Pixels;
 /** The pixels of an elevation tile image, from `decode` if given and otherwise from the browser. */
 export async function decodePixels(bytes: Uint8Array, decode?: ImageDecoder): Promise<Pixels> {
     if (decode) return decode(bytes);
-    if (typeof createImageBitmap === 'undefined' || typeof OffscreenCanvas === 'undefined') throw new Error('Decoding elevation tiles needs a browser, or a decodeImage function');
+    if (typeof createImageBitmap === 'undefined' || typeof OffscreenCanvas === 'undefined') throw new Error('Elevation tiles need a browser or decodeImage');
     const image = await createImageBitmap(new Blob([bytes as BlobPart]), {premultiplyAlpha: 'none', colorSpaceConversion: 'none'});
     const {width, height} = image; // read before close(), which zeroes them
     // Heights are in the colour channels, so pixels must never be blended: the image is drawn at its own size.

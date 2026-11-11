@@ -82,7 +82,7 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
             const url = tileURL(src, id.z, id.x, id.y);
             if (src.type === 'raster') { loaded.set(id.key, {href: o.inlineImages ? await dataURI(url) : url}); return; }
             if (src.type === 'vector') urls.push(url);
-            loaded.set(id.key, await builder.loadIR({id: req++, source: name, url, z: id.z, overscaled: id.z >= src.maxzoom}));
+            loaded.set(id.key, await builder.loadIR({id: req++, source: name, url, z: id.z, overscaled: id.z >= src.maxzoom && Math.floor(tr.zoom)}));
         }));
         const list = renderItems(tr, ideal, k => loaded.get(k));
         items.set(name, list);

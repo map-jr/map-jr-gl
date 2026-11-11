@@ -7,7 +7,7 @@ import {CollisionGrid, placeLabels, renderItems, type Placed, type RenderItem} f
 import {GlyphAtlas} from './text.ts';
 import {fetchWith, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
 import {decodeElevation, sampleElevation, tilesUnderBox, type QueriedFeature, type QuerySet} from './query.ts';
-import type {TileBackend} from './tiles.ts';
+import type {TileBackend, TileRequest} from './tiles.ts';
 import type {TileGL} from './tile.ts';
 import {fetchTile} from './pmtiles.ts';
 
@@ -893,7 +893,7 @@ export class Engine {
         else if (isGeometrySource(src)) {
             const backend = this.backends[this.nextBackend++ % this.backends.length], req = this.nextReq++;
             t.cancel = () => backend.cancel(req);
-            load = backend.load({id: req, source, url, z: t.band = this.buildZoom(source, id), overscaled: id.z >= src.maxzoom}).then(tile => this.upload(tile));
+            load = backend.load(this.build(req, source, id, t)).then(tile => this.upload(tile));
         } else {
             // Elevation tiles are decoded in a tile worker, which also reads the heights that 3D terrain needs: this thread
             // only sends the finished pixels to the GPU. (Reading pixels back here made the map hitch as tiles arrived.)
@@ -951,13 +951,24 @@ export class Engine {
      * the zoom has changed and is still.
      */
     private buildZoom(source: string, id: TileID) {
-        return id.z >= this.style.sources[source].maxzoom && this.zoomBuilt.has(source) ? Math.max(id.z, this.tr.zoom) : id.z;
+        return id.z >= this.style.sources[source].maxzoom ? Math.max(id.z, this.zoomBuilt.has(source) ? this.tr.zoom : Math.floor(this.tr.zoom)) : id.z;
+    }
+    /**
+     * The request to build a tile. A tile of the deepest level of its source is shown at each higher zoom also. It has
+     * the labels of the layers that show near the zoom of the map only (as in MapLibre GL JS), and is built again when
+     * the map comes to another whole zoom. (A city has thousands of labels that show only from zoom 17.)
+     */
+    private build(req: number, source: string, id: TileID, t: TileState): TileRequest {
+        const src = this.style.sources[source], band = t.band = this.buildZoom(source, id);
+        return {id: req, source, url: tileURL(src, id.z, id.x, id.y), z: this.zoomBuilt.has(source) ? band : id.z, overscaled: band >= src.maxzoom && band};
     }
     private zoomBuilt = new Set<string | undefined>();
     /** Builds a tile again when its data is out of date, or when it was built for another zoom than it is now for. */
     private refresh(source: string, id: TileID, key: string, t: TileState) {
         // (Only a tile of geometry has a zoom that it was built for. An image tile is never built again: its bytes are not geometry.)
-        if (t.band === undefined || t.state !== 'ok' || t.rebuilding || !(t.stale || (this.frameTime - this.zoomMovedAt > CONTOUR_WAIT && t.band !== this.buildZoom(source, id)))) return;
+        // The zoom must be still for a moment before a tile is built for it. A frame comes after that moment (see
+        // `contourWait`, which is set under the same condition in each place of a frame).
+        if (t.band === undefined || t.state !== 'ok' || t.rebuilding || !t.stale && (t.band === this.buildZoom(source, id) || (this.contourWait ||= this.frameTime - this.zoomMovedAt <= CONTOUR_WAIT))) return;
         t.stale = false;
         this.rebuild(source, id, key, t);
     }
@@ -965,7 +976,7 @@ export class Engine {
     private rebuild(source: string, id: TileID, key: string, t: TileState) {
         const src = this.style.sources[source], backend = this.backends[this.nextBackend++ % this.backends.length], req = this.nextReq++;
         t.rebuilding = true; // one rebuild at a time per tile; data that changes meanwhile marks it stale again
-        backend.load({id: req, source, url: tileURL(src, id.z, id.x, id.y), z: t.band = this.buildZoom(source, id), overscaled: id.z >= src.maxzoom}).then(tile => {
+        backend.load(this.build(req, source, id, t)).then(tile => {
             t.rebuilding = false;
             if (this.tiles.get(key) !== t) return;
             const old = t.gl;
