@@ -84,7 +84,7 @@ New facts for the decision, from the runs of this night:
 
 - The wrappers for React and Vue now run in a browser test with a map, a control, a marker, a popup, a source and a
   layer, without these methods (React needed only `getSky()`, which was added).
-- Of the 34 example pages of MapLibre that do not work, 11 stop only at `new GlobeControl()`, `map.setProjection(...)`
+- Of the 33 example pages of MapLibre that do not work, 11 stop only at `new GlobeControl()`, `map.setProjection(...)`
   or `setSourceTileLodParams`. With methods and a control that have no effect, those pages would show a flat map
   where MapLibre shows a globe.
 - The page script now has room: it is 27.1 KB with a budget of 27.5 KB.
