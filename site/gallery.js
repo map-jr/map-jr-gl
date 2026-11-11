@@ -172,15 +172,24 @@ const {image, contentType} = await renderToImage({...options, rasteriser});`,
 ];
 
 const main = document.getElementById('rows');
-const started = new WeakSet();
+// A map starts when its row comes near the view, and is removed when the row is far away again. Each map has its own
+// WebGL context and memory on the GPU; a phone does not have enough for all the rows at one time.
+const live = new WeakMap();
 const observer = new IntersectionObserver(entries => {
     for (const e of entries) {
-        if (!e.isIntersecting || started.has(e.target)) continue;
-        started.add(e.target);
+        if (!e.isIntersecting || live.has(e.target)) continue;
         const row = e.target.row;
-        Promise.resolve().then(() => row.spec.make(row.stage, row)).then(map => { if (map) (window.maps ||= {})[row.spec.id] = map; }, err => { row.out(String(err.message)); console.error(err); });
+        live.set(e.target, Promise.resolve().then(() => row.spec.make(row.stage, row)).then(map => { if (map) (window.maps ||= {})[row.spec.id] = map; return map; }, err => { row.out(String(err.message)); console.error(err); }));
     }
 }, {rootMargin: '150px'});
+const far = new IntersectionObserver(entries => {
+    for (const e of entries) {
+        const map = live.get(e.target), row = e.target.row;
+        if (e.isIntersecting || !map || row.spec.pair) continue; // (the row with the server images has no live map to remove)
+        live.delete(e.target);
+        map.then(m => { m?.remove?.(); row.stage.replaceChildren(); row.actions.replaceChildren(); row.out(''); delete window.maps?.[row.spec.id]; });
+    }
+}, {rootMargin: '1500px'});
 
 for (const spec of rows) {
     const el = document.createElement('article');
@@ -194,4 +203,5 @@ for (const spec of rows) {
     el.row = {spec, stage: spec.pair ? el.querySelector('.pair') : el.querySelector('.live'), actions: el.querySelector('.actions'), out: text => { readout.textContent = text; }};
     main.append(el);
     observer.observe(el);
+    far.observe(el);
 }
