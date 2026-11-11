@@ -618,6 +618,7 @@ export class Map {
     private restyle(reload: boolean) {
         // As in MapLibre, the loading events come before the data events.
         for (const type of ['styledataloading', 'dataloading']) this.fire(type, {dataType: 'style'});
+        if (!this.syncQuery && Object.values<any>(this.rawStyle.sources ?? {}).some(src => src.type === 'geojson' && src.data && typeof src.data === 'object')) import('./sync-query.ts').then(m => { this.syncQuery = m; });
         resolveStyle(this.rawStyle, this.fetchAs('Source'), this.styleBase).then(style => {
             if (Object.keys(this.globalState).length) style.state = {...style.state, ...this.globalState};
             this.style = style;
@@ -880,11 +881,14 @@ export class Map {
 
     /**
      * The features that the style layers draw at a point or in a rectangle of the screen (the whole map when no
-     * geometry is given), from the top layer down. The arguments and the features are those of MapLibre GL JS. One
-     * difference: the result is a promise, because the tile data is in a worker. Thus write
-     * `await map.queryRenderedFeatures(...)`.
+     * geometry is given), from the top layer down. The arguments and the features are those of MapLibre GL JS.
+     *
+     * The tile data is in a worker, so the complete result is a promise: `await map.queryRenderedFeatures(...)`.
+     * The value is also an array, for code that uses the result at once as MapLibre permits. As an array it has the
+     * features of the GeoJSON sources whose data is in the style (which the page can read itself), and not those of
+     * tile sources. Plugins that draw and edit on the map query their own GeoJSON sources in this way.
      */
-    async queryRenderedFeatures(geometry?: PointLike | [PointLike, PointLike] | RenderedQueryOptions, options: RenderedQueryOptions = {}): Promise<RenderedFeature[]> {
+    queryRenderedFeatures(geometry?: PointLike | [PointLike, PointLike] | RenderedQueryOptions, options: RenderedQueryOptions = {}): RenderedFeature[] & PromiseLike<RenderedFeature[]> {
         const point = (p: PointLike): [number, number] => Array.isArray(p) ? [p[0], p[1]] : [p.x, p.y];
         const isPoint = (g: unknown): g is PointLike => !!g && (Array.isArray(g) ? typeof g[0] === 'number' : typeof (g as {x?: unknown}).x === 'number');
         let box: [number, number, number, number];
@@ -899,14 +903,25 @@ export class Map {
             // How far from its geometry a feature is drawn, in pixels: half the line width, the circle radius, a part of an icon or text.
             radius: l.type === 'line' ? Math.max(3, number(l.paint?.['line-width'], 4) / 2) : l.type === 'circle' ? number(l.paint?.['circle-radius'], 5) + number(l.paint?.['circle-stroke-width'], 0) : l.type === 'symbol' ? 10 : 0,
         }));
-        if (!sets.length) return [];
-        const found = await this.ask<QueriedFeature[]>(id => ({type: 'queryRendered', id, box, sets, geometry: true}));
         const order = new globalThis.Map(layers.map((l, i) => [l.id, i]));
-        return found.sort((a, b) => order.get(b.layer!)! - order.get(a.layer!)!).map(f => ({
+        const features = (found: QueriedFeature[]): RenderedFeature[] => found.sort((a, b) => order.get(b.layer!)! - order.get(a.layer!)!).map(f => ({
             type: 'Feature', id: f.id, geometry: f.geometry!, properties: f.properties, source: f.source, sourceLayer: f.sourceLayer || undefined,
             layer: this.getLayer(f.layer!), state: f.id === undefined ? {} : this.getFeatureState({source: f.source, sourceLayer: f.sourceLayer || undefined, id: f.id}),
         }));
+        // At once: the GeoJSON sources that the page has the data of.
+        const now: QueriedFeature[] = [], sync = this.syncQuery;
+        if (sync) for (const [id, spec] of Object.entries<any>(this.rawStyle?.sources ?? {})) {
+            const mine = sets.filter(s => s.source === id);
+            if (mine.length && spec.type === 'geojson' && spec.data && typeof spec.data === 'object') try { now.push(...sync.queryGeoJSON(id, spec, this.tr, box, mine)); } catch { /* the promise has the complete result or the error */ }
+        }
+        const result = features(now);
+        // Later: all the sources, from the engine.
+        const all = sets.length ? this.ask<QueriedFeature[]>(id => ({type: 'queryRendered', id, box, sets, geometry: true})).then(features) : Promise.resolve([]);
+        Object.defineProperty(result, 'then', {value: (done?: (v: RenderedFeature[]) => unknown, failed?: (e: unknown) => unknown) => all.then(done, failed)});
+        return result as RenderedFeature[] & PromiseLike<RenderedFeature[]>;
     }
+    /** The code for queries on the page, loaded when the style has a GeoJSON source with its data in the style. */
+    private syncQuery?: typeof import('./sync-query.ts');
 
     /** The features of a source in the tiles of the present view. As `queryRenderedFeatures`, the result is a promise. */
     async querySourceFeatures(sourceId: string, options: {sourceLayer?: string; filter?: unknown} = {}): Promise<RenderedFeature[]> {

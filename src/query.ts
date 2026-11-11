@@ -1,4 +1,4 @@
-import {EXTENT, latFromMerc, lngFromMerc} from './geo.ts';
+import {EXTENT, clamp, latFromMerc, lngFromMerc, mercX, mercY, type Transform} from './geo.ts';
 import {decodeVectorTile} from './mvt.ts';
 import {GEOJSON_LAYER} from './geojson.ts';
 import {compileFilter} from './expr.ts';
@@ -126,4 +126,20 @@ export function sampleElevation(pixels: ArrayLike<number>, width: number, height
     const x0 = Math.floor(fx), y0 = Math.floor(fy), x1 = Math.min(width - 1, x0 + 1), y1 = Math.min(height - 1, y0 + 1), tx = fx - x0, ty = fy - y0;
     const e = (x: number, y: number) => decodeElevation(pixels, (y * width + x) * 4, encoding);
     return (e(x0, y0) * (1 - tx) + e(x1, y0) * tx) * (1 - ty) + (e(x0, y1) * (1 - tx) + e(x1, y1) * tx) * ty;
+}
+
+/**
+ * The tiles of one source under a rectangle of the screen, each with the rectangle in its own units and the number of
+ * tile units for one screen pixel. When the map is turned or tilted, the rectangle is the one around the four corners.
+ */
+export function tilesUnderBox(tr: Transform, [x0, y0, x1, y1]: number[], minzoom: number, maxzoom: number) {
+    const corners = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].map(([x, y]) => { const [lng, lat] = tr.unproject(x, y); return [mercX(lng), clamp(mercY(lat), 0, 1)]; });
+    const west = Math.min(...corners.map(p => p[0])), east = Math.max(...corners.map(p => p[0])), north = Math.min(...corners.map(p => p[1])), south = Math.max(...corners.map(p => p[1]));
+    const z = clamp(Math.floor(tr.zoom), minzoom, maxzoom), n = 2 ** z, scale = EXTENT / (512 * 2 ** (tr.zoom - z)), out: {z: number; x: number; y: number; box: [number, number, number, number]; scale: number}[] = [];
+    const tx0 = Math.floor(west * n), tx1 = Math.floor(east * n), ty0 = clamp(Math.floor(north * n), 0, n - 1), ty1 = clamp(Math.floor(south * n), 0, n - 1);
+    if ((tx1 - tx0 + 1) * (ty1 - ty0 + 1) > 256) throw new Error('The query covers too many tiles');
+    for (let tx = tx0; tx <= tx1; tx++) for (let ty = ty0; ty <= ty1; ty++) {
+        out.push({z, x: ((tx % n) + n) % n, y: ty, scale, box: [(west * n - tx) * EXTENT, (north * n - ty) * EXTENT, (east * n - tx) * EXTENT, (south * n - ty) * EXTENT]});
+    }
+    return out;
 }

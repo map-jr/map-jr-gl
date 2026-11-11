@@ -17,10 +17,10 @@ for (const f of page) engine.delete(f); // the page has these already when it lo
 
 const sizes = [
     // What a page downloads before the map can start. The worker file is downloaded at the same time.
-    ['page script, up front (' + [...page].length + ' files)', gz(page), 27],
+    ['page script, up front (' + [...page].length + ' files)', gz(page), 27.5],
     ['map-jr-gl-worker.js', gz(['map-jr-gl-worker.js']), 58],
     // Only when the engine runs on the main thread (no worker is possible).
-    ['engine on the main thread, on demand', gz(engine), 53],
+    ['engine on the main thread, on demand', gz(engine), 54],
 ];
 let ok = true;
 for (const [name, kb, budget] of sizes) {

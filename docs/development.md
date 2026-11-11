@@ -21,6 +21,8 @@ pnpm install
 | `pnpm test:cloudflare` | Runs the server renderer in the Cloudflare runtime. Start `pnpm demo` first. |
 | `pnpm test:render` | Runs the MapLibre render tests. This takes about 10 minutes. |
 | `pnpm test:size` | Fails if a built file is larger than its budget in `scripts/size-check.mjs`. Run `pnpm build` first. |
+| `node test/conformance/ecosystem.mjs --write` | Reads popular plugins and frameworks from npm and writes which parts of the MapLibre API they use that the library does not have (`docs/ecosystem.md`). |
+| `node test/conformance/plugins.mjs --write` | Runs popular plugins with the library in a browser, each in a short scenario. |
 | `pnpm status` | Writes the test results and sizes into the README |
 | `pnpm screenshots` | Takes the screenshots in `docs/images` from the gallery. Start `pnpm demo` first. |
 | `pnpm bench` | Compares the speed with MapLibre GL JS in a browser without a GPU |

@@ -6,7 +6,7 @@ import {GLRenderer, MARKER_FLOATS, MARKER_STRIDE, SPRITE_ATLAS, type DemRef, typ
 import {CollisionGrid, placeLabels, renderItems, type Placed, type RenderItem} from './placement.ts';
 import {GlyphAtlas} from './text.ts';
 import {fetchWith, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
-import {decodeElevation, sampleElevation, type QueriedFeature, type QuerySet} from './query.ts';
+import {decodeElevation, sampleElevation, tilesUnderBox, type QueriedFeature, type QuerySet} from './query.ts';
 import type {TileBackend} from './tiles.ts';
 import type {TileGL} from './tile.ts';
 import {fetchTile} from './pmtiles.ts';
@@ -679,21 +679,14 @@ export class Engine {
 
     /** The features that the given style layers draw in a rectangle of the screen, from the tiles of the present zoom. */
     private async queryRendered(c: Extract<Command, {type: 'queryRendered'}>): Promise<QueriedFeature[]> {
-        const tr = this.tr, [x0, y0, x1, y1] = c.box, jobs: Promise<QueriedFeature[]>[] = [];
-        // The rectangle on the ground. When the map is turned or tilted, this is the rectangle around its four corners.
-        const corners = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].map(([x, y]) => { const [lng, lat] = tr.unproject(x, y); return [mercX(lng), clamp(mercY(lat), 0, 1)]; });
-        const west = Math.min(...corners.map(p => p[0])), east = Math.max(...corners.map(p => p[0])), north = Math.min(...corners.map(p => p[1])), south = Math.max(...corners.map(p => p[1]));
+        const jobs: Promise<QueriedFeature[]>[] = [];
         for (const [name, src] of Object.entries(this.style.sources)) {
             const sets = c.sets.filter(s => s.source === name);
             if (!sets.length || !isGeometrySource(src)) continue;
-            const z = clamp(Math.floor(tr.zoom), src.minzoom, src.maxzoom), n = 2 ** z, scale = EXTENT / (512 * 2 ** (tr.zoom - z));
-            const tx0 = Math.floor(west * n), tx1 = Math.floor(east * n), ty0 = clamp(Math.floor(north * n), 0, n - 1), ty1 = clamp(Math.floor(south * n), 0, n - 1);
-            if ((tx1 - tx0 + 1) * (ty1 - ty0 + 1) > 256) throw new Error('The query covers too many tiles');
-            for (let tx = tx0; tx <= tx1; tx++) for (let ty = ty0; ty <= ty1; ty++) {
-                const box: [number, number, number, number] = [(west * n - tx) * EXTENT, (north * n - ty) * EXTENT, (east * n - tx) * EXTENT, (south * n - ty) * EXTENT];
-                jobs.push(this.backends[this.nextBackend++ % this.backends.length].query(tileURL(src, z, ((tx % n) + n) % n, ty), {
-                    source: name, z, x: ((tx % n) + n) % n, y: ty, px: 0, py: 0, radius: 0, box, geometry: c.geometry,
-                    sets: sets.map(s => ({layer: s.layer, sourceLayer: s.sourceLayer, filter: s.filter, also: s.also, radius: s.radius * scale})),
+            for (const t of tilesUnderBox(this.tr, c.box, src.minzoom, src.maxzoom)) {
+                jobs.push(this.backends[this.nextBackend++ % this.backends.length].query(tileURL(src, t.z, t.x, t.y), {
+                    source: name, z: t.z, x: t.x, y: t.y, px: 0, py: 0, radius: 0, box: t.box, geometry: c.geometry,
+                    sets: sets.map(s => ({layer: s.layer, sourceLayer: s.sourceLayer, filter: s.filter, also: s.also, radius: s.radius * t.scale})),
                 }));
             }
         }
