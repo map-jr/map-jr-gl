@@ -26,6 +26,9 @@
 - Size is a main advantage of the library, and the owner is concerned that the worker file grows with each
   feature. `pnpm test:size` has a budget for each built file. Do not raise a budget without a reason that the owner
   would accept; first look for a way to make the code smaller.
+  The build shortens the names of private class members and of the names in the shaders (see
+  `docs/development.md`): declare members `private`, and name uniforms `u_...`. Code that only some maps need can
+  be a file that is loaded on demand (`import()`), as `src/hash.ts` and `src/pmtiles-info.ts` are.
 
 ## Commands
 
@@ -39,6 +42,14 @@ results or sizes, run `pnpm status` (it rewrites the status table in the README)
   Read its results with `git fetch origin bench-results && git show origin/bench-results:README.md`. Use this
   before you ask the owner to test on a device.
 
+- To find faults in common use, run real pages and plugins, not only the test suites. Each of these compares the
+  library with MapLibre GL JS and writes its results into `docs/ecosystem.md`:
+  `node test/conformance/examples.mjs --write` (the example pages of the MapLibre documentation; about 30 minutes;
+  `--filter=<regex>` for a part), `node test/conformance/plugins.mjs --write` (plugins and framework wrappers, each
+  in a scenario), `node test/conformance/styles.mjs --write` (public styles). They found faults that the suites did
+  not show, for example lost tiles with `addProtocol` and more than one tile worker.
+- Do not run `node build.mjs` while a long run (render tests, example pages) reads `dist/`.
+- The tests use one tile worker in some places. A fault can need the usual number of workers to show.
 - The development machine has no GPU: WebGL runs in software, so frame rates measured here are only relative.
   Real numbers come from the owner running `/bench` (an Apple M4 and an iPhone so far).
 - Safari on iOS behaves differently from Chromium in places (canvas scaling, OffscreenCanvas in workers). Changes
