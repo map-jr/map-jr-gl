@@ -40,6 +40,8 @@ export interface Batch {
 }
 export interface LabelSrc {
     x: number; y: number; text: string;
+    /** `symbol-sort-key`, when the layer has one. */
+    key?: number;
     /** Direction of the line at the anchor in tile space (radians), or null for point labels. */
     angle: number | null;
     /** Length of the line the label sits on, in tile units. */
@@ -171,7 +173,7 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
                         const label: LabelSrc = Object.assign(Object.create(base), {x: a[0], y: a[1], angle: along ? a[2] : null, len: a[3]});
                         if (a.length > 4) { label.pathIndex = a[4]; label.path = a.slice(5); }
                         labels.push(label);
-                        if (sorted) keys.push(p.sortKey.eval(z, f));
+                        if (sorted) keys.push(label.key = +p.sortKey.eval(z, f) || 0);
                     }
                     start = end;
                     if (f.type === 3 && !along) break; // one label per polygon: outer ring only

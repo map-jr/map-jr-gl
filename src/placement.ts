@@ -106,10 +106,16 @@ export function placeLabels(
         // The same text is a duplicate only in its own layer (the same feature from two tiles, or a road name that
         // repeats). Two layers can show the same text at one point, as in MapLibre.
         seen.clear();
-        for (const it of items) {
-            itemNo++;
-            const labels = it.tile.labels?.[L.id];
-            if (!labels) continue;
+        // The labels of a layer with `symbol-sort-key` are placed in the order of the key over all tiles, as in MapLibre:
+        // a label does not win only because its tile comes first.
+        let runs: {it: typeof items[0]; labels: LabelSrc[]; no: number}[] = [];
+        for (const it of items) { const labels = it.tile.labels?.[L.id]; itemNo++; if (labels) runs.push({it, labels, no: itemNo}); }
+        if (runs.length > 1 && (L.p.sortKey.dd || L.p.sortKey.eval(tr.zoom) !== 0)) {
+            const all: typeof runs = [];
+            for (const r of runs) for (const l of r.labels) all.push({it: r.it, labels: [l], no: r.no});
+            runs = all.sort((a, b) => a.labels[0].key! - b.labels[0].key!); // (the sort keeps the order of equal keys)
+        }
+        for (const {it, labels, no: itemNo} of runs) {
             const t = Math.min(1, Math.max(0, tr.zoom - it.id.z));
             for (const l of labels) {
                 if (l.x < it.clip[0] || l.y < it.clip[1] || l.x >= it.clip[2] || l.y >= it.clip[3]) continue;
