@@ -73,6 +73,40 @@ The default slot is drawn over the map. It gets `state` (the state of the map) a
 
 A template ref on the component also has `host` and `state`.
 
+### Elements of the page on the map
+
+`MapOverlay` puts its content at a position of the map. Use it inside `MapJr`.
+
+```vue
+<script setup>
+import {ref} from 'vue';
+import {MapJr, MapOverlay} from 'map-jr-gl/vue';
+
+const selected = ref(null);
+</script>
+
+<template>
+  <MapJr :map-style="style" :interactive-layers="['places']" @click="e => selected = e.features[0] && {lngLat: e.lngLat, name: e.features[0].properties.name}">
+    <MapOverlay :lng-lat="[-74.0065, 40.7085]" anchor="bottom"><img src="/pin.svg" alt="Office"></MapOverlay>
+    <MapOverlay v-if="selected" :lng-lat="selected.lngLat" popup @close="selected = null">{{ selected.name }}</MapOverlay>
+  </MapJr>
+</template>
+```
+
+| Prop | Meaning |
+|---|---|
+| `lng-lat` | The position. Required. |
+| `anchor` | The part of the content that is at the position: `center` (the default), `bottom`, `top-left` and others. |
+| `offset` | A distance in pixels from the position, to the right and down. |
+| `popup` | Show the content in a box with a pointer to the position. |
+
+With a listener for `close`, a popup has a button to close it.
+
+The content is Vue content: it can have components, events and reactive values. Use `MapOverlay` for some elements.
+For many markers, use the `markers` prop: those are drawn on the canvas.
+
+A component of your own inside `MapJr` gets the map with `useMapHost()` (a ref).
+
 ### How the component sees changes
 
 You can change the props as in other Vue code. The component sees these changes:

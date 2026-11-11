@@ -157,6 +157,35 @@ const data = await map.queryFeatures({x: 200, y: 150}, {sources: ['openmaptiles'
 
 The tile data is in a worker, so each query returns a promise.
 
+## Elements of the page on the map
+
+```js
+// A marker with your own content:
+const el = document.createElement('img');
+el.src = '/pin.svg';
+const marker = map.overlay(el, {lngLat: [-74.0065, 40.7085], anchor: 'bottom'});
+
+marker.update({lngLat: [-74.0, 40.71], anchor: 'bottom'}); // moves it
+marker.remove();
+
+// A popup: the element in a box with a pointer to the position.
+const popup = map.overlay(content, {lngLat, popup: true, onClose: () => popup.remove()});
+```
+
+`overlay` puts an element of the page at a position of the map. The element moves with the map.
+
+| Option | Meaning |
+|---|---|
+| `lngLat` | The position. Required. |
+| `anchor` | The part of the element that is at the position: `'center'` (the default), `'bottom'`, `'top-left'` and others. |
+| `offset` | A distance in pixels from the position, to the right and down. |
+| `popup` | `true` to show the element in a box with a pointer to the position. |
+| `onClose` | For a popup: the box gets a button to close it, and this function is called. |
+
+Use an overlay for some elements with content of the page (a photo, a form, a popup). For many markers, use a
+marker layer (`markers` in the description): it is drawn on the canvas, and 100,000 markers cost about the same
+as ten. See [Markers](markers.md).
+
 ## Other members of the map
 
 | Member | Meaning |
@@ -172,7 +201,5 @@ The tile data is in a worker, so each query returns a promise.
 
 ## What is not in this entry yet
 
-- `Marker` and `Popup` (elements of the page at a position of the map) are in `map-jr-gl/maplibre-compat` only.
-  They will become a part of this API.
 - The features under the pointer are found with one query for each pointer position, from the page. Later the
   engine will find them itself.

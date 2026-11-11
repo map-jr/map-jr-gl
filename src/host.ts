@@ -8,6 +8,7 @@
  */
 import {Map, type MapOptions, type MarkerLayer, type RenderedFeature} from './map.ts';
 import {createStore, type Readable} from './store.ts';
+import {Marker, Popup, type OverlayAnchor} from './overlays.ts';
 import type {MarkerLayerOptions} from './markers.ts';
 import type {QueriedFeature} from './query.ts';
 import type {FontSource} from './engine.ts';
@@ -68,6 +69,19 @@ export interface MapState {
     error: Error | undefined;
 }
 
+/** Where an element of the page is on the map. */
+export interface OverlayOptions {
+    lngLat: [number, number];
+    /** The part of the element that is at the position: `'center'` (the default), `'bottom'`, `'top-left'` and others. */
+    anchor?: OverlayAnchor;
+    /** A distance in pixels from the position, to the right and down. */
+    offset?: [number, number];
+    /** Show the element in a box with a pointer to the position (a popup). With `onClose`, the box has a button to close it. */
+    popup?: boolean;
+    onClose?: () => void;
+}
+export interface MapOverlay { update(options: OverlayOptions): void; remove(): void }
+
 export interface MapHost {
     /** Changes the map to a new description. Give the complete description each time. */
     update(spec: MapSpec): void;
@@ -83,6 +97,12 @@ export interface MapHost {
     fitBounds(bounds: LngLatBoundsInput, options?: {padding?: number; duration?: number; maxZoom?: number}): void;
     project(lngLat: [number, number]): {x: number; y: number};
     unproject(point: {x: number; y: number}): [number, number];
+    /**
+     * Puts an element of the page at a position of the map: a marker with your own content, a label, a popup. The
+     * element moves with the map. For many markers, use a marker layer (`markers` in the description): it is drawn
+     * on the canvas and is much faster.
+     */
+    overlay(element: HTMLElement, options: OverlayOptions): MapOverlay;
     /** Calls `fn` for each event of that type. Returns a function that stops it. */
     listen(type: string, fn: (event: any) => void): () => void;
     readonly container: HTMLElement;
@@ -192,6 +212,25 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
         fitBounds: (bounds, o) => { map.fitBounds(bounds, o); },
         project: lngLat => map.project(lngLat),
         unproject: point => { const p = map.unproject(point); return [p.lng, p.lat]; },
+        overlay(element, o) {
+            let now = o;
+            const make = () => {
+                if (!now.popup) return new Marker({element, anchor: now.anchor, offset: now.offset}).setLngLat(now.lngLat).addTo(map);
+                const p = new Popup({anchor: now.anchor, offset: now.offset, closeButton: !!now.onClose, closeOnClick: false}).setLngLat(now.lngLat).setDOMContent(element).addTo(map);
+                p.on('close', () => { if (made === p) now.onClose?.(); });
+                return p;
+            };
+            let made: Marker | Popup | null = make();
+            return {
+                update(next) {
+                    const again = !!next.popup !== !!now.popup || next.anchor !== now.anchor || String(next.offset) !== String(now.offset) || !!next.onClose !== !!now.onClose;
+                    now = next;
+                    if (!made) return;
+                    if (again) { const old = made; made = null; old.remove(); made = make(); } else made.setLngLat(next.lngLat);
+                },
+                remove() { const old = made; made = null; old?.remove(); },
+            };
+        },
         listen(type, fn) { map.on(type, fn); return () => { map.off(type, fn); }; },
         container: map.getContainer(),
         map,

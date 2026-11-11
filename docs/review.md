@@ -39,10 +39,11 @@ Done on 2026-11-11, as agreed with the owner:
    does not grow with the number of markers. The `ssr` prop takes `overrides` for style layers and `attribution`;
    the server puts the credits of the sources into the page.
 
+7. Elements of the page on the map for the main API: `map.overlay(element, options)` (a marker with own content, or a
+   popup), and the component `MapOverlay` for Vue.
+
 Not done yet, in the order that I propose:
 
-1. **`Marker` and `Popup` for the main API.** Now they are in the compatibility entry only. (Controls are done:
-   `map-jr-gl/controls`.)
 2. **The features under the pointer found by the engine.** Now the page makes one query for each pointer position.
 3. **More of the map class into the compatibility class**: the layer and source methods (`addLayer`, `setPaintProperty`
    and others), when the main API has its own path for a change of the style. This makes the main entry smaller.

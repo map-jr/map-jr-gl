@@ -5,8 +5,8 @@
  * the map does the rest. On a server the component can render the first view as SVG; in the browser the map takes
  * over that SVG, so a page from Nuxt shows a map before any script has run.
  */
-import {computed, defineComponent, getCurrentInstance, h, isProxy, isReactive, onBeforeUnmount, onMounted, onServerPrefetch, shallowRef, toRaw, toValue, watch, type ComputedRef, type MaybeRefOrGetter, type PropType, type ShallowRef} from 'vue';
-import {createMap, type ControlSpec, type MapHost, type MapPointer, type MapSpec, type MapState, type View} from './host.ts';
+import {computed, defineComponent, getCurrentInstance, h, inject, provide, isProxy, isReactive, onBeforeUnmount, onMounted, onServerPrefetch, shallowRef, toRaw, toValue, watch, type ComputedRef, type MaybeRefOrGetter, type PropType, type ShallowRef} from 'vue';
+import {createMap, type ControlSpec, type MapHost, type MapOverlay as Overlay, type OverlayOptions, type MapPointer, type MapSpec, type MapState, type View} from './host.ts';
 import type {SSROverrides} from './style.ts';
 import type {RenderedFeature} from './map.ts';
 import type {MarkerLayerOptions} from './markers.ts';
@@ -62,6 +62,50 @@ export function useMap(container: MaybeRefOrGetter<HTMLElement | null | undefine
     onBeforeUnmount(() => { stop?.(); host.value?.destroy(); host.value = null; });
     return {host, state};
 }
+
+const HOST = Symbol('map-jr') as unknown as import('vue').InjectionKey<ShallowRef<MapHost | null>>;
+
+/** The map of the `MapJr` component that this component is in (a ref; it has the map when the map has started). */
+export const useMapHost = () => inject(HOST, shallowRef(null));
+
+/**
+ * An element of the page at a position of the map, for the inside of `MapJr`: a marker with your own content, or a
+ * popup.
+ *
+ * ```vue
+ * <MapJr :map-style="style">
+ *   <MapOverlay :lng-lat="[-74.0, 40.71]" anchor="bottom"><img src="/pin.svg" alt="Office"></MapOverlay>
+ *   <MapOverlay v-if="selected" :lng-lat="selected.lngLat" popup @close="selected = null">{{ selected.name }}</MapOverlay>
+ * </MapJr>
+ * ```
+ * For many markers, use the `markers` prop of `MapJr`: those are drawn on the canvas.
+ */
+export const MapOverlay = defineComponent({
+    name: 'MapOverlay',
+    props: {
+        lngLat: {type: Array as unknown as PropType<[number, number]>, required: true},
+        anchor: String as PropType<OverlayOptions['anchor']>,
+        offset: Array as unknown as PropType<[number, number]>,
+        /** Show the content in a box with a pointer to the position. */
+        popup: Boolean,
+        /** With a listener for `close`, a popup has a button to close it. */
+        onClose: Function as PropType<() => void>,
+    },
+    emits: ['close'],
+    setup(props, {slots}) {
+        const host = useMapHost(), el = shallowRef<HTMLElement | null>(null);
+        let overlay: Overlay | null = null;
+        const options = (): OverlayOptions => ({lngLat: [props.lngLat[0], props.lngLat[1]], anchor: props.anchor, offset: props.offset && [props.offset[0], props.offset[1]], popup: props.popup, onClose: props.onClose});
+        // The map starts after this component is there, so the element is put on the map when the two exist.
+        watch([host, el, options], ([map, element, o]) => {
+            if (!map || !element) return;
+            if (overlay) overlay.update(o); else { overlay = map.overlay(element, o); element.style.display = ''; }
+        }, {flush: 'post', immediate: true});
+        onBeforeUnmount(() => { overlay?.remove(); overlay = null; });
+        // (Not shown until it is on the map: on a server, and before the map has started, it has no position.)
+        return () => h('div', {ref: el, style: 'display:none'}, slots.default?.());
+    },
+});
 
 /**
  * The map as a component. It fills its parent element, so give the parent a height.
@@ -135,6 +179,7 @@ export const MapJr = defineComponent({
             return out;
         });
         const {host, state} = useMap(el, spec);
+        provide(HOST, host);
         watch(() => state.value?.loaded, loaded => { if (loaded) emit('load'); });
         watch(() => state.value?.idle, idle => { if (idle) emit('idle'); });
         watch(() => state.value?.hover, hover => { if (hover) emit('hover', hover); });
