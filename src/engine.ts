@@ -298,7 +298,10 @@ export class Engine {
         const z = clamp(Math.floor(tr.zoom), 0, 22), n = 2 ** z, cx = mercX(tr.lng) * n, w = Math.floor(cx / n);
         const id: TileID = {z, x: Math.floor(cx) - w * n, y: clamp(Math.floor(mercY(tr.lat) * n), 0, n - 1), w, key: ''};
         const corners = src.coordinates!.flatMap(([lng, lat]) => [(mercX(lng) * n - (id.x + w * n)) * EXTENT, (mercY(lat) * n - id.y) * EXTENT]);
-        return [{id, corners, matrix: tr.tileMatrix(id), matrix4: tr.tileMatrix4(id), scale: tr.worldSize / n / EXTENT, clip: [-1e9, -1e9, 1e9, 1e9], tile: st.gl}];
+        const item = (shift: number): RenderItem<GLTile> => ({id, corners: corners.map((v, i) => i % 2 ? v : v + shift * n * EXTENT), matrix: tr.tileMatrix(id), matrix4: tr.tileMatrix4(id), scale: tr.worldSize / n / EXTENT, clip: [-1e9, -1e9, 1e9, 1e9], tile: st!.gl!});
+        // The picture is in each copy of the world: the view can show two copies at the 180 degree meridian.
+        const lngs = src.coordinates!.map(c => c[0]), west = Math.min(...lngs), east = Math.max(...lngs), reach = 360 * Math.max(tr.width, tr.height) / tr.worldSize;
+        return [-1, 0, 1].filter(k => east + k * 360 > tr.lng - reach && west + k * 360 < tr.lng + reach).map(item);
     }
 
     /** The heights under a tile, for the GPU. */

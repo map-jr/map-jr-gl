@@ -104,6 +104,8 @@ export interface CompiledLayer {
     ssr?: SSROverrides;
     /** Heatmap layers: the colour for each density (see colorRamp). Line layers: the colours of `line-gradient` along the line. */
     ramp?: Uint8Array;
+    /** Symbol layers: the same for layers that have the same data and layout. As in MapLibre, such layers share their labels. */
+    group?: string;
 }
 
 export function compileLayer(l: LayerJSON): CompiledLayer | null {
@@ -118,6 +120,7 @@ export function compileLayer(l: LayerJSON): CompiledLayer | null {
     const own = compileFilter(l.filter), extra = compileFilter(l.metadata?.['map-jr:and-filter']);
     return {
         ssr: l.metadata?.[SSR_KEY],
+        group: l.type === 'symbol' ? JSON.stringify([l.source, l['source-layer'], l.minzoom, l.maxzoom, l.filter, l.layout]) : undefined,
         ramp: l.type === 'heatmap' ? colorRamp(l.paint?.['heatmap-color'] ?? HEATMAP_COLORS) : l.type === 'line' && l.paint?.['line-gradient'] ? colorRamp(l.paint['line-gradient']) : undefined,
         id: l.id, type: l.type, source: l.source, sourceLayer: l['source-layer'],
         minzoom: l.minzoom ?? 0, maxzoom: l.maxzoom ?? 24,

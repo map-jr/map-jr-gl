@@ -88,6 +88,7 @@ export function placeLabels(
     const out: Placed[] = [], seen = new Map<string, number[]>();
     let itemNo = 0;
     const keys = new Map<string, number>();
+    const twins = new Map<string, {layer: string; group?: string; box: Box; x: number; y: number; justify?: number}>();
     const margin = 100;
     for (let li = layers.length - 1; li >= 0; li--) {
         const L = layers[li];
@@ -113,6 +114,7 @@ export function placeLabels(
                 if (line) { const [bx, by] = tr.projectTile(it.id, l.x + Math.cos(l.angle!) * 64, l.y + Math.sin(l.angle!) * 64); lineAngle = Math.atan2(by - ay, bx - ax); }
 
                 // Where the text could go: along the line, at one of several anchors, or at its fixed anchor.
+                let twin: {layer: string; group?: string; box: Box; x: number; y: number; justify?: number} | undefined, twinKey = '';
                 let textAngle = 0, candidates: [number, number][] = [];
                 const anchors: string[] = [];
                 if (hasText) {
@@ -169,14 +171,18 @@ export function placeLabels(
                     if (l.translate[0] || l.translate[1]) candidates = candidates.map(([dx, dy]) => [dx + l.translate[0], dy + l.translate[1]]);
                     // The same name often arrives from several tiles or road segments: keep them apart.
                     const prev = seen.get(l.text), minDist = line ? 300 : 1;
+                    // The same label in a second layer (for example, to draw it twice for more weight) goes where the first is.
+                    twin = line ? undefined : twins.get(twinKey = `${l.text}|${l.font}|${size}|${Math.round(ax)},${Math.round(ay)}`);
+                    if (twin && (twin.layer === L.id || twin.group !== L.group)) twin = undefined;
                     let dup = false;
                     // Point labels from one tile are separate features, also when they have the same position.
-                    if (prev) for (let i = 0; i < prev.length && !dup; i += 3) dup = (line || prev[i + 2] !== itemNo) && Math.hypot(prev[i] - ax, prev[i + 1] - ay) < minDist;
+                    if (prev && !twin) for (let i = 0; i < prev.length && !dup; i += 3) dup = (line || prev[i + 2] !== itemNo) && Math.hypot(prev[i] - ax, prev[i + 1] - ay) < minDist;
                     if (dup) continue;
                 }
                 let textBox: Box | null = null, tx = ax, ty = ay;
                 let justify: number | undefined;
-                for (let i = 0; i < candidates.length; i++) {
+                if (twin) { textBox = twin.box; tx = twin.x; ty = twin.y; justify = twin.justify; }
+                else for (let i = 0; i < candidates.length; i++) {
                     const [dx, dy] = candidates[i], box = boxAround(ax + dx, ay + dy, w, h, textAngle, l.padding);
                     if (l.overlap || !grid.hits(...box)) {
                         textBox = box; tx = ax + dx; ty = ay + dy;
@@ -227,7 +233,8 @@ export function placeLabels(
                     } else if (!(hasText && textBox && ic.optional)) continue;
                 }
                 if (!textBox && !icon) continue;
-                if (textBox && !l.ignore) grid.insert(...textBox);
+                if (textBox && twinKey && !twin) twins.set(twinKey, {layer: L.id, group: L.group, box: textBox, x: tx, y: ty, justify});
+                if (textBox && !l.ignore && !twin) grid.insert(...textBox);
                 if (iconBox && !l.icon!.ignore) grid.insert(...iconBox);
                 if (textBox) {
                     const prev = seen.get(l.text);
