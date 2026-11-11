@@ -34,21 +34,13 @@ short scenario in `test/conformance/plugins/`. The plugin imports `maplibre-gl` 
 | Missing | Kind | Packages that use it |
 |---|---|---|
 | `GlobeControl` | export | 4: react-map-gl, @vis.gl/react-maplibre, svelte-maplibre-gl, @maplibre/ngx-maplibre-gl |
-| `MapSourceDataEvent` | export | 3: react-map-gl, svelte-maplibre-gl, svelte-maplibre |
-| `GeoJSONSource` | export | 2: svelte-maplibre-gl, @maplibre/ngx-maplibre-gl |
-| `MapLibreEvent` | export | 2: svelte-maplibre-gl, svelte-maplibre |
-| `MapStyleDataEvent` | export | 2: react-map-gl, svelte-maplibre |
-| `MapWheelEvent` | export | 2: react-map-gl, svelte-maplibre |
 | `CanvasSource` | export | 1: svelte-maplibre-gl |
 | `config` | export | 1: svelte-maplibre |
-| `ErrorEvent` | export | 1: react-map-gl |
 | `Event` | export | 1: svelte-maplibre-gl |
+| `GeoJSONSource` | export | 1: svelte-maplibre-gl |
 | `GPUInitializationError` | export | 1: svelte-maplibre |
 | `Hash` | export | 1: svelte-maplibre-gl |
 | `ImageSource` | export | 1: svelte-maplibre-gl |
-| `MapBoxZoomEvent` | export | 1: react-map-gl |
-| `MapMouseEvent` | export | 1: svelte-maplibre |
-| `MapMovementEvent` | export | 1: svelte-maplibre |
 | `RasterDEMTileSource` | export | 1: svelte-maplibre-gl |
 | `RasterTileSource` | export | 1: svelte-maplibre-gl |
 | `VectorTileSource` | export | 1: svelte-maplibre-gl |
@@ -114,11 +106,11 @@ short scenario in `test/conformance/plugins/`. The plugin imports `maplibre-gl` 
 
 | Package | Version | API in use | Missing methods | Missing exports | Missing events |
 |---|---|---|---|---|---|
-| react-map-gl | 8.1.3 | 53 methods, 20 exports, 8 events | `getSky`, `setProjection`, `setSky`, `setTransformCameraUpdate` | `ErrorEvent`, `GlobeControl`, `MapBoxZoomEvent`, `MapSourceDataEvent`, `MapStyleDataEvent`, `MapWheelEvent` | none |
+| react-map-gl | 8.1.3 | 53 methods, 20 exports, 8 events | `getSky`, `setProjection`, `setSky`, `setTransformCameraUpdate` | `GlobeControl` | none |
 | @vis.gl/react-maplibre | 8.1.3 | 47 methods, 15 exports, 6 events | `getSky`, `setSky`, `setTransformCameraUpdate` | `GlobeControl` | none |
 | vue-maplibre-gl | 5.6.1 | 40 methods, 6 exports, 17 events | `setProjection`, `setRenderWorldCopies` | none | none |
 | @indoorequal/vue-maplibre-gl | 9.0.1 | 39 methods, 9 exports, 5 events | `setRenderWorldCopies` | none | none |
-| svelte-maplibre-gl | 2.2.1 | 55 methods, 26 exports, 5 events | `getZoomSnap`, `setAnisotropicFilterPitch`, `setCenterClampedToGround`, `setProjection`, `setRenderWorldCopies`, `setSky`, `setTransformCameraUpdate`, `setTransformConstrain`, `setVerticalFieldOfView`, `setZoomSnap` | `CanvasSource`, `Event`, `GeoJSONSource`, `GlobeControl`, `Hash`, `ImageSource`, `MapLibreEvent`, `MapSourceDataEvent`, `RasterDEMTileSource`, `RasterTileSource`, `VectorTileSource`, `VideoSource` | none |
-| svelte-maplibre | 2.0.1 | 37 methods, 19 exports, 26 events | `setProjection` | `GPUInitializationError`, `MapLibreEvent`, `MapMouseEvent`, `MapMovementEvent`, `MapSourceDataEvent`, `MapStyleDataEvent`, `MapWheelEvent`, `config` | none |
-| @maplibre/ngx-maplibre-gl | 22.3.1 | 51 methods, 11 exports, 46 events | `fitScreenCoordinates`, `setAnisotropicFilterPitch`, `setCenterElevation`, `setProjection`, `setRenderWorldCopies`, `setTransformConstrain`, `setZoomSnap` | `GeoJSONSource`, `GlobeControl` | none |
+| svelte-maplibre-gl | 2.2.1 | 55 methods, 26 exports, 5 events | `getZoomSnap`, `setAnisotropicFilterPitch`, `setCenterClampedToGround`, `setProjection`, `setRenderWorldCopies`, `setSky`, `setTransformCameraUpdate`, `setTransformConstrain`, `setVerticalFieldOfView`, `setZoomSnap` | `CanvasSource`, `Event`, `GeoJSONSource`, `GlobeControl`, `Hash`, `ImageSource`, `RasterDEMTileSource`, `RasterTileSource`, `VectorTileSource`, `VideoSource` | none |
+| svelte-maplibre | 2.0.1 | 37 methods, 19 exports, 26 events | `setProjection` | `GPUInitializationError`, `config` | none |
+| @maplibre/ngx-maplibre-gl | 22.3.1 | 51 methods, 11 exports, 46 events | `fitScreenCoordinates`, `setAnisotropicFilterPitch`, `setCenterElevation`, `setProjection`, `setRenderWorldCopies`, `setTransformConstrain`, `setZoomSnap` | `GlobeControl` | none |
 | @maptiler/sdk | 4.2.1 | 66 methods, 1 exports, 18 events | `setProjection`, `setRoll` | none | `projectiontransition` |

@@ -36,6 +36,8 @@ const valueExports = new Set([
     ...[...exportBlock.matchAll(/[{,]\s*(?!type )(?:[\w$]+ as )?(\w+)(?=\s*[,}])/g)].map(m => m[1]),
 ]);
 const index = readFileSync(path.join(root, 'src/index.ts'), 'utf8');
+// The types that this library exports under MapLibre's names.
+const ourTypes = new Set([...readFileSync(path.join(root, 'src/compat-types.ts'), 'utf8').matchAll(/^export type (\w+)/gm)].map(m => m[1]));
 const ourExports = new Set([...index.matchAll(/export \{([^}]*)\}/g)].flatMap(m => m[1].split(',').map(s => s.trim()).filter(s => s && !s.startsWith('type ')).map(s => s.split(' as ').pop())));
 for (const m of index.matchAll(/^export (?:const|function|class) (\w+)/gm)) ourExports.add(m[1]);
 const ourSources = ['map.ts', 'overlays.ts', 'controls.ts'].map(f => readFileSync(path.join(root, 'src', f), 'utf8')).join('\n');
@@ -81,7 +83,10 @@ for (const [group, names] of Object.entries(PACKAGES)) for (const name of names)
     const noMethod = used.filter(m => !ourMethods.has(m)).sort();
     // (A name that is imported only as a type does not count: `import type {...}` and `type X` in a list.)
     const usedExports = [...valueExports].filter(e => e !== 'Map' && new RegExp(`(?:maplibregl|mapboxgl|maplibre|mapLib|maplibreGl)\\.${e}\\b|import\\s*\\{(?:[^}]*,)?\\s*${e}\\b[^}]*\\}\\s*from\\s*['"](?:maplibre-gl|mapbox-gl)['"]`).test(text));
-    const noExport = usedExports.filter(e => !ourExports.has(e)).sort();
+    // A name that this library exports as a type is enough when the package does not use the name as a value
+    // (`new X`, `instanceof X`, `extends X`, `X.something`): TypeScript then removes the import from the built code.
+    const asValue = e => new RegExp(`new ${e}\\b|instanceof ${e}\\b|extends ${e}\\b|[^.\\w]${e}\\.\\w`).test(text);
+    const noExport = usedExports.filter(e => !ourExports.has(e) && !(ourTypes.has(e) && !asValue(e))).sort();
     const usedEvents = [...theirEvents].filter(e => new RegExp(`\\.(?:on|once|off)\\(\\s*['"]${e}['"]`).test(text));
     const noEvent = usedEvents.filter(e => !ourEvents.has(e)).sort();
     for (const [kind, list] of [['methods', noMethod], ['exports', noExport], ['events', noEvent]]) for (const n of list) (demand[kind][n] ??= []).push(name);

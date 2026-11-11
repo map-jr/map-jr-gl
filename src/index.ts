@@ -8,6 +8,7 @@ export type {LngLatLike} from './geo.ts';
 export {AttributionControl, NavigationControl, ScaleControl, FullscreenControl, GeolocateControl, TerrainControl, LogoControl, type Control, type ControlPosition} from './controls.ts';
 export {Marker, Popup, type MarkerOptions, type PopupOptions} from './overlays.ts';
 export {configure, type LoadOptions} from './loader.ts';
+export type * from './compat-types.ts';
 
 // Functions that code for MapLibre GL JS calls on the module. Here they set the same things through `configure`, or
 // they do nothing because the library has no need of them.
