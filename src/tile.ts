@@ -60,6 +60,8 @@ export interface LabelSrc {
     textOptional: boolean; ignore: boolean; varAnchor: string[] | null; radial: number;
     /** `text-variable-anchor-offset`: anchors to try in turn, each with its own offset in ems. */
     varOffset: (string | [number, number])[] | null;
+    /** Text along a line: the largest turn between two characters, in degrees (`text-max-angle`). */
+    maxAngle: number;
     /** `text-justify: auto`: lines align towards whichever anchor the label ends up with. */
     justifyAuto: boolean;
     icon?: {
@@ -140,7 +142,7 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
                     maxWidth: p.maxWidth.eval(z, f), spacing: p.spacing.eval(z, f), offset: p.offset.eval(z, f), anchor: p.anchor.eval(z, f),
                     padding: p.padding.eval(z, f), overlap: overlaps(p.overlapMode.eval(z, f), p.overlap.eval(z, f)), lineHeight: p.lineHeight.eval(z, f), translate: p.translate.eval(z, f),
                     upright: p.textAlign.eval(z, f) === 'viewport', textOptional: !!p.textOptional.eval(z, f), ignore: !!p.ignore.eval(z, f),
-                    varAnchor: p.varAnchor.eval(z, f), radial: p.radial.eval(z, f), varOffset: p.varOffset.eval(z, f), justifyAuto: p.justify.eval(z, f) === 'auto',
+                    varAnchor: p.varAnchor.eval(z, f), radial: p.radial.eval(z, f), varOffset: p.varOffset.eval(z, f), maxAngle: p.maxAngle.eval(z, f), justifyAuto: p.justify.eval(z, f) === 'auto',
                     icon: iconName ? {
                         name: iconName, size: p.iconSize.eval(z, f), size1: p.iconSize.eval(z + 1, f), opacity: p.iconOpacity.eval(z, f), anchor: p.iconAnchor.eval(z, f), color: p.iconColor.eval(z, f), offset: p.iconOffset.eval(z, f), rotate: p.iconRotate.eval(z, f),
                         fit: p.iconFit.eval(z, f), fitPad: p.iconFitPad.eval(z, f), overlap: overlaps(p.iconOverlapMode.eval(z, f), p.iconOverlap.eval(z, f)), ignore: !!p.iconIgnore.eval(z, f), padding: p.iconPadding.eval(z, f), translate: p.iconTranslate.eval(z, f),
@@ -400,7 +402,14 @@ function eachPolygon(g: Geom, f: number, cb: (p0: number, p1: number, holes: num
     flush(last);
 }
 
-/** Buildings: a roof at the feature's height and a wall under every edge, each vertex carrying a baked light level. */
+/**
+ * The fourth value of a building vertex says which face it is on. A roof is ROOF. A wall is the angle of its normal
+ * (0 to 2 pi), plus WALL_TOP at the top edge, plus WALL_OTHER times the height of the other end of the wall in whole
+ * metres: the light on a wall depends on the base and the height together.
+ */
+export const ROOF = -1, WALL_TOP = 8, WALL_OTHER = 16;
+
+/** Buildings: a roof at the feature's height and a wall under every edge. Each vertex says which way its face looks, for the light. */
 function tessellateExtrusion(b: Batch): GLBatch | null {
     const {coords, featEnds} = b.geom, v: number[] = [], idx: number[] = [], color: number[] = [];
     let count = 0;
@@ -413,19 +422,23 @@ function tessellateExtrusion(b: Batch): GLBatch | null {
         };
         eachPolygon(b.geom, f, (p0, p1, holes) => {
             const roof = count, tris = earcut(coords.subarray(p0 * 2, p1 * 2) as any, holes);
-            for (let i = p0; i < p1; i++) vert(coords[i * 2], coords[i * 2 + 1], top, 1);
+            for (let i = p0; i < p1; i++) vert(coords[i * 2], coords[i * 2 + 1], top, ROOF);
             for (let i = 0; i < tris.length; i++) idx.push(roof + tris[i]);
             if (top <= bottom) return;
             const bounds = [0, ...holes, p1 - p0];
+            // The side of an edge that is outside depends on the direction of the outer ring.
+            let area = 0;
+            for (let i = p0, j = p0 + bounds[1] - 1; i < p0 + bounds[1]; j = i++) area += coords[j * 2] * coords[i * 2 + 1] - coords[i * 2] * coords[j * 2 + 1];
+            const out = area >= 0 ? 1 : -1;
             for (let r = 0; r + 1 < bounds.length; r++) {
                 const s = p0 + bounds[r], e = p0 + bounds[r + 1];
                 for (let i = s, j = e - 1; i < e; j = i++) {
                     const ax = coords[j * 2], ay = coords[j * 2 + 1], bx = coords[i * 2], by = coords[i * 2 + 1], len = Math.hypot(bx - ax, by - ay);
                     if (!len) continue;
-                    // Walls facing the light (from the north-west) are brighter; all are darker towards the ground.
-                    const light = 0.6 + 0.28 * Math.abs(((by - ay) * -0.6 - (bx - ax) * 0.8) / len);
-                    const q = vert(ax, ay, bottom, light * 0.9);
-                    vert(bx, by, bottom, light * 0.9); vert(bx, by, top, light); vert(ax, ay, top, light);
+                    const facing = Math.atan2(-(bx - ax) * out, (by - ay) * out) + Math.PI, other = (h: number) => WALL_OTHER * Math.floor(Math.min(60000, Math.max(0, h)));
+                    const low = facing + other(top), high = facing + WALL_TOP + other(bottom);
+                    const q = vert(ax, ay, bottom, low);
+                    vert(bx, by, bottom, low); vert(bx, by, top, high); vert(ax, ay, top, high);
                     idx.push(q, q + 1, q + 2, q, q + 2, q + 3);
                 }
             }

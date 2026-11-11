@@ -276,8 +276,9 @@ function followLine(
         const a = advance * s, mid = pen + a / 2;
         while (seg < n - 1 && cum[seg] < mid) seg++;
         const len = cum[seg] - cum[seg - 1] || 1, dx = (xs[seg] - xs[seg - 1]) / len, dy = (ys[seg] - ys[seg - 1]) / len, angle = Math.atan2(dy, dx);
-        // A sharp bend inside the text makes it unreadable; MapLibre's limit is 45 degrees between neighbours.
-        if (!Number.isNaN(last)) { let d = angle - last; d = Math.atan2(Math.sin(d), Math.cos(d)); if (Math.abs(d) > 0.6) return null; }
+        // A sharp bend inside the text makes it unreadable. The limit is `text-max-angle`: 45 degrees by default,
+        // for which a turn of 0.6 radians between neighbours gives the results nearest to MapLibre's.
+        if (!Number.isNaN(last)) { let d = angle - last; d = Math.atan2(Math.sin(d), Math.cos(d)); if (Math.abs(d) > 0.6 * (l.maxAngle ?? 45) / 45) return null; }
         last = angle;
         const t = mid - cum[seg - 1], cx = xs[seg - 1] + dx * t, cy = ys[seg - 1] + dy * t;
         curve.push(cx - dx * a / 2 - dy * shift - ax, cy - dy * a / 2 + dx * shift - ay, angle);

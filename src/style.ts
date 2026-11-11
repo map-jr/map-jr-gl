@@ -22,6 +22,7 @@ const SPEC: Record<string, Record<string, [string, PropKind, any]>> = {
     'fill-extrusion': {
         color: ['fill-extrusion-color', 'color', '#000'], opacity: ['fill-extrusion-opacity', 'number', 1],
         height: ['fill-extrusion-height', 'number', 0], base: ['fill-extrusion-base', 'number', 0],
+        gradient: ['fill-extrusion-vertical-gradient', 'raw', true],
         translate: ['fill-extrusion-translate', 'string', [0, 0]], translateAnchor: ['fill-extrusion-translate-anchor', 'string', 'map'],
     },
     circle: {
@@ -50,7 +51,7 @@ const SPEC: Record<string, Record<string, [string, PropKind, any]>> = {
         iconOpacity: ['icon-opacity', 'number', 1], iconAnchor: ['icon-anchor', 'string', 'center'], iconColor: ['icon-color', 'color', '#000'],
         iconFit: ['icon-text-fit', 'string', 'none'], iconFitPad: ['icon-text-fit-padding', 'raw', [0, 0, 0, 0]], iconOverlap: ['icon-allow-overlap', 'raw', false],
         iconOptional: ['icon-optional', 'raw', false], textOptional: ['text-optional', 'raw', false], iconAlign: ['icon-rotation-alignment', 'string', 'auto'],
-        textAlign: ['text-rotation-alignment', 'string', 'auto'], symbolSpacing: ['symbol-spacing', 'number', 250], varAnchor: ['text-variable-anchor', 'raw', null], varOffset: ['text-variable-anchor-offset', 'raw', null],
+        textAlign: ['text-rotation-alignment', 'string', 'auto'], symbolSpacing: ['symbol-spacing', 'number', 250], varAnchor: ['text-variable-anchor', 'raw', null], varOffset: ['text-variable-anchor-offset', 'raw', null], maxAngle: ['text-max-angle', 'number', 45],
         radial: ['text-radial-offset', 'number', 0], ignore: ['text-ignore-placement', 'raw', false],
         color: ['text-color', 'color', '#000'], opacity: ['text-opacity', 'number', 1],
         haloColor: ['text-halo-color', 'color', 'rgba(0,0,0,0)'], haloWidth: ['text-halo-width', 'number', 0], haloBlur: ['text-halo-blur', 'number', 0], justify: ['text-justify', 'string', 'center'],
@@ -132,6 +133,9 @@ export function compileLayer(l: LayerJSON): CompiledLayer | null {
     };
 }
 
+/** The light on buildings, as in the style specification. The position is a distance, an azimuth and a polar angle. */
+export interface Light { anchor?: 'map' | 'viewport'; position?: unknown; color?: unknown; intensity?: unknown }
+
 export interface SourceInfo {
     type: 'vector' | 'raster' | 'raster-dem' | 'geojson' | 'contour' | 'image';
     /** Image sources: the picture's address and where its corners go (top left, top right, bottom right, bottom left; longitude, latitude). */
@@ -147,6 +151,8 @@ export interface FontSource { family: string; src: string; weight?: string | num
 export interface ResolvedStyle { layers: LayerJSON[]; sources: Record<string, SourceInfo>; unsupported: string[]; sprite?: string; fonts?: FontSource[];
     /** 3D terrain: the raster-dem source that shapes the ground, and how much to exaggerate it. */
     terrain?: {source: string; exaggeration: number};
+    /** The light on buildings (the `light` of the style). */
+    light?: Light;
     /** Global state: the values `global-state` expressions read. */
     state?: Record<string, unknown> }
 
@@ -241,7 +247,7 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
     // `state` in a style gives each property a default; values set at runtime arrive already resolved.
     const rawState = (style as any).state as Record<string, any> | undefined;
     const state = rawState && Object.fromEntries(Object.entries(rawState).map(([k, v]) => [k, v && typeof v === 'object' && 'default' in v ? v.default : v]));
-    return {layers, sources, unsupported: [...unsupported], sprite, fonts, terrain, state};
+    return {layers, sources, unsupported: [...unsupported], sprite, fonts, terrain, state, light: (style as any).light};
 }
 
 export function tileURL(src: SourceInfo, z: number, x: number, y: number) {

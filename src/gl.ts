@@ -1,6 +1,7 @@
 import {EXTENT, latFromMerc, mercX, mercY, type TileID, type Transform} from './geo.ts';
-import type {CompiledLayer} from './style.ts';
-import {LINE_VERTEX, type GLBatch, type LabelSrc, type TileGL} from './tile.ts';
+import type {CompiledLayer, Light} from './style.ts';
+import {compileProp} from './expr.ts';
+import {LINE_VERTEX, WALL_OTHER, WALL_TOP, type GLBatch, type LabelSrc, type TileGL} from './tile.ts';
 import type {Placed, RenderItem} from './placement.ts';
 import {lineMiddle, BASELINE, EM, SDF_BUFFER, SDF_RADIUS, type GlyphAtlas} from './text.ts';
 
@@ -217,9 +218,26 @@ void main() {
     // Buildings: roofs and walls with a height in metres and a baked light level.
     extrusion: [`uniform mat4 u_matrix; ${TERRAIN_GLSL}
 layout(location=0) in vec4 a_v; layout(location=1) in vec4 a_color; out vec4 v_color; out vec2 v_tile;
-void main() { v_tile = a_v.xy; v_color = vec4(a_color.rgb * a_v.w, a_color.a); gl_Position = u_matrix * vec4(a_v.xy, a_v.z + ground(a_v.xy / ${EXTENT}.0), 1.0); }`, `
-uniform vec4 u_color; uniform vec4 u_clip; in vec4 v_color; in vec2 v_tile; out vec4 o;
-void main() { ${FS_CLIP} vec4 c = v_color * u_color; o = vec4(c.rgb * c.a, c.a); }`],
+uniform vec4 u_color; uniform vec3 u_lightPos; uniform vec3 u_lightColor; uniform float u_lightIntensity; uniform float u_gradient;
+void main() {
+  v_tile = a_v.xy;
+  // The light model of MapLibre. A face is brighter when it looks at the light; a dark colour is made brighter by
+  // more than a light colour. Walls are darker near the ground (the vertical gradient).
+  bool roof = a_v.w < 0.0; float other = floor(a_v.w / ${WALL_OTHER}.0), rest = a_v.w - other * ${WALL_OTHER}.0, t = rest >= ${WALL_TOP}.0 ? 1.0 : 0.0, angle = rest - t * ${WALL_TOP}.0 - ${Math.PI};
+  float base = t > 0.5 ? other : max(a_v.z, 0.0), height = t > 0.5 ? max(a_v.z, 0.0) : other;
+  vec3 normal = roof ? vec3(0.0, 0.0, 1.0) : vec3(cos(angle), sin(angle), 0.0);
+  // (As in MapLibre, a translucent colour is multiplied by its alpha and then drawn solid; only the opacity of the layer shows through.)
+  vec4 c = vec4(a_color.rgb * a_color.a * u_color.rgb, u_color.a);
+  float value = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
+  vec3 rgb = c.rgb + 0.03;
+  float lit = clamp(dot(normal, u_lightPos), 0.0, 1.0);
+  lit = mix(1.0 - u_lightIntensity, max(1.0 - value + u_lightIntensity, 1.0), lit);
+  if (!roof) lit *= (1.0 - u_gradient) + u_gradient * clamp((t + base) * sqrt(height / 150.0), mix(0.7, 0.98, 1.0 - u_lightIntensity), 1.0);
+  v_color = vec4(clamp(rgb * lit * u_lightColor, mix(vec3(0.0), vec3(0.3), 1.0 - u_lightColor), vec3(1.0)), c.a);
+  gl_Position = u_matrix * vec4(a_v.xy, a_v.z + ground(a_v.xy / ${EXTENT}.0), 1.0);
+}`, `
+uniform vec4 u_clip; in vec4 v_color; in vec2 v_tile; out vec4 o;
+void main() { ${FS_CLIP} o = vec4(v_color.rgb * v_color.a, v_color.a); }`],
 
     raster: [`${VS_COMMON}
 layout(location=0) in vec2 a_pos; uniform vec2 u_corners[4]; uniform vec4 u_q; out vec3 v_uvq; out vec2 v_tile;
@@ -369,11 +387,15 @@ export interface Scene {
     markers: MarkerBuffers[];
     /** 3D terrain: the ground tiles to draw, and a lookup of the heights under any tile (for buildings). */
     terrain?: {exaggeration: number; tiles: TerrainTile[]; dem(id: TileID): DemRef | null};
+    /** The light on buildings. */
+    light?: Light;
     /** Looks up a sprite or runtime image by name, for patterns. */
     icon?: (name: string) => {x: number; y: number; width: number; height: number; pixelRatio: number; custom?: boolean} | undefined;
 }
 
 export const SPRITE_ATLAS = 2048;
+// How the light's direction maps to tile coordinates (y points south) and turns with the bearing.
+const LIGHT_X = 1, LIGHT_Y = -1, LIGHT_TURN = -1;
 
 /** Floats per marker vertex: mercator x and y each split into high and low parts, atlas rectangle, corner, scale, opacity. */
 export const MARKER_STRIDE = 12;
@@ -809,6 +831,20 @@ export class GLRenderer {
                 if (first) {
                     first = false;
                     gl.uniform4fv(u.u_color, color(L));
+                    if (extrude) {
+                        // The position of the light is a distance, an azimuth and a polar angle. With the `viewport`
+                        // anchor (the default) the light turns with the view; with `map` it stays at one compass direction.
+                        // (The values of the light can be functions of zoom.)
+                        const light = s.light ?? {}, at = (v: unknown, kind: 'number' | 'color' | 'string', def: unknown) => compileProp(v, kind, def).eval(zoom);
+                        const [r, az, polar] = at(light.position, 'string', [1.15, 210, 30]) as number[], lc = at(light.color, 'color', '#fff') as number[];
+                        const a = (az + 90) * Math.PI / 180 + (light.anchor === 'map' ? 0 : LIGHT_TURN * tr.bearing * Math.PI / 180), p = polar * Math.PI / 180;
+                        gl.uniform3f(u.u_lightPos, LIGHT_X * r * Math.cos(a) * Math.sin(p), LIGHT_Y * r * Math.sin(a) * Math.sin(p), r * Math.cos(p));
+                        gl.uniform3f(u.u_lightColor, lc[0], lc[1], lc[2]);
+                        gl.uniform1f(u.u_lightIntensity, at(light.intensity, 'number', 0.5) as number);
+                        gl.uniform1f(u.u_gradient, L.p.gradient.eval(zoom) === false ? 0 : 1);
+                        const base = L.p.color.dd ? [1, 1, 1, 1] : L.p.color.eval(zoom);
+                        gl.uniform4f(u.u_color, base[0] * base[3], base[1] * base[3], base[2] * base[3], L.p.opacity.eval(zoom));
+                    }
                     if (b.type === 'line') {
                         const dash = L.p.dash.eval(zoom) as number[] | null;
                         gl.uniform1f(u.u_width, L.p.width.dd ? 1 : L.p.width.eval(zoom));

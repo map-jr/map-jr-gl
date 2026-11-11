@@ -977,7 +977,7 @@ export class Engine {
         const unplaced = !!terrain && this.centreGiven && !this.demTile(mercX(tr.lng) - Math.floor(mercX(tr.lng)), mercY(tr.lat), 30);
         if (!unplaced) this.unplacedSince = 0; else if (!this.unplacedSince) this.unplacedSince = now;
         const hold = unplaced && now - this.unplacedSince < 3000;
-        const behind = hold || this.renderer.render({tr, layers: this.layers, items, labels, atlas: this.atlas, markers, icon: this.icon,
+        const behind = hold || this.renderer.render({tr, layers: this.layers, items, labels, atlas: this.atlas, markers, icon: this.icon, light: this.style.light,
             // (Past the time limit and still unplaced: draw flat rather than raise terrain around a camera in the wrong place.)
             terrain: ground && !unplaced ? {exaggeration: this.exaggeration, tiles: ground, dem: this.demRef} : undefined});
 

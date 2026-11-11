@@ -560,6 +560,11 @@ export class Map {
         return this.editStyle(s => { if (terrain) s.terrain = terrain; else delete s.terrain; this.fire('terrain', {terrain}); });
     }
     getTerrain(): {source: string; exaggeration?: number} | null { return this.rawStyle?.terrain ?? null; }
+    /** Sets the light on buildings: its anchor, position (distance, azimuth, polar angle), colour and intensity. */
+    setLight(light: {anchor?: 'map' | 'viewport'; position?: [number, number, number]; color?: string; intensity?: number}) {
+        return this.editStyle(s => { s.light = {...s.light, ...light}; });
+    }
+    getLight() { return {anchor: 'viewport', position: [1.15, 210, 30], color: '#ffffff', intensity: 0.5, ...this.rawStyle?.light}; }
     async setStyle(style: unknown) {
         this.styleBase = typeof style === 'string' ? new URL(style, location.href).href : location.href;
         this.rawStyle = typeof style === 'string' ? await (await fetch(style)).json() : structuredClone(style);
