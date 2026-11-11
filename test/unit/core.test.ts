@@ -571,6 +571,9 @@ test('sources: a tile URL for a WMS server gets the edges of the tile in Web Mer
     assert.equal(tileURL(src, 0, 0, 0), 'https://example.org/wms?bbox=-20037508.342789244,-20037508.342789244,20037508.342789244,20037508.342789244&z=0');
     const [west, south, east, north] = /bbox=([^&]*)/.exec(tileURL(src, 1, 1, 0))![1].split(',').map(Number);
     close(west, 0, 1e-6); close(south, 0, 1e-6); close(east, 20037508.342789244, 1e-6); close(north, 20037508.342789244, 1e-6);
+    // The scheme `tms` counts rows from the south; `{quadkey}` is the tile as digits in base 4.
+    assert.equal(tileURL({...src, tiles: ['t/{z}/{x}/{y}'], tms: true}, 3, 2, 1), 't/3/2/6');
+    assert.equal(tileURL({...src, tiles: ['q/{quadkey}']}, 3, 3, 5), 'q/213');
 });
 
 test('vector tiles: zeros after the end of the tile are not read', async () => {

@@ -27,7 +27,7 @@ export interface SourceInfo {
     /** Contour sources: how to derive lines from their elevation source. */
     contour?: ContourConfig;
     /** GeoJSON sources carry their data; it is handed to the tile workers, which cut tiles from it. */
-    data?: unknown; /** GeoJSON sources: clusters and the id property. */ options?: GeoJSONOptions; tiles: string[]; minzoom: number; maxzoom: number; tileSize: number; attribution?: string; encoding?: 'terrarium' | 'mapbox';
+    data?: unknown; /** GeoJSON sources: clusters and the id property. */ options?: GeoJSONOptions; tiles: string[]; minzoom: number; maxzoom: number; tileSize: number; attribution?: string; /** The rows of tiles are counted from the south (`scheme: 'tms'`). */ tms?: boolean; encoding?: 'terrarium' | 'mapbox';
 }
 
 /** A style with everything network-dependent already resolved, so it can be posted to a worker as plain JSON. */
@@ -94,7 +94,7 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
         }
         sources[name] = {
             type: raw.type, tiles: src.tiles, minzoom: src.minzoom ?? 0, maxzoom: src.maxzoom ?? (raw.type === 'vector' ? 14 : 22),
-            tileSize: raw.type === 'vector' ? 512 : src.tileSize ?? 512, attribution: src.attribution,
+            tileSize: raw.type === 'vector' ? 512 : src.tileSize ?? 512, attribution: src.attribution, tms: src.scheme === 'tms',
             encoding: raw.type === 'raster-dem' ? (src.encoding === 'terrarium' ? 'terrarium' : 'mapbox') : undefined, // (from the source or from its TileJSON)
         };
     }
@@ -141,8 +141,10 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
 export function tileURL(src: SourceInfo, z: number, x: number, y: number) {
     // `{bbox-epsg-3857}` is for WMS servers: the edges of the tile in metres of Web Mercator (west, south, east, north).
     const edge = (v: number) => (v / 2 ** z - 0.5) * 40075016.68557849;
-    return src.tiles[(x + y) % src.tiles.length].replace('{z}', String(z)).replace('{x}', String(x)).replace('{y}', String(y))
-        .replace('{bbox-epsg-3857}', () => [edge(x), -edge(y + 1), edge(x + 1), -edge(y)].join());
+    // The scheme `tms` counts the rows from the south. `{quadkey}` is the tile as one number in base 4 (Bing Maps).
+    return src.tiles[(x + y) % src.tiles.length].replace('{z}', String(z)).replace('{x}', String(x)).replace('{y}', String(src.tms ? 2 ** z - 1 - y : y))
+        .replace('{bbox-epsg-3857}', () => [edge(x), -edge(y + 1), edge(x + 1), -edge(y)].join())
+        .replace('{quadkey}', () => { let key = ''; for (let i = z; i > 0; i--) key += (x >> i - 1 & 1) + (y >> i - 1 & 1) * 2; return key; });
 }
 
 export interface SpriteIcon {
