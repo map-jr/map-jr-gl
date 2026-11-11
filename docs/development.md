@@ -90,6 +90,10 @@ To use it, do this step one time: in the repository settings, open **Pages** and
 The build gives short names to private class members (`scripts/private-names.mjs`), because the minifier does not
 shorten property names. Declare a member `private` and use it as `this.name` to get a short name in the built files.
 Run `node scripts/private-names.mjs` to see the names that the build shortens.
+Some members cannot be private, because other files use them (`tr.worldSize`). The list `INTERNAL` in the script
+has such names, and the build shortens them too. Add a name to the list only when the class is not part of the API,
+and no browser object has a property with that name. The build fails if the name is also a key of an object
+literal, a field of a type, or a string.
 The same step gives short names to the uniforms, attributes and varyings in the shaders of `src/gl.ts`. Name them
 `u_...`, `a_...` and `v_...`, and use those names only for that.
 It also gives short names to the local names in the shaders. Do not give a uniform a name without `u_`, and do not
