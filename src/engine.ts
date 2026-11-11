@@ -369,9 +369,20 @@ export class Engine {
             if (src.type === 'image') { const list = this.pictureItems(source, view); items.set(source, list); signature += `,${source}:${list[0]?.tile.uid ?? ''}`; continue; }
             // Which level of tiles to draw follows the map's own zoom (not the picture's fixed scale), as it would without terrain.
             cover.zoom = clamp(tr.zoom, id.z, zt);
+            // Image tiles are taken one level deeper when the zoom is past the middle of a level, for a sharp image. Ground
+            // that is far from the camera (a ground tile of a coarser level) does not need that: it would be four tiles
+            // for each ground tile, and for elevation data most of what a tilted view loads.
+            const image = src.type === 'raster' || src.type === 'raster-dem';
+            if (image && id.z < Math.floor(tr.zoom)) cover.zoom = Math.min(cover.zoom, id.z + 0.49);
             cover.width = cover.height = TILE_SIZE * 2 ** (cover.zoom - id.z);
-            const ideal = cover.coveringTiles(src.minzoom, src.maxzoom, src.tileSize, src.type === 'raster' || src.type === 'raster-dem');
-            for (const t of ideal) { const key = source + '|' + t.key; keys.push(key); if (!this.tiles.has(key)) this.request(source, t, key); if (this.tiles.get(key)?.state === 'loading') complete = false; }
+            const ideal = cover.coveringTiles(src.minzoom, src.maxzoom, src.tileSize, image);
+            for (const t of ideal) {
+                const key = source + '|' + t.key, have = this.tiles.get(key);
+                keys.push(key);
+                if (!have) this.request(source, t, key);
+                else if (have.stale && have.state === 'ok' && !have.rebuilding) { have.stale = false; this.rebuild(source, t, key, have); }
+                if (this.tiles.get(key)?.state === 'loading') complete = false;
+            }
             const list = renderItems(view, ideal, k => {
                 const key = source + '|' + k, t = this.tiles.get(key);
                 if (t?.state !== 'ok') return undefined;
@@ -472,7 +483,7 @@ export class Engine {
             for (const [key, t] of this.tiles) {
                 const name = key.slice(0, key.lastIndexOf('|')), was = this.sourceSigs.get(name), now = sigs.get(name);
                 if (!was || !now || was[0] !== now[0]) this.dropTile(key, t);
-                else if (was[1] !== now[1]) t.stale = true;
+                else if (was[1] !== now[1]) { t.stale = true; t.rev = ++this.tilesVersion; }
             }
             this.sourceSigs = sigs;
         }
@@ -642,13 +653,13 @@ export class Engine {
                     if (!key.startsWith(c.source + '|')) continue;
                     // Tiles on screen or still loading are rebuilt in place once they can be; cancelling loads here
                     // would starve a map that is being moved while its data updates.
-                    if (t.state === 'loading' || t.used >= this.frameNo - 1) t.stale = true; else this.dropTile(key, t);
+                    if (t.state === 'loading' || t.used >= this.frameNo - 1) { t.stale = true; t.rev = ++this.tilesVersion; } else this.dropTile(key, t);
                 }
                 break;
             }
             case 'featureState':
                 for (const b of this.backends) b.setFeatureState(c.source, c.states);
-                for (const [key, t] of this.tiles) if (key.startsWith(c.source + '|')) t.stale = true;
+                for (const [key, t] of this.tiles) if (key.startsWith(c.source + '|')) { t.stale = true; t.rev = ++this.tilesVersion; }
                 break;
             case 'queryRendered':
                 this.queryRendered(c).then(value => this.emit({type: 'result', id: c.id, value}), err => this.emit({type: 'result', id: c.id, error: String(err.message)}));
@@ -996,8 +1007,11 @@ export class Engine {
             }
         }
         for (const source in this.style.sources) {
-            // Skip sources nothing visible draws from at this zoom (e.g. low-zoom relief imagery when zoomed in).
-            if (!this.layers.some(l => l.source === source && l.visible && tr.zoom >= l.minzoom && tr.zoom < l.maxzoom)) continue;
+            // Skip sources nothing visible draws from at this zoom (e.g. low-zoom relief imagery when zoomed in). With 3D
+            // terrain, the flat layers are drawn into the ground textures, which ask for their own tiles (see groundSources):
+            // only labels and buildings are drawn from the tiles of the view. (Without this, the elevation tiles for relief
+            // shading were loaded two times, at two sets of zoom levels.)
+            if (!this.layers.some(l => l.source === source && l.visible && tr.zoom >= l.minzoom && tr.zoom < l.maxzoom && (!terrain || l.type === 'symbol' || l.type === 'fill-extrusion'))) continue;
             const src = this.style.sources[source];
             if (src.type === 'image') { items.set(source, this.pictureItems(source, tr)); continue; }
             const ideal = tr.coveringTiles(src.minzoom, src.maxzoom, src.tileSize, src.type === 'raster' || src.type === 'raster-dem');
