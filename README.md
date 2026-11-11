@@ -95,11 +95,17 @@ You do not need a CSS file. The library adds the styles for its controls.
 
 ### Change from MapLibre GL JS
 
-1. Change the import:
+1. Change the name of the module in each import:
 
    ```js
-   // import maplibregl from 'maplibre-gl';
-   import maplibregl from 'map-jr-gl';
+   // import {Map, Marker, Popup} from 'maplibre-gl';
+   import {Map, Marker, Popup} from 'map-jr-gl';
+   ```
+
+   If your code uses one object for the library (`maplibregl.Map`), import all the names into that object:
+
+   ```js
+   import * as maplibregl from 'map-jr-gl';
    ```
 
 2. Remove the import of `maplibre-gl.css`.
@@ -108,6 +114,16 @@ You do not need a CSS file. The library adds the styles for its controls.
 4. Start your application and read the browser console. The library writes a warning for each style layer or
    property that it cannot draw.
 5. Read [MapLibre compatibility](docs/maplibre-compatibility.md) for the differences.
+
+A plugin that was written for MapLibre GL JS imports `maplibre-gl` itself. Map that name to this library in your
+bundler (`resolve.alias` in Vite, `alias` in esbuild) or in an import map:
+
+```html
+<script type="importmap">{"imports": {"maplibre-gl": "/node_modules/map-jr-gl/dist/map-jr-gl.js"}}</script>
+```
+
+The library has a default export for such plugins only, because some of them contain
+`import maplibregl from 'maplibre-gl'`. [Ecosystem](docs/ecosystem.md) lists the plugins that are tested.
 
 ### Add markers
 

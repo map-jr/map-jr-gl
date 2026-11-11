@@ -27,8 +27,10 @@ export const getMaxParallelImageRequests = () => imageRequests;
 export const setRTLTextPlugin = (_url: string, _lazy?: boolean) => Promise.resolve();
 export const getRTLTextPluginStatus = () => 'loaded';
 
-// The default export has everything, for code that was written as `import maplibregl from 'maplibre-gl'`.
-// (A bundler leaves it out when an application uses only the named exports.)
+// The default export is for plugins only. Some plugins of MapLibre GL JS contain `import maplibregl from 'maplibre-gl'`
+// (4 of the 15 in test/conformance/plugins.mjs), and an application cannot change that line: it can only map the name
+// `maplibre-gl` to this library. An application itself uses the named exports.
+// (A bundler leaves the object out when nothing imports it.)
 import {Map, MarkerLayer, InteractionHandler} from './map.ts';
 import {LngLat, LngLatBounds} from './lnglat.ts';
 import {addProtocol, removeProtocol} from './protocols.ts';

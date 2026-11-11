@@ -2,7 +2,8 @@
 // a phone is never asked for many WebGL contexts at once.
 import {Map, NavigationControl, ScaleControl, FullscreenControl} from 'map-jr-gl';
 import makeStyle from '../demo/style.mjs';
-import {markers, photos, manyMarkers, dot, pin} from '../demo/markers.mjs';
+import {markers, photos, manyMarkers, dot, pin, view} from '../demo/markers.mjs';
+import {shield} from '../demo/shields.mjs';
 import {americanaShields, shieldRow} from './americana.js';
 
 const STYLE = makeStyle('https://tiles.openfreemap.org/planet', '<a href="https://openfreemap.org">OpenFreeMap</a> <a href="https://www.openmaptiles.org/">© OpenMapTiles</a> Data from <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>');
@@ -152,7 +153,7 @@ map.addLayer({id: 'counties', type: 'line', source: 'admin',
             row.out('Click to list the county, state and ZIP code'); return map; }},
 
     {id: 'server', title: 'The first view, rendered on the server', pair: true,
-        points: ['renderToSVG and renderToImage draw a map without a browser, on Node or in a Cloudflare Worker.', 'A page can show that render immediately. The live map replaces it when it is ready.', 'The two pictures on the left were made when this site was built.'],
+        points: ['renderToSVG and renderToImage render a map without a browser, on Node or in a Cloudflare Worker.', 'A page can show that render immediately. The live map replaces it when it is ready.', 'The first map here is live. The two images below it were made when this site was built. All three show the same view at the same scale.'],
         code: `import {renderToSVG, renderToImage} from 'map-jr-gl/server';
 
 const {svg} = await renderToSVG({
@@ -164,11 +165,16 @@ const {svg} = await renderToSVG({
 // A fixed-size image instead (JPEG). The rasteriser is supplied by you:
 // @takumi-rs/core on Node, @takumi-rs/wasm on Cloudflare.
 const {image, contentType} = await renderToImage({...options, rasteriser});`,
-        make: (el, row) => {
-            const [a, b] = el.children;
-            a.innerHTML = '<span class="tag">server, SVG</span><img alt="Map drawn on the server as SVG" src="./ssr.svg">';
-            b.innerHTML = '<span class="tag">server, JPEG</span><img alt="Map drawn on the server as a JPEG image" src="./ssr.jpg">';
-            row.out('Both renders show the same view as the first row.'); }},
+        make: async (el, row) => {
+            el.innerHTML = '<div class="wide"><span class="tag">live map</span><div class="live"></div></div>' +
+                '<div><span class="tag">server, SVG</span><img alt="Map rendered on the server as SVG" src="./ssr.svg"></div>' +
+                '<div><span class="tag">server, JPEG</span><img alt="Map rendered on the server as a JPEG image" src="./ssr.jpg"></div>';
+            // The same style, view, shields and markers as scripts/site.mjs gives to the server renderer.
+            const map = base(el.querySelector('.live'), view);
+            map.setMissingStyleImageResolver(id => { const s = shield(id); if (s) return map.addImage(id, s.svg, s); });
+            await loaded(map);
+            map.addMarkerLayer(structuredClone(markers));
+            row.out('Move the live map. The two images stay as the server made them.'); return map; }},
 ];
 
 const main = document.getElementById('rows');
@@ -185,7 +191,7 @@ const observer = new IntersectionObserver(entries => {
 const far = new IntersectionObserver(entries => {
     for (const e of entries) {
         const map = live.get(e.target), row = e.target.row;
-        if (e.isIntersecting || !map || row.spec.pair) continue; // (the row with the server images has no live map to remove)
+        if (e.isIntersecting || !map) continue;
         live.delete(e.target);
         map.then(m => { m?.remove?.(); row.stage.replaceChildren(); row.actions.replaceChildren(); row.out(''); delete window.maps?.[row.spec.id]; });
     }
@@ -194,7 +200,7 @@ const far = new IntersectionObserver(entries => {
 for (const spec of rows) {
     const el = document.createElement('article');
     el.id = spec.id;
-    el.innerHTML = (spec.pair ? '<div class="pair"><div></div><div></div></div>' : '<div class="map"><div class="live"></div></div>') +
+    el.innerHTML = (spec.pair ? '<div class="pair"></div>' : '<div class="map"><div class="live"></div></div>') +
         '<div class="text"><h2></h2><ul></ul><div class="readout"></div><div class="actions"></div><pre><code></code></pre></div>';
     el.querySelector('h2').textContent = spec.title;
     for (const p of spec.points) el.querySelector('ul').append(Object.assign(document.createElement('li'), {textContent: p}));

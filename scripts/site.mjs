@@ -11,7 +11,9 @@ import {shield} from '../demo/shields.mjs';
 // The "server rendering" row shows pictures made here, at build time, with no browser involved.
 const tileJSON = await (await fetch('https://tiles.openfreemap.org/planet')).json();
 const style = makeStyle(tileJSON.tiles[0], '');
-const options = {style, ...view, width: 800, height: 520, resolveImage: shield, markers: [markers]};
+// ssrOverrides: false: the row compares the server renders with a live map, so the server uses the complete style.
+// (A page that shows a server render only until the live map is ready keeps the simpler render, which is smaller.)
+const options = {style, ...view, width: 800, height: 520, resolveImage: shield, markers: [markers], ssrOverrides: false};
 mkdirSync(new URL('../site/public', import.meta.url), {recursive: true});
 // inlineImages: the picture is shown through <img>, where an SVG may not fetch anything else (its icon sheet, here).
 const {svg} = await renderToSVG({...options, inlineImages: true});
