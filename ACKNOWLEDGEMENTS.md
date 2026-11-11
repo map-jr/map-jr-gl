@@ -1,6 +1,6 @@
 # Acknowledgements
 
-Map Jr. GL is possible because of the work of other projects. Thank you to the persons who made them.
+Map Jr. GL is possible because of the work of other projects. Thank you to the people who made them.
 
 ## MapLibre GL JS
 
@@ -18,7 +18,7 @@ MapLibre GL JS started from Mapbox GL JS (version 1.13 and earlier, BSD-3-Clause
 
 ## Libraries in the built files
 
-- [earcut](https://github.com/mapbox/earcut) (ISC, Mapbox) divides polygons into triangles. It is the only library
+- [earcut](https://github.com/mapbox/earcut) (ISC, Mapbox) triangulates polygons. It is the only library
   that the built files contain.
 
 ## Methods from other projects
@@ -44,11 +44,11 @@ These are not part of the built library.
 ## How this project is made
 
 An AI coding assistant (Claude Code) wrote almost all the code, the tests and the documents of this project. A
-person gave the directions, examined the results on real devices and made the decisions. Some persons call this
-"vibe coding". We tell you this so that you can decide how much to trust the code.
+person gave the directions, reviewed the results on real devices and made the decisions. Some people call this
+"vibe coding". We say this so that you can decide how much to trust the code.
 
 - The automatic tests and the comparison with the tests of MapLibre GL JS are the primary checks of the code.
-- No person examined each line of the code.
-- Examine the code and do your own tests before you use the library for important work.
+- Nobody reviewed every line of the code.
+- Review the code and run your own tests before you use the library for important work.
 
 The full licence texts of the other projects are in `THIRD-PARTY-LICENSES.md`.

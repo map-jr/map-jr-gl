@@ -4,7 +4,7 @@ The library has two types of marker.
 
 | Type | Use it for | How it is drawn |
 |---|---|---|
-| Marker layer | Many markers that look the same or almost the same | On the map canvas, by the graphics processor |
+| Marker layer | Many markers that look the same or almost the same | On the map canvas, by the GPU |
 | `Marker` and `Popup` | A small number of markers with HTML content, or markers that the user moves | As HTML elements above the map |
 
 ## Marker layers
@@ -36,7 +36,7 @@ const layer = map.addMarkerLayer({
 
 | Option | Default | Effect |
 |---|---|---|
-| `width`, `height` | Necessary | The size of a marker in CSS pixels |
+| `width`, `height` | Required | The size of a marker in CSS pixels |
 | `anchor` | `'center'` | The part of the marker that is on the position, for example `'bottom'` |
 | `collide` | `false` | When `true`, map labels do not go below the markers |
 | `minZoom`, `maxZoom` | None | The zoom range in which the layer shows. The layer fades at the two ends of the range. |

@@ -151,8 +151,8 @@ map.addLayer({id: 'counties', type: 'line', source: 'admin',
             map.on('click', async e => { const f = await map.queryFeatures(e.lngLat, {sources: ['admin']}); row.out(f.map(x => x.properties.NAMELSAD ?? x.properties.NAME ?? x.properties.GEOID20).filter(Boolean).join(' · ') || 'Nothing here'); });
             row.out('Click to list the county, state and ZIP code'); return map; }},
 
-    {id: 'server', title: 'The first picture, made on the server', pair: true,
-        points: ['renderToSVG and renderToImage draw a map without a browser, on Node or in a Cloudflare Worker.', 'A page can show that picture immediately. The live map replaces it when it is ready.', 'The two pictures on the left were made when this site was built.'],
+    {id: 'server', title: 'The first view, rendered on the server', pair: true,
+        points: ['renderToSVG and renderToImage draw a map without a browser, on Node or in a Cloudflare Worker.', 'A page can show that render immediately. The live map replaces it when it is ready.', 'The two pictures on the left were made when this site was built.'],
         code: `import {renderToSVG, renderToImage} from 'map-jr-gl/server';
 
 const {svg} = await renderToSVG({
@@ -168,7 +168,7 @@ const {image, contentType} = await renderToImage({...options, rasteriser});`,
             const [a, b] = el.children;
             a.innerHTML = '<span class="tag">server, SVG</span><img alt="Map drawn on the server as SVG" src="./ssr.svg">';
             b.innerHTML = '<span class="tag">server, JPEG</span><img alt="Map drawn on the server as a JPEG image" src="./ssr.jpg">';
-            row.out('Both pictures show the same view as the first row.'); }},
+            row.out('Both renders show the same view as the first row.'); }},
 ];
 
 const main = document.getElementById('rows');

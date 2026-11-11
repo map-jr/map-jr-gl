@@ -10,8 +10,11 @@
   profiles of real styles to choose what to do next.
 - Commit and push to `main` after each finished piece, with the test suites passing. Do not open pull requests
   unless asked.
-- Documents are written in ASD-STE100 (Simplified Technical English): short sentences, active voice, one
-  instruction for each sentence, the same word for the same thing.
+- Documents use plain, direct English in the manner of ASD-STE100: short sentences, active voice, one instruction
+  for each sentence, the same word for the same thing. But always use the usual technical word. Do not replace a
+  common term with a roundabout one: write "image", "render", "screenshot", "returns a promise", "URL", "GPU",
+  "required", "you do not need", not "picture", "gives a promise", "address", "graphics processor", "necessary".
+  (The owner found the stricter style confusing.)
 - Class names: the library uses `map-jr-*` internally. Elements also carry `maplibregl-*` names for compatibility
   only; do not style or query by those.
 

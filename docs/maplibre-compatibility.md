@@ -19,13 +19,13 @@ The [status table](../README.md#status) gives the current test results.
 | Server rendering | `renderToSVG` and `renderToImage` draw a map without a browser. See [Server rendering](server-rendering.md). |
 | Marker layers | `addMarkerLayer` draws many SVG markers on the canvas. See [Markers](markers.md). |
 | SVG images | `addImage` accepts an SVG string. The image is sharp on each screen. |
-| Web fonts | Text uses the fonts of the browser. The style can give font files in `font-faces`. Glyph files are not necessary. |
-| `queryFeatures` | Finds features at a position from the tile data. A style layer is not necessary. |
+| Web fonts | Text uses the fonts of the browser. The style can give font files in `font-faces`. You do not need glyph files. |
+| `queryFeatures` | Finds features at a position from the tile data. You do not need a style layer. |
 | `queryElevation` | Gives the elevation at a position from a `raster-dem` source. |
 | Contour source | `type: 'contour'` makes contour lines from an elevation source. See [Terrain and elevation](terrain-and-elevation.md). |
-| PMTiles | A source address that starts with `pmtiles://` reads a PMTiles archive. No plugin is necessary. |
+| PMTiles | A source URL that starts with `pmtiles://` reads a PMTiles archive. You do not need a plugin. |
 | Changes for the server in the style | `metadata["map-jr:ssr"]` on a layer changes that layer only on the server. |
-| Icons made when necessary | `setMissingStyleImageResolver` supplies an image for a name that the sprite does not contain. |
+| Icons generated on demand | `setMissingStyleImageResolver` supplies an image for a name that the sprite does not contain. |
 | Frame data | The `stats` event gives the frames per second and the work for each frame. |
 | Controls without a CSS file | The library adds the styles for its controls. You change the colours with `--map-control-*` custom properties. |
 
@@ -33,26 +33,26 @@ The [status table](../README.md#status) gives the current test results.
 
 | Subject | MapLibre GL JS | This library |
 |---|---|---|
-| Text | Reads glyph files from the `glyphs` address. | Draws text with web fonts. The `glyphs` address is not used. Line breaks are the same as in MapLibre GL JS. The weight of the text can look a small quantity different. |
-| Text on lines | Each character follows the line. The style sets the largest permitted angle. | Each character follows the line. A label does not show where the line turns more than approximately 35 degrees between characters. |
+| Text | Reads glyph files from the `glyphs` URL. | Draws text with web fonts. The `glyphs` URL is not used. Line breaks are the same as in MapLibre GL JS. The weight of the text can look a small quantity different. |
+| Text on lines | Each character follows the line. The style sets the largest angle. | Each character follows the line. A label does not show where the line turns more than about 35 degrees between characters. |
 | Order of symbol layers | A symbol layer draws at its position in the layer list. | All symbol layers draw above all other layers. |
-| Label placement | Changes gradually, tile by tile. | The library decides approximately four times each second. Labels fade between decisions. |
-| Feature queries | `queryRenderedFeatures` and `querySourceFeatures` give an immediate result. | The two methods have the same arguments and give the same features, but they give a promise. Add `await`. The tile data is in a worker. `queryFeatures` is also available: it reads data that the style does not draw. |
-| Feature state | The graphics processor applies the state. An `id` can be text. | `setFeatureState` and the `feature-state` expression work. A change builds the tiles again in the background, thus it shows after a short time. A feature must have a number as its `id`. |
+| Label placement | Changes gradually, tile by tile. | The library decides about four times each second. Labels fade between decisions. |
+| Feature queries | `queryRenderedFeatures` and `querySourceFeatures` return their result synchronously. | The two methods have the same arguments and return the same features, but they return a promise. Add `await`. The tile data is in a worker. `queryFeatures` is also available: it reads data that the style does not draw. |
+| Feature state | The GPU applies the state. An `id` can be text. | `setFeatureState` and the `feature-state` expression work. A change builds the tiles again in the background, so it shows after a short time. A feature must have a number as its `id`. |
 | Style changes | Applied step by step. | A paint value that is the same for all of a layer is applied immediately. Other changes build the tiles of that source again. The old tiles stay on the screen until the new tiles are ready. |
 | 3D terrain | Draws terrain at each tilt. | Draws a flat map when you look vertically down. See [Terrain and elevation](terrain-and-elevation.md). |
 | Camera | Tilt to 85 degrees. Roll. Field of view. | Tilt to 60 degrees. No roll. A fixed field of view. Padding is available. |
 | `setMaxBounds` | Keeps all of the view in the bounds. | Keeps the map centre in the bounds. |
 | `isSourceLoaded` | Gives a result for one source. | Gives a result for all sources together. |
-| `addImage` | Accepts pictures and pixel data. | Accepts the same, and also an SVG string or an address. It gives a promise. The `sdf` option is not available; the sprite of the style can contain SDF icons. |
+| `addImage` | Accepts images and pixel data. | Accepts the same, and also an SVG string or a URL. It returns a promise. The `sdf` option is not available; the sprite of the style can contain SDF icons. |
 | `easeTo`, `flyTo` | Accept an `easing` function and an `offset`. | Use the default easing of MapLibre GL JS. The library ignores `easing` and `offset`. |
 | Events | Event classes. | Simple objects with `type`, `target`, `point` and `lngLat`. |
-| Events for one layer | `map.on('click', layerId, fn)` gives an immediate result. | The same call works. The event comes a short time after the pointer event, because the library reads the tile data. |
+| Events for one layer | `map.on('click', layerId, fn)` calls the listener synchronously. | The same call works. The event fires shortly after the pointer event, because the library reads the tile data. |
 | `Marker`, `Popup` | Full API. | The usual parts of the API: position, popup, drag, anchor, offset. |
 | Touch gestures | You can configure each gesture. | The same gestures. They are always on. |
 | Expressions | Checks the types. | Does not check the types. An expression that is not correct can give no error. |
 | Style validation | Reports errors in the style. | Does not validate. It writes a warning for each layer or property that it cannot draw. |
-| CSS class names | `maplibregl-*` | `map-jr-*`. Each element also has the `maplibregl-*` name, thus stylesheets and plugins for MapLibre GL JS continue to work. A control from a plugin gets the `map-jr-*` names when you add it. |
+| CSS class names | `maplibregl-*` | `map-jr-*`. Each element also has the `maplibregl-*` name, so stylesheets and plugins for MapLibre GL JS continue to work. A control from a plugin gets the `map-jr-*` names when you add it. |
 | Plugins | | A plugin that only uses public methods usually works. A plugin that reads `map.style` or `map.painter` does not. |
 
 ## What is not available

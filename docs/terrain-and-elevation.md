@@ -19,8 +19,8 @@ map.addSource('dem', {
 });
 ```
 
-The library reads the `terrarium` and `mapbox` encodings. A PMTiles archive is also a permitted source. Use the
-address `pmtiles://` and then the address of the file.
+The library reads the `terrarium` and `mapbox` encodings. A PMTiles archive also works as a source. Use the
+prefix `pmtiles://` before the URL of the file.
 
 ## 3D terrain
 
@@ -39,11 +39,11 @@ How terrain behaves:
 - A label behind a mountain does not show.
 - `project`, `unproject` and the positions in pointer events use the ground surface.
 - When you drag the map, the ground below the pointer stays below the pointer.
-- When a movement stops, the picture does not move. The values of `getCenter()` and `getZoom()` can change a small
+- When a movement stops, the view does not move. The values of `getCenter()` and `getZoom()` can change a small
   quantity at that time. This is because the map centre goes to the ground that the camera looks at. MapLibre GL JS
   does the same.
 
-Limits at this time:
+Current limits:
 
 - Markers behind a mountain continue to show.
 - The roof of a building follows the slope below it.
@@ -63,8 +63,8 @@ map.addLayer({
 
 ## Contour lines
 
-A contour source makes contour lines from an elevation source. The tile workers calculate the lines. No plugin is
-necessary.
+A contour source makes contour lines from an elevation source. The tile workers calculate the lines. You do not need a
+plugin.
 
 ```js
 map.addSource('contours', {
@@ -102,8 +102,8 @@ map.addLayer({
 
 | Option | Default | Meaning |
 |---|---|---|
-| `source` | Necessary | The name of a `raster-dem` source |
-| `thresholds` | Necessary | The intervals for each zoom level. See below. |
+| `source` | Required | The name of a `raster-dem` source |
+| `thresholds` | Required | The intervals for each zoom level. See below. |
 | `multiplier` | `1` | The library multiplies each elevation by this number. Use `3.28084` for feet. |
 | `overzoom` | `1` | The number of levels by which the elevation tiles are less detailed than the contour tiles. A larger number gives smoother lines and fewer downloads. |
 | `contourLayer` | `'contours'` | The name of the layer in the contour tiles |
@@ -128,7 +128,7 @@ const metres = await map.queryElevation([7.6586, 45.9763]);
 ```
 
 - The result is in metres above sea level. It is `null` where there is no data.
-- 3D terrain is not necessary for this query.
+- This query does not need 3D terrain.
 - The position can be outside the screen.
 - When the style has more than one elevation source, give the name: `map.queryElevation(lngLat, {source: 'dem'})`.
 

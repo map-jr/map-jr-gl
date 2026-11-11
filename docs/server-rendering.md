@@ -1,9 +1,9 @@
 # Server rendering
 
-The server renderer draws the first picture of a map without a browser. Use it for these tasks:
+The server renderer renders the first view of a map without a browser. Use it for these tasks:
 
 - Show a map immediately, before the page script runs.
-- Make a picture for an email, a document, or a link preview.
+- Make an image for an email, a document, or a link preview.
 
 It works on Node.js, on Cloudflare Workers, and in other JavaScript environments that have `fetch`.
 
@@ -21,12 +21,12 @@ const {svg, tiles} = await renderToSVG({
 });
 ```
 
-- `svg` is the picture.
-- `tiles` is the list of tile addresses that the picture used.
+- `svg` is the rendered map.
+- `tiles` is the list of tile URLs that the render used.
 
 `renderToSVG` has no dependencies.
 
-## Put the picture in a page
+## Put the SVG in a page
 
 1. Put the SVG in the map container:
 
@@ -36,13 +36,13 @@ const {svg, tiles} = await renderToSVG({
    </div>
    ```
 
-2. Add a preload link for each tile address. The browser then gets the tiles while it loads the script:
+2. Add a preload link for each tile URL. The browser then gets the tiles while it loads the script:
 
    ```html
    <link rel="preload" as="fetch" crossorigin href="https://example.com/tiles/14/4823/6160.pbf">
    ```
 
-3. Create the map with the same style, centre and zoom. The map removes the SVG when its first picture is ready.
+3. Create the map with the same style, centre and zoom. The map removes the SVG when its first frame is ready.
 
 ## Make an image
 
@@ -91,8 +91,8 @@ export default {
 Notes for Cloudflare Workers:
 
 - Use `format: 'jpeg'`. The WebAssembly version makes only large WebP files.
-- The WebAssembly file is approximately 1.9 MB (gzip).
-- One picture uses some hundred milliseconds of processor time. Keep the result in a cache.
+- The WebAssembly file is about 1.9 MB (gzip).
+- One render uses a few hundred milliseconds of CPU time. Keep the result in a cache.
 
 `test/cloudflare` contains a complete Worker.
 
@@ -100,7 +100,7 @@ Notes for Cloudflare Workers:
 
 | | SVG | Image |
 |---|---|---|
-| Size | Becomes large for a city with much detail (some hundred KB) | Almost constant |
+| Size | Becomes large for a city with much detail (a few hundred KB) | Almost constant |
 | Sharpness | Sharp at each size | Set by `pixelRatio` |
 | Dependencies | None | The Takumi renderer |
 
@@ -108,24 +108,24 @@ Notes for Cloudflare Workers:
 
 | Option | Meaning |
 |---|---|
-| `style` | A style object or the address of a style. Necessary. |
-| `center`, `zoom`, `width`, `height` | The view. Necessary. |
+| `style` | A style object or the URL of a style. Required. |
+| `center`, `zoom`, `width`, `height` | The view. Required. |
 | `bearing` | The rotation of the map in degrees |
 | `markers` | A list of marker layer options. See [Markers](markers.md). |
 | `resolveImage` | A function that supplies an icon as SVG when the sprite does not contain it |
-| `layerFilter` | A function that returns `false` for a layer that must not be in the picture |
-| `inlineImages` | When `true`, raster tiles and the icon sheet go into the SVG as data. Necessary when the SVG is shown with an `<img>` element. |
-| `highDensity` | When `true`, the picture uses the high-density icon sheet |
+| `layerFilter` | A function that returns `false` for a layer to leave out |
+| `inlineImages` | When `true`, raster tiles and the sprite go into the SVG as data. Required when the SVG is shown with an `<img>` element. |
+| `highDensity` | When `true`, the render uses the high-density (@2x) sprite |
 | `ssrOverrides` | When `false`, the server changes in the style are ignored. See below. |
-| `decodeImage` | A function that decodes elevation tiles. Necessary only for formats other than PNG and lossless WebP. |
+| `decodeImage` | A function that decodes elevation tiles. Required only for formats other than PNG and lossless WebP. |
 | `fetch` | A replacement for `fetch`, for example to add a cache |
 
 `renderToImage` also accepts `rasteriser`, `format`, `quality` and `pixelRatio`.
 
-## Make the server picture simpler
+## Simplify the server render
 
-A server picture does not need all the detail of the live map. You can put changes for the server in the style.
-MapLibre GL JS ignores them, thus the style stays correct for the two libraries.
+A server render does not need all the detail of the live map. You can put changes for the server in the style.
+MapLibre GL JS ignores them, so the style stays correct for the two libraries.
 
 ```json
 {
@@ -139,7 +139,7 @@ MapLibre GL JS ignores them, thus the style stays correct for the two libraries.
 }
 ```
 
-| Key | Effect on the server picture |
+| Key | Effect on the server render |
 |---|---|
 | `hidden` | The layer does not show |
 | `filter` | An additional filter |
@@ -152,7 +152,7 @@ MapLibre GL JS ignores them, thus the style stays correct for the two libraries.
 
 The SVG uses the fonts of the page where you show it. Set `fontFamily` to make the text the same as the live map.
 
-For an image, register your fonts with the Takumi renderer. This is necessary for scripts that are not Latin.
+For an image, register your fonts with the Takumi renderer. You need this for scripts that are not Latin.
 
 ## What the server renderer does not draw
 

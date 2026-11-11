@@ -9,16 +9,16 @@ MapLibre GL JS.
 
 ## Why use this library
 
-- **It is small.** The page loads approximately 29 KB of script (gzip). MapLibre GL JS loads more than 250 KB.
+- **It is small.** The page loads about 29 KB of script (gzip). MapLibre GL JS loads more than 250 KB.
 - **It does not block your page.** The map draws in a worker. Your page stays responsive while the map moves.
 - **It draws many markers.** A marker layer draws 100,000 SVG markers at 60 frames per second.
-- **It draws on the server.** You can make the first picture of a map as SVG or as an image, without a browser.
+- **It draws on the server.** You can render the first view of a map as SVG or as an image, without a browser.
   This works on Node.js and on Cloudflare Workers.
 - **It includes elevation tools.** 3D terrain, relief shading, contour lines and elevation queries use one
-  elevation source. No plugin is necessary.
-- **It answers questions about the data.** `queryFeatures` reads the tile data directly. A style layer is not
-  necessary.
-- **It uses web fonts.** Text is drawn with the fonts of the browser. Glyph files are not necessary.
+  elevation source. You do not need a plugin.
+- **It answers questions about the data.** `queryFeatures` reads the tile data directly. You do not need a style
+  layer.
+- **It uses web fonts.** Text is drawn with the fonts of the browser. You do not need glyph files.
 - **It is easy to change to.** Most MapLibre GL JS code works after you change the import.
 
 ## Status
@@ -33,7 +33,7 @@ These figures are written by `pnpm status`. They compare this library with MapLi
 | MapLibre `Map` methods | 108 of 150 are available |
 | MapLibre render tests | 645 of 1429 are the same (1% of pixels or less are different). 333 more are near (5% or less). |
 | Page script (gzip) | 25 KB. MapLibre GL JS: 299 KB. |
-| Worker script (gzip) | 57 KB. MapLibre GL JS: 145 KB. |
+| Worker script (gzip) | 58 KB. MapLibre GL JS: 145 KB. |
 | Server renderer (gzip) | 33 KB |
 <!-- status:end -->
 
@@ -41,7 +41,7 @@ The library is new. Read [MapLibre compatibility](docs/maplibre-compatibility.md
 
 ## Install
 
-The package is not on npm at this time. Build it from this repository:
+The package is not on npm yet. Build it from this repository:
 
 ```bash
 git clone https://github.com/map-jr/map-jr-gl.git
@@ -84,7 +84,7 @@ The build writes the library to the `dist` folder. Then use one of these methods
 </script>
 ```
 
-No CSS file is necessary. The library adds the styles for its controls.
+You do not need a CSS file. The library adds the styles for its controls.
 
 ![A street map with zoom, compass and scale controls](docs/images/basic.jpg)
 
@@ -168,7 +168,7 @@ not on the screen.
 
 ![Buildings that change colour below the pointer](docs/images/query.jpg)
 
-### Draw the first picture on the server
+### Render the first view on the server
 
 ```js
 import {renderToSVG} from 'map-jr-gl/server';
@@ -187,7 +187,7 @@ See [Server rendering](docs/server-rendering.md).
 
 ![A map that was drawn on the server](docs/images/server.jpg)
 
-### Use highway shields and other icons that are made when necessary
+### Use highway shields and other icons that are generated on demand
 
 ```js
 map.setMissingStyleImageResolver(name => {
@@ -197,7 +197,7 @@ map.setMissingStyleImageResolver(name => {
 
 The OSM Americana shield library works with this library without changes. The gallery shows it.
 
-A label can contain images (`format` with `image`). Thus a road with two routes shows two shields side by side.
+A label can contain images (`format` with `image`). So a road with two routes shows two shields side by side.
 
 ![Highway shields on a road map](docs/images/shields.jpg)
 
@@ -206,11 +206,11 @@ A label can contain images (`format` with `image`). Thus a road with two routes 
 The default configuration needs no settings.
 
 - The page loads `map-jr-gl.js`. This file is small.
-- The library starts a worker from `map-jr-gl-worker.js`. It finds this file adjacent to `map-jr-gl.js`. Bundlers copy
+- The library starts a worker from `map-jr-gl-worker.js`. It finds this file next to `map-jr-gl.js`. Bundlers copy
   the file automatically.
 - If a worker cannot start, the library draws on the main thread and writes a warning. A map always appears.
 
-See [Loading](docs/loading.md) for a content delivery network, a strict Content Security Policy, the one-file
+See [Loading](docs/loading.md) for a CDN, a strict Content Security Policy, the one-file
 build and other configurations.
 
 ## Speed
@@ -231,7 +231,7 @@ These results are from an Apple M4 computer with Chrome 157. Each test moved the
 On an iPhone (Safari, iOS 27), 3D terrain is slower than MapLibre GL JS: 54 to 58 frames per second, compared
 with 60.
 
-To do the test on your computer, run `pnpm demo` and open `http://localhost:8080/bench`.
+To run the benchmark on your computer, run `pnpm demo` and open `http://localhost:8080/bench`.
 
 ## Documents
 
@@ -246,8 +246,8 @@ To do the test on your computer, run `pnpm demo` and open `http://localhost:8080
 ## How this project is made
 
 An AI coding assistant wrote almost all the code of this project ("vibe coding"). A person gave the directions and
-examined the results. No person examined each line of the code. Read [Acknowledgements](ACKNOWLEDGEMENTS.md) for
-more information, and do your own tests before you use the library for important work.
+reviewed the results. Nobody reviewed every line of the code. Read [Acknowledgements](ACKNOWLEDGEMENTS.md) for
+more information, and run your own tests before you use the library for important work.
 
 ## Licence and acknowledgements
 
