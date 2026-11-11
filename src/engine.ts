@@ -457,6 +457,15 @@ export class Engine {
                 dem.used = this.frameNo;
                 if (dem.state === 'loading' || dem.range) break; // otherwise it failed or came back empty: try the level above
             }
+            // A coarse elevation tile of the surroundings stays loaded as well (one tile covers many ground tiles). Ground
+            // that comes into view next to the camera then has its shape and a soft relief at once, not a flat slab
+            // until its own tiles arrive.
+            const oz = Math.max(demSrc.minzoom, Math.min(demSrc.maxzoom, Math.floor(tr.zoom)) - 3);
+            if (id.z > oz) {
+                const x = id.x >> id.z - oz, y = id.y >> id.z - oz, dk = `${oz}/${x}/${y}`, demKey = terrain.source + '|' + dk, dem = this.tiles.get(demKey);
+                wanted.add(demKey);
+                if (dem) dem.used = this.frameNo; else this.request(terrain.source, {z: oz, x, y, w: 0, key: dk}, demKey);
+            }
             // Heights for the tile's mesh, looked up by position in data all tiles share (so edges meet exactly), and
             // refreshed a few tiles per frame when new elevation data arrives.
             let mesh = this.meshHeights.get(tkey);

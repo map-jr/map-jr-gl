@@ -1172,7 +1172,8 @@ export class GLRenderer {
                 this.drapeWaits.set(t.key, since);
                 if (now - since < 300 && this.coarserDrape(t.id)) { behind = true; continue; }
             }
-            if (!d && fresh-- <= 0) { behind = true; continue; }
+            // (Ground with no picture of its own and none of a coarser tile is a hole in the map: it does not wait its turn.)
+            if (!d && this.coarserDrape(t.id) && fresh-- <= 0) { behind = true; continue; }
             if (!d || d.size !== size) {
                 if (d) this.freeDrape(d);
                 // A texture of this size that is not in use is taken again: to make and delete large textures in each
