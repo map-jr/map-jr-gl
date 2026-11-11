@@ -2,7 +2,8 @@
 // engine (its sources and sprite found, its layers checked). The page script loads this file, so it must not import
 // the expression compiler or the text shaper: those are for the engine and the tile workers.
 import type {GeoJSONOptions} from './geojson.ts';
-import {PM_PREFIX, archive} from './pmtiles.ts';
+// (The reader for PMTiles archives is loaded only for a style that has one: the page script stays small.)
+const PM_PREFIX = 'pmtiles://';
 import type {ContourConfig} from './contour.ts';
 
 /** The fonts for labels when the style and the page name none that is available. */
@@ -79,6 +80,7 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
         let src = raw;
         if (typeof src.url === 'string' && src.url.startsWith(PM_PREFIX)) {
             // A PMTiles archive: its header supplies the zoom range, and tiles are addressed inside the archive.
+            const {archive} = await import('./pmtiles-info.ts');
             const at = src.url.slice(PM_PREFIX.length), file = base ? new URL(at, base).href : at, info = await archive(file, fetchFn).info();
             src = {minzoom: info.minzoom, maxzoom: info.maxzoom, attribution: info.attribution, ...raw, tiles: [`${PM_PREFIX}${file}/{z}/{x}/{y}`]};
         } else if (!src.tiles && src.url) {

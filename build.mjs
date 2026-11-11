@@ -22,15 +22,30 @@ const shaders = {
     },
 };
 
+/**
+ * For a built file that contains everything (the worker, the server renderer): the style resolver loads the PMTiles
+ * reader on demand, which is correct for the page script only. Here the reader is in the file anyway, so the import
+ * becomes a normal one and the code that loads a module on demand is not needed.
+ */
+const allInOne = {
+    name: 'all-in-one',
+    enforce: 'pre',
+    transform(code, id) {
+        const lazy = "await import('./pmtiles-info.ts')";
+        if (!id.endsWith('/src/resolve.ts') || !code.includes(lazy)) return null;
+        return {code: "import * as pmtilesInfo from './pmtiles-info.ts';\n" + code.replace(lazy, 'pmtilesInfo'), map: null};
+    },
+};
+
 /** One Vite build. Everything is written to dist/ next to what earlier builds put there. */
-const run = (options, define = {__WORKER_SRC__: '""'}) => build({
-    configFile: false, logLevel: 'warn', define, plugins: [shaders, privates],
+const run = (options, define = {__WORKER_SRC__: '""'}, plugins = []) => build({
+    configFile: false, logLevel: 'warn', define, plugins: [shaders, privates, ...plugins],
     build: {target: 'es2022', minify: true, emptyOutDir: false, outDir: 'dist', copyPublicDir: false, reportCompressedSize: false, modulePreload: false, ...options},
 });
 
 // The worker: tile parsing, and the whole rendering engine when a map renders off the main thread. A classic script,
 // so it can be started from a blob or another origin.
-await run({lib: {entry: 'src/worker.ts', formats: ['iife'], name: 'MapJrWorker', fileName: () => 'map-jr-gl-worker.js'}});
+await run({lib: {entry: 'src/worker.ts', formats: ['iife'], name: 'MapJrWorker', fileName: () => 'map-jr-gl-worker.js'}}, undefined, [allInOne]);
 const workerSrc = readFileSync('dist/map-jr-gl-worker.js', 'utf8');
 
 // The default build. The page loads map-jr-gl.js, which is small; it finds map-jr-gl-worker.js beside itself, and the
@@ -43,7 +58,7 @@ await run(esm({'map-jr-gl': 'src/index.ts'}));
 // Standalone: one self-contained file with the worker embedded, for places where shipping several files is awkward.
 await run(esm({'map-jr-gl-standalone': 'src/index.ts'}, {inlineDynamicImports: true}), {__WORKER_SRC__: JSON.stringify(workerSrc)});
 // The server renderer (Node, Cloudflare Workers and other runtimes without a DOM).
-await run(esm({server: 'src/server.ts'}, {inlineDynamicImports: true}));
+await run(esm({server: 'src/server.ts'}, {inlineDynamicImports: true}), undefined, [allInOne]);
 
 const kb = n => (n / 1024).toFixed(1).padStart(6);
 const report = (label, bytes) => console.log(label.padEnd(46), `${kb(bytes.length)} KB min ${kb(gzipSync(bytes, {level: 9}).length)} KB gzip ${kb(brotliCompressSync(bytes).length)} KB brotli`);

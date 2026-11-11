@@ -154,7 +154,7 @@ export class Map {
     private send: (c: Command, transfer?: Transferable[]) => void = () => {};
     private queue: [Command, Transferable[]?][] = [];
     private workers: Worker[] = [];
-    private style!: ResolvedStyle;
+    private resolved!: ResolvedStyle;
     private rawStyle: any;
     private dpr = 1;
     private isLoaded = false;
@@ -239,11 +239,11 @@ export class Map {
         // As in MapLibre, a style may carry its own starting camera; explicit options win.
         const sc = this.rawStyle;
         this.tr.set(o.center === undefined ? sc.center : undefined, o.zoom === undefined ? sc.zoom : undefined, o.bearing === undefined ? sc.bearing : undefined, o.pitch === undefined ? sc.pitch : undefined);
-        this.style = await resolveStyle(this.rawStyle, fetch, this.styleBase);
-        if (this.style.unsupported.length) console.warn('[map-jr-gl] Skipping unsupported layer types: ' + this.style.unsupported.join(', '));
+        this.resolved = await resolveStyle(this.rawStyle, fetch, this.styleBase);
+        if (this.resolved.unsupported.length) console.warn('[map-jr-gl] Skipping unsupported layer types: ' + this.resolved.unsupported.join(', '));
         const tr = this.tr;
         const engineOptions = {
-            style: this.style, width: tr.width, height: tr.height, dpr: this.dpr, fontFamily: o.fontFamily ?? DEFAULT_FONT, fonts: o.fonts,
+            style: this.resolved, width: tr.width, height: tr.height, dpr: this.dpr, fontFamily: o.fontFamily ?? DEFAULT_FONT, fonts: o.fonts,
             center: [tr.lng, tr.lat] as [number, number], zoom: tr.zoom, bearing: tr.bearing, pitch: tr.pitch,
             minZoom: tr.minZoom, maxZoom: tr.maxZoom, maxPitch: tr.maxPitch, antialias: o.antialias,
         };
@@ -291,6 +291,7 @@ export class Map {
         for (const [c, t] of this.queue) this.send(c, t);
         this.queue = [];
         this.send({type: 'repaint'});
+        this.styleEvents(true);
 
         this.observer = new ResizeObserver(() => this.resize());
         this.observer.observe(this.container);
@@ -604,6 +605,11 @@ export class Map {
     isStyleLoaded() { return this.ready; }
     areTilesLoaded() { return this.tilesLoaded; }
     redraw() { this.triggerRepaint(); return this; }
+    // react-map-gl and other wrappers read these private members of the MapLibre map. They are here only so that
+    // those wrappers work: `style._loaded` tells them that sources and layers can be added.
+    get style() { return this.resolved ? {_loaded: this.ready} : undefined; }
+    _render() { this.triggerRepaint(); }
+    _update() { this.triggerRepaint(); }
     zoomIn() { return this.easeTo({zoom: this.tr.zoom + 1, duration: 300}); }
     zoomOut() { return this.easeTo({zoom: this.tr.zoom - 1, duration: 300}); }
     triggerRepaint() { this.post({type: 'repaint'}); }
@@ -616,6 +622,13 @@ export class Map {
 
     // ---- style ----
     private restyles = 0;
+    private newStyle = false;
+    /** The events after the style changed. `style.load` is only for a whole new style (the first one, or `setStyle`). */
+    private styleEvents(whole: boolean) {
+        this.fire('styledata', {dataType: 'style'});
+        this.fire('data', {dataType: 'style'});
+        if (whole) this.fire('style.load');
+    }
     private reloadPending = false;
     private restyle(reload: boolean) {
         // As in MapLibre, the loading events come before the data events.
@@ -630,10 +643,10 @@ export class Map {
             reload = this.reloadPending;
             this.reloadPending = false;
             if (Object.keys(this.globalState).length) style.state = {...style.state, ...this.globalState};
-            this.style = style;
+            this.resolved = style;
             this.post({type: 'style', style, reload});
-            this.fire('styledata', {dataType: 'style'});
-            this.fire('data', {dataType: 'style'});
+            this.styleEvents(this.newStyle);
+            this.newStyle = false;
         }, err => this.fire('error', {error: err}));
     }
     /** Runs a change to the style JSON now, or as soon as the style has been fetched. */
@@ -675,7 +688,7 @@ export class Map {
     }
 
     /** The values `global-state` expressions read: the style's `state` defaults with anything set since. */
-    getGlobalState(): Record<string, unknown> { return {...this.style?.state, ...this.globalState}; }
+    getGlobalState(): Record<string, unknown> { return {...this.resolved?.state, ...this.globalState}; }
     /** Sets one global state value (`null` or `undefined` returns it to the style's default); layers that read it update. */
     setGlobalStateProperty(name: string, value: unknown) {
         if (value === null || value === undefined) delete this.globalState[name]; else this.globalState[name] = value;
@@ -690,10 +703,13 @@ export class Map {
     setLight(light: {anchor?: 'map' | 'viewport'; position?: [number, number, number]; color?: string; intensity?: number}) {
         return this.editStyle(s => { s.light = {...s.light, ...light}; });
     }
+    /** There is no sky in this library. (react-map-gl reads the value when a style has loaded.) */
+    getSky() { return undefined; }
     getLight() { return {anchor: 'viewport', position: [1.15, 210, 30], color: '#ffffff', intensity: 0.5, ...this.rawStyle?.light}; }
     async setStyle(style: unknown) {
         this.styleBase = typeof style === 'string' ? new URL(style, location.href).href : location.href;
         this.rawStyle = typeof style === 'string' ? await (await this.fetchAs('Style')(style)).json() : structuredClone(style);
+        this.newStyle = true;
         this.restyle(true);
     }
     getLayer(id: string) { return this.rawStyle?.layers.find((l: any) => l.id === id); }
@@ -1275,7 +1291,7 @@ export class Map {
 
     /** Attribution strings (as provided, possibly HTML) of the sources in the current style. */
     getAttributions(): string[] {
-        return [...new Set(Object.values(this.style?.sources ?? {}).map(s => s.attribution).filter((a): a is string => !!a))];
+        return [...new Set(Object.values(this.resolved?.sources ?? {}).map(s => s.attribution).filter((a): a is string => !!a))];
     }
 
     remove() {

@@ -10,6 +10,7 @@ decided, why, and how to change it.
 | The size check now measures what a page downloads before the map can start: `map-jr-gl.js` and the files that it imports when it loads. Before, it measured `map-jr-gl.js` alone, which hid two more files. | The check found that the page loaded the expression compiler and the text shaper, which only the engine needs. They are now out of the page script: it went from 33.8 KB to about 26 KB (gzip), with all of today's additions (events, handlers, `LngLat`, `transformRequest`, `addProtocol`, box zoom, context recovery). The budget is 27 KB. | Change the budgets in `scripts/size-check.mjs`. |
 | The budget of the page script went from 27 KB to 27.5 KB; the file set is 27.1 KB. | `queryRenderedFeatures` now also gives a result at once for GeoJSON sources (see below). The code that the page needs for this at once is small; the larger part is loaded only when a style has a GeoJSON source with its data in the style. | |
 | The engine for the main thread (loaded only when no worker can start) has a budget of 54 KB. | It now contains the expression compiler and the shaper that the page script no longer has. The total for a map on the main thread is the same as before. | |
+| The page script is now 26.4 KB (budget 27.5 KB). The budget of the engine for the main thread went from 54 KB to 55 KB; it is 54.7 KB. | The reader for PMTiles archives was in the page script, because the page reads the header of an archive when it resolves a style. It is now loaded only for a style that has a `pmtiles://` source: 1.1 KB less for each page. The reader is counted with the engine for the main thread now, which is why that budget changed. A map in a worker (the usual case) downloads less; a map on the main thread downloads 0.6 KB more in total. | Import `./pmtiles.ts` at the top of `src/resolve.ts` again. |
 | The build gives short names to private class members (`scripts/private-names.mjs`). The budgets did not change. | The minifier does not shorten property names. This step makes each built file about 0.5 KB smaller (gzip): the page script 27.1 KB, the worker 57.5 KB, the engine for the main thread 53.0 KB. A name is shortened only when each use of it is a `private` declaration or `this.name`, so message fields, options and browser properties keep their names. | Remove `privates` from the plugins in `build.mjs`. |
 
 ## `queryRenderedFeatures` gives two kinds of result
@@ -83,6 +84,19 @@ The choices:
 3. Keep the worker, and tell users of terrain on Safari about `renderer: 'main'`.
 
 This was not changed. Each choice is one line in `src/map.ts` (where `wantWorker` is set).
+
+## Findings from running react-map-gl
+
+The scenario `test/conformance/plugins/react.js` runs `@vis.gl/react-maplibre` (the MapLibre part of react-map-gl,
+the most used wrapper) with this library: a map with a control, a marker, a popup, a source and a layer. It passes
+now. It found these faults, which are corrected:
+
+| Finding | Correction |
+|---|---|
+| The events `style.load` and `styledata` did not fire when the first style had loaded. Code that adds layers in `map.on('style.load', ...)` never ran. | The events fire after the first style and after `setStyle`. |
+| `Marker` did not have `getOffset`, `setOffset`, `getRotation`, `setRotation`, `getRotationAlignment`, `setRotationAlignment`, `getPitchAlignment`, `setPitchAlignment`, `addClassName`, `removeClassName`, `toggleClassName` and the options `className` and `rotation`. `Popup` did not have `setOffset`, `setMaxWidth`, the class name methods and a public `options`. | Added. A marker can now be turned. `pitchAlignment` is kept but has no effect: a marker is always upright on the screen. |
+| The wrapper reads private members of the MapLibre map: `map.style._loaded`, `map._render()`, `map._update()`. | The map has these three, for wrappers only. |
+| The wrapper calls `map.getSky()` each time a style has loaded. | `getSky()` is there and returns `undefined`. This is the only method from the proposal below that was added without your decision, because the wrapper does not work without it. `setSky` is not there. |
 
 ## Findings from the cross-browser runs
 

@@ -32,11 +32,18 @@ abstract class Overlay extends Evented {
     protected update: () => void = () => {
         if (!this.map || !this.lngLat) return;
         const p = this.map.project(this.lngLat);
-        this.el.style.transform = `translate(${Math.round(p.x + this.offset[0])}px,${Math.round(p.y + this.offset[1])}px) ${ANCHOR_SHIFT[this.anchor]}`;
+        // (A marker can be turned. With the alignment `map`, the angle is from north on the map, so it turns with the map.)
+        const turn = this.rotation - (this.rotationAlignment === 'map' ? this.map.getBearing() : 0);
+        this.el.style.transform = `translate(${Math.round(p.x + this.offset[0])}px,${Math.round(p.y + this.offset[1])}px) ${ANCHOR_SHIFT[this.anchor]}${turn ? ` rotate(${turn}deg)` : ''}`;
     };
+    protected rotation = 0;
+    protected rotationAlignment = 'auto';
     setLngLat(lngLat: LngLatLike) { this.lngLat = toLngLat(lngLat); this.update(); return this; }
     getLngLat() { return this.lngLat ? new LngLat(this.lngLat[0], this.lngLat[1]) : undefined; }
     getElement() { return this.el; }
+    addClassName(name: string) { this.el.classList.add(name); }
+    removeClassName(name: string) { this.el.classList.remove(name); }
+    toggleClassName(name: string) { return this.el.classList.toggle(name); }
     protected attach(map: Map) {
         this.detach();
         this.map = map;
@@ -75,7 +82,7 @@ export class Popup extends Overlay {
     private tip = document.createElement('div');
     private content = document.createElement('div');
     private closeOnMapClick = () => this.remove();
-    constructor(private options: PopupOptions = {}) {
+    constructor(readonly options: PopupOptions = {}) {
         super();
         this.anchor = options.anchor ?? 'bottom';
         this.el.className = `${cls('popup')} ${options.className ?? ''}`.trim();
@@ -127,6 +134,9 @@ export class Popup extends Overlay {
         return (vertical + horizontal) as OverlayAnchor;
     }
     getAnchor() { return this.anchor; }
+    setOffset(offset?: PopupOffset) { this.options.offset = offset; this.applyAnchor(this.anchor); this.update(); return this; }
+    setMaxWidth(maxWidth: string) { this.options.maxWidth = this.box.style.maxWidth = maxWidth; return this; }
+    getMaxWidth() { return this.options.maxWidth; }
 
     setText(text: string) { this.content.textContent = text; return this; }
     /** Sets HTML content. As in MapLibre, the caller is responsible for it being safe. */
@@ -165,15 +175,19 @@ export class Popup extends Overlay {
     }
 }
 
-export interface MarkerOptions { element?: HTMLElement; color?: string; anchor?: OverlayAnchor; offset?: [number, number]; draggable?: boolean; scale?: number }
+export interface MarkerOptions { element?: HTMLElement; color?: string; anchor?: OverlayAnchor; offset?: [number, number]; draggable?: boolean; scale?: number; className?: string; rotation?: number; rotationAlignment?: string; pitchAlignment?: string }
 
 export class Marker extends Overlay {
     protected el: HTMLElement;
     protected anchor: OverlayAnchor;
     private popup?: Popup;
     private draggable = false;
+    private pitchAlignment: string;
     constructor(options: MarkerOptions = {}) {
         super();
+        this.rotation = options.rotation ?? 0;
+        this.rotationAlignment = options.rotationAlignment ?? 'auto';
+        this.pitchAlignment = options.pitchAlignment ?? 'auto';
         this.anchor = options.anchor ?? (options.element ? 'center' : 'bottom');
         this.offset = options.offset ?? [0, 0];
         if (options.element) this.el = options.element;
@@ -183,7 +197,7 @@ export class Marker extends Overlay {
             this.el.innerHTML = `<svg width="${27 * s}" height="${41 * s}" viewBox="0 0 27 41" style="display:block;filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))">` +
                 `<path d="M13.500 0C6 0 0 6 0 13.500 0 23 13.500 41 13.500 41S27 23 27 13.500C27 6 21 0 13.500 0z" fill="${options.color ?? '#3fb1ce'}"/><circle cx="13.500" cy="13.500" r="5.500" fill="#fff"/></svg>`;
         }
-        this.el.classList.add('map-jr-marker', 'maplibregl-marker');
+        this.el.classList.add('map-jr-marker', 'maplibregl-marker', ...(options.className?.split(' ').filter(Boolean) ?? []));
         this.el.style.zIndex = '3';
         this.el.addEventListener('click', e => { if (this.popup) { e.stopPropagation(); this.togglePopup(); } });
         this.el.addEventListener('pointerdown', e => this.startDrag(e));
@@ -200,6 +214,15 @@ export class Marker extends Overlay {
     }
     setDraggable(on: boolean) { this.draggable = on; this.el.style.cursor = on ? 'grab' : ''; this.el.style.touchAction = on ? 'none' : ''; return this; }
     isDraggable() { return this.draggable; }
+    getOffset() { return {x: this.offset[0], y: this.offset[1]}; }
+    setOffset(offset: [number, number] | {x: number; y: number}) { this.offset = Array.isArray(offset) ? offset : [offset.x, offset.y]; this.update(); return this; }
+    getRotation() { return this.rotation; }
+    setRotation(degrees = 0) { this.rotation = degrees; this.update(); return this; }
+    getRotationAlignment() { return this.rotationAlignment; }
+    setRotationAlignment(alignment = 'auto') { this.rotationAlignment = alignment; this.update(); return this; }
+    /** (The value is kept. A marker is always upright on the screen.) */
+    getPitchAlignment() { return this.pitchAlignment; }
+    setPitchAlignment(alignment = 'auto') { this.pitchAlignment = alignment; return this; }
     setLngLat(lngLat: LngLatLike) { super.setLngLat(lngLat); if (this.popup?.isOpen()) this.popup.setLngLat(lngLat); return this; }
 
     private startDrag(e: PointerEvent) {
