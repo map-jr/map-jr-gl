@@ -40,6 +40,21 @@ shows how many of the audited packages use each one.
 | Source classes (`GeoJSONSource`, `VectorTileSource` and others) and event classes as exports | 1 to 3 packages each | Most uses are type checks. `getSource()` returns a plain object with the methods of the source. |
 | Opt-in features (a smaller worker without 3D terrain, contours and others) | | Discussed with the owner: not wanted unless features can be selected with imports or configuration in a build. That needs the features as separate registered modules, which is a large change. |
 
+## A proposal: methods that are accepted but have no effect
+
+The nine audited packages that still use missing API are framework wrappers (for React, Vue, Svelte, Angular) and
+two others. They call methods such as `setProjection`, `setSky`, `setRenderWorldCopies`, `setZoomSnap`,
+`setTransformCameraUpdate` and `setRoll`, usually only when the application sets the related option.
+
+A possible change: add these methods so that they accept the default value silently and write one warning for a
+value that the library cannot do (a globe, a sky, a roll). A wrapper then does not stop with an error.
+
+- For: more applications start without changes.
+- Against: about 0.4 KB in the page script, which is at its budget; and the count of available methods then
+  includes methods that do nothing, so the documents must list them apart.
+
+This was not done. It is a decision for the owner.
+
 ## Findings from the cross-browser runs
 
 The workflow `Browsers` runs the benchmark and the behaviour tests in Chromium, Firefox and WebKit on Linux, macOS
