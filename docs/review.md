@@ -152,8 +152,14 @@ Faults that the trial found, and their state:
    MapLibre selects the tiles of the terrain source at twice the tile size and without rounding, also for the
    hillshade layer and while the map is seen from above. Fixed: the library uses the same rule. The render test
    `terrain/low-zoom` went from 18% to 2.7% different.
-3. Labels: the library shows a few more labels than MapLibre on the peaks page (for example two more peak names in
-   the same view). Not examined.
+3. Labels: the library showed a few more labels than MapLibre on the peaks page, and it broke names into two lines
+   that MapLibre keeps on one line. The cause was the line breaks of a text that has a line break of its own (a name
+   over its height): MapLibre finds the even line width from the whole text, the library found it for each part.
+   Fixed: the page shows the same labels as MapLibre.
+4. Labels of a layer with `symbol-sort-key` were in key order in each tile only. MapLibre puts them in key order over
+   all tiles. Fixed. (This was not the cause of fault 3.)
+5. Open: at zoom 6.8 the library shows green areas (land cover) in the plain of the Po that MapLibre does not show.
+   Not examined.
 
 Not checked in the trial:
 

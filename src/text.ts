@@ -57,20 +57,24 @@ export function graphemes(s: string): string[] {
     return segmenter ? Array.from(segmenter.segment(s), (x: any) => x.segment) : Array.from(s);
 }
 
-/** Greedy line breaking at spaces (and between ideographs), shared by the browser and server shapers. */
 /**
  * Breaks text into lines the way MapLibre does: not by filling each line, but by choosing the breaks that leave the
  * lines closest to one even width (so a label is a balanced block rather than a long line and a stub). A short last
  * line is penalised less, a long one more. Widths ignore the spaces themselves, as MapLibre's do.
  */
 function wrap(text: string, maxWidth: number, measure: (s: string) => number): string[] {
-    const lines: string[] = [];
-    for (const para of text.split('\n')) {
+    const lines: string[] = [], paras = text.split('\n');
+    // (The even width comes from the whole text, also when it has line breaks of its own: a name over a short second
+    // line stays on one line although it is a little wider than the limit, as in MapLibre.)
+    let total = 0;
+    for (const para of paras) total += measure(para);
+    const target = total / Math.max(1, Math.ceil(total / maxWidth));
+    for (let pi = 0; pi < paras.length; pi++) {
+        const para = paras[pi];
         const words = para.split(/(?<=\s)|(?<=[⺀-鿿가-힯])|(?<![\uE800-\uEFFF])(?=[⺀-鿿가-힯])|(?=[\uE800-\uEFFF][⺀-鿿가-힯])/).filter(w => w.length);
         // (The number of lines comes from the full width, spaces included; the break positions from widths without them.)
-        const widths = words.map(w => measure(w.trim())), total = measure(para);
+        const widths = words.map(w => measure(w.trim()));
         if (!words.length) continue;
-        const target = total / Math.max(1, Math.ceil(total / maxWidth));
         // best[i]: the least "badness" of any way of breaking before word i, and which earlier break it follows.
         const best: {badness: number; prev: number; x: number}[] = [{badness: 0, prev: -1, x: 0}];
         let x = 0;
@@ -83,7 +87,7 @@ function wrap(text: string, maxWidth: number, measure: (s: string) => number): s
             for (let j = 0; j < i; j++) {
                 const width = x - best[j].x;
                 let ragged = (width - target) ** 2;
-                if (last) ragged = width < target ? ragged / 2 : ragged * 2;
+                if (last && pi === paras.length - 1) ragged = width < target ? ragged / 2 : ragged * 2;
                 const badness = best[j].badness + ragged + penalty * penalty;
                 if (badness <= choice.badness) choice = {badness, prev: j, x};
             }
