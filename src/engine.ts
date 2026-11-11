@@ -49,7 +49,9 @@ export type Command =
     /** Features that style layers draw, in a rectangle of the screen. Each set is one style layer (its radius is in pixels). */
     | {type: 'queryRendered'; id: number; box: [number, number, number, number]; sets: (QuerySet & {source: string})[]; geometry?: boolean}
     | {type: 'elevation'; id: number; lng: number; lat: number; source?: string; zoom?: number}
-    | {type: 'repaint'};
+    | {type: 'repaint'}
+    /** Asks for a `frame` event after each frame that is drawn (for the `render` event of the map). */
+    | {type: 'frames'; on: boolean};
 export type EngineEvent =
     | {type: 'camera'; lng: number; lat: number; zoom: number; bearing: number; pitch: number; /** Ground height at the centre with 3D terrain, else 0. */ elevation: number; exaggeration: number; groundRange?: [number, number]; padding: [number, number, number, number]; moving: boolean}
     | {type: 'idle'}
@@ -57,6 +59,7 @@ export type EngineEvent =
     | {type: 'heights'; key: string; grid?: Float32Array}
     /** About once a second while drawing: frames drawn per second and the engine's average CPU time per frame. */
     | {type: 'stats'; fps: number; frameMs: number}
+    | {type: 'frame'}
     /** A frame at a new canvas size has been drawn. */
     | {type: 'resized'; width: number; height: number; dpr: number}
     | {type: 'result'; id: number; value?: unknown; error?: string}
@@ -143,6 +146,7 @@ export class Engine {
     private zoomMovedAt = -1e9;
     private zoomSeen = NaN;
     private contourWait = false;
+    private reportFrames = false;
     /** When the camera last changed. A short time after that still counts as movement, so that a pause in a gesture does not start costly work. */
     private cameraMovedAt = -1e9;
     /** How many sprite and font downloads are in progress. */
@@ -574,6 +578,7 @@ export class Engine {
                 this.queryElevation(c).then(value => this.emit({type: 'result', id: c.id, value}), err => this.emit({type: 'result', id: c.id, error: String(err.message)}));
                 return;
             case 'repaint': break;
+            case 'frames': this.reportFrames = c.on; break;
         }
         this.repaint();
     }
@@ -1038,6 +1043,7 @@ export class Engine {
         const busy = animating || markersAnimating || fading || this.placeDirty || settling || behind || this.meshBehind;
         const idle = complete && !busy && !this.spritePending && !this.contourWait;
         if (this.contourWait) { this.contourWait = false; setTimeout(() => this.repaint(), CONTOUR_WAIT + 20); }
+        if (this.reportFrames) this.emit({type: 'frame'});
         if (idle && !this.wasIdle) this.emit({type: 'idle'});
         this.wasIdle = idle;
         if (busy) this.repaint();

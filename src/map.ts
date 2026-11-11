@@ -1,3 +1,4 @@
+import {LngLat, LngLatBounds, type LngLatBoundsInput} from './lnglat.ts';
 import {Transform, groundHeight, mercX, mercY, toLngLat, type LngLatLike} from './geo.ts';
 import type {PreparedSource} from './geojson.ts';
 import {resolveStyle, type ResolvedStyle} from './style.ts';
@@ -29,6 +30,8 @@ export interface MapOptions extends CameraOptions, LoadOptions {
      */
     fonts?: FontSource[];
     interactive?: boolean;
+    /** Each kind of interaction can be off from the start, as in MapLibre. `boxZoom` is accepted, but the library has no box zoom. */
+    dragPan?: boolean; scrollZoom?: boolean; doubleClickZoom?: boolean; dragRotate?: boolean; touchZoomRotate?: boolean; touchPitch?: boolean; keyboard?: boolean; boxZoom?: boolean;
     minZoom?: number;
     maxZoom?: number;
     /** Largest camera tilt allowed, in degrees (at most 60). */
@@ -37,6 +40,25 @@ export interface MapOptions extends CameraOptions, LoadOptions {
     attributionControl?: false | {compact?: boolean; customAttribution?: string | string[]};
     /** Multisample antialiasing for the whole canvas. Smoother polygon edges, at a real cost in fill rate. */
     antialias?: boolean;
+}
+
+/**
+ * One kind of interaction with the map, as in MapLibre: `map.dragPan.disable()`, `map.scrollZoom.isEnabled()`.
+ * A plugin that draws or edits on the map uses these to stop the map from moving.
+ */
+export class InteractionHandler {
+    constructor(private on = true) {}
+    enable(_options?: unknown) { this.on = true; }
+    disable() { this.on = false; }
+    isEnabled() { return this.on; }
+    /** Always false: the library does not report a gesture in progress for each handler. */
+    isActive() { return false; }
+}
+/** Pinch gestures. The rotation part can be turned off alone. */
+export class TouchZoomRotateHandler extends InteractionHandler {
+    rotation = true;
+    disableRotation() { this.rotation = false; }
+    enableRotation() { this.rotation = true; }
 }
 
 export type PointLike = {x: number; y: number} | [number, number];
@@ -133,6 +155,11 @@ export class Map {
     private moving = false;
     private ready = false;
     private styleBase = '';
+    readonly dragPan = new InteractionHandler(); readonly scrollZoom = new InteractionHandler(); readonly doubleClickZoom = new InteractionHandler();
+    readonly dragRotate = new InteractionHandler(); readonly touchZoomRotate = new TouchZoomRotateHandler(); readonly touchPitch = new InteractionHandler();
+    readonly keyboard = new InteractionHandler();
+    /** The library has no box zoom. The handler is here so that code for MapLibre can call it; it is off. */
+    readonly boxZoom = new InteractionHandler(false);
     private markerLayers = new globalThis.Map<string, MarkerLayer>();
     private variantIds = new globalThis.Map<string, number>();
     private hovered: {layer: MarkerLayer; index: number} | null = null;
@@ -177,6 +204,7 @@ export class Map {
         this.canvas.height = Math.round(this.tr.height * this.dpr);
         this.tr.maxPitch = options.maxPitch ?? 60;
         this.tr.set(options.center ?? [0, 0], options.zoom ?? 0, options.bearing ?? 0, options.pitch ?? 0);
+        for (const k of ['dragPan', 'scrollZoom', 'doubleClickZoom', 'dragRotate', 'touchZoomRotate', 'touchPitch', 'keyboard'] as const) if (options[k] === false) this[k].disable();
         this.start().catch(err => this.fire('error', {error: err}));
     }
 
@@ -270,7 +298,7 @@ export class Map {
     _command(c: Command) { this.post(c); }
 
     private post(c: Command, transfer?: Transferable[]) {
-        if (c.type !== 'query' && c.type !== 'elevation') this.tilesLoaded = false;
+        if (c.type !== 'query' && c.type !== 'elevation' && c.type !== 'queryRendered' && c.type !== 'frames') this.tilesLoaded = false;
         if (this.ready) this.send(c, transfer); else this.queue.push([c, transfer]);
     }
 
@@ -300,12 +328,18 @@ export class Map {
                 if (this.pitching) { this.pitching = false; this.fire('pitchend'); }
                 this.fire('moveend');
             }
+        } else if (e.type === 'frame') {
+            this.fire('render');
         } else if (e.type === 'idle') {
             this.tilesLoaded = true;
             if (!this.isLoaded) {
                 this.isLoaded = true;
                 this.container.querySelector('[data-map-jr-ssr]')?.remove();
                 this.fire('load');
+            }
+            // The data of each source is complete now. As in MapLibre, `sourcedata` and `data` tell listeners so.
+            {
+                for (const sourceId of Object.keys(this.rawStyle?.sources ?? {})) for (const type of ['sourcedata', 'data']) this.fire(type, {dataType: 'source', sourceId, isSourceLoaded: true, source: this.rawStyle.sources[sourceId]});
             }
             this.fire('idle');
         } else if (e.type === 'heights') {
@@ -335,6 +369,8 @@ export class Map {
      */
     on(type: string, a: string | Listener, b?: Listener) {
         if (typeof a === 'string') this.layerListeners.push({type, layer: a, fn: b!}); else (this.listeners[type] ??= []).push(a);
+        // The engine reports each frame only when a listener wants the `render` event: most pages do not.
+        if (type === 'render' && !this.wantsFrames) { this.wantsFrames = true; this.post({type: 'frames', on: true}); }
         return this;
     }
     off(type: string, a: string | Listener, b?: Listener) {
@@ -342,6 +378,7 @@ export class Map {
         else this.listeners[type] = (this.listeners[type] ?? []).filter(f => f !== a);
         return this;
     }
+    private wantsFrames = false;
     private layerListeners: {type: string; layer: string; fn: Listener}[] = [];
     private hoveredLayers = new Set<string>();
     private hoverBusy = false;
@@ -381,7 +418,7 @@ export class Map {
     }
 
     // ---- camera ----
-    getCenter() { return {lng: this.tr.lng, lat: this.tr.lat}; }
+    getCenter() { return new LngLat(this.tr.lng, this.tr.lat); }
     getZoom() { return this.tr.zoom; }
     getBearing() { return this.tr.bearing; }
     getPitch() { return this.tr.pitch; }
@@ -395,11 +432,11 @@ export class Map {
     unproject(point: {x: number; y: number} | [number, number]) {
         const [x, y] = Array.isArray(point) ? point : [point.x, point.y];
         const [lng, lat] = this.tr.unproject(x, y);
-        return {lng, lat};
+        return new LngLat(lng, lat);
     }
     getBounds() {
         const {width: w, height: h} = this.tr, pts = [[0, 0], [w, 0], [0, h], [w, h]].map(([x, y]) => this.tr.unproject(x, y));
-        return {west: Math.min(...pts.map(p => p[0])), south: Math.min(...pts.map(p => p[1])), east: Math.max(...pts.map(p => p[0])), north: Math.max(...pts.map(p => p[1]))};
+        return new LngLatBounds([Math.min(...pts.map(p => p[0])), Math.min(...pts.map(p => p[1])), Math.max(...pts.map(p => p[0])), Math.max(...pts.map(p => p[1]))]);
     }
     jumpTo(o: CameraInput) {
         // Applied locally as well, so reads immediately after a write are correct even when the engine is in a worker.
@@ -436,8 +473,8 @@ export class Map {
     stop() { this.post({type: 'stop'}); return this; }
 
     /** The centre and zoom that fit `bounds` ([west, south, east, north] or [[west, south], [east, north]]) in view. */
-    cameraForBounds(bounds: [number, number, number, number] | [[number, number], [number, number]], o: {padding?: number | Partial<Record<'top' | 'right' | 'bottom' | 'left', number>>; maxZoom?: number} = {}) {
-        const [w, s, e, n] = bounds.flat() as number[];
+    cameraForBounds(bounds: LngLatBoundsInput, o: {padding?: number | Partial<Record<'top' | 'right' | 'bottom' | 'left', number>>; maxZoom?: number} = {}) {
+        const [w, s, e, n] = LngLatBounds.convert(bounds).toArray().flat();
         const pad = typeof o.padding === 'number' ? {top: o.padding, right: o.padding, bottom: o.padding, left: o.padding} : {top: 0, right: 0, bottom: 0, left: 0, ...o.padding};
         const x0 = mercX(w), x1 = mercX(e), y0 = mercY(n), y1 = mercY(s);
         // The map's own padding already moves the centre; padding given here is on top of it.
@@ -460,8 +497,8 @@ export class Map {
     getMinPitch() { return this.tr.minPitch; }
     setMinPitch(p = 0) { this.tr.minPitch = Math.max(0, Math.min(p, this.tr.maxPitch)); return this.limits(); }
     /** Keeps the map centre inside a box (`[[west, south], [east, north]]`), or lifts the restriction with `null`. */
-    setMaxBounds(bounds?: [LngLatLike, LngLatLike] | [number, number, number, number] | null) {
-        const flat = bounds && (bounds as unknown[]).flat().map(v => typeof v === 'object' ? toLngLat(v as LngLatLike) : v).flat() as number[];
+    setMaxBounds(bounds?: LngLatBoundsInput | null) {
+        const flat = bounds && LngLatBounds.convert(bounds).toArray().flat();
         this.tr.maxBounds = flat ? [flat[0], flat[1], flat[2], flat[3]] : null;
         return this.limits();
     }
@@ -508,7 +545,8 @@ export class Map {
             if (Object.keys(this.globalState).length) style.state = {...style.state, ...this.globalState};
             this.style = style;
             this.post({type: 'style', style, reload});
-            this.fire('styledata');
+            this.fire('styledata', {dataType: 'style'});
+            this.fire('data', {dataType: 'style'});
         }, err => this.fire('error', {error: err}));
     }
     /** Runs a change to the style JSON now, or as soon as the style has been fetched. */
@@ -913,10 +951,21 @@ export class Map {
             this.inputCleanup.push(() => el.removeEventListener(type, fn, opts));
         };
         const pos = (e: MouseEvent) => { const r = this.container.getBoundingClientRect(); return {x: e.clientX - r.left - this.container.clientLeft, y: e.clientY - r.top - this.container.clientTop}; };
+        /** Fires a map event for a DOM event. Returns true if a listener called preventDefault(): the map then does not act on it. */
         const mouseEvent = (type: string, e: MouseEvent, extra = {}) => {
             const point = pos(e);
-            this.fire(type, {point, lngLat: this.unproject(point), originalEvent: e, ...extra});
+            let prevented = false;
+            this.fire(type, {point, lngLat: this.unproject(point), originalEvent: e, preventDefault() { prevented = true; }, get defaultPrevented() { return prevented; }, ...extra});
+            return prevented;
         };
+        /** The same for a pointer: touches fire touchstart, touchmove, touchend; a mouse fires mousedown, mousemove, mouseup. */
+        const pointerEvent = (kind: 'start' | 'move' | 'end' | 'cancel', e: PointerEvent) => {
+            if (e.pointerType !== 'touch') return kind === 'cancel' ? false : mouseEvent(kind === 'start' ? 'mousedown' : kind === 'move' ? 'mousemove' : 'mouseup', e);
+            const points = [...pointers.values()].map(p => ({...p}));
+            return mouseEvent('touch' + kind, e, {points, lngLats: points.map(p => this.unproject(p))});
+        };
+        // A listener that prevents the default of the event that starts a gesture takes the whole gesture for itself.
+        let inert = false;
         let rotating = false, moved = 0, samples: {t: number; x: number; y: number}[] = [], pinch: {dist: number; angle: number} | null = null;
         // Wheel events do not say what produced them. As MapLibre does, tell mouse wheels from trackpads by their
         // deltas and timing, because the two need different handling to feel right.
@@ -936,6 +985,8 @@ export class Map {
             pointers.set(e.pointerId, p);
             rotating = e.button === 2 || e.ctrlKey;
             moved = 0; samples = []; pinch = null;
+            if (pointerEvent('start', e)) inert = true;
+            if (inert) return;
             this.post({type: 'stop'});
             if (pointers.size === 1) {
                 suppressClick = false;
@@ -966,6 +1017,8 @@ export class Map {
             pointers.set(e.pointerId, p);
             const dx = p.x - prev.x, dy = p.y - prev.y;
             moved += Math.abs(dx) + Math.abs(dy);
+            pointerEvent('move', e);
+            if (inert) return;
             if (pointers.size === 2 && gesture) {
                 const g = gesture, f = twoFingers();
                 g.travel += Math.abs(dx) + Math.abs(dy);
@@ -979,8 +1032,8 @@ export class Map {
                     if (!this.dragging) this.fire('dragstart');
                     this.dragging = true;
                 }
-                if (g.mode === 'pitch') this.post({type: 'rotate', delta: 0, pitch: -(f.mid.y - g.mid.y) * 0.5});
-                else if (g.mode === 'pinch') {
+                if (g.mode === 'pitch') { if (this.touchPitch.isEnabled()) this.post({type: 'rotate', delta: 0, pitch: -(f.mid.y - g.mid.y) * 0.5}); }
+                else if (g.mode === 'pinch' && this.touchZoomRotate.isEnabled()) {
                     this.post({type: 'pan', dx: f.mid.x - g.mid.x, dy: f.mid.y - g.mid.y, x: f.mid.x, y: f.mid.y});
                     if (f.dist > 0 && g.dist > 0) this.post({type: 'zoom', delta: Math.log2(f.dist / g.dist), x: f.mid.x, y: f.mid.y});
                     let turn = f.angle - g.angle;
@@ -990,15 +1043,15 @@ export class Map {
                         let total = f.angle - g.startAngle;
                         total = Math.atan2(Math.sin(total), Math.cos(total));
                         g.rotating = Math.abs(total) * f.dist / 2 > 25;
-                    } else this.post({type: 'rotate', delta: -turn * 180 / Math.PI});
+                    } else if (this.touchZoomRotate.rotation) this.post({type: 'rotate', delta: -turn * 180 / Math.PI});
                 }
                 // Until the gesture is decided, keep measuring from where it began so no movement is lost.
                 if (g.mode !== 'undecided') { g.dist = f.dist; g.angle = f.angle; g.mid = f.mid; }
             } else if (tapDrag && pointers.size === 1) {
                 // Second tap held and dragged: down zooms in, up zooms out, around where the taps landed.
                 if (moved > 6) { tapDrag.zoomed = true; this.post({type: 'zoom', delta: dy * 0.01, x: tapDrag.x, y: tapDrag.y}); }
-            } else if (rotating) this.post({type: 'rotate', delta: -dx * 0.4, pitch: -dy * 0.5}); // right- or ctrl-drag: turn and tilt
-            else if (moved > 3 && pointers.size === 1) {
+            } else if (rotating) { if (this.dragRotate.isEnabled()) this.post({type: 'rotate', delta: -dx * 0.4, pitch: -dy * 0.5}); } // right- or ctrl-drag: turn and tilt
+            else if (moved > 3 && pointers.size === 1 && this.dragPan.isEnabled()) {
                 if (!this.dragging) this.fire('dragstart');
                 this.dragging = true;
                 this.post({type: 'pan', dx, dy, x: p.x, y: p.y});
@@ -1007,12 +1060,15 @@ export class Map {
             }
         });
         const up = (e: PointerEvent) => {
-            if (!pointers.delete(e.pointerId)) return;
+            if (!pointers.has(e.pointerId)) return;
+            if (e.type !== 'blur') pointerEvent(e.type === 'pointerup' ? 'end' : 'cancel', e);
+            pointers.delete(e.pointerId);
+            if (inert) { if (!pointers.size) inert = false; return; }
             pinch = null;
             const now = performance.now();
             if (gesture) {
                 // Two fingers down and up again quickly, without moving: zoom out.
-                if (gesture.mode === 'undecided' && now - gesture.t0 < 300 && gesture.travel < 12) this.easeTo({zoom: this.tr.zoom - 1, around: [gesture.mid.x, gesture.mid.y], duration: 300});
+                if (gesture.mode === 'undecided' && now - gesture.t0 < 300 && gesture.travel < 12 && this.touchZoomRotate.isEnabled()) this.easeTo({zoom: this.tr.zoom - 1, around: [gesture.mid.x, gesture.mid.y], duration: 300});
                 gesture = null;
                 suppressClick = true; // the finger still down must not pan-fling or click when it lifts
                 samples = [];
@@ -1021,7 +1077,7 @@ export class Map {
             const wasDragging = this.dragging;
             this.dragging = false;
             if (tapDrag) {
-                if (!tapDrag.zoomed) this.easeTo({zoom: this.tr.zoom + 1, around: [tapDrag.x, tapDrag.y], duration: 300});
+                if (!tapDrag.zoomed && this.doubleClickZoom.isEnabled() && (e.type === 'blur' || !mouseEvent('dblclick', e))) this.easeTo({zoom: this.tr.zoom + 1, around: [tapDrag.x, tapDrag.y], duration: 300});
                 tapDrag = null;
                 lastTap.t = 0;
                 if (wasDragging) { this.moving = false; this.fire('moveend'); }
@@ -1048,6 +1104,8 @@ export class Map {
         window.addEventListener('blur', blur);
         this.inputCleanup.push(() => window.removeEventListener('blur', blur));
         listen('wheel', e => {
+            // With scroll zoom off, the wheel scrolls the page as it does outside the map.
+            if (mouseEvent('wheel', e) || !this.scrollZoom.isEnabled()) return;
             e.preventDefault();
             const p = pos(e), now = performance.now(), gap = now - lastWheel;
             let value = e.deltaMode === 1 ? e.deltaY * 40 : e.deltaY;
@@ -1068,9 +1126,12 @@ export class Map {
             if (e.shiftKey) value /= 4;
             if (wheelKind && value) send(value);
         }, {passive: false});
-        listen('dblclick', e => { if (lastPointerType === 'touch') return; /* touch double-taps are handled above, uniformly across browsers */ const p = pos(e); this.easeTo({zoom: this.tr.zoom + (e.shiftKey ? -1 : 1), around: [p.x, p.y], duration: 300}); });
-        listen('contextmenu', e => e.preventDefault());
+        listen('dblclick', e => { if (lastPointerType === 'touch') return; /* touch double-taps are handled above, uniformly across browsers */ if (mouseEvent('dblclick', e) || !this.doubleClickZoom.isEnabled()) return; const p = pos(e); this.easeTo({zoom: this.tr.zoom + (e.shiftKey ? -1 : 1), around: [p.x, p.y], duration: 300}); });
+        listen('contextmenu', e => { e.preventDefault(); mouseEvent('contextmenu', e); });
+        listen('pointerenter', e => { if (e.pointerType === 'mouse') mouseEvent('mouseover', e); });
+        listen('pointerleave', e => { if (e.pointerType === 'mouse') mouseEvent('mouseout', e); });
         listen('keydown', e => {
+            if (!this.keyboard.isEnabled()) return;
             const step = 100, k = e.key;
             if (k === '+' || k === '=') this.zoomIn();
             else if (k === '-') this.zoomOut();
@@ -1089,6 +1150,7 @@ export class Map {
 
     remove() {
         this.removed = true;
+        this.fire('remove');
         for (const c of [...this.controls.keys()]) this.removeControl(c);
         for (const fn of this.inputCleanup) fn();
         this.tilePool?.release();

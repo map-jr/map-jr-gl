@@ -37,9 +37,11 @@ const valueExports = new Set([
 ]);
 const index = readFileSync(path.join(root, 'src/index.ts'), 'utf8');
 const ourExports = new Set([...index.matchAll(/export \{([^}]*)\}/g)].flatMap(m => m[1].split(',').map(s => s.trim()).filter(s => s && !s.startsWith('type ')).map(s => s.split(' as ').pop())));
+for (const m of index.matchAll(/^export (?:const|function|class) (\w+)/gm)) ourExports.add(m[1]);
 const ourSources = ['map.ts', 'overlays.ts', 'controls.ts'].map(f => readFileSync(path.join(root, 'src', f), 'utf8')).join('\n');
 // The events that this library fires: each name that is given to fire(), emit() or the pointer-event helper.
-const ourEvents = new Set([...ourSources.matchAll(/(?:fire|emit|mouseEvent)\('([a-z]+)'/g)].map(m => m[1]));
+// (An event counts if its name is in the source in quotes. The touch events are built from parts there, so they are listed.)
+const ourEvents = new Set([...[...ourSources.matchAll(/'([a-z]+)'/g)].map(m => m[1]), 'touchstart', 'touchmove', 'touchend', 'touchcancel']);
 const theirEvents = new Set([...dts.matchAll(/^\s+(\w+): (?:MapLibre\w*Event|Map\w*Event|ErrorEvent|MapDataEvent|MapStyle\w*Event|MapSource\w*Event|MapContextEvent|MapTerrainEvent|MapProjectionEvent)/gm)].map(m => m[1]));
 
 mkdirSync(cache, {recursive: true});

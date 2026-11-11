@@ -48,6 +48,8 @@ The [status table](../README.md#status) gives the current test results.
 | `easeTo`, `flyTo` | Accept an `easing` function and an `offset`. | Use the default easing of MapLibre GL JS. The library ignores `easing` and `offset`. |
 | Events | Event classes. | Simple objects with `type`, `target`, `point` and `lngLat`. |
 | Events for one layer | `map.on('click', layerId, fn)` calls the listener synchronously. | The same call works. The event fires shortly after the pointer event, because the library reads the tile data. |
+| Interaction handlers | `map.dragPan`, `map.scrollZoom`, `map.boxZoom` and others, each with `enable()` and `disable()`. | The same objects are available: `dragPan`, `scrollZoom`, `doubleClickZoom`, `dragRotate`, `touchZoomRotate`, `touchPitch`, `keyboard`. `isActive()` always returns `false`. `boxZoom` is there but stays off: the library has no box zoom. |
+| Pointer events | `mousedown`, `mouseup`, `touchstart` and others, with `preventDefault()`. | The same events. A listener that calls `preventDefault()` on `mousedown`, `touchstart`, `wheel` or `dblclick` stops the map from acting on that gesture. |
 | `Marker`, `Popup` | Full API. | The usual parts of the API: position, popup, drag, anchor, offset. |
 | Touch gestures | You can configure each gesture. | The same gestures. They are always on. |
 | Expressions | Checks the types. | Does not check the types. An expression that is not correct can give no error. |

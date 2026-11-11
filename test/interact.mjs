@@ -297,6 +297,39 @@ for (const mode of ['main', 'worker']) {
     });
     check(`[${mode}] feature state is set, merged and removed`, fs.both.hover === true && fs.both.picked === 1 && !('hover' in fs.one) && fs.one.picked === 1 && Object.keys(fs.none).length === 0, JSON.stringify(fs));
 
+    // Map events and interaction handlers, as plugins for MapLibre use them: a listener can take a drag for itself
+    // with preventDefault(), and a handler can be turned off.
+    await page.evaluate(() => {
+        const m = window.map; m.jumpTo({center: [-74.0065, 40.7085], zoom: 14, bearing: 0, pitch: 0});
+        window.seen = {types: [], renders: 0, sourcedata: 0};
+        for (const t of ['mousedown', 'mouseup', 'mousemove', 'dblclick', 'contextmenu', 'wheel', 'mouseover', 'mouseout']) m.on(t, e => { if (!window.seen.types.includes(t)) window.seen.types.push(t); if (t === 'mousedown' && window.block) e.preventDefault(); if (t === 'wheel' && window.blockWheel) e.preventDefault(); });
+        m.on('render', () => window.seen.renders++);
+        m.on('sourcedata', e => { if (e.isSourceLoaded) window.seen.sourcedata++; });
+    });
+    await settle(page);
+    const centre = () => page.evaluate(() => { const c = window.map.getCenter(); return [c.lng, c.lat, window.map.getZoom()]; });
+    const drag = async () => { await page.mouse.move(500, 350); await page.mouse.down(); for (let i = 1; i <= 8; i++) await page.mouse.move(500 + i * 10, 350, {steps: 1}); await page.mouse.up(); await page.waitForTimeout(600); await settle(page); };
+    const c0 = await centre();
+    await page.evaluate(() => { window.block = true; }); await drag();
+    const cBlocked = await centre();
+    await page.evaluate(() => { window.block = false; window.map.dragPan.disable(); }); await drag();
+    const cOff = await centre();
+    await page.evaluate(() => { window.map.dragPan.enable(); }); await drag();
+    const cMoved = await centre();
+    await page.evaluate(() => { window.blockWheel = true; }); await page.mouse.wheel(0, -400); await page.waitForTimeout(500); await settle(page);
+    const zBlocked = (await centre())[2];
+    await page.evaluate(() => { window.blockWheel = false; }); await page.mouse.wheel(0, -400); await page.waitForTimeout(700); await settle(page);
+    const zMoved = (await centre())[2];
+    await page.mouse.dblclick(500, 350); await page.mouse.click(500, 350, {button: 'right'}); await page.mouse.move(2000, 2000); await page.waitForTimeout(600); await settle(page);
+    const ev = await page.evaluate(async () => {
+        const m = window.map, mod = await import('/dist/map-jr-gl.js'), b = m.getBounds();
+        return {...window.seen, lngLat: m.getCenter() instanceof mod.LngLat, bounds: b instanceof mod.LngLatBounds && b.getWest() < b.getEast() && b.contains(m.getCenter()), handler: m.scrollZoom.isEnabled() && !m.boxZoom.isEnabled()};
+    });
+    check(`[${mode}] map events and handlers: preventDefault and dragPan.disable stop a drag, a wheel event can be prevented, render and sourcedata fire`,
+        cBlocked[0] === c0[0] && cOff[0] === c0[0] && cMoved[0] !== c0[0] && zBlocked === cMoved[2] && zMoved > zBlocked
+        && ['mousedown', 'mouseup', 'mousemove', 'dblclick', 'contextmenu', 'wheel', 'mouseout'].every(t => ev.types.includes(t)) && ev.renders > 5 && ev.sourcedata > 0 && ev.lngLat && ev.bounds && ev.handler,
+        JSON.stringify({c0, cBlocked, cOff, cMoved, zBlocked, zMoved, ...ev}));
+
     // queryRenderedFeatures, as in MapLibre but with a promise: at a point, in a box, and with a list of layers.
     const rendered = await page.evaluate(async () => {
         const m = window.map, c = m.getCenter(), p = m.project(c);

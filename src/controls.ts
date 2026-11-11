@@ -146,6 +146,26 @@ export class FullscreenControl implements Control {
     onRemove() { this.el?.remove(); }
 }
 
+/** A button that turns 3D terrain on and off. The options are those of `setTerrain`, as in MapLibre. */
+export class TerrainControl implements Control {
+    private el?: HTMLElement;
+    constructor(public options: {source: string; exaggeration?: number}) {}
+    onAdd(map: Map) {
+        const el = this.el = group();
+        button(el, 'Toggle terrain', svg('<path d="M1.500 14.500l5-8 3 4.500 2-3 5 6.500z"/>'), () => { map.setTerrain(map.getTerrain() ? null : this.options); });
+        return el;
+    }
+    onRemove() { this.el?.remove(); }
+}
+
+/** MapLibre shows its logo with this control. This library has no logo, so the control adds an empty element. */
+export class LogoControl implements Control {
+    private el?: HTMLElement;
+    onAdd() { return this.el = document.createElement('div'); }
+    onRemove() { this.el?.remove(); }
+    getDefaultPosition(): ControlPosition { return 'bottom-left'; }
+}
+
 /** Moves the map to the user's position (after the browser's permission prompt) and fires `geolocate` or `error`. */
 export class GeolocateControl implements Control {
     private el?: HTMLElement;

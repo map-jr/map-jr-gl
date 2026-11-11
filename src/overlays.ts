@@ -1,4 +1,5 @@
 import {toLngLat, type LngLatLike} from './geo.ts';
+import {LngLat} from './lnglat.ts';
 import type {Map} from './map.ts';
 import {cls} from './controls.ts';
 
@@ -34,7 +35,7 @@ abstract class Overlay extends Evented {
         this.el.style.transform = `translate(${Math.round(p.x + this.offset[0])}px,${Math.round(p.y + this.offset[1])}px) ${ANCHOR_SHIFT[this.anchor]}`;
     };
     setLngLat(lngLat: LngLatLike) { this.lngLat = toLngLat(lngLat); this.update(); return this; }
-    getLngLat() { return this.lngLat ? {lng: this.lngLat[0], lat: this.lngLat[1]} : undefined; }
+    getLngLat() { return this.lngLat ? new LngLat(this.lngLat[0], this.lngLat[1]) : undefined; }
     getElement() { return this.el; }
     protected attach(map: Map) {
         this.detach();

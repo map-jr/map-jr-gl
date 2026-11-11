@@ -4,7 +4,7 @@ const MAX_LAT = 85.051129;
 
 /** 2D affine matrix in CSS `matrix(a b c d e f)` order: x' = a*x + c*y + e, y' = b*x + d*y + f. */
 export type Mat = [number, number, number, number, number, number];
-export type LngLatLike = [number, number] | {lng: number; lat: number};
+export type LngLatLike = [number, number] | {lng: number; lat: number} | {lon: number; lat: number};
 
 export interface TileID { z: number; x: number; y: number; w: number; key: string }
 
@@ -35,7 +35,7 @@ export const lngFromMerc = (x: number) => x * 360 - 180;
 export const latFromMerc = (y: number) => Math.atan(Math.sinh(Math.PI * (1 - 2 * y))) * 180 / Math.PI;
 
 export function toLngLat(v: LngLatLike): [number, number] {
-    return Array.isArray(v) ? v : [v.lng, v.lat];
+    return Array.isArray(v) ? v : ['lng' in v ? v.lng : v.lon, v.lat];
 }
 
 export const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
