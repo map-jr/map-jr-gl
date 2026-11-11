@@ -63,23 +63,6 @@ export type EngineEvent =
     | {type: 'imagemissing'; name: string}
     | {type: 'error'; message: string};
 
-/** Heights are kept on the CPU at this resolution per elevation tile: plenty for placing labels and the camera. */
-function sampleHeights(image: ImageBitmap, encoding: string): Float32Array {
-    // Heights are encoded in the colour channels, so pixels must never be blended. Asking the canvas to shrink the
-    // image without smoothing is not enough (Safari blends regardless), so it is drawn at its own size and every
-    // n-th pixel is read.
-    const w = image.width, h = image.height;
-    const ctx = new OffscreenCanvas(w, h).getContext('2d', {willReadFrequently: true})!;
-    ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(image, 0, 0);
-    const px = ctx.getImageData(0, 0, w, h).data, out = new Float32Array(HEIGHT_GRID * HEIGHT_GRID);
-    for (let j = 0; j < HEIGHT_GRID; j++) {
-        const y = Math.min(h - 1, Math.floor((j + 0.5) * h / HEIGHT_GRID));
-        for (let i = 0; i < HEIGHT_GRID; i++) out[j * HEIGHT_GRID + i] = decodeElevation(px, (y * w + Math.min(w - 1, Math.floor((i + 0.5) * w / HEIGHT_GRID))) * 4, encoding);
-    }
-    return out;
-}
-
 const DATA_OPS = /"(get|has|id|properties|geometry-type|feature-state|global-state|property|line-progress|accumulated)"/;
 /**
  * Describes what a source's tiles depend on: first the source itself, then everything about its layers that is baked
@@ -272,18 +255,22 @@ export class Engine {
      * Tiles built by the workers, waiting to be sent to the GPU. Sending is the most expensive thing the drawing
      * thread does when tiles arrive, and several often arrive together, so each frame sends only a limited amount.
      */
-    private uploads: {tile: TileGL; bytes: number; done(gl: GLTile): void}[] = [];
+    private uploads: {bytes: number; make(): GLTile; done(gl: GLTile): void}[] = [];
     private upload(tile: TileGL): Promise<GLTile> {
         let bytes = 0;
         for (const b of Object.values(tile.layers)) for (const v of Object.values(b)) if (ArrayBuffer.isView(v)) bytes += v.byteLength;
-        return new Promise(done => { this.uploads.push({tile, bytes, done}); this.repaint(); });
+        return this.paced(bytes, () => this.renderer.createTile(tile));
+    }
+    /** Does a piece of GPU upload work in its turn, so that one frame never has too much of it. */
+    private paced(bytes: number, make: () => GLTile): Promise<GLTile> {
+        return new Promise(done => { this.uploads.push({bytes, make, done}); this.repaint(); });
     }
     private flushUploads() {
         // About 1.5 MB a frame, and always at least one tile so that progress is certain.
         for (let budget = 1.5e6; this.uploads.length && budget > 0;) {
             const u = this.uploads.shift()!;
             budget -= u.bytes;
-            u.done(this.renderer.createTile(u.tile));
+            u.done(u.make());
         }
         if (this.uploads.length) this.repaint();
     }
@@ -773,26 +760,34 @@ export class Engine {
             t.cancel = () => backend.cancel(req);
             load = backend.load({id: req, source, url, z: id.z, overscaled: id.z >= src.maxzoom}).then(tile => this.upload(tile));
         } else {
-            // Image tiles need no parsing, so the engine fetches and decodes them itself.
-            const ac = new AbortController(), dem = src.type === 'raster-dem';
-            t.cancel = () => ac.abort();
-            load = fetchTile(url, undefined, ac.signal).then(async bytes => {
-                if (!bytes) return {labels: {}, batches: {}};
-                const image = await createImageBitmap(new Blob([bytes as BlobPart]), dem ? {premultiplyAlpha: 'none', colorSpaceConversion: 'none'} : {});
-                if (this.tiles.get(key) !== t) { image.close(); return {labels: {}, batches: {}}; }
-                const tile = this.renderer.createImageTile(image, dem ? src.encoding ?? 'mapbox' : undefined, id);
-                if (dem && this.style.terrain?.source === source) {
-                    const grid = sampleHeights(image, src.encoding ?? 'mapbox');
-                    let lo = Infinity, hi = -Infinity;
-                    for (const h of grid) { if (h < lo) lo = h; if (h > hi) hi = h; }
-                    t.range = [lo, hi];
-                    this.heights.set(id.key, grid);
-                    this.emit({type: 'heights', key: id.key, grid});
-                    this.demVersion++;
-                }
-                image.close();
-                return tile;
-            });
+            // Elevation tiles are decoded in a tile worker, which also reads the heights that 3D terrain needs: this thread
+            // only sends the finished pixels to the GPU. (Reading pixels back here made the map hitch as tiles arrived.)
+            if (src.type === 'raster-dem') {
+                const backend = this.backends[this.nextBackend++ % this.backends.length], req = this.nextReq++, encoding = src.encoding ?? 'mapbox';
+                t.cancel = () => backend.cancel(req);
+                load = backend.loadElevation({id: req, url, encoding}).then(dem => !dem ? {labels: {}, batches: {}} : this.paced(dem.pixels.length * 2, () => {
+                    if (this.tiles.get(key) !== t) return {labels: {}, batches: {}};
+                    if (this.style.terrain?.source === source) {
+                        t.range = [dem.lo, dem.hi];
+                        this.heights.set(id.key, dem.grid);
+                        this.emit({type: 'heights', key: id.key, grid: dem.grid});
+                        this.demVersion++;
+                    }
+                    return this.renderer.createImageTile({width: dem.width, height: dem.height, data: dem.pixels}, encoding, id);
+                }));
+            } else {
+                // Image tiles need no parsing, so the engine fetches and decodes them itself.
+                const ac = new AbortController();
+                t.cancel = () => ac.abort();
+                load = fetchTile(url, undefined, ac.signal).then(async bytes => {
+                    if (!bytes) return {labels: {}, batches: {}};
+                    const image = await createImageBitmap(new Blob([bytes as BlobPart]));
+                    if (this.tiles.get(key) !== t) { image.close(); return {labels: {}, batches: {}}; }
+                    const tile = this.renderer.createImageTile(image, undefined, id);
+                    image.close();
+                    return tile;
+                });
+            }
         }
         load.then(gl => {
             if (this.tiles.get(key) !== t) return;

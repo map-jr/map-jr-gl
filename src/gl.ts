@@ -594,11 +594,13 @@ export class GLRenderer {
     }
 
     /** Wraps a decoded raster or elevation tile image as a drawable tile. */
-    createImageTile(image: ImageBitmap, encoding: string | undefined, id: TileID): GLTile {
+    createImageTile(image: ImageBitmap | {width: number; height: number; data: Uint8Array}, encoding: string | undefined, id: TileID): GLTile {
         const dem = !!encoding;
         const gl = this.gl, tex = this.newTexture();
         gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, !dem);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+        // (Elevation tiles arrive as plain pixels, which a tile worker decoded.)
+        if ('data' in image) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, image.width, image.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, image.data);
+        else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
         gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
         const tile: GLTile = {uid: ++this.uids, labels: {}, batches: {}, tex};
         if (dem) {
@@ -1120,7 +1122,7 @@ export class GLRenderer {
         // from nothing). A missing one shows its ancestor's picture meanwhile, so spreading the work costs no holes.
         // While the camera moves, less of this work is done in one frame: a smooth movement is more important than
         // pictures that are complete a moment sooner.
-        let budget = s.moving ? 1 : 2, fresh = !this.drapes.size ? Infinity : s.moving ? 2 : 3, behind = false;
+        let budget = s.moving ? 1 : 2, fresh = !this.drapes.size ? Infinity : s.moving ? 1 : 3, behind = false;
         for (const t of s.terrain!.tiles) {
             let d = this.drapes.get(t.key);
             // 1024 pixels a side at most (what MapLibre uses): larger pictures cost high-density phones frames for little gain.

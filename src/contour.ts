@@ -26,22 +26,26 @@ export interface Pixels { width: number; height: number; data: Uint8Array | Uint
 /** Turns an encoded image into pixels. Needed where there is no browser to do it, e.g. for WebP tiles on a server. */
 export type ImageDecoder = (bytes: Uint8Array) => Promise<Pixels> | Pixels;
 
+/** The pixels of an elevation tile image, from `decode` if given and otherwise from the browser. */
+export async function decodePixels(bytes: Uint8Array, decode?: ImageDecoder): Promise<Pixels> {
+    if (decode) return decode(bytes);
+    if (typeof createImageBitmap === 'undefined' || typeof OffscreenCanvas === 'undefined') throw new Error('Decoding elevation tiles needs a browser, or a decodeImage function');
+    const image = await createImageBitmap(new Blob([bytes as BlobPart]), {premultiplyAlpha: 'none', colorSpaceConversion: 'none'});
+    const {width, height} = image; // read before close(), which zeroes them
+    // Heights are in the colour channels, so pixels must never be blended: the image is drawn at its own size.
+    const ctx = new OffscreenCanvas(width, height).getContext('2d', {willReadFrequently: true})!;
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(image, 0, 0);
+    image.close();
+    return {width, height, data: ctx.getImageData(0, 0, width, height).data};
+}
+
 /**
  * Decodes an elevation tile image into metres, with `decode` if given (the server renderer passes its own decoders)
  * and otherwise the browser's.
  */
 export async function decodeDEM(bytes: Uint8Array, encoding: string, decode?: ImageDecoder): Promise<DEM> {
-    let px: Pixels;
-    if (decode) px = await decode(bytes);
-    else if (typeof createImageBitmap === 'undefined' || typeof OffscreenCanvas === 'undefined') throw new Error('Decoding elevation tiles needs a browser, or a decodeImage function');
-    else {
-        const image = await createImageBitmap(new Blob([bytes as BlobPart]), {premultiplyAlpha: 'none', colorSpaceConversion: 'none'});
-        const {width, height} = image; // read before close(), which zeroes them
-        const ctx = new OffscreenCanvas(width, height).getContext('2d', {willReadFrequently: true})!;
-        ctx.drawImage(image, 0, 0);
-        image.close();
-        px = {width, height, data: ctx.getImageData(0, 0, width, height).data};
-    }
+    const px = await decodePixels(bytes, decode);
     const data = new Float32Array(px.width * px.height);
     for (let i = 0; i < data.length; i++) data[i] = decodeElevation(px.data, i * 4, encoding);
     return {width: px.width, height: px.height, data};

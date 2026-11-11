@@ -1,11 +1,15 @@
 import {compileLayer, type CompiledLayer, type LayerJSON} from './style.ts';
 import {setFeatureStates, setGlobalState} from './expr.ts';
 import {buildTile, packLabels, toGL, unpackLabels, type TileGL, type TileIR} from './tile.ts';
-import {queryTile, type QueriedFeature, type TileQuery} from './query.ts';
+import {decodeElevation, queryTile, type QueriedFeature, type TileQuery} from './query.ts';
+import {HEIGHT_GRID} from './geo.ts';
 import {fetchTile} from './pmtiles.ts';
 import {GEOJSON_PREFIX, prepareSource, sliceGeoJSON, type GeoJSONOptions, type PreparedSource} from './geojson.ts';
-import {contourTile, decodeDEM, type ContourConfig, type DEM, type ImageDecoder} from './contour.ts';
+import {contourTile, decodeDEM, decodePixels, type ContourConfig, type DEM, type ImageDecoder} from './contour.ts';
 
+/** An elevation tile to fetch, and what comes back: its pixels for the GPU, and its heights on a coarse grid with their range. */
+export interface ElevationRequest { id: number; url: string; encoding: string }
+export interface ElevationTile { width: number; height: number; pixels: Uint8Array; grid: Float32Array; lo: number; hi: number }
 export interface TileRequest { id: number; source: string; url: string; z: number; overscaled: boolean }
 
 /** Fetches and parses tiles. The same class backs tile workers, the main-thread fallback and server rendering. */
@@ -37,6 +41,30 @@ export class TileBuilder {
     private contour(url: string) {
         const m = /^contour:\/\/(.*)\/(\d+)\/(\d+)\/(\d+)$/.exec(url)!, cfg = this.contours.get(m[1]);
         return cfg ? contourTile(cfg, +m[2], +m[3], +m[4], u => this.loadDEM(u, cfg.encoding)) : Promise.resolve({});
+    }
+
+    /**
+     * An elevation tile, ready for the GPU. The costly parts (decoding the image, reading its pixels back, and sampling
+     * the heights that 3D terrain needs on the CPU) are done here, away from the thread that draws.
+     */
+    async loadElevation(req: ElevationRequest): Promise<ElevationTile | null> {
+        const ac = new AbortController();
+        this.aborts.set(req.id, ac);
+        try {
+            const bytes = await fetchTile(req.url, this.fetchFn, ac.signal);
+            if (!bytes) return null;
+            const px = await decodePixels(bytes, this.decodeImage), {width: w, height: h} = px, grid = new Float32Array(HEIGHT_GRID * HEIGHT_GRID);
+            let lo = Infinity, hi = -Infinity;
+            for (let j = 0; j < HEIGHT_GRID; j++) {
+                const y = Math.min(h - 1, Math.floor((j + 0.5) * h / HEIGHT_GRID));
+                for (let i = 0; i < HEIGHT_GRID; i++) {
+                    const v = grid[j * HEIGHT_GRID + i] = decodeElevation(px.data, (y * w + Math.min(w - 1, Math.floor((i + 0.5) * w / HEIGHT_GRID))) * 4, req.encoding);
+                    if (v < lo) lo = v;
+                    if (v > hi) hi = v;
+                }
+            }
+            return {width: w, height: h, pixels: new Uint8Array(px.data.buffer, px.data.byteOffset, px.data.byteLength), grid, lo, hi};
+        } finally { this.aborts.delete(req.id); }
     }
 
     /** Replaces a GeoJSON source's data. Its tiles are cut from this on demand. */
@@ -104,6 +132,8 @@ export class TileBuilder {
 /** What the engine needs from wherever tiles are built. */
 export interface TileBackend {
     setStyle(layers: LayerJSON[], state?: Record<string, unknown>): void;
+    /** Fetches and decodes an elevation tile for the GPU and for 3D terrain. */
+    loadElevation(req: ElevationRequest): Promise<ElevationTile | null>;
     setGeoJSON(source: string, data: unknown, options?: GeoJSONOptions, maxzoom?: number): void;
     /** Replaces the feature state of one source: "sourceLayer|id" -> state. */
     setFeatureState(source: string, states: Record<string, Record<string, unknown>>): void;
@@ -115,6 +145,7 @@ export interface TileBackend {
 
 export class LocalBackend implements TileBackend {
     private builder = new TileBuilder();
+    loadElevation(req: ElevationRequest) { return this.builder.loadElevation(req); }
     setStyle(layers: LayerJSON[], state?: Record<string, unknown>) { this.builder.setStyle(layers, state); }
     setGeoJSON(source: string, data: unknown, options?: GeoJSONOptions, maxzoom?: number) { this.builder.setGeoJSON(source, data, options, maxzoom); }
     setFeatureState(source: string, states: Record<string, Record<string, unknown>>) { setFeatureStates(source, states); }
@@ -141,6 +172,9 @@ export class PortBackend implements TileBackend {
         };
     }
     setStyle(layers: LayerJSON[], state?: Record<string, unknown>) { this.port.postMessage({type: 'style', layers, state}); }
+    loadElevation(req: ElevationRequest): Promise<ElevationTile | null> {
+        return new Promise((resolve, reject) => { this.pending.set(req.id, {resolve, reject}); this.port.postMessage({type: 'dem', req}); });
+    }
     setGeoJSON(source: string, data: unknown, options?: GeoJSONOptions, maxzoom?: number) { this.port.postMessage({type: 'geojson', source, data, options, maxzoom}); }
     setFeatureState(source: string, states: Record<string, Record<string, unknown>>) { this.port.postMessage({type: 'featureState', source, states}); }
     setContours(sources: Record<string, ContourConfig>) { this.port.postMessage({type: 'contours', sources}); }
@@ -173,6 +207,9 @@ export function serveTiles(port: Port) {
         else if (m.type === 'close') { port.onmessage = null; (port as any).close?.(); }
         else if (m.type === 'query') {
             builder.query(m.url, m.q).then(result => port.postMessage({id: m.id, result}), err => port.postMessage({id: m.id, error: String(err.message)}));
+        } else if (m.type === 'dem') {
+            builder.loadElevation(m.req).then(result => port.postMessage({id: m.req.id, result}, result ? [result.pixels.buffer, result.grid.buffer] : []),
+                err => port.postMessage({id: m.req.id, error: (err as Error).name === 'AbortError' ? 'aborted' : String((err as Error).message)}));
         } else if (m.type === 'load') {
             try {
                 const {tile, transfer} = toGL(await builder.loadIR(m.req));
