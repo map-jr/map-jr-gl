@@ -75,7 +75,7 @@ Properties:
 - `line-offset` and `line-blur` that are different for each feature
 - `circle-pitch-alignment` and `circle-pitch-scale`
 - Circle stroke and blur that are different for each feature
-- Icon halos
+- `icon-halo-blur`. Icon halos are available for distance-field (SDF) icons.
 - `text-writing-mode`, `text-pitch-alignment`
 - `symbol-z-order` and `symbol-avoid-edges`
 - `vertical-align` in `format` text. Sizes, fonts, colours and images in `format` text are available. The SVG output of the server draws each line in one size.

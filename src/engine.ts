@@ -151,6 +151,8 @@ export class Engine {
 
     private labels = new Map<string, LabelState>();
     private placeDirty = true;
+    /** How many sprite and font downloads are in progress. */
+    private spritePending = 0;
     private lastPlace = -Infinity;
     private placeAngle = 0;
     private placeZoom = 0;
@@ -387,7 +389,9 @@ export class Engine {
         this.layers = style.layers.map(compileLayer).filter((l): l is CompiledLayer => !!l);
         if (style.sprite && style.sprite !== this.spriteUrl) {
             this.spriteUrl = style.sprite;
-            this.loadIcons(style.sprite).catch(err => this.emit({type: 'error', message: String(err.message)}));
+            // The map is not idle while the sprite loads: its icons are part of the first complete picture.
+            this.spritePending++;
+            this.loadIcons(style.sprite).catch(err => this.emit({type: 'error', message: String(err.message)})).finally(() => { this.spritePending--; this.invalidate(); });
         }
         const faces = JSON.stringify(style.fonts ?? []);
         if (style.fonts?.length && faces !== this.styleFonts) { this.styleFonts = faces; this.loadFonts(style.fonts); }
@@ -424,11 +428,12 @@ export class Engine {
     /** Loads web fonts into whichever thread the engine runs on, then redraws all text with them. */
     private loadFonts(fonts: FontSource[]) {
         const set = (globalThis as any).fonts ?? (globalThis as any).document?.fonts;
+        this.spritePending++; // fonts are also part of the first complete picture
         Promise.all(fonts.map(async f => {
             const face = new FontFace(f.family, `url("${f.src}")`, {weight: String(f.weight ?? '400'), style: f.style ?? 'normal', ...(f.unicodeRange ? {unicodeRange: f.unicodeRange} : {})});
             set.add(await face.load());
         })).then(() => { this.atlas.clear(true); this.relabel(); },
-            err => this.emit({type: 'error', message: `Could not load font: ${err.message}`}));
+            err => this.emit({type: 'error', message: `Could not load font: ${err.message}`})).finally(() => { this.spritePending--; this.invalidate(); });
     }
 
     private icon = (name: string) => {
@@ -987,7 +992,7 @@ export class Engine {
             this.emit({type: 'camera', lng: tr.lng, lat: tr.lat, zoom: tr.zoom, bearing: tr.bearing, pitch: tr.pitch, elevation: tr.elevation, exaggeration: this.exaggeration, groundRange: tr.groundRange, padding: tr.padding, moving: animating});
         }
         const busy = animating || markersAnimating || fading || this.placeDirty || settling || behind || this.meshBehind;
-        const idle = complete && !busy;
+        const idle = complete && !busy && !this.spritePending;
         if (idle && !this.wasIdle) this.emit({type: 'idle'});
         this.wasIdle = idle;
         if (busy) this.repaint();

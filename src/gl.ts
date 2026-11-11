@@ -336,8 +336,10 @@ void main() { v_uv = a_v.zw / u_tex; v_alpha = a_alpha; v_color = a_color; vec2 
 uniform sampler2D u_img; in vec2 v_uv; in float v_alpha; in vec4 v_color; out vec4 o;
 void main() {
   vec4 t = texture(u_img, v_uv);
-  if (v_color.a < 0.0) { o = t * v_alpha; return; }
-  float g = max(fwidth(t.a) * 0.7, 0.01), a = smoothstep(0.75 - g, 0.75 + g, t.a) * v_color.a * v_alpha;
+  if (v_color.a < 0.0) { o = t * fract(v_alpha) / 0.999; return; }
+  // The whole part of the alpha value is the reach of a halo, in hundredths of the distance field; the rest is the opacity.
+  float reach = floor(v_alpha) / 100.0, alpha = fract(v_alpha) / 0.999, edge = 0.75 - reach;
+  float g = max(fwidth(t.a) * 0.7, 0.01), a = smoothstep(edge - g, edge + g, t.a) * v_color.a * alpha;
   o = vec4(v_color.rgb * a, a);
 }`],
 };
@@ -1287,10 +1289,14 @@ export class GLRenderer {
             // detail such as a one-pixel outline into its neighbours.
             const snap = (v: number) => Math.round(v * this.dpr) / this.dpr;
             const ox = i.angle === 0 ? snap(i.x - i.w / 2) - (i.x - i.w / 2) : 0, oy = i.angle === 0 ? snap(i.y - i.h / 2) - (i.y - i.h / 2) : 0;
-            for (let a = 0; a + 3 < gx.length; a += 2) for (let b = 0; b + 3 < gy.length; b += 2) {
-                for (const [cx, cy] of [[0, 0], [1, 0], [0, 1], [1, 0], [1, 1], [0, 1]]) {
-                    const dx = gx[a + cx * 2 + 1] - i.w / 2, dy = gy[b + cy * 2 + 1] - i.h / 2;
-                    out.push(i.x + ox + dx * cos - dy * sin, i.y + oy + dx * sin + dy * cos, sx + gx[a + cx * 2], sy + gy[b + cy * 2], opacity * i.opacity, ...col);
+            // A halo is the same picture drawn first, in the halo colour and out to a lower level of the distance field.
+            for (const halo of i.halo ? [true, false] : [false]) {
+                const tint = halo ? i.halo! : col, alpha = Math.min(1, Math.max(0, opacity * i.opacity)) * 0.999 + (halo ? Math.round(i.haloReach! * 100) : 0);
+                for (let a = 0; a + 3 < gx.length; a += 2) for (let b = 0; b + 3 < gy.length; b += 2) {
+                    for (const [cx, cy] of [[0, 0], [1, 0], [0, 1], [1, 0], [1, 1], [0, 1]]) {
+                        const dx = gx[a + cx * 2 + 1] - i.w / 2, dy = gy[b + cy * 2 + 1] - i.h / 2;
+                        out.push(i.x + ox + dx * cos - dy * sin, i.y + oy + dx * sin + dy * cos, sx + gx[a + cx * 2], sy + gy[b + cy * 2], alpha, ...tint);
+                    }
                 }
             }
         }
@@ -1312,7 +1318,7 @@ export class GLRenderer {
                         const x0 = l.angle === 0 ? snap(l.x + cx - w / 2) - l.x : cx - w / 2, y0 = l.angle === 0 ? snap(l.y + cy - h / 2) - l.y : cy - h / 2;
                         for (const [ux, uy] of [[0, 0], [1, 0], [0, 1], [1, 0], [1, 1], [0, 1]]) {
                             const dx = x0 + ux * w, dy = y0 + uy * h;
-                            out.push(l.x + dx * cos - dy * sin, l.y + dx * sin + dy * cos, img.x + ux * img.width, img.y + uy * img.height, l.opacity, 0, 0, 0, -1);
+                            out.push(l.x + dx * cos - dy * sin, l.y + dx * sin + dy * cos, img.x + ux * img.width, img.y + uy * img.height, Math.min(1, l.opacity) * 0.999, 0, 0, 0, -1);
                         }
                     }
                     pen += g.advance + l.src.spacing * EM;
