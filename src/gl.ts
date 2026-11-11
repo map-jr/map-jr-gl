@@ -1084,7 +1084,7 @@ export class GLRenderer {
         gl.uniform4fv(u.u_unpack, dem.unpack);
     }
 
-    private drapes = new Map<string, {tex: WebGLTexture; size: number; signature: string; used: number; light?: number; /** Made at half the size while the camera moved. */ rough?: boolean}>();
+    private drapes = new Map<string, {tex: WebGLTexture; size: number; signature: string; used: number; /** When the picture was last made. */ at?: number; light?: number; /** Made at half the size while the camera moved. */ rough?: boolean}>();
     private frame = 0;
     private grid?: {vao: WebGLVertexArrayObject; count: number; /** For each skirt vertex, the grid vertex it hangs from. */ skirt: number[]};
     private meshHeights = new Map<string, {buffer: WebGLBuffer; version: number; used: number}>();
@@ -1159,7 +1159,10 @@ export class GLRenderer {
             const sharpen = !!d && !s.moving && (!!d.rough || d.light !== t.light);
             if (d && (d.rough || d.light !== t.light) && s.moving) behind = true; // more frames must come, to make this picture sharp after the movement
             if (d && d.signature === t.signature && !sharpen) { d.used = this.frame; continue; }
-            if (d && !t.complete && d.signature.split('|')[0] === t.signature.split('|')[0] && !sharpen) { d.used = this.frame; continue; }
+            // A picture whose data is not complete is made again as more of its data arrives, but at most two times in a
+            // second: the ground fills in step by step (the map, then the relief, then the contour lines), and a tile
+            // does not wait for its slowest part. (On a slow device the contour lines can take seconds.)
+            if (d && !t.complete && now - d.at! < 500 && !sharpen) { d.used = this.frame; behind = true; continue; }
             const rough = !!s.moving && (!d || !!d.rough) && full > 256, size = rough ? full >> 1 : full;
             if (d && budget-- <= 0) { d.used = this.frame; behind = true; continue; }
             if (!d && !t.complete && fresh < Infinity) {
@@ -1184,7 +1187,7 @@ export class GLRenderer {
                 this.drapes.set(t.key, d);
             }
             d.rough = rough;
-            d.signature = t.signature; d.light = t.light; d.used = this.frame;
+            d.signature = t.signature; d.light = t.light; d.used = this.frame; d.at = now;
             gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
             gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, d.tex, 0);
             gl.viewport(0, 0, size, size);
