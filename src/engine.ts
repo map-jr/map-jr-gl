@@ -374,7 +374,8 @@ export class Engine {
             // for each ground tile, and for elevation data most of what a tilted view loads.
             const image = src.type === 'raster' || src.type === 'raster-dem';
             if (image && id.z < Math.floor(tr.zoom)) cover.zoom = Math.min(cover.zoom, id.z + 0.49);
-            cover.width = cover.height = TILE_SIZE * 2 ** (cover.zoom - id.z);
+            // (A little less than the tile: a view that ends exactly on the tile's edge would take the tiles beyond it too.)
+            cover.width = cover.height = TILE_SIZE * 2 ** (cover.zoom - id.z) - 2;
             const ideal = cover.coveringTiles(src.minzoom, src.maxzoom, src.tileSize, image);
             for (const t of ideal) {
                 const key = source + '|' + t.key, have = this.tiles.get(key);
