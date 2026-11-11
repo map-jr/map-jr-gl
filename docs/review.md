@@ -54,22 +54,19 @@ Not done yet, in the order that I propose:
 4. **A check in the owner's Nuxt application.** The tests use Vue's server renderer directly. A small Nuxt 4 application was also built for production and opened in a browser on 2026-11-11: the server put the SVG into the page, and the map took it over without an error. That application is not in the repository.
 5. **Adapters for Svelte and Solid.** Each is about 50 lines over `createMap`.
 
-### Plan: a switch in the gallery for the code of each adapter
+### The switch in the gallery for the code of each form
 
-To do after the points above (at least after point 1, because the gallery uses controls):
+Done on 2026-11-11. The header of the gallery has a switch: Main API, Vue, React, MapLibre compatible. The choice is
+kept in `localStorage` and in the URL (`?code=vue`).
 
-1. Each row of the gallery gets its code in more than one form: `code: {core: '...', vue: '...', compat: '...'}`.
-   The forms are "Main API", "Vue" and "MapLibre compatible"; later "React" and others.
-2. One switch in the header of the gallery selects the form for all rows. The choice is kept in `localStorage` and
-   in the URL (`?code=vue`), so that a link shows the same form.
-3. The live map of a row is made with the main API (`createMap`) for each form: the forms give the same map, so
-   one map is sufficient. A test checks that claim: for each row, each form is run one time in a browser (the Vue
-   form with the Vue build from `node_modules`), and the image is compared with the image of the main form.
-4. The code of a form is kept in a file of its own (`site/examples/<row>.<form>.js` or `.vue`), not in a string.
-   Then the test can run the same file that the gallery shows, and the code that a visitor copies is code that was run.
-5. The Vue forms are single-file components. The gallery shows them as text; the test compiles them with
-   `@vue/compiler-sfc`.
-6. Rows for features that only the compatibility entry has (plugins of MapLibre) show that form only.
+- The code of each row is in files, one for each form: `site/examples/<row>.js` (main API), `.vue`, `.jsx`,
+  `.compat.js`. The gallery shows the text of the file.
+- The live map of a row runs the file of the main API form, or of the MapLibre form when that form is selected. So
+  for these two forms, the code that a visitor reads is the code that runs.
+- The Vue and React forms are shown as text and are not run. `pnpm test:examples` checks that each one compiles and
+  imports only names that the entries have. Not done: to run each Vue and React form in a browser and compare its
+  image with the image of the main form. That is the remaining part of the plan.
+- The server row has one text for all forms.
 
 ### The shaders: a third-party tool to make them smaller?
 

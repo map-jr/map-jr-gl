@@ -39,6 +39,13 @@
   .legend small { color: #666; }
   .found { font-size: 12px; line-height: 1.5; color: #222; }
   .actions button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+  .forms { margin-top: 14px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 14px; }
+  #forms { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+  #forms button { font: inherit; font-size: 13px; padding: 6px 12px; border: 0; border-right: 1px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer; }
+  #forms button:last-child { border-right: 0; }
+  #forms button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+  .runs { color: var(--muted); font-size: 12px; margin-top: 6px; min-height: 1em; }
+  .note { position: absolute; left: 8px; bottom: 8px; margin: 0; }
   .readout { margin-top: 10px; font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; min-height: 1.4em; overflow-wrap: anywhere; }
   .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
   .actions button { font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); cursor: pointer; }
@@ -49,6 +56,7 @@
   <p class="lib"><strong>Map Jr. GL</strong> · <a href="https://github.com/map-jr/map-jr-gl">GitHub</a></p>
   <h1>Feature gallery</h1>
   <p>Each row is a live map and the code that makes it. Maps start when they scroll into view. Drag to move, scroll or pinch to zoom, and drag with the right button (or two fingers) to tilt and turn.</p>
+  <div class="forms"><span>Show the code for</span><span id="forms" role="group" aria-label="The form of the code"></span></div>
 </header>
 <main id="rows"></main>
 <footer style="max-width:1100px;margin:0 auto;padding:24px 16px 40px;color:var(--muted);font-size:13px;line-height:1.5">

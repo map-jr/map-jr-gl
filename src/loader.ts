@@ -14,9 +14,11 @@ export interface LoadOptions {
     createWorker?: () => Worker;
     /** How many workers parse tiles, shared by all maps on the page. Defaults to 1-4 depending on the device. */
     tileWorkers?: number;
+    /** The thread that draws, for maps that do not say it themselves: `'auto'` (the default), `'worker'` or `'main'`. */
+    renderer?: 'auto' | 'worker' | 'main';
 }
 
-const defaults: LoadOptions = {};
+export const defaults: LoadOptions = {};
 /** Sets page-wide defaults for how workers are loaded. Individual maps can still override them. */
 export function configure(options: LoadOptions) { Object.assign(defaults, options); }
 

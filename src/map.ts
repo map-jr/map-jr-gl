@@ -7,7 +7,7 @@ import {DEFAULT_FONT, resolveStyle, type ResolvedStyle} from './resolve.ts';
 import type {CameraOptions, Command, EngineEvent, FeatureQuery, FontSource, MarkerImage} from './engine.ts';
 import type {QueriedFeature} from './query.ts';
 import type {TileBackend} from './tiles.ts';
-import {acquireTileWorkers, createWorker, workerReady, type LoadOptions} from './loader.ts';
+import {acquireTileWorkers, createWorker, defaults as loadDefaults, workerReady, type LoadOptions} from './loader.ts';
 import {anchorOffset, resolveVariants, sizedSVG, type MarkerInput, type MarkerLayerOptions} from './markers.ts';
 import {AttributionControl, CONTROL_CSS, adoptClasses, cls, type Control, type ControlPosition} from './controls.ts';
 import {Popup, type PopupOptions} from './overlays.ts';
@@ -282,7 +282,7 @@ export class Map {
                 'If the worker file is not next to the library, pass `workerUrl` or `createWorker`, or use the standalone build.');
         }
 
-        const wantWorker = o.renderer === 'worker' || (o.renderer ?? 'auto') === 'auto';
+        const want = o.renderer ?? loadDefaults.renderer ?? 'auto', wantWorker = want !== 'main';
         let engineWorker: Worker | null = null;
         if (wantWorker && ports.length && 'transferControlToOffscreen' in this.canvas) {
             try { engineWorker = await workerReady(createWorker(o)); } catch { engineWorker = null; }

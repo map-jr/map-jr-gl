@@ -92,6 +92,8 @@ export interface MapHost {
      * those style layers draw, the top one first; without, the features of the tile data (`sources`, `sourceLayers`).
      */
     queryFeatures(at: {x: number; y: number} | [{x: number; y: number}, {x: number; y: number}], options?: {layers?: string[]; filter?: unknown; sources?: string[]; sourceLayers?: string[]; radius?: number; geometry?: boolean}): Promise<(RenderedFeature | QueriedFeature)[]>;
+    /** The height of the ground in metres at a position (`[lng, lat]`) or a point of the screen, from the elevation source of the style. `null` where there is no data. */
+    queryElevation(at: [number, number] | {x: number; y: number}): Promise<number | null>;
     /** Moves the camera now, with an animation when `duration` is not 0. */
     moveTo(view: Partial<View> & {duration?: number}): void;
     fitBounds(bounds: LngLatBoundsInput, options?: {padding?: number; duration?: number; maxZoom?: number}): void;
@@ -208,6 +210,7 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
         queryFeatures: (at, o = {}) => Array.isArray(at) || o.layers
             ? map.queryLayers((Array.isArray(at) ? at.map(p => [p.x, p.y]) : [at.x, at.y]) as [[number, number], [number, number]], {layers: o.layers, filter: o.filter})
             : map.queryFeatures(at, o),
+        queryElevation: at => map.queryElevation(at),
         moveTo({duration = 0, ...view}) { if (duration) map.easeTo({...view, duration}); else map.jumpTo(view); },
         fitBounds: (bounds, o) => { map.fitBounds(bounds, o); },
         project: lngLat => map.project(lngLat),

@@ -37,6 +37,8 @@
   methods with no effect, members that wrappers read, results that are an array and a promise.
   The conformance tools (render tests, example pages, plugins) test this entry.
 - The package is version 0.x: the API can change.
+- The gallery (`site/`) has the code of each row in `site/examples/`, one file for each form (main API, Vue, React,
+  MapLibre compatible). The live maps run the `.js` and `.compat.js` files. `pnpm test:examples` checks the others.
 
 ## Commands
 

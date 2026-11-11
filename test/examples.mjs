@@ -1,0 +1,32 @@
+// Checks the example files of the gallery that the gallery shows as text and does not run (site/examples/*.vue and
+// *.jsx): each must compile, and must import only names that the adapters and the other example files have.
+//   node test/examples.mjs   (after pnpm build)
+import {readFileSync, readdirSync} from 'node:fs';
+import path from 'node:path';
+import {createRequire} from 'node:module';
+import {parse, compileScript, compileTemplate} from 'vue/compiler-sfc';
+
+const dir = path.resolve(import.meta.dirname, '../site/examples'), dist = path.resolve(import.meta.dirname, '../dist');
+const {transformSync} = createRequire(import.meta.url)('esbuild');
+let failed = 0;
+const check = (name, ok, detail = '') => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${name} ${detail}`); if (!ok) failed++; };
+
+// The names that each entry of the library has, from its built file.
+const exportsOf = file => { const code = readFileSync(path.join(dist, file), 'utf8'), last = [...code.matchAll(/export\s*\{([^}]*)\}/g)].flatMap(m => m[1].split(',').map(p => p.trim().split(/\s+as\s+/).pop())); return new Set(last.filter(Boolean)); };
+const entries = {'map-jr-gl': exportsOf('map-jr-gl.js'), 'map-jr-gl/vue': exportsOf('vue.js'), 'map-jr-gl/react': exportsOf('react.js'), 'map-jr-gl/controls': exportsOf('controls.js'), 'map-jr-gl/maplibre-compat': exportsOf('map-jr-gl-maplibre-compat.js')};
+const unknownImports = code => [...code.matchAll(/import\s*\{([^}]*)\}\s*from\s*'(map-jr-gl[^']*)'/g)].flatMap(m => m[1].split(',').map(n => n.trim().split(/\s+as\s+/)[0]).filter(n => n && !entries[m[2]]?.has(n)).map(n => `${n} from ${m[2]}`));
+
+for (const file of readdirSync(dir).sort()) {
+    const code = readFileSync(path.join(dir, file), 'utf8'), problems = unknownImports(code);
+    try {
+        if (file.endsWith('.vue')) {
+            const {descriptor, errors} = parse(code, {filename: file});
+            problems.push(...errors.map(e => e.message));
+            const script = compileScript(descriptor, {id: file}), template = compileTemplate({source: descriptor.template.content, filename: file, id: file, compilerOptions: {bindingMetadata: script.bindings}});
+            problems.push(...template.errors.map(e => e.message ?? String(e)));
+        } else if (file.endsWith('.jsx')) transformSync(code, {loader: 'jsx', jsx: 'automatic'});
+        else transformSync(code, {loader: 'js'});
+    } catch (e) { problems.push(String(e.message).split('\n')[0]); }
+    check(file, problems.length === 0, problems.join(' | '));
+}
+process.exit(failed ? 1 : 0);
