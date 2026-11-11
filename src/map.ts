@@ -979,7 +979,8 @@ export class Map {
         const now: QueriedFeature[] = [], sync = this.syncQuery;
         if (sync) for (const [id, spec] of Object.entries<any>(this.rawStyle?.sources ?? {})) {
             const mine = sets.filter(s => s.source === id);
-            if (mine.length && spec.type === 'geojson' && spec.data && typeof spec.data === 'object') try { now.push(...sync.queryGeoJSON(id, spec, this.tr, box, mine)); } catch { /* the promise has the complete result or the error */ }
+            const data = mine.length && spec.type === 'geojson' && this.geoData(id);
+            if (data) try { now.push(...sync.queryGeoJSON(id, {...spec, data}, this.tr, box, mine)); } catch { /* the promise has the complete result or the error */ }
         }
         const result = features(now);
         // Later: all the sources, from the engine.
@@ -990,12 +991,39 @@ export class Map {
     /** The code for queries on the page, loaded when the style has a GeoJSON source with its data in the style. */
     private syncQuery?: typeof import('./sync-query.ts');
 
-    /** The features of a source in the tiles of the present view. As `queryRenderedFeatures`, the result is a promise. */
-    async querySourceFeatures(sourceId: string, options: {sourceLayer?: string; filter?: unknown} = {}): Promise<RenderedFeature[]> {
-        const sets = [{layer: '', source: sourceId, sourceLayer: options.sourceLayer, filter: options.filter, radius: 0}];
-        const found = await this.ask<QueriedFeature[]>(id => ({type: 'queryRendered', id, box: [0, 0, this.tr.width, this.tr.height], sets, geometry: true}));
-        return found.map(f => ({type: 'Feature', id: f.id, geometry: f.geometry!, properties: f.properties, source: f.source, sourceLayer: f.sourceLayer || undefined,
+    /**
+     * The data of a GeoJSON source, when the page has it: the data is in the style, or the page has fetched it for a
+     * query before. If not, the page fetches it now (the browser has it in its cache already) and then fires the data
+     * events of the source, so that code that listens for them asks again.
+     */
+    private geoData(id: string): object | undefined {
+        const spec = this.rawStyle?.sources[id], kept = this.geoKept.get(id);
+        if (!spec?.data || typeof spec.data === 'object') return spec?.data;
+        if (kept?.from === spec.data) return kept!.data;
+        const entry: {from: string; data?: object} = {from: spec.data};
+        this.geoKept.set(id, entry);
+        Promise.all([this.fetchAs('Source')(new URL(spec.data, this.styleBase)).then(r => r.json()), import('./sync-query.ts')]).then(([data, m]) => {
+            entry.data = data; this.syncQuery = m;
+            for (const type of ['sourcedata', 'data']) this.fire(type, {dataType: 'source', sourceId: id, isSourceLoaded: true, sourceDataType: 'content'});
+        }, () => {});
+    }
+    private geoKept = new globalThis.Map<string, {from: string; data?: object}>();
+
+    /**
+     * The features of a source in the tiles of the present view. As with `queryRenderedFeatures`, the result is an array
+     * that can also be awaited: at once it has the features of a GeoJSON source whose data the page has (clusters too);
+     * awaited, it has the features of each kind of source.
+     */
+    querySourceFeatures(sourceId: string, options: {sourceLayer?: string; filter?: unknown} = {}): RenderedFeature[] & PromiseLike<RenderedFeature[]> {
+        const sets = [{layer: '', source: sourceId, sourceLayer: options.sourceLayer, filter: options.filter, radius: 0}], box: [number, number, number, number] = [0, 0, this.tr.width, this.tr.height];
+        const features = (found: QueriedFeature[]): RenderedFeature[] => found.map(f => ({type: 'Feature', id: f.id, geometry: f.geometry!, properties: f.properties, source: f.source, sourceLayer: f.sourceLayer || undefined,
             state: f.id === undefined ? {} : this.getFeatureState({source: f.source, sourceLayer: f.sourceLayer || undefined, id: f.id})}));
+        const spec = this.rawStyle?.sources[sourceId], data = spec?.type === 'geojson' && this.geoData(sourceId);
+        let now: QueriedFeature[] = [];
+        if (data && this.syncQuery) try { now = this.syncQuery.queryGeoJSON(sourceId, {...spec, data}, this.tr, box, sets); } catch { /* the promise has the complete result or the error */ }
+        const result = features(now), all = this.ask<QueriedFeature[]>(id => ({type: 'queryRendered', id, box, sets, geometry: true})).then(features);
+        Object.defineProperty(result, 'then', {value: (done?: (v: RenderedFeature[]) => unknown, failed?: (e: unknown) => unknown) => all.then(done, failed)});
+        return result as RenderedFeature[] & PromiseLike<RenderedFeature[]>;
     }
 
     /** Ground elevation in metres at a location, read from the style's elevation (raster-dem) source; null where there is no data. */

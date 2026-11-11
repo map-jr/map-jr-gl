@@ -42,6 +42,12 @@ source gets an empty array and no error. The document on compatibility tells use
 
 To change it: `queryRenderedFeatures` in `src/map.ts`, and `src/sync-query.ts`.
 
+`querySourceFeatures` now gives the same two kinds of result (it gave a promise only). The example page "Display HTML
+clusters with custom properties" reads it at once in each `move` event. Used at once, the two methods now also have
+the features of a GeoJSON source whose data is at a URL: the page fetches the data for the first query (the browser
+has it in its cache) and then fires the data events of the source again, so that code that listens for them asks
+again.
+
 ## Features that are not in the library
 
 These were left out because of their size or their complexity. The audit in [Plugins and frameworks](ecosystem.md)
