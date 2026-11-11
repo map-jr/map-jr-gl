@@ -127,7 +127,8 @@ void main() {
   v_fw = a_width * u_floorWidth; // dashes are sized by the width at the whole zoom level, as in MapLibre
   // With a gap the line is two strokes of width w either side of an empty middle.
   v_hw = (u_gap > 0.0 ? u_gap * 0.5 + w : w * 0.5) + 0.5; v_d = a_sd.x * v_hw; v_w = w; v_dist = a_sd.y;
-  v_color = vec4(a_color.rgb, a_color.a * min(1.0, w));
+  // (As in MapLibre, a line thinner than a pixel is not made fainter for its width: the soft edge does that. A line of no width is not drawn.)
+  v_color = vec4(a_color.rgb, w > 0.0 ? a_color.a : 0.0);
   // line-offset moves the whole stroke sideways: along the same normal, whichever side of the line this vertex is on.
   v_tile = a_v.xy + a_v.zw * (v_hw + sign(a_sd.x) * u_offset) / u_scale;
   gl_Position = toClip(v_tile);
@@ -401,7 +402,7 @@ export interface Scene {
 
 export const SPRITE_ATLAS = 2048;
 // How the light's direction maps to tile coordinates (y points south) and turns with the bearing.
-const LIGHT_X = 1, LIGHT_Y = -1, LIGHT_TURN = -1;
+const LIGHT_X = -1, LIGHT_Y = -1, LIGHT_TURN = 1;
 
 /** Floats per marker vertex: mercator x and y each split into high and low parts, atlas rectangle, corner, scale, opacity. */
 export const MARKER_STRIDE = 12;
