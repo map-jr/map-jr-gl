@@ -57,7 +57,7 @@ async function run(s) {
     if (s.terrain) withTerrain(style);
     const view = s.terrain ? TERRAIN_VIEW : VIEW;
     const t0 = performance.now();
-    let map, frames = 0, stamps = [], engine = [];
+    let map, frames = 0, stamps = [], engine = [], engineFps = [];
     const frame = () => { frames++; stamps.push(performance.now()); };
     if (s.lib === 'maplibre') {
         map = new maplibre.Map({container: el, style, ...view, attributionControl: false});
@@ -67,7 +67,7 @@ async function run(s) {
         map.on('move', frame); // one camera report per frame drawn, whichever thread draws it
         // The engine reports the time that its own code takes for a frame (in a worker or on this thread). A large value
         // means that the processor is the limit; a small value with few frames means that the GPU is.
-        map.on('stats', e => engine.push(e.frameMs));
+        map.on('stats', e => { engine.push(e.frameMs); engineFps.push(e.fps); });
     }
     await new Promise(r => map.once('idle', r));
     const load = performance.now() - t0;
@@ -80,7 +80,7 @@ async function run(s) {
         await sleep(1500);
     }
     await sleep(600);
-    frames = 0; stamps = []; engine = []; scripts.length = 0; blocked = Number.isNaN(blocked) ? NaN : 0;
+    frames = 0; stamps = []; engine = []; engineFps = []; scripts.length = 0; blocked = Number.isNaN(blocked) ? NaN : 0;
     const a0 = performance.now();
     map.easeTo({...(s.terrain ? TERRAIN_END : {center: [-73.975, 40.735], zoom: 15.2, bearing: 40}), duration: SECONDS * 1000});
     await sleep(SECONDS * 1000 + 100);
@@ -88,14 +88,16 @@ async function run(s) {
     // would otherwise look slower than one that keeps redrawing an unchanged view.
     const during = stamps.filter(t => t <= a0 + SECONDS * 1000), gaps = during.slice(1).map((t, i) => t - during[i]);
     const span = during.length > 1 ? (during[during.length - 1] - during[0]) / 1000 : 1;
-    const result = {name: s.name, load, add, fps: Math.max(0, during.length - 1) / span, worstGap: gaps.length ? Math.max(...gaps) : 0, script: median(scripts), worstScript: scripts.length ? Math.max(...scripts) : 0, blocked, engine: engine.length ? engine.reduce((a, b) => a + b, 0) / engine.length : NaN};
+    const result = {name: s.name, load, add, fps: Math.max(0, during.length - 1) / span, worstGap: gaps.length ? Math.max(...gaps) : 0, script: median(scripts), worstScript: scripts.length ? Math.max(...scripts) : 0, blocked, engine: engine.length ? engine.reduce((a, b) => a + b, 0) / engine.length : NaN,
+        // The frame rate that the engine counted itself. If the page counts fewer frames, the reports from a worker arrived late.
+        engineFps: engineFps.length ? engineFps.reduce((a, b) => a + b, 0) / engineFps.length : NaN};
     map.remove();
     await sleep(300);
     return result;
 }
 
 const fmt = (v, d = 0) => v === null || Number.isNaN(v) ? 'n/a' : v.toFixed(d);
-const cells = r => [r.name + (r.add !== null ? ` (added in ${fmt(r.add)} ms)` : ''), `${fmt(r.load)} ms`, fmt(r.fps, 1), `${fmt(r.worstGap)} ms`, `${fmt(r.script, 1)} / ${fmt(r.worstScript, 1)} ms`, `${fmt(r.blocked)} ms`, Number.isNaN(r.engine) ? '' : `${fmt(r.engine, 1)} ms`];
+const cells = r => [r.name + (r.add !== null ? ` (added in ${fmt(r.add)} ms)` : ''), `${fmt(r.load)} ms`, fmt(r.fps, 1), `${fmt(r.worstGap)} ms`, `${fmt(r.script, 1)} / ${fmt(r.worstScript, 1)} ms`, `${fmt(r.blocked)} ms`, Number.isNaN(r.engine) ? '' : `${fmt(r.engine, 1)} ms, ${fmt(r.engineFps, 0)} frames per second`];
 const results = [];
 document.getElementById('run').onclick = async e => {
     e.target.disabled = true; tbody.replaceChildren(); results.length = 0;
