@@ -18,6 +18,9 @@ export interface MapOptions extends CameraOptions, LoadOptions {
     container: HTMLElement | string;
     /** The style: an object or a URL. Leave it out to give the style later with `setStyle`. */
     style?: unknown;
+    /** The area that the map shows at the start (it comes before `center` and `zoom`), and options for the fit, such as `padding`. */
+    bounds?: LngLatBoundsInput;
+    fitBoundsOptions?: {padding?: number | Partial<Record<'top' | 'right' | 'bottom' | 'left', number>>; maxZoom?: number};
     /** Keeps the camera in the fragment of the URL (`#zoom/lat/lng`), so that a link shows the same view. A string gives the camera a name in the fragment. */
     hash?: boolean | string;
     /**
@@ -230,6 +233,8 @@ export class Map {
             import('./hash.ts').then(m => this.cleanup.push(m.watchHash(this, key, early)));
         }
         this.tr.set(options.center ?? [0, 0], options.zoom ?? 0, options.bearing ?? 0, options.pitch ?? 0);
+        // As in MapLibre, `bounds` comes before `center` and `zoom`: the map starts with that area in view.
+        if (options.bounds) { const fit = this.cameraForBounds(options.bounds, options.fitBoundsOptions); this.tr.set([fit.center.lng, fit.center.lat], fit.zoom, options.bearing ?? 0, options.pitch ?? 0); }
         for (const k of ['dragPan', 'scrollZoom', 'doubleClickZoom', 'dragRotate', 'touchZoomRotate', 'touchPitch', 'keyboard', 'boxZoom'] as const) if (options[k] === false) this[k].disable();
         this.transformRequest = options.transformRequest ?? null;
         protocolListeners.add(this.sendRequestRules);
@@ -261,7 +266,7 @@ export class Map {
         // As in MapLibre, a style may carry its own starting camera. It is used only when the options give no part of
         // the camera: with a zoom in the options and no centre, the centre is [0, 0], not that of the style.
         const sc = this.rawStyle;
-        if (o.center === undefined && o.zoom === undefined && o.bearing === undefined && o.pitch === undefined) this.tr.set(sc.center, sc.zoom, sc.bearing, sc.pitch);
+        if (o.center === undefined && o.zoom === undefined && o.bearing === undefined && o.pitch === undefined && !o.bounds) this.tr.set(sc.center, sc.zoom, sc.bearing, sc.pitch);
         this.resolved = await resolveStyle(this.rawStyle, fetch, this.styleBase);
         if (this.resolved.unsupported.length) console.warn('[map-jr-gl] Skipping unsupported layer types: ' + this.resolved.unsupported.join(', '));
         const tr = this.tr;
