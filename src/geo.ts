@@ -106,8 +106,9 @@ export class Transform {
     /** Keeps the centre on the map, and inside `maxBounds` if there are any. */
     constrain() {
         // As in MapLibre, the view does not go past the top or the bottom of the world (when the world is taller than the view).
-        const half = Math.min(0.5, this.height / 2 / this.worldSize);
-        this.lat = latFromMerc(clamp(mercY(clamp(this.lat, -MAX_LAT, MAX_LAT)), half, 1 - half));
+        // (A latitude that needs no change is left exactly as it was given.)
+        const half = Math.min(0.5, this.height / 2 / this.worldSize), y = mercY(this.lat = clamp(this.lat, -MAX_LAT, MAX_LAT)), inside = clamp(y, half, 1 - half);
+        if (inside !== y) this.lat = latFromMerc(inside);
         const b = this.maxBounds;
         if (b) { this.lng = clamp(this.lng, b[0], b[2]); this.lat = clamp(this.lat, b[1], b[3]); }
     }

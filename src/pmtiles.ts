@@ -14,7 +14,7 @@ const TILE_TYPES = ['', 'mvt', 'png', 'jpeg', 'webp', 'avif'];
 
 async function inflate(bytes: Uint8Array, compression: number): Promise<Uint8Array> {
     if (compression <= 1) return bytes;
-    if (compression !== 2) throw new Error('PMTiles: only gzip-compressed archives are supported');
+    if (compression !== 2) throw new Error('PMTiles: the archive must use gzip');
     const stream = new Blob([bytes as BlobPart]).stream().pipeThrough(new DecompressionStream('gzip'));
     return new Uint8Array(await new Response(stream).arrayBuffer());
 }

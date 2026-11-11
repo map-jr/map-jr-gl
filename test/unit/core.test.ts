@@ -546,8 +546,8 @@ test('transform: the view stays inside the world from top to bottom', () => {
     assert.ok(Math.abs(t.lat) < 5, String(t.lat));
     assert.ok(t.unproject(400, 0)[1] <= 85.06 && t.unproject(400, 500)[1] >= -85.06);
     // At a high zoom the limit has no effect.
-    t.set([-117, 32], 10);
-    close(t.lat, 32, 1e-9);
+    t.set([-117, 40.7085], 10);
+    assert.equal(t.lat, 40.7085); // exactly as given
 });
 
 test('terrain: tiles get less detail with distance, by the rule of MapLibre, and more near the camera', () => {
