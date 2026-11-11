@@ -61,17 +61,17 @@ Sources:
 
 - Video and canvas sources
 - MapLibre Tiles (MLT)
-- Clusters, `promoteId` and line metrics in GeoJSON sources
+- Clusters and `promoteId` in GeoJSON sources
 
 Layers:
 
 - Color relief and custom layers
-- `line-pattern` and `fill-extrusion-pattern`
+- `fill-extrusion-pattern`
 - Patterns that are different for each feature
 
 Properties:
 
-- `line-gradient`
+- `line-gradient` together with `line-dasharray`
 - `line-offset` and `line-blur` that are different for each feature
 - `circle-pitch-alignment` and `circle-pitch-scale`
 - Circle stroke and blur that are different for each feature

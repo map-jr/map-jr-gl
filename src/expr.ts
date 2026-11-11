@@ -161,7 +161,7 @@ export function compileExpr(e: any, flags: Flags): Fn {
         case 'properties': flags.dd = true; return c => c.f?.properties ?? {};
         case 'geometry-type': flags.dd = true; return c => GEOM[c.f?.type ?? 0];
         case 'zoom': flags.zoom = true; return c => c.zoom;
-        case 'heatmap-density': return c => c.density ?? 0;
+        case 'heatmap-density': case 'line-progress': return c => c.density ?? 0;
         case 'feature-state': { const key = e[1]; flags.dd = true; return c => c.f?.state?.[key] ?? null; }
         case 'global-state': {
             // Read when evaluated, so one compiled style follows later changes. Marked like a zoom dependency so the

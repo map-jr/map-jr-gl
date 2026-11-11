@@ -23,6 +23,8 @@ export interface Batch {
     color?: Uint8Array;
     width?: Float32Array;
     radius?: Float32Array;
+    /** Lines with a gradient: for each feature, how far along the whole line it starts and ends (0 to 1). */
+    progress?: Float32Array;
     cap?: string;
     join?: string;
     /** Fill layers with an explicit outline colour. */
@@ -174,6 +176,7 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
         const coords: number[] = [], ringEnds: number[] = [], featEnds: number[] = [];
         const ddColor = p.color.dd || p.opacity.dd;
         const color: number[] = [], scalar: number[] = [];
+        const progress: number[] | null = L.type === 'line' && L.ramp ? [] : null;
         const scalarProp = L.type === 'line' ? p.width : heat ? p.weight : L.type === 'circle' ? p.radius : null;
         for (const f of vl.features) {
             // Circle and heatmap layers take any geometry: every vertex of a line or polygon is a point.
@@ -200,6 +203,7 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
             featEnds.push(ringEnds.length);
             if (ddColor) pushColor(color, p.color.dd ? p.color.eval(z, f) : WHITE, p.opacity.dd ? p.opacity.eval(z, f) : 1);
             if (scalarProp?.dd) scalar.push(scalarProp.eval(z, f));
+            if (progress) progress.push(f.properties.mapbox_clip_start ?? 0, f.properties.mapbox_clip_end ?? 1);
             if (extrude) { heights.push(p.height.eval(z, f)); bases.push(p.base.eval(z, f)); }
         }
         if (!featEnds.length) continue;
@@ -207,7 +211,8 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
             type: kind as Batch['type'],
             geom: {coords: Int16Array.from(coords), ringEnds: Uint32Array.from(ringEnds), featEnds: Uint32Array.from(featEnds)},
         };
-        if (ddColor) batch.color = Uint8Array.from(color);
+        if (ddColor && !progress) batch.color = Uint8Array.from(color);
+        if (progress) batch.progress = Float32Array.from(progress);
         if (scalarProp?.dd) batch[L.type === 'line' ? 'width' : 'radius'] = Float32Array.from(scalar);
         if (extrude) { batch.height = Float32Array.from(heights); batch.base = Float32Array.from(bases); }
         if (L.type === 'line') { batch.cap = p.cap.eval(z); batch.join = p.join.eval(z); }
@@ -431,9 +436,14 @@ function tessellateLine(b: Batch): GLBatch | null {
     const {coords, ringEnds, featEnds} = b.geom;
     const v: number[] = [], idx: number[] = [], color: number[] = [], width: number[] = [];
     const round = b.join === 'round', miter = !round && b.join !== 'bevel';
-    let count = 0, f = 0;
+    let count = 0, f = 0, ringLength = 1;
     const vert = (x: number, y: number, nx: number, ny: number, side: number, dist: number) => {
         v.push(x, y, nx, ny, side, dist);
+        if (b.progress) {
+            // The place along the whole line goes in the colour's red and green bytes, as one 16-bit number.
+            const from = b.progress[f * 2], t = Math.round(Math.min(1, Math.max(0, from + (b.progress[f * 2 + 1] - from) * dist / ringLength)) * 65535);
+            color.push(t >> 8, t & 255, 0, 255);
+        }
         if (b.color) color.push(b.color[f * 4], b.color[f * 4 + 1], b.color[f * 4 + 2], b.color[f * 4 + 3]);
         if (b.width) width.push(b.width[f]);
         return count++;
@@ -458,6 +468,7 @@ function tessellateLine(b: Batch): GLBatch | null {
             }
             const n = xs.length;
             if (n < 2) continue;
+            if (b.progress) { ringLength = 0; for (let i = 0; i < n - 1; i++) ringLength += Math.hypot(xs[i + 1] - xs[i], ys[i + 1] - ys[i]); }
             let last = -1, dist = 0, pdx = 0, pdy = 0;
             const pair = (x: number, y: number, nx: number, ny: number, ox = 0, oy = 0) => {
                 const a = vert(x, y, nx + ox, ny + oy, 1, dist);
@@ -507,7 +518,7 @@ function tessellateLine(b: Batch): GLBatch | null {
         view.setFloat32(o + 12, v[i * 6 + 5], true);
     }
     const out: GLBatch = {type: 'line', v: new Uint8Array(packed), idx: Uint32Array.from(idx)};
-    if (b.color) out.color = Uint8Array.from(color);
+    if (b.color || b.progress) out.color = Uint8Array.from(color);
     if (b.width) out.width = Float32Array.from(width);
     return out;
 }

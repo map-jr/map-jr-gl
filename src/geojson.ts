@@ -72,12 +72,15 @@ function clipRing(pts: number[], lo: number, hi: number): number[] {
 }
 
 /** Clips a line to a rectangle, returning the pieces that fall inside. */
-function clipLine(pts: number[], lo: number, hi: number): number[][] {
+function clipLine(pts: number[], lo: number, hi: number, ranges?: number[]): number[][] {
     const pieces: number[][] = [];
-    let cur: number[] = [];
+    let cur: number[] = [], from = 0, to = 0, done = 0;
+    /** Ends a piece; `ranges` receives the distances along the whole line where it starts and ends. */
+    const push = () => { pieces.push(cur); ranges?.push(from, to); cur = []; };
     for (let i = 0; i + 3 < pts.length; i += 2) {
         let x0 = pts[i], y0 = pts[i + 1], x1 = pts[i + 2], y1 = pts[i + 3], t0 = 0, t1 = 1;
-        const dx = x1 - x0, dy = y1 - y0;
+        const dx = x1 - x0, dy = y1 - y0, len = Math.hypot(dx, dy), before = done;
+        done += len;
         let visible = true;
         // Liang-Barsky: narrow the visible parameter range against each edge.
         for (const [p, q] of [[-dx, x0 - lo], [dx, hi - x0], [-dy, y0 - lo], [dy, hi - y0]]) {
@@ -86,41 +89,51 @@ function clipLine(pts: number[], lo: number, hi: number): number[][] {
                 if (p < 0) t0 = Math.max(t0, r); else t1 = Math.min(t1, r);
             }
         }
-        if (!visible || t0 > t1) { if (cur.length) { pieces.push(cur); cur = []; } continue; }
+        if (!visible || t0 > t1) { if (cur.length) push(); continue; }
         const ax = x0 + dx * t0, ay = y0 + dy * t0, bx = x0 + dx * t1, by = y0 + dy * t1;
-        if (!cur.length || t0 > 0) { if (cur.length) pieces.push(cur); cur = [ax, ay]; }
+        if (!cur.length || t0 > 0) { if (cur.length) push(); cur = [ax, ay]; from = before + len * t0; }
         cur.push(bx, by);
-        if (t1 < 1) { pieces.push(cur); cur = []; }
+        to = before + len * t1;
+        if (t1 < 1) push();
     }
-    if (cur.length) pieces.push(cur);
+    if (cur.length) push();
     return pieces;
 }
 
 /** The features of one tile, clipped and in tile units. */
-export function sliceGeoJSON(features: Prepared[], z: number, x: number, y: number): Record<string, {features: SlicedFeature[]}> {
+export function sliceGeoJSON(features: Prepared[], z: number, x: number, y: number, metrics = false): Record<string, {features: SlicedFeature[]}> {
     const n = 2 ** z, pad = BUFFER / EXTENT / n, x0 = x / n - pad, y0 = y / n - pad, x1 = (x + 1) / n + pad, y1 = (y + 1) / n + pad;
     const out: SlicedFeature[] = [];
     for (const f of features) {
         if (f.bbox[2] < x0 || f.bbox[0] > x1 || f.bbox[3] < y0 || f.bbox[1] > y1) continue;
         const rings: number[][] = [];
-        for (const r of f.rings) {
-            let pts: number[] = [];
-            for (let i = 0; i < r.length; i += 2) {
-                const tx = Math.round((r[i] * n - x) * EXTENT), ty = Math.round((r[i + 1] * n - y) * EXTENT), m = pts.length;
-                if (m < 2 || tx !== pts[m - 2] || ty !== pts[m - 1]) pts.push(tx, ty); // also thins vertices closer than a tile unit
-            }
-            if (f.type === 1) { if (pts[0] >= -BUFFER && pts[0] <= EXTENT + BUFFER && pts[1] >= -BUFFER && pts[1] <= EXTENT + BUFFER) rings.push(pts); } else if (f.type === 2) rings.push(...clipLine(pts, -BUFFER, EXTENT + BUFFER).filter(p => p.length >= 4));
-            else { pts = clipRing(pts, -BUFFER, EXTENT + BUFFER); if (pts.length >= 6) rings.push(pts.map(Math.round)); }
-        }
-        if (!rings.length) continue;
-        out.push({
-            type: f.type, id: f.id, properties: f.properties,
+        const feature = (rings: number[][], properties: Record<string, unknown>) => out.push({
+            type: f.type, id: f.id, properties,
             geometry(extent, coords, ringEnds) {
                 const k = extent / EXTENT;
                 for (const r of rings) { for (const v of r) coords.push(v * k); ringEnds.push(coords.length / 2); }
                 return rings.length;
             },
         });
+        for (const r of f.rings) {
+            let pts: number[] = [];
+            for (let i = 0; i < r.length; i += 2) {
+                const tx = Math.round((r[i] * n - x) * EXTENT), ty = Math.round((r[i + 1] * n - y) * EXTENT), m = pts.length;
+                if (m < 2 || tx !== pts[m - 2] || ty !== pts[m - 1]) pts.push(tx, ty); // also thins vertices closer than a tile unit
+            }
+            if (f.type === 2 && metrics) {
+                // Each piece is a feature of its own that knows which part of the line it is, as in MapLibre.
+                const ranges: number[] = [], pieces = clipLine(pts, -BUFFER, EXTENT + BUFFER, ranges);
+                let total = 0;
+                for (let i = 0; i + 3 < pts.length; i += 2) total += Math.hypot(pts[i + 2] - pts[i], pts[i + 3] - pts[i + 1]);
+                pieces.forEach((p, i) => feature([p], {...f.properties, mapbox_clip_start: ranges[i * 2] / total, mapbox_clip_end: ranges[i * 2 + 1] / total}));
+                continue;
+            }
+            if (f.type === 1) { if (pts[0] >= -BUFFER && pts[0] <= EXTENT + BUFFER && pts[1] >= -BUFFER && pts[1] <= EXTENT + BUFFER) rings.push(pts); } else if (f.type === 2) rings.push(...clipLine(pts, -BUFFER, EXTENT + BUFFER).filter(p => p.length >= 4));
+            else { pts = clipRing(pts, -BUFFER, EXTENT + BUFFER); if (pts.length >= 6) rings.push(pts.map(Math.round)); }
+        }
+        if (!rings.length) continue;
+        feature(rings, f.properties);
     }
     return out.length ? {[GEOJSON_LAYER]: {features: out}} : {};
 }

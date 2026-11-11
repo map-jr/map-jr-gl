@@ -469,3 +469,18 @@ test('text: images in a format expression travel through the text and are measur
     // Without anyone to supply images (the server renderer), the image is simply left out.
     assert.equal(new EstimateShaper().shape(text, 'x', 100, 0, 1.2, 16).width, plain);
 });
+
+test('GeoJSON lines for a gradient know which part of the whole line each piece is', async () => {
+    const {prepareGeoJSON, sliceGeoJSON} = await import('../../src/geojson.ts');
+    // A line from the middle of tile 2/1/1 to the middle of tile 2/2/1.
+    const prepared = prepareGeoJSON({type: 'LineString', coordinates: [[-45, 10], [45, 10]]});
+    const west = sliceGeoJSON(prepared, 2, 1, 1, true)._geojson.features, east = sliceGeoJSON(prepared, 2, 2, 1, true)._geojson.features;
+    assert.equal(west.length, 1);
+    assert.equal(west[0].properties.mapbox_clip_start, 0);
+    // The two pieces overlap by the tile buffer, and together cover the line.
+    assert.ok(west[0].properties.mapbox_clip_end > 0.5 && west[0].properties.mapbox_clip_end < 0.55);
+    assert.ok(east[0].properties.mapbox_clip_start < 0.5 && east[0].properties.mapbox_clip_start > 0.45);
+    assert.equal(east[0].properties.mapbox_clip_end, 1);
+    // Without a gradient layer the features keep their own properties.
+    assert.equal(sliceGeoJSON(prepared, 2, 1, 1)._geojson.features[0].properties.mapbox_clip_start, undefined);
+});

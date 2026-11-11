@@ -12,7 +12,7 @@ const SPEC: Record<string, Record<string, [string, PropKind, any]>> = {
         layerOpacity: ['fill-layer-opacity', 'number', 1], layerBlend: ['fill-layer-blend', 'string', 'normal']},
     line: {
         color: ['line-color', 'color', '#000'], opacity: ['line-opacity', 'number', 1], width: ['line-width', 'number', 1],
-        gap: ['line-gap-width', 'number', 0], dash: ['line-dasharray', 'discrete', null], cap: ['line-cap', 'string', 'butt'], join: ['line-join', 'string', 'miter'],
+        gap: ['line-gap-width', 'number', 0], pattern: ['line-pattern', 'string', ''], dash: ['line-dasharray', 'discrete', null], cap: ['line-cap', 'string', 'butt'], join: ['line-join', 'string', 'miter'],
         offset: ['line-offset', 'number', 0], blur: ['line-blur', 'number', 0],
         layerOpacity: ['line-layer-opacity', 'number', 1], layerBlend: ['line-layer-blend', 'string', 'normal'],
     },
@@ -101,7 +101,7 @@ export interface CompiledLayer {
     id: string; type: string; source?: string; sourceLayer?: string; minzoom: number; maxzoom: number;
     visible: boolean; filter: Fn | null; p: Record<string, Prop>;
     ssr?: SSROverrides;
-    /** Heatmap layers: the colour for each density (see colorRamp). */
+    /** Heatmap layers: the colour for each density (see colorRamp). Line layers: the colours of `line-gradient` along the line. */
     ramp?: Uint8Array;
 }
 
@@ -117,11 +117,11 @@ export function compileLayer(l: LayerJSON): CompiledLayer | null {
     const own = compileFilter(l.filter), extra = compileFilter(l.metadata?.['map-jr:and-filter']);
     return {
         ssr: l.metadata?.[SSR_KEY],
-        ramp: l.type === 'heatmap' ? colorRamp(l.paint?.['heatmap-color'] ?? HEATMAP_COLORS) : undefined,
+        ramp: l.type === 'heatmap' ? colorRamp(l.paint?.['heatmap-color'] ?? HEATMAP_COLORS) : l.type === 'line' && l.paint?.['line-gradient'] ? colorRamp(l.paint['line-gradient']) : undefined,
         id: l.id, type: l.type, source: l.source, sourceLayer: l['source-layer'],
         minzoom: l.minzoom ?? 0, maxzoom: l.maxzoom ?? 24,
         // Pattern fills need sprite images, which are not supported yet; hiding them beats drawing solid black.
-        visible: l.layout?.visibility !== 'none' && !l.paint?.['line-pattern'], filter: own && extra ? c => own(c) && extra(c) : own ?? extra, p,
+        visible: l.layout?.visibility !== 'none', filter: own && extra ? c => own(c) && extra(c) : own ?? extra, p,
     };
 }
 

@@ -133,19 +133,33 @@ void main() {
   v_persp = gl_Position.w / u_cam;
 }`, `
 uniform vec4 u_color; uniform vec4 u_clip; uniform float u_gap; uniform vec4 u_dash; uniform float u_dashScale; uniform float u_blur;
+uniform sampler2D u_img; uniform vec4 u_rect; uniform vec2 u_tex; uniform vec2 u_patSize;
 in vec4 v_color; in vec2 v_tile; in float v_d; in float v_hw; in float v_w; in float v_dist; in float v_persp; out vec4 o;
 void main() {
   ${FS_CLIP}
   vec4 c = v_color * u_color;
+  if (u_patSize.x != 0.0) c = vec4(1.0, 1.0, 1.0, c.a);
   float a = c.a * clamp((v_hw - abs(v_d)) / (v_persp * (1.0 + u_blur)), 0.0, 1.0); // line-blur widens the soft edge
   if (u_gap > 0.0) a *= clamp((abs(v_d) - u_gap * 0.5 + 0.5) / v_persp, 0.0, 1.0);
   float period = u_dash.x + u_dash.y + u_dash.z + u_dash.w;
-  if (period > 0.0) {
+  if (period > 0.0 && u_patSize.x <= 0.0) { // a pattern replaces the dashes
     // Dash lengths are in multiples of the line width; antialias each dash end over about a pixel.
     float w = max(v_w, 0.5), t = mod(v_dist * u_dashScale / w, period);
     float second = u_dash.x + u_dash.y;
     float inDash = t < second ? min(t, u_dash.x - t) : min(t - second, second + u_dash.z - t);
     a *= clamp(inDash * w + 0.5, 0.0, 1.0);
+  }
+  if (u_patSize.x > 0.0) {
+    // line-pattern: the image repeats along the line, scaled so that its height is the line width.
+    float w = max(v_w, 0.5);
+    vec2 p = vec2(fract(v_dist * u_dashScale * u_patSize.y / (u_patSize.x * w)), clamp(v_d / w + 0.5, 0.0, 1.0));
+    o = texture(u_img, (u_rect.xy + clamp(p * u_rect.zw, vec2(0.5), u_rect.zw - 0.5)) / u_tex) * a;
+    return;
+  }
+  if (u_patSize.x < 0.0) {
+    // line-gradient: the colour comes from a ramp, by the place along the whole line (see tessellateLine).
+    o = texture(u_img, vec2((v_color.r * 65280.0 + v_color.g * 255.0) / 65535.0, 0.5)) * a;
+    return;
   }
   o = vec4(c.rgb * a, a);
 }`],
@@ -776,6 +790,24 @@ export class GLRenderer {
                         gl.uniform1f(u.u_offset, L.p.offset.dd ? 0 : L.p.offset.eval(zoom));
                         gl.uniform1f(u.u_blur, L.p.blur.dd ? 0 : L.p.blur.eval(zoom));
                         gl.uniform4f(u.u_dash, dash?.[0] ?? 0, dash?.[1] ?? 0, dash?.[2] ?? 0, dash?.[3] ?? 0);
+                        const name = L.p.pattern.dd ? '' : L.p.pattern.eval(zoom), img = name ? s.icon?.(name) : undefined;
+                        gl.uniform2f(u.u_patSize, L.ramp ? -1 : img ? img.width / img.pixelRatio : 0, img ? img.height / img.pixelRatio : 1);
+                        if (L.ramp) {
+                            gl.activeTexture(gl.TEXTURE0);
+                            gl.bindTexture(gl.TEXTURE_2D, this.rampTexture(L.ramp));
+                            gl.uniform1i(u.u_img, 0);
+                            gl.uniform4f(u.u_color, 1, 1, 1, L.p.opacity.dd ? 1 : L.p.opacity.eval(zoom));
+                        }
+                        // Draw nothing while the image is not available. A pattern for each feature is not available at all.
+                        if (L.p.pattern.dd || (name && !img)) { first = true; break; }
+                        if (img) {
+                            gl.activeTexture(gl.TEXTURE0);
+                            gl.bindTexture(gl.TEXTURE_2D, img.custom ? this.spriteTex : this.iconTex);
+                            gl.uniform1i(u.u_img, 0);
+                            gl.uniform2f(u.u_tex, img.custom ? SPRITE_ATLAS : this.iconSize[0], img.custom ? SPRITE_ATLAS : this.iconSize[1]);
+                            gl.uniform4f(u.u_rect, img.x, img.y, img.width, img.height);
+                            gl.uniform4f(u.u_color, 1, 1, 1, L.p.opacity.dd ? 1 : L.p.opacity.eval(zoom));
+                        }
                     }
                     if (b.type === 'circle') {
                         const sc = L.p.strokeColor.eval(zoom), a = sc[3] * (L.p.strokeOpacity.dd ? 1 : L.p.strokeOpacity.eval(zoom));
@@ -905,6 +937,18 @@ export class GLRenderer {
 
     private heatTarget?: {fb: WebGLFramebuffer; tex: WebGLTexture; w: number; h: number};
     private ramps = new WeakMap<Uint8Array, WebGLTexture>();
+    /** The texture of a colour ramp (heatmap colours, line gradients), made on first use. */
+    private rampTexture(pixels: Uint8Array): WebGLTexture {
+        const gl = this.gl;
+        let ramp = this.ramps.get(pixels);
+        if (!ramp) {
+            ramp = this.newTexture();
+            gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 256, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+            this.ramps.set(pixels, ramp);
+        }
+        return ramp;
+    }
     private floatTargets?: boolean;
 
     private drawHeatmap(L: CompiledLayer, tr: Transform, items: RenderItem<GLTile>[], target: [number, number]) {
@@ -943,13 +987,7 @@ export class GLRenderer {
         gl.bindFramebuffer(gl.FRAMEBUFFER, back);
         gl.viewport(0, 0, target[0], target[1]);
         gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-        let ramp = this.ramps.get(L.ramp!);
-        if (!ramp) {
-            ramp = this.newTexture();
-            gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
-            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 256, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, L.ramp!);
-            this.ramps.set(L.ramp!, ramp);
-        }
+        const ramp = this.rampTexture(L.ramp!);
         u = this.use('heatColor', tr);
         gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, ramp);
         gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, t.tex);

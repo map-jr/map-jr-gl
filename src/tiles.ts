@@ -45,7 +45,9 @@ export class TileBuilder {
     /** GeoJSON tiles are addressed as geojson://source/z/x/y and built from memory, not fetched. */
     private slice(url: string) {
         const m = /^geojson:\/\/(.*)\/(\d+)\/(\d+)\/(\d+)$/.exec(url)!;
-        return sliceGeoJSON(this.geojson.get(m[1]) ?? [], +m[2], +m[3], +m[4]);
+        // A gradient along a line needs to know how far along the whole line each piece of it is.
+        const metrics = this.bySource.get(m[1])?.some(l => l.type === 'line' && l.ramp) ?? false;
+        return sliceGeoJSON(this.geojson.get(m[1]) ?? [], +m[2], +m[3], +m[4], metrics);
     }
     private fetchFn: typeof fetch;
     constructor(fetchFn: typeof fetch = fetch) { this.fetchFn = (...a) => fetchFn(...a); }
