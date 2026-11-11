@@ -779,15 +779,17 @@ export class GLRenderer {
                     gl.uniform4fv(u.u_accent, pre(p.accent.eval(zoom)));
                 }
                 // A map at rest, seen from above: the image moves by less than a pixel, so that its pixels are on the pixels of
-                // the screen (as in MapLibre GL JS). An image between the pixels is blurred. One move for all the tiles.
+                // the screen. An image between the pixels is blurred. The rule is that of MapLibre GL JS: the centre of the
+                // map goes to a whole pixel of the world (to a half pixel when the size of the map is odd).
                 let snap: number[] | undefined;
                 for (const it of items) {
                     if (!it.tile.tex) continue;
                     let m = it.matrix4;
                     if (pass === 'all' && L.type === 'raster' && !s.moving && !tr.pitch) {
-                        const w = m[15];
-                        snap ??= [m[12], m[13]].map((v, i) => { const n = target[i] / 2, at = (v / w + 1) * n; return (Math.round(at) - at) / n * w; });
-                        m = m.slice(); m[12] += snap[0]; m[13] += snap[1];
+                        const a = -tr.bearing * Math.PI / 180, cos = Math.cos(a), sin = Math.sin(a), xs = tr.width % 2 / 2, ys = tr.height % 2 / 2;
+                        snap ??= [mercX(tr.lng) * tr.worldSize + cos * xs + sin * ys, mercY(tr.lat) * tr.worldSize + cos * ys + sin * xs].map(v => (v -= Math.round(v)) > 0.5 ? v - 1 : v);
+                        const x = snap[0] / it.scale, y = snap[1] / it.scale;
+                        m = m.slice(); m[12] += m[0] * x + m[4] * y; m[13] += m[1] * x + m[5] * y;
                     }
                     gl.uniformMatrix4fv(u.u_matrix, false, m);
                     gl.uniform4fv(u.u_clip, it.clip);

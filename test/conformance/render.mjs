@@ -19,7 +19,7 @@ const server = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://x'), p = decodeURIComponent(url.pathname);
     const file = p.startsWith('/dist/') ? path.join(root, p) : p.startsWith('/fonts/') ? path.join(fontDir, p.slice(7)) : p.startsWith('/tests/') ? path.join(testsDir, p.slice(7)) : p === '/' ? null : path.join(assets, p);
     if (!file) { res.writeHead(200, {'content-type': 'text/html'}); return res.end('<body style="margin:0;background:#fff"><div id="map"></div>'); }
-    try { const body = readFileSync(file); res.writeHead(200, {'content-type': types[path.extname(file)] ?? 'application/octet-stream', 'access-control-allow-origin': '*'}); res.end(body); } catch { res.writeHead(404); res.end(); }
+    try { const body = readFileSync(file); res.writeHead(200, {'content-type': types[path.extname(file)] ?? 'application/octet-stream', 'access-control-allow-origin': '*'}); res.end(body); } catch { res.writeHead(p.includes('/sparse204/') ? 204 : 404, {'access-control-allow-origin': '*'}); res.end(); } // (204 for those tiles, as the test server of MapLibre answers)
 }).listen(0);
 const origin = `http://localhost:${server.address().port}`;
 

@@ -98,7 +98,7 @@ function sourceSignature(style: ResolvedStyle, name: string): [string, string] {
     return [source, json.includes('"global-state"') ? json + JSON.stringify(style.state ?? {}) : json];
 }
 
-interface TileState { state: 'loading' | 'ok' | 'error'; gl?: GLTile; /** The zoom that the tile was built for (see `buildZoom`). */ band?: number; /** A number that changes each time the state or the content of the tile changes. */ rev?: number; /** Elevation tiles shaping 3D terrain: the lowest and highest ground on the tile, in metres. */ range?: [number, number]; used: number; cancel(): void; /** Shown, but built from data that has since changed. */ stale?: boolean; rebuilding?: boolean }
+interface TileState { state: 'loading' | 'ok' | 'error'; gl?: GLTile; /** An image tile that the server does not have (404). */ missing?: boolean; /** The zoom that the tile was built for (see `buildZoom`). */ band?: number; /** A number that changes each time the state or the content of the tile changes. */ rev?: number; /** Elevation tiles shaping 3D terrain: the lowest and highest ground on the tile, in metres. */ range?: [number, number]; used: number; cancel(): void; /** Shown, but built from data that has since changed. */ stale?: boolean; rebuilding?: boolean }
 interface MarkerLayer {
     width: number; height: number; offset: [number, number]; collide: boolean; merc: Float64Array; variant: Uint32Array;
     minZoom: number; maxZoom: number; hideOverlaps: boolean;
@@ -399,7 +399,7 @@ export class Engine {
             }
             const list = renderItems(view, ideal, k => {
                 const key = source + '|' + k, t = this.tiles.get(key);
-                if (t?.state !== 'ok') return undefined;
+                if (t?.state !== 'ok' || t.missing) return undefined;
                 keys.push(key); // a stand-in tile of another level: it is in use too
                 return t.gl;
             });
@@ -900,7 +900,7 @@ export class Engine {
             if (src.type === 'raster-dem') {
                 const backend = this.backends[this.nextBackend++ % this.backends.length], req = this.nextReq++, encoding = src.encoding ?? 'mapbox';
                 t.cancel = () => backend.cancel(req);
-                load = backend.loadElevation({id: req, url, encoding}).then(dem => !dem ? {labels: {}, batches: {}} : this.paced(dem.pixels.length * 2, () => {
+                load = backend.loadElevation({id: req, url, encoding}).then(dem => !dem ? (t.missing = true, {labels: {}, batches: {}}) : this.paced(dem.pixels.length * 2, () => {
                     if (this.tiles.get(key) !== t) return {labels: {}, batches: {}};
                     if (this.style.terrain?.source === source) {
                         t.range = [dem.lo, dem.hi];
@@ -918,7 +918,7 @@ export class Engine {
                 // Image tiles need no parsing, so the engine fetches and decodes them itself.
                 const ac = new AbortController();
                 t.cancel = () => ac.abort();
-                load = fetchTile(url, this.fetchAs('Tile'), ac.signal).then(async bytes => {
+                load = fetchTile(url, this.fetchAs('Tile'), ac.signal, t).then(async bytes => {
                     if (!bytes) return {labels: {}, batches: {}};
                     const image = await createImageBitmap(new Blob([bytes as BlobPart]));
                     if (this.tiles.get(key) !== t) { image.close(); return {labels: {}, batches: {}}; }
@@ -1078,17 +1078,26 @@ export class Engine {
                 if (!t) this.request(source, id, key);
                 else this.refresh(source, id, key, t);
                 if (!t || t.state === 'loading') complete = false;
+                // The server does not have this image tile: the nearest tile above it that the server has is drawn in its
+                // place (as in MapLibre GL JS, at most 10 levels above). One level is requested at a time.
+                for (let m = t, z = id.z, x = id.x, y = id.y; m?.missing && z > src.minzoom && z > id.z - 10;) {
+                    const k = `${--z}/${x >>= 1}/${y >>= 1}`, pk = source + '|' + k;
+                    wanted.add(pk);
+                    m = this.tiles.get(pk);
+                    if (!m) { this.request(source, {z, x, y, w: id.w, key: k}, pk); complete = false; } else { m.used = frameNo; if (m.state === 'loading') complete = false; }
+                }
             }
             // Keep a coarse overview of the same area loaded as well. It costs a tile or two and means fast pans
             // and zoom-outs land on blurry map rather than on nothing.
             const dz = Math.min(3, ideal.length ? ideal[0].z - src.minzoom : 0);
             if (dz > 0) {
                 for (const id of ideal) {
-                    const z = id.z - dz, k = `${z}/${id.x >> dz}/${id.y >> dz}`, key = source + '|' + k;
+                    // (A tilted view has tiles of more than one level: the overview of a coarse tile stops at the lowest level of the source.)
+                    const z = Math.max(src.minzoom, id.z - dz), x = id.x >> id.z - z, y = id.y >> id.z - z, k = `${z}/${x}/${y}`, key = source + '|' + k;
                     if (wanted.has(key)) continue;
                     wanted.add(key);
                     const t = this.tiles.get(key);
-                    const oid = {z, x: id.x >> dz, y: id.y >> dz, w: id.w, key: k};
+                    const oid = {z, x, y, w: id.w, key: k};
                     if (!t) this.request(source, oid, key);
                     else {
                         t.used = frameNo;
@@ -1099,7 +1108,7 @@ export class Engine {
             }
             const list = renderItems(tr, ideal, k => {
                 const t = this.tiles.get(source + '|' + k);
-                if (t?.state !== 'ok') return undefined;
+                if (t?.state !== 'ok' || t.missing) return undefined;
                 t.used = frameNo;
                 if (t.stale && !t.rebuilding) {
                     // A tile of another zoom level standing in for a missing one: bring its data up to date as well.
@@ -1195,7 +1204,10 @@ export class Engine {
         const unplaced = !!terrain && this.centreGiven && !this.demTile(mercX(tr.lng) - Math.floor(mercX(tr.lng)), mercY(tr.lat), 30);
         if (!unplaced) this.unplacedSince = 0; else if (!this.unplacedSince) this.unplacedSince = now;
         const hold = unplaced && now - this.unplacedSince < 3000;
-        const behind = hold || this.renderer.render({tr, layers: this.layers, items, labels, atlas: this.atlas, markers, icon: this.icon, light: this.style.light, moving: began - this.cameraMovedAt < 200,
+        // For a moment after the camera stops, a frame is drawn as for a map that moves. One more frame comes after it:
+        // the frame for the map at rest (sharp images). The map is not idle before that frame.
+        const settling = began - this.cameraMovedAt < 200;
+        const behind = hold || this.renderer.render({tr, layers: this.layers, items, labels, atlas: this.atlas, markers, icon: this.icon, light: this.style.light, moving: settling,
             // (Past the time limit and still unplaced: draw flat rather than raise terrain around a camera in the wrong place.)
             terrain: ground && !unplaced ? {exaggeration: this.exaggeration, tiles: ground, dem: this.demRef} : undefined});
 
@@ -1205,7 +1217,8 @@ export class Engine {
             this.emit({type: 'camera', lng: tr.lng, lat: tr.lat, zoom: tr.zoom, bearing: tr.bearing, pitch: tr.pitch, elevation: tr.elevation, exaggeration: this.exaggeration, groundRange: tr.groundRange, padding: tr.padding, moving: animating});
         }
         const busy = animating || markersAnimating || fading || this.placeDirty || behind || this.meshBehind;
-        const idle = complete && !busy && !this.spritePending && !this.contourWait;
+        const idle = complete && !busy && !settling && !this.spritePending && !this.contourWait;
+        if (settling && !busy) setTimeout(() => this.repaint(), 200);
         if (this.contourWait) { this.contourWait = false; setTimeout(() => this.repaint(), CONTOUR_WAIT + 20); }
         if (this.reportFrames) this.emit({type: 'frame'});
         if (idle && !this.wasIdle) this.emit({type: 'idle'});
