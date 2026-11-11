@@ -6,6 +6,9 @@
  * browser. Scripts that need contextual shaping or bidi reordering (Arabic, Hebrew, Indic, Thai, ...) are rasterised
  * a whole line at a time instead, letting the browser's own shaper do the work.
  */
+/** How far below the middle of a line the baseline is, in ems. The value puts text where MapLibre draws it. */
+export const BASELINE = 0.38;
+
 export const EM = 24;
 export const DEFAULT_FONT = '"Noto Sans", "Helvetica Neue", Arial, sans-serif';
 export const SDF_BUFFER = 4;

@@ -1,7 +1,7 @@
 import {type Mat, type Transform, type TileID, EXTENT} from './geo.ts';
 import type {CompiledLayer, SpriteIcon} from './style.ts';
 import {justification, type LabelSrc} from './tile.ts';
-import {EM, type Shaped, type Shaper} from './text.ts';
+import {BASELINE, EM, type Shaped, type Shaper} from './text.ts';
 import {CollisionGrid} from './collision.ts';
 
 /** One tile (or part of one) scheduled for drawing this frame. */
@@ -251,7 +251,7 @@ function followLine(
     for (let i = 1; i < n; i++) cum.push(cum[i - 1] + Math.hypot(xs[i] - xs[i - 1], ys[i] - ys[i - 1]));
     const start = cum[anchorIndex] - w / 2;
     if (start < 0 || start + w > cum[n - 1]) return null; // not enough line for the text at this zoom
-    const spacing = l.spacing * EM * s, shift = (l.offset[1] + 0.34) * EM * s; // drop the baseline so the text is centred on the line
+    const spacing = l.spacing * EM * s, shift = (l.offset[1] + BASELINE) * EM * s; // drop the baseline so the text is centred on the line
     const curve: number[] = [], boxes: Box[] = [];
     let seg = 1, pen = start, last = NaN;
     for (const advance of line.advances) {

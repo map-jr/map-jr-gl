@@ -2,7 +2,7 @@ import {EXTENT, latFromMerc, mercX, mercY, type TileID, type Transform} from './
 import type {CompiledLayer} from './style.ts';
 import {LINE_VERTEX, type GLBatch, type LabelSrc, type TileGL} from './tile.ts';
 import type {Placed, RenderItem} from './placement.ts';
-import {EM, SDF_BUFFER, SDF_RADIUS, type GlyphAtlas} from './text.ts';
+import {BASELINE, EM, SDF_BUFFER, SDF_RADIUS, type GlyphAtlas} from './text.ts';
 
 const HEAD = '#version 300 es\nprecision highp float;\n';
 /** Shared by the map-space programs: u_matrix takes tile units (and metres of height) to clip space. */
@@ -1295,7 +1295,7 @@ export class GLRenderer {
             shaped.lines.forEach((line, i) => {
                 const justify = l.justify ?? src.justify;
                 let pen = justify < 0 ? -shaped.width / 2 : justify > 0 ? shaped.width / 2 - line.width : -line.width / 2;
-                const baseline = -shaped.height / 2 + i * shaped.lineHeight + shaped.lineHeight * 0.5 + EM * 0.34;
+                const baseline = -shaped.height / 2 + i * shaped.lineHeight + shaped.lineHeight * 0.5 + EM * BASELINE;
                 for (const g of line.glyphs!) {
                     if (g.w) {
                         const x0 = (pen + g.left - B) * s, y0 = (baseline - g.top - B) * s, x1 = x0 + g.w * s, y1 = y0 + g.h * s;
