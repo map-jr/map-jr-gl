@@ -245,9 +245,10 @@ export class Map {
         this.rawStyle = change?.(undefined, this.rawStyle) ?? this.rawStyle;
         for (const fn of this.beforeStyle.splice(0)) fn();
         this.styleBase = typeof o.style === 'string' ? new URL(o.style, location.href).href : location.href;
-        // As in MapLibre, a style may carry its own starting camera; explicit options win.
+        // As in MapLibre, a style may carry its own starting camera. It is used only when the options give no part of
+        // the camera: with a zoom in the options and no centre, the centre is [0, 0], not that of the style.
         const sc = this.rawStyle;
-        this.tr.set(o.center === undefined ? sc.center : undefined, o.zoom === undefined ? sc.zoom : undefined, o.bearing === undefined ? sc.bearing : undefined, o.pitch === undefined ? sc.pitch : undefined);
+        if (o.center === undefined && o.zoom === undefined && o.bearing === undefined && o.pitch === undefined) this.tr.set(sc.center, sc.zoom, sc.bearing, sc.pitch);
         this.resolved = await resolveStyle(this.rawStyle, fetch, this.styleBase);
         if (this.resolved.unsupported.length) console.warn('[map-jr-gl] Skipping unsupported layer types: ' + this.resolved.unsupported.join(', '));
         const tr = this.tr;
