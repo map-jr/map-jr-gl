@@ -76,7 +76,7 @@ Properties:
 - `circle-pitch-alignment` and `circle-pitch-scale`
 - Circle stroke and blur that are different for each feature
 - Icon halos
-- `text-writing-mode`, `text-pitch-alignment`, `text-variable-anchor-offset`, `text-max-angle`
+- `text-writing-mode`, `text-pitch-alignment`, `text-max-angle`
 - `symbol-z-order` and `symbol-avoid-edges`
 - More than one font, size or colour in one `format` text. Images in `format` text are available.
 

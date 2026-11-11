@@ -53,6 +53,10 @@ export interface LabelSrc {
     /** Text stays upright instead of following the line it is placed on (e.g. road shields). */
     upright: boolean;
     textOptional: boolean; ignore: boolean; varAnchor: string[] | null; radial: number;
+    /** `text-variable-anchor-offset`: anchors to try in turn, each with its own offset in ems. */
+    varOffset: (string | [number, number])[] | null;
+    /** `text-justify: auto`: lines align towards whichever anchor the label ends up with. */
+    justifyAuto: boolean;
     icon?: {
         name: string; size: number; /** Size at the next zoom level, to interpolate towards. */ size1: number; offset: [number, number]; rotate: number; fit: string; fitPad: [number, number, number, number];
         opacity: number; anchor: string; color: RGBA; ignore: boolean; padding: number; translate: [number, number];
@@ -131,7 +135,7 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
                     maxWidth: p.maxWidth.eval(z, f), spacing: p.spacing.eval(z, f), offset: p.offset.eval(z, f), anchor: p.anchor.eval(z, f),
                     padding: p.padding.eval(z, f), overlap: overlaps(p.overlapMode.eval(z, f), p.overlap.eval(z, f)), lineHeight: p.lineHeight.eval(z, f), translate: p.translate.eval(z, f),
                     upright: p.textAlign.eval(z, f) === 'viewport', textOptional: !!p.textOptional.eval(z, f), ignore: !!p.ignore.eval(z, f),
-                    varAnchor: p.varAnchor.eval(z, f), radial: p.radial.eval(z, f),
+                    varAnchor: p.varAnchor.eval(z, f), radial: p.radial.eval(z, f), varOffset: p.varOffset.eval(z, f), justifyAuto: p.justify.eval(z, f) === 'auto',
                     icon: iconName ? {
                         name: iconName, size: p.iconSize.eval(z, f), size1: p.iconSize.eval(z + 1, f), opacity: p.iconOpacity.eval(z, f), anchor: p.iconAnchor.eval(z, f), color: p.iconColor.eval(z, f), offset: p.iconOffset.eval(z, f), rotate: p.iconRotate.eval(z, f),
                         fit: p.iconFit.eval(z, f), fitPad: p.iconFitPad.eval(z, f), overlap: overlaps(p.iconOverlapMode.eval(z, f), p.iconOverlap.eval(z, f)), ignore: !!p.iconIgnore.eval(z, f), padding: p.iconPadding.eval(z, f), translate: p.iconTranslate.eval(z, f),
@@ -295,7 +299,7 @@ export function unpackLabels(packed: PackedLabels): Record<string, LabelSrc[]> {
 const overlaps = (mode: string, allow: unknown) => mode ? mode !== 'never' : !!allow;
 
 /** `text-justify` as a number; `auto` follows the side the text is anchored on. */
-function justification(justify: string, anchor: string): number {
+export function justification(justify: string, anchor: string): number {
     const side = justify === 'auto' ? anchor : justify;
     return side.includes('left') ? -1 : side.includes('right') ? 1 : 0;
 }

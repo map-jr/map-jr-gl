@@ -190,7 +190,7 @@ export function renderSVG(s: SVGScene): string {
             const rot = l.angle ? ` transform="rotate(${num(l.angle * 180 / Math.PI)} ${num(l.x)} ${num(l.y)})"` : '';
             shaped.lines.forEach((line, i) => {
                 const y = l.y + (-shaped.height / 2 + i * shaped.lineHeight + shaped.lineHeight * 0.5 + EM * 0.34) * k;
-                const x = l.x + src.justify * (line.width - shaped.width) / 2 * k;
+                const x = l.x + (l.justify ?? src.justify) * (line.width - shaped.width) / 2 * k;
                 body.push(`<text x="${num(x)}" y="${num(y)}"${rot} ${common}>${escapeXML(line.text.replace(/[\uE000-\uF8FF]/g, ''))}</text>`); // images inside text are not drawn in SVG output
             });
         }

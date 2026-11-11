@@ -1,6 +1,6 @@
 import {type Mat, type Transform, type TileID, EXTENT} from './geo.ts';
 import type {CompiledLayer, SpriteIcon} from './style.ts';
-import type {LabelSrc} from './tile.ts';
+import {justification, type LabelSrc} from './tile.ts';
 import {EM, type Shaped, type Shaper} from './text.ts';
 import {CollisionGrid} from './collision.ts';
 
@@ -37,6 +37,8 @@ export interface Placed {
     /** Centre of the text block in screen pixels. */
     x: number; y: number;
     angle: number; size: number; shaped: Shaped | null; src: LabelSrc; icon?: PlacedIcon;
+    /** Line alignment chosen at placement (`text-justify: auto` with a list of anchors); otherwise the label's own. */
+    justify?: number;
     /** Text following a line: for each glyph, where its baseline starts relative to the label's anchor, and its rotation (x, y, angle triples). */
     curve?: number[];
     /** Identity that survives between placements (and between a tile and its parent), for fading. */
@@ -76,16 +78,22 @@ function boxAround(x: number, y: number, w: number, h: number, angle: number, pa
  * Chooses which labels and icons to show. Layers later in the style win, matching MapLibre's priority order.
  * Runs fully from scratch each call; it is cheap enough for the label counts of a single viewport.
  */
+/** The distance on each axis for a radial offset: a corner anchor shares it between both. */
+const rx_ = (anchor: string, r: number) => anchor.includes('-') ? r / Math.SQRT2 : r;
+
 export function placeLabels(
     tr: Transform, items: RenderItem<{labels: Record<string, LabelSrc[]>}>[], layers: CompiledLayer[], shaper: Shaper, grid: CollisionGrid,
     icons?: IconLookup,
 ): Placed[] {
     const out: Placed[] = [], seen = new Map<string, number[]>();
+    let itemNo = 0;
+    const keys = new Map<string, number>();
     const margin = 100;
     for (let li = layers.length - 1; li >= 0; li--) {
         const L = layers[li];
         if (L.type !== 'symbol' || !L.visible || tr.zoom < L.minzoom || tr.zoom >= L.maxzoom) continue;
         for (const it of items) {
+            itemNo++;
             const labels = it.tile.labels?.[L.id];
             if (!labels) continue;
             const t = Math.min(1, Math.max(0, tr.zoom - it.id.z));
@@ -106,6 +114,7 @@ export function placeLabels(
 
                 // Where the text could go: along the line, at one of several anchors, or at its fixed anchor.
                 let textAngle = 0, candidates: [number, number][] = [];
+                const anchors: string[] = [];
                 if (hasText) {
                     const shift = (anchor: string, r: number): [number, number] => [
                         anchor.includes('left') ? w / 2 + r : anchor.includes('right') ? -w / 2 - r : 0,
@@ -115,10 +124,10 @@ export function placeLabels(
                         const curved = followLine(tr, it, l, shaped!.lines[0], s, ax, ay, w, h, grid);
                         if (!curved) continue;
                         const prev = seen.get(l.text);
-                        if (prev) { let dup = false; for (let i = 0; i < prev.length && !dup; i += 2) dup = Math.hypot(prev[i] - ax, prev[i + 1] - ay) < 300; if (dup) continue; }
+                        if (prev) { let dup = false; for (let i = 0; i < prev.length && !dup; i += 3) dup = Math.hypot(prev[i] - ax, prev[i + 1] - ay) < 300; if (dup) continue; }
                         if (!l.overlap && curved.boxes.some(b => grid.hits(...b))) continue;
                         if (!l.ignore) for (const b of curved.boxes) grid.insert(...b);
-                        if (prev) prev.push(ax, ay); else seen.set(l.text, [ax, ay]);
+                        if (prev) prev.push(ax, ay, itemNo); else seen.set(l.text, [ax, ay, itemNo]);
                         const n = 2 ** it.id.z, q = 2 ** 22;
                         const key = `${L.id}|${l.text}||${Math.round((it.id.x + l.x / EXTENT) / n * q)},${Math.round((it.id.y + l.y / EXTENT) / n * q)},${it.id.w}`;
                         out.push({x: ax, y: ay, angle: 0, size, shaped, src: l, curve: curved.curve, key, tile: it.id, ax, ay, opacity: 1});
@@ -130,7 +139,23 @@ export function placeLabels(
                         if (textAngle > Math.PI / 2) textAngle -= Math.PI; else if (textAngle <= -Math.PI / 2) textAngle += Math.PI;
                         const oy = l.offset[1] * size;
                         candidates = [[-Math.sin(textAngle) * oy, Math.cos(textAngle) * oy]];
-                    } else if (l.varAnchor?.length && !line) candidates = l.varAnchor.map(a => shift(a, l.radial * size));
+                    } else if (!line && (l.varOffset?.length || l.varAnchor?.length)) {
+                        // Several anchors to try in order. Each has its own offset: given with the anchor, pushed out
+                        // from the point by the radial offset, or `text-offset` turned to point away from the anchor.
+                        const side = (a: string, r: number): [number, number] => [
+                            a.includes('left') ? r : a.includes('right') ? -r : 0, a.includes('top') ? r : a.includes('bottom') ? -r : 0];
+                        // MapLibre moves text at a top or bottom anchor towards the point, to allow for the space above the letters.
+                        const add = (a: string, ox: number, oy: number) => {
+                            const [sx, sy] = shift(a, 0), near = a.includes('top') ? -0.15 : a.includes('bottom') ? 0.15 : 0;
+                            anchors.push(a); candidates.push([sx + ox * size, sy + (oy + near) * size]);
+                        };
+                        if (l.varOffset?.length) {
+                            for (let i = 0; i + 1 < l.varOffset.length; i += 2) { const o = l.varOffset[i + 1] as [number, number]; add(l.varOffset[i] as string, o[0], o[1]); }
+                        } else for (const a of l.varAnchor!) {
+                            if (l.radial) { const [rx, ry] = side(a, rx_(a, l.radial)); add(a, rx, ry); }
+                            else add(a, side(a, Math.abs(l.offset[0]))[0], side(a, Math.abs(l.offset[1]))[1]);
+                        }
+                    }
                     else {
                         const [sx, sy] = line ? [0, 0] : shift(l.anchor, 0);
                         candidates = [[l.offset[0] * size + sx, l.offset[1] * size + sy]];
@@ -145,13 +170,19 @@ export function placeLabels(
                     // The same name often arrives from several tiles or road segments: keep them apart.
                     const prev = seen.get(l.text), minDist = line ? 300 : 1;
                     let dup = false;
-                    if (prev) for (let i = 0; i < prev.length && !dup; i += 2) dup = Math.hypot(prev[i] - ax, prev[i + 1] - ay) < minDist;
+                    // Point labels from one tile are separate features, also when they have the same position.
+                    if (prev) for (let i = 0; i < prev.length && !dup; i += 3) dup = (line || prev[i + 2] !== itemNo) && Math.hypot(prev[i] - ax, prev[i + 1] - ay) < minDist;
                     if (dup) continue;
                 }
                 let textBox: Box | null = null, tx = ax, ty = ay;
-                for (const [dx, dy] of candidates) {
-                    const box = boxAround(ax + dx, ay + dy, w, h, textAngle, l.padding);
-                    if (l.overlap || !grid.hits(...box)) { textBox = box; tx = ax + dx; ty = ay + dy; break; }
+                let justify: number | undefined;
+                for (let i = 0; i < candidates.length; i++) {
+                    const [dx, dy] = candidates[i], box = boxAround(ax + dx, ay + dy, w, h, textAngle, l.padding);
+                    if (l.overlap || !grid.hits(...box)) {
+                        textBox = box; tx = ax + dx; ty = ay + dy;
+                        if (l.justifyAuto && anchors[i]) justify = justification('auto', anchors[i]);
+                        break;
+                    }
                 }
                 if (hasText && !textBox && !(meta && l.textOptional)) continue;
 
@@ -189,11 +220,14 @@ export function placeLabels(
                 if (iconBox && !l.icon!.ignore) grid.insert(...iconBox);
                 if (textBox) {
                     const prev = seen.get(l.text);
-                    if (prev) prev.push(ax, ay); else seen.set(l.text, [ax, ay]);
+                    if (prev) prev.push(ax, ay, itemNo); else seen.set(l.text, [ax, ay, itemNo]);
                 }
                 const n = 2 ** it.id.z, q = 2 ** 22;
                 const key = `${L.id}|${l.text}|${l.icon?.name ?? ''}|${Math.round((it.id.x + l.x / EXTENT) / n * q)},${Math.round((it.id.y + l.y / EXTENT) / n * q)},${it.id.w}`;
-                out.push({x: tx, y: ty, angle: textAngle, size, shaped: textBox ? shaped : null, src: l, icon, key, tile: it.id, ax, ay, opacity: 1});
+                // Features with the same text at the same position keep separate keys, in their order in the tile.
+                const same = keys.get(key) ?? 0;
+                keys.set(key, same + 1);
+                out.push({x: tx, y: ty, angle: textAngle, size, shaped: textBox ? shaped : null, src: l, icon, key: same ? key + '#' + same : key, tile: it.id, ax, ay, opacity: 1, justify});
             }
         }
     }

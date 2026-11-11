@@ -1196,7 +1196,8 @@ export class GLRenderer {
             const k = l.size / EM, cos = Math.cos(l.angle), sin = Math.sin(l.angle);
             shaped.lines.forEach((line, row) => {
                 if (!line.glyphs?.some(g => g.image)) return;
-                let pen = l.src.justify < 0 ? -shaped.width / 2 : l.src.justify > 0 ? shaped.width / 2 - line.width : -line.width / 2;
+                const justify = l.justify ?? l.src.justify;
+                let pen = justify < 0 ? -shaped.width / 2 : justify > 0 ? shaped.width / 2 - line.width : -line.width / 2;
                 const mid = -shaped.height / 2 + (row + 0.5) * shaped.lineHeight;
                 for (const g of line.glyphs) {
                     const img = g.image ? lookup(g.image) : undefined;
@@ -1254,7 +1255,8 @@ export class GLRenderer {
                 continue;
             }
             shaped.lines.forEach((line, i) => {
-                let pen = src.justify < 0 ? -shaped.width / 2 : src.justify > 0 ? shaped.width / 2 - line.width : -line.width / 2;
+                const justify = l.justify ?? src.justify;
+                let pen = justify < 0 ? -shaped.width / 2 : justify > 0 ? shaped.width / 2 - line.width : -line.width / 2;
                 const baseline = -shaped.height / 2 + i * shaped.lineHeight + shaped.lineHeight * 0.5 + EM * 0.34;
                 for (const g of line.glyphs!) {
                     if (g.w) {
