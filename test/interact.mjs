@@ -39,6 +39,14 @@ for (const mode of ['main', 'worker']) {
     const after = await page.evaluate(() => window.map.getCenter());
     check(`[${mode}] drag pans east and south`, after.lng > before.lng && after.lat < before.lat, `Δlng=${(after.lng - before.lng).toFixed(5)} Δlat=${(after.lat - before.lat).toFixed(5)}`);
 
+    // A drag that ends with a very small movement gives a glide that is over in less than one frame. The map must
+    // still report the end of the movement.
+    await page.mouse.move(500, 350); await page.mouse.down(); await page.mouse.move(470, 340, {steps: 4}); await page.waitForTimeout(120);
+    await page.mouse.move(471, 340); await page.mouse.up();
+    const ended = await page.waitForFunction(() => !window.map.isMoving(), null, {timeout: 4000}).then(() => true, () => false);
+    check(`[${mode}] a drag with a very short glide ends (isMoving is false again)`, ended);
+    await settle(page);
+
     // Wheel zoom keeps the location under the cursor fixed.
     const anchor = await page.evaluate(() => window.map.unproject({x: 700, y: 200}));
     // (What the browser reports for the wheel is kept: browsers differ here, and a failure then explains itself.)

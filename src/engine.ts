@@ -610,8 +610,9 @@ export class Engine {
             case 'fling': {
                 // Inertia: carry on at a fraction of the release speed and decelerate steadily.
                 const dist = Math.hypot(c.dx, c.dy), linearity = 0.3;
-                if (!dist || c.ms <= 0) break;
-                const speed = Math.min(1400, dist * linearity / (c.ms / 1000)), seconds = speed / (2500 * linearity), amount = speed * seconds / 2;
+                if (!dist) break;
+                // (Two pointer events can have the same time where the clock of the browser is coarse.)
+                const speed = Math.min(1400, dist * linearity / (Math.max(c.ms, 1) / 1000)), seconds = speed / (2500 * linearity), amount = speed * seconds / 2;
                 this.grab = null;
                 this.fling = {dx: c.dx / dist * amount, dy: c.dy / dist * amount, start: performance.now(), duration: seconds * 1000, done: 0};
                 break;
@@ -830,13 +831,16 @@ export class Engine {
                 if (done) w.doneAt = now;
             }
         }
-        if (this.fling) {
-            const f = this.fling, t = Math.min(1, (now - f.start) / f.duration), k = inertiaEasing(t);
+        // A glide after a drag counts as movement in each frame that it is applied in, also the frame that ends it. (A
+        // short glide can start and end in one frame. The page waits to see the glide before it reports `moveend`.)
+        const glide = this.fling;
+        if (glide) {
+            const f = glide, t = Math.min(1, (now - f.start) / f.duration), k = inertiaEasing(t);
             tr.set(tr.unprojectFlat(tr.cx - f.dx * (k - f.done), tr.cy - f.dy * (k - f.done)));
             f.done = k;
             if (t >= 1) this.fling = null;
         }
-        return !!(this.ease || (this.wheel && this.wheel.doneAt === undefined) || this.fling);
+        return !!(this.ease || (this.wheel && this.wheel.doneAt === undefined) || glide);
     }
 
     private dropTile(key: string, t: TileState) {
