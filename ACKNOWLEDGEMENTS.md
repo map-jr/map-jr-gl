@@ -35,8 +35,6 @@ These are not part of the built library.
 - [Vite](https://vite.dev/), [esbuild](https://esbuild.github.io/), [TypeScript](https://www.typescriptlang.org/)
   and [Playwright](https://playwright.dev/): build and tests.
 - [Takumi](https://github.com/kane50613/takumi): images from the server renderer.
-- [OSM Americana shield generator](https://github.com/osm-americana/openstreetmap-americana): highway shields in the
-  gallery.
 - [OpenFreeMap](https://openfreemap.org/), [OpenMapTiles](https://openmaptiles.org/) and
   [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors: the styles and map data of the examples.
 - [Mapterhorn](https://mapterhorn.com/): the elevation tiles of the examples.

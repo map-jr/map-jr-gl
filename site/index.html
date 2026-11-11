@@ -22,9 +22,9 @@
   .map { min-height: 400px; position: relative; background: #e9e6df; }
   .map > .live, .map > img { position: absolute; inset: 0; width: 100%; height: 100%; }
   .map > img { object-fit: cover; }
-  .pair { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1.3fr 1fr; gap: 1px; background: var(--line); min-height: 460px; }
-  .pair > * { position: relative; overflow: hidden; background: #e9e6df; min-height: 200px; }
-  .pair > .wide { grid-column: 1 / 3; min-height: 260px; }
+  /* The live map and the server image, one above the other and of the same size: they show the same area. */
+  .pair { display: grid; grid-template-rows: 1fr 1fr; gap: 1px; background: var(--line); min-height: 520px; }
+  .pair > * { position: relative; overflow: hidden; background: #e9e6df; min-height: 250px; }
   .pair .live { position: absolute; inset: 0; }
   /* The server images keep their size (800 by 520), so that their scale is the scale of the live map. A pane shows the middle part. */
   .pair img { position: absolute; left: 50%; top: 50%; width: 800px; height: 520px; max-width: none; transform: translate(-50%, -50%); }
@@ -34,6 +34,11 @@
   .text p { margin: 0 0 6px; color: var(--muted); font-size: 14px; }
   .text ul { margin: 0 0 8px; padding-left: 18px; color: var(--muted); font-size: 14px; }
   pre { margin: 8px 0 0; padding: 12px 14px; background: var(--code); border-radius: 8px; overflow: auto; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; tab-size: 2; flex: 1; }
+  .legend { position: absolute; left: 8px; top: 8px; z-index: 4; background: rgba(255, 255, 255, .92); color: #222; font-size: 12px; line-height: 1.5; padding: 7px 10px; border-radius: 8px; box-shadow: 0 1px 4px #0003; display: flex; flex-direction: column; pointer-events: none; max-width: 70%; }
+  .legend i { display: inline-block; width: 22px; margin-right: 7px; vertical-align: middle; }
+  .legend small { color: #666; }
+  .found { font-size: 12px; line-height: 1.5; color: #222; }
+  .actions button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
   .readout { margin-top: 10px; font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; min-height: 1.4em; overflow-wrap: anywhere; }
   .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
   .actions button { font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); cursor: pointer; }

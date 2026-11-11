@@ -248,7 +248,7 @@ map.setMissingStyleImageResolver(name => {
 });
 ```
 
-The OSM Americana shield library works with this library without changes. The gallery shows it.
+The OSM Americana shield library works with this library without changes.
 
 A label can contain images (`format` with `image`). So a road with two routes shows two shields side by side.
 
