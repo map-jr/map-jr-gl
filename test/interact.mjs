@@ -297,8 +297,12 @@ for (const mode of ['main', 'worker']) {
     const from = {x: 640, y: 420}, held = await page.evaluate(q => window.map.unproject(q), from);
     await page.mouse.move(from.x, from.y); await page.mouse.down();
     for (let i = 1; i <= 12; i++) { await page.mouse.move(from.x - i * 10, from.y - i * 5); await page.waitForTimeout(25); }
-    await page.waitForTimeout(350);
-    const during = await page.evaluate(q => window.map.project([q.lng, q.lat]), held);
+    // The worker may still be applying the last moves (software rendering is slow): wait until the position stops changing.
+    const during = await page.evaluate(async q => {
+        let at = window.map.project([q.lng, q.lat]);
+        for (let i = 0; i < 30; i++) { await new Promise(r => setTimeout(r, 150)); const now = window.map.project([q.lng, q.lat]); if (Math.hypot(now.x - at.x, now.y - at.y) < 0.01) break; at = now; }
+        return at;
+    }, held);
     await page.mouse.up();
     await page.waitForTimeout(1500);
     const peakAt = () => page.evaluate(() => window.map.project([7.6586, 45.9763]));

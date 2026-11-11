@@ -1,6 +1,6 @@
 import {compileLayer, type CompiledLayer, type LayerJSON} from './style.ts';
 import {setFeatureStates, setGlobalState} from './expr.ts';
-import {buildTile, toGL, type TileGL, type TileIR} from './tile.ts';
+import {buildTile, packLabels, toGL, unpackLabels, type TileGL, type TileIR} from './tile.ts';
 import {queryTile, type QueriedFeature, type TileQuery} from './query.ts';
 import {fetchTile} from './pmtiles.ts';
 import {GEOJSON_PREFIX, prepareGeoJSON, sliceGeoJSON} from './geojson.ts';
@@ -133,7 +133,9 @@ export class PortBackend implements TileBackend {
             const p = this.pending.get(e.data.id);
             if (!p) return;
             this.pending.delete(e.data.id);
-            if (e.data.error) p.reject(new Error(e.data.error)); else p.resolve(e.data.tile ?? e.data.result);
+            if (e.data.error) p.reject(new Error(e.data.error));
+            else if (e.data.tile) p.resolve({layers: e.data.tile.layers, labels: unpackLabels(e.data.tile.labels)});
+            else p.resolve(e.data.result);
         };
     }
     setStyle(layers: LayerJSON[], state?: Record<string, unknown>) { this.port.postMessage({type: 'style', layers, state}); }
@@ -172,7 +174,7 @@ export function serveTiles(port: Port) {
         } else if (m.type === 'load') {
             try {
                 const {tile, transfer} = toGL(await builder.loadIR(m.req));
-                port.postMessage({id: m.req.id, tile}, transfer);
+                port.postMessage({id: m.req.id, tile: {layers: tile.layers, labels: packLabels(tile.labels)}}, transfer);
             } catch (err) {
                 port.postMessage({id: m.req.id, error: (err as Error).name === 'AbortError' ? 'aborted' : String((err as Error).message)});
             }

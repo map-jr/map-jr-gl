@@ -146,7 +146,9 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
                     const window = along && text && !base.upright ? text.length * Math.max(base.size0, base.size1) * 0.7 * 8 * 0.6 + 200 : 0;
                     for (const a of anchors(g.coords, start, end, f.type, along, spacing, !!text, window)) {
                         if (a[0] < 0 || a[0] >= EXTENT || a[1] < 0 || a[1] >= EXTENT) continue;
-                        const label: LabelSrc = {...base, x: a[0], y: a[1], angle: along ? a[2] : null, len: a[3]};
+                        // Everything a feature's labels have in common lives on a shared object behind each label, so a
+                        // road with twenty anchors does not carry twenty copies of its text, colours and fonts.
+                        const label: LabelSrc = Object.assign(Object.create(base), {x: a[0], y: a[1], angle: along ? a[2] : null, len: a[3]});
                         if (a.length > 4) { label.pathIndex = a[4]; label.path = a.slice(5); }
                         labels.push(label);
                         if (sorted) keys.push(p.sortKey.eval(z, f));
@@ -264,6 +266,29 @@ function ringArea(c: Int16Array, start: number, end: number) {
     let a = 0;
     for (let i = start, j = end - 1; i < end; j = i++) a += (c[j * 2] - c[i * 2]) * (c[i * 2 + 1] + c[j * 2 + 1]);
     return a;
+}
+
+/** Labels as sent between threads: the shared part of each feature's labels once, then each label's own values. */
+export type PackedLabels = Record<string, {shared: object[]; own: [number, object][]}>;
+/** Prepares labels for posting to another thread (which copies only an object's own values, not what is behind it). */
+export function packLabels(labels: Record<string, LabelSrc[]>): PackedLabels {
+    const out: PackedLabels = {};
+    for (const id in labels) {
+        const shared: object[] = [], index = new Map<object, number>();
+        out[id] = {shared, own: labels[id].map(l => {
+            const behind = Object.getPrototypeOf(l);
+            if (behind === Object.prototype) return [-1, l];
+            let i = index.get(behind);
+            if (i === undefined) index.set(behind, i = shared.push(behind) - 1);
+            return [i, {...l}];
+        })};
+    }
+    return out;
+}
+export function unpackLabels(packed: PackedLabels): Record<string, LabelSrc[]> {
+    const out: Record<string, LabelSrc[]> = {};
+    for (const id in packed) out[id] = packed[id].own.map(([i, own]) => (i < 0 ? own : Object.assign(Object.create(packed[id].shared[i]), own)) as LabelSrc);
+    return out;
 }
 
 /** `text-overlap` / `icon-overlap` ('never', 'always', 'cooperative') take precedence over the older allow-overlap flags. */
