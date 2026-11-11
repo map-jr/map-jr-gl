@@ -293,7 +293,43 @@ export class Map {
         this.observer = new ResizeObserver(() => this.resize());
         this.observer.observe(this.container);
         if (o.interactive !== false) this.bindInput();
-        if (o.attributionControl !== false) this.addControl(new AttributionControl(o.attributionControl || {}));
+        if (o.attributionControl !== false && !this.restarted) this.addControl(new AttributionControl(o.attributionControl || {}));
+    }
+
+    private restarted = false;
+    private restarting = false;
+    /** What addImage was given, by name: a restart sends the images again. */
+    private imageInputs = new globalThis.Map<string, [Parameters<Map['addImage']>[1], ImageOptions]>();
+    /**
+     * Starts the engine again on a new canvas, with the camera, style, images, markers and state that the map has now.
+     * This is how the map recovers when the browser takes the WebGL context away, which phones do to save memory.
+     */
+    private async restart() {
+        if (this.restarting || this.removed) return;
+        this.restarting = this.restarted = true;
+        this.fire('webglcontextlost');
+        try {
+            for (const fn of this.inputCleanup.splice(0)) fn();
+            this.observer?.disconnect();
+            for (const w of this.workers.splice(0)) w.terminate();
+            this.tilePool?.release();
+            this.ready = false; this.queue = []; this.tilesLoaded = false;
+            const fresh = this.canvas.cloneNode() as HTMLCanvasElement, tr = this.tr;
+            this.canvas.replaceWith(fresh);
+            this.canvas = fresh;
+            this.options = {...this.options, style: this.rawStyle, center: [tr.lng, tr.lat], zoom: tr.zoom, bearing: tr.bearing, pitch: tr.pitch};
+            await this.start();
+            // What the engine got through commands, and not through the style, goes again.
+            this.limits();
+            if (this.rulesSent) this.sendRequestRules();
+            if (this.wantsFrames) this.post({type: 'frames', on: true});
+            if (Object.keys(this.globalState).length) this.restyle(false);
+            for (const source of Object.keys(this.featureStates)) this.sendFeatureState(source);
+            for (const [name, [source, options]] of this.imageInputs) await this.addImage(name, source, options);
+            this.variantIds.clear();
+            for (const layer of this.markerLayers.values()) this._syncMarkers(layer);
+            this.fire('webglcontextrestored');
+        } catch (error) { this.fire('error', {error}); } finally { this.restarting = false; }
     }
 
     /** Runs the engine on this thread. Its code is a separate chunk, fetched only when this path is taken. */
@@ -341,6 +377,8 @@ export class Map {
             }
         } else if (e.type === 'resource') {
             this.answer(e.url, e.kind).then(a => a, (err): RequestAnswer => ({error: String(err.message)})).then(a => this.post({type: 'resourceResult', id: e.id, ...a}, a.data ? [a.data] : undefined));
+        } else if (e.type === 'contextlost') {
+            this.restart();
         } else if (e.type === 'frame') {
             this.fire('render');
         } else if (e.type === 'idle') {
@@ -780,11 +818,12 @@ export class Map {
         // Stretch ranges and the content box are given in the source image's pixels; the stored copy may be another size.
         const k = sourceWidth ? w / sourceWidth : 1, scale = (v?: number[]) => v?.map(n => n * k);
         this.imageNames.add(name);
+        this.imageInputs.set(name, [source, options]);
         this.post({type: 'image', name, w, h, width, height, data, stretchX: options.stretchX?.map(r => scale(r) as [number, number]), stretchY: options.stretchY?.map(r => scale(r) as [number, number]),
             content: scale(options.content) as [number, number, number, number] | undefined, textFitWidth: options.textFitWidth, textFitHeight: options.textFitHeight}, [data.buffer]);
         return this;
     }
-    removeImage(name: string) { this.imageNames.delete(name); this.post({type: 'removeImage', name}); return this; }
+    removeImage(name: string) { this.imageNames.delete(name); this.imageInputs.delete(name); this.post({type: 'removeImage', name}); return this; }
     /** Replaces an image added earlier; icons using it are redrawn. */
     updateImage(name: string, source: Parameters<Map['addImage']>[1], options: ImageOptions = {}) {
         if (!this.imageNames.has(name)) throw new Error(`There is no image with ID "${name}"`);

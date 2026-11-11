@@ -349,6 +349,21 @@ for (const mode of ['main', 'worker']) {
     check(`[${mode}] transformRequest changes tile requests made in workers, and addProtocol supplies data for a URL`,
         requests.from === 'made://point?seen=1' && requests.kinds.includes('Tile') && requests.kinds.includes('Source'), JSON.stringify(requests));
 
+    // A lost WebGL context (phones take it away to save memory): the map starts again with the same view and data.
+    // The context can only be reached from the page when the engine is on the main thread.
+    if (mode === 'main') {
+        const lost = await page.evaluate(async () => {
+            const m = window.map, before = m.getCanvas(), c = m.getCenter(), z = m.getZoom(), events = [];
+            m.on('webglcontextlost', () => events.push('lost')); m.on('webglcontextrestored', () => events.push('restored'));
+            before.getContext('webgl2').getExtension('WEBGL_lose_context').loseContext();
+            for (let i = 0; i < 100 && !events.includes('restored'); i++) await new Promise(r => setTimeout(r, 100));
+            await new Promise(r => { m.once('idle', r); setTimeout(r, 15000); });
+            const found = await m.queryRenderedFeatures();
+            return {events, newCanvas: m.getCanvas() !== before && m.getCanvas().isConnected, same: Math.abs(m.getCenter().lng - c.lng) < 1e-9 && m.getZoom() === z, features: found.length, loaded: m.areTilesLoaded()};
+        });
+        check(`[${mode}] a lost WebGL context: the map starts again on a new canvas with the same view`, lost.events.join() === 'lost,restored' && lost.newCanvas && lost.same && lost.features > 100, JSON.stringify(lost));
+    }
+
     // queryRenderedFeatures, as in MapLibre but with a promise: at a point, in a box, and with a list of layers.
     const rendered = await page.evaluate(async () => {
         const m = window.map, c = m.getCenter(), p = m.project(c);

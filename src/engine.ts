@@ -64,6 +64,8 @@ export type EngineEvent =
     /** About once a second while drawing: frames drawn per second and the engine's average CPU time per frame. */
     | {type: 'stats'; fps: number; frameMs: number}
     | {type: 'frame'}
+    /** The browser took the WebGL context away (for example, a phone that needs the memory). The page starts the map again. */
+    | {type: 'contextlost'}
     /** A question to the page about one request. */
     | {type: 'resource'; id: number; url: string; kind: string}
     /** A frame at a new canvas size has been drawn. */
@@ -153,6 +155,8 @@ export class Engine {
     private zoomSeen = NaN;
     private contourWait = false;
     private reportFrames = false;
+    /** The WebGL context is gone: nothing more is drawn. */
+    private lost = false;
     // Requests that the page can change. This thread and the tile workers ask the page through `ask`.
     private rules?: RequestRules;
     private asked = new Map<number, (a: RequestAnswer) => void>();
@@ -183,6 +187,7 @@ export class Engine {
 
     constructor(canvas: HTMLCanvasElement | OffscreenCanvas, o: EngineOptions, private backends: TileBackend[], private emit: (e: EngineEvent) => void) {
         this.renderer = new GLRenderer(canvas, o.antialias);
+        (canvas as EventTarget).addEventListener('webglcontextlost', () => { this.lost = true; this.emit({type: 'contextlost'}); });
         this.atlas = new GlyphAtlas(o.fontFamily);
         this.atlas.images = name => this.icon(name);
         this.atlas.onReset = () => this.labels.clear();
@@ -839,7 +844,7 @@ export class Engine {
 
     private frame(now: number) {
         const tr = this.tr, frameNo = ++this.frameNo, began = performance.now();
-        if (!tr.width || !tr.height) return;
+        if (!tr.width || !tr.height || this.lost) return;
         const dt = Math.min(100, now - this.lastTime || 16);
         this.lastTime = now;
         this.frameTime = began;

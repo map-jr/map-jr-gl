@@ -58,8 +58,6 @@ have a problem, and a method in the list is possibly used only in a part of the 
 | `projectiontransition` | event | 1: @maptiler/sdk |
 | `sourcedataloading` | event | 1: @maplibre/ngx-maplibre-gl |
 | `styledataloading` | event | 1: @maplibre/ngx-maplibre-gl |
-| `webglcontextlost` | event | 1: @maplibre/ngx-maplibre-gl |
-| `webglcontextrestored` | event | 1: @maplibre/ngx-maplibre-gl |
 
 ## Each package
 
@@ -112,5 +110,5 @@ have a problem, and a method in the list is possibly used only in a part of the 
 | @indoorequal/vue-maplibre-gl | 9.0.1 | 39 methods, 9 exports, 5 events | `setRenderWorldCopies` | none | none |
 | svelte-maplibre-gl | 2.2.1 | 55 methods, 26 exports, 5 events | `addSprite`, `getImage`, `getZoomSnap`, `removeSprite`, `setAnisotropicFilterPitch`, `setCenterClampedToGround`, `setPixelRatio`, `setProjection`, `setRenderWorldCopies`, `setSky`, `setTransformCameraUpdate`, `setTransformConstrain`, `setVerticalFieldOfView`, `setZoomSnap` | `CanvasSource`, `Event`, `GeoJSONSource`, `GlobeControl`, `Hash`, `ImageSource`, `MapLibreEvent`, `MapSourceDataEvent`, `RasterDEMTileSource`, `RasterTileSource`, `VectorTileSource`, `VideoSource` | none |
 | svelte-maplibre | 2.0.1 | 37 methods, 19 exports, 26 events | `setProjection` | `GPUInitializationError`, `MapLibreEvent`, `MapMouseEvent`, `MapMovementEvent`, `MapSourceDataEvent`, `MapStyleDataEvent`, `MapWheelEvent`, `config` | none |
-| @maplibre/ngx-maplibre-gl | 22.3.1 | 51 methods, 11 exports, 46 events | `fitScreenCoordinates`, `setAnisotropicFilterPitch`, `setCenterElevation`, `setProjection`, `setRenderWorldCopies`, `setTransformConstrain`, `setZoomSnap` | `GeoJSONSource`, `GlobeControl` | `boxzoomcancel`, `boxzoomend`, `boxzoomstart`, `dataloading`, `sourcedataloading`, `styledataloading`, `webglcontextlost`, `webglcontextrestored` |
+| @maplibre/ngx-maplibre-gl | 22.3.1 | 51 methods, 11 exports, 46 events | `fitScreenCoordinates`, `setAnisotropicFilterPitch`, `setCenterElevation`, `setProjection`, `setRenderWorldCopies`, `setTransformConstrain`, `setZoomSnap` | `GeoJSONSource`, `GlobeControl` | `boxzoomcancel`, `boxzoomend`, `boxzoomstart`, `dataloading`, `sourcedataloading`, `styledataloading` |
 | @maptiler/sdk | 4.2.1 | 66 methods, 1 exports, 18 events | `setProjection`, `setRoll` | none | `projectiontransition` |
