@@ -82,6 +82,7 @@ Properties:
 - `icon-halo-blur`. Icon halos are available for distance-field (SDF) icons.
 - `text-writing-mode`, `text-pitch-alignment`
 - `symbol-z-order` and `symbol-avoid-edges`
+- An icon together with text that follows a curved line. The text is drawn without the icon.
 - `vertical-align` in `format` text. Sizes, fonts, colours and images in `format` text are available. The SVG output of the server draws each line in one size.
 
 Layers that the server renderer does not draw:
@@ -91,7 +92,7 @@ Layers that the server renderer does not draw:
 Other:
 
 - Sky, fog, globe and other projections
-- `transformRequest` and `addProtocol`
+- The layer type `color-relief`
 - The right-to-left text plugin. The browser draws right-to-left text correctly without it.
 
 ## Map methods

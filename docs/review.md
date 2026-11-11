@@ -35,9 +35,11 @@ shows how many of the audited packages use each one.
 |---|---|---|
 | Globe and other projections (`setProjection`, `GlobeControl`) | 6 packages call `setProjection` | A second projection changes almost every shader and the tile cover. It is the largest missing feature. Most packages call it only when the user asks for a globe. |
 | Sky and fog (`setSky`, `getSky`) | 3 packages | The largest pitch is 60 degrees, so the horizon is not in view. |
-| Box zoom (shift and drag) | 1 package listens for its events | `map.boxZoom` is there and stays off. The gesture itself is small; it was not a priority. |
 | `setTransformCameraUpdate`, `setTransformConstrain` | 3 packages (the React and Svelte wrappers, for controlled camera state) | The camera is in the engine, which can be in a worker. A function on the page cannot run for each camera change without a delay. |
 | `setRenderWorldCopies(false)` | 4 packages pass the option through | The map always draws the copies of the world. |
+| The layer type `color-relief` (colours from elevation) | 0 packages; 8 render tests | It is new in MapLibre GL JS and few styles use it. It needs a shader and a colour ramp: about 0.4 KB in the worker, which has 0.3 KB left in its budget. |
+| An icon together with text that follows a curved line | 1 render test | Curved text is placed by a separate path that has no icon. Road shields are not affected: their text does not follow the line. |
+| A building on 3D terrain keeps a flat roof | 3 render tests show a small difference | MapLibre GL JS gives each building the ground height of one point. This library gives each corner its own ground height, so on a steep slope the roof slopes with the ground. To match needs one more value for each vertex of each building. |
 | Source classes (`GeoJSONSource`, `VectorTileSource` and others) and event classes as exports | 1 to 3 packages each | Most uses are type checks. `getSource()` returns a plain object with the methods of the source. |
 | Opt-in features (a smaller worker without 3D terrain, contours and others) | | Discussed with the owner: not wanted unless features can be selected with imports or configuration in a build. That needs the features as separate registered modules, which is a large change. |
 
