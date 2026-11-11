@@ -92,6 +92,8 @@ shorten property names. Declare a member `private` and use it as `this.name` to 
 Run `node scripts/private-names.mjs` to see the names that the build shortens.
 The same step gives short names to the uniforms, attributes and varyings in the shaders of `src/gl.ts`. Name them
 `u_...`, `a_...` and `v_...`, and use those names only for that.
+It also gives short names to the local names in the shaders. Do not give a uniform a name without `u_`, and do not
+use the name of a local variable of a shader in JavaScript.
 
 ## Other browsers and operating systems
 

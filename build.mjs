@@ -18,7 +18,8 @@ const shaders = {
     transform(code, id) {
         if (!id.endsWith('/src/gl.ts')) return null;
         return {map: null, code: code.replace(/`((?:[^`\\]|\\.)*)`/gs, (all, text) => /void main|uniform |\bfloat /.test(text)
-            ? '`' + text.replace(/\/\/[^\n]*/g, '').replace(/\s+/g, ' ').replace(/ ?([{};,()]) ?/g, '$1').trim() + '`' : all)};
+            // (Spaces also go from around the operators, but not from around + and -: `a - -b` must not become `a--b`.)
+            ? '`' + text.replace(/\/\/[^\n]*/g, '').replace(/\s+/g, ' ').replace(/ ?([{};,()=*\/<>?:!&|]) ?/g, '$1').trim() + '`' : all)};
     },
 };
 

@@ -84,6 +84,32 @@ function shortenShaderNames(code) {
     return code.replace(/\b[uav]_[A-Za-z0-9]+\b/g, name => short.get(name));
 }
 
+/**
+ * The local names in the shaders (variables, parameters, functions and the values that go from the vertex shader to the
+ * fragment shader) get short names. Only the GLSL text changes: the template strings of src/gl.ts that hold GLSL, and
+ * in them not the `${...}` parts, which are JavaScript. A name is changed only when the GLSL declares it with a type
+ * and without `uniform`, so the names that JavaScript uses (the uniforms) and the names of GLSL itself stay.
+ */
+function shortenShaderLocals(code) {
+    const isShader = text => /void main|uniform |\bfloat /.test(text), literal = /`((?:[^`\\]|\\.)*)`/gs, hole = /(\$\{[^}]*\})/;
+    const declared = /\b(uniform\s+)?(?:(?:highp|mediump|lowp)\s+)?(?:float|int|bool|vec[234]|ivec[234]|mat[234]|sampler2D)\s+([A-Za-z_]\w*)\s*(?=[=;,)(\[])/g;
+    const count = new Map(), kept = new Set(['main']);
+    const texts = [...code.matchAll(literal)].map(m => m[1]).filter(isShader).flatMap(text => text.split(hole).filter((_, i) => i % 2 === 0));
+    for (const text of texts) for (const m of text.matchAll(declared)) if (m[1]) kept.add(m[2]); else count.set(m[2], 0);
+    for (const name of [...count.keys()]) if (kept.has(name) || name.length < 3 || /^[uav]\d|^gl_/.test(name)) count.delete(name);
+    for (const text of texts) for (const word of text.match(/[A-Za-z_]\w*/g) ?? []) if (count.has(word)) count.set(word, count.get(word) + 1);
+    const taken = new Set(code.match(/[A-Za-z_$][\w$]*/g)), letters = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ', short = new Map();
+    let next = 0;
+    for (const name of [...count.keys()].sort((a, b) => count.get(b) - count.get(a) || (a < b ? -1 : 1))) {
+        let s;
+        do { s = (next < 52 ? '' : letters[Math.floor(next / 52) - 1]) + letters[next % 52]; next++; } while (taken.has(s));
+        short.set(name, s);
+    }
+    const words = new RegExp(`(?<![.\\w])(${[...short.keys()].join('|')})\\b`, 'g');
+    return short.size ? code.replace(literal, (all, text) => !isShader(text) ? all
+        : '`' + text.split(hole).map((part, i) => i % 2 ? part : part.replace(words, name => short.get(name))).join('') + '`') : code;
+}
+
 /** The Vite plugin: renames the members in each file of src/ before the file is compiled. */
 export function shortenPrivateNames() {
     const short = privateNames();
@@ -96,7 +122,7 @@ export function shortenPrivateNames() {
             if (!file.endsWith('.ts') || path.resolve(path.dirname(file)) !== src) return null;
             const edits = uses(code, file).sites.filter(s => short.has(s.name)).sort((a, b) => b.start - a.start);
             for (const s of edits) code = code.slice(0, s.start) + short.get(s.name) + code.slice(s.end);
-            if (file.endsWith('gl.ts')) code = shortenShaderNames(code);
+            if (file.endsWith('gl.ts')) code = shortenShaderLocals(shortenShaderNames(code));
             return {code, map: null};
         },
     };
