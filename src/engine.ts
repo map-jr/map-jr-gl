@@ -52,6 +52,8 @@ export type Command =
     | {type: 'queryRendered'; id: number; box: [number, number, number, number]; sets: (QuerySet & {source: string})[]; geometry?: boolean}
     | {type: 'elevation'; id: number; lng: number; lat: number; source?: string; zoom?: number}
     | {type: 'repaint'}
+    /** The map was removed: free the memory of the GPU. */
+    | {type: 'destroy'}
     /** Which requests the page wants to change (see requests.ts), and the page's answer to one question. */
     | {type: 'requests'; rules: RequestRules}
     | ({type: 'resourceResult'; id: number} & RequestAnswer)
@@ -188,7 +190,7 @@ export class Engine {
 
     constructor(canvas: HTMLCanvasElement | OffscreenCanvas, o: EngineOptions, private backends: TileBackend[], private emit: (e: EngineEvent) => void) {
         this.renderer = new GLRenderer(canvas, o.antialias);
-        (canvas as EventTarget).addEventListener('webglcontextlost', () => { this.lost = true; this.emit({type: 'contextlost'}); });
+        (canvas as EventTarget).addEventListener('webglcontextlost', () => { if (!this.lost) { this.lost = true; this.emit({type: 'contextlost'}); } }); // (not when the map itself freed the context)
         this.atlas = new GlyphAtlas(o.fontFamily);
         this.atlas.images = name => this.icon(name);
         this.atlas.onReset = () => this.labels.clear();
@@ -658,6 +660,7 @@ export class Engine {
                 this.queryElevation(c).then(value => this.emit({type: 'result', id: c.id, value}), err => this.emit({type: 'result', id: c.id, error: String(err.message)}));
                 return;
             case 'repaint': break;
+            case 'destroy': this.lost = true; this.renderer.destroy(); return;
             case 'frames': this.reportFrames = c.on; break;
             case 'requests': this.rules = c.rules; for (const b of this.backends) b.setRequests(c.rules, this.ask); break;
             case 'resourceResult': this.asked.get(c.id)?.(c); this.asked.delete(c.id); break;

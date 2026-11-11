@@ -1286,7 +1286,10 @@ export class Map {
         this.tilePool?.release();
         this.observer?.disconnect();
         for (const fn of this.cleanup) fn();
-        for (const w of this.workers) w.terminate();
+        // The engine frees the memory of the GPU first. A worker is stopped a moment later, so that it gets the message.
+        if (this.ready) this.send({type: 'destroy'});
+        const workers = this.workers;
+        setTimeout(() => { for (const w of workers) w.terminate(); }, 100);
         this.canvas.remove();
         this.listeners = {};
     }

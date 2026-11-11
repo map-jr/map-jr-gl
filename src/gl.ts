@@ -1119,6 +1119,16 @@ export class GLRenderer {
      * 3D terrain, step one: bring each ground tile's picture up to date. The flat layers are drawn straight down into
      * a texture per tile, which is kept until what it shows changes; panning and tilting then cost almost nothing.
      */
+    /** Ground textures that are not in use, by size, to be used again. */
+    private sparePictures = new Map<number, WebGLTexture[]>();
+    private freeDrape(d: {tex: WebGLTexture; size: number}) {
+        const list = this.sparePictures.get(d.size) ?? [];
+        this.sparePictures.set(d.size, list);
+        if (list.length < 8) list.push(d.tex); else this.gl.deleteTexture(d.tex);
+    }
+    /** Gives the memory of the GPU back at once. Without this, a map that was removed keeps it until the browser collects the context. */
+    destroy() { this.gl.getExtension('WEBGL_lose_context')?.loseContext(); }
+
     private updateDrapes(s: Scene) {
         const gl = this.gl;
         // Per frame: a couple of out-of-date pictures are redrawn and a few missing ones drawn (all of them when starting
@@ -1145,10 +1155,15 @@ export class GLRenderer {
             if (d && budget-- <= 0) { d.used = this.frame; behind = true; continue; }
             if (!d && fresh-- <= 0) { behind = true; continue; }
             if (!d || d.size !== size) {
-                if (d) gl.deleteTexture(d.tex);
-                const tex = this.newTexture();
-                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
-                gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, size, size, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+                if (d) this.freeDrape(d);
+                // A texture of this size that is not in use is taken again: to make and delete large textures in each
+                // frame of a movement is slow, and on a phone it uses up the memory of the GPU.
+                let tex = this.sparePictures.get(size)?.pop();
+                if (!tex) {
+                    tex = this.newTexture();
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+                    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, size, size, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+                }
                 d = {tex, size, signature: '', used: this.frame};
                 this.drapes.set(t.key, d);
             }
@@ -1164,7 +1179,10 @@ export class GLRenderer {
             gl.generateMipmap(gl.TEXTURE_2D);
         }
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-        for (const [key, d] of this.drapes) if (this.frame - d.used > 90) { gl.deleteTexture(d.tex); this.drapes.delete(key); }
+        // Pictures that are out of view are kept for a short time (the view often comes back), but not many of them:
+        // each one is some megabytes on the GPU.
+        const spare = this.drapes.size - s.terrain!.tiles.length, age = spare > 24 ? 10 : 90;
+        for (const [key, d] of this.drapes) if (this.frame - d.used > age) { this.freeDrape(d); this.drapes.delete(key); }
         return behind;
     }
 
