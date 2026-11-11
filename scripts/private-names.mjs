@@ -2,7 +2,7 @@
 // and the engine has some hundreds of private members with long names.
 //
 // A name is shortened only when each use of it in src/ is one of these:
-//   - the declaration of a `private` member of a class
+//   - the declaration of a `private` or `protected` member of a class
 //   - `this.name`
 // A name is kept when it appears anywhere as: a member that is not private, a property of something other than
 // `this`, a key of an object literal or a destructuring pattern, a field of an interface or type, or a string.
@@ -23,9 +23,9 @@ import {pathToFileURL} from 'node:url';
 const {parseAst} = await import(pathToFileURL(createRequire(createRequire(import.meta.url).resolve('vite')).resolve('rolldown/parseAst')).href);
 const src = path.resolve(import.meta.dirname, '../src');
 const INTERNAL = ['heightAt', 'cameraDistance', 'pixelsPerMetre', 'worldSize', 'screenToMerc', 'screenToGround', 'coveringTiles', 'projectTile', 'mercToScreen',
-    'createImageTile', 'createTile', 'destroyTile', 'setLocationAt', 'updateMarker', 'setMarkerHeights', 'setMarkers', 'missingImage', 'tileMatrix4', 'tileMatrix',
-    'tileScale', 'cameraPosition', 'unprojectFlat', 'recenterOnGround', 'imageScale', 'imageGlyph', 'uploadSprite', 'setIcons', 'zoomFloor',
-    'varint', 'svarint', 'skip', 'constrain', 'occluded', 'loadIR', 'styleOf', 'onReset', 'resets', 'expansionZoom', 'setFetch', 'dirty', 'hits', 'command', 'leaves'];
+    'createImageTile', 'createTile', 'destroyTile', 'setLocationAt', 'updateMarker', 'setMarkerHeights', 'setMarkers', 'tileMatrix4', 'tileMatrix',
+    'tileScale', 'cameraPosition', 'unprojectFlat', 'recenterOnGround', 'uploadSprite', 'setIcons', 'zoomFloor',
+    'varint', 'svarint', 'skip', 'constrain', 'occluded', 'loadIR', 'onReset', 'resets', 'expansionZoom', 'setFetch', 'dirty', 'hits', 'command', 'leaves'];
 
 /** Calls `fn` for each node of a syntax tree, with its parent. */
 function walk(node, fn, parent = null) {
@@ -47,7 +47,7 @@ function uses(code, file) {
             if (n.object.type === 'ThisExpression') sites.push(n.property); else loose.push(n.property);
         } else if (n.type === 'PropertyDefinition' || n.type === 'MethodDefinition' || n.type === 'AccessorProperty' || n.type === 'TSAbstractPropertyDefinition' || n.type === 'TSAbstractMethodDefinition') {
             const k = !n.computed && name(n.key);
-            if (k && n.accessibility === 'private' && n.key.type === 'Identifier') sites.push({...n.key, declared: true}); else if (k && n.key.type === 'Identifier' && !n.static) loose.push({...n.key, member: true}); else if (k) other.add(k);
+            if (k && (n.accessibility === 'private' || n.accessibility === 'protected') && n.key.type === 'Identifier') sites.push({...n.key, declared: true}); else if (k && n.key.type === 'Identifier' && !n.static) loose.push({...n.key, member: true}); else if (k) other.add(k);
         } else if (n.type === 'TSParameterProperty') walk(n.parameter, p => { if (p.type === 'Identifier') other.add(p.name); });
         else if ((n.type === 'Property' || n.type === 'TSPropertySignature' || n.type === 'TSMethodSignature') && !n.computed) { const k = name(n.key); if (k) other.add(k); }
         else if (n.type === 'TSEnumMember') { const k = name(n.id); if (k) other.add(k); }

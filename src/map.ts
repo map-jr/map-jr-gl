@@ -156,20 +156,20 @@ export class MarkerLayer {
 }
 
 export class Map {
-    private container: HTMLElement;
+    protected container: HTMLElement;
     private canvas: HTMLCanvasElement;
-    private tr = new Transform();
+    protected tr = new Transform();
     private listeners: Record<string, Listener[]> = {};
     private send: (c: Command, transfer?: Transferable[]) => void = () => {};
     private queue: [Command, Transferable[]?][] = [];
     private workers: Worker[] = [];
-    private resolved!: ResolvedStyle;
-    private rawStyle: any;
+    protected resolved!: ResolvedStyle;
+    protected rawStyle: any;
     private dpr = 1;
     private isLoaded = false;
     private moving = false;
-    private ready = false;
-    private styleBase = '';
+    protected ready = false;
+    protected styleBase = '';
     readonly dragPan = new InteractionHandler(); readonly scrollZoom = new InteractionHandler(); readonly doubleClickZoom = new InteractionHandler();
     readonly dragRotate = new InteractionHandler(); readonly touchZoomRotate = new TouchZoomRotateHandler(); readonly touchPitch = new InteractionHandler();
     readonly keyboard = new InteractionHandler();
@@ -184,12 +184,12 @@ export class Map {
     private tilePool?: {connect(): MessagePort[]; release(): void};
     private removed = false;
     private beforeStyle: (() => void)[] = [];
-    private imageNames = new Set<string>();
+    protected imageNames = new Set<string>();
     private imageResolver: ((id: string) => void | Promise<void>) | null = null;
     private tilesLoaded = false;
     /** Global state values set at runtime, on top of the style's defaults. */
     private globalState: Record<string, unknown> = {};
-    private zooming = false; private rotating = false; private pitching = false;
+    protected zooming = false; protected rotating = false; protected pitching = false;
     /** Height grids of loaded elevation tiles (3D terrain), mirrored from the engine. */
     private heights = new globalThis.Map<string, Float32Array>();
     private pending = new globalThis.Map<number, {resolve(v: any): void; reject(e: Error): void}>();
@@ -325,7 +325,7 @@ export class Map {
     private restarted = false;
     private restarting = false;
     /** What addImage was given, by name: a restart sends the images again. */
-    private imageInputs = new globalThis.Map<string, [Parameters<Map['addImage']>[1], ImageOptions]>();
+    protected imageInputs = new globalThis.Map<string, [Parameters<Map['addImage']>[1], ImageOptions]>();
     /**
      * Starts the engine again on a new canvas, with the camera, style, images, markers and state that the map has now.
      * This is how the map recovers when the browser takes the WebGL context away, which phones do to save memory.
@@ -477,7 +477,7 @@ export class Map {
         return {data: toBytes(data)};
     }
     /** A `fetch` for requests that this thread makes itself (the style, its sources, GeoJSON data). */
-    private fetchAs = (kind: string) => fetchWith(() => ({transform: !!this.transformRequest, protocols: [...protocols.keys()]}), (url, k) => this.answer(url, k), kind);
+    protected fetchAs = (kind: string) => fetchWith(() => ({transform: !!this.transformRequest, protocols: [...protocols.keys()]}), (url, k) => this.answer(url, k), kind);
     private layerListeners: {type: string; layer: string; fn: Listener}[] = [];
     private hoveredLayers = new Set<string>();
     private hoverBusy = false;
@@ -490,7 +490,7 @@ export class Map {
         this.hoverBusy = kind === 'mousemove';
         try {
             // One query for all the layers that have listeners. The features have the form of queryRenderedFeatures.
-            const found = await this.queryRenderedFeatures(point, {layers});
+            const found = await this.queryLayers(point, {layers});
             for (const layer of layers) {
                 const features = found.filter(f => (f.layer as {id?: string} | undefined)?.id === layer), hit = features.length > 0;
                 const emit = (type: string) => { for (const l of this.layerListeners) if (l.type === type && l.layer === layer) l.fn({type, target: this, ...data, features}); };
@@ -552,23 +552,6 @@ export class Map {
         this.post({type: 'ease', duration: o.duration ?? 500, center: center && toLngLat(center), zoom, bearing, pitch, around, padding: o.padding === undefined ? undefined : paddingOf(o.padding)});
         return this;
     }
-    flyTo(o: CameraInput & {duration?: number}) { return this.easeTo({duration: 1200, ...o}); }
-    /** Space at the edges covered by other things (a side panel, a header). The map centre moves to the middle of what is left. */
-    setPadding(padding: PaddingInput) { return this.jumpTo({padding}); }
-    getPadding() { const [top, right, bottom, left] = this.tr.padding; return {top, right, bottom, left}; }
-    setCenter(center: LngLatLike) { return this.jumpTo({center}); }
-    setZoom(zoom: number) { return this.jumpTo({zoom}); }
-    setBearing(bearing: number) { return this.jumpTo({bearing}); }
-    setPitch(pitch: number) { return this.jumpTo({pitch}); }
-    resetNorth(o: {duration?: number} = {}) { return this.easeTo({bearing: 0, ...o}); }
-    resetNorthPitch(o: {duration?: number} = {}) { return this.easeTo({bearing: 0, pitch: 0, ...o}); }
-    panTo(center: LngLatLike, o: {duration?: number} = {}) { return this.easeTo({center, ...o}); }
-    panBy(offset: [number, number], o: {duration?: number} = {}) {
-        return this.easeTo({center: this.unproject([this.tr.cx + offset[0], this.tr.cy + offset[1]]), ...o});
-    }
-    zoomTo(zoom: number, o: {duration?: number} = {}) { return this.easeTo({zoom, ...o}); }
-    rotateTo(bearing: number, o: {duration?: number} = {}) { return this.easeTo({bearing, ...o}); }
-    snapToNorth(o: {duration?: number} = {}) { return Math.abs(this.tr.bearing) < 7 ? this.resetNorth(o) : this; }
     stop() { this.post({type: 'stop'}); return this; }
 
     /** The centre and zoom that fit `bounds` ([west, south, east, north] or [[west, south], [east, north]]) in view. */
@@ -603,20 +586,11 @@ export class Map {
     }
     getMaxBounds() { const b = this.tr.maxBounds; return b && {getWest: () => b[0], getSouth: () => b[1], getEast: () => b[2], getNorth: () => b[3], toArray: () => [[b[0], b[1]], [b[2], b[3]]]}; }
     getPixelRatio() { return this.dpr; }
-    getProjection() { return {type: 'mercator'}; }
-    getRenderWorldCopies() { return true; }
-    getRoll() { return 0; }
-    /** With 3D terrain: the (exaggerated) height of the ground at the map centre in metres; otherwise 0. */
-    getCenterElevation() { return this.tr.elevation; }
-    getCameraTargetElevation() { return this.tr.elevation; }
     /** With 3D terrain: the height of the ground at a position, in metres above sea level multiplied by the exaggeration (as in MapLibre); `null` without terrain. */
     queryTerrainElevation(lngLat: LngLatLike): number | null {
         const [lng, lat] = toLngLat(lngLat);
         return this.tr.heightAt ? this.tr.heightAt(mercX(lng), mercY(lat)) : null;
     }
-    isZooming() { return this.zooming; }
-    isRotating() { return this.rotating; }
-    isPitching() { return this.pitching; }
     /** Whether the tiles needed for the current view have loaded. (Tracked for the map as a whole, not per source.) */
     isSourceLoaded(id: string) {
         if (!this.rawStyle?.sources[id]) throw new Error(`There is no source with ID "${id}"`);
@@ -624,15 +598,8 @@ export class Map {
     }
     /** Loads a source's tiles again, e.g. after the data behind its URL changed. */
     refreshTiles(sourceId: string) { this.post({type: 'refresh', source: sourceId}); return this; }
-    getCanvasContainer() { return this.container; }
     isStyleLoaded() { return this.ready; }
     areTilesLoaded() { return this.tilesLoaded; }
-    redraw() { this.triggerRepaint(); return this; }
-    // react-map-gl and other wrappers read these private members of the MapLibre map. They are here only so that
-    // those wrappers work: `style._loaded` tells them that sources and layers can be added.
-    get style() { return this.resolved ? {_loaded: this.ready} : undefined; }
-    _render() { this.triggerRepaint(); }
-    _update() { this.triggerRepaint(); }
     zoomIn() { return this.easeTo({zoom: this.tr.zoom + 1, duration: 300}); }
     zoomOut() { return this.easeTo({zoom: this.tr.zoom - 1, duration: 300}); }
     triggerRepaint() { this.post({type: 'repaint'}); }
@@ -652,11 +619,13 @@ export class Map {
         this.fire('data', {dataType: 'style'});
         if (whole) this.fire('style.load');
     }
+    /** Called when the style has changed, before it is resolved (for a class that extends this one). */
+    protected styleChanged() {}
     private reloadPending = false;
     private restyle(reload: boolean) {
         // As in MapLibre, the loading events come before the data events.
         for (const type of ['styledataloading', 'dataloading']) this.fire(type, {dataType: 'style'});
-        if (!this.syncQuery && Object.values<any>(this.rawStyle.sources ?? {}).some(src => src.type === 'geojson' && src.data && typeof src.data === 'object')) import('./sync-query.ts').then(m => { this.syncQuery = m; });
+        this.styleChanged();
         // Two changes to the style in quick succession are resolved at the same time, and the first can finish last.
         // Only the newest result is used. It reloads the sources if one of the changes that it replaces asked for that.
         const turn = ++this.restyles;
@@ -673,13 +642,13 @@ export class Map {
         }, err => this.fire('error', {error: err}));
     }
     /** Runs a change to the style JSON now, or as soon as the style has been fetched. */
-    private editStyle(fn: (style: any) => void) {
+    protected editStyle(fn: (style: any) => void) {
         // As in MapLibre, a change that names a layer that does not exist gives an `error` event, not an exception.
         const run = () => { try { fn(this.rawStyle); return true; } catch (error) { this.fire('error', {error}); } };
         if (!this.rawStyle) this.beforeStyle.push(run); else if (run()) this.restyle(true);
         return this;
     }
-    private layerIndex(style: any, id: string) {
+    protected layerIndex(style: any, id: string) {
         const i = style.layers.findIndex((l: any) => l.id === id);
         if (i < 0) throw new Error(`Layer "${id}" does not exist`);
         return i;
@@ -730,9 +699,6 @@ export class Map {
     setLight(light: {anchor?: 'map' | 'viewport'; position?: [number, number, number]; color?: string; intensity?: number}) {
         return this.editStyle(s => { s.light = {...s.light, ...light}; });
     }
-    /** There is no sky in this library. (react-map-gl reads the value when a style has loaded.) */
-    getSky() { return undefined; }
-    getLight() { return {anchor: 'viewport', position: [1.15, 210, 30], color: '#ffffff', intensity: 0.5, ...this.rawStyle?.light}; }
     /** `transformStyle` gets the style before and the new style, and returns the style to use (as in MapLibre). */
     async setStyle(style: unknown, options?: {transformStyle?: StyleChange}) {
         if (!this.rawStyle && !this.options.style) { this.options.style = style; return this.start(options?.transformStyle); }
@@ -743,7 +709,6 @@ export class Map {
         this.restyle(true);
     }
     getLayer(id: string) { return this.rawStyle?.layers.find((l: any) => l.id === id); }
-    getLayersOrder(): string[] { return this.rawStyle?.layers.map((l: any) => l.id) ?? []; }
     /** The source's specification. GeoJSON sources also get MapLibre's `setData(data)` to replace their contents. */
     getSource(id: string) {
         const spec = this.rawStyle?.sources[id];
@@ -804,22 +769,12 @@ export class Map {
         if (typeof data === 'string') { const res = await this.fetchAs('Source')(new URL(data, this.styleBase)); data = await res.json(); }
         this.post({type: 'geojson', source: id, data});
     }
-    getPaintProperty(layerId: string, name: string) { return this.getLayer(layerId)?.paint?.[name]; }
-    getLayoutProperty(layerId: string, name: string) { return this.getLayer(layerId)?.layout?.[name]; }
-    getFilter(layerId: string) { return this.getLayer(layerId)?.filter; }
     addSource(id: string, source: unknown) { return this.editStyle(s => { s.sources[id] = source; }); }
     removeSource(id: string) { return this.editStyle(s => { delete s.sources[id]; }); }
     addLayer(layer: {id: string}, beforeId?: string) {
         return this.editStyle(s => { s.layers.splice(beforeId ? this.layerIndex(s, beforeId) : s.layers.length, 0, layer); });
     }
     removeLayer(id: string) { return this.editStyle(s => { s.layers.splice(this.layerIndex(s, id), 1); }); }
-    moveLayer(id: string, beforeId?: string) {
-        return this.editStyle(s => {
-            const [layer] = s.layers.splice(this.layerIndex(s, id), 1);
-            s.layers.splice(beforeId ? this.layerIndex(s, beforeId) : s.layers.length, 0, layer);
-        });
-    }
-    setLayerZoomRange(id: string, minzoom: number, maxzoom: number) { return this.editStyle(s => Object.assign(s.layers[this.layerIndex(s, id)], {minzoom, maxzoom})); }
 
     private setProp(group: 'paint' | 'layout', layerId: string, name: string, value: unknown) {
         // (The engine works out whether this needs tiles rebuilt: per-feature values are baked into their buffers.)
@@ -905,26 +860,7 @@ export class Map {
         if (!this.imageNames.has(name)) throw new Error(`There is no image with ID "${name}"`);
         return this.removeImage(name).addImage(name, source, options);
     }
-    getSprite() { const s = this.rawStyle?.sprite; return typeof s === 'string' ? [{id: 'default', url: s}] : s ?? []; }
-    setSprite(url: string | {id: string; url: string}[] | null) { return this.editStyle(s => { if (url) s.sprite = url; else delete s.sprite; }); }
-    /** Adds a sprite sheet. Its icons have the names `id:name`. */
-    addSprite(id: string, url: string) { return this.setSprite([...this.getSprite().filter((s: {id: string}) => s.id !== id), {id, url}]); }
-    removeSprite(id: string) { const rest = this.getSprite().filter((s: {id: string}) => s.id !== id); return this.setSprite(rest.length ? rest : null); }
-    getGlyphs() { return this.rawStyle?.glyphs ?? null; }
-    /** Stored with the style for compatibility. Text is drawn with web fonts, so glyph files are never fetched. */
-    setGlyphs(url: string | null) { return this.editStyle(s => { if (url) s.glyphs = url; else delete s.glyphs; }); }
-    getFontFaces() { return this.rawStyle?.['font-faces'] ?? {}; }
-    setFontFaces(faces: Record<string, unknown> | null) { return this.editStyle(s => { if (faces) s['font-faces'] = faces; else delete s['font-faces']; }); }
     hasImage(name: string) { return this.imageNames.has(name); }
-    /** The image that addImage was given, with its options, or undefined. (MapLibre returns the decoded pixels.) */
-    getImage(name: string) { const i = this.imageInputs.get(name); return i && {data: i[0], pixelRatio: i[1].pixelRatio ?? 1, sdf: false, ...i[1]}; }
-    listImages() { return [...this.imageNames]; }
-    /** Fetches and decodes an image, in the shape MapLibre returns it. */
-    async loadImage(url: string) {
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(`Failed to load image ${url}: ${res.status}`);
-        return {data: await createImageBitmap(await res.blob())};
-    }
     /**
      * Supplies images on demand. When a style asks for an `icon-image` nothing provides, the resolver is called with
      * its name and may call `addImage` (it can be async). This is how generated icons such as highway shields work:
@@ -933,7 +869,7 @@ export class Map {
     setMissingStyleImageResolver(resolver: ((id: string) => void | Promise<void>) | null) { this.imageResolver = resolver; return this; }
 
     // ---- queries ----
-    private ask<T>(command: (id: number) => Command): Promise<T> {
+    protected ask<T>(command: (id: number) => Command): Promise<T> {
         return new Promise((resolve, reject) => {
             const id = this.nextQuery++;
             this.pending.set(id, {resolve, reject});
@@ -960,7 +896,8 @@ export class Map {
      * features of the GeoJSON sources whose data is in the style (which the page can read itself), and not those of
      * tile sources. Plugins that draw and edit on the map query their own GeoJSON sources in this way.
      */
-    queryRenderedFeatures(geometry?: PointLike | [PointLike, PointLike] | RenderedQueryOptions, options: RenderedQueryOptions = {}): RenderedFeature[] & PromiseLike<RenderedFeature[]> {
+    /** What a query for drawn features needs: the rectangle of the screen, the layers to ask, and how to make the result. */
+    protected rendered(geometry?: PointLike | [PointLike, PointLike] | RenderedQueryOptions, options: RenderedQueryOptions = {}) {
         const point = (p: PointLike): [number, number] => Array.isArray(p) ? [p[0], p[1]] : [p.x, p.y];
         const isPoint = (g: unknown): g is PointLike => !!g && (Array.isArray(g) ? typeof g[0] === 'number' : typeof (g as {x?: unknown}).x === 'number');
         let box: [number, number, number, number];
@@ -980,56 +917,18 @@ export class Map {
             type: 'Feature', id: f.id, geometry: f.geometry!, properties: f.properties, source: f.source, sourceLayer: f.sourceLayer || undefined,
             layer: this.getLayer(f.layer!), state: f.id === undefined ? {} : this.getFeatureState({source: f.source, sourceLayer: f.sourceLayer || undefined, id: f.id}),
         }));
-        // At once: the GeoJSON sources that the page has the data of.
-        const now: QueriedFeature[] = [], sync = this.syncQuery;
-        if (sync) for (const [id, spec] of Object.entries<any>(this.rawStyle?.sources ?? {})) {
-            const mine = sets.filter(s => s.source === id);
-            const data = mine.length && spec.type === 'geojson' && this.geoData(id);
-            if (data) try { now.push(...sync.queryGeoJSON(id, {...spec, data}, this.tr, box, mine)); } catch { /* the promise has the complete result or the error */ }
-        }
-        const result = features(now);
-        // Later: all the sources, from the engine.
-        const all = sets.length ? this.ask<QueriedFeature[]>(id => ({type: 'queryRendered', id, box, sets, geometry: true})).then(features) : Promise.resolve([]);
-        Object.defineProperty(result, 'then', {value: (done?: (v: RenderedFeature[]) => unknown, failed?: (e: unknown) => unknown) => all.then(done, failed)});
-        return result as RenderedFeature[] & PromiseLike<RenderedFeature[]>;
+        return {box, sets, features};
     }
-    /** The code for queries on the page, loaded when the style has a GeoJSON source with its data in the style. */
-    private syncQuery?: typeof import('./sync-query.ts');
-
     /**
-     * The data of a GeoJSON source, when the page has it: the data is in the style, or the page has fetched it for a
-     * query before. If not, the page fetches it now (the browser has it in its cache already) and then fires the data
-     * events of the source, so that code that listens for them asks again.
+     * The features that the style layers draw at a point or in a rectangle of the screen (the whole map when no
+     * geometry is given), from the top layer down. The tile data is in a worker, so the result is a promise.
      */
-    private geoData(id: string): object | undefined {
-        const spec = this.rawStyle?.sources[id], kept = this.geoKept.get(id);
-        if (!spec?.data || typeof spec.data === 'object') return spec?.data;
-        if (kept?.from === spec.data) return kept!.data;
-        const entry: {from: string; data?: object} = {from: spec.data};
-        this.geoKept.set(id, entry);
-        Promise.all([this.fetchAs('Source')(new URL(spec.data, this.styleBase)).then(r => r.json()), import('./sync-query.ts')]).then(([data, m]) => {
-            entry.data = data; this.syncQuery = m;
-            for (const type of ['sourcedata', 'data']) this.fire(type, {dataType: 'source', sourceId: id, isSourceLoaded: true, sourceDataType: 'content'});
-        }, () => {});
+    queryLayers(geometry?: PointLike | [PointLike, PointLike] | RenderedQueryOptions, options?: RenderedQueryOptions): Promise<RenderedFeature[]> {
+        const {box, sets, features} = this.rendered(geometry, options);
+        return sets.length ? this.ask<QueriedFeature[]>(id => ({type: 'queryRendered', id, box, sets, geometry: true})).then(features) : Promise.resolve([]);
     }
-    private geoKept = new globalThis.Map<string, {from: string; data?: object}>();
 
-    /**
-     * The features of a source in the tiles of the present view. As with `queryRenderedFeatures`, the result is an array
-     * that can also be awaited: at once it has the features of a GeoJSON source whose data the page has (clusters too);
-     * awaited, it has the features of each kind of source.
-     */
-    querySourceFeatures(sourceId: string, options: {sourceLayer?: string; filter?: unknown} = {}): RenderedFeature[] & PromiseLike<RenderedFeature[]> {
-        const sets = [{layer: '', source: sourceId, sourceLayer: options.sourceLayer, filter: options.filter, radius: 0}], box: [number, number, number, number] = [0, 0, this.tr.width, this.tr.height];
-        const features = (found: QueriedFeature[]): RenderedFeature[] => found.map(f => ({type: 'Feature', id: f.id, geometry: f.geometry!, properties: f.properties, source: f.source, sourceLayer: f.sourceLayer || undefined,
-            state: f.id === undefined ? {} : this.getFeatureState({source: f.source, sourceLayer: f.sourceLayer || undefined, id: f.id})}));
-        const spec = this.rawStyle?.sources[sourceId], data = spec?.type === 'geojson' && this.geoData(sourceId);
-        let now: QueriedFeature[] = [];
-        if (data && this.syncQuery) try { now = this.syncQuery.queryGeoJSON(sourceId, {...spec, data}, this.tr, box, sets); } catch { /* the promise has the complete result or the error */ }
-        const result = features(now), all = this.ask<QueriedFeature[]>(id => ({type: 'queryRendered', id, box, sets, geometry: true})).then(features);
-        Object.defineProperty(result, 'then', {value: (done?: (v: RenderedFeature[]) => unknown, failed?: (e: unknown) => unknown) => all.then(done, failed)});
-        return result as RenderedFeature[] & PromiseLike<RenderedFeature[]>;
-    }
+
 
     /** Ground elevation in metres at a location, read from the style's elevation (raster-dem) source; null where there is no data. */
     queryElevation(at: LngLatLike | {x: number; y: number}, options: {source?: string; zoom?: number} = {}): Promise<number | null> {
@@ -1393,7 +1292,7 @@ async function rasterise(svg: string, w: number, h: number): Promise<Uint8Array>
 
 /** Padding as MapLibre takes it: one number for all sides, or any of the four sides. */
 export type PaddingInput = number | Partial<Record<'top' | 'right' | 'bottom' | 'left', number>>;
-type CameraInput = Omit<CameraOptions, 'padding'> & {padding?: PaddingInput};
+export type CameraInput = Omit<CameraOptions, 'padding'> & {padding?: PaddingInput};
 function paddingOf(p: PaddingInput): [number, number, number, number] {
     return typeof p === 'number' ? [p, p, p, p] : [p.top ?? 0, p.right ?? 0, p.bottom ?? 0, p.left ?? 0];
 }

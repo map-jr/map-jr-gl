@@ -21,7 +21,8 @@ const publicMethods = (file, classNames) => {
 const dts = createRequire(import.meta.url).resolve('maplibre-gl/dist/maplibre-gl.d.ts');
 // MapLibre's Map inherits camera and event methods; count the whole public surface.
 const theirs = new Set([...publicMethods(dts, ['Map', 'Map$1']), ...publicMethods(dts, ['Camera']), ...publicMethods(dts, ['Evented'])]);
-const ours = publicMethods(path.join(root, 'src/map.ts'), ['Map']);
+// (The map of the entry maplibre-compat: the core class and the class that extends it.)
+const ours = new Set([...publicMethods(path.join(root, 'src/map.ts'), ['Map']), ...publicMethods(path.join(root, 'src/compat-map.ts'), ['Map'])]);
 const have = [...theirs].filter(n => ours.has(n)).sort(), missing = [...theirs].filter(n => !ours.has(n)).sort();
 const extra = [...ours].filter(n => !theirs.has(n)).sort();
 console.log(`MapLibre Map API coverage: ${have.length} of ${theirs.size} methods (${(100 * have.length / theirs.size).toFixed(0)}%)`);

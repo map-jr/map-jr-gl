@@ -1,6 +1,7 @@
 // Types under the names that MapLibre GL JS uses, for TypeScript code that was written for MapLibre.
 // This file has types only, so it adds nothing to the built files.
-import type {Map, MapEvent, RenderedFeature, RenderedQueryOptions, PaddingInput, RequestTransform} from './map.ts';
+import type {Map} from './compat-map.ts';
+import type {MapEvent, RenderedFeature, RenderedQueryOptions, PaddingInput, RequestTransform} from './map.ts';
 import type {CameraOptions} from './engine.ts';
 import type {Control} from './controls.ts';
 import type {LngLat, LngLatBounds, LngLatBoundsInput} from './lnglat.ts';

@@ -176,7 +176,7 @@ export class GeolocateControl implements Control {
             b.disabled = true;
             navigator.geolocation.getCurrentPosition(p => {
                 b.disabled = false;
-                map.flyTo({center: [p.coords.longitude, p.coords.latitude], zoom: Math.max(map.getZoom(), this.options.zoom ?? 14)});
+                map.easeTo({duration: 1200, center: [p.coords.longitude, p.coords.latitude], zoom: Math.max(map.getZoom(), this.options.zoom ?? 14)});
                 map.fire('geolocate', {coords: p.coords});
             }, err => { b.disabled = false; map.fire('error', {error: new Error(err.message)}); }, this.options.positionOptions);
         });

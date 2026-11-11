@@ -124,7 +124,7 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
         asking = true;
         while (alive) {
             const at = pointer, layers = now.interactiveLayers;
-            const found = at && layers?.length ? await map.queryRenderedFeatures([at.x, at.y], {layers}) : [];
+            const found = at && layers?.length ? await map.queryLayers([at.x, at.y], {layers}) : [];
             if (!alive) break;
             const before = state.get().hover;
             if (found.length !== before.length || found.some((f, i) => f.id !== before[i].id || (f.layer as any)?.id !== (before[i].layer as any)?.id || f.source !== before[i].source)) state.set({hover: found});
@@ -139,7 +139,7 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
     map.on('click', async e => {
         const click = now.onClick, layers = now.interactiveLayers;
         if (!click || !e.point || !e.lngLat) return;
-        click({point: e.point, lngLat: [e.lngLat.lng, e.lngLat.lat], features: layers?.length ? await map.queryRenderedFeatures([e.point.x, e.point.y], {layers}) : []});
+        click({point: e.point, lngLat: [e.lngLat.lng, e.lngLat.lat], features: layers?.length ? await map.queryLayers([e.point.x, e.point.y], {layers}) : []});
     });
 
     const apply = (next: MapSpec, before?: MapSpec) => {
@@ -172,7 +172,7 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
         destroy() { if (!alive) return; alive = false; map.remove(); },
         state,
         queryFeatures: (at, o = {}) => Array.isArray(at) || o.layers
-            ? map.queryRenderedFeatures((Array.isArray(at) ? at.map(p => [p.x, p.y]) : [at.x, at.y]) as [[number, number], [number, number]], {layers: o.layers, filter: o.filter}) as unknown as Promise<RenderedFeature[]>
+            ? map.queryLayers((Array.isArray(at) ? at.map(p => [p.x, p.y]) : [at.x, at.y]) as [[number, number], [number, number]], {layers: o.layers, filter: o.filter})
             : map.queryFeatures(at, o),
         moveTo({duration = 0, ...view}) { if (duration) map.easeTo({...view, duration}); else map.jumpTo(view); },
         fitBounds: (bounds, o) => { map.fitBounds(bounds, o); },

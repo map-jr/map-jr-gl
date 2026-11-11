@@ -1,4 +1,5 @@
-export {Map, MarkerLayer, InteractionHandler, type MapOptions, type MapEvent, type RenderedFeature, type PointLike} from './map.ts';
+export {Map} from './compat-map.ts';
+export {MarkerLayer, InteractionHandler, type MapOptions, type MapEvent, type RenderedFeature, type PointLike} from './map.ts';
 export {addProtocol, removeProtocol, type ProtocolFunction} from './protocols.ts';
 export {LngLat, LngLatBounds, type LngLatInput, type LngLatBoundsInput} from './lnglat.ts';
 export type {MarkerLayerOptions, MarkerInput, Anchor} from './markers.ts';
@@ -31,7 +32,8 @@ export const getRTLTextPluginStatus = () => 'loaded';
 // (4 of the 15 in test/conformance/plugins.mjs), and an application cannot change that line: it can only map the name
 // `maplibre-gl` to this library. An application itself uses the named exports.
 // (A bundler leaves the object out when nothing imports it.)
-import {Map, MarkerLayer, InteractionHandler} from './map.ts';
+import {Map} from './compat-map.ts';
+import {MarkerLayer, InteractionHandler} from './map.ts';
 import {LngLat, LngLatBounds} from './lnglat.ts';
 import {addProtocol, removeProtocol} from './protocols.ts';
 import {AttributionControl, NavigationControl, ScaleControl, FullscreenControl, GeolocateControl, TerrainControl, LogoControl} from './controls.ts';
