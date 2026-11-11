@@ -6,7 +6,7 @@ const MAX_LAT = 85.051129;
 export type Mat = [number, number, number, number, number, number];
 export type LngLatLike = [number, number] | {lng: number; lat: number} | {lon: number; lat: number};
 
-export interface TileID { z: number; x: number; y: number; w: number; key: string }
+export interface TileID { z: number; x: number; y: number; w: number; key: string; /** With 3D terrain: the level of detail that the view wants at this tile, before it is rounded. */ lod?: number }
 
 /** With 3D terrain, heights are kept on the CPU as one grid of this many samples a side per elevation tile. */
 export const HEIGHT_GRID = 128;
@@ -340,18 +340,19 @@ export class Transform {
             const n = 2 ** z, x0 = (x + w * n) / n, y0 = y / n, x1 = x0 + 1 / n, y1 = y0 + 1 / n;
             if (!overlaps(x0, y0, x1, y1)) return;
             // Depth of the tile's nearest point decides how much detail it needs: half the on-screen scale, one level less.
-            let wanted: number;
+            let wanted: number, lod: number | undefined;
             if (this.heightAt) {
                 // With 3D terrain the rule is that of MapLibre, so that both show the same tiles: less detail with the
                 // distance from the camera to the nearest point of the tile, and less again for ground that is seen at
                 // a flat angle. (MapLibre: createCalculateTileZoomFunction, with its default values.)
                 const far = Math.hypot(clamp(cam[0], x0, x1) - cam[0], clamp(cam[1], y0, y1) - cam[1], camZ);
-                wanted = Math.min(maxZ, (round ? Math.round : Math.floor)(exact + Math.log2(d / ws / far) + 0.076 + Math.log2(camZ / far) / 2));
+                lod = exact + Math.log2(d / ws / far) + 0.076 + Math.log2(camZ / far) / 2;
+                wanted = Math.min(maxZ, (round ? Math.round : Math.floor)(lod));
             } else {
                 const near = Math.min(depthAt(clamp(cx, x0, x1), clamp(cy, y0, y1)), depthAt(x0, y0), depthAt(x1, y0), depthAt(x0, y1), depthAt(x1, y1));
                 wanted = maxZ - Math.max(0, Math.floor(Math.log2(Math.max(near, 1) / d) + 0.35));
             }
-            if (z >= maxZ || z >= wanted) { out.push({z, x, y, w, key: `${z}/${x}/${y}`}); return; }
+            if (z >= maxZ || z >= wanted) { out.push({z, x, y, w, key: `${z}/${x}/${y}`, lod}); return; }
             for (let i = 0; i < 4; i++) visit(z + 1, x * 2 + (i & 1), y * 2 + (i >> 1), w);
         };
         const w0 = Math.floor(Math.min(...quad.map(q => q[0]))), w1 = Math.floor(Math.max(...quad.map(q => q[0])));

@@ -126,6 +126,12 @@ const WHEEL_STEP = 4.000244140625, WHEEL_RATE = 1 / 450, TRACKPAD_RATE = 1 / 100
  * It never touches the DOM, so it runs unchanged on the main thread or inside a worker with an OffscreenCanvas,
  * driven purely by `Command` messages and reporting back through `EngineEvent`s.
  */
+/**
+ * 3D terrain: the zoom at which a ground tile takes its image tiles (raster, elevation). The tile knows the detail that
+ * the view wants at its nearest point; a little less is correct for the tile as a whole.
+ */
+const imageLevel = (id: TileID, zoom: number) => clamp((id.lod ?? zoom) - 0.25, id.z, id.z + 0.75);
+
 export class Engine {
     tr = new Transform();
     private renderer: GLRenderer;
@@ -369,11 +375,10 @@ export class Engine {
             if (src.type === 'image') { const list = this.pictureItems(source, view); items.set(source, list); signature += `,${source}:${list[0]?.tile.uid ?? ''}`; continue; }
             // Which level of tiles to draw follows the map's own zoom (not the picture's fixed scale), as it would without terrain.
             cover.zoom = clamp(tr.zoom, id.z, zt);
-            // Image tiles are taken one level deeper when the zoom is past the middle of a level, for a sharp image. Ground
-            // that is far from the camera (a ground tile of a coarser level) does not need that: it would be four tiles
-            // for each ground tile, and for elevation data most of what a tilted view loads.
+            // Image tiles are taken one level deeper when the detail that the view wants at this ground tile is past the
+            // middle of a level, for a sharp image near the camera. Far ground tiles want less, so they stay at their own level.
             const image = src.type === 'raster' || src.type === 'raster-dem';
-            if (image && id.z < Math.floor(tr.zoom)) cover.zoom = Math.min(cover.zoom, id.z + 0.49);
+            if (image) cover.zoom = imageLevel(id, tr.zoom);
             // (A little less than the tile: a view that ends exactly on the tile's edge would take the tiles beyond it too.)
             cover.width = cover.height = TILE_SIZE * 2 ** (cover.zoom - id.z) - 2;
             const ideal = cover.coveringTiles(src.minzoom, src.maxzoom, src.tileSize, image);
@@ -415,7 +420,7 @@ export class Engine {
             // Which source tiles make the picture of this ground tile is much work for each of up to 96 tiles. The answer
             // changes only when a tile arrives or goes, the style changes, the map zooms to another level of tiles, or (for
             // relief that is lit from the viewer's side) the map turns. Until then the last answer is used.
-            const level = Math.floor(clamp(tr.zoom, id.z, zt)), stamp = `${this.styleVersion}|${level}`;
+            const stamp = `${this.styleVersion}|${Math.round(imageLevel(id, tr.zoom))}`;
             let made = this.groundCache.get(tkey), revs = 0;
             if (made) for (const k of made.keys) { const t = this.tiles.get(k); if (t) { t.used = this.frameNo; revs += t.rev!; } else revs = NaN; }
             // A picture that has all its tiles depends on those tiles only. One that still waits for tiles can also get a
