@@ -35,9 +35,9 @@ These figures are written by `pnpm status`. They compare this library with MapLi
 | MapLibre `Map` methods | 113 of 150 are available |
 | MapLibre plugins, run in a browser | 8 of 8 work (see [Plugins and frameworks](docs/ecosystem.md)) |
 | Plugins and frameworks, read from npm | 17 of 26 use only API that the library has |
-| MapLibre render tests | 651 of 1429 are the same (1% of pixels or less are different). 329 more are near (5% or less). |
+| MapLibre render tests | 661 of 1429 are the same (1% of pixels or less are different). 330 more are near (5% or less). |
 | Page script (gzip) | 27 KB. MapLibre GL JS: 299 KB. |
-| Worker script (gzip) | 57 KB. MapLibre GL JS: 145 KB. |
+| Worker script (gzip) | 58 KB. MapLibre GL JS: 145 KB. |
 | Server renderer (gzip) | 34 KB |
 <!-- status:end -->
 
