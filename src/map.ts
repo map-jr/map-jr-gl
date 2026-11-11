@@ -18,6 +18,8 @@ export interface MapOptions extends CameraOptions, LoadOptions {
     container: HTMLElement | string;
     /** The style: an object or a URL. Leave it out to give the style later with `setStyle`. */
     style?: unknown;
+    /** Keeps the camera in the fragment of the URL (`#zoom/lat/lng`), so that a link shows the same view. A string gives the camera a name in the fragment. */
+    hash?: boolean | string;
     /**
      * Where the engine (camera, placement, drawing) runs. 'worker' keeps the map smooth while the page is busy;
      * 'main' renders on the page's own thread. 'auto' picks 'worker' when the browser supports it.
@@ -216,6 +218,14 @@ export class Map {
         this.canvas.width = Math.round(this.tr.width * this.dpr);
         this.canvas.height = Math.round(this.tr.height * this.dpr);
         this.tr.maxPitch = options.maxPitch ?? 60;
+        const key = options.hash;
+        if (key) {
+            // The camera is in the fragment of the URL, as in MapLibre (see hash.ts, which is loaded only for this option).
+            // The fragment gives the camera at the start; the option `center` and the others are for a URL without one.
+            const all = location.hash.slice(1), p = (key === true ? all : new URLSearchParams(all).get(key) ?? '').split('/').map(Number);
+            if (p.length > 2 && !p.some(isNaN)) this.options = options = {...options, zoom: p[0], center: [p[2], p[1]], bearing: p[3] ?? 0, pitch: p[4] ?? 0};
+            import('./hash.ts').then(m => this.cleanup.push(m.watchHash(this, key)));
+        }
         this.tr.set(options.center ?? [0, 0], options.zoom ?? 0, options.bearing ?? 0, options.pitch ?? 0);
         for (const k of ['dragPan', 'scrollZoom', 'doubleClickZoom', 'dragRotate', 'touchZoomRotate', 'touchPitch', 'keyboard', 'boxZoom'] as const) if (options[k] === false) this[k].disable();
         this.transformRequest = options.transformRequest ?? null;

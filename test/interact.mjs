@@ -505,6 +505,27 @@ for (const mode of ['main', 'worker']) {
     });
     check(`[${mode}] 3D terrain turns on and off, keeping the map centre in the middle`, terrain.on === 'dem' && terrain.off === null && terrain.loaded && terrain.lift > 30 && terrain.roundTrip < 1 && Math.abs(terrain.centre.x - terrain.mid[0]) < 0.5 && Math.abs(terrain.centre.y - terrain.mid[1]) < 0.5, JSON.stringify(terrain));
     await page.screenshot({path: `${out}/terrain-${mode}.png`});
+    // The `hash` option: the fragment of the URL gives the camera at the start, a movement writes it, and a change of the
+    // fragment moves the map.
+    const hash = await page.evaluate(async () => {
+        const mod = await import('/dist/map-jr-gl.js'), el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:400px;height:300px'}));
+        const before = location.hash;
+        location.hash = '#12/40.71/-74.01/30';
+        const m = new mod.Map({container: el, style: {version: 8, sources: {}, layers: []}, hash: true, zoom: 3, center: [0, 0]});
+        await new Promise(r => m.once('load', r));
+        const start = [m.getZoom(), m.getCenter().lat, m.getCenter().lng, m.getBearing()];
+        m.jumpTo({center: [2.5, 48.25], zoom: 5, bearing: 0});
+        await new Promise(r => setTimeout(r, 600));
+        const written = location.hash;
+        location.hash = '#6/10/20';
+        await new Promise(r => setTimeout(r, 600));
+        const moved = [m.getZoom(), m.getCenter().lat, m.getCenter().lng];
+        m.remove(); el.remove();
+        history.replaceState(history.state, '', location.href.replace(/(#.*)?$/, before));
+        return {start, written, moved};
+    });
+    check(`[${mode}] the hash option reads and writes the camera in the URL`, hash.start.join() === '12,40.71,-74.01,30' && hash.written === '#5/48.25/2.5' && hash.moved.join() === '6,10,20', JSON.stringify(hash));
+
     // Image tiles (raster, elevation) are not geometry: a change of zoom or of the style must not send them to be built
     // again as vector tiles (that gave "Unsupported protobuf wire type" errors).
     const imageErrors = await page.evaluate(async () => {
