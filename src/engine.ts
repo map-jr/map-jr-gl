@@ -425,9 +425,10 @@ export class Engine {
         for (const id of tr.coveringTiles(0, 22, TILE_SIZE).slice(0, 96)) { // nearest first; a cap keeps odd views affordable
             // Each tile's picture is drawn once for a whole level of zoom: with the style as it is three quarters of the way
             // through the level of the map, and stretched as the map zooms inside that level. A ground tile can be of a
-            // coarser level than the map (far ground, and with a steep tilt also the ground at the centre). Its picture
-            // still uses the style of the map's level, as in MapLibre: the same layers show, and lines have the same width.
-            const zt = Math.max(id.z, Math.floor(tr.zoom)) + 0.75, tkey = `${id.key}|${id.w}`;
+            // coarser level than the map (far ground, and with a steep tilt also the ground at the centre) or of a finer one
+            // (ground near the camera). Its picture still uses the style of the map's level, as in MapLibre: the same layers
+            // show, and lines have the same width.
+            const zt = Math.floor(tr.zoom) + 0.75, tkey = `${id.key}|${id.w}`;
             // Which source tiles make the picture of this ground tile is much work for each of up to 96 tiles. The answer
             // changes only when a tile arrives or goes, the style changes, the map zooms to another level of tiles, or (for
             // relief that is lit from the viewer's side) the map turns. Until then the last answer is used.
