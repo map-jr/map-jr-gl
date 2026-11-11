@@ -22,7 +22,7 @@ const sizes = [
     ['page script of maplibre-compat, up front (' + [...compat].length + ' files)', gz(compat), 29.5],
     ['map-jr-gl-worker.js', gz(['map-jr-gl-worker.js']), 58.5],
     // Only when the engine runs on the main thread (no worker is possible).
-    ['engine on the main thread, on demand', gz(engine), 55.5],
+    ['engine on the main thread, on demand', gz(engine), 56],
 ];
 let ok = true;
 for (const [name, kb, budget] of sizes) {

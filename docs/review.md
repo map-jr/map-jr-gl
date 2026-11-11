@@ -169,7 +169,12 @@ Faults that the trial found, and their state:
 8. PMTiles layers were slow on the first load: the header of an archive was fetched by the page and again by each
    tile worker, and the metadata was a request of its own. Now one request before the first tile (MapLibre with the
    `pmtiles` package: one also).
-9. Open: at zoom 6.8 the library shows green areas (land cover) in the plain of the Po that MapLibre does not show.
+9. On a tilted map, the letters of a road name changed size at each point of the road line. Fixed.
+10. A tilted map with 3D terrain was blurred during a zoom: while the camera moves, the ground images were made at
+    half the size, and only in each third frame. Now a device that keeps up with the display (less than 20 ms
+    between the frames of a movement) makes them at the full size in each frame. **Not checked on a GPU:** the
+    development machine has none. The owner must look at this on the Mac and on the iPhone.
+11. Open: at zoom 6.8 the library shows green areas (land cover) in the plain of the Po that MapLibre does not show.
    Not examined.
 
 Not checked in the trial:
@@ -192,6 +197,7 @@ Not checked in the trial:
 | The page script is now 26.4 KB (budget 27.5 KB). The budget of the engine for the main thread went from 54 KB to 55 KB; it is 54.7 KB. | The reader for PMTiles archives was in the page script, because the page reads the header of an archive when it resolves a style. It is now loaded only for a style that has a `pmtiles://` source: 1.1 KB less for each page. The reader is counted with the engine for the main thread now, which is why that budget changed. A map in a worker (the usual case) downloads less; a map on the main thread downloads 0.6 KB more in total. | Import `./pmtiles.ts` at the top of `src/resolve.ts` again. |
 | The budget of the page script of `maplibre-compat` went from 28.5 KB to 29 KB; the file set is 28.6 KB. | `queryRenderedFeatures` read at once now has the features of tiles in the usual cases (a fault from the trial in elevation-next: a click on a county did nothing). The main entry did not grow. | Remove `answers` and the `fire` override in `src/compat-map.ts`; MapLibre code then needs `await`. |
 | The budget of the page script of `maplibre-compat` went from 29 KB to 29.5 KB; the file set is 29.1 KB. The page script of the main entry is 26.7 KB (budget 27 KB). | The state of each source (loaded or not) and the numbers on commands are in the core map class, which both entries contain. | — |
+| The budget of the engine for the main thread went from 55.5 KB to 56 KB; the file is 55.5 KB. The worker is 58.4 KB (budget 58.5 KB). | Faults from the trial in elevation-next: the state of each source, the first bytes of PMTiles archives, letters on tilted roads, sharp ground images during a movement. | — |
 | The build gives short names to private class members and to the names in the shaders (uniforms, attributes, varyings, local variables), and takes the spaces from around the operators in the shaders (`scripts/private-names.mjs`, `build.mjs`). The budgets did not change. | The minifier does not shorten property names, and it does not look into GLSL text. The steps make the worker about 1.1 KB smaller (gzip). The features of this night used that room: the worker is 57.7 KB. A name is shortened only when each use of it is a `private` declaration or `this.name`, so message fields, options and browser properties keep their names. | Remove `privates` from the plugins in `build.mjs`. |
 
 ## `queryRenderedFeatures` gives two kinds of result

@@ -1142,6 +1142,8 @@ export class GLRenderer {
     destroy() { this.gl.getExtension('WEBGL_lose_context')?.loseContext(); }
 
     private drapeWaits = new Map<string, number>();
+    private gap = 33;
+    private drapedAt = 0;
     /** How many levels up the nearest coarser tile with a picture is (0: there is none). */
     private coarserDrape(id: TileID) {
         for (let up = 1; up <= 5 && up <= id.z; up++) if (this.drapes.has(`${id.z - up}/${id.x >> up}/${id.y >> up}|${id.w}`)) return up;
@@ -1155,10 +1157,15 @@ export class GLRenderer {
         // pictures that are complete a moment sooner.
         // One picture is a pass over all the layers of the style: as many WebGL calls as the frame itself. So while the
         // camera moves, a picture is made only in each third frame. The picture of a coarser tile shows meanwhile.
-        const turn = !s.moving || this.frame % 3 === 0;
         const now = performance.now();
+        // (A device that keeps up with the display while the camera moves does all the work in each frame, at the full
+        // size: the map then stays sharp during a zoom. `gap`: the usual time between frames of a movement.)
+        if (s.moving && now - this.drapedAt < 100) this.gap += (now - this.drapedAt - this.gap) * 0.2;
+        this.drapedAt = now;
+        const quick = this.gap < 20;
+        const turn = !s.moving || quick || this.frame % 3 === 0;
         for (const [key, since] of this.drapeWaits) if (now - since > 2000) this.drapeWaits.delete(key);
-        let budget = !turn ? 0 : s.moving ? 1 : 2, fresh = !this.drapes.size ? Infinity : !turn ? 0 : s.moving ? 1 : 3, behind = false;
+        let budget = !turn ? 0 : s.moving && !quick ? 1 : 2, fresh = !this.drapes.size ? Infinity : !turn ? 0 : s.moving && !quick ? 1 : 3, behind = false;
         for (const t of s.terrain!.tiles) {
             let d = this.drapes.get(t.key);
             // 1024 pixels a side at most (what MapLibre uses): larger pictures cost high-density phones frames for little gain.
@@ -1174,7 +1181,7 @@ export class GLRenderer {
             // second: the ground fills in step by step (the map, then the relief, then the contour lines), and a tile
             // does not wait for its slowest part. (On a slow device the contour lines can take seconds.)
             if (d && !t.complete && now - d.at! < 500 && !sharpen) { d.used = this.frame; behind = true; continue; }
-            const rough = !!s.moving && (!d || !!d.rough) && full > 256, size = rough ? full >> 1 : full;
+            const rough = !!s.moving && !quick && (!d || !!d.rough) && full > 256, size = rough ? full >> 1 : full;
             if (d && budget-- <= 0) { d.used = this.frame; behind = true; continue; }
             if (!d && !t.complete && fresh < Infinity) {
                 // A new tile whose data is still on its way: for a short time, the picture of a coarser tile shows in its
