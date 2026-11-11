@@ -152,6 +152,10 @@ MapLibre GL JS ignores them, so the style stays correct for the two libraries.
 
 The SVG uses the fonts of the page where you show it. Set `fontFamily` to make the text the same as the live map.
 
+The server does not have the fonts, so it estimates the width of each label. The live map measures the width.
+Where labels are close together, the server render can therefore show a different label than the live map shows
+(one street name in place of the name of the next street, for example).
+
 For an image, register your fonts with the Takumi renderer. You need this for scripts that are not Latin.
 
 ## What the server renderer does not draw

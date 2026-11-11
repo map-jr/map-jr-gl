@@ -153,7 +153,7 @@ map.addLayer({id: 'counties', type: 'line', source: 'admin',
             row.out('Click to list the county, state and ZIP code'); return map; }},
 
     {id: 'server', title: 'The first view, rendered on the server', pair: true,
-        points: ['renderToSVG and renderToImage render a map without a browser, on Node or in a Cloudflare Worker.', 'A page can show that render immediately. The live map replaces it when it is ready.', 'The first map here is live. The two images below it were made when this site was built. All three show the same view at the same scale.'],
+        points: ['renderToSVG and renderToImage render a map without a browser, on Node or in a Cloudflare Worker.', 'A page can show that render immediately. The live map replaces it when it is ready.', 'The first map here is live. The two images below it were made when this site was built. All three show the same view at the same scale.', 'The server estimates the width of text, so in a crowded place it can show a different street name than the live map.'],
         code: `import {renderToSVG, renderToImage} from 'map-jr-gl/server';
 
 const {svg} = await renderToSVG({
