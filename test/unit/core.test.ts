@@ -521,3 +521,16 @@ test('style: each layer type that the page accepts has its properties in the com
     for (const type of LAYER_TYPES) assert.ok(compileLayer({id: 'x', type} as any), type);
     assert.equal(compileLayer({id: 'x', type: 'no-such-type'} as any), null);
 });
+
+test('terrain: the height lookup uses a deeper grid after it is told that the grids changed', async () => {
+    const {groundHeight, heightsChanged, HEIGHT_GRID} = await import('../../src/geo.ts');
+    const grids = new Map<string, Float32Array>([['0/0/0', new Float32Array(HEIGHT_GRID * HEIGHT_GRID).fill(100)]]);
+    assert.equal(groundHeight(grids, 0.3, 0.3, 4), 100);
+    assert.equal(groundHeight(grids, 0.3, 0.3, 4), 100, 'the second lookup takes the remembered grid');
+    grids.set('1/0/0', new Float32Array(HEIGHT_GRID * HEIGHT_GRID).fill(250));
+    heightsChanged(grids);
+    assert.equal(groundHeight(grids, 0.3, 0.3, 4), 250);
+    assert.equal(groundHeight(grids, 0.8, 0.8, 4), 100, 'a place outside the deeper tile keeps the first grid');
+    grids.clear(); heightsChanged(grids);
+    assert.equal(groundHeight(grids, 0.3, 0.3, 4, 0, -1), -1, 'no data: the value for unknown');
+});
