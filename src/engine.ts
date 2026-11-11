@@ -114,6 +114,8 @@ interface LabelState { placed: Placed; opacity: number; target: number }
 const raf: (cb: (t: number) => void) => unknown = globalThis.requestAnimationFrame
     ? cb => globalThis.requestAnimationFrame(cb) : cb => setTimeout(() => cb(performance.now()), 16);
 const MAX_TILES = 160;
+/** How long the zoom must be still before new contour tiles are made, in milliseconds. */
+const CONTOUR_WAIT = 250;
 /** How often labels are re-decided while the map moves, and how long they take to fade. Between decisions they stay pinned to the map. */
 const PLACE_INTERVAL = 250, FADE = 200;
 /** While the zoom is changing quickly labels crowd together (or thin out) fast, so decide and fade sooner. */
@@ -153,6 +155,11 @@ export class Engine {
 
     private labels = new Map<string, LabelState>();
     private placeDirty = true;
+    /** For the delay of contour tiles while the zoom changes: the time of this frame, when the zoom last changed, and if a tile waits. */
+    private frameTime = 0;
+    private zoomMovedAt = -1e9;
+    private zoomSeen = NaN;
+    private contourWait = false;
     /** How many sprite and font downloads are in progress. */
     private spritePending = 0;
     private lastPlace = -Infinity;
@@ -752,6 +759,10 @@ export class Engine {
 
     private request(source: string, id: TileID, key: string) {
         const src = this.style.sources[source], url = tileURL(src, id.z, id.x, id.y);
+        // Contour lines are made from elevation data, which is much work. While the zoom changes, each step would start
+        // tiles that are out of date a moment later, and slow devices cannot keep up. The lines of the last zoom stay
+        // on the map (they are scaled) until the zoom has been still for a moment.
+        if (src.contour && this.frameTime - this.zoomMovedAt < CONTOUR_WAIT) { this.contourWait = true; return; }
         const t: TileState = {state: 'loading', used: this.frameNo, cancel() {}};
         this.tiles.set(key, t);
         let load: Promise<GLTile>;
@@ -815,6 +826,8 @@ export class Engine {
         if (!tr.width || !tr.height) return;
         const dt = Math.min(100, now - this.lastTime || 16);
         this.lastTime = now;
+        this.frameTime = began;
+        if (tr.zoom !== this.zoomSeen) { if (!Number.isNaN(this.zoomSeen)) this.zoomMovedAt = began; this.zoomSeen = tr.zoom; }
         const cameraAnimating = this.animate(now), markersAnimating = this.animateMarkers(now), animating = cameraAnimating;
         this.flushUploads();
 
@@ -1026,7 +1039,8 @@ export class Engine {
             this.emit({type: 'camera', lng: tr.lng, lat: tr.lat, zoom: tr.zoom, bearing: tr.bearing, pitch: tr.pitch, elevation: tr.elevation, exaggeration: this.exaggeration, groundRange: tr.groundRange, padding: tr.padding, moving: animating});
         }
         const busy = animating || markersAnimating || fading || this.placeDirty || settling || behind || this.meshBehind;
-        const idle = complete && !busy && !this.spritePending;
+        const idle = complete && !busy && !this.spritePending && !this.contourWait;
+        if (this.contourWait) { this.contourWait = false; setTimeout(() => this.repaint(), CONTOUR_WAIT + 20); }
         if (idle && !this.wasIdle) this.emit({type: 'idle'});
         this.wasIdle = idle;
         if (busy) this.repaint();
