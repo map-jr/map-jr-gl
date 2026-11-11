@@ -289,6 +289,21 @@ for (const mode of ['main', 'worker']) {
     });
     check(`[${mode}] feature state is set, merged and removed`, fs.both.hover === true && fs.both.picked === 1 && !('hover' in fs.one) && fs.one.picked === 1 && Object.keys(fs.none).length === 0, JSON.stringify(fs));
 
+    // GeoJSON clusters: the tiles show one cluster for near points, and the source answers questions about it.
+    const clusters = await page.evaluate(async () => {
+        const m = window.map, c = m.getCenter();
+        const point = (dx, n) => ({type: 'Feature', properties: {n}, geometry: {type: 'Point', coordinates: [c.lng + dx, c.lat]}});
+        m.addSource('grouped', {type: 'geojson', cluster: true, data: {type: 'FeatureCollection', features: [point(0, 1), point(0.00001, 2), point(0.00002, 3)]}});
+        m.addLayer({id: 'grouped', type: 'circle', source: 'grouped', paint: {'circle-radius': 10}});
+        let found = [];
+        for (let i = 0; i < 40 && !found.length; i++) { await new Promise(r => setTimeout(r, 100)); found = await m.queryFeatures(c, {sources: ['grouped'], radius: 10}); }
+        const id = found[0]?.properties.cluster_id, source = m.getSource('grouped');
+        const out = {count: found[0]?.properties.point_count, zoom: await source.getClusterExpansionZoom(id), leaves: (await source.getClusterLeaves(id)).length};
+        m.removeLayer('grouped'); m.removeSource('grouped');
+        return out;
+    });
+    check(`[${mode}] GeoJSON clusters: a cluster in the tiles, and its expansion zoom and points from the source`, clusters.count === 3 && clusters.zoom > 14 && clusters.leaves === 3, JSON.stringify(clusters));
+
     // 3D terrain, as people use it: a dragged point of ground stays under the pointer on a tilted map, and nothing
     // moves once the drag is over.
     await page.evaluate(() => { const m = window.map; m.jumpTo({center: [7.70, 45.99], zoom: 12, bearing: 20, pitch: 60}); m.setTerrain({source: 'dem', exaggeration: 1.5}); });

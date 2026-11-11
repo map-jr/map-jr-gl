@@ -3,7 +3,7 @@ import {setFeatureStates, setGlobalState} from './expr.ts';
 import {buildTile, packLabels, toGL, unpackLabels, type TileGL, type TileIR} from './tile.ts';
 import {queryTile, type QueriedFeature, type TileQuery} from './query.ts';
 import {fetchTile} from './pmtiles.ts';
-import {GEOJSON_PREFIX, prepareGeoJSON, sliceGeoJSON} from './geojson.ts';
+import {GEOJSON_PREFIX, prepareSource, sliceGeoJSON, type GeoJSONOptions, type PreparedSource} from './geojson.ts';
 import {contourTile, decodeDEM, type ContourConfig, type DEM, type ImageDecoder} from './contour.ts';
 
 export interface TileRequest { id: number; source: string; url: string; z: number; overscaled: boolean }
@@ -14,7 +14,7 @@ export class TileBuilder {
     private aborts = new Map<number, AbortController>();
     /** Recently fetched tiles, kept so feature queries on visible tiles need no second download. */
     private recent = new Map<string, Uint8Array>();
-    private geojson = new Map<string, ReturnType<typeof prepareGeoJSON>>();
+    private geojson = new Map<string, PreparedSource>();
 
     private contours = new Map<string, ContourConfig>();
     private dems = new Map<string, Promise<DEM | null>>();
@@ -40,7 +40,7 @@ export class TileBuilder {
     }
 
     /** Replaces a GeoJSON source's data. Its tiles are cut from this on demand. */
-    setGeoJSON(source: string, data: unknown) { this.geojson.set(source, prepareGeoJSON(data)); }
+    setGeoJSON(source: string, data: unknown, options?: GeoJSONOptions, maxzoom?: number) { this.geojson.set(source, prepareSource(data, options, maxzoom)); }
 
     /** GeoJSON tiles are addressed as geojson://source/z/x/y and built from memory, not fetched. */
     private slice(url: string) {
@@ -104,7 +104,7 @@ export class TileBuilder {
 /** What the engine needs from wherever tiles are built. */
 export interface TileBackend {
     setStyle(layers: LayerJSON[], state?: Record<string, unknown>): void;
-    setGeoJSON(source: string, data: unknown): void;
+    setGeoJSON(source: string, data: unknown, options?: GeoJSONOptions, maxzoom?: number): void;
     /** Replaces the feature state of one source: "sourceLayer|id" -> state. */
     setFeatureState(source: string, states: Record<string, Record<string, unknown>>): void;
     setContours(sources: Record<string, ContourConfig>): void;
@@ -116,7 +116,7 @@ export interface TileBackend {
 export class LocalBackend implements TileBackend {
     private builder = new TileBuilder();
     setStyle(layers: LayerJSON[], state?: Record<string, unknown>) { this.builder.setStyle(layers, state); }
-    setGeoJSON(source: string, data: unknown) { this.builder.setGeoJSON(source, data); }
+    setGeoJSON(source: string, data: unknown, options?: GeoJSONOptions, maxzoom?: number) { this.builder.setGeoJSON(source, data, options, maxzoom); }
     setFeatureState(source: string, states: Record<string, Record<string, unknown>>) { setFeatureStates(source, states); }
     setContours(sources: Record<string, ContourConfig>) { this.builder.setContours(sources); }
     async load(req: TileRequest) { return toGL(await this.builder.loadIR(req)).tile; }
@@ -141,7 +141,7 @@ export class PortBackend implements TileBackend {
         };
     }
     setStyle(layers: LayerJSON[], state?: Record<string, unknown>) { this.port.postMessage({type: 'style', layers, state}); }
-    setGeoJSON(source: string, data: unknown) { this.port.postMessage({type: 'geojson', source, data}); }
+    setGeoJSON(source: string, data: unknown, options?: GeoJSONOptions, maxzoom?: number) { this.port.postMessage({type: 'geojson', source, data, options, maxzoom}); }
     setFeatureState(source: string, states: Record<string, Record<string, unknown>>) { this.port.postMessage({type: 'featureState', source, states}); }
     setContours(sources: Record<string, ContourConfig>) { this.port.postMessage({type: 'contours', sources}); }
     load(req: TileRequest) {
@@ -166,7 +166,7 @@ export function serveTiles(port: Port) {
     port.onmessage = async e => {
         const m = e.data;
         if (m.type === 'style') builder.setStyle(m.layers, m.state);
-        else if (m.type === 'geojson') builder.setGeoJSON(m.source, m.data);
+        else if (m.type === 'geojson') builder.setGeoJSON(m.source, m.data, m.options, m.maxzoom);
         else if (m.type === 'featureState') setFeatureStates(m.source, m.states);
         else if (m.type === 'contours') builder.setContours(m.sources);
         else if (m.type === 'cancel') builder.cancel(m.id);

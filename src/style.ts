@@ -1,3 +1,4 @@
+import type {GeoJSONOptions} from './geojson.ts';
 import {colorRamp, compileFilter, compileProp, type Fn, type Prop, type PropKind} from './expr.ts';
 import {PM_PREFIX, archive} from './pmtiles.ts';
 import type {ContourConfig} from './contour.ts';
@@ -132,7 +133,7 @@ export interface SourceInfo {
     /** Contour sources: how to derive lines from their elevation source. */
     contour?: ContourConfig;
     /** GeoJSON sources carry their data; it is handed to the tile workers, which cut tiles from it. */
-    data?: unknown; tiles: string[]; minzoom: number; maxzoom: number; tileSize: number; attribution?: string; encoding?: 'terrarium' | 'mapbox';
+    data?: unknown; /** GeoJSON sources: clusters and the id property. */ options?: GeoJSONOptions; tiles: string[]; minzoom: number; maxzoom: number; tileSize: number; attribution?: string; encoding?: 'terrarium' | 'mapbox';
 }
 
 /** A style with everything network-dependent already resolved, so it can be posted to a worker as plain JSON. */
@@ -172,7 +173,7 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
                 if (!res.ok) throw new Error(`Failed to load GeoJSON ${url}: ${res.status}`);
                 data = await res.json();
             }
-            sources[name] = {type: 'geojson', data, tiles: [`geojson://${name}/{z}/{x}/{y}`], minzoom: 0, maxzoom: raw.maxzoom ?? 18, tileSize: 512, attribution: raw.attribution};
+            sources[name] = {type: 'geojson', data, options: raw.cluster || raw.promoteId || raw.filter ? {filter: raw.filter, cluster: raw.cluster, clusterRadius: raw.clusterRadius, clusterMaxZoom: raw.clusterMaxZoom, clusterMinPoints: raw.clusterMinPoints, clusterProperties: raw.clusterProperties, promoteId: raw.promoteId} : undefined, tiles: [`geojson://${name}/{z}/{x}/{y}`], minzoom: 0, maxzoom: raw.maxzoom ?? 18, tileSize: 512, attribution: raw.attribution};
             continue;
         }
         if (raw.type === 'image' && raw.url && raw.coordinates?.length === 4) {

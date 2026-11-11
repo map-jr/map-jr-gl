@@ -2,8 +2,8 @@
  * Style expressions compiled once into plain closures (no interpreter objects, no `new Function`, so CSP-safe).
  * Covers the commonly used subset of the MapLibre expression language plus legacy filters and legacy `stops` functions.
  */
-export interface Feature { type: number; id?: number; properties: Record<string, any>; /** Set while a tile is built: the feature's state, for `feature-state`. */ state?: Record<string, unknown> }
-export interface Ctx { zoom: number; f: Feature | null; /** Heatmap colour ramps are evaluated over this, from 0 to 1. */ density?: number }
+export interface Feature { type: number; id?: number | string; properties: Record<string, any>; /** Set while a tile is built: the feature's state, for `feature-state`. */ state?: Record<string, unknown> }
+export interface Ctx { zoom: number; f: Feature | null; /** The value so far, when a cluster property is combined from its points. */ accumulated?: unknown; /** Heatmap colour ramps are evaluated over this, from 0 to 1. */ density?: number }
 export type Fn = (c: Ctx) => any;
 export interface Flags { dd: boolean; zoom: boolean }
 export type RGBA = [number, number, number, number];
@@ -79,7 +79,7 @@ export function setGlobalState(state: Record<string, unknown> | undefined) { glo
 /** Feature state by source, then by "sourceLayer|id" (`setFeatureState`). Tiles are rebuilt when it changes. */
 const featureStates: Record<string, Record<string, Record<string, unknown>>> = {};
 export function setFeatureStates(source: string, states: Record<string, Record<string, unknown>>) { featureStates[source] = states; }
-export function featureStateOf(source: string | undefined, sourceLayer: string | undefined, id: number | undefined): Record<string, unknown> | undefined {
+export function featureStateOf(source: string | undefined, sourceLayer: string | undefined, id: number | string | undefined): Record<string, unknown> | undefined {
     const states = source !== undefined && id !== undefined ? featureStates[source] : undefined;
     return states && states[`${sourceLayer ?? ''}|${id}`];
 }
@@ -157,6 +157,7 @@ export function compileExpr(e: any, flags: Flags): Fn {
             flags.dd = true;
             return c => !!c.f && k(c) in c.f.properties;
         }
+        case 'accumulated': flags.dd = true; return c => c.accumulated ?? null;
         case 'id': flags.dd = true; return c => c.f?.id ?? null;
         case 'properties': flags.dd = true; return c => c.f?.properties ?? {};
         case 'geometry-type': flags.dd = true; return c => GEOM[c.f?.type ?? 0];

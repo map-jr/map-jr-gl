@@ -8,7 +8,7 @@ import type {TileLayers} from './tile.ts';
 export interface QueriedFeature {
     source: string;
     sourceLayer: string;
-    id?: number;
+    id?: number | string;
     type: 'Point' | 'LineString' | 'Polygon';
     properties: Record<string, unknown>;
     /** GeoJSON geometry in longitude/latitude, when requested. */

@@ -61,7 +61,7 @@ Sources:
 
 - Video and canvas sources
 - MapLibre Tiles (MLT)
-- Clusters and `promoteId` in GeoJSON sources
+- `promoteId` in vector sources
 
 Layers:
 

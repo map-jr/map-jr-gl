@@ -389,7 +389,7 @@ export class Engine {
         const faces = JSON.stringify(style.fonts ?? []);
         if (style.fonts?.length && faces !== this.styleFonts) { this.styleFonts = faces; this.loadFonts(style.fonts); }
         if (reload) {
-            for (const [name, src] of Object.entries(style.sources)) if (src.type === 'geojson') for (const b of this.backends) b.setGeoJSON(name, src.data);
+            for (const [name, src] of Object.entries(style.sources)) if (src.type === 'geojson') for (const b of this.backends) b.setGeoJSON(name, src.data, src.options, src.maxzoom);
             const contours = Object.fromEntries(Object.entries(style.sources).filter(([, s]) => s.contour).map(([name, s]) => [name, s.contour!]));
             for (const b of this.backends) b.setContours(contours);
             for (const b of this.backends) b.setStyle(style.layers, style.state);
@@ -545,7 +545,7 @@ export class Engine {
             case 'geojson': {
                 // New data for one source: keep drawing its current tiles and rebuild them in place, so nothing blinks.
                 if (this.style.sources[c.source]) this.style.sources[c.source].data = c.data;
-                for (const b of this.backends) b.setGeoJSON(c.source, c.data);
+                for (const b of this.backends) b.setGeoJSON(c.source, c.data, this.style.sources[c.source]?.options, this.style.sources[c.source]?.maxzoom);
                 for (const [key, t] of this.tiles) {
                     if (!key.startsWith(c.source + '|')) continue;
                     // Tiles on screen or still loading are rebuilt in place once they can be; cancelling loads here

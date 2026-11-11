@@ -484,3 +484,24 @@ test('GeoJSON lines for a gradient know which part of the whole line each piece 
     // Without a gradient layer the features keep their own properties.
     assert.equal(sliceGeoJSON(prepared, 2, 1, 1)._geojson.features[0].properties.mapbox_clip_start, undefined);
 });
+
+test('GeoJSON clusters: points join at low zoom and divide at the expansion zoom', async () => {
+    const {prepareSource, sliceGeoJSON} = await import('../../src/geojson.ts');
+    const point = (lng: number, lat: number, n: number) => ({type: 'Feature', properties: {n}, geometry: {type: 'Point', coordinates: [lng, lat]}});
+    // Two points that are near to each other, and one that is far away.
+    const data = {type: 'FeatureCollection', features: [point(10, 10, 1), point(10.01, 10, 2), point(-120, 40, 4)]};
+    const src = prepareSource(data, {cluster: true, clusterProperties: {sum: ['+', ['get', 'n']]}}, 14);
+    const world = sliceGeoJSON(src, 0, 0, 0)._geojson.features;
+    assert.equal(world.length, 2, 'one cluster and one single point');
+    const cluster = world.find(f => f.properties.cluster)!;
+    assert.equal(cluster.properties.point_count, 2);
+    assert.equal(cluster.properties.sum, 3);
+    const zoom = src.clusters!.expansionZoom(cluster.properties.cluster_id);
+    assert.ok(zoom > 5 && zoom <= 13, `the cluster divides at zoom ${zoom}`);
+    assert.equal(src.clusters!.at(zoom)!.filter(f => f.properties.cluster).length, 0);
+    assert.equal(src.clusters!.at(zoom - 1)!.filter(f => f.properties.cluster).length, 1);
+    assert.deepEqual(src.clusters!.leaves(cluster.properties.cluster_id).map(f => f.properties.n).sort(), [1, 2]);
+    assert.equal(src.clusters!.children(cluster.properties.cluster_id).length, 2);
+    // promoteId: a property becomes the id of the feature.
+    assert.equal(prepareSource(data, {promoteId: 'n'}).features[2].id, 4);
+});

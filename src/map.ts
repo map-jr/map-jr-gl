@@ -1,4 +1,5 @@
 import {Transform, groundHeight, mercX, mercY, toLngLat, type LngLatLike} from './geo.ts';
+import type {PreparedSource} from './geojson.ts';
 import {resolveStyle, type ResolvedStyle} from './style.ts';
 import type {CameraOptions, Command, EngineEvent, FeatureQuery, FontSource, MarkerImage} from './engine.ts';
 import type {QueriedFeature} from './query.ts';
@@ -570,7 +571,31 @@ export class Map {
     getSource(id: string) {
         const spec = this.rawStyle?.sources[id];
         if (!spec || spec.type !== 'geojson') return spec;
-        return {...spec, id, setData: (data: unknown) => this.setGeoJSON(id, data)};
+        const clusters = async () => {
+            const index = (await this.clusterIndex(id)).clusters;
+            if (!index) throw new Error(`Source "${id}" has no clusters.`);
+            return index;
+        };
+        return {
+            ...spec, id, setData: (data: unknown) => this.setGeoJSON(id, data),
+            // The cluster methods give promises, as in MapLibre. The page makes its own copy of the cluster index for them.
+            getClusterExpansionZoom: async (clusterId: number) => (await clusters()).expansionZoom(clusterId),
+            getClusterChildren: async (clusterId: number) => (await clusters()).children(clusterId),
+            getClusterLeaves: async (clusterId: number, limit?: number, offset?: number) => (await clusters()).leaves(clusterId, limit, offset),
+        };
+    }
+    private clusterIndexes = new globalThis.Map<string, {data: unknown; index: Promise<PreparedSource>}>();
+    private clusterIndex(id: string): Promise<PreparedSource> {
+        const spec = this.rawStyle.sources[id], known = this.clusterIndexes.get(id);
+        if (known && known.data === spec.data) return known.index;
+        const index = (async () => {
+            const data = typeof spec.data === 'string' ? await (await fetch(new URL(spec.data, this.styleBase))).json() : spec.data;
+            // Loaded only when a page asks about clusters, so that the page script stays small.
+            const {prepareSource} = await import('./geojson.ts');
+            return prepareSource(data, spec, spec.maxzoom ?? 18);
+        })();
+        this.clusterIndexes.set(id, {data: spec.data, index});
+        return index;
     }
     private async setGeoJSON(id: string, data: unknown) {
         this.rawStyle.sources[id].data = data;
