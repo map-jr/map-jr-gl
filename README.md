@@ -77,7 +77,7 @@ The build writes the library to the `dist` folder. Then use one of these methods
 ```html
 <div id="map" style="height: 400px"></div>
 <script type="module">
-  import {Map, NavigationControl} from 'map-jr-gl';
+  import {Map, NavigationControl} from 'map-jr-gl/maplibre-compat';
 
   const map = new Map({
     container: 'map',
@@ -99,13 +99,13 @@ You do not need a CSS file. The library adds the styles for its controls.
 
    ```js
    // import {Map, Marker, Popup} from 'maplibre-gl';
-   import {Map, Marker, Popup} from 'map-jr-gl';
+   import {Map, Marker, Popup} from 'map-jr-gl/maplibre-compat';
    ```
 
    If your code uses one object for the library (`maplibregl.Map`), import all the names into that object:
 
    ```js
-   import * as maplibregl from 'map-jr-gl';
+   import * as maplibregl from 'map-jr-gl/maplibre-compat';
    ```
 
 2. Remove the import of `maplibre-gl.css`.
@@ -119,7 +119,7 @@ A plugin that was written for MapLibre GL JS imports `maplibre-gl` itself. Map t
 bundler (`resolve.alias` in Vite, `alias` in esbuild) or in an import map:
 
 ```html
-<script type="importmap">{"imports": {"maplibre-gl": "/node_modules/map-jr-gl/dist/map-jr-gl.js"}}</script>
+<script type="importmap">{"imports": {"maplibre-gl": "/node_modules/map-jr-gl/dist/map-jr-gl-maplibre-compat.js"}}</script>
 ```
 
 The library has a default export for such plugins only, because some of them contain

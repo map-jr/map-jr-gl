@@ -283,7 +283,7 @@ for (const mode of ['main', 'worker']) {
 
     // DOM marker and popup with MapLibre's API.
     const dom = await page.evaluate(async () => {
-        const {Marker, Popup} = await import('/dist/map-jr-gl.js'), m = window.map;
+        const {Marker, Popup} = await import('/dist/map-jr-gl-maplibre-compat.js'), m = window.map;
         const marker = new Marker({color: '#c00'}).setLngLat([-74.0065, 40.7085]).setPopup(new Popup({offset: 30}).setText('Hello')).addTo(m);
         marker.togglePopup();
         const tip = marker.getElement().getBoundingClientRect(), at = m.project([-74.0065, 40.7085]);
@@ -382,7 +382,7 @@ for (const mode of ['main', 'worker']) {
     await page.evaluate(() => window.map.jumpTo({center: [-74.0065, 40.7085], zoom: 14}));
     await settle(page);
     const ev = await page.evaluate(async () => {
-        const m = window.map, mod = await import('/dist/map-jr-gl.js'), b = m.getBounds();
+        const m = window.map, mod = await import('/dist/map-jr-gl-maplibre-compat.js'), b = m.getBounds();
         return {...window.seen, lngLat: m.getCenter() instanceof mod.LngLat, bounds: b instanceof mod.LngLatBounds && b.getWest() < b.getEast() && b.contains(m.getCenter()), handler: m.scrollZoom.isEnabled() && m.boxZoom.isEnabled()};
     });
     check(`[${mode}] map events and handlers: preventDefault and dragPan.disable stop a drag, a wheel event can be prevented, render and sourcedata fire`,
@@ -392,7 +392,7 @@ for (const mode of ['main', 'worker']) {
 
     // transformRequest and addProtocol: the functions are on the page, and the requests are made in workers.
     const requests = await page.evaluate(async () => {
-        const m = window.map, mod = await import('/dist/map-jr-gl.js'), c = m.getCenter(), kinds = new Set();
+        const m = window.map, mod = await import('/dist/map-jr-gl-maplibre-compat.js'), c = m.getCenter(), kinds = new Set();
         m.setTransformRequest((url, kind) => { kinds.add(kind); return {url: url + (url.includes('?') ? '&' : '?') + 'seen=1'}; });
         mod.addProtocol('made', async request => ({data: {type: 'Feature', id: 3, properties: {from: request.url}, geometry: {type: 'Point', coordinates: [c.lng, c.lat]}}}));
         m.addSource('made', {type: 'geojson', data: 'made://point'});
@@ -539,7 +539,7 @@ for (const mode of ['main', 'worker']) {
     // The `hash` option: the fragment of the URL gives the camera at the start, a movement writes it, and a change of the
     // fragment moves the map.
     const hash = await page.evaluate(async () => {
-        const mod = await import('/dist/map-jr-gl.js'), el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:400px;height:300px'}));
+        const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:400px;height:300px'}));
         const before = location.hash;
         location.hash = '#12/40.71/-74.01/30';
         const m = new mod.Map({container: el, style: {version: 8, sources: {}, layers: []}, hash: true, zoom: 3, center: [0, 0]});
@@ -601,7 +601,7 @@ for (const mode of ['main', 'worker']) {
 
 // Hydration: server markup is visible before the client runs, then replaced once the canvas shows the same view.
 const page = await browser.newPage({viewport: {width: 1000, height: 700}});
-await page.route('**/dist/map-jr-gl.js', async r => { await new Promise(res => setTimeout(res, 800)); r.continue(); });
+await page.route('**/dist/map-jr-gl-maplibre-compat.js', async r => { await new Promise(res => setTimeout(res, 800)); r.continue(); });
 await page.goto('http://localhost:8080/ssr', {waitUntil: 'domcontentloaded'});
 check('[ssr] server SVG is in the initial HTML', await page.evaluate(() => !!document.querySelector('#map > svg[data-map-jr-ssr]')));
 await page.screenshot({path: `${out}/ssr-before.png`});

@@ -10,6 +10,7 @@
   },
   "include": [
     "src/index.ts",
+    "src/maplibre-compat.ts",
     "src/server.ts"
   ]
 }

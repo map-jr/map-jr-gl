@@ -30,10 +30,10 @@ for (const n of names) {
 
 const STYLE = 'https://tiles.openfreemap.org/styles/liberty';
 const page = n => `<!doctype html><meta charset="utf-8"><style>html,body{margin:0;height:100%}#stage{position:absolute;inset:0}#map{position:absolute;inset:0}</style>
-<script type="importmap">{"imports": {"maplibre-gl": "/dist/map-jr-gl.js"}}</script>
+<script type="importmap">{"imports": {"maplibre-gl": "/dist/map-jr-gl-maplibre-compat.js"}}</script>
 <div id="stage"><div id="map"></div></div>
 <script type="module">
-import * as lib from '/dist/map-jr-gl.js';
+import * as lib from '/dist/map-jr-gl-maplibre-compat.js';
 window.errors = [];
 addEventListener('error', e => window.errors.push(e.message));
 addEventListener('unhandledrejection', e => window.errors.push(String(e.reason?.message ?? e.reason)));

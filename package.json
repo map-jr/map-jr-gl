@@ -1,6 +1,6 @@
 {
   "name": "map-jr-gl",
-  "version": "1.0.0",
+  "version": "0.2.0",
   "description": "A small vector map renderer for the web with worker rendering, server rendering and canvas markers; reads MapLibre styles.",
   "scripts": {
     "test": "pnpm test:unit && pnpm test:expressions && pnpm test:api && pnpm test:size",
@@ -14,7 +14,7 @@
     "test:unit": "node --experimental-transform-types --no-warnings --test test/unit/*.test.ts",
     "test:expressions": "node test/conformance/expressions.mjs --min=325",
     "test:api": "node test/conformance/api.mjs --min=112",
-    "test:browser": "node test/interact.mjs .cache/shots",
+    "test:browser": "node test/interact.mjs .cache/shots && node test/host.mjs",
     "bench": "node test/bench/compare.mjs",
     "test:loading": "node test/loading.mjs",
     "test:render": "node test/conformance/render.mjs --min=680"
@@ -47,8 +47,12 @@
       "types": "./dist/types/index.d.ts",
       "import": "./dist/map-jr-gl.js"
     },
+    "./maplibre-compat": {
+      "types": "./dist/types/maplibre-compat.d.ts",
+      "import": "./dist/map-jr-gl-maplibre-compat.js"
+    },
     "./standalone": {
-      "types": "./dist/types/index.d.ts",
+      "types": "./dist/types/maplibre-compat.d.ts",
       "import": "./dist/map-jr-gl-standalone.js"
     },
     "./server": {

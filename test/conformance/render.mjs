@@ -55,7 +55,7 @@ async function worker(queue) {
     const page = await context.newPage();
     if (process.env.RENDER_DEBUG) { page.on('response', r => { if (r.status() !== 200) console.log('HTTP', r.status(), r.url()); }); page.on('requestfailed', r => console.log('request failed', r.url(), r.failure()?.errorText)); page.on('console', m => console.log('console', m.text().slice(0, 300))); page.on('pageerror', e => console.log('pageerror', e.message.slice(0, 300))); }
     await page.goto(origin + '/');
-    await page.addScriptTag({type: 'module', content: `import * as t from '/dist/map-jr-gl.js'; window.mapjr = t;`});
+    await page.addScriptTag({type: 'module', content: `import * as t from '/dist/map-jr-gl-maplibre-compat.js'; window.mapjr = t;`});
     await page.waitForFunction(() => window.mapjr);
     for (let id; (id = queue.shift());) {
         const style = JSON.parse(readFileSync(path.join(testsDir, id, 'style.json'), 'utf8').replaceAll('local://', origin + '/')), meta = style.metadata?.test ?? {};

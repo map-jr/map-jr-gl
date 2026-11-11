@@ -54,10 +54,12 @@ const workerSrc = readFileSync('dist/map-jr-gl-worker.js', 'utf8');
 const esm = (input, extra = {}) => ({
     rollupOptions: {input, preserveEntrySignatures: 'strict', output: {format: 'es', entryFileNames: '[name].js', chunkFileNames: 'map-jr-gl-[name]-[hash].js', ...extra}},
 });
-await run(esm({'map-jr-gl': 'src/index.ts'}));
+// Two entries in one build, so that they share their chunks: the main entry (the new API) and the entry that is a
+// replacement for MapLibre GL JS.
+await run(esm({'map-jr-gl': 'src/index.ts', 'map-jr-gl-maplibre-compat': 'src/maplibre-compat.ts'}));
 
 // Standalone: one self-contained file with the worker embedded, for places where shipping several files is awkward.
-await run(esm({'map-jr-gl-standalone': 'src/index.ts'}, {codeSplitting: false}), {__WORKER_SRC__: JSON.stringify(workerSrc)});
+await run(esm({'map-jr-gl-standalone': 'src/maplibre-compat.ts'}, {codeSplitting: false}), {__WORKER_SRC__: JSON.stringify(workerSrc)});
 // The server renderer (Node, Cloudflare Workers and other runtimes without a DOM).
 await run(esm({server: 'src/server.ts'}, {codeSplitting: false}), undefined, [allInOne]);
 

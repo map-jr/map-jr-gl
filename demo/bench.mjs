@@ -1,5 +1,5 @@
 // In-browser benchmark: this library against MapLibre GL JS on the visitor's own GPU. See bench.html.
-import * as mapjr from '/dist/map-jr-gl.js';
+import * as mapjr from '/dist/map-jr-gl-maplibre-compat.js';
 import * as maplibre from '/ml/maplibre-gl.mjs';
 import {manyMarkers} from '/demo/markers.mjs';
 

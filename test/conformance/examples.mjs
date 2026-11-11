@@ -33,7 +33,7 @@ const server = http.createServer((req, res) => {
         // (The map of the page is kept in `window.shownMap`, so that the runner can wait until it has loaded.)
         const keep = lib => `import * as lib from '${lib}';\nexport * from '${lib}';\nexport class Map extends lib.Map { constructor(options) { super(options); window.shownMap = this; } }\n`;
         if (p === '/maplibre/dist/maplibre-gl-dev.mjs') return send(keep('/ml/maplibre-gl.mjs') + `lib.setWorkerUrl('/ml/maplibre-gl-worker.mjs');`, 'text/javascript');
-        if (p === '/mapjr/dist/maplibre-gl-dev.mjs') return send(keep('/dist/map-jr-gl.js') + `export {default} from '/dist/map-jr-gl.js';`, 'text/javascript');
+        if (p === '/mapjr/dist/maplibre-gl-dev.mjs') return send(keep('/dist/map-jr-gl-maplibre-compat.js') + `export {default} from '/dist/map-jr-gl-maplibre-compat.js';`, 'text/javascript');
         const file = p.startsWith('/ml/') ? path.join(root, 'node_modules/maplibre-gl/dist', p.slice(4)) : p.startsWith('/dist/') ? path.join(root, p)
             : /^\/(maplibre|mapjr)\/dist\/maplibre-gl\.css$/.test(p) ? path.join(root, 'node_modules/maplibre-gl/dist/maplibre-gl.css')
             : path.join(root, '.cache/maplibre-gl-js', p.replace(/^\/(maplibre|mapjr)\//, '')); // other files of the repository that a page uses

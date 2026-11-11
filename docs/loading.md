@@ -7,7 +7,7 @@ This document explains how the library loads its files and how to change that.
 Import the library. You do not need any settings.
 
 ```js
-import {Map} from 'map-jr-gl';
+import {Map} from 'map-jr-gl/maplibre-compat';
 
 const map = new Map({container: 'map', style: 'https://example.com/style.json', center: [-74, 40.7], zoom: 12});
 ```

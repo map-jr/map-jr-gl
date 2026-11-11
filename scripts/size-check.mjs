@@ -12,12 +12,14 @@ function withStaticImports(file, seen = new Set()) {
     return seen;
 }
 const gz = files => [...files].reduce((sum, f) => sum + gzipSync(readFileSync('dist/' + f)).length, 0) / 1024;
-const page = withStaticImports('map-jr-gl.js'), engine = withStaticImports(readdirSync('dist').find(f => f.startsWith('map-jr-gl-engine-entry')));
-for (const f of page) engine.delete(f); // the page has these already when it loads the engine
+const page = withStaticImports('map-jr-gl.js'), compat = withStaticImports('map-jr-gl-maplibre-compat.js'), engine = withStaticImports(readdirSync('dist').find(f => f.startsWith('map-jr-gl-engine-entry')));
+for (const f of compat) engine.delete(f); // the page has these already when it loads the engine
 
 const sizes = [
     // What a page downloads before the map can start. The worker file is downloaded at the same time.
-    ['page script, up front (' + [...page].length + ' files)', gz(page), 27.5],
+    ['page script, up front (' + [...page].length + ' files)', gz(page), 28],
+    // The same for the entry that is a replacement for MapLibre GL JS (`map-jr-gl/maplibre-compat`).
+    ['page script of maplibre-compat, up front (' + [...compat].length + ' files)', gz(compat), 27.5],
     ['map-jr-gl-worker.js', gz(['map-jr-gl-worker.js']), 58.5],
     // Only when the engine runs on the main thread (no worker is possible).
     ['engine on the main thread, on demand', gz(engine), 55.5],

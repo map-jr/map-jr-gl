@@ -30,7 +30,7 @@ for (const [styleName, style] of Object.entries(STYLES)) {
     await page.goto(`${base}/bench?seconds=1`); // a page of the demo server that can import both libraries
     await page.evaluate(async style => {
         document.body.innerHTML = '<div id="a" style="position:absolute;left:0;top:0;width:640px;height:440px"></div><div id="b" style="position:absolute;left:650px;top:0;width:640px;height:440px"></div>';
-        const maplibre = await import('/ml/maplibre-gl.mjs'), mapjr = await import('/dist/map-jr-gl.js');
+        const maplibre = await import('/ml/maplibre-gl.mjs'), mapjr = await import('/dist/map-jr-gl-maplibre-compat.js');
         maplibre.setWorkerUrl('/ml/maplibre-gl-worker.mjs');
         const json = await (await fetch(style)).json();
         // The parts that this library does not have are taken out for the two, so that the comparison is of the rest.
