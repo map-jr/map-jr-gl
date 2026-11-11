@@ -15,7 +15,7 @@ have a problem, and a method in the list is possibly used only in a part of the 
 These plugins were run with this library in a browser by `node test/conformance/plugins.mjs --write`. Each one has a
 short scenario in `test/conformance/plugins/`. The plugin imports `maplibre-gl` and gets this library.
 
-**9 of 9 scenarios pass.**
+**10 of 10 scenarios pass.**
 
 | Plugin | Result | What the scenario found |
 |---|---|---|
@@ -28,6 +28,7 @@ short scenario in `test/conformance/plugins/`. The plugin imports `maplibre-gl` 
 | @maplibre/maplibre-gl-inspect 1.9.0 | Pass | the inspect view is on; the style has 49 layers |
 | @watergis/maplibre-gl-export 6.0.0 | Pass | the control is in the page |
 | @vis.gl/react-maplibre 8.1.3, react 19.3.1, react-dom 19.3.1 | Pass | events: move, load; layer from <Layer>: true; marker: true; control: true; popup: true; zoom after jumpTo: 13.00 |
+| @indoorequal/vue-maplibre-gl 9.0.1, vue 3.5.45 | Pass | events: load; layer from <MglCircleLayer>: true; marker: true; control: true |
 <!-- plugins:end -->
 
 <!-- styles:start -->

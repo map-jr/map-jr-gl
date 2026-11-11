@@ -11,7 +11,7 @@ import {launch} from '../launch.mjs';
 
 const root = path.resolve(import.meta.dirname, '../..'), dir = path.join(root, '.cache/plugins'), scenarios = path.join(import.meta.dirname, 'plugins');
 const PACKAGES = {draw: '@mapbox/mapbox-gl-draw', 'terra-draw': 'terra-draw terra-draw-maplibre-gl-adapter', compare: '@maplibre/maplibre-gl-compare', 'sync-move': '@mapbox/mapbox-gl-sync-move',
-    pmtiles: 'pmtiles', opacity: 'maplibre-gl-opacity', inspect: '@maplibre/maplibre-gl-inspect', export: '@watergis/maplibre-gl-export', react: '@vis.gl/react-maplibre react react-dom'};
+    pmtiles: 'pmtiles', opacity: 'maplibre-gl-opacity', inspect: '@maplibre/maplibre-gl-inspect', export: '@watergis/maplibre-gl-export', react: '@vis.gl/react-maplibre react react-dom', vue: '@indoorequal/vue-maplibre-gl vue'};
 const only = process.argv.slice(2).filter(a => !a.startsWith('--')), names = Object.keys(PACKAGES).filter(n => !only.length || only.includes(n));
 // (The folder also has shims/, which is not a scenario.)
 
