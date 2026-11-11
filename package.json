@@ -18,6 +18,7 @@
     "bench": "node test/bench/compare.mjs",
     "test:loading": "node test/loading.mjs",
     "test:vue": "node test/vue.mjs",
+    "test:react": "node test/react.mjs",
     "test:render": "node test/conformance/render.mjs --min=680"
   },
   "keywords": [],
@@ -27,18 +28,30 @@
     "@takumi-rs/core": "^2.20.0",
     "@takumi-rs/wasm": "^2.20.0",
     "@types/earcut": "^3.0.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
     "earcut": "^3.2.4",
     "esbuild": "^0.28.2",
     "maplibre-gl": "^6.17.0",
     "miniflare": "^4.20260730.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "typescript": "^7.0.2",
     "vite": "^8.3.7",
     "vue": "^3.5.45"
   },
   "peerDependencies": {
+    "react": "^18.0.0 || ^19.0.0",
+    "react-dom": "^18.0.0 || ^19.0.0",
     "vue": "^3.5.0"
   },
   "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "react-dom": {
+      "optional": true
+    },
     "vue": {
       "optional": true
     }
@@ -63,6 +76,10 @@
     "./controls": {
       "types": "./dist/types/control-specs.d.ts",
       "import": "./dist/controls.js"
+    },
+    "./react": {
+      "types": "./dist/types/react.d.ts",
+      "import": "./dist/react.js"
     },
     "./vue": {
       "types": "./dist/types/vue.d.ts",

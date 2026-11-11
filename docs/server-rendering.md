@@ -162,6 +162,13 @@ A value in `overrides` comes before the value in the style.
 | `simplify` | Lines and polygons are made simpler by this number of pixels |
 | `minSize` | Shapes smaller than this number of pixels do not show |
 
+## The first view for a framework
+
+`renderFirstView` takes the options of `renderToSVG` and returns HTML for the element of the map: the SVG, and the
+credits of the sources over it. The option `attribution` gives other credits; `false` shows none. The Vue component
+uses this function for its `ssr` prop. With React, call it on the server and give the result to the component. See
+[Vue and Nuxt](vue.md) and [React](react.md).
+
 ## Credits
 
 The result of `renderToSVG` has `attribution`: the credits of the sources of the style, as a list of HTML strings.

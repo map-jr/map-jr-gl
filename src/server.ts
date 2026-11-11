@@ -129,6 +129,21 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
 }
 
 /**
+ * The first view of a map as HTML for a page from a server: the SVG, and the credits of the sources over it. Put the
+ * HTML into the element of the map. In the browser the map removes it when it has drawn its first frame. (The
+ * adapters for the frameworks use this.)
+ *
+ * `attribution` gives the credits to show, when they must not come from the sources; `false` shows none.
+ * Only text and links to http(s) addresses are kept from the HTML of the credits.
+ */
+export async function renderFirstView(o: RenderOptions & {attribution?: string | string[] | false}): Promise<string> {
+    const made = await renderToSVG(o);
+    const credits = o.attribution === false ? [] : [o.attribution ?? made.attribution].flat().map(html => html.replace(/<(?!\/?a(?=[\s>]))[^>]*>/gi, '')
+        .replace(/<a\b([^>]*)>/gi, (_, attrs: string) => { const m = /href\s*=\s*"(https?:[^"]*)"/i.exec(attrs); return m ? `<a href="${m[1]}">` : '<a>'; })).filter(Boolean);
+    return made.svg + (credits.length ? `<div data-map-jr-ssr="" style="position:absolute;right:0;bottom:0;background:rgba(255,255,255,.75);color:#333;font:11px/1.4 sans-serif;padding:2px 6px">${credits.join(' ')}</div>` : '');
+}
+
+/**
  * The part of takumi's `Renderer` this library uses. Pass an instance from `@takumi-rs/core` (Node, Bun) or
  * `@takumi-rs/wasm` (Cloudflare Workers and other edge runtimes); nothing is imported here, so the choice is yours.
  */

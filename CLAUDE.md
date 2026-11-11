@@ -31,7 +31,7 @@
 
 - `map-jr-gl` (`src/index.ts`, `src/host.ts`): the main API. A map from one description (`createMap`, `update`), a
   state store, queries as promises. New features go here first. The adapters for frameworks are entries of the same
-  package (`map-jr-gl/vue` is `src/vue.ts`; the owner uses Vue with Nuxt, so Vue comes first).
+  package (`map-jr-gl/vue` is `src/vue.ts`, `map-jr-gl/react` is `src/react.ts`; the owner uses Vue with Nuxt, so Vue comes first).
 - `map-jr-gl/maplibre-compat` (`src/maplibre-compat.ts`, `src/compat-map.ts`): a replacement for MapLibre GL JS.
   Things that exist only for that goal go here and not into the core (`src/map.ts`): other names for methods,
   methods with no effect, members that wrappers read, results that are an array and a promise.
@@ -42,7 +42,7 @@
 
 See `docs/development.md`. In short: `pnpm build`, `pnpm test`, and with `pnpm demo` running: `pnpm test:browser`,
 `pnpm test:loading`, `pnpm test:cloudflare`. `pnpm test:browser` also runs the tests of the main API
-(`test/host.mjs`). `pnpm test:vue` tests the Vue adapter and needs no demo server. `pnpm test:render` takes about ten minutes. After changes that affect
+(`test/host.mjs`). `pnpm test:vue` and `pnpm test:react` test the adapters and need no demo server. `pnpm test:render` takes about ten minutes. After changes that affect
 results or sizes, run `pnpm status` (it rewrites the status table in the README).
 
 ## Checking work

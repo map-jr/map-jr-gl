@@ -3,7 +3,7 @@
 A small, fast map library for the web. It reads MapLibre styles. It has two entries:
 
 - `map-jr-gl`: a map from one description, with state that your code can watch. The adapters for frameworks
-  (`map-jr-gl/vue`) use this entry.
+  (`map-jr-gl/vue`, `map-jr-gl/react`) use this entry.
 - `map-jr-gl/maplibre-compat`: an API that is almost the same as MapLibre GL JS, for code and plugins that were
   written for that library.
 
@@ -295,6 +295,7 @@ To run the benchmark on your computer, run `pnpm demo` and open `http://localhos
 
 - [The main API](docs/api.md): `createMap`, the description of a map, the state, queries.
 - [Vue and Nuxt](docs/vue.md): the component, the composable, server rendering.
+- [React](docs/react.md): the component, the hooks, server rendering.
 - [Loading](docs/loading.md): how the files load, and how to change that.
 - [Markers](docs/markers.md): marker layers, callouts, and DOM markers.
 - [Terrain and elevation](docs/terrain-and-elevation.md): terrain, relief shading, contour lines, elevation queries.

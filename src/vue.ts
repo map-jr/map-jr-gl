@@ -197,12 +197,8 @@ export const MapJr = defineComponent({
             // collects the files of a server finds it.)
             // @ts-ignore: the package refers to itself, which the type check of this project does not resolve
             const server = await import('map-jr-gl/server') as typeof import('./server.ts');
-            const made = await server.renderToSVG({style: toRaw(props.mapStyle), center: view.center ?? [0, 0], zoom: view.zoom ?? 0, bearing: view.bearing, width: o.width ?? 800, height: o.height ?? 500,
-                markers: props.markers && plain(props.markers), overrides: o.overrides});
-            // The credits: only text and links to http(s) addresses are kept from the HTML of a source.
-            const credits = [o.attribution ?? made.attribution].flat().map(html => html.replace(/<(?!\/?a(?=[\s>]))[^>]*>/gi, '').replace(/<a\b([^>]*)>/gi, (_, attrs: string) => { const m = /href\s*=\s*"(https?:[^"]*)"/i.exec(attrs); return m ? `<a href="${m[1]}">` : '<a>'; })).filter(Boolean);
-            first.value = made.svg + (credits.length && props.attribution !== false
-                ? `<div data-map-jr-ssr="" style="position:absolute;right:0;bottom:0;background:rgba(255,255,255,.75);color:#333;font:11px/1.4 sans-serif;padding:2px 6px">${credits.join(' ')}</div>` : '');
+            first.value = await server.renderFirstView({style: toRaw(props.mapStyle), center: view.center ?? [0, 0], zoom: view.zoom ?? 0, bearing: view.bearing, width: o.width ?? 800, height: o.height ?? 500,
+                markers: props.markers && plain(props.markers), overrides: o.overrides, attribution: props.attribution === false ? false : o.attribution});
         });
         return () => h('div', {class: 'map-jr-vue', style: 'position:relative;width:100%;height:100%'}, [
             h('div', {ref: el, style: 'position:absolute;inset:0', innerHTML: first.value}),

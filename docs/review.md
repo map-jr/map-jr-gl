@@ -42,14 +42,17 @@ Done on 2026-11-11, as agreed with the owner:
 7. Elements of the page on the map for the main API: `map.overlay(element, options)` (a marker with own content, or a
    popup), and the component `MapOverlay` for Vue.
 
+8. A one-file build for each API (`map-jr-gl/standalone`, `map-jr-gl/maplibre-compat/standalone`).
+9. The React adapter (`map-jr-gl/react`): a component, `useMap`, `useMapState`, `MapOverlay`, and the first view from
+   a server as a prop. See [React](react.md). Tests: `pnpm test:react`. It was not tried in Next.js.
+
 Not done yet, in the order that I propose:
 
 2. **The features under the pointer found by the engine.** Now the page makes one query for each pointer position.
 3. **More of the map class into the compatibility class**: the layer and source methods (`addLayer`, `setPaintProperty`
    and others), when the main API has its own path for a change of the style. This makes the main entry smaller.
 4. **A check in the owner's Nuxt application.** The tests use Vue's server renderer directly. A small Nuxt 4 application was also built for production and opened in a browser on 2026-11-11: the server put the SVG into the page, and the map took it over without an error. That application is not in the repository.
-5. **Adapters for React, Svelte and Solid.** Each is about 50 lines over `createMap`.
-6. **A standalone file for the main entry.** `map-jr-gl/standalone` is the compatibility API now.
+5. **Adapters for Svelte and Solid.** Each is about 50 lines over `createMap`.
 
 ### Plan: a switch in the gallery for the code of each adapter
 
