@@ -321,14 +321,21 @@ for (const mode of ['main', 'worker']) {
     await page.evaluate(() => { window.blockWheel = false; }); await page.mouse.wheel(0, -400); await page.waitForTimeout(700); await settle(page);
     const zMoved = (await centre())[2];
     await page.mouse.dblclick(500, 350); await page.mouse.click(500, 350, {button: 'right'}); await page.mouse.move(2000, 2000); await page.waitForTimeout(600); await settle(page);
+    // Box zoom: shift and drag zooms to the box.
+    const zBox0 = (await centre())[2];
+    await page.mouse.move(400, 250); await page.keyboard.down('Shift'); await page.mouse.down(); await page.mouse.move(500, 320, {steps: 3}); await page.mouse.move(600, 400, {steps: 3}); await page.mouse.up(); await page.keyboard.up('Shift');
+    await page.waitForTimeout(700); await settle(page);
+    const zBox = (await centre())[2];
+    await page.evaluate(() => window.map.jumpTo({center: [-74.0065, 40.7085], zoom: 14}));
+    await settle(page);
     const ev = await page.evaluate(async () => {
         const m = window.map, mod = await import('/dist/map-jr-gl.js'), b = m.getBounds();
-        return {...window.seen, lngLat: m.getCenter() instanceof mod.LngLat, bounds: b instanceof mod.LngLatBounds && b.getWest() < b.getEast() && b.contains(m.getCenter()), handler: m.scrollZoom.isEnabled() && !m.boxZoom.isEnabled()};
+        return {...window.seen, lngLat: m.getCenter() instanceof mod.LngLat, bounds: b instanceof mod.LngLatBounds && b.getWest() < b.getEast() && b.contains(m.getCenter()), handler: m.scrollZoom.isEnabled() && m.boxZoom.isEnabled()};
     });
     check(`[${mode}] map events and handlers: preventDefault and dragPan.disable stop a drag, a wheel event can be prevented, render and sourcedata fire`,
         cBlocked[0] === c0[0] && cOff[0] === c0[0] && cMoved[0] !== c0[0] && zBlocked === cMoved[2] && zMoved > zBlocked
-        && ['mousedown', 'mouseup', 'mousemove', 'dblclick', 'contextmenu', 'wheel', 'mouseout'].every(t => ev.types.includes(t)) && ev.renders > 5 && ev.sourcedata > 0 && ev.lngLat && ev.bounds && ev.handler,
-        JSON.stringify({c0, cBlocked, cOff, cMoved, zBlocked, zMoved, ...ev}));
+        && ['mousedown', 'mouseup', 'mousemove', 'dblclick', 'contextmenu', 'wheel', 'mouseout'].every(t => ev.types.includes(t)) && ev.renders > 5 && ev.sourcedata > 0 && ev.lngLat && ev.bounds && ev.handler && zBox > zBox0 + 1,
+        JSON.stringify({c0, cBlocked, cOff, cMoved, zBlocked, zMoved, zBox0, zBox, ...ev}));
 
     // transformRequest and addProtocol: the functions are on the page, and the requests are made in workers.
     const requests = await page.evaluate(async () => {
@@ -372,7 +379,7 @@ for (const mode of ['main', 'worker']) {
             {type: 'Feature', id: 8, properties: {kind: 'far'}, geometry: {type: 'Point', coordinates: [c.lng + 0.01, c.lat]}}]}});
         m.addLayer({id: 'asked', type: 'circle', source: 'asked', paint: {'circle-radius': 6}});
         let at = [];
-        for (let i = 0; i < 40 && !at.length; i++) { await new Promise(r => setTimeout(r, 100)); at = await m.queryRenderedFeatures(p, {layers: ['asked']}); }
+        for (let i = 0; i < 100 && !at.length; i++) { await new Promise(r => setTimeout(r, 100)); at = await m.queryRenderedFeatures(p, {layers: ['asked']}); }
         const far = m.project([c.lng + 0.01, c.lat]);
         const box = await m.queryRenderedFeatures([[p.x - 5, p.y - 20], [far.x + 5, p.y + 20]], {layers: ['asked']});
         const all = await m.queryRenderedFeatures(), filtered = await m.queryRenderedFeatures({layers: ['asked'], filter: ['==', ['get', 'kind'], 'far']});

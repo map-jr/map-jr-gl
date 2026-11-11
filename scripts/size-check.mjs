@@ -1,16 +1,30 @@
-// Fails when a built file is larger than its budget. Run after `pnpm build`. Raise a budget only on purpose:
+// Fails when the built library is larger than its budgets. Run after `pnpm build`. Raise a budget only on purpose:
 // the size of the library is one of its main advantages.
 import {gzipSync} from 'node:zlib';
 import {readFileSync, readdirSync} from 'node:fs';
 
-const BUDGET_KB = {'map-jr-gl-worker.js': 58, 'map-jr-gl.js': 20, 'engine (main thread)': 41};
-const gz = file => gzipSync(readFileSync('dist/' + file)).length / 1024;
-const engine = readdirSync('dist').find(f => f.startsWith('map-jr-gl-engine-entry'));
-const sizes = {'map-jr-gl-worker.js': gz('map-jr-gl-worker.js'), 'map-jr-gl.js': gz('map-jr-gl.js'), 'engine (main thread)': gz(engine)};
-let ok = true;
-for (const [name, kb] of Object.entries(sizes)) {
-    const over = kb > BUDGET_KB[name];
-    if (over) ok = false;
-    console.log(`${over ? 'OVER ' : 'ok   '} ${name}: ${kb.toFixed(1)} KB gzip (budget ${BUDGET_KB[name]} KB)`);
+/** A file and all the files that it imports when it loads (not the ones that it imports on demand). */
+function withStaticImports(file, seen = new Set()) {
+    if (seen.has(file)) return seen;
+    seen.add(file);
+    const code = readFileSync('dist/' + file, 'utf8');
+    for (const m of code.matchAll(/(?:import|export)\s*(?:[^'"()]*?from\s*)?["']\.\/([^"']+)["']/g)) withStaticImports(m[1], seen);
+    return seen;
 }
-if (!ok) { console.error('A built file is larger than its budget. Make it smaller, or change the budget in scripts/size-check.mjs on purpose.'); process.exit(1); }
+const gz = files => [...files].reduce((sum, f) => sum + gzipSync(readFileSync('dist/' + f)).length, 0) / 1024;
+const page = withStaticImports('map-jr-gl.js'), engine = withStaticImports(readdirSync('dist').find(f => f.startsWith('map-jr-gl-engine-entry')));
+for (const f of page) engine.delete(f); // the page has these already when it loads the engine
+
+const sizes = [
+    // What a page downloads before the map can start. The worker file is downloaded at the same time.
+    ['page script, up front (' + [...page].length + ' files)', gz(page), 27],
+    ['map-jr-gl-worker.js', gz(['map-jr-gl-worker.js']), 58],
+    // Only when the engine runs on the main thread (no worker is possible).
+    ['engine on the main thread, on demand', gz(engine), 53],
+];
+let ok = true;
+for (const [name, kb, budget] of sizes) {
+    if (kb > budget) ok = false;
+    console.log(`${kb > budget ? 'OVER ' : 'ok   '} ${name}: ${kb.toFixed(1)} KB gzip (budget ${budget} KB)`);
+}
+if (!ok) { console.error('The built library is larger than a budget. Make it smaller, or change the budget in scripts/size-check.mjs on purpose.'); process.exit(1); }

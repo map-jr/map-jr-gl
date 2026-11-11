@@ -515,3 +515,9 @@ test('rich text: a section of format with a font scale is wider or narrower, and
     assert.ok(Math.abs(big.height - (2 + 1) * 1.2 * EM) < 1e-6, 'the first line is two times as tall');
     assert.deepEqual(big.lines[0].chars, ['A', 'B'], 'the style characters are not part of the text');
 });
+
+test('style: each layer type that the page accepts has its properties in the compiler', async () => {
+    const {LAYER_TYPES} = await import('../../src/resolve.ts');
+    for (const type of LAYER_TYPES) assert.ok(compileLayer({id: 'x', type} as any), type);
+    assert.equal(compileLayer({id: 'x', type: 'no-such-type'} as any), null);
+});

@@ -7,7 +7,8 @@ decided, why, and how to change it.
 
 | Decision | Reason | To change it |
 |---|---|---|
-| The budget of the page script (`map-jr-gl.js`) went from 19 KB to 20 KB (gzip). The file is 19.4 KB. | Plugins and framework wrappers for MapLibre need these parts of the API, which are all in the page script: the pointer and touch events with `preventDefault()`, the interaction handlers (`map.dragPan` and others), `LngLat` and `LngLatBounds`, `transformRequest` and `addProtocol`. Together they are about 1.9 KB. With them, 14 and later more of the 26 audited packages find the API that they use ([Plugins and frameworks](ecosystem.md)). | Change `BUDGET_KB` in `scripts/size-check.mjs`. |
+| The size check now measures what a page downloads before the map can start: `map-jr-gl.js` and the files that it imports when it loads. Before, it measured `map-jr-gl.js` alone, which hid two more files. | The check found that the page loaded the expression compiler and the text shaper, which only the engine needs. They are now out of the page script: it went from 33.8 KB to about 26 KB (gzip), with all of today's additions (events, handlers, `LngLat`, `transformRequest`, `addProtocol`, box zoom, context recovery). The budget is 27 KB. | Change the budgets in `scripts/size-check.mjs`. |
+| The engine for the main thread (loaded only when no worker can start) has a budget of 53 KB. | It now contains the expression compiler and the shaper that the page script no longer has. The total for a map on the main thread is the same as before. | |
 
 ## Features that are not in the library
 

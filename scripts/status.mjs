@@ -13,8 +13,14 @@ const expr = run('node test/conformance/expressions.mjs');
 const api = run('node test/conformance/api.mjs --write');
 const render = existsSync(root + 'test/conformance/render-result.json') ? JSON.parse(readFileSync(root + 'test/conformance/render-result.json', 'utf8')) : null;
 const gz = file => (gzipSync(readFileSync(root + 'dist/' + file), {level: 9}).length / 1024).toFixed(0);
-const chunk = readdirSync(root + 'dist').find(f => /^map-jr-gl-(?!worker|standalone|engine).*-[\w-]{8}\.js$/.test(f));
-const page = ((gzipSync(readFileSync(root + 'dist/map-jr-gl.js'), {level: 9}).length + (chunk ? gzipSync(readFileSync(root + 'dist/' + chunk), {level: 9}).length : 0)) / 1024).toFixed(0);
+// The page script is map-jr-gl.js and the files that it imports when it loads (not the ones that it imports on demand).
+const upFront = (file, seen = new Set()) => {
+    if (seen.has(file)) return seen;
+    seen.add(file);
+    for (const m of readFileSync(root + 'dist/' + file, 'utf8').matchAll(/(?:import|export)\s*(?:[^'"()]*?from\s*)?["']\.\/([^"']+)["']/g)) upFront(m[1], seen);
+    return seen;
+};
+const page = ([...upFront('map-jr-gl.js')].reduce((n, f) => n + gzipSync(readFileSync(root + 'dist/' + f), {level: 9}).length, 0) / 1024).toFixed(0);
 const ml = JSON.parse(readFileSync(root + 'node_modules/maplibre-gl/package.json', 'utf8')).version;
 const mlSize = (...files) => (files.reduce((n, f) => n + gzipSync(readFileSync(root + 'node_modules/maplibre-gl/dist/' + f), {level: 9}).length, 0) / 1024).toFixed(0);
 

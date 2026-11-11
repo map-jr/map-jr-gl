@@ -3,13 +3,12 @@ import {protocolListeners, protocols, toBytes} from './protocols.ts';
 import {LngLat, LngLatBounds, type LngLatBoundsInput} from './lnglat.ts';
 import {Transform, groundHeight, mercX, mercY, toLngLat, type LngLatLike} from './geo.ts';
 import type {PreparedSource} from './geojson.ts';
-import {resolveStyle, type ResolvedStyle} from './style.ts';
+import {DEFAULT_FONT, resolveStyle, type ResolvedStyle} from './resolve.ts';
 import type {CameraOptions, Command, EngineEvent, FeatureQuery, FontSource, MarkerImage} from './engine.ts';
 import type {QueriedFeature} from './query.ts';
 import type {TileBackend} from './tiles.ts';
 import {acquireTileWorkers, createWorker, workerReady, type LoadOptions} from './loader.ts';
 import {anchorOffset, resolveVariants, sizedSVG, type MarkerInput, type MarkerLayerOptions} from './markers.ts';
-import {DEFAULT_FONT} from './text.ts';
 import {AttributionControl, CONTROL_CSS, adoptClasses, cls, type Control, type ControlPosition} from './controls.ts';
 import {Popup, type PopupOptions} from './overlays.ts';
 import {CollisionGrid} from './collision.ts';
@@ -34,7 +33,7 @@ export interface MapOptions extends CameraOptions, LoadOptions {
     interactive?: boolean;
     /** Changes a request before the library makes it, as in MapLibre: a new URL, headers or credentials. */
     transformRequest?: RequestTransform | null;
-    /** Each kind of interaction can be off from the start, as in MapLibre. `boxZoom` is accepted, but the library has no box zoom. */
+    /** Each kind of interaction can be off from the start, as in MapLibre. */
     dragPan?: boolean; scrollZoom?: boolean; doubleClickZoom?: boolean; dragRotate?: boolean; touchZoomRotate?: boolean; touchPitch?: boolean; keyboard?: boolean; boxZoom?: boolean;
     minZoom?: number;
     maxZoom?: number;
@@ -165,8 +164,8 @@ export class Map {
     readonly dragPan = new InteractionHandler(); readonly scrollZoom = new InteractionHandler(); readonly doubleClickZoom = new InteractionHandler();
     readonly dragRotate = new InteractionHandler(); readonly touchZoomRotate = new TouchZoomRotateHandler(); readonly touchPitch = new InteractionHandler();
     readonly keyboard = new InteractionHandler();
-    /** The library has no box zoom. The handler is here so that code for MapLibre can call it; it is off. */
-    readonly boxZoom = new InteractionHandler(false);
+    /** Shift and drag draws a box, and the map zooms to it. */
+    readonly boxZoom = new InteractionHandler();
     private markerLayers = new globalThis.Map<string, MarkerLayer>();
     private variantIds = new globalThis.Map<string, number>();
     private hovered: {layer: MarkerLayer; index: number} | null = null;
@@ -211,7 +210,7 @@ export class Map {
         this.canvas.height = Math.round(this.tr.height * this.dpr);
         this.tr.maxPitch = options.maxPitch ?? 60;
         this.tr.set(options.center ?? [0, 0], options.zoom ?? 0, options.bearing ?? 0, options.pitch ?? 0);
-        for (const k of ['dragPan', 'scrollZoom', 'doubleClickZoom', 'dragRotate', 'touchZoomRotate', 'touchPitch', 'keyboard'] as const) if (options[k] === false) this[k].disable();
+        for (const k of ['dragPan', 'scrollZoom', 'doubleClickZoom', 'dragRotate', 'touchZoomRotate', 'touchPitch', 'keyboard', 'boxZoom'] as const) if (options[k] === false) this[k].disable();
         this.transformRequest = options.transformRequest ?? null;
         protocolListeners.add(this.sendRequestRules);
         this.sendRequestRules(); // before the style, so that the first requests follow the rules
@@ -219,13 +218,16 @@ export class Map {
         this.start().catch(err => this.fire('error', {error: err}));
     }
 
+    private pixelRatio?: number;
+    /** Sets the number of canvas pixels for each CSS pixel. Without a value, the map follows the screen again. */
+    setPixelRatio(ratio?: number | null) { this.pixelRatio = ratio ?? undefined; return this.resize(); }
     private measure() {
         const r = this.container.getBoundingClientRect();
         this.tr.width = r.width; this.tr.height = r.height;
         // Space for the browser's bars at the top and bottom of the screen is only for a map that fills the screen. On a
         // map in a page, that space changes while the page scrolls (Safari hides its toolbar), and the controls would move.
         this.container.classList.toggle('map-jr-fills', r.height >= globalThis.innerHeight - 1 && document.documentElement.scrollHeight <= globalThis.innerHeight + 1);
-        this.dpr = Math.min(globalThis.devicePixelRatio || 1, 3);
+        this.dpr = this.pixelRatio ?? Math.min(globalThis.devicePixelRatio || 1, 3);
         Object.assign(this.canvas.style, {width: this.dpr * 100 + '%', height: this.dpr * 100 + '%', transform: `scale(${1 / this.dpr})`});
     }
 
@@ -613,6 +615,8 @@ export class Map {
 
     // ---- style ----
     private restyle(reload: boolean) {
+        // As in MapLibre, the loading events come before the data events.
+        for (const type of ['styledataloading', 'dataloading']) this.fire(type, {dataType: 'style'});
         resolveStyle(this.rawStyle, this.fetchAs('Source'), this.styleBase).then(style => {
             if (Object.keys(this.globalState).length) style.state = {...style.state, ...this.globalState};
             this.style = style;
@@ -715,6 +719,7 @@ export class Map {
     }
     private async setGeoJSON(id: string, data: unknown) {
         this.rawStyle.sources[id].data = data;
+        for (const type of ['sourcedataloading', 'dataloading']) this.fire(type, {dataType: 'source', sourceId: id});
         if (typeof data === 'string') { const res = await this.fetchAs('Source')(new URL(data, this.styleBase)); data = await res.json(); }
         this.post({type: 'geojson', source: id, data});
     }
@@ -837,6 +842,8 @@ export class Map {
     getFontFaces() { return this.rawStyle?.['font-faces'] ?? {}; }
     setFontFaces(faces: Record<string, unknown> | null) { return this.editStyle(s => { if (faces) s['font-faces'] = faces; else delete s['font-faces']; }); }
     hasImage(name: string) { return this.imageNames.has(name); }
+    /** The image that addImage was given, with its options, or undefined. (MapLibre returns the decoded pixels.) */
+    getImage(name: string) { const i = this.imageInputs.get(name); return i && {data: i[0], pixelRatio: i[1].pixelRatio ?? 1, sdf: false, ...i[1]}; }
     listImages() { return [...this.imageNames]; }
     /** Fetches and decodes an image, in the shape MapLibre returns it. */
     async loadImage(url: string) {
@@ -1039,6 +1046,7 @@ export class Map {
         };
         // A listener that prevents the default of the event that starts a gesture takes the whole gesture for itself.
         let inert = false;
+        let box: {x: number; y: number; el: HTMLElement} | null = null;
         let rotating = false, moved = 0, samples: {t: number; x: number; y: number}[] = [], pinch: {dist: number; angle: number} | null = null;
         // Wheel events do not say what produced them. As MapLibre does, tell mouse wheels from trackpads by their
         // deltas and timing, because the two need different handling to feel right.
@@ -1060,6 +1068,13 @@ export class Map {
             moved = 0; samples = []; pinch = null;
             if (pointerEvent('start', e)) inert = true;
             if (inert) return;
+            // Shift and drag: a box to zoom to.
+            if (e.shiftKey && e.button === 0 && e.pointerType === 'mouse' && this.boxZoom.isEnabled()) {
+                box = {x: p.x, y: p.y, el: this.container.appendChild(Object.assign(document.createElement('div'), {className: cls('boxzoom')}))};
+                box.el.style.cssText = 'position:absolute;left:0;top:0;width:0;height:0;border:2px dotted #202020;background:rgba(255,255,255,.3);pointer-events:none;z-index:2';
+                this.fire('boxzoomstart', {originalEvent: e});
+                return;
+            }
             this.post({type: 'stop'});
             if (pointers.size === 1) {
                 suppressClick = false;
@@ -1092,6 +1107,10 @@ export class Map {
             moved += Math.abs(dx) + Math.abs(dy);
             pointerEvent('move', e);
             if (inert) return;
+            if (box) {
+                Object.assign(box.el.style, {left: Math.min(box.x, p.x) + 'px', top: Math.min(box.y, p.y) + 'px', width: Math.abs(p.x - box.x) + 'px', height: Math.abs(p.y - box.y) + 'px'});
+                return;
+            }
             if (pointers.size === 2 && gesture) {
                 const g = gesture, f = twoFingers();
                 g.travel += Math.abs(dx) + Math.abs(dy);
@@ -1137,6 +1156,16 @@ export class Map {
             if (e.type !== 'blur') pointerEvent(e.type === 'pointerup' ? 'end' : 'cancel', e);
             pointers.delete(e.pointerId);
             if (inert) { if (!pointers.size) inert = false; return; }
+            if (box) {
+                const b = box, at = e.type === 'blur' ? b : pos(e);
+                box = null;
+                b.el.remove();
+                if (e.type !== 'pointerup' || Math.abs(at.x - b.x) < 4 || Math.abs(at.y - b.y) < 4) { this.fire('boxzoomcancel', {originalEvent: e}); return; }
+                const bounds = new LngLatBounds(this.unproject(b), this.unproject(at)).extend(this.unproject({x: b.x, y: at.y})).extend(this.unproject({x: at.x, y: b.y}));
+                this.fitBounds(bounds, {duration: 300});
+                this.fire('boxzoomend', {originalEvent: e, boxZoomBounds: bounds});
+                return;
+            }
             pinch = null;
             const now = performance.now();
             if (gesture) {

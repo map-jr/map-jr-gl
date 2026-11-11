@@ -9,10 +9,10 @@
 /** How far below the middle of a line the baseline is, in ems. The value puts text where MapLibre draws it. */
 export const BASELINE = 0.38;
 
-import {parseFontName} from './style.ts';
+import {parseFontName} from './resolve.ts';
 
 export const EM = 24;
-export const DEFAULT_FONT = '"Noto Sans", "Helvetica Neue", Arial, sans-serif';
+export {DEFAULT_FONT} from './resolve.ts';
 export const SDF_BUFFER = 4;
 export const SDF_RADIUS = 8;
 const LINE_HEIGHT = 1.2 * EM;

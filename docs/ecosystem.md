@@ -7,7 +7,7 @@ package uses, and compares them with this library.
 The script reads the code as text. It does not run the packages. So a package with "none" in each column can still
 have a problem, and a method in the list is possibly used only in a part of the package that you do not use.
 
-**15 of 26 packages** use only parts of the API that this library has.
+**17 of 26 packages** use only parts of the API that this library has.
 
 ## What is missing most often
 
@@ -35,7 +35,6 @@ have a problem, and a method in the list is possibly used only in a part of the 
 | `VideoSource` | export | 1: svelte-maplibre-gl |
 | `setProjection` | method of `Map` | 6: react-map-gl, vue-maplibre-gl, svelte-maplibre-gl, svelte-maplibre, @maplibre/ngx-maplibre-gl, @maptiler/sdk |
 | `setRenderWorldCopies` | method of `Map` | 4: vue-maplibre-gl, @indoorequal/vue-maplibre-gl, svelte-maplibre-gl, @maplibre/ngx-maplibre-gl |
-| `getImage` | method of `Map` | 3: @watergis/maplibre-gl-export, @americana/maplibre-shield-generator, svelte-maplibre-gl |
 | `setSky` | method of `Map` | 3: react-map-gl, @vis.gl/react-maplibre, svelte-maplibre-gl |
 | `setTransformCameraUpdate` | method of `Map` | 3: react-map-gl, @vis.gl/react-maplibre, svelte-maplibre-gl |
 | `setTransformConstrain` | method of `Map` | 3: @maplibre/maplibre-gl-leaflet, svelte-maplibre-gl, @maplibre/ngx-maplibre-gl |
@@ -48,16 +47,9 @@ have a problem, and a method in the list is possibly used only in a part of the 
 | `removeSprite` | method of `Map` | 1: svelte-maplibre-gl |
 | `setCenterClampedToGround` | method of `Map` | 1: svelte-maplibre-gl |
 | `setCenterElevation` | method of `Map` | 1: @maplibre/ngx-maplibre-gl |
-| `setPixelRatio` | method of `Map` | 1: svelte-maplibre-gl |
 | `setRoll` | method of `Map` | 1: @maptiler/sdk |
 | `setVerticalFieldOfView` | method of `Map` | 1: svelte-maplibre-gl |
-| `boxzoomcancel` | event | 1: @maplibre/ngx-maplibre-gl |
-| `boxzoomend` | event | 1: @maplibre/ngx-maplibre-gl |
-| `boxzoomstart` | event | 1: @maplibre/ngx-maplibre-gl |
-| `dataloading` | event | 1: @maplibre/ngx-maplibre-gl |
 | `projectiontransition` | event | 1: @maptiler/sdk |
-| `sourcedataloading` | event | 1: @maplibre/ngx-maplibre-gl |
-| `styledataloading` | event | 1: @maplibre/ngx-maplibre-gl |
 
 ## Each package
 
@@ -83,7 +75,7 @@ have a problem, and a method in the list is possibly used only in a part of the 
 |---|---|---|---|---|---|
 | @maplibre/maplibre-gl-compare | 0.5.0 | 10 methods, 0 exports, 2 events | none | none | none |
 | @maplibre/maplibre-gl-inspect | 1.9.0 | 7 methods, 1 exports, 6 events | none | none | none |
-| @watergis/maplibre-gl-export | 6.0.0 | 29 methods, 2 exports, 2 events | `getImage` | none | none |
+| @watergis/maplibre-gl-export | 6.0.0 | 29 methods, 2 exports, 2 events | none | none | none |
 | maplibre-gl-opacity | 1.8.0 | 2 methods, 0 exports, 0 events | none | none | none |
 | @mapbox/mapbox-gl-sync-move | 0.4.0 | 7 methods, 0 exports, 1 events | none | none | none |
 | maplibre-gl-basemaps | 0.1.3 | 5 methods, 0 exports, 1 events | none | none | none |
@@ -98,7 +90,7 @@ have a problem, and a method in the list is possibly used only in a part of the 
 | @deck.gl/mapbox | 9.4.1 | 18 methods, 0 exports, 12 events | none | none | none |
 | @maplibre/maplibre-gl-leaflet | 0.1.4 | 13 methods, 0 exports, 2 events | `setTransformConstrain` | none | none |
 | maplibre-gl-vector-text-protocol | 0.0.5 | 1 methods, 0 exports, 0 events | none | none | none |
-| @americana/maplibre-shield-generator | 0.2.1 | 7 methods, 0 exports, 1 events | `getImage` | none | none |
+| @americana/maplibre-shield-generator | 0.2.1 | 7 methods, 0 exports, 1 events | none | none | none |
 
 ### Frameworks
 
@@ -108,7 +100,7 @@ have a problem, and a method in the list is possibly used only in a part of the 
 | @vis.gl/react-maplibre | 8.1.3 | 47 methods, 15 exports, 6 events | `getSky`, `setSky`, `setTransformCameraUpdate` | `GlobeControl` | none |
 | vue-maplibre-gl | 5.6.1 | 40 methods, 6 exports, 17 events | `setProjection`, `setRenderWorldCopies` | none | none |
 | @indoorequal/vue-maplibre-gl | 9.0.1 | 39 methods, 9 exports, 5 events | `setRenderWorldCopies` | none | none |
-| svelte-maplibre-gl | 2.2.1 | 55 methods, 26 exports, 5 events | `addSprite`, `getImage`, `getZoomSnap`, `removeSprite`, `setAnisotropicFilterPitch`, `setCenterClampedToGround`, `setPixelRatio`, `setProjection`, `setRenderWorldCopies`, `setSky`, `setTransformCameraUpdate`, `setTransformConstrain`, `setVerticalFieldOfView`, `setZoomSnap` | `CanvasSource`, `Event`, `GeoJSONSource`, `GlobeControl`, `Hash`, `ImageSource`, `MapLibreEvent`, `MapSourceDataEvent`, `RasterDEMTileSource`, `RasterTileSource`, `VectorTileSource`, `VideoSource` | none |
+| svelte-maplibre-gl | 2.2.1 | 55 methods, 26 exports, 5 events | `addSprite`, `getZoomSnap`, `removeSprite`, `setAnisotropicFilterPitch`, `setCenterClampedToGround`, `setProjection`, `setRenderWorldCopies`, `setSky`, `setTransformCameraUpdate`, `setTransformConstrain`, `setVerticalFieldOfView`, `setZoomSnap` | `CanvasSource`, `Event`, `GeoJSONSource`, `GlobeControl`, `Hash`, `ImageSource`, `MapLibreEvent`, `MapSourceDataEvent`, `RasterDEMTileSource`, `RasterTileSource`, `VectorTileSource`, `VideoSource` | none |
 | svelte-maplibre | 2.0.1 | 37 methods, 19 exports, 26 events | `setProjection` | `GPUInitializationError`, `MapLibreEvent`, `MapMouseEvent`, `MapMovementEvent`, `MapSourceDataEvent`, `MapStyleDataEvent`, `MapWheelEvent`, `config` | none |
-| @maplibre/ngx-maplibre-gl | 22.3.1 | 51 methods, 11 exports, 46 events | `fitScreenCoordinates`, `setAnisotropicFilterPitch`, `setCenterElevation`, `setProjection`, `setRenderWorldCopies`, `setTransformConstrain`, `setZoomSnap` | `GeoJSONSource`, `GlobeControl` | `boxzoomcancel`, `boxzoomend`, `boxzoomstart`, `dataloading`, `sourcedataloading`, `styledataloading` |
+| @maplibre/ngx-maplibre-gl | 22.3.1 | 51 methods, 11 exports, 46 events | `fitScreenCoordinates`, `setAnisotropicFilterPitch`, `setCenterElevation`, `setProjection`, `setRenderWorldCopies`, `setTransformConstrain`, `setZoomSnap` | `GeoJSONSource`, `GlobeControl` | none |
 | @maptiler/sdk | 4.2.1 | 66 methods, 1 exports, 18 events | `setProjection`, `setRoll` | none | `projectiontransition` |

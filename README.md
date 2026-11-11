@@ -9,7 +9,7 @@ MapLibre GL JS.
 
 ## Why use this library
 
-- **It is small.** The page loads about 29 KB of script (gzip). MapLibre GL JS loads more than 250 KB.
+- **It is small.** The page loads about 26 KB of script (gzip). MapLibre GL JS loads more than 250 KB.
 - **It does not block your page.** The map draws in a worker. Your page stays responsive while the map moves.
 - **It draws many markers.** A marker layer draws 100,000 SVG markers at 60 frames per second.
 - **It draws on the server.** You can render the first view of a map as SVG or as an image, without a browser.
@@ -28,9 +28,9 @@ These figures are written by `pnpm status`. They compare this library with MapLi
 
 | Measure | Result |
 |---|---|
-| Unit tests | 30 pass, 0 fail |
+| Unit tests | 31 pass, 0 fail |
 | MapLibre expression tests | 330 of 425 pass |
-| MapLibre `Map` methods | 109 of 150 are available |
+| MapLibre `Map` methods | 111 of 150 are available |
 | MapLibre render tests | 645 of 1429 are the same (1% of pixels or less are different). 333 more are near (5% or less). |
 | Page script (gzip) | 27 KB. MapLibre GL JS: 299 KB. |
 | Worker script (gzip) | 57 KB. MapLibre GL JS: 145 KB. |
