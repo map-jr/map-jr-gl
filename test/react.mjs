@@ -72,7 +72,7 @@ try {
     let page = await browser.newPage({viewport: {width: 900, height: 600}});
     const warnings = [], errors = [];
     // (Only warnings and errors: a browser can write other lines with these words.)
-    page.on('console', m => { if (/warn|error/.test(m.type()) && /hydrat|did not match|mismatch/i.test(m.text())) warnings.push(m.text().split('\n')[0]); });
+    page.on('console', m => { if (/warn|error/.test(m.type()) && /hydrat|did not match|mismatch/i.test(m.text())) warnings.push(m.text().replace(/\s+/g, ' ').slice(0, 600)); });
     page.on('pageerror', e => errors.push(e.message));
     if (process.env.DEBUG) { page.on('console', m => console.log('console:', m.text().slice(0, 300))); page.on('pageerror', e => console.log('pageerror:', e.message.slice(0, 300))); page.on('requestfailed', r => console.log('failed:', r.url())); page.on('response', r => { if (r.status() >= 400) console.log(r.status(), r.url()); }); }
     await page.goto(origin + '/?ssr');

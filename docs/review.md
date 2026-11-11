@@ -126,6 +126,44 @@ Examined on 2026-11-11. Not worth it now.
 - If bytes are needed, the three text steps can go into the build step of this project (`build.mjs`) without a new
   dependency.
 
+## Findings from a trial in a real project (elevation-next)
+
+The owner allowed a trial in the project `samargulies/elevation-next` (Nuxt 4, 30 pages with maps). The trial is the
+branch `try-map-jr-gl` of that project. It is not merged, and it has no pull request.
+
+What the trial changed in the project:
+
+- `app/utils/maplibre.js` loads `map-jr-gl/maplibre-compat` and not `maplibre-gl`. No other code of the maps changed.
+- The `pmtiles` package and its protocol are not loaded: the library reads `pmtiles://` itself.
+- The CSS file of MapLibre is not imported: the library brings the styles of its controls.
+- The package comes from a packed build in `vendor/` (the library is not on npm). Remove this when the library is
+  published.
+- One test of the project changed (`test/unit/maplibre.test.ts`: it expected the pmtiles protocol). All 117 test
+  files of the project pass.
+
+Pages compared with MapLibre GL JS 5 by screenshot: map (tilted, with contours from `maplibre-contour`), peaks, snow
+totals, county, zone. Pages checked for errors and by eye: cicadas, rain totals, address, zip code, city. No page
+gave an error from the library.
+
+Faults that the trial found, and their state:
+
+1. The options `bounds` and `fitBoundsOptions` of the map constructor had no effect. Fixed.
+2. A style with `terrain` requested about six times the elevation tiles of MapLibre, and the relief was sharper.
+   MapLibre selects the tiles of the terrain source at twice the tile size and without rounding, also for the
+   hillshade layer and while the map is seen from above. Fixed: the library uses the same rule. The render test
+   `terrain/low-zoom` went from 18% to 2.7% different.
+3. Labels: the library shows a few more labels than MapLibre on the peaks page (for example two more peak names in
+   the same view). Not examined.
+
+Not checked in the trial:
+
+- The pages for school districts, yesterday's weather and the home page showed no map in the development server.
+  The map component did not start on them, and there was no error from the library. The cause is probably data that
+  the page waits for.
+- Marker drag, the compare view, and the animation of the snow and rain pages.
+- A production build of the project, and its size against the build with MapLibre.
+- Any device. The pages ran in Chromium with software WebGL only.
+
 ## Size budgets
 
 | Decision | Reason | To change it |
