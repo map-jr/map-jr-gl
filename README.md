@@ -268,28 +268,27 @@ build and other configurations.
 
 ## Speed
 
-These results are from an Apple M4 computer with Chrome 157. Each test moved the map for five seconds.
+<!-- speed:start -->
+Measured by the workflow [Browsers](https://github.com/map-jr/map-jr-gl/tree/bench-results) on 2026-11-11 (commit 41ef7c6). Each cell is MapLibre GL JS 6.17.0 / **this library** (worker renderer where the browser has it).
 
-| Test | Time to load | Frames per second | Page script for each frame |
+| System, browser | Load to idle, ms | Frames per second, map moving | Frames per second, 10,000 markers |
 |---|---|---|---|
-| MapLibre GL JS 6.17 | 781 ms | 60 | 3.0 ms |
-| This library, in a worker | 490 ms | 60 | 0 ms |
-| This library, on the main thread | 469 ms | 60 | 2.2 ms |
-| 10,000 markers, MapLibre `Marker` | | 5.7 | 20.1 ms |
-| 10,000 markers, marker layer | | 60 | 0 ms |
-| 100,000 markers, marker layer | | 60 | 0 ms |
-| 3D terrain, MapLibre GL JS 6.17 | 1061 ms | 60 | 2.9 ms |
-| 3D terrain, this library, in a worker | 785 ms | 60 | 0 ms |
+| macOS, Chromium | 1346 / **779** | 28 / **25** | 5 / **33** |
+| macOS, Firefox | 6185 / **6803** | 1 / **9** | 3 / **60** |
+| macOS, WebKit | 3597 / **1343** | 54 / **51** | 2 / **61** |
+| Linux, Chromium | 674 / **855** | 13 / **13** | 3 / **12** |
+| Linux, Firefox | 1919 / **1614** | 17 / **59** | 5 / **59** |
+| Linux, WebKit | 2021 / **1073** | 16 / **16** | 2 / **16** |
+| Windows, Chromium | 1032 / **1168** | 42 / **33** | 3 / **31** |
+| Windows, Firefox | 1478 / **1660** | 38 / **23** | 4 / **22** |
+| Windows, WebKit | 1332 / **1267** | 19 / **19** | 3 / **18** |
+<!-- speed:end -->
 
-On an iPhone (Safari, iOS 27), 3D terrain is slower than MapLibre GL JS: 54 to 58 frames per second, compared
-with 60.
+These computers are virtual machines, and those for Linux and Windows have no GPU: use the table to compare the
+two libraries, not as the speed of a real device. On an Apple M4 the two libraries draw 60 frames each second;
+this library loads faster (490 ms against 781 ms) and uses no page script for a frame.
 
-Each change is also measured automatically in Chromium, Firefox and WebKit on Linux, macOS and Windows, next to
-MapLibre GL JS. The newest results are in the branch
-[`bench-results`](https://github.com/map-jr/map-jr-gl/tree/bench-results). Those computers are virtual machines,
-so use the results to compare the libraries, not as the speed of a real device.
-
-To run the benchmark on your computer, run `pnpm demo` and open `http://localhost:8080/bench`.
+To measure on your device, run `pnpm demo` and open `http://localhost:8080/bench`. `pnpm status` writes the table.
 
 ## Documents
 

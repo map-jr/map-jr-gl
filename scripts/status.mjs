@@ -49,7 +49,33 @@ const lines = [
     `| Server renderer (gzip) | ${gz('server.js')} KB |`,
     '<!-- status:end -->',
 ];
-const file = root + 'README.md', doc = readFileSync(file, 'utf8');
+// The speed section of the README: from the results of the workflow "Browsers" (the branch bench-results), which
+// measures each push in three browsers on three systems, next to MapLibre GL JS.
+const speed = (() => {
+    const show = file => { try { return execSync(`git show origin/bench-results:${file}`, {cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 1e8}); } catch { return null; } };
+    try { execSync('git fetch -q origin +bench-results:refs/remotes/origin/bench-results', {cwd: root, stdio: 'ignore', timeout: 60000}); } catch { /* without a network, the results that are there are used */ }
+    const systems = {darwin: 'macOS', linux: 'Linux', win32: 'Windows'}, browsers = {chromium: 'Chromium', firefox: 'Firefox', webkit: 'WebKit'}, rows = [];
+    let commit = '', date = '';
+    for (const os in systems) for (const b in browsers) {
+        const text = show(`${os}-${b}.json`), r = text && JSON.parse(text), by = name => r?.bench?.find(x => x.name === name);
+        const ml = by('MapLibre GL JS'), us = by('This library, worker') ?? by('This library, main thread'), dom = by('10,000 markers: MapLibre Marker (DOM)'), layer = by('10,000 markers: marker layer, worker') ?? by('10,000 markers: marker layer, main thread');
+        if (!ml || !us) continue;
+        if (r.date > date) { date = r.date; commit = r.commit; }
+        const pair = (a, c, digits = 0) => a && c ? `${a.toFixed(digits)} / **${c.toFixed(digits)}**` : '';
+        rows.push(`| ${systems[os]}, ${browsers[b]} | ${pair(ml.load, us.load)} | ${pair(ml.fps, us.fps)} | ${pair(dom?.fps, layer?.fps)} |`);
+    }
+    if (!rows.length) return null;
+    return ['<!-- speed:start -->',
+        `Measured by the workflow [Browsers](https://github.com/map-jr/map-jr-gl/tree/bench-results) on ${date.slice(0, 10)} (commit ${commit.slice(0, 7)}). Each cell is MapLibre GL JS ${ml} / **this library** (worker renderer where the browser has it).`,
+        '',
+        '| System, browser | Load to idle, ms | Frames per second, map moving | Frames per second, 10,000 markers |',
+        '|---|---|---|---|',
+        ...rows,
+        '<!-- speed:end -->'].join('\n');
+})();
+const file = root + 'README.md';
+let doc = readFileSync(file, 'utf8');
+if (speed && /<!-- speed:start -->[\s\S]*<!-- speed:end -->/.test(doc)) doc = doc.replace(/<!-- speed:start -->[\s\S]*<!-- speed:end -->/, speed);
 if (!/<!-- status:start -->[\s\S]*<!-- status:end -->/.test(doc)) { console.error('README.md has no status markers'); process.exit(1); }
 writeFileSync(file, doc.replace(/<!-- status:start -->[\s\S]*<!-- status:end -->/, lines.join('\n')));
 console.log(lines.slice(3, -1).join('\n'));
