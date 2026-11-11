@@ -23,6 +23,9 @@ export interface Batch {
     color?: Uint8Array;
     width?: Float32Array;
     radius?: Float32Array;
+    /** The width or radius one zoom level further in, present when it is different: the size then changes smoothly with zoom. */
+    width1?: Float32Array;
+    radius1?: Float32Array;
     /** Lines with a gradient: for each feature, how far along the whole line it starts and ends (0 to 1). */
     progress?: Float32Array;
     cap?: string;
@@ -70,8 +73,8 @@ export interface TileIR { layers: Record<string, Batch>; labels: Record<string, 
 export type GLBatch =
     | {type: 'fill'; pos: Int16Array; idx: Uint32Array; color?: Uint8Array; /** Polygon edges as vertex index pairs, drawn as one-pixel antialiased lines. */ edges?: Uint32Array}
     | {type: 'extrusion'; v: Float32Array; idx: Uint32Array; color?: Uint8Array}
-    | {type: 'line'; /** Packed vertices, LINE_VERTEX bytes each: see tessellateLine. */ v: Uint8Array; idx: Uint32Array; color?: Uint8Array; width?: Float32Array}
-    | {type: 'circle'; /** x, y, cornerX, cornerY per vertex */ pos: Int16Array; idx: Uint32Array; color?: Uint8Array; radius?: Float32Array};
+    | {type: 'line'; /** Packed vertices, LINE_VERTEX bytes each: see tessellateLine. */ v: Uint8Array; idx: Uint32Array; color?: Uint8Array; width?: Float32Array; width1?: Float32Array}
+    | {type: 'circle'; /** x, y, cornerX, cornerY per vertex */ pos: Int16Array; idx: Uint32Array; color?: Uint8Array; radius?: Float32Array; radius1?: Float32Array};
 export interface TileGL { layers: Record<string, GLBatch>; labels: Record<string, LabelSrc[]> }
 /** A raster tile as the SVG backend sees it: just somewhere to load the image from. */
 export interface TileImage { href: string }
@@ -175,7 +178,8 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
         const want = kind === 'fill' ? 3 : kind === 'circle' ? 1 : 0;
         const coords: number[] = [], ringEnds: number[] = [], featEnds: number[] = [];
         const ddColor = p.color.dd || p.opacity.dd;
-        const color: number[] = [], scalar: number[] = [];
+        const color: number[] = [], scalar: number[] = [], scalar1: number[] = [];
+        let grows = false;
         const progress: number[] | null = L.type === 'line' && L.ramp ? [] : null;
         const scalarProp = L.type === 'line' ? p.width : heat ? p.weight : L.type === 'circle' ? p.radius : null;
         for (const f of vl.features) {
@@ -202,7 +206,11 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
             }
             featEnds.push(ringEnds.length);
             if (ddColor) pushColor(color, p.color.dd ? p.color.eval(z, f) : WHITE, p.opacity.dd ? p.opacity.eval(z, f) : 1);
-            if (scalarProp?.dd) scalar.push(scalarProp.eval(z, f));
+            if (scalarProp?.dd) {
+                const now = scalarProp.eval(z, f), next = heat ? now : scalarProp.eval(z + 1, f);
+                scalar.push(now); scalar1.push(next);
+                if (next !== now) grows = true;
+            }
             if (progress) progress.push(f.properties.mapbox_clip_start ?? 0, f.properties.mapbox_clip_end ?? 1);
             if (extrude) { heights.push(p.height.eval(z, f)); bases.push(p.base.eval(z, f)); }
         }
@@ -214,6 +222,7 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
         if (ddColor && !progress) batch.color = Uint8Array.from(color);
         if (progress) batch.progress = Float32Array.from(progress);
         if (scalarProp?.dd) batch[L.type === 'line' ? 'width' : 'radius'] = Float32Array.from(scalar);
+        if (scalarProp?.dd && grows) batch[L.type === 'line' ? 'width1' : 'radius1'] = Float32Array.from(scalar1);
         if (extrude) { batch.height = Float32Array.from(heights); batch.base = Float32Array.from(bases); }
         if (L.type === 'line') { batch.cap = p.cap.eval(z); batch.join = p.join.eval(z); }
         if (L.type === 'fill') { batch.outline = p.outline.eval(z)[3] > 0; batch.antialias = p.antialias.eval(z) !== false; }
@@ -316,7 +325,7 @@ export function tessellate(b: Batch): GLBatch | null {
         // Four vertices per point (position plus which corner), drawn as ordinary indexed triangles. Instancing would
         // be more compact but is many times slower on software renderers.
         const n = ringEnds.length, pos = new Int16Array(n * 16), idx = new Uint32Array(n * 6);
-        const color = b.color ? new Uint8Array(n * 16) : undefined, radius = b.radius ? new Float32Array(n * 4) : undefined;
+        const color = b.color ? new Uint8Array(n * 16) : undefined, radius = b.radius ? new Float32Array(n * 4) : undefined, radius1 = b.radius1 ? new Float32Array(n * 4) : undefined;
         for (let f = 0, r = 0; f < featEnds.length; f++) {
             for (; r < featEnds[f]; r++) {
                 const i = ringEnds[r] - 1;
@@ -324,6 +333,7 @@ export function tessellate(b: Batch): GLBatch | null {
                     pos.set([coords[i * 2], coords[i * 2 + 1], k & 1 ? 1 : -1, k & 2 ? 1 : -1], (r * 4 + k) * 4);
                     if (color) color.set(b.color!.subarray(f * 4, f * 4 + 4), (r * 4 + k) * 4);
                     if (radius) radius[r * 4 + k] = b.radius![f];
+                    if (radius1) radius1[r * 4 + k] = b.radius1![f];
                 }
                 idx.set([r * 4, r * 4 + 1, r * 4 + 2, r * 4 + 1, r * 4 + 3, r * 4 + 2], r * 6);
             }
@@ -434,7 +444,7 @@ export const LINE_VERTEX = 16, LINE_NORMAL = 8192;
 
 function tessellateLine(b: Batch): GLBatch | null {
     const {coords, ringEnds, featEnds} = b.geom;
-    const v: number[] = [], idx: number[] = [], color: number[] = [], width: number[] = [];
+    const v: number[] = [], idx: number[] = [], color: number[] = [], width: number[] = [], width1: number[] = [];
     const round = b.join === 'round', miter = !round && b.join !== 'bevel';
     let count = 0, f = 0, ringLength = 1;
     const vert = (x: number, y: number, nx: number, ny: number, side: number, dist: number) => {
@@ -446,6 +456,7 @@ function tessellateLine(b: Batch): GLBatch | null {
         }
         if (b.color) color.push(b.color[f * 4], b.color[f * 4 + 1], b.color[f * 4 + 2], b.color[f * 4 + 3]);
         if (b.width) width.push(b.width[f]);
+        if (b.width1) width1.push(b.width1[f]);
         return count++;
     };
     /** A fan around (x, y) sweeping `sweep` radians from angle `from`: used for round joins and caps. */
@@ -520,6 +531,7 @@ function tessellateLine(b: Batch): GLBatch | null {
     const out: GLBatch = {type: 'line', v: new Uint8Array(packed), idx: Uint32Array.from(idx)};
     if (b.color || b.progress) out.color = Uint8Array.from(color);
     if (b.width) out.width = Float32Array.from(width);
+    if (b.width1) out.width1 = Float32Array.from(width1);
     return out;
 }
 

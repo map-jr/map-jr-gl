@@ -116,13 +116,14 @@ uniform vec4 u_color; uniform vec4 u_clip; in vec4 v_color; in vec2 v_tile; in v
 void main() { ${FS_CLIP} vec4 c = v_color * u_color; float a = c.a * (1.0 - smoothstep(0.0, 1.0, length(v_px - gl_FragCoord.xy))); o = vec4(c.rgb * a, a); }`],
 
     line: [`${VS_COMMON}
-layout(location=0) in vec4 a_packed; layout(location=1) in vec4 a_color; layout(location=2) in float a_side; layout(location=3) in float a_width; layout(location=4) in float a_dist;
-uniform float u_width; uniform float u_scale; uniform float u_gap; uniform float u_offset;
+layout(location=0) in vec4 a_packed; layout(location=1) in vec4 a_color; layout(location=2) in float a_side; layout(location=3) in float a_width; layout(location=4) in float a_dist; layout(location=5) in float a_width1;
+uniform float u_width; uniform float u_scale; uniform float u_gap; uniform float u_offset; uniform float u_zt; uniform float u_floorWidth;
 uniform float u_cam;
-out vec4 v_color; out vec2 v_tile; out float v_d; out float v_hw; out float v_w; out float v_dist; out float v_persp;
+out vec4 v_color; out vec2 v_tile; out float v_d; out float v_hw; out float v_w; out float v_dist; out float v_persp; out float v_fw;
 void main() {
   vec4 a_v = vec4(a_packed.xy, a_packed.zw / 8192.0); vec2 a_sd = vec2(a_side, a_dist);
-  float w = a_width * u_width;
+  float w = mix(a_width, a_width1, u_zt) * u_width; // a width for each feature changes smoothly between zoom levels
+  v_fw = a_width * u_floorWidth; // dashes are sized by the width at the whole zoom level, as in MapLibre
   // With a gap the line is two strokes of width w either side of an empty middle.
   v_hw = (u_gap > 0.0 ? u_gap * 0.5 + w : w * 0.5) + 0.5; v_d = a_sd.x * v_hw; v_w = w; v_dist = a_sd.y;
   v_color = vec4(a_color.rgb, a_color.a * min(1.0, w));
@@ -134,7 +135,10 @@ void main() {
 }`, `
 uniform vec4 u_color; uniform vec4 u_clip; uniform float u_gap; uniform vec4 u_dash; uniform float u_dashScale; uniform float u_blur;
 uniform sampler2D u_img; uniform vec4 u_rect; uniform vec2 u_tex; uniform vec2 u_patSize;
-in vec4 v_color; in vec2 v_tile; in float v_d; in float v_hw; in float v_w; in float v_dist; in float v_persp; out vec4 o;
+uniform int u_cap;
+float outside(float t, float from, float to) { return max(max(from - t, t - to), 0.0); }
+in vec4 v_color; in vec2 v_tile; in float v_d; in float v_hw; in float v_w; in float v_dist; in float v_persp; in float v_fw; out vec4 o;
+uniform float u_zf;
 void main() {
   ${FS_CLIP}
   vec4 c = v_color * u_color;
@@ -143,11 +147,19 @@ void main() {
   if (u_gap > 0.0) a *= clamp((abs(v_d) - u_gap * 0.5 + 0.5) / v_persp, 0.0, 1.0);
   float period = u_dash.x + u_dash.y + u_dash.z + u_dash.w;
   if (period > 0.0 && u_patSize.x <= 0.0) { // a pattern replaces the dashes
-    // Dash lengths are in multiples of the line width; antialias each dash end over about a pixel.
-    float w = max(v_w, 0.5), t = mod(v_dist * u_dashScale / w, period);
-    float second = u_dash.x + u_dash.y;
-    float inDash = t < second ? min(t, u_dash.x - t) : min(t - second, second + u_dash.z - t);
-    a *= clamp(inDash * w + 0.5, 0.0, 1.0);
+    // Dash lengths are in multiples of the line width. The gap is how far this point is outside the nearest dash.
+    float w = max(v_w, 0.5), fw = max(v_fw, 0.5), t = mod(v_dist * u_dashScale / fw, period), second = u_dash.x + u_dash.y;
+    float px = fw * u_zf; // screen pixels for each dash unit
+    float gap = min(min(outside(t, 0.0, u_dash.x), outside(t, period, period + u_dash.x)),
+                    min(outside(t, second, second + u_dash.z), outside(t, second - period, second - period + u_dash.z))) * px;
+    // Each dash has the cap of the line: a round or square cap makes it longer by half the line width.
+    if (u_cap == 1) a *= clamp((w * 0.5 - length(vec2(gap, v_d)) + 0.5) / v_persp, 0.0, 1.0);
+    else if (u_cap == 2) a *= clamp(0.5 + w * 0.5 - gap, 0.0, 1.0);
+    else {
+      // Butt caps: the signed distance to the dash end, so that the end is smooth over one pixel.
+      float inDash = t < second ? min(t, u_dash.x - t) : min(t - second, second + u_dash.z - t);
+      a *= clamp(inDash * px + 0.5, 0.0, 1.0);
+    }
   }
   if (u_patSize.x > 0.0) {
     // line-pattern: the image repeats along the line, scaled so that its height is the line width.
@@ -165,11 +177,11 @@ void main() {
 }`],
 
     circle: [`${VS_COMMON}
-layout(location=0) in vec2 a_corner; layout(location=1) in vec4 a_color; layout(location=2) in vec2 a_pos; layout(location=3) in float a_radius;
-uniform float u_radius; uniform float u_strokeWidth; uniform vec4 u_clip; uniform vec2 u_translate;
+layout(location=0) in vec2 a_corner; layout(location=1) in vec4 a_color; layout(location=2) in vec2 a_pos; layout(location=3) in float a_radius; layout(location=5) in float a_radius1;
+uniform float u_zt; uniform float u_radius; uniform float u_strokeWidth; uniform vec4 u_clip; uniform vec2 u_translate;
 out vec4 v_color; out vec2 v_off; out float v_r;
 void main() {
-  v_r = a_radius * u_radius; v_color = a_color;
+  v_r = mix(a_radius, a_radius1, u_zt) * u_radius; v_color = a_color;
   float ext = v_r + u_strokeWidth + 1.0;
   v_off = a_corner * ext;
   bool inside = a_pos.x >= u_clip.x && a_pos.y >= u_clip.y && a_pos.x < u_clip.z && a_pos.y < u_clip.w;
@@ -527,7 +539,7 @@ export class GLRenderer {
                 attr(4, b.v, 1, gl.FLOAT, false, LINE_VERTEX, 12, false, true);
                 vertices = b.v.length / LINE_VERTEX;
                 if (b.color) attr(1, b.color, 4, gl.UNSIGNED_BYTE, true);
-                if (b.width) { attr(3, b.width, 1, gl.FLOAT); scalar = true; }
+                if (b.width) { attr(3, b.width, 1, gl.FLOAT); scalar = true; if (b.width1) attr(5, b.width1, 1, gl.FLOAT); else attr(5, b.width, 1, gl.FLOAT, false, 0, 0, false, true); }
                 index(b.idx);
                 count = b.idx.length;
             } else {
@@ -535,7 +547,7 @@ export class GLRenderer {
                 attr(2, b.pos, 2, gl.SHORT, false, 8, 0);
                 attr(0, b.pos, 2, gl.SHORT, false, 8, 4, false, true);
                 if (b.color) attr(1, b.color, 4, gl.UNSIGNED_BYTE, true);
-                if (b.radius) { attr(3, b.radius, 1, gl.FLOAT); scalar = true; }
+                if (b.radius) { attr(3, b.radius, 1, gl.FLOAT); scalar = true; if (b.radius1) attr(5, b.radius1, 1, gl.FLOAT); else attr(5, b.radius, 1, gl.FLOAT, false, 0, 0, false, true); }
                 index(b.idx);
                 count = b.idx.length;
             }
@@ -786,10 +798,14 @@ export class GLRenderer {
                     if (b.type === 'line') {
                         const dash = L.p.dash.eval(zoom) as number[] | null;
                         gl.uniform1f(u.u_width, L.p.width.dd ? 1 : L.p.width.eval(zoom));
+                        gl.uniform1f(u.u_floorWidth, L.p.width.dd ? 1 : L.p.width.eval(Math.floor(zoom)));
+                        gl.uniform1f(u.u_zf, 2 ** (zoom - Math.floor(zoom)));
                         gl.uniform1f(u.u_gap, L.p.gap.eval(zoom));
                         gl.uniform1f(u.u_offset, L.p.offset.dd ? 0 : L.p.offset.eval(zoom));
                         gl.uniform1f(u.u_blur, L.p.blur.dd ? 0 : L.p.blur.eval(zoom));
                         gl.uniform4f(u.u_dash, dash?.[0] ?? 0, dash?.[1] ?? 0, dash?.[2] ?? 0, dash?.[3] ?? 0);
+                        const cap = L.p.cap.dd ? 'butt' : L.p.cap.eval(zoom);
+                        gl.uniform1i(u.u_cap, cap === 'round' ? 1 : cap === 'square' ? 2 : 0);
                         const name = L.p.pattern.dd ? '' : L.p.pattern.eval(zoom), img = name ? s.icon?.(name) : undefined;
                         gl.uniform2f(u.u_patSize, L.ramp ? -1 : img ? img.width / img.pixelRatio : 0, img ? img.height / img.pixelRatio : 1);
                         if (L.ramp) {
@@ -824,7 +840,8 @@ export class GLRenderer {
                 gl.bindVertexArray(b.vao);
                 // Attributes without a buffer read these constants, so shaders need no variants.
                 if (!b.color) gl.vertexAttrib4f(1, 1, 1, 1, 1);
-                if (!b.scalar) gl.vertexAttrib1f(3, 1);
+                if (!b.scalar) { gl.vertexAttrib1f(3, 1); gl.vertexAttrib1f(5, 1); }
+                if (b.type === 'line' || b.type === 'circle') gl.uniform1f(u.u_zt, Math.min(1, Math.max(0, zoom - it.id.z)));
                 if (b.type === 'line') {
                     gl.uniform1f(u.u_scale, it.scale);
                     gl.uniform1f(u.u_cam, tr.cameraDistance);
