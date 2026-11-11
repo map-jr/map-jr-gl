@@ -9,7 +9,7 @@ MapLibre GL JS.
 
 ## Why use this library
 
-- **It is small.** The page loads about 26 KB of script (gzip). MapLibre GL JS loads more than 250 KB.
+- **It is small.** The page loads about 27 KB of script (gzip). MapLibre GL JS loads more than 250 KB.
 - **It does not block your page.** The map draws in a worker. Your page stays responsive while the map moves.
 - **It draws many markers.** A marker layer draws 100,000 SVG markers at 60 frames per second.
 - **It draws on the server.** You can render the first view of a map as SVG or as an image, without a browser.
@@ -20,6 +20,8 @@ MapLibre GL JS.
   layer.
 - **It uses web fonts.** Text is drawn with the fonts of the browser. You do not need glyph files.
 - **It is easy to change to.** Most MapLibre GL JS code works after you change the import.
+- **It works with MapLibre plugins.** mapbox-gl-draw, terra-draw, the compare and sync-move plugins and others run
+  without changes. See [Plugins and frameworks](docs/ecosystem.md).
 
 ## Status
 
@@ -31,6 +33,8 @@ These figures are written by `pnpm status`. They compare this library with MapLi
 | Unit tests | 32 pass, 0 fail |
 | MapLibre expression tests | 330 of 425 pass |
 | MapLibre `Map` methods | 113 of 150 are available |
+| MapLibre plugins, run in a browser | 8 of 8 work (see [Plugins and frameworks](docs/ecosystem.md)) |
+| Plugins and frameworks, read from npm | 17 of 26 use only API that the library has |
 | MapLibre render tests | 645 of 1429 are the same (1% of pixels or less are different). 333 more are near (5% or less). |
 | Page script (gzip) | 27 KB. MapLibre GL JS: 299 KB. |
 | Worker script (gzip) | 58 KB. MapLibre GL JS: 145 KB. |
@@ -98,9 +102,11 @@ You do not need a CSS file. The library adds the styles for its controls.
    ```
 
 2. Remove the import of `maplibre-gl.css`.
-3. Start your application and read the browser console. The library writes a warning for each style layer or
+3. Add `await` where your code calls `queryRenderedFeatures` or `querySourceFeatures`. The tile data is in a worker,
+   so the complete result is a promise.
+4. Start your application and read the browser console. The library writes a warning for each style layer or
    property that it cannot draw.
-4. Read [MapLibre compatibility](docs/maplibre-compatibility.md) for the differences.
+5. Read [MapLibre compatibility](docs/maplibre-compatibility.md) for the differences.
 
 ### Add markers
 

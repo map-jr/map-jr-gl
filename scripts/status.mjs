@@ -25,6 +25,13 @@ const ml = JSON.parse(readFileSync(root + 'node_modules/maplibre-gl/package.json
 const mlSize = (...files) => (files.reduce((n, f) => n + gzipSync(readFileSync(root + 'node_modules/maplibre-gl/dist/' + f), {level: 9}).length, 0) / 1024).toFixed(0);
 
 const exprPass = num(expr, /(\d+) pass/), exprFail = num(expr, /(\d+) fail/);
+// The results of the plugin tests are in docs/ecosystem.md (see test/conformance/plugins.mjs and ecosystem.mjs).
+const eco = existsSync(root + 'docs/ecosystem.md') ? readFileSync(root + 'docs/ecosystem.md', 'utf8') : '';
+const ran = /\*\*(\d+) of (\d+) scenarios pass/.exec(eco), audited = /\*\*(\d+) of (\d+) packages\*\*/.exec(eco);
+const plugins = [
+    ...(ran ? [`| MapLibre plugins, run in a browser | ${ran[1]} of ${ran[2]} work (see [Plugins and frameworks](docs/ecosystem.md)) |`] : []),
+    ...(audited ? [`| Plugins and frameworks, read from npm | ${audited[1]} of ${audited[2]} use only API that the library has |`] : []),
+];
 const lines = [
     '<!-- status:start -->',
     `These figures are written by \`pnpm status\`. They compare this library with MapLibre GL JS ${ml}.`,
@@ -34,6 +41,7 @@ const lines = [
     `| Unit tests | ${num(unit, /# pass (\d+)/)} pass, ${num(unit, /# fail (\d+)/)} fail |`,
     `| MapLibre expression tests | ${exprPass} of ${exprPass + exprFail} pass |`,
     `| MapLibre \`Map\` methods | ${num(api, /coverage: (\d+)/)} of ${num(api, /of (\d+) methods/)} are available |`,
+    ...plugins,
     ...(render ? [`| MapLibre render tests | ${render.match} of ${render.run} are the same (1% of pixels or less are different). ${render.close} more are near (5% or less). |`] : []),
     `| Page script (gzip) | ${page} KB. MapLibre GL JS: ${mlSize('maplibre-gl.mjs', 'maplibre-gl-shared.mjs', 'maplibre-gl.css')} KB. |`,
     `| Worker script (gzip) | ${gz('map-jr-gl-worker.js')} KB. MapLibre GL JS: ${mlSize('maplibre-gl-worker.mjs', 'maplibre-gl-shared.mjs')} KB. |`,
