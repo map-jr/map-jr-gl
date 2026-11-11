@@ -1117,8 +1117,8 @@ export class Engine {
             }
             if (!st.opacity && !st.target) { this.labels.delete(key); continue; }
             const p = st.placed, [ax, ay] = tr.projectTile(p.tile, p.src.x, p.src.y), dx = ax - p.ax, dy = ay - p.ay;
-            if (turn && p.src.angle !== null && !p.src.upright) {
-                // Text along a line turns with the map between placements; otherwise it would hold its old angle and
+            if (turn && (!p.src.upright || (!p.shaped && p.icon && !p.src.icon!.upright))) {
+                // Text along a line (and a symbol at a point that is aligned with the map) turns with the map between placements; otherwise it would hold its old angle and
                 // then snap, which reads as rocking while the map rotates.
                 const ox = p.x - p.ax, oy = p.y - p.ay;
                 let curve = p.curve, ground = p.ground;

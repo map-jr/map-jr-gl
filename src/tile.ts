@@ -137,18 +137,21 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
                 // of the map: a tile is shown at zooms other than its own. Only a value for each feature is kept here.
                 const color = p.color.eval(z, f) as RGBA, op = p.opacity.dd ? p.opacity.eval(z, f) : 1, haloColor = p.haloColor.eval(z, f) as RGBA;
                 const along = p.placement.eval(z, f) !== 'point';
+                // `text-rotation-alignment` and `icon-rotation-alignment`: `auto` is `map` along a line and `viewport` at a point.
+                // (The flag is named for the usual case at a point: the symbol stays upright when the map turns.)
+                const turns = (alignment: unknown) => along ? alignment === 'viewport' : alignment !== 'map';
                 const base = {
                     text, size0: p.size.eval(z, f), size1: p.size.eval(z + 1, f),
                     color: [color[0], color[1], color[2], color[3] * op] as RGBA,
                     halo: [haloColor[0], haloColor[1], haloColor[2], haloColor[3] * op] as RGBA, haloWidth: p.haloWidth.eval(z, f), haloBlur: p.haloBlur.eval(z, f), rotate: p.rotate.eval(z, f) * Math.PI / 180, justify: justification(p.justify.eval(z, f), p.anchor.eval(z, f)), font: fontStyle(p.font.eval(z, f)),
                     maxWidth: p.maxWidth.eval(z, f), spacing: p.spacing.eval(z, f), offset: p.offset.eval(z, f), anchor: p.anchor.eval(z, f),
                     padding: p.padding.eval(z, f), overlap: overlaps(p.overlapMode.eval(z, f), p.overlap.eval(z, f)), lineHeight: p.lineHeight.eval(z, f), translate: p.translate.eval(z, f),
-                    upright: p.textAlign.eval(z, f) === 'viewport', textOptional: !!p.textOptional.eval(z, f), ignore: !!p.ignore.eval(z, f),
+                    upright: turns(p.textAlign.eval(z, f)), textOptional: !!p.textOptional.eval(z, f), ignore: !!p.ignore.eval(z, f),
                     varAnchor: p.varAnchor.eval(z, f), radial: p.radial.eval(z, f), varOffset: p.varOffset.eval(z, f), maxAngle: p.maxAngle.eval(z, f), justifyAuto: p.justify.eval(z, f) === 'auto',
                     icon: iconName ? {
                         name: iconName, size: p.iconSize.eval(z, f), size1: p.iconSize.eval(z + 1, f), opacity: p.iconOpacity.dd ? p.iconOpacity.eval(z, f) : 1, anchor: p.iconAnchor.eval(z, f), color: p.iconColor.eval(z, f), halo: p.iconHalo.eval(z, f), haloWidth: p.iconHaloWidth.eval(z, f), offset: p.iconOffset.eval(z, f), rotate: p.iconRotate.eval(z, f),
                         fit: p.iconFit.eval(z, f), fitPad: p.iconFitPad.eval(z, f), overlap: overlaps(p.iconOverlapMode.eval(z, f), p.iconOverlap.eval(z, f)), ignore: !!p.iconIgnore.eval(z, f), padding: p.iconPadding.eval(z, f), translate: p.iconTranslate.eval(z, f),
-                        optional: !!p.iconOptional.eval(z, f), upright: p.iconAlign.eval(z, f) === 'viewport',
+                        optional: !!p.iconOptional.eval(z, f), upright: turns(p.iconAlign.eval(z, f)),
                     } : undefined,
                 };
                 // symbol-spacing is in pixels; tiles are EXTENT units across TILE_SIZE pixels.

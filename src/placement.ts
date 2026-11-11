@@ -99,6 +99,7 @@ export function placeLabels(
     const keys = new Map<string, number>();
     const twins = new Map<string, {layer: string; group?: string; box: Box; x: number; y: number; justify?: number}>();
     const margin = 100;
+    const north = -tr.bearing * Math.PI / 180; // the angle on the screen of the direction that is up on the map
     for (let li = layers.length - 1; li >= 0; li--) {
         const L = layers[li];
         if (L.type !== 'symbol' || !L.visible || tr.zoom < L.minzoom || tr.zoom >= L.maxzoom) continue;
@@ -182,10 +183,12 @@ export function placeLabels(
                         const [sx, sy] = line ? [0, 0] : shift(l.anchor, 0);
                         candidates = [[l.offset[0] * size + sx, l.offset[1] * size + sy]];
                     }
-                    if (!line && l.rotate) {
+                    // At a point, text that is aligned with the map turns with the map (an arrow keeps its direction on the ground).
+                    const turned = l.rotate + (l.upright ? 0 : north);
+                    if (!line && turned) {
                         // text-rotate turns the label about its anchor point, so the offset from the anchor turns with it.
-                        const c = Math.cos(l.rotate), sn = Math.sin(l.rotate);
-                        textAngle = l.rotate;
+                        const c = Math.cos(turned), sn = Math.sin(turned);
+                        textAngle = turned;
                         candidates = candidates.map(([dx, dy]) => [dx * c - dy * sn, dx * sn + dy * c]);
                     }
                     if (l.translate[0] || l.translate[1]) candidates = candidates.map(([dx, dy]) => [dx + l.translate[0], dy + l.translate[1]]);
@@ -244,7 +247,7 @@ export function placeLabels(
                             ih = f.len; iy = ay + top - f.off + ih / 2 + oy; gy = f.cuts;
                         } else iy = ty + oy;
                     }
-                    const angle = (line && !ic.upright ? lineAngle : 0) + ic.rotate * Math.PI / 180;
+                    const angle = (ic.upright ? 0 : line ? lineAngle : north) + ic.rotate * Math.PI / 180;
                     ix += ic.translate[0]; iy += ic.translate[1];
                     const box = boxAround(ix, iy, iw, ih, angle, ic.padding);
                     if (ic.overlap || !grid.hits(...box)) {
