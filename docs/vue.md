@@ -159,6 +159,39 @@ const {host, state} = useMap(useTemplateRef('el'), computed(() => ({
 
 `state` is a ref with the state of the map. `host` is a ref with the map when it is there.
 
+## The module for Nuxt
+
+```ts
+// nuxt.config.ts
+export default defineNuxtConfig({modules: ['map-jr-gl/nuxt']});
+```
+
+With the module, a page uses the components without an import:
+
+```vue
+<template>
+  <div style="height: 400px">
+    <LazyMapJr hydrate-on-visible map-style="https://tiles.openfreemap.org/styles/liberty"
+      :initial-view="{center: [-74.0065, 40.7085], zoom: 13.6}" :controls="[navigationControl()]" ssr />
+  </div>
+</template>
+```
+
+- `MapJr` and `MapOverlay` are registered, and `useMap` and `useMapHost`.
+- The controls have longer names, because `scale` and `navigation` are common words: `navigationControl()`,
+  `scaleControl()`, `fullscreenControl()`, `geolocateControl()`, `terrainControl()`.
+- `LazyMapJr` puts the code of the map into a file of its own. With `hydrate-on-visible`, the browser loads that file
+  and starts the map when the map comes into view. Together with `ssr`, the visitor sees the map from the server at
+  once, and a page with a map far down loads no map code until it is necessary.
+
+Without the module, import the components (`import {MapJr} from 'map-jr-gl/vue'`). For lazy loading, use
+`defineAsyncComponent` of Vue:
+
+```js
+import {defineAsyncComponent, hydrateOnVisible} from 'vue';
+const MapJr = defineAsyncComponent({loader: () => import('map-jr-gl/vue').then(m => m.MapJr), hydrate: hydrateOnVisible()});
+```
+
 ## Nuxt and server rendering
 
 The component works in Nuxt without `<ClientOnly>`. On the server it renders an empty element. In the browser the
@@ -184,6 +217,8 @@ With the `ssr` prop, the server also renders the first view as SVG:
 - In the browser, Vue takes over the HTML, and the map removes the SVG when it has drawn its first frame. The
   controls show from that moment; they are not in the SVG.
 - The server needs the style as an object or as a URL that it can fetch.
+- The layout does not shift: the element has its size from your page, and the map changes nothing around it. A
+  test of the library measures this.
 
 | Option of `ssr` | Meaning |
 |---|---|

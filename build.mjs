@@ -52,14 +52,14 @@ const workerSrc = readFileSync('dist/map-jr-gl-worker.js', 'utf8');
 // The default build. The page loads map-jr-gl.js, which is small; it finds map-jr-gl-worker.js beside itself, and the
 // engine for main-thread rendering is a separate chunk that is only fetched if that path is taken.
 const esm = (input, extra = {}) => ({
-    rollupOptions: {input, external: ['vue', 'react', 'react-dom', 'map-jr-gl/server'], preserveEntrySignatures: 'strict', output: {format: 'es', entryFileNames: '[name].js', chunkFileNames: 'map-jr-gl-[name]-[hash].js',
+    rollupOptions: {input, external: ['vue', 'react', 'react-dom', '@nuxt/kit', 'map-jr-gl/server'], preserveEntrySignatures: 'strict', output: {format: 'es', entryFileNames: '[name].js', chunkFileNames: 'map-jr-gl-[name]-[hash].js',
         // (The map and the styles of its controls are always loaded together: one file is smaller after gzip than two.)
         ...(extra.codeSplitting === false ? {} : {manualChunks: id => /src[\\/](map|controls|lnglat|markers|overlays)\.ts$/.test(id) ? 'map' : undefined}), ...extra}},
 });
 // Two entries in one build, so that they share their chunks: the main entry (the new API) and the entry that is a
 // replacement for MapLibre GL JS.
 // (The adapters for the frameworks are entries of the same build: they use the main entry's files. The framework itself is not in them.)
-await run(esm({'map-jr-gl': 'src/index.ts', 'map-jr-gl-maplibre-compat': 'src/maplibre-compat.ts', vue: 'src/vue.ts', react: 'src/react.ts', svelte: 'src/svelte.ts', controls: 'src/control-specs.ts'}));
+await run(esm({'map-jr-gl': 'src/index.ts', 'map-jr-gl-maplibre-compat': 'src/maplibre-compat.ts', vue: 'src/vue.ts', react: 'src/react.ts', svelte: 'src/svelte.ts', nuxt: 'src/nuxt.ts', controls: 'src/control-specs.ts'}));
 
 // Standalone: one self-contained file with the worker embedded, for places where shipping several files is awkward.
 // (One for each of the two APIs.)

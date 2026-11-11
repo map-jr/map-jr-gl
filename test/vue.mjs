@@ -43,7 +43,7 @@ window.ready = true;`;
 const server = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://x'), send = (body, type) => { res.writeHead(200, {'content-type': type}); res.end(body); };
     try {
-        if (url.pathname === '/') return send(`<!doctype html><meta charset="utf-8"><body style="margin:0"><script type="importmap">{"imports": {"vue": "/vue.js"}}</script><div id="app">${url.search === '?ssr' ? html : url.search === '?bare' ? bare : ''}</div><script type="module" src="/client.js${url.search}"></script>`, 'text/html');
+        if (url.pathname === '/') return send(`<!doctype html><meta charset="utf-8"><body style="margin:0"><script type="importmap">{"imports": {"vue": "/vue.js"}}</script><script>window.shifts = []; try { new PerformanceObserver(list => { for (const e of list.getEntries()) if (!e.hadRecentInput) window.shifts.push(+e.value.toFixed(4)); }).observe({type: 'layout-shift', buffered: true}); } catch { window.shifts = null; }</script><div id="app">${url.search === '?ssr' ? html : url.search === '?bare' ? bare : ''}</div><p id="after">Text after the map</p><script type="module" src="/client.js${url.search}"></script>`, 'text/html');
         if (url.pathname === '/client.js') return send(client, 'text/javascript');
         if (url.pathname === '/style.json') return send(JSON.stringify(style), 'application/json');
         if (url.pathname === '/vue.js') return send(readFileSync(path.join(root, 'node_modules/vue/dist/vue.esm-browser.js')), 'text/javascript'); // (the build with warnings)
@@ -56,6 +56,7 @@ try {
     let page = await browser.newPage({viewport: {width: 900, height: 600}, javaScriptEnabled: false});
     await page.goto(origin + '/?ssr');
     check('browser, without scripts: the page shows the SVG of the server', await page.locator('svg[data-map-jr-ssr]').count() === 1);
+    const afterBefore = await page.evaluate(() => Math.round(document.getElementById('after').getBoundingClientRect().top)).catch(() => null) ?? Math.round((await page.locator('#after').boundingBox()).y);
     await page.close();
     page = await browser.newPage({viewport: {width: 900, height: 600}});
     const warnings = [], errors = [];
@@ -67,6 +68,10 @@ try {
     await page.waitForFunction(() => window.t.loads > 0, null, {timeout: 60000});
     await page.waitForTimeout(1000);
     const late = await page.evaluate(() => ({svg: !!document.querySelector('svg[data-map-jr-ssr]'), canvas: !!document.querySelector('#frame canvas'), loaded: window.t.map.value.state.loaded}));
+    // No layout shift: the element of the map has its size from the page, and the takeover changes nothing around it.
+    // (The browser reports shifts in Chromium only. The position of the text after the map is compared in each browser.)
+    const shift = await page.evaluate(() => ({shifts: window.shifts, after: Math.round(document.getElementById('after').getBoundingClientRect().top), frame: (r => [r.width, r.height])(document.getElementById('frame').getBoundingClientRect())}));
+    check('browser: no layout shift when the map takes over the server render', (shift.shifts === null || shift.shifts.length === 0) && shift.after === afterBefore && shift.frame.join() === '800,500', JSON.stringify({...shift, afterBefore}));
     check('browser: Vue takes over the HTML of the server without a difference, and the map takes over the SVG', early.svg && !late.svg && late.canvas && late.loaded && !warnings.length && !errors.length, JSON.stringify({early, late, warnings: warnings.slice(0, 2), errors: errors.slice(0, 2)}));
     const controlsWithSsr = await page.evaluate(() => document.querySelectorAll('#frame .map-jr-ctrl-group, #frame .map-jr-ctrl-scale').length);
     await page.close();
@@ -77,6 +82,8 @@ try {
     await page.goto(origin + '/?bare');
     await page.waitForFunction(() => window.t?.loads > 0, null, {timeout: 60000});
     const controlsBare = await page.evaluate(() => document.querySelectorAll('#frame .map-jr-ctrl-group, #frame .map-jr-ctrl-scale').length);
+    const bareShift = await page.evaluate(() => ({shifts: window.shifts, after: Math.round(document.getElementById('after').getBoundingClientRect().top)}));
+    check('browser: no layout shift when the map starts in an empty element from the server', (bareShift.shifts === null || bareShift.shifts.length === 0) && bareShift.after === afterBefore, JSON.stringify(bareShift));
     check('browser: controls show on a page from a server, with the ssr prop and without it', controlsWithSsr >= 2 && controlsBare >= 2 && !warnings.length && !errors.length, JSON.stringify({controlsWithSsr, controlsBare, warnings: warnings.slice(0, 2), errors: errors.slice(0, 2)}));
     await page.close();
 

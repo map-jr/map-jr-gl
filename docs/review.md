@@ -53,6 +53,40 @@ Done on 2026-11-11, as agreed with the owner:
 12. The field `extend` of the description: own sources, layers and terrain on a style from a URL. The examples of the
     gallery use it, so that they need only the URL of a style.
 
+13. `map-jr-gl/nuxt`: a module for Nuxt that registers the components, the composables and the controls. With it Nuxt
+    has `LazyMapJr`, and `hydrate-on-visible` starts the map when it comes into view. Tried in a Nuxt 4 production
+    build; it is not in the automatic tests.
+14. Tests that the layout does not shift when the map takes over a page from a server (`pnpm test:vue`).
+
+### Is a separate module for Nuxt in order?
+
+Yes for a module; not yet for a separate package.
+
+- The things that only Nuxt can do need a module: registered components (and with them `Lazy` components and lazy
+  hydration), automatic imports, and later routes on the server.
+- Now the module is 20 lines and has no dependencies of its own, so it is an entry of this package
+  (`map-jr-gl/nuxt`). One version, one install.
+- A separate package (`@map-jr/nuxt`) is in order when the module gets dependencies that other users must not get:
+  the next feature (static images) needs a rasteriser and the server API of Nuxt.
+
+### Later: a static map as an image, made at build time (asked by the owner)
+
+A page often needs only an image of a map: no interaction, no map code in the browser. Prior art: `nuxt-og-image`
+(a route on the server makes each image; at `nuxt generate` the images are made one time and saved as files).
+
+A plan:
+
+1. A component `<MapJrImage>` with the props of the first view (style, view, markers, size, overrides). It renders
+   an `<img>` with `width` and `height` (no layout shift), `loading="lazy"`, and a `srcset` for dense screens.
+2. The module adds a route on the server (`/_map-jr/<hash>.jpg`) that calls `renderToImage`. The hash is made from
+   the props, so the image can be kept in a cache for a long time.
+3. At build time (`nuxt generate`, or routes that are prerendered) the module adds each image route to the
+   prerender list of Nitro, so the images are files of the site. At run time the route makes them and keeps them
+   with the storage of Nitro.
+4. An option makes the image a link to the live map: a click (or a pointer over it) loads `LazyMapJr` in its place.
+5. The rasteriser (Takumi: `@takumi-rs/core` on Node, `@takumi-rs/wasm` on Cloudflare) is chosen by the preset of
+   Nitro. This is the dependency that would make the module a package of its own.
+
 Not done yet, in the order that I propose:
 
 2. **The features under the pointer found by the engine.** Now the page makes one query for each pointer position.

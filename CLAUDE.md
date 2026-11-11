@@ -31,7 +31,8 @@
 
 - `map-jr-gl` (`src/index.ts`, `src/host.ts`): the main API. A map from one description (`createMap`, `update`), a
   state store, queries as promises. New features go here first. The adapters for frameworks are entries of the same
-  package (`map-jr-gl/vue` is `src/vue.ts`, `map-jr-gl/react` is `src/react.ts`; the owner uses Vue with Nuxt, so Vue comes first).
+  package (`map-jr-gl/vue` is `src/vue.ts`, `map-jr-gl/react` is `src/react.ts`, the module for Nuxt is `src/nuxt.ts`; the owner uses Vue with Nuxt, so Vue
+  comes first).
 - `map-jr-gl/maplibre-compat` (`src/maplibre-compat.ts`, `src/compat-map.ts`): a replacement for MapLibre GL JS.
   Things that exist only for that goal go here and not into the core (`src/map.ts`): other names for methods,
   methods with no effect, members that wrappers read, results that are an array and a promise.
