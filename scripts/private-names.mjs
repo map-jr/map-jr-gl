@@ -12,8 +12,10 @@
 import {readdirSync, readFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
 import path from 'node:path';
+import {pathToFileURL} from 'node:url';
 
-const {parseAst} = await import(createRequire(createRequire(import.meta.url).resolve('vite')).resolve('rolldown/parseAst'));
+// (On Windows, a module can be imported by a file URL only, not by a path with a drive letter.)
+const {parseAst} = await import(pathToFileURL(createRequire(createRequire(import.meta.url).resolve('vite')).resolve('rolldown/parseAst')).href);
 const src = path.resolve(import.meta.dirname, '../src');
 
 /** Calls `fn` for each node of a syntax tree, with its parent. */
@@ -72,7 +74,8 @@ export function shortenPrivateNames() {
         enforce: 'pre',
         transform(code, id) {
             const file = id.split('?')[0];
-            if (!file.endsWith('.ts') || path.dirname(file) !== src) return null;
+            // (Vite gives a path with forward slashes on each system.)
+            if (!file.endsWith('.ts') || path.resolve(path.dirname(file)) !== src) return null;
             const edits = uses(code, file).sites.filter(s => short.has(s.name)).sort((a, b) => b.start - a.start);
             for (const s of edits) code = code.slice(0, s.start) + short.get(s.name) + code.slice(s.end);
             return {code, map: null};
