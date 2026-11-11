@@ -74,7 +74,10 @@ To use it, do this step one time: in the repository settings, open **Pages** and
 
 | File | Content |
 |---|---|
-| `src/map.ts` | The `Map` class that your application uses. It sends commands to the engine. |
+| `src/index.ts`, `src/host.ts`, `src/store.ts` | The main entry: `createMap`, a map from one description, and its state store |
+| `src/vue.ts` | The adapter for Vue (`map-jr-gl/vue`) |
+| `src/maplibre-compat.ts`, `src/compat-map.ts`, `src/compat-types.ts` | The entry `map-jr-gl/maplibre-compat`: the map with the rest of the API of MapLibre GL JS, the functions of the module, the types |
+| `src/map.ts` | The core map class, which the two entries use. It sends commands to the engine. |
 | `src/engine.ts` | The work for each frame: camera, tiles, labels. It does not use the DOM, so it can run in a worker. |
 | `src/gl.ts` | The WebGL2 renderer |
 | `src/svg.ts`, `src/server.ts` | The SVG renderer and the server functions |

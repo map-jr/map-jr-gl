@@ -2,6 +2,9 @@
 
 This document compares the library with [MapLibre GL JS](https://maplibre.org/maplibre-gl-js/docs/) version 6.
 
+The API of MapLibre GL JS is in the entry `map-jr-gl/maplibre-compat`. The main entry, `map-jr-gl`, has another
+API: see [The main API](api.md).
+
 It has four parts:
 
 1. [What this library adds](#what-this-library-adds)

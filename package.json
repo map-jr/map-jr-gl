@@ -17,6 +17,7 @@
     "test:browser": "node test/interact.mjs .cache/shots && node test/host.mjs",
     "bench": "node test/bench/compare.mjs",
     "test:loading": "node test/loading.mjs",
+    "test:vue": "node test/vue.mjs",
     "test:render": "node test/conformance/render.mjs --min=680"
   },
   "keywords": [],
@@ -32,7 +33,16 @@
     "maplibre-gl": "^6.17.0",
     "miniflare": "^4.20260730.0",
     "typescript": "^7.0.2",
-    "vite": "^8.3.7"
+    "vite": "^8.3.7",
+    "vue": "^3.5.45"
+  },
+  "peerDependencies": {
+    "vue": "^3.5.0"
+  },
+  "peerDependenciesMeta": {
+    "vue": {
+      "optional": true
+    }
   },
   "type": "module",
   "private": true,
@@ -50,6 +60,10 @@
     "./maplibre-compat": {
       "types": "./dist/types/maplibre-compat.d.ts",
       "import": "./dist/map-jr-gl-maplibre-compat.js"
+    },
+    "./vue": {
+      "types": "./dist/types/vue.d.ts",
+      "import": "./dist/vue.js"
     },
     "./standalone": {
       "types": "./dist/types/maplibre-compat.d.ts",

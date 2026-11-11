@@ -52,11 +52,12 @@ const workerSrc = readFileSync('dist/map-jr-gl-worker.js', 'utf8');
 // The default build. The page loads map-jr-gl.js, which is small; it finds map-jr-gl-worker.js beside itself, and the
 // engine for main-thread rendering is a separate chunk that is only fetched if that path is taken.
 const esm = (input, extra = {}) => ({
-    rollupOptions: {input, preserveEntrySignatures: 'strict', output: {format: 'es', entryFileNames: '[name].js', chunkFileNames: 'map-jr-gl-[name]-[hash].js', ...extra}},
+    rollupOptions: {input, external: ['vue'], preserveEntrySignatures: 'strict', output: {format: 'es', entryFileNames: '[name].js', chunkFileNames: 'map-jr-gl-[name]-[hash].js', ...extra}},
 });
 // Two entries in one build, so that they share their chunks: the main entry (the new API) and the entry that is a
 // replacement for MapLibre GL JS.
-await run(esm({'map-jr-gl': 'src/index.ts', 'map-jr-gl-maplibre-compat': 'src/maplibre-compat.ts'}));
+// (The adapters for the frameworks are entries of the same build: they use the main entry's files. The framework itself is not in them.)
+await run(esm({'map-jr-gl': 'src/index.ts', 'map-jr-gl-maplibre-compat': 'src/maplibre-compat.ts', vue: 'src/vue.ts'}));
 
 // Standalone: one self-contained file with the worker embedded, for places where shipping several files is awkward.
 await run(esm({'map-jr-gl-standalone': 'src/maplibre-compat.ts'}, {codeSplitting: false}), {__WORKER_SRC__: JSON.stringify(workerSrc)});

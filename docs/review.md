@@ -20,6 +20,61 @@ To try on your iPhone, because the test machines cannot show it:
 2. A tilted street map: road names now lie on the ground.
 3. A drag with a slow release: `moveend` now fires each time.
 
+## The two entries, and what comes next
+
+Done on 2026-11-11, as agreed with the owner:
+
+1. The package is version 0.2.0. The entry `map-jr-gl` is the main API (`createMap`, see [The main API](api.md)); the
+   entry `map-jr-gl/maplibre-compat` is the replacement for MapLibre GL JS.
+2. The map class is split. 50 members that only the API of MapLibre GL JS needs are in `src/compat-map.ts`. The main
+   page script is 26.8 KB; the compatibility page script is 27.7 KB.
+3. The methods that are accepted with no effect are in the compatibility entry only.
+4. The Vue adapter (`map-jr-gl/vue`): a component with `v-model:view`, a composable, and server rendering that Vue
+   and the map take over in the browser. See [Vue and Nuxt](vue.md). Tests: `pnpm test:vue`.
+
+Not done yet, in the order that I propose:
+
+1. **Controls, `Marker` and `Popup` for the main API**, as entries of their own (`map-jr-gl/controls`). Now they are
+   in the compatibility entry only.
+2. **The features under the pointer found by the engine.** Now the page makes one query for each pointer position.
+3. **More of the map class into the compatibility class**: the layer and source methods (`addLayer`, `setPaintProperty`
+   and others), when the main API has its own path for a change of the style. This makes the main entry smaller.
+4. **A check on a real Nuxt application** by the owner: the tests use Vue's server renderer directly, not Nuxt.
+5. **Adapters for React, Svelte and Solid.** Each is about 50 lines over `createMap`.
+6. **A standalone file for the main entry.** `map-jr-gl/standalone` is the compatibility API now.
+
+### Plan: a switch in the gallery for the code of each adapter
+
+To do after the points above (at least after point 1, because the gallery uses controls):
+
+1. Each row of the gallery gets its code in more than one form: `code: {core: '...', vue: '...', compat: '...'}`.
+   The forms are "Main API", "Vue" and "MapLibre compatible"; later "React" and others.
+2. One switch in the header of the gallery selects the form for all rows. The choice is kept in `localStorage` and
+   in the URL (`?code=vue`), so that a link shows the same form.
+3. The live map of a row is made with the main API (`createMap`) for each form: the forms give the same map, so
+   one map is sufficient. A test checks that claim: for each row, each form is run one time in a browser (the Vue
+   form with the Vue build from `node_modules`), and the image is compared with the image of the main form.
+4. The code of a form is kept in a file of its own (`site/examples/<row>.<form>.js` or `.vue`), not in a string.
+   Then the test can run the same file that the gallery shows, and the code that a visitor copies is code that was run.
+5. The Vue forms are single-file components. The gallery shows them as text; the test compiles them with
+   `@vue/compiler-sfc`.
+6. Rows for features that only the compatibility entry has (plugins of MapLibre) show that form only.
+
+### The shaders: a third-party tool to make them smaller?
+
+Examined on 2026-11-11. Not worth it now.
+
+- The shaders are 11.5 KB of the 161 KB of the worker, and about 4.0 KB of its 58 KB after gzip. The build already
+  removes spaces and gives short names to uniforms, attributes, varyings and local names.
+- What text tools add after that, measured on the built shaders: shorter numbers (`1.0` to `1.`) 34 bytes, no spaces
+  at `+` and `-` 50 bytes, joined declarations 17 bytes. Together about 100 bytes after gzip (0.2% of the worker).
+- A tool that reads the syntax (Shader Minifier, spglsl) can also put functions in line and remove dead code. A
+  fair estimate is some hundred bytes more. But these tools need complete shaders. The shaders here are put together
+  from parts in JavaScript, with shared parts and values from the code, and the JavaScript finds the uniforms by
+  name. Each shader would have to be written out completely before the build. Shader Minifier also needs .NET.
+- If bytes are needed, the three text steps can go into the build step of this project (`build.mjs`) without a new
+  dependency.
+
 ## Size budgets
 
 | Decision | Reason | To change it |

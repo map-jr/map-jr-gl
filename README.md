@@ -1,7 +1,11 @@
 # Map Jr. GL
 
-A small, fast map library for the web. It reads MapLibre styles and has an API that is almost the same as
-MapLibre GL JS.
+A small, fast map library for the web. It reads MapLibre styles. It has two entries:
+
+- `map-jr-gl`: a map from one description, with state that your code can watch. The adapters for frameworks
+  (`map-jr-gl/vue`) use this entry.
+- `map-jr-gl/maplibre-compat`: an API that is almost the same as MapLibre GL JS, for code and plugins that were
+  written for that library.
 
 ![A 3D terrain map with relief shading and contour lines](docs/images/terrain.jpg)
 
@@ -19,7 +23,8 @@ MapLibre GL JS.
 - **It answers questions about the data.** `queryFeatures` reads the tile data directly. You do not need a style
   layer.
 - **It uses web fonts.** Text is drawn with the fonts of the browser. You do not need glyph files.
-- **It is easy to change to.** Most MapLibre GL JS code works after you change the import.
+- **It is easy to change to.** Most MapLibre GL JS code works after you change the import to
+  `map-jr-gl/maplibre-compat`.
 - **It works with MapLibre plugins.** mapbox-gl-draw, terra-draw, the compare and sync-move plugins and others run
   without changes. See [Plugins and frameworks](docs/ecosystem.md).
 
@@ -68,7 +73,8 @@ The build writes the library to the `dist` folder. Then use one of these methods
 
 - **With a bundler (Vite, webpack, Rollup, Parcel):** add the folder to your project as a dependency
   (`pnpm add ../map-jr-gl`). Then import from `map-jr-gl`.
-- **Without a bundler:** copy the `dist` folder to your web server. Then import `dist/map-jr-gl.js` in a module script.
+- **Without a bundler:** copy the `dist` folder to your web server. Then import `dist/map-jr-gl.js` in a module
+  script (or `dist/map-jr-gl-maplibre-compat.js` for the API of MapLibre GL JS).
 
 ## Use
 
@@ -77,23 +83,47 @@ The build writes the library to the `dist` folder. Then use one of these methods
 ```html
 <div id="map" style="height: 400px"></div>
 <script type="module">
-  import {Map, NavigationControl} from 'map-jr-gl/maplibre-compat';
+  import {createMap} from 'map-jr-gl';
 
-  const map = new Map({
-    container: 'map',
+  const map = createMap(document.getElementById('map'), {
     style: 'https://tiles.openfreemap.org/styles/liberty',
-    center: [-74.0065, 40.7085],
-    zoom: 13.6,
+    initialView: {center: [-74.0065, 40.7085], zoom: 13.6},
   });
-  map.addControl(new NavigationControl());
+
+  // The state of the map is a store. This function runs when the view changes.
+  map.state.subscribe(state => state.view, view => console.log(view.zoom));
 </script>
 ```
 
-You do not need a CSS file. The library adds the styles for its controls.
+To change the map, call `map.update` with the complete description again. The library finds what is different.
+You do not need a CSS file. See [The main API](docs/api.md).
 
 ![A street map with zoom, compass and scale controls](docs/images/basic.jpg)
 
+### Use Vue or Nuxt
+
+```vue
+<script setup>
+import {ref} from 'vue';
+import {MapJr} from 'map-jr-gl/vue';
+
+const view = ref({center: [-74.0065, 40.7085], zoom: 13.6});
+</script>
+
+<template>
+  <div style="height: 400px">
+    <MapJr map-style="https://tiles.openfreemap.org/styles/liberty" v-model:view="view" ssr />
+  </div>
+</template>
+```
+
+With the `ssr` prop, a server (Nuxt) renders the first view as SVG into the page. The map takes over in the
+browser. See [Vue and Nuxt](docs/vue.md).
+
 ### Change from MapLibre GL JS
+
+The entry `map-jr-gl/maplibre-compat` has the API of MapLibre GL JS: `new Map({...})`, `map.on(...)`,
+`map.addLayer(...)`, controls, `Marker` and `Popup`.
 
 1. Change the name of the module in each import:
 
@@ -263,6 +293,8 @@ To run the benchmark on your computer, run `pnpm demo` and open `http://localhos
 
 ## Documents
 
+- [The main API](docs/api.md): `createMap`, the description of a map, the state, queries.
+- [Vue and Nuxt](docs/vue.md): the component, the composable, server rendering.
 - [Loading](docs/loading.md): how the files load, and how to change that.
 - [Markers](docs/markers.md): marker layers, callouts, and DOM markers.
 - [Terrain and elevation](docs/terrain-and-elevation.md): terrain, relief shading, contour lines, elevation queries.

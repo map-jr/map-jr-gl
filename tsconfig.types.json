@@ -11,6 +11,7 @@
   "include": [
     "src/index.ts",
     "src/maplibre-compat.ts",
+    "src/vue.ts",
     "src/server.ts"
   ]
 }
