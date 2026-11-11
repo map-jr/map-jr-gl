@@ -8,6 +8,9 @@ export type {QueriedFeature} from './query.ts';
 export type {LngLatLike} from './geo.ts';
 export {AttributionControl, NavigationControl, ScaleControl, FullscreenControl, GeolocateControl, TerrainControl, LogoControl, type Control, type ControlPosition} from './controls.ts';
 export {Marker, Popup, type MarkerOptions, type PopupOptions} from './overlays.ts';
+import {LogoControl as Empty} from './controls.ts';
+/** MapLibre changes between a flat map and a globe with this control. This library has no globe, so the control adds an empty element. */
+export class GlobeControl extends Empty { override getDefaultPosition() { return 'top-right' as const; } }
 export {configure, type LoadOptions} from './loader.ts';
 export type * from './compat-types.ts';
 
@@ -40,6 +43,6 @@ import {AttributionControl, NavigationControl, ScaleControl, FullscreenControl, 
 import {Marker, Popup} from './overlays.ts';
 export default {
     Map, MarkerLayer, InteractionHandler, LngLat, LngLatBounds, addProtocol, removeProtocol, Marker, Popup, configure: set,
-    AttributionControl, NavigationControl, ScaleControl, FullscreenControl, GeolocateControl, TerrainControl, LogoControl,
+    AttributionControl, NavigationControl, ScaleControl, FullscreenControl, GeolocateControl, TerrainControl, LogoControl, GlobeControl,
     getVersion, setWorkerUrl, getWorkerUrl, setWorkerCount, getWorkerCount, setMaxParallelImageRequests, getMaxParallelImageRequests, setRTLTextPlugin, getRTLTextPluginStatus,
 };

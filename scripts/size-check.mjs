@@ -19,7 +19,7 @@ const sizes = [
     // What a page downloads before the map can start. The worker file is downloaded at the same time.
     ['page script, up front (' + [...page].length + ' files)', gz(page), 28],
     // The same for the entry that is a replacement for MapLibre GL JS (`map-jr-gl/maplibre-compat`).
-    ['page script of maplibre-compat, up front (' + [...compat].length + ' files)', gz(compat), 27.5],
+    ['page script of maplibre-compat, up front (' + [...compat].length + ' files)', gz(compat), 28],
     ['map-jr-gl-worker.js', gz(['map-jr-gl-worker.js']), 58.5],
     // Only when the engine runs on the main thread (no worker is possible).
     ['engine on the main thread, on demand', gz(engine), 55.5],

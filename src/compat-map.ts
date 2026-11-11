@@ -7,6 +7,32 @@ import type {QueriedFeature} from './query.ts';
 import type {LngLatLike} from './geo.ts';
 
 export class Map extends CoreMap {
+    // ---- Accepted, with no effect ----
+    // Frameworks for MapLibre GL JS call these methods when an application sets the option, often with the default
+    // value. They are here so that such code does not stop. A value that this library cannot do gives one warning.
+    private unsupported(name: string, isDefault: boolean) {
+        if (!isDefault && !this.warned.has(name)) { this.warned.add(name); console.warn(`[map-jr-gl] ${name} has no effect: this library does not have that feature.`); }
+        return this;
+    }
+    private warned = new Set<string>();
+    setProjection(projection?: {type?: unknown} | null) { return this.unsupported('setProjection', !projection || projection.type === 'mercator'); }
+    setSky(sky?: object | null) { return this.unsupported('setSky', !sky || !Object.keys(sky).length); }
+    setRenderWorldCopies(copies?: boolean | null) { return this.unsupported('setRenderWorldCopies(false)', copies !== false); }
+    setRoll(roll?: number) { return this.unsupported('setRoll', !roll); }
+    setVerticalFieldOfView(fov?: number) { return this.unsupported('setVerticalFieldOfView', fov === undefined || Math.abs(fov - 36.87) < 0.01); }
+    getVerticalFieldOfView() { return 36.87; }
+    setZoomSnap(snap?: number) { return this.unsupported('setZoomSnap', !snap); }
+    getZoomSnap() { return 0; }
+    setCenterClampedToGround(clamped?: boolean) { return this.unsupported('setCenterClampedToGround(false)', clamped !== false); }
+    getCenterClampedToGround() { return true; }
+    setCenterElevation(elevation?: number) { return this.unsupported('setCenterElevation', !elevation); }
+    setAnisotropicFilterPitch(_pitch?: number | null) { return this; }
+    getAnisotropicFilterPitch() { return 20; }
+    setSourceTileLodParams(..._args: unknown[]) { return this; }
+    setTransformCameraUpdate(fn?: unknown) { return this.unsupported('setTransformCameraUpdate', !fn); }
+    setTransformConstrain(fn?: unknown) { return this.unsupported('setTransformConstrain', !fn); }
+    setEventedParent(..._args: unknown[]) { return this; }
+
     flyTo(o: CameraInput & {duration?: number}) { return this.easeTo({duration: 1200, ...o}); }
     /** Space at the edges covered by other things (a side panel, a header). The map centre moves to the middle of what is left. */
     setPadding(padding: PaddingInput) { return this.jumpTo({padding}); }
