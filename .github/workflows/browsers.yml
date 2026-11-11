@@ -1,0 +1,94 @@
+# Measures and checks the library in Chromium, Firefox and WebKit on Linux, macOS and Windows.
+# The results go to the branch "bench-results" (one file for each system and browser, and a README with all of them).
+name: Browsers
+on:
+  push:
+    branches: [main]
+    paths: ['src/**', 'demo/**', 'test/**', 'build.mjs', 'package.json', '.github/workflows/browsers.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: browsers
+  cancel-in-progress: true
+jobs:
+  run:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        browser: [chromium, firefox, webkit]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: bash
+    env:
+      BROWSER: ${{ matrix.browser }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # The browser driver is not a dependency of the package: the development machine has its own copy.
+      - run: pnpm add -D playwright@1.63.0
+      - run: pnpm exec playwright install --with-deps ${{ matrix.browser }}
+      - run: node build.mjs && node scripts/site.mjs
+      - name: Benchmark and checks
+        run: |
+          PORT=8080 node demo/serve.mjs &
+          for i in $(seq 1 30); do curl -s -o /dev/null http://localhost:8080/ && break; sleep 1; done
+          mkdir -p results
+          node test/bench/browsers.mjs results || echo "benchmark script failed" > "results/${{ runner.os }}-${{ matrix.browser }}-failed.txt"
+          # The behaviour tests, in this browser. Failures are recorded; they do not stop the run.
+          name="$(node -e "console.log(require('os').platform())")-${{ matrix.browser }}"
+          (node test/interact.mjs results/shots 2>&1 | grep -E "^(PASS|FAIL)" | cut -c1-300 > "results/$name-tests.txt") || true
+          rm -rf results/shots
+          cat results/*.md >> "$GITHUB_STEP_SUMMARY" || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: results-${{ matrix.os }}-${{ matrix.browser }}
+          path: results
+  publish:
+    needs: run
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: all
+          merge-multiple: true
+      - name: Push the results to the branch bench-results
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd all
+          {
+            echo "# Results in browsers"
+            echo
+            echo "Commit ${GITHUB_SHA}, $(date -u +%Y-%m-%dT%H:%MZ). The workflow \"Browsers\" writes this branch."
+            echo
+            echo "## Behaviour tests"
+            echo
+            echo "| System and browser | Pass | Fail |"
+            echo "|---|---|---|"
+            for f in *-tests.txt; do echo "| ${f%-tests.txt} | $(grep -c '^PASS' "$f") | $(grep -c '^FAIL' "$f") |"; done
+            echo
+            echo "## Benchmarks"
+            echo
+            cat *.md
+            echo "## Failed behaviour tests"
+            echo
+            for f in *-tests.txt; do echo "### ${f%-tests.txt}"; echo; echo '```'; grep '^FAIL' "$f" || echo "(none)"; echo '```'; echo; done
+          } > ../README.md
+          mv ../README.md README.md
+          git init -q -b bench-results
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Results for ${GITHUB_SHA}"
+          git push -f "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" bench-results

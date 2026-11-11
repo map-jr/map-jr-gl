@@ -24,6 +24,7 @@ pnpm install
 | `pnpm status` | Writes the test results and sizes into the README |
 | `pnpm screenshots` | Takes the screenshots in `docs/images` from the gallery. Start `pnpm demo` first. |
 | `pnpm bench` | Compares the speed with MapLibre GL JS in a browser without a GPU |
+| `BROWSER=webkit node test/bench/browsers.mjs out` | Runs the benchmark page and a short check in one browser (`chromium`, `firefox` or `webkit`). Start `pnpm demo` first. |
 
 ## The demo server
 
@@ -81,3 +82,18 @@ To use it, do this step one time: in the repository settings, open **Pages** and
 | `src/contour.ts`, `src/pmtiles.ts`, `src/geojson.ts` | Contour lines, PMTiles, GeoJSON |
 | `src/webp.ts` | PNG and WebP decoders for the server |
 | `src/loader.ts`, `src/worker.ts` | How the workers start |
+
+## Other browsers and operating systems
+
+The workflow `Browsers` (`.github/workflows/browsers.yml`) runs on each push that changes the code. It runs the
+benchmark page and the behaviour tests in Chromium, Firefox and WebKit on Linux, macOS and Windows. WebKit is the
+engine of Safari.
+
+The workflow writes the results to the branch `bench-results`. Read `README.md` on that branch:
+
+```bash
+git fetch origin bench-results && git show origin/bench-results:README.md
+```
+
+The Linux and Windows machines have no GPU, so their frame rates are low. Compare the libraries on the same machine.
+The macOS machines have a GPU.

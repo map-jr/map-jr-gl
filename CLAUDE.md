@@ -35,6 +35,10 @@ results or sizes, run `pnpm status` (it rewrites the status table in the README)
 
 ## Checking work
 
+- The workflow `Browsers` measures and tests each push in Chromium, Firefox and WebKit on Linux, macOS and Windows.
+  Read its results with `git fetch origin bench-results && git show origin/bench-results:README.md`. Use this
+  before you ask the owner to test on a device.
+
 - The development machine has no GPU: WebGL runs in software, so frame rates measured here are only relative.
   Real numbers come from the owner running `/bench` (an Apple M4 and an iPhone so far).
 - Safari on iOS behaves differently from Chromium in places (canvas scaling, OffscreenCanvas in workers). Changes

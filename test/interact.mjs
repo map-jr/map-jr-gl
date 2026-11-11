@@ -1,8 +1,7 @@
 // Drives the demo in Chromium and checks behaviour in both renderer modes: node test/interact.mjs <outDir>
-import {createRequire} from 'node:module';
-const {chromium} = createRequire(import.meta.url)('playwright');
+import {launch} from './launch.mjs';
 const out = process.argv[2];
-const browser = await chromium.launch({args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist']});
+const browser = await launch();
 let failed = 0, mainFrames = 0;
 const check = (name, ok, detail = '') => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${name} ${detail}`); if (!ok) failed++; };
 const settle = (page) => page.waitForFunction(() => !window.map.isMoving(), null, {polling: 100}).then(() => page.waitForTimeout(150));

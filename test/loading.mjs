@@ -1,7 +1,6 @@
 // Checks every supported way of loading the library in a real browser: node test/loading.mjs (demo server running)
-import {createRequire} from 'node:module';
-const {chromium} = createRequire(import.meta.url)('playwright');
-const browser = await chromium.launch({args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist']});
+import {launch} from './launch.mjs';
+const browser = await launch();
 let failed = 0;
 const check = (name, ok, detail = '') => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${name} ${detail}`); if (!ok) failed++; };
 
