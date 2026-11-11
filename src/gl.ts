@@ -1378,8 +1378,8 @@ export class GLRenderer {
             hedge = src.haloWidth > 0 && src.halo[3] > 0 ? Math.max(0.75 - (B - 0.75) / SDF_RADIUS, 0.75 - src.haloWidth / s / SDF_RADIUS) : 2;
             gamma = 0.7 / (SDF_RADIUS * s * this.dpr); haloGamma = gamma + src.haloBlur * 1.19 / s / SDF_RADIUS;
             const col = src.color, halo = src.halo;
-            c0 = Math.round(col[0] * 255); c1 = Math.round(col[1] * 255); c2 = Math.round(col[2] * 255); c3 = Math.round(col[3] * 255 * l.opacity);
-            h0 = Math.round(halo[0] * 255); h1 = Math.round(halo[1] * 255); h2 = Math.round(halo[2] * 255); h3 = Math.round(halo[3] * 255 * l.opacity);
+            c0 = Math.round(col[0] * 255); c1 = Math.round(col[1] * 255); c2 = Math.round(col[2] * 255); c3 = Math.round(col[3] * 255 * l.opacity * (l.alpha ?? 1));
+            h0 = Math.round(halo[0] * 255); h1 = Math.round(halo[1] * 255); h2 = Math.round(halo[2] * 255); h3 = Math.round(halo[3] * 255 * l.opacity * (l.alpha ?? 1));
             if (l.curve) {
                 // Text along a line: every glyph has its own origin and rotation.
                 const glyphs = shaped.lines[0].glyphs!, curve = l.curve;

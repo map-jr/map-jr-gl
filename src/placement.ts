@@ -41,6 +41,8 @@ export interface Placed {
     angle: number; size: number; shaped: Shaped | null; src: LabelSrc; icon?: PlacedIcon;
     /** Line alignment chosen at placement (`text-justify: auto` with a list of anchors); otherwise the label's own. */
     justify?: number;
+    /** The `text-opacity` of the layer at the zoom of the map (1 when it is a value for each feature, which is in the colours). */
+    alpha?: number;
     /** Text following a line: for each glyph, where its baseline starts relative to the label's anchor, and its rotation (x, y, angle triples). */
     curve?: number[];
     /** Identity that survives between placements (and between a tile and its parent), for fading. */
@@ -105,7 +107,10 @@ export function placeLabels(
                 const [ax, ay] = tr.projectTile(it.id, l.x, l.y);
                 if (ax < -margin || ay < -margin || ax > tr.width + margin || ay > tr.height + margin) continue;
                 if (tr.heightAt) { const n = 2 ** it.id.z; if (tr.occluded((it.id.x + it.id.w * n + l.x / EXTENT) / n, (it.id.y + l.y / EXTENT) / n)) continue; }
-                const size = l.size0 + (l.size1 - l.size0) * t, s = size / EM, line = l.angle !== null;
+                // (A size that is the same for the layer is found at the zoom of the map. A size for each feature is known at
+                // two levels only, and is mixed between them.)
+                const size = L.p.size.dd ? l.size0 + (l.size1 - l.size0) * t : L.p.size.eval(tr.zoom), s = size / EM, line = l.angle !== null;
+                const alpha = L.p.opacity.dd ? 1 : L.p.opacity.eval(tr.zoom);
                 const meta = l.icon ? icons?.(l.icon.name) : undefined;
                 const shaped = l.text ? shaper.shape(l.text, l.font, line ? 1e3 : l.maxWidth, l.spacing, l.lineHeight, l.size0) : null;
                 const w = shaped ? shaped.width * s : 0, h = shaped ? shaped.height * s : 0;
@@ -134,7 +139,7 @@ export function placeLabels(
                         if (prev) prev.push(ax, ay, itemNo); else seen.set(l.text, [ax, ay, itemNo]);
                         const n = 2 ** it.id.z, q = 2 ** 22;
                         const key = `${L.id}|${l.text}||${Math.round((it.id.x + l.x / EXTENT) / n * q)},${Math.round((it.id.y + l.y / EXTENT) / n * q)},${it.id.w}`;
-                        out.push({x: ax, y: ay, angle: 0, size, shaped, src: l, curve: curved.curve, key, tile: it.id, ax, ay, opacity: 1});
+                        out.push({x: ax, y: ay, angle: 0, size, shaped, src: l, curve: curved.curve, key, tile: it.id, ax, ay, opacity: 1, alpha});
                         continue;
                     }
                     if (line && !l.upright) {
@@ -196,7 +201,7 @@ export function placeLabels(
 
                 let icon: PlacedIcon | undefined, iconBox: Box | null = null;
                 if (meta && l.icon) {
-                    const ic = l.icon, fit = hasText && textBox ? ic.fit : 'none', isize = ic.size + (ic.size1 - ic.size) * t;
+                    const ic = l.icon, fit = hasText && textBox ? ic.fit : 'none', isize = L.p.iconSize.dd ? ic.size + (ic.size1 - ic.size) * t : L.p.iconSize.eval(tr.zoom);
                     let iw = meta.width / meta.pixelRatio * isize, ih = meta.height / meta.pixelRatio * isize;
                     // The anchor names the part of the icon that sits on the point.
                     let ix = ax + ic.offset[0] * isize + (ic.anchor.includes('left') ? iw / 2 : ic.anchor.includes('right') ? -iw / 2 : 0);
@@ -231,7 +236,7 @@ export function placeLabels(
                     const box = boxAround(ix, iy, iw, ih, angle, ic.padding);
                     if (ic.overlap || !grid.hits(...box)) {
                         iconBox = box;
-                        icon = {x: ix, y: iy, w: iw, h: ih, angle, rect: [meta.x, meta.y, meta.width, meta.height], custom: meta.custom, name: ic.name, gx, gy, opacity: ic.opacity, color: meta.sdf ? ic.color : undefined,
+                        icon = {x: ix, y: iy, w: iw, h: ih, angle, rect: [meta.x, meta.y, meta.width, meta.height], custom: meta.custom, name: ic.name, gx, gy, opacity: ic.opacity * (L.p.iconOpacity.dd ? 1 : L.p.iconOpacity.eval(tr.zoom)), color: meta.sdf ? ic.color : undefined,
                             // (In the distance field of a sprite, one image pixel is one eighth of the range.)
                             halo: meta.sdf && ic.haloWidth > 0 && ic.halo[3] > 0 ? ic.halo : undefined, haloReach: Math.min(0.7, ic.haloWidth / (isize / meta.pixelRatio) / 8)};
                     } else if (!(hasText && textBox && ic.optional)) continue;
@@ -249,7 +254,7 @@ export function placeLabels(
                 // Features with the same text at the same position keep separate keys, in their order in the tile.
                 const same = keys.get(key) ?? 0;
                 keys.set(key, same + 1);
-                out.push({x: tx, y: ty, angle: textAngle, size, shaped: textBox ? shaped : null, src: l, icon, key: same ? key + '#' + same : key, tile: it.id, ax, ay, opacity: 1, justify});
+                out.push({x: tx, y: ty, angle: textAngle, size, shaped: textBox ? shaped : null, src: l, icon, key: same ? key + '#' + same : key, tile: it.id, ax, ay, opacity: 1, justify, alpha});
             }
         }
     }

@@ -178,9 +178,9 @@ export function renderSVG(s: SVGScene): string {
             const src = l.src, k = l.size / EM, [variant, family] = src.font.split('|');
             const [style, weight] = variant.includes(' ') ? variant.split(' ') : ['', variant];
             const halo = src.haloWidth > 0 && src.halo[3] > 0
-                ? ` stroke="${hex(src.halo)}" stroke-width="${num(src.haloWidth * 2)}"${alpha('stroke-opacity', src.halo[3])}` : '';
+                ? ` stroke="${hex(src.halo)}" stroke-width="${num(src.haloWidth * 2)}"${alpha('stroke-opacity', src.halo[3] * (l.alpha ?? 1))}` : '';
             const common = `font-size="${num(l.size)}"${family ? ` font-family="${escapeXML(`'${family}', ${s.fontFamily}`)}"` : ''}${weight !== '400' ? ` font-weight="${weight}"` : ''}${style ? ` font-style="${style}"` : ''}` +
-                `${src.spacing ? ` letter-spacing="${num(src.spacing * l.size)}"` : ''} fill="${hex(src.color)}"${alpha('fill-opacity', src.color[3])}${halo}`;
+                `${src.spacing ? ` letter-spacing="${num(src.spacing * l.size)}"` : ''} fill="${hex(src.color)}"${alpha('fill-opacity', src.color[3] * (l.alpha ?? 1))}${halo}`;
             if (l.curve) {
                 // Text along a line: one position and rotation per character, which SVG text supports directly.
                 const c = l.curve, chars = shaped.lines[0].chars, at = (k: number) => chars.map((_, i) => num(c[i * 3 + k] + (k ? l.y : l.x))).join(' ');
