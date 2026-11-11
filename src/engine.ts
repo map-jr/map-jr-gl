@@ -1,6 +1,7 @@
 import {heightsChanged} from './geo.ts';
 import {EXTENT, HEIGHT_GRID, TILE_SIZE, Transform, bezier, groundHeight, clamp, latFromMerc, lngFromMerc, mercX, mercY, type LngLatLike, type TileID} from './geo.ts';
 import {setGlobalState} from './expr.ts';
+import {layerRules} from './rules.ts';
 import {compileLayer, isGeometrySource, loadSprite, tileURL, type CompiledLayer, type FontSource, type ResolvedStyle, type Sprite, type SpriteIcon} from './style.ts';
 import {GLRenderer, MARKER_FLOATS, MARKER_STRIDE, SPRITE_ATLAS, type DemRef, type GLTile, type MarkerBuffers, type TerrainTile} from './gl.ts';
 import {CollisionGrid, placeLabels, renderItems, type Placed, type RenderItem} from './placement.ts';
@@ -33,7 +34,7 @@ export type Command =
     | {type: 'limits'; minZoom: number; maxZoom: number; maxPitch: number; minPitch?: number; maxBounds?: [number, number, number, number] | null}
     /** Throws away a source's tiles (all sources if none is named) and loads them again. */
     | {type: 'refresh'; source?: string}
-    | {type: 'style'; style: ResolvedStyle; reload: boolean}
+    | {type: 'style'; style: ResolvedStyle; reload: boolean; /** A number for each source that changes when the page changes what its tiles are built from. */ versions?: Record<string, number>}
     | {type: 'markers'; id: string; width: number; height: number; offset: [number, number]; collide: boolean; minZoom: number; maxZoom: number; hideOverlaps: boolean;
         merc: Float64Array; variant: Uint32Array; images: MarkerImage[]}
     | {type: 'removeMarkers'; id: string}
@@ -63,7 +64,7 @@ export type EngineEvent =
     | {type: 'camera'; lng: number; lat: number; zoom: number; bearing: number; pitch: number; /** Ground height at the centre with 3D terrain, else 0. */ elevation: number; exaggeration: number; groundRange?: [number, number]; padding: [number, number, number, number]; moving: boolean}
     | {type: 'idle'; seq: number}
     /** The tiles of a source for the view are all loaded, or are no longer all loaded. */
-    | {type: 'source'; source: string; loaded: boolean; seq: number}
+    | {type: 'source'; source: string; loaded: boolean; /** The version of the source that the page gave (see the `style` command). */ v: number}
     /** 3D terrain: the height grid of an elevation tile that has loaded (or, without `grid`, been dropped). */
     | {type: 'heights'; key: string; grid?: Float32Array}
     /** About once a second while drawing: frames drawn per second and the engine's average CPU time per frame. */
@@ -79,7 +80,6 @@ export type EngineEvent =
     | {type: 'imagemissing'; name: string}
     | {type: 'error'; message: string};
 
-const DATA_OPS = /"(get|has|id|properties|geometry-type|feature-state|global-state|property|line-progress|accumulated)"/;
 /**
  * Describes what a source's tiles depend on: first the source itself, then everything about its layers that is baked
  * into tile buffers (filters, layout, and paint values that vary per feature). Paint values that are the same for a
@@ -90,17 +90,13 @@ function sourceSignature(style: ResolvedStyle, name: string): [string, string] {
     // Elevation tiles keep extra data when they shape 3D terrain, so switching terrain on or off starts them over.
     const source = JSON.stringify({...src, head: undefined, data: undefined, features: data?.features?.length, kind: data?.type, terrain: style.terrain?.source === name});
     if (!isGeometrySource(src)) return [source, '']; // image tiles do not depend on layers
-    const layers = style.layers.filter(l => l.source === name).map(l => {
-        const paint = Object.entries(l.paint ?? {}).filter(([k, v]) =>
-            l.type === 'symbol' || l.type === 'fill-extrusion' || k === 'fill-antialias' || k === 'fill-outline-color' || k.endsWith('-pattern') || DATA_OPS.test(JSON.stringify(v)));
-        return [l.id, l.type, (l as any)['source-layer'], l.filter, l.minzoom, l.maxzoom, l.layout, paint, (l as any).metadata];
-    });
+    const layers = style.layers.filter(l => l.source === name).map(l => layerRules(l));
     // Layers that read global state are rebuilt when it changes.
     const json = JSON.stringify(layers);
     return [source, json.includes('"global-state"') ? json + JSON.stringify(style.state ?? {}) : json];
 }
 
-interface TileState { state: 'loading' | 'ok' | 'error'; gl?: GLTile; /** An image tile that the server does not have (404). */ missing?: boolean; /** The zoom that the tile was built for (see `buildZoom`). */ band?: number; /** A number that changes each time the state or the content of the tile changes. */ rev?: number; /** Elevation tiles shaping 3D terrain: the lowest and highest ground on the tile, in metres. */ range?: [number, number]; used: number; cancel(): void; /** Shown, but built from data that has since changed. */ stale?: boolean; rebuilding?: boolean }
+interface TileState { state: 'loading' | 'ok' | 'error'; gl?: GLTile; /** An image tile that the server does not have (404). */ missing?: boolean; /** The zoom that the tile was built for (see `buildZoom`). */ band?: number; /** A number that changes each time the state or the content of the tile changes. */ rev?: number; /** Elevation tiles shaping 3D terrain: the lowest and highest ground on the tile, in metres. */ range?: [number, number]; used: number; cancel(): void; /** Shown, but built from data that has since changed. */ stale?: boolean; rebuilding?: boolean; /** The tile worker that loaded the tile. */ backend?: number; /** The rules of the style that the tile was built for (see `sourceSignature`). */ rules?: string }
 interface MarkerLayer {
     width: number; height: number; offset: [number, number]; collide: boolean; merc: Float64Array; variant: Uint32Array;
     minZoom: number; maxZoom: number; hideOverlaps: boolean;
@@ -495,7 +491,8 @@ export class Engine {
     }
 
     /** Per source: what its tiles were fetched from, and what they were built with. */
-    private sourceLoaded = new Map<string, boolean>();
+    private sourceLoaded = new Map<string, number>();
+    private versions: Record<string, number> = {};
     private sourceSigs = new Map<string, [string, string]>();
 
     private setStyle(style: ResolvedStyle, reload: boolean) {
@@ -527,7 +524,13 @@ export class Engine {
             for (const [key, t] of this.tiles) {
                 const name = key.slice(0, key.lastIndexOf('|')), was = this.sourceSigs.get(name), now = sigs.get(name);
                 if (!was || !now || was[0] !== now[0]) this.dropTile(key, t);
-                else if (was[1] !== now[1]) { t.stale = true; t.rev = ++this.tilesVersion; }
+                else {
+                    // A tile is out of date when it was built for other rules than the present ones. (A layer that is
+                    // hidden and shown again has the rules of before: its tiles are good.) A tile that is on its way
+                    // was built with the rules of some moment between: it is built again.
+                    const stale = t.state === 'loading' || !!t.rebuilding ? was[1] !== now[1] || !!t.stale : t.rules !== undefined && t.rules !== now[1];
+                    if (stale !== !!t.stale) { t.stale = stale; t.rev = ++this.tilesVersion; }
+                }
             }
             this.sourceSigs = sigs;
         }
@@ -592,7 +595,7 @@ export class Engine {
         // (The page numbers its commands. `idle` and `source` carry the last number, so that the page can tell a report
         // about a state from before its last command.)
         const seq = (c as {seq?: number}).seq;
-        if (seq) { this.seq = seq; this.sourceLoaded.clear(); } // (each source reports again for this command)
+        if (seq) this.seq = seq;
         switch (c.type) {
             case 'resize':
                 tr.width = c.width; tr.height = c.height; this.dpr = c.dpr;
@@ -665,7 +668,20 @@ export class Engine {
                 for (const [key, t] of this.tiles) if (!c.source || key.startsWith(c.source + '|')) this.dropTile(key, t);
                 this.invalidate();
                 break;
-            case 'style': this.setStyle(c.style, c.reload); break;
+            case 'style':
+                this.versions = c.versions ?? {};
+                this.setStyle(c.style, c.reload);
+                // The tiles that the changed style needs are asked for now, not in the next frame: a page can show a
+                // layer for a moment only (to load one layer after another), and a frame can come later than that.
+                if (!this.exaggeration && this.tr.width) for (const source in this.style.sources) {
+                    const src = this.style.sources[source], tr = this.tr;
+                    if (src.type === 'image' || this.style.terrain?.source === source || !this.layers.some(l => l.source === source && l.visible && tr.zoom >= l.minzoom && tr.zoom < l.maxzoom)) continue;
+                    for (const id of tr.coveringTiles(src.minzoom, src.maxzoom, src.tileSize, src.type === 'raster' || src.type === 'raster-dem')) {
+                        const key = source + '|' + id.key;
+                        if (!this.tiles.has(key)) this.request(source, id, key);
+                    }
+                }
+                break;
             case 'markers': {
                 for (const img of c.images) { const rect = this.addSprite(img.w, img.h, img.data); if (rect) this.spriteRects.set(img.variant, rect); }
                 // Re-sent data (e.g. after a property change) keeps each marker's current size when the count is unchanged.
@@ -907,7 +923,7 @@ export class Engine {
         // A tile outside the bounds of the source is empty, without a request.
         if (b && (id.x + 1 <= mercX(b[0]) * n || id.x >= mercX(b[2]) * n || id.y + 1 <= mercY(b[3]) * n || id.y >= mercY(b[1]) * n)) load = Promise.resolve({labels: {}, batches: {}});
         else if (isGeometrySource(src)) {
-            const backend = this.backends[this.nextBackend++ % this.backends.length], req = this.nextReq++;
+            const backend = this.backends[t.backend = this.nextBackend++ % this.backends.length], req = this.nextReq++;
             t.cancel = () => backend.cancel(req);
             load = backend.load(this.build(req, source, id, t)).then(tile => this.upload(tile));
         } else {
@@ -976,6 +992,7 @@ export class Engine {
      */
     private build(req: number, source: string, id: TileID, t: TileState): TileRequest {
         const src = this.style.sources[source], band = t.band = this.buildZoom(source, id);
+        t.rules = this.sourceSigs.get(source)?.[1];
         return {id: req, source, url: tileURL(src, id.z, id.x, id.y), z: this.zoomBuilt.has(source) ? band : id.z, overscaled: band >= src.maxzoom && band};
     }
     private zoomBuilt = new Set<string | undefined>();
@@ -990,9 +1007,10 @@ export class Engine {
     }
 
     private rebuild(source: string, id: TileID, key: string, t: TileState) {
-        const src = this.style.sources[source], backend = this.backends[this.nextBackend++ % this.backends.length], req = this.nextReq++;
+        // (The tile worker that loaded the tile has its bytes still: it builds the tile again without a request.)
+        const backend = this.backends[t.backend ?? this.nextBackend++ % this.backends.length], req = this.nextReq++;
         t.rebuilding = true; // one rebuild at a time per tile; data that changes meanwhile marks it stale again
-        backend.load(this.build(req, source, id, t)).then(tile => {
+        backend.load({...this.build(req, source, id, t), again: true}).then(tile => {
             t.rebuilding = false;
             if (this.tiles.get(key) !== t) return;
             const old = t.gl;
@@ -1094,7 +1112,17 @@ export class Engine {
             // terrain, the flat layers are drawn into the ground textures, which ask for their own tiles (see groundSources):
             // only labels and buildings are drawn from the tiles of the view. (Without this, the elevation tiles for relief
             // shading were loaded two times, at two sets of zoom levels.)
-            if (!this.layers.some(l => l.source === source && l.visible && tr.zoom >= l.minzoom && tr.zoom < l.maxzoom && (!terrain || l.type === 'symbol' || l.type === 'fill-extrusion'))) continue;
+            if (!this.layers.some(l => l.source === source && l.visible && tr.zoom >= l.minzoom && tr.zoom < l.maxzoom && (!terrain || l.type === 'symbol' || l.type === 'fill-extrusion'))) {
+                // (Tiles on their way stay on their way: a page that hides a layer for a moment and shows it again, to
+                // load one layer after another, does not start again each time.)
+                // Its tiles for the view are kept too, so that the layer is there at once when the page shows it.
+                const src = this.style.sources[source];
+                if (src.type !== 'image' && this.layers.some(l => l.source === source)) for (const id of tr.coveringTiles(src.minzoom, src.maxzoom, src.tileSize, src.type === 'raster' || src.type === 'raster-dem')) {
+                    const key = source + '|' + id.key, t = this.tiles.get(key);
+                    if (t) { t.used = frameNo; wanted.add(key); }
+                }
+                continue;
+            }
             const src = this.style.sources[source];
             if (src.type === 'image') { items.set(source, this.pictureItems(source, tr)); continue; }
             // (The elevation source of 3D terrain has the tiles of `viewCover` also while the map is seen from above and the
@@ -1159,8 +1187,8 @@ export class Engine {
         }
         // Tell the page when the tiles of a source are all there (the map can be busy with other sources still).
         for (const source in this.style.sources) {
-            const loaded = !loading.has(source);
-            if (this.sourceLoaded.get(source) !== loaded) { this.sourceLoaded.set(source, loaded); this.emit({type: 'source', source, loaded, seq: this.seq}); }
+            const loaded = !loading.has(source), v = this.versions[source] ?? 0, state = v * 2 + +loaded;
+            if (this.sourceLoaded.get(source) !== state) { this.sourceLoaded.set(source, state); this.emit({type: 'source', source, loaded, v}); }
         }
         // How many tiles are kept follows what the view needs: three times that many, so that the view can go back and
         // forth without new downloads. A small screen keeps fewer tiles, and so uses less memory on the GPU.

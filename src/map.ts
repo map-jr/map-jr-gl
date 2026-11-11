@@ -4,6 +4,7 @@ import {LngLat, LngLatBounds, type LngLatBoundsInput} from './lnglat.ts';
 import {Transform, groundHeight, heightsChanged, mercX, mercY, toLngLat, type LngLatLike} from './geo.ts';
 import type {PreparedSource} from './geojson.ts';
 import {DEFAULT_FONT, resolveStyle, type ResolvedStyle} from './resolve.ts';
+import {layerRules} from './rules.ts';
 import type {CameraOptions, Command, EngineEvent, FeatureQuery, FontSource, MarkerImage} from './engine.ts';
 import type {QueriedFeature} from './query.ts';
 import type {TileBackend} from './tiles.ts';
@@ -194,7 +195,8 @@ export class Map {
     private seq = 0;
     /** The sources whose tiles for the view are all loaded, as the engine tells it. */
     private loadedSources = new Set<string>();
-    private sourceRules = new globalThis.Map<string, {text: string; data: unknown}>();
+    private sourceRules = new globalThis.Map<string, {text: string; data: unknown; v: number}>();
+    private sourceVersion = 0;
     /** Global state values set at runtime, on top of the style's defaults. */
     private globalState: Record<string, unknown> = {};
     protected zooming = false; protected rotating = false; protected pitching = false;
@@ -419,13 +421,13 @@ export class Map {
             this.fire('render');
         } else if (e.type === 'source') {
             if (!e.loaded) this.loadedSources.delete(e.source);
-            else if (e.seq === this.seq && this.restyled === this.restyles && this.rawStyle?.sources[e.source]) {
+            else if (e.v === this.sourceRules.get(e.source)?.v) {
                 this.loadedSources.add(e.source);
                 for (const type of ['sourcedata', 'data']) this.fire(type, {dataType: 'source', sourceId: e.source, isSourceLoaded: true, source: this.rawStyle.sources[e.source]});
             }
         } else if (e.type === 'idle') {
             // (A report from before the last command: the engine sends another after that command.)
-            if (e.seq !== this.seq || this.restyled !== this.restyles) return;
+            if (e.seq !== this.seq || this.restyled !== this.restyles || this.resolved?.waiting) return;
             this.tilesLoaded = true;
             if (!this.isLoaded) {
                 this.isLoaded = true;
@@ -613,7 +615,7 @@ export class Map {
     /** Whether the tiles needed for the current view have loaded. (Tracked for the map as a whole, not per source.) */
     isSourceLoaded(id: string) {
         if (!this.rawStyle?.sources[id]) throw new Error(`There is no source with ID "${id}"`);
-        return this.tilesLoaded || this.loadedSources.has(id);
+        return !!this.resolved?.sources[id] && (this.tilesLoaded || this.loadedSources.has(id));
     }
     /** Loads a source's tiles again, e.g. after the data behind its URL changed. */
     refreshTiles(sourceId: string) { this.post({type: 'refresh', source: sourceId}); return this; }
@@ -654,22 +656,25 @@ export class Map {
         // (The engine does not have this change yet: its reports of what is loaded are old from now on. See `seq`.)
         this.tilesLoaded = false; this.seq++;
         // A source whose rules changed is not loaded until the engine says so. The other sources keep their state.
-        const texts: Record<string, string> = {}, was = this.sourceRules;
-        for (const l of this.rawStyle.layers ?? []) if (l.source) texts[l.source] = (texts[l.source] ?? '') + JSON.stringify(l);
+        const texts: Record<string, string> = {}, was = this.sourceRules, versions: Record<string, number> = {};
+        for (const l of this.rawStyle.layers ?? []) if (l.source) texts[l.source] = (texts[l.source] ?? '') + JSON.stringify(layerRules(l, this.toggled.has(l.id)));
         this.sourceRules = new globalThis.Map();
         for (const [id, src] of Object.entries<any>(this.rawStyle.sources ?? {})) {
-            const rules = {text: JSON.stringify({...src, data: 0}) + texts[id], data: src.data}, old = was.get(id);
-            this.sourceRules.set(id, rules);
-            if (old?.text !== rules.text || old.data !== rules.data) this.loadedSources.delete(id);
+            const old = was.get(id), text = JSON.stringify({...src, data: 0}) + texts[id], same = old?.text === text && old.data === src.data;
+            this.sourceRules.set(id, {text, data: src.data, v: versions[id] = same ? old.v : ++this.sourceVersion});
+            if (!same) this.loadedSources.delete(id);
         }
-        resolveStyle(this.rawStyle, this.fetchAs('Source'), this.styleBase).then(style => {
+        // A change of a style that the map shows does not wait for a source that is new: the source comes later.
+        const partial = this.newStyle || !this.resolved ? undefined : {late: () => { if (this.rawStyle) this.restyle(true); }, fail: (error: unknown) => this.fire('error', {error})};
+        resolveStyle(this.rawStyle, this.fetchAs('Source'), this.styleBase, partial).then(style => {
             if (turn !== this.restyles) return;
             reload = this.reloadPending;
             this.reloadPending = false;
             if (Object.keys(this.globalState).length) style.state = {...style.state, ...this.globalState};
             this.resolved = style;
             this.restyled = turn;
-            this.post({type: 'style', style, reload});
+            if (this.toggled.size) style.layers = style.layers.map(l => this.toggled.has(l.id) ? {...l, keep: true} : l);
+            this.post({type: 'style', style, reload, versions});
             this.styleEvents(this.newStyle);
             this.newStyle = false;
         }, err => { this.fire('error', {error: err}); if (turn === this.restyles) { this.restyled = turn; this.post({type: 'repaint'}); } });
@@ -814,7 +819,12 @@ export class Map {
         return this.editStyle(s => { (s.layers[this.layerIndex(s, layerId)][group] ??= {})[name] = value; });
     }
     setPaintProperty(layerId: string, name: string, value: unknown) { return this.setProp('paint', layerId, name, value); }
-    setLayoutProperty(layerId: string, name: string, value: unknown) { return this.setProp('layout', layerId, name, value); }
+    setLayoutProperty(layerId: string, name: string, value: unknown) {
+        if (name === 'visibility') this.toggled.add(layerId);
+        return this.setProp('layout', layerId, name, value);
+    }
+    /** The layers that the page has hidden or shown. Their tiles are built also while they are hidden: the next change is at once. */
+    private toggled = new Set<string>();
     setFilter(layerId: string, filter: unknown) { return this.editStyle(s => { s.layers[this.layerIndex(s, layerId)].filter = filter; }); }
 
     // ---- controls ----

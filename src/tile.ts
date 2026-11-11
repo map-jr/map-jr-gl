@@ -114,7 +114,7 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
     const z1 = z % 1 ? z : z + 1;
 
     for (const L of layers) {
-        if (L.type === 'background' || !L.visible) continue;
+        if (L.type === 'background' || !L.visible && !L.keep) continue;
         // A tile is drawn from its own zoom up to the next one. A tile of the source's deepest level is drawn further: it has
         // all the shapes, and the labels of the layers that show up to one level above the zoom of the map.
         if (L.minzoom >= (overscaled === false ? z + 1 : L.type === 'symbol' ? overscaled + 2 : 99)) continue;

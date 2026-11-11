@@ -99,7 +99,7 @@ const HEATMAP_COLORS = ['interpolate', ['linear'], ['heatmap-density'], 0, 'rgba
 
 export interface CompiledLayer {
     id: string; type: string; source?: string; sourceLayer?: string; minzoom: number; maxzoom: number;
-    visible: boolean; filter: Fn | null; p: Record<string, Prop>;
+    visible: boolean; /** Built also while it is not visible. */ keep?: boolean; filter: Fn | null; p: Record<string, Prop>;
     ssr?: SSROverrides;
     /** Heatmap layers: the colour for each density (see colorRamp). Line layers: the colours of `line-gradient` along the line. */
     ramp?: Uint8Array;
@@ -124,7 +124,7 @@ export function compileLayer(l: LayerJSON): CompiledLayer | null {
         id: l.id, type: l.type, source: l.source, sourceLayer: l['source-layer'],
         minzoom: l.minzoom ?? -2, maxzoom: l.maxzoom ?? 24,
         // Pattern fills need sprite images, which are not supported yet; hiding them beats drawing solid black.
-        visible: l.layout?.visibility !== 'none', filter: own && extra ? c => own(c) && extra(c) : own ?? extra, p,
+        visible: l.layout?.visibility !== 'none', keep: l.keep, filter: own && extra ? c => own(c) && extra(c) : own ?? extra, p,
     };
 }
 

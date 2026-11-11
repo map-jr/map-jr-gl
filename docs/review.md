@@ -174,7 +174,20 @@ Faults that the trial found, and their state:
     half the size, and only in each third frame. Now a device that keeps up with the display (less than 20 ms
     between the frames of a movement) makes them at the full size in each frame. **Not checked on a GPU:** the
     development machine has none. The owner must look at this on the Mac and on the iPhone.
-11. Open: at zoom 6.8 the library shows green areas (land cover) in the plain of the Po that MapLibre does not show.
+11. The replay of the rain page (the Play button) was much slower than with MapLibre: 9 frames in 11 seconds, where
+    MapLibre showed 66 on the same network. Now 67. The causes, all fixed:
+    - Each change of the style waited for the network: the TileJSON of each source was fetched again, and a new
+      PMTiles source held back all other changes until its header was there. Now the network result of a source is
+      kept, and a change of a style that the map shows goes ahead without a source that is still on its way.
+    - `isSourceLoaded` became false for all sources at each change of the style. Now each source has a version that
+      changes only when its own tile rules change.
+    - The project shows the next frames for a short moment only, to load them. The engine asked for tiles only when
+      it drew a frame, threw away tiles on their way when their layer was hidden, and built the tiles again when the
+      layer was shown. Now the engine asks for tiles when the change of the style arrives, keeps the tiles of a hidden
+      source for the view, and builds a layer that the page hides and shows also while it is hidden.
+    - A tile that is built again after a change of the style uses the bytes that its tile worker has (before: a new
+      request each time).
+12. Open: at zoom 6.8 the library shows green areas (land cover) in the plain of the Po that MapLibre does not show.
    Not examined.
 
 Not checked in the trial:
@@ -251,6 +264,7 @@ Ways to remove the lag in the entry for MapLibre code, not done:
 | The budget of the page script of `maplibre-compat` went from 28.5 KB to 29 KB; the file set is 28.6 KB. | `queryRenderedFeatures` read at once now has the features of tiles in the usual cases (a fault from the trial in elevation-next: a click on a county did nothing). The main entry did not grow. | Remove `answers` and the `fire` override in `src/compat-map.ts`; MapLibre code then needs `await`. |
 | The budget of the page script of `maplibre-compat` went from 29 KB to 29.5 KB; the file set is 29.1 KB. The page script of the main entry is 26.7 KB (budget 27 KB). | The state of each source (loaded or not) and the numbers on commands are in the core map class, which both entries contain. | — |
 | The budget of the engine for the main thread went from 55.5 KB to 56 KB; the file is 55.5 KB. The worker is 58.4 KB (budget 58.5 KB). | Faults from the trial in elevation-next: the state of each source, the first bytes of PMTiles archives, letters on tilted roads, sharp ground images during a movement. | — |
+| Budgets after the work on the replay: page script 27 → 27.5 KB (27.2 KB now), page script of `maplibre-compat` 29.5 → 30 KB (29.6 KB), worker 58.5 → 59 KB (58.6 KB). | See fault 11 in the findings from the trial: the state of each source, kept network results of sources, tiles of hidden layers. | — |
 | The build gives short names to private class members and to the names in the shaders (uniforms, attributes, varyings, local variables), and takes the spaces from around the operators in the shaders (`scripts/private-names.mjs`, `build.mjs`). The budgets did not change. | The minifier does not shorten property names, and it does not look into GLSL text. The steps make the worker about 1.1 KB smaller (gzip). The features of this night used that room: the worker is 57.7 KB. A name is shortened only when each use of it is a `private` declaration or `this.name`, so message fields, options and browser properties keep their names. | Remove `privates` from the plugins in `build.mjs`. |
 
 ## `queryRenderedFeatures` gives two kinds of result

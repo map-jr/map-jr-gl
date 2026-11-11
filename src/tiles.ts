@@ -12,7 +12,7 @@ import {contourTile, decodeDEM, decodePixels, type ContourConfig, type DEM, type
 export interface ElevationRequest { id: number; url: string; encoding: string }
 export interface ElevationTile { width: number; height: number; pixels: Uint8Array; grid: Float32Array; lo: number; hi: number }
 /** `overscaled`: for a tile of the deepest level of its source, the zoom of the map that the tile is built for. */
-export interface TileRequest { id: number; source: string; url: string; z: number; overscaled: number | false }
+export interface TileRequest { id: number; source: string; url: string; z: number; overscaled: number | false; /** Built again after a change of the style: the bytes that the builder has are good. */ again?: boolean }
 
 /** Fetches and parses tiles. The same class backs tile workers, the main-thread fallback and server rendering. */
 export class TileBuilder {
@@ -101,7 +101,7 @@ export class TileBuilder {
         const ac = new AbortController();
         this.aborts.set(req.id, ac);
         try {
-            const bytes = await fetchTile(req.url, this.fetchFn, ac.signal);
+            const bytes = req.again && this.recent.get(req.url) || await fetchTile(req.url, this.fetchFn, ac.signal);
             if (!bytes) return {layers: {}, labels: {}};
             this.remember(req.url, bytes);
             return bytes.length ? buildTile(bytes, req.z, this.bySource.get(req.source) ?? [], req.overscaled) : {layers: {}, labels: {}};
@@ -115,7 +115,7 @@ export class TileBuilder {
     private remember(url: string, bytes: Uint8Array) {
         this.recent.delete(url);
         this.recent.set(url, bytes);
-        if (this.recent.size > 48) this.recent.delete(this.recent.keys().next().value!);
+        if (this.recent.size > 64) this.recent.delete(this.recent.keys().next().value!);
     }
 
     /** Queries a tile's raw features. The tile is fetched if it is not already at hand; it need not be on screen. */

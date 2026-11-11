@@ -13,6 +13,8 @@ export const DEFAULT_FONT = '"Noto Sans", "Helvetica Neue", Arial, sans-serif';
 export const LAYER_TYPES = new Set(['background', 'fill', 'line', 'fill-extrusion', 'circle', 'heatmap', 'raster', 'hillshade', 'symbol']);
 
 export interface LayerJSON {
+    /** The page changes the visibility of this layer: its tiles are built also while it is hidden (see `layerRules`). */
+    keep?: boolean;
     id: string; type: string; source?: string; 'source-layer'?: string; minzoom?: number; maxzoom?: number;
     filter?: any; paint?: Record<string, any>; layout?: Record<string, any>; metadata?: Record<string, any>;
 }
@@ -34,7 +36,7 @@ export interface SourceInfo {
 
 /** A style with everything network-dependent already resolved, so it can be posted to a worker as plain JSON. */
 export interface FontSource { family: string; src: string; weight?: string | number; style?: string; unicodeRange?: string }
-export interface ResolvedStyle { layers: LayerJSON[]; sources: Record<string, SourceInfo>; unsupported: string[]; sprite?: string; fonts?: FontSource[];
+export interface ResolvedStyle { layers: LayerJSON[]; sources: Record<string, SourceInfo>; unsupported: string[]; /** A source is still on its way (see `Partial`): the map is not idle. */ waiting?: boolean; sprite?: string; fonts?: FontSource[];
     /** 3D terrain: the raster-dem source that shapes the ground, and how much to exaggerate it. */
     terrain?: {source: string; exaggeration: number};
     /** The light on buildings (the `light` of the style). */
@@ -54,7 +56,29 @@ export function parseFontName(name: string): {family: string; weight: number; st
     return {family, weight, style: /italic|oblique/.test(n) ? 'italic' : 'normal'};
 }
 
-export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) => fetch(...a), base?: string): Promise<ResolvedStyle> {
+/** What the network gave for a source of a style (its TileJSON, its GeoJSON, the header of its archive), by source object. */
+const fetched = new WeakMap<object, {url: string; p: Promise<any>; v?: any; err?: any; told?: boolean; late?: () => void}>();
+/** For a change of a style that is in use: a source whose data is not there yet is left out, and `late` is called when it is. */
+export interface Partial { late(): void; fail(error: unknown): void }
+const SKIP = Symbol();
+/**
+ * The network data of a source, fetched one time for the source object and its URL. A change of the style then
+ * resolves without a request. With `partial`, a source that is still on its way gives SKIP.
+ */
+function once(raw: object, url: string, load: () => Promise<any>, partial?: Partial): any {
+    let m = fetched.get(raw);
+    if (m?.url !== url) {
+        const made: NonNullable<typeof m> = m = {url, p: load()};
+        fetched.set(raw, m);
+        m.p.then(v => { made.v = v; made.late?.(); }, e => { made.err = e ?? 1; made.late?.(); });
+    }
+    if (!partial) return m.p.catch(e => { fetched.delete(raw); throw e; });
+    if (m.err) { if (!m.told) { m.told = true; partial.fail(m.err); } return SKIP; }
+    if (m.v === undefined) { m.late = partial.late; return SKIP; }
+    return m.v;
+}
+
+export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) => fetch(...a), base?: string, partial?: Partial): Promise<ResolvedStyle> {
     if (typeof style === 'string') {
         const url = base ? new URL(style, base).href : style;
         const res = await fetchFn(url);
@@ -67,9 +91,13 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
         if (raw.type === 'geojson') {
             let data = raw.data;
             if (typeof data === 'string') {
-                const url = base ? new URL(data, base).href : data, res = await fetchFn(url);
-                if (!res.ok) throw new Error(`Failed to load GeoJSON ${url}: ${res.status}`);
-                data = await res.json();
+                const url = base ? new URL(data, base).href : data;
+                data = await once(raw, url, async () => {
+                    const res = await fetchFn(url);
+                    if (!res.ok) throw new Error(`Failed to load GeoJSON ${url}: ${res.status}`);
+                    return res.json();
+                }, partial);
+                if (data === SKIP) continue;
             }
             sources[name] = {type: 'geojson', data, options: raw.cluster || raw.promoteId || raw.filter ? {filter: raw.filter, cluster: raw.cluster, clusterRadius: raw.clusterRadius, clusterMaxZoom: raw.clusterMaxZoom, clusterMinPoints: raw.clusterMinPoints, clusterProperties: raw.clusterProperties, promoteId: raw.promoteId} : undefined, tiles: [`geojson://${name}/{z}/{x}/{y}`], minzoom: 0, maxzoom: raw.maxzoom ?? 18, tileSize: 512, attribution: raw.attribution};
             continue;
@@ -82,14 +110,19 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
         let src = raw;
         if (typeof src.url === 'string' && src.url.startsWith(PM_PREFIX)) {
             // A PMTiles archive: its header supplies the zoom range, and tiles are addressed inside the archive.
-            const {archive} = await import('./pmtiles-info.ts');
-            const at = src.url.slice(PM_PREFIX.length), file = base ? new URL(at, base).href : at, info = await archive(file, fetchFn).info();
+            const at = src.url.slice(PM_PREFIX.length), file = base ? new URL(at, base).href : at;
+            const info = await once(raw, file, async () => (await import('./pmtiles-info.ts')).archive(file, fetchFn).info(), partial);
+            if (info === SKIP) continue;
             src = {minzoom: info.minzoom, maxzoom: info.maxzoom, attribution: info.attribution, ...raw, tiles: [`${PM_PREFIX}${file}/{z}/{x}/{y}`], head: info.head && {url: file, bytes: info.head}};
         } else if (!src.tiles && src.url) {
             const url = base ? new URL(src.url, base).href : src.url;
-            const res = await fetchFn(url);
-            if (!res.ok) throw new Error(`Failed to load source ${url}: ${res.status}`);
-            src = {...await res.json(), ...Object.fromEntries(Object.entries(raw).filter(([k]) => k !== 'url'))};
+            const json = await once(raw, url, async () => {
+                const res = await fetchFn(url);
+                if (!res.ok) throw new Error(`Failed to load source ${url}: ${res.status}`);
+                return res.json();
+            }, partial);
+            if (json === SKIP) continue;
+            src = {...json, ...Object.fromEntries(Object.entries(raw).filter(([k]) => k !== 'url'))};
             src.tiles = src.tiles.map((t: string) => decodeURI(new URL(t, url).href));
         } else if (base) {
             src = {...src, tiles: src.tiles.map((t: string) => t.startsWith(PM_PREFIX) ? t : decodeURI(new URL(t, base).href))};
@@ -118,7 +151,7 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
     const unsupported = new Set<string>();
     const layers = (style.layers as LayerJSON[]).filter(l => {
         const ok = LAYER_TYPES.has(l.type) && (l.type === 'background' || !!sources[l.source!]);
-        if (!ok) unsupported.add(l.type);
+        if (!LAYER_TYPES.has(l.type)) unsupported.add(l.type);
         return ok;
     });
     // A style has one sprite (a URL) or a list of sprites with ids. A list goes to the engine as text (see loadIcons).
@@ -138,7 +171,7 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
     // `state` in a style gives each property a default; values set at runtime arrive already resolved.
     const rawState = (style as any).state as Record<string, any> | undefined;
     const state = rawState && Object.fromEntries(Object.entries(rawState).map(([k, v]) => [k, v && typeof v === 'object' && 'default' in v ? v.default : v]));
-    return {layers, sources, unsupported: [...unsupported], sprite, fonts, terrain, state, light: (style as any).light};
+    return {layers, sources, unsupported: [...unsupported], sprite, fonts, terrain, state, light: (style as any).light, waiting: partial && Object.keys(style.sources ?? {}).some(id => !sources[id] && fetched.get(style.sources[id]) && !fetched.get(style.sources[id])!.err)};
 }
 
 export function tileURL(src: SourceInfo, z: number, x: number, y: number) {
