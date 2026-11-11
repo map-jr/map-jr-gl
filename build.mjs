@@ -52,7 +52,7 @@ const workerSrc = readFileSync('dist/map-jr-gl-worker.js', 'utf8');
 // The default build. The page loads map-jr-gl.js, which is small; it finds map-jr-gl-worker.js beside itself, and the
 // engine for main-thread rendering is a separate chunk that is only fetched if that path is taken.
 const esm = (input, extra = {}) => ({
-    rollupOptions: {input, external: ['vue'], preserveEntrySignatures: 'strict', output: {format: 'es', entryFileNames: '[name].js', chunkFileNames: 'map-jr-gl-[name]-[hash].js', ...extra}},
+    rollupOptions: {input, external: ['vue', 'map-jr-gl/server'], preserveEntrySignatures: 'strict', output: {format: 'es', entryFileNames: '[name].js', chunkFileNames: 'map-jr-gl-[name]-[hash].js', ...extra}},
 });
 // Two entries in one build, so that they share their chunks: the main entry (the new API) and the entry that is a
 // replacement for MapLibre GL JS.

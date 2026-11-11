@@ -33,8 +33,6 @@ export function useMap(container: MaybeRefOrGetter<HTMLElement | null | undefine
     return {host, state};
 }
 
-const SERVER = 'map-jr-gl/server';
-
 /**
  * The map as a component. It fills its parent element, so give the parent a height.
  *
@@ -106,7 +104,10 @@ export const MapJr = defineComponent({
         onServerPrefetch(async () => {
             if (!props.ssr) return;
             const view = {...props.initialView, ...props.view}, size = props.ssr === true ? {width: 800, height: 500} : props.ssr;
-            const server = await import(/* @vite-ignore */ SERVER) as typeof import('./server.ts');
+            // (By the name of the package, so that this file does not contain the server renderer, and so that a tool that
+            // collects the files of a server finds it.)
+            // @ts-ignore: the package refers to itself, which the type check of this project does not resolve
+            const server = await import('map-jr-gl/server') as typeof import('./server.ts');
             svg.value = (await server.renderToSVG({style: props.mapStyle, center: view.center ?? [0, 0], zoom: view.zoom ?? 0, bearing: view.bearing, ...size, markers: props.markers})).svg;
         });
         return () => h('div', {class: 'map-jr-vue', style: 'position:relative;width:100%;height:100%'}, [
