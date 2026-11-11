@@ -1124,7 +1124,10 @@ export class GLRenderer {
         // from nothing). A missing one shows its ancestor's picture meanwhile, so spreading the work costs no holes.
         // While the camera moves, less of this work is done in one frame: a smooth movement is more important than
         // pictures that are complete a moment sooner.
-        let budget = s.moving ? 1 : 2, fresh = !this.drapes.size ? Infinity : s.moving ? 1 : 3, behind = false;
+        // One picture is a pass over all the layers of the style: as many WebGL calls as the frame itself. So while the
+        // camera moves, a picture is made only in each third frame. The picture of a coarser tile shows meanwhile.
+        const turn = !s.moving || this.frame % 3 === 0;
+        let budget = !turn ? 0 : s.moving ? 1 : 2, fresh = !this.drapes.size ? Infinity : !turn ? 0 : s.moving ? 1 : 3, behind = false;
         for (const t of s.terrain!.tiles) {
             let d = this.drapes.get(t.key);
             // 1024 pixels a side at most (what MapLibre uses): larger pictures cost high-density phones frames for little gain.
