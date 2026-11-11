@@ -85,6 +85,21 @@ The choices:
 
 This was not changed. Each choice is one line in `src/map.ts` (where `wantWorker` is set).
 
+After the work on terrain tiles (fewer tiles, the level of detail of MapLibre GL JS, ground images that are made
+once), the difference is smaller. These are the frames that the page counted for each second, and the longest time
+between two frames, in three measurements of the terrain scenario on the same kind of macOS machine (the screen
+shows 60 frames each second at most):
+
+| 3D terrain in WebKit | Frames for each second | Longest time between two frames |
+|---|---|---|
+| This library, main thread | 59.6, 59.5, 59.8 | 33, 30, 28 ms |
+| This library, worker | 55.9, 52.7, 51.3 | 28, 31, 33 ms |
+| MapLibre GL JS | 59.1, 58.3, 55.5 | 57, 59, 81 ms |
+
+The worker now draws 6 to 14% fewer frames than the main thread, and its longest pause is half of that of
+MapLibre GL JS. The street map is the same in the three (58 to 60). The choices above are the same; the reason for
+choice 2 is weaker than before.
+
 ## Findings from running react-map-gl
 
 The scenario `test/conformance/plugins/react.js` runs `@vis.gl/react-maplibre` (the MapLibre part of react-map-gl,
