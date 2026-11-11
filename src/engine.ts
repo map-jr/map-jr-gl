@@ -887,7 +887,10 @@ export class Engine {
         this.tiles.set(key, t);
         t.rev = ++this.tilesVersion;
         let load: Promise<GLTile>;
-        if (isGeometrySource(src)) {
+        const b = src.bounds, n = 2 ** id.z;
+        // A tile outside the bounds of the source is empty, without a request.
+        if (b && (id.x + 1 <= mercX(b[0]) * n || id.x >= mercX(b[2]) * n || id.y + 1 <= mercY(b[3]) * n || id.y >= mercY(b[1]) * n)) load = Promise.resolve({labels: {}, batches: {}});
+        else if (isGeometrySource(src)) {
             const backend = this.backends[this.nextBackend++ % this.backends.length], req = this.nextReq++;
             t.cancel = () => backend.cancel(req);
             load = backend.load({id: req, source, url, z: t.band = this.buildZoom(source, id), overscaled: id.z >= src.maxzoom}).then(tile => this.upload(tile));

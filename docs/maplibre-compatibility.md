@@ -45,6 +45,7 @@ The [status table](../README.md#status) gives the current test results.
 | `setMaxBounds` | Keeps all of the view in the bounds. | Keeps the map centre in the bounds. |
 | The `hash` option | The camera in the fragment of the URL. | The same, with the same format. |
 | Tile URLs | `{z}`, `{x}`, `{y}`, `{bbox-epsg-3857}`, `{quadkey}`, `{ratio}`, `{prefix}`; the `scheme` `tms`. | `{z}`, `{x}`, `{y}`, `{bbox-epsg-3857}` (for WMS servers), `{quadkey}`; the `scheme` `tms`. Not `{ratio}` and `{prefix}`. |
+| The `bounds` of a source | A tile outside the bounds is not requested. | The same, for bounds in the style and in the TileJSON. Not for the bounds in the header of a PMTiles file. |
 | GeoJSON sources | `setData`, `getData`, `updateData`, the cluster methods. | The same. `updateData` makes the new data from the old data and the changes, and then replaces the data of the source in one step. |
 | `Marker` and `Popup` | Rotation, pitch alignment, offsets, class names. | The same methods. `pitchAlignment` is kept but has no effect: a marker is always upright on the screen. |
 | TypeScript types | Exports types and classes such as `MapMouseEvent`, `StyleSpecification`, `GeoJSONSource`. | Exports types with the same names (`src/compat-types.ts`). The event and source names are types only: you cannot use them with `new` or `instanceof`. The style types do not check each property. |
