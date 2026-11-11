@@ -104,12 +104,15 @@ export function placeLabels(
             const t = Math.min(1, Math.max(0, tr.zoom - it.id.z));
             for (const l of labels) {
                 if (l.x < it.clip[0] || l.y < it.clip[1] || l.x >= it.clip[2] || l.y >= it.clip[3]) continue;
-                const [ax, ay] = tr.projectTile(it.id, l.x, l.y);
+                const [ax, ay, depth] = tr.projectTile(it.id, l.x, l.y);
                 if (ax < -margin || ay < -margin || ax > tr.width + margin || ay > tr.height + margin) continue;
                 if (tr.heightAt) { const n = 2 ** it.id.z; if (tr.occluded((it.id.x + it.id.w * n + l.x / EXTENT) / n, (it.id.y + l.y / EXTENT) / n)) continue; }
                 // (A size that is the same for the layer is found at the zoom of the map. A size for each feature is known at
                 // two levels only, and is mixed between them.)
-                const size = L.p.size.dd ? l.size0 + (l.size1 - l.size0) * t : L.p.size.eval(tr.zoom), s = size / EM, line = l.angle !== null;
+                // On a tilted map, labels and icons far from the camera are smaller and near ones are larger, by half of what
+                // the perspective does to the map itself (as in MapLibre).
+                const persp = tr.pitch ? Math.min(4, 0.5 + 0.5 * tr.cameraDistance / depth) : 1;
+                const size = (L.p.size.dd ? l.size0 + (l.size1 - l.size0) * t : L.p.size.eval(tr.zoom)) * persp, s = size / EM, line = l.angle !== null;
                 const alpha = L.p.opacity.dd ? 1 : L.p.opacity.eval(tr.zoom);
                 const meta = l.icon ? icons?.(l.icon.name) : undefined;
                 const shaped = l.text ? shaper.shape(l.text, l.font, line ? 1e3 : l.maxWidth, l.spacing, l.lineHeight, l.size0) : null;
@@ -201,7 +204,7 @@ export function placeLabels(
 
                 let icon: PlacedIcon | undefined, iconBox: Box | null = null;
                 if (meta && l.icon) {
-                    const ic = l.icon, fit = hasText && textBox ? ic.fit : 'none', isize = L.p.iconSize.dd ? ic.size + (ic.size1 - ic.size) * t : L.p.iconSize.eval(tr.zoom);
+                    const ic = l.icon, fit = hasText && textBox ? ic.fit : 'none', isize = (L.p.iconSize.dd ? ic.size + (ic.size1 - ic.size) * t : L.p.iconSize.eval(tr.zoom)) * persp;
                     let iw = meta.width / meta.pixelRatio * isize, ih = meta.height / meta.pixelRatio * isize;
                     // The anchor names the part of the icon that sits on the point.
                     let ix = ax + ic.offset[0] * isize + (ic.anchor.includes('left') ? iw / 2 : ic.anchor.includes('right') ? -iw / 2 : 0);

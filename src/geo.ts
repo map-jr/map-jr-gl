@@ -183,11 +183,11 @@ export class Transform {
     }
 
     /** A point in a tile (tile units, optional height in metres) to screen pixels. */
-    projectTile(id: TileID, x: number, y: number, metres?: number): [number, number] {
+    /** Tile units to screen pixels. The third value is the distance from the camera, in pixels along the view direction. */
+    projectTile(id: TileID, x: number, y: number, metres?: number): [number, number, number] {
         const ws = this.worldSize, n = 2 ** id.z, s = ws / n / EXTENT;
         metres ??= this.heightAt ? this.heightAt((id.x + x / EXTENT) / n, (id.y + y / EXTENT) / n) : this.elevation;
-        const [sx, sy] = this.view((id.x + id.w * n) * ws / n - mercX(this.lng) * ws + x * s, id.y * ws / n - mercY(this.lat) * ws + y * s, (metres - this.elevation) * this.pixelsPerMetre);
-        return [sx, sy];
+        return this.view((id.x + id.w * n) * ws / n - mercX(this.lng) * ws + x * s, id.y * ws / n - mercY(this.lat) * ws + y * s, (metres - this.elevation) * this.pixelsPerMetre);
     }
 
     /** Tile units (x, y) and metres (z) to clip space, as a column-major 4x4 matrix for the GPU. */
