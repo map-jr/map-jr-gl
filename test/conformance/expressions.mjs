@@ -9,7 +9,7 @@ import path from 'node:path';
 const root = path.resolve(import.meta.dirname, '../..'), repo = path.join(root, '.cache/maplibre-style-spec');
 if (!existsSync(repo)) execSync(`git clone --depth 1 -q https://github.com/maplibre/maplibre-style-spec.git "${repo}"`, {stdio: 'inherit'});
 await build({entryPoints: [path.join(root, 'src/expr.ts')], bundle: true, format: 'esm', outfile: path.join(root, '.cache/expr.mjs'), logLevel: 'error'});
-const {compileExpr, compileProp, parseColor} = await import(path.join(root, '.cache/expr.mjs'));
+const {compileExpr, compileProp, parseColor, setGlobalState} = await import(path.join(root, '.cache/expr.mjs'));
 const warn = console.warn; console.warn = () => {};
 
 const TYPES = {Point: 1, MultiPoint: 1, LineString: 2, MultiLineString: 2, Polygon: 3, MultiPolygon: 3};
@@ -32,16 +32,21 @@ const walk = dir => {
         if (t.expected?.compiled?.result !== 'success' || !t.inputs) { skipped++; r.skipped++; continue; }
         let ok = true, why = '';
         try {
+            setGlobalState(t.globalState);
             const isColor = t.propertySpec?.type === 'color' || t.expected.compiled.type === 'color';
             // Legacy "function" objects ({stops: ...}) go through the property compiler, as they do in a real style.
             const legacy = !Array.isArray(t.expression) && typeof t.expression === 'object' && t.expression !== null;
             const prop = legacy ? compileProp(t.expression, isColor ? 'color' : t.propertySpec?.type === 'number' ? 'number' : 'string', t.propertySpec?.default ?? null) : null;
             const fn = prop ? c => prop.eval(c.zoom, c.f) : compileExpr(t.expression, {dd: false, zoom: false});
             t.inputs.forEach(([globals, feature], i) => {
-                const want = t.expected.outputs[i];
+                // Fixtures write arrays of numbers or colours as {values: [...]}, and a colour in an array as {r, g, b, a}.
+                const plain = v => v && typeof v === 'object' && !Array.isArray(v) && 'r' in v && 'a' in v ? [v.r, v.g, v.b, v.a] : v;
+                let want = t.expected.outputs[i];
+                if (want && typeof want === 'object' && Array.isArray(want.values)) want = want.values.map(plain);
                 if (want && typeof want === 'object' && !Array.isArray(want) && 'error' in want) return; // runtime-error cases
-                let got = fn({zoom: globals?.zoom ?? 0, f: {type: TYPES[feature?.geometry?.type] ?? 0, id: feature?.id, properties: feature?.properties ?? {}}});
+                let got = fn({zoom: globals?.zoom ?? 0, density: globals?.heatmapDensity, f: {type: TYPES[feature?.geometry?.type] ?? 0, id: feature?.id, properties: feature?.properties ?? {}, state: feature?.featureState}});
                 if (isColor && typeof got === 'string') got = parseColor(got);
+                if (Array.isArray(got) && Array.isArray(want) && want.some(Array.isArray)) got = got.map(v => typeof v === 'string' ? parseColor(v) ?? v : v);
                 // Fixtures record colours with alpha premultiplied.
                 if (isColor && Array.isArray(got) && got.length === 4) got = [got[0] * got[3], got[1] * got[3], got[2] * got[3], got[3]];
                 if (!same(got, want)) { ok = false; why ||= `input ${i}: got ${JSON.stringify(got)}, want ${JSON.stringify(want)}`; }

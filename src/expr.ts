@@ -101,11 +101,44 @@ export function colorRamp(expression: unknown): Uint8Array {
     return out;
 }
 
+/** The `colorSpace` of a legacy function. */
+const SPACES: Record<string, 'hcl' | 'lab' | undefined> = {hcl: 'hcl', lab: 'lab'};
+const SURROGATE = /[\ud800-\udfff]/;
+
+// Colours in the CIELAB space (and its polar form, HCL), with the constants that MapLibre uses.
+const XN = 0.96422, ZN = 0.82521, T0 = 4 / 29, T1 = 6 / 29, T2 = 3 * T1 * T1, T3 = T1 * T1 * T1;
+const toLinear = (v: number) => v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+const fromLinear = (v: number) => Math.min(1, Math.max(0, v <= 0.00304 ? 12.92 * v : 1.055 * v ** (1 / 2.4) - 0.055));
+const labF = (t: number) => t > T3 ? Math.cbrt(t) : t / T2 + T0, labInv = (t: number) => t > T1 ? t * t * t : T2 * (t - T0);
+function toLab([r, g, b, a]: RGBA): number[] {
+    r = toLinear(r); g = toLinear(g); b = toLinear(b);
+    const x = labF((0.4360747 * r + 0.3850649 * g + 0.1430804 * b) / XN), y = labF(0.2225045 * r + 0.7168786 * g + 0.0606169 * b), z = labF((0.0139322 * r + 0.0971045 * g + 0.7141733 * b) / ZN);
+    return [116 * y - 16, 500 * (x - y), 200 * (y - z), a];
+}
+function fromLab([l, a, b, alpha]: number[]): RGBA {
+    let y = (l + 16) / 116, x = y + a / 500, z = y - b / 200;
+    x = XN * labInv(x); y = labInv(y); z = ZN * labInv(z);
+    return color([fromLinear(3.1338561 * x - 1.6168667 * y - 0.4906146 * z), fromLinear(-0.9787684 * x + 1.9161415 * y + 0.0334540 * z), fromLinear(0.0719453 * x - 0.2289914 * y + 1.4052427 * z), alpha]);
+}
+/** Interpolates two colours in Lab, or in HCL where the hue takes the short way round. */
+function lerpInSpace(from: RGBA, to: RGBA, t: number, space: 'hcl' | 'lab'): RGBA {
+    const a = toLab(from), b = toLab(to), mix = (i: number) => a[i] + (b[i] - a[i]) * t;
+    if (space === 'lab') return fromLab([mix(0), mix(1), mix(2), mix(3)]);
+    const c0 = Math.hypot(a[1], a[2]), c1 = Math.hypot(b[1], b[2]);
+    let h0 = Math.atan2(a[2], a[1]), h1 = Math.atan2(b[2], b[1]);
+    // A grey has no hue of its own: it takes the hue of the other colour.
+    if (c0 < 1e-4) h0 = h1; else if (c1 < 1e-4) h1 = h0;
+    let dh = h1 - h0;
+    if (dh > Math.PI) dh -= 2 * Math.PI; else if (dh < -Math.PI) dh += 2 * Math.PI;
+    const h = h0 + dh * t, ch = c0 + (c1 - c0) * t;
+    return fromLab([mix(0), Math.cos(h) * ch, Math.sin(h) * ch, mix(3)]);
+}
+
 function colorize(v: any): any {
     return typeof v === 'string' ? (parseColor(v) ?? v) : v;
 }
 
-function interpolator(base: number, stops: number[], outs: Fn[], input: Fn, step: boolean, ease?: (t: number) => number): Fn {
+function interpolator(base: number, stops: number[], outs: Fn[], input: Fn, step: boolean, ease?: (t: number) => number, space?: 'hcl' | 'lab'): Fn {
     const n = stops.length;
     return c => {
         const x = input(c);
@@ -113,11 +146,19 @@ function interpolator(base: number, stops: number[], outs: Fn[], input: Fn, step
         if (x >= stops[n - 1]) return colorize(outs[n - 1](c));
         let i = 1;
         while (stops[i] <= x) i++;
+        while (i > 1 && stops[i - 1] === x && stops[i - 2] === x) i--; // of stops with the same input, the first one applies
         if (step) return colorize(outs[i - 1](c));
         const x0 = stops[i - 1], x1 = stops[i];
+        if (x1 === x0) return colorize(outs[i - 1](c));
         const t = ease ? ease((x - x0) / (x1 - x0)) : base === 1 ? (x - x0) / (x1 - x0) : (base ** (x - x0) - 1) / (base ** (x1 - x0) - 1);
-        return lerp(colorize(outs[i - 1](c)), colorize(outs[i](c)), t);
+        const from = colorize(outs[i - 1](c)), to = colorize(outs[i](c));
+        return mixValues(from, to, t, space);
     };
+}
+/** Interpolates numbers, colours (in the colour space, if one is given) and arrays of these. */
+function mixValues(from: any, to: any, t: number, space?: 'hcl' | 'lab'): any {
+    if (Array.isArray(from) && Array.isArray(to) && !COLORS.has(from) && typeof from[0] !== 'number') return from.map((v, i) => mixValues(colorize(v), colorize(to[i]), t, space));
+    return space && COLORS.has(from) && COLORS.has(to) ? lerpInSpace(from as RGBA, to as RGBA, t, space) : lerp(from, to, t);
 }
 
 const cmp: Record<string, (a: any, b: any) => boolean> = {
@@ -143,6 +184,13 @@ export function compileExpr(e: any, flags: Flags): Fn {
     const args = (from = 1) => e.slice(from).map((x: any) => compileExpr(x, flags)) as Fn[];
     switch (op) {
         case 'literal': { const v = e[1]; return () => v; }
+        case 'semiliteral': {
+            // An array whose items can be expressions; other values are literals.
+            const v = e[1];
+            if (!Array.isArray(v)) return () => v;
+            const items = v.map(x => Array.isArray(x) ? compileExpr(x, flags) : () => x);
+            return c => items.map(f => f(c));
+        }
         case 'get': {
             flags.dd = true;
             if (typeof e[1] === 'string' && e.length === 2) { const k = e[1]; return c => c.f?.properties[k] ?? null; }
@@ -210,7 +258,7 @@ export function compileExpr(e: any, flags: Flags): Fn {
             const kind = e[1], input = arg(2), stops: number[] = [], outs: Fn[] = [];
             for (let i = 3; i + 1 < e.length; i += 2) { stops.push(e[i]); outs.push(arg(i + 1)); }
             return interpolator(kind[0] === 'exponential' ? kind[1] : 1, stops, outs, input, false,
-                kind[0] === 'cubic-bezier' ? bezier(kind[1], kind[2], kind[3], kind[4]) : undefined);
+                kind[0] === 'cubic-bezier' ? bezier(kind[1], kind[2], kind[3], kind[4]) : undefined, op === 'interpolate-hcl' ? 'hcl' : op === 'interpolate-lab' ? 'lab' : undefined);
         }
         case 'to-string': {
             const a = arg(1);
@@ -228,7 +276,12 @@ export function compileExpr(e: any, flags: Flags): Fn {
         case 'to-number': case 'number': {
             const a = args();
             return c => {
-                for (const f of a) { const v = f(c); const n = op === 'number' ? v : Number(v); if (typeof n === 'number' && !isNaN(n) && v !== null) return n; }
+                for (const f of a) {
+                    const v = f(c);
+                    if (v === null && op === 'to-number') return 0; // as in MapLibre: no value converts to zero
+                    const n = op === 'number' ? v : Number(v);
+                    if (typeof n === 'number' && !isNaN(n) && v !== null && !Array.isArray(v)) return n;
+                }
                 return 0;
             };
         }
@@ -257,9 +310,25 @@ export function compileExpr(e: any, flags: Flags): Fn {
         case 'downcase': { const a = arg(1); return c => String(a(c) ?? '').toLowerCase(); }
         case 'length': { const a = arg(1); return c => { const v = a(c); return typeof v === 'string' ? [...v].length : v?.length ?? 0; }; }
         case 'in': { const a = arg(1), b = arg(2); return c => { const h = b(c); return h ? h.indexOf(a(c)) >= 0 : false; }; }
-        case 'index-of': { const a = arg(1), b = arg(2), from = e.length > 3 ? arg(3) : null; return c => b(c)?.indexOf(a(c), from ? from(c) : undefined) ?? -1; }
+        case 'index-of': {
+            const a = arg(1), b = arg(2), from = e.length > 3 ? arg(3) : null;
+            return c => {
+                const hay = b(c), needle = a(c), start = from ? from(c) : undefined;
+                if (typeof hay !== 'string' || !SURROGATE.test(hay)) return hay?.indexOf(needle, start) ?? -1;
+                // Positions count whole characters, also for characters that take two code units.
+                const chars = [...hay], offset = chars.slice(0, start ?? 0).join('').length, at = hay.indexOf(needle, offset);
+                return at < 0 ? -1 : [...hay.slice(0, at)].length;
+            };
+        }
         case 'at': { const a = arg(1), b = arg(2); return c => b(c)?.[a(c)] ?? null; }
-        case 'slice': { const a = args(); return c => a[0](c)?.slice(a[1](c), a[2] ? a[2](c) : undefined) ?? null; }
+        case 'slice': {
+            const a = args();
+            return c => {
+                const v = a[0](c), from = a[1](c), to = a[2] ? a[2](c) : undefined;
+                if (typeof v === 'string' && SURROGATE.test(v)) return [...v].slice(from, to).join('');
+                return v?.slice(from, to) ?? null;
+            };
+        }
         case '+': { const a = args(); return c => a.reduce((s, f) => s + f(c), 0); }
         case '*': { const a = args(); return c => a.reduce((s, f) => s * f(c), 1); }
         case '-': { const a = args(); return a.length === 1 ? c => -a[0](c) : c => a[0](c) - a[1](c); }
@@ -313,6 +382,8 @@ export function compileExpr(e: any, flags: Flags): Fn {
 function substitute(body: any, name: string, value: any): any {
     if (!Array.isArray(body)) return body;
     if (body[0] === 'var' && body[1] === name) return value;
+    // An inner `let` that gives the name a new value hides the outer one in its body (but not in its own values).
+    if (body[0] === 'let') { for (let i = 1; i + 1 < body.length; i += 2) if (body[i] === name) return body.map((x, k) => k % 2 === 0 && k > 0 && k < body.length - 1 ? substitute(x, name, value) : x); }
     return body.map(x => substitute(x, name, value));
 }
 
@@ -373,7 +444,7 @@ function legacyFunction(v: any, flags: Flags, discrete = false): Fn {
     if (v.property === undefined) {
         flags.zoom = true;
         const numeric = typeof stops[0]?.[1] === 'number' || typeof stops[0]?.[1] === 'string' && !!parseColor(stops[0][1]) || Array.isArray(stops[0]?.[1]);
-        return interpolator(v.base ?? 1, stops.map(s => s[0]), outs, c => c.zoom, !numeric || discrete || v.type === 'interval');
+        return interpolator(v.base ?? 1, stops.map(s => s[0]), outs, c => c.zoom, !numeric || discrete || v.type === 'interval', undefined, SPACES[v.colorSpace]);
     }
     flags.dd = true;
     const key = v.property, def = v.default ?? null;
@@ -382,7 +453,7 @@ function legacyFunction(v: any, flags: Flags, discrete = false): Fn {
         const table = new Map(stops.map(s => [s[0], s[1]]));
         return c => colorize(table.get(c.f?.properties[key]) ?? def);
     }
-    const f = interpolator(v.base ?? 1, stops.map(s => s[0]), outs, c => c.f?.properties[key], v.type === 'interval');
+    const f = interpolator(v.base ?? 1, stops.map(s => s[0]), outs, c => c.f?.properties[key], v.type === 'interval', undefined, SPACES[v.colorSpace]);
     return c => typeof c.f?.properties[key] === 'number' ? f(c) : def;
 }
 
