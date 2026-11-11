@@ -1103,7 +1103,7 @@ export class Engine {
             if (m.hideOverlaps && m.gpu && m.data) {
                 // Markers compete for space among themselves, first come first served, exactly as labels do.
                 const own = new CollisionGrid();
-                let changed = false;
+                const changed: number[] = [];
                 for (let i = 0; i < m.variant.length; i++) {
                     const s = m.scale?.[i] ?? 1, mx = m.merc[i * 2] + Math.round(mercX(tr.lng) - m.merc[i * 2]), [x, y] = tr.mercToScreen(mx, m.merc[i * 2 + 1]);
                     const x0 = x + m.offset[0] * s, y0 = y + m.offset[1] * s, x1 = x0 + m.width * s, y1 = y0 + m.height * s;
@@ -1112,9 +1112,15 @@ export class Engine {
                     if (x0 > tr.width || y0 > tr.height || x1 < 0 || y1 < 0) show = was; // off screen: leave as it was
                     else if (own.hits(x0, y0, x1, y1)) show = 0;
                     else { own.insert(x0, y0, x1, y1); if (m.collide) grid.insert(x0, y0, x1, y1); }
-                    if (was !== show) { this.setMarkerValue(m, i, 11, show); changed = true; }
+                    if (was !== show) { this.setMarkerValue(m, i, 11, show); changed.push(i); }
                 }
-                if (changed) this.renderer.updateMarkers(m.gpu, m.data);
+                // Send only what changed: a few markers one by one, or else the part of the buffer that holds them all.
+                // (The whole buffer of a large layer is some megabytes, and this runs each time labels are placed.)
+                if (changed.length && changed.length <= 64) for (const i of changed) this.renderer.updateMarker(m.gpu, i, m.data.subarray(i * MARKER_FLOATS, (i + 1) * MARKER_FLOATS));
+                else if (changed.length) {
+                    const first = changed[0], last = changed[changed.length - 1];
+                    this.renderer.updateMarker(m.gpu, first, m.data.subarray(first * MARKER_FLOATS, (last + 1) * MARKER_FLOATS));
+                }
                 continue;
             }
             if (!m.collide) continue;

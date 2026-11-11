@@ -669,12 +669,7 @@ export class GLRenderer {
         gl.bufferSubData(gl.ARRAY_BUFFER, 0, perVertex);
     }
     removeMarkers(m: MarkerBuffers) { this.gl.deleteVertexArray(m.vao); this.gl.deleteBuffer(m.buffer); this.gl.deleteBuffer(m.index); this.gl.deleteBuffer(m.heights); }
-    /** Rewrites every marker's instance data in place, e.g. after overlap hiding re-decides what shows. */
-    updateMarkers(m: MarkerBuffers, data: Float32Array) {
-        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, m.buffer);
-        this.gl.bufferSubData(this.gl.ARRAY_BUFFER, 0, data);
-    }
-    /** Rewrites one marker's instance data, e.g. while its scale animates. */
+    /** Rewrites the instance data of one marker, or of a run of markers that starts at `index`. */
     updateMarker(m: MarkerBuffers, index: number, values: Float32Array) {
         this.gl.bindBuffer(this.gl.ARRAY_BUFFER, m.buffer);
         this.gl.bufferSubData(this.gl.ARRAY_BUFFER, index * MARKER_FLOATS * 4, values);
