@@ -24,3 +24,15 @@ shows how many of the audited packages use each one.
 | `setRenderWorldCopies(false)` | 4 packages pass the option through | The map always draws the copies of the world. |
 | Source classes (`GeoJSONSource`, `VectorTileSource` and others) and event classes as exports | 1 to 3 packages each | Most uses are type checks. `getSource()` returns a plain object with the methods of the source. |
 | Opt-in features (a smaller worker without 3D terrain, contours and others) | | Discussed with the owner: not wanted unless features can be selected with imports or configuration in a build. That needs the features as separate registered modules, which is a large change. |
+
+## Findings from the cross-browser runs
+
+The workflow `Browsers` runs the benchmark and the behaviour tests in Chromium, Firefox and WebKit on Linux, macOS
+and Windows. Its results are on the branch `bench-results`. These points are for the owner to know:
+
+| Finding | State |
+|---|---|
+| 3D terrain was slower in a worker than on the main thread in each browser, and slower than MapLibre GL JS in WebKit (the engine of Safari). This agrees with what the owner saw on an iPhone. | The causes were work on the CPU for each frame (mesh heights, the source tiles of each ground tile) and ground textures that were made again while the map turned. They are corrected. The next runs show the new numbers. |
+| WebKit did not load web fonts inside a worker, so labels used a fallback font. | Corrected: the engine fetches the font file and gives the browser its bytes. |
+| Elevation tiles are decoded in tile workers with `OffscreenCanvas`. Safari before version 16.4 (March 2023) does not have it in workers. | Not changed. Terrain, relief shading and contours do not work there (they did not before, for the same reason). The library has its own PNG and WebP decoders for the server; to use them in the browser adds about 2.5 KB to the worker. |
+| WebKit on Linux and Windows cannot draw WebGL in a worker. | The library uses the main thread there, as designed. Safari on macOS and iOS can. |
