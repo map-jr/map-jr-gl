@@ -1272,68 +1272,69 @@ export class GLRenderer {
         return new Float32Array(out);
     }
 
-    private textQuads(labels: Placed[]): ArrayBuffer {
+    /** Kept between frames and grown when necessary: text is rebuilt on each frame, and must not make garbage. */
+    private textData = new ArrayBuffer(0);
+    private textQuads(labels: Placed[]): Uint8Array {
         let glyphCount = 0;
         for (const l of labels) if (l.shaped) for (const line of l.shaped.lines) glyphCount += line.glyphs!.length;
-        const buf = new ArrayBuffer(glyphCount * 6 * 36), f = new Float32Array(buf), b = new Uint8Array(buf);
+        if (this.textData.byteLength < glyphCount * 6 * 36) this.textData = new ArrayBuffer(Math.ceil(glyphCount * 1.5) * 6 * 36);
+        const buf = this.textData, f = new Float32Array(buf), b = new Uint8Array(buf);
         let o = 0;
         const B = SDF_BUFFER;
+        // The state of the label in work. `glyph` reads it, so that no objects are made for each glyph.
+        let hedge = 0, gamma = 0, haloGamma = 0, c0 = 0, c1 = 0, c2 = 0, c3 = 0, h0 = 0, h1 = 0, h2 = 0, h3 = 0;
+        /** One glyph: two triangles about the origin (ox, oy), turned by the angle whose cosine and sine are given. */
+        const glyph = (g: {x: number; y: number; w: number; h: number}, ox: number, oy: number, cos: number, sin: number, x0: number, y0: number, x1: number, y1: number) => {
+            for (let k = 0; k < 6; k++) {
+                const right = k === 1 || k === 3 || k === 4, low = k === 2 || k === 4 || k === 5;
+                const cx = right ? x1 : x0, cy = low ? y1 : y0, fi = o >> 2;
+                f[fi] = ox + cx * cos - cy * sin;
+                f[fi + 1] = oy + cx * sin + cy * cos;
+                f[fi + 2] = right ? g.x + g.w : g.x;
+                f[fi + 3] = low ? g.y + g.h : g.y;
+                b[o + 16] = c0; b[o + 17] = c1; b[o + 18] = c2; b[o + 19] = c3;
+                b[o + 20] = h0; b[o + 21] = h1; b[o + 22] = h2; b[o + 23] = h3;
+                f[fi + 6] = hedge;
+                f[fi + 7] = gamma;
+                f[fi + 8] = haloGamma;
+                o += 36;
+            }
+        };
         for (const l of labels) {
             if (!l.shaped) continue;
             const shaped = l.shaped;
             const s = l.size / EM, cos = Math.cos(l.angle), sin = Math.sin(l.angle), src = l.src;
             // Where the halo's outer edge sits in distance-field units, limited by how far the field extends.
-            const hedge = src.haloWidth > 0 && src.halo[3] > 0 ? Math.max(0.75 - (B - 0.75) / SDF_RADIUS, 0.75 - src.haloWidth / s / SDF_RADIUS) : 2;
-            const gamma = 0.7 / (SDF_RADIUS * s * this.dpr), haloGamma = gamma + src.haloBlur * 1.19 / s / SDF_RADIUS;
-            const fade = (c: number[]) => [c[0] * 255, c[1] * 255, c[2] * 255, c[3] * 255 * l.opacity].map(Math.round);
-            const col = fade(src.color), halo = fade(src.halo);
+            hedge = src.haloWidth > 0 && src.halo[3] > 0 ? Math.max(0.75 - (B - 0.75) / SDF_RADIUS, 0.75 - src.haloWidth / s / SDF_RADIUS) : 2;
+            gamma = 0.7 / (SDF_RADIUS * s * this.dpr); haloGamma = gamma + src.haloBlur * 1.19 / s / SDF_RADIUS;
+            const col = src.color, halo = src.halo;
+            c0 = Math.round(col[0] * 255); c1 = Math.round(col[1] * 255); c2 = Math.round(col[2] * 255); c3 = Math.round(col[3] * 255 * l.opacity);
+            h0 = Math.round(halo[0] * 255); h1 = Math.round(halo[1] * 255); h2 = Math.round(halo[2] * 255); h3 = Math.round(halo[3] * 255 * l.opacity);
             if (l.curve) {
                 // Text along a line: every glyph has its own origin and rotation.
-                shaped.lines[0].glyphs!.forEach((g, i) => {
-                    if (!g.w) return;
-                    const gx = l.x + l.curve![i * 3], gy = l.y + l.curve![i * 3 + 1], ga = l.curve![i * 3 + 2], gc = Math.cos(ga), gs = Math.sin(ga);
-                    const x0 = (g.left - B) * s, y0 = (-g.top - B) * s, x1 = x0 + g.w * s, y1 = y0 + g.h * s;
-                    for (const [cx, cy, u, v] of [[x0, y0, 0, 0], [x1, y0, 1, 0], [x0, y1, 0, 1], [x1, y0, 1, 0], [x1, y1, 1, 1], [x0, y1, 0, 1]]) {
-                        const fi = o / 4;
-                        f[fi] = gx + cx * gc - cy * gs;
-                        f[fi + 1] = gy + cx * gs + cy * gc;
-                        f[fi + 2] = g.x + u * g.w;
-                        f[fi + 3] = g.y + v * g.h;
-                        b.set(col, o + 16);
-                        b.set(halo, o + 20);
-                        f[fi + 6] = hedge;
-                        f[fi + 7] = gamma;
-                        f[fi + 8] = haloGamma;
-                        o += 36;
-                    }
-                });
+                const glyphs = shaped.lines[0].glyphs!, curve = l.curve;
+                for (let i = 0; i < glyphs.length; i++) {
+                    const g = glyphs[i];
+                    if (!g.w) continue;
+                    const ga = curve[i * 3 + 2], x0 = (g.left - B) * s, y0 = (-g.top - B) * s;
+                    glyph(g, l.x + curve[i * 3], l.y + curve[i * 3 + 1], Math.cos(ga), Math.sin(ga), x0, y0, x0 + g.w * s, y0 + g.h * s);
+                }
                 continue;
             }
-            shaped.lines.forEach((line, i) => {
-                const justify = l.justify ?? src.justify;
+            const justify = l.justify ?? src.justify, step = src.spacing * EM;
+            for (let i = 0; i < shaped.lines.length; i++) {
+                const line = shaped.lines[i];
                 let pen = justify < 0 ? -shaped.width / 2 : justify > 0 ? shaped.width / 2 - line.width : -line.width / 2;
                 const baseline = -shaped.height / 2 + i * shaped.lineHeight + shaped.lineHeight * 0.5 + EM * BASELINE;
                 for (const g of line.glyphs!) {
                     if (g.w) {
-                        const x0 = (pen + g.left - B) * s, y0 = (baseline - g.top - B) * s, x1 = x0 + g.w * s, y1 = y0 + g.h * s;
-                        for (const [cx, cy, u, v] of [[x0, y0, 0, 0], [x1, y0, 1, 0], [x0, y1, 0, 1], [x1, y0, 1, 0], [x1, y1, 1, 1], [x0, y1, 0, 1]]) {
-                            const fi = o / 4;
-                            f[fi] = l.x + cx * cos - cy * sin;
-                            f[fi + 1] = l.y + cx * sin + cy * cos;
-                            f[fi + 2] = g.x + u * g.w;
-                            f[fi + 3] = g.y + v * g.h;
-                            b.set(col, o + 16);
-                            b.set(halo, o + 20);
-                            f[fi + 6] = hedge;
-                            f[fi + 7] = gamma;
-                        f[fi + 8] = haloGamma;
-                            o += 36;
-                        }
+                        const x0 = (pen + g.left - B) * s, y0 = (baseline - g.top - B) * s;
+                        glyph(g, l.x, l.y, cos, sin, x0, y0, x0 + g.w * s, y0 + g.h * s);
                     }
-                    pen += g.advance + src.spacing * EM;
+                    pen += g.advance + step;
                 }
-            });
+            }
         }
-        return buf.slice(0, o);
+        return b.subarray(0, o);
     }
 }
