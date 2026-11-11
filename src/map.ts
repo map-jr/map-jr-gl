@@ -585,10 +585,10 @@ export class Map {
     /** With 3D terrain: the (exaggerated) height of the ground at the map centre in metres; otherwise 0. */
     getCenterElevation() { return this.tr.elevation; }
     getCameraTargetElevation() { return this.tr.elevation; }
-    /** With 3D terrain: how far the ground at a position is above the ground at the map centre, in exaggerated metres (as in MapLibre); `null` without terrain. */
+    /** With 3D terrain: the height of the ground at a position, in metres above sea level multiplied by the exaggeration (as in MapLibre); `null` without terrain. */
     queryTerrainElevation(lngLat: LngLatLike): number | null {
         const [lng, lat] = toLngLat(lngLat);
-        return this.tr.heightAt ? this.tr.heightAt(mercX(lng), mercY(lat)) - this.tr.elevation : null;
+        return this.tr.heightAt ? this.tr.heightAt(mercX(lng), mercY(lat)) : null;
     }
     isZooming() { return this.zooming; }
     isRotating() { return this.rotating; }

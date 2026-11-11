@@ -135,8 +135,9 @@ const metres = await map.queryElevation([7.6586, 45.9763]);
 With 3D terrain, these methods are also available:
 
 - `map.getCenterElevation()` gives the height of the ground at the map centre, with the exaggeration applied.
-- `map.queryTerrainElevation(lngLat)` gives the height of a position above the map centre, with the exaggeration
-  applied. This is the same as MapLibre GL JS.
+- `map.queryTerrainElevation(lngLat)` gives the height of the ground at a position in metres above sea level, with
+  the exaggeration applied. This is the same as MapLibre GL JS version 5 and later. (Earlier versions gave the
+  height above the map centre.)
 
 ## On the server
 

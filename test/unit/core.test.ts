@@ -399,8 +399,11 @@ test('terrain: projections follow the ground height, and tile selection reaches 
     // Sea level is now far below the centre: it appears lower on screen, and the view reaches more tiles down there.
     const low = t.projectTile({z: 13, x: 4270, y: 2915, w: 0, key: ''}, 2048, 2048, 0);
     assert.ok(low[1] > same[1] + 20);
+    // (With terrain, far tiles have less detail, by the rule of MapLibre: fewer tiles for the same area.)
+    const level = t.coveringTiles(0, 22).length;
+    assert.ok(level <= flat, `${level} tiles with terrain, ${flat} without`);
     t.groundRange = [0, 3000];
-    assert.ok(t.coveringTiles(0, 22).length > flat);
+    assert.ok(t.coveringTiles(0, 22).length > level);
     // Unprojecting onto a lower plane and projecting a point at that height are inverses.
     const ppm = t.pixelsPerMetre, [mx, my] = t.screenToMerc(650, 200, -3000 * ppm), n = 2 ** 13;
     const back = t.projectTile({z: 13, x: Math.floor(mx * n), y: Math.floor(my * n), w: 0, key: ''}, (mx * n % 1) * 4096, (my * n % 1) * 4096, 0);

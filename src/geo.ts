@@ -293,7 +293,7 @@ export class Transform {
         // loading ever more of them the further out the map goes.
         if (want < minzoom) return [];
         const z = Math.min(want, maxzoom), n = 2 ** z;
-        if (this.pitch > 0.5) return this.coveringPitched(z);
+        if (this.pitch > 0.5) return this.coveringPitched(z, this.zoom + Math.log2(TILE_SIZE / tileSize), round);
         let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
         for (const [mx, my] of this.footprints().flat()) {
             x0 = Math.min(x0, mx); x1 = Math.max(x1, mx);
@@ -314,7 +314,7 @@ export class Transform {
      * Tile cover for a tilted camera. The view is a trapezoid on the ground whose far edge covers much more area,
      * drawn much smaller, so tiles are chosen by descending a quadtree and stopping earlier the farther away a tile is.
      */
-    private coveringPitched(maxZ: number): TileID[] {
+    private coveringPitched(maxZ: number, exact: number, round: boolean): TileID[] {
         // The area to cover: the screen's footprint on the ground (with 3D terrain, the hull of its lowest and highest footprints).
         const pts = this.footprints().flat().sort((p, q) => p[0] - q[0] || p[1] - q[1]);
         const cross = (o: number[], p: number[], q: number[]) => (p[0] - o[0]) * (q[1] - o[1]) - (p[1] - o[1]) * (q[0] - o[0]);
@@ -323,6 +323,7 @@ export class Transform {
         const mid = [quad.reduce((t, q) => t + q[0], 0) / quad.length, quad.reduce((t, q) => t + q[1], 0) / quad.length];
         const d = this.cameraDistance, ws = this.worldSize, cx = mercX(this.lng), cy = mercY(this.lat);
         const depthAt = (mx: number, my: number) => this.view((mx - cx) * ws, (my - cy) * ws)[2];
+        const cam = this.cameraPosition(), camZ = d * Math.cos(this.pitch * Math.PI / 180) / ws;
         // Separating-axis test between that convex area and a tile's square.
         const overlaps = (x0: number, y0: number, x1: number, y1: number) => {
             if (Math.max(...quad.map(q => q[0])) < x0 || Math.min(...quad.map(q => q[0])) > x1 || Math.max(...quad.map(q => q[1])) < y0 || Math.min(...quad.map(q => q[1])) > y1) return false;
@@ -339,8 +340,17 @@ export class Transform {
             const n = 2 ** z, x0 = (x + w * n) / n, y0 = y / n, x1 = x0 + 1 / n, y1 = y0 + 1 / n;
             if (!overlaps(x0, y0, x1, y1)) return;
             // Depth of the tile's nearest point decides how much detail it needs: half the on-screen scale, one level less.
-            const near = Math.min(depthAt(clamp(cx, x0, x1), clamp(cy, y0, y1)), depthAt(x0, y0), depthAt(x1, y0), depthAt(x0, y1), depthAt(x1, y1));
-            const wanted = maxZ - Math.max(0, Math.floor(Math.log2(Math.max(near, 1) / d) + 0.35));
+            let wanted: number;
+            if (this.heightAt) {
+                // With 3D terrain the rule is that of MapLibre, so that both show the same tiles: less detail with the
+                // distance from the camera to the nearest point of the tile, and less again for ground that is seen at
+                // a flat angle. (MapLibre: createCalculateTileZoomFunction, with its default values.)
+                const far = Math.hypot(clamp(cam[0], x0, x1) - cam[0], clamp(cam[1], y0, y1) - cam[1], camZ);
+                wanted = Math.min(maxZ, (round ? Math.round : Math.floor)(exact + Math.log2(d / ws / far) + 0.076 + Math.log2(camZ / far) / 2));
+            } else {
+                const near = Math.min(depthAt(clamp(cx, x0, x1), clamp(cy, y0, y1)), depthAt(x0, y0), depthAt(x1, y0), depthAt(x0, y1), depthAt(x1, y1));
+                wanted = maxZ - Math.max(0, Math.floor(Math.log2(Math.max(near, 1) / d) + 0.35));
+            }
             if (z >= maxZ || z >= wanted) { out.push({z, x, y, w, key: `${z}/${x}/${y}`}); return; }
             for (let i = 0; i < 4; i++) visit(z + 1, x * 2 + (i & 1), y * 2 + (i >> 1), w);
         };

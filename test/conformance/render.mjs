@@ -76,8 +76,9 @@ async function worker(queue) {
                 map.on('error', e => errors.push(String(e.error?.message ?? e.error)));
                 await Promise.race([new Promise(r => map.once('idle', r)), new Promise((_, rej) => setTimeout(() => rej(new Error('timed out' + (errors.length ? ': ' + errors[0] : ''))), 8000))]);
                 await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-                return {errors};
+                return {errors, view: `zoom ${style.zoom} -> ${map.getZoom().toFixed(3)}, centre ${JSON.stringify(style.center)} -> ${map.getCenter().lng.toFixed(5)},${map.getCenter().lat.toFixed(5)}`};
             }, {style, width, height});
+            if (process.env.RENDER_DEBUG) console.log(id, outcome.view);
             const shot = await page.screenshot({clip: {x: 0, y: 0, width, height}});
             const expected = readdirSync(path.join(testsDir, id)).filter(f => /^expected.*\.png$/.test(f));
             // Compare against each accepted image and keep the best: the fraction of pixels that differ noticeably.
