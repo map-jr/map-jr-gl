@@ -61,10 +61,8 @@ short scenario in `test/conformance/plugins/`. The plugin imports `maplibre-gl` 
 | `getSky` | method of `Map` | 2: react-map-gl, @vis.gl/react-maplibre |
 | `setAnisotropicFilterPitch` | method of `Map` | 2: svelte-maplibre-gl, @maplibre/ngx-maplibre-gl |
 | `setZoomSnap` | method of `Map` | 2: svelte-maplibre-gl, @maplibre/ngx-maplibre-gl |
-| `addSprite` | method of `Map` | 1: svelte-maplibre-gl |
 | `fitScreenCoordinates` | method of `Map` | 1: @maplibre/ngx-maplibre-gl |
 | `getZoomSnap` | method of `Map` | 1: svelte-maplibre-gl |
-| `removeSprite` | method of `Map` | 1: svelte-maplibre-gl |
 | `setCenterClampedToGround` | method of `Map` | 1: svelte-maplibre-gl |
 | `setCenterElevation` | method of `Map` | 1: @maplibre/ngx-maplibre-gl |
 | `setRoll` | method of `Map` | 1: @maptiler/sdk |
@@ -120,7 +118,7 @@ short scenario in `test/conformance/plugins/`. The plugin imports `maplibre-gl` 
 | @vis.gl/react-maplibre | 8.1.3 | 47 methods, 15 exports, 6 events | `getSky`, `setSky`, `setTransformCameraUpdate` | `GlobeControl` | none |
 | vue-maplibre-gl | 5.6.1 | 40 methods, 6 exports, 17 events | `setProjection`, `setRenderWorldCopies` | none | none |
 | @indoorequal/vue-maplibre-gl | 9.0.1 | 39 methods, 9 exports, 5 events | `setRenderWorldCopies` | none | none |
-| svelte-maplibre-gl | 2.2.1 | 55 methods, 26 exports, 5 events | `addSprite`, `getZoomSnap`, `removeSprite`, `setAnisotropicFilterPitch`, `setCenterClampedToGround`, `setProjection`, `setRenderWorldCopies`, `setSky`, `setTransformCameraUpdate`, `setTransformConstrain`, `setVerticalFieldOfView`, `setZoomSnap` | `CanvasSource`, `Event`, `GeoJSONSource`, `GlobeControl`, `Hash`, `ImageSource`, `MapLibreEvent`, `MapSourceDataEvent`, `RasterDEMTileSource`, `RasterTileSource`, `VectorTileSource`, `VideoSource` | none |
+| svelte-maplibre-gl | 2.2.1 | 55 methods, 26 exports, 5 events | `getZoomSnap`, `setAnisotropicFilterPitch`, `setCenterClampedToGround`, `setProjection`, `setRenderWorldCopies`, `setSky`, `setTransformCameraUpdate`, `setTransformConstrain`, `setVerticalFieldOfView`, `setZoomSnap` | `CanvasSource`, `Event`, `GeoJSONSource`, `GlobeControl`, `Hash`, `ImageSource`, `MapLibreEvent`, `MapSourceDataEvent`, `RasterDEMTileSource`, `RasterTileSource`, `VectorTileSource`, `VideoSource` | none |
 | svelte-maplibre | 2.0.1 | 37 methods, 19 exports, 26 events | `setProjection` | `GPUInitializationError`, `MapLibreEvent`, `MapMouseEvent`, `MapMovementEvent`, `MapSourceDataEvent`, `MapStyleDataEvent`, `MapWheelEvent`, `config` | none |
 | @maplibre/ngx-maplibre-gl | 22.3.1 | 51 methods, 11 exports, 46 events | `fitScreenCoordinates`, `setAnisotropicFilterPitch`, `setCenterElevation`, `setProjection`, `setRenderWorldCopies`, `setTransformConstrain`, `setZoomSnap` | `GeoJSONSource`, `GlobeControl` | none |
 | @maptiler/sdk | 4.2.1 | 66 methods, 1 exports, 18 events | `setProjection`, `setRoll` | none | `projectiontransition` |

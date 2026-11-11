@@ -13,7 +13,7 @@
     "test:cloudflare": "node test/cloudflare/run.mjs",
     "test:unit": "node --experimental-transform-types --no-warnings --test test/unit/*.test.ts",
     "test:expressions": "node test/conformance/expressions.mjs --min=325",
-    "test:api": "node test/conformance/api.mjs --min=108",
+    "test:api": "node test/conformance/api.mjs --min=112",
     "test:browser": "node test/interact.mjs .cache/shots",
     "bench": "node test/bench/compare.mjs",
     "test:loading": "node test/loading.mjs",

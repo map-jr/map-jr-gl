@@ -116,7 +116,10 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
         if (!ok) unsupported.add(l.type);
         return ok;
     });
-    const sprite = typeof style.sprite === 'string' ? (base ? new URL(style.sprite, base).href : style.sprite) : undefined;
+    // A style has one sprite (a URL) or a list of sprites with ids. A list goes to the engine as text (see loadIcons).
+    const spriteURL = (u: string) => base ? new URL(u, base).href : u;
+    const sprite = typeof style.sprite === 'string' ? spriteURL(style.sprite)
+        : Array.isArray(style.sprite) && style.sprite.length ? JSON.stringify(style.sprite.map((s: {id: string; url: string}) => ({id: s.id, url: spriteURL(s.url)}))) : undefined;
     // The style specification's `font-faces`: font files per `text-font` name, optionally limited to unicode ranges.
     const fonts: FontSource[] = [];
     for (const [name, value] of Object.entries<any>(style['font-faces'] ?? {})) {

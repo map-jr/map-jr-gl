@@ -837,7 +837,10 @@ export class Map {
         return this.removeImage(name).addImage(name, source, options);
     }
     getSprite() { const s = this.rawStyle?.sprite; return typeof s === 'string' ? [{id: 'default', url: s}] : s ?? []; }
-    setSprite(url: string | null) { return this.editStyle(s => { if (url) s.sprite = url; else delete s.sprite; }); }
+    setSprite(url: string | {id: string; url: string}[] | null) { return this.editStyle(s => { if (url) s.sprite = url; else delete s.sprite; }); }
+    /** Adds a sprite sheet. Its icons have the names `id:name`. */
+    addSprite(id: string, url: string) { return this.setSprite([...this.getSprite().filter((s: {id: string}) => s.id !== id), {id, url}]); }
+    removeSprite(id: string) { const rest = this.getSprite().filter((s: {id: string}) => s.id !== id); return this.setSprite(rest.length ? rest : null); }
     getGlyphs() { return this.rawStyle?.glyphs ?? null; }
     /** Stored with the style for compatibility. Text is drawn with web fonts, so glyph files are never fetched. */
     setGlyphs(url: string | null) { return this.editStyle(s => { if (url) s.glyphs = url; else delete s.glyphs; }); }

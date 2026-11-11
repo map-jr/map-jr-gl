@@ -477,14 +477,29 @@ export class Engine {
         this.invalidate();
     }
 
-    private async loadIcons(url: string) {
-        const sprite = await loadSprite(url, this.dpr > 1, this.fetchAs('SpriteJSON'));
-        const res = await this.fetchAs('SpriteImage')(sprite.image);
-        if (!res.ok) throw new Error(`Failed to load sprite image ${sprite.image}: ${res.status}`);
-        const image = await createImageBitmap(await res.blob());
-        if (url !== this.spriteUrl) return;
-        this.renderer.setIcons(image, image.width, image.height);
-        this.sprite = sprite;
+    /**
+     * Loads the sprite of the style: one sheet (a URL), or several sheets with ids (a list, as text). The icons of a
+     * sheet with an id other than `default` have the names `id:name`. Several sheets are put into one image.
+     */
+    private async loadIcons(spec: string) {
+        const sheets: {id: string; url: string}[] = spec[0] === '[' ? JSON.parse(spec) : [{id: 'default', url: spec}];
+        const loaded = await Promise.all(sheets.map(async ({id, url}) => {
+            const sprite = await loadSprite(url, this.dpr > 1, this.fetchAs('SpriteJSON'));
+            const res = await this.fetchAs('SpriteImage')(sprite.image);
+            if (!res.ok) throw new Error(`Failed to load sprite image ${sprite.image}: ${res.status}`);
+            return {id, sprite, image: await createImageBitmap(await res.blob())};
+        }));
+        if (spec !== this.spriteUrl) return;
+        const icons: Sprite['icons'] = {}, width = Math.max(...loaded.map(l => l.image.width)), height = loaded.reduce((sum, l) => sum + l.image.height, 0);
+        const all = loaded.length > 1 ? new OffscreenCanvas(width, height) : null, ctx = all?.getContext('2d');
+        let top = 0;
+        for (const {id, sprite, image} of loaded) {
+            ctx?.drawImage(image, 0, top);
+            for (const name in sprite.icons) icons[id === 'default' ? name : `${id}:${name}`] = {...sprite.icons[name], y: sprite.icons[name].y + top};
+            top += image.height;
+        }
+        this.renderer.setIcons(all ?? loaded[0].image, width, height);
+        this.sprite = {icons, image: '', width, height};
         this.styleVersion++;
         this.invalidate();
     }
