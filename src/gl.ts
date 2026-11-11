@@ -978,6 +978,9 @@ export class GLRenderer {
         gl.bindFramebuffer(gl.FRAMEBUFFER, t.fb);
         gl.clearColor(0, 0, 0, 0);
         gl.clear(gl.COLOR_BUFFER_BIT);
+        // The texture that is drawn into must not stay bound: a layer that binds no texture of its own (a plain line)
+        // would then read from the texture it draws to, and WebGL refuses the draw.
+        gl.bindTexture(gl.TEXTURE_2D, null);
         this.drawLayers(s, tr, bySource, target, pass, L);
         gl.bindFramebuffer(gl.FRAMEBUFFER, back);
         const u = this.use('composite', tr), mode = ['overlay', 'color', 'luminosity'].indexOf(blend) + 1;
