@@ -27,10 +27,11 @@ const mlSize = (...files) => (files.reduce((n, f) => n + gzipSync(readFileSync(r
 const exprPass = num(expr, /(\d+) pass/), exprFail = num(expr, /(\d+) fail/);
 // The results of the plugin tests are in docs/ecosystem.md (see test/conformance/plugins.mjs and ecosystem.mjs).
 const eco = existsSync(root + 'docs/ecosystem.md') ? readFileSync(root + 'docs/ecosystem.md', 'utf8') : '';
-const ran = /\*\*(\d+) of (\d+) scenarios pass/.exec(eco), audited = /\*\*(\d+) of (\d+) packages\*\*/.exec(eco);
+const ran = /\*\*(\d+) of (\d+) scenarios pass/.exec(eco), audited = /\*\*(\d+) of (\d+) packages\*\*/.exec(eco), pages = /\*\*(\d+) of (\d+) pages work/.exec(eco);
 const plugins = [
     ...(ran ? [`| MapLibre plugins, run in a browser | ${ran[1]} of ${ran[2]} work (see [Plugins and frameworks](docs/ecosystem.md)) |`] : []),
     ...(audited ? [`| Plugins and frameworks, read from npm | ${audited[1]} of ${audited[2]} use only API that the library has |`] : []),
+    ...(pages ? [`| Example pages of the MapLibre documentation, with this library in place of MapLibre | ${pages[1]} of ${pages[2]} work. Most of the others need a globe, another projection or a custom 3D layer. |`] : []),
 ];
 const lines = [
     '<!-- status:start -->',

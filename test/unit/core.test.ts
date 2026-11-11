@@ -537,3 +537,46 @@ test('terrain: the height lookup uses a deeper grid after it is told that the gr
     grids.clear(); heightsChanged(grids);
     assert.equal(groundHeight(grids, 0.3, 0.3, 4, 0, -1), -1, 'no data: the value for unknown');
 });
+
+test('transform: the view stays inside the world from top to bottom', () => {
+    const t = new Transform();
+    t.width = 800; t.height = 500;
+    // At zoom 0 the world is 512 pixels high: with a view of 500 pixels the centre can move only a little from the equator.
+    t.set([-117, 32], 0);
+    assert.ok(Math.abs(t.lat) < 5, String(t.lat));
+    assert.ok(t.unproject(400, 0)[1] <= 85.06 && t.unproject(400, 500)[1] >= -85.06);
+    // At a high zoom the limit has no effect.
+    t.set([-117, 32], 10);
+    close(t.lat, 32, 1e-9);
+});
+
+test('terrain: tiles get less detail with distance, by the rule of MapLibre, and more near the camera', () => {
+    const t = new Transform();
+    t.width = 1000; t.height = 700;
+    t.set([7.70, 45.99], 12, 20, 60);
+    t.elevation = 3000; t.heightAt = () => 3000; t.groundRange = [3000, 3000];
+    const levels = t.coveringTiles(0, 22).map(id => id.z);
+    // The ground at the centre is one level coarser than the zoom at this tilt, far ground is coarser again, and
+    // ground that is nearer to the camera than the centre is finer.
+    assert.ok(Math.min(...levels) <= 10 && Math.max(...levels) >= 12, levels.join());
+    assert.ok(levels.length < 24, `too many tiles: ${levels.length}`);
+    // Image tiles (the last argument) change level at the middle of a level, so they are finer than the others.
+    const images = t.coveringTiles(0, 22, 512, true).map(id => id.z);
+    assert.ok(images.reduce((a, b) => a + b) / images.length > levels.reduce((a, b) => a + b) / levels.length);
+});
+
+test('sources: a tile URL for a WMS server gets the edges of the tile in Web Mercator metres', async () => {
+    const {tileURL} = await import('../../src/resolve.ts');
+    const src = {type: 'raster', tiles: ['https://example.org/wms?bbox={bbox-epsg-3857}&z={z}'], minzoom: 0, maxzoom: 22, tileSize: 256} as any;
+    assert.equal(tileURL(src, 0, 0, 0), 'https://example.org/wms?bbox=-20037508.342789244,-20037508.342789244,20037508.342789244,20037508.342789244&z=0');
+    const [west, south, east, north] = /bbox=([^&]*)/.exec(tileURL(src, 1, 1, 0))![1].split(',').map(Number);
+    close(west, 0, 1e-6); close(south, 0, 1e-6); close(east, 20037508.342789244, 1e-6); close(north, 20037508.342789244, 1e-6);
+});
+
+test('vector tiles: zeros after the end of the tile are not read', async () => {
+    const {decodeVectorTile} = await import('../../src/mvt.ts');
+    // (A protocol can give a tile in a larger buffer.)
+    const padded = new Uint8Array(bytes.length + 4096);
+    padded.set(bytes);
+    assert.deepEqual(Object.keys(decodeVectorTile(padded)), Object.keys(decodeVectorTile(bytes)));
+});
