@@ -306,22 +306,26 @@ function followLine(
     if (start < 0 || start + w > cum[n - 1]) return null; // not enough line for the text at this zoom
     const spacing = l.spacing * EM * size, shift = (l.offset[1] + BASELINE) * EM * size; // drop the baseline so the text is centred on the line
     const curve: number[] = [], boxes: Box[] = [], ground: number[] = [];
-    let seg = 1, pen = start, last = NaN, across = 0, bx = 0, by = 0;
+    let seg = 1, pen = start, last = NaN, bx = 0, by = 0;
     for (const advance of line.advances) {
         const a = advance * size, mid = pen + a / 2;
         while (seg < n - 1 && cum[seg] < mid) seg++;
-        const len = cum[seg] - cum[seg - 1] || 1, dx = (xs[seg] - xs[seg - 1]) / len, dy = (ys[seg] - ys[seg - 1]) / len, angle = Math.atan2(dy, dx);
+        const len = cum[seg] - cum[seg - 1] || 1, t = mid - cum[seg - 1];
+        let dx = (xs[seg] - xs[seg - 1]) / len, dy = (ys[seg] - ys[seg - 1]) / len, cx = xs[seg - 1] + dx * t, cy = ys[seg - 1] + dy * t;
+        if (k) {
+            // Text on the ground: the place of the glyph on the ground, and where one step along the line and one step
+            // across it go on the screen from there. (The perspective changes along a piece of the line: one size for
+            // the whole piece made the size of the letters jump at each point of the line.)
+            const tu = (us[seg] - us[seg - 1]) / len, tv = (vs[seg] - vs[seg - 1]) / len, pu = us[seg - 1] + tu * t, pv = vs[seg - 1] + tv * t, e = 16;
+            const [px, py] = tr.projectTile(it.id, pu, pv), [fx, fy] = tr.projectTile(it.id, pu + tu * e, pv + tv * e), [qx, qy] = tr.projectTile(it.id, pu - tv * e, pv + tu * e);
+            cx = px; cy = py; dx = (fx - px) / e; dy = (fy - py) / e; bx = (qx - px) / e; by = (qy - py) / e;
+        }
+        const angle = Math.atan2(dy, dx);
         // A sharp bend inside the text makes it unreadable. The limit is `text-max-angle`: 45 degrees by default,
         // for which a turn of 0.6 radians between neighbours gives the results nearest to MapLibre's.
         if (!Number.isNaN(last)) { let d = angle - last; d = Math.atan2(Math.sin(d), Math.cos(d)); if (Math.abs(d) > 0.6 * (l.maxAngle ?? 45) / 45) return null; }
         last = angle;
         if (!k) { bx = -dy; by = dx; }
-        else if (across !== seg) {
-            // Where a step across the line on the ground goes on the screen (found once for each piece of the line).
-            const [qx, qy] = tr.projectTile(it.id, us[seg - 1] - (vs[seg] - vs[seg - 1]) * k / len * 64, vs[seg - 1] + (us[seg] - us[seg - 1]) * k / len * 64);
-            bx = (qx - xs[seg - 1]) / k / 64; by = (qy - ys[seg - 1]) / k / 64; across = seg;
-        }
-        const t = mid - cum[seg - 1], cx = xs[seg - 1] + dx * t, cy = ys[seg - 1] + dy * t;
         curve.push(cx - dx * a / 2 + bx * shift - ax, cy - dy * a / 2 + by * shift - ay, angle);
         if (k) ground.push(Math.hypot(dx, dy), bx, by);
         const r = h / 2 + l.padding;
