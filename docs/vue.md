@@ -109,6 +109,12 @@ For many markers, use the `markers` prop: those are drawn on the canvas.
 
 A component of your own inside `MapJr` gets the map with `useMapHost()` (a ref).
 
+`useMapFeatures(where, options)` gives the features at a place as a ref that stays up to date (see `watchFeatures` in [the API](api.md#queries)). The place and the options can be refs or functions:
+
+```js
+const rain = useMapFeatures(() => [props.lng, props.lat], {sources: ['rain']});
+```
+
 ### How the component sees changes
 
 You can change the props as in other Vue code. The component sees these changes:
@@ -177,7 +183,7 @@ With the module, a page uses the components without an import:
 </template>
 ```
 
-- `MapJr` and `MapOverlay` are registered, and `useMap` and `useMapHost`.
+- `MapJr` and `MapOverlay` are registered, and `useMap`, `useMapHost` and `useMapFeatures`.
 - The controls have longer names, because `scale` and `navigation` are common words: `navigationControl()`,
   `scaleControl()`, `fullscreenControl()`, `geolocateControl()`, `terrainControl()`.
 - `LazyMapJr` puts the code of the map into a file of its own. With `hydrate-on-visible`, the browser loads that file

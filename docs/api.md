@@ -185,16 +185,42 @@ To move the map one time with an animation, use `map.moveTo({zoom: 15, duration:
 
 ## Queries
 
+There is one method to find features: `queryFeatures(where, options)`.
+
+- **Where:** a point of the screen (`{x, y}`), a position (`[lng, lat]`), a rectangle of the screen (two points), or
+  nothing for the whole map.
+- **What:** without `sources`, the features that the style layers draw, the top one first (`layers` selects layers).
+  With `sources`, the features of the tile data of those sources. These need no style layer, and at a position they
+  need not be on the screen: the map fetches the tile if necessary.
+
 ```js
-// The features that style layers draw at a point of the screen, the top one first:
+// The features that style layers draw at a point of the screen:
 const drawn = await map.queryFeatures({x: 200, y: 150}, {layers: ['roads', 'places']});
 
-// In a rectangle of the screen:
+// In a rectangle of the screen, and on the whole map:
 const inBox = await map.queryFeatures([{x: 0, y: 0}, {x: 400, y: 300}], {layers: ['places']});
+const all = await map.queryFeatures(undefined, {layers: ['places']});
 
-// The features of the tile data near a point. You do not need a style layer for this:
-const data = await map.queryFeatures({x: 200, y: 150}, {sources: ['openmaptiles'], radius: 10});
+// The data of a source at a position. You do not need a style layer for this, and the position can be off screen:
+const data = await map.queryFeatures([-75.16, 39.92], {sources: ['rain']});
+
+// All the features of a source in the tiles of the view:
+const inView = await map.queryFeatures(undefined, {sources: ['rain'], sourceLayers: ['rain']});
 ```
+
+`watchFeatures(where, options, listener)` asks the same question and keeps the answer up to date. The listener gets
+the answer now, and again each time that it changes: new tiles, a change of the style, and (for a place on the
+screen) a movement of the map. It returns a function that stops it. Use it in place of listeners for `idle` and
+`sourcedata`:
+
+```js
+// The band of rain under a marker, also while the layers of the map change:
+const stop = map.watchFeatures([-75.16, 39.92], {sources: ['rain']}, features => show(features[0]?.properties));
+```
+
+For users of MapLibre GL JS: `queryRenderedFeatures` is `queryFeatures` without `sources`, and
+`querySourceFeatures` is `queryFeatures(undefined, {sources: [id]})`. The two MapLibre methods are in the entry
+`map-jr-gl/maplibre-compat`.
 
 The tile data is in a worker, so each query returns a promise.
 

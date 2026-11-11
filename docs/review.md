@@ -259,6 +259,25 @@ Ways to remove the lag in the entry for MapLibre code, not done:
    is then at most one frame ahead of the map and not behind it. This does not help for movements that the engine
    makes (a fling, `easeTo`).
 
+## Query methods of the main entry (decided on 2026-11-11)
+
+The owner asked: does the main entry need `queryRenderedFeatures`, is `queryFeatures` different from
+`querySourceFeatures`, and is the new method needed?
+
+- The three do different things. `queryRenderedFeatures`: what the style layers draw at a place of the screen.
+  `querySourceFeatures`: all the data of one source in the tiles of the view, with no place. `queryFeatures` (this
+  library): the data of sources at a place, which need no layer and can be off screen.
+- The main entry has one method for all of them, `queryFeatures(where, options)`: the place is a point, a position,
+  a rectangle or nothing; `sources` selects the data of sources, and without it the answer is what the layers draw.
+  Two cases were missing and are added: a position (`[lng, lat]`) for drawn features, and the data of sources in a
+  rectangle or the whole map (which is `querySourceFeatures`).
+- The two MapLibre names stay in `map-jr-gl/maplibre-compat` only.
+- The rain page of elevation-next showed what was missing: it asks the same question again on `idle` and on
+  `sourcedata` to follow the band under a marker. The main entry now has `watchFeatures` for this (and
+  `useMapFeatures` for Vue). With `sources` and a position it does not depend on what is drawn, so it also answers
+  while a layer is hidden or still loads.
+- The page script of the main entry is 27.7 KB with this and the `glyphs` option (budget 27.5 → 28 KB).
+
 ## Size budgets
 
 | Decision | Reason | To change it |

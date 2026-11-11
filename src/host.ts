@@ -105,16 +105,30 @@ export interface OverlayOptions {
 }
 export interface MapOverlay { update(options: OverlayOptions): void; remove(): void }
 
+/** Where to look for features: a point of the screen, a position `[lng, lat]`, or a rectangle of the screen (two points). */
+export type FeaturePlace = {x: number; y: number} | [number, number] | [{x: number; y: number}, {x: number; y: number}];
+export interface FeatureOptions { layers?: string[]; filter?: unknown; sources?: string[]; sourceLayers?: string[]; radius?: number; geometry?: boolean }
 export interface MapHost {
     /** Changes the map to a new description. Give the complete description each time. */
     update(spec: MapSpec): void;
     destroy(): void;
     readonly state: Readable<MapState>;
     /**
-     * The features at a point of the screen (`{x, y}`) or in a rectangle (two points). With `layers`, the features that
-     * those style layers draw, the top one first; without, the features of the tile data (`sources`, `sourceLayers`).
+     * Finds features. There is one method for all cases:
+     *
+     * - Where: a point of the screen (`{x, y}`), a position (`[lng, lat]`), a rectangle of the screen (two points), or
+     *   nothing for the whole map.
+     * - What: with `sources`, the features of the tile data of those sources. They need no style layer, and at a
+     *   position they need not be on the screen (the tile is fetched if necessary). Without `sources`, the features
+     *   that the style layers draw (`layers` selects layers), the top one first.
      */
-    queryFeatures(at: {x: number; y: number} | [{x: number; y: number}, {x: number; y: number}], options?: {layers?: string[]; filter?: unknown; sources?: string[]; sourceLayers?: string[]; radius?: number; geometry?: boolean}): Promise<(RenderedFeature | QueriedFeature)[]>;
+    queryFeatures(at?: FeaturePlace, options?: FeatureOptions): Promise<(RenderedFeature | QueriedFeature)[]>;
+    /**
+     * The same question, kept up to date: `listener` gets the answer now, and again each time that the answer
+     * changes (new tiles, a change of the style, and for a place on the screen also a movement of the map).
+     * Returns a function that stops it.
+     */
+    watchFeatures(at: FeaturePlace | undefined, options: FeatureOptions, listener: (features: (RenderedFeature | QueriedFeature)[]) => void): () => void;
     /** The height of the ground in metres at a position (`[lng, lat]`) or a point of the screen, from the elevation source of the style. `null` where there is no data. */
     queryElevation(at: [number, number] | {x: number; y: number}): Promise<number | null>;
     /** Moves the camera now, with an animation when `duration` is not 0. */
@@ -255,13 +269,36 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
     };
     apply(spec);
 
+    const isPosition = (at: FeaturePlace): at is [number, number] => typeof (at as number[])[0] === 'number';
+    const queryFeatures: MapHost['queryFeatures'] = (at, o = {}) => {
+        const box = Array.isArray(at) && !isPosition(at) ? [at[0].x, at[0].y, at[1].x, at[1].y] as [number, number, number, number] : undefined;
+        if (o.sources) return at && !box ? map.queryFeatures(at as [number, number] | {x: number; y: number}, o) : map.querySources(box, o.sources, o);
+        const point = at && !box ? isPosition(at) ? map.project(at) : at as {x: number; y: number} : undefined;
+        return map.queryLayers(box ? [[box[0], box[1]], [box[2], box[3]]] : point ? [point.x, point.y] : {layers: o.layers, filter: o.filter}, {layers: o.layers, filter: o.filter});
+    };
+
     return {
         update(next) { if (alive) apply(next, now); },
         destroy() { if (!alive) return; alive = false; map.remove(); },
         state,
-        queryFeatures: (at, o = {}) => Array.isArray(at) || o.layers
-            ? map.queryLayers((Array.isArray(at) ? at.map(p => [p.x, p.y]) : [at.x, at.y]) as [[number, number], [number, number]], {layers: o.layers, filter: o.filter})
-            : map.queryFeatures(at, o),
+        queryFeatures,
+        watchFeatures(at, o, listener) {
+            // One question at a time. An event during a question asks again after it.
+            let last: string | undefined, busy = false, again = false, stopped = false;
+            const run = () => {
+                if (busy) { again = true; return; }
+                busy = true;
+                queryFeatures(at, o).then(found => {
+                    const text = JSON.stringify(found.map(f => [(f.layer as {id?: string})?.id ?? f.layer, f.source, f.id, f.properties]));
+                    if (!stopped && text !== last) { last = text; listener(found); }
+                }, () => {}).then(() => { busy = false; if (again && !stopped) { again = false; run(); } });
+            };
+            const data = (e: any) => { if (!o.sources || !e.sourceId || o.sources.includes(e.sourceId)) run(); };
+            const moved = () => { if (!at || !isPosition(at)) run(); };
+            map.on('sourcedata', data); map.on('idle', run); map.on('moveend', moved);
+            run();
+            return () => { stopped = true; map.off('sourcedata', data); map.off('idle', run); map.off('moveend', moved); };
+        },
         queryElevation: at => map.queryElevation(at),
         moveTo({duration = 0, ...view}) { if (duration) map.easeTo({...view, duration}); else map.jumpTo(view); },
         fitBounds: (bounds, o) => { map.fitBounds(bounds, o); },

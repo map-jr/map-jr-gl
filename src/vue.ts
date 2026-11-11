@@ -6,9 +6,10 @@
  * over that SVG, so a page from Nuxt shows a map before any script has run.
  */
 import {computed, defineComponent, getCurrentInstance, h, inject, provide, isProxy, isReactive, onBeforeUnmount, onMounted, onServerPrefetch, shallowRef, toRaw, toValue, watch, type ComputedRef, type MaybeRefOrGetter, type PropType, type ShallowRef} from 'vue';
-import {createMap, type ControlSpec, type MapHost, type MapOverlay as Overlay, type OverlayOptions, type MapPointer, type MapSpec, type MapState, type View} from './host.ts';
+import {createMap, type ControlSpec, type FeatureOptions, type FeaturePlace, type MapHost, type MapOverlay as Overlay, type OverlayOptions, type MapPointer, type MapSpec, type MapState, type View} from './host.ts';
 import type {SSROverrides} from './style.ts';
 import type {RenderedFeature} from './map.ts';
+import type {QueriedFeature} from './query.ts';
 import type {MarkerLayerOptions} from './markers.ts';
 import type {FontSource} from './engine.ts';
 import type {LngLatBoundsInput} from './lnglat.ts';
@@ -67,6 +68,20 @@ const HOST = Symbol('map-jr') as unknown as import('vue').InjectionKey<ShallowRe
 
 /** The map of the `MapJr` component that this component is in (a ref; it has the map when the map has started). */
 export const useMapHost = () => inject(HOST, shallowRef(null));
+/**
+ * The features at a place of the map, kept up to date (see `watchFeatures` of the map). For a component inside
+ * `<MapJr>`. The place and the options can be refs or getters.
+ */
+export function useMapFeatures(at: MaybeRefOrGetter<FeaturePlace | undefined>, options: MaybeRefOrGetter<FeatureOptions> = {}): ShallowRef<(RenderedFeature | QueriedFeature)[]> {
+    const host = useMapHost(), found = shallowRef<(RenderedFeature | QueriedFeature)[]>([]);
+    let stop: (() => void) | undefined;
+    watch([host, () => toValue(at), () => toValue(options)], ([h, place, o]) => {
+        stop?.();
+        stop = h?.watchFeatures(plain(place), plain(o), features => { found.value = features; });
+    }, {immediate: true});
+    onBeforeUnmount(() => stop?.());
+    return found;
+}
 
 /**
  * An element of the page at a position of the map, for the inside of `MapJr`: a marker with your own content, or a

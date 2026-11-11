@@ -978,6 +978,14 @@ export class Map {
         const {box, sets, features} = this.rendered(geometry, options);
         return sets.length ? this.ask<QueriedFeature[]>(id => ({type: 'queryRendered', id, box, sets, geometry: true})).then(features) : Promise.resolve([]);
     }
+    /**
+     * The features of the tile data of the given sources in a rectangle of the screen (the whole map when none is
+     * given). Unlike `queryLayers`, the sources need no style layer.
+     */
+    querySources(box: [number, number, number, number] | undefined, sources: string[], options: {sourceLayers?: string[]; filter?: unknown} = {}): Promise<QueriedFeature[]> {
+        const sets = sources.flatMap(source => (options.sourceLayers ?? [undefined]).map(sourceLayer => ({layer: '', source, sourceLayer, filter: options.filter, radius: 0})));
+        return this.ask<QueriedFeature[]>(id => ({type: 'queryRendered', id, box: box ?? [0, 0, this.tr.width, this.tr.height], sets, geometry: true}));
+    }
 
 
 

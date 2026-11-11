@@ -149,6 +149,28 @@ for (const renderer of ['worker', 'main']) {
         const pointer = await page.evaluate(() => { const t = window.t, c = t.clicks[0]; return {clicks: t.clicks.length, lngLat: c?.lngLat?.length, features: Array.isArray(c?.features), hoverEvents: t.seen.filter(x => x.startsWith('hover:')).length}; });
         check(`[${renderer}] the features under the pointer are in the state, and a click has them`, hover > 0 && pointer.clicks === 1 && pointer.lngLat === 2 && pointer.features && pointer.hoverEvents > 0, JSON.stringify({hover, ...pointer}));
 
+        // 5b. One method to find features, and the same question kept up to date.
+        const found = await page.evaluate(async () => {
+            const h = window.t.host, c = h.state.get().view.center, wait = ms => new Promise(r => setTimeout(r, ms));
+            const sources = Object.keys(window.t.spec.style.sources).filter(id => window.t.spec.style.sources[id].type === 'vector');
+            const drawnAtPoint = await h.queryFeatures({x: 450, y: 300}), drawnAtPosition = await h.queryFeatures(c), drawnAll = await h.queryFeatures();
+            const dataAtPosition = await h.queryFeatures(c, {sources, radius: 30}), dataInBox = await h.queryFeatures([{x: 300, y: 200}, {x: 600, y: 400}], {sources}), dataAll = await h.queryFeatures(undefined, {sources});
+            const calls = [];
+            const stop = h.watchFeatures({x: 450, y: 300}, {}, f => calls.push(f.length));
+            await wait(600);
+            const first = calls.length;
+            h.moveTo({center: [c[0] + 0.01, c[1] + 0.004]});
+            await wait(2500);
+            const moved = calls.length;
+            stop();
+            h.moveTo({center: c});
+            await wait(1500);
+            return {drawnAtPoint: drawnAtPoint.length, drawnAtPosition: drawnAtPosition.length, drawnAll: drawnAll.length, dataAtPosition: dataAtPosition.length, dataInBox: dataInBox.length, dataAll: dataAll.length, layer: typeof drawnAll[0]?.layer, first, moved, after: calls.length};
+        });
+        check(`[${renderer}] queryFeatures: a point, a position, a rectangle or the whole map; drawn layers or the data of sources; watchFeatures follows the map`,
+            found.drawnAtPoint > 0 && found.drawnAtPosition > 0 && found.drawnAll > found.drawnAtPoint && found.dataAtPosition > 0 && found.dataInBox > 0 && found.dataAll >= found.dataInBox && found.layer === 'object'
+            && found.first === 1 && found.moved >= 2 && found.after === found.moved, JSON.stringify(found));
+
         // 6. The end.
         const end = await page.evaluate(() => { const t = window.t; t.host.destroy(); t.host.update(t.spec); return {canvas: !!document.querySelector('#host canvas')}; });
         check(`[${renderer}] destroy removes the map`, !end.canvas);
