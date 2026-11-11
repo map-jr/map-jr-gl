@@ -346,18 +346,6 @@ export class Map {
     private hoveredLayers = new Set<string>();
     private hoverBusy = false;
 
-    /** Features of one style layer at a screen point, found from tile data using the layer's source, source layer and filter. */
-    private async layerFeatures(layerId: string, point: {x: number; y: number}) {
-        const layer = this.getLayer(layerId);
-        if (!layer || layer.layout?.visibility === 'none') return [];
-        const z = this.tr.zoom;
-        if (z < (layer.minzoom ?? 0) || z >= (layer.maxzoom ?? 24)) return [];
-        // Thin things get a little slack so they can be hit; areas must actually contain the point.
-        const radius = layer.type === 'fill' || layer.type === 'fill-extrusion' ? 0 : layer.type === 'line' ? 5 : 8;
-        const found = await this.queryFeatures(point, {sources: [layer.source], sourceLayers: layer['source-layer'] ? [layer['source-layer']] : undefined, filter: layer.filter, radius, geometry: true});
-        return found.map(f => ({...f, layer}));
-    }
-
     private async dispatchLayerEvents(kind: 'click' | 'mousemove', data: Record<string, unknown>) {
         const point = data.point as {x: number; y: number};
         const wanted = kind === 'click' ? ['click'] : ['mousemove', 'mouseenter', 'mouseleave'];
@@ -365,8 +353,10 @@ export class Map {
         if (!layers.length || (kind === 'mousemove' && this.hoverBusy)) return;
         this.hoverBusy = kind === 'mousemove';
         try {
+            // One query for all the layers that have listeners. The features have the form of queryRenderedFeatures.
+            const found = await this.queryRenderedFeatures(point, {layers});
             for (const layer of layers) {
-                const features = await this.layerFeatures(layer, point), hit = features.length > 0;
+                const features = found.filter(f => (f.layer as {id?: string} | undefined)?.id === layer), hit = features.length > 0;
                 const emit = (type: string) => { for (const l of this.layerListeners) if (l.type === type && l.layer === layer) l.fn({type, target: this, ...data, features}); };
                 if (kind === 'click') { if (hit) emit('click'); continue; }
                 const was = this.hoveredLayers.has(layer);
@@ -788,7 +778,7 @@ export class Map {
             && this.rawStyle.sources[l.source] && !/raster|image/.test(this.rawStyle.sources[l.source].type) && !/raster|hillshade|heatmap/.test(l.type)).map(l => ({
             layer: l.id as string, source: l.source as string, sourceLayer: l['source-layer'] as string | undefined, filter: l.filter, also: options.filter,
             // How far from its geometry a feature is drawn, in pixels: half the line width, the circle radius, a part of an icon or text.
-            radius: l.type === 'line' ? Math.max(2, number(l.paint?.['line-width'], 4) / 2) : l.type === 'circle' ? number(l.paint?.['circle-radius'], 5) + number(l.paint?.['circle-stroke-width'], 0) : l.type === 'symbol' ? 10 : 0,
+            radius: l.type === 'line' ? Math.max(3, number(l.paint?.['line-width'], 4) / 2) : l.type === 'circle' ? number(l.paint?.['circle-radius'], 5) + number(l.paint?.['circle-stroke-width'], 0) : l.type === 'symbol' ? 10 : 0,
         }));
         if (!sets.length) return [];
         const found = await this.ask<QueriedFeature[]>(id => ({type: 'queryRendered', id, box, sets, geometry: true}));
