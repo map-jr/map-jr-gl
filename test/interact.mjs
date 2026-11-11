@@ -365,11 +365,13 @@ for (const mode of ['main', 'worker']) {
     const cBlocked = await centre();
     await page.evaluate(() => { window.block = false; window.map.dragPan.disable(); }); await drag();
     const cOff = await centre();
-    await page.evaluate(() => { window.map.dragPan.enable(); }); await drag();
+    // (A slow test machine can take longer than the wait in `drag` to start the movement: wait until the pose has changed.)
+    const changed = from => page.waitForFunction(f => { const c = window.map.getCenter(); return [c.lng, c.lat, window.map.getZoom()].join() !== f.join(); }, from, {timeout: 5000, polling: 50}).catch(() => {});
+    await page.evaluate(() => { window.map.dragPan.enable(); }); await drag(); await changed(cOff); await settle(page);
     const cMoved = await centre();
     await page.evaluate(() => { window.blockWheel = true; }); await page.mouse.wheel(0, -400); await page.waitForTimeout(500); await settle(page);
     const zBlocked = (await centre())[2];
-    await page.evaluate(() => { window.blockWheel = false; }); await page.mouse.wheel(0, -400); await page.waitForTimeout(700); await settle(page);
+    await page.evaluate(() => { window.blockWheel = false; }); await page.mouse.wheel(0, -400); await changed(await centre()); await page.waitForTimeout(700); await settle(page);
     const zMoved = (await centre())[2];
     await page.mouse.dblclick(500, 350); await page.mouse.click(500, 350, {button: 'right'}); await page.mouse.move(2000, 2000); await page.waitForTimeout(600); await settle(page);
     // Box zoom: shift and drag zooms to the box.
