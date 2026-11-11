@@ -41,7 +41,7 @@ These figures are written by `pnpm status`. They compare this library with MapLi
 | MapLibre plugins, run in a browser | 15 of 15 work (see [Plugins and frameworks](docs/ecosystem.md)) |
 | Plugins and frameworks, read from npm | 17 of 26 use only API that the library has |
 | Example pages of the MapLibre documentation, with this library in place of MapLibre | 110 of 142 work. Most of the others need a globe, another projection or a custom 3D layer. |
-| MapLibre render tests | 693 of 1429 are the same (1% of pixels or less are different). 310 more are near (5% or less). |
+| MapLibre render tests | 693 of 1429 are the same (1% of pixels or less are different). 311 more are near (5% or less). |
 | Page script (gzip) | 28 KB. MapLibre GL JS: 299 KB. |
 | Worker script (gzip) | 58 KB. MapLibre GL JS: 145 KB. |
 | Server renderer (gzip) | 35 KB |
@@ -296,6 +296,7 @@ To run the benchmark on your computer, run `pnpm demo` and open `http://localhos
 - [The main API](docs/api.md): `createMap`, the description of a map, the state, queries.
 - [Vue and Nuxt](docs/vue.md): the component, the composable, server rendering.
 - [React](docs/react.md): the component, the hooks, server rendering.
+- [Svelte](docs/svelte.md): an action and a store.
 - [Loading](docs/loading.md): how the files load, and how to change that.
 - [Markers](docs/markers.md): marker layers, callouts, and DOM markers.
 - [Terrain and elevation](docs/terrain-and-elevation.md): terrain, relief shading, contour lines, elevation queries.

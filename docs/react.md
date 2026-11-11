@@ -59,8 +59,8 @@ A ref on the component gets the map (for `queryFeatures`, `moveTo`, `fitBounds`)
 The map compares each prop with the last one. A prop that has a new object with the same content does no work:
 you can write `controls={[navigation()]}`, `interactiveLayers={['places']}` and a style object in the JSX.
 
-One prop is compared by identity only, because it can be large: the `data` of a marker layer. Keep the array
-(`useMemo`, state) until the markers change, as in the example.
+Two things are compared by identity only, because they can be large: the `data` of a marker layer, and each value of
+the `data` prop (GeoJSON for sources of the style). Keep them (`useMemo`, state) until they change, as in the example.
 
 ## Hooks
 

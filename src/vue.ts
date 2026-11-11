@@ -124,6 +124,8 @@ export const MapJr = defineComponent({
         view: Object as PropType<Partial<View>>,
         initialView: Object as PropType<Partial<View>>,
         markers: Array as PropType<MarkerLayerOptions[]>,
+        /** GeoJSON data for sources of the style, by the id of the source. Each value is compared by identity: give a new object to change it. */
+        data: Object as PropType<Record<string, unknown>>,
         interactiveLayers: Array as PropType<string[]>,
         minZoom: Number, maxZoom: Number, maxPitch: Number,
         maxBounds: [Array, Object] as PropType<LngLatBoundsInput | null>,
@@ -165,11 +167,19 @@ export const MapJr = defineComponent({
             for (const k in m) out[k] = k === 'data' ? markerData(m.data) : plain((m as any)[k]);
             return out as MarkerLayerOptions;
         }));
+        // (The data of each source is the object behind Vue's object. The list itself can be made again in each render.)
+        let lastData: Record<string, unknown> | undefined;
+        const data = computed(() => {
+            if (!props.data) return undefined;
+            const out: Record<string, unknown> = {};
+            for (const id in props.data) out[id] = toRaw(props.data[id]);
+            return lastData && Object.keys(out).length === Object.keys(lastData).length && Object.keys(out).every(id => out[id] === lastData![id]) ? lastData : lastData = out;
+        });
         const layers = computed(() => props.interactiveLayers && [...props.interactiveLayers]);
         const controls = computed(() => props.controls && [...props.controls].map(c => toRaw(c)));
         const spec = computed<MapSpec>(() => {
             const out: MapSpec = {
-                style: style.value, view: view.value, initialView: props.initialView && toRaw(props.initialView), markers: markers.value, interactiveLayers: layers.value, controls: controls.value,
+                style: style.value, view: view.value, initialView: props.initialView && toRaw(props.initialView), markers: markers.value, data: data.value, interactiveLayers: layers.value, controls: controls.value,
                 minZoom: props.minZoom, maxZoom: props.maxZoom, maxPitch: props.maxPitch, maxBounds: props.maxBounds && toRaw(props.maxBounds), cursor: props.cursor,
                 renderer: props.renderer, fonts: props.fonts && toRaw(props.fonts), fontFamily: props.fontFamily, interactive: props.interactive, antialias: props.antialias,
                 attribution: (props.attribution as unknown) === true ? undefined : props.attribution && toRaw(props.attribution), hash: props.hash,

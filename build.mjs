@@ -59,7 +59,7 @@ const esm = (input, extra = {}) => ({
 // Two entries in one build, so that they share their chunks: the main entry (the new API) and the entry that is a
 // replacement for MapLibre GL JS.
 // (The adapters for the frameworks are entries of the same build: they use the main entry's files. The framework itself is not in them.)
-await run(esm({'map-jr-gl': 'src/index.ts', 'map-jr-gl-maplibre-compat': 'src/maplibre-compat.ts', vue: 'src/vue.ts', react: 'src/react.ts', controls: 'src/control-specs.ts'}));
+await run(esm({'map-jr-gl': 'src/index.ts', 'map-jr-gl-maplibre-compat': 'src/maplibre-compat.ts', vue: 'src/vue.ts', react: 'src/react.ts', svelte: 'src/svelte.ts', controls: 'src/control-specs.ts'}));
 
 // Standalone: one self-contained file with the worker embedded, for places where shipping several files is awkward.
 // (One for each of the two APIs.)

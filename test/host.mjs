@@ -83,6 +83,32 @@ for (const renderer of ['worker', 'main']) {
         });
         check(`[${renderer}] marker layers follow the description`, markers.one === 1 && markers.moved === 0 && markers.back === 1 && markers.none === 0, JSON.stringify(markers));
 
+        // GeoJSON data apart from the style: it goes to its source alone, and stays over a new style.
+        const data = await page.evaluate(async () => {
+            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), c = t.host.state.get().view.center;
+            const idle = () => new Promise(r => { const off = t.host.state.subscribe(s => s.idle, v => { if (v) { off(); r(); } }); setTimeout(r, 8000); });
+            const points = n => ({type: 'FeatureCollection', features: Array.from({length: n}, (_, i) => ({type: 'Feature', properties: {i}, geometry: {type: 'Point', coordinates: [c[0] + (i - n / 2) * 0.002, c[1]]}}))});
+            // (A point at the edge of a tile is in two tiles: the points are counted by their number. The data gets time to come.)
+            const once = async () => new Set((await t.host.queryFeatures([{x: 0, y: 0}, {x: 900, y: 600}], {layers: ['test-points']})).map(f => f.properties.i)).size;
+            const count = async want => { let n = -1; for (let i = 0; i < 40 && (n = await once()) !== want; i++) await wait(150); return n; };
+            const withSource = extra => ({...t.style, sources: {...t.style.sources, pts: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}},
+                layers: [...t.style.layers, {id: 'test-points', type: 'circle', source: 'pts', paint: {'circle-radius': 6, 'circle-color': extra}}]});
+            t.host.update(t.spec = {...t.spec, style: withSource('#f00'), data: {pts: points(3)}});
+            await wait(300); await idle();
+            const three = await count(3);
+            t.host.update(t.spec = {...t.spec, data: {pts: points(5)}});
+            await wait(300); await idle();
+            const five = await count(5);
+            t.host.update(t.spec = {...t.spec, style: withSource('#00f')}); // a new style: the data must stay
+            await wait(300); await idle();
+            await wait(500);
+            const kept = await count(5);
+            t.host.update(t.spec = {...t.spec, style: t.style, data: undefined});
+            await wait(300); await idle();
+            return {three, five, kept};
+        });
+        check(`[${renderer}] GeoJSON data apart from the style follows the description, and stays over a new style`, data.three === 3 && data.five === 5 && data.kept === 5, JSON.stringify(data));
+
         // Controls: added and removed by the description.
         const controls = await page.evaluate(async () => {
             const t = window.t, {navigation, scale} = await import('/dist/controls.js'), count = () => document.querySelectorAll('#host .map-jr-ctrl-group, #host .map-jr-ctrl-scale').length;
@@ -115,6 +141,30 @@ for (const renderer of ['worker', 'main']) {
     } catch (e) { check(`[${renderer}] the test run was completed`, false, String(e.message).split('\n')[0]); }
     await page.close();
 }
+// The action and the store for Svelte, called as Svelte calls them (they do not need the Svelte package).
+{
+    const page = await browser.newPage({viewport: {width: 900, height: 600}});
+    try {
+        await page.goto('http://localhost:8080/style.json');
+        const svelte = await page.evaluate(async () => {
+            const {mapJr, mapState} = await import('/dist/svelte.js'), style = await (await fetch('/style.json')).json(), wait = ms => new Promise(r => setTimeout(r, ms));
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99;background:#fff'}));
+            let map; const seen = [];
+            const description = {style, initialView: {center: [-74.0065, 40.7085], zoom: 14.3}, attribution: false};
+            const action = mapJr(el, {description, ready: m => { map = m; }});
+            const stop = mapState(map).subscribe(s => seen.push(s.loaded));
+            await new Promise(r => map.state.subscribe(s => s.loaded, v => v && r()));
+            action.update({description: {...description, view: {center: [-74.0, 40.71], zoom: 13}}});
+            await wait(500);
+            const zoom = map.state.get().view.zoom;
+            stop(); action.destroy();
+            return {first: seen[0], later: seen.includes(true), zoom, canvas: !!el.querySelector('canvas')};
+        });
+        check('svelte: the action makes, changes and removes a map, and the store gives the state at once', svelte.first === false && svelte.later && svelte.zoom === 13 && !svelte.canvas, JSON.stringify(svelte));
+    } catch (e) { check('svelte: the test run was completed', false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
+
 // The one-file build of the main API: a map and a control from that file alone.
 {
     const page = await browser.newPage({viewport: {width: 900, height: 600}}), requested = [];

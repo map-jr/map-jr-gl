@@ -82,6 +82,10 @@
       "types": "./dist/types/react.d.ts",
       "import": "./dist/react.js"
     },
+    "./svelte": {
+      "types": "./dist/types/svelte.d.ts",
+      "import": "./dist/svelte.js"
+    },
     "./vue": {
       "types": "./dist/types/vue.d.ts",
       "import": "./dist/vue.js"

@@ -51,6 +51,7 @@ The library compares each field with the field of the last description:
 | `style` | A style object or the URL of a style (the MapLibre style specification). Required. A new object or URL is a new style. |
 | `initialView` | The view at the start: `center` (`[lng, lat]`), `zoom`, `bearing`, `pitch`. The user then moves the map. |
 | `view`, `onViewChange` | A view that your application owns. See below. |
+| `data` | GeoJSON data for sources of the style, by the id of the source. See below. |
 | `markers` | A list of marker layers, each with an `id`. See [Markers](markers.md). A layer with a new `data` array gets the new data. |
 | `controls` | A list of controls. See below. |
 | `interactiveLayers` | The ids of style layers. The features of these layers under the pointer are in `state.hover` and in `onClick`. |
@@ -68,6 +69,27 @@ These fields are read only when the map is made:
 | `antialias` | Multisample antialiasing for the canvas. |
 | `attribution` | `false` to show the credits yourself, or options for the built-in credits. |
 | `hash` | Keeps the view in the fragment of the URL. |
+
+## GeoJSON data that changes
+
+Put the source into the style with no features, and give the data in the field `data`:
+
+```js
+const style = {
+  ...baseStyle,
+  sources: {...baseStyle.sources, routes: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}},
+  layers: [...baseStyle.layers, {id: 'routes', type: 'line', source: 'routes', paint: {'line-color': '#d6453d', 'line-width': 3}}],
+};
+
+const map = createMap(container, {style, data: {routes: firstRoutes}});
+
+// Later: other data. The style is the same object, so the map does not look at it again.
+map.update({style, data: {routes: nextRoutes}});
+```
+
+- The data of each source is compared by identity. Give a new object to change it.
+- Only the data goes to the map. A style with the data inside it would be compared and sent as a whole.
+- The data stays when the style changes.
 
 ## Controls
 

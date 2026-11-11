@@ -33,6 +33,12 @@ export interface MapSpec extends MapSetup {
      */
     view?: Partial<View>;
     onViewChange?: (view: View) => void;
+    /**
+     * GeoJSON data for sources of the style, by the id of the source: `{routes: featureCollection}`. The source is in
+     * the style as `{type: 'geojson', data: {type: 'FeatureCollection', features: []}}`. Data here is compared by
+     * identity and goes to the map alone: use it for data that changes, so that the style stays as it is.
+     */
+    data?: Record<string, unknown>;
     /** Marker layers, each with an `id`. A layer whose `data` is a new array gets the new data. */
     markers?: MarkerLayerOptions[];
     /** Controls from `map-jr-gl/controls`: `[navigation(), scale()]`. */
@@ -170,11 +176,24 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
         click({point: e.point, lngLat: [e.lngLat.lng, e.lngLat.lat], features: layers?.length ? await map.queryLayers([e.point.x, e.point.y], {layers}) : []});
     });
 
+    // The GeoJSON data of `data`. A source gets its data when the style has it (a style from a URL comes later), and
+    // again after a new style, which has the data of the style itself.
+    const sent = new globalThis.Map<string, unknown>();
+    const giveData = () => {
+        for (const id in now.data) {
+            const source = sent.get(id) !== now.data[id] && map.getSource(id) as {setData?: (data: unknown) => void} | undefined;
+            if (source && source.setData) { sent.set(id, now.data[id]); source.setData(now.data[id]); }
+        }
+    };
+    map.on('styledata', giveData);
+
     const apply = (next: MapSpec, before?: MapSpec) => {
         // (A description that is made again each time, as in a template of a framework, has new objects with the same
         // content. So where the identity is different, the content is compared before the map does work.)
         const differ = (a: unknown, b: unknown) => a !== b && JSON.stringify(a) !== JSON.stringify(b);
-        if (before && differ(next.style, before.style)) { state.set({idle: false}); map.setStyle(next.style); }
+        // (After a new style the data waits for the `styledata` event: the engine must have the new style first.)
+        const restyled = !!before && differ(next.style, before.style);
+        if (restyled) { state.set({idle: false}); sent.clear(); map.setStyle(next.style); }
         if (next.view && !same(next.view, before?.view) && !reported.some(v => same(v, next.view)) && before) map.jumpTo(next.view);
         if (next.minZoom !== before?.minZoom && before) map.setMinZoom(next.minZoom);
         if (next.maxZoom !== before?.maxZoom && before) map.setMaxZoom(next.maxZoom);
@@ -200,6 +219,7 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
         }
         if (differ(next.interactiveLayers, before?.interactiveLayers)) hover();
         now = next;
+        if (next.data !== before?.data && !restyled) giveData();
     };
     apply(spec);
 

@@ -22,8 +22,11 @@ if (wanted.length) execFileSync('npm', ['install', '--no-audit', '--no-fund', '-
 
 // Each scenario is made into one file with its plugin. `maplibre-gl` stays an import: the page maps it to this library.
 const {build} = createRequire(import.meta.url)('esbuild'), bundles = {};
+// A scenario and its plugin must get the same copy of a framework: the one that was installed with the plugins. (The
+// project has React and Vue also, for its own adapters.)
+const one = Object.fromEntries(['react', 'react-dom', 'vue'].filter(n => existsSync(path.join(dir, 'node_modules', n))).map(n => [n, path.join(dir, 'node_modules', n)]));
 for (const n of names) {
-    const out = await build({entryPoints: [path.join(scenarios, n + '.js')], bundle: true, format: 'esm', write: false, external: ['maplibre-gl'], nodePaths: [path.join(dir, 'node_modules')], alias: {events: path.join(scenarios, 'shims/events.js')},
+    const out = await build({entryPoints: [path.join(scenarios, n + '.js')], bundle: true, format: 'esm', write: false, external: ['maplibre-gl'], nodePaths: [path.join(dir, 'node_modules')], alias: {events: path.join(scenarios, 'shims/events.js'), ...one},
         loader: {'.css': 'empty', '.svg': 'dataurl', '.png': 'dataurl'}, define: {'process.env.NODE_ENV': '"production"', global: 'globalThis'}, logLevel: 'silent'}).catch(e => ({error: e.message.split('\n')[0]}));
     bundles[n] = out.error ? out : out.outputFiles[0].text;
 }
