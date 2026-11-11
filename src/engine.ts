@@ -160,6 +160,8 @@ export class Engine {
     private zoomMovedAt = -1e9;
     private zoomSeen = NaN;
     private contourWait = false;
+    /** When the camera last changed. A short time after that still counts as movement, so that a pause in a gesture does not start costly work. */
+    private cameraMovedAt = -1e9;
     /** How many sprite and font downloads are in progress. */
     private spritePending = 0;
     private lastPlace = -Infinity;
@@ -962,7 +964,7 @@ export class Engine {
         }
 
         const camera = `${tr.padding},${tr.lng},${tr.lat},${tr.zoom},${tr.bearing},${tr.pitch},${Math.round(tr.elevation)},${this.exaggeration}`, cameraChanged = camera !== this.lastCamera;
-        if (cameraChanged) this.placeDirty = true;
+        if (cameraChanged) { this.placeDirty = true; this.cameraMovedAt = began; }
 
         // Decide which labels show only every so often; in between they ride along with the map and fade.
         const zooming = Math.abs(tr.zoom - this.placeZoom) > 0.12;
@@ -1029,7 +1031,7 @@ export class Engine {
         const unplaced = !!terrain && this.centreGiven && !this.demTile(mercX(tr.lng) - Math.floor(mercX(tr.lng)), mercY(tr.lat), 30);
         if (!unplaced) this.unplacedSince = 0; else if (!this.unplacedSince) this.unplacedSince = now;
         const hold = unplaced && now - this.unplacedSince < 3000;
-        const behind = hold || this.renderer.render({tr, layers: this.layers, items, labels, atlas: this.atlas, markers, icon: this.icon, light: this.style.light, moving: cameraChanged,
+        const behind = hold || this.renderer.render({tr, layers: this.layers, items, labels, atlas: this.atlas, markers, icon: this.icon, light: this.style.light, moving: began - this.cameraMovedAt < 200,
             // (Past the time limit and still unplaced: draw flat rather than raise terrain around a camera in the wrong place.)
             terrain: ground && !unplaced ? {exaggeration: this.exaggeration, tiles: ground, dem: this.demRef} : undefined});
 

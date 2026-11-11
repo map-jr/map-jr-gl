@@ -1083,7 +1083,7 @@ export class GLRenderer {
         gl.uniform4fv(u.u_unpack, dem.unpack);
     }
 
-    private drapes = new Map<string, {tex: WebGLTexture; size: number; signature: string; used: number}>();
+    private drapes = new Map<string, {tex: WebGLTexture; size: number; signature: string; used: number; /** Made at half the size while the camera moved. */ rough?: boolean}>();
     private frame = 0;
     private grid?: {vao: WebGLVertexArrayObject; count: number; /** For each skirt vertex, the grid vertex it hangs from. */ skirt: number[]};
     private meshHeights = new Map<string, {buffer: WebGLBuffer; version: number; used: number}>();
@@ -1129,9 +1129,14 @@ export class GLRenderer {
         for (const t of s.terrain!.tiles) {
             let d = this.drapes.get(t.key);
             // 1024 pixels a side at most (what MapLibre uses): larger pictures cost high-density phones frames for little gain.
-            const size = Math.min(1024, Math.max(64, Math.round(t.view.width * this.dpr)));
-            if (d && d.signature === t.signature) { d.used = this.frame; continue; }
-            if (d && !t.complete && d.signature.split('|')[0] === t.signature.split('|')[0]) { d.used = this.frame; continue; }
+            const full = Math.min(1024, Math.max(64, Math.round(t.view.width * this.dpr)));
+            // A picture that is first made while the camera moves is made at half the size: a quarter of the work for the
+            // GPU, which is what limits a zoom on a phone. It is made again at the full size when the camera is still.
+            const sharpen = !!d?.rough && !s.moving;
+            if (d?.rough && s.moving) behind = true; // more frames must come, to make this picture sharp after the movement
+            if (d && d.signature === t.signature && !sharpen) { d.used = this.frame; continue; }
+            if (d && !t.complete && d.signature.split('|')[0] === t.signature.split('|')[0] && !sharpen) { d.used = this.frame; continue; }
+            const rough = !!s.moving && (!d || !!d.rough) && full > 256, size = rough ? full >> 1 : full;
             if (d && budget-- <= 0) { d.used = this.frame; behind = true; continue; }
             if (!d && fresh-- <= 0) { behind = true; continue; }
             if (!d || d.size !== size) {
@@ -1142,6 +1147,7 @@ export class GLRenderer {
                 d = {tex, size, signature: '', used: this.frame};
                 this.drapes.set(t.key, d);
             }
+            d.rough = rough;
             d.signature = t.signature; d.used = this.frame;
             gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
             gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, d.tex, 0);
