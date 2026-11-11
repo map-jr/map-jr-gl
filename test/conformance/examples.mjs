@@ -1,6 +1,7 @@
 // Runs the example pages of MapLibre GL JS (the pages of its documentation) two times: with MapLibre GL JS, and with
 // this library in its place. For each page it records the errors and how much the two images differ.
 //   node test/conformance/examples.mjs [out-dir] [--filter=<regex>] [--write]      (--write puts the results in docs/ecosystem.md)
+//   --again uses the images and errors of the last run (to write the results again without a browser).
 // The pages come from the checkout of maplibre/maplibre-gl-js at .cache/maplibre-gl-js (the render tests clone it).
 // Needs python3 with Pillow for the comparison.
 import {execFileSync} from 'node:child_process';
@@ -42,7 +43,8 @@ const server = http.createServer((req, res) => {
 const origin = `http://localhost:${server.address().port}`;
 
 const names = readdirSync(pages).filter(f => f.endsWith('.html') && filter.test(f)).map(f => f.slice(0, -5));
-const browser = await launch(), rows = [], queue = [...names];
+const again = process.argv.includes('--again');
+const browser = again ? null : await launch(), rows = again ? JSON.parse(readFileSync(path.join(out, 'result.json'), 'utf8')) : [], queue = again ? [] : [...names];
 /** Loads one variant of a page, waits until the network is quiet and the map has had time to draw, and takes an image. */
 async function shoot(context, name, variant) {
     const page = await context.newPage(), errors = [];
@@ -61,7 +63,7 @@ async function shoot(context, name, variant) {
     await page.close();
     return {file: existsSync(file) ? file : null, errors: [...new Set(errors)]};
 }
-await Promise.all(Array.from({length: 2}, async () => {
+if (browser) await Promise.all(Array.from({length: 2}, async () => {
     const context = await browser.newContext({viewport: {width: 800, height: 500}});
     for (let name; (name = queue.shift());) {
         const theirs = await shoot(context, name, 'maplibre'), ours = await shoot(context, name, 'mapjr');
@@ -69,7 +71,7 @@ await Promise.all(Array.from({length: 2}, async () => {
     }
     await context.close();
 }));
-await browser.close();
+await browser?.close();
 server.close();
 
 // The share of pixels that differ clearly between the two images of a page.
@@ -91,7 +93,8 @@ rows.sort((a, b) => a.name < b.name ? -1 : 1);
 // A page works when this library gives no error that MapLibre does not give, and the images are near to each other.
 const LIMIT = 12;
 for (const r of rows) {
-    r.newErrors = r.ours.errors.filter(e => !r.theirs.errors.includes(e));
+    // (The two libraries word the same error differently, so the numbers of errors are compared, not their texts.)
+    r.newErrors = r.ours.errors.length > r.theirs.errors.length ? r.ours.errors.filter(e => !r.theirs.errors.includes(e)) : [];
     r.state = r.theirs.errors.length && !r.theirs.file ? 'not run' : r.newErrors.length ? 'error' : r.diff === undefined || r.diff === null ? 'no image' : r.diff > LIMIT ? 'differs' : 'works';
 }
 writeFileSync(path.join(out, 'result.json'), JSON.stringify(rows, null, 1));
