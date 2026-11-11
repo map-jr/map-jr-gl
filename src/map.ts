@@ -615,11 +615,20 @@ export class Map {
     }
 
     // ---- style ----
+    private restyles = 0;
+    private reloadPending = false;
     private restyle(reload: boolean) {
         // As in MapLibre, the loading events come before the data events.
         for (const type of ['styledataloading', 'dataloading']) this.fire(type, {dataType: 'style'});
         if (!this.syncQuery && Object.values<any>(this.rawStyle.sources ?? {}).some(src => src.type === 'geojson' && src.data && typeof src.data === 'object')) import('./sync-query.ts').then(m => { this.syncQuery = m; });
+        // Two changes to the style in quick succession are resolved at the same time, and the first can finish last.
+        // Only the newest result is used. It reloads the sources if one of the changes that it replaces asked for that.
+        const turn = ++this.restyles;
+        this.reloadPending ||= reload;
         resolveStyle(this.rawStyle, this.fetchAs('Source'), this.styleBase).then(style => {
+            if (turn !== this.restyles) return;
+            reload = this.reloadPending;
+            this.reloadPending = false;
             if (Object.keys(this.globalState).length) style.state = {...style.state, ...this.globalState};
             this.style = style;
             this.post({type: 'style', style, reload});
