@@ -86,6 +86,10 @@ To use it, do this step one time: in the repository settings, open **Pages** and
 | `src/webp.ts` | PNG and WebP decoders for the server |
 | `src/loader.ts`, `src/worker.ts` | How the workers start |
 
+The build gives short names to private class members (`scripts/private-names.mjs`), because the minifier does not
+shorten property names. Declare a member `private` and use it as `this.name` to get a short name in the built files.
+Run `node scripts/private-names.mjs` to see the names that the build shortens.
+
 ## Other browsers and operating systems
 
 The workflow `Browsers` (`.github/workflows/browsers.yml`) runs on each push that changes the code. It runs the

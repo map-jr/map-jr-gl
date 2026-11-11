@@ -1,0 +1,83 @@
+// A build step that gives short names to private class members. The minifier does not shorten property names,
+// and the engine has some hundreds of private members with long names.
+//
+// A name is shortened only when each use of it in src/ is one of these:
+//   - the declaration of a `private` member of a class
+//   - `this.name`
+// A name is kept when it appears anywhere as: a member that is not private, a property of something other than
+// `this`, a key of an object literal or a destructuring pattern, a field of an interface or type, or a string.
+// So a shortened name can never be the name of a message field, an option, or a property of the browser.
+//
+//   node scripts/private-names.mjs      prints the names that the build shortens
+import {readdirSync, readFileSync} from 'node:fs';
+import {createRequire} from 'node:module';
+import path from 'node:path';
+
+const {parseAst} = await import(createRequire(createRequire(import.meta.url).resolve('vite')).resolve('rolldown/parseAst'));
+const src = path.resolve(import.meta.dirname, '../src');
+
+/** Calls `fn` for each node of a syntax tree, with its parent. */
+function walk(node, fn, parent = null) {
+    if (!node || typeof node.type !== 'string') return;
+    fn(node, parent);
+    for (const key in node) {
+        const v = node[key];
+        if (Array.isArray(v)) for (const c of v) walk(c, fn, node); else if (v && typeof v === 'object') walk(v, fn, node);
+    }
+}
+
+/** Each use of a property name in one file: `sites` are the places that can be renamed, `other` the names to keep. */
+function uses(code, file) {
+    const sites = [], other = new Set(), name = k => k.type === 'Identifier' ? k.name : k.type === 'Literal' && typeof k.value === 'string' ? k.value : null;
+    walk(parseAst(code, {lang: 'ts'}, file), (n, parent) => {
+        if (n.type === 'Literal' && typeof n.value === 'string') other.add(n.value);
+        else if (n.type === 'TemplateElement') for (const word of (n.value?.cooked ?? '').match(/[A-Za-z_$][\w$]*/g) ?? []) other.add(word);
+        else if (n.type === 'MemberExpression' && !n.computed && n.property.type === 'Identifier') {
+            if (n.object.type === 'ThisExpression') sites.push(n.property); else other.add(n.property.name);
+        } else if (n.type === 'PropertyDefinition' || n.type === 'MethodDefinition' || n.type === 'AccessorProperty' || n.type === 'TSAbstractPropertyDefinition' || n.type === 'TSAbstractMethodDefinition') {
+            const k = !n.computed && name(n.key);
+            if (k && n.accessibility === 'private' && n.key.type === 'Identifier') sites.push({...n.key, declared: true}); else if (k) other.add(k);
+        } else if (n.type === 'TSParameterProperty') walk(n.parameter, p => { if (p.type === 'Identifier') other.add(p.name); });
+        else if ((n.type === 'Property' || n.type === 'TSPropertySignature' || n.type === 'TSMethodSignature') && !n.computed) { const k = name(n.key); if (k) other.add(k); }
+        else if (n.type === 'TSEnumMember') { const k = name(n.id); if (k) other.add(k); }
+        void parent;
+    });
+    return {sites, other};
+}
+
+/** The names that are safe to shorten, each with its short name. The most used names get the shortest ones. */
+export function privateNames() {
+    const count = new Map(), declared = new Set(), other = new Set();
+    for (const f of readdirSync(src).filter(f => f.endsWith('.ts'))) {
+        const u = uses(readFileSync(path.join(src, f), 'utf8'), f);
+        for (const s of u.sites) { count.set(s.name, (count.get(s.name) ?? 0) + 1); if (s.declared) declared.add(s.name); }
+        for (const o of u.other) other.add(o);
+    }
+    const names = [...declared].filter(n => !other.has(n) && n.length > 2).sort((a, b) => count.get(b) - count.get(a) || (a < b ? -1 : 1));
+    const letters = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ', short = new Map();
+    let i = 0;
+    for (const n of names) {
+        let s;
+        do { s = '_' + (i < 52 ? letters[i] : letters[Math.floor(i / 52) - 1] + letters[i % 52]); i++; } while (other.has(s) || count.has(s));
+        short.set(n, s);
+    }
+    return short;
+}
+
+/** The Vite plugin: renames the members in each file of src/ before the file is compiled. */
+export function shortenPrivateNames() {
+    const short = privateNames();
+    return {
+        name: 'shorten-private-names',
+        enforce: 'pre',
+        transform(code, id) {
+            const file = id.split('?')[0];
+            if (!file.endsWith('.ts') || path.dirname(file) !== src) return null;
+            const edits = uses(code, file).sites.filter(s => short.has(s.name)).sort((a, b) => b.start - a.start);
+            for (const s of edits) code = code.slice(0, s.start) + short.get(s.name) + code.slice(s.end);
+            return {code, map: null};
+        },
+    };
+}
+
+if (process.argv[1] === import.meta.filename) { const names = privateNames(); console.log([...names.keys()].join(' ')); console.log(names.size + ' names'); }

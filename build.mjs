@@ -2,6 +2,9 @@
 import {build} from 'vite';
 import {gzipSync, brotliCompressSync} from 'node:zlib';
 import {mkdirSync, readFileSync, readdirSync, rmSync} from 'node:fs';
+import {shortenPrivateNames} from './scripts/private-names.mjs';
+
+const privates = shortenPrivateNames();
 
 rmSync('dist', {recursive: true, force: true});
 mkdirSync('dist', {recursive: true});
@@ -21,7 +24,7 @@ const shaders = {
 
 /** One Vite build. Everything is written to dist/ next to what earlier builds put there. */
 const run = (options, define = {__WORKER_SRC__: '""'}) => build({
-    configFile: false, logLevel: 'warn', define, plugins: [shaders],
+    configFile: false, logLevel: 'warn', define, plugins: [shaders, privates],
     build: {target: 'es2022', minify: true, emptyOutDir: false, outDir: 'dist', copyPublicDir: false, reportCompressedSize: false, modulePreload: false, ...options},
 });
 
