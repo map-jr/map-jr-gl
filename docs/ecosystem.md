@@ -29,6 +29,29 @@ short scenario in `test/conformance/plugins/`. The plugin imports `maplibre-gl` 
 | @watergis/maplibre-gl-export 6.0.0 | Pass | the control is in the page |
 <!-- plugins:end -->
 
+<!-- styles:start -->
+## Public styles that were drawn
+
+These styles were drawn with MapLibre GL JS and with this library by `node test/conformance/styles.mjs --write`, at
+the same places. Each number is the percentage of pixels that differ clearly between the two images. The two
+libraries draw text in different ways and can select different labels, so 2 to 7 percent is usual for a view with
+many labels. A larger number shows something that the library draws wrongly or not at all.
+
+| Style | world | country | city | streets | close | tilted |
+|---|---|---|---|---|---|---|
+| [liberty](https://tiles.openfreemap.org/styles/liberty) | 3.4 | 2.8 | 2.5 | 5.9 | 1.1 | 6 |
+| [bright](https://tiles.openfreemap.org/styles/bright) | 3.3 | 2.7 | 2.5 | 5.5 | 1 | 6.9 |
+| [positron](https://tiles.openfreemap.org/styles/positron) | 3.3 | 2.7 | 2.4 | 2.5 | 0.7 | 4.6 |
+| [versatiles](https://tiles.versatiles.org/assets/styles/colorful/style.json) | 0 | 4.1 | 2.6 | 4.3 | 0.6 | 4.8 |
+| [demotiles](https://demotiles.maplibre.org/style.json) | 0.7 | 0.6 | 0 | 0 | 0 | 0 |
+| [voyager](https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json) | 0 | 1 | 0.4 | 1.2 | 0.4 | 2.2 |
+| [darkmatter](https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json) | 0 | 1.1 | 0.4 | 1.3 | 0.3 | 1.4 |
+| [dark](https://tiles.openfreemap.org/styles/dark) | 1.7 | 1.6 | 1 | 0.8 | 0.1 | 1.1 |
+| [shortbread](https://vector.openstreetmap.org/styles/shortbread/colorful.json) | 0 | 4 | 2.8 | 4 | 0.3 | 4.8 |
+
+The views: world (zoom 1.6), country (zoom 5.3), city (zoom 11.2), streets (zoom 14.6), close (zoom 17.4), tilted (zoom 15.7, tilted).
+<!-- styles:end -->
+
 ## What is missing most often
 
 | Missing | Kind | Packages that use it |

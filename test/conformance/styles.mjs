@@ -1,16 +1,19 @@
 // Draws popular public styles at several places and zooms with MapLibre GL JS and with this library, and compares
 // the two images. A large difference shows something that the library draws wrongly or not at all.
-//   node test/conformance/styles.mjs [out-dir]      (needs the demo server: pnpm demo; and python3 with Pillow for the comparison)
+//   node test/conformance/styles.mjs [out-dir] [--write]      (needs the demo server: pnpm demo; and python3 with Pillow for the comparison)
+// --write puts the results in docs/ecosystem.md.
 // The two libraries draw text in different ways (glyph files and web fonts), so labels always differ a little.
 import {execFileSync} from 'node:child_process';
-import {mkdirSync, writeFileSync} from 'node:fs';
+import {mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {launch} from '../launch.mjs';
 
-const out = process.argv[2] ?? '.cache/styles', base = process.env.BENCH_BASE ?? 'http://localhost:8080';
+const out = process.argv.slice(2).find(a => !a.startsWith('--')) ?? '.cache/styles', base = process.env.BENCH_BASE ?? 'http://localhost:8080';
 const STYLES = {
     liberty: 'https://tiles.openfreemap.org/styles/liberty', bright: 'https://tiles.openfreemap.org/styles/bright', positron: 'https://tiles.openfreemap.org/styles/positron',
     versatiles: 'https://tiles.versatiles.org/assets/styles/colorful/style.json', demotiles: 'https://demotiles.maplibre.org/style.json',
+    voyager: 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json', darkmatter: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+    dark: 'https://tiles.openfreemap.org/styles/dark', shortbread: 'https://vector.openstreetmap.org/styles/shortbread/colorful.json',
 };
 const VIEWS = [
     {name: 'world', center: [10, 30], zoom: 1.6}, {name: 'country', center: [10.4, 51.2], zoom: 5.3}, {name: 'city', center: [13.4, 52.52], zoom: 11.2},
@@ -61,3 +64,17 @@ rows.forEach((r, i) => { r.diff = diffs[i]; });
 rows.sort((a, b) => b.diff - a.diff);
 writeFileSync(path.join(out, 'result.json'), JSON.stringify(rows, null, 1));
 for (const r of rows) console.log(`${String(r.diff).padStart(5)}%  ${r.style} ${r.view}  ${r.file}`);
+
+if (process.argv.includes('--write')) {
+    // One row for each style, one column for each view.
+    const lines = ['<!-- styles:start -->', '## Public styles that were drawn', '',
+        'These styles were drawn with MapLibre GL JS and with this library by `node test/conformance/styles.mjs --write`, at',
+        'the same places. Each number is the percentage of pixels that differ clearly between the two images. The two',
+        'libraries draw text in different ways and can select different labels, so 2 to 7 percent is usual for a view with',
+        'many labels. A larger number shows something that the library draws wrongly or not at all.', '',
+        `| Style | ${VIEWS.map(v => v.name).join(' | ')} |`, `|---|${VIEWS.map(() => '---').join('|')}|`,
+        ...Object.entries(STYLES).map(([name, url]) => `| [${name}](${url}) | ${VIEWS.map(v => rows.find(r => r.style === name && r.view === v.name)?.diff ?? '').join(' | ')} |`),
+        '', `The views: ${VIEWS.map(v => `${v.name} (zoom ${v.zoom}${v.pitch ? ', tilted' : ''})`).join(', ')}.`, '<!-- styles:end -->'];
+    const file = path.resolve(import.meta.dirname, '../../docs/ecosystem.md'), doc = readFileSync(file, 'utf8'), block = lines.join('\n');
+    writeFileSync(file, doc.includes('<!-- styles:start -->') ? doc.replace(/<!-- styles:start -->[\s\S]*<!-- styles:end -->/, block) : doc.replace('## What is missing most often', block + '\n\n## What is missing most often'));
+}
