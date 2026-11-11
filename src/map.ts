@@ -224,7 +224,10 @@ export class Map {
             // The fragment gives the camera at the start; the option `center` and the others are for a URL without one.
             const all = location.hash.slice(1), p = (key === true ? all : new URLSearchParams(all).get(key) ?? '').split('/').map(Number);
             if (p.length > 2 && !p.some(isNaN)) this.options = options = {...options, zoom: p[0], center: [p[2], p[1]], bearing: p[3] ?? 0, pitch: p[4] ?? 0};
-            import('./hash.ts').then(m => this.cleanup.push(m.watchHash(this, key)));
+            // (A movement can end before the file has loaded: it is written then.)
+            let early = false;
+            this.once('moveend', () => { early = true; });
+            import('./hash.ts').then(m => this.cleanup.push(m.watchHash(this, key, early)));
         }
         this.tr.set(options.center ?? [0, 0], options.zoom ?? 0, options.bearing ?? 0, options.pitch ?? 0);
         for (const k of ['dragPan', 'scrollZoom', 'doubleClickZoom', 'dragRotate', 'touchZoomRotate', 'touchPitch', 'keyboard', 'boxZoom'] as const) if (options[k] === false) this[k].disable();

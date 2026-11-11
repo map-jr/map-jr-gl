@@ -13,7 +13,7 @@ function readHash(key: true | string): Camera | null {
  * and a change of the fragment moves the map. Returns a function that stops it.
  * (The map loads this file only when the option is used.)
  */
-export function watchHash(map: Map, key: true | string) {
+export function watchHash(map: Map, key: true | string, early?: boolean) {
     const changed = () => { const camera = readHash(key); if (camera) map.jumpTo(camera); };
     const moved = () => {
         // (The position has as many digits as the zoom can show, as in MapLibre.)
@@ -23,6 +23,7 @@ export function watchHash(map: Map, key: true | string) {
         const others = key === true ? [] : location.hash.slice(1).split('&').filter(part => part && part.split('=')[0] !== key);
         history.replaceState(history.state, '', location.href.replace(/(#.*)?$/, '#' + [...others, key === true ? camera : `${key}=${camera}`].join('&')));
     };
+    if (early) moved();
     addEventListener('hashchange', changed);
     map.on('moveend', moved);
     return () => { removeEventListener('hashchange', changed); map.off('moveend', moved); };

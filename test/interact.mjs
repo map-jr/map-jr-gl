@@ -497,6 +497,9 @@ for (const mode of ['main', 'worker']) {
     for (let k = 0; k < 3; k++) {
         await page.mouse.move(500, 200); await page.mouse.down();
         for (let i = 1; i <= 10; i++) { await page.mouse.move(500 + i * 4, 200 + i * 20); await page.waitForTimeout(30); }
+        // (A slow test machine draws these frames slowly: the centre is read when it has changed, or after 3 seconds.)
+        const last = centres[k - 1] ?? [8.45, 46.55];
+        await page.waitForFunction(([lng, lat]) => { const c = window.map.getCenter(); return Math.hypot(c.lng - lng, c.lat - lat) > 0.01; }, last, {timeout: 3000, polling: 50}).catch(() => {});
         await page.waitForTimeout(250);
         centres.push(await page.evaluate(() => { const c = window.map.getCenter(); return [c.lng, c.lat]; }));
         await page.mouse.up(); await page.waitForTimeout(300);
