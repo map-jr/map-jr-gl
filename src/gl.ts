@@ -1129,6 +1129,12 @@ export class GLRenderer {
     /** Gives the memory of the GPU back at once. Without this, a map that was removed keeps it until the browser collects the context. */
     destroy() { this.gl.getExtension('WEBGL_lose_context')?.loseContext(); }
 
+    private drapeWaits = new Map<string, number>();
+    /** How many levels up the nearest coarser tile with a picture is (0: there is none). */
+    private coarserDrape(id: TileID) {
+        for (let up = 1; up <= 5 && up <= id.z; up++) if (this.drapes.has(`${id.z - up}/${id.x >> up}/${id.y >> up}|${id.w}`)) return up;
+        return 0;
+    }
     private updateDrapes(s: Scene) {
         const gl = this.gl;
         // Per frame: a couple of out-of-date pictures are redrawn and a few missing ones drawn (all of them when starting
@@ -1138,6 +1144,8 @@ export class GLRenderer {
         // One picture is a pass over all the layers of the style: as many WebGL calls as the frame itself. So while the
         // camera moves, a picture is made only in each third frame. The picture of a coarser tile shows meanwhile.
         const turn = !s.moving || this.frame % 3 === 0;
+        const now = performance.now();
+        for (const [key, since] of this.drapeWaits) if (now - since > 2000) this.drapeWaits.delete(key);
         let budget = !turn ? 0 : s.moving ? 1 : 2, fresh = !this.drapes.size ? Infinity : !turn ? 0 : s.moving ? 1 : 3, behind = false;
         for (const t of s.terrain!.tiles) {
             let d = this.drapes.get(t.key);
@@ -1153,6 +1161,13 @@ export class GLRenderer {
             if (d && !t.complete && d.signature.split('|')[0] === t.signature.split('|')[0] && !sharpen) { d.used = this.frame; continue; }
             const rough = !!s.moving && (!d || !!d.rough) && full > 256, size = rough ? full >> 1 : full;
             if (d && budget-- <= 0) { d.used = this.frame; behind = true; continue; }
+            if (!d && !t.complete && fresh < Infinity) {
+                // A new tile whose data is still on its way: for a short time, the picture of a coarser tile shows in its
+                // place. Most tiles are complete in that time, and their picture is then made once, not twice.
+                const since = this.drapeWaits.get(t.key) ?? now;
+                this.drapeWaits.set(t.key, since);
+                if (now - since < 300 && this.coarserDrape(t.id)) { behind = true; continue; }
+            }
             if (!d && fresh-- <= 0) { behind = true; continue; }
             if (!d || d.size !== size) {
                 if (d) this.freeDrape(d);
@@ -1199,9 +1214,9 @@ export class GLRenderer {
         for (const t of s.terrain!.tiles) {
             let d = this.drapes.get(t.key), part = [0, 0, 1];
             // No picture of its own yet: show its share of the nearest ancestor's rather than a hole.
-            for (let up = 1; !d && up <= 5 && up <= t.id.z; up++) {
-                const k = 2 ** up;
-                d = this.drapes.get(`${t.id.z - up}/${t.id.x >> up}/${t.id.y >> up}|${t.id.w}`);
+            if (!d) {
+                const up = this.coarserDrape(t.id), k = 2 ** up;
+                d = up ? this.drapes.get(`${t.id.z - up}/${t.id.x >> up}/${t.id.y >> up}|${t.id.w}`) : undefined;
                 if (d) { part = [(t.id.x % k) / k, (t.id.y % k) / k, 1 / k]; d.used = this.frame; }
             }
             if (!d) continue;
