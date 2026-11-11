@@ -45,7 +45,9 @@ for (const mode of ['worker', 'main']) {
 }
 
 // 2. The benchmark page: this library and MapLibre GL JS, with and without 3D terrain, and markers.
-try {
+// (Where the map did not load at all, for example a browser without WebGL, the benchmark would only wait for its time limit.)
+if (!result.checks.some(c => c.loaded)) result.errors.push('bench: not run, because the map did not load');
+else try {
     const page = await browser.newPage({viewport: {width: 1000, height: 700}});
     page.on('pageerror', e => result.errors.push(e.message));
     await page.goto(`${base}/bench?auto&seconds=${process.env.BENCH_SECONDS ?? 4}`);
