@@ -162,7 +162,14 @@ Faults that the trial found, and their state:
    and the array had the features of GeoJSON sources only. Fixed in the entry for MapLibre code: see
    `docs/maplibre-compatibility.md`, "Feature queries".
 6. Each `queryRenderedFeatures` made the map fire `idle` again, so code that queries on `idle` ran in a loop. Fixed.
-7. Open: at zoom 6.8 the library shows green areas (land cover) in the plain of the Po that MapLibre does not show.
+7. The rain page: a step through time was slow and flashed. Three causes, all fixed:
+   `isSourceLoaded` and `sourcedata` told of the whole map only (now of each source); the reports of the engine could
+   be older than the last change of the style, so the page showed a layer before its tiles were there (the page now
+   numbers its commands and ignores old reports); and each query made the map idle again.
+8. PMTiles layers were slow on the first load: the header of an archive was fetched by the page and again by each
+   tile worker, and the metadata was a request of its own. Now one request before the first tile (MapLibre with the
+   `pmtiles` package: one also).
+9. Open: at zoom 6.8 the library shows green areas (land cover) in the plain of the Po that MapLibre does not show.
    Not examined.
 
 Not checked in the trial:
@@ -184,6 +191,7 @@ Not checked in the trial:
 | The engine for the main thread (loaded only when no worker can start) has a budget of 54 KB. | It now contains the expression compiler and the shaper that the page script no longer has. The total for a map on the main thread is the same as before. | |
 | The page script is now 26.4 KB (budget 27.5 KB). The budget of the engine for the main thread went from 54 KB to 55 KB; it is 54.7 KB. | The reader for PMTiles archives was in the page script, because the page reads the header of an archive when it resolves a style. It is now loaded only for a style that has a `pmtiles://` source: 1.1 KB less for each page. The reader is counted with the engine for the main thread now, which is why that budget changed. A map in a worker (the usual case) downloads less; a map on the main thread downloads 0.6 KB more in total. | Import `./pmtiles.ts` at the top of `src/resolve.ts` again. |
 | The budget of the page script of `maplibre-compat` went from 28.5 KB to 29 KB; the file set is 28.6 KB. | `queryRenderedFeatures` read at once now has the features of tiles in the usual cases (a fault from the trial in elevation-next: a click on a county did nothing). The main entry did not grow. | Remove `answers` and the `fire` override in `src/compat-map.ts`; MapLibre code then needs `await`. |
+| The budget of the page script of `maplibre-compat` went from 29 KB to 29.5 KB; the file set is 29.1 KB. The page script of the main entry is 26.7 KB (budget 27 KB). | The state of each source (loaded or not) and the numbers on commands are in the core map class, which both entries contain. | — |
 | The build gives short names to private class members and to the names in the shaders (uniforms, attributes, varyings, local variables), and takes the spaces from around the operators in the shaders (`scripts/private-names.mjs`, `build.mjs`). The budgets did not change. | The minifier does not shorten property names, and it does not look into GLSL text. The steps make the worker about 1.1 KB smaller (gzip). The features of this night used that room: the worker is 57.7 KB. A name is shortened only when each use of it is a `private` declaration or `this.name`, so message fields, options and browser properties keep their names. | Remove `privates` from the plugins in `build.mjs`. |
 
 ## `queryRenderedFeatures` gives two kinds of result

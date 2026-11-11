@@ -19,9 +19,7 @@ export class Map extends CoreMap {
     private incomplete(name: string, had: number, has: number) {
         if (this.warned.has(name)) return;
         this.warned.add(name);
-        console.warn(`[map-jr-gl] ${name}: the result was used without \`await\`, and it was not complete (${had} of ${has} features). `
-            + `The tile data is in a worker, so the complete result is a promise. Change\n    const features = map.${name}(...);\nto\n    const features = await map.${name}(...);\n`
-            + `This form also works in MapLibre GL JS. Without \`await\`, the array has the features only in some cases: see "Feature queries" in docs/maplibre-compatibility.md.`);
+        console.warn(`[map-jr-gl] ${name}: the result was used without \`await\` and was not complete (${had} of ${has} features). Tile data is in a worker. Change\n    const features = map.${name}(...);\nto\n    const features = await map.${name}(...);\n(this also works in MapLibre GL JS). See "Feature queries" in docs/maplibre-compatibility.md.`);
     }
     setProjection(projection?: {type?: unknown} | null) { return this.unsupported('setProjection', !projection || projection.type === 'mercator'); }
     setSky(sky?: object | null) { return this.unsupported('setSky', !sky || !Object.keys(sky).length); }

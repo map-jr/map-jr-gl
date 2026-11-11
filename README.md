@@ -269,19 +269,19 @@ build and other configurations.
 ## Speed
 
 <!-- speed:start -->
-Measured by the workflow [Browsers](https://github.com/map-jr/map-jr-gl/tree/bench-results) on 2026-11-11 (commit d090af6). Each cell is MapLibre GL JS 6.17.0 / **this library** (worker renderer where the browser has it).
+Measured by the workflow [Browsers](https://github.com/map-jr/map-jr-gl/tree/bench-results) on 2026-11-11 (commit 1d84530). Each cell is MapLibre GL JS 6.17.0 / **this library** (worker renderer where the browser has it).
 
 | System, browser | Load to idle, ms | Frames per second, map moving | Frames per second, 10,000 markers |
 |---|---|---|---|
-| macOS, Chromium | 1613 / **931** | 28 / **22** | 1 / **37** |
-| macOS, Firefox | 5399 / **7026** | 2 / **59** | 3 / **60** |
-| macOS, WebKit | 1473 / **843** | 60 / **60** | 7 / **58** |
-| Linux, Chromium | 1432 / **1091** | 11 / **9** | 2 / **10** |
-| Linux, Firefox | 1478 / **1011** | 22 / **20** | 5 / **16** |
-| Linux, WebKit | 2581 / **1111** | 13 / **13** | 2 / **13** |
-| Windows, Chromium | 1289 / **1588** | 42 / **32** | 2 / **27** |
-| Windows, Firefox | 1481 / **1950** | 33 / **20** | 5 / **21** |
-| Windows, WebKit | 1779 / **1327** | 14 / **15** | 2 / **15** |
+| macOS, Chromium | 2103 / **915** | 30 / **27** | 1 / **36** |
+| macOS, Firefox | 4123 / **7505** | 4 / **63** | 4 / **61** |
+| macOS, WebKit | 3944 / **1261** | 39 / **53** | 2 / **44** |
+| Linux, Chromium | 1249 / **1119** | 11 / **8** | 2 / **7** |
+| Linux, Firefox | 1908 / **1769** | 17 / **59** | 5 / **58** |
+| Linux, WebKit | 2636 / **1012** | 13 / **13** | 2 / **13** |
+| Windows, Chromium | 696 / **1064** | 50 / **40** | 4 / **35** |
+| Windows, Firefox | 1624 / **1840** | 31 / **19** | 4 / **21** |
+| Windows, WebKit | 1165 / **1301** | 24 / **23** | 4 / **22** |
 <!-- speed:end -->
 
 These computers are virtual machines, and those for Linux and Windows have no GPU: use the table to compare the

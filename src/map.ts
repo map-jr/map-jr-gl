@@ -190,8 +190,11 @@ export class Map {
     protected imageNames = new Set<string>();
     private imageResolver: ((id: string) => void | Promise<void>) | null = null;
     private tilesLoaded = false;
+    /** The number of the last command to the engine that can change what is loaded. */
+    private seq = 0;
     /** The sources whose tiles for the view are all loaded, as the engine tells it. */
     private loadedSources = new Set<string>();
+    private sourceRules = new globalThis.Map<string, {text: string; data: unknown}>();
     /** Global state values set at runtime, on top of the style's defaults. */
     private globalState: Record<string, unknown> = {};
     protected zooming = false; protected rotating = false; protected pitching = false;
@@ -346,7 +349,7 @@ export class Map {
             this.observer?.disconnect();
             for (const w of this.workers.splice(0)) w.terminate();
             this.tilePool?.release();
-            this.ready = false; this.queue = []; this.tilesLoaded = false;
+            this.ready = false; this.queue = []; this.tilesLoaded = false; this.seq = 0;
             const fresh = this.canvas.cloneNode() as HTMLCanvasElement, tr = this.tr;
             this.canvas.replaceWith(fresh);
             this.canvas = fresh;
@@ -378,7 +381,7 @@ export class Map {
     _command(c: Command) { this.post(c); }
 
     private post(c: Command, transfer?: Transferable[]) {
-        if (c.type !== 'query' && c.type !== 'elevation' && c.type !== 'queryRendered' && c.type !== 'frames') this.tilesLoaded = false;
+        if (c.type !== 'query' && c.type !== 'elevation' && c.type !== 'queryRendered' && c.type !== 'frames') { this.tilesLoaded = false; (c as {seq?: number}).seq = ++this.seq; }
         if (this.ready) this.send(c, transfer); else this.queue.push([c, transfer]);
     }
 
@@ -416,11 +419,13 @@ export class Map {
             this.fire('render');
         } else if (e.type === 'source') {
             if (!e.loaded) this.loadedSources.delete(e.source);
-            else if (this.rawStyle?.sources[e.source]) {
+            else if (e.seq === this.seq && this.restyled === this.restyles && this.rawStyle?.sources[e.source]) {
                 this.loadedSources.add(e.source);
                 for (const type of ['sourcedata', 'data']) this.fire(type, {dataType: 'source', sourceId: e.source, isSourceLoaded: true, source: this.rawStyle.sources[e.source]});
             }
         } else if (e.type === 'idle') {
+            // (A report from before the last command: the engine sends another after that command.)
+            if (e.seq !== this.seq || this.restyled !== this.restyles) return;
             this.tilesLoaded = true;
             if (!this.isLoaded) {
                 this.isLoaded = true;
@@ -429,6 +434,7 @@ export class Map {
             }
             // The data of each source is complete now. As in MapLibre, `sourcedata` and `data` tell listeners so.
             {
+                for (const sourceId of Object.keys(this.rawStyle?.sources ?? {})) this.loadedSources.add(sourceId);
                 for (const sourceId of Object.keys(this.rawStyle?.sources ?? {})) for (const type of ['sourcedata', 'data']) this.fire(type, {dataType: 'source', sourceId, isSourceLoaded: true, source: this.rawStyle.sources[sourceId]});
             }
             this.fire('idle');
@@ -625,6 +631,8 @@ export class Map {
 
     // ---- style ----
     private restyles = 0;
+    /** The last change of the style that the engine has got (`restyles`: the last that the page asked for). */
+    private restyled = 0;
     private newStyle = false;
     /** The events after the style changed. `style.load` is only for a whole new style (the first one, or `setStyle`). */
     private styleEvents(whole: boolean) {
@@ -643,16 +651,28 @@ export class Map {
         // Only the newest result is used. It reloads the sources if one of the changes that it replaces asked for that.
         const turn = ++this.restyles;
         this.reloadPending ||= reload;
+        // (The engine does not have this change yet: its reports of what is loaded are old from now on. See `seq`.)
+        this.tilesLoaded = false; this.seq++;
+        // A source whose rules changed is not loaded until the engine says so. The other sources keep their state.
+        const texts: Record<string, string> = {}, was = this.sourceRules;
+        for (const l of this.rawStyle.layers ?? []) if (l.source) texts[l.source] = (texts[l.source] ?? '') + JSON.stringify(l);
+        this.sourceRules = new globalThis.Map();
+        for (const [id, src] of Object.entries<any>(this.rawStyle.sources ?? {})) {
+            const rules = {text: JSON.stringify({...src, data: 0}) + texts[id], data: src.data}, old = was.get(id);
+            this.sourceRules.set(id, rules);
+            if (old?.text !== rules.text || old.data !== rules.data) this.loadedSources.delete(id);
+        }
         resolveStyle(this.rawStyle, this.fetchAs('Source'), this.styleBase).then(style => {
             if (turn !== this.restyles) return;
             reload = this.reloadPending;
             this.reloadPending = false;
             if (Object.keys(this.globalState).length) style.state = {...style.state, ...this.globalState};
             this.resolved = style;
+            this.restyled = turn;
             this.post({type: 'style', style, reload});
             this.styleEvents(this.newStyle);
             this.newStyle = false;
-        }, err => this.fire('error', {error: err}));
+        }, err => { this.fire('error', {error: err}); if (turn === this.restyles) { this.restyled = turn; this.post({type: 'repaint'}); } });
     }
     /** Runs a change to the style JSON now, or as soon as the style has been fetched. */
     protected editStyle(fn: (style: any) => void) {
@@ -782,7 +802,7 @@ export class Map {
         if (typeof data === 'string') { const res = await this.fetchAs('Source')(new URL(data, this.styleBase)); data = await res.json(); }
         this.post({type: 'geojson', source: id, data});
     }
-    addSource(id: string, source: unknown) { this.loadedSources.delete(id); return this.editStyle(s => { s.sources[id] = source; }); }
+    addSource(id: string, source: unknown) { return this.editStyle(s => { s.sources[id] = source; }); }
     removeSource(id: string) { return this.editStyle(s => { delete s.sources[id]; }); }
     addLayer(layer: {id: string}, beforeId?: string) {
         return this.editStyle(s => { s.layers.splice(beforeId ? this.layerIndex(s, beforeId) : s.layers.length, 0, layer); });

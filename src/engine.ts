@@ -61,9 +61,9 @@ export type Command =
     | {type: 'frames'; on: boolean};
 export type EngineEvent =
     | {type: 'camera'; lng: number; lat: number; zoom: number; bearing: number; pitch: number; /** Ground height at the centre with 3D terrain, else 0. */ elevation: number; exaggeration: number; groundRange?: [number, number]; padding: [number, number, number, number]; moving: boolean}
-    | {type: 'idle'}
+    | {type: 'idle'; seq: number}
     /** The tiles of a source for the view are all loaded, or are no longer all loaded. */
-    | {type: 'source'; source: string; loaded: boolean}
+    | {type: 'source'; source: string; loaded: boolean; seq: number}
     /** 3D terrain: the height grid of an elevation tile that has loaded (or, without `grid`, been dropped). */
     | {type: 'heights'; key: string; grid?: Float32Array}
     /** About once a second while drawing: frames drawn per second and the engine's average CPU time per frame. */
@@ -147,6 +147,7 @@ export class Engine {
     private nextBackend = 0;
     private lastCamera = '';
     private wasIdle = false;
+    private seq = 0;
     private moving = false;
 
     private ease: {from: number[]; to: number[]; start: number; duration: number; around?: [number, number]; anchor?: [number, number]} | null = null;
@@ -587,7 +588,11 @@ export class Engine {
     command(c: Command) {
         const tr = this.tr;
         // Whatever was asked, report when the map has settled again, so callers can wait on any change.
-        if (c.type !== 'query' && c.type !== 'elevation') this.wasIdle = false;
+        if (c.type !== 'query' && c.type !== 'elevation' && c.type !== 'queryRendered') this.wasIdle = false;
+        // (The page numbers its commands. `idle` and `source` carry the last number, so that the page can tell a report
+        // about a state from before its last command.)
+        const seq = (c as {seq?: number}).seq;
+        if (seq) { this.seq = seq; this.sourceLoaded.clear(); } // (each source reports again for this command)
         switch (c.type) {
             case 'resize':
                 tr.width = c.width; tr.height = c.height; this.dpr = c.dpr;
@@ -1155,7 +1160,7 @@ export class Engine {
         // Tell the page when the tiles of a source are all there (the map can be busy with other sources still).
         for (const source in this.style.sources) {
             const loaded = !loading.has(source);
-            if (this.sourceLoaded.get(source) !== loaded) { this.sourceLoaded.set(source, loaded); this.emit({type: 'source', source, loaded}); }
+            if (this.sourceLoaded.get(source) !== loaded) { this.sourceLoaded.set(source, loaded); this.emit({type: 'source', source, loaded, seq: this.seq}); }
         }
         // How many tiles are kept follows what the view needs: three times that many, so that the view can go back and
         // forth without new downloads. A small screen keeps fewer tiles, and so uses less memory on the GPU.
@@ -1254,7 +1259,7 @@ export class Engine {
         if (settling && !busy) setTimeout(() => this.repaint(), 200);
         if (this.contourWait) { this.contourWait = false; setTimeout(() => this.repaint(), CONTOUR_WAIT + 20); }
         if (this.reportFrames) this.emit({type: 'frame'});
-        if (idle && !this.wasIdle) this.emit({type: 'idle'});
+        if (idle && !this.wasIdle) this.emit({type: 'idle', seq: this.seq});
         this.wasIdle = idle;
         if (busy) this.repaint();
         const st = this.stats, end = performance.now();
