@@ -1,3 +1,5 @@
+import {fetchWith, type RequestAnswer} from './requests.ts';
+import {protocolListeners, protocols, toBytes} from './protocols.ts';
 import {LngLat, LngLatBounds, type LngLatBoundsInput} from './lnglat.ts';
 import {Transform, groundHeight, mercX, mercY, toLngLat, type LngLatLike} from './geo.ts';
 import type {PreparedSource} from './geojson.ts';
@@ -30,6 +32,8 @@ export interface MapOptions extends CameraOptions, LoadOptions {
      */
     fonts?: FontSource[];
     interactive?: boolean;
+    /** Changes a request before the library makes it, as in MapLibre: a new URL, headers or credentials. */
+    transformRequest?: RequestTransform | null;
     /** Each kind of interaction can be off from the start, as in MapLibre. `boxZoom` is accepted, but the library has no box zoom. */
     dragPan?: boolean; scrollZoom?: boolean; doubleClickZoom?: boolean; dragRotate?: boolean; touchZoomRotate?: boolean; touchPitch?: boolean; keyboard?: boolean; boxZoom?: boolean;
     minZoom?: number;
@@ -60,6 +64,9 @@ export class TouchZoomRotateHandler extends InteractionHandler {
     disableRotation() { this.rotation = false; }
     enableRotation() { this.rotation = true; }
 }
+
+/** The `transformRequest` function of MapLibre. `resourceType` is `Tile`, `Style`, `Source`, `SpriteJSON`, `SpriteImage` or `Image`. */
+export type RequestTransform = (url: string, resourceType?: string) => {url: string; headers?: Record<string, string>; credentials?: RequestCredentials} | undefined;
 
 export type PointLike = {x: number; y: number} | [number, number];
 export interface RenderedQueryOptions { layers?: string[]; filter?: unknown; validate?: boolean }
@@ -205,6 +212,10 @@ export class Map {
         this.tr.maxPitch = options.maxPitch ?? 60;
         this.tr.set(options.center ?? [0, 0], options.zoom ?? 0, options.bearing ?? 0, options.pitch ?? 0);
         for (const k of ['dragPan', 'scrollZoom', 'doubleClickZoom', 'dragRotate', 'touchZoomRotate', 'touchPitch', 'keyboard'] as const) if (options[k] === false) this[k].disable();
+        this.transformRequest = options.transformRequest ?? null;
+        protocolListeners.add(this.sendRequestRules);
+        this.sendRequestRules(); // before the style, so that the first requests follow the rules
+        this.cleanup.push(() => protocolListeners.delete(this.sendRequestRules));
         this.start().catch(err => this.fire('error', {error: err}));
     }
 
@@ -220,7 +231,7 @@ export class Map {
 
     private async start() {
         const o = this.options;
-        this.rawStyle = typeof o.style === 'string' ? await (await fetch(o.style)).json() : structuredClone(o.style);
+        this.rawStyle = typeof o.style === 'string' ? await (await this.fetchAs('Style')(o.style)).json() : structuredClone(o.style);
         for (const fn of this.beforeStyle.splice(0)) fn();
         this.styleBase = typeof o.style === 'string' ? new URL(o.style, location.href).href : location.href;
         // As in MapLibre, a style may carry its own starting camera; explicit options win.
@@ -328,6 +339,8 @@ export class Map {
                 if (this.pitching) { this.pitching = false; this.fire('pitchend'); }
                 this.fire('moveend');
             }
+        } else if (e.type === 'resource') {
+            this.answer(e.url, e.kind).then(a => a, (err): RequestAnswer => ({error: String(err.message)})).then(a => this.post({type: 'resourceResult', id: e.id, ...a}, a.data ? [a.data] : undefined));
         } else if (e.type === 'frame') {
             this.fire('render');
         } else if (e.type === 'idle') {
@@ -379,6 +392,27 @@ export class Map {
         return this;
     }
     private wantsFrames = false;
+
+    // ---- requests ----
+    private transformRequest: RequestTransform | null = null;
+    /** Sets or removes the function that changes each request (for example, to add a header). */
+    setTransformRequest(fn: RequestTransform | null) { this.transformRequest = fn; this.sendRequestRules(); return this; }
+    /** Tells the engine which requests need a question to this thread. */
+    private sendRequestRules = () => {
+        const rules = {transform: !!this.transformRequest, protocols: [...protocols.keys()]};
+        // (Nothing is sent to a map that has never had a rule: most maps have none.)
+        if (rules.transform || rules.protocols.length || this.rulesSent) { this.rulesSent = true; this.post({type: 'requests', rules}); }
+    };
+    private rulesSent = false;
+    /** What to do with one request: the transform first, then a custom protocol if the URL has one. */
+    private async answer(url: string, kind: string): Promise<RequestAnswer> {
+        const t = this.transformRequest?.(url, kind), to = t?.url ?? url, protocol = protocols.get(to.slice(0, to.indexOf(':')));
+        if (!protocol) return {url: to, headers: t?.headers, credentials: t?.credentials};
+        const {data} = await protocol({url: to, type: kind === 'Tile' || kind === 'Image' || kind === 'SpriteImage' ? 'arrayBuffer' : 'json', headers: t?.headers}, new AbortController());
+        return {data: toBytes(data)};
+    }
+    /** A `fetch` for requests that this thread makes itself (the style, its sources, GeoJSON data). */
+    private fetchAs = (kind: string) => fetchWith(() => ({transform: !!this.transformRequest, protocols: [...protocols.keys()]}), (url, k) => this.answer(url, k), kind);
     private layerListeners: {type: string; layer: string; fn: Listener}[] = [];
     private hoveredLayers = new Set<string>();
     private hoverBusy = false;
@@ -541,7 +575,7 @@ export class Map {
 
     // ---- style ----
     private restyle(reload: boolean) {
-        resolveStyle(this.rawStyle, fetch, this.styleBase).then(style => {
+        resolveStyle(this.rawStyle, this.fetchAs('Source'), this.styleBase).then(style => {
             if (Object.keys(this.globalState).length) style.state = {...style.state, ...this.globalState};
             this.style = style;
             this.post({type: 'style', style, reload});
@@ -606,7 +640,7 @@ export class Map {
     getLight() { return {anchor: 'viewport', position: [1.15, 210, 30], color: '#ffffff', intensity: 0.5, ...this.rawStyle?.light}; }
     async setStyle(style: unknown) {
         this.styleBase = typeof style === 'string' ? new URL(style, location.href).href : location.href;
-        this.rawStyle = typeof style === 'string' ? await (await fetch(style)).json() : structuredClone(style);
+        this.rawStyle = typeof style === 'string' ? await (await this.fetchAs('Style')(style)).json() : structuredClone(style);
         this.restyle(true);
     }
     getLayer(id: string) { return this.rawStyle?.layers.find((l: any) => l.id === id); }
@@ -633,7 +667,7 @@ export class Map {
         const spec = this.rawStyle.sources[id], known = this.clusterIndexes.get(id);
         if (known && known.data === spec.data) return known.index;
         const index = (async () => {
-            const data = typeof spec.data === 'string' ? await (await fetch(new URL(spec.data, this.styleBase))).json() : spec.data;
+            const data = typeof spec.data === 'string' ? await (await this.fetchAs('Source')(new URL(spec.data, this.styleBase))).json() : spec.data;
             // Loaded only when a page asks about clusters, so that the page script stays small.
             const {prepareSource} = await import('./geojson.ts');
             return prepareSource(data, spec, spec.maxzoom ?? 18);
@@ -643,7 +677,7 @@ export class Map {
     }
     private async setGeoJSON(id: string, data: unknown) {
         this.rawStyle.sources[id].data = data;
-        if (typeof data === 'string') { const res = await fetch(new URL(data, this.styleBase)); data = await res.json(); }
+        if (typeof data === 'string') { const res = await this.fetchAs('Source')(new URL(data, this.styleBase)); data = await res.json(); }
         this.post({type: 'geojson', source: id, data});
     }
     getPaintProperty(layerId: string, name: string) { return this.getLayer(layerId)?.paint?.[name]; }

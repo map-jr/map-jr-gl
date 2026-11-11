@@ -330,6 +330,25 @@ for (const mode of ['main', 'worker']) {
         && ['mousedown', 'mouseup', 'mousemove', 'dblclick', 'contextmenu', 'wheel', 'mouseout'].every(t => ev.types.includes(t)) && ev.renders > 5 && ev.sourcedata > 0 && ev.lngLat && ev.bounds && ev.handler,
         JSON.stringify({c0, cBlocked, cOff, cMoved, zBlocked, zMoved, ...ev}));
 
+    // transformRequest and addProtocol: the functions are on the page, and the requests are made in workers.
+    const requests = await page.evaluate(async () => {
+        const m = window.map, mod = await import('/dist/map-jr-gl.js'), c = m.getCenter(), kinds = new Set();
+        m.setTransformRequest((url, kind) => { kinds.add(kind); return {url: url + (url.includes('?') ? '&' : '?') + 'seen=1'}; });
+        mod.addProtocol('made', async request => ({data: {type: 'Feature', id: 3, properties: {from: request.url}, geometry: {type: 'Point', coordinates: [c.lng, c.lat]}}}));
+        m.addSource('made', {type: 'geojson', data: 'made://point'});
+        m.addLayer({id: 'made', type: 'circle', source: 'made', paint: {'circle-radius': 6}});
+        m.jumpTo({center: [c.lng + 0.3, c.lat + 0.2]}); // a place with tiles that are not loaded, so that tile requests go through the transform
+        let found = [];
+        for (let i = 0; i < 50 && !kinds.has('Tile'); i++) await new Promise(r => setTimeout(r, 100));
+        m.jumpTo({center: c});
+        for (let i = 0; i < 50 && !found.length; i++) { await new Promise(r => setTimeout(r, 100)); found = await m.queryRenderedFeatures({layers: ['made']}); }
+        const tiles = performance.getEntriesByType('resource').filter(e => e.name.includes('seen=1')).length;
+        m.removeLayer('made'); m.removeSource('made'); m.setTransformRequest(null); mod.removeProtocol('made');
+        return {from: found[0]?.properties.from, kinds: [...kinds].sort(), tiles};
+    });
+    check(`[${mode}] transformRequest changes tile requests made in workers, and addProtocol supplies data for a URL`,
+        requests.from === 'made://point?seen=1' && requests.kinds.includes('Tile') && requests.kinds.includes('Source'), JSON.stringify(requests));
+
     // queryRenderedFeatures, as in MapLibre but with a promise: at a point, in a box, and with a list of layers.
     const rendered = await page.evaluate(async () => {
         const m = window.map, c = m.getCenter(), p = m.project(c);

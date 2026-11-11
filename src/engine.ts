@@ -4,6 +4,7 @@ import {compileLayer, isGeometrySource, loadSprite, tileURL, type CompiledLayer,
 import {GLRenderer, MARKER_FLOATS, MARKER_STRIDE, SPRITE_ATLAS, type DemRef, type GLTile, type MarkerBuffers, type TerrainTile} from './gl.ts';
 import {CollisionGrid, placeLabels, renderItems, type Placed, type RenderItem} from './placement.ts';
 import {GlyphAtlas} from './text.ts';
+import {fetchWith, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
 import {decodeElevation, sampleElevation, type QueriedFeature, type QuerySet} from './query.ts';
 import type {TileBackend} from './tiles.ts';
 import type {TileGL} from './tile.ts';
@@ -50,6 +51,9 @@ export type Command =
     | {type: 'queryRendered'; id: number; box: [number, number, number, number]; sets: (QuerySet & {source: string})[]; geometry?: boolean}
     | {type: 'elevation'; id: number; lng: number; lat: number; source?: string; zoom?: number}
     | {type: 'repaint'}
+    /** Which requests the page wants to change (see requests.ts), and the page's answer to one question. */
+    | {type: 'requests'; rules: RequestRules}
+    | ({type: 'resourceResult'; id: number} & RequestAnswer)
     /** Asks for a `frame` event after each frame that is drawn (for the `render` event of the map). */
     | {type: 'frames'; on: boolean};
 export type EngineEvent =
@@ -60,6 +64,8 @@ export type EngineEvent =
     /** About once a second while drawing: frames drawn per second and the engine's average CPU time per frame. */
     | {type: 'stats'; fps: number; frameMs: number}
     | {type: 'frame'}
+    /** A question to the page about one request. */
+    | {type: 'resource'; id: number; url: string; kind: string}
     /** A frame at a new canvas size has been drawn. */
     | {type: 'resized'; width: number; height: number; dpr: number}
     | {type: 'result'; id: number; value?: unknown; error?: string}
@@ -147,6 +153,12 @@ export class Engine {
     private zoomSeen = NaN;
     private contourWait = false;
     private reportFrames = false;
+    // Requests that the page can change. This thread and the tile workers ask the page through `ask`.
+    private rules?: RequestRules;
+    private asked = new Map<number, (a: RequestAnswer) => void>();
+    private nextAsk = 0;
+    private ask: Ask = (url, kind) => new Promise(done => { this.asked.set(++this.nextAsk, done); this.emit({type: 'resource', id: this.nextAsk, url, kind}); });
+    private fetchAs = (kind: string) => fetchWith(() => this.rules, this.ask, kind);
     /** When the camera last changed. A short time after that still counts as movement, so that a pause in a gesture does not start costly work. */
     private cameraMovedAt = -1e9;
     /** How many sprite and font downloads are in progress. */
@@ -291,7 +303,7 @@ export class Engine {
             if (st?.gl) this.renderer.destroyTile(st.gl);
             const state: {url: string; gl?: GLTile} = st = {url: src.url!};
             this.pictures.set(source, state);
-            fetch(src.url!).then(async res => {
+            this.fetchAs('Image')(src.url!).then(async res => {
                 if (!res.ok) throw new Error(`Failed to load image ${src.url}: ${res.status}`);
                 const image = await createImageBitmap(await res.blob());
                 if (this.pictures.get(source) === state) { state.gl = this.renderer.createImageTile(image, undefined, {z: 0, x: 0, y: 0, w: 0, key: '0/0/0'}); this.styleVersion++; this.invalidate(); }
@@ -416,8 +428,8 @@ export class Engine {
     }
 
     private async loadIcons(url: string) {
-        const sprite = await loadSprite(url, this.dpr > 1);
-        const res = await fetch(sprite.image);
+        const sprite = await loadSprite(url, this.dpr > 1, this.fetchAs('SpriteJSON'));
+        const res = await this.fetchAs('SpriteImage')(sprite.image);
         if (!res.ok) throw new Error(`Failed to load sprite image ${sprite.image}: ${res.status}`);
         const image = await createImageBitmap(await res.blob());
         if (url !== this.spriteUrl) return;
@@ -579,6 +591,8 @@ export class Engine {
                 return;
             case 'repaint': break;
             case 'frames': this.reportFrames = c.on; break;
+            case 'requests': this.rules = c.rules; for (const b of this.backends) b.setRequests(c.rules, this.ask); break;
+            case 'resourceResult': this.asked.get(c.id)?.(c); this.asked.delete(c.id); break;
         }
         this.repaint();
     }
@@ -661,7 +675,7 @@ export class Engine {
         let pixels = this.dem.get(url);
         if (!pixels) {
             pixels = (async () => {
-                const bytes = await fetchTile(url);
+                const bytes = await fetchTile(url, this.fetchAs('Tile'));
                 if (!bytes) return null;
                 const image = await createImageBitmap(new Blob([bytes as BlobPart]), {premultiplyAlpha: 'none', colorSpaceConversion: 'none'});
                 const canvas = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(image.width, image.height)
@@ -784,7 +798,7 @@ export class Engine {
                 // Image tiles need no parsing, so the engine fetches and decodes them itself.
                 const ac = new AbortController();
                 t.cancel = () => ac.abort();
-                load = fetchTile(url, undefined, ac.signal).then(async bytes => {
+                load = fetchTile(url, this.fetchAs('Tile'), ac.signal).then(async bytes => {
                     if (!bytes) return {labels: {}, batches: {}};
                     const image = await createImageBitmap(new Blob([bytes as BlobPart]));
                     if (this.tiles.get(key) !== t) { image.close(); return {labels: {}, batches: {}}; }

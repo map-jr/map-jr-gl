@@ -30,10 +30,10 @@ These figures are written by `pnpm status`. They compare this library with MapLi
 |---|---|
 | Unit tests | 30 pass, 0 fail |
 | MapLibre expression tests | 330 of 425 pass |
-| MapLibre `Map` methods | 108 of 150 are available |
+| MapLibre `Map` methods | 109 of 150 are available |
 | MapLibre render tests | 645 of 1429 are the same (1% of pixels or less are different). 333 more are near (5% or less). |
-| Page script (gzip) | 26 KB. MapLibre GL JS: 299 KB. |
-| Worker script (gzip) | 56 KB. MapLibre GL JS: 145 KB. |
+| Page script (gzip) | 27 KB. MapLibre GL JS: 299 KB. |
+| Worker script (gzip) | 57 KB. MapLibre GL JS: 145 KB. |
 | Server renderer (gzip) | 34 KB |
 <!-- status:end -->
 
@@ -241,7 +241,9 @@ To run the benchmark on your computer, run `pnpm demo` and open `http://localhos
 - [Server rendering](docs/server-rendering.md): SVG and images on Node.js and Cloudflare Workers.
 - [MapLibre compatibility](docs/maplibre-compatibility.md): what is the same, what is different, what is not
   available.
+- [Plugins and frameworks](docs/ecosystem.md): which popular MapLibre plugins find the API that they use.
 - [Development](docs/development.md): how to build, test and measure the library.
+- [Decisions for review](docs/review.md): what was left out, and why.
 
 ## How this project is made
 

@@ -3,6 +3,7 @@ import {setFeatureStates, setGlobalState} from './expr.ts';
 import {buildTile, packLabels, toGL, unpackLabels, type TileGL, type TileIR} from './tile.ts';
 import {decodeElevation, queryTile, type QueriedFeature, type TileQuery} from './query.ts';
 import {HEIGHT_GRID} from './geo.ts';
+import {fetchWith, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
 import {fetchTile} from './pmtiles.ts';
 import {GEOJSON_PREFIX, prepareSource, sliceGeoJSON, type GeoJSONOptions, type PreparedSource} from './geojson.ts';
 import {contourTile, decodeDEM, decodePixels, type ContourConfig, type DEM, type ImageDecoder} from './contour.ts';
@@ -79,6 +80,8 @@ export class TileBuilder {
     }
     private fetchFn: typeof fetch;
     constructor(fetchFn: typeof fetch = fetch) { this.fetchFn = (...a) => fetchFn(...a); }
+    /** Replaces how this builder makes its requests (see requests.ts). */
+    setFetch(fetchFn: typeof fetch) { this.fetchFn = fetchFn; }
 
     setStyle(layers: LayerJSON[], state?: Record<string, unknown>) {
         setGlobalState(state);
@@ -132,6 +135,8 @@ export class TileBuilder {
 /** What the engine needs from wherever tiles are built. */
 export interface TileBackend {
     setStyle(layers: LayerJSON[], state?: Record<string, unknown>): void;
+    /** Tells the builder which requests the page wants to change, and how to ask the page. */
+    setRequests(rules: RequestRules, ask: Ask): void;
     /** Fetches and decodes an elevation tile for the GPU and for 3D terrain. */
     loadElevation(req: ElevationRequest): Promise<ElevationTile | null>;
     setGeoJSON(source: string, data: unknown, options?: GeoJSONOptions, maxzoom?: number): void;
@@ -146,6 +151,7 @@ export interface TileBackend {
 export class LocalBackend implements TileBackend {
     private builder = new TileBuilder();
     loadElevation(req: ElevationRequest) { return this.builder.loadElevation(req); }
+    setRequests(rules: RequestRules, ask: Ask) { this.builder.setFetch(fetchWith(() => rules, ask)); }
     setStyle(layers: LayerJSON[], state?: Record<string, unknown>) { this.builder.setStyle(layers, state); }
     setGeoJSON(source: string, data: unknown, options?: GeoJSONOptions, maxzoom?: number) { this.builder.setGeoJSON(source, data, options, maxzoom); }
     setFeatureState(source: string, states: Record<string, Record<string, unknown>>) { setFeatureStates(source, states); }
@@ -163,6 +169,11 @@ export class PortBackend implements TileBackend {
     private nextQuery = -1;
     constructor(private port: Port) {
         port.onmessage = e => {
+            // The worker asks about a request: pass the question on, and the answer back.
+            if (e.data.type === 'resource') {
+                this.ask?.(e.data.url, e.data.kind).then(a => a, (err): RequestAnswer => ({error: String(err.message)})).then(a => port.postMessage({type: 'resourceResult', id: e.data.id, ...a}, a.data ? [a.data] : []));
+                return;
+            }
             const p = this.pending.get(e.data.id);
             if (!p) return;
             this.pending.delete(e.data.id);
@@ -172,6 +183,8 @@ export class PortBackend implements TileBackend {
         };
     }
     setStyle(layers: LayerJSON[], state?: Record<string, unknown>) { this.port.postMessage({type: 'style', layers, state}); }
+    private ask?: Ask;
+    setRequests(rules: RequestRules, ask: Ask) { this.ask = ask; this.port.postMessage({type: 'requests', rules}); }
     loadElevation(req: ElevationRequest): Promise<ElevationTile | null> {
         return new Promise((resolve, reject) => { this.pending.set(req.id, {resolve, reject}); this.port.postMessage({type: 'dem', req}); });
     }
@@ -196,10 +209,15 @@ export class PortBackend implements TileBackend {
 
 /** Worker side of PortBackend. */
 export function serveTiles(port: Port) {
-    const builder = new TileBuilder();
+    // Questions about requests go over the port, to the engine, which asks the page.
+    let rules: RequestRules | undefined, nextAsk = 0;
+    const asked = new Map<number, (a: RequestAnswer) => void>();
+    const builder = new TileBuilder(fetchWith(() => rules, (url, kind) => new Promise(done => { asked.set(++nextAsk, done); port.postMessage({type: 'resource', id: nextAsk, url, kind}); })));
     port.onmessage = async e => {
         const m = e.data;
-        if (m.type === 'style') builder.setStyle(m.layers, m.state);
+        if (m.type === 'requests') rules = m.rules;
+        else if (m.type === 'resourceResult') { asked.get(m.id)?.(m); asked.delete(m.id); }
+        else if (m.type === 'style') builder.setStyle(m.layers, m.state);
         else if (m.type === 'geojson') builder.setGeoJSON(m.source, m.data, m.options, m.maxzoom);
         else if (m.type === 'featureState') setFeatureStates(m.source, m.states);
         else if (m.type === 'contours') builder.setContours(m.sources);
