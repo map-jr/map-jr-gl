@@ -97,6 +97,9 @@ export function placeLabels(
     for (let li = layers.length - 1; li >= 0; li--) {
         const L = layers[li];
         if (L.type !== 'symbol' || !L.visible || tr.zoom < L.minzoom || tr.zoom >= L.maxzoom) continue;
+        // The same text is a duplicate only in its own layer (the same feature from two tiles, or a road name that
+        // repeats). Two layers can show the same text at one point, as in MapLibre.
+        seen.clear();
         for (const it of items) {
             itemNo++;
             const labels = it.tile.labels?.[L.id];
