@@ -113,6 +113,18 @@ now. It found these faults, which are corrected:
 | The wrapper reads private members of the MapLibre map: `map.style._loaded`, `map._render()`, `map._update()`. | The map has these three, for wrappers only. |
 | The wrapper calls `map.getSky()` each time a style has loaded. | `getSky()` is there and returns `undefined`. This is the only method from the proposal below that was added without your decision, because the wrapper does not work without it. `setSky` is not there. |
 
+## Findings from the example pages of MapLibre GL JS
+
+`node test/conformance/examples.mjs` runs each example page of the MapLibre documentation with MapLibre GL JS and
+with this library. The results are in [Plugins and frameworks](ecosystem.md). The first runs found these faults,
+which are corrected:
+
+| Finding | Correction |
+|---|---|
+| The page "3D terrain" drew garbage. Its elevation source names a TileJSON, and the TileJSON says that the tiles use the Terrarium encoding. The library read the encoding from the style only. | The encoding is read from the TileJSON too. |
+| With 3D terrain, raster tiles near the camera were up to two levels deeper than those of MapLibre GL JS (30 tiles of level 14 where MapLibre GL JS loads 10). The image was soft and the load was slow. | Raster and elevation tiles on the ground are selected for each tile by the rule of MapLibre GL JS. The same view loads the same numbers of tiles of each level. |
+| With a steep tilt, the ground at the map centre was drawn with the style of the zoom level below that of the map: layers that start at the zoom of the map were missing there. | Each ground image uses the style of the zoom level of the map. |
+
 ## Findings from the cross-browser runs
 
 The workflow `Browsers` runs the benchmark and the behaviour tests in Chromium, Firefox and WebKit on Linux, macOS
@@ -126,7 +138,7 @@ and Windows. Its results are on the branch `bench-results`. These points are for
 | In WebKit, the test of wheel zoom found the place under the pointer some hundred pixels away after the zoom. | Not a fault of the library. WebKit reports that the mouse was released before the page has handled the events, so the test started the wheel zoom while the drag before it and its inertia were still in progress. The tests now wait until the camera is still. |
 | Firefox without a window draws about 3 frames each second on the page's thread (MapLibre GL JS also), so its tests timed out. | The workflow now runs Firefox with a window. In a worker the library draws 60 frames each second in Firefox. |
 | WebKit on Linux and Windows cannot draw WebGL in a worker. | The library uses the main thread there, as designed. Safari on macOS and iOS can. |
-| A tilted view with 3D terrain loaded 100 tiles where MapLibre GL JS loads 34, and took 2 to 3 times as long to load. This agrees with the hitches that the owner saw when panning to new terrain. | Corrected. Each ground tile also requested the tiles beyond its edges, and tiles were requested two times at two sets of zoom levels. The level of detail of far ground now follows the rule of MapLibre GL JS. The same view now loads 39 tiles. On macOS in Chromium the load went from 2.8–5.1 s to 1.3–2.0 s (MapLibre GL JS: 0.5–1.1 s); on Linux and Windows the library now loads terrain faster than MapLibre GL JS. |
+| A tilted view with 3D terrain loaded 100 tiles where MapLibre GL JS loads 34, and took 2 to 3 times as long to load. This agrees with the hitches that the owner saw when panning to new terrain. | Corrected. Each ground tile also requested the tiles beyond its edges, and tiles were requested two times at two sets of zoom levels. The level of detail of each tile now follows the rule of MapLibre GL JS. The same view now loads 46 tiles. (MapLibre GL JS loads 34: when relief shading and terrain use the same source, it draws the relief one level coarser. This library keeps the relief sharp.) On macOS in Chromium the load went from 2.8–5.1 s to 1.3–2.0 s (MapLibre GL JS: 0.5–1.1 s); on Linux and Windows the library now loads terrain faster than MapLibre GL JS. |
 | A test run on macOS stopped because `isMoving()` stayed `true` after a drag. | A fault of the library, corrected. When a drag ended with a very small movement, the glide after it could start and end inside one frame. The engine then never reported the glide, and the page waited for it: `moveend` did not fire. It happened on slow machines (long frames). The engine now reports the glide in the frame that ends it. |
 | In Firefox, a blocked page also stops the frames of a map that renders in a worker (1 frame in a second, as on the main thread). In Chromium the worker draws on (9 to 12 frames with the software GPU). | Not changed: it is how Firefox runs the frames of a worker. The test is not run in Firefox. |
 | WebKit on Windows (the build that Playwright uses, not a browser that people use) gets no heights for 3D terrain. | Open, low priority. The probable cause is that this build cannot decode the WebP elevation tiles. |

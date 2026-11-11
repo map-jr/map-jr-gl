@@ -126,11 +126,11 @@ const WHEEL_STEP = 4.000244140625, WHEEL_RATE = 1 / 450, TRACKPAD_RATE = 1 / 100
  * It never touches the DOM, so it runs unchanged on the main thread or inside a worker with an OffscreenCanvas,
  * driven purely by `Command` messages and reporting back through `EngineEvent`s.
  */
-/**
- * 3D terrain: the zoom at which a ground tile takes its image tiles (raster, elevation). The tile knows the detail that
- * the view wants at its nearest point; a little less is correct for the tile as a whole.
- */
-const imageLevel = (id: TileID, zoom: number) => clamp((id.lod ?? zoom) - 0.25, id.z, id.z + 0.75);
+/** Whether two tiles cover some of the same ground: one is the other, or contains it. */
+const touches = (a: TileID, b: TileID) => {
+    const d = a.z - b.z;
+    return a.w === b.w && (d >= 0 ? a.x >> d === b.x && a.y >> d === b.y : b.x >> -d === a.x && b.y >> -d === a.y);
+};
 
 export class Engine {
     tr = new Transform();
@@ -356,6 +356,20 @@ export class Engine {
 
     /** Counts each change to the set of tiles and their state, so that work that depends on the tiles can be kept until it changes. */
     private tilesVersion = 0;
+    /** 3D terrain: the tiles of an image source that the view selects, found one time for each frame. */
+    private viewCovers = new Map<string, TileID[]>();
+    private viewCover(source: string) {
+        let cover = this.viewCovers.get(source);
+        if (!cover) { const src = this.style.sources[source]; this.viewCovers.set(source, cover = this.tr.coveringTiles(src.minzoom, src.maxzoom, src.tileSize, true)); }
+        return cover;
+    }
+    /** The raster and elevation sources that a layer on the ground draws from (found again when the style changes). */
+    private imageSourceList?: {version: number; names: string[]};
+    private imageSources() {
+        if (this.imageSourceList?.version !== this.styleVersion) this.imageSourceList = {version: this.styleVersion, names: Object.keys(this.style.sources).filter(name =>
+            /^raster/.test(this.style.sources[name].type) && this.layers.some(l => l.source === name && l.visible))};
+        return this.imageSourceList.names;
+    }
     private groundCache = new Map<string, ReturnType<Engine['groundSources']> & {used?: number}>();
     /** 3D terrain: the straight-down view of one ground tile, and the source tiles that are drawn into its picture. */
     private groundSources(id: TileID, zt: number, stamp: string) {
@@ -373,15 +387,14 @@ export class Engine {
             const src = this.style.sources[source];
             if (!this.layers.some(l => l.source === source && l.type !== 'symbol' && l.type !== 'fill-extrusion' && l.visible && zt >= l.minzoom && zt < l.maxzoom)) continue;
             if (src.type === 'image') { const list = this.pictureItems(source, view); items.set(source, list); signature += `,${source}:${list[0]?.tile.uid ?? ''}`; continue; }
-            // Which level of tiles to draw follows the map's own zoom (not the picture's fixed scale), as it would without terrain.
-            cover.zoom = clamp(tr.zoom, id.z, zt);
-            // Image tiles are taken one level deeper when the detail that the view wants at this ground tile is past the
-            // middle of a level, for a sharp image near the camera. Far ground tiles want less, so they stay at their own level.
+            // Vector tiles are of the level of the ground tile. Image tiles (raster, elevation) are those that the view
+            // itself selects, by the rule of MapLibre for each image tile: the ones that touch this ground tile are drawn
+            // into it. (Near the camera they are finer than the ground tile, far away they can be coarser.)
             const image = src.type === 'raster' || src.type === 'raster-dem';
-            if (image) cover.zoom = imageLevel(id, tr.zoom);
+            cover.zoom = id.z;
             // (A little less than the tile: a view that ends exactly on the tile's edge would take the tiles beyond it too.)
-            cover.width = cover.height = TILE_SIZE * 2 ** (cover.zoom - id.z) - 2;
-            const ideal = cover.coveringTiles(src.minzoom, src.maxzoom, src.tileSize, image);
+            cover.width = cover.height = TILE_SIZE - 2;
+            const ideal = image ? this.viewCover(source).filter(t => touches(t, id)) : cover.coveringTiles(src.minzoom, src.maxzoom, src.tileSize);
             for (const t of ideal) {
                 const key = source + '|' + t.key, have = this.tiles.get(key);
                 keys.push(key);
@@ -410,17 +423,21 @@ export class Engine {
         const tr = this.tr, terrain = this.style.terrain!, demSrc = this.style.sources[terrain.source], out: TerrainTile[] = [];
         let meshBudget = 4;
         this.meshBehind = false;
+        this.viewCovers.clear();
         for (const [k, m] of this.meshHeights) if (this.frameNo - m.used > 120) this.meshHeights.delete(k);
         for (const [k, m] of this.groundCache) if (this.frameNo - (m.used ?? 0) > 120) this.groundCache.delete(k);
         const viewLit = this.layers.some(l => l.type === 'hillshade' && l.visible && l.p.anchor.eval(tr.zoom) === 'viewport');
         for (const id of tr.coveringTiles(0, 22, TILE_SIZE).slice(0, 96)) { // nearest first; a cap keeps odd views affordable
-            // Each tile's picture is drawn once, at a fixed scale a little above the tile's own (it is shown at up to twice
-            // its size before finer tiles take over), and stretched as the map zooms. Zooming therefore redraws nothing.
-            const zt = id.z + 0.75, tkey = `${id.key}|${id.w}`;
+            // Each tile's picture is drawn once for a whole level of zoom: with the style as it is three quarters of the way
+            // through the level of the map, and stretched as the map zooms inside that level. A ground tile can be of a
+            // coarser level than the map (far ground, and with a steep tilt also the ground at the centre). Its picture
+            // still uses the style of the map's level, as in MapLibre: the same layers show, and lines have the same width.
+            const zt = Math.max(id.z, Math.floor(tr.zoom)) + 0.75, tkey = `${id.key}|${id.w}`;
             // Which source tiles make the picture of this ground tile is much work for each of up to 96 tiles. The answer
             // changes only when a tile arrives or goes, the style changes, the map zooms to another level of tiles, or (for
             // relief that is lit from the viewer's side) the map turns. Until then the last answer is used.
-            const stamp = `${this.styleVersion}|${Math.round(imageLevel(id, tr.zoom))}`;
+            let stamp = `${this.styleVersion}|${zt}`;
+            for (const source of this.imageSources()) for (const t of this.viewCover(source)) if (touches(t, id)) stamp += '|' + t.key;
             let made = this.groundCache.get(tkey), revs = 0;
             if (made) for (const k of made.keys) { const t = this.tiles.get(k); if (t) { t.used = this.frameNo; revs += t.rev!; } else revs = NaN; }
             // A picture that has all its tiles depends on those tiles only. One that still waits for tiles can also get a
@@ -434,7 +451,18 @@ export class Engine {
             const {view, items, signature, complete} = made;
             // The heights themselves: make sure the elevation tile for this ground tile is on its way. Where the source
             // has no tile at that level (the request failed), the nearest level above that does have one is used.
-            for (let dz = Math.min(id.z, demSrc.maxzoom); dz >= demSrc.minzoom; dz--) {
+            // The elevation tile is one level coarser than the ground tile, as in MapLibre: one of its pixels is then half
+            // of a cell of the mesh, which is enough, and one elevation tile serves four ground tiles.
+            // (Not needed when a layer on the ground, such as relief shading, draws from the same source: the tiles that it
+            // loads for this ground give the heights too.)
+            const shared = (t: TileID) => {
+                const key = terrain.source + '|' + t.key, dem = touches(t, id) && this.tiles.get(key);
+                if (!dem || (dem.state !== 'loading' && !dem.range)) return false;
+                // (The tile can be one that this loop asked for in an earlier frame: it must stay in use.)
+                wanted.add(key); dem.used = this.frameNo;
+                return true;
+            };
+            if (!this.viewCover(terrain.source).some(shared)) for (let dz = Math.max(demSrc.minzoom, Math.min(id.z - 1, demSrc.maxzoom)); dz >= demSrc.minzoom; dz--) {
                 const k = 2 ** (id.z - dz), dk = `${dz}/${Math.floor(id.x / k)}/${Math.floor(id.y / k)}`, demKey = terrain.source + '|' + dk;
                 wanted.add(demKey);
                 const t = this.tiles.get(demKey);

@@ -95,7 +95,7 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
         sources[name] = {
             type: raw.type, tiles: src.tiles, minzoom: src.minzoom ?? 0, maxzoom: src.maxzoom ?? (raw.type === 'vector' ? 14 : 22),
             tileSize: raw.type === 'vector' ? 512 : src.tileSize ?? 512, attribution: src.attribution,
-            encoding: raw.type === 'raster-dem' ? (raw.encoding === 'terrarium' ? 'terrarium' : 'mapbox') : undefined,
+            encoding: raw.type === 'raster-dem' ? (src.encoding === 'terrarium' ? 'terrarium' : 'mapbox') : undefined, // (from the source or from its TileJSON)
         };
     }
     // Contour sources (an extension to the style specification) are resolved last: each needs its elevation source.
