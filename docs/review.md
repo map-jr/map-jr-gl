@@ -9,8 +9,10 @@ Decisions that wait for you:
 
 1. **The renderer in Safari** (worker or main thread). See [the section below](#a-decision-for-the-owner-the-renderer-in-safari). The newer measurements make the worker a better default than before.
 2. **Methods that are accepted but have no effect**, for framework wrappers. See [the proposal below](#a-proposal-methods-that-are-accepted-but-have-no-effect). `getSky()` was added without your decision, because react-map-gl does not work without it.
-3. **The worker is near its budget** (57.7 KB of 58 KB). Each new feature needs bytes from another place. Build steps already shorten names (private members, and the variables of the shaders) and take the spaces out of the shaders. A third step can shorten the names of the fields that the tile workers and the engine send to each other. It was not done: it needs the types of the compiler to be safe, and the compiler in use (TypeScript 7) does not give them to a script.
+3. **The worker is near its budget** (57.9 KB of 58 KB). Each new feature needs bytes from another place. Build steps already shorten names (private members, and the variables of the shaders) and take the spaces out of the shaders. A third step can shorten the names of the fields that the tile workers and the engine send to each other. It was not done: it needs the types of the compiler to be safe, and the compiler in use (TypeScript 7) does not give them to a script.
 4. **The budget of the engine for the main thread** went from 54 KB to 55 KB when the PMTiles reader left the page script. See [Size budgets](#size-budgets).
+5. **The default export of the library.** The README no longer uses it: the instructions show named imports. The export itself stays, because 4 of the 15 tested plugins contain `import maplibregl from 'maplibre-gl'` (maplibre-gl-compare, maplibre-gl-inspect, maplibre-gl-export, vue-maplibre-gl) and fail without it. Say if you want it removed.
+6. **The map is idle 200 ms later after a movement.** After the last frame of a movement, one more frame is drawn for the map at rest (sharp raster tiles), and `idle` fires after that frame.
 
 To try on your iPhone, because the test machines cannot show it:
 
@@ -59,6 +61,8 @@ shows how many of the audited packages use each one.
 | Sky and fog (`setSky`, `getSky`) | 3 packages | The largest pitch is 60 degrees, so the horizon is not in view. |
 | `setTransformCameraUpdate`, `setTransformConstrain` | 3 packages (the React and Svelte wrappers, for controlled camera state) | The camera is in the engine, which can be in a worker. A function on the page cannot run for each camera change without a delay. |
 | `setRenderWorldCopies(false)` | 4 packages pass the option through | The map always draws the copies of the world. |
+| The camera option `elevation` with `centerClampedToGround: false` (`setCenterElevation`) | 1 package; 1 example page | The centre of the map is always on the ground. A centre above the ground needs a ground height in each place where the transform uses the centre. The worker has 0.1 KB left. |
+| A style image that is drawn with WebGL (`renderWithWebGL`) | 1 example page | The page cannot draw into the WebGL context of a map that renders in a worker. |
 | The layer type `color-relief` (colours from elevation) | 0 packages; 8 render tests | It is new in MapLibre GL JS and few styles use it. It needs a shader and a colour ramp: about 0.4 KB in the worker, which has 0.3 KB left in its budget. |
 | An icon together with text that follows a curved line | 1 render test | Curved text is placed by a separate path that has no icon. Road shields are not affected: their text does not follow the line. |
 | A building on 3D terrain keeps a flat roof | 3 render tests show a small difference | MapLibre GL JS gives each building the ground height of one point. This library gives each corner its own ground height, so on a steep slope the roof slopes with the ground. To match needs one more value for each vertex of each building. |
