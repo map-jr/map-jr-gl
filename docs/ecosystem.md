@@ -15,7 +15,7 @@ have a problem, and a method in the list is possibly used only in a part of the 
 These plugins were run with this library in a browser by `node test/conformance/plugins.mjs --write`. Each one has a
 short scenario in `test/conformance/plugins/`. The plugin imports `maplibre-gl` and gets this library.
 
-**13 of 13 scenarios pass.**
+**15 of 15 scenarios pass.**
 
 | Plugin | Result | What the scenario found |
 |---|---|---|
@@ -32,6 +32,8 @@ short scenario in `test/conformance/plugins/`. The plugin imports `maplibre-gl` 
 | @deck.gl/mapbox 9.4.1, @deck.gl/layers 9.4.1, @deck.gl/core 9.4.1 | Pass | deck.gl canvas: true; frames drawn: 3 then 4; the point at the map centre was picked there: true |
 | @maplibre/maplibre-gl-geocoder 1.9.4 | Pass | the control is in the page: true; result: Eiffel Tower; the map went to the place: true; marker: true |
 | @maplibre/maplibre-gl-directions 0.10.1 | Pass | routes: 1; layers of the plugin: 11; features under the first waypoint, read at once: 7; waypoints added by a click on the map: 1 |
+| @mapbox/mapbox-gl-language 1.0.1 | Pass | the plugin changes the text fields: true; the map has the changed fields: true; style.load fired: true |
+| @geoman-io/maplibre-geoman-free 0.10.8 | Pass | features after the import: 1; after a marker was drawn with a click: 2; layers of the plugin: 33 |
 <!-- plugins:end -->
 
 <!-- styles:start -->

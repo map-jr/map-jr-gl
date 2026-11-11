@@ -32,6 +32,7 @@ export type PaddingOptions = Exclude<PaddingInput, number>;
 export type RequestTransformFunction = RequestTransform;
 export type RequestParameters = NonNullable<ReturnType<RequestTransform>>;
 export type QueryRenderedFeaturesOptions = RenderedQueryOptions;
+export type {GeoJSONDiff as GeoJSONSourceDiff} from './map.ts';
 export type QuerySourceFeatureOptions = {sourceLayer?: string; filter?: unknown; validate?: boolean};
 
 export type AnimationOptions = {duration?: number; around?: [number, number]};

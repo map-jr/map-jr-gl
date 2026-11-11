@@ -67,6 +67,11 @@ export class TouchZoomRotateHandler extends InteractionHandler {
 /** The `transformRequest` function of MapLibre. `resourceType` is `Tile`, `Style`, `Source`, `SpriteJSON`, `SpriteImage` or `Image`. */
 export type RequestTransform = (url: string, resourceType?: string) => {url: string; headers?: Record<string, string>; credentials?: RequestCredentials} | undefined;
 
+/** The changes that `updateData` of a GeoJSON source takes, as in MapLibre. */
+export interface GeoJSONDiff {
+    removeAll?: boolean; remove?: (string | number)[]; add?: unknown[];
+    update?: {id: string | number; newGeometry?: unknown; removeAllProperties?: boolean; removeProperties?: string[]; addOrUpdateProperties?: {key: string; value: unknown}[]}[];
+}
 export type PointLike = {x: number; y: number} | [number, number];
 export interface RenderedQueryOptions { layers?: string[]; filter?: unknown; validate?: boolean }
 /** A feature from `queryRenderedFeatures` or `querySourceFeatures`: GeoJSON, with its source, its style layer and its state. */
@@ -725,6 +730,8 @@ export class Map {
         };
         return {
             ...spec, id, setData: (data: unknown) => this.setGeoJSON(id, data),
+            getData: async () => typeof spec.data === 'string' ? (await this.fetchAs('Source')(new URL(spec.data, this.styleBase))).json() : spec.data,
+            updateData: (diff: GeoJSONDiff) => this.updateGeoJSON(id, diff),
             // The cluster methods give promises, as in MapLibre. The page makes its own copy of the cluster index for them.
             getClusterExpansionZoom: async (clusterId: number) => (await clusters()).expansionZoom(clusterId),
             getClusterChildren: async (clusterId: number) => (await clusters()).children(clusterId),
@@ -743,6 +750,26 @@ export class Map {
         })();
         this.clusterIndexes.set(id, {data: spec.data, index});
         return index;
+    }
+    /**
+     * MapLibre's `updateData`: adds, removes and changes features of a GeoJSON source by their id (the `id` of the
+     * feature, or the property that `promoteId` names). The new data replaces the old in one step.
+     */
+    private updateGeoJSON(id: string, diff: GeoJSONDiff, data: any = this.rawStyle.sources[id].data): Promise<void> {
+        if (typeof data === 'string') return this.fetchAs('Source')(new URL(data, this.styleBase)).then(r => r.json()).then(d => this.updateGeoJSON(id, diff, d));
+        const key = this.rawStyle.sources[id].promoteId, idOf = (f: any) => key ? f.properties?.[key] : f.id;
+        let features: any[] = diff.removeAll ? [] : data?.type === 'FeatureCollection' ? data.features : data?.type === 'Feature' ? [data] : [];
+        const added = new Set((diff.add ?? []).map(idOf));
+        features = [...features.filter(f => !diff.remove?.includes(idOf(f)) && !added.has(idOf(f))), ...diff.add ?? []];
+        for (const u of diff.update ?? []) {
+            const i = features.findIndex(f => idOf(f) === u.id);
+            if (i < 0) continue;
+            const f = features[i] = {...features[i], properties: u.removeAllProperties ? {} : {...features[i].properties}};
+            if (u.newGeometry) f.geometry = u.newGeometry;
+            for (const k of u.removeProperties ?? []) delete f.properties[k];
+            for (const p of u.addOrUpdateProperties ?? []) f.properties[p.key] = p.value;
+        }
+        return this.setGeoJSON(id, {type: 'FeatureCollection', features});
     }
     private async setGeoJSON(id: string, data: unknown) {
         this.rawStyle.sources[id].data = data;

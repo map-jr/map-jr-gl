@@ -268,6 +268,17 @@ for (const mode of ['main', 'worker']) {
         return (await m.queryFeatures([-74.008, 40.7085], {sources: ['zones'], radius: 5})).map(f => f.type + ':' + f.properties.name);
     });
     check(`[${mode}] GeoJSON source, layer click event and setData`, gj.found[0] === 'first' && JSON.stringify(await page.evaluate(() => window.zoneClicks)) === '["first"]' && gj2[0] === 'Point:second', JSON.stringify({found: gj.found, clicks: await page.evaluate(() => window.zoneClicks), after: gj2}));
+    // MapLibre's updateData: add, change and remove features of a GeoJSON source by their id.
+    const diff = await page.evaluate(async () => {
+        const m = window.map, source = m.getSource('zones'), point = (id, name, lng) => ({type: 'Feature', id, properties: {name}, geometry: {type: 'Point', coordinates: [lng, 40.7085]}});
+        await source.setData({type: 'FeatureCollection', features: [point(1, 'one', -74.008), point(2, 'two', -74.006)]});
+        source.updateData({add: [point(3, 'three', -74.004)], remove: [2], update: [{id: 1, addOrUpdateProperties: [{key: 'name', value: 'changed'}], newGeometry: {type: 'Point', coordinates: [-74.007, 40.7085]}}]});
+        const data = await m.getSource('zones').getData();
+        await new Promise(r => setTimeout(r, 600));
+        const drawn = (await m.queryFeatures([-74.007, 40.7085], {sources: ['zones'], radius: 5})).map(f => f.properties.name);
+        return {names: data.features.map(f => f.properties.name).join(), at: data.features[0].geometry.coordinates[0], drawn};
+    });
+    check(`[${mode}] GeoJSON source: updateData adds, changes and removes features by id`, diff.names === 'changed,three' && diff.at === -74.007 && diff.drawn[0] === 'changed', JSON.stringify(diff));
     await page.evaluate(() => { window.map.removeLayer('zones-fill'); window.map.removeSource('zones'); });
 
     // DOM marker and popup with MapLibre's API.
