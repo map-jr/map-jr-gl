@@ -702,7 +702,7 @@ export class Engine {
                 break;
             case 'queryRendered':
                 this.queryRendered(c).then(value => this.emit({type: 'result', id: c.id, value}), err => this.emit({type: 'result', id: c.id, error: String(err.message)}));
-                break;
+                return; // (no frame: a question on `idle` must not make the map idle again)
             case 'query':
                 this.queryFeatures(c).then(value => this.emit({type: 'result', id: c.id, value}), err => this.emit({type: 'result', id: c.id, error: String(err.message)}));
                 return;

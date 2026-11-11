@@ -150,17 +150,58 @@ export class Map extends CoreMap {
      */
     queryRenderedFeatures(geometry?: PointLike | [PointLike, PointLike] | RenderedQueryOptions, options?: RenderedQueryOptions): RenderedFeature[] & PromiseLike<RenderedFeature[]> {
         const {box, sets, features} = this.rendered(geometry, options);
-        // At once: the GeoJSON sources that the page has the data of.
-        const now: QueriedFeature[] = [], sync = this.syncQuery;
-        if (sync) for (const [id, spec] of Object.entries<any>(this.rawStyle?.sources ?? {})) {
+        // At once: the answer of the engine to the same question before, if there is one (see `answers`).
+        const key = this.questionKey(box, sets), all = this.questionKey(box), kept = this.answers.get(key);
+        const wide = !kept && sets.every(s => !s.also) ? this.answers.get(all) : undefined, wanted = new Set(sets.map(s => s.layer));
+        let now: QueriedFeature[] = kept?.found ?? wide?.found.filter(f => wanted.has(f.layer!)) ?? [];
+        // If not: the GeoJSON sources that the page has the data of.
+        const sync = this.syncQuery;
+        if (!kept && !wide && sync) for (const [id, spec] of Object.entries<any>(this.rawStyle?.sources ?? {})) {
             const mine = sets.filter(s => s.source === id);
             const data = mine.length && spec.type === 'geojson' && this.geoData(id);
             if (data) try { now.push(...sync.queryGeoJSON(id, {...spec, data}, this.tr, box, mine)); } catch { /* the promise has the complete result or the error */ }
         }
-        const result = features(now);
+        const result = features([...now]), given = this.summary(now);
         // Later: all the sources, from the engine.
-        const all = sets.length ? this.ask<QueriedFeature[]>(id => ({type: 'queryRendered', id, box, sets, geometry: true})).then(features) : Promise.resolve([]);
-        Object.defineProperty(result, 'then', {value: (done?: (v: RenderedFeature[]) => unknown, failed?: (e: unknown) => unknown) => all.then(done, failed)});
+        const later = sets.length ? this.ask<QueriedFeature[]>(id => ({type: 'queryRendered', id, box, sets, geometry: true})).then(found => {
+            this.keep(key, found);
+            // The array that the caller got at once was not the complete result. Code that reads the array asks again
+            // on `idle` (and the map is idle, or will be): tell it, and the same question then has the answer at once.
+            if (this.summary(found) !== given && !this.again) {
+                this.again = true;
+                setTimeout(() => { this.again = false; if (this.areTilesLoaded() && !this.isMoving()) this.fire('idle'); });
+            }
+            return features([...found]);
+        }) : Promise.resolve([]);
+        Object.defineProperty(result, 'then', {value: (done?: (v: RenderedFeature[]) => unknown, failed?: (e: unknown) => unknown) => later.then(done, failed)});
         return result as RenderedFeature[] & PromiseLike<RenderedFeature[]>;
+    }
+    /**
+     * The last answers of the engine to `queryRenderedFeatures`, by question (the view, the place on the screen, the
+     * layers). MapLibre code reads the result of a query at once, but the tile data is in a worker. So the array has
+     * the answer to the same question before. Two things make that answer present when the code asks:
+     * the map asks the engine before it sends `click`, `dblclick` and `contextmenu`; and after a first answer that the
+     * caller did not get, the map fires `idle` again.
+     */
+    private answers = new globalThis.Map<string, {found: QueriedFeature[]}>();
+    private again = false;
+    private questionKey(box: number[], sets?: {layer: string; also?: unknown}[]) {
+        const t = this.tr;
+        return JSON.stringify([t.lng, t.lat, t.zoom, t.bearing, t.pitch, t.width, t.height, box, sets ? sets.map(s => [s.layer, s.also]) : 0]);
+    }
+    private keep(key: string, found: QueriedFeature[]) {
+        this.answers.delete(key);
+        this.answers.set(key, {found});
+        if (this.answers.size > 24) this.answers.delete(this.answers.keys().next().value!);
+    }
+    private summary(found: QueriedFeature[]) { return JSON.stringify(found.map(f => [f.layer, f.id, f.properties])); }
+    /** (A click waits for the features at its place, so that a listener can read them at once.) */
+    override fire(type: string, data: Record<string, unknown> = {}) {
+        const point = data.point as {x: number; y: number} | undefined;
+        if (!point || !/^(click|dblclick|contextmenu)$/.test(type) || data.asked || !this.rawStyle) return super.fire(type, data);
+        const {box, sets} = this.rendered([point.x, point.y]), key = this.questionKey(box);
+        const send = () => super.fire(type, {...data, asked: true});
+        if (!sets.length) return send();
+        this.ask<QueriedFeature[]>(id => ({type: 'queryRendered', id, box, sets, geometry: true})).then(found => this.keep(key, found), () => {}).then(send);
     }
 }

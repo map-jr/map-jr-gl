@@ -448,7 +448,25 @@ for (const mode of ['main', 'worker']) {
     check(`[${mode}] queryRenderedFeatures: a point, a box, all layers (top layer first), a filter; querySourceFeatures`,
         rendered.point.join() === '7' && rendered.layer === 'asked' && rendered.geometry === 'Point' && rendered.box.join() === '7,8' && rendered.all > 10 && rendered.top === 'asked' && rendered.filtered.join() === '8' && rendered.source === 2, JSON.stringify(rendered));
 
-    // GeoJSON clusters: the tiles show one cluster for near points, and the source answers questions about it.
+    // MapLibre code reads the result of queryRenderedFeatures at once. The features of tiles are there when the code
+    // asks in a click listener, and when it asks on `idle`.
+    {
+        await page.evaluate(async () => {
+            const m = window.map, c = m.getCanvas(), tiles = p => [...m.queryRenderedFeatures(p)].filter(f => f.sourceLayer).length;
+            await new Promise(r => { m.once('idle', r); setTimeout(r, 15000); });
+            window.atOnce = {idle: [], click: -1};
+            window.atOnceIdle = () => window.atOnce.idle.push(tiles([c.clientWidth / 2, c.clientHeight / 2]));
+            m.on('idle', window.atOnceIdle); window.atOnceIdle();
+            m.once('click', e => { window.atOnce.click = tiles(e.point); });
+        });
+        await page.waitForTimeout(1500);
+        const box = await page.locator('canvas').first().boundingBox();
+        await page.mouse.click(box.x + box.width / 2 + 60, box.y + box.height / 2 + 40);
+        await page.waitForTimeout(1000);
+        const atOnce = await page.evaluate(() => { window.map.off('idle', window.atOnceIdle); return window.atOnce; });
+        check(`[${mode}] queryRenderedFeatures read at once has the features of tiles: in a click listener, and on idle`, atOnce.click > 0 && atOnce.idle.at(-1) > 0 && atOnce.idle.length <= 3, JSON.stringify(atOnce));
+    }
+
     const clusters = await page.evaluate(async () => {
         const m = window.map, c = m.getCenter();
         const point = (dx, n) => ({type: 'Feature', properties: {n}, geometry: {type: 'Point', coordinates: [c.lng + dx, c.lat]}});
