@@ -1,5 +1,5 @@
 // Drives the demo in Chromium and checks behaviour in both renderer modes: node test/interact.mjs <outDir>
-import {launch} from './launch.mjs';
+import {launch, browserName} from './launch.mjs';
 const out = process.argv[2];
 const browser = await launch();
 let failed = 0, mainFrames = 0;
@@ -22,7 +22,14 @@ for (const mode of ['main', 'worker']) {
     page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
     await page.goto(`http://localhost:8080/?renderer=${mode}`);
     await page.waitForFunction(() => window.mapLoaded, null, {timeout: 30000});
-    check(`[${mode}] loads with requested renderer`, await page.evaluate(() => window.map.renderer) === mode);
+    // Some browsers cannot make a WebGL context in a worker (WebKit on Linux and Windows, Safari before 16.4). The map
+    // must then render on the main thread, and the tests of the worker have nothing to test.
+    const workerCan = mode !== 'worker' || await page.evaluate(() => new Promise(resolve => {
+        const w = new Worker(URL.createObjectURL(new Blob(['postMessage(typeof OffscreenCanvas !== "undefined" && !!new OffscreenCanvas(1, 1).getContext("webgl2"))'])));
+        w.onmessage = e => resolve(e.data); w.onerror = () => resolve(false);
+    }));
+    if (!workerCan) console.log('INFO  [worker] this browser cannot render in a worker: the map must use the main thread');
+    check(`[${mode}] loads with requested renderer`, await page.evaluate(() => window.map.renderer) === (workerCan ? mode : 'main'));
 
     // Drag pan: the point under the cursor should follow it.
     const before = await page.evaluate(() => window.map.getCenter());
@@ -78,6 +85,8 @@ for (const mode of ['main', 'worker']) {
     });
     console.log(`INFO  [${mode}] camera frames rendered during a 1s main-thread block: ${frames}`);
     if (mode === 'main') mainFrames = frames;
+    // (In Firefox the measurements show that a blocked page also stops the frames of a worker: 1 frame, as on the main thread.)
+    else if (!workerCan || browserName === 'firefox') console.log(`INFO  [worker] not tested in this browser: keeps animating while the main thread is blocked (${frames} frames vs ${mainFrames})`);
     else check('[worker] keeps animating while the main thread is blocked', frames > mainFrames, `${frames} frames vs ${mainFrames} on the main thread`);
 
     // Queries read tile data directly: no layer needs to draw the feature, and the place need not be on screen.
