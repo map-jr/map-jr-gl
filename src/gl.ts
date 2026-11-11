@@ -370,6 +370,8 @@ export interface TerrainTile {
     view: Transform; items: Map<string, RenderItem<GLTile>[]>;
     /** Changes whenever the picture on this tile would. */
     signature: string;
+    /** The direction of the light in the picture (a step of the map's bearing), for relief that is lit from the viewer's side. */
+    light: number;
     /** Whether everything the picture needs has loaded; a finished picture is not replaced by a partial one. */
     complete: boolean;
     /**
@@ -1080,7 +1082,7 @@ export class GLRenderer {
         gl.uniform4fv(u.u_unpack, dem.unpack);
     }
 
-    private drapes = new Map<string, {tex: WebGLTexture; size: number; signature: string; used: number; /** Made at half the size while the camera moved. */ rough?: boolean}>();
+    private drapes = new Map<string, {tex: WebGLTexture; size: number; signature: string; used: number; light?: number; /** Made at half the size while the camera moved. */ rough?: boolean}>();
     private frame = 0;
     private grid?: {vao: WebGLVertexArrayObject; count: number; /** For each skirt vertex, the grid vertex it hangs from. */ skirt: number[]};
     private meshHeights = new Map<string, {buffer: WebGLBuffer; version: number; used: number}>();
@@ -1129,8 +1131,10 @@ export class GLRenderer {
             const full = Math.min(1024, Math.max(64, Math.round(t.view.width * this.dpr)));
             // A picture that is first made while the camera moves is made at half the size: a quarter of the work for the
             // GPU, which is what limits a zoom on a phone. It is made again at the full size when the camera is still.
-            const sharpen = !!d?.rough && !s.moving;
-            if (d?.rough && s.moving) behind = true; // more frames must come, to make this picture sharp after the movement
+            // A picture is also made again when the light in it is out of date. That waits until the camera is still: while
+            // the map turns, each step of the light would make every picture again, which phones cannot keep up with.
+            const sharpen = !!d && !s.moving && (!!d.rough || d.light !== t.light);
+            if (d && (d.rough || d.light !== t.light) && s.moving) behind = true; // more frames must come, to make this picture sharp after the movement
             if (d && d.signature === t.signature && !sharpen) { d.used = this.frame; continue; }
             if (d && !t.complete && d.signature.split('|')[0] === t.signature.split('|')[0] && !sharpen) { d.used = this.frame; continue; }
             const rough = !!s.moving && (!d || !!d.rough) && full > 256, size = rough ? full >> 1 : full;
@@ -1145,7 +1149,7 @@ export class GLRenderer {
                 this.drapes.set(t.key, d);
             }
             d.rough = rough;
-            d.signature = t.signature; d.used = this.frame;
+            d.signature = t.signature; d.light = t.light; d.used = this.frame;
             gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
             gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, d.tex, 0);
             gl.viewport(0, 0, size, size);

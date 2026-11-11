@@ -350,7 +350,7 @@ export class Engine {
     private tilesVersion = 0;
     private groundCache = new Map<string, ReturnType<Engine['groundSources']> & {used?: number}>();
     /** 3D terrain: the straight-down view of one ground tile, and the source tiles that are drawn into its picture. */
-    private groundSources(id: TileID, zt: number, stamp: string, viewLit: boolean) {
+    private groundSources(id: TileID, zt: number, stamp: string) {
         const tr = this.tr, n = 2 ** id.z, view = new Transform(), keys: string[] = [];
         // The picture is drawn once, at a fixed scale a little above the tile's own (it is shown at up to twice its size
         // before finer tiles take over), and stretched as the map zooms. Zooming therefore redraws nothing.
@@ -359,9 +359,8 @@ export class Engine {
         const cover = new Transform();
         Object.assign(cover, {lng: view.lng, lat: view.lat});
         const items = new Map<string, RenderItem<GLTile>[]>();
-        // Relief shading lit from the viewer's side turns with the map, so pictures containing it are redrawn when the map has turned a dozen degrees.
         let complete = true;
-        let signature = `${zt}|${this.styleVersion}|${viewLit ? Math.round(tr.bearing / 12) : ''}`;
+        let signature = `${zt}|${this.styleVersion}`;
         for (const source in this.style.sources) {
             const src = this.style.sources[source];
             if (!this.layers.some(l => l.source === source && l.type !== 'symbol' && l.type !== 'fill-extrusion' && l.visible && zt >= l.minzoom && zt < l.maxzoom)) continue;
@@ -402,13 +401,13 @@ export class Engine {
             // Which source tiles make the picture of this ground tile is much work for each of up to 96 tiles. The answer
             // changes only when a tile arrives or goes, the style changes, the map zooms to another level of tiles, or (for
             // relief that is lit from the viewer's side) the map turns. Until then the last answer is used.
-            const level = Math.floor(clamp(tr.zoom, id.z, zt)), stamp = `${this.styleVersion}|${level}|${viewLit ? Math.round(tr.bearing / 12) : ''}`;
+            const level = Math.floor(clamp(tr.zoom, id.z, zt)), stamp = `${this.styleVersion}|${level}`;
             let made = this.groundCache.get(tkey), revs = 0;
             if (made) for (const k of made.keys) { const t = this.tiles.get(k); if (t) { t.used = this.frameNo; revs += t.rev!; } else revs = NaN; }
             // A picture that has all its tiles depends on those tiles only. One that still waits for tiles can also get a
             // stand-in from any other tile, so it is worked out again when any tile changes.
             if (!made || made.stamp !== stamp || (made.complete ? revs !== made.revs : this.tilesVersion !== made.version)) {
-                made = this.groundSources(id, zt, stamp, viewLit);
+                made = this.groundSources(id, zt, stamp);
                 this.groundCache.set(tkey, made);
             }
             made.used = this.frameNo;
@@ -436,7 +435,9 @@ export class Engine {
             }
             if (mesh.checked !== this.demVersion) this.meshBehind = true;
             mesh.used = this.frameNo;
-            out.push({id, key: tkey, matrix: tr.tileMatrix4(id), view, items, signature, complete, dem: this.demRef(id), heights: mesh.data, heightsVersion: mesh.version});
+            // Relief shading that is lit from the viewer's side turns with the map: the picture is drawn again when the
+            // map has turned a dozen degrees (the renderer waits until the map is still, see updateDrapes).
+            out.push({id, key: tkey, matrix: tr.tileMatrix4(id), view, items, signature, light: viewLit ? Math.round(tr.bearing / 12) : 0, complete, dem: this.demRef(id), heights: mesh.data, heightsVersion: mesh.version});
         }
         return out;
     }
