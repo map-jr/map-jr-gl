@@ -368,7 +368,7 @@ export class Engine {
     private groundCache = new Map<string, ReturnType<Engine['groundSources']> & {used?: number}>();
     /** 3D terrain: the straight-down view of one ground tile, and the source tiles that are drawn into its picture. */
     private groundSources(id: TileID, zt: number, stamp: string) {
-        const tr = this.tr, n = 2 ** id.z, view = new Transform(), keys: string[] = [];
+        const n = 2 ** id.z, view = new Transform(), keys: string[] = [];
         // The picture is drawn once, at a fixed scale a little above the tile's own (it is shown at up to twice its size
         // before finer tiles take over), and stretched as the map zooms. Zooming therefore redraws nothing.
         view.width = view.height = TILE_SIZE * 2 ** (zt - id.z);
@@ -654,7 +654,7 @@ export class Engine {
                 // Re-sent data (e.g. after a property change) keeps each marker's current size when the count is unchanged.
                 const previous = this.markers.get(c.id), layer: MarkerLayer = {...c, gpu: previous?.gpu, scale: previous?.scale?.length === c.variant.length ? previous.scale : undefined};
                 this.markers.set(c.id, layer);
-                this.uploadMarkers(c.id, layer);
+                this.uploadMarkers(layer);
                 this.placeDirty = true;
                 break;
             }
@@ -993,7 +993,6 @@ export class Engine {
         const tilt = clamp(tr.pitch / 10, 0, 1);
         this.exaggeration = (this.style.terrain?.exaggeration ?? 0) * tilt * tilt * (3 - 2 * tilt);
         const terrain = this.exaggeration > 0 ? this.style.terrain : undefined;
-        const settling = false;
         if (terrain) {
             tr.heightAt = this.heightAt;
             // The centre's height is remembered in real metres, so it shrinks and grows together with the relief.
@@ -1201,7 +1200,7 @@ export class Engine {
             this.moving = animating;
             this.emit({type: 'camera', lng: tr.lng, lat: tr.lat, zoom: tr.zoom, bearing: tr.bearing, pitch: tr.pitch, elevation: tr.elevation, exaggeration: this.exaggeration, groundRange: tr.groundRange, padding: tr.padding, moving: animating});
         }
-        const busy = animating || markersAnimating || fading || this.placeDirty || settling || behind || this.meshBehind;
+        const busy = animating || markersAnimating || fading || this.placeDirty || behind || this.meshBehind;
         const idle = complete && !busy && !this.spritePending && !this.contourWait;
         if (this.contourWait) { this.contourWait = false; setTimeout(() => this.repaint(), CONTOUR_WAIT + 20); }
         if (this.reportFrames) this.emit({type: 'frame'});
@@ -1220,7 +1219,7 @@ export class Engine {
     }
 
     /** Uploads a marker layer to the GPU. Markers whose image is not ready yet get a scale of zero (hidden). */
-    private uploadMarkers(id: string, m: MarkerLayer) {
+    private uploadMarkers(m: MarkerLayer) {
         const n = m.variant.length, data = m.data = new Float32Array(n * MARKER_FLOATS);
         for (let i = 0; i < n; i++) {
             const rect = this.spriteRects.get(m.variant[i]), x = m.merc[i * 2], y = m.merc[i * 2 + 1], xh = Math.fround(x), yh = Math.fround(y);

@@ -414,7 +414,6 @@ export class GLRenderer {
     gl: WebGL2RenderingContext;
     private programs = {} as Record<keyof typeof SHADERS, Program>;
     private quad: WebGLVertexArrayObject;
-    private corners: WebGLBuffer;
     private textVao: WebGLVertexArrayObject;
     private textBuf: WebGLBuffer;
     private spriteVao: WebGLVertexArrayObject;
@@ -448,7 +447,6 @@ export class GLRenderer {
         buf(new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]));
         gl.enableVertexAttribArray(0);
         gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
-        this.corners = buf(new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]));
 
         this.textVao = gl.createVertexArray()!;
         gl.bindVertexArray(this.textVao);

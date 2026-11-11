@@ -74,10 +74,11 @@ export function privateNames() {
 function shortenShaderNames(code) {
     const count = new Map();
     for (const name of code.match(/\b[uav]_[A-Za-z0-9]+\b/g) ?? []) count.set(name, (count.get(name) ?? 0) + 1);
-    const next = {u: 0, a: 0, v: 0}, short = new Map();
+    // A short name is a letter and a number in base 36 (`u0`, `u1f`). It must not be a name that the file has already.
+    const taken = new Set(code.match(/[A-Za-z_$][\w$]*/g)), next = {u: 0, a: 0, v: 0}, short = new Map();
     for (const name of [...count.keys()].sort((a, b) => count.get(b) - count.get(a) || (a < b ? -1 : 1))) {
         let s;
-        do s = name[0] + '_' + (next[name[0]]++).toString(36); while (count.has(s));
+        do s = name[0] + (next[name[0]]++).toString(36); while (taken.has(s));
         short.set(name, s);
     }
     return code.replace(/\b[uav]_[A-Za-z0-9]+\b/g, name => short.get(name));

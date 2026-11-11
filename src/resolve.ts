@@ -139,7 +139,10 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
 }
 
 export function tileURL(src: SourceInfo, z: number, x: number, y: number) {
-    return src.tiles[(x + y) % src.tiles.length].replace('{z}', String(z)).replace('{x}', String(x)).replace('{y}', String(y));
+    // `{bbox-epsg-3857}` is for WMS servers: the edges of the tile in metres of Web Mercator (west, south, east, north).
+    const edge = (v: number) => (v / 2 ** z - 0.5) * 40075016.68557849;
+    return src.tiles[(x + y) % src.tiles.length].replace('{z}', String(z)).replace('{x}', String(x)).replace('{y}', String(y))
+        .replace('{bbox-epsg-3857}', () => [edge(x), -edge(y + 1), edge(x + 1), -edge(y)].join());
 }
 
 export interface SpriteIcon {

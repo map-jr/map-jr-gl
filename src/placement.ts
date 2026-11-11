@@ -144,7 +144,7 @@ export function placeLabels(
                         // Follow the line: each glyph sits on the path at its own distance from the anchor, turned to the path's direction.
                         // (On a tilted map the text lies on the ground, and the ground gives it the whole perspective. As in MapLibre,
                         // its size on the ground takes half of that away again, so far text stays readable.)
-                        const curved = followLine(tr, it, l, shaped!.lines[0], s, ax, ay, w, h, grid, tr.pitch ? s / persp / persp : 0);
+                        const curved = followLine(tr, it, l, shaped!.lines[0], s, ax, ay, w, h, tr.pitch ? s / persp / persp : 0);
                         if (!curved) continue;
                         const prev = seen.get(l.text);
                         if (prev) { let dup = false; for (let i = 0; i < prev.length && !dup; i += 3) dup = Math.hypot(prev[i] - ax, prev[i + 1] - ay) < 300; if (dup) continue; }
@@ -282,7 +282,7 @@ export function placeLabels(
  * collision boxes, or null when the text does not fit or the line bends too sharply to read.
  */
 function followLine(
-    tr: Transform, it: RenderItem<unknown>, l: LabelSrc, line: {advances: number[]}, s: number, ax: number, ay: number, w: number, h: number, _grid: CollisionGrid, flat = 0,
+    tr: Transform, it: RenderItem<unknown>, l: LabelSrc, line: {advances: number[]}, s: number, ax: number, ay: number, w: number, h: number, flat = 0,
 ): {curve: number[]; ground?: number[]; boxes: Box[]} | null {
     const path = l.path!, n = path.length / 2;
     // The points of the line: on the screen, and in the tile (for lengths on the ground).
