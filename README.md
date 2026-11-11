@@ -98,7 +98,7 @@ You do not need a CSS file. The library adds the styles for its controls.
 
    ```js
    // import maplibregl from 'maplibre-gl';
-   import * as maplibregl from 'map-jr-gl';
+   import maplibregl from 'map-jr-gl';
    ```
 
 2. Remove the import of `maplibre-gl.css`.

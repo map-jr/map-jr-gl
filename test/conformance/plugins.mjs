@@ -30,7 +30,7 @@ for (const n of names) {
 
 const STYLE = 'https://tiles.openfreemap.org/styles/liberty';
 const page = n => `<!doctype html><meta charset="utf-8"><style>html,body{margin:0;height:100%}#stage{position:absolute;inset:0}#map{position:absolute;inset:0}</style>
-<script type="importmap">{"imports": {"maplibre-gl": "/dist/plugin-entry.js"}}</script>
+<script type="importmap">{"imports": {"maplibre-gl": "/dist/map-jr-gl.js"}}</script>
 <div id="stage"><div id="map"></div></div>
 <script type="module">
 import * as lib from '/dist/map-jr-gl.js';
@@ -45,12 +45,10 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 try { window.result = await run({lib, map, wait, style: ${JSON.stringify(STYLE)}, mouse: {click: window.mouseClick, drag: window.mouseDrag}}); }
 catch (e) { window.result = {ok: false, detail: 'threw: ' + e.message}; }
 </script>`;
-// Code for MapLibre uses the default export (maplibregl.Map) or named exports: the entry gives both.
-const entry = `import * as lib from './map-jr-gl.js'; export * from './map-jr-gl.js'; export default lib;`;
+
 const server = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://x'), send = (type, body) => { res.writeHead(200, {'content-type': type}); res.end(body); };
     if (url.pathname.startsWith('/run/')) return send('text/html', page(url.pathname.slice(5)));
-    if (url.pathname === '/dist/plugin-entry.js') return send('text/javascript', entry);
     if (url.pathname.startsWith('/scenario/')) return send('text/javascript', bundles[url.pathname.slice(10, -3)]);
     if (url.pathname.startsWith('/dist/') && readdirSync(path.join(root, 'dist')).includes(url.pathname.slice(6))) return send('text/javascript', readFileSync(path.join(root, url.pathname)));
     res.writeHead(404); res.end();

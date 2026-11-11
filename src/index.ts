@@ -25,3 +25,16 @@ export const getMaxParallelImageRequests = () => imageRequests;
 /** Accepted for compatibility. The browser draws right-to-left text; no plugin is loaded. */
 export const setRTLTextPlugin = (_url: string, _lazy?: boolean) => Promise.resolve();
 export const getRTLTextPluginStatus = () => 'loaded';
+
+// The default export has everything, for code that was written as `import maplibregl from 'maplibre-gl'`.
+// (A bundler leaves it out when an application uses only the named exports.)
+import {Map, MarkerLayer, InteractionHandler} from './map.ts';
+import {LngLat, LngLatBounds} from './lnglat.ts';
+import {addProtocol, removeProtocol} from './protocols.ts';
+import {AttributionControl, NavigationControl, ScaleControl, FullscreenControl, GeolocateControl, TerrainControl, LogoControl} from './controls.ts';
+import {Marker, Popup} from './overlays.ts';
+export default {
+    Map, MarkerLayer, InteractionHandler, LngLat, LngLatBounds, addProtocol, removeProtocol, Marker, Popup, configure: set,
+    AttributionControl, NavigationControl, ScaleControl, FullscreenControl, GeolocateControl, TerrainControl, LogoControl,
+    getVersion, setWorkerUrl, getWorkerUrl, setWorkerCount, getWorkerCount, setMaxParallelImageRequests, getMaxParallelImageRequests, setRTLTextPlugin, getRTLTextPluginStatus,
+};
