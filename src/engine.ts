@@ -360,7 +360,13 @@ export class Engine {
     private viewCovers = new Map<string, TileID[]>();
     private viewCover(source: string) {
         let cover = this.viewCovers.get(source);
-        if (!cover) { const src = this.style.sources[source]; this.viewCovers.set(source, cover = this.tr.coveringTiles(src.minzoom, src.maxzoom, src.tileSize, true)); }
+        if (!cover) {
+            // The elevation tiles of 3D terrain are one level less detailed than the map, as in MapLibre GL JS (it selects
+            // them as tiles of twice the size, and without rounding up). The ground and the relief shading need no more,
+            // and a view then needs about a quarter of the elevation data.
+            const src = this.style.sources[source], ground = this.style.terrain?.source === source;
+            this.viewCovers.set(source, cover = this.tr.coveringTiles(src.minzoom, src.maxzoom, ground ? src.tileSize * 2 : src.tileSize, !ground));
+        }
         return cover;
     }
     /** The raster and elevation sources that a layer on the ground draws from. */
@@ -1081,7 +1087,10 @@ export class Engine {
             if (!this.layers.some(l => l.source === source && l.visible && tr.zoom >= l.minzoom && tr.zoom < l.maxzoom && (!terrain || l.type === 'symbol' || l.type === 'fill-extrusion'))) continue;
             const src = this.style.sources[source];
             if (src.type === 'image') { items.set(source, this.pictureItems(source, tr)); continue; }
-            const ideal = tr.coveringTiles(src.minzoom, src.maxzoom, src.tileSize, src.type === 'raster' || src.type === 'raster-dem');
+            // (The elevation source of 3D terrain has the tiles of `viewCover` also while the map is seen from above and the
+            // ground is flat: relief shading then looks the same as on a tilted map, and a tilt loads no other tiles.)
+            const ground = this.style.terrain?.source === source;
+            const ideal = tr.coveringTiles(src.minzoom, src.maxzoom, ground ? src.tileSize * 2 : src.tileSize, !ground && (src.type === 'raster' || src.type === 'raster-dem'));
             for (const id of ideal) {
                 const key = source + '|' + id.key;
                 wanted.add(key);
