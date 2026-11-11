@@ -13,6 +13,9 @@ import type {QueriedFeature} from './query.ts';
 import type {FontSource} from './engine.ts';
 import type {LngLatBoundsInput} from './lnglat.ts';
 
+/** The description of a control: see `map-jr-gl/controls`. Controls with the same `key` are the same control. */
+export interface ControlSpec { key: string; position?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'; create(): {onAdd(map: any): HTMLElement; onRemove(map: any): void} }
+
 /** Where the camera is. */
 export interface View { center: [number, number]; zoom: number; bearing: number; pitch: number }
 export interface MapPointer { point: {x: number; y: number}; lngLat: [number, number]; /** The features of `interactiveLayers` at the point, the top one first. */ features: RenderedFeature[] }
@@ -31,6 +34,8 @@ export interface MapSpec extends MapSetup {
     onViewChange?: (view: View) => void;
     /** Marker layers, each with an `id`. A layer whose `data` is a new array gets the new data. */
     markers?: MarkerLayerOptions[];
+    /** Controls from `map-jr-gl/controls`: `[navigation(), scale()]`. */
+    controls?: ControlSpec[];
     /** Style layers whose features are found under the pointer: they are in `state.hover` and in `onClick`. */
     interactiveLayers?: string[];
     onClick?: (event: MapPointer) => void;
@@ -98,6 +103,7 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
     const viewOf = (): View => { const c = map.getCenter(); return {center: [c.lng, c.lat], zoom: map.getZoom(), bearing: map.getBearing(), pitch: map.getPitch()}; };
     const state = createStore<MapState>({loaded: false, idle: false, moving: false, view: viewOf(), hover: [], renderer: undefined, error: undefined});
     const markers = new globalThis.Map<string, {layer: MarkerLayer; options: MarkerLayerOptions}>();
+    const controls = new globalThis.Map<string, ReturnType<ControlSpec['create']>>();
     // The views that the map reported a short time ago. An application that owns the view gives them back, often some
     // frames later; they are not applied again, or the map would go back while the user moves it.
     const reported: View[] = [];
@@ -143,12 +149,20 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
     });
 
     const apply = (next: MapSpec, before?: MapSpec) => {
-        if (before && next.style !== before.style) { state.set({idle: false}); map.setStyle(next.style); }
+        // (A description that is made again each time, as in a template of a framework, has new objects with the same
+        // content. So where the identity is different, the content is compared before the map does work.)
+        const differ = (a: unknown, b: unknown) => a !== b && JSON.stringify(a) !== JSON.stringify(b);
+        if (before && differ(next.style, before.style)) { state.set({idle: false}); map.setStyle(next.style); }
         if (next.view && !same(next.view, before?.view) && !reported.some(v => same(v, next.view)) && before) map.jumpTo(next.view);
         if (next.minZoom !== before?.minZoom && before) map.setMinZoom(next.minZoom);
         if (next.maxZoom !== before?.maxZoom && before) map.setMaxZoom(next.maxZoom);
         if (next.maxPitch !== before?.maxPitch && before) map.setMaxPitch(next.maxPitch);
-        if (next.maxBounds !== before?.maxBounds) map.setMaxBounds(next.maxBounds);
+        if (differ(next.maxBounds, before?.maxBounds)) map.setMaxBounds(next.maxBounds);
+        if (next.controls !== before?.controls) {
+            const wanted = new Set((next.controls ?? []).map(c => c.key));
+            for (const [key, c] of controls) if (!wanted.has(key)) { map.removeControl(c as any); controls.delete(key); }
+            for (const c of next.controls ?? []) if (!controls.has(c.key)) { const made = c.create(); controls.set(c.key, made); map.addControl(made as any, c.position); }
+        }
         if (next.cursor !== before?.cursor) map.setCursor(next.cursor ?? '');
         if (next.markers !== before?.markers) {
             const wanted = new Set((next.markers ?? []).map(m => m.id));
@@ -162,7 +176,7 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
                 else { have?.layer.remove(); markers.set(m.id, {layer: map.addMarkerLayer({...m}), options: m}); }
             }
         }
-        if (next.interactiveLayers !== before?.interactiveLayers) hover();
+        if (differ(next.interactiveLayers, before?.interactiveLayers)) hover();
         now = next;
     };
     apply(spec);

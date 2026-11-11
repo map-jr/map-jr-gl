@@ -45,6 +45,7 @@ The component fills its parent element. Give the parent a height.
 | `initial-view` | The view at the start. |
 | `markers` | A list of marker layers. See [Markers](markers.md). |
 | `interactive-layers` | The ids of style layers whose features are found under the pointer. |
+| `controls` | Controls from `map-jr-gl/controls`: `:controls="[navigation(), scale()]"`. See [the main API](api.md). |
 | `min-zoom`, `max-zoom`, `max-pitch`, `max-bounds`, `cursor` | As in [the main API](api.md). |
 | `renderer`, `fonts`, `font-family`, `interactive`, `antialias`, `attribution`, `hash` | Read only when the map is made. |
 | `ssr` | Render the first view on the server. See below. |
@@ -72,13 +73,31 @@ The default slot is drawn over the map. It gets `state` (the state of the map) a
 
 A template ref on the component also has `host` and `state`.
 
-### Give new objects
+### How the component sees changes
 
-The map compares each prop with the last one by identity, and it sends the values to a worker. Thus:
+You can change the props as in other Vue code. The component sees these changes:
 
-- To change the markers, the view or the style, give a new array or object. Do not change the old one in place.
-- Use `shallowRef` for a style object and for marker data. A deep `ref` makes each part reactive, which costs time
-  for large data and has no use here.
+| Change | Example |
+|---|---|
+| A new value for a prop | `view = {center, zoom}`, `markers = [...]` |
+| A field of the view | `view.zoom = 15` |
+| A marker layer added or removed | `markers.push(layer)`, `markers.splice(0, 1)` |
+| A marker added, removed or replaced | `layer.data.push(marker)`, `layer.data[3] = {...layer.data[3], props}` |
+| A part of a reactive style object | `style.layers[4].paint['fill-color'] = '#f00'` |
+| An array or object that the template makes again each time | `:controls="[navigation()]"`, `:interactive-layers="['places']"` |
+
+The component does not see one change: a change inside one marker (`layer.data[3].props.color = '#f00'`). Replace
+the marker, as in the table.
+
+To see a change inside each marker, Vue would have to make each marker reactive and look at each one after each
+change. The component asks Vue about a data array as a whole. This costs the same for ten markers and for 100,000.
+
+For the best performance with large data:
+
+- Use `shallowRef` for marker data and for a style object, and give a new array or object to change them.
+  A `ref` also works; it only makes reactive what your code reads.
+- Give the style as a URL, or as an object that is made one time. An object that the template makes again each time
+  is compared with the last one by its content.
 
 ## The composable
 
@@ -106,18 +125,42 @@ const {host, state} = useMap(useTemplateRef('el'), computed(() => ({
 
 ## Nuxt and server rendering
 
-The component works in Nuxt without `<ClientOnly>`. On the server it renders an empty element, or, with the `ssr`
-prop, the first view as SVG:
+The component works in Nuxt without `<ClientOnly>`. On the server it renders an empty element. In the browser the
+map starts in that element, with its controls and credits. This is the same with and without the `ssr` prop.
+
+With the `ssr` prop, the server also renders the first view as SVG:
 
 ```vue
-<MapJr :map-style="style" :initial-view="view" :markers="[pins]" :ssr="{width: 800, height: 500}" />
+<MapJr
+  map-style="https://tiles.openfreemap.org/styles/liberty"
+  :initial-view="view"
+  :markers="[pins]"
+  :controls="[navigation()]"
+  :ssr="{
+    width: 800, height: 500,
+    overrides: {building: {hidden: true}, 'road_minor': {minzoom: 15}, poi_r20: {hidden: true}},
+  }"
+/>
 ```
 
 - The server renders the map with `renderToSVG` from `map-jr-gl/server`. See [Server rendering](server-rendering.md).
 - The page shows the map before a script has run.
-- In the browser, Vue takes over the HTML, and the map removes the SVG when it has drawn its first frame.
-- Give the size in pixels that the map has on most screens (`ssr` alone uses 800 by 500). The SVG is scaled to
-  the element.
-- The SVG of a city can be some hundred KB. To make it smaller, put changes for the server in the style. See
-  "Simplify the server render" in [Server rendering](server-rendering.md).
+- In the browser, Vue takes over the HTML, and the map removes the SVG when it has drawn its first frame. The
+  controls show from that moment; they are not in the SVG.
 - The server needs the style as an object or as a URL that it can fetch.
+
+| Option of `ssr` | Meaning |
+|---|---|
+| `width`, `height` | The size in pixels that the map has on most screens (800 by 500 without them). The SVG is scaled to the element. |
+| `overrides` | Changes to style layers for the server render only, by the id of the layer. Use them to make the SVG smaller for a style that you do not write yourself. The values are those of `map-jr:ssr`: `hidden`, `filter`, `minzoom`, `maxzoom`, `paint`, `layout`, `simplify`, `minSize`. See "Simplify the server render" in [Server rendering](server-rendering.md). |
+| `attribution` | The credits to show with the SVG: a string or a list of strings. |
+
+### The credits
+
+The server loads the style and its sources, so it knows their credits. It puts them into the page with the SVG, as
+text and links. The map replaces them with its own credits control in the browser. To show other text, give
+`attribution` in the `ssr` prop. With `:attribution="false"` on the component, the server shows no credits, and
+you show them yourself.
+
+The SVG of a city can be some hundred KB. In the test of this library, three overrides (no buildings, no building
+outlines, no small roads) change a page of 245 KB to 115 KB.

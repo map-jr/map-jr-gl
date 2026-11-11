@@ -60,6 +60,10 @@
       "types": "./dist/types/maplibre-compat.d.ts",
       "import": "./dist/map-jr-gl-maplibre-compat.js"
     },
+    "./controls": {
+      "types": "./dist/types/control-specs.d.ts",
+      "import": "./dist/controls.js"
+    },
     "./vue": {
       "types": "./dist/types/vue.d.ts",
       "import": "./dist/vue.js"

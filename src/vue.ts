@@ -5,12 +5,42 @@
  * the map does the rest. On a server the component can render the first view as SVG; in the browser the map takes
  * over that SVG, so a page from Nuxt shows a map before any script has run.
  */
-import {computed, defineComponent, getCurrentInstance, h, onBeforeUnmount, onMounted, onServerPrefetch, shallowRef, toRaw, toValue, watch, type MaybeRefOrGetter, type PropType, type ShallowRef} from 'vue';
-import {createMap, type MapHost, type MapPointer, type MapSpec, type MapState, type View} from './host.ts';
+import {computed, defineComponent, getCurrentInstance, h, isProxy, isReactive, onBeforeUnmount, onMounted, onServerPrefetch, shallowRef, toRaw, toValue, watch, type ComputedRef, type MaybeRefOrGetter, type PropType, type ShallowRef} from 'vue';
+import {createMap, type ControlSpec, type MapHost, type MapPointer, type MapSpec, type MapState, type View} from './host.ts';
+import type {SSROverrides} from './style.ts';
 import type {RenderedFeature} from './map.ts';
 import type {MarkerLayerOptions} from './markers.ts';
 import type {FontSource} from './engine.ts';
 import type {LngLatBoundsInput} from './lnglat.ts';
+
+/** A description whose fields are the objects behind Vue's reactive objects (a reactive object cannot go to a worker). */
+function unwrapped(spec: MapSpec): MapSpec {
+    const out: any = {};
+    for (const k in spec) { const v = (spec as any)[k]; out[k] = isProxy(v) ? toRaw(v) : v; }
+    return out;
+}
+
+/** A copy of a value without reactive objects. It reads each part, so Vue knows that the caller depends on each part. */
+function plain<T>(v: T): T {
+    if (Array.isArray(v)) return v.map(plain) as T;
+    if (v && typeof v === 'object') { const o: any = {}; for (const k in v) o[k] = plain(v[k]); return o; }
+    return v;
+}
+
+/**
+ * The data of a marker layer for the map. A reactive array can be changed in place (`data.push(marker)`,
+ * `data[3] = marker`, `data.splice(...)`): Vue is asked about the array as a whole, which costs the same for ten
+ * markers and for 100,000, and the map gets a copy after a change. An array that is not reactive is used as it is.
+ */
+const copies = new WeakMap<object, ComputedRef<unknown[]>>();
+function markerData(data: unknown[]): unknown[] {
+    if (!isReactive(data)) return data;
+    const raw = toRaw(data);
+    let copy = copies.get(raw);
+    // (To ask for the iterator of a reactive array is to depend on each change of its items, without a look at each item.)
+    if (!copy) copies.set(raw, copy = computed(() => { data[Symbol.iterator](); return raw.slice(); }));
+    return copy.value;
+}
 
 /**
  * A map in an element, from a description that can be a ref or a function: the map follows each change.
@@ -23,12 +53,12 @@ export function useMap(container: MaybeRefOrGetter<HTMLElement | null | undefine
     onMounted(() => {
         const el = toValue(container);
         if (!el) return;
-        const made = host.value = createMap(el, toValue(spec));
+        const made = host.value = createMap(el, unwrapped(toValue(spec)));
         state.value = made.state.get();
         stop = made.state.subscribe(s => { state.value = s; });
     });
     // (A new description object is a change. The fields are compared by the map, not by Vue.)
-    watch(() => toValue(spec), next => host.value?.update(next), {flush: 'post'});
+    watch(() => toValue(spec), next => host.value?.update(unwrapped(next)), {flush: 'post'});
     onBeforeUnmount(() => { stop?.(); host.value?.destroy(); host.value = null; });
     return {host, state};
 }
@@ -54,6 +84,8 @@ export const MapJr = defineComponent({
         minZoom: Number, maxZoom: Number, maxPitch: Number,
         maxBounds: [Array, Object] as PropType<LngLatBoundsInput | null>,
         cursor: String,
+        /** Controls from `map-jr-gl/controls`: `[navigation(), scale()]`. */
+        controls: Array as PropType<ControlSpec[]>,
         renderer: String as PropType<'auto' | 'worker' | 'main'>,
         fonts: Array as PropType<FontSource[]>,
         fontFamily: String,
@@ -62,10 +94,12 @@ export const MapJr = defineComponent({
         attribution: {type: [Boolean, Object] as PropType<false | {compact?: boolean; customAttribution?: string | string[]}>, default: undefined},
         hash: {type: [Boolean, String] as PropType<boolean | string>, default: undefined},
         /**
-         * On a server: render the first view as SVG into the page (`true`, for a map of 800 by 500 pixels, or the size
-         * in pixels). The SVG is larger than an image of the same view; see the documentation of server rendering.
+         * On a server: render the first view as SVG into the page. `true`, or options: the size in pixels that the map
+         * has on most screens (800 by 500 without them), `overrides` (changes to style layers for the server render, by
+         * the id of the layer: `{building: {hidden: true}}`), and `attribution` (the credits to show, when the server
+         * must not take them from the sources of the style).
          */
-        ssr: {type: [Boolean, Object] as PropType<boolean | {width: number; height: number}>, default: false},
+        ssr: {type: [Boolean, Object] as PropType<boolean | {width?: number; height?: number; overrides?: Record<string, SSROverrides>; attribution?: string | string[]}>, default: false},
     },
     emits: {
         'update:view': (_view: View) => true,
@@ -77,17 +111,27 @@ export const MapJr = defineComponent({
     },
     setup(props, {emit, slots, expose}) {
         const el = shallowRef<HTMLElement | null>(null);
+        // Each part of the description is found on its own, so that a change of one prop does not make the other parts
+        // again. Objects from Vue can be changed in place: the view, the list of marker layers, the data of a layer,
+        // a reactive style. (Not the inside of one marker: replace the marker.)
+        const style = computed(() => { const v = props.mapStyle; return typeof v === 'object' && isReactive(v) ? plain(v) : v; });
+        const view = computed(() => props.view && plain(props.view));
+        const markers = computed(() => props.markers?.map(m => {
+            const out: any = {};
+            for (const k in m) out[k] = k === 'data' ? markerData(m.data) : plain((m as any)[k]);
+            return out as MarkerLayerOptions;
+        }));
+        const layers = computed(() => props.interactiveLayers && [...props.interactiveLayers]);
+        const controls = computed(() => props.controls && [...props.controls].map(c => toRaw(c)));
         const spec = computed<MapSpec>(() => {
             const out: MapSpec = {
-                style: props.mapStyle, view: props.view, initialView: props.initialView, markers: props.markers, interactiveLayers: props.interactiveLayers,
-                minZoom: props.minZoom, maxZoom: props.maxZoom, maxPitch: props.maxPitch, maxBounds: props.maxBounds, cursor: props.cursor,
-                renderer: props.renderer, fonts: props.fonts, fontFamily: props.fontFamily, interactive: props.interactive, antialias: props.antialias,
-                attribution: (props.attribution as unknown) === true ? undefined : props.attribution, hash: props.hash,
+                style: style.value, view: view.value, initialView: props.initialView && toRaw(props.initialView), markers: markers.value, interactiveLayers: layers.value, controls: controls.value,
+                minZoom: props.minZoom, maxZoom: props.maxZoom, maxPitch: props.maxPitch, maxBounds: props.maxBounds && toRaw(props.maxBounds), cursor: props.cursor,
+                renderer: props.renderer, fonts: props.fonts && toRaw(props.fonts), fontFamily: props.fontFamily, interactive: props.interactive, antialias: props.antialias,
+                attribution: (props.attribution as unknown) === true ? undefined : props.attribution && toRaw(props.attribution), hash: props.hash,
                 onViewChange: view => emit('update:view', view), onClick: event => emit('click', event),
             };
-            // Vue gives reactive objects. The map needs the objects behind them: they go to a worker, and a part that did
-            // not change must keep its identity. (So give a new array or object to change markers, the view or the style.)
-            for (const k in out) { const v = (out as any)[k]; if (v === undefined) delete (out as any)[k]; else if (typeof v === 'object') (out as any)[k] = toRaw(v); }
+            for (const k in out) if ((out as any)[k] === undefined) delete (out as any)[k];
             return out;
         });
         const {host, state} = useMap(el, spec);
@@ -97,21 +141,26 @@ export const MapJr = defineComponent({
         watch(() => state.value?.error, error => { if (error) emit('error', error); });
         expose({host, state});
 
-        // The SVG of the first view. On the server it is rendered here. In the browser, when the page came from the
-        // server, it is read from the element that is there already: the component then renders the same content, and
-        // Vue finds no difference. The map removes the SVG when it has drawn its first frame.
-        const svg = shallowRef((getCurrentInstance()?.vnode.el as HTMLElement | null)?.querySelector?.('[data-map-jr-ssr]')?.outerHTML ?? '');
+        // The first view from the server: the SVG and the credits. On the server they are made here. In the browser,
+        // when the page came from the server, they are read from the element that is there already: the component then
+        // renders the same content, and Vue finds no difference. The map removes them when it has drawn its first frame.
+        const first = shallowRef((getCurrentInstance()?.vnode.el as HTMLElement | null)?.firstElementChild?.innerHTML ?? '');
         onServerPrefetch(async () => {
             if (!props.ssr) return;
-            const view = {...props.initialView, ...props.view}, size = props.ssr === true ? {width: 800, height: 500} : props.ssr;
+            const view = {...props.initialView, ...props.view}, o = props.ssr === true ? {} : props.ssr;
             // (By the name of the package, so that this file does not contain the server renderer, and so that a tool that
             // collects the files of a server finds it.)
             // @ts-ignore: the package refers to itself, which the type check of this project does not resolve
             const server = await import('map-jr-gl/server') as typeof import('./server.ts');
-            svg.value = (await server.renderToSVG({style: props.mapStyle, center: view.center ?? [0, 0], zoom: view.zoom ?? 0, bearing: view.bearing, ...size, markers: props.markers})).svg;
+            const made = await server.renderToSVG({style: toRaw(props.mapStyle), center: view.center ?? [0, 0], zoom: view.zoom ?? 0, bearing: view.bearing, width: o.width ?? 800, height: o.height ?? 500,
+                markers: props.markers && plain(props.markers), overrides: o.overrides});
+            // The credits: only text and links to http(s) addresses are kept from the HTML of a source.
+            const credits = [o.attribution ?? made.attribution].flat().map(html => html.replace(/<(?!\/?a(?=[\s>]))[^>]*>/gi, '').replace(/<a\b([^>]*)>/gi, (_, attrs: string) => { const m = /href\s*=\s*"(https?:[^"]*)"/i.exec(attrs); return m ? `<a href="${m[1]}">` : '<a>'; })).filter(Boolean);
+            first.value = made.svg + (credits.length && props.attribution !== false
+                ? `<div data-map-jr-ssr="" style="position:absolute;right:0;bottom:0;background:rgba(255,255,255,.75);color:#333;font:11px/1.4 sans-serif;padding:2px 6px">${credits.join(' ')}</div>` : '');
         });
         return () => h('div', {class: 'map-jr-vue', style: 'position:relative;width:100%;height:100%'}, [
-            h('div', {ref: el, style: 'position:absolute;inset:0', innerHTML: svg.value}),
+            h('div', {ref: el, style: 'position:absolute;inset:0', innerHTML: first.value}),
             slots.default?.({host: host.value, state: state.value}),
         ]);
     },

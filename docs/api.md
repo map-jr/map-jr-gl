@@ -34,11 +34,15 @@ description = {...description, markers: [{...pins, data: newData}]};
 map.update(description);
 ```
 
-The library compares each field with the field of the last description. A field that is the same object is not
-looked at again. Thus:
+The library compares each field with the field of the last description:
 
-- To change a field, give a new object or array. Do not change the old one in place.
-- To leave a field as it is, give the same object again.
+- A field that is the same object as before is not looked at again. This is the fast path: keep the object when
+  nothing changed.
+- A field that is a new object is compared by its content (the style, the limits, the lists of layers and
+  controls). So a description that your code makes again each time does not make the map do work.
+- Marker data is compared by identity only, because it can be large. To change the markers of a layer, give a new
+  `data` array. Do not change the old array in place. (The Vue component does this for you: see
+  [Vue and Nuxt](vue.md).)
 
 ## The description
 
@@ -48,6 +52,7 @@ looked at again. Thus:
 | `initialView` | The view at the start: `center` (`[lng, lat]`), `zoom`, `bearing`, `pitch`. The user then moves the map. |
 | `view`, `onViewChange` | A view that your application owns. See below. |
 | `markers` | A list of marker layers, each with an `id`. See [Markers](markers.md). A layer with a new `data` array gets the new data. |
+| `controls` | A list of controls. See below. |
 | `interactiveLayers` | The ids of style layers. The features of these layers under the pointer are in `state.hover` and in `onClick`. |
 | `onClick` | A function that is called for a click, with `point`, `lngLat` and `features`. |
 | `minZoom`, `maxZoom`, `maxPitch`, `maxBounds` | The limits of the camera. |
@@ -63,6 +68,30 @@ These fields are read only when the map is made:
 | `antialias` | Multisample antialiasing for the canvas. |
 | `attribution` | `false` to show the credits yourself, or options for the built-in credits. |
 | `hash` | Keeps the view in the fragment of the URL. |
+
+## Controls
+
+```js
+import {navigation, scale, fullscreen, geolocate, terrain} from 'map-jr-gl/controls';
+
+createMap(container, {
+  style,
+  controls: [navigation(), scale({position: 'bottom-left'}), fullscreen({position: 'top-left'})],
+});
+```
+
+Each function returns the description of a control. The map adds the control, and removes it when a later
+description does not have it. A page loads only the code of the controls that it imports.
+
+| Function | Control | Options (each also has `position`) |
+|---|---|---|
+| `navigation` | Zoom buttons and a compass | `showZoom`, `showCompass` |
+| `scale` | A scale bar | `maxWidth`, `unit` (`'metric'` or `'imperial'`) |
+| `fullscreen` | A button for the full screen | |
+| `geolocate` | A button that moves the map to the position of the user | `zoom`, `positionOptions` |
+| `terrain` | A button that turns 3D terrain on and off | `source` (required), `exaggeration` |
+
+The credits of the data show without a control of your own. See `attribution` below.
 
 ## The state
 
@@ -143,7 +172,7 @@ The tile data is in a worker, so each query returns a promise.
 
 ## What is not in this entry yet
 
-- Controls (zoom buttons, scale, fullscreen), `Marker` and `Popup` are in `map-jr-gl/maplibre-compat` only. They
-  will become separate entries of this API.
+- `Marker` and `Popup` (elements of the page at a position of the map) are in `map-jr-gl/maplibre-compat` only.
+  They will become a part of this API.
 - The features under the pointer are found with one query for each pointer position, from the page. Later the
   engine will find them itself.

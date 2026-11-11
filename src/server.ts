@@ -1,5 +1,5 @@
 import {Transform, type LngLatLike} from './geo.ts';
-import {applySSROverrides, compileLayer, loadSprite, resolveStyle, tileURL, type CompiledLayer, type Sprite} from './style.ts';
+import {SSR_KEY, applySSROverrides, type SSROverrides, compileLayer, loadSprite, resolveStyle, tileURL, type CompiledLayer, type Sprite} from './style.ts';
 import {TileBuilder} from './tiles.ts';
 import type {TileImage, TileIR} from './tile.ts';
 import {CollisionGrid, placeLabels, renderItems, type RenderItem} from './placement.ts';
@@ -33,6 +33,12 @@ export interface RenderOptions {
     resolveImage?: (name: string) => {svg: string; width: number; height: number} | undefined;
     /** Set false to ignore the style's `map-jr:ssr` layer overrides and render exactly what the client would. */
     ssrOverrides?: boolean;
+    /**
+     * Changes for the server render, for each id of a style layer: the same values as `map-jr:ssr` in the metadata of a
+     * layer. Use this for a style that you do not write yourself (a style from a URL), to make the render smaller:
+     * `{building: {hidden: true}, 'road-minor': {minzoom: 15}}`. A value here comes before the value in the style.
+     */
+    overrides?: Record<string, SSROverrides>;
     fetch?: typeof fetch;
     /**
      * Decodes elevation tile images for contour sources. PNG and lossless WebP are built in; pass a function for
@@ -44,6 +50,8 @@ export interface RenderResult {
     svg: string;
     /** Tile URLs this view needs: emit them as `<link rel="preload" as="fetch" crossorigin>` so the client starts warm. */
     tiles: string[];
+    /** The credits of the sources of the style, as HTML. Show them with the render. */
+    attribution: string[];
 }
 
 
@@ -52,6 +60,7 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
     // Wrapped, not passed by reference: Cloudflare Workers reject calls to a detached global `fetch`.
     const fetchFn: typeof fetch = o.fetch ?? ((...a) => fetch(...a));
     const style = await resolveStyle(o.style, fetchFn);
+    if (o.overrides) style.layers = style.layers.map(l => o.overrides![l.id] ? {...l, metadata: {...l.metadata, [SSR_KEY]: {...(l.metadata?.[SSR_KEY] as object), ...o.overrides![l.id]}}} : l);
     if (o.ssrOverrides !== false) style.layers = applySSROverrides(style.layers);
     if (o.layerFilter) style.layers = style.layers.filter(l => o.layerFilter!(l.id));
     const layers = style.layers.map(compileLayer).filter((l): l is CompiledLayer => !!l);
@@ -116,7 +125,7 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
         tr, layers, items, labels, sprite, images, markers: o.markers ?? [], fontFamily: o.fontFamily ?? DEFAULT_FONT,
         rootAttrs: 'data-map-jr-ssr="" style="position:absolute;inset:0;width:100%;height:100%"',
     });
-    return {svg, tiles: urls};
+    return {svg, tiles: urls, attribution: [...new Set(Object.values(style.sources).map(s => s.attribution).filter((a): a is string => !!a))]};
 }
 
 /**

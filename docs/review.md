@@ -32,10 +32,17 @@ Done on 2026-11-11, as agreed with the owner:
 4. The Vue adapter (`map-jr-gl/vue`): a component with `v-model:view`, a composable, and server rendering that Vue
    and the map take over in the browser. See [Vue and Nuxt](vue.md). Tests: `pnpm test:vue`.
 
+5. Controls for the main API (`map-jr-gl/controls`), as descriptions in the field `controls`. The control classes are
+   a file of their own now: the main page script is 25.9 KB, and the compatibility page script 28.2 KB (its budget
+   is 28.5 KB; three files in place of two cost about 0.5 KB after gzip).
+6. The Vue component sees changes in place (a marker pushed to a data array, a field of the view), at a cost that
+   does not grow with the number of markers. The `ssr` prop takes `overrides` for style layers and `attribution`;
+   the server puts the credits of the sources into the page.
+
 Not done yet, in the order that I propose:
 
-1. **Controls, `Marker` and `Popup` for the main API**, as entries of their own (`map-jr-gl/controls`). Now they are
-   in the compatibility entry only.
+1. **`Marker` and `Popup` for the main API.** Now they are in the compatibility entry only. (Controls are done:
+   `map-jr-gl/controls`.)
 2. **The features under the pointer found by the engine.** Now the page makes one query for each pointer position.
 3. **More of the map class into the compatibility class**: the layer and source methods (`addLayer`, `setPaintProperty`
    and others), when the main API has its own path for a change of the style. This makes the main entry smaller.

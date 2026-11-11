@@ -82,6 +82,20 @@ for (const renderer of ['worker', 'main']) {
         });
         check(`[${renderer}] marker layers follow the description`, markers.one === 1 && markers.moved === 0 && markers.back === 1 && markers.none === 0, JSON.stringify(markers));
 
+        // Controls: added and removed by the description.
+        const controls = await page.evaluate(async () => {
+            const t = window.t, {navigation, scale} = await import('/dist/controls.js'), count = () => document.querySelectorAll('#host .map-jr-ctrl-group, #host .map-jr-ctrl-scale').length;
+            t.host.update(t.spec = {...t.spec, controls: [navigation(), scale({position: 'bottom-left'})]});
+            const two = count();
+            t.host.update(t.spec = {...t.spec, controls: [navigation(), scale({position: 'bottom-left'})]}); // made again, the same content
+            const still = count();
+            t.host.update(t.spec = {...t.spec, controls: [scale({position: 'bottom-left'})]});
+            const one = count();
+            t.host.update(t.spec = {...t.spec, controls: undefined});
+            return {two, still, one, none: count()};
+        });
+        check(`[${renderer}] controls follow the description`, controls.two === 2 && controls.still === 2 && controls.one === 1 && controls.none === 0, JSON.stringify(controls));
+
         // 5. The features under the pointer, and a click.
         await page.evaluate(() => { const t = window.t; t.host.update(t.spec = {...t.spec, interactiveLayers: ['water', 'park', 'building', 'road'], onClick: e => t.clicks.push(e)}); t.host.state.subscribe(s => s.hover, h => t.seen.push('hover:' + h.length)); });
         let hover = 0;

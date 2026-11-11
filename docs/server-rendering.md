@@ -117,6 +117,7 @@ Notes for Cloudflare Workers:
 | `inlineImages` | When `true`, raster tiles and the sprite go into the SVG as data. Required when the SVG is shown with an `<img>` element. |
 | `highDensity` | When `true`, the render uses the high-density (@2x) sprite |
 | `ssrOverrides` | When `false`, the server changes in the style are ignored. See below. |
+| `overrides` | Server changes for style layers, by the id of the layer: `{building: {hidden: true}}`. For a style that you do not write yourself. See below. |
 | `decodeImage` | A function that decodes elevation tiles. Required only for formats other than PNG and lossless WebP. |
 | `fetch` | A replacement for `fetch`, for example to add a cache |
 
@@ -139,6 +140,19 @@ MapLibre GL JS ignores them, so the style stays correct for the two libraries.
 }
 ```
 
+For a style that you do not write yourself (a style from a URL), give the same changes in the option `overrides`,
+by the id of the layer:
+
+```js
+const {svg, attribution} = await renderToSVG({
+  style: 'https://tiles.openfreemap.org/styles/liberty',
+  center, zoom, width: 800, height: 500,
+  overrides: {building: {hidden: true}, poi_r20: {hidden: true}},
+});
+```
+
+A value in `overrides` comes before the value in the style.
+
 | Key | Effect on the server render |
 |---|---|
 | `hidden` | The layer does not show |
@@ -147,6 +161,11 @@ MapLibre GL JS ignores them, so the style stays correct for the two libraries.
 | `paint`, `layout` | Different property values |
 | `simplify` | Lines and polygons are made simpler by this number of pixels |
 | `minSize` | Shapes smaller than this number of pixels do not show |
+
+## Credits
+
+The result of `renderToSVG` has `attribution`: the credits of the sources of the style, as a list of HTML strings.
+Show them with the render. (The Vue component does this.)
 
 ## Fonts
 

@@ -411,7 +411,7 @@ export class Map {
             this.tilesLoaded = true;
             if (!this.isLoaded) {
                 this.isLoaded = true;
-                this.container.querySelector('[data-map-jr-ssr]')?.remove();
+                for (const el of this.container.querySelectorAll('[data-map-jr-ssr]')) el.remove();
                 this.fire('load');
             }
             // The data of each source is complete now. As in MapLibre, `sourcedata` and `data` tell listeners so.

@@ -204,6 +204,11 @@ test('server: renders a tile to SVG offline, with generated icons and overrides'
     assert.match(svg, /fill="#00aaff"/); assert.match(svg, /stroke-dasharray="4 2"/); assert.match(svg, /<text /);
     assert.match(svg, /<symbol id="i0"[^>]*><rect width="20" height="12" data-name="ref-/, 'generated icons are embedded as vector symbols');
     assert.ok(!svg.includes('#123456'), 'a layer hidden for server output is left out');
+    // Changes for the server can also be given for a style that is not your own, by the id of a layer; and the result has the credits.
+    const credited = {...style, sources: {s: {...style.sources.s, attribution: '<a href="https://example.com">Example</a>'}}};
+    const changed = await renderToSVG({...opts, style: credited, overrides: {water: {hidden: true}, roads: {paint: {'line-color': '#abcdef'}}}});
+    assert.ok(!changed.svg.includes('#00aaff') && changed.svg.includes('#abcdef'), 'overrides by layer id are used');
+    assert.deepEqual(changed.attribution, ['<a href="https://example.com">Example</a>']);
     const full = await renderToSVG({...opts, ssrOverrides: false});
     assert.ok(full.svg.includes('#123456') && full.svg.length > svg.length);
 });
