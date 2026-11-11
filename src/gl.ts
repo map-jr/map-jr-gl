@@ -391,6 +391,8 @@ export interface Scene {
     terrain?: {exaggeration: number; tiles: TerrainTile[]; dem(id: TileID): DemRef | null};
     /** The light on buildings. */
     light?: Light;
+    /** True while the camera moves. */
+    moving?: boolean;
     /** Looks up a sprite or runtime image by name, for patterns. */
     icon?: (name: string) => {x: number; y: number; width: number; height: number; pixelRatio: number; custom?: boolean} | undefined;
 }
@@ -1121,7 +1123,9 @@ export class GLRenderer {
         const gl = this.gl;
         // Per frame: a couple of out-of-date pictures are redrawn and a few missing ones drawn (all of them when starting
         // from nothing). A missing one shows its ancestor's picture meanwhile, so spreading the work costs no holes.
-        let budget = 2, fresh = this.drapes.size ? 3 : Infinity, behind = false;
+        // While the camera moves, less of this work is done in one frame: a smooth movement is more important than
+        // pictures that are complete a moment sooner.
+        let budget = s.moving ? 1 : 2, fresh = !this.drapes.size ? Infinity : s.moving ? 2 : 3, behind = false;
         for (const t of s.terrain!.tiles) {
             let d = this.drapes.get(t.key);
             // 1024 pixels a side at most (what MapLibre uses): larger pictures cost high-density phones frames for little gain.

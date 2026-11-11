@@ -15,6 +15,11 @@
 - Class names: the library uses `map-jr-*` internally. Elements also carry `maplibregl-*` names for compatibility
   only; do not style or query by those.
 
+- The owner's messages can arrive late in a long turn. Read notifications often, and when a message arrives, answer
+  it and do what it asks before other work.
+- The licence is MIT. Keep `ACKNOWLEDGEMENTS.md` and `THIRD-PARTY-LICENSES.md` correct when a library is added to
+  the built files or a method is taken from another project.
+
 ## Commands
 
 See `docs/development.md`. In short: `pnpm build`, `pnpm test`, and with `pnpm demo` running: `pnpm test:browser`,
