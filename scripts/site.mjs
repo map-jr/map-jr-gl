@@ -1,4 +1,5 @@
 // Builds the gallery site into site-dist/ (what GitHub Pages serves). Run after the library is built: pnpm site
+import {fileURLToPath} from 'node:url';
 import {build} from 'vite';
 import {mkdirSync, writeFileSync} from 'node:fs';
 import {Renderer} from '@takumi-rs/core';
@@ -19,5 +20,5 @@ const {image} = await renderToImage({...options, rasteriser: new Renderer(), pix
 writeFileSync(new URL('../site/public/ssr.jpg', import.meta.url), image);
 console.log(`server pictures: SVG ${(svg.length / 1024).toFixed(0)} KB, JPEG ${(image.length / 1024).toFixed(0)} KB`);
 
-await build({configFile: new URL('../site/vite.config.mjs', import.meta.url).pathname, logLevel: 'warn'});
+await build({configFile: fileURLToPath(new URL('../site/vite.config.mjs', import.meta.url)), logLevel: 'warn'}); // (fileURLToPath: a URL's pathname is not a path on Windows)
 console.log('site built in site-dist/');
