@@ -1,7 +1,7 @@
 import {fetchWith, type RequestAnswer} from './requests.ts';
 import {protocolListeners, protocols, toBytes} from './protocols.ts';
 import {LngLat, LngLatBounds, type LngLatBoundsInput} from './lnglat.ts';
-import {Transform, groundHeight, mercX, mercY, toLngLat, type LngLatLike} from './geo.ts';
+import {Transform, groundHeight, heightsChanged, mercX, mercY, toLngLat, type LngLatLike} from './geo.ts';
 import type {PreparedSource} from './geojson.ts';
 import {DEFAULT_FONT, resolveStyle, type ResolvedStyle} from './resolve.ts';
 import type {CameraOptions, Command, EngineEvent, FeatureQuery, FontSource, MarkerImage} from './engine.ts';
@@ -397,6 +397,7 @@ export class Map {
             this.fire('idle');
         } else if (e.type === 'heights') {
             if (e.grid) this.heights.set(e.key, e.grid); else this.heights.delete(e.key);
+            heightsChanged(this.heights);
             if (this.tr.heightAt && !this.moving) this.fire('move'); // overlays re-position onto the newly known ground (while moving, every frame does this anyway)
         } else if (e.type === 'stats') {
             this.fire('stats', {fps: e.fps, frameMs: e.frameMs});

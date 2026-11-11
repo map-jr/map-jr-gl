@@ -16,15 +16,29 @@ export const HEIGHT_GRID = 128;
  */
 export function groundHeight(grids: Map<string, Float32Array>, mx: number, my: number, from: number, to = 0, unknown = 0): number {
     mx -= Math.floor(mx);
-    for (let z = from; z >= to; z--) {
-        const n = 2 ** z, h = grids.get(`${z}/${Math.floor(mx * n)}/${Math.floor(my * n)}`);
-        if (!h) continue;
-        const G = HEIGHT_GRID, fx = clamp((mx * n % 1) * G - 0.5, 0, G - 1), fy = clamp((my * n % 1) * G - 0.5, 0, G - 1);
-        const x0 = Math.floor(fx), y0 = Math.floor(fy), x1 = Math.min(G - 1, x0 + 1), y1 = Math.min(G - 1, y0 + 1), tx = fx - x0, ty = fy - y0;
-        return (h[y0 * G + x0] * (1 - tx) + h[y0 * G + x1] * tx) * (1 - ty) + (h[y1 * G + x0] * (1 - tx) + h[y1 * G + x1] * tx) * ty;
+    // Which grid has the heights of a place is found once for each tile of the deepest level and kept (the search
+    // makes a text key for each level, which is slow when it is done for thousands of points in a frame).
+    let found = foundGrids.get(grids);
+    if (!found) foundGrids.set(grids, found = new Map());
+    const nf = 2 ** from, key = (from * 65536 + Math.floor(mx * nf)) * 65536 + Math.floor(my * nf);
+    let g = found.get(key);
+    if (g === undefined) {
+        g = null;
+        for (let z = from; z >= to && !g; z--) {
+            const n = 2 ** z, h = grids.get(`${z}/${Math.floor(mx * n)}/${Math.floor(my * n)}`);
+            if (h) g = {h, n};
+        }
+        if (found.size > 20000) found.clear();
+        found.set(key, g);
     }
-    return unknown;
+    if (!g) return unknown;
+    const {h, n} = g, G = HEIGHT_GRID, fx = clamp((mx * n % 1) * G - 0.5, 0, G - 1), fy = clamp((my * n % 1) * G - 0.5, 0, G - 1);
+    const x0 = Math.floor(fx), y0 = Math.floor(fy), x1 = Math.min(G - 1, x0 + 1), y1 = Math.min(G - 1, y0 + 1), tx = fx - x0, ty = fy - y0;
+    return (h[y0 * G + x0] * (1 - tx) + h[y0 * G + x1] * tx) * (1 - ty) + (h[y1 * G + x0] * (1 - tx) + h[y1 * G + x1] * tx) * ty;
 }
+const foundGrids = new WeakMap<object, Map<number, {h: Float32Array; n: number} | null>>();
+/** Call this after a grid is added to or removed from `grids`: what groundHeight remembers about them is then out of date. */
+export function heightsChanged(grids: Map<string, Float32Array>) { foundGrids.get(grids)?.clear(); }
 
 export const mercX = (lng: number) => (lng + 180) / 360;
 export const mercY = (lat: number) => {
