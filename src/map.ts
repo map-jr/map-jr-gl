@@ -16,7 +16,8 @@ import {CollisionGrid} from './collision.ts';
 
 export interface MapOptions extends CameraOptions, LoadOptions {
     container: HTMLElement | string;
-    style: unknown;
+    /** The style: an object or a URL. Leave it out to give the style later with `setStyle`. */
+    style?: unknown;
     /**
      * Where the engine (camera, placement, drawing) runs. 'worker' keeps the map smooth while the page is busy;
      * 'main' renders on the page's own thread. 'auto' picks 'worker' when the browser supports it.
@@ -72,6 +73,7 @@ export interface GeoJSONDiff {
     removeAll?: boolean; remove?: (string | number)[]; add?: unknown[];
     update?: {id: string | number; newGeometry?: unknown; removeAllProperties?: boolean; removeProperties?: string[]; addOrUpdateProperties?: {key: string; value: unknown}[]}[];
 }
+type StyleChange = (previous: any, next: any) => any;
 export type PointLike = {x: number; y: number} | [number, number];
 export interface RenderedQueryOptions { layers?: string[]; filter?: unknown; validate?: boolean }
 /** A feature from `queryRenderedFeatures` or `querySourceFeatures`: GeoJSON, with its source, its style layer and its state. */
@@ -236,9 +238,11 @@ export class Map {
         Object.assign(this.canvas.style, {width: this.dpr * 100 + '%', height: this.dpr * 100 + '%', transform: `scale(${1 / this.dpr})`});
     }
 
-    private async start() {
+    private async start(change?: StyleChange) {
         const o = this.options;
+        if (!o.style) return; // the style comes later, with setStyle
         this.rawStyle = typeof o.style === 'string' ? await (await this.fetchAs('Style')(o.style)).json() : structuredClone(o.style);
+        this.rawStyle = change?.(undefined, this.rawStyle) ?? this.rawStyle;
         for (const fn of this.beforeStyle.splice(0)) fn();
         this.styleBase = typeof o.style === 'string' ? new URL(o.style, location.href).href : location.href;
         // As in MapLibre, a style may carry its own starting camera; explicit options win.
@@ -656,7 +660,9 @@ export class Map {
     }
     /** Runs a change to the style JSON now, or as soon as the style has been fetched. */
     private editStyle(fn: (style: any) => void) {
-        if (this.rawStyle) { fn(this.rawStyle); this.restyle(true); } else this.beforeStyle.push(() => fn(this.rawStyle));
+        // As in MapLibre, a change that names a layer that does not exist gives an `error` event, not an exception.
+        const run = () => { try { fn(this.rawStyle); return true; } catch (error) { this.fire('error', {error}); } };
+        if (!this.rawStyle) this.beforeStyle.push(run); else if (run()) this.restyle(true);
         return this;
     }
     private layerIndex(style: any, id: string) {
@@ -711,9 +717,12 @@ export class Map {
     /** There is no sky in this library. (react-map-gl reads the value when a style has loaded.) */
     getSky() { return undefined; }
     getLight() { return {anchor: 'viewport', position: [1.15, 210, 30], color: '#ffffff', intensity: 0.5, ...this.rawStyle?.light}; }
-    async setStyle(style: unknown) {
+    /** `transformStyle` gets the style before and the new style, and returns the style to use (as in MapLibre). */
+    async setStyle(style: unknown, options?: {transformStyle?: StyleChange}) {
+        if (!this.rawStyle && !this.options.style) { this.options.style = style; return this.start(options?.transformStyle); }
         this.styleBase = typeof style === 'string' ? new URL(style, location.href).href : location.href;
-        this.rawStyle = typeof style === 'string' ? await (await this.fetchAs('Style')(style)).json() : structuredClone(style);
+        const next = typeof style === 'string' ? await (await this.fetchAs('Style')(style)).json() : structuredClone(style);
+        this.rawStyle = options?.transformStyle?.(this.rawStyle, next) ?? next;
         this.newStyle = true;
         this.restyle(true);
     }
@@ -795,22 +804,12 @@ export class Map {
     setLayerZoomRange(id: string, minzoom: number, maxzoom: number) { return this.editStyle(s => Object.assign(s.layers[this.layerIndex(s, id)], {minzoom, maxzoom})); }
 
     private setProp(group: 'paint' | 'layout', layerId: string, name: string, value: unknown) {
-        const layer = this.rawStyle?.layers.find((l: any) => l.id === layerId);
-        if (!layer) throw new Error(`Layer "${layerId}" does not exist`);
-        (layer[group] ??= {})[name] = value;
-        // The engine works out whether this needs tiles rebuilt (per-feature values are baked into their buffers).
-        this.restyle(true);
-        return this;
+        // (The engine works out whether this needs tiles rebuilt: per-feature values are baked into their buffers.)
+        return this.editStyle(s => { (s.layers[this.layerIndex(s, layerId)][group] ??= {})[name] = value; });
     }
     setPaintProperty(layerId: string, name: string, value: unknown) { return this.setProp('paint', layerId, name, value); }
     setLayoutProperty(layerId: string, name: string, value: unknown) { return this.setProp('layout', layerId, name, value); }
-    setFilter(layerId: string, filter: unknown) {
-        const layer = this.rawStyle?.layers.find((l: any) => l.id === layerId);
-        if (!layer) throw new Error(`Layer "${layerId}" does not exist`);
-        layer.filter = filter;
-        this.restyle(true);
-        return this;
-    }
+    setFilter(layerId: string, filter: unknown) { return this.editStyle(s => { s.layers[this.layerIndex(s, layerId)].filter = filter; }); }
 
     // ---- controls ----
     private corners: Partial<Record<ControlPosition, HTMLElement>> = {};

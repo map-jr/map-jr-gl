@@ -952,7 +952,8 @@ export class Engine {
     private zoomBuilt = new Set<string | undefined>();
     /** Builds a tile again when its data is out of date, or when it was built for another zoom than it is now for. */
     private refresh(source: string, id: TileID, key: string, t: TileState) {
-        if (t.state !== 'ok' || t.rebuilding || !(t.stale || (this.frameTime - this.zoomMovedAt > CONTOUR_WAIT && t.band !== this.buildZoom(source, id)))) return;
+        // (Only a tile of geometry has a zoom that it was built for. An image tile is never built again: its bytes are not geometry.)
+        if (t.band === undefined || t.state !== 'ok' || t.rebuilding || !(t.stale || (this.frameTime - this.zoomMovedAt > CONTOUR_WAIT && t.band !== this.buildZoom(source, id)))) return;
         t.stale = false;
         this.rebuild(source, id, key, t);
     }
