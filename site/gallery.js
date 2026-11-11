@@ -37,18 +37,20 @@ map.addControl(new ScaleControl(), 'bottom-left');`,
   id: 'places',
   svg: '<svg viewBox="0 0 24 31"><path fill="{{color}}" d="..."/></svg>',
   width: 24, height: 31, anchor: 'bottom',
-  minZoom: 12,          // small dots take over below this
+  minZoom: 12,          // these places are dots below this zoom
   overlap: 'hide',      // do not pile up
   collide: true,        // map labels keep clear
   data: places.map(p => ({lngLat: p.lngLat, props: {color: p.color}})),
 });
 map.on('markerclick', e => e.layer.openPopup(e.index, e.marker.props.name));`,
         make: (el, row) => { const map = base(el, {zoom: 11.4}), places = manyMarkers(50000, NYC, 0.35).data, some = places.slice(0, 500);
-            map.addMarkerLayer({id: 'dots', svg: dot, width: 12, height: 12, anchor: 'center', maxZoom: 12, data: places});
+            // 500 of the places are pins when the zoom is 12 or more. The other places stay as dots at each zoom.
+            map.addMarkerLayer({id: 'dots', svg: dot, width: 12, height: 12, anchor: 'center', data: places.slice(500)});
+            map.addMarkerLayer({id: 'dots-below-pins', svg: dot, width: 12, height: 12, anchor: 'center', maxZoom: 12, data: some});
             map.addMarkerLayer({id: 'pins', svg: pin, width: 24, height: 31, anchor: 'bottom', minZoom: 12, overlap: 'hide', collide: true, data: some});
             map.addMarkerLayer(structuredClone(photos));
             map.on('markerclick', e => e.layer.openPopup(e.index, e.marker.props.name ?? `Marker at ${e.marker.lngLat.map(v => v.toFixed(3)).join(', ')}`));
-            map.on('stats', e => row.out(`50,000 markers, ${e.fps.toFixed(0)} frames per second. Zoom in past 12 for pins.`)); row.out('50,000 markers. Zoom in past 12 for pins, then click one.'); return map; }},
+            map.on('stats', e => row.out(`50,000 markers, ${e.fps.toFixed(0)} frames per second. Past zoom 12, 500 of them become pins.`)); row.out('50,000 markers. Zoom in past 12: 500 of them become pins. Click one.'); return map; }},
 
     {id: 'terrain', title: '3D terrain, relief shading and contour lines from one elevation source',
         points: ['Terrain raises the ground. Buildings, labels and markers stay on the surface.', 'A contour source makes labelled contour lines in the tile workers. No extra library is necessary.', 'queryElevation reads the height at a position. Click the map.'],
