@@ -4,7 +4,7 @@ name: Browsers
 on:
   push:
     branches: [main]
-    paths: ['src/**', 'demo/**', 'test/**', 'build.mjs', 'package.json', '.github/workflows/browsers.yml']
+    paths: ['src/**', 'demo/**', 'test/**', 'scripts/**', 'site/**', 'build.mjs', 'package.json', '.github/workflows/browsers.yml']
   workflow_dispatch:
 permissions:
   contents: write
