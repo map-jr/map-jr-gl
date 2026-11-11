@@ -1,5 +1,7 @@
 import {createMap} from 'map-jr-gl';
-import {style, NYC} from './shared.js';
+
+const style = 'https://tiles.openfreemap.org/styles/liberty';
+const NYC = [-74.0065, 40.7085];
 
 const dot = '<svg viewBox="0 0 12 12"><circle cx="6" cy="6" r="4.5" fill="{{color}}" stroke="#fff" stroke-width="1.5"/></svg>';
 const pins = {

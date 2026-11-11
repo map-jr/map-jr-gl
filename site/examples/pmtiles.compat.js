@@ -1,5 +1,6 @@
 import {Map} from 'map-jr-gl/maplibre-compat';
-import {style} from './shared.js';
+
+const style = 'https://tiles.openfreemap.org/styles/liberty';
 
 export default function (container, {show}) {
   const map = new Map({container, style, center: [-74.1, 40.75], zoom: 9.2, attributionControl: {compact: true}});

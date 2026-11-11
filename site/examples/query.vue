@@ -1,7 +1,9 @@
 <script setup>
 import {shallowRef, useTemplateRef} from 'vue';
 import {MapJr, MapOverlay} from 'map-jr-gl/vue';
-import {style, NYC} from './shared.js';
+
+const style = 'https://tiles.openfreemap.org/styles/liberty';
+const NYC = [-74.0065, 40.7085];
 
 const map = useTemplateRef('map');
 const found = shallowRef(null);

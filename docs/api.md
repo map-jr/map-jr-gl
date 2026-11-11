@@ -49,6 +49,7 @@ The library compares each field with the field of the last description:
 | Field | Meaning |
 |---|---|
 | `style` | A style object or the URL of a style (the MapLibre style specification). Required. A new object or URL is a new style. |
+| `extend` | Your own sources and layers on a style from a URL. See below. |
 | `initialView` | The view at the start: `center` (`[lng, lat]`), `zoom`, `bearing`, `pitch`. The user then moves the map. |
 | `view`, `onViewChange` | A view that your application owns. See below. |
 | `data` | GeoJSON data for sources of the style, by the id of the source. See below. |
@@ -69,6 +70,23 @@ These fields are read only when the map is made:
 | `antialias` | Multisample antialiasing for the canvas. |
 | `attribution` | `false` to show the credits yourself, or options for the built-in credits. |
 | `hash` | Keeps the view in the fragment of the URL. |
+
+## Your own layers on a style from a URL
+
+```js
+createMap(container, {
+  style: 'https://tiles.openfreemap.org/styles/liberty',
+  extend: {
+    sources: {routes: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}},
+    layers: [{id: 'routes', type: 'line', source: 'routes', before: 'water_name', paint: {'line-color': '#d6453d', 'line-width': 3}}],
+    terrain: {source: 'dem', exaggeration: 1.5},   // if the style or `sources` has an elevation source
+  },
+});
+```
+
+`extend` adds sources and layers to the style when the style has loaded. A layer with `before` goes below the layer
+with that id; without it, the layer goes on top. Give `extend` with other content to change the additions. (A style
+from a URL is then requested again; the browser has it in its cache.)
 
 ## GeoJSON data that changes
 

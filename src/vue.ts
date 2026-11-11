@@ -123,6 +123,8 @@ export const MapJr = defineComponent({
         /** The view, for `v-model:view`. Without it the map starts at `initialView` and the user moves it. */
         view: Object as PropType<Partial<View>>,
         initialView: Object as PropType<Partial<View>>,
+        /** Your own sources and layers on a style from a URL: `{sources, layers, terrain}`. */
+        extend: Object as PropType<MapSpec['extend']>,
         markers: Array as PropType<MarkerLayerOptions[]>,
         /** GeoJSON data for sources of the style, by the id of the source. Each value is compared by identity: give a new object to change it. */
         data: Object as PropType<Record<string, unknown>>,
@@ -162,6 +164,7 @@ export const MapJr = defineComponent({
         // a reactive style. (Not the inside of one marker: replace the marker.)
         const style = computed(() => { const v = props.mapStyle; return typeof v === 'object' && isReactive(v) ? plain(v) : v; });
         const view = computed(() => props.view && plain(props.view));
+        const extend = computed(() => props.extend && plain(props.extend));
         const markers = computed(() => props.markers?.map(m => {
             const out: any = {};
             for (const k in m) out[k] = k === 'data' ? markerData(m.data) : plain((m as any)[k]);
@@ -179,7 +182,7 @@ export const MapJr = defineComponent({
         const controls = computed(() => props.controls && [...props.controls].map(c => toRaw(c)));
         const spec = computed<MapSpec>(() => {
             const out: MapSpec = {
-                style: style.value, view: view.value, initialView: props.initialView && toRaw(props.initialView), markers: markers.value, data: data.value, interactiveLayers: layers.value, controls: controls.value,
+                style: style.value, extend: extend.value, view: view.value, initialView: props.initialView && toRaw(props.initialView), markers: markers.value, data: data.value, interactiveLayers: layers.value, controls: controls.value,
                 minZoom: props.minZoom, maxZoom: props.maxZoom, maxPitch: props.maxPitch, maxBounds: props.maxBounds && toRaw(props.maxBounds), cursor: props.cursor,
                 renderer: props.renderer, fonts: props.fonts && toRaw(props.fonts), fontFamily: props.fontFamily, interactive: props.interactive, antialias: props.antialias,
                 attribution: (props.attribution as unknown) === true ? undefined : props.attribution && toRaw(props.attribution), hash: props.hash,

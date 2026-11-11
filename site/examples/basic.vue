@@ -1,7 +1,9 @@
 <script setup>
 import {MapJr} from 'map-jr-gl/vue';
 import {navigation, scale, fullscreen} from 'map-jr-gl/controls';
-import {style, NYC} from './shared.js';
+
+const style = 'https://tiles.openfreemap.org/styles/liberty';
+const NYC = [-74.0065, 40.7085];
 </script>
 
 <template>

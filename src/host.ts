@@ -21,10 +21,25 @@ export interface ControlSpec { key: string; position?: 'top-left' | 'top-right' 
 export interface View { center: [number, number]; zoom: number; bearing: number; pitch: number }
 export interface MapPointer { point: {x: number; y: number}; lngLat: [number, number]; /** The features of `interactiveLayers` at the point, the top one first. */ features: RenderedFeature[] }
 
+/** Additions to a style: see `extend` in `MapSpec`. */
+export interface StyleExtension {
+    /** Sources to add, by id. */
+    sources?: Record<string, object>;
+    /** Layers to add. A layer goes below the layer with the id `before`, or on top without it. */
+    layers?: ({id: string; before?: string} & Record<string, unknown>)[];
+    /** 3D terrain from an elevation source: `{source: 'dem', exaggeration: 1.5}`. */
+    terrain?: {source: string; exaggeration?: number} | null;
+}
+
 /** The description of a map. Each field can change in `update`, but for those of `MapSetup`. */
 export interface MapSpec extends MapSetup {
     /** A style object or the URL of a style (the MapLibre style specification). A new object or URL is a new style. */
     style: string | object;
+    /**
+     * Your own sources and layers on a style that you do not write yourself (a style from a URL): they are added to
+     * the style when it has loaded. A new object with other content changes the map.
+     */
+    extend?: StyleExtension;
     /** The view at the start. The user then moves the map. */
     initialView?: Partial<View>;
     /**
@@ -120,6 +135,17 @@ export interface MapHost {
 
 const same = (a: Partial<View> | undefined, b: Partial<View> | undefined) => !!a && !!b && a.zoom === b.zoom && a.bearing === b.bearing && a.pitch === b.pitch && a.center?.[0] === b.center?.[0] && a.center?.[1] === b.center?.[1];
 
+/** A style with the additions of `extend`. */
+function extended(style: any, extend?: StyleExtension) {
+    if (!extend) return style;
+    const layers = [...style.layers];
+    for (const {before, ...layer} of extend.layers ?? []) {
+        const at = before ? layers.findIndex(l => l.id === before) : -1;
+        layers.splice(at < 0 ? layers.length : at, 0, layer);
+    }
+    return {...style, sources: {...style.sources, ...extend.sources}, layers, ...(extend.terrain === undefined ? {} : {terrain: extend.terrain ?? undefined})};
+}
+
 export function createMap(container: HTMLElement | string, spec: MapSpec): MapHost {
     const first = {...spec.initialView, ...spec.view};
     const options: MapOptions = {
@@ -127,7 +153,11 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
         attributionControl: spec.attribution, minZoom: spec.minZoom, maxZoom: spec.maxZoom, maxPitch: spec.maxPitch,
     };
     for (const k in options) if ((options as any)[k] === undefined) delete (options as any)[k];
+    // (With additions, the style is given after the map is made, with a function that adds them when it has loaded.)
+    if (spec.extend) delete options.style;
     const map = new Map(options);
+    const restyle = (next: MapSpec) => map.setStyle(next.style, {transformStyle: (_, style) => extended(style, next.extend)});
+    if (spec.extend) restyle(spec);
     const viewOf = (): View => { const c = map.getCenter(); return {center: [c.lng, c.lat], zoom: map.getZoom(), bearing: map.getBearing(), pitch: map.getPitch()}; };
     const state = createStore<MapState>({loaded: false, idle: false, moving: false, view: viewOf(), hover: [], renderer: undefined, error: undefined});
     const markers = new globalThis.Map<string, {layer: MarkerLayer; options: MarkerLayerOptions}>();
@@ -192,8 +222,8 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
         // content. So where the identity is different, the content is compared before the map does work.)
         const differ = (a: unknown, b: unknown) => a !== b && JSON.stringify(a) !== JSON.stringify(b);
         // (After a new style the data waits for the `styledata` event: the engine must have the new style first.)
-        const restyled = !!before && differ(next.style, before.style);
-        if (restyled) { state.set({idle: false}); sent.clear(); map.setStyle(next.style); }
+        const restyled = !!before && (differ(next.style, before.style) || differ(next.extend, before.extend));
+        if (restyled) { state.set({idle: false}); sent.clear(); restyle(next); }
         if (next.view && !same(next.view, before?.view) && !reported.some(v => same(v, next.view)) && before) map.jumpTo(next.view);
         if (next.minZoom !== before?.minZoom && before) map.setMinZoom(next.minZoom);
         if (next.maxZoom !== before?.maxZoom && before) map.setMaxZoom(next.maxZoom);

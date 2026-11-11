@@ -1,5 +1,7 @@
 import {Map, NavigationControl, ScaleControl, FullscreenControl} from 'map-jr-gl/maplibre-compat';
-import {style, NYC} from './shared.js';
+
+const style = 'https://tiles.openfreemap.org/styles/liberty';
+const NYC = [-74.0065, 40.7085];
 
 export default function (container, {show}) {
   const map = new Map({container, style, center: NYC, zoom: 13.6, attributionControl: {compact: true}});

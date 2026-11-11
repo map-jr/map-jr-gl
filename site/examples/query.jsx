@@ -1,6 +1,8 @@
 import {useRef, useState} from 'react';
 import {MapJr, MapOverlay} from 'map-jr-gl/react';
-import {style, NYC} from './shared.js';
+
+const style = 'https://tiles.openfreemap.org/styles/liberty';
+const NYC = [-74.0065, 40.7085];
 
 export default function Query() {
   const map = useRef(null);

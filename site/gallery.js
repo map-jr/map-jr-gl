@@ -1,6 +1,7 @@
 // The gallery: one live map per row, beside the code that makes it. Maps are created when they scroll into view, so
 // a phone is never asked for many WebGL contexts at once.
 //
+// Each example file is complete: it does not import from another file of the gallery, so a visitor can copy it.
 // The code of a row is in files, one for each form (site/examples/<row>.js for the main API, .vue, .jsx, and
 // .compat.js for the API of MapLibre GL JS). The live map of a row runs the file of the main API form, or of the
 // MapLibre form when that form is selected: so for these two forms, the code that a visitor reads is the code that
@@ -9,9 +10,11 @@ import {Map} from 'map-jr-gl/maplibre-compat';
 import {configure} from 'map-jr-gl';
 import {markers, view} from '../demo/markers.mjs';
 import {shield} from '../demo/shields.mjs';
-import {style as STYLE} from './examples/shared.js';
+import makeStyle from '../demo/style.mjs';
 
-const modules = import.meta.glob('./examples/*.js', {eager: true});
+// (The style of the server row: the one that scripts/site.mjs gives to the server renderer.)
+const STYLE = makeStyle('https://tiles.openfreemap.org/planet', '<a href="https://openfreemap.org">OpenFreeMap</a> <a href="https://www.openmaptiles.org/">© OpenMapTiles</a> Data from <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>');
+const modules = import.meta.glob('./examples/*.js');
 const texts = import.meta.glob('./examples/*', {query: '?raw', import: 'default', eager: true});
 const FORMS = [['core', 'Main API', '.js'], ['vue', 'Vue', '.vue'], ['react', 'React', '.jsx'], ['compat', 'MapLibre compatible', '.compat.js']];
 const query = new URLSearchParams(location.search), stored = (() => { try { return localStorage.getItem('map-jr-code'); } catch { return null; } })();
@@ -24,7 +27,7 @@ const button = (row, label, onClick) => { const b = Object.assign(document.creat
 
 /** A row whose code is in the files site/examples/<id>.*: the live map runs one of them. */
 const example = (id, title, points) => ({id, title, points,
-    make: (el, row) => modules[`./examples/${id}${form === 'compat' ? '.compat' : ''}.js`].default(el, {
+    make: async (el, row) => (await modules[`./examples/${id}${form === 'compat' ? '.compat' : ''}.js`]()).default(el, {
         show: row.out,
         button: (label, onClick) => button(row, label, onClick),
         legend: (heading, items, note) => el.insertAdjacentHTML('beforeend', `<div class="legend"><b>${heading}</b>${items.map(([line, text]) => `<span><i style="border-top:${line}"></i>${text}</span>`).join('')}<small>${note}</small></div>`),

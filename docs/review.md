@@ -50,6 +50,9 @@ Done on 2026-11-11, as agreed with the owner:
 11. `map-jr-gl/svelte`: an action and a store (no component). They were tested by direct calls, not in a Svelte
     application.
 
+12. The field `extend` of the description: own sources, layers and terrain on a style from a URL. The examples of the
+    gallery use it, so that they need only the URL of a style.
+
 Not done yet, in the order that I propose:
 
 2. **The features under the pointer found by the engine.** Now the page makes one query for each pointer position.
@@ -63,6 +66,8 @@ Not done yet, in the order that I propose:
 Done on 2026-11-11. The header of the gallery has a switch: Main API, Vue, React, MapLibre compatible. The choice is
 kept in `localStorage` and in the URL (`?code=vue`).
 
+- Each example file is complete: it has its own style URL and constants, and imports only from the library (asked by
+  the owner: an import from a shared file of the gallery confuses a reader).
 - The code of each row is in files, one for each form: `site/examples/<row>.js` (main API), `.vue`, `.jsx`,
   `.compat.js`. The gallery shows the text of the file.
 - The live map of a row runs the file of the main API form, or of the MapLibre form when that form is selected. So

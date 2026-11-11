@@ -1,11 +1,13 @@
 import {Map} from 'map-jr-gl/maplibre-compat';
-import {style, MATTERHORN} from './shared.js';
+
+const style = 'https://tiles.openfreemap.org/styles/liberty';
+const MATTERHORN = [7.6586, 45.9763];
 
 export default function (container, {show}) {
   const map = new Map({container, style, center: MATTERHORN, zoom: 12.4, pitch: 60, bearing: 25});
 
   map.on('load', () => {
-    // The style has an elevation source with the id 'dem'.
+    map.addSource('dem', {type: 'raster-dem', tiles: ['https://tiles.mapterhorn.com/{z}/{x}/{y}.webp'], encoding: 'terrarium', tileSize: 512, maxzoom: 12});
     map.addLayer({id: 'relief', type: 'hillshade', source: 'dem'}, 'water');
     map.setTerrain({source: 'dem', exaggeration: 1.5});
 
