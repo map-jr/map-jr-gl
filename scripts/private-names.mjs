@@ -66,6 +66,23 @@ export function privateNames() {
     return short;
 }
 
+/**
+ * The names of uniforms, attributes and varyings in the shaders (`u_matrix`, `a_pos`, `v_color`) get short names too.
+ * They are only in src/gl.ts: in the GLSL text, and in the JavaScript that sets a uniform (`u.u_matrix`). The
+ * JavaScript learns the names of the uniforms from the compiled program, so the two always agree.
+ */
+function shortenShaderNames(code) {
+    const count = new Map();
+    for (const name of code.match(/\b[uav]_[A-Za-z0-9]+\b/g) ?? []) count.set(name, (count.get(name) ?? 0) + 1);
+    const next = {u: 0, a: 0, v: 0}, short = new Map();
+    for (const name of [...count.keys()].sort((a, b) => count.get(b) - count.get(a) || (a < b ? -1 : 1))) {
+        let s;
+        do s = name[0] + '_' + (next[name[0]]++).toString(36); while (count.has(s));
+        short.set(name, s);
+    }
+    return code.replace(/\b[uav]_[A-Za-z0-9]+\b/g, name => short.get(name));
+}
+
 /** The Vite plugin: renames the members in each file of src/ before the file is compiled. */
 export function shortenPrivateNames() {
     const short = privateNames();
@@ -78,6 +95,7 @@ export function shortenPrivateNames() {
             if (!file.endsWith('.ts') || path.resolve(path.dirname(file)) !== src) return null;
             const edits = uses(code, file).sites.filter(s => short.has(s.name)).sort((a, b) => b.start - a.start);
             for (const s of edits) code = code.slice(0, s.start) + short.get(s.name) + code.slice(s.end);
+            if (file.endsWith('gl.ts')) code = shortenShaderNames(code);
             return {code, map: null};
         },
     };
