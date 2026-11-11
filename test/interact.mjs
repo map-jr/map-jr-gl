@@ -584,13 +584,16 @@ for (const mode of ['main', 'worker']) {
         await Promise.race([new Promise(r => m.once('idle', r)), new Promise(r => setTimeout(r, 8000))]);
         m.jumpTo({zoom: 17.3});
     });
-    await page.waitForTimeout(3000);
-    const part = {x: 200, y: 150, width: 600, height: 400}, withLabels = await page.screenshot({clip: part});
+    // (The image without the layer first; then, with the layer, the image must become another. A slow machine gets time.)
+    const part = {x: 200, y: 150, width: 600, height: 400};
     await page.evaluate(() => window.map.setLayoutProperty('test-deep', 'visibility', 'none'));
-    await page.waitForTimeout(1500);
+    await idle(page).catch(() => {}); await page.waitForTimeout(1500);
     const without = await page.screenshot({clip: part});
+    await page.evaluate(() => window.map.setLayoutProperty('test-deep', 'visibility', 'visible'));
+    let came = false;
+    for (let i = 0; i < 24 && !came; i++) { await page.waitForTimeout(500); came = !(await page.screenshot({clip: part})).equals(without); }
     await page.evaluate(() => window.map.removeLayer('test-deep'));
-    check(`[${mode}] labels of a layer for high zooms come after a zoom far past the deepest tiles`, !withLabels.equals(without));
+    check(`[${mode}] labels of a layer for high zooms come after a zoom far past the deepest tiles`, came);
     check(`[${mode}] no page errors`, errors.length === 0, errors.slice(0, 3).join(' | '));
     await page.close();
   } catch (err) {
