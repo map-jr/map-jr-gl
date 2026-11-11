@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "description": "A small vector map renderer for the web with worker rendering, server rendering and canvas markers; reads MapLibre styles.",
   "scripts": {
-    "test": "pnpm test:unit && pnpm test:expressions && pnpm test:api",
+    "test": "pnpm test:unit && pnpm test:expressions && pnpm test:api && pnpm test:size",
+    "test:size": "node scripts/size-check.mjs",
     "build": "tsc -p . && node build.mjs && tsc -p tsconfig.types.json",
     "demo": "node build.mjs && node scripts/site.mjs && node demo/serve.mjs",
     "site": "node build.mjs && node scripts/site.mjs",

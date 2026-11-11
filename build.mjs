@@ -6,9 +6,22 @@ import {mkdirSync, readFileSync, readdirSync, rmSync} from 'node:fs';
 rmSync('dist', {recursive: true, force: true});
 mkdirSync('dist', {recursive: true});
 
+/**
+ * Makes the shader programs smaller: the GLSL in src/gl.ts keeps its comments and layout in the source, but the built
+ * files do not need them. Only whitespace and comments change, so the programs stay the same.
+ */
+const shaders = {
+    name: 'minify-shaders',
+    transform(code, id) {
+        if (!id.endsWith('/src/gl.ts')) return null;
+        return {map: null, code: code.replace(/`((?:[^`\\]|\\.)*)`/gs, (all, text) => /void main|uniform |\bfloat /.test(text)
+            ? '`' + text.replace(/\/\/[^\n]*/g, '').replace(/\s+/g, ' ').replace(/ ?([{};,()]) ?/g, '$1').trim() + '`' : all)};
+    },
+};
+
 /** One Vite build. Everything is written to dist/ next to what earlier builds put there. */
 const run = (options, define = {__WORKER_SRC__: '""'}) => build({
-    configFile: false, logLevel: 'warn', define,
+    configFile: false, logLevel: 'warn', define, plugins: [shaders],
     build: {target: 'es2022', minify: true, emptyOutDir: false, outDir: 'dist', copyPublicDir: false, reportCompressedSize: false, modulePreload: false, ...options},
 });
 

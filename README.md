@@ -33,7 +33,7 @@ These figures are written by `pnpm status`. They compare this library with MapLi
 | MapLibre `Map` methods | 108 of 150 are available |
 | MapLibre render tests | 645 of 1429 are the same (1% of pixels or less are different). 333 more are near (5% or less). |
 | Page script (gzip) | 25 KB. MapLibre GL JS: 299 KB. |
-| Worker script (gzip) | 58 KB. MapLibre GL JS: 145 KB. |
+| Worker script (gzip) | 56 KB. MapLibre GL JS: 145 KB. |
 | Server renderer (gzip) | 33 KB |
 <!-- status:end -->
 

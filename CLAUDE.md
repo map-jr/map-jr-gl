@@ -23,6 +23,10 @@
 - The licence is MIT. Keep `ACKNOWLEDGEMENTS.md` and `THIRD-PARTY-LICENSES.md` correct when a library is added to
   the built files or a method is taken from another project.
 
+- Size is a main advantage of the library, and the owner is concerned that the worker file grows with each
+  feature. `pnpm test:size` has a budget for each built file. Do not raise a budget without a reason that the owner
+  would accept; first look for a way to make the code smaller.
+
 ## Commands
 
 See `docs/development.md`. In short: `pnpm build`, `pnpm test`, and with `pnpm demo` running: `pnpm test:browser`,
