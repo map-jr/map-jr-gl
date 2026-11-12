@@ -64,7 +64,7 @@ const noPreload = {
  * tools are open.
  */
 const run = (options, define = {__WORKER_SRC__: '""'}, plugins = []) => build({
-    configFile: false, logLevel: 'warn', define, plugins: [shaders, privates, noPreload, ...plugins],
+    configFile: false, logLevel: 'warn', define: {__DEV__: 'false', ...define}, plugins: [shaders, privates, noPreload, ...plugins],
     build: {target: 'es2022', minify: true, sourcemap: true, emptyOutDir: false, outDir: 'dist', copyPublicDir: false, reportCompressedSize: false, modulePreload: false, ...options},
 });
 
@@ -84,11 +84,21 @@ const esm = (input, extra = {}) => ({
 // Two entries in one build, so that they share their chunks: the main entry (the new API) and the entry that is a
 // replacement for MapLibre GL JS.
 // (The adapters for the frameworks are entries of the same build: they use the main entry's files. The framework itself is not in them.)
-await run(esm({'map-jr-gl': 'src/index.ts', 'map-jr-gl-maplibre-compat': 'src/maplibre-compat.ts', vue: 'src/vue.ts', react: 'src/react.ts', svelte: 'src/svelte.ts', nuxt: 'src/nuxt.ts', controls: 'src/control-specs.ts'}));
+const entries = {'map-jr-gl': 'src/index.ts', 'map-jr-gl-maplibre-compat': 'src/maplibre-compat.ts', vue: 'src/vue.ts', react: 'src/react.ts', svelte: 'src/svelte.ts', nuxt: 'src/nuxt.ts', controls: 'src/control-specs.ts'};
+await run(esm(entries));
+// The development build of the same entries (`<name>.dev.js`, the `development` condition of package.json). It differs
+// from the build above in `__DEV__` only: it loads the checks for common mistakes (src/mistakes.ts) after the map has
+// started, and the build above has no code for that. The name of a chunk has a hash of its content, so a chunk that is
+// the same in both builds is one file, and dist/ grows only by the files that differ. The build stops if it would
+// change a file of the production build.
+const production = Object.fromEntries(readdirSync('dist').map(f => [f, readFileSync('dist/' + f, 'utf8')]));
+await run(esm(entries, {entryFileNames: '[name].dev.js'}), {__WORKER_SRC__: '""', __DEV__: 'true'});
+for (const f in production) if (readFileSync('dist/' + f, 'utf8') !== production[f]) throw new Error(`The development build changed dist/${f}, a file of the production build.`);
 
 // Standalone: one self-contained file with the worker embedded, for places where shipping several files is awkward.
-// (One for each of the two APIs.)
-await run(esm({'map-jr-gl-standalone': 'src/standalone.ts'}, {codeSplitting: false}), {__WORKER_SRC__: JSON.stringify(workerSrc)});
+// (One for each of the two APIs. The checks for common mistakes are inside the file of the main API, as the worker is:
+// a page with this file has no bundler that could choose a build, and the checks cost it no request.)
+await run(esm({'map-jr-gl-standalone': 'src/standalone.ts'}, {codeSplitting: false}), {__WORKER_SRC__: JSON.stringify(workerSrc), __DEV__: 'true'});
 await run(esm({'map-jr-gl-maplibre-compat-standalone': 'src/maplibre-compat.ts'}, {codeSplitting: false}), {__WORKER_SRC__: JSON.stringify(workerSrc)});
 // The server renderer (Node, Cloudflare Workers and other runtimes without a DOM).
 await run(esm({server: 'src/server.ts'}, {codeSplitting: false}), undefined, [allInOne]);
@@ -97,7 +107,7 @@ await run(esm({server: 'src/server.ts'}, {codeSplitting: false}), undefined, [al
 // that these files share do not get the line, because each line counts against the size budgets. (The minifier of
 // Vite removes a banner that Rollup adds, so the line is added here. The source map gets an empty first line too, so
 // that it still fits.)
-for (const file of new Set(JSON.stringify(pkg.exports).match(/dist\/[\w-]+\.js/g))) {
+for (const file of new Set(JSON.stringify(pkg.exports).match(/dist\/[\w.-]+\.js/g))) {
     writeFileSync(file, `/*! ${pkg.name} ${pkg.version} | ${pkg.license} */\n` + readFileSync(file, 'utf8'));
     try { const map = JSON.parse(readFileSync(file + '.map', 'utf8')); writeFileSync(file + '.map', JSON.stringify({...map, mappings: ';' + map.mappings})); } catch { /* a file that only passes exports on has no map */ }
 }
@@ -118,8 +128,10 @@ const withStaticImports = (name, read, seen = new Set()) => {
 const fromDist = name => readFileSync('dist/' + name, 'utf8');
 const upfront = [...withStaticImports('map-jr-gl.js', fromDist)];
 report('page script, up front (' + upfront.join(' + ') + ')', Buffer.concat(upfront.map(f => readFileSync('dist/' + f))));
+const upfrontDev = [...withStaticImports('map-jr-gl.dev.js', fromDist)];
+report('the same in the development build (' + upfrontDev.join(' + ') + ')', Buffer.concat(upfrontDev.map(f => readFileSync('dist/' + f))));
 report('map-jr-gl-worker.js (loaded in a worker)', readFileSync('dist/map-jr-gl-worker.js'));
-for (const f of readdirSync('dist').filter(f => /^map-jr-gl-.*-[\w-]{8}\.js$/.test(f))) if (!upfront.includes(f)) report(`${f} (main-thread engine, on demand)`, readFileSync('dist/' + f));
+for (const f of readdirSync('dist').filter(f => /^map-jr-gl-.*-[\w-]{8}\.js$/.test(f))) if (!upfront.includes(f) && !upfrontDev.includes(f)) report(`${f} (main-thread engine, on demand)`, readFileSync('dist/' + f));
 report('map-jr-gl-standalone.js (everything in one file)', readFileSync('dist/map-jr-gl-standalone.js'));
 report('server.js', readFileSync('dist/server.js'));
 
@@ -127,7 +139,7 @@ if (process.argv.includes('--sizes')) {
     // What an application's own bundler ends up with when it imports only part of the library.
     const only = async (label, code) => {
         const virtual = {name: 'virtual-entry', resolveId: id => id === 'virtual:entry' ? '\0entry.ts' : null, load: id => id === '\0entry.ts' ? code : null};
-        const out = await build({configFile: false, logLevel: 'silent', define: {__WORKER_SRC__: '""'}, plugins: [virtual],
+        const out = await build({configFile: false, logLevel: 'silent', define: {__WORKER_SRC__: '""', __DEV__: 'false'}, plugins: [virtual],
             build: {write: false, target: 'es2022', minify: true, modulePreload: false, rollupOptions: {input: {entry: 'virtual:entry'}, preserveEntrySignatures: 'strict', output: {format: 'es', entryFileNames: '[name].js', chunkFileNames: '[name]-[hash].js'}}}});
         const text = Object.fromEntries((Array.isArray(out) ? out[0] : out).output.filter(o => o.type === 'chunk').map(o => [o.fileName, o.code]));
         report(label, Buffer.from([...withStaticImports('entry.js', n => text[n])].map(n => text[n]).join('')));
