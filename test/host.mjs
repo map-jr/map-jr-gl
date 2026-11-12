@@ -485,8 +485,8 @@ for (const [build, file] of [['the development build, and the file of the checks
     await page.close();
 }
 
-// The `queryFeatures` example of the gallery (site/examples/query.js and query.compat.js; the site must be built):
-// the answer to an earlier click arrives after the answer to a later click, and the example shows the later click.
+// The `queryFeatures` example of the gallery (site/examples/query.js and query.compat.js; the site must be built), with
+// the usual number of tile workers.
 for (const code of ['core', 'compat']) {
     const page = await browser.newPage({viewport: {width: 1200, height: 800}});
     try {
@@ -497,20 +497,43 @@ for (const code of ['core', 'compat']) {
             const map = window.maps.query, wait = ms => new Promise(r => setTimeout(r, ms));
             for (let i = 0; i < 300 && !(code === 'core' ? map.state.get().idle : map.loaded()); i++) await wait(100);
             await wait(1000);
-            // The first question gets its answer 2 seconds late. The questions after it are not changed.
-            const ask = map.queryFeatures;
-            window.asked = 0;
-            map.queryFeatures = function (...a) { const answer = ask.apply(this, a); return window.asked++ ? answer : answer.then(async found => { await wait(2000); return found; }); };
         }, code);
-        // (The row is in the middle of the page and can be taller than the page: the clicks are at the middle height.)
-        const box = await page.locator('#query .live').boundingBox(), y = 400, first = box.x + 80, second = box.x + box.width - 80;
-        await page.mouse.click(first, y);
+        // (The row is in the middle of the page and can be taller than the page: the clicks are in the part that shows.)
+        const live = await page.locator('#query .live').boundingBox(), top = Math.max(live.y, 0);
+        const answerBox = () => page.evaluate(() => { const b = [...document.querySelectorAll('#query .live > div')].find(d => d.style.pointerEvents === 'none'); return b && !b.hidden ? b.textContent : null; });
+
+        // 1. Every click gets an answer: clicks one after another, some directly after a jump (the tiles are loading),
+        // and one on the box that shows the answer before. LIMIT is generous: on the development machine (4 cores,
+        // software WebGL, load average 4 to 7) the slowest of 228 clicks, a third of them directly after a jump, took 1.1 seconds.
+        const LIMIT = 6000, times = [], late = [];
+        for (let i = 0; i < 10; i++) {
+            const jump = i >= 4 && i % 2 === 0, onBox = i === 3 || i === 9;
+            await page.evaluate(([code, jump, i]) => {
+                document.querySelector('#query .readout').textContent = '';
+                const map = window.maps.query, view = {center: [-73.99 + i * 0.011, 40.7 + i * 0.007], zoom: 15.5};
+                if (jump) { if (code === 'core') map.moveTo(view); else map.jumpTo(view); }
+            }, [code, jump, i]);
+            const at = onBox ? [live.x + 30, top + 22] : [live.x + 120 + i * 45, top + 150 + i * 35], start = Date.now();
+            await page.mouse.click(at[0], at[1]);
+            const answered = await page.waitForFunction(() => /features within 8 pixels/.test(document.querySelector('#query .readout').textContent), null, {timeout: LIMIT, polling: 20}).then(() => true, () => false);
+            if (answered) times.push(Date.now() - start); else late.push(`${i}${jump ? ' (after a jump)' : ''}${onBox ? ' (on the box)' : ''}`);
+        }
+        check(`gallery, query example (${code}): each of 10 clicks gets an answer within ${LIMIT / 1000} seconds, also after a jump and on the box of the answer`, !late.length && !!(await answerBox()), JSON.stringify({withoutAnswer: late, slowestMs: Math.max(...times)}));
+
+        // 2. The answer to an earlier click arrives after the answer to a later click: the example shows the later click.
+        await page.evaluate(() => {
+            const map = window.maps.query, ask = map.queryFeatures, wait = ms => new Promise(r => setTimeout(r, ms));
+            window.asked = 0;
+            // The first question gets a marked answer 2 seconds late. The questions after it are not changed.
+            map.queryFeatures = function (...a) { const answer = ask.apply(this, a); return window.asked++ ? answer : answer.then(async () => { await wait(2000); return [{sourceLayer: 'first-click', properties: {}}]; }); };
+        });
+        await page.mouse.click(live.x + 80, top + 300);
         await page.waitForFunction(() => window.asked === 1, null, {timeout: 10000});
-        await page.mouse.click(second, y);
+        await page.mouse.click(live.x + live.width - 80, top + 300);
         await page.waitForFunction(() => window.asked === 2, null, {timeout: 10000});
-        await page.waitForTimeout(3500); // (the late answer of the first click has arrived, and a closed popup has gone)
-        const tips = await page.evaluate(() => [...document.querySelectorAll('#query .map-jr-popup-tip')].map(t => { const r = t.getBoundingClientRect(); return Math.round(r.left + r.width / 2); }));
-        check(`gallery, query example (${code}): after two clicks, the popup is at the last click`, tips.length === 1 && Math.abs(tips[0] - second) < Math.abs(tips[0] - first), JSON.stringify({tips, first: Math.round(first), second: Math.round(second)}));
+        await page.waitForTimeout(3500); // (the late answer of the first click has arrived)
+        const shown = await answerBox();
+        check(`gallery, query example (${code}): after two clicks, the answer of the last click is shown`, !!shown && !shown.includes('first-click'), JSON.stringify({shown: shown?.slice(0, 80)}));
     } catch (e) { check(`gallery, query example (${code}): the test run was completed`, false, String(e.message).split('\n')[0]); }
     await page.close();
 }
