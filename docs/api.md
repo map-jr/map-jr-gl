@@ -66,6 +66,7 @@ The library compares each field with the field of the last description:
 | `controls` | A list of controls. See below. |
 | `interactiveLayers` | The ids of style layers. The features of these layers under the pointer are in `state.hover` and in `onClick`. |
 | `onClick` | A function that is called for a click, with `point`, `lngLat` and `features`. |
+| `onError` | A function that is called with each error of the map (an `Error`): a style or a source that does not load, a mistake in a style edit, a failure of the renderer. Use it to send errors to your error tracker. Without it, the map writes each error to the console with `console.error`. |
 | `minZoom`, `maxZoom`, `maxPitch`, `maxBounds` | The limits of the camera. |
 | `cursor` | The mouse cursor over the map. Without it, the cursor is a pointer over a feature of `interactiveLayers`. |
 
@@ -167,7 +168,7 @@ stop(); // stops the first subscription
 | `view` | `{center, zoom, bearing, pitch}` |
 | `hover` | The features of `interactiveLayers` under the pointer, the top one first. |
 | `renderer` | `'worker'` or `'main'`, when the map has started. |
-| `error` | The last error. |
+| `error` | The last error only. An earlier error is not kept: use `onError` in the description to get each one. |
 
 A state object never changes. Each change makes a new object, and a part that did not change is the same object as
 before. This is the contract that frameworks use: `useSyncExternalStore` in React, a `shallowRef` in Vue, a store

@@ -47,7 +47,7 @@ The props are the fields of the description of a map (see [the main API](api.md)
 |---|---|
 | `mapStyle` | The style: an object or a URL. Required. (`style` is the CSS style of the element.) |
 | `view`, `onViewChange` | A view that your component owns: write each change back. Without `view`, the map starts at `initialView` and the user moves it. |
-| `onClick`, `onHover`, `onLoad`, `onIdle`, `onError` | Events of the map. |
+| `onClick`, `onHover`, `onLoad`, `onIdle`, `onError` | Events of the map. `onError` gets each error (an `Error`). Without it, the map writes each error to the console. |
 | `firstView` | The first view from a server. See below. |
 | `className`, `style` | For the element of the component. |
 | `children` | Content over the map, and `MapOverlay` elements. |

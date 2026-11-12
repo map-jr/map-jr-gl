@@ -60,7 +60,7 @@ The component fills its parent element. Give the parent a height.
 | `click` | `{point, lngLat, features}` |
 | `hover` | The features of `interactive-layers` under the pointer. |
 | `load`, `idle` | None |
-| `error` | The error |
+| `error` | Each error of the map (an `Error`). Without a listener for this event, the map writes each error to the console. |
 
 ### The slot
 

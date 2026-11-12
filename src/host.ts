@@ -6,7 +6,7 @@
  * The adapters for the frameworks (`map-jr-gl/vue` and others) are thin layers over `createMap`.
  * (For the API of MapLibre GL JS, see `map-jr-gl/maplibre-compat`.)
  */
-import {Map, type MapOptions, type MarkerLayer, type RenderedFeature} from './map.ts';
+import {Map, markerSize, type MapOptions, type MarkerLayer, type RenderedFeature} from './map.ts';
 import {createStore, type Readable} from './store.ts';
 import {Marker, Popup, type OverlayAnchor} from './overlays.ts';
 import type {MarkerLayerOptions} from './markers.ts';
@@ -61,6 +61,8 @@ export interface MapSpec extends MapSetup {
     /** Style layers whose features are found under the pointer: they are in `state.hover` and in `onClick`. */
     interactiveLayers?: string[];
     onClick?: (event: MapPointer) => void;
+    /** Called for each error of the map. Without it, the map writes each error to the console. (`state.error` has the last error in each case.) */
+    onError?: (error: Error) => void;
     minZoom?: number; maxZoom?: number; maxPitch?: number; maxBounds?: LngLatBoundsInput | null;
     /** The mouse cursor over the map. Without it, the cursor is a pointer over a feature of `interactiveLayers`. */
     cursor?: string;
@@ -162,13 +164,16 @@ function extended(style: any, extend?: StyleExtension) {
     return {...style, sources: {...style.sources, ...extend.sources}, layers, ...(extend.terrain === undefined ? {} : {terrain: extend.terrain ?? undefined})};
 }
 
-/** Stops a description with no style, with a message that says what to write (a caller in JavaScript has no type check). */
+/** Stops a description with no style or with a marker layer with no size, with a message that says what to write (a caller in JavaScript has no type check). */
 function complete(spec: MapSpec, method: string, fix: string) {
     if (!spec?.style) throw new Error(`[map-jr-gl] ${method}(): the description has no "style". ${fix}`);
+    spec.markers?.forEach(markerSize);
 }
 
 export function createMap(container: HTMLElement | string, spec: MapSpec): MapHost {
     complete(spec, 'createMap', 'Pass the URL of a style or a style object as "style".');
+    if (!container) throw new Error('[map-jr-gl] createMap(): the container is ' + container + '. In a framework, make the map after the element is mounted.');
+    if (typeof container === 'string' && !document.getElementById(container)) throw new Error(`[map-jr-gl] createMap(): no element with the id "${container}".`);
     const first = {...spec.initialView, ...spec.view};
     const options: MapOptions = {
         container, style: spec.style, ...first, renderer: spec.renderer, fonts: spec.fonts, fontFamily: spec.fontFamily, glyphs: spec.glyphs, interactive: spec.interactive, antialias: spec.antialias, hash: spec.hash,
@@ -191,7 +196,12 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
 
     map.on('load', () => state.set({loaded: true, renderer: map.renderer as MapState['renderer']}));
     map.on('idle', () => state.set({idle: true}));
-    map.on('error', e => state.set({error: e.error instanceof Error ? e.error : new Error(String(e.error))}));
+    map.on('error', e => {
+        const error = e.error instanceof Error ? e.error : new Error(String(e.error));
+        state.set({error});
+        // (This listener takes the place of the report of the map itself: an error must not be lost in silence.)
+        if (now.onError) now.onError(error); else console.error('[map-jr-gl]', error);
+    });
     const moved = (moving: boolean) => {
         const view = viewOf();
         if (same(view, state.get().view)) return state.set({moving, idle: false});

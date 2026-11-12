@@ -137,6 +137,27 @@ try {
     await page.mouse.move(400, 250); await page.waitForTimeout(300); await page.mouse.click(400, 250); await page.waitForTimeout(600);
     const click = await page.evaluate(() => ({clicks: window.t.clicks.length, features: Array.isArray(window.t.clicks[0]?.features)}));
     check('browser: a click is an event of the component, with the features there', click.clicks === 1 && click.features, JSON.stringify(click));
+    // The event `error`: a component with a listener gets each error; without a listener the map writes it to the console.
+    const failing = await page.evaluate(async () => {
+        const {createApp, h} = await import('vue'), {MapJr} = await import('/dist/vue.js'), wait = ms => new Promise(r => setTimeout(r, ms));
+        const logged = [], log = console.error;
+        console.error = (...a) => logged.push(a.map(x => x?.message ?? String(x)).join(' '));
+        const run = async props => {
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:200px;height:150px'}));
+            const app = createApp({render: () => h(MapJr, {mapStyle: '/no-such-style.json', attribution: false, ...props})});
+            app.mount(el);
+            await wait(1200);
+            app.unmount(); el.remove();
+        };
+        const got = [];
+        await run({onError: e => got.push(e.message)});
+        const loggedWithListener = logged.length;
+        await run({});
+        console.error = log;
+        return {got, loggedWithListener, logged};
+    });
+    check('browser: the event error gets each error, and without a listener the error is written to the console',
+        failing.got.length === 1 && /HTTP 404/.test(failing.got[0]) && failing.loggedWithListener === 0 && failing.logged.length === 1 && /HTTP 404/.test(failing.logged[0]), JSON.stringify(failing));
     check('browser: no page errors', errors.length === 0, errors.slice(0, 2).join(' | '));
     await page.close();
 } catch (e) { check('the test run was completed', false, String(e.message).split('\n')[0]); }

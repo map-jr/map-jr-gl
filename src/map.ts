@@ -98,6 +98,10 @@ export interface MapEvent { type: string; target: Map; point?: {x: number; y: nu
 type Listener = (e: MapEvent) => void;
 
 /** A set of markers drawn on the map canvas from an SVG template. */
+/** Stops a marker layer with no size, with a message (the image of a marker cannot be made without one). */
+export function markerSize(o: MarkerLayerOptions) {
+    if (!(o.width > 0 && o.height > 0)) throw new Error(`[map-jr-gl] Marker layer "${o.id}": width and height are required. Give the size of a marker in CSS pixels.`);
+}
 export class MarkerLayer {
     data: MarkerInput[];
     constructor(private map: Map, readonly options: MarkerLayerOptions) { this.data = options.data; }
@@ -1030,6 +1034,7 @@ export class Map {
 
     // ---- markers ----
     addMarkerLayer(options: MarkerLayerOptions): MarkerLayer {
+        markerSize(options);
         const layer = new MarkerLayer(this, options);
         this.markerLayers.set(options.id, layer);
         this._syncMarkers(layer);
