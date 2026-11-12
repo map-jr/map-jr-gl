@@ -142,6 +142,8 @@ export function placeLabels(
                 // Where the text could go: along the line, at one of several anchors, or at its fixed anchor.
                 let twin: {layer: string; group?: string; box: Box; x: number; y: number; justify?: number} | undefined, twinKey = '';
                 let textAngle = 0, candidates: [number, number][] = [];
+                /** Text that follows its line (placed already). */
+                let bent: Placed | undefined;
                 const anchors: string[] = [];
                 if (hasText) {
                     const shift = (anchor: string, r: number): [number, number] => [
@@ -160,10 +162,10 @@ export function placeLabels(
                         if (prev) prev.push(ax, ay, itemNo); else seen.set(l.text, [ax, ay, itemNo]);
                         const n = 2 ** it.id.z, q = 2 ** 22;
                         const key = `${L.id}|${l.text}||${Math.round((it.id.x + l.x / EXTENT) / n * q)},${Math.round((it.id.y + l.y / EXTENT) / n * q)},${it.id.w}`;
-                        out.push({x: ax, y: ay, angle: 0, size: curved.ground ? size / persp / persp : size, shaped, src: l, curve: curved.curve, ground: curved.ground, key, tile: it.id, ax, ay, opacity: 1, alpha});
-                        continue;
-                    }
-                    if (line && !l.upright) {
+                        bent = {x: ax, y: ay, angle: 0, size: curved.ground ? size / persp / persp : size, shaped, src: l, curve: curved.curve, ground: curved.ground, key, tile: it.id, ax, ay, opacity: 1, alpha};
+                        // (No icon: the text is all. With an icon, the icon is found below, as for other text.)
+                        if (!meta) { out.push(bent); continue; }
+                    } else if (line && !l.upright) {
                         if (l.len * it.scale < w * 1.15) continue; // the road is shorter than its name at this zoom
                         textAngle = Math.atan2(Math.sin(lineAngle), Math.cos(lineAngle));
                         if (textAngle > Math.PI / 2) textAngle -= Math.PI; else if (textAngle <= -Math.PI / 2) textAngle += Math.PI;
@@ -207,7 +209,7 @@ export function placeLabels(
                     let dup = false;
                     // Point labels from one tile are separate features, also when they have the same position.
                     if (prev && !twin) for (let i = 0; i < prev.length && !dup; i += 3) dup = (line || prev[i + 2] !== itemNo) && Math.hypot(prev[i] - ax, prev[i + 1] - ay) < minDist;
-                    if (dup) continue;
+                    if (dup && !bent) continue; // (text on its line has passed this test already)
                 }
                 let textBox: Box | null = null, tx = ax, ty = ay;
                 let justify: number | undefined;
@@ -220,11 +222,12 @@ export function placeLabels(
                         break;
                     }
                 }
-                if (hasText && !textBox && !(meta && l.textOptional)) continue;
+                if (hasText && !textBox && !bent && !(meta && l.textOptional)) continue;
 
                 let icon: PlacedIcon | undefined, iconBox: Box | null = null;
-                if (meta && l.icon) {
-                    const ic = l.icon, fit = hasText && textBox ? ic.fit : 'none', isize = (L.p.iconSize.dd ? ic.size + (ic.size1 - ic.size) * t : L.p.iconSize.eval(tr.zoom)) * persp;
+                // (An icon that is fitted to text is not drawn where there is no text, as in MapLibre.)
+                if (meta && l.icon && (hasText || l.icon.fit === 'none')) {
+                    const ic = l.icon, fit = hasText && (textBox || bent) ? ic.fit : 'none', isize = (L.p.iconSize.dd ? ic.size + (ic.size1 - ic.size) * t : L.p.iconSize.eval(tr.zoom)) * persp;
                     let iw = meta.width / meta.pixelRatio * isize, ih = meta.height / meta.pixelRatio * isize;
                     // The anchor names the part of the icon that sits on the point.
                     let ix = ax + ic.offset[0] * isize + (ic.anchor.includes('left') ? iw / 2 : ic.anchor.includes('right') ? -iw / 2 : 0);
@@ -254,7 +257,9 @@ export function placeLabels(
                             ih = f.len; iy = ay + top - f.off + ih / 2 + oy; gy = f.cuts;
                         } else iy = ty + oy;
                     }
-                    const angle = (ic.upright ? 0 : line ? lineAngle : north) + ic.rotate * Math.PI / 180;
+                    // (An icon that is fitted to text on a line turns with the text, which reads from left to right.)
+                    const along = fit !== 'none' && Math.abs(lineAngle) > Math.PI / 2 ? lineAngle + Math.PI : lineAngle;
+                    const angle = (ic.upright ? 0 : line ? along : north) + ic.rotate * Math.PI / 180;
                     ix += ic.translate[0]; iy += ic.translate[1];
                     const box = boxAround(ix, iy, iw, ih, angle, ic.padding);
                     if (ic.overlap || !grid.hits(...box)) {
@@ -262,8 +267,9 @@ export function placeLabels(
                         icon = {x: ix, y: iy, w: iw, h: ih, angle, rect: [meta.x, meta.y, meta.width, meta.height], custom: meta.custom, name: ic.name, gx, gy, opacity: ic.opacity * (L.p.iconOpacity.dd ? 1 : L.p.iconOpacity.eval(tr.zoom)), color: meta.sdf ? ic.color : undefined,
                             // (In the distance field of a sprite, one image pixel is one eighth of the range.)
                             halo: meta.sdf && ic.haloWidth > 0 && ic.halo[3] > 0 ? ic.halo : undefined, haloReach: Math.min(0.7, ic.haloWidth / (isize / meta.pixelRatio) / 8)};
-                    } else if (!(hasText && textBox && ic.optional)) continue;
+                    } else if (!(hasText && (textBox || bent) && ic.optional)) { if (bent) out.push(bent); continue; }
                 }
+                if (bent) { bent.icon = icon; if (iconBox && !l.icon!.ignore) grid.insert(...iconBox); out.push(bent); continue; }
                 if (!textBox && !icon) continue;
                 if (textBox && twinKey && !twin) twins.set(twinKey, {layer: L.id, group: L.group, box: textBox, x: tx, y: ty, justify});
                 if (textBox && !l.ignore && !twin) grid.insert(...textBox);
