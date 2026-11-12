@@ -92,7 +92,7 @@ Notes for Cloudflare Workers:
 
 - Use `format: 'jpeg'`. The WebAssembly version makes only large WebP files.
 - The WebAssembly file is about 1.9 MB (gzip).
-- One render uses a few hundred milliseconds of CPU time. Keep the result in a cache.
+- One render uses a few hundred milliseconds of CPU time. Keep the result in a cache. See [Operation](#operation).
 
 `test/cloudflare` contains a complete Worker.
 
@@ -120,8 +120,98 @@ Notes for Cloudflare Workers:
 | `overrides` | Server changes for style layers, by the id of the layer: `{building: {hidden: true}}`. For a style that you do not write yourself. See below. |
 | `decodeImage` | A function that decodes elevation tiles. Required only for formats other than PNG and lossless WebP. |
 | `fetch` | A replacement for `fetch`, for example to add a cache |
+| `timeout` | The time in milliseconds that all requests of one render can take together. The default is 30000. `0` sets no limit. See [Limits for requests](#limits-for-requests). |
+| `requestTimeout` | The time in milliseconds that one request can take, with its redirects and its body. The default is 10000. `0` sets no limit. |
+| `maxBytes` | The largest body of one response in bytes, after decompression. There is no limit by default. |
+| `allowHosts` | The list of host names that the render can request. All hosts are allowed by default. |
 
 `renderToImage` also accepts `rasteriser`, `format`, `quality` and `pixelRatio`.
+
+## Limits for requests
+
+The server renderer requests the URL of the style and each URL that the style names: TileJSON files, tiles, the
+sprite and PMTiles archives. These requests come from your server. Set limits when a part of the style or of the
+view comes from a visitor, or when the style comes from another party.
+
+```js
+import {renderToSVG} from 'map-jr-gl/server';
+
+const {svg} = await renderToSVG({
+  style: 'https://tiles.openfreemap.org/styles/liberty',
+  center: [-74.0065, 40.7085],
+  zoom: 14.3,
+  width: 800,
+  height: 500,
+  timeout: 5000,
+  requestTimeout: 2000,
+  maxBytes: 4 * 1024 * 1024,
+  allowHosts: ['tiles.openfreemap.org'],
+});
+```
+
+| Option | Default | What the limit does |
+|---|---|---|
+| `timeout` | 30000 ms | The render rejects when all its requests together take longer. The time starts when the render starts. The time that the render needs after the last request is not limited. |
+| `requestTimeout` | 10000 ms | The render rejects when one request takes longer, from its start to the end of its body. Redirects are part of the request. |
+| `maxBytes` | No limit | The render rejects when the body of one response is larger. The bytes are counted after decompression. A response with a larger `content-length` is not read. |
+| `allowHosts` | All hosts | The render rejects before a request to a host that is not in the list. |
+
+- A time limit of `0` sets no limit.
+- When a time limit ends, the renderer aborts the request with an `AbortSignal`.
+- The limits apply to `renderToSVG`, `renderToImage` and `renderFirstView`. They also apply to the requests of a
+  function that you pass as `fetch`.
+- A value that is not valid (a negative number, or a host with a scheme, a port or a path) makes the render
+  reject with a message.
+
+### Allowed hosts
+
+Each name in `allowHosts` is compared with the complete host name of the URL. The port and the scheme are not
+compared, and there are no wildcards: `example.com` does not allow `tiles.example.com`. Name each host that the
+style uses: the host of the style, of the TileJSON files, of the tiles and of the sprite.
+
+With `allowHosts`, the renderer follows redirects itself (5 at most) and checks the host of each one. For this it
+calls `fetch` with `redirect: 'manual'`. Node.js and Cloudflare Workers then return the redirect response, which is
+what the renderer needs. A function that you pass as `fetch` must do the same. If it follows redirects itself, the
+renderer rejects the response when the `url` of the response has a host that is not in the list, but the request to
+that host was made.
+
+`allowHosts` compares names only. It does not look at the IP address that a name resolves to, so allow only hosts
+that you trust.
+
+Without `inlineImages`, the SVG contains the URLs of raster tiles and of the sprite as links. The server does not
+request them, and `allowHosts` does not check them: the browser of the visitor requests them.
+
+## Operation
+
+**Requests.** A render first loads the style, and the TileJSON files that the style names. Then it requests all
+tiles of the view and the sprite at the same time. The library does not limit the number of renders that run at
+the same time, and it does not limit the number of requests. If you need such a limit, put it in the function
+that you pass as `fetch`, or in front of the render.
+
+**When a host is down or slow.** The render rejects when the style, a TileJSON file or a tile cannot be loaded.
+This is the case for a network error, for a time limit, and for a tile with an HTTP status that is not successful.
+There are two exceptions: a tile with status 404 or 204 is an empty tile, and the render continues. The renderer
+does not return a part of a map. Catch the error and send the page without the SVG: the map then draws in the
+browser as it does without a server render.
+
+```js
+import {renderFirstView} from 'map-jr-gl/server';
+
+const options = {style: 'https://tiles.openfreemap.org/styles/liberty', center: [-74.0065, 40.7085], zoom: 14.3, width: 800, height: 500};
+let firstView = '';
+try {
+  firstView = await renderFirstView({...options, timeout: 3000});
+} catch (error) {
+  console.warn(error.message);
+}
+```
+
+With the default limits, a host that does not answer delays the response of your server by 10 seconds for one
+request, and by 30 seconds at most for one render. Set a smaller `timeout` for a page that a visitor waits for.
+
+**Caching.** The renderer does not keep a result. For the same options and the same tiles, the result is the
+same, so keep the SVG or the image in a cache (by the style, the view and the size). To keep tiles instead, pass
+a function as `fetch` that has a cache.
 
 ## Simplify the server render
 
