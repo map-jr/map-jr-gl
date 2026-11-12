@@ -113,17 +113,24 @@ The workflow `Browsers` (`.github/workflows/browsers.yml`) runs on each push tha
 benchmark page and the behaviour tests in Chromium, Firefox and WebKit on Linux, macOS and Windows. WebKit is the
 engine of Safari.
 
-The job `safari` of the same workflow runs the benchmark page in Safari itself on macOS and in Safari of the iOS
-Simulator, through `safaridriver` (`test/bench/webdriver.mjs`). Playwright's WebKit is another build of the engine,
-and it does not behave as Safari in each case. For each browser the results say whether a worker has
-`OffscreenCanvas` and its WebGL2 and 2D contexts, and which renderer the map took. The machines have a virtual GPU,
-and a simulator has the memory and the GPU of its host: these runs do not replace a measurement on a phone.
+The same workflow has a job `safari`, which runs only when you start the workflow by hand. It runs the benchmark
+page in Safari itself on macOS through `safaridriver` (`test/bench/webdriver.mjs`). Playwright's WebKit is another
+build of the engine, and it does not behave as Safari in each case. The results say whether a worker has
+`OffscreenCanvas` and its WebGL2 and 2D contexts, and which renderer the map took. Run it when a change touches the
+choice of the renderer, the workers or the canvas, and after a new version of Safari.
+
+| Input of a start by hand | Effect |
+|---|---|
+| `safari` | The usual jobs and the job `safari`; the results of Safari go to `bench-results` with the others. |
+| `safari_only` | Only the job `safari`, and the branch is not written. For trying a change of the job. |
+| `simulator` | The job `safari` also tries Safari of the iOS Simulator. On the hosted runner the session started in one run of two, and no run finished the benchmark (2026-11-12). |
+
 Two things are known about these machines (2026-11-12). In Safari 27.2 on the macOS runner, the WebGL context of a
 worker is lost directly after it is made, so the map with the worker renderer does not load there and those
 scenarios of the benchmark fail; the same Safari draws in a worker on a Mac with a GPU. The system of the runner
 asks for less motion (`prefers-reduced-motion`), so a camera animation that is not `essential` does not run.
-To try a change of this job, start the workflow by hand with `safari_only`: it then runs that job only and does
-not write the branch.
+The machines have a virtual GPU, and a simulator has the memory and the GPU of its host: these runs do not replace
+a measurement on a phone.
 
 The workflow writes the results to the branch `bench-results`. Read `README.md` on that branch:
 
