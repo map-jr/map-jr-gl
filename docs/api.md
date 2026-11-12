@@ -34,6 +34,15 @@ description = {...description, markers: [{...pins, data: newData}]};
 map.update(description);
 ```
 
+`update` takes the complete description, not only the changed fields:
+
+- A description with no `style` throws an error, in `update` and in `createMap`. Write
+  `map.update({...description, cursor: 'crosshair'})`, not `map.update({cursor: 'crosshair'})`.
+- A field that the new description leaves out is removed from the map. This holds for `markers`, `controls`,
+  `cursor`, `extend` and the limits of the camera. A source keeps the last data that `data` gave it.
+- The fields that are read when the map is made (`renderer`, `fonts`, `fontFamily`, `glyphs`, `interactive`,
+  `antialias`, `attribution`, `hash`) and `initialView` have no effect in `update`.
+
 The library compares each field with the field of the last description:
 
 - A field that is the same object as before is not looked at again. This is the fast path: keep the object when
@@ -257,7 +266,7 @@ as ten. See [Markers](markers.md).
 
 | Member | Meaning |
 |---|---|
-| `update(description)` | Changes the map to a new description. |
+| `update(description)` | Changes the map to a new description. Takes the complete description. See [Change the map](#change-the-map). |
 | `destroy()` | Removes the map and frees its memory. |
 | `moveTo(view)` | Moves the camera now. With `duration` (milliseconds), with an animation. |
 | `fitBounds(bounds, options)` | Shows an area. |

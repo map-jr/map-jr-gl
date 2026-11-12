@@ -109,7 +109,7 @@ export interface MapOverlay { update(options: OverlayOptions): void; remove(): v
 export type FeaturePlace = {x: number; y: number} | [number, number] | [{x: number; y: number}, {x: number; y: number}];
 export interface FeatureOptions { layers?: string[]; filter?: unknown; sources?: string[]; sourceLayers?: string[]; radius?: number; geometry?: boolean }
 export interface MapHost {
-    /** Changes the map to a new description. Give the complete description each time. */
+    /** Changes the map to a new description. Give the complete description each time: a description with no `style` throws. */
     update(spec: MapSpec): void;
     destroy(): void;
     readonly state: Readable<MapState>;
@@ -162,7 +162,13 @@ function extended(style: any, extend?: StyleExtension) {
     return {...style, sources: {...style.sources, ...extend.sources}, layers, ...(extend.terrain === undefined ? {} : {terrain: extend.terrain ?? undefined})};
 }
 
+/** Stops a description with no style, with a message that says what to write (a caller in JavaScript has no type check). */
+function complete(spec: MapSpec, method: string, fix: string) {
+    if (!spec?.style) throw new Error(`[map-jr-gl] ${method}(): the description has no "style". ${fix}`);
+}
+
 export function createMap(container: HTMLElement | string, spec: MapSpec): MapHost {
+    complete(spec, 'createMap', 'Pass the URL of a style or a style object as "style".');
     const first = {...spec.initialView, ...spec.view};
     const options: MapOptions = {
         container, style: spec.style, ...first, renderer: spec.renderer, fonts: spec.fonts, fontFamily: spec.fontFamily, glyphs: spec.glyphs, interactive: spec.interactive, antialias: spec.antialias, hash: spec.hash,
@@ -278,7 +284,10 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
     };
 
     return {
-        update(next) { if (alive) apply(next, now); },
+        update(next) {
+            complete(next, 'update', `update() takes the complete description, not only the changed fields. Write map.update({...description, ${Object.keys(next ?? {})[0] ?? 'field'}: …}).`);
+            if (alive) apply(next, now);
+        },
         destroy() { if (!alive) return; alive = false; map.remove(); },
         state,
         queryFeatures,

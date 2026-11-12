@@ -63,6 +63,18 @@ for (const renderer of ['worker', 'main']) {
         });
         check(`[${renderer}] update with a new style: a layer comes and goes, and queries find features`, style.withLayer > 0 && style.without === 0 && style.raw > 0, JSON.stringify(style));
 
+        // 3b. A description with no style (only the changed fields) throws at once with a message, and the map is not harmed.
+        const partial = await page.evaluate(async () => {
+            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), said = fn => { try { fn(); return ''; } catch (e) { return e.message; } };
+            const update = said(() => t.host.update({cursor: 'crosshair'})), none = said(() => t.host.update(undefined));
+            const create = said(() => t.lib.createMap(document.createElement('div'), {initialView: {zoom: 2}}));
+            await wait(500);
+            return {update, none, create, drawn: (await t.host.queryFeatures([{x: 0, y: 0}, {x: 900, y: 600}])).length};
+        });
+        check(`[${renderer}] a description with no style: update and createMap throw and say what to write, and the map still draws`,
+            partial.update.startsWith('[map-jr-gl] update(): the description has no "style".') && partial.update.includes('map.update({...description, cursor: ') && partial.none.startsWith('[map-jr-gl] update()')
+            && partial.create.startsWith('[map-jr-gl] createMap(): the description has no "style".') && partial.drawn > 0 && !errors.length, JSON.stringify({...partial, errors}));
+
         // 4. Marker layers: added, changed and removed by the description.
         const markers = await page.evaluate(async () => {
             const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), count = () => t.host.map.queryMarkers({x: 450, y: 300}) ? 1 : 0;
