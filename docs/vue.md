@@ -109,7 +109,7 @@ For many markers, use the `markers` prop: those are drawn on the canvas.
 
 A component of your own inside `MapJr` gets the map with `useMapHost()` (a ref).
 
-`useMapFeatures(where, options)` gives the features at a place as a ref that stays up to date (see `watchFeatures` in [the API](api.md#queries)). The place and the options can be refs or functions:
+`useMapFeatures(at, options)` gives the features at a place as a ref that stays up to date (see `watchFeatures` in [the API](api.md#queries)). The place and the options can be refs or functions:
 
 ```js
 const rain = useMapFeatures(() => [props.lng, props.lat], {sources: ['rain']});
@@ -128,6 +128,37 @@ You can change the props as in other Vue code. The component sees these changes:
 | A part of a reactive style object | `style.layers[4].paint['fill-color'] = '#f00'` |
 | An array or object that the template makes again each time | `:controls="[navigation()]"`, `:interactive-layers="['places']"` |
 
+### The view of `v-model:view`
+
+The component writes each view of the map to `view`, and it moves the map when your code changes `view`. There is
+one exception. The map keeps the last 60 views that it reported, with no time limit, and it ignores a view whose
+`center`, `zoom`, `bearing` and `pitch` are all equal to those of one of them. This stops a slow page from pulling
+the map back while the user moves it.
+
+So a button that stores the view and gives it back a moment later ("back to where I was") can do nothing. Move the
+map with `moveTo` for this:
+
+```vue
+<script setup>
+import {ref, useTemplateRef} from 'vue';
+import {MapJr} from 'map-jr-gl/vue';
+
+const view = ref({center: [-74.0065, 40.7085], zoom: 13.6, bearing: 0, pitch: 0});
+const map = useTemplateRef('map');
+let stored = view.value;
+</script>
+
+<template>
+  <div style="height: 400px">
+    <MapJr ref="map" map-style="https://tiles.openfreemap.org/styles/liberty" v-model:view="view" />
+  </div>
+  <button @click="stored = view">Remember this view</button>
+  <button @click="map.host.moveTo({...stored, duration: 500})">Back to where I was</button>
+</template>
+```
+
+### Changes inside a marker
+
 The component does not see one change: a change inside one marker (`layer.data[3].props.color = '#f00'`). Replace
 the marker, as in the table.
 
@@ -143,27 +174,42 @@ For the best performance with large data:
 
 ## The composable
 
-`useMap` makes a map in an element of your own. The description can be a ref, a computed value or a function.
+`useMap` makes a map in an element of your own. The description (`MapSpec`, see [the main API](api.md)) can be a
+ref, a computed value or a function.
 
 ```vue
 <script setup>
 import {computed, ref, useTemplateRef} from 'vue';
 import {useMap} from 'map-jr-gl/vue';
 
-const zoom = ref(13.6);
+const measuring = ref(false);
 const {host, state} = useMap(useTemplateRef('el'), computed(() => ({
   style: 'https://tiles.openfreemap.org/styles/liberty',
-  initialView: {center: [-74.0065, 40.7085], zoom: zoom.value},
+  initialView: {center: [-74.0065, 40.7085], zoom: 13.6},
+  cursor: measuring.value ? 'crosshair' : undefined,
 })));
 </script>
 
 <template>
   <div ref="el" style="height: 400px" />
   <p>Zoom {{ state?.view.zoom.toFixed(1) }}</p>
+  <button @click="measuring = !measuring">Measure</button>
+  <button @click="host?.moveTo({zoom: 15, duration: 500})">Zoom to 15</button>
 </template>
 ```
 
 `state` is a ref with the state of the map. `host` is a ref with the map when it is there.
+
+`useMap` calls `update` of the map each time that the description is a new object:
+
+- Give a new description object for each change. A computed value or a function does this when a ref that it reads
+  changes, as `measuring` does in the example.
+- A change inside a `ref` is not seen. With `const description = ref({style, cursor: ''})`, the assignment
+  `description.value.cursor = 'crosshair'` does nothing. Write
+  `description.value = {...description.value, cursor: 'crosshair'}`.
+- `initialView` is read only when the map is made, so a ref inside `initialView` does not move the map. To move the
+  map, call `host.value.moveTo(view)`, or give `view` and `onViewChange` in the description. See "A view that the
+  application owns" in [the main API](api.md).
 
 ## The module for Nuxt
 

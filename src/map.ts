@@ -311,7 +311,7 @@ export class Map {
         // the camera: with a zoom in the options and no centre, the centre is [0, 0], not that of the style.
         const sc = this.rawStyle;
         if (o.center === undefined && o.zoom === undefined && o.bearing === undefined && o.pitch === undefined && !o.bounds) this.tr.set(sc.center, sc.zoom, sc.bearing, sc.pitch);
-        const restyled = this.restyled, first = await resolveStyle(this.rawStyle, fetch, this.styleBase, undefined, this.sourceFailed);
+        const restyled = this.restyled, first = await resolveStyle(this.rawStyle, this.fetchAs('Source'), this.styleBase, undefined, this.sourceFailed);
         if (!(o.glyphs ?? !o.fonts)) first.glyphs = undefined;
         // (A change of the style during that step has its own result, which is newer. The engine gets it after its start.)
         if (restyled === this.restyled) this.resolved = first;
@@ -650,6 +650,8 @@ export class Map {
     setMaxBounds(bounds?: LngLatBoundsInput | null) {
         const flat = bounds && LngLatBounds.convert(bounds).toArray().flat();
         this.tr.maxBounds = flat ? [flat[0], flat[1], flat[2], flat[3]] : null;
+        // The engine clamps its own camera when it gets the limits. This clamps the copy here, so that `getCenter()` is right at once.
+        this.tr.constrain();
         return this.limits();
     }
     getMaxBounds() { const b = this.tr.maxBounds; return b && {getWest: () => b[0], getSouth: () => b[1], getEast: () => b[2], getNorth: () => b[3], toArray: () => [[b[0], b[1]], [b[2], b[3]]]}; }
@@ -866,15 +868,19 @@ export class Map {
         }
         return this.setGeoJSON(id, {type: 'FeatureCollection', features});
     }
+    /** The number of the newest call that set the data of each GeoJSON source: an answer for an older call is dropped. */
+    private dataCalls = new globalThis.Map<string, number>();
     private async setGeoJSON(id: string, data: unknown) {
+        const call = (this.dataCalls.get(id) ?? 0) + 1;
+        this.dataCalls.set(id, call);
         this.rawStyle.sources[id].data = data;
         this.unloaded(id);
         for (const type of ['sourcedataloading', 'dataloading']) this.fire(type, {dataType: 'source', sourceId: id});
         if (typeof data === 'string') {
             const raw = this.rawStyle.sources[id], url = new URL(data, this.styleBase).href;
             data = await (await this.fetchAs('Source')(url)).json();
-            // (The source was removed, or has other data since: this answer is old.)
-            if (this.rawStyle?.sources[id] !== raw || new URL(raw.data, this.styleBase).href !== url) return;
+            // (The source was removed, or its data was set again since, also to the same URL: this answer is old.)
+            if (this.rawStyle?.sources[id] !== raw || this.dataCalls.get(id) !== call) return;
             // A later change of the style sends the data of the source again: it must be this data, not the first answer.
             keep(raw, url, data);
         }

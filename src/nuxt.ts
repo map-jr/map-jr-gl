@@ -10,7 +10,9 @@
 // @ts-ignore: the kit of Nuxt comes with the application, it is not a dependency of this library
 import {addComponent, addImports, createResolver, defineNuxtModule} from '@nuxt/kit';
 
-export default defineNuxtModule({
+// (The type is written out, so that the declaration of this file does not need the types of Nuxt: with them installed,
+// the compiler writes a declaration that names types it does not import.)
+const nuxtModule: any = defineNuxtModule({
     meta: {name: 'map-jr-gl', configKey: 'mapJr'},
     setup() {
         // (The files beside this one, by their path: the same files that `map-jr-gl/vue` and `map-jr-gl/controls` name.)
@@ -20,3 +22,4 @@ export default defineNuxtModule({
         addImports(['navigation', 'scale', 'fullscreen', 'geolocate', 'terrain'].map(name => ({name, as: name + 'Control', from: controls})));
     },
 });
+export default nuxtModule;
