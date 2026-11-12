@@ -138,7 +138,7 @@ export class Map extends CoreMap {
     addSprite(id: string, url: string) { return this.setSprite([...this.getSprite().filter((s: {id: string}) => s.id !== id), {id, url}]); }
     removeSprite(id: string) { const rest = this.getSprite().filter((s: {id: string}) => s.id !== id); return this.setSprite(rest.length ? rest : null); }
     getGlyphs() { return this.rawStyle?.glyphs ?? null; }
-    /** Stored with the style for compatibility. Text is drawn with web fonts, so glyph files are never fetched. */
+    /** Sets the URL of the glyph files of the style. The map loads them from this URL, unless the option `glyphs` is `false` or `fonts` is given. */
     setGlyphs(url: string | null) { return this.editStyle(s => { if (url) s.glyphs = url; else delete s.glyphs; }); }
     getFontFaces() { return this.rawStyle?.['font-faces'] ?? {}; }
     setFontFaces(faces: Record<string, unknown> | null) { return this.editStyle(s => { if (faces) s['font-faces'] = faces; else delete s['font-faces']; }); }
