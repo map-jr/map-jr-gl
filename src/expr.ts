@@ -21,6 +21,7 @@ export function parseColor(input: string): RGBA | null {
     if (c !== undefined) return c;
     c = parseColorUncached(input.trim().toLowerCase());
     if (c) COLORS.add(c);
+    if (colorCache.size > 4096) colorCache.clear(); // (styles and data from other parties: the cache has a limit)
     colorCache.set(input, c);
     return c;
 }
@@ -72,17 +73,20 @@ function lerp(a: any, b: any, t: number): any {
 }
 
 /** Interpolation outputs written as colour strings are converted once, at compile time or first use. */
-/** The style's global state (`state` in the style, changed with `setGlobalStateProperty`), read by `global-state`. */
-let globalState: Record<string, unknown> = {};
-export function setGlobalState(state: Record<string, unknown> | undefined) { globalState = state ?? {}; }
-
-/** Feature state by source, then by "sourceLayer|id" (`setFeatureState`). Tiles are rebuilt when it changes. */
-const featureStates: Record<string, Record<string, Record<string, unknown>>> = {};
-export function setFeatureStates(source: string, states: Record<string, Record<string, unknown>>) { featureStates[source] = states; }
-export function featureStateOf(source: string | undefined, sourceLayer: string | undefined, id: number | string | undefined): Record<string, unknown> | undefined {
-    const states = source !== undefined && id !== undefined ? featureStates[source] : undefined;
-    return states && states[`${sourceLayer ?? ''}|${id}`];
+/**
+ * The state of one map on this thread: an engine or a tile builder has one. Two maps on a page (or in one tile
+ * worker) each have their own, so that they do not read the state of the other.
+ */
+export interface MapStates {
+    /** The style's global state (`state` in the style, changed with `setGlobalStateProperty`), read by `global-state`. */
+    g: Record<string, unknown>;
+    /** Feature state by source, then by "sourceLayer|id" (`setFeatureState`). Tiles are rebuilt when it changes. */
+    f: Record<string, Record<string, Record<string, unknown>>>;
 }
+/** The states that expressions are compiled for. An expression keeps the object, and reads it when it is evaluated. */
+let compiling: MapStates = {g: {}, f: {}};
+/** Sets the map that the expressions compiled from now on (in this turn of the thread) belong to. */
+export function compileFor(states: MapStates) { compiling = states; }
 
 /** An image inside label text (`format` with `image`) travels through the text as its name between these two characters. */
 /** Rich text (`format` with options): the size, font and colour of the text that follows, between these two characters. */
@@ -234,7 +238,8 @@ export function compileExpr(e: any, flags: Flags): Fn {
             // value is never folded into a constant.
             const key = e[1];
             flags.zoom = true;
-            return () => globalState[key] ?? null;
+            const states = compiling;
+            return () => states.g[key] ?? null;
         }
         case '==': case '!=': case '<': case '<=': case '>': case '>=': {
             const a = arg(1), b = arg(2), f = cmp[op];

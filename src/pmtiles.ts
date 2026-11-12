@@ -67,18 +67,19 @@ export class PMTiles {
         this.fetchFn = (...a) => fetchFn(...a);
     }
 
-    private async range(offset: number, length: number, signal?: AbortSignal): Promise<Uint8Array> {
-        const res = await this.fetchFn(this.url, {headers: {Range: `bytes=${offset}-${offset + length - 1}`}, signal});
+    /** `fetchFn`: the requests of one map follow the rules of that map, also for an archive that another map opened. */
+    private async range(offset: number, length: number, signal?: AbortSignal, fetchFn = this.fetchFn): Promise<Uint8Array> {
+        const res = await fetchFn(this.url, {headers: {Range: `bytes=${offset}-${offset + length - 1}`}, signal});
         if (res.status !== 206 && res.status !== 200) throw new Error(`PMTiles ${this.url}: HTTP ${res.status}`);
         const bytes = new Uint8Array(await res.arrayBuffer());
         // A server that ignores Range sends the whole file; that still works for small archives.
         return res.status === 200 && bytes.length > length ? bytes.subarray(offset, offset + length) : bytes;
     }
 
-    private open() {
+    private open(fetchFn?: Fetch) {
         return this.header ??= (async () => {
             // The header and (almost always) the whole root directory fit in the first 16 KB.
-            const first = heads.get(this.url) ?? await this.range(0, 16384), v = new DataView(first.buffer, first.byteOffset, first.byteLength);
+            const first = heads.get(this.url) ?? await this.range(0, 16384, undefined, fetchFn), v = new DataView(first.buffer, first.byteOffset, first.byteLength);
             if (String.fromCharCode(...first.subarray(0, 7)) !== 'PMTiles' || first[7] !== 3) throw new Error(`${this.url} is not a PMTiles v3 archive`);
             const u64 = (o: number) => v.getUint32(o, true) + v.getUint32(o + 4, true) * 2 ** 32;
             const h: PMHeader = {
@@ -86,7 +87,7 @@ export class PMTiles {
                 internalCompression: first[97], tileCompression: first[98], tileType: first[99], minZoom: first[100], maxZoom: first[101],
             };
             const end = h.rootOffset + h.rootLength;
-            const rootBytes = end <= first.length ? first.subarray(h.rootOffset, end) : await this.range(h.rootOffset, h.rootLength);
+            const rootBytes = end <= first.length ? first.subarray(h.rootOffset, end) : await this.range(h.rootOffset, h.rootLength, undefined, fetchFn);
             return {h, root: parseDirectory(await inflate(rootBytes, h.internalCompression)), first};
         })().catch(err => { this.header = undefined; throw err; });
     }
@@ -101,8 +102,8 @@ export class PMTiles {
     }
 
     /** One tile's bytes (decompressed), or null when the archive has no such tile. */
-    async tile(z: number, x: number, y: number, signal?: AbortSignal): Promise<Uint8Array | null> {
-        const {h, root} = await this.open(), id = tileId(z, x, y);
+    async tile(z: number, x: number, y: number, signal?: AbortSignal, fetchFn?: Fetch): Promise<Uint8Array | null> {
+        const {h, root} = await this.open(fetchFn), id = tileId(z, x, y);
         let dir = root;
         for (let depth = 0; depth < 4; depth++) {
             // Last entry whose id is not past the one wanted.
@@ -110,11 +111,11 @@ export class PMTiles {
             while (lo <= hi) { const mid = (lo + hi) >> 1; if (dir[mid].id <= id) { found = mid; lo = mid + 1; } else hi = mid - 1; }
             if (found < 0) return null;
             const e = dir[found];
-            if (e.run > 0) return id < e.id + e.run ? inflate(await this.range(h.dataOffset + e.offset, e.length, signal), h.tileCompression) : null;
+            if (e.run > 0) return id < e.id + e.run ? inflate(await this.range(h.dataOffset + e.offset, e.length, signal, fetchFn), h.tileCompression) : null;
             // A run of zero marks a pointer to a leaf directory covering this part of the curve.
             let leaf = this.leaves.get(e.offset);
             if (!leaf) {
-                leaf = this.range(h.leafOffset + e.offset, e.length).then(b => inflate(b, h.internalCompression)).then(parseDirectory);
+                leaf = this.range(h.leafOffset + e.offset, e.length, undefined, fetchFn).then(b => inflate(b, h.internalCompression)).then(parseDirectory);
                 this.leaves.set(e.offset, leaf);
                 leaf.catch(() => this.leaves.delete(e.offset));
                 if (this.leaves.size > 64) this.leaves.delete(this.leaves.keys().next().value!);
@@ -140,7 +141,7 @@ export async function fetchTile(url: string, fetchFn: Fetch = (...a) => fetch(..
     if (url.startsWith(PM_PREFIX)) {
         const m = /^pmtiles:\/\/(.+)\/(\d+)\/(\d+)\/(\d+)$/.exec(url);
         if (!m) throw new Error(`Malformed PMTiles tile address: ${url}`);
-        return archive(m[1], fetchFn).tile(+m[2], +m[3], +m[4], signal);
+        return archive(m[1], fetchFn).tile(+m[2], +m[3], +m[4], signal, fetchFn);
     }
     const res = await fetchFn(url, {signal});
     // 404: the server does not have the tile (`state.missing`). 204: the server has the tile, and the tile is empty.

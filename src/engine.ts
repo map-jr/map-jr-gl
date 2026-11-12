@@ -1,6 +1,6 @@
 import {heightsChanged} from './geo.ts';
 import {EXTENT, HEIGHT_GRID, TILE_SIZE, Transform, bezier, groundHeight, clamp, latFromMerc, lngFromMerc, mercX, mercY, type LngLatLike, type TileID} from './geo.ts';
-import {setGlobalState} from './expr.ts';
+import {compileFor, type MapStates} from './expr.ts';
 import {layerRules} from './rules.ts';
 import {compileLayer, isGeometrySource, loadSprite, tileURL, type CompiledLayer, type FontSource, type ResolvedStyle, type Sprite, type SpriteIcon} from './style.ts';
 import {GLRenderer, MARKER_FLOATS, MARKER_STRIDE, SPRITE_ATLAS, type DemRef, type GLTile, type MarkerBuffers, type TerrainTile} from './gl.ts';
@@ -496,12 +496,15 @@ export class Engine {
     private sourceLoaded = new Map<string, number>();
     private versions: Record<string, number> = {};
     private sourceSigs = new Map<string, [string, string]>();
+    /** The global state of this map (see `MapStates`). The tile builders have the feature state. */
+    private states: MapStates = {g: {}, f: {}};
 
     private setStyle(style: ResolvedStyle, reload: boolean) {
         if (JSON.stringify(style.terrain) !== JSON.stringify(this.style?.terrain)) this.centreGiven = true;
         this.style = style;
         this.styleVersion++;
-        setGlobalState(style.state);
+        this.states.g = style.state ?? {};
+        compileFor(this.states);
         this.layers = style.layers.map(compileLayer).filter((l): l is CompiledLayer => !!l);
         this.zoomBuilt = new Set(this.layers.filter(l => l.type === 'fill-extrusion' && Object.values(l.p).some((p: any) => p?.dd && p.zoom)).map(l => l.source));
         this.imageSources = Object.keys(style.sources).filter(name => /^raster/.test(style.sources[name].type) && this.layers.some(l => l.source === name && l.visible));
@@ -1030,6 +1033,7 @@ export class Engine {
 
     private frame(now: number) {
         const tr = this.tr, frameNo = ++this.frameNo, began = performance.now();
+        compileFor(this.states); // (the light of the style is compiled when it is drawn)
         if (!tr.width || !tr.height || this.lost) return;
         const dt = Math.min(100, now - this.lastTime || 16);
         this.lastTime = now;
