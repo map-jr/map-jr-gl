@@ -5,6 +5,8 @@ decided, why, and how to change it.
 
 ## Start here
 
+**Four independent reviews on 2026-11-12** (correctness, performance, developer experience, and the view of a team that would adopt the library) are in [reviews-2026-11-12.md](reviews-2026-11-12.md). They list open faults that are more serious than the decisions below.
+
 Decisions that wait for you:
 
 1. **The renderer in Safari** (worker or main thread). See [the section below](#a-decision-for-the-owner-the-renderer-in-safari). The newer measurements make the worker a better default than before.
