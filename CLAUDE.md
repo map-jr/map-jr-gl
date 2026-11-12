@@ -22,11 +22,14 @@ to protect those qualities.
   lower a floor or skip a test to get green: fix the cause, or say in the pull request why the floor moves.
 - **Merge with squash** once CI is green — you may merge your own pull request, **except** when the change does one
   of these. Then leave it open and ask the owner:
-  - breaks or renames public API of either entry, or changes a default;
+  - removes or renames public API of either entry, or changes a default;
   - raises a size budget (see below);
   - adds a dependency to the built files, or takes a method from another project;
   - changes this file, the CI workflows, or the release process;
   - is labelled `needs: owner`.
+- **Before version 1.0, a correction does not need the owner.** A change that makes the types stricter, or that
+  corrects a result, so that an entry agrees with its documentation or with MapLibre GL JS can be merged on green CI,
+  even when code that compiled or ran before can break. The pull request lists what can break.
 - **A pull request has one concern.** A fix and its test belong together. An unrelated cleanup goes into its own
   pull request.
 - After a merge, the `Browsers` workflow measures and tests in Chromium, Firefox and WebKit on three systems. Read
@@ -37,6 +40,21 @@ to protect those qualities.
   the renderer, the workers or the canvas, and read its results before you ask the owner to test in Safari. On that
   runner the worker renderer does not load (the machine loses the WebGL context of a worker), and the frame rates
   mean little: a failure of the worker scenarios there is not a fault of the change.
+
+## Working with several workers
+
+One session can act as the coordinator and give issues to workers (subagents). This file is loaded into every
+worker, so it has only the rules. The brief that every worker reads is `docs/agents/worker-brief.md`, and the notes
+for the coordinator are `docs/agents/coordinating.md`. Read the notes before you start a batch.
+
+- **A worker gets one issue, one branch and one port.** Its prompt is the path of the brief and five lines: the
+  issue, the branch, the port, the scope, and the files and lines where the work starts.
+- **A worker opens the pull request and stops.** The coordinator watches CI, merges, and sends a failure back to the
+  same worker, which still has its context.
+- **A worker reports in at most 12 lines** in the format of the brief. It files nothing and merges nothing. The
+  coordinator turns the faults that a report names into issues.
+- **The coordinator runs `pnpm status` once for a batch.** A worker does not run it, because every run rewrites the
+  same lines of the README.
 
 ## Definition of done
 
