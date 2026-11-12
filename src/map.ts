@@ -316,7 +316,8 @@ export class Map {
         this.rawStyle = this.firstChange?.(undefined, raw) ?? raw;
         this.firstChange = undefined; // (a restart of the engine starts from the style as it is then)
         for (const fn of this.beforeStyle.splice(0)) fn();
-        this.styleBase = typeof o.style === 'string' ? new URL(o.style, location.href).href : location.href;
+        // (A restart gives the style as an object. Its relative URLs still belong to the place that the style came from.)
+        if (!this.restarting) this.styleBase = typeof o.style === 'string' ? new URL(o.style, location.href).href : location.href;
         // As in MapLibre, a style may carry its own starting camera. It is used only when the options give no part of
         // the camera: with a zoom in the options and no centre, the centre is [0, 0], not that of the style.
         const sc = this.rawStyle;
@@ -407,13 +408,16 @@ export class Map {
             this.tilePool?.release();
             this.tilePool = undefined; // (a `remove` during the start below must not give the same workers back again)
             this.ready = false; this.queue = []; this.tilesLoaded = false; this.seq = 0;
+            this.loadedSources.clear(); // (the new engine has no tiles)
             const fresh = this.canvas.cloneNode() as HTMLCanvasElement, tr = this.tr;
             this.canvas.replaceWith(fresh);
             this.canvas = fresh;
             this.options = {...this.options, style: this.rawStyle, center: [tr.lng, tr.lat], zoom: tr.zoom, bearing: tr.bearing, pitch: tr.pitch};
             await this.start();
             this.resend();
-            if (Object.keys(this.globalState).length) this.restyle(false);
+            // The engine got the style without what `restyle` adds: the number of each source (without it the page does not
+            // accept the report that a source is loaded), the layers that the page has hidden, and the global state.
+            this.restyle(true);
             for (const [name, [source, options]] of this.imageInputs) await this.addImage(name, source, options);
             this.variantIds.clear();
             for (const layer of this.markerLayers.values()) this._syncMarkers(layer);

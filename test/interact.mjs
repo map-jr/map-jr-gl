@@ -1146,6 +1146,44 @@ for (const mode of ['main', 'worker']) {
   }
 }
 
+// A lost WebGL context when the style came from a URL in another folder. The relative URLs of the style still belong
+// to that folder after the restart, and a source that is loaded says so before the tiles of the other sources are there.
+{
+    const page = await browser.newPage({viewport: {width: 1000, height: 700}});
+    const style = (await (await fetch(origin + '/style.json')).text()).replaceAll(origin + '/tiles/', 'rel/');
+    const paths = [];
+    let wait = 0;
+    // (Patterns for the path only: the address of the page names the style as well.)
+    await page.route(u => u.pathname === '/elsewhere/style.json', r => r.fulfill({contentType: 'application/json', body: style}));
+    await page.route(u => /^\/(elsewhere\/)?rel\//.test(u.pathname), async r => {
+        const u = new URL(r.request().url());
+        paths.push(u.pathname);
+        if (!u.pathname.startsWith('/elsewhere/')) return r.fulfill({status: 404, body: ''});
+        const response = await r.fetch({url: origin + u.pathname.replace('/elsewhere/rel/', '/tiles/')});
+        await new Promise(res => setTimeout(res, wait)); // after the restart the tiles are slow, so that the map is not idle at once
+        return r.fulfill({response});
+    });
+    await page.goto(origin + '/?renderer=main&nomarkers&style=/elsewhere/style.json');
+    await page.waitForFunction(() => window.mapLoaded, null, {timeout: 30000});
+    const before = paths.length;
+    wait = 500;
+    const lost = await page.evaluate(async () => {
+        const m = window.map;
+        m.addSource('here', {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: m.getCenter().toArray()}}});
+        m.addLayer({id: 'here', type: 'circle', source: 'here'});
+        await new Promise(r => { m.once('idle', r); setTimeout(r, 15000); });
+        let restored = false, atRestored, early = false, idle = false;
+        m.on('webglcontextrestored', () => { restored = true; atRestored = m.isSourceLoaded('omt'); m.once('idle', () => idle = true); });
+        m.getCanvas().getContext('webgl2').getExtension('WEBGL_lose_context').loseContext();
+        for (let i = 0; i < 600 && !idle; i++) { await new Promise(r => setTimeout(r, 25)); early ||= restored && !m.areTilesLoaded() && !m.isSourceLoaded('omt') && m.isSourceLoaded('here'); }
+        return {restored, idle, atRestored, early, loaded: m.isSourceLoaded('omt')};
+    });
+    const after = paths.slice(before), wrong = after.filter(p => !p.startsWith('/elsewhere/'));
+    check('[main] a lost WebGL context: the tiles of a style from another folder are still requested from that folder', lost.restored && lost.idle && after.length > 0 && !wrong.length, `${after.length} requests, wrong: ${wrong.slice(0, 2).join(' ') || 'none'}`);
+    check('[main] a lost WebGL context: no source is loaded at the restart, and a GeoJSON source is loaded before the tiles of the others', lost.atRestored === false && lost.early && lost.loaded, JSON.stringify(lost));
+    await page.close();
+}
+
 // Hydration: server markup is visible before the client runs, then replaced once the canvas shows the same view.
 const page = await browser.newPage({viewport: {width: 1000, height: 700}});
 await page.route('**/dist/map-jr-gl-maplibre-compat.js', async r => { await new Promise(res => setTimeout(res, 800)); r.continue(); });
