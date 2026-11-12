@@ -71,7 +71,7 @@ map.on('markerclick', e => {
 });
 map.on('click', async e => {
   if (e.marker) return;
-  const [features, elevation] = await Promise.all([map.queryFeatures(e.lngLat), map.queryElevation(e.lngLat).catch(() => null)]);
+  const [features, elevation] = await Promise.all([map.queryFeatures(e.lngLat, {sources: Object.keys(map.getStyle().sources)}), map.queryElevation(e.lngLat).catch(() => null)]);
   hud.textContent = (elevation === null ? '' : elevation.toFixed(0) + ' m | ') + features.map(f => f.sourceLayer + (f.properties.name ? ' "' + f.properties.name + '"' : '')).join(', ');
 });
 map.on('error', e => { (window.mapErrors ||= []).push(String(e.error?.message || e.error)); });

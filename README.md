@@ -281,7 +281,8 @@ See [Terrain and elevation](docs/terrain-and-elevation.md).
 
 With `map-jr-gl`, `queryFeatures` with `sources` reads the tile data of those sources. It finds data that the style
 does not draw, and it also works for a position that is not on the screen. Without `sources`, it gives the features
-that the style layers draw. See [Queries](docs/api.md#queries).
+that the style layers draw, and it never reads other data. `radius` is the distance around the place in pixels, in
+both kinds of query. See [Queries](docs/api.md#queries).
 
 ```js
 import {createMap} from 'map-jr-gl';
@@ -297,12 +298,15 @@ const map = createMap(document.getElementById('map'), {
 });
 ```
 
-With `map-jr-gl/maplibre-compat`, `map.queryFeatures(lngLat, {radius: 8})` always reads the tile data.
-`queryRenderedFeatures` and `querySourceFeatures` are also available:
+With `map-jr-gl/maplibre-compat`, `map.queryFeatures` is the same method. `queryRenderedFeatures` and
+`querySourceFeatures` are also available:
 
 ```js
+import {Map} from 'map-jr-gl/maplibre-compat';
+
+const map = new Map({container: 'map', style: 'https://tiles.openfreemap.org/styles/liberty', center: [-74.0065, 40.7085], zoom: 16});
 map.on('click', async event => {
-  const features = await map.queryFeatures(event.lngLat, {radius: 8});
+  const features = await map.queryFeatures(event.lngLat, {sources: ['openmaptiles'], radius: 8});
   console.log(features.map(feature => feature.properties));
 });
 ```

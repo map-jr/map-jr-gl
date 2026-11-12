@@ -5,7 +5,7 @@ import {Transform, groundHeight, heightsChanged, mercX, mercY, toLngLat, type Ln
 import type {PreparedSource} from './geojson.ts';
 import {DEFAULT_FONT, keep, resolveStyle, type ResolvedStyle} from './resolve.ts';
 import {layerRules} from './rules.ts';
-import type {CameraOptions, Command, EngineEvent, FeatureQuery, FontSource, MarkerImage} from './engine.ts';
+import type {CameraOptions, Command, EngineEvent, FontSource, MarkerImage} from './engine.ts';
 import type {QueriedFeature} from './query.ts';
 import type {TileBackend} from './tiles.ts';
 import {acquireTileWorkers, createWorker, defaults as loadDefaults, workerReady, type LoadOptions} from './loader.ts';
@@ -87,6 +87,10 @@ export interface GeoJSONDiff {
 }
 type StyleChange = (previous: any, next: any) => any;
 export type PointLike = {x: number; y: number} | [number, number];
+/** Where `queryFeatures` looks: a point of the screen, a position (`[lng, lat]`), or the two corners of a rectangle of the screen. */
+export type FeaturePlace = {x: number; y: number} | readonly number[] | readonly {x: number; y: number}[];
+/** The options of `queryFeatures`. See "Queries" in `docs/api.md` for the kind of query in which each one has an effect. */
+export interface FeatureOptions { layers?: string[]; filter?: unknown; sources?: string[]; sourceLayers?: string[]; radius?: number; geometry?: boolean; zoom?: number }
 export interface RenderedQueryOptions { layers?: string[]; filter?: unknown; validate?: boolean }
 /** A feature from `queryRenderedFeatures` or `querySourceFeatures`: GeoJSON, with its source, its style layer and its state. */
 export interface RenderedFeature {
@@ -1054,13 +1058,32 @@ export class Map {
     }
 
     /**
-     * Finds features at a location straight from the tile data. Unlike `queryRenderedFeatures`, nothing has to be
-     * drawn: features need no style layer, and the location may be off screen (the tile is fetched if necessary).
-     * `at` is a longitude/latitude, or a screen position as `{x, y}`.
+     * Finds features. `MapHost.queryFeatures` of the main API is this method.
+     *
+     * - Where: a point of the screen (`{x, y}`), a position (`[lng, lat]`), a rectangle of the screen (two points), or
+     *   nothing for the whole map.
+     * - What: with `sources`, the features of the tile data of those sources. They need no style layer, and at a
+     *   position they need not be on the screen (the tile is fetched if necessary). Without `sources`, the features
+     *   that the style layers draw (`layers` selects layers), the top one first.
      */
-    queryFeatures(at: LngLatLike | {x: number; y: number}, options: Partial<FeatureQuery> = {}): Promise<QueriedFeature[]> {
-        const [lng, lat] = 'x' in at ? this.tr.unproject(at.x, at.y) : toLngLat(at);
-        return this.ask(id => ({type: 'query', id, lng, lat, radius: 3, ...options}));
+    queryFeatures(at: FeaturePlace | LngLatLike | undefined, options: FeatureOptions & {sources: string[]}): Promise<QueriedFeature[]>;
+    queryFeatures(at?: FeaturePlace | LngLatLike, options?: FeatureOptions & {sources?: undefined}): Promise<RenderedFeature[]>;
+    queryFeatures(at?: FeaturePlace | LngLatLike, options?: FeatureOptions): Promise<RenderedFeature[] | QueriedFeature[]>;
+    queryFeatures(at?: FeaturePlace | LngLatLike, o: FeatureOptions = {}): Promise<RenderedFeature[] | QueriedFeature[]> {
+        const corners = Array.isArray(at) && typeof at[0] !== 'number' ? at as {x: number; y: number}[] : undefined, {sources, radius} = o;
+        const place = at && !corners ? at as LngLatLike | {x: number; y: number} : undefined;
+        const p = place ? 'x' in place ? place : this.project(place) : undefined;
+        if (!sources) {
+            const r = radius ?? 0;
+            return this.queryLayers(p ? [[p.x - r, p.y - r], [p.x + r, p.y + r]] : corners as [PointLike, PointLike] | undefined, {layers: o.layers, filter: o.filter});
+        }
+        if (place) {
+            const [lng, lat] = 'x' in place ? this.tr.unproject(place.x, place.y) : toLngLat(place);
+            return this.ask(id => ({...o, type: 'query', id, lng, lat, radius: radius ?? 3}));
+        }
+        const sets = sources.flatMap(source => (o.sourceLayers ?? [undefined]).map(sourceLayer => ({layer: '', source, sourceLayer, filter: o.filter, radius: 0})));
+        const box: [number, number, number, number] = corners ? [corners[0].x, corners[0].y, corners[1].x, corners[1].y] : [0, 0, this.tr.width, this.tr.height];
+        return this.ask<QueriedFeature[]>(id => ({type: 'queryRendered', id, box, sets, geometry: true}));
     }
 
     /**
@@ -1095,21 +1118,10 @@ export class Map {
         }));
         return {box, sets, features};
     }
-    /**
-     * The features that the style layers draw at a point or in a rectangle of the screen (the whole map when no
-     * geometry is given), from the top layer down. The tile data is in a worker, so the result is a promise.
-     */
-    queryLayers(geometry?: PointLike | [PointLike, PointLike] | RenderedQueryOptions, options?: RenderedQueryOptions): Promise<RenderedFeature[]> {
+    /** The features that the style layers draw in the geometry that `rendered` takes, from the top layer down. */
+    private queryLayers(geometry?: PointLike | [PointLike, PointLike], options?: RenderedQueryOptions): Promise<RenderedFeature[]> {
         const {box, sets, features} = this.rendered(geometry, options);
         return sets.length ? this.ask<QueriedFeature[]>(id => ({type: 'queryRendered', id, box, sets, geometry: true})).then(features) : Promise.resolve([]);
-    }
-    /**
-     * The features of the tile data of the given sources in a rectangle of the screen (the whole map when none is
-     * given). Unlike `queryLayers`, the sources need no style layer.
-     */
-    querySources(box: [number, number, number, number] | undefined, sources: string[], options: {sourceLayers?: string[]; filter?: unknown} = {}): Promise<QueriedFeature[]> {
-        const sets = sources.flatMap(source => (options.sourceLayers ?? [undefined]).map(sourceLayer => ({layer: '', source, sourceLayer, filter: options.filter, radius: 0})));
-        return this.ask<QueriedFeature[]>(id => ({type: 'queryRendered', id, box: box ?? [0, 0, this.tr.width, this.tr.height], sets, geometry: true}));
     }
 
 

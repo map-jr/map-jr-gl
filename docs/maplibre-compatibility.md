@@ -23,7 +23,7 @@ The [status table](../README.md#status) gives the current test results.
 | Marker layers | `addMarkerLayer` draws many SVG markers on the canvas. See [Markers](markers.md). |
 | SVG images | `addImage` accepts an SVG string. The image is sharp on each screen. |
 | Fonts | Text uses the glyph files of the style (`glyphs`), as in MapLibre GL JS. A style without `glyphs` needs no glyph files: text then uses the fonts of the browser. The option `glyphs: false` selects that for each style. The style can also give font files in `font-faces`. |
-| `queryFeatures` | Finds features at a position from the tile data. You do not need a style layer. |
+| `queryFeatures` | Finds features, with the meaning that it has in `map-jr-gl`. With `sources`, it reads the tile data of those sources, and you do not need a style layer. Without `sources`, it gives what the style layers draw. See [Queries](api.md#queries). |
 | `queryElevation` | Gives the elevation at a position from a `raster-dem` source. |
 | Contour source | `type: 'contour'` makes contour lines from an elevation source. See [Terrain and elevation](terrain-and-elevation.md). |
 | PMTiles | A source URL that starts with `pmtiles://` reads a PMTiles archive. You do not need a plugin. |
@@ -120,7 +120,7 @@ Other:
 
 **Accepted, with no effect** (12; a value that the library cannot do gives one warning): `setAnisotropicFilterPitch`, `setCenterClampedToGround`, `setCenterElevation`, `setProjection`, `setRenderWorldCopies`, `setRoll`, `setSky`, `setSourceTileLodParams`, `setTransformCameraUpdate`, `setTransformConstrain`, `setVerticalFieldOfView`, `setZoomSnap`
 
-**Only in this library:** `addFonts`, `addMarkerLayer`, `fire`, `getAttributions`, `queryElevation`, `queryFeatures`, `queryLayers`, `queryMarkers`, `querySources`, `removeMarkerLayer`, `setCursor`, `setEventedParent`
+**Only in this library:** `addFonts`, `addMarkerLayer`, `fire`, `getAttributions`, `queryElevation`, `queryFeatures`, `queryMarkers`, `removeMarkerLayer`, `setCursor`, `setEventedParent`
 
 **Not available:** `applyTerrainChange`, `applyTransformChange`, `applyUpdatedTransform`, `calculateAnchoredCameraOptions`, `calculateCameraOptionsFromCameraLngLatAltRotation`, `calculateCameraOptionsFromTo`, `captureRotationPivot`, `clampCenterToGround`, `coveringTiles`, `fitScreenCoordinates`, `getStyleUrl`, `getTransformForUpdate`, `holdElevation`, `isRolling`, `migrateProjection`, `moveCenterOntoTerrain`, `orbitRotationPivot`, `prepareNextFrame`, `putCenterBackOnTerrain`, `releaseElevation`
 <!-- api:end -->
