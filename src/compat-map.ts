@@ -267,9 +267,9 @@ export class Map extends CoreMap {
     override fire(type: string, data: Record<string, unknown> = {}): void | PromiseLike<unknown> {
         // The page gave new data (`setData`, a change of the style): the answers from before are old. They are not given.
         if (type === 'dataloading') this.forget();
-        // The engine has new data: an answer from the time of loading can be old. The next array has only the features
-        // that the page can read itself, the map asks again, and `idle` fires one more time if the answer is another.
-        if (type === 'sourcedata' || type === 'styledata') { this.answers.clear(); this.refired.clear(); }
+        // (New data in the engine: an answer that was kept while the data loaded can be old. It is still given at once, and
+        // it is asked again: if the new answer is another, `idle` fires one more time for that question.)
+        if (type === 'sourcedata' || type === 'styledata') this.refired.clear();
         const point = data.point as {x: number; y: number} | undefined;
         if (!point || !/^(click|dblclick|contextmenu)$/.test(type) || data.asked || !this.rawStyle) return super.fire(type, data);
         const {box, sets} = this.rendered([point.x, point.y]), key = this.questionKey(box);
