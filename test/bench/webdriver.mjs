@@ -50,11 +50,14 @@ const result = {name, os: `${got.platformName ?? ''} ${got['safari:platformVersi
 const PROBE = `const done = arguments[arguments.length - 1], page = {
         offscreenCanvas: typeof OffscreenCanvas !== 'undefined', transfer: 'transferControlToOffscreen' in HTMLCanvasElement.prototype,
         webgl2: !!document.createElement('canvas').getContext('webgl2'), pixelRatio: devicePixelRatio, screen: screen.width + 'x' + screen.height, userAgent: navigator.userAgent};
+    // (Frames in one second, on the page and in a worker: an engine in a worker draws with requestAnimationFrame there.)
+    let frames = 0; const tick = () => { frames++; requestAnimationFrame(tick); }; requestAnimationFrame(tick);
     const code = 'const has = typeof OffscreenCanvas !== "undefined", get = kind => { try { return !!new OffscreenCanvas(1, 1).getContext(kind); } catch (e) { return String(e.message); } };' +
-        'postMessage({offscreenCanvas: has, webgl2: has && get("webgl2"), context2d: has && get("2d"), createImageBitmap: typeof createImageBitmap !== "undefined"})';
+        'let frames = 0, raf = typeof requestAnimationFrame !== "undefined"; if (raf) { const tick = () => { frames++; requestAnimationFrame(tick); }; requestAnimationFrame(tick); }' +
+        'setTimeout(() => postMessage({offscreenCanvas: has, webgl2: has && get("webgl2"), context2d: has && get("2d"), createImageBitmap: typeof createImageBitmap !== "undefined", requestAnimationFrame: raf, frames}), 1000)';
     try {
         const w = new Worker(URL.createObjectURL(new Blob([code], {type: 'text/javascript'})));
-        w.onmessage = e => done({page, worker: e.data});
+        w.onmessage = e => { page.frames = frames; done({page, worker: e.data}); };
         w.onerror = e => done({page, worker: {error: String(e.message)}});
         setTimeout(() => done({page, worker: {error: 'no answer from the worker'}}), 8000);
     } catch (e) { done({page, worker: {error: String(e.message)}}); }`;
@@ -70,9 +73,15 @@ try {
         const check = {mode, loaded: false, errors: []};
         try {
             await wd('POST', `/session/${id}/url`, {url: `${base}/?renderer=${mode}&nomarkers`});
-            await until('return !!(window.map && window.map.loaded && window.map.loaded())', 90000);
+            await until('return !!(window.map && window.map.loaded && window.map.loaded())', 60000);
             Object.assign(check, await run('const m = window.map, c = m.getCanvas(); return {loaded: true, renderer: m.renderer, zoom: +m.getZoom().toFixed(2), canvas: c.width + "x" + c.height}'));
-        } catch (e) { check.error = e.message; }
+        } catch (e) {
+            check.error = e.message;
+            // What the map says about itself, and a picture of the window, for a map that did not load.
+            check.state = await run('const m = window.map; return m ? {renderer: m.renderer || null, styleLoaded: m.isStyleLoaded(), tilesLoaded: m.areTilesLoaded(), zoom: m.getZoom(), canvas: m.getCanvas().width + "x" + m.getCanvas().height} : {map: false}').catch(err => ({error: err.message}));
+            const png = await wd('GET', `/session/${id}/screenshot`).catch(() => null);
+            if (png) writeFileSync(path.join(out, `${name}-${mode}.png`), Buffer.from(png, 'base64'));
+        }
         result.checks.push(check);
     }
 
@@ -81,9 +90,10 @@ try {
     result.probe = await wd('POST', `/session/${id}/execute/async`, {script: PROBE, args: []}).catch(e => ({error: e.message}));
     // (The page sets `benchResults` when it has finished. Each question to the browser also keeps a device farm from
     // closing a session that looks idle.)
-    await until('return !!window.benchResults', 20 * 60000, 2000);
+    // (When the page does not finish, the rows that it has and its status line are still read.)
+    await until('return !!window.benchResults', 14 * 60000, 2000).catch(async e => { result.errors.push(`${e.message}; the page says: ${await run('return document.getElementById("status").textContent').catch(() => '?')}`); });
     result.env = await run('return document.getElementById("env").textContent');
-    result.bench = await run('return window.benchResults');
+    result.bench = await run('return window.benchResults || []');
     result.table = await run('return [...document.querySelectorAll("#results tr")].map(tr => [...tr.cells].map(c => c.textContent))');
 } catch (e) { result.errors.push(e.message); }
 await wd('DELETE', `/session/${id}`).catch(() => {});
@@ -92,8 +102,9 @@ writeFileSync(path.join(out, `${name}.json`), JSON.stringify(result, null, 1));
 const rows = (result.table ?? []).filter(r => r.length > 1), p = result.probe ?? {}, yes = v => v === true ? 'yes' : v === false ? 'no' : String(v ?? 'unknown');
 const md = [`### ${name} (${result.browser} ${result.version}${result.device ? ', ' + result.device : ''})`, '', `${result.os}, through WebDriver`, '', result.env ?? '', '',
     ...(p.page ? [`- On the page: OffscreenCanvas ${yes(p.page.offscreenCanvas)}, transferControlToOffscreen ${yes(p.page.transfer)}, WebGL2 ${yes(p.page.webgl2)}, pixel ratio ${p.page.pixelRatio}, screen ${p.page.screen}`,
-        `- In a worker: ${p.worker?.error ? 'FAILED: ' + p.worker.error : `OffscreenCanvas ${yes(p.worker?.offscreenCanvas)}, WebGL2 context ${yes(p.worker?.webgl2)}, 2D context ${yes(p.worker?.context2d)}`}`] : p.error ? [`- The check of what the browser can do failed: ${p.error}`] : []),
-    ...result.checks.map(c => `- ${c.mode}: ${c.error ? 'FAILED: ' + c.error : `loaded, renderer ${c.renderer}, canvas ${c.canvas}`}`), '',
+        `- In a worker: ${p.worker?.error ? 'FAILED: ' + p.worker.error : `OffscreenCanvas ${yes(p.worker?.offscreenCanvas)}, WebGL2 context ${yes(p.worker?.webgl2)}, 2D context ${yes(p.worker?.context2d)}, requestAnimationFrame ${yes(p.worker?.requestAnimationFrame)}`}`,
+        `- Frames in one second: ${p.page.frames ?? 'unknown'} on the page, ${p.worker?.frames ?? 'unknown'} in a worker`] : p.error ? [`- The check of what the browser can do failed: ${p.error}`] : []),
+    ...result.checks.map(c => `- ${c.mode}: ${c.error ? 'FAILED: ' + c.error + ' — the map says ' + JSON.stringify(c.state) : `loaded, renderer ${c.renderer}, canvas ${c.canvas}`}`), '',
     ...(rows.length ? [`| ${rows[0].join(' | ')} |`, `|${rows[0].map(() => '---').join('|')}|`, ...rows.slice(1).map(r => `| ${r.join(' | ')} |`)] : ['(no benchmark results)']),
     ...(result.errors.length ? ['', 'Errors: ' + result.errors.join(' | ')] : []), ''].join('\n');
 writeFileSync(path.join(out, `${name}.md`), md);

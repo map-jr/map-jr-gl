@@ -70,7 +70,8 @@ async function run(s) {
         // means that the processor is the limit; a small value with few frames means that the GPU is.
         map.on('stats', e => { engine.push(e.frameMs); engineFps.push(e.fps); });
     }
-    await new Promise(r => map.once('idle', r));
+    // (A map that never settles must not stop the scenarios after it: it fails after a minute.)
+    if (!await Promise.race([new Promise(r => map.once('idle', () => r(true))), sleep(60000).then(() => false)])) { map.remove(); throw new Error('the map was not idle after 60 seconds'); }
     const load = performance.now() - t0;
     let add = null;
     if (s.markers) {
