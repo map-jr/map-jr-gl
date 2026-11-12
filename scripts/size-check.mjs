@@ -15,14 +15,16 @@ const gz = files => [...files].reduce((sum, f) => sum + gzipSync(readFileSync('d
 const page = withStaticImports('map-jr-gl.js'), compat = withStaticImports('map-jr-gl-maplibre-compat.js'), engine = withStaticImports(readdirSync('dist').find(f => f.startsWith('map-jr-gl-engine-entry')));
 for (const f of compat) engine.delete(f); // the page has these already when it loads the engine
 
+// The budgets were raised on 2026-11-12, when the fixes of the review of that day had filled them: the page scripts by
+// 1 KB, the worker and the engine by 2 KB. The room is for the open P1 issues, not for new features.
 const sizes = [
     // What a page downloads before the map can start. The worker file is downloaded at the same time.
-    ['page script, up front (' + [...page].length + ' files)', gz(page), 28],
+    ['page script, up front (' + [...page].length + ' files)', gz(page), 29],
     // The same for the entry that is a replacement for MapLibre GL JS (`map-jr-gl/maplibre-compat`).
-    ['page script of maplibre-compat, up front (' + [...compat].length + ' files)', gz(compat), 30],
-    ['map-jr-gl-worker.js', gz(['map-jr-gl-worker.js']), 60],
+    ['page script of maplibre-compat, up front (' + [...compat].length + ' files)', gz(compat), 31],
+    ['map-jr-gl-worker.js', gz(['map-jr-gl-worker.js']), 62],
     // Only when the engine runs on the main thread (no worker is possible).
-    ['engine on the main thread, on demand', gz(engine), 57],
+    ['engine on the main thread, on demand', gz(engine), 59],
 ];
 let ok = true;
 for (const [name, kb, budget] of sizes) {
