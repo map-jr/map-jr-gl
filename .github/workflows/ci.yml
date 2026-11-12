@@ -25,13 +25,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       # Type check, build, and the type declarations that the package publishes.
       - run: pnpm build
-      - name: The package has the declarations that its exports name
-        run: |
-          node -e "
-          const {exports: e} = require('./package.json'), fs = require('fs'); let bad = 0;
-          for (const [k, v] of Object.entries(e)) for (const [cond, file] of Object.entries(typeof v === 'string' ? {default: v} : v))
-            if (typeof file === 'string' && !fs.existsSync(file)) { console.error('missing', k, cond, file); bad++; }
-          process.exit(bad ? 1 : 0)"
+      # The tarball that npm would publish: publint, the files that package.json names, and the source maps.
+      - run: pnpm test:package
       - run: pnpm test
       - uses: actions/upload-artifact@v4
         with:

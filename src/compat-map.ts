@@ -5,7 +5,26 @@
 import {Map as CoreMap, type MapOptions, type CameraInput, type PointLike, type RenderedFeature, type RenderedQueryOptions, type PaddingInput, type ImageOptions} from './map.ts';
 import type {QueriedFeature} from './query.ts';
 import type {LngLatLike} from './geo.ts';
+import type {AddLayerObject, GeoJSONFeature, MapGeoJSONFeature, MapEventType, MapLayerEventType, Source} from './compat-types.ts';
 
+/**
+ * The types of `on`, `once`, `off` and `getSource` as in MapLibre GL JS: the event of a listener follows from the name
+ * of the event, and a name that is not in the list gets an event of the type `any`. (Types only: the methods are those
+ * of the core map.)
+ */
+export interface Map {
+    on<T extends keyof MapLayerEventType>(type: T, layerId: string, listener: (e: MapLayerEventType[T]) => void): this;
+    on<T extends keyof MapEventType>(type: T, listener: (e: MapEventType[T]) => void): this;
+    on(type: string, listener: (e: any) => void): this;
+    on(type: string, layerId: string, listener: (e: any) => void): this;
+    once<T extends keyof MapEventType>(type: T, listener: (e: MapEventType[T]) => void): this;
+    once(type: string, listener: (e: any) => void): this;
+    off<T extends keyof MapLayerEventType>(type: T, layerId: string, listener: (e: MapLayerEventType[T]) => void): this;
+    off<T extends keyof MapEventType>(type: T, listener: (e: MapEventType[T]) => void): this;
+    off(type: string, listener: (e: any) => void): this;
+    off(type: string, layerId: string, listener: (e: any) => void): this;
+    getSource<T extends Source = Source>(id: string): T | undefined;
+}
 export class Map extends CoreMap {
     // ---- Accepted, with no effect ----
     // Frameworks for MapLibre GL JS call these methods when an application sets the option, often with the default
@@ -54,6 +73,9 @@ export class Map extends CoreMap {
         // (MapLibre GL JS has `antialias` in `canvasContextAttributes`.)
         super(context?.antialias === undefined ? options : {...options, antialias: context.antialias});
         this.strict = !!o.strict;
+        // The names that stylesheets and tests for MapLibre GL JS select by. (A canvas that replaces this one is a copy of it.)
+        this.getContainer().classList.add('maplibregl-map');
+        this.getCanvas().classList.add('maplibregl-canvas');
         if (o.maxBounds) this.setMaxBounds(o.maxBounds);
         this.unsupported('The option cooperativeGestures', !o.cooperativeGestures);
         this.unsupported('The option locale', !o.locale);
@@ -70,7 +92,7 @@ export class Map extends CoreMap {
         this.fire('error', {error});
         return this;
     }
-    addLayer(layer: {id: string; type?: string; source?: unknown}, beforeId?: string) {
+    addLayer(layer: AddLayerObject, beforeId?: string) {
         // (A custom layer has functions: it cannot go to the worker, and it is not kept in the style.)
         if (layer.type === 'custom') return this.unsupported('A layer of the type "custom"', false);
         if (this.rawStyle && this.getLayer(layer.id)) return this.refused(`addLayer: the style has a layer with the id "${layer.id}" already. Remove that layer first, or use another id.`);
@@ -112,6 +134,7 @@ export class Map extends CoreMap {
     isRotating() { return this.rotating; }
     isPitching() { return this.pitching; }
     getCanvasContainer() { return this.container; }
+    remove() { super.remove(); this.getContainer().classList.remove('maplibregl-map'); }
     redraw() { this.triggerRepaint(); return this; }
     // react-map-gl and other wrappers read these private members of the MapLibre map. They are here only so that
     // those wrappers work: `style._loaded` tells them that sources and layers can be added.
@@ -175,9 +198,9 @@ export class Map extends CoreMap {
      * that can also be awaited: at once it has the features of a GeoJSON source whose data the page has (clusters too);
      * awaited, it has the features of each kind of source.
      */
-    querySourceFeatures(sourceId: string, options: {sourceLayer?: string; filter?: unknown} = {}): RenderedFeature[] & PromiseLike<RenderedFeature[]> {
+    querySourceFeatures(sourceId: string, options: {sourceLayer?: string; filter?: unknown} = {}): GeoJSONFeature[] & PromiseLike<GeoJSONFeature[]> {
         const sets = [{layer: '', source: sourceId, sourceLayer: options.sourceLayer, filter: options.filter, radius: 0}], box: [number, number, number, number] = [0, 0, this.tr.width, this.tr.height];
-        const features = (found: QueriedFeature[]): RenderedFeature[] => found.map(f => ({type: 'Feature', id: f.id, geometry: f.geometry!, properties: f.properties, source: f.source, sourceLayer: f.sourceLayer || undefined,
+        const features = (found: QueriedFeature[]): Omit<RenderedFeature, 'layer'>[] => found.map(f => ({type: 'Feature', id: f.id, geometry: f.geometry!, properties: f.properties, source: f.source, sourceLayer: f.sourceLayer || undefined,
             state: f.id === undefined ? {} : this.getFeatureState({source: f.source, sourceLayer: f.sourceLayer || undefined, id: f.id})}));
         const spec = this.rawStyle?.sources[sourceId], data = spec?.type === 'geojson' && this.geoData(sourceId);
         let now: QueriedFeature[] = [];
@@ -187,8 +210,8 @@ export class Map extends CoreMap {
             if (!awaited && found.length !== had) this.incomplete('querySourceFeatures', had, found.length);
             return features(found);
         });
-        Object.defineProperty(result, 'then', {value: (done?: (v: RenderedFeature[]) => unknown, failed?: (e: unknown) => unknown) => { awaited = true; return all.then(done, failed); }});
-        return result as RenderedFeature[] & PromiseLike<RenderedFeature[]>;
+        Object.defineProperty(result, 'then', {value: (done?: (v: Omit<RenderedFeature, 'layer'>[]) => unknown, failed?: (e: unknown) => unknown) => { awaited = true; return all.then(done, failed); }});
+        return result as unknown[] as GeoJSONFeature[] & PromiseLike<GeoJSONFeature[]>;
     }
 
     protected override styleChanged() {
@@ -204,7 +227,7 @@ export class Map extends CoreMap {
      * features of the GeoJSON sources whose data is in the style (which the page can read itself), and not those of
      * tile sources. Plugins that draw and edit on the map query their own GeoJSON sources in this way.
      */
-    queryRenderedFeatures(geometry?: PointLike | [PointLike, PointLike] | RenderedQueryOptions, options?: RenderedQueryOptions): RenderedFeature[] & PromiseLike<RenderedFeature[]> {
+    queryRenderedFeatures(geometry?: PointLike | [PointLike, PointLike] | RenderedQueryOptions, options?: RenderedQueryOptions): MapGeoJSONFeature[] & PromiseLike<MapGeoJSONFeature[]> {
         const {box, sets, features} = this.rendered(geometry, options);
         // At once: the answer of the engine to the same question before, if there is one (see `answers`).
         const key = this.questionKey(box, sets), all = this.questionKey(box), kept = this.answers.get(key);
@@ -219,8 +242,8 @@ export class Map extends CoreMap {
         }
         const result = features([...now]), given = this.summary(now);
         // Later: all the sources, from the engine.
-        const later = sets.length ? this.ask<QueriedFeature[]>(id => ({type: 'queryRendered', id, box, sets, geometry: true})).then(found => {
-            this.keep(key, found);
+        const turn = this.turn, later = sets.length ? this.ask<QueriedFeature[]>(id => ({type: 'queryRendered', id, box, sets, geometry: true})).then(found => {
+            this.keep(key, found, turn);
             if (!awaited && this.summary(found) !== given) this.incomplete('queryRenderedFeatures', now.length, found.length);
             // The array that the caller got at once was not the complete result. Code that reads the array asks again
             // on `idle` (and the map is idle, or will be): tell it, and the same question then has the answer at once.
@@ -233,7 +256,7 @@ export class Map extends CoreMap {
         }) : Promise.resolve([]);
         let awaited = false;
         Object.defineProperty(result, 'then', {value: (done?: (v: RenderedFeature[]) => unknown, failed?: (e: unknown) => unknown) => { awaited = true; return later.then(done, failed); }});
-        return result as RenderedFeature[] & PromiseLike<RenderedFeature[]>;
+        return result as unknown[] as MapGeoJSONFeature[] & PromiseLike<MapGeoJSONFeature[]>;
     }
     /**
      * The last answers of the engine to `queryRenderedFeatures`, by question (the view, the place on the screen, the
@@ -249,22 +272,33 @@ export class Map extends CoreMap {
         const t = this.tr;
         return JSON.stringify([t.lng, t.lat, t.zoom, t.bearing, t.pitch, t.width, t.height, box, sets ? sets.map(s => [s.layer, s.also]) : 0]);
     }
-    private keep(key: string, found: QueriedFeature[]) {
+    /** (`turn` counts the changes of data by the page. An answer to a question from before such a change is not kept.) */
+    private turn = 0;
+    private forget() { this.answers.clear(); this.turn++; }
+    override refreshTiles(sourceId: string) { this.forget(); return super.refreshTiles(sourceId); }
+    private keep(key: string, found: QueriedFeature[], turn: number) {
+        if (turn !== this.turn) return;
         this.answers.delete(key);
         this.answers.set(key, {found});
         if (this.answers.size > 64) this.answers.delete(this.answers.keys().next().value!);
     }
     private summary(found: QueriedFeature[]) { return JSON.stringify(found.map(f => [f.layer, f.id, f.properties])); }
-    /** (A click waits for the features at its place, so that a listener can read them at once.) */
-    override fire(type: string, data: Record<string, unknown> = {}) {
-        // (New data or a new style: an answer from before can be old. It is still given at once, and it is asked again:
-        // if the new answer is another, `idle` fires one more time for that question.)
+    /**
+     * (A click waits for the features at its place, so that a listener can read them at once. The result is then a
+     * promise for the moment when the listeners have run: the default action of a `dblclick` waits for it.)
+     */
+    override fire(type: string, data: Record<string, unknown> = {}): void | PromiseLike<unknown> {
+        // The page gave new data (`setData`, a change of the style): the answers from before are old. They are not given.
+        if (type === 'dataloading') this.forget();
+        // (New data in the engine: an answer that was kept while the data loaded can be old. It is still given at once, and
+        // it is asked again: if the new answer is another, `idle` fires one more time for that question.)
         if (type === 'sourcedata' || type === 'styledata') this.refired.clear();
         const point = data.point as {x: number; y: number} | undefined;
         if (!point || !/^(click|dblclick|contextmenu)$/.test(type) || data.asked || !this.rawStyle) return super.fire(type, data);
         const {box, sets} = this.rendered([point.x, point.y]), key = this.questionKey(box);
         const send = () => super.fire(type, {...data, asked: true});
         if (!sets.length) return send();
-        this.ask<QueriedFeature[]>(id => ({type: 'queryRendered', id, box, sets, geometry: true})).then(found => this.keep(key, found), () => {}).then(send);
+        const turn = this.turn;
+        return this.ask<QueriedFeature[]>(id => ({type: 'queryRendered', id, box, sets, geometry: true})).then(found => this.keep(key, found, turn), () => {}).then(send);
     }
 }

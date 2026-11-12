@@ -91,7 +91,12 @@ export interface RenderedQueryOptions { layers?: string[]; filter?: unknown; val
 /** A feature from `queryRenderedFeatures` or `querySourceFeatures`: GeoJSON, with its source, its style layer and its state. */
 export interface RenderedFeature {
     type: 'Feature'; id?: number | string; geometry: {type: string; coordinates: unknown}; properties: Record<string, unknown>;
-    source: string; sourceLayer?: string; layer?: unknown; state: Record<string, unknown>;
+    source: string; sourceLayer?: string; /** The style layer that draws the feature. */ layer: StyleLayer; state: Record<string, unknown>;
+}
+/** A layer of the style, as the style has it (the MapLibre style specification). */
+export interface StyleLayer {
+    id: string; type: string; source?: string; 'source-layer'?: string; minzoom?: number; maxzoom?: number; filter?: unknown;
+    layout?: Record<string, unknown>; paint?: Record<string, unknown>; metadata?: unknown;
 }
 
 export interface MapEvent { type: string; target: Map; point?: {x: number; y: number}; lngLat?: {lng: number; lat: number}; [key: string]: unknown }
@@ -220,10 +225,13 @@ export class Map {
     constructor(private options: MapOptions) {
         const c = typeof options.container === 'string' ? document.getElementById(options.container) : options.container;
         if (!c) throw new Error('Map container not found');
+        // Two maps in one element leave two canvases. Hot module replacement and an effect without a clean-up do this.
+        if (c.querySelector(':scope > .map-jr-canvas')) console.warn('[map-jr-gl] The container already has a map. Remove that map first: remove(), or destroy() in the main API.');
         this.container = c;
         if (getComputedStyle(c).position === 'static') c.style.position = 'relative';
         if (getComputedStyle(c).overflow === 'visible') c.style.overflow = 'hidden'; // a frame from before a shrink must not spill out
         this.canvas = document.createElement('canvas');
+        this.canvas.className = 'map-jr-canvas';
         // `object-fit: none` shows the canvas's current frame unscaled and centred, whatever size that frame is. With
         // worker rendering a new frame arrives a moment after the container resizes; until it does, the old frame simply
         // stays centred instead of being stretched to the new shape. The box is sized in device pixels and scaled back
@@ -301,17 +309,21 @@ export class Map {
         do {
             turn = this.styleTurn;
             try { raw = await this.loadStyle(o.style); } catch (error) { if (turn === this.styleTurn) { this.starting = false; giveBack(); throw error; } }
-        } while (turn !== this.styleTurn);
+        } while (turn !== this.styleTurn && !this.removed);
         this.starting = false;
+        // (The map can be removed during each `await` of this method. What this start acquired is then given back.)
+        if (this.removed) { giveBack(); return; }
         this.rawStyle = this.firstChange?.(undefined, raw) ?? raw;
         this.firstChange = undefined; // (a restart of the engine starts from the style as it is then)
         for (const fn of this.beforeStyle.splice(0)) fn();
-        this.styleBase = typeof o.style === 'string' ? new URL(o.style, location.href).href : location.href;
+        // (A restart gives the style as an object. Its relative URLs still belong to the place that the style came from.)
+        if (!this.restarting) this.styleBase = typeof o.style === 'string' ? new URL(o.style, location.href).href : location.href;
         // As in MapLibre, a style may carry its own starting camera. It is used only when the options give no part of
         // the camera: with a zoom in the options and no centre, the centre is [0, 0], not that of the style.
         const sc = this.rawStyle;
         if (o.center === undefined && o.zoom === undefined && o.bearing === undefined && o.pitch === undefined && !o.bounds) this.tr.set(sc.center, sc.zoom, sc.bearing, sc.pitch);
-        const restyled = this.restyled, first = await resolveStyle(this.rawStyle, fetch, this.styleBase, undefined, this.sourceFailed);
+        const restyled = this.restyled, first = await resolveStyle(this.rawStyle, this.fetchAs('Source'), this.styleBase, undefined, this.sourceFailed);
+        if (this.removed) { giveBack(); return; }
         if (!(o.glyphs ?? !o.fonts)) first.glyphs = undefined;
         // (A change of the style during that step has its own result, which is newer. The engine gets it after its start.)
         if (restyled === this.restyled) this.resolved = first;
@@ -323,9 +335,10 @@ export class Map {
             minZoom: tr.minZoom, maxZoom: tr.maxZoom, maxPitch: tr.maxPitch, antialias: o.antialias,
         };
 
-        this.tilePool = await pool || undefined;
+        const tiles = await pool;
         let engineWorker = await engine;
         if (this.removed) { giveBack(); return; }
+        this.tilePool = tiles || undefined;
         const ports = this.tilePool?.connect() ?? [];
         // (An engine in a worker needs the tile workers: without them the engine runs on this thread.)
         if (!ports.length) { engineWorker?.terminate(); engineWorker = null; }
@@ -345,6 +358,7 @@ export class Map {
                 this.ready = false;
                 w.terminate();
                 this.startMainEngine(fresh, {...engineOptions, style: this.resolved, center: [this.tr.lng, this.tr.lat], zoom: this.tr.zoom, bearing: this.tr.bearing}, []).then(() => {
+                    if (this.removed) return;
                     this.ready = true;
                     for (const [c, t] of this.queue.splice(0)) this.send(c, t);
                     this.resend();
@@ -361,6 +375,7 @@ export class Map {
             this.renderer = 'worker';
         } else {
             await this.startMainEngine(this.canvas, engineOptions, ports);
+            if (this.removed) return; // (`remove` gave the tile workers back, and no engine was made)
         }
         this.ready = true;
         for (const [c, t] of this.queue) this.send(c, t);
@@ -391,14 +406,18 @@ export class Map {
             this.observer?.disconnect();
             for (const w of this.workers.splice(0)) w.terminate();
             this.tilePool?.release();
+            this.tilePool = undefined; // (a `remove` during the start below must not give the same workers back again)
             this.ready = false; this.queue = []; this.tilesLoaded = false; this.seq = 0;
+            this.loadedSources.clear(); // (the new engine has no tiles)
             const fresh = this.canvas.cloneNode() as HTMLCanvasElement, tr = this.tr;
             this.canvas.replaceWith(fresh);
             this.canvas = fresh;
             this.options = {...this.options, style: this.rawStyle, center: [tr.lng, tr.lat], zoom: tr.zoom, bearing: tr.bearing, pitch: tr.pitch};
             await this.start();
             this.resend();
-            if (Object.keys(this.globalState).length) this.restyle(false);
+            // The engine got the style without what `restyle` adds: the number of each source (without it the page does not
+            // accept the report that a source is loaded), the layers that the page has hidden, and the global state.
+            this.restyle(true);
             for (const [name, [source, options]] of this.imageInputs) await this.addImage(name, source, options);
             this.variantIds.clear();
             for (const layer of this.markerLayers.values()) this._syncMarkers(layer);
@@ -417,6 +436,7 @@ export class Map {
     /** Runs the engine on this thread. Its code is a separate chunk, fetched only when this path is taken. */
     private async startMainEngine(canvas: HTMLCanvasElement, options: import('./engine.ts').EngineOptions, ports: MessagePort[]) {
         const {Engine, LocalBackend, PortBackend} = await import('./engine-entry.ts');
+        if (this.removed) return;
         const backends: TileBackend[] = ports.length ? ports.map(p => new PortBackend(p)) : [new LocalBackend()];
         const engine = new Engine(canvas, options, backends, e => this.onEngineEvent(e));
         this.send = c => engine.command(c);
@@ -573,8 +593,11 @@ export class Map {
     }
     /** The cursor shown over the map, e.g. 'pointer' while hovering something clickable; '' restores the default. */
     setCursor(cursor: string) { this.canvas.style.cursor = cursor; return this; }
-    /** Dispatches an event to listeners. Public so controls and plugins can raise their own. */
-    fire(type: string, data: Record<string, unknown> = {}) {
+    /**
+     * Dispatches an event to listeners. Public so controls and plugins can raise their own.
+     * (A subclass that sends an event later returns a promise for that moment: the default action of the map waits for it.)
+     */
+    fire(type: string, data: Record<string, unknown> = {}): void | PromiseLike<unknown> {
         const list = this.listeners[type];
         if (type === 'error' && !list?.length) console.error('[map-jr-gl]', data.error);
         if (list) for (const fn of [...list]) fn({type, target: this, ...data});
@@ -650,6 +673,8 @@ export class Map {
     setMaxBounds(bounds?: LngLatBoundsInput | null) {
         const flat = bounds && LngLatBounds.convert(bounds).toArray().flat();
         this.tr.maxBounds = flat ? [flat[0], flat[1], flat[2], flat[3]] : null;
+        // The engine clamps its own camera when it gets the limits. This clamps the copy here, so that `getCenter()` is right at once.
+        this.tr.constrain();
         return this.limits();
     }
     getMaxBounds() { const b = this.tr.maxBounds; return b && {getWest: () => b[0], getSouth: () => b[1], getEast: () => b[2], getNorth: () => b[3], toArray: () => [[b[0], b[1]], [b[2], b[3]]]}; }
@@ -1149,7 +1174,7 @@ export class Map {
                     shown = new Set();
                     const grid = new CollisionGrid();
                     for (let i = 0; i < layer.data.length; i++) {
-                        const [x, y] = this.tr.project(...layer.data[i].lngLat), x0 = x + ox, y0 = y + oy, x1 = x0 + o.width, y1 = y0 + o.height;
+                        const [x, y] = this.tr.project(...layer.data[i].lngLat as [number, number]), x0 = x + ox, y0 = y + oy, x1 = x0 + o.width, y1 = y0 + o.height;
                         if (x0 > this.tr.width || y0 > this.tr.height || x1 < 0 || y1 < 0 || grid.hits(x0, y0, x1, y1)) continue;
                         grid.insert(x0, y0, x1, y1);
                         shown.add(i);
@@ -1160,7 +1185,7 @@ export class Map {
             for (let i = layer.data.length - 1; i >= 0; i--) {
                 const ll = layer.data[i].lngLat;
                 if (near && (ll[0] < w || ll[0] > e || ll[1] < s || ll[1] > n)) continue;
-                const [x, y] = this.tr.project(...ll);
+                const [x, y] = this.tr.project(...ll as [number, number]);
                 if (point.x >= x + ox && point.x <= x + ox + o.width && point.y >= y + oy && point.y <= y + oy + o.height && visible(i)) return {layer, index: i, marker: layer.data[i]};
             }
         }
@@ -1177,11 +1202,16 @@ export class Map {
             this.inputCleanup.push(() => el.removeEventListener(type, fn, opts));
         };
         const pos = (e: MouseEvent) => { const r = this.container.getBoundingClientRect(); return {x: e.clientX - r.left - this.container.clientLeft, y: e.clientY - r.top - this.container.clientTop}; };
-        /** Fires a map event for a DOM event. Returns true if a listener called preventDefault(): the map then does not act on it. */
-        const mouseEvent = (type: string, e: MouseEvent, extra = {}) => {
+        /**
+         * Fires a map event for a DOM event. Returns true if a listener called preventDefault(): the map then does not act on it.
+         * `act` is what the map does when no listener prevents it. It waits when `fire` sends the event later (see `fire`).
+         */
+        const mouseEvent = (type: string, e: MouseEvent, extra = {}, act?: () => void) => {
             const point = pos(e);
             let prevented = false;
-            this.fire(type, {point, lngLat: this.unproject(point), originalEvent: e, preventDefault() { prevented = true; }, get defaultPrevented() { return prevented; }, ...extra});
+            const sent = this.fire(type, {point, lngLat: this.unproject(point), originalEvent: e, preventDefault() { prevented = true; }, get defaultPrevented() { return prevented; }, ...extra});
+            if (sent) sent.then(() => { if (!prevented && !this.removed) act?.(); });
+            else if (!prevented) act?.();
             return prevented;
         };
         /** The same for a pointer: touches fire touchstart, touchmove, touchend; a mouse fires mousedown, mousemove, mouseup. */
@@ -1374,7 +1404,7 @@ export class Map {
             if (e.shiftKey) value /= 4;
             if (wheelKind && value) send(value);
         }, {passive: false});
-        listen('dblclick', e => { if (lastPointerType === 'touch') return; /* touch double-taps are handled above, uniformly across browsers */ if (mouseEvent('dblclick', e) || !this.doubleClickZoom.isEnabled()) return; const p = pos(e); this.easeTo({zoom: this.tr.zoom + (e.shiftKey ? -1 : 1), around: [p.x, p.y], duration: 300}); });
+        listen('dblclick', e => { if (lastPointerType === 'touch') return; /* touch double-taps are handled above, uniformly across browsers */ const p = pos(e); mouseEvent('dblclick', e, {}, () => { if (this.doubleClickZoom.isEnabled()) this.easeTo({zoom: this.tr.zoom + (e.shiftKey ? -1 : 1), around: [p.x, p.y], duration: 300}); }); });
         listen('contextmenu', e => { e.preventDefault(); mouseEvent('contextmenu', e); });
         listen('pointerenter', e => { if (e.pointerType === 'mouse') mouseEvent('mouseover', e); });
         listen('pointerleave', e => { if (e.pointerType === 'mouse') mouseEvent('mouseout', e); });

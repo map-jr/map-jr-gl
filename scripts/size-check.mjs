@@ -12,7 +12,7 @@ function withStaticImports(file, seen = new Set()) {
     return seen;
 }
 const gz = files => [...files].reduce((sum, f) => sum + gzipSync(readFileSync('dist/' + f)).length, 0) / 1024;
-const page = withStaticImports('map-jr-gl.js'), compat = withStaticImports('map-jr-gl-maplibre-compat.js'), engine = withStaticImports(readdirSync('dist').find(f => f.startsWith('map-jr-gl-engine-entry')));
+const page = withStaticImports('map-jr-gl.js'), compat = withStaticImports('map-jr-gl-maplibre-compat.js'), engine = withStaticImports(readdirSync('dist').find(f => f.startsWith('map-jr-gl-engine-entry') && f.endsWith('.js')));
 for (const f of compat) engine.delete(f); // the page has these already when it loads the engine
 
 // The budgets were raised on 2026-11-12, when the fixes of the review of that day had filled them: the page scripts by
@@ -21,7 +21,9 @@ const sizes = [
     // What a page downloads before the map can start. The worker file is downloaded at the same time.
     ['page script, up front (' + [...page].length + ' files)', gz(page), 29],
     // The same for the entry that is a replacement for MapLibre GL JS (`map-jr-gl/maplibre-compat`).
-    ['page script of maplibre-compat, up front (' + [...compat].length + ' files)', gz(compat), 31],
+    // (31.5 KB since 2026-11-12, by the owner: the script was 19 bytes over 31 KB after the licence banner, the
+    // `maplibregl-*` class names and the clamp of `maxBounds`, and the open fixes #7 and #23 are in the same script.)
+    ['page script of maplibre-compat, up front (' + [...compat].length + ' files)', gz(compat), 31.5],
     ['map-jr-gl-worker.js', gz(['map-jr-gl-worker.js']), 62],
     // Only when the engine runs on the main thread (no worker is possible).
     ['engine on the main thread, on demand', gz(engine), 59],

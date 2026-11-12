@@ -408,6 +408,32 @@ for (const mode of ['main', 'worker']) {
         && ['mousedown', 'mouseup', 'mousemove', 'dblclick', 'contextmenu', 'wheel', 'mouseout'].every(t => ev.types.includes(t)) && ev.renders > 5 && ev.sourcedata > 0 && ev.lngLat && ev.bounds && ev.handler && zBox > zBox0 + 1,
         JSON.stringify({c0, cBlocked, cOff, cMoved, zBlocked, zMoved, zBox0, zBox, ...ev}));
 
+    // #7: `dblclick` reaches the listener after a query of the engine. preventDefault() there still stops the zoom, and
+    // without it the map zooms. The array of queryRenderedFeatures is not an answer from before setData.
+    const dbl = async prevent => {
+        await page.evaluate(() => window.map.jumpTo({center: [-74.0065, 40.7085], zoom: 14})); await settle(page);
+        await page.evaluate(prevent => { window.dbl = 0; window.map.once('dblclick', e => { window.dbl++; if (prevent) e.preventDefault(); }); }, prevent);
+        await page.mouse.dblclick(500, 350); await page.waitForFunction(() => window.dbl > 0, null, {timeout: 5000}).catch(() => {}); await page.waitForTimeout(700); await settle(page);
+        return (await centre())[2];
+    };
+    const zPrevented = await dbl(true), zDouble = await dbl(false);
+    check(`[${mode}] dblclick: preventDefault() in a listener stops the zoom, and without it the map zooms in`, zPrevented === 14 && Math.abs(zDouble - 15) < 0.01, JSON.stringify({zPrevented, zDouble}));
+    const stale = await page.evaluate(async () => {
+        const m = window.map, idle = () => new Promise(r => m.once('idle', r)), at = [-74.0065, 40.7085];
+        m.jumpTo({center: at, zoom: 14});
+        m.addSource('stale', {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: at}}});
+        m.addLayer({id: 'stale-dot', type: 'circle', source: 'stale', paint: {'circle-radius': 8}});
+        await idle();
+        const p = m.project(at), ask = () => m.queryRenderedFeatures(p, {layers: ['stale-dot']});
+        const first = (await ask()).length, kept = ask().length;
+        let wait = idle(); m.getSource('stale').setData({type: 'FeatureCollection', features: []}); await wait;
+        const array = ask().length, awaited = (await ask()).length;
+        m.removeLayer('stale-dot'); m.removeSource('stale');
+        return {first, kept, array, awaited};
+    });
+    check(`[${mode}] queryRenderedFeatures: the array is not the answer from before setData`, stale.first === 1 && stale.kept === 1 && stale.array === 0 && stale.awaited === 0, JSON.stringify(stale));
+    await settle(page);
+
     // transformRequest and addProtocol: the functions are on the page, and the requests are made in workers.
     const requests = await page.evaluate(async () => {
         const m = window.map, mod = await import('/dist/map-jr-gl-maplibre-compat.js'), c = m.getCenter(), kinds = new Set();
@@ -611,6 +637,34 @@ for (const mode of ['main', 'worker']) {
         });
         check('[main] idle comes after changed data is drawn (setData, setFeatureState, setFilter, refreshTiles), and the source is not loaded before that',
             late.setData === '255,255,255' && late.back === '255,0,0' && late.featureState === '0,0,255' && late.setFilter === '255,255,255' && late.refreshTiles === '0,0,255' && !late.loadedAfterSetData && !late.loadedAfterRefresh, JSON.stringify(late));
+
+        // refreshTiles with four tile workers: queries after it see the new tile, and each query goes to the worker
+        // that loaded the tile, so the tile is requested one time before the refresh and one time after it.
+        const fresh = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            // A vector tile with one layer "a" that has `n` points in the middle of the tile.
+            const point = [0x18, 1, 0x22, 5, 9, 0x80, 0x20, 0x80, 0x20];
+            const tile = n => { const layer = [0x78, 2, 0x0a, 1, 0x61, ...Array.from({length: n}, () => [0x12, point.length, ...point]).flat(), 0x28, 0x80, 0x20]; return new Uint8Array([0x1a, layer.length, ...layer]).buffer; };
+            let points = 5, requests = 0;
+            mod.addProtocol('fresh', async () => { requests++; return {data: tile(points)}; });
+            // (A worker URL of its own gives this map its own tile workers: the other maps of the page keep theirs.)
+            const m = new mod.Map({container: el, renderer: 'main', tileWorkers: 4, workerUrl: '/dist/map-jr-gl-worker.js?fresh', center: [0, 0], zoom: 1, attributionControl: false,
+                style: {version: 8, sources: {v: {type: 'vector', tiles: ['fresh://{z}/{x}/{y}'], minzoom: 0, maxzoom: 0}}, layers: [{id: 'a', type: 'circle', source: 'v', 'source-layer': 'a'}]}});
+            await new Promise(r => m.once('idle', r));
+            const counts = async () => { const out = []; for (let i = 0; i < 8; i++) out.push((await m.queryFeatures([0, 0], {sources: ['v'], radius: 5})).length, (await m.queryRenderedFeatures({layers: ['a']})).length); return out; };
+            const before = await counts(), requestsBefore = requests;
+            points = 1;
+            m.refreshTiles('v');
+            // Asked at once, while the new tile loads, and again when it is on the map.
+            const during = await counts();
+            if (!m.areTilesLoaded()) await new Promise(r => m.once('idle', r));
+            const requestsLoaded = requests, after = await counts();
+            m.remove(); el.remove(); mod.removeProtocol('fresh');
+            return {before, during, after, requestsBefore, requestsForQueries: requests - requestsLoaded};
+        });
+        check('[main] with four tile workers, queries after refreshTiles see the new tile, and a tile on the map is not requested again for a query',
+            fresh.before.every(n => n === 5) && fresh.during.every(n => n === 1) && fresh.after.every(n => n === 1) && fresh.requestsBefore === 1 && fresh.requestsForQueries === 0, JSON.stringify(fresh));
     }
     // Two styles that are asked for one after the other: the last one wins, also when the first answers later, and
     // also when the first is the style of the constructor. The style, the layers and the pixels agree.
@@ -811,6 +865,29 @@ for (const mode of ['main', 'worker']) {
         check(`[${mode}] setData with the same URL: the new data stays after a change of the style and a zoom`, after.first > 0 && after.fresh === 0 && after.later === 0, JSON.stringify(after));
         check(`[${mode}] two maps that are given one source object both load it`, kept.idles.every(Boolean) && kept.drawn.every(n => n > 0), JSON.stringify(kept));
     }
+    // The sources of the first style go through transformRequest and addProtocol, as those of a later addSource do.
+    {
+        await page.route('**/test-first-tiles.json*', route => route.fulfill({contentType: 'application/json', body: JSON.stringify({tilejson: '2.2.0', tiles: [new URL('/test-first/{z}/{x}/{y}.pbf', page.url()).href], minzoom: 0, maxzoom: 14})}));
+        const first = await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), asked = [], errors = [];
+            mod.addProtocol('first', async request => ({data: {type: 'Feature', properties: {from: request.url}, geometry: {type: 'Point', coordinates: [0, 0]}}}));
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const m = new mod.Map({container: el, renderer: mode, attributionControl: false, center: [0, 0], zoom: 1,
+                transformRequest: (url, kind) => { asked.push([kind, url.replace(location.origin, '')]); return {url: url + (url.includes('?') ? '&' : '?') + 'seen=1'}; },
+                style: {version: 8, sources: {t: {type: 'vector', url: '/test-first-tiles.json'}, g: {type: 'geojson', data: 'first://point'}},
+                    layers: [{id: 'point', type: 'circle', source: 'g', paint: {'circle-radius': 6}}]}});
+            m.on('error', e => errors.push(String(e.error?.message ?? e.error)));
+            await new Promise(r => { m.once('idle', r); setTimeout(r, 8000); });
+            const found = await Promise.race([m.queryRenderedFeatures({layers: ['point']}), new Promise(r => setTimeout(() => r([]), 4000))]);
+            const tileJson = performance.getEntriesByType('resource').some(e => e.name.includes('/test-first-tiles.json?seen=1'));
+            m.remove(); el.remove(); mod.removeProtocol('first');
+            return {asked, errors, from: found[0]?.properties.from, tileJson};
+        }, mode);
+        await page.unroute('**/test-first-tiles.json*');
+        const kind = url => first.asked.find(a => a[1] === url)?.[0];
+        check(`[${mode}] the sources of the first style: transformRequest gets the TileJSON and the GeoJSON as Source, and addProtocol supplies the GeoJSON`,
+            kind('/test-first-tiles.json') === 'Source' && kind('first://point') === 'Source' && first.tileJson && first.from === 'first://point?seen=1' && !first.errors.length, JSON.stringify(first));
+    }
     // A worker that cannot make a WebGL2 context: the map goes to the main thread, `load` and `idle` fire, and what the
     // page sent before the fall back (the rules for requests, a change of the style) is not lost.
     if (mode === 'worker') {
@@ -843,7 +920,9 @@ for (const mode of ['main', 'worker']) {
             const warnings = [], warn = console.warn;
             console.warn = (...a) => warnings.push(a.join(' '));
             const make = options => { const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'})); return new mod.Map({container: el, renderer: 'main', attributionControl: false, style: {version: 8, sources: {g: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}}, layers: [{id: 'bg', type: 'background'}]}, ...options}); };
-            const m = make({cooperativeGestures: true, locale: {x: 'y'}, projection: {type: 'globe'}, renderWorldCopies: false, canvasContextAttributes: {antialias: true, preserveDrawingBuffer: true}, maxBounds: [[-10, -10], [10, 10]]});
+            const m = make({cooperativeGestures: true, locale: {x: 'y'}, projection: {type: 'globe'}, renderWorldCopies: false, canvasContextAttributes: {antialias: true, preserveDrawingBuffer: true}, center: [50, 50], zoom: 3, maxBounds: [[-10, -10], [10, 10]]});
+            // The centre is inside maxBounds directly after the constructor, before the engine reports the camera (as in MapLibre).
+            const clamped = m.getCenter().toArray();
             const options = warnings.splice(0), errors = [];
             m.on('error', e => errors.push(e.error.message));
             await new Promise(r => m.once('load', r));
@@ -855,7 +934,7 @@ for (const mode of ['main', 'worker']) {
             m.addLayer({id: 'uses-g', type: 'fill', source: 'g'});
             m.removeSource('g');
             await wait(300);
-            const out = {options, custom, errors, layers: m.getStyle().layers.map(l => l.id).join(), source: !!m.getSource('g'), bounds: m.getMaxBounds()?.toArray()};
+            const out = {options, custom, errors, layers: m.getStyle().layers.map(l => l.id).join(), source: !!m.getSource('g'), bounds: m.getMaxBounds()?.toArray(), clamped, later: m.getCenter().toArray()};
             // The defaults give no warning.
             const plain = make({projection: {type: 'mercator'}, renderWorldCopies: true, canvasContextAttributes: {antialias: false}});
             out.plain = warnings.splice(0);
@@ -870,11 +949,34 @@ for (const mode of ['main', 'worker']) {
             return {...out, thrown, thrownCall};
         });
         check('[main] maplibre-compat: each option with no effect gives one warning, the defaults give none, and maxBounds works',
-            quiet.options.length === 5 && ['cooperativeGestures', 'locale', 'projection', 'renderWorldCopies', 'canvasContextAttributes'].every(n => quiet.options.some(w => w.startsWith('[map-jr-gl] The option ' + n))) && quiet.plain.length === 0 && String(quiet.bounds) === '-10,-10,10,10' && quiet.custom.length === 1 && quiet.custom[0].includes('"custom"'), JSON.stringify({options: quiet.options, plain: quiet.plain, bounds: quiet.bounds, custom: quiet.custom}));
+            quiet.options.length === 5 && ['cooperativeGestures', 'locale', 'projection', 'renderWorldCopies', 'canvasContextAttributes'].every(n => quiet.options.some(w => w.startsWith('[map-jr-gl] The option ' + n))) && quiet.plain.length === 0 && String(quiet.bounds) === '-10,-10,10,10' && String(quiet.clamped) === '10,10' && String(quiet.later) === '10,10' && quiet.custom.length === 1 && quiet.custom[0].includes('"custom"'), JSON.stringify({options: quiet.options, plain: quiet.plain, bounds: quiet.bounds, clamped: quiet.clamped, later: quiet.later, custom: quiet.custom}));
         check('[main] maplibre-compat: a layer or source id that exists, a source that is not there, and a source in use fire error and change nothing',
             quiet.errors.length === 4 && /addLayer: the style has a layer with the id "bg"/.test(quiet.errors[0]) && /names the source "nowhere"/.test(quiet.errors[1]) && /addSource: the style has a source with the id "g"/.test(quiet.errors[2]) && /removeSource: the layer "uses-g" uses the source "g"/.test(quiet.errors[3]) && quiet.layers === 'bg,uses-g' && quiet.source, JSON.stringify({errors: quiet.errors, layers: quiet.layers, source: quiet.source}));
         check('[main] maplibre-compat: strict: true throws for an option with no effect and for a refused style call',
             quiet.thrown.startsWith('[map-jr-gl] The option cooperativeGestures has no effect') && /addLayer: the style has a layer with the id "bg"/.test(quiet.thrownCall), JSON.stringify({thrown: quiet.thrown, thrownCall: quiet.thrownCall}));
+    }
+    // Class names of MapLibre GL JS: stylesheets and end-to-end tests written for that library select by them.
+    if (mode === 'main') {
+        const names = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px;z-index:1000'}));
+            const m = new mod.Map({container: el, renderer: 'main', center: [0, 0], zoom: 2, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            for (const control of [new mod.NavigationControl(), new mod.FullscreenControl(), new mod.GeolocateControl(), new mod.TerrainControl({source: 'none'}), new mod.ScaleControl()]) m.addControl(control);
+            new mod.Marker().setLngLat([0, 0]).setPopup(new mod.Popup().setText('A popup')).addTo(m).togglePopup();
+            await new Promise(r => m.once('load', r));
+            const expected = ['div.maplibregl-map', 'canvas.maplibregl-canvas', '.maplibregl-ctrl-top-right', '.maplibregl-ctrl-bottom-right',
+                '.maplibregl-ctrl.maplibregl-ctrl-group', 'button.maplibregl-ctrl-zoom-in', 'button.maplibregl-ctrl-zoom-out', 'button.maplibregl-ctrl-compass', 'button.maplibregl-ctrl-fullscreen',
+                'button.maplibregl-ctrl-geolocate', 'button.maplibregl-ctrl-terrain', '.maplibregl-ctrl.maplibregl-ctrl-scale', '.maplibregl-ctrl.maplibregl-ctrl-attrib', '.maplibregl-ctrl-attrib-inner',
+                'button.maplibregl-ctrl-attrib-button', '.maplibregl-marker', '.maplibregl-popup', '.maplibregl-popup-content', '.maplibregl-popup-tip', 'button.maplibregl-popup-close-button'];
+            const missing = expected.filter(selector => !el.matches(selector) && !el.querySelector(selector));
+            const canvasInMap = m.getCanvas().matches('.maplibregl-map > .maplibregl-canvas');
+            m.remove();
+            const left = el.classList.contains('maplibregl-map');
+            el.remove();
+            return {missing, canvasInMap, left};
+        });
+        check('[main] maplibre-compat: the container, the canvas, the controls, their buttons, markers and popups have their maplibregl-* class names, and remove() takes the name from the container',
+            names.missing.length === 0 && names.canvasInMap && !names.left, JSON.stringify(names));
     }
     // Accessibility: the canvas says that it is a map and shows the keyboard focus, a marker with a popup works with the
     // keyboard, the fullscreen button says what it does, and a camera animation respects "reduce motion".
@@ -1042,6 +1144,44 @@ for (const mode of ['main', 'worker']) {
     // A browser that stops the run (a timeout, a feature that is not there) is reported as one failure.
     check(`[${mode}] the test run was completed`, false, String(err.message).split('\n')[0]);
   }
+}
+
+// A lost WebGL context when the style came from a URL in another folder. The relative URLs of the style still belong
+// to that folder after the restart, and a source that is loaded says so before the tiles of the other sources are there.
+{
+    const page = await browser.newPage({viewport: {width: 1000, height: 700}});
+    const style = (await (await fetch(origin + '/style.json')).text()).replaceAll(origin + '/tiles/', 'rel/');
+    const paths = [];
+    let wait = 0;
+    // (Patterns for the path only: the address of the page names the style as well.)
+    await page.route(u => u.pathname === '/elsewhere/style.json', r => r.fulfill({contentType: 'application/json', body: style}));
+    await page.route(u => /^\/(elsewhere\/)?rel\//.test(u.pathname), async r => {
+        const u = new URL(r.request().url());
+        paths.push(u.pathname);
+        if (!u.pathname.startsWith('/elsewhere/')) return r.fulfill({status: 404, body: ''});
+        const response = await r.fetch({url: origin + u.pathname.replace('/elsewhere/rel/', '/tiles/')});
+        await new Promise(res => setTimeout(res, wait)); // after the restart the tiles are slow, so that the map is not idle at once
+        return r.fulfill({response});
+    });
+    await page.goto(origin + '/?renderer=main&nomarkers&style=/elsewhere/style.json');
+    await page.waitForFunction(() => window.mapLoaded, null, {timeout: 30000});
+    const before = paths.length;
+    wait = 500;
+    const lost = await page.evaluate(async () => {
+        const m = window.map;
+        m.addSource('here', {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: m.getCenter().toArray()}}});
+        m.addLayer({id: 'here', type: 'circle', source: 'here'});
+        await new Promise(r => { m.once('idle', r); setTimeout(r, 15000); });
+        let restored = false, atRestored, early = false, idle = false;
+        m.on('webglcontextrestored', () => { restored = true; atRestored = m.isSourceLoaded('omt'); m.once('idle', () => idle = true); });
+        m.getCanvas().getContext('webgl2').getExtension('WEBGL_lose_context').loseContext();
+        for (let i = 0; i < 600 && !idle; i++) { await new Promise(r => setTimeout(r, 25)); early ||= restored && !m.areTilesLoaded() && !m.isSourceLoaded('omt') && m.isSourceLoaded('here'); }
+        return {restored, idle, atRestored, early, loaded: m.isSourceLoaded('omt')};
+    });
+    const after = paths.slice(before), wrong = after.filter(p => !p.startsWith('/elsewhere/'));
+    check('[main] a lost WebGL context: the tiles of a style from another folder are still requested from that folder', lost.restored && lost.idle && after.length > 0 && !wrong.length, `${after.length} requests, wrong: ${wrong.slice(0, 2).join(' ') || 'none'}`);
+    check('[main] a lost WebGL context: no source is loaded at the restart, and a GeoJSON source is loaded before the tiles of the others', lost.atRestored === false && lost.early && lost.loaded, JSON.stringify(lost));
+    await page.close();
 }
 
 // Hydration: server markup is visible before the client runs, then replaced once the canvas shows the same view.

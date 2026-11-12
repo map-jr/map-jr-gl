@@ -16,6 +16,8 @@
     "src/react.ts",
     "src/standalone.ts",
     "src/control-specs.ts",
-    "src/server.ts"
+    "src/server.ts",
+    "src/nuxt.ts",
+    "src/worker.ts"
   ]
 }

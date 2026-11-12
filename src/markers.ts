@@ -1,6 +1,6 @@
 /** Marker templates: plain SVG strings with `{{name}}` slots, shared by the canvas renderer and server output. */
 export type Anchor = 'center' | 'top' | 'bottom' | 'left' | 'right';
-export interface MarkerInput { lngLat: [number, number]; props?: Record<string, unknown> }
+export interface MarkerInput { /** The position: `[lng, lat]`. */ lngLat: readonly number[]; props?: Record<string, unknown> }
 export interface MarkerLayerOptions {
     id: string;
     /** A complete `<svg>` document. `{{name}}` is replaced with the marker's (XML-escaped) property. */

@@ -4,6 +4,7 @@
 import {readFileSync, readdirSync} from 'node:fs';
 import path from 'node:path';
 import {createRequire} from 'node:module';
+import {spawnSync} from 'node:child_process';
 import {parse, compileScript, compileTemplate} from 'vue/compiler-sfc';
 
 const dir = path.resolve(import.meta.dirname, '../site/examples'), dist = path.resolve(import.meta.dirname, '../dist');
@@ -28,5 +29,17 @@ for (const file of readdirSync(dir).sort()) {
         else transformSync(code, {loader: 'js'});
     } catch (e) { problems.push(String(e.message).split('\n')[0]); }
     check(file, problems.length === 0, problems.join(' | '));
+}
+
+// TypeScript code must compile against the built types (dist/types): code that was written for MapLibre GL JS
+// against the compat entry (test/types/maplibre-code.ts), and code for the main API (test/types/main-code.ts).
+{
+    const tsc = path.resolve(import.meta.dirname, '../node_modules/.bin/tsc'), run = spawnSync(tsc, ['-p', path.resolve(import.meta.dirname, 'types')], {encoding: 'utf8', shell: process.platform === 'win32'});
+    const errors = `${run.stdout ?? ''}${run.stderr ?? ''}${run.error ?? ''}`.split('\n').filter(l => /error/i.test(l));
+    for (const [file, entry] of [['maplibre-code.ts', 'map-jr-gl/maplibre-compat'], ['main-code.ts', 'map-jr-gl']]) {
+        // (An error that names neither file, such as missing built types, fails both checks.)
+        const mine = errors.filter(l => l.includes(file) || !/(maplibre|main)-code\.ts/.test(l));
+        check(`types/${file} (${entry})`, run.status === 0 || mine.length === 0, mine.slice(0, 5).join(' | '));
+    }
 }
 process.exit(failed ? 1 : 0);

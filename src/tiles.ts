@@ -20,6 +20,8 @@ export class TileBuilder {
     private aborts = new Map<number, AbortController>();
     /** Recently fetched tiles, kept so feature queries on visible tiles need no second download. */
     private recent = new Map<string, Uint8Array>();
+    /** Counts the calls of `forget`: bytes that were asked for before a call are not kept after it. */
+    private forgotten = 0;
     private geojson = new Map<string, PreparedSource>();
 
     private contours = new Map<string, ContourConfig>();
@@ -105,9 +107,10 @@ export class TileBuilder {
         const ac = new AbortController();
         this.aborts.set(req.id, ac);
         try {
-            const bytes = req.again && this.recent.get(req.url) || await fetchTile(req.url, this.fetchFn, ac.signal);
+            const key = req.source + '|' + req.url, n = this.forgotten;
+            const bytes = req.again && this.recent.get(key) || await fetchTile(req.url, this.fetchFn, ac.signal);
             if (!bytes) return {layers: {}, labels: {}};
-            this.remember(req.url, bytes);
+            if (n === this.forgotten) this.remember(key, bytes);
             return bytes.length ? buildTile(bytes, req.z, this.bySource.get(req.source) ?? [], req.overscaled, this.states.f) : {layers: {}, labels: {}};
         } finally {
             this.aborts.delete(req.id);
@@ -116,9 +119,20 @@ export class TileBuilder {
 
     cancel(id: number) { this.aborts.get(id)?.abort(); }
 
-    private remember(url: string, bytes: Uint8Array) {
-        this.recent.delete(url);
-        this.recent.set(url, bytes);
+    /**
+     * Drops the kept tiles of one source, or of every source: the next load or query fetches them again.
+     * (The elevation tiles of contour sources are dropped with any source.)
+     */
+    forget(source?: string) {
+        this.forgotten++;
+        for (const key of this.recent.keys()) if (!source || key.startsWith(source + '|')) this.recent.delete(key);
+        this.dems.clear();
+    }
+
+    /** `key` is the name of the source, "|" and the URL of the tile. */
+    private remember(key: string, bytes: Uint8Array) {
+        this.recent.delete(key);
+        this.recent.set(key, bytes);
         if (this.recent.size > 64) this.recent.delete(this.recent.keys().next().value!);
     }
 
@@ -128,12 +142,13 @@ export class TileBuilder {
     async query(url: string, q: TileQuery): Promise<QueriedFeature[]> {
         if (url.startsWith(GEOJSON_PREFIX)) return this.find(this.slice(url), q);
         if (url.startsWith('contour://')) return this.find(await this.contour(url), q);
-        let bytes = this.recent.get(url);
+        const key = q.source + '|' + url, n = this.forgotten;
+        let bytes = this.recent.get(key);
         if (!bytes) {
             const fetched = await fetchTile(url, this.fetchFn);
             if (!fetched) return [];
             bytes = fetched;
-            this.remember(url, bytes);
+            if (n === this.forgotten) this.remember(key, bytes);
         }
         return bytes.length ? this.find(bytes, q) : [];
     }
@@ -154,6 +169,8 @@ export interface TileBackend {
     setHead(url: string, bytes: Uint8Array): void;
     load(req: TileRequest): Promise<TileGL>;
     cancel(id: number): void;
+    /** Drops the tile bytes that the builder keeps for one source, or for every source (see `refreshTiles`). */
+    forget(source?: string): void;
     query(url: string, q: TileQuery): Promise<QueriedFeature[]>;
 }
 
@@ -168,6 +185,7 @@ export class LocalBackend implements TileBackend {
     setHead(url: string, bytes: Uint8Array) { heads.set(url, bytes); }
     async load(req: TileRequest) { return toGL(await this.builder.loadIR(req)).tile; }
     cancel(id: number) { this.builder.cancel(id); }
+    forget(source?: string) { this.builder.forget(source); }
     query(url: string, q: TileQuery) { return this.builder.query(url, q); }
 }
 
@@ -211,6 +229,7 @@ export class PortBackend implements TileBackend {
         });
     }
     cancel(id: number) { this.port.postMessage({type: 'cancel', id}); }
+    forget(source?: string) { this.port.postMessage({type: 'forget', source}); }
     query(url: string, q: TileQuery) {
         return new Promise<QueriedFeature[]>((resolve, reject) => {
             const id = this.nextQuery--; // negative ids keep queries apart from tile requests
@@ -236,6 +255,7 @@ export function serveTiles(port: Port) {
         else if (m.type === 'contours') builder.setContours(m.sources);
         else if (m.type === 'head') heads.set(m.url, m.bytes);
         else if (m.type === 'cancel') builder.cancel(m.id);
+        else if (m.type === 'forget') builder.forget(m.source);
         else if (m.type === 'close') { port.onmessage = null; (port as any).close?.(); }
         else if (m.type === 'query') {
             builder.query(m.url, m.q).then(result => port.postMessage({id: m.id, result}), err => port.postMessage({id: m.id, error: String(err.message)}));
