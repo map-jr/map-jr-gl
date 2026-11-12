@@ -22,6 +22,7 @@ const texts: ((a: string, b: string) => string)[] = [
     /* 10 */ a => `queryFeatures(): "${a}" has an effect only in a query with "sources". This query ignores it.`,
     /* 11 */ a => `queryFeatures(): "${a}" has an effect only in a query with "sources" at a point or a position. This query ignores it.`,
     /* 12 */ () => 'queryFeatures(): "layers" has no effect in a query with "sources". Remove "layers", or remove "sources" to ask for what the style layers draw.',
+    /* 13 */ () => 'queryFeatures(): "radius" has an effect only in a query at a point or a position. This query ignores it.',
 ];
 
 /** The message with the number `code` for the names `a` and `b`. */
@@ -62,7 +63,8 @@ export function check(c: Checked, kind: number, a?: any, b?: any) {
         if (c.ready()) { known(3, o.layers); known(4, o.sources, true); }
         if (o.sources && o.layers) warn(12);
         if (!o.sources && o.sourceLayers) warn(10, 'sourceLayers');
-        if (!o.sources || !place) { if (o.radius !== undefined) warn(11, 'radius'); if (o.geometry === false) warn(11, 'geometry'); }
+        if (!place && o.radius !== undefined) warn(13);
+        if (!o.sources || !place) { if (o.geometry === false) warn(11, 'geometry'); if (o.zoom !== undefined) warn(11, 'zoom'); }
     } else if (b) {
         const extend = b as StyleExtension, sources = {...a.sources, ...extend.sources}, ids = new Set<string>(a.layers.map((l: {id: string}) => l.id));
         for (const {id, before, source} of extend.layers ?? []) {

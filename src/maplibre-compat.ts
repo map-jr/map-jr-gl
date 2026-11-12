@@ -1,5 +1,5 @@
 export {Map} from './compat-map.ts';
-export {MarkerLayer, InteractionHandler, type MapOptions, type MapEvent, type RenderedFeature, type PointLike} from './map.ts';
+export {MarkerLayer, InteractionHandler, type MapOptions, type MapEvent, type RenderedFeature, type PointLike, type FeatureOptions, type FeaturePlace} from './map.ts';
 export {addProtocol, removeProtocol, type ProtocolFunction} from './protocols.ts';
 export {LngLat, LngLatBounds, type LngLatInput, type LngLatBoundsInput} from './lnglat.ts';
 export type {MarkerLayerOptions, MarkerInput, Anchor} from './markers.ts';

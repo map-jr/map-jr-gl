@@ -101,14 +101,22 @@ for (const mode of ['main', 'worker']) {
     // Queries read tile data directly: no layer needs to draw the feature, and the place need not be on screen.
     await settle(page);
     const q = await page.evaluate(async () => {
-        const here = await window.map.queryFeatures([-74.0060, 40.7127], {sourceLayers: ['landcover', 'poi'], radius: 12});
-        const far = await window.map.queryFeatures([2.2945, 48.8584], {zoom: 14, sourceLayers: ['poi', 'building'], radius: 30, geometry: true});
-        const filtered = await window.map.queryFeatures([2.2945, 48.8584], {zoom: 14, radius: 30, filter: ['==', ['get', 'class'], 'no-such-class']});
+        const sources = Object.keys(window.map.getStyle().sources).filter(id => window.map.getStyle().sources[id].type === 'vector');
+        const here = await window.map.queryFeatures([-74.0060, 40.7127], {sources, sourceLayers: ['landcover', 'poi'], radius: 12});
+        const far = await window.map.queryFeatures([2.2945, 48.8584], {sources, zoom: 14, sourceLayers: ['poi', 'building'], radius: 30, geometry: true});
+        const filtered = await window.map.queryFeatures([2.2945, 48.8584], {sources, zoom: 14, radius: 30, filter: ['==', ['get', 'class'], 'no-such-class']});
+        // Without `sources`, the same method gives what the style layers draw (#12), as `queryRenderedFeatures` does.
+        const c = window.map.getCenter(), at = window.map.project(c), key = f => f.layer.id + ' ' + f.id;
+        const drawn = await window.map.queryFeatures(c), same = await window.map.queryRenderedFeatures([at.x, at.y]);
+        const wide = await window.map.queryFeatures({x: at.x, y: at.y}, {radius: 40}), box = await window.map.queryRenderedFeatures([[at.x - 40, at.y - 40], [at.x + 40, at.y + 40]]);
+        const one = {drawn: drawn.length, layer: typeof drawn[0]?.layer?.id, same: drawn.map(key).join() === same.map(key).join(), wide: wide.length, box: wide.map(key).join() === box.map(key).join(), all: (await window.map.queryFeatures()).length};
         const centre = window.map.getCenter();
         const summit = await window.map.queryElevation([7.6586, 45.9763]), sea = await window.map.queryElevation([-74.02, 40.69]);
-        return {here: here.map(f => f.sourceLayer), far: far.length, geom: far[0]?.geometry?.type, filtered: filtered.length, summit, sea, moved: centre.lng !== window.map.getCenter().lng};
+        return {one, here: here.map(f => f.sourceLayer), far: far.length, geom: far[0]?.geometry?.type, filtered: filtered.length, summit, sea, moved: centre.lng !== window.map.getCenter().lng};
     });
     check(`[${mode}] queryFeatures finds an undrawn-layer feature under a point`, q.here.includes('landcover') && q.here.includes('poi'), JSON.stringify(q.here));
+    check(`[${mode}] queryFeatures without sources gives what the style layers draw, and radius widens the place`,
+        q.one.drawn > 0 && q.one.layer === 'string' && q.one.same && q.one.wide > q.one.drawn && q.one.box && q.one.all > q.one.wide, JSON.stringify(q.one));
     check(`[${mode}] queryFeatures works off screen, with geometry and filters`, q.far > 0 && !!q.geom && q.filtered === 0 && !q.moved, `${q.far} features, first ${q.geom}`);
     check(`[${mode}] queryElevation reads the elevation source`, q.summit > 4300 && q.summit < 4500 && Math.abs(q.sea) < 15, `Matterhorn ${q.summit?.toFixed(0)} m, New York harbour ${q.sea?.toFixed(1)} m`);
     const attribution = await page.evaluate(() => document.querySelector('.maplibregl-ctrl-attrib')?.textContent);

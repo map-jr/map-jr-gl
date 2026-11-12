@@ -72,8 +72,11 @@ export const useMapHost = () => inject(HOST, shallowRef(null));
  * The features at a place of the map, kept up to date (see `watchFeatures` of the map). For a component inside
  * `<MapJr>`. The place and the options can be refs or getters.
  */
-export function useMapFeatures(at: MaybeRefOrGetter<FeaturePlace | undefined>, options: MaybeRefOrGetter<FeatureOptions> = {}): ShallowRef<(RenderedFeature | QueriedFeature)[]> {
-    const host = useMapHost(), found = shallowRef<(RenderedFeature | QueriedFeature)[]>([]);
+export function useMapFeatures(at: MaybeRefOrGetter<FeaturePlace | undefined>, options: MaybeRefOrGetter<FeatureOptions & {sources: string[]}>): ShallowRef<QueriedFeature[]>;
+export function useMapFeatures(at: MaybeRefOrGetter<FeaturePlace | undefined>, options?: MaybeRefOrGetter<FeatureOptions & {sources?: undefined}>): ShallowRef<RenderedFeature[]>;
+export function useMapFeatures(at: MaybeRefOrGetter<FeaturePlace | undefined>, options?: MaybeRefOrGetter<FeatureOptions>): ShallowRef<RenderedFeature[] | QueriedFeature[]>;
+export function useMapFeatures(at: MaybeRefOrGetter<FeaturePlace | undefined>, options: MaybeRefOrGetter<FeatureOptions> = {}): ShallowRef<RenderedFeature[] | QueriedFeature[]> {
+    const host = useMapHost(), found = shallowRef<RenderedFeature[] | QueriedFeature[]>([]);
     let stop: (() => void) | undefined;
     watch([host, () => toValue(at), () => toValue(options)], ([h, place, o]) => {
         stop?.();

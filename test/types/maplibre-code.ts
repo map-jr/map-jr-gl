@@ -40,6 +40,9 @@ const first: MapGeoJSONFeature | undefined = features[0];
 console.log(first?.layer.id, first?.properties.name.toUpperCase(), first?.layer.paint?.['circle-color']);
 map.queryRenderedFeatures().then(all => all.map(f => f.layer.type));
 console.log(map.querySourceFeatures('places', {sourceLayer: 'x'})[0]?.properties.name);
+// `queryFeatures` is an addition of this library. It has the meaning that it has in `map-jr-gl`.
+map.on('click', e => map.queryFeatures(e.lngLat, {sources: ['places'], radius: 8}).then(found => console.log(found[0]?.sourceLayer.length)));
+map.queryFeatures({x: 10, y: 10}, {radius: 8}).then(found => console.log(found[0]?.layer.id));
 
 // The types are not `any`: each of these lines must be an error.
 // @ts-expect-error a mouse event has no `sourceId`
