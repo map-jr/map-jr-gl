@@ -1,0 +1,99 @@
+# The checks that a change must pass before it is merged. Runs for each pull request and for each push to main.
+# (The workflow "Browsers" measures and tests in three browsers on three systems after a merge; it does not gate.)
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  # Types, build, unit tests, conformance floors, size budgets, examples, and the agreement of code and documents.
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Type check, build, and the type declarations that the package publishes.
+      - run: pnpm build
+      - name: The package has the declarations that its exports name
+        run: |
+          node -e "
+          const {exports: e} = require('./package.json'), fs = require('fs'); let bad = 0;
+          for (const [k, v] of Object.entries(e)) for (const [cond, file] of Object.entries(typeof v === 'string' ? {default: v} : v))
+            if (typeof file === 'string' && !fs.existsSync(file)) { console.error('missing', k, cond, file); bad++; }
+          process.exit(bad ? 1 : 0)"
+      - run: pnpm test
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: |
+            dist
+            site-dist
+          if-no-files-found: ignore
+          retention-days: 3
+
+  # The behaviour of the map in a browser (Chromium): both entries, the adapters, and the ways to load the library.
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # The browser driver is not a dependency of the package: the development machine has its own copy.
+      - run: pnpm add -D playwright@1.63.0
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: node build.mjs && node scripts/site.mjs
+      - name: Behaviour tests
+        run: |
+          PORT=8080 node demo/serve.mjs &
+          for i in $(seq 1 30); do curl -s -o /dev/null http://localhost:8080/ && break; sleep 1; done
+          # Each suite prints PASS and FAIL lines. A suite is run again one time when it fails: the tiles come from
+          # the live network, and one slow answer must not stop a merge. A test that fails two times is a failure.
+          status=0
+          for suite in "test/interact.mjs .cache/shots" test/host.mjs test/vue.mjs test/react.mjs test/loading.mjs; do
+            mkdir -p .cache/shots
+            if ! node $suite > out.txt 2>&1 || grep -q "^FAIL" out.txt; then
+              echo "::warning::$suite failed one time; running it again"; grep "^FAIL" out.txt || tail -5 out.txt
+              if ! node $suite > out.txt 2>&1 || grep -q "^FAIL" out.txt; then grep "^FAIL" out.txt || tail -20 out.txt; echo "::error::$suite failed"; status=1; fi
+            fi
+            echo "$suite: $(grep -c '^PASS' out.txt) passed, $(grep -c '^FAIL' out.txt) failed" | tee -a "$GITHUB_STEP_SUMMARY"
+          done
+          exit $status
+
+  # MapLibre's own render tests, against a floor (see "test:render" in package.json). A change that makes fewer
+  # tests match fails here.
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm add -D playwright@1.63.0
+      - run: pnpm exec playwright install --with-deps chromium
+      - uses: actions/cache@v4
+        with:
+          path: .cache/maplibre-gl-js
+          key: maplibre-tests-${{ hashFiles('test/conformance/render.mjs') }}
+      - run: node build.mjs
+      - run: pnpm test:render | tee render.txt
+      - run: head -2 render.txt >> "$GITHUB_STEP_SUMMARY"

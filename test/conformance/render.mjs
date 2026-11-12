@@ -8,7 +8,10 @@ import http from 'node:http';
 import path from 'node:path';
 
 const root = path.resolve(import.meta.dirname, '../..'), repo = path.join(root, '.cache/maplibre-gl-js');
-if (!existsSync(repo)) execSync(`git clone --depth 1 -q https://github.com/maplibre/maplibre-gl-js.git "${repo}"`, {stdio: 'inherit'});
+// The tests of one commit, so that the counts change only with this library. To take newer tests, change the commit
+// here, delete the folder in .cache, and set the floor (--min) in package.json again.
+const commit = 'a5b3ed02bf0a87fff45a82b665a9d8a6e502c164';
+if (!existsSync(repo)) execSync(`git init -q "${repo}" && git -C "${repo}" fetch -q --depth 1 https://github.com/maplibre/maplibre-gl-js.git ${commit} && git -C "${repo}" checkout -q FETCH_HEAD`, {stdio: 'inherit'});
 const arg = name => process.argv.find(a => a.startsWith(`--${name}=`))?.slice(name.length + 3);
 const filter = arg('filter') ? new RegExp(arg('filter')) : null, limit = +(arg('limit') ?? Infinity), saveDir = arg('save');
 const testsDir = path.join(repo, 'test/integration/render/tests'), assets = path.join(repo, 'test/integration/assets');
