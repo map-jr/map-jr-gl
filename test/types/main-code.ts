@@ -1,7 +1,7 @@
-// TypeScript code for the main API (`map-jr-gl`), as the documentation and the gallery write it.
+// TypeScript code for the main API (`@map-jr/map-jr-gl`), as the documentation and the gallery write it.
 // `node test/examples.mjs` checks that it compiles against the built types (dist/types). It is not run.
-import {createMap, type FeatureOptions, type MapEvents, type MapSpec, type Position, type RenderedFeature, type View} from 'map-jr-gl';
-import {navigation} from 'map-jr-gl/controls';
+import {createMap, type FeatureOptions, type MapEvents, type MapSpec, type Position, type RenderedFeature, type View} from '@map-jr/map-jr-gl';
+import {navigation} from '@map-jr/map-jr-gl/controls';
 
 // A position that is declared apart from the call has the type number[].
 const NYC = [-74.0065, 40.7085];

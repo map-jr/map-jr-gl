@@ -9,7 +9,7 @@
 ## Done when (tick what applies, delete what does not)
 
 - [ ] A test fails without this change and passes with it
-- [ ] Both entries considered (`map-jr-gl`, `map-jr-gl/maplibre-compat`)
+- [ ] Both entries considered (`@map-jr/map-jr-gl`, `@map-jr/map-jr-gl/maplibre-compat`)
 - [ ] Every adapter has it (Vue prop, React, Svelte) — `pnpm test:consistency` passes
 - [ ] Documentation updated (`docs/api.md`, adapter docs, `docs/maplibre-compatibility.md`, README)
 - [ ] Gallery examples and their comments are still true (four forms each)

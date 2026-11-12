@@ -8,6 +8,6 @@ const root = path.dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
     root,
     base: './', // works from any path, e.g. https://<user>.github.io/<repository>/
-    resolve: {alias: [{find: 'map-jr-gl/controls', replacement: path.join(root, '../dist/controls.js')}, {find: 'map-jr-gl/maplibre-compat', replacement: path.join(root, '../dist/map-jr-gl-maplibre-compat.js')}, {find: /^map-jr-gl$/, replacement: path.join(root, '../dist/map-jr-gl.js')}]},
+    resolve: {alias: [{find: '@map-jr/map-jr-gl/controls', replacement: path.join(root, '../dist/controls.js')}, {find: '@map-jr/map-jr-gl/maplibre-compat', replacement: path.join(root, '../dist/map-jr-gl-maplibre-compat.js')}, {find: /^@map-jr\/map-jr-gl$/, replacement: path.join(root, '../dist/map-jr-gl.js')}]},
     build: {outDir: path.join(root, '../site-dist'), emptyOutDir: true, target: 'es2022'},
 });

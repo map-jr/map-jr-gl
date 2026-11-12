@@ -1,6 +1,6 @@
 <script setup>
 import {shallowRef} from 'vue';
-import {MapJr, MapOverlay} from 'map-jr-gl/vue';
+import {MapJr, MapOverlay} from '@map-jr/map-jr-gl/vue';
 
 const style = 'https://tiles.openfreemap.org/styles/liberty';
 const NYC = [-74.0065, 40.7085];

@@ -14,8 +14,8 @@ const check = (name, ok, detail = '') => { console.log(`${ok ? 'PASS' : 'FAIL'} 
 
 // The names that each entry of the library has, from its built file.
 const exportsOf = file => { const code = readFileSync(path.join(dist, file), 'utf8'), last = [...code.matchAll(/export\s*\{([^}]*)\}/g)].flatMap(m => m[1].split(',').map(p => p.trim().split(/\s+as\s+/).pop())); return new Set(last.filter(Boolean)); };
-const entries = {'map-jr-gl': exportsOf('map-jr-gl.js'), 'map-jr-gl/vue': exportsOf('vue.js'), 'map-jr-gl/react': exportsOf('react.js'), 'map-jr-gl/controls': exportsOf('controls.js'), 'map-jr-gl/maplibre-compat': exportsOf('map-jr-gl-maplibre-compat.js')};
-const unknownImports = code => [...code.matchAll(/import\s*\{([^}]*)\}\s*from\s*'(map-jr-gl[^']*)'/g)].flatMap(m => m[1].split(',').map(n => n.trim().split(/\s+as\s+/)[0]).filter(n => n && !entries[m[2]]?.has(n)).map(n => `${n} from ${m[2]}`));
+const entries = {'@map-jr/map-jr-gl': exportsOf('map-jr-gl.js'), '@map-jr/map-jr-gl/vue': exportsOf('vue.js'), '@map-jr/map-jr-gl/react': exportsOf('react.js'), '@map-jr/map-jr-gl/controls': exportsOf('controls.js'), '@map-jr/map-jr-gl/maplibre-compat': exportsOf('map-jr-gl-maplibre-compat.js')};
+const unknownImports = code => [...code.matchAll(/import\s*\{([^}]*)\}\s*from\s*'(@map-jr\/map-jr-gl[^']*)'/g)].flatMap(m => m[1].split(',').map(n => n.trim().split(/\s+as\s+/)[0]).filter(n => n && !entries[m[2]]?.has(n)).map(n => `${n} from ${m[2]}`));
 
 for (const file of readdirSync(dir).sort()) {
     const code = readFileSync(path.join(dir, file), 'utf8'), problems = unknownImports(code);
@@ -36,7 +36,7 @@ for (const file of readdirSync(dir).sort()) {
 {
     const tsc = path.resolve(import.meta.dirname, '../node_modules/.bin/tsc'), run = spawnSync(tsc, ['-p', path.resolve(import.meta.dirname, 'types')], {encoding: 'utf8', shell: process.platform === 'win32'});
     const errors = `${run.stdout ?? ''}${run.stderr ?? ''}${run.error ?? ''}`.split('\n').filter(l => /error/i.test(l));
-    for (const [file, entry] of [['maplibre-code.ts', 'map-jr-gl/maplibre-compat'], ['main-code.ts', 'map-jr-gl']]) {
+    for (const [file, entry] of [['maplibre-code.ts', '@map-jr/map-jr-gl/maplibre-compat'], ['main-code.ts', '@map-jr/map-jr-gl']]) {
         // (An error that names neither file, such as missing built types, fails both checks.)
         const mine = errors.filter(l => l.includes(file) || !/(maplibre|main)-code\.ts/.test(l));
         check(`types/${file} (${entry})`, run.status === 0 || mine.length === 0, mine.slice(0, 5).join(' | '));

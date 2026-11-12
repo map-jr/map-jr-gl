@@ -9,9 +9,9 @@ One elevation source (`raster-dem`) gives you four features:
 
 The two entries of the library set these features up in different ways:
 
-- With `map-jr-gl` (and the adapters for Vue, React and Svelte), the elevation source, its layers and the terrain
+- With `@map-jr/map-jr-gl` (and the adapters for Vue, React and Svelte), the elevation source, its layers and the terrain
   are in the style or in the field `extend` of the description. See [With the main API](#with-the-main-api).
-- With `map-jr-gl/maplibre-compat`, they are in the style or are added with methods (`map.addSource`,
+- With `@map-jr/map-jr-gl/maplibre-compat`, they are in the style or are added with methods (`map.addSource`,
   `map.addLayer`, `map.setTerrain`). The examples in the other sections use this entry, where `map` is a `Map`
   whose style has loaded.
 
@@ -23,8 +23,8 @@ The options of the sources and layers, and the behaviour of terrain, are the sam
 layer with that id.
 
 ```js
-import {createMap} from 'map-jr-gl';
-import {navigation} from 'map-jr-gl/controls';
+import {createMap} from '@map-jr/map-jr-gl';
+import {navigation} from '@map-jr/map-jr-gl/controls';
 
 const elevation = on => ({
   sources: {
@@ -56,7 +56,7 @@ const metres = await map.queryElevation([7.6586, 45.9763]);
 ```
 
 - When your own style object has the elevation source, the layers and `"terrain"`, you do not need `extend`.
-- The control `terrain({source: 'dem', exaggeration: 1.5})` from `map-jr-gl/controls` is a button that turns 3D
+- The control `terrain({source: 'dem', exaggeration: 1.5})` from `@map-jr/map-jr-gl/controls` is a button that turns 3D
   terrain on and off. Put it in `controls`.
 - `map.queryElevation(where)` takes a position (`[lng, lat]`) or a point of the screen (`{x, y}`). The result is a
   promise, and it is `null` where there is no data.

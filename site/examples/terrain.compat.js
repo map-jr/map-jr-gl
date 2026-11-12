@@ -1,4 +1,4 @@
-import {Map} from 'map-jr-gl/maplibre-compat';
+import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
 const style = 'https://tiles.openfreemap.org/styles/liberty';
 const MATTERHORN = [7.6586, 45.9763];

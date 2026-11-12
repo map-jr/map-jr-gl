@@ -1,6 +1,6 @@
 # Vue and Nuxt
 
-The entry `map-jr-gl/vue` has a component and a composable for Vue 3.5 or later. They are a thin layer over
+The entry `@map-jr/map-jr-gl/vue` has a component and a composable for Vue 3.5 or later. They are a thin layer over
 [the main API](api.md): the component gives its props to the map as one description.
 
 ## The component
@@ -8,7 +8,7 @@ The entry `map-jr-gl/vue` has a component and a composable for Vue 3.5 or later.
 ```vue
 <script setup>
 import {ref, shallowRef} from 'vue';
-import {MapJr} from 'map-jr-gl/vue';
+import {MapJr} from '@map-jr/map-jr-gl/vue';
 
 const view = ref({center: [-74.0065, 40.7085], zoom: 13.6});
 const pins = shallowRef({
@@ -47,7 +47,7 @@ The component fills its parent element. Give the parent a height.
 | `markers` | A list of marker layers. See [Markers](markers.md). |
 | `data` | GeoJSON data for sources of the style, by the id of the source: `:data="{routes}"`. See "GeoJSON data that changes" in [the main API](api.md). Use a `shallowRef` for each value, and give a new object to change it. |
 | `interactive-layers` | The ids of style layers whose features are found under the pointer. |
-| `controls` | Controls from `map-jr-gl/controls`: `:controls="[navigation(), scale()]"`. See [the main API](api.md). |
+| `controls` | Controls from `@map-jr/map-jr-gl/controls`: `:controls="[navigation(), scale()]"`. See [the main API](api.md). |
 | `min-zoom`, `max-zoom`, `max-pitch`, `max-bounds`, `cursor` | As in [the main API](api.md). |
 | `renderer`, `fonts`, `font-family`, `glyphs`, `interactive`, `antialias`, `attribution`, `hash` | Read only when the map is made. |
 | `ssr` | Render the first view on the server. See below. |
@@ -82,7 +82,7 @@ A template ref on the component also has `host` and `state`.
 ```vue
 <script setup>
 import {ref} from 'vue';
-import {MapJr, MapOverlay} from 'map-jr-gl/vue';
+import {MapJr, MapOverlay} from '@map-jr/map-jr-gl/vue';
 
 const selected = ref(null);
 </script>
@@ -141,7 +141,7 @@ map with `moveTo` for this:
 ```vue
 <script setup>
 import {ref, useTemplateRef} from 'vue';
-import {MapJr} from 'map-jr-gl/vue';
+import {MapJr} from '@map-jr/map-jr-gl/vue';
 
 const view = ref({center: [-74.0065, 40.7085], zoom: 13.6, bearing: 0, pitch: 0});
 const map = useTemplateRef('map');
@@ -180,7 +180,7 @@ ref, a computed value or a function.
 ```vue
 <script setup>
 import {computed, ref, useTemplateRef} from 'vue';
-import {useMap} from 'map-jr-gl/vue';
+import {useMap} from '@map-jr/map-jr-gl/vue';
 
 const measuring = ref(false);
 const {host, state} = useMap(useTemplateRef('el'), computed(() => ({
@@ -215,7 +215,7 @@ const {host, state} = useMap(useTemplateRef('el'), computed(() => ({
 
 ```ts
 // nuxt.config.ts
-export default defineNuxtConfig({modules: ['map-jr-gl/nuxt']});
+export default defineNuxtConfig({modules: ['@map-jr/map-jr-gl/nuxt']});
 ```
 
 With the module, a page uses the components without an import:
@@ -236,12 +236,12 @@ With the module, a page uses the components without an import:
   and starts the map when the map comes into view. Together with `ssr`, the visitor sees the map from the server at
   once, and a page with a map far down loads no map code until it is necessary.
 
-Without the module, import the components (`import {MapJr} from 'map-jr-gl/vue'`). For lazy loading, use
+Without the module, import the components (`import {MapJr} from '@map-jr/map-jr-gl/vue'`). For lazy loading, use
 `defineAsyncComponent` of Vue:
 
 ```js
 import {defineAsyncComponent, hydrateOnVisible} from 'vue';
-const MapJr = defineAsyncComponent({loader: () => import('map-jr-gl/vue').then(m => m.MapJr), hydrate: hydrateOnVisible()});
+const MapJr = defineAsyncComponent({loader: () => import('@map-jr/map-jr-gl/vue').then(m => m.MapJr), hydrate: hydrateOnVisible()});
 ```
 
 ## Nuxt and server rendering
@@ -264,7 +264,7 @@ With the `ssr` prop, the server also renders the first view as SVG:
 />
 ```
 
-- The server renders the map with `renderToSVG` from `map-jr-gl/server`. See [Server rendering](server-rendering.md).
+- The server renders the map with `renderToSVG` from `@map-jr/map-jr-gl/server`. See [Server rendering](server-rendering.md).
 - The page shows the map before a script has run.
 - In the browser, Vue takes over the HTML, and the map removes the SVG when it has drawn its first frame. The
   controls show from that moment; they are not in the SVG.

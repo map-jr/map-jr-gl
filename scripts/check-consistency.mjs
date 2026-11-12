@@ -53,7 +53,7 @@ const pkg = JSON.parse(read('package.json')), docs = ['README.md', ...readdirSyn
 const allDocs = docs.map(read).join('\n');
 for (const entry of Object.keys(pkg.exports ?? {})) {
     if (entry === '.' || entry === './package.json') continue;
-    const name = 'map-jr-gl' + entry.slice(1);
+    const name = '@map-jr/map-jr-gl' + entry.slice(1);
     if (!allDocs.includes(name)) fail('docs', `no document mentions the entry \`${name}\` (package.json "exports")`);
 }
 

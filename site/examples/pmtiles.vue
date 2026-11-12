@@ -1,6 +1,6 @@
 <script setup>
 import {ref, useTemplateRef} from 'vue';
-import {MapJr} from 'map-jr-gl/vue';
+import {MapJr} from '@map-jr/map-jr-gl/vue';
 
 const style = 'https://tiles.openfreemap.org/styles/liberty';
 

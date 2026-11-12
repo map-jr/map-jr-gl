@@ -23,7 +23,7 @@ for (const f of compat) engine.delete(f); // the page has these already when it 
 const sizes = [
     // What a page downloads before the map can start. The worker file is downloaded at the same time.
     ['page script, up front (' + [...page].length + ' files)', gz(page), 31],
-    // The same for the entry that is a replacement for MapLibre GL JS (`map-jr-gl/maplibre-compat`).
+    // The same for the entry that is a replacement for MapLibre GL JS (`@map-jr/map-jr-gl/maplibre-compat`).
     ['page script of maplibre-compat, up front (' + [...compat].length + ' files)', gz(compat), 34],
     ['map-jr-gl-worker.js', gz(['map-jr-gl-worker.js']), 64],
     // Only when the engine runs on the main thread (no worker is possible).

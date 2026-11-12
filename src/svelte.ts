@@ -1,9 +1,9 @@
 /**
- * For Svelte: `import {mapJr, mapState} from 'map-jr-gl/svelte'`.
+ * For Svelte: `import {mapJr, mapState} from '@map-jr/map-jr-gl/svelte'`.
  *
  * ```svelte
  * <script>
- *   import {mapJr, mapState} from 'map-jr-gl/svelte';
+ *   import {mapJr, mapState} from '@map-jr/map-jr-gl/svelte';
  *   let map = $state(null);
  *   let description = $derived({style, initialView, markers: [pins]});
  * </script>

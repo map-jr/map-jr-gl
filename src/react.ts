@@ -1,5 +1,5 @@
 /**
- * The adapter for React 18 and 19: `import {MapJr, MapOverlay, useMapState} from 'map-jr-gl/react'`.
+ * The adapter for React 18 and 19: `import {MapJr, MapOverlay, useMapState} from '@map-jr/map-jr-gl/react'`.
  *
  * It is a thin layer over `createMap` (host.ts). The component gives its props to the map as one description after
  * each render, and the map finds what is different. Props that are made again with the same content do no work.
@@ -20,7 +20,7 @@ export interface MapJrProps extends Omit<MapSpec, 'style' | 'onViewChange'> {
     onIdle?: () => void;
     onError?: (error: Error) => void;
     /**
-     * The first view from a server, as HTML: the result of `renderFirstView` from `map-jr-gl/server`. The page shows it
+     * The first view from a server, as HTML: the result of `renderFirstView` from `@map-jr/map-jr-gl/server`. The page shows it
      * before a script has run, and the map takes it over. In the browser the prop is not read again.
      */
     firstView?: string;

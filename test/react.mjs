@@ -1,4 +1,4 @@
-// Tests of the React adapter (`map-jr-gl/react`): the server render with React's own server renderer, then the same
+// Tests of the React adapter (`@map-jr/map-jr-gl/react`): the server render with React's own server renderer, then the same
 // page in a browser, where React takes over the HTML and the map takes over the SVG.   node test/react.mjs   (after pnpm build)
 import http from 'node:http';
 import path from 'node:path';

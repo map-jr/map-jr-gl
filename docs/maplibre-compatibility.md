@@ -2,7 +2,7 @@
 
 This document compares the library with [MapLibre GL JS](https://maplibre.org/maplibre-gl-js/docs/) version 6.
 
-The API of MapLibre GL JS is in the entry `map-jr-gl/maplibre-compat`. The main entry, `map-jr-gl`, has another
+The API of MapLibre GL JS is in the entry `@map-jr/map-jr-gl/maplibre-compat`. The main entry, `@map-jr/map-jr-gl`, has another
 API: see [The main API](api.md).
 
 It has four parts:
@@ -23,7 +23,7 @@ The [status table](../README.md#status) gives the current test results.
 | Marker layers | `addMarkerLayer` draws many SVG markers on the canvas. See [Markers](markers.md). |
 | SVG images | `addImage` accepts an SVG string. The image is sharp on each screen. |
 | Fonts | Text uses the glyph files of the style (`glyphs`), as in MapLibre GL JS. A style without `glyphs` needs no glyph files: text then uses the fonts of the browser. The option `glyphs: false` selects that for each style. The style can also give font files in `font-faces`. |
-| `queryFeatures` | Finds features, with the meaning that it has in `map-jr-gl`. With `sources`, it reads the tile data of those sources, and you do not need a style layer. Without `sources`, it gives what the style layers draw. See [Queries](api.md#queries). |
+| `queryFeatures` | Finds features, with the meaning that it has in `@map-jr/map-jr-gl`. With `sources`, it reads the tile data of those sources, and you do not need a style layer. Without `sources`, it gives what the style layers draw. See [Queries](api.md#queries). |
 | `queryElevation` | Gives the elevation at a position from a `raster-dem` source. |
 | Contour source | `type: 'contour'` makes contour lines from an elevation source. See [Terrain and elevation](terrain-and-elevation.md). |
 | PMTiles | A source URL that starts with `pmtiles://` reads a PMTiles archive. You do not need a plugin. |
@@ -71,7 +71,7 @@ The [status table](../README.md#status) gives the current test results.
 | A listener that throws | The error leaves `fire`, and the listeners after it do not get the event. | Each listener gets the event, and what a listener threw is an `error` event. |
 | A query and `remove()` | The result is synchronous. | The promise of a query that has no answer yet, or that is asked after `remove()`, rejects with the error `[map-jr-gl] The query has no answer: the map was removed.` After a lost WebGL context it rejects in the same way, and the message says to ask again. |
 | `strict` | | The constructor option `strict: true` makes each of these warnings and `error` events an error that is thrown. Use it in tests and while you change from MapLibre GL JS. The default is `false`. |
-| CSS class names | `maplibregl-*` | `map-jr-*`. Each element also has the `maplibregl-*` name, so stylesheets and plugins for MapLibre GL JS continue to work. In `map-jr-gl/maplibre-compat`, the container has `maplibregl-map`, the canvas has `maplibregl-canvas`, and the buttons of the controls have `maplibregl-ctrl-zoom-in`, `maplibregl-ctrl-zoom-out`, `maplibregl-ctrl-compass`, `maplibregl-ctrl-fullscreen`, `maplibregl-ctrl-geolocate` and `maplibregl-ctrl-terrain`. There is no `maplibregl-canvas-container` element: `getCanvasContainer()` returns the container. The state names of the buttons (such as `maplibregl-ctrl-shrink`) and `maplibregl-ctrl-icon` are not set. A control from a plugin gets the `map-jr-*` names when you add it. |
+| CSS class names | `maplibregl-*` | `map-jr-*`. Each element also has the `maplibregl-*` name, so stylesheets and plugins for MapLibre GL JS continue to work. In `@map-jr/map-jr-gl/maplibre-compat`, the container has `maplibregl-map`, the canvas has `maplibregl-canvas`, and the buttons of the controls have `maplibregl-ctrl-zoom-in`, `maplibregl-ctrl-zoom-out`, `maplibregl-ctrl-compass`, `maplibregl-ctrl-fullscreen`, `maplibregl-ctrl-geolocate` and `maplibregl-ctrl-terrain`. There is no `maplibregl-canvas-container` element: `getCanvasContainer()` returns the container. The state names of the buttons (such as `maplibregl-ctrl-shrink`) and `maplibregl-ctrl-icon` are not set. A control from a plugin gets the `map-jr-*` names when you add it. |
 | Plugins | | A plugin that only uses public methods usually works. A plugin that reads `map.style` or `map.painter` does not. |
 
 ## What is not available
@@ -114,7 +114,7 @@ Other:
 ## Map methods
 
 <!-- api:start -->
-118 of the 150 public methods of the MapLibre `Map` class are available in the entry `map-jr-gl/maplibre-compat` (79%).
+118 of the 150 public methods of the MapLibre `Map` class are available in the entry `@map-jr/map-jr-gl/maplibre-compat` (79%).
 
 **Available:** `addControl`, `addImage`, `addLayer`, `addSource`, `addSprite`, `areTilesLoaded`, `cameraForBounds`, `easeTo`, `fitBounds`, `flyTo`, `getAnisotropicFilterPitch`, `getBearing`, `getBounds`, `getCameraTargetElevation`, `getCanvas`, `getCanvasContainer`, `getCenter`, `getCenterClampedToGround`, `getCenterElevation`, `getContainer`, `getFeatureState`, `getFilter`, `getFontFaces`, `getGlobalState`, `getGlyphs`, `getImage`, `getLayer`, `getLayersOrder`, `getLayoutProperty`, `getLight`, `getMaxBounds`, `getMaxPitch`, `getMaxZoom`, `getMinPitch`, `getMinZoom`, `getPadding`, `getPaintProperty`, `getPitch`, `getPixelRatio`, `getProjection`, `getRenderWorldCopies`, `getRoll`, `getSky`, `getSource`, `getSprite`, `getStyle`, `getTerrain`, `getVerticalFieldOfView`, `getZoom`, `getZoomSnap`, `hasControl`, `hasImage`, `isMoving`, `isPitching`, `isRotating`, `isSourceLoaded`, `isStyleLoaded`, `isZooming`, `jumpTo`, `listImages`, `loadImage`, `loaded`, `moveLayer`, `off`, `on`, `once`, `panBy`, `panTo`, `project`, `queryRenderedFeatures`, `querySourceFeatures`, `queryTerrainElevation`, `redraw`, `refreshTiles`, `remove`, `removeControl`, `removeFeatureState`, `removeImage`, `removeLayer`, `removeSource`, `removeSprite`, `resetNorth`, `resetNorthPitch`, `resize`, `rotateTo`, `setBearing`, `setCenter`, `setFeatureState`, `setFilter`, `setFontFaces`, `setGlobalStateProperty`, `setGlyphs`, `setLayerZoomRange`, `setLayoutProperty`, `setLight`, `setMaxBounds`, `setMaxPitch`, `setMaxZoom`, `setMinPitch`, `setMinZoom`, `setMissingStyleImageResolver`, `setPadding`, `setPaintProperty`, `setPitch`, `setPixelRatio`, `setSprite`, `setStyle`, `setTerrain`, `setTransformRequest`, `setZoom`, `snapToNorth`, `stop`, `triggerRepaint`, `unproject`, `updateImage`, `zoomIn`, `zoomOut`, `zoomTo`
 
