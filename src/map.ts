@@ -650,6 +650,8 @@ export class Map {
     setMaxBounds(bounds?: LngLatBoundsInput | null) {
         const flat = bounds && LngLatBounds.convert(bounds).toArray().flat();
         this.tr.maxBounds = flat ? [flat[0], flat[1], flat[2], flat[3]] : null;
+        // The engine clamps its own camera when it gets the limits. This clamps the copy here, so that `getCenter()` is right at once.
+        this.tr.constrain();
         return this.limits();
     }
     getMaxBounds() { const b = this.tr.maxBounds; return b && {getWest: () => b[0], getSouth: () => b[1], getEast: () => b[2], getNorth: () => b[3], toArray: () => [[b[0], b[1]], [b[2], b[3]]]}; }
