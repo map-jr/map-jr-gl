@@ -261,6 +261,8 @@ as ten. See [Markers](markers.md).
 | `destroy()` | Removes the map and frees its memory. |
 | `moveTo(view)` | Moves the camera now. With `duration` (milliseconds), with an animation. |
 | `fitBounds(bounds, options)` | Shows an area. |
+| `queryFeatures(where, options)`, `watchFeatures(where, options, listener)` | Find features, one time or kept up to date. See [Queries](#queries). |
+| `queryElevation(where)` | The height of the ground in metres at a position (`[lng, lat]`) or a point of the screen (`{x, y}`), from the elevation source of the style. A promise; `null` where there is no data. |
 | `project(lngLat)`, `unproject(point)` | Change between a position on the map and a point of the screen. |
 | `listen(type, fn)` | Calls `fn` for each event of that type (`'click'`, `'move'`, `'load'` and others). Returns a function that stops it. |
 | `container` | The element of the map. |

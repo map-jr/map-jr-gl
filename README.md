@@ -269,18 +269,19 @@ build and other configurations.
 ## Speed
 
 <!-- speed:start -->
-Measured by the workflow [Browsers](https://github.com/map-jr/map-jr-gl/tree/bench-results) on 2026-11-12 (commit 60e0ba4). Each cell is MapLibre GL JS 6.17.0 / **this library** (worker renderer where the browser has it).
+Measured by the workflow [Browsers](https://github.com/map-jr/map-jr-gl/tree/bench-results) on 2026-11-12 (commit 20a7ec0). Each cell is MapLibre GL JS 6.17.0 / **this library** (worker renderer where the browser has it).
 
 | System, browser | Load to idle, ms | Frames per second, map moving | Frames per second, 10,000 markers |
 |---|---|---|---|
-| macOS, Chromium | 1215 / **631** | 31 / **26** | 1 / **32** |
-| macOS, Firefox | 5606 / **6696** | 4 / **8** |  |
-| macOS, WebKit | 3943 / **1392** | 38 / **55** | 2 / **57** |
-| Linux, Chromium | 885 / **1212** | 12 / **7** | 2 / **8** |
-| Linux, Firefox | 1553 / **1174** | 22 / **17** | 6 / **16** |
-| Windows, Chromium | 1236 / **1321** | 43 / **33** | 2 / **28** |
-| Windows, Firefox | 1463 / **2080** | 38 / **22** | 4 / **22** |
-| Windows, WebKit | 1657 / **1475** | 14 / **15** | 2 / **14** |
+| macOS, Chromium | 2011 / **747** | 26 / **25** | 3 / **19** |
+| macOS, Firefox | 4746 / **8118** | 1 / **11** | 2 / **56** |
+| macOS, WebKit | 2438 / **1373** | 58 / **49** | 2 / **57** |
+| Linux, Chromium | 865 / **1030** | 12 / **9** | 2 / **10** |
+| Linux, Firefox | 1760 / **1272** | 16 / **59** | 5 / **59** |
+| Linux, WebKit | 1532 / **1140** | 23 / **23** | 3 / **22** |
+| Windows, Chromium | 1214 / **1480** | 42 / **34** | 2 / **30** |
+| Windows, Firefox | 1585 / **1940** | 32 / **21** | 4 / **24** |
+| Windows, WebKit | 1751 / **1651** | 14 / **14** | 3 / **14** |
 <!-- speed:end -->
 
 These computers are virtual machines, and those for Linux and Windows have no GPU: use the table to compare the
@@ -303,7 +304,7 @@ To measure on your device, run `pnpm demo` and open `http://localhost:8080/bench
   available.
 - [Plugins and frameworks](docs/ecosystem.md): which popular MapLibre plugins find the API that they use.
 - [Development](docs/development.md): how to build, test and measure the library.
-- [Decisions for review](docs/review.md): what was left out, and why.
+- [Contributing](CONTRIBUTING.md) and the [open issues](https://github.com/map-jr/map-jr-gl/issues): what is known to be wrong or missing, by priority.
 
 ## How this project is made
 

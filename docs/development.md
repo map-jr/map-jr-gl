@@ -116,3 +116,48 @@ git fetch origin bench-results && git show origin/bench-results:README.md
 
 The Linux and Windows machines have no GPU, so their frame rates are low. Compare the libraries on the same machine.
 The macOS machines have a GPU.
+
+## CI and merging
+
+Every change goes through a pull request. The workflow `CI` (`.github/workflows/ci.yml`) must pass before a merge:
+
+| Job | What it runs |
+|---|---|
+| `checks` | `pnpm build` (type check, build, type declarations), a check that each file named in `exports` exists, and `pnpm test` (unit tests, expression and API floors, size budgets, examples, consistency of code and documentation) |
+| `browser` | In Chromium: `test/interact.mjs`, `test/host.mjs`, `test/vue.mjs`, `test/react.mjs`, `test/loading.mjs`. A suite that fails is run one more time, because the tiles come from the live network. |
+| `render` | `pnpm test:render`: MapLibre's render tests against the floor in `package.json` |
+
+`pnpm test:consistency` (`scripts/check-consistency.mjs`) fails when a field of the description has no Vue prop or
+no documentation, when a member of the map is not in `docs/api.md`, when a gallery example lacks one of its four
+forms, when no document names an entry of the package, or when a link between documents is broken.
+
+The MapLibre tests are pinned to one commit (in `test/conformance/render.mjs` and `expressions.mjs`), so the counts
+change only when this library changes. To take newer tests, change the commit, delete the folder in `.cache`, and
+set the floors again.
+
+See [CLAUDE.md](../CLAUDE.md) for who may merge what, and for the definition of done.
+
+## Facts about browsers that the code depends on
+
+- **WebGL2 is required.** Without it the map fires `error` ("WebGL2 is not available") and the container stays
+  empty.
+- **Worker rendering** needs `transferControlToOffscreen` and WebGL2 in a worker. Where one is missing, the map
+  renders on the main thread. WebKit on Linux and Windows (the builds that Playwright uses) is such a case; Safari
+  on macOS and iOS can render in a worker.
+- **The worker is the default renderer in every browser, Safari included.** Measured on an iPhone and on an Apple
+  M4 on 2026-11-12, the worker and the main thread draw the same frames (60 and 120 per second), and the worker
+  keeps the page thread free. On virtual macOS machines WebKit drew 6 to 14% fewer frames in a worker with 3D
+  terrain.
+- **Elevation tiles** are decoded in tile workers with `OffscreenCanvas`. Safari before 16.4 (March 2023) does not
+  have it in workers, so terrain, hillshade and contours do not work there.
+- **Web fonts in a worker:** WebKit does not load a font from a URL inside a worker. The engine fetches the font
+  file and gives the browser its bytes.
+- **Firefox** without a window draws about 3 frames per second on the page thread, so the workflow runs it with a
+  window. A blocked page also stops the frames of a map that renders in a worker in Firefox (not in Chromium).
+- **`idle` comes 200 ms after a movement ends:** one more frame is drawn for the map at rest (sharp raster tiles),
+  and `idle` fires after it.
+- **Labels of layers for much higher zooms** are not built into a tile of the deepest level of its source; the tile
+  is built again when the map reaches another whole zoom. After a fast zoom from 14 to 17, the labels of small
+  places come about half a second after the zoom stops.
+- **The default export** of `map-jr-gl/maplibre-compat` exists for plugins that contain
+  `import maplibregl from 'maplibre-gl'` (4 of the 15 tested). The documentation uses named imports.

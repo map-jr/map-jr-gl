@@ -7,7 +7,10 @@ import {existsSync, readdirSync, readFileSync, statSync} from 'node:fs';
 import path from 'node:path';
 
 const root = path.resolve(import.meta.dirname, '../..'), repo = path.join(root, '.cache/maplibre-style-spec');
-if (!existsSync(repo)) execSync(`git clone --depth 1 -q https://github.com/maplibre/maplibre-style-spec.git "${repo}"`, {stdio: 'inherit'});
+// The tests of one commit, so that the counts change only with this library. To take newer tests, change the commit
+// here, delete the folder in .cache, and set the floor (--min) in package.json again.
+const commit = 'f94442fd4c768a40f1896630ccb64dd50067d94b';
+if (!existsSync(repo)) execSync(`git init -q "${repo}" && git -C "${repo}" fetch -q --depth 1 https://github.com/maplibre/maplibre-style-spec.git ${commit} && git -C "${repo}" checkout -q FETCH_HEAD`, {stdio: 'inherit'});
 await build({entryPoints: [path.join(root, 'src/expr.ts')], bundle: true, format: 'esm', outfile: path.join(root, '.cache/expr.mjs'), logLevel: 'error'});
 const {compileExpr, compileProp, parseColor, setGlobalState} = await import(path.join(root, '.cache/expr.mjs'));
 const warn = console.warn; console.warn = () => {};
