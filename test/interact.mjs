@@ -913,6 +913,38 @@ for (const mode of ['main', 'worker']) {
         check('[main] the credits of a small map end before the controls of the other corner, are above markers, and close with a press on the map',
             box.open && box.creditsRight < box.controlsLeft && box.markerZ < box.cornerZ && closed, JSON.stringify({...box, closed}));
     }
+    // 3D terrain off and on again: the elevation tiles that are loaded stay, so the relief does not go away for a
+    // moment and no tile is asked for again.
+    {
+        const asked = [];
+        const count = r => { if (r.url().includes('tiles.mapterhorn.com')) asked.push(r.url()); };
+        page.on('request', count);
+        await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = window.flashEl = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:400px;height:300px'}));
+            const m = window.flashMap = new mod.Map({container: el, renderer: mode, attributionControl: false, center: [7.6586, 45.9763], zoom: 12.4, pitch: 60, style: {version: 8,
+                sources: {dem: {type: 'raster-dem', tiles: ['https://tiles.mapterhorn.com/{z}/{x}/{y}.webp'], encoding: 'terrarium', tileSize: 512, maxzoom: 12}},
+                layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}, {id: 'relief', type: 'hillshade', source: 'dem'}], terrain: {source: 'dem', exaggeration: 1.5}}});
+            window.flashIdle = () => new Promise(r => { m.once('idle', () => r(true)); setTimeout(() => r(false), 20000); });
+            await window.flashIdle();
+        }, mode);
+        await page.waitForTimeout(500);
+        const first = asked.length;
+        const toggled = await page.evaluate(async () => {
+            const m = window.flashMap, out = {};
+            m.setTerrain(null);
+            out.off = await window.flashIdle(); out.ground = m.queryTerrainElevation?.([7.6586, 45.9763]) ?? null;
+            m.setTerrain({source: 'dem', exaggeration: 1.5});
+            out.on = await window.flashIdle();
+            await new Promise(r => setTimeout(r, 300));
+            out.elevation = Math.round(m.getCenterElevation?.() ?? NaN);
+            const el = m.getContainer(); m.remove(); el.remove();
+            return out;
+        });
+        page.off('request', count);
+        check(`[${mode}] 3D terrain off and on again asks for no elevation tile again, and the ground has its height at once`,
+            first > 0 && asked.length === first && toggled.off && toggled.on && toggled.elevation > 1000, JSON.stringify({first, later: asked.length - first, ...toggled}));
+    }
     // fragment moves the map.
     const hash = await page.evaluate(async () => {
         const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:400px;height:300px'}));

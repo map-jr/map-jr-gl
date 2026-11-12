@@ -87,8 +87,9 @@ export type EngineEvent =
  */
 function sourceSignature(style: ResolvedStyle, name: string): [string, string] {
     const src = style.sources[name] as any, data = src.data;
-    // Elevation tiles keep extra data when they shape 3D terrain, so switching terrain on or off starts them over.
-    const source = JSON.stringify({...src, head: undefined, data: undefined, features: data?.features?.length, kind: data?.type, terrain: style.terrain?.source === name});
+    // (3D terrain is not part of this: an elevation tile keeps its heights, so that terrain goes on and off with the
+    // tiles that are there. See `ground`.)
+    const source = JSON.stringify({...src, head: undefined, data: undefined, features: data?.features?.length, kind: data?.type});
     if (!isGeometrySource(src)) return [source, '']; // image tiles do not depend on layers
     const layers = style.layers.filter(l => l.source === name).map(l => layerRules(l));
     // Layers that read global state are rebuilt when it changes.
@@ -96,7 +97,7 @@ function sourceSignature(style: ResolvedStyle, name: string): [string, string] {
     return [source, json.includes('"global-state"') ? json + JSON.stringify(style.state ?? {}) : json];
 }
 
-interface TileState { state: 'loading' | 'ok' | 'error'; gl?: GLTile; /** An image tile that the server does not have (404). */ missing?: boolean; /** The zoom that the tile was built for (see `buildZoom`). */ band?: number; /** A number that changes each time the state or the content of the tile changes. */ rev?: number; /** Elevation tiles shaping 3D terrain: the lowest and highest ground on the tile, in metres. */ range?: [number, number]; used: number; cancel(): void; /** Shown, but built from data that has since changed. */ stale?: boolean; rebuilding?: boolean; /** The tile worker that loaded the tile. */ backend?: number; /** The rules of the style that the tile was built for (see `sourceSignature`). */ rules?: string }
+interface TileState { state: 'loading' | 'ok' | 'error'; gl?: GLTile; /** An image tile that the server does not have (404). */ missing?: boolean; /** The zoom that the tile was built for (see `buildZoom`). */ band?: number; /** A number that changes each time the state or the content of the tile changes. */ rev?: number; /** Elevation tiles shaping 3D terrain: the lowest and highest ground on the tile, in metres. */ range?: [number, number]; /** An elevation tile: its heights, for when it shapes 3D terrain (see `ground`). */ dem?: {grid: Float32Array; lo: number; hi: number}; used: number; cancel(): void; /** Shown, but built from data that has since changed. */ stale?: boolean; rebuilding?: boolean; /** The tile worker that loaded the tile. */ backend?: number; /** The rules of the style that the tile was built for (see `sourceSignature`). */ rules?: string }
 interface MarkerLayer {
     width: number; height: number; offset: [number, number]; collide: boolean; merc: Float64Array; variant: Uint32Array;
     minZoom: number; maxZoom: number; hideOverlaps: boolean;
@@ -501,6 +502,9 @@ export class Engine {
 
     private setStyle(style: ResolvedStyle, reload: boolean) {
         if (JSON.stringify(style.terrain) !== JSON.stringify(this.style?.terrain)) this.centreGiven = true;
+        // Another source shapes the ground, or none: the elevation tiles that are loaded go in or out of the ground.
+        const was = this.style?.terrain?.source, now = style.terrain?.source;
+        if (was !== now) for (const [key, t] of this.tiles) { const source = key.slice(0, key.lastIndexOf('|')); if (source === was) this.ground(key, t, false); else if (source === now) this.ground(key, t, true); }
         this.style = style;
         this.styleVersion++;
         this.states.g = style.state ?? {};
@@ -914,7 +918,30 @@ export class Engine {
         if (t.gl) this.renderer.destroyTile(t.gl);
         this.tiles.delete(key);
         this.tilesVersion++;
-        if (t.range) { const k = key.slice(key.lastIndexOf('|') + 1); this.heights.delete(k); heightsChanged(this.heights); this.emit({type: 'heights', key: k}); }
+        this.ground(key, t, false);
+    }
+
+    /**
+     * Makes a loaded elevation tile a part of the ground of 3D terrain, or takes it out. The tile keeps its heights in
+     * each case: when terrain is switched on or off, the tiles that are there are used, and the relief does not go away.
+     */
+    private ground(key: string, t: TileState, on: boolean) {
+        const k = key.slice(key.lastIndexOf('|') + 1);
+        if (on && t.dem && !t.range) {
+            const [z, x, y] = k.split('/').map(Number), n = 2 ** z;
+            t.range = [t.dem.lo, t.dem.hi];
+            this.heights.set(k, t.dem.grid);
+            // Only the ground under and beside this tile gets new mesh heights (see terrainTiles).
+            this.demArrivals.push({version: this.demVersion + 1, x0: x / n, y0: y / n, x1: (x + 1) / n, y1: (y + 1) / n});
+            if (this.demArrivals.length > 48) this.demArrivals.shift();
+            this.emit({type: 'heights', key: k, grid: t.dem.grid});
+            this.demVersion++;
+        } else if (!on && t.range) {
+            t.range = undefined;
+            this.heights.delete(k);
+            this.emit({type: 'heights', key: k});
+        } else return;
+        heightsChanged(this.heights);
     }
 
     private request(source: string, id: TileID, key: string) {
@@ -942,16 +969,8 @@ export class Engine {
                 t.cancel = () => backend.cancel(req);
                 load = backend.loadElevation({id: req, url, encoding}).then(dem => !dem ? (t.missing = true, {labels: {}, batches: {}}) : this.paced(dem.pixels.length * 2, () => {
                     if (this.tiles.get(key) !== t) return {labels: {}, batches: {}};
-                    if (this.style.terrain?.source === source) {
-                        t.range = [dem.lo, dem.hi];
-                        this.heights.set(id.key, dem.grid);
-                        heightsChanged(this.heights);
-                        // Only the ground under and beside this tile gets new mesh heights (see terrainTiles).
-                        this.demArrivals.push({version: this.demVersion + 1, x0: id.x / 2 ** id.z, y0: id.y / 2 ** id.z, x1: (id.x + 1) / 2 ** id.z, y1: (id.y + 1) / 2 ** id.z});
-                        if (this.demArrivals.length > 48) this.demArrivals.shift();
-                        this.emit({type: 'heights', key: id.key, grid: dem.grid});
-                        this.demVersion++;
-                    }
+                    t.dem = {grid: dem.grid, lo: dem.lo, hi: dem.hi};
+                    if (this.style.terrain?.source === source) this.ground(key, t, true);
                     return this.renderer.createImageTile({width: dem.width, height: dem.height, data: dem.pixels}, encoding, id);
                 }));
             } else {
