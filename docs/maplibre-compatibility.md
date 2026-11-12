@@ -65,7 +65,9 @@ The [status table](../README.md#status) gives the current test results.
 | `Marker`, `Popup` | Full API. | The usual parts of the API: position, popup, drag, anchor, offset. |
 | Touch gestures | You can configure each gesture. | The same gestures. They are always on. |
 | Expressions | Checks the types. | Does not check the types. An expression that is not correct can give no error. |
-| Style validation | Reports errors in the style. | Does not validate. It writes a warning for each layer or property that it cannot draw. |
+| Style validation | Reports errors in the style. | Does not validate the style. It writes a warning for each layer or property that it cannot draw. Four calls fire `error` and change nothing, as in MapLibre GL JS: `addLayer` with an id that exists, `addLayer` with a source that the style does not have, `addSource` with an id that exists, and `removeSource` of a source that a layer uses. |
+| Options and layers with no effect | | The constructor options `cooperativeGestures`, `locale`, `projection` (other than mercator), `renderWorldCopies: false` and `canvasContextAttributes` (other than `antialias`) have no effect. Each writes one warning. A layer of the type `custom` is not added, and writes one warning. |
+| `strict` | | The constructor option `strict: true` makes each of these warnings and `error` events an error that is thrown. Use it in tests and while you change from MapLibre GL JS. The default is `false`. |
 | CSS class names | `maplibregl-*` | `map-jr-*`. Each element also has the `maplibregl-*` name, so stylesheets and plugins for MapLibre GL JS continue to work. A control from a plugin gets the `map-jr-*` names when you add it. |
 | Plugins | | A plugin that only uses public methods usually works. A plugin that reads `map.style` or `map.painter` does not. |
 
