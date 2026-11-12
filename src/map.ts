@@ -3,7 +3,7 @@ import {protocolListeners, protocols, toBytes} from './protocols.ts';
 import {LngLat, LngLatBounds, type LngLatBoundsInput} from './lnglat.ts';
 import {Transform, groundHeight, heightsChanged, mercX, mercY, toLngLat, type LngLatLike} from './geo.ts';
 import type {PreparedSource} from './geojson.ts';
-import {DEFAULT_FONT, resolveStyle, type ResolvedStyle} from './resolve.ts';
+import {DEFAULT_FONT, keep, resolveStyle, type ResolvedStyle} from './resolve.ts';
 import {layerRules} from './rules.ts';
 import type {CameraOptions, Command, EngineEvent, FeatureQuery, FontSource, MarkerImage} from './engine.ts';
 import type {QueriedFeature} from './query.ts';
@@ -864,10 +864,19 @@ export class Map {
         this.rawStyle.sources[id].data = data;
         this.unloaded(id);
         for (const type of ['sourcedataloading', 'dataloading']) this.fire(type, {dataType: 'source', sourceId: id});
-        if (typeof data === 'string') { const res = await this.fetchAs('Source')(new URL(data, this.styleBase)); data = await res.json(); }
+        if (typeof data === 'string') {
+            const raw = this.rawStyle.sources[id], url = new URL(data, this.styleBase).href;
+            data = await (await this.fetchAs('Source')(url)).json();
+            // (The source was removed, or has other data since: this answer is old.)
+            if (this.rawStyle?.sources[id] !== raw || new URL(raw.data, this.styleBase).href !== url) return;
+            // A later change of the style sends the data of the source again: it must be this data, not the first answer.
+            keep(raw, url, data);
+        }
         this.post({type: 'geojson', source: id, data});
     }
-    addSource(id: string, source: unknown) { return this.editStyle(s => { s.sources[id] = source; }); }
+    // (A copy of the description: the map keeps the network result of a source by this object, and another map that is
+    // given the same object must have its own. The data of a GeoJSON source is not copied.)
+    addSource(id: string, source: object) { return this.editStyle(s => { s.sources[id] = {...source}; }); }
     removeSource(id: string) { return this.editStyle(s => { delete s.sources[id]; }); }
     addLayer(layer: {id: string}, beforeId?: string) {
         return this.editStyle(s => { s.layers.splice(beforeId ? this.layerIndex(s, beforeId) : s.layers.length, 0, layer); });
