@@ -269,6 +269,12 @@ With the `ssr` prop, the server also renders the first view as SVG:
 - In the browser, Vue takes over the HTML, and the map removes the SVG when it has drawn its first frame. The
   controls show from that moment; they are not in the SVG.
 - The server needs the style as an object or as a URL that it can fetch.
+- The server renders `map-style`, the centre, the zoom and the bearing of the view, and `markers`. It does not use
+  `extend` and `data`, and it renders a tilted view (`pitch`) from straight above. Sources and layers from `extend`,
+  and GeoJSON from `data`, show when the map starts in the browser.
+- The requests of the server have time limits: 10 seconds for one request and 30 seconds for all requests of one
+  render. When the render fails, the component does not catch the error. The `ssr` prop does not take `timeout`,
+  `requestTimeout`, `maxBytes` or `allowHosts`. See "Limits for requests" in [Server rendering](server-rendering.md).
 - The layout does not shift: the element has its size from your page, and the map changes nothing around it. A
   test of the library measures this.
 
