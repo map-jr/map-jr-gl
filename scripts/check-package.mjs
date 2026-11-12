@@ -2,11 +2,13 @@
 //
 //   1. Packs the tarball with `pnpm pack` and runs `publint` on it. A warning of publint is a failure.
 //   2. Each file that `exports`, `module` and `types` of package.json name is in the tarball.
-//   3. Each built file that names a source map has that map in the tarball, and the map points at the right lines of
+//   3. No image of docs/images is in the tarball, and each image of the README has an absolute URL: npm shows the
+//      README without the images of the repository.
+//   4. Each built file that names a source map has that map in the tarball, and the map points at the right lines of
 //      src/: each string of ten or more plain characters in a built file is looked up through the map, and the text
 //      must be on that line of the source file.
 import {execFileSync} from 'node:child_process';
-import {mkdirSync, readFileSync, rmSync} from 'node:fs';
+import {mkdirSync, readFileSync, rmSync, statSync} from 'node:fs';
 import {SourceMap} from 'node:module';
 import path from 'node:path';
 
@@ -29,6 +31,13 @@ const collect = (value, where) => { if (typeof value === 'string') named.set(val
 collect(pkg.exports, 'exports'); collect(pkg.module, 'module'); collect(pkg.types, 'types');
 for (const [file, where] of named) if (!packed.has(file)) failures.push(`${where} names ${file}, which is not in the tarball`);
 for (const [key, value] of Object.entries(pkg.exports)) if (key !== './package.json' && !value?.types) failures.push(`exports > ${key} has no "types"`);
+
+const images = [...packed].filter(f => f.startsWith('docs/images/') || /\.(jpe?g|png|gif|webp|avif)$/i.test(f));
+if (images.length) failures.push(`the tarball has ${images.length} images (${images[0]}): leave them out with "files" in package.json`);
+for (const m of readFileSync(path.join(root, 'README.md'), 'utf8').matchAll(/!\[[^\]]*\]\(\s*([^)\s]+)|<img\b[^>]*?\bsrc=["']?([^"'\s>]+)/g)) {
+    const url = m[1] ?? m[2];
+    if (!/^https:\/\//.test(url)) failures.push(`README.md shows the image ${url} by a relative path, which npm cannot show: write https://raw.githubusercontent.com/map-jr/map-jr-gl/main/${url.replace(/^\.\//, '')}`);
+}
 
 let messages = 0, maps = 0;
 for (const file of [...packed].filter(f => /^dist\/[^/]+\.js$/.test(f))) {
@@ -57,4 +66,4 @@ for (const file of [...packed].filter(f => /^dist\/[^/]+\.js$/.test(f))) {
 if (!messages) failures.push('no string was found in the built files, so the source maps were not checked');
 
 if (failures.length) { console.error('FAIL  the package is not ready to publish:\n' + failures.map(f => '  - ' + f).join('\n')); process.exit(1); }
-console.log(`ok    the tarball has ${packed.size} files: ${named.size} files that package.json names, and ${maps} source maps, which place ${messages} strings on their lines of src/`);
+console.log(`ok    the tarball has ${packed.size} files in ${(statSync(tarball).size / 1024).toFixed(0)} KB: ${named.size} files that package.json names, and ${maps} source maps, which place ${messages} strings on their lines of src/`);

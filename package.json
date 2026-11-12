@@ -24,8 +24,26 @@
     "test:react": "node test/react.mjs",
     "test:render": "node test/conformance/render.mjs --min=815"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "map",
+    "maps",
+    "webgl",
+    "webgl2",
+    "vector-tiles",
+    "maplibre",
+    "maplibre-gl",
+    "mapbox-style",
+    "pmtiles",
+    "geojson",
+    "offscreencanvas",
+    "web-worker",
+    "server-rendering",
+    "vue",
+    "nuxt",
+    "react",
+    "svelte"
+  ],
+  "author": "Sam Margulies <sam@belabor.org>",
   "license": "MIT",
   "devDependencies": {
     "@takumi-rs/core": "^2.20.0",
@@ -141,12 +159,15 @@
     "LICENSE",
     "ACKNOWLEDGEMENTS.md",
     "THIRD-PARTY-LICENSES.md",
-    "docs"
+    "docs/*.md"
   ],
   "sideEffects": false,
   "repository": {
     "type": "git",
     "url": "git+https://github.com/map-jr/map-jr-gl.git"
   },
-  "homepage": "https://map-jr.github.io/map-jr-gl/"
+  "homepage": "https://map-jr.github.io/map-jr-gl/",
+  "bugs": {
+    "url": "https://github.com/map-jr/map-jr-gl/issues"
+  }
 }

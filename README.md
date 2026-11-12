@@ -7,7 +7,7 @@ A small, fast map library for the web. It reads MapLibre styles. It has two entr
 - `map-jr-gl/maplibre-compat`: an API that is almost the same as MapLibre GL JS, for code and plugins that were
   written for that library.
 
-![A 3D terrain map with relief shading and contour lines](docs/images/terrain.jpg)
+![A 3D terrain map with relief shading and contour lines](https://raw.githubusercontent.com/map-jr/map-jr-gl/main/docs/images/terrain.jpg)
 
 **[Open the live gallery](https://map-jr.github.io/map-jr-gl/)** to see each feature with the code that makes it.
 
@@ -122,7 +122,7 @@ This example uses the entry `map-jr-gl`.
 To change the map, call `map.update` with the complete description again. The library finds what is different.
 You do not need a CSS file. See [The main API](docs/api.md).
 
-![A street map with zoom, compass and scale controls](docs/images/basic.jpg)
+![A street map with zoom, compass and scale controls](https://raw.githubusercontent.com/map-jr/map-jr-gl/main/docs/images/basic.jpg)
 
 ### Use Vue or Nuxt
 
@@ -223,7 +223,7 @@ map.on('markerclick', event => {
 For a small number of markers with HTML content, use `map.overlay` (`map-jr-gl`) or `Marker` and `Popup`
 (`map-jr-gl/maplibre-compat`, the same API as MapLibre GL JS). See [Markers](docs/markers.md).
 
-![Fifty thousand markers on a map](docs/images/markers.jpg)
+![Fifty thousand markers on a map](https://raw.githubusercontent.com/map-jr/map-jr-gl/main/docs/images/markers.jpg)
 
 ### Show terrain, relief and contour lines
 
@@ -307,7 +307,7 @@ map.on('click', async event => {
 });
 ```
 
-![Buildings that change colour below the pointer](docs/images/query.jpg)
+![Buildings that change colour below the pointer](https://raw.githubusercontent.com/map-jr/map-jr-gl/main/docs/images/query.jpg)
 
 ### Render the first view on the server
 
@@ -328,7 +328,7 @@ const {svg} = await renderToSVG({
 Put the SVG in the map container of your HTML page. The live map replaces it when the map is ready.
 See [Server rendering](docs/server-rendering.md).
 
-![A map that was drawn on the server](docs/images/server.jpg)
+![A map that was drawn on the server](https://raw.githubusercontent.com/map-jr/map-jr-gl/main/docs/images/server.jpg)
 
 ### Use highway shields and other icons that are generated on demand
 
@@ -345,7 +345,7 @@ The OSM Americana shield library works with this library without changes.
 
 A label can contain images (`format` with `image`). So a road with two routes shows two shields side by side.
 
-![Highway shields on a road map](docs/images/shields.jpg)
+![Highway shields on a road map](https://raw.githubusercontent.com/map-jr/map-jr-gl/main/docs/images/shields.jpg)
 
 ## How the library loads
 

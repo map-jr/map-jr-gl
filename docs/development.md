@@ -21,7 +21,7 @@ pnpm install
 | `pnpm test:cloudflare` | Runs the server renderer in the Cloudflare runtime. Start `pnpm demo` first. |
 | `pnpm test:render` | Runs the MapLibre render tests. This takes about 10 minutes. |
 | `pnpm test:size` | Fails if a built file is larger than its budget in `scripts/size-check.mjs`. Run `pnpm build` first. |
-| `pnpm test:package` | Packs the tarball with `pnpm pack` into `.cache/package` and runs `publint` on it. Fails if a file that `package.json` names is not in the tarball, or if a source map points at the wrong lines of `src/`. Run `pnpm build` first. |
+| `pnpm test:package` | Packs the tarball with `pnpm pack` into `.cache/package` and runs `publint` on it. Fails if a file that `package.json` names is not in the tarball, if a source map points at the wrong lines of `src/`, if an image is in the tarball, or if `README.md` shows an image by a relative path (npm shows the README without the images of the repository, so the README uses `https://raw.githubusercontent.com/map-jr/map-jr-gl/main/docs/images/...`). Run `pnpm build` first. |
 | `node test/conformance/ecosystem.mjs --write` | Reads popular plugins and frameworks from npm and writes which parts of the MapLibre API they use that the library does not have (`docs/ecosystem.md`). |
 | `node test/conformance/plugins.mjs --write` | Runs popular plugins with the library in a browser, each in a short scenario. |
 | `node test/conformance/examples.mjs --write` | Runs each example page of the MapLibre documentation with MapLibre GL JS and with the library, and writes the pages that give an error or a different image into `docs/ecosystem.md`. It takes about 30 minutes. `--filter=<regex>` runs a part of the pages. |
