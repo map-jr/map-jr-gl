@@ -3,7 +3,7 @@
 export {createMap, type ControlSpec, type FeatureOptions, type FeaturePlace, type MapHost, type StyleExtension, type MapOverlay, type OverlayOptions, type MapSpec, type MapSetup, type MapState, type MapPointer, type View, type ViewInput, type Position, type MapEvents, type MapEventBase, type MapPointerEvent, type MapTouchEvent, type MapDataEvent, type MarkerHit} from './host.ts';
 export {createStore, type Readable, type Store} from './store.ts';
 export {addProtocol, removeProtocol, type ProtocolFunction} from './protocols.ts';
-export {configure, type LoadOptions} from './loader.ts';
+export {configure, supported, type LoadOptions} from './loader.ts';
 export type {RenderedFeature, StyleLayer} from './map.ts';
 export type {MarkerLayerOptions, MarkerInput, Anchor} from './markers.ts';
 export type {FontSource} from './engine.ts';

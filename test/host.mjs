@@ -486,6 +486,89 @@ for (const [build, file] of [['the development build, and the file of the checks
     await page.close();
 }
 
+// A browser without WebGL2, on the page and in the worker: `supported()` says so before a map is made. A map that is
+// made all the same reports one error (`onError`, `state.error`) and puts a message into the container.
+for (const [entry, renderer] of [['main API', 'worker'], ['main API', 'main'], ['maplibre-compat', 'worker']]) {
+    const page = await browser.newPage({viewport: {width: 900, height: 600}});
+    try {
+        await page.goto(`${origin}/bench`);
+        const able = await page.evaluate(async () => (await import('/dist/map-jr-gl.js')).supported());
+        await page.goto(`${origin}/style.json`); // (a new document: the answer of `supported()` is kept for the page)
+        const none = await page.evaluate(async ([entry, renderer]) => {
+            const get = HTMLCanvasElement.prototype.getContext;
+            HTMLCanvasElement.prototype.getContext = function (kind, ...rest) { return /webgl/.test(kind) ? null : get.call(this, kind, ...rest); };
+            const code = `const get = OffscreenCanvas.prototype.getContext; OffscreenCanvas.prototype.getContext = function (kind, ...rest) { return /webgl/.test(kind) ? null : get.call(this, kind, ...rest); }; importScripts(${JSON.stringify(location.origin + '/dist/map-jr-gl-worker.js')});`;
+            const url = URL.createObjectURL(new Blob([code], {type: 'text/javascript'})), createWorker = () => new Worker(url);
+            const errors = [], unhandled = [], warn = console.warn, wait = ms => new Promise(r => setTimeout(r, ms));
+            console.warn = () => {}; // (the map says that it uses the main thread)
+            addEventListener('unhandledrejection', e => unhandled.push(String(e.reason)));
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99'}));
+            const style = await (await fetch('/style.json')).json(), message = () => el.querySelector('.map-jr-unavailable');
+            let supported, state, destroy;
+            if (entry === 'main API') {
+                const lib = await import('/dist/map-jr-gl.js');
+                lib.configure({createWorker});
+                supported = lib.supported();
+                const host = lib.createMap(el, {style, initialView: {center: [-74.0065, 40.7085], zoom: 14.3}, renderer, attribution: false, onError: e => errors.push(e.message)});
+                state = () => ({error: host.state.get().error?.message, loaded: host.state.get().loaded});
+                destroy = () => host.destroy();
+            } else {
+                const lib = await import('/dist/map-jr-gl-maplibre-compat.js');
+                supported = lib.supported() || lib.default.supported();
+                const map = new lib.Map({container: el, style, center: [-74.0065, 40.7085], zoom: 14.3, attributionControl: false, createWorker});
+                map.on('error', e => errors.push(e.error.message));
+                state = () => ({error: errors[0], loaded: map.loaded()});
+                destroy = () => map.remove();
+            }
+            for (let i = 0; i < 150 && !errors.length; i++) await wait(100);
+            await wait(500);
+            const box = message()?.getBoundingClientRect();
+            const out = {supported, errors, ...state(), text: message()?.textContent, count: el.querySelectorAll('.map-jr-unavailable').length, children: message()?.childElementCount, covers: !!box && box.width === 900 && box.height === 600, unhandled};
+            // (The message is the application's to change: a rule of its own style sheet wins over the rule of the library.)
+            document.head.appendChild(Object.assign(document.createElement('style'), {textContent: '.map-jr-unavailable{display:none}'}));
+            out.hidden = !!message() && getComputedStyle(message()).display === 'none';
+            destroy();
+            out.after = el.querySelectorAll('.map-jr-unavailable, canvas').length;
+            console.warn = warn;
+            return out;
+        }, [entry, renderer]);
+        const text = '[map-jr-gl] The map cannot be shown: WebGL2 is not available. Call supported() before you make a map, and show other content when it returns false.';
+        check(`no WebGL2 (${entry}, ${renderer}): supported() is false, the map reports one error and shows a message in the container, and removing the map removes the message`,
+            able === true && none.supported === false && none.errors.length === 1 && none.errors[0] === text && none.error === text && none.loaded === false && none.text === 'This browser cannot show the map.' && none.count === 1
+            && none.children === 0 && none.covers && none.hidden && none.after === 0 && !none.unhandled.length, JSON.stringify({able, ...none}));
+    } catch (e) { check(`no WebGL2 (${entry}, ${renderer}): the test run was completed`, false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
+
+// The page file and the worker file of two versions (a CDN or a cache can serve them so): two maps give one warning,
+// which names both versions, and the maps load. With the files of one version there is no warning.
+for (const other of [true, false]) {
+    const page = await browser.newPage({viewport: {width: 900, height: 600}});
+    try {
+        const version = JSON.parse(await (await import('node:fs/promises')).readFile(new URL('../package.json', import.meta.url), 'utf8')).version;
+        let changed = 0;
+        if (other) await page.route(/\/dist\/map-jr-gl-worker\.js$/, async route => {
+            const body = await (await route.fetch()).text(), next = body.replace(new RegExp('(type:.hello.,version:.)' + version.replaceAll('.', '\\.')), '$10.0.1');
+            if (next !== body) changed++;
+            await route.fulfill({contentType: 'text/javascript', body: next});
+        });
+        await page.goto(`${origin}/bench`);
+        const two = await page.evaluate(async () => {
+            const lib = await import('/dist/map-jr-gl.js'), style = await (await fetch('/style.json')).json(), said = [], warn = console.warn;
+            console.warn = (...a) => said.push(a.join(' '));
+            const hosts = [0, 1].map(i => lib.createMap(document.body.appendChild(Object.assign(document.createElement('div'), {style: `position:fixed;left:${i * 450}px;top:0;width:450px;height:600px;z-index:99;background:#fff`})),
+                {style, initialView: {center: [-74.0065, 40.7085], zoom: 14.3}, attribution: false}));
+            const loaded = await Promise.all(hosts.map(h => Promise.race([new Promise(r => h.state.subscribe(s => s.loaded, v => v && r(true))), new Promise(r => setTimeout(() => r(false), 30000))])));
+            console.warn = warn;
+            return {said, loaded};
+        });
+        const text = `[map-jr-gl] The worker file is version 0.0.1 and the page file is version ${version}. Serve map-jr-gl-worker.js from the same version of the package as the page file, or pass \`workerUrl\` with the URL of that file.`;
+        check(other ? 'a worker file of another version: two maps give one warning with both versions, and they load' : 'the worker file of the same version: no warning',
+            two.loaded.join() === 'true,true' && (other ? changed > 0 && two.said.length === 1 && two.said[0] === text : two.said.length === 0), JSON.stringify({...two, changed}));
+    } catch (e) { check(`the version of the worker file (${other ? 'another' : 'the same'}): the test run was completed`, false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
+
 // The one-file build of the main API: a map and a control from that file alone.
 {
     const page = await browser.newPage({viewport: {width: 900, height: 600}}), requested = [];

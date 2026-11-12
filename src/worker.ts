@@ -1,4 +1,6 @@
 import {Engine} from './engine.ts';
+
+declare const __VERSION__: string; // the version of package.json, set by the build
 import {PortBackend, serveTiles} from './tiles.ts';
 
 /** One worker script, two roles: a tile parser, or the host of the whole rendering engine. */
@@ -18,4 +20,5 @@ scope.onmessage = e => {
 };
 
 // Tells the page the script loaded and ran, so a missing or blocked worker file is noticed at once instead of silently hanging.
-scope.postMessage({type: 'hello'});
+// The version lets the page notice a worker file of another version (see `workerReady` in loader.ts).
+scope.postMessage({type: 'hello', version: __VERSION__});
