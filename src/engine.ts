@@ -727,7 +727,9 @@ export class Engine {
             }
             case 'featureState':
                 for (const b of this.backends) b.setFeatureState(c.source, c.states);
-                for (const [key, t] of this.tiles) if (key.startsWith(c.source + '|')) { t.stale = true; t.rev = ++this.tilesVersion; }
+                // The tile workers keep the state for a layer that reads it later. Tiles are built again only when a
+                // layer of the source reads feature state now. (A frame comes in each case: it reports `idle` to the page.)
+                if (this.sourceSigs.get(c.source)?.[1].includes('"feature-state"')) for (const [key, t] of this.tiles) if (key.startsWith(c.source + '|')) { t.stale = true; t.rev = ++this.tilesVersion; }
                 break;
             case 'queryRendered':
                 this.queryRendered(c).then(value => this.emit({type: 'result', id: c.id, value}), err => this.emit({type: 'result', id: c.id, error: String(err.message)}));
