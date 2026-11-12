@@ -184,7 +184,8 @@ for (const renderer of ['worker', 'main']) {
     const page = await browser.newPage({viewport: {width: 900, height: 600}});
     try {
         const asked = [];
-        await page.route(/\/test-glyphs\//, route => { asked.push(decodeURIComponent(new URL(route.request().url()).pathname)); route.fulfill({status: 404, body: ''}); });
+        let answer = {status: 404, body: ''};
+        await page.route(/\/test-glyphs\//, route => { asked.push(decodeURIComponent(new URL(route.request().url()).pathname)); route.fulfill(answer); });
         await page.goto('http://localhost:8080/style.json');
         const run = glyphs => page.evaluate(async glyphs => {
             const lib = await import('/dist/map-jr-gl.js'), style = await (await fetch('/style.json')).json();
@@ -195,9 +196,15 @@ for (const renderer of ['worker', 'main']) {
             host.destroy(); el.remove();
             return loaded;
         }, glyphs);
-        const withFiles = await run(), count = asked.length, without = await run(false);
-        check('glyph files of the style: asked for by default, not with glyphs: false, and a map without them still loads',
-            withFiles && without && count > 0 && asked.length === count && asked.every(u => /^\/test-glyphs\/[^/]+\/\d+-\d+\.pbf$/.test(u)), JSON.stringify({withFiles, without, count, later: asked.length - count, first: asked[0]}));
+        const withFiles = await run(), count = asked.length, without = await run(false), none = asked.length === count;
+        // A server that answers each URL with a page (200, HTML), and one that sends bytes that are not a glyph file:
+        // the map must still load, with the fonts of the device.
+        answer = {status: 200, contentType: 'text/html', body: '<!doctype html><html><body>not found</body></html>'};
+        const page200 = await run();
+        answer = {status: 200, contentType: 'application/x-protobuf', body: Buffer.from([10, 255, 255, 255, 127, 26, 200, 1, 8, 65, 24, 136, 39, 32, 136, 39])};
+        const broken = await run();
+        check('glyph files of the style: asked for by default, not with glyphs: false; a map still loads without them or with bad ones',
+            withFiles && without && none && page200 && broken && count > 0 && asked.every(u => /^\/test-glyphs\/[^/]+\/\d+-\d+\.pbf$/.test(u)), JSON.stringify({withFiles, without, none, page200, broken, count, first: asked[0]}));
     } catch (e) { check('glyph files: the test run was completed', false, String(e.message).split('\n')[0]); }
     await page.close();
 }

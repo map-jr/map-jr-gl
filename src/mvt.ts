@@ -27,7 +27,7 @@ export class Pbf {
     /** Returns a reader scoped to a length-delimited field and advances past it. */
     sub(): Pbf {
         const len = this.varint();
-        const p = new Pbf(this.buf, this.pos + len);
+        const p = new Pbf(this.buf, Math.min(this.end, this.pos + len)); // (a length from the file is not trusted past its parent)
         p.pos = this.pos;
         this.pos += len;
         return p;

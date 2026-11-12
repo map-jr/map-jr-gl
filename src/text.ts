@@ -272,6 +272,8 @@ export class GlyphAtlas extends BaseShaper {
      * files do not have (most ideographs, emoji) and text that the browser must shape are drawn with the canvas.
      */
     glyphsURL?: string;
+    /** Gives the atlas another URL for the glyph files: the files of the URL before are forgotten. */
+    setGlyphs(url?: string) { this.glyphsURL = url; this.ranges = new Map(); this.clear(); }
     fetchGlyphs?: (url: string) => Promise<Response>;
     /** Called when a glyph file has arrived: text that waited for it can be shaped now. */
     onGlyphs?: () => void;
@@ -287,13 +289,17 @@ export class GlyphAtlas extends BaseShaper {
         if (glyphs === undefined) {
             this.ranges.set(key, glyphs = 0);
             this.loading++;
-            this.fetchGlyphs!(this.glyphsURL!.replace('{fontstack}', encodeURIComponent(stack)).replace('{range}', `${range * 256}-${range * 256 + 255}`))
-                .then(res => res.ok ? res.arrayBuffer() : null).then(bytes => bytes && readGlyphs(new Uint8Array(bytes)), () => null)
-                .then(found => { this.ranges.set(key, found); this.loading--; this.onGlyphs?.(); });
+            const from = this.glyphsURL!, ranges = this.ranges;
+            // (A file that is not a glyph file, or that does not arrive, is the same as no file: the text then uses the
+            // canvas. The count of files on their way goes down in each case, or the map is never idle.)
+            this.fetchGlyphs!(from.replace('{fontstack}', encodeURIComponent(stack)).replace('{range}', `${range * 256}-${range * 256 + 255}`))
+                .then(res => res.ok ? res.arrayBuffer() : null).then(bytes => bytes && readGlyphs(new Uint8Array(bytes))).catch(() => null)
+                .then(found => { ranges.set(key, found); this.loading--; this.onGlyphs?.(); });
         }
         if (!glyphs) return glyphs === 0 ? undefined : null;
         const f = glyphs.get(code);
-        if (!f) return null;
+        // (A glyph with a size that cannot be right is not used: it must not write outside its place in the atlas.)
+        if (!f || (f[3] ?? 0) > 250 || (f[4] ?? 0) > 250 || f.bitmap && f.bitmap.length !== ((f[3] ?? 0) + 6) * ((f[4] ?? 0) + 6)) return null;
         // (The files have a border of 3 pixels about each glyph, the atlas one of SDF_BUFFER.)
         const pad = SDF_BUFFER - 3, gw = (f[3] ?? 0) + 6, w = gw + 2 * pad, h = (f[4] ?? 0) + 6 + 2 * pad;
         const g: Glyph = {x: 0, y: 0, w: 0, h: 0, left: f[5] ?? 0, top: (f[6] ?? 0) + 17 + BASELINE * EM, advance: f[7] ?? 0};

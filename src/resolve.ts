@@ -172,7 +172,7 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
     const rawState = (style as any).state as Record<string, any> | undefined;
     const state = rawState && Object.fromEntries(Object.entries(rawState).map(([k, v]) => [k, v && typeof v === 'object' && 'default' in v ? v.default : v]));
     // (A relative URL: joined by hand, because `{fontstack}` must stay as it is.)
-    const g = style.glyphs, glyphs = typeof g !== 'string' ? undefined : /^[a-z][a-z0-9+.-]*:/i.test(g) || !base ? g : g[0] === '/' ? new URL(base).origin + g : base.replace(/[^/]*$/, '') + g;
+    const g = style.glyphs, glyphs = typeof g !== 'string' ? undefined : /^[a-z][a-z0-9+.-]*:/i.test(g) || !base ? g : g.startsWith('//') ? new URL(base).protocol + g : g[0] === '/' ? new URL(base).origin + g : base.replace(/[?#].*$/, '').replace(/[^/]*$/, '') + g;
     return {layers, sources, unsupported: [...unsupported], sprite, glyphs, fonts, terrain, state, light: (style as any).light, waiting: partial && Object.keys(style.sources ?? {}).some(id => !sources[id] && fetched.get(style.sources[id]) && !fetched.get(style.sources[id])!.err)};
 }
 

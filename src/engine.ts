@@ -513,7 +513,7 @@ export class Engine {
         }
         const faces = JSON.stringify(style.fonts ?? []);
         if (style.fonts?.length && faces !== this.styleFonts) { this.styleFonts = faces; this.loadFonts(style.fonts); }
-        if (style.glyphs !== this.atlas.glyphsURL) { this.atlas.glyphsURL = style.glyphs; this.atlas.clear(); this.relabel(); }
+        if (style.glyphs !== this.atlas.glyphsURL) { this.atlas.setGlyphs(style.glyphs); this.relabel(); }
         if (reload) {
             for (const [name, src] of Object.entries(style.sources)) if (src.type === 'geojson') for (const b of this.backends) b.setGeoJSON(name, src.data, src.options, src.maxzoom);
             // The page has read the first bytes of each PMTiles archive: the readers of the tiles do not fetch them again.
