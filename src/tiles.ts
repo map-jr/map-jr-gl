@@ -1,5 +1,5 @@
 import {compileLayer, type CompiledLayer, type LayerJSON} from './style.ts';
-import {setFeatureStates, setGlobalState} from './expr.ts';
+import {compileFor, type MapStates} from './expr.ts';
 import {buildTile, packLabels, toGL, unpackLabels, type TileGL, type TileIR} from './tile.ts';
 import {decodeElevation, queryTile, type QueriedFeature, type TileQuery} from './query.ts';
 import {HEIGHT_GRID} from './geo.ts';
@@ -84,8 +84,12 @@ export class TileBuilder {
     /** Replaces how this builder makes its requests (see requests.ts). */
     setFetch(fetchFn: typeof fetch) { this.fetchFn = fetchFn; }
 
+    /** The global state and the feature state of the map of this builder. */
+    private states: MapStates = {g: {}, f: {}};
+    setFeatureState(source: string, states: Record<string, Record<string, unknown>>) { this.states.f[source] = states; }
     setStyle(layers: LayerJSON[], state?: Record<string, unknown>) {
-        setGlobalState(state);
+        this.states.g = state ?? {};
+        compileFor(this.states);
         this.bySource.clear();
         for (const json of layers) {
             const l = compileLayer(json);
@@ -96,15 +100,15 @@ export class TileBuilder {
     }
 
     async loadIR(req: TileRequest): Promise<TileIR> {
-        if (req.url.startsWith(GEOJSON_PREFIX)) return buildTile(this.slice(req.url), req.z, this.bySource.get(req.source) ?? [], req.overscaled);
-        if (req.url.startsWith('contour://')) return buildTile(await this.contour(req.url), req.z, this.bySource.get(req.source) ?? [], req.overscaled);
+        if (req.url.startsWith(GEOJSON_PREFIX)) return buildTile(this.slice(req.url), req.z, this.bySource.get(req.source) ?? [], req.overscaled, this.states.f);
+        if (req.url.startsWith('contour://')) return buildTile(await this.contour(req.url), req.z, this.bySource.get(req.source) ?? [], req.overscaled, this.states.f);
         const ac = new AbortController();
         this.aborts.set(req.id, ac);
         try {
             const bytes = req.again && this.recent.get(req.url) || await fetchTile(req.url, this.fetchFn, ac.signal);
             if (!bytes) return {layers: {}, labels: {}};
             this.remember(req.url, bytes);
-            return bytes.length ? buildTile(bytes, req.z, this.bySource.get(req.source) ?? [], req.overscaled) : {layers: {}, labels: {}};
+            return bytes.length ? buildTile(bytes, req.z, this.bySource.get(req.source) ?? [], req.overscaled, this.states.f) : {layers: {}, labels: {}};
         } finally {
             this.aborts.delete(req.id);
         }
@@ -119,9 +123,11 @@ export class TileBuilder {
     }
 
     /** Queries a tile's raw features. The tile is fetched if it is not already at hand; it need not be on screen. */
+    /** (The filters of a question are compiled when it is answered: for the states of this map.) */
+    private find(data: Parameters<typeof queryTile>[0], q: TileQuery) { compileFor(this.states); return queryTile(data, q); }
     async query(url: string, q: TileQuery): Promise<QueriedFeature[]> {
-        if (url.startsWith(GEOJSON_PREFIX)) return queryTile(this.slice(url), q);
-        if (url.startsWith('contour://')) return queryTile(await this.contour(url), q);
+        if (url.startsWith(GEOJSON_PREFIX)) return this.find(this.slice(url), q);
+        if (url.startsWith('contour://')) return this.find(await this.contour(url), q);
         let bytes = this.recent.get(url);
         if (!bytes) {
             const fetched = await fetchTile(url, this.fetchFn);
@@ -129,7 +135,7 @@ export class TileBuilder {
             bytes = fetched;
             this.remember(url, bytes);
         }
-        return bytes.length ? queryTile(bytes, q) : [];
+        return bytes.length ? this.find(bytes, q) : [];
     }
 }
 
@@ -157,7 +163,7 @@ export class LocalBackend implements TileBackend {
     setRequests(rules: RequestRules, ask: Ask) { this.builder.setFetch(fetchWith(() => rules, ask)); }
     setStyle(layers: LayerJSON[], state?: Record<string, unknown>) { this.builder.setStyle(layers, state); }
     setGeoJSON(source: string, data: unknown, options?: GeoJSONOptions, maxzoom?: number) { this.builder.setGeoJSON(source, data, options, maxzoom); }
-    setFeatureState(source: string, states: Record<string, Record<string, unknown>>) { setFeatureStates(source, states); }
+    setFeatureState(source: string, states: Record<string, Record<string, unknown>>) { this.builder.setFeatureState(source, states); }
     setContours(sources: Record<string, ContourConfig>) { this.builder.setContours(sources); }
     setHead(url: string, bytes: Uint8Array) { heads.set(url, bytes); }
     async load(req: TileRequest) { return toGL(await this.builder.loadIR(req)).tile; }
@@ -226,7 +232,7 @@ export function serveTiles(port: Port) {
         else if (m.type === 'resourceResult') { asked.get(m.id)?.(m); asked.delete(m.id); }
         else if (m.type === 'style') builder.setStyle(m.layers, m.state);
         else if (m.type === 'geojson') builder.setGeoJSON(m.source, m.data, m.options, m.maxzoom);
-        else if (m.type === 'featureState') setFeatureStates(m.source, m.states);
+        else if (m.type === 'featureState') builder.setFeatureState(m.source, m.states);
         else if (m.type === 'contours') builder.setContours(m.sources);
         else if (m.type === 'head') heads.set(m.url, m.bytes);
         else if (m.type === 'cancel') builder.cancel(m.id);

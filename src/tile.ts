@@ -3,7 +3,7 @@ import {EXTENT} from './geo.ts';
 import {decodeVectorTile} from './mvt.ts';
 import {GEOJSON_LAYER} from './geojson.ts';
 import {parseFontName, type CompiledLayer} from './style.ts';
-import {featureStateOf, type Feature, type RGBA} from './expr.ts';
+import {type Feature, type MapStates, type RGBA} from './expr.ts';
 
 /**
  * Renderer-neutral tile geometry: flat rings in tile units plus per-feature paint values.
@@ -99,7 +99,7 @@ const WHITE: RGBA = [1, 1, 1, 1];
 export type TileLayers = Record<string, {features: TileFeature[]}>;
 export interface TileFeature extends Feature { geometry(extent: number, coords: number[], ringEnds: number[]): number }
 
-export function buildTile(data: Uint8Array | TileLayers, z: number, layers: CompiledLayer[], overscaled: number | false): TileIR {
+export function buildTile(data: Uint8Array | TileLayers, z: number, layers: CompiledLayer[], overscaled: number | false, states?: MapStates['f']): TileIR {
     const vt: TileLayers = data instanceof Uint8Array ? decodeVectorTile(data) : data;
     const geomCache = new Map<TileFeature, {coords: number[]; ringEnds: number[]}>();
     const geometry = (f: TileFeature) => {
@@ -129,7 +129,7 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
             const pieces: Piece[] = [], starts = new Map<string, Piece>(), ends = new Map<string, Piece>();
             for (const f of vl.features) {
                 ctx.f = f;
-                f.state = featureStateOf(L.source, L.sourceLayer, f.id);
+                f.state = f.id === undefined ? undefined : states?.[L.source!]?.[`${L.sourceLayer ?? ''}|${f.id}`];
                 if (L.filter && !L.filter(ctx)) continue;
                 const tokens = (v: unknown) => String(v ?? '').replace(/\{([^}]+)\}/g, (_, k) => f.properties[k] ?? '').trim();
                 let text = tokens(p.field.eval(z, f));
@@ -236,7 +236,7 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
             // Circle and heatmap layers take any geometry: every vertex of a line or polygon is a point.
             if (kind === 'circle' ? false : want ? f.type !== want : f.type === 1) continue;
             ctx.f = f;
-                f.state = featureStateOf(L.source, L.sourceLayer, f.id);
+                f.state = f.id === undefined ? undefined : states?.[L.source!]?.[`${L.sourceLayer ?? ''}|${f.id}`];
             if (L.filter && !L.filter(ctx)) continue;
             const g = geometry(f);
             let start = 0;
