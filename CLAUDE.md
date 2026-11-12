@@ -35,6 +35,11 @@ to protect those qualities.
 - After a merge, the `Browsers` workflow measures and tests in Chromium, Firefox and WebKit on three systems. Read
   its results (`git fetch origin bench-results && git show origin/bench-results:README.md`) before you ask the
   owner to test on a device.
+- The same workflow can run Safari itself on a macOS runner, but only when it is started by hand (the inputs
+  `safari`, `safari_only` and `simulator`; see `docs/development.md`). Start it when a change touches the choice of
+  the renderer, the workers or the canvas, and read its results before you ask the owner to test in Safari. On that
+  runner the worker renderer does not load (the machine loses the WebGL context of a worker), and the frame rates
+  mean little: a failure of the worker scenarios there is not a fault of the change.
 
 ## Definition of done
 

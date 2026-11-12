@@ -1,4 +1,5 @@
-# Measures and checks the library in Chromium, Firefox and WebKit on Linux, macOS and Windows.
+# Measures and checks the library in Chromium, Firefox and WebKit on Linux, macOS and Windows. When it is started by
+# hand, it can also run Safari itself (on macOS and, when asked, in the iOS Simulator).
 # The results go to the branch "bench-results" (one file for each system and browser, and a README with all of them).
 name: Browsers
 on:
@@ -6,6 +7,19 @@ on:
     branches: [main]
     paths: ['src/**', 'demo/**', 'test/**', 'scripts/**', 'site/**', 'build.mjs', 'package.json', '.github/workflows/browsers.yml']
   workflow_dispatch:
+    inputs:
+      safari:
+        description: Also run the Safari job (Safari on macOS, through safaridriver)
+        type: boolean
+        default: false
+      safari_only:
+        description: Run only the Safari job, and do not write the branch bench-results (to try a change of that job)
+        type: boolean
+        default: false
+      simulator:
+        description: In the Safari job, also try Safari of the iOS Simulator (it does not start in each run)
+        type: boolean
+        default: false
 permissions:
   contents: write
 # A run takes longer than the time between pushes, so a run that has started is left to finish. A newer push waits.
@@ -14,6 +28,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   run:
+    if: ${{ !inputs.safari_only }}
     strategy:
       fail-fast: false
       matrix:
@@ -57,9 +72,65 @@ jobs:
         with:
           name: results-${{ matrix.os }}-${{ matrix.browser }}
           path: results
+  # Safari itself, which Playwright cannot drive (its "webkit" is another build of the engine). safaridriver is part of
+  # macOS; test/bench/webdriver.mjs speaks to it. The machine has a virtual GPU, so the frame rates say little; what
+  # counts here is what Safari can do (OffscreenCanvas in a worker and its contexts), which renderer the map takes,
+  # and that the benchmark runs to its end.
+  # The job runs only when the workflow is started by hand with "safari" or "safari_only": it tells little that changes
+  # from one merge to the next, and it would make each run of the workflow longer.
+  # Known on this machine (2026-11-12, Safari 27.2): the WebGL context of a worker is lost at once, so the scenarios of
+  # the worker renderer fail here. On a Mac with a GPU the worker renderer works in the same Safari (the owner's check).
+  safari:
+    if: ${{ inputs.safari || inputs.safari_only }}
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: node build.mjs && node scripts/site.mjs
+      - name: Start the demo server and safaridriver
+        run: |
+          PORT=8080 node demo/serve.mjs &
+          for i in $(seq 1 30); do curl -s -o /dev/null http://localhost:8080/ && break; sleep 1; done
+          sudo safaridriver --enable
+          safaridriver -p 4444 &
+          sleep 3
+          mkdir -p results
+          sw_vers; safaridriver --version || true
+      # (Without markers and terrain: the GPU of this machine is virtual, so more scenarios would say nothing more.)
+      - name: Safari on macOS
+        run: BENCH_QUERY="nomarkers&noterrain" WD_NAME=darwin-safari node test/bench/webdriver.mjs results || echo "the benchmark did not finish" > results/darwin-safari-failed.txt
+      # The same benchmark page as the gallery site has it (site-dist/bench/), so that the page that devices open
+      # is tested too.
+      - name: Safari on macOS, the benchmark page of the gallery site
+        run: BENCH_URL=http://localhost:8080/gallery/bench/ BENCH_QUERY="nomarkers&noterrain" WD_NAME=darwin-safari-site-page node test/bench/webdriver.mjs results || echo "the benchmark did not finish" > results/darwin-safari-site-page-failed.txt
+      # Safari of the iOS Simulator: the WebKit of that iOS version on the GPU of the host. It shows what iOS Safari can
+      # do and which renderer the map takes. It does not show the speed or the memory limits of a phone.
+      - name: Safari in the iOS Simulator
+        if: ${{ inputs.simulator }}
+        continue-on-error: true
+        run: |
+          udid=$(xcrun simctl list devices available -j | node -e "const d=JSON.parse(require('fs').readFileSync(0)).devices;const all=Object.entries(d).filter(([k])=>k.includes('iOS')).sort(([a],[b])=>b.localeCompare(a,undefined,{numeric:true})).flatMap(([,v])=>v);console.log((all.find(x=>/^iPhone/.test(x.name))||{}).udid||'')")
+          if [ -z "$udid" ]; then echo "no iPhone simulator on this machine" > results/ios-simulator-safari-failed.txt; exit 0; fi
+          xcrun simctl boot "$udid" || true
+          xcrun simctl bootstatus "$udid" || true
+          WD_CAPS="{\"browserName\":\"safari\",\"platformName\":\"iOS\",\"safari:useSimulator\":true,\"safari:deviceUDID\":\"$udid\"}" BENCH_QUERY="nomarkers&noterrain" WD_NAME=ios-simulator-safari \
+            node test/bench/webdriver.mjs results || echo "the benchmark did not finish" > results/ios-simulator-safari-failed.txt
+      - run: cat results/*.md >> "$GITHUB_STEP_SUMMARY" || true
+        if: always()
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: results-safari
+          path: results
   publish:
-    needs: run
-    if: always()
+    needs: [run, safari]
+    if: ${{ always() && !inputs.safari_only }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
