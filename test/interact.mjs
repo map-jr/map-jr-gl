@@ -408,6 +408,32 @@ for (const mode of ['main', 'worker']) {
         && ['mousedown', 'mouseup', 'mousemove', 'dblclick', 'contextmenu', 'wheel', 'mouseout'].every(t => ev.types.includes(t)) && ev.renders > 5 && ev.sourcedata > 0 && ev.lngLat && ev.bounds && ev.handler && zBox > zBox0 + 1,
         JSON.stringify({c0, cBlocked, cOff, cMoved, zBlocked, zMoved, zBox0, zBox, ...ev}));
 
+    // #7: `dblclick` reaches the listener after a query of the engine. preventDefault() there still stops the zoom, and
+    // without it the map zooms. The array of queryRenderedFeatures is not an answer from before setData.
+    const dbl = async prevent => {
+        await page.evaluate(() => window.map.jumpTo({center: [-74.0065, 40.7085], zoom: 14})); await settle(page);
+        await page.evaluate(prevent => { window.dbl = 0; window.map.once('dblclick', e => { window.dbl++; if (prevent) e.preventDefault(); }); }, prevent);
+        await page.mouse.dblclick(500, 350); await page.waitForFunction(() => window.dbl > 0, null, {timeout: 5000}).catch(() => {}); await page.waitForTimeout(700); await settle(page);
+        return (await centre())[2];
+    };
+    const zPrevented = await dbl(true), zDouble = await dbl(false);
+    check(`[${mode}] dblclick: preventDefault() in a listener stops the zoom, and without it the map zooms in`, zPrevented === 14 && Math.abs(zDouble - 15) < 0.01, JSON.stringify({zPrevented, zDouble}));
+    const stale = await page.evaluate(async () => {
+        const m = window.map, idle = () => new Promise(r => m.once('idle', r)), at = [-74.0065, 40.7085];
+        m.jumpTo({center: at, zoom: 14});
+        m.addSource('stale', {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: at}}});
+        m.addLayer({id: 'stale-dot', type: 'circle', source: 'stale', paint: {'circle-radius': 8}});
+        await idle();
+        const p = m.project(at), ask = () => m.queryRenderedFeatures(p, {layers: ['stale-dot']});
+        const first = (await ask()).length, kept = ask().length;
+        let wait = idle(); m.getSource('stale').setData({type: 'FeatureCollection', features: []}); await wait;
+        const array = ask().length, awaited = (await ask()).length;
+        m.removeLayer('stale-dot'); m.removeSource('stale');
+        return {first, kept, array, awaited};
+    });
+    check(`[${mode}] queryRenderedFeatures: the array is not the answer from before setData`, stale.first === 1 && stale.kept === 1 && stale.array === 0 && stale.awaited === 0, JSON.stringify(stale));
+    await settle(page);
+
     // transformRequest and addProtocol: the functions are on the page, and the requests are made in workers.
     const requests = await page.evaluate(async () => {
         const m = window.map, mod = await import('/dist/map-jr-gl-maplibre-compat.js'), c = m.getCenter(), kinds = new Set();
@@ -977,6 +1003,45 @@ for (const mode of ['main', 'worker']) {
             const open = window.a11yMarker.getPopup().isOpen();
             el.dispatchEvent(new KeyboardEvent('keydown', {key: ' ', bubbles: true}));
             await new Promise(r => setTimeout(r, 400)); // (the popup closes with a short animation)
+            // The focus: Enter moves it to the close button of the popup, and it is on the marker again after the close button.
+            // A click on the marker leaves it where it is. A link in the content comes before the close button.
+            const popup = window.a11yMarker.getPopup(), close = popup.getElement().querySelector('button');
+            el.focus();
+            el.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
+            const focusIn = document.activeElement === close;
+            close.click();
+            await new Promise(r => setTimeout(r, 400));
+            const focusBack = document.activeElement === el && !popup.isOpen();
+            window.a11yMap.getCanvas().focus();
+            el.click();
+            const focusClick = document.activeElement === window.a11yMap.getCanvas() && popup.isOpen();
+            el.click();
+            await new Promise(r => setTimeout(r, 400));
+            popup.setHTML('<a href="https://example.com/">A link</a>');
+            el.focus();
+            el.dispatchEvent(new KeyboardEvent('keydown', {key: ' ', bubbles: true}));
+            const focusLink = document.activeElement?.tagName === 'A';
+            el.dispatchEvent(new KeyboardEvent('keydown', {key: ' ', bubbles: true}));
+            await new Promise(r => setTimeout(r, 400));
+            // Candidates that cannot take the focus are passed over, up to the close button.
+            popup.setHTML('<button disabled>Off</button><input type="hidden"><a href="https://example.com/" style="display:none">Hidden</a><link href="data:text/css,">');
+            el.focus();
+            el.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
+            const focusSkips = document.activeElement === close;
+            await new Promise(r => setTimeout(r, 400));
+            // (This is a second opening: the box is opaque when the opening animation has ended.)
+            const opacity = getComputedStyle(close.parentElement).opacity;
+            close.click();
+            await new Promise(r => setTimeout(r, 400));
+            // A popup wider than the map does not scroll the container when it takes the focus.
+            popup.setMaxWidth('520px').setHTML('<div style="width:500px">Wide</div>');
+            el.focus();
+            el.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
+            await new Promise(r => setTimeout(r, 100));
+            const scroll = [document.activeElement === close, window.a11yEl.scrollLeft, window.a11yEl.scrollTop].join();
+            close.click();
+            await new Promise(r => setTimeout(r, 400));
+            window.a11yFocus = {focusIn, focusBack, focusClick, focusLink, focusSkips, opacity, scroll, closed: !popup.isOpen()};
             return {label: el.getAttribute('aria-label'), role: el.getAttribute('role'), tab: el.tabIndex, plainRole: plain.getAttribute('role'), plainTab: plain.getAttribute('tabindex'), open, closed: !window.a11yMarker.getPopup().isOpen(),
                 fullscreen: button.getAttribute('aria-label'), title: button.title, pressed: button.getAttribute('aria-pressed')};
         });
@@ -990,6 +1055,8 @@ for (const mode of ['main', 'worker']) {
         check('[main] the canvas has the role and the name of a map, and the frame of the map shows the keyboard focus', before.role === 'region' && before.label === 'Map' && !before.outline && /2px solid/.test(focused) && !blurred, JSON.stringify({before, focused, blurred}));
         check('[main] a marker with a popup is a button that Enter and the space bar work; the fullscreen button says what it does',
             marker.label === 'Map marker' && marker.role === 'button' && marker.tab === 0 && marker.plainRole === null && marker.plainTab === null && marker.open && marker.closed && marker.fullscreen === 'Enter fullscreen' && marker.title === 'Enter fullscreen' && marker.pressed === 'false', JSON.stringify(marker));
+        const focus = await page.evaluate(() => window.a11yFocus);
+        check('[main] the focus goes into a popup that the keyboard opens, and back to the marker when the popup closes', focus.focusIn && focus.focusBack && focus.focusClick && focus.focusLink && focus.focusSkips && focus.opacity === '1' && focus.scroll === 'true,0,0' && focus.closed, JSON.stringify(focus));
         check('[main] a camera animation jumps with "reduce motion", but for essential: true', moving < 3.9 && reduced === 4 && essential < 3.9, JSON.stringify({moving, reduced, essential}));
     }
     // The credits of a small map: they do not go under the controls of the other corner, markers are below them, and a
@@ -1118,6 +1185,44 @@ for (const mode of ['main', 'worker']) {
     // A browser that stops the run (a timeout, a feature that is not there) is reported as one failure.
     check(`[${mode}] the test run was completed`, false, String(err.message).split('\n')[0]);
   }
+}
+
+// A lost WebGL context when the style came from a URL in another folder. The relative URLs of the style still belong
+// to that folder after the restart, and a source that is loaded says so before the tiles of the other sources are there.
+{
+    const page = await browser.newPage({viewport: {width: 1000, height: 700}});
+    const style = (await (await fetch(origin + '/style.json')).text()).replaceAll(origin + '/tiles/', 'rel/');
+    const paths = [];
+    let wait = 0;
+    // (Patterns for the path only: the address of the page names the style as well.)
+    await page.route(u => u.pathname === '/elsewhere/style.json', r => r.fulfill({contentType: 'application/json', body: style}));
+    await page.route(u => /^\/(elsewhere\/)?rel\//.test(u.pathname), async r => {
+        const u = new URL(r.request().url());
+        paths.push(u.pathname);
+        if (!u.pathname.startsWith('/elsewhere/')) return r.fulfill({status: 404, body: ''});
+        const response = await r.fetch({url: origin + u.pathname.replace('/elsewhere/rel/', '/tiles/')});
+        await new Promise(res => setTimeout(res, wait)); // after the restart the tiles are slow, so that the map is not idle at once
+        return r.fulfill({response});
+    });
+    await page.goto(origin + '/?renderer=main&nomarkers&style=/elsewhere/style.json');
+    await page.waitForFunction(() => window.mapLoaded, null, {timeout: 30000});
+    const before = paths.length;
+    wait = 500;
+    const lost = await page.evaluate(async () => {
+        const m = window.map;
+        m.addSource('here', {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: m.getCenter().toArray()}}});
+        m.addLayer({id: 'here', type: 'circle', source: 'here'});
+        await new Promise(r => { m.once('idle', r); setTimeout(r, 15000); });
+        let restored = false, atRestored, early = false, idle = false;
+        m.on('webglcontextrestored', () => { restored = true; atRestored = m.isSourceLoaded('omt'); m.once('idle', () => idle = true); });
+        m.getCanvas().getContext('webgl2').getExtension('WEBGL_lose_context').loseContext();
+        for (let i = 0; i < 600 && !idle; i++) { await new Promise(r => setTimeout(r, 25)); early ||= restored && !m.areTilesLoaded() && !m.isSourceLoaded('omt') && m.isSourceLoaded('here'); }
+        return {restored, idle, atRestored, early, loaded: m.isSourceLoaded('omt')};
+    });
+    const after = paths.slice(before), wrong = after.filter(p => !p.startsWith('/elsewhere/'));
+    check('[main] a lost WebGL context: the tiles of a style from another folder are still requested from that folder', lost.restored && lost.idle && after.length > 0 && !wrong.length, `${after.length} requests, wrong: ${wrong.slice(0, 2).join(' ') || 'none'}`);
+    check('[main] a lost WebGL context: no source is loaded at the restart, and a GeoJSON source is loaded before the tiles of the others', lost.atRestored === false && lost.early && lost.loaded, JSON.stringify(lost));
+    await page.close();
 }
 
 // Hydration: server markup is visible before the client runs, then replaced once the canvas shows the same view.

@@ -316,7 +316,8 @@ export class Map {
         this.rawStyle = this.firstChange?.(undefined, raw) ?? raw;
         this.firstChange = undefined; // (a restart of the engine starts from the style as it is then)
         for (const fn of this.beforeStyle.splice(0)) fn();
-        this.styleBase = typeof o.style === 'string' ? new URL(o.style, location.href).href : location.href;
+        // (A restart gives the style as an object. Its relative URLs still belong to the place that the style came from.)
+        if (!this.restarting) this.styleBase = typeof o.style === 'string' ? new URL(o.style, location.href).href : location.href;
         // As in MapLibre, a style may carry its own starting camera. It is used only when the options give no part of
         // the camera: with a zoom in the options and no centre, the centre is [0, 0], not that of the style.
         const sc = this.rawStyle;
@@ -407,13 +408,16 @@ export class Map {
             this.tilePool?.release();
             this.tilePool = undefined; // (a `remove` during the start below must not give the same workers back again)
             this.ready = false; this.queue = []; this.tilesLoaded = false; this.seq = 0;
+            this.loadedSources.clear(); // (the new engine has no tiles)
             const fresh = this.canvas.cloneNode() as HTMLCanvasElement, tr = this.tr;
             this.canvas.replaceWith(fresh);
             this.canvas = fresh;
             this.options = {...this.options, style: this.rawStyle, center: [tr.lng, tr.lat], zoom: tr.zoom, bearing: tr.bearing, pitch: tr.pitch};
             await this.start();
             this.resend();
-            if (Object.keys(this.globalState).length) this.restyle(false);
+            // The engine got the style without what `restyle` adds: the number of each source (without it the page does not
+            // accept the report that a source is loaded), the layers that the page has hidden, and the global state.
+            this.restyle(true);
             for (const [name, [source, options]] of this.imageInputs) await this.addImage(name, source, options);
             this.variantIds.clear();
             for (const layer of this.markerLayers.values()) this._syncMarkers(layer);
@@ -589,8 +593,11 @@ export class Map {
     }
     /** The cursor shown over the map, e.g. 'pointer' while hovering something clickable; '' restores the default. */
     setCursor(cursor: string) { this.canvas.style.cursor = cursor; return this; }
-    /** Dispatches an event to listeners. Public so controls and plugins can raise their own. */
-    fire(type: string, data: Record<string, unknown> = {}) {
+    /**
+     * Dispatches an event to listeners. Public so controls and plugins can raise their own.
+     * (A subclass that sends an event later returns a promise for that moment: the default action of the map waits for it.)
+     */
+    fire(type: string, data: Record<string, unknown> = {}): void | PromiseLike<unknown> {
         const list = this.listeners[type];
         if (type === 'error' && !list?.length) console.error('[map-jr-gl]', data.error);
         if (list) for (const fn of [...list]) fn({type, target: this, ...data});
@@ -1195,11 +1202,16 @@ export class Map {
             this.inputCleanup.push(() => el.removeEventListener(type, fn, opts));
         };
         const pos = (e: MouseEvent) => { const r = this.container.getBoundingClientRect(); return {x: e.clientX - r.left - this.container.clientLeft, y: e.clientY - r.top - this.container.clientTop}; };
-        /** Fires a map event for a DOM event. Returns true if a listener called preventDefault(): the map then does not act on it. */
-        const mouseEvent = (type: string, e: MouseEvent, extra = {}) => {
+        /**
+         * Fires a map event for a DOM event. Returns true if a listener called preventDefault(): the map then does not act on it.
+         * `act` is what the map does when no listener prevents it. It waits when `fire` sends the event later (see `fire`).
+         */
+        const mouseEvent = (type: string, e: MouseEvent, extra = {}, act?: () => void) => {
             const point = pos(e);
             let prevented = false;
-            this.fire(type, {point, lngLat: this.unproject(point), originalEvent: e, preventDefault() { prevented = true; }, get defaultPrevented() { return prevented; }, ...extra});
+            const sent = this.fire(type, {point, lngLat: this.unproject(point), originalEvent: e, preventDefault() { prevented = true; }, get defaultPrevented() { return prevented; }, ...extra});
+            if (sent) sent.then(() => { if (!prevented && !this.removed) act?.(); });
+            else if (!prevented) act?.();
             return prevented;
         };
         /** The same for a pointer: touches fire touchstart, touchmove, touchend; a mouse fires mousedown, mousemove, mouseup. */
@@ -1392,7 +1404,7 @@ export class Map {
             if (e.shiftKey) value /= 4;
             if (wheelKind && value) send(value);
         }, {passive: false});
-        listen('dblclick', e => { if (lastPointerType === 'touch') return; /* touch double-taps are handled above, uniformly across browsers */ if (mouseEvent('dblclick', e) || !this.doubleClickZoom.isEnabled()) return; const p = pos(e); this.easeTo({zoom: this.tr.zoom + (e.shiftKey ? -1 : 1), around: [p.x, p.y], duration: 300}); });
+        listen('dblclick', e => { if (lastPointerType === 'touch') return; /* touch double-taps are handled above, uniformly across browsers */ const p = pos(e); mouseEvent('dblclick', e, {}, () => { if (this.doubleClickZoom.isEnabled()) this.easeTo({zoom: this.tr.zoom + (e.shiftKey ? -1 : 1), around: [p.x, p.y], duration: 300}); }); });
         listen('contextmenu', e => { e.preventDefault(); mouseEvent('contextmenu', e); });
         listen('pointerenter', e => { if (e.pointerType === 'mouse') mouseEvent('mouseover', e); });
         listen('pointerleave', e => { if (e.pointerType === 'mouse') mouseEvent('mouseout', e); });
