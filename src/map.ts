@@ -405,6 +405,9 @@ export class Map {
         this.watchTurn++;
         this.fire('webglcontextlost');
         try {
+            // (An engine on the main thread does not end with a worker. It must stop: it can still have a context when
+            // the restart is for an engine that reported no frame.)
+            if (this.ready) this.send({type: 'destroy'});
             for (const fn of this.inputCleanup.splice(0)) fn();
             this.observer?.disconnect();
             for (const w of this.workers.splice(0)) w.terminate();
