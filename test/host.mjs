@@ -127,8 +127,18 @@ for (const renderer of ['worker', 'main']) {
             await good.queryFeatures({x: 100, y: 75}, {layers: ['own-fill']});
             await good.queryFeatures({x: 100, y: 75}, {sources: ['own'], radius: 5, geometry: false});
             await good.queryFeatures(undefined, {sources: ['omt'], sourceLayers: ['water']});
-            await wait(300);
+            // An application that adds the layer and the source itself in `load`: the ids are compared after that.
+            const ownEl = div('height:150px'), own = t.lib.createMap(ownEl, {...base, interactiveLayers: ['later'], data: {'later-source': empty}});
+            own.listen('load', () => { own.map.addSource('later-source', {type: 'geojson', data: empty}); own.map.addLayer({id: 'later', type: 'fill', source: 'later-source'}); });
+            await idle(own);
+            // A container that is hidden, and one that is not in the page yet, when the map is made: no warning for the height.
+            const hiddenEl = div('height:150px;display:none'), hidden = t.lib.createMap(hiddenEl, base);
+            setTimeout(() => { hiddenEl.style.display = ''; }, 500);
+            const lateEl = Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:200px'}), late = t.lib.createMap(lateEl, base);
+            document.body.appendChild(lateEl);
+            await wait(1500);
             const correct = said.splice(0);
+            for (const [el, host] of [[ownEl, own], [hiddenEl, hidden], [lateEl, late]]) { host.destroy(); el.remove(); }
             // The same map with mistakes.
             const spec = {...base, interactiveLayers: ['nope'], data: {nosuch: empty}, markers: [pin('a'), pin('a')],
                 extend: {layers: [{id: 'lost', type: 'fill', source: 'missing', before: 'nonexistent'}]}};
@@ -143,7 +153,7 @@ for (const renderer of ['worker', 'main']) {
             }
             const place = await bad.queryFeatures({lng: -74.0065, lat: 40.7085}).then(() => '', e => e.message);
             const flatEl = div('height:0'), flat = t.lib.createMap(flatEl, base);
-            await wait(500);
+            await wait(1500);
             for (const [el, host] of [[goodEl, good], [badEl, bad], [flatEl, flat]]) { host.destroy(); el.remove(); }
             console.warn = log;
             return {correct, said, place};
@@ -334,6 +344,30 @@ for (const renderer of ['worker', 'main']) {
         });
         check('svelte: the action makes, changes and removes a map, and the store gives the state at once', svelte.first === false && svelte.later && svelte.zoom === 13 && !svelte.canvas, JSON.stringify(svelte));
     } catch (e) { check('svelte: the test run was completed', false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
+
+// The file with the texts of the warnings does not load: a short message takes its place, and no promise is left rejected.
+{
+    const page = await browser.newPage({viewport: {width: 900, height: 600}});
+    await page.route(/map-jr-gl-mistakes-/, route => route.abort());
+    try {
+        await page.goto(`${origin}/bench`);
+        const lost = await page.evaluate(async () => {
+            const lib = await import('/dist/map-jr-gl.js'), style = await (await fetch('/style.json')).json(), said = [], unhandled = [], log = console.warn;
+            console.warn = (...a) => said.push(a.join(' '));
+            addEventListener('unhandledrejection', e => unhandled.push(String(e.reason)));
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99;background:#fff'}));
+            const pin = {id: 'a', svg: '<svg viewBox="0 0 8 8"><circle cx="4" cy="4" r="4"/></svg>', width: 8, height: 8, data: []};
+            const host = lib.createMap(el, {style, initialView: {center: [-74.0065, 40.7085], zoom: 14.3}, attribution: false, markers: [pin, pin]});
+            const place = await host.queryFeatures({lng: -74.0065, lat: 40.7085}).then(() => '', e => e.message);
+            await new Promise(r => setTimeout(r, 500));
+            host.destroy(); el.remove(); console.warn = log;
+            return {said, unhandled, place};
+        });
+        check('the file of the warnings does not load: a short message names the mistake and the documentation, and no rejection is unhandled',
+            lost.said.length === 1 && lost.said[0] === '[map-jr-gl] Mistake 7 (a) in the description or in queryFeatures(). See docs/api.md.' && lost.place.startsWith('[map-jr-gl] Mistake 9 (') && !lost.unhandled.length, JSON.stringify(lost));
+    } catch (e) { check('the file of the warnings does not load: the test run was completed', false, String(e.message).split('\n')[0]); }
     await page.close();
 }
 

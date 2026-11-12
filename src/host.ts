@@ -192,15 +192,20 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
     const map = new Map(options);
     // Each mistake gives one warning for each map. The texts are in a file that is loaded when there is a mistake.
     const warned = new Set<string>();
+    // (When the file does not load, a short message takes the place of the text. The promise never rejects.)
+    const mistake = (code: number, a?: string, b?: string) => import('./mistakes.ts').then(m => m.mistake(code, a, b),
+        () => `[map-jr-gl] Mistake ${code} (${a}) in the description or in queryFeatures(). See docs/api.md.`);
     const warn: Warn = (code, a, b) => {
         const key = code + ' ' + a;
-        if (!warned.has(key)) { warned.add(key); import('./mistakes.ts').then(m => console.warn(m.mistake(code, a, b))); }
+        if (!warned.has(key)) { warned.add(key); mistake(code, a, b).then(text => console.warn(text)); }
     };
     // `styled`: the map has the style of the last description, so its layers and sources can be compared with the description.
     let styled = false;
     const restyle = (next: MapSpec) => { styled = false; map.setStyle(next.style, {transformStyle: (_, style) => { styled = true; return extended(style, next.extend, warn); }}); };
     restyle(spec);
-    if (!map.getContainer().clientHeight) warn(0);
+    // (After a second, so that a container which gets its height a moment later gives no warning. An element that is
+    // hidden or not in the page has no rectangle: that is not this mistake.)
+    setTimeout(() => { const el = map.getContainer(); if (alive && el.getClientRects().length && !el.clientHeight) warn(0); }, 1000);
     const viewOf = (): View => { const c = map.getCenter(); return {center: [c.lng, c.lat], zoom: map.getZoom(), bearing: map.getBearing(), pitch: map.getPitch()}; };
     const state = createStore<MapState>({loaded: false, idle: false, moving: false, view: viewOf(), hover: [], renderer: undefined, error: undefined});
     const markers = new globalThis.Map<string, {layer: MarkerLayer; options: MarkerLayerOptions}>();
@@ -262,12 +267,17 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
             if (sent.get(id) === now.data[id]) continue;
             const source = map.getSource(id) as {setData?: (data: unknown) => void} | undefined;
             if (source?.setData) { sent.set(id, now.data[id]); source.setData(now.data[id]); }
-            else if (styled) warn(2, id);
         }
     };
-    /** Warns for each id of `ids` that is not a layer (or a source) of the style. Before the style has come, there is nothing to compare. */
-    const known = (code: number, ids: string[] | undefined, source?: boolean) => { if (styled) for (const id of ids ?? []) if (!(source ? map.getSource(id) : map.getLayer(id))) warn(code, id); };
-    map.on('styledata', () => { giveData(); known(1, now.interactiveLayers); });
+    /**
+     * Warns for each id of `ids` that is not a layer (or a source) of the style. The ids are compared when the map has
+     * loaded the style of the description, and for the description at `idle`: an application can add a layer or a
+     * source itself in `load`.
+     */
+    const known = (code: number, ids: string[] | undefined, source?: boolean) => { if (styled && state.get().loaded) for (const id of ids ?? []) if (!(source ? map.getSource(id) : map.getLayer(id))) warn(code, id); };
+    const ids = () => { known(1, now.interactiveLayers); for (const id in now.data) if (styled && !(map.getSource(id) as any)?.setData) warn(2, id); };
+    map.on('styledata', giveData);
+    map.on('idle', ids);
 
     const apply = (next: MapSpec, before?: MapSpec) => {
         // (A description that is made again each time, as in a template of a framework, has new objects with the same
@@ -300,7 +310,7 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
                 else { have?.layer.remove(); markers.set(m.id, {layer: map.addMarkerLayer({...m}), options: m}); }
             }
         }
-        if (differ(next.interactiveLayers, before?.interactiveLayers)) { hover(); known(1, next.interactiveLayers); }
+        if (differ(next.interactiveLayers, before?.interactiveLayers)) hover();
         if (before) for (const k of setupOnly) if (differ(next[k], before[k])) warn(8, k);
         now = next;
         if (next.data !== before?.data && !restyled) giveData();
@@ -316,7 +326,7 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
         if (o.sources && o.layers) warn(12);
         if (!o.sources && o.sourceLayers) warn(10, 'sourceLayers');
         if (!o.sources || !place) { if (o.radius !== undefined) warn(11, 'radius'); if (o.geometry === false) warn(11, 'geometry'); }
-        if (place && !o.sources && !isPosition(at as FeaturePlace) && typeof (at as {x: number}).x !== 'number') return import('./mistakes.ts').then(m => { throw new Error(m.mistake(9, JSON.stringify(at))); });
+        if (place && !o.sources && !isPosition(at as FeaturePlace) && typeof (at as {x: number}).x !== 'number') return mistake(9, JSON.stringify(at)).then(text => { throw new Error(text); });
         if (o.sources) return at && !box ? map.queryFeatures(at as [number, number] | {x: number; y: number}, o) : map.querySources(box, o.sources, o);
         const point = at && !box ? isPosition(at) ? map.project(at) : at as {x: number; y: number} : undefined;
         return map.queryLayers(box ? [[box[0], box[1]], [box[2], box[3]]] : point ? [point.x, point.y] : {layers: o.layers, filter: o.filter}, {layers: o.layers, filter: o.filter});

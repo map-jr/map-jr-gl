@@ -46,15 +46,16 @@ map.update(description);
 
 The map writes a warning to the console with `console.warn`, once for each map, for each of these mistakes:
 
-- The container has height 0 when the map is made.
+- The container is in the page, is not hidden, and has height 0 one second after the map is made.
 - An id in `interactiveLayers`, or in `layers` or `sources` of `queryFeatures`, is not in the style.
 - A key of `data` is not the id of a GeoJSON source of the style.
 - A layer of `extend` names a `before` layer or a source that the style does not have.
 - Two marker layers have the same `id`.
 - An option of `queryFeatures` has no effect in that kind of query.
 
-The ids are compared when the style has loaded. The texts of the warnings are in a file that the map loads only when
-there is a mistake.
+The ids of the description are compared each time that the map is idle, so a layer or a source that the application
+adds itself in `load` gives no warning. The texts of the warnings are in a file that the map loads only when there is
+a mistake. When that file does not load, the warning has the number of the mistake and the name in place of the text.
 
 The library compares each field with the field of the last description:
 
