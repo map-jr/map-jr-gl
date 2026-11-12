@@ -258,7 +258,7 @@ export class Map {
             // (A movement can end before the file has loaded: it is written then.)
             let early = false;
             this.once('moveend', () => { early = true; });
-            import('./hash.ts').then(m => this.cleanup.push(m.watchHash(this, key, early)));
+            import('./hash.ts').then(m => this.removed || this.cleanup.push(m.watchHash(this, key, early)));
         }
         this.tr.set(options.center ?? [0, 0], options.zoom ?? 0, options.bearing ?? 0, options.pitch ?? 0);
         // As in MapLibre, `bounds` comes before `center` and `zoom`: the map starts with that area in view.
@@ -404,6 +404,7 @@ export class Map {
         this.restarting = this.restarted = true;
         this.watchTurn++;
         this.fire('webglcontextlost');
+        this.drop('lost its WebGL context. Ask again');
         try {
             // (An engine on the main thread does not end with a worker. It must stop: it can still have a context when
             // the restart is for an engine that reported no frame.)
@@ -650,8 +651,10 @@ export class Map {
     fire(type: string, data: Record<string, unknown> = {}): void | PromiseLike<unknown> {
         const list = this.listeners[type];
         if (type === 'error' && !list?.length) console.error('[map-jr-gl]', data.error);
-        if (list) for (const fn of [...list]) fn({type, target: this, ...data});
-        if ((type === 'click' || type === 'mousemove') && this.layerListeners.length && data.point) this.dispatchLayerEvents(type, data).catch(error => this.fire('error', {error}));
+        // A listener that throws does not stop the listeners after it: its error is an `error` event.
+        if (list) for (const fn of [...list]) try { fn({type, target: this, ...data}); } catch (error) { if (type === 'error') console.error('[map-jr-gl]', error); else this.fire('error', {error}); }
+        // (A query that the removal of the map or the loss of the context rejects is not an error of the map.)
+        if ((type === 'click' || type === 'mousemove') && this.layerListeners.length && data.point) this.dispatchLayerEvents(type, data).catch(error => this.removed || this.restarting || this.fire('error', {error}));
     }
 
     // ---- camera ----
@@ -1070,8 +1073,13 @@ export class Map {
         return new Promise((resolve, reject) => {
             const id = this.nextQuery++;
             this.pending.set(id, {resolve, reject});
-            this.post(command(id));
+            if (this.removed) this.drop('was removed'); else this.post(command(id));
         });
+    }
+    /** Rejects the queries that have no answer yet. The engine that had them is gone, so no answer can come. */
+    private drop(why: string) {
+        for (const p of this.pending.values()) p.reject(new Error(`[map-jr-gl] The query has no answer: the map ${why}.`));
+        this.pending.clear();
     }
 
     /**
@@ -1483,6 +1491,7 @@ export class Map {
     remove() {
         this.removed = true;
         this.fire('remove');
+        this.drop('was removed');
         for (const c of [...this.controls.keys()]) this.removeControl(c);
         for (const fn of this.inputCleanup) fn();
         this.tilePool?.release();

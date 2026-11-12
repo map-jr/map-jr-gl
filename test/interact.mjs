@@ -1164,6 +1164,19 @@ for (const mode of ['main', 'worker']) {
         history.replaceState(history.state, '', location.href.replace(/(#.*)?$/, before));
         return {start, written, moved};
     });
+    // A map with `hash` that is removed before the file of the hash has loaded does not listen to the fragment (#22).
+    const lateHash = await page.evaluate(async () => {
+        const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:400px;height:300px'}));
+        const add = window.addEventListener;
+        let listeners = 0;
+        window.addEventListener = function (type, ...rest) { if (type === 'hashchange') listeners++; return add.call(this, type, ...rest); };
+        new mod.Map({container: el, style: {version: 8, sources: {}, layers: []}, hash: 'late', zoom: 3, center: [0, 0]}).remove();
+        await new Promise(r => setTimeout(r, 1000));
+        window.addEventListener = add;
+        el.remove();
+        return listeners;
+    });
+    check(`[${mode}] a map with the hash option that is removed at once does not listen to the URL`, lateHash === 0, `${lateHash} listeners`);
     // The option `bounds` of the constructor: the map starts with that area in view, whatever `center` and `zoom` say.
     const fitted = await page.evaluate(async mode => {
         const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:600px;height:400px;z-index:50'}));

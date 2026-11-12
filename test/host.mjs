@@ -287,10 +287,47 @@ for (const renderer of ['worker', 'main']) {
             found.drawnAtPoint > 0 && found.drawnAtPosition > 0 && found.drawnAll > found.drawnAtPoint && found.dataAtPosition > 0 && found.dataInBox > 0 && found.dataAll >= found.dataInBox && found.layer === 'object'
             && found.first === 1 && found.moved >= 2 && found.after === found.moved, JSON.stringify(found));
 
-        // 6. The end.
-        const end = await page.evaluate(() => { const t = window.t; t.host.destroy(); t.host.update(t.spec); return {canvas: !!document.querySelector('#host canvas')}; });
+        // 5b. A listener that throws stops neither the watch nor the other listeners of the event (#22).
+        const thrown = await page.evaluate(async () => {
+            const h = window.t.host, wait = ms => new Promise(r => setTimeout(r, ms));
+            let calls = 0, second = 0;
+            const stop = h.watchFeatures({x: 450, y: 300}, {}, () => { if (!calls++) throw new Error('thrown by the test'); });
+            await wait(600);
+            h.moveTo({center: [-74.0105, 40.7045]});
+            await wait(1500);
+            stop();
+            const offA = h.listen('test22', () => { throw new Error('thrown by a listener'); }), offB = h.listen('test22', () => second++);
+            const log = console.error;
+            console.error = () => {};
+            h.map.fire('test22');
+            console.error = log;
+            offA(); offB();
+            return {calls, second, error: h.state.get().error?.message};
+        });
+        check(`[${renderer}] a watchFeatures listener that throws is called again, and a listener that throws leaves the next listener its event and is reported as an error`,
+            thrown.calls >= 2 && thrown.second === 1 && thrown.error === 'thrown by a listener', JSON.stringify(thrown));
+
+        // 6. The end. The queries that have no answer yet are rejected, and so is a query after it. No callback runs after it.
+        const end = await page.evaluate(async () => {
+            const t = window.t, h = t.host, said = p => Promise.race([p.then(() => 'answered', e => e.message), new Promise(r => setTimeout(() => r('not settled'), 2000))]);
+            const sources = Object.keys(t.spec.style.sources).filter(id => t.spec.style.sources[id].type === 'vector');
+            let clicks = 0, watched = 0;
+            h.update(t.spec = {...t.spec, interactiveLayers: t.spec.style.layers.filter(l => l.source).map(l => l.id), onClick: () => clicks++});
+            h.map.fire('click', {point: {x: 450, y: 300}, lngLat: {lng: -74.0105, lat: 40.7045}});
+            h.watchFeatures(undefined, {sources}, () => watched++);
+            const pending = said(h.queryFeatures(undefined, {sources})), height = said(h.queryElevation([-74.0105, 40.7045]));
+            h.destroy(); h.update(t.spec);
+            const later = said(h.queryFeatures(undefined, {sources}));
+            const out = {canvas: !!document.querySelector('#host canvas'), pending: await pending, height: await height, later: await later};
+            await new Promise(r => setTimeout(r, 300));
+            return {...out, clicks, watched};
+        });
         check(`[${renderer}] destroy removes the map`, !end.canvas);
-        check(`[${renderer}] no page errors`, errors.length === 0, errors.slice(0, 2).join(' | '));
+        const gone = '[map-jr-gl] The query has no answer: the map was removed.';
+        check(`[${renderer}] destroy rejects the queries that wait and a query after it, and onClick and a watchFeatures listener do not run after it`,
+            end.pending === gone && end.height === gone && end.later === gone && end.clicks === 0 && end.watched === 0, JSON.stringify(end));
+        const other = errors.filter(e => !e.includes('thrown by the test')); // (the browser reports what the listener of 5b threw)
+        check(`[${renderer}] no page errors`, other.length === 0, other.slice(0, 2).join(' | '));
     } catch (e) { check(`[${renderer}] the test run was completed`, false, String(e.message).split('\n')[0]); }
     await page.close();
 }
