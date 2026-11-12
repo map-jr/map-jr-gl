@@ -13,14 +13,12 @@ class Evented {
     on(type: string, fn: Listener) { (this.listeners[type] ??= []).push(fn); return this; }
     off(type: string, fn: Listener) { this.listeners[type] = (this.listeners[type] ?? []).filter(f => f !== fn); return this; }
     once(type: string, fn: Listener) { const w: Listener = e => { this.off(type, w); fn(e); }; return this.on(type, w); }
-    fire(type: string, data: Record<string, unknown> = {}) { for (const fn of [...this.listeners[type] ?? []]) fn({type, target: this, ...data}); return this; }
+    fire(type: string, data?: Record<string, unknown>) { for (const fn of [...this.listeners[type] ?? []]) fn({type, target: this, ...data}); return this; }
 }
 
 export type OverlayAnchor = 'center' | 'top' | 'bottom' | 'left' | 'right' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
-const ANCHOR_SHIFT: Record<OverlayAnchor, string> = {
-    center: 'translate(-50%,-50%)', top: 'translate(-50%,0)', bottom: 'translate(-50%,-100%)', left: 'translate(0,-50%)', right: 'translate(-100%,-50%)',
-    'top-left': 'translate(0,0)', 'top-right': 'translate(-100%,0)', 'bottom-left': 'translate(0,-100%)', 'bottom-right': 'translate(-100%,-100%)',
-};
+/** Where the named part of an element is, across and down, in percent: `[50, 100]` for `bottom`. */
+const part = (a: string) => [['left', 'right'], ['top', 'bottom']].map(([low, high]) => a.includes(low) ? 0 : a.includes(high) ? 100 : 50);
 
 /** Keeps an element positioned over a map location. */
 abstract class Overlay extends Evented {
@@ -34,7 +32,7 @@ abstract class Overlay extends Evented {
         const p = this.map.project(this.lngLat);
         // (A marker can be turned. With the alignment `map`, the angle is from north on the map, so it turns with the map.)
         const turn = this.rotation - (this.rotationAlignment === 'map' ? this.map.getBearing() : 0);
-        this.el.style.transform = `translate(${Math.round(p.x + this.offset[0])}px,${Math.round(p.y + this.offset[1])}px) ${ANCHOR_SHIFT[this.anchor]}${turn ? ` rotate(${turn}deg)` : ''}`;
+        this.el.style.transform = `translate(${Math.round(p.x + this.offset[0])}px,${Math.round(p.y + this.offset[1])}px) translate(-${part(this.anchor).join('%,-')}%)${turn ? ` rotate(${turn}deg)` : ''}`;
     };
     protected rotation = 0;
     protected rotationAlignment = 'auto';
@@ -82,6 +80,8 @@ export class Popup extends Overlay {
     private tip = document.createElement('div');
     private content = document.createElement('div');
     private closeOnMapClick = () => this.remove();
+    /** The marker of this popup. The keyboard focus returns to it when the popup closes with the focus inside. */
+    opener?: HTMLElement;
     constructor(readonly options: PopupOptions = {}) {
         super();
         this.anchor = options.anchor ?? 'bottom';
@@ -117,13 +117,13 @@ export class Popup extends Overlay {
     private applyAnchor(anchor: OverlayAnchor) {
         this.anchor = anchor;
         const o = this.options.offset ?? 0;
-        this.offset = typeof o === 'number' ? [anchor.includes('left') ? o : anchor.includes('right') ? -o : 0, anchor.includes('top') ? o : anchor.includes('bottom') ? -o : 0]
-            : Array.isArray(o) ? o : o[anchor] ?? [0, 0];
-        const side = anchor.includes('bottom') ? 'bottom' : anchor.includes('top') ? 'top' : anchor === 'left' ? 'left' : anchor === 'right' ? 'right' : '';
-        const across = side === 'top' || side === 'bottom';
-        this.tip.style.cssText = !side ? 'display:none' : `position:absolute;width:12px;height:12px;background:inherit;transform:rotate(45deg);${side}:-5px;` +
-            (across ? `left:${anchor.includes('left') ? '14px' : anchor.includes('right') ? 'calc(100% - 26px)' : 'calc(50% - 6px)'}` : 'top:calc(50% - 6px)');
-        this.box.style.transformOrigin = `${anchor.includes('left') ? '0%' : anchor.includes('right') ? '100%' : '50%'} ${anchor.includes('top') ? '0%' : anchor.includes('bottom') ? '100%' : '50%'}`;
+        const [x, y] = part(anchor), side = anchor.split('-')[0];
+        // (One number moves the popup away from the position: down and to the right for `top-left`.)
+        this.offset = typeof o === 'number' ? [(1 - x / 50) * o, (1 - y / 50) * o] : Array.isArray(o) ? o : o[anchor] ?? [0, 0];
+        // (Across the top or the bottom, the pointer is 14 pixels from the left edge, in the middle, or 14 pixels from the right edge.)
+        this.tip.style.cssText = side === 'center' ? 'display:none' : `position:absolute;width:12px;height:12px;background:inherit;transform:rotate(45deg);${side}:-5px;` +
+            (y === 50 ? 'top:calc(50% - 6px)' : `left:calc(${x}% + ${14 - x * .4}px)`);
+        this.box.style.transformOrigin = `${x}% ${y}%`;
     }
 
     /** Above the point when it fits, otherwise below; hugging the left or right edge when the point is near one. */
@@ -160,7 +160,11 @@ export class Popup extends Overlay {
     remove() {
         if (!this.map) return this;
         this.map.off('click', this.closeOnMapClick);
-        const finish = () => { this.detach(); this.fire('close'); };
+        const finish = () => {
+            if (this.el.contains(document.activeElement)) this.opener?.focus();
+            this.detach();
+            this.fire('close');
+        };
         const closing = this.transition(true);
         // Stay attached (and tracking the map) until the fade has played.
         if (closing) closing.finished.then(finish, finish); else finish();
@@ -170,9 +174,9 @@ export class Popup extends Overlay {
     /** Fades in while easing a few pixels toward its resting place; the shape itself never changes. */
     private transition(reverse: boolean): Animation | null {
         if (this.options.animate === false || !this.box.animate || matchMedia('(prefers-reduced-motion: reduce)').matches) return null;
-        const dy = this.anchor.includes('top') ? -6 : this.anchor.includes('bottom') ? 6 : 0, dx = this.anchor === 'left' ? -6 : this.anchor === 'right' ? 6 : 0;
-        const away = {transform: `translate(${dx}px, ${dy}px)`, opacity: 0}, rest = {transform: 'none', opacity: 1};
-        return this.box.animate(reverse ? [rest, away] : [away, rest], {duration: reverse ? 110 : 180, easing: 'ease-out', fill: reverse ? 'forwards' : 'none'});
+        const [x, y] = part(this.anchor), dy = y * .12 - 6, dx = dy ? 0 : x * .12 - 6;
+        // (One keyframe: the box comes from it when the popup opens, and goes to it when the popup closes.)
+        return this.box.animate({transform: `translate(${dx}px, ${dy}px)`, opacity: 0, offset: +reverse}, {duration: reverse ? 110 : 180, easing: 'ease-out', fill: reverse ? 'forwards' : 'none'});
     }
 }
 
@@ -196,7 +200,7 @@ export class Marker extends Overlay {
             const s = +(options.scale ?? 1) || 1;
             this.el = document.createElement('div');
             this.el.innerHTML = `<svg width="${27 * s}" height="${41 * s}" viewBox="0 0 27 41" style="display:block;filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))">` +
-                `<path d="M13.500 0C6 0 0 6 0 13.500 0 23 13.500 41 13.500 41S27 23 27 13.500C27 6 21 0 13.500 0z"/><circle cx="13.500" cy="13.500" r="5.500" fill="#fff"/></svg>`;
+                `<path d="M13.5 0C6 0 0 6 0 13.5 0 23 13.5 41 13.5 41S27 23 27 13.5C27 6 21 0 13.5 0z"/><circle cx="13.5" cy="13.5" r="5.5" fill="#fff"/></svg>`;
             // (The colour can come from data: it is set as an attribute, never as HTML.)
             this.el.querySelector('path')!.setAttribute('fill', options.color ?? '#3fb1ce');
             // (As in MapLibre GL JS. An element of your own keeps the attributes that you gave it.)
@@ -205,8 +209,14 @@ export class Marker extends Overlay {
         this.el.classList.add('map-jr-marker', 'maplibregl-marker', ...(options.className?.split(' ').filter(Boolean) ?? []));
         this.el.style.zIndex = '1';
         this.el.addEventListener('click', e => { if (this.popup) { e.stopPropagation(); this.togglePopup(); } });
-        // With the keyboard: Enter or the space bar opens and closes the popup of the marker.
-        this.el.addEventListener('keydown', e => { if (this.popup && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); e.stopPropagation(); this.togglePopup(); } });
+        // With the keyboard: Enter or the space bar opens and closes the popup of the marker. The focus moves to the first
+        // element of the open popup that takes it (the close button, when the content has none).
+        this.el.addEventListener('keydown', e => {
+            if (!this.popup || (e.key !== 'Enter' && e.key !== ' ')) return;
+            const opens = !this.popup.isOpen();
+            e.preventDefault(); e.stopPropagation(); this.togglePopup();
+            if (opens) (this.popup.getElement().querySelector('[href],button,input,select,textarea,[tabindex]') as HTMLElement | null)?.focus();
+        });
         this.el.addEventListener('pointerdown', e => this.startDrag(e));
         this.setDraggable(!!options.draggable);
     }
@@ -216,8 +226,11 @@ export class Marker extends Overlay {
     // tab position of its own keeps it.)
     setPopup(popup?: Popup) {
         this.popup?.remove(); this.popup = popup;
-        if (popup && !this.el.hasAttribute('tabindex')) this.el.tabIndex = 0;
-        if (popup && !this.el.hasAttribute('role')) this.el.setAttribute('role', 'button');
+        if (popup) {
+            popup.opener = this.el;
+            if (!this.el.hasAttribute('tabindex')) this.el.tabIndex = 0;
+            if (!this.el.hasAttribute('role')) this.el.setAttribute('role', 'button');
+        }
         return this;
     }
     getPopup() { return this.popup; }
@@ -247,14 +260,10 @@ export class Marker extends Overlay {
         this.el.setPointerCapture(e.pointerId);
         this.fire('dragstart');
         const move = (ev: PointerEvent) => { this.setLngLat(map.unproject({x: ev.clientX - dx, y: ev.clientY - dy})); this.fire('drag'); };
-        const end = () => {
-            this.el.removeEventListener('pointermove', move);
-            this.el.removeEventListener('pointerup', end);
-            this.el.removeEventListener('pointercancel', end);
-            this.fire('dragend');
-        };
-        this.el.addEventListener('pointermove', move);
-        this.el.addEventListener('pointerup', end);
-        this.el.addEventListener('pointercancel', end);
+        // (The three listeners end with the drag: `signal` removes them.)
+        const stop = new AbortController(), signal = {signal: stop.signal}, end = () => { stop.abort(); this.fire('dragend'); };
+        this.el.addEventListener('pointermove', move, signal);
+        this.el.addEventListener('pointerup', end, signal);
+        this.el.addEventListener('pointercancel', end, signal);
     }
 }

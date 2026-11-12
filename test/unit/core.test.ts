@@ -201,6 +201,9 @@ test('server: renders a tile to SVG offline, with generated icons and overrides'
     const {svg, tiles} = await renderToSVG(opts);
     assert.ok(tiles.includes('https://tiles.test/14/4823/6160.pbf'));
     assert.match(svg, /^<svg xmlns="http:\/\/www.w3.org\/2000\/svg" width="400" height="300"/);
+    // The SVG is an image with a name for assistive technology. The option `label` gives the name; its text is escaped.
+    assert.match(svg, /^<svg [^>]* role="img" aria-label="Map"/);
+    assert.match((await renderToSVG({...opts, label: 'Hotels & "bars" <b>'})).svg, /^<svg [^>]* role="img" aria-label="Hotels &#38; &#34;bars&#34; &#60;b&#62;"/);
     assert.match(svg, /fill="#00aaff"/); assert.match(svg, /stroke-dasharray="4 2"/); assert.match(svg, /<text /);
     assert.match(svg, /<symbol id="i0"[^>]*><rect width="20" height="12" data-name="ref-/, 'generated icons are embedded as vector symbols');
     assert.ok(!svg.includes('#123456'), 'a layer hidden for server output is left out');

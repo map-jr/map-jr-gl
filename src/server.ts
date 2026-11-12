@@ -20,6 +20,11 @@ export interface RenderOptions {
     height: number;
     markers?: MarkerLayerOptions[];
     fontFamily?: string;
+    /**
+     * The name of the SVG for assistive technology. The SVG has `role="img"` and this text as its `aria-label`.
+     * The default is "Map". Say what the map shows, for example "Map of the hotels in Bern".
+     */
+    label?: string;
     /** Return false to leave a style layer out of the server output, e.g. dense building footprints, to keep the markup small. */
     layerFilter?: (layerId: string) => boolean;
     /** Embed raster tiles and the icon sheet as data URIs instead of linking to them. Needed when the SVG is rasterised. */
@@ -122,7 +127,7 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
         return {x: 0, y: 0, width: img.width, height: img.height, pixelRatio: 1, custom: true};
     });
     const svg = renderSVG({
-        tr, layers, items, labels, sprite, images, markers: o.markers ?? [], fontFamily: o.fontFamily ?? DEFAULT_FONT,
+        tr, layers, items, labels, sprite, images, markers: o.markers ?? [], fontFamily: o.fontFamily ?? DEFAULT_FONT, label: o.label,
         rootAttrs: 'data-map-jr-ssr="" style="position:absolute;inset:0;width:100%;height:100%"',
     });
     return {svg, tiles: urls, attribution: [...new Set(Object.values(style.sources).map(s => s.attribution).filter((a): a is string => !!a))]};
