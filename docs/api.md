@@ -360,7 +360,7 @@ has the right type, and a name that is not in the table does not compile.
 | `terrain` | The terrain has changed. | `terrain`: `{source, exaggeration}` or `null`. |
 | `stats` | At most one time each second while the map draws. | `fps` (frames per second), `frameMs` (the CPU time of a frame in milliseconds). |
 | `geolocate` | The geolocate control has a position. | `coords`. |
-| `webglcontextlost`, `webglcontextrestored` | The browser has taken the WebGL context away, or the map has it again. | |
+| `webglcontextlost`, `webglcontextrestored` | The browser has taken the WebGL context away, or the map has it again. The map starts again on a new canvas with the same view and data. A map with the worker renderer starts again on the main thread and writes one warning when the worker loses the context before its first frame, loses it twice within 10 seconds, or reports no frame within 5 seconds after a restart. When the main thread then loses the context again before its first frame, or reports no frame within 15 seconds, the map fires `error` and does not start again. The time that the page is hidden does not count. | |
 | `error` | An error of the map. `onError` and `state.error` have the same errors as an `Error`. | `error`. |
 
 In a mouse event, `lngLat` is an object (`{lng, lat}`). In `onClick`, `lngLat` is an array (`[lng, lat]`).

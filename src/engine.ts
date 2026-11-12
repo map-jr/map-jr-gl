@@ -164,6 +164,7 @@ export class Engine {
     private zoomSeen = NaN;
     private contourWait = false;
     private reportFrames = false;
+    private drew = false;
     /** The WebGL context is gone: nothing more is drawn. */
     private lost = false;
     // Requests that the page can change. This thread and the tile workers ask the page through `ask`.
@@ -1063,6 +1064,9 @@ export class Engine {
     private frame(now: number) {
         const tr = this.tr, frameNo = ++this.frameNo, began = performance.now();
         compileFor(this.states); // (the light of the style is compiled when it is drawn)
+        // The page always gets a `frame` event for the first frame of an engine with a WebGL context, also for a map with
+        // no size, which draws nothing. A new engine that sends none has no context (see `watch` in map.ts).
+        if (!this.drew && !this.lost && !this.renderer.gl.isContextLost()) { this.drew = true; this.emit({type: 'frame'}); }
         if (!tr.width || !tr.height || this.lost) return;
         const dt = Math.min(100, now - this.lastTime || 16);
         this.lastTime = now;
@@ -1326,7 +1330,9 @@ export class Engine {
         const idle = complete && !busy && !settling && !this.spritePending && !this.contourWait && !this.atlas.loading;
         if (settling && !busy) setTimeout(() => this.repaint(), 200);
         if (this.contourWait) { this.contourWait = false; setTimeout(() => this.repaint(), CONTOUR_WAIT + 20); }
-        if (this.reportFrames) this.emit({type: 'frame'});
+        // (A context can be lost with no event. Nothing was drawn then, and the page must not take this for a frame.)
+        // (A context can be lost with no event. Nothing was drawn then, and the page must not take this for a frame.)
+        if (this.reportFrames && !this.renderer.gl.isContextLost()) this.emit({type: 'frame'});
         if (idle && !this.wasIdle) this.emit({type: 'idle', seq: this.seq});
         this.wasIdle = idle;
         if (busy) this.repaint();

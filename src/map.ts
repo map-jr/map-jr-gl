@@ -381,6 +381,8 @@ export class Map {
         for (const [c, t] of this.queue) this.send(c, t);
         this.queue = [];
         this.send({type: 'repaint'});
+        // (After a restart, an engine in a worker has 5 seconds for its first frame, and an engine on this thread has 15.)
+        this.watch(!this.restarting ? 0 : this.renderer === 'worker' ? 5000 : 15000);
         this.styleEvents(true);
 
         this.observer = new ResizeObserver(() => this.resize());
@@ -397,9 +399,10 @@ export class Map {
      * Starts the engine again on a new canvas, with the camera, style, images, markers and state that the map has now.
      * This is how the map recovers when the browser takes the WebGL context away, which phones do to save memory.
      */
-    private async restart() {
+    private async restart(main?: boolean) {
         if (this.restarting || this.removed) return;
         this.restarting = this.restarted = true;
+        this.watchTurn++;
         this.fire('webglcontextlost');
         try {
             for (const fn of this.inputCleanup.splice(0)) fn();
@@ -412,7 +415,7 @@ export class Map {
             const fresh = this.canvas.cloneNode() as HTMLCanvasElement, tr = this.tr;
             this.canvas.replaceWith(fresh);
             this.canvas = fresh;
-            this.options = {...this.options, style: this.rawStyle, center: [tr.lng, tr.lat], zoom: tr.zoom, bearing: tr.bearing, pitch: tr.pitch};
+            this.options = {...this.options, style: this.rawStyle, center: [tr.lng, tr.lat], zoom: tr.zoom, bearing: tr.bearing, pitch: tr.pitch, ...(main && {renderer: 'main' as const})};
             await this.start();
             this.resend();
             // The engine got the style without what `restyle` adds: the number of each source (without it the page does not
@@ -423,6 +426,49 @@ export class Map {
             for (const layer of this.markerLayers.values()) this._syncMarkers(layer);
             this.fire('webglcontextrestored');
         } catch (error) { this.fire('error', {error}); } finally { this.restarting = false; }
+    }
+
+    /** The engine of the last start has drawn a frame. */
+    private drew = false;
+    private lostAt = 0;
+    private watchTurn = 0;
+    /**
+     * Waits for the first frame of a new engine. With `limit`, an engine that reports none within that many
+     * milliseconds counts as an engine that lost its context. The time is counted in frames of the page, so the time
+     * that the page is hidden does not count: a hidden page draws no frames.
+     */
+    private watch(limit = 0) {
+        const turn = ++this.watchTurn;
+        this.drew = false;
+        let shown = 0, last = 0;
+        const tick = (now: number) => {
+            if (this.drew || turn !== this.watchTurn) return;
+            if (last) shown += Math.min(now - last, 100);
+            last = now;
+            if (shown > limit) this.contextLost(); else requestAnimationFrame(tick);
+        };
+        if (limit) requestAnimationFrame(tick);
+    }
+
+    /**
+     * The engine has no WebGL context. An engine that drew before starts again in the same way. An engine in a worker
+     * that loses the context before its first frame, or within 10 seconds of the loss before, would lose it again: the
+     * engine then starts on the main thread. An engine on the main thread that was started again already and loses the
+     * context before its first frame is an error.
+     */
+    private contextLost() {
+        if (this.removed) return;
+        // (The new engine lost its context while `restart` still waits, for the images for example.)
+        if (this.restarting) return void setTimeout(() => this.contextLost(), 1000);
+        const worker = this.renderer === 'worker', now = Date.now(), toMain = worker && (!this.drew || now - this.lostAt < 10000);
+        this.lostAt = now;
+        if (this.drew || worker || !this.restarted) {
+            if (toMain) console.warn('[map-jr-gl] Worker rendering unavailable, using the main thread: the WebGL context was lost');
+            this.restart(toMain);
+        } else {
+            this.watchTurn++;
+            this.fire('error', {error: new Error('[map-jr-gl] The WebGL context was lost again. Call remove() and create the map again later.')});
+        }
     }
 
     /** Sends again what an engine gets through commands, and not through the style. A new engine needs it. */
@@ -480,8 +526,9 @@ export class Map {
         } else if (e.type === 'resource') {
             this.answer(e.url, e.kind).then(a => a, (err): RequestAnswer => ({error: String(err.message)})).then(a => this.post({type: 'resourceResult', id: e.id, ...a}, a.data ? [a.data] : undefined));
         } else if (e.type === 'contextlost') {
-            this.restart();
+            this.contextLost();
         } else if (e.type === 'frame') {
+            this.drew = true; // (an engine reports its first frame also when the page did not ask for frames)
             this.fire('render');
         } else if (e.type === 'source') {
             if (!e.loaded) this.loadedSources.delete(e.source);

@@ -912,6 +912,40 @@ for (const mode of ['main', 'worker']) {
         check('[worker] a worker without WebGL2: the map uses the main thread, load and idle fire, and transformRequest sees the tile requests',
             fell.renderer === 'main' && fell.seen.includes('load') && fell.seen.includes('idle') && !fell.seen.includes('error') && fell.tiles > 0 && fell.layer > 0, JSON.stringify(fell));
     }
+    // A worker whose WebGL context is lost (#78). `now`: each worker loses it directly after the start, before its first
+    // frame or just after it. The map goes to the main thread at the first loss or at the second. `quiet`: the first
+    // worker loses it after some frames, so the map starts a second worker. That one says that its context is lost and
+    // gets no event, so it reports no frame, and after 5 seconds the map goes to the main thread.
+    if (mode === 'worker') {
+        for (const kind of ['now', 'quiet']) {
+            const fell = await page.evaluate(async kind => {
+                const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:300px;height:200px'}));
+                const wrap = then => URL.createObjectURL(new Blob([`const get = OffscreenCanvas.prototype.getContext; OffscreenCanvas.prototype.getContext = function (kind, ...rest) { const gl = get.call(this, kind, ...rest); if (gl && /webgl/.test(kind)) { const lose = () => gl.getExtension('WEBGL_lose_context').loseContext(); ${then} } return gl; }; importScripts(${JSON.stringify(location.origin + '/dist/map-jr-gl-worker.js')});`], {type: 'text/javascript'}));
+                const now = wrap('setTimeout(lose, 0);');
+                const later = wrap('let n = 0; const f = () => ++n < 30 ? requestAnimationFrame(f) : lose(); f();');
+                const silent = wrap('gl.isContextLost = () => true;');
+                const seen = [], warnings = [], warn = console.warn, start = performance.now();
+                console.warn = (...a) => warnings.push(a.join(' '));
+                let lost = 0, secondLoss = 0;
+                const m = new mod.Map({container: el, style: '/style.json', center: [-74.0065, 40.7085], zoom: 14, attributionControl: false,
+                    createWorker: () => new Worker(kind === 'now' ? now : lost ? silent : later)});
+                for (const type of ['load', 'idle', 'error']) m.on(type, () => seen.push(type));
+                m.on('webglcontextlost', () => { if (++lost === 2) secondLoss = performance.now(); });
+                let firstLoss = 0;
+                m.once('webglcontextlost', () => firstLoss = performance.now());
+                for (let i = 0; i < 300 && !(m.renderer === 'main' && m.areTilesLoaded()); i++) await new Promise(r => setTimeout(r, 100));
+                console.warn = warn;
+                const out = {renderer: m.renderer, lost, seen: [...new Set(seen)], warnings: warnings.filter(w => /using the main thread: the WebGL context was lost/.test(w)).length,
+                    waited: Math.round(secondLoss - firstLoss), loaded: m.areTilesLoaded(), layer: (await Promise.race([m.queryRenderedFeatures({layers: ['building']}), new Promise(r => setTimeout(() => r([]), 4000))])).length};
+                m.remove(); el.remove();
+                return out;
+            }, kind);
+            const ok = fell.renderer === 'main' && fell.seen.includes('load') && fell.seen.includes('idle') && !fell.seen.includes('error') && fell.warnings === 1 && fell.loaded && fell.layer > 0;
+            if (kind === 'now') check('[worker] a worker that loses its WebGL context at once: the map goes to the main thread after one or two losses, warns once, and load and idle fire', ok && fell.lost <= 2, JSON.stringify(fell));
+            else check('[worker] a second worker that reports no frame: the map goes to the main thread after 5 seconds, warns once, and load and idle fire', ok && fell.lost === 2 && fell.waited >= 5000, JSON.stringify(fell));
+        }
+    }
     // maplibre-compat does not accept in silence what it cannot do: options with no effect warn, style calls that MapLibre
     // refuses fire `error`, and `strict: true` throws.
     if (mode === 'main') {

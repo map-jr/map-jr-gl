@@ -354,7 +354,7 @@ The default configuration needs no settings.
 - The page loads `map-jr-gl.js`. This file is small.
 - The library starts a worker from `map-jr-gl-worker.js`. It finds this file next to `map-jr-gl.js`. Bundlers copy
   the file automatically.
-- If a worker cannot start, the library draws on the main thread and writes a warning. A map always appears.
+- If a worker cannot start, or loses its WebGL context again directly after the map has started it again, the library draws on the main thread and writes a warning. A map always appears.
 
 See [Loading](docs/loading.md) for a CDN, a strict Content Security Policy, the one-file
 build and other configurations.
