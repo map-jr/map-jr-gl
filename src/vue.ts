@@ -197,6 +197,7 @@ export const MapJr = defineComponent({
         });
         const layers = computed(() => props.interactiveLayers && [...props.interactiveLayers]);
         const controls = computed(() => props.controls && [...props.controls].map(c => toRaw(c)));
+        const listensForError = !!getCurrentInstance()?.vnode.props?.onError;
         const spec = computed<MapSpec>(() => {
             const out: MapSpec = {
                 style: style.value, extend: extend.value, view: view.value, initialView: props.initialView && toRaw(props.initialView), markers: markers.value, data: data.value, interactiveLayers: layers.value, controls: controls.value,
@@ -204,6 +205,8 @@ export const MapJr = defineComponent({
                 renderer: props.renderer, fonts: props.fonts && toRaw(props.fonts), fontFamily: props.fontFamily, glyphs: props.glyphs, interactive: props.interactive, antialias: props.antialias,
                 attribution: (props.attribution as unknown) === true ? undefined : props.attribution && toRaw(props.attribution), hash: props.hash,
                 onViewChange: view => emit('update:view', view), onClick: event => emit('click', event),
+                // (Without a listener for `error`, the map writes each error to the console.)
+                onError: listensForError ? error => emit('error', error) : undefined,
             };
             for (const k in out) if ((out as any)[k] === undefined) delete (out as any)[k];
             return out;
@@ -213,7 +216,6 @@ export const MapJr = defineComponent({
         watch(() => state.value?.loaded, loaded => { if (loaded) emit('load'); });
         watch(() => state.value?.idle, idle => { if (idle) emit('idle'); });
         watch(() => state.value?.hover, hover => { if (hover) emit('hover', hover); });
-        watch(() => state.value?.error, error => { if (error) emit('error', error); });
         expose({host, state});
 
         // The first view from the server: the SVG and the credits. On the server they are made here. In the browser,

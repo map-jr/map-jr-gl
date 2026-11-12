@@ -74,6 +74,31 @@ for (const renderer of ['worker', 'main']) {
         });
         check(`[${renderer}] a style URL that fails: state.error has the URL and the status, and no promise is left rejected`, /Style \/no-such-style\.json: HTTP 404/.test(badStyle ?? '') && !errors.length, JSON.stringify({badStyle, errors}));
 
+        // 3c. Mistakes and errors: a container that is not there and a marker layer with no size have a message; `onError`
+        // gets each error; without it the error is written to the console.
+        const mistakes = await page.evaluate(async () => {
+            const t = window.t, said = fn => { try { fn(); return ''; } catch (e) { return e.message; } }, wait = ms => new Promise(r => setTimeout(r, ms));
+            const out = {noId: said(() => t.lib.createMap('nope', {style: t.style})), isNull: said(() => t.lib.createMap(null, {style: t.style}))};
+            const el = document.body.appendChild(document.createElement('div'));
+            out.marker = said(() => t.lib.createMap(el, {style: t.style, markers: [{id: 'm', svg: '<svg viewBox="0 0 2 2"/>', data: []}]}));
+            out.left = el.childElementCount;
+            const logged = [], log = console.error;
+            console.error = (...a) => logged.push(a.map(x => x?.message ?? String(x)).join(' '));
+            const got = [], withHook = t.lib.createMap(el, {style: '/no-such-style.json', attribution: false, onError: e => got.push(e.message)});
+            await wait(1200);
+            out.hook = got.join(); out.loggedWithHook = logged.length;
+            withHook.destroy();
+            const without = t.lib.createMap(el, {style: '/no-such-style.json', attribution: false});
+            await wait(1200);
+            out.logged = logged.join(); out.state = without.state.get().error?.message;
+            without.destroy(); el.remove(); console.error = log;
+            return out;
+        });
+        check(`[${renderer}] mistakes have a message: a container that is not there, a marker layer with no size`,
+            mistakes.noId === '[map-jr-gl] createMap(): no element with the id "nope".' && mistakes.isNull.startsWith('[map-jr-gl] createMap(): the container is null.') && mistakes.marker.startsWith('[map-jr-gl] Marker layer "m": width and height are required.') && mistakes.left === 0, JSON.stringify(mistakes));
+        check(`[${renderer}] onError gets each error, and without it the error is written to the console`,
+            /HTTP 404/.test(mistakes.hook) && mistakes.loggedWithHook === 0 && /^\[map-jr-gl\] .*HTTP 404/.test(mistakes.logged) && /HTTP 404/.test(mistakes.state ?? ''), JSON.stringify(mistakes));
+
         // 3b. A description with no style (only the changed fields) throws at once with a message, and the map is not harmed.
         const partial = await page.evaluate(async () => {
             const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), said = fn => { try { fn(); return ''; } catch (e) { return e.message; } };

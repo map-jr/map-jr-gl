@@ -51,7 +51,9 @@ export const MapJr = forwardRef<MapHost | null, MapJrProps>(function MapJr(props
     // The functions of the last render are called, also from a map that an earlier render made.
     const last = useRef(props);
     last.current = props;
-    const spec: MapSpec = {...rest, style: mapStyle, onViewChange: view => last.current.onViewChange?.(view), onClick: event => last.current.onClick?.(event)};
+    const spec: MapSpec = {...rest, style: mapStyle, onViewChange: view => last.current.onViewChange?.(view), onClick: event => last.current.onClick?.(event),
+        // (Without `onError`, the map writes each error to the console.)
+        onError: onError && (error => last.current.onError?.(error))};
     for (const k in spec) if ((spec as any)[k] === undefined) delete (spec as any)[k];
     useEffect(() => {
         const map = made.current = createMap(el.current!, spec);
@@ -60,7 +62,6 @@ export const MapJr = forwardRef<MapHost | null, MapJrProps>(function MapJr(props
             map.state.subscribe(s => s.loaded, v => { if (v) last.current.onLoad?.(); }),
             map.state.subscribe(s => s.idle, v => { if (v) last.current.onIdle?.(); }),
             map.state.subscribe(s => s.hover, v => last.current.onHover?.(v)),
-            map.state.subscribe(s => s.error, v => { if (v) last.current.onError?.(v); }),
         ];
         return () => { for (const stop of stops) stop(); made.current = null; map.destroy(); setHost(null); };
     }, []);

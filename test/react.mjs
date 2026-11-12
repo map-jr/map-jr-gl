@@ -115,6 +115,27 @@ try {
     await page.mouse.move(400, 250); await page.waitForTimeout(300); await page.mouse.click(400, 250); await page.waitForTimeout(800);
     const click = await page.evaluate(() => ({clicks: window.t.clicks.length, features: Array.isArray(window.t.clicks[0]?.features)}));
     check('browser: a click calls onClick, with the features there', click.clicks === 1 && click.features, JSON.stringify(click));
+    // `onError` gets each error; without it the map writes the error to the console.
+    const failing = await page.evaluate(async () => {
+        const {createElement: h} = await import('react'), {createRoot} = await import('react-dom/client'), {MapJr} = await import('/dist/react.js'), wait = ms => new Promise(r => setTimeout(r, ms));
+        const logged = [], log = console.error;
+        console.error = (...a) => logged.push(a.map(x => x?.message ?? String(x)).join(' '));
+        const run = async props => {
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:200px;height:150px'}));
+            const root = createRoot(el);
+            root.render(h(MapJr, {mapStyle: '/no-such-style.json', attribution: false, ...props}));
+            await wait(1500);
+            root.unmount(); el.remove();
+        };
+        const got = [];
+        await run({onError: e => got.push(e.message)});
+        const loggedWithProp = logged.filter(l => l.includes('map-jr-gl')).length;
+        await run({});
+        console.error = log;
+        return {got, loggedWithProp, logged: logged.filter(l => l.includes('map-jr-gl'))};
+    });
+    check('browser: onError gets each error, and without it the error is written to the console',
+        failing.got.length === 1 && /HTTP 404/.test(failing.got[0]) && failing.loggedWithProp === 0 && failing.logged.length === 1 && /HTTP 404/.test(failing.logged[0]), JSON.stringify(failing));
     check('browser: no page errors', errors.length === 0, errors.slice(0, 2).join(' | '));
     await page.close();
 } catch (e) { check('the test run was completed', false, String(e.message).split('\n')[0]); }

@@ -115,7 +115,7 @@ const layer = map.addMarkerLayer({
 
 | Option | Default | Effect |
 |---|---|---|
-| `width`, `height` | Required | The size of a marker in CSS pixels |
+| `width`, `height` | Required | The size of a marker in CSS pixels. A layer without them throws an error. |
 | `anchor` | `'center'` | The part of the marker that is on the position, for example `'bottom'` |
 | `collide` | `false` | When `true`, map labels do not go below the markers |
 | `minZoom`, `maxZoom` | None | The zoom range in which the layer shows. The layer fades at the two ends of the range. |

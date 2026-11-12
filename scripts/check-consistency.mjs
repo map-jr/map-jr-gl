@@ -30,7 +30,7 @@ for (const f of spec) if (!api.includes('`' + f + '`')) fail('docs/api.md', `the
 
 // 2. Each field of the description is a prop (or an event) of the Vue component, and is in its document.
 //    A field that Vue gives in another way is named here with the reason.
-const vueOther = {style: 'the prop mapStyle', onViewChange: 'v-model:view', onClick: 'the event click'};
+const vueOther = {style: 'the prop mapStyle', onViewChange: 'v-model:view', onClick: 'the event click', onError: 'the event error'};
 const vue = read('src/vue.ts'), vueDoc = read('docs/vue.md');
 const props = vue.slice(vue.indexOf('    props: {'), vue.indexOf('    emits: {'));
 for (const f of spec) {
