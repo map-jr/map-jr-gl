@@ -1,9 +1,10 @@
 // In-browser benchmark: this library against MapLibre GL JS on the visitor's own GPU. See bench.html.
-import * as mapjr from '/dist/map-jr-gl-maplibre-compat.js';
-import * as maplibre from '/ml/maplibre-gl.mjs';
-import {manyMarkers} from '/demo/markers.mjs';
+// (The URLs are relative: the page is at /bench of the demo server, and in the folder bench/ of the gallery site.)
+import * as mapjr from '../dist/map-jr-gl-maplibre-compat.js';
+import * as maplibre from '../ml/maplibre-gl.mjs';
+import {manyMarkers} from './markers.mjs';
 
-maplibre.setWorkerUrl('/ml/maplibre-gl-worker.mjs');
+maplibre.setWorkerUrl(new URL('../ml/maplibre-gl-worker.mjs', import.meta.url).href);
 const q = new URLSearchParams(location.search);
 const STYLE = q.get('style') || 'https://tiles.openfreemap.org/styles/liberty';
 const VIEW = {center: [-74.0065, 40.7085], zoom: 14.3}, SECONDS = +(q.get('seconds') || 5);
@@ -69,7 +70,8 @@ async function run(s) {
         // means that the processor is the limit; a small value with few frames means that the GPU is.
         map.on('stats', e => { engine.push(e.frameMs); engineFps.push(e.fps); });
     }
-    await new Promise(r => map.once('idle', r));
+    // (A map that never settles must not stop the scenarios after it: it fails after a minute.)
+    if (!await Promise.race([new Promise(r => map.once('idle', () => r(true))), sleep(60000).then(() => false)])) { map.remove(); throw new Error('the map was not idle after 60 seconds'); }
     const load = performance.now() - t0;
     let add = null;
     if (s.markers) {
@@ -82,7 +84,8 @@ async function run(s) {
     await sleep(600);
     frames = 0; stamps = []; engine = []; engineFps = []; scripts.length = 0; blocked = Number.isNaN(blocked) ? NaN : 0;
     const a0 = performance.now();
-    map.easeTo({...(s.terrain ? TERRAIN_END : {center: [-73.975, 40.735], zoom: 15.2, bearing: 40}), duration: SECONDS * 1000});
+    // (`essential`: the animation is what is measured, so it also runs where the system asks for less motion.)
+    map.easeTo({...(s.terrain ? TERRAIN_END : {center: [-73.975, 40.735], zoom: 15.2, bearing: 40}), duration: SECONDS * 1000, essential: true});
     await sleep(SECONDS * 1000 + 100);
     // Count only frames drawn while the camera was animating: once it stops, a map that correctly stops drawing
     // would otherwise look slower than one that keeps redrawing an unchanged view.

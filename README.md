@@ -373,7 +373,7 @@ These computers are virtual machines, and those for Linux and Windows have no GP
 two libraries, not as the speed of a real device. On an Apple M4 the two libraries draw 60 frames each second;
 this library loads faster (490 ms against 781 ms) and uses no page script for a frame.
 
-To measure on your device, run `pnpm demo` and open `http://localhost:8080/bench`. `pnpm status` writes the table.
+To measure on your device, open [the benchmark page](https://map-jr.github.io/map-jr-gl/bench/) of the gallery site, or run `pnpm demo` and open `http://localhost:8080/bench`. `pnpm status` writes the table.
 
 ## Documents
 
