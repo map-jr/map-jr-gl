@@ -221,7 +221,7 @@ export class Map {
         const c = typeof options.container === 'string' ? document.getElementById(options.container) : options.container;
         if (!c) throw new Error('Map container not found');
         // Two maps in one element leave two canvases. Hot module replacement and an effect without a clean-up do this.
-        if (c.querySelector(':scope > .map-jr-canvas')) console.warn('[map-jr-gl] The container already has a map. Call remove() on the first map (destroy() in the main API) before you make another map in the same element.');
+        if (c.querySelector(':scope > .map-jr-canvas')) console.warn('[map-jr-gl] The container already has a map. Remove that map first: remove(), or destroy() in the main API.');
         this.container = c;
         if (getComputedStyle(c).position === 'static') c.style.position = 'relative';
         if (getComputedStyle(c).overflow === 'visible') c.style.overflow = 'hidden'; // a frame from before a shrink must not spill out

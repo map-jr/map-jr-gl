@@ -248,7 +248,7 @@ for (const renderer of ['worker', 'main']) {
         // The file of the main-thread engine is held back until the map is destroyed: the map is removed during that `await`.
         let held = 0;
         await page.route(/map-jr-gl-engine-entry/, async route => { held++; await page.evaluate(() => window.early.destroy()); await route.continue(); });
-        await page.goto('http://localhost:8080/bench');
+        await page.goto(origin + '/bench');
         const late = await page.evaluate(async () => {
             const lib = window.lib = await import('/dist/map-jr-gl.js'), style = window.style = await (await fetch('/style.json')).json();
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99;background:#fff'}));
