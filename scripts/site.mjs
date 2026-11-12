@@ -1,7 +1,7 @@
 // Builds the gallery site into site-dist/ (what GitHub Pages serves). Run after the library is built: pnpm site
 import {fileURLToPath} from 'node:url';
 import {build} from 'vite';
-import {mkdirSync, writeFileSync} from 'node:fs';
+import {cpSync, mkdirSync, readdirSync, writeFileSync} from 'node:fs';
 import {Renderer} from '@takumi-rs/core';
 import {renderToSVG, renderToImage} from '../dist/server.js';
 import makeStyle from '../demo/style.mjs';
@@ -23,4 +23,14 @@ writeFileSync(new URL('../site/public/ssr.jpg', import.meta.url), image);
 console.log(`server pictures: SVG ${(svg.length / 1024).toFixed(0)} KB, JPEG ${(image.length / 1024).toFixed(0)} KB`);
 
 await build({configFile: fileURLToPath(new URL('../site/vite.config.mjs', import.meta.url)), logLevel: 'warn'}); // (fileURLToPath: a URL's pathname is not a path on Windows)
-console.log('site built in site-dist/');
+
+// The benchmark page (demo/bench.html) is part of the site, at bench/: a phone or a device farm can open it with no
+// server of the project. It needs the built library, MapLibre GL JS and two files of the demo next to it.
+const at = p => fileURLToPath(new URL(p, import.meta.url)), bench = at('../site-dist/bench/');
+mkdirSync(bench + 'demo', {recursive: true});
+mkdirSync(bench + 'ml', {recursive: true});
+cpSync(at('../demo/bench.html'), bench + 'index.html');
+for (const f of ['bench.mjs', 'markers.mjs']) cpSync(at('../demo/' + f), bench + 'demo/' + f);
+cpSync(at('../dist'), bench + 'dist', {recursive: true, filter: src => !/[\\/]types([\\/]|$)/.test(src)});
+for (const f of readdirSync(at('../node_modules/maplibre-gl/dist'))) if (/^maplibre-gl(-shared|-worker)?\.mjs$|\.css$/.test(f)) cpSync(at('../node_modules/maplibre-gl/dist/' + f), bench + 'ml/' + f);
+console.log('site built in site-dist/ (with the benchmark page in site-dist/bench/)');

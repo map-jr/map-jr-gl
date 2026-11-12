@@ -29,6 +29,7 @@ pnpm install
 | `pnpm screenshots` | Takes the screenshots in `docs/images` from the gallery. Start `pnpm demo` first. |
 | `pnpm bench` | Compares the speed with MapLibre GL JS in a browser without a GPU |
 | `BROWSER=webkit node test/bench/browsers.mjs out` | Runs the benchmark page and a short check in one browser (`chromium`, `firefox` or `webkit`). Start `pnpm demo` first. |
+| `WD_URL=http://localhost:4444 node test/bench/webdriver.mjs out` | The same through a WebDriver server, for a browser that Playwright cannot drive: Safari (`safaridriver -p 4444` on macOS), or a phone on a device farm. `WD_CAPS` has the capabilities as JSON. Start `pnpm demo` first, or give the page of the gallery site with `BENCH_URL`. |
 
 ## The demo server
 
@@ -38,7 +39,7 @@ pnpm install
 |---|---|
 | `/` | A map that fills the page. Add `?renderer=main` or `?renderer=worker` to select the renderer. Add `?style=` and a URL to load a different style. |
 | `/gallery/` | The gallery |
-| `/bench` | A speed comparison with MapLibre GL JS that runs in your browser |
+| `/bench` | A speed comparison with MapLibre GL JS that runs in your browser. The gallery site has the same page at [`bench/`](https://map-jr.github.io/map-jr-gl/bench/), so a phone can open it with no server. `?auto` starts it. |
 | `/ssr` | A page with a server-rendered map that the live map replaces |
 | `/static` | The server-rendered map only |
 
@@ -111,6 +112,14 @@ use the name of a local variable of a shader in JavaScript.
 The workflow `Browsers` (`.github/workflows/browsers.yml`) runs on each push that changes the code. It runs the
 benchmark page and the behaviour tests in Chromium, Firefox and WebKit on Linux, macOS and Windows. WebKit is the
 engine of Safari.
+
+The job `safari` of the same workflow runs the benchmark page in Safari itself on macOS and in Safari of the iOS
+Simulator, through `safaridriver` (`test/bench/webdriver.mjs`). Playwright's WebKit is another build of the engine,
+and it does not behave as Safari in each case. For each browser the results say whether a worker has
+`OffscreenCanvas` and its WebGL2 and 2D contexts, and which renderer the map took. The machines have a virtual GPU,
+and a simulator has the memory and the GPU of its host: these runs do not replace a measurement on a phone.
+To try a change of this job, start the workflow by hand with `safari_only`: it then runs that job only and does
+not write the branch.
 
 The workflow writes the results to the branch `bench-results`. Read `README.md` on that branch:
 

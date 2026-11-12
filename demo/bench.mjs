@@ -1,9 +1,10 @@
 // In-browser benchmark: this library against MapLibre GL JS on the visitor's own GPU. See bench.html.
-import * as mapjr from '/dist/map-jr-gl-maplibre-compat.js';
-import * as maplibre from '/ml/maplibre-gl.mjs';
-import {manyMarkers} from '/demo/markers.mjs';
+// (The URLs are relative: the page is at /bench of the demo server, and in the folder bench/ of the gallery site.)
+import * as mapjr from '../dist/map-jr-gl-maplibre-compat.js';
+import * as maplibre from '../ml/maplibre-gl.mjs';
+import {manyMarkers} from './markers.mjs';
 
-maplibre.setWorkerUrl('/ml/maplibre-gl-worker.mjs');
+maplibre.setWorkerUrl(new URL('../ml/maplibre-gl-worker.mjs', import.meta.url).href);
 const q = new URLSearchParams(location.search);
 const STYLE = q.get('style') || 'https://tiles.openfreemap.org/styles/liberty';
 const VIEW = {center: [-74.0065, 40.7085], zoom: 14.3}, SECONDS = +(q.get('seconds') || 5);
