@@ -480,12 +480,15 @@ function tessellateLine(b: Batch): GLBatch | null {
     const round = b.join === 'round', miter = !round && b.join !== 'bevel';
     let count = 0, f = 0, ringLength = 1;
     const vert = (x: number, y: number, nx: number, ny: number, side: number, dist: number) => {
-        v.push(x, y, nx, ny, side, dist);
         if (b.progress) {
             // The place along the whole line goes in the colour's red and green bytes, as one 16-bit number.
-            const from = b.progress[f * 2], t = Math.round(Math.min(1, Math.max(0, from + (b.progress[f * 2 + 1] - from) * dist / ringLength)) * 65535);
+            const from = b.progress[f * 2], part = Math.min(1, Math.max(0, from + (b.progress[f * 2 + 1] - from) * dist / ringLength)), t = Math.round(part * 65535);
             color.push(t >> 8, t & 255, 0, 255);
+            // The dashes of a line with a gradient: MapLibre measures such a line as 16383 tile units from end to
+            // end, whatever its length. The same is done here, so that the dashes are those of MapLibre.
+            dist = part * 16383.5;
         }
+        v.push(x, y, nx, ny, side, dist);
         if (b.color) color.push(b.color[f * 4], b.color[f * 4 + 1], b.color[f * 4 + 2], b.color[f * 4 + 3]);
         if (b.width) width.push(b.width[f]);
         if (b.width1) width1.push(b.width1[f]);
