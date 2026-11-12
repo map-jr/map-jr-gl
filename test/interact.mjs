@@ -739,6 +739,30 @@ for (const mode of ['main', 'worker']) {
         // (The browser writes its own line to the console for each 404 that this test asks for.)
         for (let i = errors.length; i-- > errorsBefore;) if (errors[i].startsWith('Failed to load resource')) errors.splice(i, 1);
     }
+    // A worker that cannot make a WebGL2 context: the map goes to the main thread, `load` and `idle` fire, and what the
+    // page sent before the fall back (the rules for requests, a change of the style) is not lost.
+    if (mode === 'worker') {
+        const fell = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:300px;height:200px'}));
+            const code = `const get = OffscreenCanvas.prototype.getContext; OffscreenCanvas.prototype.getContext = function (kind, ...rest) { return /webgl/.test(kind) ? null : get.call(this, kind, ...rest); }; importScripts(${JSON.stringify(location.origin + '/dist/map-jr-gl-worker.js')});`;
+            const url = URL.createObjectURL(new Blob([code], {type: 'text/javascript'}));
+            const seen = [], asked = [], warn = console.warn;
+            console.warn = () => {}; // (the map says that it uses the main thread)
+            const m = new mod.Map({container: el, style: '/style.json', center: [-74.0065, 40.7085], zoom: 14, attributionControl: false, createWorker: () => new Worker(url),
+                transformRequest: (u, kind) => { asked.push(kind); return {url: u}; }});
+            for (const type of ['load', 'idle', 'error']) m.on(type, () => seen.push(type));
+            // A change of the style at once: it goes to the worker that fails.
+            m.once('style.load', () => m.addLayer({id: 'fall-back-test', type: 'background', paint: {'background-color': '#f0f', 'background-opacity': 0.01}}));
+            await new Promise(r => { m.once('idle', r); setTimeout(r, 12000); });
+            console.warn = warn;
+            const out = {renderer: m.renderer, seen: [...new Set(seen)], tiles: asked.filter(k => k === 'Tile').length, layer: (await Promise.race([m.queryRenderedFeatures({layers: ['building']}), new Promise(r => setTimeout(() => r([]), 4000))])).length};
+            m.remove(); el.remove();
+            return out;
+        });
+        check('[worker] a worker without WebGL2: the map uses the main thread, load and idle fire, and transformRequest sees the tile requests',
+            fell.renderer === 'main' && fell.seen.includes('load') && fell.seen.includes('idle') && !fell.seen.includes('error') && fell.tiles > 0 && fell.layer > 0, JSON.stringify(fell));
+    }
     // fragment moves the map.
     const hash = await page.evaluate(async () => {
         const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:400px;height:300px'}));
