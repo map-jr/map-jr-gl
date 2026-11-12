@@ -44,7 +44,22 @@ A worker cannot start in these conditions:
 - The browser cannot draw WebGL2 in a worker.
 
 In these conditions the library draws on the main thread. It loads the renderer as a separate file. It also writes
-a warning to the console that says what to change. A map always appears.
+a warning to the console that says what to change. A map appears in each of these conditions. Only a browser that
+has no WebGL2 on the main thread either shows no map: see
+[A browser without WebGL2](api.md#a-browser-without-webgl2).
+
+## If the worker file is of another version
+
+The page file and the worker file must come from the same version of the package. A CDN or a cache can serve an old
+worker file with a new page file. The library then writes one warning to the console for the page, with both
+versions:
+
+`[map-jr-gl] The worker file is version 0.1.0 and the page file is version 0.2.0. Serve map-jr-gl-worker.js from the
+same version of the package as the page file, or pass `workerUrl` with the URL of that file.`
+
+The map still starts, but it can fail later, because the messages between the two files can differ. A worker file
+from before this check reports no version, and the warning says "unknown". The standalone files contain their
+worker, so they cannot have this fault.
 
 ## Other configurations
 

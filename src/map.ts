@@ -439,9 +439,27 @@ export class Map {
         const {Engine, LocalBackend, PortBackend} = await import('./engine-entry.ts');
         if (this.removed) return;
         const backends: TileBackend[] = ports.length ? ports.map(p => new PortBackend(p)) : [new LocalBackend()];
-        const engine = new Engine(canvas, options, backends, e => this.onEngineEvent(e));
+        let engine: InstanceType<typeof Engine>;
+        try { engine = new Engine(canvas, options, backends, e => this.onEngineEvent(e)); } catch (cause) { throw this.cannotShow(cause as Error); }
         this.send = c => engine.command(c);
         this.renderer = 'main';
+    }
+
+    private unavailable?: HTMLElement;
+    /**
+     * No engine could start, usually because the browser has no WebGL2. The container gets a message in place of an
+     * empty canvas, and the caller reports the error that this returns. An application changes the message with CSS
+     * (`.map-jr-unavailable`), or avoids it with `supported()`.
+     */
+    private cannotShow(cause: Error) {
+        if (!this.unavailable) {
+            this.styles();
+            const el = this.unavailable = document.createElement('div');
+            el.className = 'map-jr-unavailable';
+            el.textContent = 'This browser cannot show the map.';
+            this.canvas.after(el);
+        }
+        return new Error(`[map-jr-gl] The map cannot be shown: ${cause.message}.` + (/WebGL2/.test(cause.message) ? ' Call supported() before you make a map, and show other content when it returns false.' : ''), {cause});
     }
 
     /** @internal Sends a command to the engine. */
@@ -934,14 +952,17 @@ export class Map {
     private toggled = new Set<string>();
     setFilter(layerId: string, filter: unknown) { return this.editStyle(s => { s.layers[this.layerIndex(s, layerId)].filter = filter; }); }
 
+    /** Adds the style sheet of the controls and of the message of `cannotShow` to the page, once. */
+    private styles() {
+        if (!document.getElementById('map-jr-control-css')) document.head.appendChild(Object.assign(document.createElement('style'), {id: 'map-jr-control-css', textContent: CONTROL_CSS}));
+    }
+
     // ---- controls ----
     private corners: Partial<Record<ControlPosition, HTMLElement>> = {};
     private controls = new globalThis.Map<Control, HTMLElement>();
     addControl(control: Control, position?: ControlPosition) {
         const pos = position ?? control.getDefaultPosition?.() ?? 'top-right';
-        if (!document.getElementById('map-jr-control-css')) {
-            document.head.appendChild(Object.assign(document.createElement('style'), {id: 'map-jr-control-css', textContent: CONTROL_CSS}));
-        }
+        this.styles();
         let corner = this.corners[pos];
         if (!corner) {
             corner = this.corners[pos] = document.createElement('div');
@@ -1452,6 +1473,7 @@ export class Map {
         const workers = this.workers;
         setTimeout(() => { for (const w of workers) w.terminate(); }, 100);
         this.canvas.remove();
+        this.unavailable?.remove();
         this.listeners = {};
     }
 }

@@ -30,6 +30,7 @@ The [status table](../README.md#status) gives the current test results.
 | Changes for the server in the style | `metadata["map-jr:ssr"]` on a layer changes that layer only on the server. |
 | Icons generated on demand | `setMissingStyleImageResolver` supplies an image for a name that the sprite does not contain. |
 | Frame data | The `stats` event gives the frames per second and the work for each frame. |
+| `supported()` | A function of the module. It returns `false` in a browser without WebGL2. MapLibre GL JS has had no such function since version 2. A map that cannot start fires one `error` and shows a message in the container (the class is `map-jr-unavailable`). See [A browser without WebGL2](api.md#a-browser-without-webgl2). |
 | Controls without a CSS file | The library adds the styles for its controls. You change the colours with `--map-control-*` custom properties. |
 
 ## What is different
