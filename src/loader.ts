@@ -3,6 +3,17 @@
  * next to this module. Everything can be overridden per map or globally with `configure()`.
  */
 declare const __WORKER_SRC__: string; // the worker's source, embedded only in the standalone build
+declare const __VERSION__: string; // the version of package.json, set by the build
+
+let canDraw: boolean | undefined;
+/**
+ * Whether this browser can show a map: it needs WebGL2. Call it before you make a map, to show other content instead.
+ * (The first call makes a WebGL2 context on a canvas that is not in the page. Later calls return the same answer.)
+ */
+export function supported(): boolean {
+    try { canDraw ??= !!document.createElement('canvas').getContext('webgl2'); } catch { canDraw = false; }
+    return canDraw;
+}
 
 export interface LoadOptions {
     /** URL of the worker script (map-jr-gl-worker.js). Defaults to the file beside the library's own module. */
@@ -43,11 +54,20 @@ export function createWorker(o: LoadOptions = {}): Worker {
     return w;
 }
 
+/** The warning about a worker file of another version, when it was given: the page gets it once. */
+let mismatch = '';
 /** Resolves once the worker's script has loaded and run; rejects if it fails to (missing file, blocked by policy). */
 export function workerReady(w: Worker, timeout = 8000): Promise<Worker> {
     return new Promise((resolve, reject) => {
         const done = (err?: Error) => { clearTimeout(timer); w.removeEventListener('message', onMessage); w.removeEventListener('error', onError); if (err) { w.terminate(); reject(err); } else resolve(w); };
-        const onMessage = (e: MessageEvent) => { if (e.data?.type === 'hello') done(); };
+        const onMessage = (e: MessageEvent) => {
+            if (e.data?.type !== 'hello') return;
+            // The page file and the worker file can come from two versions of the package (a CDN, a cache, a copy that
+            // was not replaced). Messages between them can then differ, so the page says it, once.
+            const v = e.data.version;
+            if (v !== __VERSION__ && !mismatch) console.warn(mismatch = `[map-jr-gl] The worker file is version ${v ?? 'unknown'} and the page file is version ${__VERSION__}. Serve map-jr-gl-worker.js from the same version of the package as the page file, or pass \`workerUrl\` with the URL of that file.`);
+            done();
+        };
         const onError = (e: ErrorEvent) => done(new Error(e.message || 'the worker script could not be loaded'));
         const timer = setTimeout(() => done(new Error('the worker did not start')), timeout);
         w.addEventListener('message', onMessage);

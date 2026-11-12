@@ -183,8 +183,11 @@ See [CLAUDE.md](../CLAUDE.md) for who may merge what, and for the definition of 
 
 ## Facts about browsers that the code depends on
 
-- **WebGL2 is required.** Without it the map fires `error` ("WebGL2 is not available") and the container stays
-  empty.
+- **WebGL2 is required.** `supported()` of both entries tests for it. Without it the map fires one `error` and puts
+  a message into the container (`.map-jr-unavailable`; see `cannotShow` in `src/map.ts`).
+- **The page file and the worker file must be of one version.** The build puts the version of `package.json` into
+  both (`__VERSION__`). The worker sends its version with its first message, and the page warns once when the two
+  differ (`workerReady` in `src/loader.ts`).
 - **Worker rendering** needs `transferControlToOffscreen` and WebGL2 in a worker. Where one is missing, the map
   renders on the main thread. WebKit on Linux and Windows (the builds that Playwright uses) is such a case; Safari
   on macOS and iOS can render in a worker.

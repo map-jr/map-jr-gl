@@ -1,4 +1,4 @@
-import {Map, Popup} from 'map-jr-gl/maplibre-compat';
+import {Map} from 'map-jr-gl/maplibre-compat';
 
 const style = 'https://tiles.openfreemap.org/styles/liberty';
 const NYC = [-74.0065, 40.7085];
@@ -7,18 +7,31 @@ export default function (container, {show}) {
   const map = new Map({container, style, center: NYC, zoom: 16.2, attributionControl: {compact: true}});
   map.setCursor('crosshair');
 
-  let popup;
-  map.on('click', async e => {
-    // `queryFeatures` is an addition of this library: it reads the tile data, without a style layer.
-    // (`queryRenderedFeatures` of MapLibre GL JS is there also.)
-    const features = await map.queryFeatures(e.lngLat, {radius: 8});
+  // The answer shows in a box in a corner of the map. The box takes no pointer events, so a click on it reaches the map.
+  const box = document.createElement('div');
+  box.style.cssText = 'position:absolute;top:8px;left:8px;z-index:1;pointer-events:none;max-width:240px;padding:8px 10px;border-radius:8px;background:#fff;color:#222;font:12px/1.5 system-ui,sans-serif;box-shadow:0 1px 6px #0004';
+  box.hidden = true;
+  map.getContainer().append(box);
 
-    popup?.remove();
-    popup = new Popup()
-      .setLngLat(e.lngLat)
-      .setText(features.map(f => `${f.sourceLayer}: ${f.properties.name ?? f.properties.class ?? ''}`).join('\n') || 'Nothing here')
-      .addTo(map);
-    show(`${features.length} features within 8 pixels`);
+  let clicks = 0;
+  map.on('click', async e => {
+    const click = ++clicks;
+    // `queryFeatures` is an addition of this library: it reads the tile data within 8 pixels of the click, and it
+    // also finds features that the style does not draw. (`queryRenderedFeatures` of MapLibre GL JS is there also.)
+    // A query fails when its tile cannot be loaded: the answer is then `null` here.
+    const features = await map.queryFeatures(e.lngLat, {radius: 8}).catch(() => null);
+    // An earlier click can get its answer after a later click. Only the last click is shown.
+    if (click !== clicks) return;
+
+    box.replaceChildren();
+    for (const f of features?.slice(0, 8) ?? []) {
+      const line = box.appendChild(document.createElement('div'));
+      line.appendChild(document.createElement('b')).textContent = f.sourceLayer;
+      line.append(' ' + (f.properties.name ?? f.properties.class ?? ''));
+    }
+    if (!features?.length) box.textContent = features ? 'Nothing here' : 'The tile data did not load';
+    box.hidden = false;
+    show(features ? `${features.length} features within 8 pixels` : 'The query failed');
   });
   return map;
 }

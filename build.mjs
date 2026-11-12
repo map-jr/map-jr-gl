@@ -64,7 +64,7 @@ const noPreload = {
  * tools are open.
  */
 const run = (options, define = {__WORKER_SRC__: '""'}, plugins = []) => build({
-    configFile: false, logLevel: 'warn', define: {__DEV__: 'false', ...define}, plugins: [shaders, privates, noPreload, ...plugins],
+    configFile: false, logLevel: 'warn', define: {__DEV__: 'false', __VERSION__: JSON.stringify(pkg.version), ...define}, plugins: [shaders, privates, noPreload, ...plugins],
     build: {target: 'es2022', minify: true, sourcemap: true, emptyOutDir: false, outDir: 'dist', copyPublicDir: false, reportCompressedSize: false, modulePreload: false, ...options},
 });
 
@@ -139,7 +139,7 @@ if (process.argv.includes('--sizes')) {
     // What an application's own bundler ends up with when it imports only part of the library.
     const only = async (label, code) => {
         const virtual = {name: 'virtual-entry', resolveId: id => id === 'virtual:entry' ? '\0entry.ts' : null, load: id => id === '\0entry.ts' ? code : null};
-        const out = await build({configFile: false, logLevel: 'silent', define: {__WORKER_SRC__: '""', __DEV__: 'false'}, plugins: [virtual],
+        const out = await build({configFile: false, logLevel: 'silent', define: {__WORKER_SRC__: '""', __DEV__: 'false', __VERSION__: JSON.stringify(pkg.version)}, plugins: [virtual],
             build: {write: false, target: 'es2022', minify: true, modulePreload: false, rollupOptions: {input: {entry: 'virtual:entry'}, preserveEntrySignatures: 'strict', output: {format: 'es', entryFileNames: '[name].js', chunkFileNames: '[name]-[hash].js'}}}});
         const text = Object.fromEntries((Array.isArray(out) ? out[0] : out).output.filter(o => o.type === 'chunk').map(o => [o.fileName, o.code]));
         report(label, Buffer.from([...withStaticImports('entry.js', n => text[n])].map(n => text[n]).join('')));

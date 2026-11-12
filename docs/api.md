@@ -23,6 +23,35 @@ const map = createMap(document.getElementById('map'), {
 `createMap(container, description)` returns the map. The container is an element or the `id` of an element. The map
 fills the container, so give the container a height.
 
+### A browser without WebGL2
+
+The map requires WebGL2. `supported()` returns `false` in a browser that has no WebGL2, so that the application
+can show other content. The first call makes a WebGL2 context on a canvas that is not in the page, and later calls
+return the same answer.
+
+```js
+import {createMap, supported} from 'map-jr-gl';
+
+const container = document.getElementById('map');
+if (supported()) {
+  createMap(container, {
+    style: 'https://tiles.openfreemap.org/styles/liberty',
+    initialView: {center: [-74.0065, 40.7085], zoom: 13.6},
+  });
+} else {
+  container.textContent = 'This browser cannot show the map. Our address is 1 Example Street.';
+}
+```
+
+A map that is made in such a browser does not load. It reports one error (`onError` and `state.error`) with the
+message `[map-jr-gl] The map cannot be shown: WebGL2 is not available. Call supported() before you make a map, and
+show other content when it returns false.` It also puts an element into the container with the class
+`map-jr-unavailable` and the text "This browser cannot show the map.". The element fills the container. To change
+its look, write CSS rules for `.map-jr-unavailable`: a rule of the application wins over the rule of the library.
+To show other text, set the `textContent` of that element in `onError`, or hide the element with `display: none`.
+`destroy()` removes the element. `supported()` does not test whether a worker can draw: where a worker cannot, the
+map draws on the main thread (see [Loading](loading.md)).
+
 ## Change the map
 
 ```js

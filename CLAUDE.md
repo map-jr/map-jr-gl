@@ -23,7 +23,7 @@ to protect those qualities.
 - **Merge with squash** once CI is green — you may merge your own pull request, **except** when the change does one
   of these. Then leave it open and ask the owner:
   - removes or renames public API of either entry, or changes a default;
-  - raises a size budget (see below);
+  - raises a size budget (see "Size");
   - adds a dependency to the built files, or takes a method from another project;
   - changes this file, the CI workflows, or the release process;
   - is labelled `needs: owner`.
@@ -135,14 +135,24 @@ a hurry gets the right answer on the first read.
 
 ## Size
 
-Size is a main advantage of the library, and the owner watches the worker file in particular. `pnpm test:size` has
-a budget for each built file.
+Size is a main advantage of the library, and the owner watches the worker file in particular. Think about size in
+every change, and do not spend an hour to save 50 bytes.
 
-- Before you raise a budget, look for a way to make the code smaller. Raising one needs the owner.
-- The build shortens the names of private class members and of the names in the shaders (see
-  `docs/development.md`): declare members `private`, and name uniforms `u_...`.
-- Code that only some maps need can be a file that is loaded on demand (`import()`), as `src/hash.ts` and
-  `src/pmtiles-info.ts` are.
+- **Say what a change adds.** `pnpm test:size` prints the bytes (gzip) of each built file. A pull request that
+  changes `src/` gives the numbers before and after in "How it was checked". A change that adds more than about
+  0.3 KB to a page script, or 1 KB to the worker file, says why the bytes are worth it, or moves the code to a file
+  that loads on demand.
+- **Choose the small design first.** Code that only some maps need is a file that is loaded on demand (`import()`),
+  as `src/hash.ts` and `src/pmtiles-info.ts` are. Code that only a developer needs (checks for mistakes, long
+  messages) goes into the development build (`src/mistakes.ts`). The build shortens the names of private class
+  members and of the names in the shaders (see `docs/development.md`): declare members `private`, and name uniforms
+  `u_...`.
+- **A budget is a ceiling for accidents, not a target.** Each budget in `scripts/size-check.mjs` has about 2 KB of
+  room. Do not rewrite working code to fit a fix into the last bytes of a budget: if a budget is reached, stop and
+  ask the owner. Raising one needs the owner.
+- **Savings are found in one pass before a release,** not in each pull request: one worker reads the built files for
+  what is large or repeated, and its pull request has only that concern. Write a saving that you notice during
+  other work into the issue for that pass.
 
 ## Commands
 

@@ -12,15 +12,16 @@ export {Marker, Popup, type MarkerOptions, type PopupOptions} from './overlays.t
 import {LogoControl as Empty} from './controls-more.ts';
 /** MapLibre changes between a flat map and a globe with this control. This library has no globe, so the control adds an empty element. */
 export class GlobeControl extends Empty { override getDefaultPosition() { return 'top-right' as const; } }
-export {configure, type LoadOptions} from './loader.ts';
+export {configure, supported, type LoadOptions} from './loader.ts';
 export type * from './compat-types.ts';
 
 // Functions that code for MapLibre GL JS calls on the module. Here they set the same things through `configure`, or
 // they do nothing because the library has no need of them.
-import {configure as set} from './loader.ts';
+import {configure as set, supported} from './loader.ts';
+declare const __VERSION__: string; // the version of package.json, set by the build
 let workerUrl = '', workerCount = 0, imageRequests = 16;
 /** The version of this library. */
-export const getVersion = () => '0.2.0';
+export const getVersion = () => __VERSION__;
 export const setWorkerUrl = (url: string) => { workerUrl = url; set({workerUrl: url}); };
 export const getWorkerUrl = () => workerUrl;
 export const setWorkerCount = (count: number) => { workerCount = count; set({tileWorkers: count}); };
@@ -46,5 +47,5 @@ import {Marker, Popup} from './overlays.ts';
 export default {
     Map, MarkerLayer, InteractionHandler, LngLat, LngLatBounds, addProtocol, removeProtocol, Marker, Popup, configure: set,
     AttributionControl, NavigationControl, ScaleControl, FullscreenControl, GeolocateControl, TerrainControl, LogoControl, GlobeControl,
-    getVersion, setWorkerUrl, getWorkerUrl, setWorkerCount, getWorkerCount, setMaxParallelImageRequests, getMaxParallelImageRequests, setRTLTextPlugin, getRTLTextPluginStatus,
+    supported, getVersion, setWorkerUrl, getWorkerUrl, setWorkerCount, getWorkerCount, setMaxParallelImageRequests, getMaxParallelImageRequests, setRTLTextPlugin, getRTLTextPluginStatus,
 };
