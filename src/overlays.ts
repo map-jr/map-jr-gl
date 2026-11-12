@@ -198,16 +198,27 @@ export class Marker extends Overlay {
                 `<path d="M13.500 0C6 0 0 6 0 13.500 0 23 13.500 41 13.500 41S27 23 27 13.500C27 6 21 0 13.500 0z"/><circle cx="13.500" cy="13.500" r="5.500" fill="#fff"/></svg>`;
             // (The colour can come from data: it is set as an attribute, never as HTML.)
             this.el.querySelector('path')!.setAttribute('fill', options.color ?? '#3fb1ce');
+            // (As in MapLibre GL JS. An element of your own keeps the attributes that you gave it.)
+            this.el.setAttribute('aria-label', 'Map marker');
         }
         this.el.classList.add('map-jr-marker', 'maplibregl-marker', ...(options.className?.split(' ').filter(Boolean) ?? []));
         this.el.style.zIndex = '3';
         this.el.addEventListener('click', e => { if (this.popup) { e.stopPropagation(); this.togglePopup(); } });
+        // With the keyboard: Enter or the space bar opens and closes the popup of the marker.
+        this.el.addEventListener('keydown', e => { if (this.popup && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); e.stopPropagation(); this.togglePopup(); } });
         this.el.addEventListener('pointerdown', e => this.startDrag(e));
         this.setDraggable(!!options.draggable);
     }
     addTo(map: Map) { this.attach(map); return this; }
     remove() { this.popup?.remove(); this.detach(); return this; }
-    setPopup(popup?: Popup) { this.popup?.remove(); this.popup = popup; return this; }
+    // (A marker with a popup is a button for the keyboard and for assistive technology. An element that has a role or a
+    // tab position of its own keeps it.)
+    setPopup(popup?: Popup) {
+        this.popup?.remove(); this.popup = popup;
+        if (popup && !this.el.hasAttribute('tabindex')) this.el.tabIndex = 0;
+        if (popup && !this.el.hasAttribute('role')) this.el.setAttribute('role', 'button');
+        return this;
+    }
     getPopup() { return this.popup; }
     togglePopup() {
         if (!this.popup || !this.map || !this.lngLat) return this;

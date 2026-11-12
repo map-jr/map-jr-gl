@@ -811,6 +811,46 @@ for (const mode of ['main', 'worker']) {
         check('[worker] a worker without WebGL2: the map uses the main thread, load and idle fire, and transformRequest sees the tile requests',
             fell.renderer === 'main' && fell.seen.includes('load') && fell.seen.includes('idle') && !fell.seen.includes('error') && fell.tiles > 0 && fell.layer > 0, JSON.stringify(fell));
     }
+    // Accessibility: the canvas says that it is a map and shows the keyboard focus, a marker with a popup works with the
+    // keyboard, the fullscreen button says what it does, and a camera animation respects "reduce motion".
+    if (mode === 'main') {
+        await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = window.a11yEl = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px;z-index:1000'}));
+            const m = window.a11yMap = new mod.Map({container: el, renderer: 'main', attributionControl: false, center: [0, 0], zoom: 2, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            m.addControl(new mod.FullscreenControl());
+            window.a11yMarker = new mod.Marker().setLngLat([0, 0]).setPopup(new mod.Popup().setText('Popup of the marker')).addTo(m);
+            window.a11yPlain = new mod.Marker().setLngLat([5, 5]).addTo(m);
+            await new Promise(r => m.once('load', r));
+            document.activeElement?.blur();
+        });
+        const before = await page.evaluate(() => ({outline: window.a11yEl.style.outline, role: window.a11yMap.getCanvas().getAttribute('role'), label: window.a11yMap.getCanvas().getAttribute('aria-label')}));
+        await page.evaluate(() => window.a11yMap.getCanvas().focus({focusVisible: true}));
+        await page.keyboard.press('Shift'); // (a key press: the browser now shows the focus as for a keyboard user)
+        const focused = await page.evaluate(() => { const c = window.a11yMap.getCanvas(); c.blur(); c.focus({focusVisible: true}); return window.a11yEl.style.outline; });
+        const blurred = await page.evaluate(() => { window.a11yMap.getCanvas().blur(); return window.a11yEl.style.outline; });
+        const marker = await page.evaluate(async () => {
+            const el = window.a11yMarker.getElement(), plain = window.a11yPlain.getElement(), button = window.a11yEl.querySelector('.map-jr-ctrl-group button');
+            el.focus();
+            el.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
+            const open = window.a11yMarker.getPopup().isOpen();
+            el.dispatchEvent(new KeyboardEvent('keydown', {key: ' ', bubbles: true}));
+            await new Promise(r => setTimeout(r, 400)); // (the popup closes with a short animation)
+            return {label: el.getAttribute('aria-label'), role: el.getAttribute('role'), tab: el.tabIndex, plainRole: plain.getAttribute('role'), plainTab: plain.getAttribute('tabindex'), open, closed: !window.a11yMarker.getPopup().isOpen(),
+                fullscreen: button.getAttribute('aria-label'), title: button.title, pressed: button.getAttribute('aria-pressed')};
+        });
+        // A camera animation of one second: with "reduce motion" the map is there at once; `essential: true` keeps the animation.
+        const zoomSoon = async options => page.evaluate(async options => { const m = window.a11yMap; m.jumpTo({zoom: 2}); await new Promise(r => setTimeout(r, 200)); m.easeTo({zoom: 4, duration: 1000, ...options}); await new Promise(r => setTimeout(r, 250)); return m.getZoom(); }, options);
+        const moving = await zoomSoon({});
+        await page.emulateMedia({reducedMotion: 'reduce'});
+        const reduced = await zoomSoon({}), essential = await zoomSoon({essential: true});
+        await page.emulateMedia({reducedMotion: null});
+        await page.evaluate(() => { window.a11yMap.remove(); window.a11yEl.remove(); });
+        check('[main] the canvas has the role and the name of a map, and the frame of the map shows the keyboard focus', before.role === 'region' && before.label === 'Map' && !before.outline && /2px solid/.test(focused) && !blurred, JSON.stringify({before, focused, blurred}));
+        check('[main] a marker with a popup is a button that Enter and the space bar work; the fullscreen button says what it does',
+            marker.label === 'Map marker' && marker.role === 'button' && marker.tab === 0 && marker.plainRole === null && marker.plainTab === null && marker.open && marker.closed && marker.fullscreen === 'Enter fullscreen' && marker.title === 'Enter fullscreen' && marker.pressed === 'false', JSON.stringify(marker));
+        check('[main] a camera animation jumps with "reduce motion", but for essential: true', moving < 3.9 && reduced === 4 && essential < 3.9, JSON.stringify({moving, reduced, essential}));
+    }
     // fragment moves the map.
     const hash = await page.evaluate(async () => {
         const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:400px;height:300px'}));
