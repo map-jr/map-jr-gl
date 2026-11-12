@@ -6,8 +6,8 @@
 // .compat.js for the API of MapLibre GL JS). The live map of a row runs the file of the main API form, or of the
 // MapLibre form when that form is selected: so for these two forms, the code that a visitor reads is the code that
 // runs. The Vue and React forms are shown as text; `node test/examples.mjs` checks that they compile.
-import {Map} from 'map-jr-gl/maplibre-compat';
-import {configure} from 'map-jr-gl';
+import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
+import {configure} from '@map-jr/map-jr-gl';
 import {markers, view} from '../demo/markers.mjs';
 import {shield} from '../demo/shields.mjs';
 import makeStyle from '../demo/style.mjs';
@@ -42,7 +42,7 @@ const rows = [
     example('pmtiles', 'One file of tiles: PMTiles', ['A PMTiles archive is a single static file. The map reads the tiles it needs with HTTP range requests.', 'You do not need a tile server. Any file host that supports range requests is sufficient.', 'Here the purple lines come from one PMTiles file of 2025 United States boundaries. The base map is a usual tile source.']),
     {id: 'server', title: 'The first view, rendered on the server', pair: true,
         points: ['renderToSVG and renderToImage render a map without a browser, on Node or in a Cloudflare Worker.', 'A page can show that render immediately. The live map replaces it when it is ready.', 'The map on top is live. The image below it was made when this site was built, with the same style, view and size. Select SVG or JPEG.', 'The server estimates the width of text, so in a crowded place it can show a different street name than the live map.'],
-        code: `import {renderToSVG, renderToImage} from 'map-jr-gl/server';
+        code: `import {renderToSVG, renderToImage} from '@map-jr/map-jr-gl/server';
 
 const {svg} = await renderToSVG({
   style, center: [-74.0065, 40.7085], zoom: 14.3,

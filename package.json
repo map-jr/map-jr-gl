@@ -1,5 +1,5 @@
 {
-  "name": "map-jr-gl",
+  "name": "@map-jr/map-jr-gl",
   "version": "0.2.0",
   "description": "A small vector map renderer for the web with worker rendering, server rendering and canvas markers; reads MapLibre styles.",
   "scripts": {
@@ -46,6 +46,7 @@
   "author": "Sam Margulies <sam@belabor.org>",
   "license": "MIT",
   "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.5",
     "@takumi-rs/core": "^2.20.0",
     "@takumi-rs/wasm": "^2.20.0",
     "@types/earcut": "^3.0.0",
@@ -87,7 +88,6 @@
   "engines": {
     "node": ">=22"
   },
-  "private": true,
   "pnpm": {
     "onlyBuiltDependencies": [
       "esbuild"
@@ -162,6 +162,7 @@
   "types": "./dist/types/index.d.ts",
   "files": [
     "dist",
+    "CHANGELOG.md",
     "README.md",
     "LICENSE",
     "ACKNOWLEDGEMENTS.md",

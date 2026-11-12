@@ -1,5 +1,5 @@
 /**
- * Controls for the main API: `import {navigation, scale} from 'map-jr-gl/controls'`, then
+ * Controls for the main API: `import {navigation, scale} from '@map-jr/map-jr-gl/controls'`, then
  * `createMap(el, {controls: [navigation(), scale({position: 'bottom-left'})]})`.
  * Each function returns a description of a control. The map adds the control, and removes it when a later
  * description of the map does not have it. A page that imports one control does not load the code of the others.

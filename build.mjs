@@ -77,7 +77,7 @@ const workerSrc = readFileSync('dist/map-jr-gl-worker.js', 'utf8').replace(/\n\/
 // The default build. The page loads map-jr-gl.js, which is small; it finds map-jr-gl-worker.js beside itself, and the
 // engine for main-thread rendering is a separate chunk that is only fetched if that path is taken.
 const esm = (input, extra = {}) => ({
-    rollupOptions: {input, external: ['vue', 'react', 'react-dom', '@nuxt/kit', 'map-jr-gl/server'], preserveEntrySignatures: 'strict', output: {format: 'es', entryFileNames: '[name].js', chunkFileNames: 'map-jr-gl-[name]-[hash].js',
+    rollupOptions: {input, external: ['vue', 'react', 'react-dom', '@nuxt/kit', '@map-jr/map-jr-gl/server'], preserveEntrySignatures: 'strict', output: {format: 'es', entryFileNames: '[name].js', chunkFileNames: 'map-jr-gl-[name]-[hash].js',
         // (The map and the styles of its controls are always loaded together: one file is smaller after gzip than two.)
         ...(extra.codeSplitting === false ? {} : {manualChunks: id => /src[\\/](map|controls|lnglat|markers|overlays)\.ts$/.test(id) ? 'map' : undefined}), ...extra}},
 });

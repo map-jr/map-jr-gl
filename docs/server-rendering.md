@@ -10,7 +10,7 @@ It works on Node.js, on Cloudflare Workers, and in other JavaScript environments
 ## Make an SVG
 
 ```js
-import {renderToSVG} from 'map-jr-gl/server';
+import {renderToSVG} from '@map-jr/map-jr-gl/server';
 
 const {svg, tiles} = await renderToSVG({
   style: 'https://tiles.openfreemap.org/styles/liberty',
@@ -52,7 +52,7 @@ is the Takumi renderer. There is one version for Node.js and one version for Web
 On Node.js:
 
 ```js
-import {renderToImage} from 'map-jr-gl/server';
+import {renderToImage} from '@map-jr/map-jr-gl/server';
 import {Renderer} from '@takumi-rs/core';
 
 const {image, contentType} = await renderToImage({
@@ -66,7 +66,7 @@ const {image, contentType} = await renderToImage({
 On Cloudflare Workers:
 
 ```js
-import {renderToImage} from 'map-jr-gl/server';
+import {renderToImage} from '@map-jr/map-jr-gl/server';
 import init, {Renderer} from '@takumi-rs/wasm';
 import wasm from '@takumi-rs/wasm/takumi_wasm_bg.wasm';
 
@@ -135,7 +135,7 @@ sprite and PMTiles archives. These requests come from your server. Set limits wh
 view comes from a visitor, or when the style comes from another party.
 
 ```js
-import {renderToSVG} from 'map-jr-gl/server';
+import {renderToSVG} from '@map-jr/map-jr-gl/server';
 
 const {svg} = await renderToSVG({
   style: 'https://tiles.openfreemap.org/styles/liberty',
@@ -196,7 +196,7 @@ does not return a part of a map. Catch the error and send the page without the S
 browser as it does without a server render.
 
 ```js
-import {renderFirstView} from 'map-jr-gl/server';
+import {renderFirstView} from '@map-jr/map-jr-gl/server';
 
 const options = {style: 'https://tiles.openfreemap.org/styles/liberty', center: [-74.0065, 40.7085], zoom: 14.3, width: 800, height: 500};
 let firstView = '';

@@ -1,7 +1,7 @@
 # Browser support
 
 This document says what a browser must have to show a map, what each renderer needs, and in which browsers the
-library was run. It applies to both entries (`map-jr-gl` and `map-jr-gl/maplibre-compat`), which use the same
+library was run. It applies to both entries (`@map-jr/map-jr-gl` and `@map-jr/map-jr-gl/maplibre-compat`), which use the same
 renderer.
 
 Each line of the tables says where it was seen. "Code" means that the statement comes from reading the source file
@@ -20,7 +20,7 @@ versions.
 
 The option `renderer` selects the thread that draws. The default is `'auto'`, which takes the worker renderer when
 the browser has what it needs. [Loading](loading.md) says where each entry takes the option. After the start, the map says which renderer it took: `map.state.get().renderer`
-in `map-jr-gl`, and `map.renderer` in `map-jr-gl/maplibre-compat`.
+in `@map-jr/map-jr-gl`, and `map.renderer` in `@map-jr/map-jr-gl/maplibre-compat`.
 
 | Feature | What it needs | What happens without it | Where it comes from |
 |---|---|---|---|

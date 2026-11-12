@@ -1,6 +1,6 @@
-// Common TypeScript code for MapLibre GL JS, with the import changed to `map-jr-gl/maplibre-compat`.
+// Common TypeScript code for MapLibre GL JS, with the import changed to `@map-jr/map-jr-gl/maplibre-compat`.
 // `node test/examples.mjs` checks that it compiles against the built types (dist/types). It is not run.
-import {Map, Popup, type MapMouseEvent, type MapLayerMouseEvent, type GeoJSONSource, type LayerSpecification, type MapGeoJSONFeature} from 'map-jr-gl/maplibre-compat';
+import {Map, Popup, type MapMouseEvent, type MapLayerMouseEvent, type GeoJSONSource, type LayerSpecification, type MapGeoJSONFeature} from '@map-jr/map-jr-gl/maplibre-compat';
 
 const map = new Map({container: 'map', style: 'https://demotiles.maplibre.org/style.json', center: [0, 0], zoom: 2});
 
@@ -40,7 +40,7 @@ const first: MapGeoJSONFeature | undefined = features[0];
 console.log(first?.layer.id, first?.properties.name.toUpperCase(), first?.layer.paint?.['circle-color']);
 map.queryRenderedFeatures().then(all => all.map(f => f.layer.type));
 console.log(map.querySourceFeatures('places', {sourceLayer: 'x'})[0]?.properties.name);
-// `queryFeatures` is an addition of this library. It has the meaning that it has in `map-jr-gl`.
+// `queryFeatures` is an addition of this library. It has the meaning that it has in `@map-jr/map-jr-gl`.
 map.on('click', e => map.queryFeatures(e.lngLat, {sources: ['places'], radius: 8}).then(found => console.log(found[0]?.sourceLayer.length)));
 map.queryFeatures({x: 10, y: 10}, {radius: 8}).then(found => console.log(found[0]?.layer.id));
 

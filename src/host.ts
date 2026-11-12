@@ -3,8 +3,8 @@
  * description. The library finds what is different. The state of the map (the view, loaded, idle, the features under
  * the pointer) is in a store that code can watch.
  *
- * The adapters for the frameworks (`map-jr-gl/vue` and others) are thin layers over `createMap`.
- * (For the API of MapLibre GL JS, see `map-jr-gl/maplibre-compat`.)
+ * The adapters for the frameworks (`@map-jr/map-jr-gl/vue` and others) are thin layers over `createMap`.
+ * (For the API of MapLibre GL JS, see `@map-jr/map-jr-gl/maplibre-compat`.)
  */
 import {Map, markerSize, type FeatureOptions, type FeaturePlace, type MapOptions, type MarkerLayer, type RenderedFeature} from './map.ts';
 export type {FeatureOptions, FeaturePlace};
@@ -22,7 +22,7 @@ import type {LngLatBounds, LngLatBoundsInput} from './lnglat.ts';
  */
 declare const __DEV__: boolean;
 
-/** The description of a control: see `map-jr-gl/controls`. Controls with the same `key` are the same control. */
+/** The description of a control: see `@map-jr/map-jr-gl/controls`. Controls with the same `key` are the same control. */
 export interface ControlSpec { key: string; position?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'; create(): {onAdd(map: Map): HTMLElement; onRemove(map: Map): void} }
 
 /**
@@ -72,7 +72,7 @@ export interface MapSpec extends MapSetup {
     data?: Record<string, unknown>;
     /** Marker layers, each with an `id`. A layer whose `data` is a new array gets the new data. */
     markers?: MarkerLayerOptions[];
-    /** Controls from `map-jr-gl/controls`: `[navigation(), scale()]`. */
+    /** Controls from `@map-jr/map-jr-gl/controls`: `[navigation(), scale()]`. */
     controls?: ControlSpec[];
     /** Style layers whose features are found under the pointer: they are in `state.hover` and in `onClick`. */
     interactiveLayers?: string[];
@@ -171,7 +171,7 @@ export interface MapEvents extends
     styleimagemissing: MapEventBase<'styleimagemissing'> & {id: string};
     /** The terrain of the style has changed. */
     terrain: MapEventBase<'terrain'> & {terrain: {source: string; exaggeration?: number} | null};
-    /** The geolocate control of `map-jr-gl/controls` has a position. */
+    /** The geolocate control of `@map-jr/map-jr-gl/controls` has a position. */
     geolocate: MapEventBase<'geolocate'> & {coords: GeolocationCoordinates};
     /** `error` is usually an `Error`. (`onError` and `state.error` always have an `Error`.) */
     error: MapEventBase<'error'> & {error: unknown};

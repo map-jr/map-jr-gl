@@ -9,9 +9,9 @@ The library has two types of marker.
 
 The two entries of the library give markers to the map in different ways:
 
-- With `map-jr-gl` (and the adapters for Vue, React and Svelte), marker layers are the field `markers` of the
+- With `@map-jr/map-jr-gl` (and the adapters for Vue, React and Svelte), marker layers are the field `markers` of the
   description. See [With the main API](#with-the-main-api).
-- With `map-jr-gl/maplibre-compat`, marker layers are made with the method `map.addMarkerLayer`. The examples in
+- With `@map-jr/map-jr-gl/maplibre-compat`, marker layers are made with the method `map.addMarkerLayer`. The examples in
   [Marker layers](#marker-layers) use this entry.
 
 The template and the options are the same for the two entries.
@@ -21,7 +21,7 @@ The template and the options are the same for the two entries.
 A marker layer is an object in the list `markers` of the description (`MapSpec`). Each layer has an `id`.
 
 ```js
-import {createMap} from 'map-jr-gl';
+import {createMap} from '@map-jr/map-jr-gl';
 
 let places = {
   id: 'places',
@@ -85,8 +85,8 @@ For a small number of markers with HTML content, use `map.overlay(element, {lngL
 
 ## Marker layers
 
-The examples in this section use the entry `map-jr-gl/maplibre-compat`, where `map` is a `Map`. The template and the
-options also apply to the field `markers` of `map-jr-gl`.
+The examples in this section use the entry `@map-jr/map-jr-gl/maplibre-compat`, where `map` is a `Map`. The template and the
+options also apply to the field `markers` of `@map-jr/map-jr-gl`.
 
 A marker layer has an SVG template and a list of markers. The library draws the template one time for each
 different set of values. It then draws all the markers in one operation. The number of markers has almost no effect
@@ -162,7 +162,7 @@ The content can be text or an HTML element.
 Clustering is not part of the library. Calculate the groups in your application and give the result to a marker
 layer with `setData`. Do this again when the `moveend` event occurs.
 
-With `map-jr-gl`, give the result as a new `data` array in `map.update`, and listen with
+With `@map-jr/map-jr-gl`, give the result as a new `data` array in `map.update`, and listen with
 `map.listen('moveend', ...)`.
 
 ### Markers on the server
@@ -171,11 +171,11 @@ With `map-jr-gl`, give the result as a new `data` array in `map.update`, and lis
 
 ## `Marker` and `Popup`
 
-These classes have the API of MapLibre GL JS. They are in the entry `map-jr-gl/maplibre-compat`. With `map-jr-gl`,
+These classes have the API of MapLibre GL JS. They are in the entry `@map-jr/map-jr-gl/maplibre-compat`. With `@map-jr/map-jr-gl`,
 use `map.overlay` (see [Elements of the page](#elements-of-the-page)).
 
 ```js
-import {Marker, Popup} from 'map-jr-gl/maplibre-compat';
+import {Marker, Popup} from '@map-jr/map-jr-gl/maplibre-compat';
 
 const marker = new Marker({draggable: true})
   .setLngLat([-74.006, 40.7128])

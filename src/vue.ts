@@ -1,5 +1,5 @@
 /**
- * The adapter for Vue 3 (and Nuxt): `import {MapJr, useMap} from 'map-jr-gl/vue'`.
+ * The adapter for Vue 3 (and Nuxt): `import {MapJr, useMap} from '@map-jr/map-jr-gl/vue'`.
  *
  * It is a thin layer over `createMap` (host.ts). The component gives its props to the map as one description, and
  * the map does the rest. On a server the component can render the first view as SVG; in the browser the map takes
@@ -150,7 +150,7 @@ export const MapJr = defineComponent({
         minZoom: Number, maxZoom: Number, maxPitch: Number,
         maxBounds: [Array, Object] as PropType<LngLatBoundsInput | null>,
         cursor: String,
-        /** Controls from `map-jr-gl/controls`: `[navigation(), scale()]`. */
+        /** Controls from `@map-jr/map-jr-gl/controls`: `[navigation(), scale()]`. */
         controls: Array as PropType<ControlSpec[]>,
         renderer: String as PropType<'auto' | 'worker' | 'main'>,
         fonts: Array as PropType<FontSource[]>,
@@ -231,7 +231,7 @@ export const MapJr = defineComponent({
             // (By the name of the package, so that this file does not contain the server renderer, and so that a tool that
             // collects the files of a server finds it.)
             // @ts-ignore: the package refers to itself, which the type check of this project does not resolve
-            const server = await import('map-jr-gl/server') as typeof import('./server.ts');
+            const server = await import('@map-jr/map-jr-gl/server') as typeof import('./server.ts');
             first.value = await server.renderFirstView({style: toRaw(props.mapStyle), center: view.center ?? [0, 0], zoom: view.zoom ?? 0, bearing: view.bearing, width: o.width ?? 800, height: o.height ?? 500,
                 markers: props.markers && plain(props.markers), overrides: o.overrides, attribution: props.attribution === false ? false : o.attribution});
         });

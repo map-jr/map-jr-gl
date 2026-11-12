@@ -1,6 +1,6 @@
 <script setup>
 import {computed, ref, useTemplateRef} from 'vue';
-import {MapJr} from 'map-jr-gl/vue';
+import {MapJr} from '@map-jr/map-jr-gl/vue';
 
 const style = 'https://tiles.openfreemap.org/styles/liberty';
 const MATTERHORN = [7.6586, 45.9763];

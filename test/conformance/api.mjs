@@ -35,7 +35,7 @@ if (process.argv.includes('--write')) {
     // Keep the compatibility document's method lists in step with the code.
     const file = path.join(root, 'docs/maplibre-compatibility.md'), doc = readFileSync(file, 'utf8');
     const list = names => names.map(n => '`' + n + '`').join(', ');
-    const block = `<!-- api:start -->\n${have.length} of the ${theirs.size} public methods of the MapLibre \`Map\` class are available in the entry \`map-jr-gl/maplibre-compat\` (${(100 * have.length / theirs.size).toFixed(0)}%).\n\n` +
+    const block = `<!-- api:start -->\n${have.length} of the ${theirs.size} public methods of the MapLibre \`Map\` class are available in the entry \`@map-jr/map-jr-gl/maplibre-compat\` (${(100 * have.length / theirs.size).toFixed(0)}%).\n\n` +
         `**Available:** ${list(have)}\n\n**Accepted, with no effect** (${accepted.length}; a value that the library cannot do gives one warning): ${list(accepted)}\n\n**Only in this library:** ${list(extra)}\n\n**Not available:** ${list(missing)}\n<!-- api:end -->`;
     writeFileSync(file, doc.replace(/<!-- api:start -->[\s\S]*<!-- api:end -->/, block));
 }

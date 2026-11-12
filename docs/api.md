@@ -1,18 +1,18 @@
 # The main API
 
-The entry `map-jr-gl` makes a map from one description. To change the map, you give a new description. The library
+The entry `@map-jr/map-jr-gl` makes a map from one description. To change the map, you give a new description. The library
 finds what is different and changes only that. The state of the map is in a store that your code can watch.
 
 This model fits how the library works: the map draws in a worker, and one description goes to it as one message.
 It also fits frameworks, which describe what the page must show and do not call methods one after the other.
 
-For the API of MapLibre GL JS (`new Map`, `map.addLayer`), use the entry `map-jr-gl/maplibre-compat`. See
+For the API of MapLibre GL JS (`new Map`, `map.addLayer`), use the entry `@map-jr/map-jr-gl/maplibre-compat`. See
 [MapLibre compatibility](maplibre-compatibility.md).
 
 ## Make a map
 
 ```js
-import {createMap} from 'map-jr-gl';
+import {createMap} from '@map-jr/map-jr-gl';
 
 const map = createMap(document.getElementById('map'), {
   style: 'https://tiles.openfreemap.org/styles/liberty',
@@ -30,7 +30,7 @@ can show other content. The first call makes a WebGL2 context on a canvas that i
 return the same answer.
 
 ```js
-import {createMap, supported} from 'map-jr-gl';
+import {createMap, supported} from '@map-jr/map-jr-gl';
 
 const container = document.getElementById('map');
 if (supported()) {
@@ -91,12 +91,12 @@ a bundler that sets the condition takes it in development and takes the producti
 Node.js resolves the development build with `--conditions=development`. Webpack and Nuxt are not checked. The
 production build makes no request for the checks and gives none of these warnings.
 
-| How the page gets `map-jr-gl` | Checks |
+| How the page gets `@map-jr/map-jr-gl` | Checks |
 |---|---|
 | A bundler in development that sets the `development` condition | Yes. The map loads a file of about 1.3 KB (gzip) after it has started. |
 | A bundler that builds for production | No. |
 | The file `dist/map-jr-gl.js` by URL, with no bundler | No. Import `dist/map-jr-gl.dev.js` instead while you develop. |
-| The standalone file (`map-jr-gl/standalone`) | Yes. The checks are inside the file. |
+| The standalone file (`@map-jr/map-jr-gl/standalone`) | Yes. The checks are inside the file. |
 
 When the file of the checks does not load, the map works and gives none of these warnings.
 
@@ -195,7 +195,7 @@ map.update({style: url, extend, data: {routes: nextRoutes}});
 ## Controls
 
 ```js
-import {navigation, scale, fullscreen, geolocate, terrain} from 'map-jr-gl/controls';
+import {navigation, scale, fullscreen, geolocate, terrain} from '@map-jr/map-jr-gl/controls';
 
 createMap(container, {
   style,
@@ -326,7 +326,7 @@ style layer) and `state`. A feature of a query with `sources` has `id`, `propert
 In TypeScript, the type of the result follows the kind of query. A call that writes `sources` gives
 `QueriedFeature[]`, and a call with no `sources` gives `RenderedFeature[]`. When the options are a variable of the
 type `FeatureOptions`, the result is `RenderedFeature[] | QueriedFeature[]`. The same holds for the listener of
-`watchFeatures` and for `useMapFeatures` of `map-jr-gl/vue`.
+`watchFeatures` and for `useMapFeatures` of `@map-jr/map-jr-gl/vue`.
 
 `watchFeatures(at, options, listener)` asks the same question and keeps the answer up to date. The listener gets
 the answer now, and again each time that it changes: new tiles, a change of the style, and (for a place on the
@@ -353,7 +353,7 @@ and the watch goes on.
 
 For users of MapLibre GL JS: `queryRenderedFeatures` is `queryFeatures` without `sources`, and
 `querySourceFeatures` is `queryFeatures(undefined, {sources: [id]})`. The two MapLibre methods are in the entry
-`map-jr-gl/maplibre-compat`. The map object of that entry (which is `map` of the `MapHost`) has the same
+`@map-jr/map-jr-gl/maplibre-compat`. The map object of that entry (which is `map` of the `MapHost`) has the same
 `queryFeatures` as the `MapHost`.
 
 The tile data is in a worker, so each query returns a promise.
@@ -409,7 +409,7 @@ as ten. See [Markers](markers.md).
 use `listen` for the rest.
 
 ```js
-import {createMap} from 'map-jr-gl';
+import {createMap} from '@map-jr/map-jr-gl';
 
 const map = createMap('map', {style: 'https://demotiles.maplibre.org/style.json'});
 const stop = map.listen('moveend', event => console.log(event.target.getZoom()));
@@ -457,7 +457,7 @@ In a mouse event, `lngLat` is an object (`{lng, lat}`). In `onClick`, `lngLat` i
 
 ## Types
 
-The entry `map-jr-gl` has TypeScript types for the description (`MapSpec`), the map (`MapHost`), the state
+The entry `@map-jr/map-jr-gl` has TypeScript types for the description (`MapSpec`), the map (`MapHost`), the state
 (`MapState`), the events (`MapEvents`) and the features (`RenderedFeature`, `QueriedFeature`).
 
 - A position that you give (`center`, `lngLat`, the argument of `project`) has the type `Position`, which is
