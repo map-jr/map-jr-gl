@@ -585,6 +585,41 @@ for (const mode of ['main', 'worker']) {
     else check(`[${mode}] 3D terrain turns on and off, keeping the map centre in the middle`, terrain.on === 'dem' && terrain.off === null && terrain.loaded && terrain.lift > 30 && terrain.roundTrip < 1 && Math.abs(terrain.centre.x - terrain.mid[0]) < 0.5 && Math.abs(terrain.centre.y - terrain.mid[1]) < 0.5, JSON.stringify(terrain));
     await page.screenshot({path: `${out}/terrain-${mode}.png`});
     // The `hash` option: the fragment of the URL gives the camera at the start, a movement writes it, and a change of the
+    // Two styles that are asked for one after the other: the last one wins, also when the first answers later, and
+    // also when the first is the style of the constructor. The style, the layers and the pixels agree.
+    {
+        const styleOf = (name, color) => JSON.stringify({version: 8, name, sources: {}, layers: [{id: name.toLowerCase(), type: 'background', paint: {'background-color': color}}]});
+        await page.route('**/test-order-a.json', async r => { await new Promise(res => setTimeout(res, 700)); r.fulfill({contentType: 'application/json', body: styleOf('A', '#f00')}); });
+        await page.route('**/test-order-b.json', r => r.fulfill({contentType: 'application/json', body: styleOf('B', '#00f')}));
+        const clip = {x: 0, y: 0, width: 200, height: 150};
+        const make = style => page.evaluate(async ([style, mode]) => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            window.orderEl?.remove(); window.orderMap?.remove();
+            const el = window.orderEl = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:200px;height:150px;z-index:1000'}));
+            const m = window.orderMap = new mod.Map({container: el, style, renderer: mode, attributionControl: false});
+            window.orderErrors = [];
+            m.on('error', e => window.orderErrors.push(String(e.error?.message ?? e.error)));
+        }, [style, mode]);
+        const state = async () => {
+            await page.waitForTimeout(1800);
+            const s = await page.evaluate(() => { const m = window.orderMap; m.setPaintProperty('b', 'background-color', '#00f'); return {name: m.getStyle()?.name, layers: m.getStyle()?.layers.map(l => l.id).join(), errors: window.orderErrors}; });
+            await page.waitForTimeout(300);
+            return {...s, shot: await page.screenshot({clip})};
+        };
+        await make('/test-order-b.json');
+        await page.waitForTimeout(1200);
+        const wanted = await page.screenshot({clip});
+        await page.evaluate(() => { window.orderMap.setStyle('/test-order-a.json'); window.orderMap.setStyle('/test-order-b.json'); });
+        const later = await state();
+        await make('/test-order-a.json');
+        await page.evaluate(() => { window.orderMap.setStyle('/test-order-b.json'); });
+        const first = await state();
+        await page.evaluate(() => { window.orderEl.remove(); window.orderMap.remove(); });
+        await page.unroute('**/test-order-a.json'); await page.unroute('**/test-order-b.json');
+        const ok = s => s.name === 'B' && s.layers === 'b' && !s.errors.length && s.shot.equals(wanted);
+        check(`[${mode}] setStyle two times, the first answer last: the last style is the style, in getStyle, the layers and the pixels`, ok(later), JSON.stringify({...later, shot: later.shot.equals(wanted)}));
+        check(`[${mode}] setStyle before the style of the constructor has come: the new style takes its place`, ok(first), JSON.stringify({...first, shot: first.shot.equals(wanted)}));
+    }
     // fragment moves the map.
     const hash = await page.evaluate(async () => {
         const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:400px;height:300px'}));

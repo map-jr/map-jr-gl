@@ -269,19 +269,34 @@ export class Map {
         Object.assign(this.canvas.style, {width: this.dpr * 100 + '%', height: this.dpr * 100 + '%', transform: `scale(${1 / this.dpr})`});
     }
 
-    private async start(change?: StyleChange) {
+    /** A number for each style that the map was given. After an `await`, a style that is not the last one is dropped. */
+    private styleTurn = 0;
+    /** The first style is on its way (see `start`). */
+    private starting = false;
+    private firstChange?: StyleChange;
+    private async start() {
         const o = this.options;
         if (!o.style) return; // the style comes later, with setStyle
-        this.rawStyle = typeof o.style === 'string' ? await (await this.fetchAs('Style')(o.style)).json() : structuredClone(o.style);
-        this.rawStyle = change?.(undefined, this.rawStyle) ?? this.rawStyle;
+        // (`setStyle` during this request gives another style: that one is fetched, and this answer is not used.)
+        let raw: any, turn: number;
+        this.starting = true;
+        do {
+            turn = this.styleTurn;
+            try { raw = typeof o.style === 'string' ? await (await this.fetchAs('Style')(o.style)).json() : structuredClone(o.style); } catch (error) { if (turn === this.styleTurn) { this.starting = false; throw error; } }
+        } while (turn !== this.styleTurn);
+        this.starting = false;
+        this.rawStyle = this.firstChange?.(undefined, raw) ?? raw;
+        this.firstChange = undefined; // (a restart of the engine starts from the style as it is then)
         for (const fn of this.beforeStyle.splice(0)) fn();
         this.styleBase = typeof o.style === 'string' ? new URL(o.style, location.href).href : location.href;
         // As in MapLibre, a style may carry its own starting camera. It is used only when the options give no part of
         // the camera: with a zoom in the options and no centre, the centre is [0, 0], not that of the style.
         const sc = this.rawStyle;
         if (o.center === undefined && o.zoom === undefined && o.bearing === undefined && o.pitch === undefined && !o.bounds) this.tr.set(sc.center, sc.zoom, sc.bearing, sc.pitch);
-        this.resolved = await resolveStyle(this.rawStyle, fetch, this.styleBase);
-        if (!(o.glyphs ?? !o.fonts)) this.resolved.glyphs = undefined;
+        const restyled = this.restyled, first = await resolveStyle(this.rawStyle, fetch, this.styleBase);
+        if (!(o.glyphs ?? !o.fonts)) first.glyphs = undefined;
+        // (A change of the style during that step has its own result, which is newer. The engine gets it after its start.)
+        if (restyled === this.restyled) this.resolved = first;
         if (this.resolved.unsupported.length) console.warn('[map-jr-gl] Skipping unsupported layer types: ' + this.resolved.unsupported.join(', '));
         const tr = this.tr;
         const engineOptions = {
@@ -747,9 +762,13 @@ export class Map {
     }
     /** `transformStyle` gets the style before and the new style, and returns the style to use (as in MapLibre). */
     async setStyle(style: unknown, options?: {transformStyle?: StyleChange}) {
-        if (!this.rawStyle && !this.options.style) { this.options.style = style; return this.start(options?.transformStyle); }
-        this.styleBase = typeof style === 'string' ? new URL(style, location.href).href : location.href;
+        const turn = ++this.styleTurn;
+        // Before the first style has come, the new style takes its place.
+        if (!this.rawStyle) { this.options.style = style; this.firstChange = options?.transformStyle; return this.starting ? undefined : this.start(); }
         const next = typeof style === 'string' ? await (await this.fetchAs('Style')(style)).json() : structuredClone(style);
+        // (A style that was asked for later has replaced this one.)
+        if (turn !== this.styleTurn) return;
+        this.styleBase = typeof style === 'string' ? new URL(style, location.href).href : location.href;
         this.rawStyle = options?.transformStyle?.(this.rawStyle, next) ?? next;
         this.newStyle = true;
         this.restyle(true);
