@@ -178,7 +178,8 @@ export class Map extends CoreMap {
             if (!awaited && this.summary(found) !== given) this.incomplete('queryRenderedFeatures', now.length, found.length);
             // The array that the caller got at once was not the complete result. Code that reads the array asks again
             // on `idle` (and the map is idle, or will be): tell it, and the same question then has the answer at once.
-            if (this.summary(found) !== given && !this.again) {
+            if (this.summary(found) !== given && !this.again && !this.refired.has(key)) {
+                this.refired.add(key); // (one time for a question: a listener with many questions must not make `idle` fire for ever)
                 this.again = true;
                 setTimeout(() => { this.again = false; if (this.areTilesLoaded() && !this.isMoving()) this.fire('idle'); });
             }
@@ -197,6 +198,7 @@ export class Map extends CoreMap {
      */
     private answers = new globalThis.Map<string, {found: QueriedFeature[]}>();
     private again = false;
+    private refired = new Set<string>();
     private questionKey(box: number[], sets?: {layer: string; also?: unknown}[]) {
         const t = this.tr;
         return JSON.stringify([t.lng, t.lat, t.zoom, t.bearing, t.pitch, t.width, t.height, box, sets ? sets.map(s => [s.layer, s.also]) : 0]);
@@ -204,11 +206,14 @@ export class Map extends CoreMap {
     private keep(key: string, found: QueriedFeature[]) {
         this.answers.delete(key);
         this.answers.set(key, {found});
-        if (this.answers.size > 24) this.answers.delete(this.answers.keys().next().value!);
+        if (this.answers.size > 64) this.answers.delete(this.answers.keys().next().value!);
     }
     private summary(found: QueriedFeature[]) { return JSON.stringify(found.map(f => [f.layer, f.id, f.properties])); }
     /** (A click waits for the features at its place, so that a listener can read them at once.) */
     override fire(type: string, data: Record<string, unknown> = {}) {
+        // (New data or a new style: an answer from before can be old. It is still given at once, and it is asked again:
+        // if the new answer is another, `idle` fires one more time for that question.)
+        if (type === 'sourcedata' || type === 'styledata') this.refired.clear();
         const point = data.point as {x: number; y: number} | undefined;
         if (!point || !/^(click|dblclick|contextmenu)$/.test(type) || data.asked || !this.rawStyle) return super.fire(type, data);
         const {box, sets} = this.rendered([point.x, point.y]), key = this.questionKey(box);
