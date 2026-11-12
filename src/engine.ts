@@ -1140,7 +1140,9 @@ export class Engine {
                 const t = this.tiles.get(key);
                 if (!t) this.request(source, id, key);
                 else this.refresh(source, id, key, t);
-                if (!t || t.state === 'loading') complete = false;
+                // (A tile that is drawn from old data, or that is being built again, is not complete: `idle` waits for it.
+                // Only a tile of geometry is built again; see `refresh`.)
+                if (!t || t.state === 'loading' || t.rebuilding || t.stale && t.state === 'ok' && t.band !== undefined) complete = false;
                 if (!t || t.state === 'loading' || t.stale || t.rebuilding) loading.add(source);
                 // The server does not have this image tile: the nearest tile above it that the server has is drawn in its
                 // place (as in MapLibre GL JS, at most 10 levels above). One level is requested at a time.
