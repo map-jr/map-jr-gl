@@ -84,7 +84,7 @@ try {
         } catch (e) {
             check.error = e.message;
             // What the map says about itself, and a picture of the window, for a map that did not load.
-            check.state = await run('const m = window.map; return m ? {renderer: m.renderer || null, styleLoaded: m.isStyleLoaded(), tilesLoaded: m.areTilesLoaded(), zoom: m.getZoom(), canvas: m.getCanvas().width + "x" + m.getCanvas().height} : {map: false}').catch(err => ({error: err.message}));
+            check.state = await run('const m = window.map; return m ? {renderer: m.renderer || null, styleLoaded: m.isStyleLoaded(), tilesLoaded: m.areTilesLoaded(), zoom: m.getZoom(), canvas: m.getCanvas().width + "x" + m.getCanvas().height, visibilityState: document.visibilityState} : {map: false, visibilityState: document.visibilityState}').catch(err => ({error: err.message}));
             const png = await wd('GET', `/session/${id}/screenshot`).catch(() => null);
             if (png) writeFileSync(path.join(out, `${name}-${mode}.png`), Buffer.from(png, 'base64'));
         }
@@ -92,10 +92,14 @@ try {
     }
 
     // 1b. For a renderer that did not load: a map of its own with listeners from the start, so that the result has the
-    //     events and the errors, and whether the canvas shows a picture.
+    //     events and the errors, and whether the canvas shows a picture. This map comes from the development build, which
+    //     writes into `__mapJrDebug` what it does about a lost WebGL context (see `note` in src/map.ts).
     for (const check of result.checks.filter(c => !c.loaded || process.env.WD_CLOSER)) {
         check.closer = await wd('POST', `/session/${id}/execute/async`, {args: [check.mode], script: `const mode = arguments[0], done = arguments[arguments.length - 1];
-            import('/dist/map-jr-gl-maplibre-compat.js').then(async mod => {
+            const debug = window.__mapJrDebug = [], pageErrors = [];
+            const onError = e => pageErrors.push(String(e.message || (e.reason && e.reason.message) || e.reason).slice(0, 200));
+            addEventListener('error', onError); addEventListener('unhandledrejection', onError);
+            import('/dist/map-jr-gl-maplibre-compat.dev.js').then(async mod => {
                 const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:300px;z-index:9999'}));
                 const seen = [], warnings = [], warn = console.warn, error = console.error;
                 console.warn = (...a) => { warnings.push(a.join(' ').slice(0, 200)); warn(...a); };
@@ -110,8 +114,11 @@ try {
                     // (Only for the worker renderer: on the main thread the browser clears the drawing buffer after each frame.)
                     if (m.renderer !== 'worker') drawn = 'not checked for this renderer'; else try { pad.drawImage(m.getCanvas(), 0, 0, 20, 15); const d = pad.getImageData(0, 0, 20, 15).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i]) n++; drawn = n + ' of 300 points have a picture'; } catch (e) { drawn = 'not readable: ' + e.message; }
                     const counts = {}; for (const s of seen) counts[s] = (counts[s] || 0) + 1;
-                    const out = {renderer: m.renderer || null, events: counts, warnings: warnings.slice(0, 6), statsReports: frames, drawn, styleLoaded: m.isStyleLoaded(), tilesLoaded: m.areTilesLoaded()};
+                    const out = {renderer: m.renderer || null, events: counts, order: seen.filter(s => s !== 'styledata' && s !== 'sourcedata').slice(0, 20), warnings: warnings.slice(0, 12), pageErrors: pageErrors.slice(0, 12), statsReports: frames, drawn, styleLoaded: m.isStyleLoaded(), tilesLoaded: m.areTilesLoaded(),
+                        build: 'development', visibilityState: document.visibilityState, hidden: document.hidden, now: Math.round(performance.now()),
+                        debug: debug.map(r => r[0] + ' ms: ' + r[1] + (r[2] === undefined ? '' : ' ' + JSON.stringify(r[2])))};
                     m.remove(); el.remove(); console.warn = warn; console.error = error;
+                    removeEventListener('error', onError); removeEventListener('unhandledrejection', onError); delete window.__mapJrDebug;
                     done(out);
                 }, 15000);
             }).catch(e => done({error: String(e.message)}));`}).catch(e => ({error: e.message}));
@@ -136,7 +143,9 @@ const md = [`### ${name} (${result.browser} ${result.version}${result.device ? '
     ...(p.page ? [`- On the page: OffscreenCanvas ${yes(p.page.offscreenCanvas)}, transferControlToOffscreen ${yes(p.page.transfer)}, WebGL2 ${yes(p.page.webgl2)}, "reduce motion" ${yes(p.page.reducedMotion)}, pixel ratio ${p.page.pixelRatio}, screen ${p.page.screen}`,
         `- In a worker: ${p.worker?.error ? 'FAILED: ' + p.worker.error : `OffscreenCanvas ${yes(p.worker?.offscreenCanvas)}, WebGL2 context ${yes(p.worker?.webgl2)}, 2D context ${yes(p.worker?.context2d)}, requestAnimationFrame ${yes(p.worker?.requestAnimationFrame)}`}`,
         `- Frames in one second: ${p.page.frames ?? 'unknown'} on the page, ${p.worker?.frames ?? 'unknown'} in a worker`] : p.error ? [`- The check of what the browser can do failed: ${p.error}`] : []),
-    ...result.checks.map(c => `- ${c.mode}: ${(c.error ? 'FAILED: ' + c.error + ' — the map says ' + JSON.stringify(c.state) : `loaded, renderer ${c.renderer}, canvas ${c.canvas}`) + (c.closer ? '; a second map with listeners, after 15 s: ' + JSON.stringify(c.closer) : '')}`), '',
+    ...result.checks.map(c => `- ${c.mode}: ${(c.error ? 'FAILED: ' + c.error + ' — the map says ' + JSON.stringify(c.state) : `loaded, renderer ${c.renderer}, canvas ${c.canvas}`) + (c.closer ? '; a second map with listeners, after 15 s: ' + JSON.stringify({...c.closer, debug: undefined}) : '')}`),
+    // What the map of the development build wrote about its WebGL context, one line for each entry.
+    ...result.checks.filter(c => c.closer?.debug).flatMap(c => ['', `The debug record of the second map (${c.mode}, ${c.closer.debug.length} entries):`, '', '```', ...c.closer.debug, '```']), '',
     ...(rows.length ? [`| ${rows[0].join(' | ')} |`, `|${rows[0].map(() => '---').join('|')}|`, ...rows.slice(1).map(r => `| ${r.join(' | ')} |`)] : ['(no benchmark results)']),
     ...failedRows.map(r => `- ${r[0]}`),
     ...(result.errors.length ? ['', 'Errors: ' + result.errors.join(' | ')] : []), ''].join('\n');

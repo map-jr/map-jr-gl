@@ -14,6 +14,9 @@ import {AttributionControl, CONTROL_CSS, adoptClasses, cls, type Control, type C
 import {Popup, type PopupOptions} from './overlays.ts';
 import {CollisionGrid} from './collision.ts';
 
+/** True in the development build (`dist/*.dev.js`). Code behind it is not in the production build. */
+declare const __DEV__: boolean;
+
 
 export interface MapOptions extends CameraOptions, LoadOptions {
     container: HTMLElement | string;
@@ -370,6 +373,11 @@ export class Map {
                     if (o.interactive !== false) this.bindInput();
                 }, error => this.fire('error', {error}));
             };
+            if (__DEV__) {
+                this.note('engine worker starts', {restarting: this.restarting, ports: ports.length});
+                w.onerror = e => this.note('engine worker: error', `${e.message} (${e.filename}:${e.lineno})`);
+                w.onmessageerror = () => this.note('engine worker: a message could not be read');
+            }
             w.postMessage({role: 'engine', canvas: off, options: engineOptions, ports}, [off, ...ports]);
             this.send = (c, transfer) => w.postMessage(c, transfer ?? []);
             this.renderer = 'worker';
@@ -383,6 +391,8 @@ export class Map {
         this.send({type: 'repaint'});
         // (After a restart, an engine in a worker has 5 seconds for its first frame, and an engine on this thread has 15.)
         this.watch(!this.restarting ? 0 : this.renderer === 'worker' ? 5 : 15);
+        // (For the debug record of the development build: what each engine says about its context, 2 and 8 seconds after its start.)
+        if (__DEV__ && (globalThis as {__mapJrDebug?: unknown}).__mapJrDebug) for (const ms of [2000, 8000]) setTimeout(() => { if (this.ready && !this.removed) this.send({type: 'debug'}); }, ms);
         this.styleEvents(true);
 
         this.observer = new ResizeObserver(() => this.resize());
@@ -402,6 +412,7 @@ export class Map {
     private async restart(main?: boolean) {
         if (this.restarting || this.removed) return;
         this.restarting = this.restarted = true;
+        if (__DEV__) this.note('restart()', {main: !!main, renderer: this.renderer});
         this.watchTurn++;
         this.fire('webglcontextlost');
         this.drop('lost its WebGL context. Ask again');
@@ -429,7 +440,8 @@ export class Map {
             this.variantIds.clear();
             for (const layer of this.markerLayers.values()) this._syncMarkers(layer);
             this.fire('webglcontextrestored');
-        } catch (error) { this.fire('error', {error}); } finally { this.restarting = false; }
+            if (__DEV__) this.note('restart() ended', {renderer: this.renderer, drew: this.drew});
+        } catch (error) { if (__DEV__) this.note('restart() failed', String(error)); this.fire('error', {error}); } finally { this.restarting = false; }
     }
 
     /** The engine of the last start has drawn a frame. */
@@ -445,7 +457,13 @@ export class Map {
     private watch(limit = 0) {
         const turn = ++this.watchTurn;
         this.drew = false;
+        if (__DEV__) this.note('watch', {limit, renderer: this.renderer});
         const tick = () => {
+            if (__DEV__) {
+                this.note('tick', {drew: this.drew, replaced: turn !== this.watchTurn, hidden: document.hidden, visibility: document.visibilityState, width: this.tr.width, height: this.tr.height, secondsLeft: limit});
+                // (The engine answers with what it knows about its context and its frames: see `debug` in engine.ts.)
+                if (this.ready && turn === this.watchTurn) this.send({type: 'debug'});
+            }
             if (this.drew || turn !== this.watchTurn) return;
             if (!document.hidden && this.tr.width && this.tr.height && !limit--) this.contextLost(); else setTimeout(tick, 1000);
         };
@@ -458,12 +476,24 @@ export class Map {
      * engine then starts on the main thread. An engine on the main thread that was started again already and loses the
      * context before its first frame is an error.
      */
+    /**
+     * The development build only: when the page has set `__mapJrDebug` to an array, the map writes there what it does
+     * about a lost WebGL context, each entry as [milliseconds since the page started, what, data]. The array holds at
+     * most 400 entries. Each call is behind `__DEV__`, so the production build has none of this.
+     */
+    private note(what: string, data?: unknown) {
+        const record = __DEV__ && (globalThis as {__mapJrDebug?: unknown[]}).__mapJrDebug;
+        if (record && record.length < 400) record.push([Math.round(performance.now()), what, data]);
+    }
+
     private contextLost() {
+        if (__DEV__) this.note('contextLost()', {removed: this.removed, restarting: this.restarting, restarted: this.restarted, renderer: this.renderer, drew: this.drew, sinceLastLoss: Date.now() - this.lostAt});
         if (this.removed) return;
         // (The new engine lost its context while `restart` still waits, for the images for example.)
         if (this.restarting) return void setTimeout(() => this.contextLost(), 1000);
         const worker = this.renderer === 'worker', now = Date.now(), toMain = worker && (!this.drew || now - this.lostAt < 10000);
         this.lostAt = now;
+        if (__DEV__) this.note('decision', this.drew || worker || !this.restarted ? toMain ? 'restart on the main thread' : 'restart with the same renderer' : 'error, no restart');
         if (this.drew || worker || !this.restarted) {
             if (toMain) console.warn('[map-jr-gl] Worker rendering unavailable, using the main thread: the WebGL context was lost');
             this.restart(toMain);
@@ -518,6 +548,7 @@ export class Map {
     }
 
     private onEngineEvent(e: EngineEvent) {
+        if (__DEV__ && e.type !== 'camera' && e.type !== 'heights' && e.type !== 'result') this.note('engine: ' + e.type, e.type === 'debug' ? e.info : e.type === 'idle' ? {seq: e.seq, expected: this.seq} : e.type === 'frame' ? {first: !this.drew} : e.type === 'error' ? e.message : undefined);
         if (e.type === 'camera') {
             const zoomed = e.zoom !== this.tr.zoom;
             const turned = e.bearing !== this.tr.bearing, tilted = e.pitch !== this.tr.pitch;

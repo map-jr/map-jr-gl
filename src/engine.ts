@@ -59,7 +59,9 @@ export type Command =
     | {type: 'requests'; rules: RequestRules}
     | ({type: 'resourceResult'; id: number} & RequestAnswer)
     /** Asks for a `frame` event after each frame that is drawn (for the `render` event of the map). */
-    | {type: 'frames'; on: boolean};
+    | {type: 'frames'; on: boolean}
+    /** Asks for a `debug` event. Only the development build of the page sends it. */
+    | {type: 'debug'};
 export type EngineEvent =
     | {type: 'camera'; lng: number; lat: number; zoom: number; bearing: number; pitch: number; /** Ground height at the centre with 3D terrain, else 0. */ elevation: number; exaggeration: number; groundRange?: [number, number]; padding: [number, number, number, number]; moving: boolean}
     | {type: 'idle'; seq: number}
@@ -70,6 +72,8 @@ export type EngineEvent =
     /** About once a second while drawing: frames drawn per second and the engine's average CPU time per frame. */
     | {type: 'stats'; fps: number; frameMs: number}
     | {type: 'frame'}
+    /** What the engine knows about its context and its frames (the answer to the `debug` command). */
+    | {type: 'debug'; info: Record<string, unknown>}
     /** The browser took the WebGL context away (for example, a phone that needs the memory). The page starts the map again. */
     | {type: 'contextlost'}
     /** A question to the page about one request. */
@@ -753,6 +757,11 @@ export class Engine {
             case 'repaint': break;
             case 'destroy': this.lost = true; this.renderer.destroy(); return;
             case 'frames': this.reportFrames = c.on; break;
+            case 'debug': {
+                const gl = this.renderer.gl;
+                this.emit({type: 'debug', info: {lostEvent: this.lost, isContextLost: gl.isContextLost(), glError: gl.getError(), frames: this.frameNo, firstFrameReported: this.drew, width: this.tr.width, height: this.tr.height, buffer: gl.drawingBufferWidth + 'x' + gl.drawingBufferHeight}});
+                return;
+            }
             case 'requests': this.rules = c.rules; for (const b of this.backends) b.setRequests(c.rules, this.ask); break;
             case 'resourceResult': this.asked.get(c.id)?.(c); this.asked.delete(c.id); break;
         }
