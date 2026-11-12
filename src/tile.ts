@@ -125,6 +125,8 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
 
         if (L.type === 'symbol') {
             const labels: LabelSrc[] = [], keys: number[] = [], sorted = p.sortKey.dd || p.sortKey.eval(z) !== 0;
+            type Piece = {base: any; ring: number[]; type: number; along: boolean; spacing: number; key: number};
+            const pieces: Piece[] = [], starts = new Map<string, Piece>(), ends = new Map<string, Piece>();
             for (const f of vl.features) {
                 ctx.f = f;
                 f.state = featureStateOf(L.source, L.sourceLayer, f.id);
@@ -142,7 +144,7 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
                 // An opacity or a size that is the same for the whole layer is found again when labels are placed, at the zoom
                 // of the map: a tile is shown at zooms other than its own. Only a value for each feature is kept here.
                 const color = p.color.eval(z, f) as RGBA, op = p.opacity.dd ? p.opacity.eval(z, f) : 1, haloColor = p.haloColor.eval(z, f) as RGBA;
-                const along = p.placement.eval(z, f) !== 'point';
+                const placement = p.placement.eval(z, f), along = placement !== 'point';
                 // `text-rotation-alignment` and `icon-rotation-alignment`: `auto` is `map` along a line and `viewport` at a point.
                 // (The flag is named for the usual case at a point: the symbol stays upright when the map turns.)
                 const turns = (alignment: unknown) => along ? alignment === 'viewport' : alignment !== 'map';
@@ -161,22 +163,49 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
                     } : undefined,
                 };
                 // symbol-spacing is in pixels; tiles are EXTENT units across TILE_SIZE pixels.
-                const g = geometry(f), spacing = p.symbolSpacing.eval(z, f) * EXTENT / 512;
+                const g = geometry(f), spacing = p.symbolSpacing.eval(z, f) * EXTENT / 512, key = sorted ? +p.sortKey.eval(z, f) || 0 : 0;
                 let start = 0;
                 for (const end of g.ringEnds) {
-                    // Enough line either side of the anchor to lay the text along it at this tile's own zoom (8 tile units per pixel).
-                    const window = along && text && !base.upright ? text.length * Math.max(base.size0, base.size1) * 0.7 * 8 * 0.6 + 200 : 0;
-                    for (const a of anchors(g.coords, start, end, f.type, along, spacing, !!text, window)) {
-                        if (a[0] < 0 || a[0] >= EXTENT || a[1] < 0 || a[1] >= EXTENT) continue;
-                        // Everything a feature's labels have in common lives on a shared object behind each label, so a
-                        // road with twenty anchors does not carry twenty copies of its text, colours and fonts.
-                        const label: LabelSrc = Object.assign(Object.create(base), {x: a[0], y: a[1], angle: along ? a[2] : null, len: a[3]});
-                        if (a.length > 4) { label.pathIndex = a[4]; label.path = a.slice(5); }
-                        labels.push(label);
-                        if (sorted) keys.push(label.key = +p.sortKey.eval(z, f) || 0);
+                    const piece: Piece = {base, ring: g.coords.slice(start * 2, end * 2), type: f.type, along, spacing, key};
+                    pieces.push(piece);
+                    // A road often comes as several short lines, each too short for its name. As in MapLibre, lines with
+                    // the same text that meet end to end are joined to one line before the labels are made.
+                    if (placement === 'line' && text && f.type === 2 && piece.ring.length > 3) {
+                        const r = piece.ring, n = r.length, from = `${text}|${r[0]},${r[1]}`, to = `${text}|${r[n - 2]},${r[n - 1]}`;
+                        const before = ends.get(from), after = starts.get(to);
+                        if (before && after && before !== after) {
+                            before.ring = before.ring.concat(r.slice(2), after.ring.slice(2));
+                            ends.delete(from); starts.delete(to);
+                            const an = after.ring.length;
+                            ends.set(`${text}|${after.ring[an - 2]},${after.ring[an - 1]}`, before);
+                            piece.ring = after.ring = [];
+                        } else if (before) {
+                            before.ring = before.ring.concat(r.slice(2));
+                            ends.delete(from); ends.set(to, before);
+                            piece.ring = [];
+                        } else if (after) {
+                            after.ring = r.concat(after.ring.slice(2));
+                            starts.delete(to); starts.set(from, after);
+                            piece.ring = [];
+                        } else { starts.set(from, piece); ends.set(to, piece); }
                     }
                     start = end;
                     if (f.type === 3 && !along) break; // one label per polygon: outer ring only
+                }
+            }
+            for (const {base, ring, type, along, spacing, key} of pieces) {
+                if (!ring.length) continue; // joined to another line
+                const text = base.text;
+                // Enough line either side of the anchor to lay the text along it at this tile's own zoom (8 tile units per pixel).
+                const window = along && text && !base.upright ? text.length * Math.max(base.size0, base.size1) * 0.7 * 8 * 0.6 + 200 : 0;
+                for (const a of anchors(ring, 0, ring.length / 2, type, along, spacing, !!text, window)) {
+                    if (a[0] < 0 || a[0] >= EXTENT || a[1] < 0 || a[1] >= EXTENT) continue;
+                    // Everything a feature's labels have in common lives on a shared object behind each label, so a
+                    // road with twenty anchors does not carry twenty copies of its text, colours and fonts.
+                    const label: LabelSrc = Object.assign(Object.create(base), {x: a[0], y: a[1], angle: along ? a[2] : null, len: a[3]});
+                    if (a.length > 4) { label.pathIndex = a[4]; label.path = a.slice(5); }
+                    labels.push(label);
+                    if (sorted) keys.push(label.key = key);
                 }
             }
             // symbol-sort-key: lower keys are placed first, so they win when labels compete for space.
