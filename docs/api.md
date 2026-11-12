@@ -54,8 +54,9 @@ The map writes a warning to the console with `console.warn`, once for each map, 
 - An option of `queryFeatures` has no effect in that kind of query.
 
 The ids of the description are compared each time that the map is idle, so a layer or a source that the application
-adds itself in `load` gives no warning. The texts of the warnings are in a file that the map loads only when there is
-a mistake. When that file does not load, the warning has the number of the mistake and the name in place of the text.
+adds itself in `load` gives no warning. The checks and the texts of the warnings are in a file of about 1.3 KB (gzip)
+that the map loads after it has started, so they add nothing to what a page downloads before the map can start. When
+that file does not load, the map works and gives none of these warnings.
 
 The library compares each field with the field of the last description:
 

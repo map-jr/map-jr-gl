@@ -398,7 +398,8 @@ for (const renderer of ['worker', 'main']) {
     await page.close();
 }
 
-// The file with the texts of the warnings does not load: a short message takes its place, and no promise is left rejected.
+// The file with the checks and the texts of the warnings does not load: the map works with no check, a wrong place of a
+// query is still refused with a short message, and no promise is left rejected.
 {
     const page = await browser.newPage({viewport: {width: 900, height: 600}});
     await page.route(/map-jr-gl-mistakes-/, route => route.abort());
@@ -412,13 +413,15 @@ for (const renderer of ['worker', 'main']) {
             const pin = {id: 'a', svg: '<svg viewBox="0 0 8 8"><circle cx="4" cy="4" r="4"/></svg>', width: 8, height: 8, data: []};
             const host = lib.createMap(el, {style, initialView: {center: [-74.0065, 40.7085], zoom: 14.3}, attribution: false, markers: [pin, pin]});
             const place = await host.queryFeatures({lng: -74.0065, lat: 40.7085}).then(() => '', e => e.message);
-            await new Promise(r => setTimeout(r, 500));
+            await new Promise(r => host.state.subscribe(s => s.idle, v => v && r()));
+            await new Promise(r => setTimeout(r, 1200));
+            const drawn = (await host.queryFeatures(undefined, {radius: 5})).length;
             host.destroy(); el.remove(); console.warn = log;
-            return {said, unhandled, place};
+            return {said, unhandled, place, drawn};
         });
-        check('the file of the warnings does not load: a short message names the mistake and the documentation, and no rejection is unhandled',
-            lost.said.length === 1 && lost.said[0] === '[map-jr-gl] Mistake 7 (a) in the description or in queryFeatures(). See docs/api.md.' && lost.place.startsWith('[map-jr-gl] Mistake 9 (') && !lost.unhandled.length, JSON.stringify(lost));
-    } catch (e) { check('the file of the warnings does not load: the test run was completed', false, String(e.message).split('\n')[0]); }
+        check('the file of the checks does not load: the map draws, a wrong place of a query is refused with a short message, and no rejection is unhandled',
+            lost.said.length === 0 && lost.drawn > 0 && lost.place === '[map-jr-gl] queryFeatures(): the place is not {x, y} or [lng, lat].' && !lost.unhandled.length, JSON.stringify(lost));
+    } catch (e) { check('the file of the checks does not load: the test run was completed', false, String(e.message).split('\n')[0]); }
     await page.close();
 }
 
