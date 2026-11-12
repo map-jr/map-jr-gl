@@ -95,6 +95,9 @@ not work: use `import`. The tests of the server renderer (`map-jr-gl/server`) ru
 `package.json` asks for Node.js 22 or later. The module for Nuxt (`map-jr-gl/nuxt`) imports `@nuxt/kit`, which a Nuxt
 application has already. `package.json` names it as an optional peer dependency (version 3 or 4).
 
+A browser must have WebGL2. [Browser support](docs/browser-support.md) says what each renderer needs and in which
+browsers the library was run.
+
 Each built file has a source map beside it (`dist/<file>.js.map`), so that an error tracker can show the lines of the
 source for a stack trace.
 
@@ -398,7 +401,10 @@ To measure on your device, open [the benchmark page](https://map-jr.github.io/ma
 - [MapLibre compatibility](docs/maplibre-compatibility.md): what is the same, what is different, what is not
   available.
 - [Plugins and frameworks](docs/ecosystem.md): which popular MapLibre plugins find the API that they use.
-- [Development](docs/development.md): how to build, test and measure the library.
+- [Browser support](docs/browser-support.md): what a browser must have, what each renderer needs, and where the
+  library was run.
+- [Development](docs/development.md): how to build, test, measure and release the library.
+- [Changelog](CHANGELOG.md): what each version contains, and what is known not to work.
 - [Contributing](CONTRIBUTING.md) and the [open issues](https://github.com/map-jr/map-jr-gl/issues): what is known to be wrong or missing, by priority.
 
 ## How this project is made
