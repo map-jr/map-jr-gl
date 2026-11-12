@@ -86,7 +86,8 @@ export class Popup extends Overlay {
         super();
         this.anchor = options.anchor ?? 'bottom';
         this.el.className = `${cls('popup')} ${options.className ?? ''}`.trim();
-        this.el.style.cssText = 'z-index:3;pointer-events:none';
+        // (Markers and popups are above the map and below the controls, which have z-index 2, as in MapLibre GL JS.)
+        this.el.style.cssText = 'z-index:1;pointer-events:none';
         const box = this.box;
         box.className = cls('popup-content');
         box.style.cssText = `pointer-events:auto;position:relative;background:var(--map-popup-background,#fff);color:var(--map-popup-color,#222);border-radius:8px;padding:10px 12px;font:13px/1.4 system-ui,sans-serif;box-shadow:0 2px 12px rgba(0,0,0,.22);max-width:${options.maxWidth ?? '240px'};margin:8px`;
@@ -202,7 +203,7 @@ export class Marker extends Overlay {
             this.el.setAttribute('aria-label', 'Map marker');
         }
         this.el.classList.add('map-jr-marker', 'maplibregl-marker', ...(options.className?.split(' ').filter(Boolean) ?? []));
-        this.el.style.zIndex = '3';
+        this.el.style.zIndex = '1';
         this.el.addEventListener('click', e => { if (this.popup) { e.stopPropagation(); this.togglePopup(); } });
         // With the keyboard: Enter or the space bar opens and closes the popup of the marker.
         this.el.addEventListener('keydown', e => { if (this.popup && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); e.stopPropagation(); this.togglePopup(); } });

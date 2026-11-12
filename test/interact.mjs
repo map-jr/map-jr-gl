@@ -892,6 +892,27 @@ for (const mode of ['main', 'worker']) {
             marker.label === 'Map marker' && marker.role === 'button' && marker.tab === 0 && marker.plainRole === null && marker.plainTab === null && marker.open && marker.closed && marker.fullscreen === 'Enter fullscreen' && marker.title === 'Enter fullscreen' && marker.pressed === 'false', JSON.stringify(marker));
         check('[main] a camera animation jumps with "reduce motion", but for essential: true', moving < 3.9 && reduced === 4 && essential < 3.9, JSON.stringify({moving, reduced, essential}));
     }
+    // The credits of a small map: they do not go under the controls of the other corner, markers are below them, and a
+    // press on the map closes them.
+    if (mode === 'main') {
+        const box = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = window.creditsEl = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:390px;height:300px;z-index:1000'}));
+            const m = window.creditsMap = new mod.Map({container: el, renderer: 'main', attributionControl: false, center: [0, 0], zoom: 2, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            m.addControl(new mod.AttributionControl({customAttribution: '© Mapterhorn | OpenFreeMap © OpenMapTiles Data from OpenStreetMap contributors and more'}), 'top-left');
+            m.addControl(new mod.NavigationControl({showCompass: false}), 'top-right');
+            const marker = new mod.Marker().setLngLat(m.unproject({x: 150, y: 40})).addTo(m);
+            await new Promise(r => m.once('idle', r));
+            await new Promise(r => setTimeout(r, 100));
+            const credits = el.querySelector('.map-jr-ctrl-attrib'), a = credits.getBoundingClientRect(), n = el.querySelector('.map-jr-ctrl-group').getBoundingClientRect();
+            return {open: credits.classList.contains('map-jr-compact-show'), creditsRight: Math.round(a.right), controlsLeft: Math.round(n.left), markerZ: +getComputedStyle(marker.getElement()).zIndex, cornerZ: +getComputedStyle(credits.parentElement).zIndex};
+        });
+        await page.mouse.click(200, 220); // a press on the map, with no drag
+        await page.waitForTimeout(200);
+        const closed = await page.evaluate(() => { const open = window.creditsEl.querySelector('.map-jr-ctrl-attrib').classList.contains('map-jr-compact-show'); window.creditsMap.remove(); window.creditsEl.remove(); return !open; });
+        check('[main] the credits of a small map end before the controls of the other corner, are above markers, and close with a press on the map',
+            box.open && box.creditsRight < box.controlsLeft && box.markerZ < box.cornerZ && closed, JSON.stringify({...box, closed}));
+    }
     // fragment moves the map.
     const hash = await page.evaluate(async () => {
         const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:400px;height:300px'}));
