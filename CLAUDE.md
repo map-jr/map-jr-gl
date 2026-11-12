@@ -8,14 +8,11 @@ to protect those qualities.
 
 - **The backlog is GitHub issues** (`map-jr/map-jr-gl`). Priority labels: `P0` (broken now) → `P3`. Area labels say
   what kind of work it is. `needs: owner` means do not decide alone: ask.
-- **When nothing more specific is asked:** take the highest-priority open issue that is not `needs: owner`. Among
-  equals, prefer `quick win`, then correctness over features. Improving MapLibre compatibility (failing groups of
-  `pnpm test:render`, missing entries in `docs/maplibre-compatibility.md`) and performance (profiles of real
-  styles) remain the standing goals behind the backlog.
 - **If you find a fault or a gap while doing something else,** file an issue for it instead of fixing it in the
   same change, unless the fix is a line or two. Nothing should live only in a chat or a notes file.
 - **The owner's messages can arrive late in a long turn.** Read notifications often. When a message arrives,
   answer it and do what it asks before other work.
+- Every few tool calls, give the user a one-line update on where things stand.
 
 ## Branches, pull requests and merging
 
