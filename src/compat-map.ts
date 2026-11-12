@@ -2,7 +2,7 @@
 // These methods are here, and not in the core, because the main entry does not need them: other names for a camera
 // change, values that are fixed in this library, methods that only frameworks for MapLibre GL JS read, and query
 // results that are arrays and promises at the same time.
-import {Map as CoreMap, type CameraInput, type PointLike, type RenderedFeature, type RenderedQueryOptions, type PaddingInput, type ImageOptions} from './map.ts';
+import {Map as CoreMap, type MapOptions, type CameraInput, type PointLike, type RenderedFeature, type RenderedQueryOptions, type PaddingInput, type ImageOptions} from './map.ts';
 import type {QueriedFeature} from './query.ts';
 import type {LngLatLike} from './geo.ts';
 
@@ -11,10 +11,16 @@ export class Map extends CoreMap {
     // Frameworks for MapLibre GL JS call these methods when an application sets the option, often with the default
     // value. They are here so that such code does not stop. A value that this library cannot do gives one warning.
     private unsupported(name: string, isDefault: boolean) {
-        if (!isDefault && !this.warned.has(name)) { this.warned.add(name); console.warn(`[map-jr-gl] ${name} has no effect: this library does not have that feature.`); }
+        if (!isDefault && !this.warned.has(name)) {
+            const message = `[map-jr-gl] ${name} has no effect: this library does not have that feature.`;
+            if (this.strict) throw new Error(message);
+            this.warned.add(name); console.warn(message);
+        }
         return this;
     }
     private warned = new Set<string>();
+    /** `strict: true`: what gives a warning or an `error` event for code written for MapLibre GL JS throws an error. */
+    private strict = false;
     /** One warning for code that used the array of a query without `await`, when the array was not complete. */
     private incomplete(name: string, had: number, has: number) {
         if (this.warned.has(name)) return;
@@ -38,6 +44,46 @@ export class Map extends CoreMap {
     setTransformCameraUpdate(fn?: unknown) { return this.unsupported('setTransformCameraUpdate', !fn); }
     setTransformConstrain(fn?: unknown) { return this.unsupported('setTransformConstrain', !fn); }
     setEventedParent(..._args: unknown[]) { return this; }
+
+    /**
+     * The options of MapLibre GL JS that this library does not have give one warning each, so that a change from that
+     * library does not look complete when it is not.
+     */
+    constructor(options: MapOptions & {strict?: boolean; [option: string]: unknown}) {
+        const o = options as Record<string, any>, context = o.canvasContextAttributes;
+        // (MapLibre GL JS has `antialias` in `canvasContextAttributes`.)
+        super(context?.antialias === undefined ? options : {...options, antialias: context.antialias});
+        this.strict = !!o.strict;
+        if (o.maxBounds) this.setMaxBounds(o.maxBounds);
+        this.unsupported('The option cooperativeGestures', !o.cooperativeGestures);
+        this.unsupported('The option locale', !o.locale);
+        this.unsupported('The option projection', !o.projection || (o.projection.type ?? o.projection) === 'mercator');
+        this.unsupported('The option renderWorldCopies: false', o.renderWorldCopies !== false);
+        this.unsupported('The option canvasContextAttributes (but for antialias)', !context || !Object.keys(context).some(k => k !== 'antialias'));
+    }
+
+    // ---- Changes of the style that MapLibre GL JS refuses ----
+    // The call has no effect and the map fires `error`, as in MapLibre GL JS. (Before the style has come, nothing is checked.)
+    private refused(message: string) {
+        const error = new Error('[map-jr-gl] ' + message);
+        if (this.strict) throw error;
+        this.fire('error', {error});
+        return this;
+    }
+    addLayer(layer: {id: string; type?: string; source?: unknown}, beforeId?: string) {
+        // (A custom layer has functions: it cannot go to the worker, and it is not kept in the style.)
+        if (layer.type === 'custom') return this.unsupported('A layer of the type "custom"', false);
+        if (this.rawStyle && this.getLayer(layer.id)) return this.refused(`addLayer: the style has a layer with the id "${layer.id}" already. Remove that layer first, or use another id.`);
+        if (this.rawStyle && typeof layer.source === 'string' && !this.rawStyle.sources[layer.source]) return this.refused(`addLayer: the layer "${layer.id}" names the source "${layer.source}", which the style does not have. Add the source first.`);
+        return super.addLayer(layer, beforeId);
+    }
+    addSource(id: string, source: object) {
+        return this.rawStyle?.sources[id] ? this.refused(`addSource: the style has a source with the id "${id}" already. Remove that source first, or use another id.`) : super.addSource(id, source);
+    }
+    removeSource(id: string) {
+        const user = this.rawStyle?.layers.find((l: any) => l.source === id);
+        return user ? this.refused(`removeSource: the layer "${user.id}" uses the source "${id}". Remove the layer first.`) : super.removeSource(id);
+    }
 
     flyTo(o: CameraInput & {duration?: number}) { return this.easeTo({duration: 1200, ...o}); }
     /** Space at the edges covered by other things (a side panel, a header). The map centre moves to the middle of what is left. */
