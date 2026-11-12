@@ -31,11 +31,15 @@ for (const file of readdirSync(dir).sort()) {
     check(file, problems.length === 0, problems.join(' | '));
 }
 
-// TypeScript code that was written for MapLibre GL JS must compile against the built types of the compat entry
-// (test/types/maplibre-code.ts with dist/types/maplibre-compat.d.ts).
+// TypeScript code must compile against the built types (dist/types): code that was written for MapLibre GL JS
+// against the compat entry (test/types/maplibre-code.ts), and code for the main API (test/types/main-code.ts).
 {
     const tsc = path.resolve(import.meta.dirname, '../node_modules/.bin/tsc'), run = spawnSync(tsc, ['-p', path.resolve(import.meta.dirname, 'types')], {encoding: 'utf8', shell: process.platform === 'win32'});
     const errors = `${run.stdout ?? ''}${run.stderr ?? ''}${run.error ?? ''}`.split('\n').filter(l => /error/i.test(l));
-    check('types/maplibre-code.ts (map-jr-gl/maplibre-compat)', run.status === 0, errors.slice(0, 5).join(' | '));
+    for (const [file, entry] of [['maplibre-code.ts', 'map-jr-gl/maplibre-compat'], ['main-code.ts', 'map-jr-gl']]) {
+        // (An error that names neither file, such as missing built types, fails both checks.)
+        const mine = errors.filter(l => l.includes(file) || !/(maplibre|main)-code\.ts/.test(l));
+        check(`types/${file} (${entry})`, run.status === 0 || mine.length === 0, mine.slice(0, 5).join(' | '));
+    }
 }
 process.exit(failed ? 1 : 0);

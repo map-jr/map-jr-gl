@@ -200,7 +200,7 @@ export class Map extends CoreMap {
      */
     querySourceFeatures(sourceId: string, options: {sourceLayer?: string; filter?: unknown} = {}): GeoJSONFeature[] & PromiseLike<GeoJSONFeature[]> {
         const sets = [{layer: '', source: sourceId, sourceLayer: options.sourceLayer, filter: options.filter, radius: 0}], box: [number, number, number, number] = [0, 0, this.tr.width, this.tr.height];
-        const features = (found: QueriedFeature[]): RenderedFeature[] => found.map(f => ({type: 'Feature', id: f.id, geometry: f.geometry!, properties: f.properties, source: f.source, sourceLayer: f.sourceLayer || undefined,
+        const features = (found: QueriedFeature[]): Omit<RenderedFeature, 'layer'>[] => found.map(f => ({type: 'Feature', id: f.id, geometry: f.geometry!, properties: f.properties, source: f.source, sourceLayer: f.sourceLayer || undefined,
             state: f.id === undefined ? {} : this.getFeatureState({source: f.source, sourceLayer: f.sourceLayer || undefined, id: f.id})}));
         const spec = this.rawStyle?.sources[sourceId], data = spec?.type === 'geojson' && this.geoData(sourceId);
         let now: QueriedFeature[] = [];
@@ -210,7 +210,7 @@ export class Map extends CoreMap {
             if (!awaited && found.length !== had) this.incomplete('querySourceFeatures', had, found.length);
             return features(found);
         });
-        Object.defineProperty(result, 'then', {value: (done?: (v: RenderedFeature[]) => unknown, failed?: (e: unknown) => unknown) => { awaited = true; return all.then(done, failed); }});
+        Object.defineProperty(result, 'then', {value: (done?: (v: Omit<RenderedFeature, 'layer'>[]) => unknown, failed?: (e: unknown) => unknown) => { awaited = true; return all.then(done, failed); }});
         return result as unknown[] as GeoJSONFeature[] & PromiseLike<GeoJSONFeature[]>;
     }
 
@@ -242,8 +242,8 @@ export class Map extends CoreMap {
         }
         const result = features([...now]), given = this.summary(now);
         // Later: all the sources, from the engine.
-        const later = sets.length ? this.ask<QueriedFeature[]>(id => ({type: 'queryRendered', id, box, sets, geometry: true})).then(found => {
-            this.keep(key, found);
+        const turn = this.turn, later = sets.length ? this.ask<QueriedFeature[]>(id => ({type: 'queryRendered', id, box, sets, geometry: true})).then(found => {
+            this.keep(key, found, turn);
             if (!awaited && this.summary(found) !== given) this.incomplete('queryRenderedFeatures', now.length, found.length);
             // The array that the caller got at once was not the complete result. Code that reads the array asks again
             // on `idle` (and the map is idle, or will be): tell it, and the same question then has the answer at once.
@@ -272,22 +272,33 @@ export class Map extends CoreMap {
         const t = this.tr;
         return JSON.stringify([t.lng, t.lat, t.zoom, t.bearing, t.pitch, t.width, t.height, box, sets ? sets.map(s => [s.layer, s.also]) : 0]);
     }
-    private keep(key: string, found: QueriedFeature[]) {
+    /** (`turn` counts the changes of data by the page. An answer to a question from before such a change is not kept.) */
+    private turn = 0;
+    private forget() { this.answers.clear(); this.turn++; }
+    override refreshTiles(sourceId: string) { this.forget(); return super.refreshTiles(sourceId); }
+    private keep(key: string, found: QueriedFeature[], turn: number) {
+        if (turn !== this.turn) return;
         this.answers.delete(key);
         this.answers.set(key, {found});
         if (this.answers.size > 64) this.answers.delete(this.answers.keys().next().value!);
     }
     private summary(found: QueriedFeature[]) { return JSON.stringify(found.map(f => [f.layer, f.id, f.properties])); }
-    /** (A click waits for the features at its place, so that a listener can read them at once.) */
-    override fire(type: string, data: Record<string, unknown> = {}) {
-        // (New data or a new style: an answer from before can be old. It is still given at once, and it is asked again:
-        // if the new answer is another, `idle` fires one more time for that question.)
+    /**
+     * (A click waits for the features at its place, so that a listener can read them at once. The result is then a
+     * promise for the moment when the listeners have run: the default action of a `dblclick` waits for it.)
+     */
+    override fire(type: string, data: Record<string, unknown> = {}): void | PromiseLike<unknown> {
+        // The page gave new data (`setData`, a change of the style): the answers from before are old. They are not given.
+        if (type === 'dataloading') this.forget();
+        // (New data in the engine: an answer that was kept while the data loaded can be old. It is still given at once, and
+        // it is asked again: if the new answer is another, `idle` fires one more time for that question.)
         if (type === 'sourcedata' || type === 'styledata') this.refired.clear();
         const point = data.point as {x: number; y: number} | undefined;
         if (!point || !/^(click|dblclick|contextmenu)$/.test(type) || data.asked || !this.rawStyle) return super.fire(type, data);
         const {box, sets} = this.rendered([point.x, point.y]), key = this.questionKey(box);
         const send = () => super.fire(type, {...data, asked: true});
         if (!sets.length) return send();
-        this.ask<QueriedFeature[]>(id => ({type: 'queryRendered', id, box, sets, geometry: true})).then(found => this.keep(key, found), () => {}).then(send);
+        const turn = this.turn;
+        return this.ask<QueriedFeature[]>(id => ({type: 'queryRendered', id, box, sets, geometry: true})).then(found => this.keep(key, found, turn), () => {}).then(send);
     }
 }

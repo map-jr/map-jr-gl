@@ -46,6 +46,24 @@ export interface RenderOptions {
     overrides?: Record<string, SSROverrides>;
     fetch?: typeof fetch;
     /**
+     * The time in milliseconds that all requests of one render can take together. The default is 30000. The render
+     * rejects when the time is over. `0` sets no limit.
+     */
+    timeout?: number;
+    /**
+     * The time in milliseconds that one request can take, with its redirects and its body. The default is 10000. The
+     * render rejects when a request takes longer. `0` sets no limit.
+     */
+    requestTimeout?: number;
+    /** The largest body of one response in bytes, after decompression. The render rejects for a larger body. There is no limit by default. */
+    maxBytes?: number;
+    /**
+     * The host names that the render can request, for example `['tiles.openfreemap.org']`. Each name is compared with
+     * the complete host name of the URL, without the port. The render rejects for a request or a redirect to another
+     * host. All hosts are allowed by default.
+     */
+    allowHosts?: string[];
+    /**
      * Decodes elevation tile images for contour sources. PNG and lossless WebP are built in; pass a function for
      * anything else (lossy WebP, for instance), returning `{width, height, data}` with RGBA bytes.
      */
@@ -59,11 +77,72 @@ export interface RenderResult {
     attribution: string[];
 }
 
+/**
+ * A `fetch` that keeps the limits of the options: the time for all requests and for one request, the size of a body,
+ * and the allowed hosts. (The style, its sources and its tiles can come from another party.) It reads each body
+ * itself, so that a body that does not end, or that is too large, stops the request.
+ */
+function limitedFetch(o: RenderOptions, fetchFn: typeof fetch): typeof fetch {
+    const total = o.timeout ?? 30000, each = o.requestTimeout ?? 10000, max = o.maxBytes ?? 0;
+    for (const [name, v] of [['timeout', total], ['requestTimeout', each], ['maxBytes', max]] as const)
+        if (!(v >= 0)) throw new Error(`[map-jr-gl] server render: "${name}" is ${v}. Pass a number that is 0 (no limit) or more.`);
+    if (o.allowHosts && !(Array.isArray(o.allowHosts) && o.allowHosts.every(h => typeof h === 'string' && /^[^/:@\s]+$/.test(h))))
+        throw new Error(`[map-jr-gl] server render: "allowHosts" is ${JSON.stringify(o.allowHosts)}. Pass a list of host names without a scheme, a port or a path, for example ["tiles.example.com"].`);
+    const hosts = o.allowHosts?.map(h => h.toLowerCase());
+    if (!total && !each && !max && !hosts) return fetchFn;
+    const end = total ? Date.now() + total : Infinity;
+    const check = (url: string) => {
+        let host: string | undefined;
+        try { host = new URL(url).hostname; } catch { /* not a complete URL: no host */ }
+        if (hosts && (host === undefined || !hosts.includes(host))) throw new Error(`[map-jr-gl] server render: the host of ${url} is not in "allowHosts". Add "${host ?? ''}" to "allowHosts" if the render can request it.`);
+    };
+    return async (input, init) => {
+        let url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+        const first = url, ac = new AbortController(), left = end - Date.now(), whole = left < (each || Infinity);
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const late = new Promise<never>((_, reject) => {
+            if (!whole && !each) return;
+            timer = setTimeout(() => {
+                reject(new Error(whole
+                    ? `[map-jr-gl] server render: the requests took longer than the "timeout" of ${total} ms; the request to ${first} was not complete. Pass a larger "timeout", or 0 for no limit.`
+                    : `[map-jr-gl] server render: the request to ${first} took longer than the "requestTimeout" of ${each} ms. Pass a larger "requestTimeout", or 0 for no limit.`));
+                ac.abort();
+            }, Math.max(0, whole ? left : each));
+        });
+        init?.signal?.addEventListener('abort', () => ac.abort());
+        const load = async () => {
+            let res: Response;
+            for (let hop = 0; ; hop++) {
+                check(url);
+                res = await fetchFn(url, {...init, signal: ac.signal, ...(hosts && {redirect: 'manual' as const})});
+                // A `fetch` that followed a redirect itself says where the response came from.
+                if (res.url) check(res.url);
+                const to = hosts && res.status > 300 && res.status < 400 && res.headers.get('location');
+                if (!to) break;
+                if (hop > 4) throw new Error(`[map-jr-gl] server render: the request to ${first} was redirected more than 5 times.`);
+                void res.body?.cancel();
+                url = new URL(to, url).href;
+            }
+            if (!res.body) return res;
+            const large = () => new Error(`[map-jr-gl] server render: the response of ${first} is larger than "maxBytes" (${max} bytes). Pass a larger "maxBytes", or leave the source out of the style.`);
+            if (max && +(res.headers.get('content-length') ?? 0) > max) { void res.body.cancel(); throw large(); }
+            const reader = res.body.getReader(), parts: Uint8Array[] = [];
+            for (let size = 0; ;) {
+                const {done, value} = await reader.read();
+                if (done) break;
+                if (max && (size += value.length) > max) { void reader.cancel(); throw large(); }
+                parts.push(value);
+            }
+            return new Response(new Blob(parts as BlobPart[]), {status: res.status, statusText: res.statusText, headers: res.headers});
+        };
+        try { return await Promise.race([late, load()]); } finally { clearTimeout(timer); }
+    };
+}
 
 /** Renders the first frame of a map without a browser, for server-side rendering, static export or social images. */
 export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
     // Wrapped, not passed by reference: Cloudflare Workers reject calls to a detached global `fetch`.
-    const fetchFn: typeof fetch = o.fetch ?? ((...a) => fetch(...a));
+    const fetchFn = limitedFetch(o, o.fetch ?? ((...a) => fetch(...a)));
     const style = await resolveStyle(o.style, fetchFn);
     if (o.overrides) style.layers = style.layers.map(l => o.overrides![l.id] ? {...l, metadata: {...l.metadata, [SSR_KEY]: {...(l.metadata?.[SSR_KEY] as object), ...o.overrides![l.id]}}} : l);
     if (o.ssrOverrides !== false) style.layers = applySSROverrides(style.layers);

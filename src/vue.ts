@@ -6,7 +6,7 @@
  * over that SVG, so a page from Nuxt shows a map before any script has run.
  */
 import {computed, defineComponent, getCurrentInstance, h, inject, provide, isProxy, isReactive, onBeforeUnmount, onMounted, onServerPrefetch, shallowRef, toRaw, toValue, watch, type ComputedRef, type MaybeRefOrGetter, type PropType, type ShallowRef} from 'vue';
-import {createMap, type ControlSpec, type FeatureOptions, type FeaturePlace, type MapHost, type MapOverlay as Overlay, type OverlayOptions, type MapPointer, type MapSpec, type MapState, type View} from './host.ts';
+import {createMap, type ControlSpec, type FeatureOptions, type FeaturePlace, type MapHost, type MapOverlay as Overlay, type OverlayOptions, type MapPointer, type MapSpec, type MapState, type View, type ViewInput} from './host.ts';
 import type {SSROverrides} from './style.ts';
 import type {RenderedFeature} from './map.ts';
 import type {QueriedFeature} from './query.ts';
@@ -136,8 +136,8 @@ export const MapJr = defineComponent({
         /** A style object or the URL of a style. */
         mapStyle: {type: [String, Object] as PropType<string | object>, required: true},
         /** The view, for `v-model:view`. Without it the map starts at `initialView` and the user moves it. */
-        view: Object as PropType<Partial<View>>,
-        initialView: Object as PropType<Partial<View>>,
+        view: Object as PropType<ViewInput>,
+        initialView: Object as PropType<ViewInput>,
         /** Your own sources and layers on a style from a URL: `{sources, layers, terrain}`. */
         extend: Object as PropType<MapSpec['extend']>,
         markers: Array as PropType<MarkerLayerOptions[]>,

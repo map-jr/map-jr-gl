@@ -306,15 +306,78 @@ as ten. See [Markers](markers.md).
 | Member | Meaning |
 |---|---|
 | `update(description)` | Changes the map to a new description. Takes the complete description. See [Change the map](#change-the-map). |
-| `destroy()` | Removes the map and frees its memory. |
+| `destroy()` | Removes the map and frees its memory. It can be called while the map loads. Call it before you make another map in the same element: a second map in an element that has a map leaves two canvases in the element, and the library warns in the console. |
 | `moveTo(view)` | Moves the camera now. With `duration` (milliseconds), with an animation. |
 | `fitBounds(bounds, options)` | Shows an area. |
 | `queryFeatures(at, options)`, `watchFeatures(at, options, listener)` | Find features, one time or kept up to date. See [Queries](#queries). |
 | `queryElevation(at)` | The height of the ground in metres at a position (`[lng, lat]`) or a point of the screen (`{x, y}`), from the elevation source of the style. A promise; `null` where there is no data. |
 | `project(lngLat)`, `unproject(point)` | Change between a position on the map and a point of the screen. |
-| `listen(type, fn)` | Calls `fn` for each event of that type (`'click'`, `'move'`, `'load'` and others). Returns a function that stops it. |
+| `listen(type, fn)` | Calls `fn` for each event of that type. Returns a function that stops it. See [Events](#events). |
 | `container` | The element of the map. |
 | `map` | The map object behind this API, for a need that this API does not cover yet. It can change between versions. |
+
+## Events
+
+`map.listen(type, fn)` calls `fn` for each event of that type and returns a function that stops it. The state
+(`map.state`) and the callbacks of the description (`onClick`, `onViewChange`, `onError`) cover the common needs;
+use `listen` for the rest.
+
+```js
+import {createMap} from 'map-jr-gl';
+
+const map = createMap('map', {style: 'https://demotiles.maplibre.org/style.json'});
+const stop = map.listen('moveend', event => console.log(event.target.getZoom()));
+stop();
+```
+
+Each event has `type` (the name of the event) and `target` (the map object, the `map` member above). The table
+has the other members. In TypeScript, the type `MapEvents` has the event of each name, so the parameter of `fn`
+has the right type, and a name that is not in the table does not compile.
+
+| Type | When | Other members of the event |
+|---|---|---|
+| `load` | The style and the first tiles have loaded. | |
+| `idle` | Nothing moves and nothing loads. | |
+| `render` | The map has drawn a frame. | |
+| `resize` | The size of the map has changed. | |
+| `remove` | The map is removed. | |
+| `movestart`, `move`, `moveend` | The view changes. | |
+| `zoomstart`, `zoom`, `zoomend` | The zoom changes. | |
+| `rotatestart`, `rotate`, `rotateend` | The bearing changes. | |
+| `pitchstart`, `pitch`, `pitchend` | The pitch changes. | |
+| `dragstart` | The user starts to drag the map. | |
+| `click`, `dblclick`, `contextmenu`, `mousedown`, `mousemove`, `mouseup`, `mouseover`, `mouseout` | An event of the mouse on the map. | `point` (`{x, y}` in CSS pixels), `lngLat` (`{lng, lat}`), `originalEvent`, `preventDefault()`, `defaultPrevented`. `click` also has `marker`: the marker of a marker layer at the point as `{layer, index, marker}`, or `null`. |
+| `wheel` | The user turns the wheel over the map. | The same as for the mouse; `originalEvent` is a `WheelEvent`. |
+| `touchstart`, `touchmove`, `touchend`, `touchcancel` | An event of a touch on the map. | The same as for the mouse, and `points` and `lngLats`: one entry for each finger on the map. |
+| `markerclick` | A click on a marker of a marker layer. See [Markers](markers.md). | The same as for the mouse, and `layer`, `index`, `marker`. |
+| `markerenter`, `markerleave` | The pointer comes to a marker of a marker layer, or leaves it. | `layer`, `index`, `marker`. |
+| `boxzoomstart`, `boxzoomend`, `boxzoomcancel` | A zoom to a box (the Shift key and a drag). | `originalEvent`. `boxzoomend` also has `boxZoomBounds`. |
+| `styledata`, `style.load` | The style has changed; a complete style has loaded. | `styledata` has `dataType: 'style'`. |
+| `sourcedata` | A source has new data. | `dataType: 'source'`, `sourceId`, `isSourceLoaded`, `source`. |
+| `data` | Each time that `styledata` or `sourcedata` fires. | The members of that event. |
+| `styledataloading`, `sourcedataloading`, `dataloading` | A style or a source starts to load. | `dataType`, and `sourceId` for a source. |
+| `styleimagemissing` | The style names an image that the map does not have. | `id`. |
+| `terrain` | The terrain has changed. | `terrain`: `{source, exaggeration}` or `null`. |
+| `stats` | At most one time each second while the map draws. | `fps` (frames per second), `frameMs` (the CPU time of a frame in milliseconds). |
+| `geolocate` | The geolocate control has a position. | `coords`. |
+| `webglcontextlost`, `webglcontextrestored` | The browser has taken the WebGL context away, or the map has it again. | |
+| `error` | An error of the map. `onError` and `state.error` have the same errors as an `Error`. | `error`. |
+
+In a mouse event, `lngLat` is an object (`{lng, lat}`). In `onClick`, `lngLat` is an array (`[lng, lat]`).
+
+## Types
+
+The entry `map-jr-gl` has TypeScript types for the description (`MapSpec`), the map (`MapHost`), the state
+(`MapState`), the events (`MapEvents`) and the features (`RenderedFeature`, `QueriedFeature`).
+
+- A position that you give (`center`, `lngLat`, the argument of `project`) has the type `Position`, which is
+  `readonly number[]`. So an array that is declared apart from the call compiles without `as const`:
+  `const NYC = [-74.0065, 40.7085]; createMap(el, {style, initialView: {center: NYC}})`. The map reads the first two
+  numbers as `[lng, lat]`. A position that the map gives (`state.view.center`, the result of `unproject`, `lngLat`
+  in `onClick`) is `[number, number]`.
+- A feature of `state.hover` and of `onClick` has `layer`, the style layer that draws it, with the type `StyleLayer`
+  (`id`, `type`, `source`, `paint` and the other members of a layer of the style). `queryFeatures` returns
+  `(RenderedFeature | QueriedFeature)[]`: a `QueriedFeature` (a query with `sources`) has no style layer.
 
 ## What is not in this entry yet
 
