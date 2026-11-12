@@ -811,6 +811,47 @@ for (const mode of ['main', 'worker']) {
         check('[worker] a worker without WebGL2: the map uses the main thread, load and idle fire, and transformRequest sees the tile requests',
             fell.renderer === 'main' && fell.seen.includes('load') && fell.seen.includes('idle') && !fell.seen.includes('error') && fell.tiles > 0 && fell.layer > 0, JSON.stringify(fell));
     }
+    // maplibre-compat does not accept in silence what it cannot do: options with no effect warn, style calls that MapLibre
+    // refuses fire `error`, and `strict: true` throws.
+    if (mode === 'main') {
+        const quiet = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), wait = ms => new Promise(r => setTimeout(r, ms));
+            const warnings = [], warn = console.warn;
+            console.warn = (...a) => warnings.push(a.join(' '));
+            const make = options => { const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'})); return new mod.Map({container: el, renderer: 'main', attributionControl: false, style: {version: 8, sources: {g: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}}, layers: [{id: 'bg', type: 'background'}]}, ...options}); };
+            const m = make({cooperativeGestures: true, locale: {x: 'y'}, projection: {type: 'globe'}, renderWorldCopies: false, canvasContextAttributes: {antialias: true, preserveDrawingBuffer: true}, maxBounds: [[-10, -10], [10, 10]]});
+            const options = warnings.splice(0), errors = [];
+            m.on('error', e => errors.push(e.error.message));
+            await new Promise(r => m.once('load', r));
+            m.addLayer({id: 'custom', type: 'custom', render() {}});
+            const custom = warnings.splice(0);
+            m.addLayer({id: 'bg', type: 'background'});
+            m.addLayer({id: 'lost', type: 'fill', source: 'nowhere'});
+            m.addSource('g', {type: 'geojson', data: {type: 'FeatureCollection', features: []}});
+            m.addLayer({id: 'uses-g', type: 'fill', source: 'g'});
+            m.removeSource('g');
+            await wait(300);
+            const out = {options, custom, errors, layers: m.getStyle().layers.map(l => l.id).join(), source: !!m.getSource('g'), bounds: m.getMaxBounds()?.toArray()};
+            // The defaults give no warning.
+            const plain = make({projection: {type: 'mercator'}, renderWorldCopies: true, canvasContextAttributes: {antialias: false}});
+            out.plain = warnings.splice(0);
+            let thrown = '';
+            try { make({strict: true, cooperativeGestures: true}); } catch (e) { thrown = e.message; }
+            const strict = make({strict: true});
+            await new Promise(r => strict.once('load', r));
+            let thrownCall = '';
+            try { strict.addLayer({id: 'bg', type: 'background'}); } catch (e) { thrownCall = e.message; }
+            console.warn = warn;
+            for (const x of [m, plain, strict]) { const el = x.getContainer(); x.remove(); el.remove(); }
+            return {...out, thrown, thrownCall};
+        });
+        check('[main] maplibre-compat: each option with no effect gives one warning, the defaults give none, and maxBounds works',
+            quiet.options.length === 5 && ['cooperativeGestures', 'locale', 'projection', 'renderWorldCopies', 'canvasContextAttributes'].every(n => quiet.options.some(w => w.startsWith('[map-jr-gl] The option ' + n))) && quiet.plain.length === 0 && String(quiet.bounds) === '-10,-10,10,10' && quiet.custom.length === 1 && quiet.custom[0].includes('"custom"'), JSON.stringify({options: quiet.options, plain: quiet.plain, bounds: quiet.bounds, custom: quiet.custom}));
+        check('[main] maplibre-compat: a layer or source id that exists, a source that is not there, and a source in use fire error and change nothing',
+            quiet.errors.length === 4 && /addLayer: the style has a layer with the id "bg"/.test(quiet.errors[0]) && /names the source "nowhere"/.test(quiet.errors[1]) && /addSource: the style has a source with the id "g"/.test(quiet.errors[2]) && /removeSource: the layer "uses-g" uses the source "g"/.test(quiet.errors[3]) && quiet.layers === 'bg,uses-g' && quiet.source, JSON.stringify({errors: quiet.errors, layers: quiet.layers, source: quiet.source}));
+        check('[main] maplibre-compat: strict: true throws for an option with no effect and for a refused style call',
+            quiet.thrown.startsWith('[map-jr-gl] The option cooperativeGestures has no effect') && /addLayer: the style has a layer with the id "bg"/.test(quiet.thrownCall), JSON.stringify({thrown: quiet.thrown, thrownCall: quiet.thrownCall}));
+    }
     // Accessibility: the canvas says that it is a map and shows the keyboard focus, a marker with a popup works with the
     // keyboard, the fullscreen button says what it does, and a camera animation respects "reduce motion".
     if (mode === 'main') {
