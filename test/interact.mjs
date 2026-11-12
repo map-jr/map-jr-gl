@@ -335,18 +335,35 @@ for (const mode of ['main', 'worker']) {
     check(`[${mode}] setPadding moves the centre to the middle of the unpadded area`, Math.abs(padded.at.x - padded.expected[0]) < 0.5 && Math.abs(padded.at.y - padded.expected[1]) < 0.5 && padded.pad.left === 300, JSON.stringify(padded));
 
     // Feature state: set, read back and removed through the API, with tiles rebuilt in the background and no errors.
+    // Tiles are built again only when a layer of the source reads feature state. (With the engine on the main thread,
+    // the requests to the tile workers leave the page, so the test can count them.)
     const fs = await page.evaluate(async () => {
-        const m = window.map, f = {source: 'omt', sourceLayer: 'building', id: 1};
+        const m = window.map, f = {source: 'omt', sourceLayer: 'building', id: 1}, wait = ms => new Promise(r => setTimeout(r, ms));
+        const post = MessagePort.prototype.postMessage;
+        let rebuilds = 0;
+        MessagePort.prototype.postMessage = function (message, ...rest) { if (message?.type === 'load' && message.req?.again) rebuilds++; return post.call(this, message, ...rest); };
+        for (let i = 0; i < 5; i++) { m.setFeatureState(f, {hover: i % 2 === 0}); await wait(60); }
+        m.removeFeatureState({source: 'omt'});
+        const idle = await Promise.race([new Promise(r => m.once('idle', () => r(true))), wait(3000).then(() => false)]);
+        await wait(400);
+        const unread = rebuilds;
         m.setPaintProperty('building', 'fill-color', ['case', ['boolean', ['feature-state', 'hover'], false], '#f00', '#ddd']);
+        await wait(1500);
+        const edit = rebuilds;
+        m.setFeatureState(f, {hover: true});
+        await wait(600);
+        const read = rebuilds - edit;
+        MessagePort.prototype.postMessage = post;
         m.setFeatureState(f, {hover: true}); m.setFeatureState(f, {picked: 1});
         const both = m.getFeatureState(f);
         m.removeFeatureState(f, 'hover');
         const one = m.getFeatureState(f);
         m.removeFeatureState({source: 'omt'});
         await new Promise(r => setTimeout(r, 400));
-        return {both, one, none: m.getFeatureState(f)};
+        return {both, one, none: m.getFeatureState(f), unread, read, idle};
     });
-    check(`[${mode}] feature state is set, merged and removed`, fs.both.hover === true && fs.both.picked === 1 && !('hover' in fs.one) && fs.one.picked === 1 && Object.keys(fs.none).length === 0, JSON.stringify(fs));
+    check(`[${mode}] feature state is set, merged and removed, and the map is idle after a state that no layer reads`, fs.both.hover === true && fs.both.picked === 1 && !('hover' in fs.one) && fs.one.picked === 1 && Object.keys(fs.none).length === 0 && fs.idle, JSON.stringify(fs));
+    if (mode === 'main') check('[main] setFeatureState builds tiles again only when a layer of the source reads feature state', fs.unread === 0 && fs.read > 0, JSON.stringify({unread: fs.unread, read: fs.read}));
 
     // Map events and interaction handlers, as plugins for MapLibre use them: a listener can take a drag for itself
     // with preventDefault(), and a handler can be turned off.
