@@ -676,6 +676,8 @@ export class Engine {
             case 'limits': Object.assign(tr, {minZoom: c.minZoom, maxZoom: c.maxZoom, maxPitch: c.maxPitch, minPitch: c.minPitch ?? 0, maxBounds: c.maxBounds ?? null}); tr.set(undefined, tr.zoom, undefined, tr.pitch); break;
             case 'refresh':
                 for (const [key, t] of this.tiles) if (!c.source || key.startsWith(c.source + '|')) this.dropTile(key, t);
+                // The tile workers keep the bytes of recent tiles for queries: those are old now.
+                for (const b of this.backends) b.forget(c.source);
                 this.invalidate();
                 break;
             case 'style':
@@ -783,6 +785,14 @@ export class Engine {
         return {x: Math.floor(mx), y: Math.floor(my), u: mx - Math.floor(mx), v: my - Math.floor(my)};
     }
 
+    /**
+     * The tile worker that answers a query about a tile: the one that loaded the tile, because it has the bytes that
+     * the map shows. A tile that the map does not have goes to the next worker in turn.
+     */
+    private queryBackend(source: string, z: number, x: number, y: number) {
+        return this.backends[this.tiles.get(`${source}|${z}/${x}/${y}`)?.backend ?? this.nextBackend++ % this.backends.length];
+    }
+
     /** The features that the given style layers draw in a rectangle of the screen, from the tiles of the present zoom. */
     private async queryRendered(c: Extract<Command, {type: 'queryRendered'}>): Promise<QueriedFeature[]> {
         const jobs: Promise<QueriedFeature[]>[] = [];
@@ -790,7 +800,7 @@ export class Engine {
             const sets = c.sets.filter(s => s.source === name);
             if (!sets.length || !isGeometrySource(src)) continue;
             for (const t of tilesUnderBox(this.tr, c.box, src.minzoom, src.maxzoom)) {
-                jobs.push(this.backends[this.nextBackend++ % this.backends.length].query(tileURL(src, t.z, t.x, t.y), {
+                jobs.push(this.queryBackend(name, t.z, t.x, t.y).query(tileURL(src, t.z, t.x, t.y), {
                     source: name, z: t.z, x: t.x, y: t.y, px: 0, py: 0, radius: 0, box: t.box, geometry: c.geometry,
                     sets: sets.map(s => ({layer: s.layer, sourceLayer: s.sourceLayer, filter: s.filter, also: s.also, radius: s.radius * t.scale})),
                 }));
@@ -811,7 +821,7 @@ export class Engine {
             const z = clamp(Math.floor(zoom), src.minzoom, src.maxzoom), t = this.tileAt(c.lng, c.lat, z);
             // The tolerance is given in screen pixels at the queried zoom.
             const radius = c.radius * EXTENT / (512 * 2 ** (zoom - z));
-            return this.backends[this.nextBackend++ % this.backends.length].query(tileURL(src, z, t.x, t.y), {
+            return this.queryBackend(name, z, t.x, t.y).query(tileURL(src, z, t.x, t.y), {
                 source: name, z, x: t.x, y: t.y, px: t.u * EXTENT, py: t.v * EXTENT, radius,
                 sourceLayers: c.sourceLayers, filter: c.filter, geometry: c.geometry,
             });
