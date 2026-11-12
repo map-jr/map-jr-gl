@@ -82,11 +82,21 @@ export class FullscreenControl implements Control {
     private el?: HTMLElement;
     onAdd(map: Map) {
         const el = this.el = group(), c = map.getContainer();
-        button(el, 'Toggle fullscreen', svg('<path d="M3 7V3h4M11 3h4v4M15 11v4h-4M7 15H3v-4"/>'),
+        const b = button(el, '', svg('<path d="M3 7V3h4M11 3h4v4M15 11v4h-4M7 15H3v-4"/>'),
             () => { if (document.fullscreenElement) document.exitFullscreen(); else c.requestFullscreen?.(); });
+        // The name of the button says what a press does now, and `aria-pressed` says whether the map fills the screen.
+        const name = this.name = () => {
+            const on = document.fullscreenElement === c;
+            b.title = on ? 'Exit fullscreen' : 'Enter fullscreen';
+            b.setAttribute('aria-label', b.title);
+            b.setAttribute('aria-pressed', String(on));
+        };
+        name();
+        document.addEventListener('fullscreenchange', name);
         return el;
     }
-    onRemove() { this.el?.remove(); }
+    private name = () => {};
+    onRemove() { this.el?.remove(); document.removeEventListener('fullscreenchange', this.name); }
 }
 
 /** A button that turns 3D terrain on and off. The options are those of `setTerrain`, as in MapLibre. */

@@ -385,6 +385,8 @@ To measure on your device, run `pnpm demo` and open `http://localhost:8080/bench
 - [Markers](docs/markers.md): marker layers, callouts, and DOM markers.
 - [Terrain and elevation](docs/terrain-and-elevation.md): terrain, relief shading, contour lines, elevation queries.
 - [Server rendering](docs/server-rendering.md): SVG and images on Node.js and Cloudflare Workers.
+- [Accessibility](docs/accessibility.md): what the library does for keyboard users and assistive technology, and what it
+  does not do yet.
 - [MapLibre compatibility](docs/maplibre-compatibility.md): what is the same, what is different, what is not
   available.
 - [Plugins and frameworks](docs/ecosystem.md): which popular MapLibre plugins find the API that they use.

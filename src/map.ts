@@ -230,6 +230,9 @@ export class Map {
         // down so one frame pixel is one screen pixel.
         this.canvas.style.cssText = 'position:absolute;left:0;top:0;transform-origin:0 0;object-fit:none;object-position:center;touch-action:none;outline:none;max-width:none';
         this.canvas.tabIndex = 0;
+        // (As in MapLibre GL JS: assistive technology says that this is a map.)
+        this.canvas.setAttribute('role', 'region');
+        this.canvas.setAttribute('aria-label', 'Map');
         // Server-rendered markup stays visible on top until the canvas has drawn the same view.
         c.insertBefore(this.canvas, c.firstChild);
         this.tr.minZoom = options.minZoom ?? -2;
@@ -611,7 +614,10 @@ export class Map {
         // Only plain camera values cross to the engine. Extra options written for MapLibre (such as an `easing`
         // function, which cannot be sent to a worker) are ignored rather than breaking the call.
         const {center, zoom, bearing, pitch, around} = o;
-        this.post({type: 'ease', duration: o.duration ?? 500, center: center && toLngLat(center), zoom, bearing, pitch, around, padding: o.padding === undefined ? undefined : paddingOf(o.padding)});
+        // A user who asked the system for less motion gets the new view at once (as in MapLibre GL JS, `essential: true`
+        // keeps the animation).
+        const still = !(o as {essential?: boolean}).essential && matchMedia('(prefers-reduced-motion: reduce)').matches;
+        this.post({type: 'ease', duration: still ? 0 : o.duration ?? 500, center: center && toLngLat(center), zoom, bearing, pitch, around, padding: o.padding === undefined ? undefined : paddingOf(o.padding)});
         return this;
     }
     stop() { this.post({type: 'stop'}); return this; }
@@ -1368,6 +1374,10 @@ export class Map {
         listen('contextmenu', e => { e.preventDefault(); mouseEvent('contextmenu', e); });
         listen('pointerenter', e => { if (e.pointerType === 'mouse') mouseEvent('mouseover', e); });
         listen('pointerleave', e => { if (e.pointerType === 'mouse') mouseEvent('mouseout', e); });
+        // The keyboard focus shows on the frame of the map. (The canvas has no outline of its own: it is scaled.)
+        const ring = (on: boolean) => { this.container.style.outline = on ? '2px solid var(--map-control-focus,#2f7fd1)' : ''; this.container.style.outlineOffset = on ? '-2px' : ''; };
+        listen('focus', () => ring(this.canvas.matches(':focus-visible')));
+        listen('blur', () => ring(false));
         listen('keydown', e => {
             if (!this.keyboard.isEnabled()) return;
             const step = 100, k = e.key;
