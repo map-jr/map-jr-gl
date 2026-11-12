@@ -300,7 +300,8 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
         asking = true;
         while (alive) {
             const at = pointer, layers = now.interactiveLayers;
-            const found = at && layers?.length ? await map.queryLayers([at.x, at.y], {layers}) : [];
+            // (A query is rejected when the map is removed or loses its WebGL context: nothing is under the pointer then.)
+            const found = at && layers?.length ? await map.queryLayers([at.x, at.y], {layers}).catch(() => []) : [];
             if (!alive) break;
             const before = state.get().hover;
             if (found.length !== before.length || found.some((f, i) => f.id !== before[i].id || (f.layer as any)?.id !== (before[i].layer as any)?.id || f.source !== before[i].source)) state.set({hover: found});
@@ -315,7 +316,8 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
     map.on('click', async e => {
         const click = now.onClick, layers = now.interactiveLayers;
         if (!click || !e.point || !e.lngLat) return;
-        click({point: e.point, lngLat: [e.lngLat.lng, e.lngLat.lat], features: layers?.length ? await map.queryLayers([e.point.x, e.point.y], {layers}) : []});
+        const features = layers?.length ? await map.queryLayers([e.point.x, e.point.y], {layers}).catch(() => []) : [];
+        if (alive) click({point: e.point, lngLat: [e.lngLat.lng, e.lngLat.lat], features});
     });
 
     // The GeoJSON data of `data`. A source gets its data when the style has it (a style from a URL comes later), and
@@ -395,8 +397,8 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
                 busy = true;
                 queryFeatures(at, o).then(found => {
                     const text = JSON.stringify(found.map(f => [(f.layer as {id?: string})?.id ?? f.layer, f.source, f.id, f.properties]));
-                    if (!stopped && text !== last) { last = text; listener(found); }
-                }, () => {}).then(() => { busy = false; if (again && !stopped) { again = false; run(); } });
+                    if (alive && !stopped && text !== last) { last = text; listener(found); }
+                }, () => {}).finally(() => { busy = false; if (again && !stopped) { again = false; run(); } });
             };
             const data = (e: any) => { if (!o.sources || !e.sourceId || o.sources.includes(e.sourceId)) run(); };
             const moved = () => { if (!at || !isPosition(at)) run(); };
