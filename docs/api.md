@@ -61,7 +61,7 @@ The library compares each field with the field of the last description:
 | `extend` | Your own sources and layers on a style from a URL. See below. |
 | `initialView` | The view at the start: `center` (`[lng, lat]`), `zoom`, `bearing`, `pitch`. The user then moves the map. |
 | `view`, `onViewChange` | A view that your application owns. See below. |
-| `data` | GeoJSON data for sources of the style, by the id of the source. See below. |
+| `data` | GeoJSON data for GeoJSON sources, by the id of the source. The source is in the style or in `extend.sources`. See below. |
 | `markers` | A list of marker layers, each with an `id`. See [Markers](markers.md). A layer with a new `data` array gets the new data. |
 | `controls` | A list of controls. See below. |
 | `interactiveLayers` | The ids of style layers. The features of these layers under the pointer are in `state.hover` and in `onClick`. |
@@ -119,6 +119,21 @@ map.update({style, data: {routes: nextRoutes}});
 - The data of each source is compared by identity. Give a new object to change it.
 - Only the data goes to the map. A style with the data inside it would be compared and sent as a whole.
 - The data stays when the style changes.
+- The source can also be in `extend.sources`. Use this for a style from a URL: `extend` adds the source with no
+  features, and `data` gives it the features.
+
+```js
+const extend = {
+  sources: {routes: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}},
+  layers: [{id: 'routes', type: 'line', source: 'routes', paint: {'line-color': '#d6453d', 'line-width': 3}}],
+};
+const url = 'https://tiles.openfreemap.org/styles/liberty';
+
+const map = createMap(container, {style: url, extend, data: {routes: firstRoutes}});
+
+// Later: other data. `extend` is the same object, so the style is not requested again.
+map.update({style: url, extend, data: {routes: nextRoutes}});
+```
 
 ## Controls
 
@@ -142,7 +157,8 @@ description does not have it. A page loads only the code of the controls that it
 | `geolocate` | A button that moves the map to the position of the user | `zoom`, `positionOptions` |
 | `terrain` | A button that turns 3D terrain on and off | `source` (required), `exaggeration` |
 
-The credits of the data show without a control of your own. See `attribution` below.
+The attribution of the data shows without a control of your own. To change it or to turn it off, see `attribution`
+in [The description](#the-description).
 
 ## The state
 
@@ -187,19 +203,24 @@ map.update(describe());
 ```
 
 The map draws in a worker, so it does not wait for your application. It reports each change of the view with
-`onViewChange`. When your application gives a view back that the map reported a short time before, the map does not
-apply it again. Thus a slow application does not pull the map back while the user moves it. A view that the map did
-not report moves the map.
+`onViewChange`. When your application gives a view back that the map reported, the map does not apply it again. Thus
+a slow application does not pull the map back while the user moves it. A view that the map did not report moves the
+map.
+
+The map keeps the last 60 views that it reported, with no time limit. It ignores a `view` whose `center`, `zoom`,
+`bearing` and `pitch` are all equal to those of one of them. So `update` with a view that your application stored a
+moment ago (a button "back to where I was") can have no effect. For such a movement, call `map.moveTo(stored)`:
+`moveTo` always moves the map.
 
 To move the map one time with an animation, use `map.moveTo({zoom: 15, duration: 500})` or `map.fitBounds(bounds)`.
 
 ## Queries
 
-There is one method to find features: `queryFeatures(where, options)`.
+There is one method to find features: `queryFeatures(at, options)`.
 
-- **Where:** a point of the screen (`{x, y}`), a position (`[lng, lat]`), a rectangle of the screen (two points), or
+- **Where (`at`):** a point of the screen (`{x, y}`), a position (`[lng, lat]`), a rectangle of the screen (two points), or
   nothing for the whole map.
-- **What:** without `sources`, the features that the style layers draw, the top one first (`layers` selects layers).
+- **What (`options`):** without `sources`, the features that the style layers draw, the top one first (`layers` selects layers).
   With `sources`, the features of the tile data of those sources. These need no style layer, and at a position they
   need not be on the screen: the map fetches the tile if necessary.
 
@@ -218,7 +239,24 @@ const data = await map.queryFeatures([-75.16, 39.92], {sources: ['rain']});
 const inView = await map.queryFeatures(undefined, {sources: ['rain'], sourceLayers: ['rain']});
 ```
 
-`watchFeatures(where, options, listener)` asks the same question and keeps the answer up to date. The listener gets
+The options (`FeatureOptions`) depend on the kind of query:
+
+| Option | Meaning | Has an effect |
+|---|---|---|
+| `layers` | The ids of the style layers to look in. The default is all style layers. | Without `sources`. |
+| `sources` | The ids of the sources to look in. With it, the query reads the tile data and not what the style layers draw. | |
+| `sourceLayers` | The names of the layers of a vector tile source to look in. The default is all of them. | With `sources`. |
+| `filter` | A filter expression of the MapLibre style specification, for example `['==', ['get', 'class'], 'park']`. The query returns only the features that pass it. | In each query. |
+| `radius` | The distance around the place, in pixels of the screen, within which a feature is found. The default is 3. | With `sources`, at a point or a position. |
+| `geometry` | `true` to give each feature a `geometry` (GeoJSON, in longitude and latitude). The default is `false`, which keeps the answer small. | With `sources`, at a point or a position. In each other query, the features always have a `geometry`. |
+
+An option that has no effect in a query is ignored, with no warning.
+
+A feature of a query without `sources` has `id`, `properties`, `geometry`, `source`, `sourceLayer`, `layer` (the
+style layer) and `state`. A feature of a query with `sources` has `id`, `properties`, `source`, `sourceLayer`,
+`type` (`'Point'`, `'LineString'` or `'Polygon'`) and, as the table says, `geometry`.
+
+`watchFeatures(at, options, listener)` asks the same question and keeps the answer up to date. The listener gets
 the answer now, and again each time that it changes: new tiles, a change of the style, and (for a place on the
 screen) a movement of the map. It returns a function that stops it. Use it in place of listeners for `idle` and
 `sourcedata`:
@@ -271,8 +309,8 @@ as ten. See [Markers](markers.md).
 | `destroy()` | Removes the map and frees its memory. It can be called while the map loads. Call it before you make another map in the same element: a second map in an element that has a map leaves two canvases in the element, and the library warns in the console. |
 | `moveTo(view)` | Moves the camera now. With `duration` (milliseconds), with an animation. |
 | `fitBounds(bounds, options)` | Shows an area. |
-| `queryFeatures(where, options)`, `watchFeatures(where, options, listener)` | Find features, one time or kept up to date. See [Queries](#queries). |
-| `queryElevation(where)` | The height of the ground in metres at a position (`[lng, lat]`) or a point of the screen (`{x, y}`), from the elevation source of the style. A promise; `null` where there is no data. |
+| `queryFeatures(at, options)`, `watchFeatures(at, options, listener)` | Find features, one time or kept up to date. See [Queries](#queries). |
+| `queryElevation(at)` | The height of the ground in metres at a position (`[lng, lat]`) or a point of the screen (`{x, y}`), from the elevation source of the style. A promise; `null` where there is no data. |
 | `project(lngLat)`, `unproject(point)` | Change between a position on the map and a point of the screen. |
 | `listen(type, fn)` | Calls `fn` for each event of that type (`'click'`, `'move'`, `'load'` and others). Returns a function that stops it. |
 | `container` | The element of the map. |

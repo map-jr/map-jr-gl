@@ -1,10 +1,16 @@
 // Builds the library with Vite. Run with: pnpm build   (add --sizes for a size report of partial imports)
 import {build} from 'vite';
 import {gzipSync, brotliCompressSync} from 'node:zlib';
-import {mkdirSync, readFileSync, readdirSync, rmSync} from 'node:fs';
+import {execFileSync} from 'node:child_process';
+import {mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync} from 'node:fs';
+import {createRequire} from 'node:module';
+import MagicString from 'magic-string';
 import {shortenPrivateNames} from './scripts/private-names.mjs';
 
 const privates = shortenPrivateNames();
+const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
+/** The result of a plugin that changed `code` through `edited`, with the source map of the change. */
+const withMap = (edited, id) => ({code: edited.toString(), map: edited.generateMap({source: id, hires: true})});
 
 rmSync('dist', {recursive: true, force: true});
 mkdirSync('dist', {recursive: true});
@@ -17,9 +23,11 @@ const shaders = {
     name: 'minify-shaders',
     transform(code, id) {
         if (!id.endsWith('/src/gl.ts')) return null;
-        return {map: null, code: code.replace(/`((?:[^`\\]|\\.)*)`/gs, (all, text) => /void main|uniform |\bfloat /.test(text)
+        const edited = new MagicString(code);
+        for (const m of code.matchAll(/`((?:[^`\\]|\\.)*)`/gs)) if (/void main|uniform |\bfloat /.test(m[1]))
             // (Spaces also go from around the operators, but not from around + and -: `a - -b` must not become `a--b`.)
-            ? '`' + text.replace(/\/\/[^\n]*/g, '').replace(/\s+/g, ' ').replace(/ ?([{};,()=*\/<>?:!&|]) ?/g, '$1').trim() + '`' : all)};
+            edited.overwrite(m.index, m.index + m[0].length, '`' + m[1].replace(/\/\/[^\n]*/g, '').replace(/\s+/g, ' ').replace(/ ?([{};,()=*\/<>?:!&|]) ?/g, '$1').trim() + '`');
+        return withMap(edited, id);
     },
 };
 
@@ -34,7 +42,9 @@ const allInOne = {
     transform(code, id) {
         const lazy = "await import('./pmtiles-info.ts')";
         if (!id.endsWith('/src/resolve.ts') || !code.includes(lazy)) return null;
-        return {code: "import * as pmtilesInfo from './pmtiles-info.ts';\n" + code.replace(lazy, 'pmtilesInfo'), map: null};
+        const edited = new MagicString(code), at = code.indexOf(lazy);
+        edited.overwrite(at, at + lazy.length, 'pmtilesInfo').append("\nimport * as pmtilesInfo from './pmtiles-info.ts';\n");
+        return withMap(edited, id);
     },
 };
 
@@ -48,16 +58,21 @@ const noPreload = {
     load: id => id === '\0vite/preload-helper.js' ? 'export const __vitePreload = load => load();' : null,
 };
 
-/** One Vite build. Everything is written to dist/ next to what earlier builds put there. */
+/**
+ * One Vite build. Everything is written to dist/ next to what earlier builds put there. Each built file gets a source
+ * map beside it (`<file>.map`) and a last line that names the map. A browser fetches the map only when its developer
+ * tools are open.
+ */
 const run = (options, define = {__WORKER_SRC__: '""'}, plugins = []) => build({
     configFile: false, logLevel: 'warn', define, plugins: [shaders, privates, noPreload, ...plugins],
-    build: {target: 'es2022', minify: true, emptyOutDir: false, outDir: 'dist', copyPublicDir: false, reportCompressedSize: false, modulePreload: false, ...options},
+    build: {target: 'es2022', minify: true, sourcemap: true, emptyOutDir: false, outDir: 'dist', copyPublicDir: false, reportCompressedSize: false, modulePreload: false, ...options},
 });
 
 // The worker: tile parsing, and the whole rendering engine when a map renders off the main thread. A classic script,
 // so it can be started from a blob or another origin.
 await run({lib: {entry: 'src/worker.ts', formats: ['iife'], name: 'MapJrWorker', fileName: () => 'map-jr-gl-worker.js'}}, undefined, [allInOne]);
-const workerSrc = readFileSync('dist/map-jr-gl-worker.js', 'utf8');
+// (The copy of the worker inside a standalone file starts from a blob, which has no file beside it: the line that names the source map goes.)
+const workerSrc = readFileSync('dist/map-jr-gl-worker.js', 'utf8').replace(/\n\/\/# sourceMappingURL=\S+\s*$/, '\n');
 
 // The default build. The page loads map-jr-gl.js, which is small; it finds map-jr-gl-worker.js beside itself, and the
 // engine for main-thread rendering is a separate chunk that is only fetched if that path is taken.
@@ -77,6 +92,19 @@ await run(esm({'map-jr-gl-standalone': 'src/standalone.ts'}, {codeSplitting: fal
 await run(esm({'map-jr-gl-maplibre-compat-standalone': 'src/maplibre-compat.ts'}, {codeSplitting: false}), {__WORKER_SRC__: JSON.stringify(workerSrc)});
 // The server renderer (Node, Cloudflare Workers and other runtimes without a DOM).
 await run(esm({server: 'src/server.ts'}, {codeSplitting: false}), undefined, [allInOne]);
+
+// The name, the version and the licence go in the first line of each built file that package.json names. The chunks
+// that these files share do not get the line, because each line counts against the size budgets. (The minifier of
+// Vite removes a banner that Rollup adds, so the line is added here. The source map gets an empty first line too, so
+// that it still fits.)
+for (const file of new Set(JSON.stringify(pkg.exports).match(/dist\/[\w-]+\.js/g))) {
+    writeFileSync(file, `/*! ${pkg.name} ${pkg.version} | ${pkg.license} */\n` + readFileSync(file, 'utf8'));
+    try { const map = JSON.parse(readFileSync(file + '.map', 'utf8')); writeFileSync(file + '.map', JSON.stringify({...map, mappings: ';' + map.mappings})); } catch { /* a file that only passes exports on has no map */ }
+}
+
+// The type declarations that the `types` entries of package.json name. They are part of each build, so that a package
+// packed after `node build.mjs` or `pnpm demo` has them.
+execFileSync(process.execPath, [createRequire(import.meta.url).resolve('typescript/package.json').replace(/package\.json$/, 'bin/tsc'), '-p', 'tsconfig.types.json'], {stdio: 'inherit'});
 
 const kb = n => (n / 1024).toFixed(1).padStart(6);
 const report = (label, bytes) => console.log(label.padEnd(46), `${kb(bytes.length)} KB min ${kb(gzipSync(bytes, {level: 9}).length)} KB gzip ${kb(brotliCompressSync(bytes).length)} KB brotli`);

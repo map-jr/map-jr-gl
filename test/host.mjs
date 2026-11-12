@@ -2,6 +2,7 @@
 import {launch} from './launch.mjs';
 
 const browser = await launch();
+const origin = `http://localhost:${process.env.PORT || 8080}`; // (the demo server; PORT lets two runs use two servers)
 let failed = 0;
 const check = (name, ok, detail = '') => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${name} ${detail}`); if (!ok) failed++; };
 
@@ -10,7 +11,7 @@ for (const renderer of ['worker', 'main']) {
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
     try {
-        await page.goto('http://localhost:8080/bench'); // (a page of the demo server, for its origin; the benchmark does not start)
+        await page.goto(`${origin}/bench`); // (a page of the demo server, for its origin; the benchmark does not start)
         // 1. A map from a description, and its state.
         const start = await page.evaluate(async renderer => {
             const lib = await import('/dist/map-jr-gl.js'), style = await (await fetch('/style.json')).json();
@@ -297,7 +298,7 @@ for (const renderer of ['worker', 'main']) {
         const asked = [];
         let answer = {status: 404, body: ''};
         await page.route(/\/test-glyphs\//, route => { asked.push(decodeURIComponent(new URL(route.request().url()).pathname)); route.fulfill(answer); });
-        await page.goto('http://localhost:8080/style.json');
+        await page.goto(`${origin}/style.json`);
         const run = glyphs => page.evaluate(async glyphs => {
             const lib = await import('/dist/map-jr-gl.js'), style = await (await fetch('/style.json')).json();
             style.glyphs = '/test-glyphs/{fontstack}/{range}.pbf';
@@ -323,7 +324,7 @@ for (const renderer of ['worker', 'main']) {
 {
     const page = await browser.newPage({viewport: {width: 900, height: 600}});
     try {
-        await page.goto('http://localhost:8080/style.json');
+        await page.goto(`${origin}/style.json`);
         const svelte = await page.evaluate(async () => {
             const {mapJr, mapState} = await import('/dist/svelte.js'), style = await (await fetch('/style.json')).json(), wait = ms => new Promise(r => setTimeout(r, ms));
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99;background:#fff'}));
@@ -348,7 +349,7 @@ for (const renderer of ['worker', 'main']) {
     const page = await browser.newPage({viewport: {width: 900, height: 600}}), requested = [];
     page.on('request', r => { if (/\/dist\//.test(r.url())) requested.push(r.url().split('/').pop()); });
     try {
-        await page.goto('http://localhost:8080/style.json'); // (a document of the demo server that loads no script)
+        await page.goto(`${origin}/style.json`); // (a document of the demo server that loads no script)
         const one = await page.evaluate(async () => {
             const lib = await import('/dist/map-jr-gl-standalone.js'), style = await (await fetch('/style.json')).json();
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {id: 'host', style: 'position:fixed;inset:0;z-index:99;background:#fff'}));
