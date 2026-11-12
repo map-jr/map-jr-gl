@@ -13,7 +13,7 @@
 - [ ] Every adapter has it (Vue prop, React, Svelte) — `pnpm test:consistency` passes
 - [ ] Documentation updated (`docs/api.md`, adapter docs, `docs/maplibre-compatibility.md`, README)
 - [ ] Gallery examples and their comments are still true (four forms each)
-- [ ] Mistakes fail loudly: a clear message, nothing ignored in silence
+- [ ] A mistake by the user gets a clear message, and no input is ignored in silence
 - [ ] No map-specific state at module level; untrusted input is bounded and never reaches `innerHTML`
 - [ ] `pnpm test:size` passes with no budget raised
 - [ ] `pnpm status` run and committed if results or sizes changed

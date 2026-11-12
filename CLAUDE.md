@@ -1,7 +1,8 @@
 # Working on Map Jr. GL
 
-Map Jr. GL is a small, fast WebGL map library that reads MapLibre styles. Its two selling points are size and
-speed; a third is honesty about what it does and does not do. Everything below serves those three.
+Map Jr. GL is a small, fast WebGL map library that reads MapLibre styles. People choose it for its size and its
+speed, and they must be able to trust what its documentation says it does and does not do. The rules below exist
+to protect those qualities.
 
 ## How work goes
 
@@ -29,7 +30,8 @@ speed; a third is honesty about what it does and does not do. Everything below s
   - adds a dependency to the built files, or takes a method from another project;
   - changes this file, the CI workflows, or the release process;
   - is labelled `needs: owner`.
-- **One concern per pull request.** A fix and its test together; not a fix plus an unrelated cleanup.
+- **A pull request has one concern.** A fix and its test belong together. An unrelated cleanup goes into its own
+  pull request.
 - After a merge, the `Browsers` workflow measures and tests in Chromium, Firefox and WebKit on three systems. Read
   its results (`git fetch origin bench-results && git show origin/bench-results:README.md`) before you ask the
   owner to test on a device.
@@ -50,8 +52,9 @@ A change is done when all of these that apply are true. The pull request templat
    that has no effect). If the README shows it, update the README.
 5. **Examples.** A gallery row has four forms in `site/examples/` (`.js`, `.vue`, `.jsx`, `.compat.js`), each
    complete on its own. Comments in examples must stay true: reread them when behaviour changes.
-6. **Fail loudly.** A mistake by the user gets a message that says what is wrong and what to write instead. An
-   option or method that is accepted but has no effect warns once. Never ignore input in silence.
+6. **Mistakes get a message.** A mistake by the user gets a message that says what is wrong and what to write
+   instead. An option or method that is accepted but has no effect warns once. The library does not ignore input
+   in silence.
 7. **State is per map.** No map-specific state at module level, in the page, the engine or the tile workers: two
    maps on one page must not see each other.
 8. **Untrusted input.** Styles, TileJSON, tiles, glyph files and GeoJSON come from other parties. Bound sizes,
@@ -69,19 +72,29 @@ A change is done when all of these that apply are true. The pull request templat
 Documentation, comments, issue text and messages to the user follow the same rules. The aim is that a developer in
 a hurry gets the right answer on the first read.
 
-- **Lead with what the reader needs:** what it does, then how to use it, then the exceptions.
-- **Short sentences, active voice, present tense.** One idea per sentence. Prefer a list or a table to a long
-  paragraph when the items are parallel.
-- **One name per thing, and the standard name.** Write "attribution", "hillshade", "pitch", "hash", "popup",
-  "image", "render", "URL", "GPU", "required" — the words developers search for. Do not invent a plainer synonym,
-  and do not use two words for one concept ("the description" is `MapSpec`; say so once and keep to it).
+- **Write complete sentences.** Each sentence has a subject and a verb, and it says one thing. Do not write clipped
+  fragments, and do not string short phrases together with commas where sentences belong. For example, write
+  "An example has all of its imports and uses a real URL", not a list of three noun phrases.
+- **Do not write in slogans.** Avoid the patterns that make text sound generated: groups of three, "no X, no Y"
+  constructions, a short punchy sentence after a colon, and a closing line that restates the point. Say the thing
+  once, in ordinary words.
+- **Start with what the reader needs.** Say what the thing does first, then how to use it, and then the exceptions.
+- **Use the active voice and the present tense.** When several items are parallel, use a list or a table instead
+  of a long paragraph.
+- **Use one name for each thing, and use the standard name.** Write "attribution", "hillshade", "pitch", "hash",
+  "popup", "image", "render", "URL", "GPU" and "required", because these are the words that developers search for.
+  Do not replace a standard term with a plainer synonym, and do not use two words for one concept. "The
+  description" is `MapSpec`; say so once and keep to it.
 - **Say which entry** an example or a statement belongs to (`map-jr-gl` or `map-jr-gl/maplibre-compat`).
-- **Be exact:** defaults, units, what happens on failure, what is not supported. If you did not verify a claim, do
-  not write it as fact.
-- **Examples must run.** Complete imports, real URLs, no elided setup. `pnpm test:examples` compiles the gallery's.
-- **No sales language** ("blazing", "simply", "just"), no filler, no apology.
-- **Error and warning messages** start with `[map-jr-gl]`, name the thing by the name the user wrote, and say what
-  to do: `[map-jr-gl] update(): the description has no "style". Pass the complete description.`
+- **Be exact.** State the default, the unit, what happens on failure and what is not supported. If you did not
+  verify a claim, do not write it as a fact.
+- **An example must run as it is written.** It has all of its imports, it uses real URLs, and it does not leave out
+  setup. `pnpm test:examples` compiles the examples of the gallery.
+- **Do not use sales language** such as "blazing", "simply" or "just". Leave out sentences that carry no
+  information, and do not apologise.
+- **An error or warning message** starts with `[map-jr-gl]`, names the thing by the name that the user wrote, and
+  says what to do. For example:
+  `[map-jr-gl] update(): the description has no "style". Pass the complete description.`
 
 ## The two entries
 
@@ -126,8 +139,8 @@ CI runs all of these except `test:cloudflare`. Run locally what your change can 
 
 ## Checking work
 
-- **Verify, then claim.** Say "measured" or "ran" only for what you ran, and give the number. Say "not checked on
-  a GPU" when that is the case.
+- **Claim only what you verified.** Say "measured" or "ran" only for what you ran, and give the number. Say "not
+  checked on a GPU" when that is the case.
 - To find faults in common use, run real pages and plugins, not only the test suites. Each of these compares the
   library with MapLibre GL JS and writes its results into `docs/ecosystem.md`:
   `node test/conformance/examples.mjs --write` (the example pages of the MapLibre documentation; about 30 minutes;
