@@ -393,13 +393,16 @@ export class Map {
             for (const w of this.workers.splice(0)) w.terminate();
             this.tilePool?.release();
             this.ready = false; this.queue = []; this.tilesLoaded = false; this.seq = 0;
+            this.loadedSources.clear(); // (the new engine has no tiles)
             const fresh = this.canvas.cloneNode() as HTMLCanvasElement, tr = this.tr;
             this.canvas.replaceWith(fresh);
             this.canvas = fresh;
             this.options = {...this.options, style: this.rawStyle, center: [tr.lng, tr.lat], zoom: tr.zoom, bearing: tr.bearing, pitch: tr.pitch};
             await this.start();
             this.resend();
-            if (Object.keys(this.globalState).length) this.restyle(false);
+            // The engine got the style without what `restyle` adds: the number of each source (without it the page does not
+            // accept the report that a source is loaded), the layers that the page has hidden, and the global state.
+            this.restyle(true);
             for (const [name, [source, options]] of this.imageInputs) await this.addImage(name, source, options);
             this.variantIds.clear();
             for (const layer of this.markerLayers.values()) this._syncMarkers(layer);
