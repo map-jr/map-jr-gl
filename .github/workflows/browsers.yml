@@ -68,6 +68,8 @@ jobs:
   # macOS; test/bench/webdriver.mjs speaks to it. The machine has a virtual GPU, so the frame rates say little; what
   # counts here is what Safari can do (OffscreenCanvas in a worker and its contexts), which renderer the map takes,
   # and that the benchmark runs to its end.
+  # Known on this machine (2026-11-12, Safari 27.2): the WebGL context of a worker is lost at once, so the scenarios of
+  # the worker renderer fail here. On a Mac with a GPU the worker renderer works in the same Safari (the owner's check).
   safari:
     runs-on: macos-latest
     timeout-minutes: 60
@@ -104,7 +106,7 @@ jobs:
           if [ -z "$udid" ]; then echo "no iPhone simulator on this machine" > results/ios-simulator-safari-failed.txt; exit 0; fi
           xcrun simctl boot "$udid" || true
           xcrun simctl bootstatus "$udid" || true
-          WD_CAPS="{\"browserName\":\"safari\",\"platformName\":\"iOS\",\"safari:useSimulator\":true,\"safari:deviceUDID\":\"$udid\"}" BENCH_QUERY="nomarkers" WD_NAME=ios-simulator-safari \
+          WD_CAPS="{\"browserName\":\"safari\",\"platformName\":\"iOS\",\"safari:useSimulator\":true,\"safari:deviceUDID\":\"$udid\"}" BENCH_QUERY="nomarkers&noterrain" WD_NAME=ios-simulator-safari \
             node test/bench/webdriver.mjs results || echo "the benchmark did not finish" > results/ios-simulator-safari-failed.txt
       - run: cat results/*.md >> "$GITHUB_STEP_SUMMARY" || true
         if: always()

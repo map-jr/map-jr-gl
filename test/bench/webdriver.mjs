@@ -28,7 +28,7 @@ mkdirSync(out, {recursive: true});
 async function wd(method, url, body) {
     const res = await fetch(server + url, {method, headers: {'content-type': 'application/json'}, body: body === undefined ? undefined : JSON.stringify(body)});
     const json = await res.json().catch(() => ({}));
-    if (!res.ok || json.value?.error) throw new Error(`${method} ${url}: ${json.value?.message ?? json.value?.error ?? 'HTTP ' + res.status}`.split('\n')[0]);
+    if (!res.ok || json.value?.error) throw new Error(`${method} ${url.replace(/\/session\/[^/]+/, '')}: ${json.value?.message || json.value?.error || 'HTTP ' + res.status}`.split('\n')[0]);
     return json.value;
 }
 

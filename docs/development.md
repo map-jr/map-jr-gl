@@ -118,6 +118,10 @@ Simulator, through `safaridriver` (`test/bench/webdriver.mjs`). Playwright's Web
 and it does not behave as Safari in each case. For each browser the results say whether a worker has
 `OffscreenCanvas` and its WebGL2 and 2D contexts, and which renderer the map took. The machines have a virtual GPU,
 and a simulator has the memory and the GPU of its host: these runs do not replace a measurement on a phone.
+Two things are known about these machines (2026-11-12). In Safari 27.2 on the macOS runner, the WebGL context of a
+worker is lost directly after it is made, so the map with the worker renderer does not load there and those
+scenarios of the benchmark fail; the same Safari draws in a worker on a Mac with a GPU. The system of the runner
+asks for less motion (`prefers-reduced-motion`), so a camera animation that is not `essential` does not run.
 To try a change of this job, start the workflow by hand with `safari_only`: it then runs that job only and does
 not write the branch.
 
