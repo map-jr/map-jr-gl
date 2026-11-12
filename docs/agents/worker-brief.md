@@ -19,11 +19,12 @@ requests. `CLAUDE.md` in the repository has the project rules (definition of don
 
 A fault you find outside your issue: do not fix it; name it in your report (one line each).
 
-## Report (your final message; at most 12 lines, no preamble)
+## Report (your final message; at most 13 lines, no preamble)
 
 - PR: <url>
 - Changed: <one or two sentences>
 - Ran: <commands and results, with numbers>
+- Size: <bytes gzip of each built file that changed, before and after, from `pnpm test:size`>
 - Not checked: <what>
 - Needs owner: <no | yes, because …>
 - Left out / found: <parts of the issue not done; faults seen elsewhere>

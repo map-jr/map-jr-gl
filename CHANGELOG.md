@@ -53,8 +53,8 @@ These changes matter if you used a build of the repository from before 2026-11-1
 
 ### What is known not to work
 
-- **Without WebGL2** the map fires `error` and the container stays empty. The library has no function yet that
-  says whether a browser is supported ([issue 17](https://github.com/map-jr/map-jr-gl/issues/17)).
+- **Without WebGL2** no map can be shown. `supported()` of both entries says so before a map is made. A map that is
+  made anyway fires one `error` and shows a message in the container.
 - **Not available:** globe and other projections, sky, fog, custom layers, color relief, video and canvas sources,
   MapLibre Tiles (MLT), and the properties in
   [What is not available](docs/maplibre-compatibility.md#what-is-not-available).

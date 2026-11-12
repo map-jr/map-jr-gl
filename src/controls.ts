@@ -40,6 +40,7 @@ export const CONTROL_CSS = `
 :where(.map-jr-fills) :where(.map-jr-ctrl-bottom-left){padding-bottom:max(10px,env(safe-area-inset-bottom))}
 :where(.map-jr-fills) :where(.map-jr-ctrl-bottom-right){padding-bottom:env(safe-area-inset-bottom)}
 :where(.map-jr-ctrl-bottom-right>.map-jr-ctrl:not(.map-jr-ctrl-attrib)){margin-right:max(10px,env(safe-area-inset-right))}
+:where(.map-jr-unavailable){position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:1em;text-align:center;font:14px/1.4 system-ui,sans-serif;color:#555;background:#f2f2f2}
 :where(.map-jr-ctrl-attrib){background:var(--map-attribution-background,rgba(255,255,255,.75));color:var(--map-control-color,#333);font-size:11px;line-height:1.4;padding:2px 6px;padding-right:max(6px,env(safe-area-inset-right));border-top-left-radius:4px;overflow-wrap:anywhere}
 :where(.map-jr-ctrl-attrib a){color:inherit}
 :where(.map-jr-ctrl-attrib.map-jr-compact){display:flex;flex-direction:row-reverse;align-items:center;padding:0;margin:0 max(10px,env(safe-area-inset-right)) 10px 0;border-radius:14px;background:var(--map-control-background,#fff);box-shadow:0 0 0 1.5px rgba(0,0,0,.12)}

@@ -466,6 +466,89 @@ for (const [build, file] of [['the development build, and the file of the checks
     await page.close();
 }
 
+// A browser without WebGL2, on the page and in the worker: `supported()` says so before a map is made. A map that is
+// made all the same reports one error (`onError`, `state.error`) and puts a message into the container.
+for (const [entry, renderer] of [['main API', 'worker'], ['main API', 'main'], ['maplibre-compat', 'worker']]) {
+    const page = await browser.newPage({viewport: {width: 900, height: 600}});
+    try {
+        await page.goto(`${origin}/bench`);
+        const able = await page.evaluate(async () => (await import('/dist/map-jr-gl.js')).supported());
+        await page.goto(`${origin}/style.json`); // (a new document: the answer of `supported()` is kept for the page)
+        const none = await page.evaluate(async ([entry, renderer]) => {
+            const get = HTMLCanvasElement.prototype.getContext;
+            HTMLCanvasElement.prototype.getContext = function (kind, ...rest) { return /webgl/.test(kind) ? null : get.call(this, kind, ...rest); };
+            const code = `const get = OffscreenCanvas.prototype.getContext; OffscreenCanvas.prototype.getContext = function (kind, ...rest) { return /webgl/.test(kind) ? null : get.call(this, kind, ...rest); }; importScripts(${JSON.stringify(location.origin + '/dist/map-jr-gl-worker.js')});`;
+            const url = URL.createObjectURL(new Blob([code], {type: 'text/javascript'})), createWorker = () => new Worker(url);
+            const errors = [], unhandled = [], warn = console.warn, wait = ms => new Promise(r => setTimeout(r, ms));
+            console.warn = () => {}; // (the map says that it uses the main thread)
+            addEventListener('unhandledrejection', e => unhandled.push(String(e.reason)));
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99'}));
+            const style = await (await fetch('/style.json')).json(), message = () => el.querySelector('.map-jr-unavailable');
+            let supported, state, destroy;
+            if (entry === 'main API') {
+                const lib = await import('/dist/map-jr-gl.js');
+                lib.configure({createWorker});
+                supported = lib.supported();
+                const host = lib.createMap(el, {style, initialView: {center: [-74.0065, 40.7085], zoom: 14.3}, renderer, attribution: false, onError: e => errors.push(e.message)});
+                state = () => ({error: host.state.get().error?.message, loaded: host.state.get().loaded});
+                destroy = () => host.destroy();
+            } else {
+                const lib = await import('/dist/map-jr-gl-maplibre-compat.js');
+                supported = lib.supported() || lib.default.supported();
+                const map = new lib.Map({container: el, style, center: [-74.0065, 40.7085], zoom: 14.3, attributionControl: false, createWorker});
+                map.on('error', e => errors.push(e.error.message));
+                state = () => ({error: errors[0], loaded: map.loaded()});
+                destroy = () => map.remove();
+            }
+            for (let i = 0; i < 150 && !errors.length; i++) await wait(100);
+            await wait(500);
+            const box = message()?.getBoundingClientRect();
+            const out = {supported, errors, ...state(), text: message()?.textContent, count: el.querySelectorAll('.map-jr-unavailable').length, children: message()?.childElementCount, covers: !!box && box.width === 900 && box.height === 600, unhandled};
+            // (The message is the application's to change: a rule of its own style sheet wins over the rule of the library.)
+            document.head.appendChild(Object.assign(document.createElement('style'), {textContent: '.map-jr-unavailable{display:none}'}));
+            out.hidden = !!message() && getComputedStyle(message()).display === 'none';
+            destroy();
+            out.after = el.querySelectorAll('.map-jr-unavailable, canvas').length;
+            console.warn = warn;
+            return out;
+        }, [entry, renderer]);
+        const text = '[map-jr-gl] The map cannot be shown: WebGL2 is not available. Call supported() before you make a map, and show other content when it returns false.';
+        check(`no WebGL2 (${entry}, ${renderer}): supported() is false, the map reports one error and shows a message in the container, and removing the map removes the message`,
+            able === true && none.supported === false && none.errors.length === 1 && none.errors[0] === text && none.error === text && none.loaded === false && none.text === 'This browser cannot show the map.' && none.count === 1
+            && none.children === 0 && none.covers && none.hidden && none.after === 0 && !none.unhandled.length, JSON.stringify({able, ...none}));
+    } catch (e) { check(`no WebGL2 (${entry}, ${renderer}): the test run was completed`, false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
+
+// The page file and the worker file of two versions (a CDN or a cache can serve them so): two maps give one warning,
+// which names both versions, and the maps load. With the files of one version there is no warning.
+for (const other of [true, false]) {
+    const page = await browser.newPage({viewport: {width: 900, height: 600}});
+    try {
+        const version = JSON.parse(await (await import('node:fs/promises')).readFile(new URL('../package.json', import.meta.url), 'utf8')).version;
+        let changed = 0;
+        if (other) await page.route(/\/dist\/map-jr-gl-worker\.js$/, async route => {
+            const body = await (await route.fetch()).text(), next = body.replace(new RegExp('(type:.hello.,version:.)' + version.replaceAll('.', '\\.')), '$10.0.1');
+            if (next !== body) changed++;
+            await route.fulfill({contentType: 'text/javascript', body: next});
+        });
+        await page.goto(`${origin}/bench`);
+        const two = await page.evaluate(async () => {
+            const lib = await import('/dist/map-jr-gl.js'), style = await (await fetch('/style.json')).json(), said = [], warn = console.warn;
+            console.warn = (...a) => said.push(a.join(' '));
+            const hosts = [0, 1].map(i => lib.createMap(document.body.appendChild(Object.assign(document.createElement('div'), {style: `position:fixed;left:${i * 450}px;top:0;width:450px;height:600px;z-index:99;background:#fff`})),
+                {style, initialView: {center: [-74.0065, 40.7085], zoom: 14.3}, attribution: false}));
+            const loaded = await Promise.all(hosts.map(h => Promise.race([new Promise(r => h.state.subscribe(s => s.loaded, v => v && r(true))), new Promise(r => setTimeout(() => r(false), 30000))])));
+            console.warn = warn;
+            return {said, loaded};
+        });
+        const text = `[map-jr-gl] The worker file is version 0.0.1 and the page file is version ${version}. Serve map-jr-gl-worker.js from the same version of the package as the page file, or pass \`workerUrl\` with the URL of that file.`;
+        check(other ? 'a worker file of another version: two maps give one warning with both versions, and they load' : 'the worker file of the same version: no warning',
+            two.loaded.join() === 'true,true' && (other ? changed > 0 && two.said.length === 1 && two.said[0] === text : two.said.length === 0), JSON.stringify({...two, changed}));
+    } catch (e) { check(`the version of the worker file (${other ? 'another' : 'the same'}): the test run was completed`, false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
+
 // The one-file build of the main API: a map and a control from that file alone.
 {
     const page = await browser.newPage({viewport: {width: 900, height: 600}}), requested = [];
@@ -485,8 +568,8 @@ for (const [build, file] of [['the development build, and the file of the checks
     await page.close();
 }
 
-// The `queryFeatures` example of the gallery (site/examples/query.js and query.compat.js; the site must be built):
-// the answer to an earlier click arrives after the answer to a later click, and the example shows the later click.
+// The `queryFeatures` example of the gallery (site/examples/query.js and query.compat.js; the site must be built), with
+// the usual number of tile workers.
 for (const code of ['core', 'compat']) {
     const page = await browser.newPage({viewport: {width: 1200, height: 800}});
     try {
@@ -497,20 +580,43 @@ for (const code of ['core', 'compat']) {
             const map = window.maps.query, wait = ms => new Promise(r => setTimeout(r, ms));
             for (let i = 0; i < 300 && !(code === 'core' ? map.state.get().idle : map.loaded()); i++) await wait(100);
             await wait(1000);
-            // The first question gets its answer 2 seconds late. The questions after it are not changed.
-            const ask = map.queryFeatures;
-            window.asked = 0;
-            map.queryFeatures = function (...a) { const answer = ask.apply(this, a); return window.asked++ ? answer : answer.then(async found => { await wait(2000); return found; }); };
         }, code);
-        // (The row is in the middle of the page and can be taller than the page: the clicks are at the middle height.)
-        const box = await page.locator('#query .live').boundingBox(), y = 400, first = box.x + 80, second = box.x + box.width - 80;
-        await page.mouse.click(first, y);
+        // (The row is in the middle of the page and can be taller than the page: the clicks are in the part that shows.)
+        const live = await page.locator('#query .live').boundingBox(), top = Math.max(live.y, 0);
+        const answerBox = () => page.evaluate(() => { const b = [...document.querySelectorAll('#query .live > div')].find(d => d.style.pointerEvents === 'none'); return b && !b.hidden ? b.textContent : null; });
+
+        // 1. Every click gets an answer: clicks one after another, some directly after a jump (the tiles are loading),
+        // and one on the box that shows the answer before. LIMIT is generous: on the development machine (4 cores,
+        // software WebGL, load average 4 to 7) the slowest of 228 clicks, a third of them directly after a jump, took 1.1 seconds.
+        const LIMIT = 6000, times = [], late = [];
+        for (let i = 0; i < 10; i++) {
+            const jump = i >= 4 && i % 2 === 0, onBox = i === 3 || i === 9;
+            await page.evaluate(([code, jump, i]) => {
+                document.querySelector('#query .readout').textContent = '';
+                const map = window.maps.query, view = {center: [-73.99 + i * 0.011, 40.7 + i * 0.007], zoom: 15.5};
+                if (jump) { if (code === 'core') map.moveTo(view); else map.jumpTo(view); }
+            }, [code, jump, i]);
+            const at = onBox ? [live.x + 30, top + 22] : [live.x + 120 + i * 45, top + 150 + i * 35], start = Date.now();
+            await page.mouse.click(at[0], at[1]);
+            const answered = await page.waitForFunction(() => /features within 8 pixels/.test(document.querySelector('#query .readout').textContent), null, {timeout: LIMIT, polling: 20}).then(() => true, () => false);
+            if (answered) times.push(Date.now() - start); else late.push(`${i}${jump ? ' (after a jump)' : ''}${onBox ? ' (on the box)' : ''}`);
+        }
+        check(`gallery, query example (${code}): each of 10 clicks gets an answer within ${LIMIT / 1000} seconds, also after a jump and on the box of the answer`, !late.length && !!(await answerBox()), JSON.stringify({withoutAnswer: late, slowestMs: Math.max(...times)}));
+
+        // 2. The answer to an earlier click arrives after the answer to a later click: the example shows the later click.
+        await page.evaluate(() => {
+            const map = window.maps.query, ask = map.queryFeatures, wait = ms => new Promise(r => setTimeout(r, ms));
+            window.asked = 0;
+            // The first question gets a marked answer 2 seconds late. The questions after it are not changed.
+            map.queryFeatures = function (...a) { const answer = ask.apply(this, a); return window.asked++ ? answer : answer.then(async () => { await wait(2000); return [{sourceLayer: 'first-click', properties: {}}]; }); };
+        });
+        await page.mouse.click(live.x + 80, top + 300);
         await page.waitForFunction(() => window.asked === 1, null, {timeout: 10000});
-        await page.mouse.click(second, y);
+        await page.mouse.click(live.x + live.width - 80, top + 300);
         await page.waitForFunction(() => window.asked === 2, null, {timeout: 10000});
-        await page.waitForTimeout(3500); // (the late answer of the first click has arrived, and a closed popup has gone)
-        const tips = await page.evaluate(() => [...document.querySelectorAll('#query .map-jr-popup-tip')].map(t => { const r = t.getBoundingClientRect(); return Math.round(r.left + r.width / 2); }));
-        check(`gallery, query example (${code}): after two clicks, the popup is at the last click`, tips.length === 1 && Math.abs(tips[0] - second) < Math.abs(tips[0] - first), JSON.stringify({tips, first: Math.round(first), second: Math.round(second)}));
+        await page.waitForTimeout(3500); // (the late answer of the first click has arrived)
+        const shown = await answerBox();
+        check(`gallery, query example (${code}): after two clicks, the answer of the last click is shown`, !!shown && !shown.includes('first-click'), JSON.stringify({shown: shown?.slice(0, 80)}));
     } catch (e) { check(`gallery, query example (${code}): the test run was completed`, false, String(e.message).split('\n')[0]); }
     await page.close();
 }

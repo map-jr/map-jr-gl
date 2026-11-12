@@ -12,7 +12,7 @@ versions.
 
 | Requirement | What happens without it | Where it comes from |
 |---|---|---|
-| WebGL2 | The map fires `error` with the message "WebGL2 is not available", and the container stays empty. The library has no function yet that says whether a browser is supported. | Code: `src/gl.ts` |
+| WebGL2 | `supported()` of both entries returns `false`. A map that is made anyway fires one `error` ("The map cannot be shown: WebGL2 is not available") and shows the text "This browser cannot show the map." in the container (`.map-jr-unavailable`). | Code: `src/loader.ts`, `src/map.ts`; test in `test/host.mjs` with a page whose `getContext` returns null |
 | ES modules | The package has no CommonJS build and no build for a classic script. | Code: `package.json` (`"type": "module"`) |
 | ES2022 syntax | The built files do not parse. A bundler can change the syntax for older browsers. | Code: `build.mjs` (`target: 'es2022'`) |
 
