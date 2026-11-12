@@ -266,6 +266,19 @@ screen) a movement of the map. It returns a function that stops it. Use it in pl
 const stop = map.watchFeatures([-75.16, 39.92], {sources: ['rain']}, features => show(features[0]?.properties));
 ```
 
+A query whose map goes away is rejected, so that code that awaits it does not wait for ever. This holds for
+`queryFeatures` and for `queryElevation`:
+
+| When | The promise rejects with an `Error` whose message is |
+|---|---|
+| `destroy()` is called before the answer has come, or the query is asked after `destroy()`. | `[map-jr-gl] The query has no answer: the map was removed.` |
+| The browser takes the WebGL context away before the answer has come. | `[map-jr-gl] The query has no answer: the map lost its WebGL context. Ask again.` A query that is asked again waits for the new context and is answered then. |
+
+Catch the error where a query can be open while the map is removed, for example in a handler of a component that
+can unmount. `watchFeatures` needs no such code: it does not call its listener after `destroy()`, and after a lost
+context it asks again by itself. When its listener throws, the browser reports the error as an unhandled rejection,
+and the watch goes on.
+
 For users of MapLibre GL JS: `queryRenderedFeatures` is `queryFeatures` without `sources`, and
 `querySourceFeatures` is `queryFeatures(undefined, {sources: [id]})`. The two MapLibre methods are in the entry
 `map-jr-gl/maplibre-compat`.
@@ -329,6 +342,10 @@ const map = createMap('map', {style: 'https://demotiles.maplibre.org/style.json'
 const stop = map.listen('moveend', event => console.log(event.target.getZoom()));
 stop();
 ```
+
+A listener that throws does not stop the other listeners of the event. The map reports what it threw as an
+`error` event (`onError` of the description gets it, or the console when there is no `onError`). What a listener
+of `error` throws is written to the console.
 
 Each event has `type` (the name of the event) and `target` (the map object, the `map` member above). The table
 has the other members. In TypeScript, the type `MapEvents` has the event of each name, so the parameter of `fn`
