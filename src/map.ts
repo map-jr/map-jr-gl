@@ -640,7 +640,9 @@ export class Map {
         return !!this.resolved?.sources[id] && (this.tilesLoaded || this.loadedSources.has(id));
     }
     /** Loads a source's tiles again, e.g. after the data behind its URL changed. */
-    refreshTiles(sourceId: string) { this.post({type: 'refresh', source: sourceId}); return this; }
+    refreshTiles(sourceId: string) { this.unloaded(sourceId); this.post({type: 'refresh', source: sourceId}); return this; }
+    /** The data of a source changed: the source is not loaded until the engine says so. */
+    private unloaded(id: string) { this.loadedSources.delete(id); this.tilesLoaded = false; }
     isStyleLoaded() { return this.ready; }
     areTilesLoaded() { return this.tilesLoaded; }
     zoomIn() { return this.easeTo({zoom: this.tr.zoom + 1, duration: 300}); }
@@ -841,6 +843,7 @@ export class Map {
     }
     private async setGeoJSON(id: string, data: unknown) {
         this.rawStyle.sources[id].data = data;
+        this.unloaded(id);
         for (const type of ['sourcedataloading', 'dataloading']) this.fire(type, {dataType: 'source', sourceId: id});
         if (typeof data === 'string') { const res = await this.fetchAs('Source')(new URL(data, this.styleBase)); data = await res.json(); }
         this.post({type: 'geojson', source: id, data});
