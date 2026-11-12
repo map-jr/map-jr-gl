@@ -73,6 +73,9 @@ export class Map extends CoreMap {
         // (MapLibre GL JS has `antialias` in `canvasContextAttributes`.)
         super(context?.antialias === undefined ? options : {...options, antialias: context.antialias});
         this.strict = !!o.strict;
+        // The names that stylesheets and tests for MapLibre GL JS select by. (A canvas that replaces this one is a copy of it.)
+        this.getContainer().classList.add('maplibregl-map');
+        this.getCanvas().classList.add('maplibregl-canvas');
         if (o.maxBounds) this.setMaxBounds(o.maxBounds);
         this.unsupported('The option cooperativeGestures', !o.cooperativeGestures);
         this.unsupported('The option locale', !o.locale);
@@ -131,6 +134,7 @@ export class Map extends CoreMap {
     isRotating() { return this.rotating; }
     isPitching() { return this.pitching; }
     getCanvasContainer() { return this.container; }
+    remove() { super.remove(); this.getContainer().classList.remove('maplibregl-map'); }
     redraw() { this.triggerRepaint(); return this; }
     // react-map-gl and other wrappers read these private members of the MapLibre map. They are here only so that
     // those wrappers work: `style._loaded` tells them that sources and layers can be added.
