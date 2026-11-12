@@ -84,7 +84,8 @@ async function run(s) {
     await sleep(600);
     frames = 0; stamps = []; engine = []; engineFps = []; scripts.length = 0; blocked = Number.isNaN(blocked) ? NaN : 0;
     const a0 = performance.now();
-    map.easeTo({...(s.terrain ? TERRAIN_END : {center: [-73.975, 40.735], zoom: 15.2, bearing: 40}), duration: SECONDS * 1000});
+    // (`essential`: the animation is what is measured, so it also runs where the system asks for less motion.)
+    map.easeTo({...(s.terrain ? TERRAIN_END : {center: [-73.975, 40.735], zoom: 15.2, bearing: 40}), duration: SECONDS * 1000, essential: true});
     await sleep(SECONDS * 1000 + 100);
     // Count only frames drawn while the camera was animating: once it stops, a map that correctly stops drawing
     // would otherwise look slower than one that keeps redrawing an unchanged view.

@@ -32,7 +32,13 @@ async function wd(method, url, body) {
     return json.value;
 }
 
-const session = await wd('POST', '/session', {capabilities: {alwaysMatch: caps}});
+const session = await wd('POST', '/session', {capabilities: {alwaysMatch: caps}}).catch(e => {
+    // (The browser did not start: that is a result too, with the reason of the driver.)
+    const n = process.env.WD_NAME ?? 'webdriver';
+    writeFileSync(path.join(out, `${n}.md`), `### ${n}\n\nThe browser did not start: ${e.message}\n\nCapabilities: \`${JSON.stringify(caps)}\`\n`);
+    console.error(e.message);
+    process.exit(1);
+});
 const id = session.sessionId, got = session.capabilities ?? {};
 const name = process.env.WD_NAME ?? `${os.platform()}-${got.browserName ?? caps.browserName}`.toLowerCase().replace(/\s+/g, '-');
 const run = (script, args = []) => wd('POST', `/session/${id}/execute/sync`, {script, args});
@@ -49,7 +55,7 @@ const result = {name, os: `${got.platformName ?? ''} ${got['safari:platformVersi
 // versions have no OffscreenCanvas, or only its 2D context, in a worker. The library chooses its renderer by this.)
 const PROBE = `const done = arguments[arguments.length - 1], page = {
         offscreenCanvas: typeof OffscreenCanvas !== 'undefined', transfer: 'transferControlToOffscreen' in HTMLCanvasElement.prototype,
-        webgl2: !!document.createElement('canvas').getContext('webgl2'), pixelRatio: devicePixelRatio, screen: screen.width + 'x' + screen.height, userAgent: navigator.userAgent};
+        webgl2: !!document.createElement('canvas').getContext('webgl2'), reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches, pixelRatio: devicePixelRatio, screen: screen.width + 'x' + screen.height, userAgent: navigator.userAgent};
     // (Frames in one second, on the page and in a worker: an engine in a worker draws with requestAnimationFrame there.)
     let frames = 0; const tick = () => { frames++; requestAnimationFrame(tick); }; requestAnimationFrame(tick);
     const code = 'const has = typeof OffscreenCanvas !== "undefined", get = kind => { try { return !!new OffscreenCanvas(1, 1).getContext(kind); } catch (e) { return String(e.message); } };' +
@@ -85,6 +91,32 @@ try {
         result.checks.push(check);
     }
 
+    // 1b. For a renderer that did not load: a map of its own with listeners from the start, so that the result has the
+    //     events and the errors, and whether the canvas shows a picture.
+    for (const check of result.checks.filter(c => !c.loaded || process.env.WD_CLOSER)) {
+        check.closer = await wd('POST', `/session/${id}/execute/async`, {args: [check.mode], script: `const mode = arguments[0], done = arguments[arguments.length - 1];
+            import('/dist/map-jr-gl-maplibre-compat.js').then(async mod => {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:300px;z-index:9999'}));
+                const seen = [], warnings = [], warn = console.warn, error = console.error;
+                console.warn = (...a) => { warnings.push(a.join(' ').slice(0, 200)); warn(...a); };
+                console.error = (...a) => { warnings.push('error: ' + a.map(x => x && x.message || x).join(' ').slice(0, 200)); error(...a); };
+                const m = new mod.Map({container: el, style: '/style.json', center: [-74.0065, 40.7085], zoom: 14, renderer: mode, attributionControl: false});
+                for (const type of ['load', 'idle', 'error', 'styledata', 'sourcedata', 'webglcontextlost', 'webglcontextrestored']) m.on(type, e => seen.push(type === 'error' ? 'error: ' + String(e.error && e.error.message || e.error).slice(0, 200) : type));
+                let frames = 0; m.on('stats', () => frames++);
+                setTimeout(() => {
+                    // (A copy of what the canvas shows: with the engine in a worker, the page can still draw the canvas as an image.)
+                    const pad = Object.assign(document.createElement('canvas'), {width: 20, height: 15}).getContext('2d');
+                    let drawn = 'unknown';
+                    // (Only for the worker renderer: on the main thread the browser clears the drawing buffer after each frame.)
+                    if (m.renderer !== 'worker') drawn = 'not checked for this renderer'; else try { pad.drawImage(m.getCanvas(), 0, 0, 20, 15); const d = pad.getImageData(0, 0, 20, 15).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i]) n++; drawn = n + ' of 300 points have a picture'; } catch (e) { drawn = 'not readable: ' + e.message; }
+                    const counts = {}; for (const s of seen) counts[s] = (counts[s] || 0) + 1;
+                    const out = {renderer: m.renderer || null, events: counts, warnings: warnings.slice(0, 6), statsReports: frames, drawn, styleLoaded: m.isStyleLoaded(), tilesLoaded: m.areTilesLoaded()};
+                    m.remove(); el.remove(); console.warn = warn; console.error = error;
+                    done(out);
+                }, 15000);
+            }).catch(e => done({error: String(e.message)}));`}).catch(e => ({error: e.message}));
+    }
+
     // 2. The benchmark page, and what the browser can do.
     await wd('POST', `/session/${id}/url`, {url: benchURL});
     result.probe = await wd('POST', `/session/${id}/execute/async`, {script: PROBE, args: []}).catch(e => ({error: e.message}));
@@ -99,13 +131,14 @@ try {
 await wd('DELETE', `/session/${id}`).catch(() => {});
 
 writeFileSync(path.join(out, `${name}.json`), JSON.stringify(result, null, 1));
-const rows = (result.table ?? []).filter(r => r.length > 1), p = result.probe ?? {}, yes = v => v === true ? 'yes' : v === false ? 'no' : String(v ?? 'unknown');
+const table = result.table ?? [], rows = table.filter(r => r.length > 1), failedRows = table.filter(r => r.length === 1 && r[0]), p = result.probe ?? {}, yes = v => v === true ? 'yes' : v === false ? 'no' : String(v ?? 'unknown');
 const md = [`### ${name} (${result.browser} ${result.version}${result.device ? ', ' + result.device : ''})`, '', `${result.os}, through WebDriver`, '', result.env ?? '', '',
-    ...(p.page ? [`- On the page: OffscreenCanvas ${yes(p.page.offscreenCanvas)}, transferControlToOffscreen ${yes(p.page.transfer)}, WebGL2 ${yes(p.page.webgl2)}, pixel ratio ${p.page.pixelRatio}, screen ${p.page.screen}`,
+    ...(p.page ? [`- On the page: OffscreenCanvas ${yes(p.page.offscreenCanvas)}, transferControlToOffscreen ${yes(p.page.transfer)}, WebGL2 ${yes(p.page.webgl2)}, "reduce motion" ${yes(p.page.reducedMotion)}, pixel ratio ${p.page.pixelRatio}, screen ${p.page.screen}`,
         `- In a worker: ${p.worker?.error ? 'FAILED: ' + p.worker.error : `OffscreenCanvas ${yes(p.worker?.offscreenCanvas)}, WebGL2 context ${yes(p.worker?.webgl2)}, 2D context ${yes(p.worker?.context2d)}, requestAnimationFrame ${yes(p.worker?.requestAnimationFrame)}`}`,
         `- Frames in one second: ${p.page.frames ?? 'unknown'} on the page, ${p.worker?.frames ?? 'unknown'} in a worker`] : p.error ? [`- The check of what the browser can do failed: ${p.error}`] : []),
-    ...result.checks.map(c => `- ${c.mode}: ${c.error ? 'FAILED: ' + c.error + ' — the map says ' + JSON.stringify(c.state) : `loaded, renderer ${c.renderer}, canvas ${c.canvas}`}`), '',
+    ...result.checks.map(c => `- ${c.mode}: ${(c.error ? 'FAILED: ' + c.error + ' — the map says ' + JSON.stringify(c.state) : `loaded, renderer ${c.renderer}, canvas ${c.canvas}`) + (c.closer ? '; a second map with listeners, after 15 s: ' + JSON.stringify(c.closer) : '')}`), '',
     ...(rows.length ? [`| ${rows[0].join(' | ')} |`, `|${rows[0].map(() => '---').join('|')}|`, ...rows.slice(1).map(r => `| ${r.join(' | ')} |`)] : ['(no benchmark results)']),
+    ...failedRows.map(r => `- ${r[0]}`),
     ...(result.errors.length ? ['', 'Errors: ' + result.errors.join(' | ')] : []), ''].join('\n');
 writeFileSync(path.join(out, `${name}.md`), md);
 console.log(md);
