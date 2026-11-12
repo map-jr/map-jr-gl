@@ -306,7 +306,7 @@ as ten. See [Markers](markers.md).
 | Member | Meaning |
 |---|---|
 | `update(description)` | Changes the map to a new description. Takes the complete description. See [Change the map](#change-the-map). |
-| `destroy()` | Removes the map and frees its memory. |
+| `destroy()` | Removes the map and frees its memory. It can be called while the map loads. Call it before you make another map in the same element: a second map in an element that has a map leaves two canvases in the element, and the library warns in the console. |
 | `moveTo(view)` | Moves the camera now. With `duration` (milliseconds), with an animation. |
 | `fitBounds(bounds, options)` | Shows an area. |
 | `queryFeatures(at, options)`, `watchFeatures(at, options, listener)` | Find features, one time or kept up to date. See [Queries](#queries). |
