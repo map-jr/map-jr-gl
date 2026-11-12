@@ -11,17 +11,31 @@ A small, fast map library for the web. It reads MapLibre styles. It has two entr
 
 **[Open the live gallery](https://map-jr.github.io/map-jr-gl/)** to see each feature with the code that makes it.
 
+Which entry to use:
+
+| You have | Use | Why |
+|---|---|---|
+| A new application, or an application with Vue, Nuxt, React or Svelte | `map-jr-gl` and its adapters | New features go to this entry first. |
+| Code or plugins that were written for MapLibre GL JS | `map-jr-gl/maplibre-compat` | The code keeps its calls (`new Map`, `map.on`, `map.addLayer`). |
+
+The two entries have different methods. Each example below names its entry. The comparisons with MapLibre GL JS in
+[Status](#status) (render tests, example pages, plugins) test `map-jr-gl/maplibre-compat`. The entry `map-jr-gl`
+uses the same renderer and has its own tests in a browser.
+
 ## Why use this library
 
-- **It is small.** The page loads about 26 KB of script (gzip). MapLibre GL JS loads more than 250 KB.
+- **It is small.** A page with a map transfers about 88 KB of script (gzip): about 28 KB for the page script of
+  `map-jr-gl` and about 60 KB for the worker file. MapLibre GL JS 6.17 transfers about 444 KB (page script, worker
+  and CSS). The smaller size does not include a globe and other projections, sky, fog, custom layers and the other
+  items in [What is not available](docs/maplibre-compatibility.md#what-is-not-available).
 - **It does not block your page.** The map draws in a worker. Your page stays responsive while the map moves.
 - **It draws many markers.** A marker layer draws 100,000 SVG markers at 60 frames per second.
 - **It draws on the server.** You can render the first view of a map as SVG or as an image, without a browser.
   This works on Node.js and on Cloudflare Workers.
 - **It includes elevation tools.** 3D terrain, relief shading, contour lines and elevation queries use one
   elevation source. You do not need a plugin.
-- **It answers questions about the data.** `queryFeatures` reads the tile data directly. You do not need a style
-  layer.
+- **It answers questions about the data.** `queryFeatures` with `sources` reads the tile data directly. You do not
+  need a style layer.
 - **Fonts as the style gives them, or none to download.** Text uses the glyph files of the style, as MapLibre GL JS does. With `glyphs: false`, text uses the fonts of the browser: no requests for fonts.
 - **It is easy to change to.** Most MapLibre GL JS code works after you change the import to
   `map-jr-gl/maplibre-compat`.
@@ -79,6 +93,8 @@ The build writes the library to the `dist` folder. Then use one of these methods
 ## Use
 
 ### Show a map
+
+This example uses the entry `map-jr-gl`.
 
 ```html
 <div id="map" style="height: 400px"></div>
@@ -159,8 +175,12 @@ The library has a default export for such plugins only, because some of them con
 
 A marker layer draws many markers on the map canvas. Each marker is an SVG template with values from your data.
 
+With `map-jr-gl`, a marker layer is an entry of `markers` in the description:
+
 ```js
-const places = map.addMarkerLayer({
+import {createMap} from 'map-jr-gl';
+
+const places = {
   id: 'places',
   svg: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="{{color}}"/></svg>',
   width: 24,
@@ -169,19 +189,61 @@ const places = map.addMarkerLayer({
     {lngLat: [-74.006, 40.7128], props: {color: '#d6453d', name: 'City Hall'}},
     {lngLat: [-73.9857, 40.7484], props: {color: '#2f7fd1', name: 'Empire State Building'}},
   ],
+};
+
+const map = createMap(document.getElementById('map'), {
+  style: 'https://tiles.openfreemap.org/styles/liberty',
+  initialView: {center: [-73.996, 40.73], zoom: 11.5},
+  markers: [places],
 });
+
+map.listen('markerclick', event => {
+  event.layer.openPopup(event.index, event.marker.props.name);
+});
+```
+
+With `map-jr-gl/maplibre-compat`, `map` is a `Map`, and the same layer and listener are method calls:
+
+```js
+map.addMarkerLayer(places);
 
 map.on('markerclick', event => {
   event.layer.openPopup(event.index, event.marker.props.name);
 });
 ```
 
-For a small number of markers with HTML content, use `Marker` and `Popup`. They have the same API as MapLibre GL JS.
-See [Markers](docs/markers.md).
+For a small number of markers with HTML content, use `map.overlay` (`map-jr-gl`) or `Marker` and `Popup`
+(`map-jr-gl/maplibre-compat`, the same API as MapLibre GL JS). See [Markers](docs/markers.md).
 
 ![Fifty thousand markers on a map](docs/images/markers.jpg)
 
 ### Show terrain, relief and contour lines
+
+With `map-jr-gl`, the elevation source, the layers and the terrain are additions to the style (`extend`):
+
+```js
+import {createMap} from 'map-jr-gl';
+
+const map = createMap(document.getElementById('map'), {
+  style: 'https://tiles.openfreemap.org/styles/liberty',
+  initialView: {center: [7.6586, 45.9763], zoom: 12.4, pitch: 60},
+  extend: {
+    sources: {
+      dem: {type: 'raster-dem', tiles: ['https://tiles.mapterhorn.com/{z}/{x}/{y}.webp'], encoding: 'terrarium', tileSize: 512, maxzoom: 12},
+      contours: {type: 'contour', source: 'dem', thresholds: {11: [100, 500], 12: [50, 200], 14: [20, 100]}},
+    },
+    layers: [
+      {id: 'relief', type: 'hillshade', source: 'dem'},
+      {id: 'contour-lines', type: 'line', source: 'contours', 'source-layer': 'contours'},
+    ],
+    terrain: {source: 'dem', exaggeration: 1.5},
+  },
+});
+
+const metres = await map.queryElevation([7.6586, 45.9763]);
+```
+
+With `map-jr-gl/maplibre-compat`, where `map` is a `Map` whose style has loaded:
 
 ```js
 map.addSource('dem', {
@@ -209,6 +271,27 @@ See [Terrain and elevation](docs/terrain-and-elevation.md).
 
 ### Find what is at a position
 
+With `map-jr-gl`, `queryFeatures` with `sources` reads the tile data of those sources. It finds data that the style
+does not draw, and it also works for a position that is not on the screen. Without `sources`, it gives the features
+that the style layers draw. See [Queries](docs/api.md#queries).
+
+```js
+import {createMap} from 'map-jr-gl';
+
+const map = createMap(document.getElementById('map'), {
+  style: 'https://tiles.openfreemap.org/styles/liberty',
+  initialView: {center: [-74.0065, 40.7085], zoom: 16},
+  onClick: async event => {
+    // "openmaptiles" is the id of the vector source in this style.
+    const features = await map.queryFeatures(event.lngLat, {sources: ['openmaptiles'], radius: 8});
+    console.log(features.map(feature => feature.properties));
+  },
+});
+```
+
+With `map-jr-gl/maplibre-compat`, `map.queryFeatures(lngLat, {radius: 8})` always reads the tile data.
+`queryRenderedFeatures` and `querySourceFeatures` are also available:
+
 ```js
 map.on('click', async event => {
   const features = await map.queryFeatures(event.lngLat, {radius: 8});
@@ -216,12 +299,11 @@ map.on('click', async event => {
 });
 ```
 
-`queryFeatures` reads the tiles. It finds data that the style does not draw. It also works for a position that is
-not on the screen.
-
 ![Buildings that change colour below the pointer](docs/images/query.jpg)
 
 ### Render the first view on the server
+
+This example uses the entry `map-jr-gl/server`.
 
 ```js
 import {renderToSVG} from 'map-jr-gl/server';
@@ -241,6 +323,9 @@ See [Server rendering](docs/server-rendering.md).
 ![A map that was drawn on the server](docs/images/server.jpg)
 
 ### Use highway shields and other icons that are generated on demand
+
+This example uses the entry `map-jr-gl/maplibre-compat`, where `map` is a `Map`. The description of `map-jr-gl` has
+no field for this yet.
 
 ```js
 map.setMissingStyleImageResolver(name => {
