@@ -484,5 +484,35 @@ for (const [build, file] of [['the development build, and the file of the checks
     } catch (e) { check('standalone: the test run was completed', false, String(e.message).split('\n')[0]); }
     await page.close();
 }
+
+// The `queryFeatures` example of the gallery (site/examples/query.js and query.compat.js; the site must be built):
+// the answer to an earlier click arrives after the answer to a later click, and the example shows the later click.
+for (const code of ['core', 'compat']) {
+    const page = await browser.newPage({viewport: {width: 1200, height: 800}});
+    try {
+        await page.goto(`${origin}/gallery/?code=${code}#query`);
+        await page.waitForFunction(() => window.maps?.query, null, {timeout: 60000});
+        await page.evaluate(async code => {
+            document.getElementById('query').scrollIntoView({block: 'center'});
+            const map = window.maps.query, wait = ms => new Promise(r => setTimeout(r, ms));
+            for (let i = 0; i < 300 && !(code === 'core' ? map.state.get().idle : map.loaded()); i++) await wait(100);
+            await wait(1000);
+            // The first question gets its answer 2 seconds late. The questions after it are not changed.
+            const ask = map.queryFeatures;
+            window.asked = 0;
+            map.queryFeatures = function (...a) { const answer = ask.apply(this, a); return window.asked++ ? answer : answer.then(async found => { await wait(2000); return found; }); };
+        }, code);
+        // (The row is in the middle of the page and can be taller than the page: the clicks are at the middle height.)
+        const box = await page.locator('#query .live').boundingBox(), y = 400, first = box.x + 80, second = box.x + box.width - 80;
+        await page.mouse.click(first, y);
+        await page.waitForFunction(() => window.asked === 1, null, {timeout: 10000});
+        await page.mouse.click(second, y);
+        await page.waitForFunction(() => window.asked === 2, null, {timeout: 10000});
+        await page.waitForTimeout(3500); // (the late answer of the first click has arrived, and a closed popup has gone)
+        const tips = await page.evaluate(() => [...document.querySelectorAll('#query .map-jr-popup-tip')].map(t => { const r = t.getBoundingClientRect(); return Math.round(r.left + r.width / 2); }));
+        check(`gallery, query example (${code}): after two clicks, the popup is at the last click`, tips.length === 1 && Math.abs(tips[0] - second) < Math.abs(tips[0] - first), JSON.stringify({tips, first: Math.round(first), second: Math.round(second)}));
+    } catch (e) { check(`gallery, query example (${code}): the test run was completed`, false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
 await browser.close();
 process.exit(failed ? 1 : 0);

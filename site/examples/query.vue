@@ -7,11 +7,14 @@ const NYC = [-74.0065, 40.7085];
 
 const map = useTemplateRef('map');
 const found = shallowRef(null);
+let clicks = 0;
 
 async function ask(event) {
+  const click = ++clicks;
   // The features of the tile data near the point. You do not need a style layer.
   const features = await map.value.host.queryFeatures(event.point, {radius: 8});
-  found.value = {lngLat: event.lngLat, features};
+  // An earlier click can get its answer after a later click. Only the last click is shown.
+  if (click === clicks) found.value = {lngLat: event.lngLat, features};
 }
 </script>
 
