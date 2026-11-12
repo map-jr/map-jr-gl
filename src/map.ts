@@ -220,10 +220,13 @@ export class Map {
     constructor(private options: MapOptions) {
         const c = typeof options.container === 'string' ? document.getElementById(options.container) : options.container;
         if (!c) throw new Error('Map container not found');
+        // Two maps in one element leave two canvases. Hot module replacement and an effect without a clean-up do this.
+        if (c.querySelector(':scope > .map-jr-canvas')) console.warn('[map-jr-gl] The container already has a map. Call remove() on the first map (destroy() in the main API) before you make another map in the same element.');
         this.container = c;
         if (getComputedStyle(c).position === 'static') c.style.position = 'relative';
         if (getComputedStyle(c).overflow === 'visible') c.style.overflow = 'hidden'; // a frame from before a shrink must not spill out
         this.canvas = document.createElement('canvas');
+        this.canvas.className = 'map-jr-canvas';
         // `object-fit: none` shows the canvas's current frame unscaled and centred, whatever size that frame is. With
         // worker rendering a new frame arrives a moment after the container resizes; until it does, the old frame simply
         // stays centred instead of being stretched to the new shape. The box is sized in device pixels and scaled back
@@ -301,8 +304,10 @@ export class Map {
         do {
             turn = this.styleTurn;
             try { raw = await this.loadStyle(o.style); } catch (error) { if (turn === this.styleTurn) { this.starting = false; giveBack(); throw error; } }
-        } while (turn !== this.styleTurn);
+        } while (turn !== this.styleTurn && !this.removed);
         this.starting = false;
+        // (The map can be removed during each `await` of this method. What this start acquired is then given back.)
+        if (this.removed) { giveBack(); return; }
         this.rawStyle = this.firstChange?.(undefined, raw) ?? raw;
         this.firstChange = undefined; // (a restart of the engine starts from the style as it is then)
         for (const fn of this.beforeStyle.splice(0)) fn();
@@ -312,6 +317,7 @@ export class Map {
         const sc = this.rawStyle;
         if (o.center === undefined && o.zoom === undefined && o.bearing === undefined && o.pitch === undefined && !o.bounds) this.tr.set(sc.center, sc.zoom, sc.bearing, sc.pitch);
         const restyled = this.restyled, first = await resolveStyle(this.rawStyle, fetch, this.styleBase, undefined, this.sourceFailed);
+        if (this.removed) { giveBack(); return; }
         if (!(o.glyphs ?? !o.fonts)) first.glyphs = undefined;
         // (A change of the style during that step has its own result, which is newer. The engine gets it after its start.)
         if (restyled === this.restyled) this.resolved = first;
@@ -323,9 +329,10 @@ export class Map {
             minZoom: tr.minZoom, maxZoom: tr.maxZoom, maxPitch: tr.maxPitch, antialias: o.antialias,
         };
 
-        this.tilePool = await pool || undefined;
+        const tiles = await pool;
         let engineWorker = await engine;
         if (this.removed) { giveBack(); return; }
+        this.tilePool = tiles || undefined;
         const ports = this.tilePool?.connect() ?? [];
         // (An engine in a worker needs the tile workers: without them the engine runs on this thread.)
         if (!ports.length) { engineWorker?.terminate(); engineWorker = null; }
@@ -345,6 +352,7 @@ export class Map {
                 this.ready = false;
                 w.terminate();
                 this.startMainEngine(fresh, {...engineOptions, style: this.resolved, center: [this.tr.lng, this.tr.lat], zoom: this.tr.zoom, bearing: this.tr.bearing}, []).then(() => {
+                    if (this.removed) return;
                     this.ready = true;
                     for (const [c, t] of this.queue.splice(0)) this.send(c, t);
                     this.resend();
@@ -361,6 +369,7 @@ export class Map {
             this.renderer = 'worker';
         } else {
             await this.startMainEngine(this.canvas, engineOptions, ports);
+            if (this.removed) return; // (`remove` gave the tile workers back, and no engine was made)
         }
         this.ready = true;
         for (const [c, t] of this.queue) this.send(c, t);
@@ -391,6 +400,7 @@ export class Map {
             this.observer?.disconnect();
             for (const w of this.workers.splice(0)) w.terminate();
             this.tilePool?.release();
+            this.tilePool = undefined; // (a `remove` during the start below must not give the same workers back again)
             this.ready = false; this.queue = []; this.tilesLoaded = false; this.seq = 0;
             const fresh = this.canvas.cloneNode() as HTMLCanvasElement, tr = this.tr;
             this.canvas.replaceWith(fresh);
@@ -417,6 +427,7 @@ export class Map {
     /** Runs the engine on this thread. Its code is a separate chunk, fetched only when this path is taken. */
     private async startMainEngine(canvas: HTMLCanvasElement, options: import('./engine.ts').EngineOptions, ports: MessagePort[]) {
         const {Engine, LocalBackend, PortBackend} = await import('./engine-entry.ts');
+        if (this.removed) return;
         const backends: TileBackend[] = ports.length ? ports.map(p => new PortBackend(p)) : [new LocalBackend()];
         const engine = new Engine(canvas, options, backends, e => this.onEngineEvent(e));
         this.send = c => engine.command(c);

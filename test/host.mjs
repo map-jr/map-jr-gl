@@ -238,6 +238,57 @@ for (const renderer of ['worker', 'main']) {
     } catch (e) { check(`[${renderer}] the test run was completed`, false, String(e.message).split('\n')[0]); }
     await page.close();
 }
+// A map that is destroyed while it loads (React StrictMode does this on each mount), and two maps in one element.
+{
+    const page = await browser.newPage({viewport: {width: 900, height: 600}});
+    const warnings = [];
+    page.on('console', m => { if (m.type() === 'warning') warnings.push(m.text()); });
+    try {
+        // The file of the main-thread engine is held back until the map is destroyed: the map is removed during that `await`.
+        let held = 0;
+        await page.route(/map-jr-gl-engine-entry/, async route => { held++; await page.evaluate(() => window.early.destroy()); await route.continue(); });
+        await page.goto('http://localhost:8080/bench');
+        const late = await page.evaluate(async () => {
+            const lib = window.lib = await import('/dist/map-jr-gl.js'), style = window.style = await (await fetch('/style.json')).json();
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99;background:#fff'}));
+            window.early = lib.createMap(el, {style, renderer: 'main'});
+            await new Promise(r => setTimeout(r, 3000));
+            const left = el.childElementCount;
+            el.remove();
+            return left;
+        });
+        await page.unroute(/map-jr-gl-engine-entry/);
+        check('a map destroyed while the engine file loads adds nothing to its element afterwards', held === 1 && late === 0, JSON.stringify({held, late}));
+
+        // Destroyed at once, with a style object and with a style URL: no worker stays.
+        await page.evaluate(() => {
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99;background:#fff'}));
+            for (const style of [window.style, '/style.json', window.style]) window.lib.createMap(el, {style, attribution: false}).destroy();
+            el.remove();
+        });
+        for (let i = 0; i < 100 && page.workers().length; i++) await page.waitForTimeout(100);
+        await page.waitForTimeout(1500); // (a worker that starts late would show now)
+        check('maps destroyed at once leave no worker', page.workers().length === 0, `${page.workers().length} workers`);
+
+        // A second map in an element that has a map: a warning says so. After the first map is destroyed, there is none.
+        const twice = await page.evaluate(async () => {
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99;background:#fff'}));
+            const a = window.lib.createMap(el, {style: window.style, attribution: false});
+            a.destroy();
+            const b = window.lib.createMap(el, {style: window.style, attribution: false});
+            console.warn('mark');
+            const c = window.lib.createMap(el, {style: window.style, attribution: false});
+            await new Promise(r => setTimeout(r, 300));
+            b.destroy(); c.destroy();
+            const left = el.childElementCount;
+            el.remove();
+            return left;
+        });
+        const said = warnings.filter(w => w.startsWith('[map-jr-gl] The container already has a map.')).length, mark = warnings.indexOf('mark');
+        check('a second map in one element gets a warning, and a map after destroy() does not', said === 1 && mark >= 0 && warnings.findIndex(w => w.startsWith('[map-jr-gl] The container already has a map.')) > mark && twice === 0, JSON.stringify({warnings, twice}));
+    } catch (e) { check('removed while loading: the test run was completed', false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
 // The glyph files of the style: asked for by default, with the font stack and the range in the URL; not with `glyphs: false`.
 // (The test server has no glyph files: the text then uses the fonts of the device, and the map still becomes idle.)
 {
