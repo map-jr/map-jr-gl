@@ -866,15 +866,19 @@ export class Map {
         }
         return this.setGeoJSON(id, {type: 'FeatureCollection', features});
     }
+    /** The number of the newest call that set the data of each GeoJSON source: an answer for an older call is dropped. */
+    private dataCalls = new globalThis.Map<string, number>();
     private async setGeoJSON(id: string, data: unknown) {
+        const call = (this.dataCalls.get(id) ?? 0) + 1;
+        this.dataCalls.set(id, call);
         this.rawStyle.sources[id].data = data;
         this.unloaded(id);
         for (const type of ['sourcedataloading', 'dataloading']) this.fire(type, {dataType: 'source', sourceId: id});
         if (typeof data === 'string') {
             const raw = this.rawStyle.sources[id], url = new URL(data, this.styleBase).href;
             data = await (await this.fetchAs('Source')(url)).json();
-            // (The source was removed, or has other data since: this answer is old.)
-            if (this.rawStyle?.sources[id] !== raw || new URL(raw.data, this.styleBase).href !== url) return;
+            // (The source was removed, or its data was set again since, also to the same URL: this answer is old.)
+            if (this.rawStyle?.sources[id] !== raw || this.dataCalls.get(id) !== call) return;
             // A later change of the style sends the data of the source again: it must be this data, not the first answer.
             keep(raw, url, data);
         }
