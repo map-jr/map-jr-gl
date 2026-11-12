@@ -112,6 +112,50 @@ for (const renderer of ['worker', 'main']) {
         });
         check(`[${renderer}] two maps with one extend object both load its source`, sharedExtend.idles.every(Boolean) && sharedExtend.drawn.every(n => n > 0), JSON.stringify(sharedExtend));
 
+        // 3e. Common mistakes: each gives one warning that says what to write, and a correct description gives none.
+        const warnings = await page.evaluate(async renderer => {
+            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), said = [], log = console.warn;
+            console.warn = (...a) => said.push(a.join(' '));
+            const div = style => document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;' + style}));
+            const idle = host => new Promise(r => { host.state.subscribe(s => s.idle, v => v && r(true)); setTimeout(() => r(false), 8000); });
+            const empty = {type: 'FeatureCollection', features: []}, pin = id => ({id, svg: '<svg viewBox="0 0 8 8"><circle cx="4" cy="4" r="4"/></svg>', width: 8, height: 8, data: [{lngLat: [-74.0065, 40.7085]}]});
+            const base = {style: t.style, initialView: {center: [-74.0065, 40.7085], zoom: 14.3}, renderer, attribution: false, onError: () => {}};
+            // A correct description, with each of the fields that the checks read.
+            const goodEl = div('height:150px'), good = t.lib.createMap(goodEl, {...base, interactiveLayers: ['own-fill'], data: {own: empty}, markers: [pin('a'), pin('b')],
+                extend: {sources: {own: {type: 'geojson', data: empty}}, layers: [{id: 'own-fill', type: 'fill', source: 'own', before: t.style.layers[1].id}]}});
+            await idle(good);
+            await good.queryFeatures({x: 100, y: 75}, {layers: ['own-fill']});
+            await good.queryFeatures({x: 100, y: 75}, {sources: ['own'], radius: 5, geometry: false});
+            await good.queryFeatures(undefined, {sources: ['omt'], sourceLayers: ['water']});
+            await wait(300);
+            const correct = said.splice(0);
+            // The same map with mistakes.
+            const spec = {...base, interactiveLayers: ['nope'], data: {nosuch: empty}, markers: [pin('a'), pin('a')],
+                extend: {layers: [{id: 'lost', type: 'fill', source: 'missing', before: 'nonexistent'}]}};
+            const badEl = div('height:150px'), bad = t.lib.createMap(badEl, spec);
+            await idle(bad);
+            for (let i = 0; i < 2; i++) { // (twice: a warning comes once)
+                bad.update({...spec, interactive: false, initialView: {center: [0, 0], zoom: 2}});
+                await bad.queryFeatures({x: 100, y: 75}, {layers: ['nope']}).catch(() => {});
+                await bad.queryFeatures({x: 100, y: 75}, {sources: ['nope'], layers: ['lost']}).catch(() => {});
+                await bad.queryFeatures({x: 100, y: 75}, {sourceLayers: ['water'], radius: 5, geometry: false}).catch(() => {});
+                await bad.queryFeatures(undefined, {sources: ['omt'], radius: 5, geometry: false}).catch(() => {});
+            }
+            const place = await bad.queryFeatures({lng: -74.0065, lat: 40.7085}).then(() => '', e => e.message);
+            const flatEl = div('height:0'), flat = t.lib.createMap(flatEl, base);
+            await wait(500);
+            for (const [el, host] of [[goodEl, good], [badEl, bad], [flatEl, flat]]) { host.destroy(); el.remove(); }
+            console.warn = log;
+            return {correct, said, place};
+        }, renderer);
+        const expected = ['createMap(): the container has height 0', 'interactiveLayers: the style has no layer "nope"', 'data: the style has no GeoJSON source "nosuch"', 'queryFeatures(): the style has no layer "nope"',
+            'queryFeatures(): the style has no source "nope"', 'extend: the layer "lost" has before: "nonexistent"', 'extend: the layer "lost" uses the source "missing"', 'markers: two marker layers have the id "a"',
+            'update(): "interactive" changed', 'update(): "initialView" changed', 'queryFeatures(): "sourceLayers" has an effect only', 'queryFeatures(): "radius" has an effect only', 'queryFeatures(): "geometry" has an effect only',
+            'queryFeatures(): "layers" has no effect'];
+        check(`[${renderer}] common mistakes: each gives one warning, a wrong place of a query is refused with a message, and a correct description gives no warning`,
+            warnings.correct.length === 0 && warnings.said.length === expected.length && expected.every(e => warnings.said.filter(w => w.startsWith('[map-jr-gl] ' + e)).length === 1)
+            && warnings.place.startsWith('[map-jr-gl] queryFeatures(): {"lng":-74.0065,"lat":40.7085} is not a place.'), JSON.stringify(warnings));
+
         // 3b. A description with no style (only the changed fields) throws at once with a message, and the map is not harmed.
         const partial = await page.evaluate(async () => {
             const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), said = fn => { try { fn(); return ''; } catch (e) { return e.message; } };

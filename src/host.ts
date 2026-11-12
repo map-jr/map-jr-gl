@@ -153,15 +153,22 @@ export interface MapHost {
 
 const same = (a: Partial<View> | undefined, b: Partial<View> | undefined) => !!a && !!b && a.zoom === b.zoom && a.bearing === b.bearing && a.pitch === b.pitch && a.center?.[0] === b.center?.[0] && a.center?.[1] === b.center?.[1];
 
+/** Reports a mistake of the user: the number of a message of `src/mistakes.ts`, and the names that the message has. */
+type Warn = (code: number, a?: string, b?: string) => void;
+/** The fields of `MapSetup`, and `initialView`: a change of one of them in `update` has no effect. */
+const setupOnly = ['renderer', 'fonts', 'fontFamily', 'glyphs', 'interactive', 'antialias', 'attribution', 'hash', 'initialView'] as const;
+
 /** A style with the additions of `extend`. */
-function extended(style: any, extend?: StyleExtension) {
+function extended(style: any, extend: StyleExtension | undefined, warn: Warn) {
     if (!extend) return style;
-    const layers = [...style.layers];
+    const layers = [...style.layers], sources = {...style.sources, ...extend.sources};
     for (const {before, ...layer} of extend.layers ?? []) {
         const at = before ? layers.findIndex(l => l.id === before) : -1;
+        if (before && at < 0) warn(5, layer.id, before);
+        if (layer.source && !sources[layer.source as string]) warn(6, layer.id, layer.source as string);
         layers.splice(at < 0 ? layers.length : at, 0, layer);
     }
-    return {...style, sources: {...style.sources, ...extend.sources}, layers, ...(extend.terrain === undefined ? {} : {terrain: extend.terrain ?? undefined})};
+    return {...style, sources, layers, ...(extend.terrain === undefined ? {} : {terrain: extend.terrain ?? undefined})};
 }
 
 /** Stops a description with no style or with a marker layer with no size, with a message that says what to write (a caller in JavaScript has no type check). */
@@ -180,11 +187,20 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
         attributionControl: spec.attribution, minZoom: spec.minZoom, maxZoom: spec.maxZoom, maxPitch: spec.maxPitch,
     };
     for (const k in options) if ((options as any)[k] === undefined) delete (options as any)[k];
-    // (With additions, the style is given after the map is made, with a function that adds them when it has loaded.)
-    if (spec.extend) delete options.style;
+    // (The style is given after the map is made, with a function that adds the additions of `extend` when it has loaded.)
+    delete options.style;
     const map = new Map(options);
-    const restyle = (next: MapSpec) => map.setStyle(next.style, {transformStyle: (_, style) => extended(style, next.extend)});
-    if (spec.extend) restyle(spec);
+    // Each mistake gives one warning for each map. The texts are in a file that is loaded when there is a mistake.
+    const warned = new Set<string>();
+    const warn: Warn = (code, a, b) => {
+        const key = code + ' ' + a;
+        if (!warned.has(key)) { warned.add(key); import('./mistakes.ts').then(m => console.warn(m.mistake(code, a, b))); }
+    };
+    // `styled`: the map has the style of the last description, so its layers and sources can be compared with the description.
+    let styled = false;
+    const restyle = (next: MapSpec) => { styled = false; map.setStyle(next.style, {transformStyle: (_, style) => { styled = true; return extended(style, next.extend, warn); }}); };
+    restyle(spec);
+    if (!map.getContainer().clientHeight) warn(0);
     const viewOf = (): View => { const c = map.getCenter(); return {center: [c.lng, c.lat], zoom: map.getZoom(), bearing: map.getBearing(), pitch: map.getPitch()}; };
     const state = createStore<MapState>({loaded: false, idle: false, moving: false, view: viewOf(), hover: [], renderer: undefined, error: undefined});
     const markers = new globalThis.Map<string, {layer: MarkerLayer; options: MarkerLayerOptions}>();
@@ -243,11 +259,15 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
     const sent = new globalThis.Map<string, unknown>();
     const giveData = () => {
         for (const id in now.data) {
-            const source = sent.get(id) !== now.data[id] && map.getSource(id) as {setData?: (data: unknown) => void} | undefined;
-            if (source && source.setData) { sent.set(id, now.data[id]); source.setData(now.data[id]); }
+            if (sent.get(id) === now.data[id]) continue;
+            const source = map.getSource(id) as {setData?: (data: unknown) => void} | undefined;
+            if (source?.setData) { sent.set(id, now.data[id]); source.setData(now.data[id]); }
+            else if (styled) warn(2, id);
         }
     };
-    map.on('styledata', giveData);
+    /** Warns for each id of `ids` that is not a layer (or a source) of the style. Before the style has come, there is nothing to compare. */
+    const known = (code: number, ids: string[] | undefined, source?: boolean) => { if (styled) for (const id of ids ?? []) if (!(source ? map.getSource(id) : map.getLayer(id))) warn(code, id); };
+    map.on('styledata', () => { giveData(); known(1, now.interactiveLayers); });
 
     const apply = (next: MapSpec, before?: MapSpec) => {
         // (A description that is made again each time, as in a template of a framework, has new objects with the same
@@ -268,7 +288,8 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
         }
         if (next.cursor !== before?.cursor) map.setCursor(next.cursor ?? '');
         if (next.markers !== before?.markers) {
-            const wanted = new Set((next.markers ?? []).map(m => m.id));
+            const wanted = new Set<string>();
+            for (const m of next.markers ?? []) { if (wanted.has(m.id)) warn(7, m.id); wanted.add(m.id); }
             for (const [id, m] of markers) if (!wanted.has(id)) { m.layer.remove(); markers.delete(id); }
             for (const m of next.markers ?? []) {
                 const have = markers.get(m.id);
@@ -279,7 +300,8 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
                 else { have?.layer.remove(); markers.set(m.id, {layer: map.addMarkerLayer({...m}), options: m}); }
             }
         }
-        if (differ(next.interactiveLayers, before?.interactiveLayers)) hover();
+        if (differ(next.interactiveLayers, before?.interactiveLayers)) { hover(); known(1, next.interactiveLayers); }
+        if (before) for (const k of setupOnly) if (differ(next[k], before[k])) warn(8, k);
         now = next;
         if (next.data !== before?.data && !restyled) giveData();
     };
@@ -288,6 +310,13 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
     const isPosition = (at: FeaturePlace): at is [number, number] => typeof (at as number[])[0] === 'number';
     const queryFeatures: MapHost['queryFeatures'] = (at, o = {}) => {
         const box = Array.isArray(at) && !isPosition(at) ? [at[0].x, at[0].y, at[1].x, at[1].y] as [number, number, number, number] : undefined;
+        const place = !!at && !box;
+        known(3, o.layers); known(4, o.sources, true);
+        // An option that this kind of query does not read gives a warning.
+        if (o.sources && o.layers) warn(12);
+        if (!o.sources && o.sourceLayers) warn(10, 'sourceLayers');
+        if (!o.sources || !place) { if (o.radius !== undefined) warn(11, 'radius'); if (o.geometry === false) warn(11, 'geometry'); }
+        if (place && !o.sources && !isPosition(at as FeaturePlace) && typeof (at as {x: number}).x !== 'number') return import('./mistakes.ts').then(m => { throw new Error(m.mistake(9, JSON.stringify(at))); });
         if (o.sources) return at && !box ? map.queryFeatures(at as [number, number] | {x: number; y: number}, o) : map.querySources(box, o.sources, o);
         const point = at && !box ? isPosition(at) ? map.project(at) : at as {x: number; y: number} : undefined;
         return map.queryLayers(box ? [[box[0], box[1]], [box[2], box[3]]] : point ? [point.x, point.y] : {layers: o.layers, filter: o.filter}, {layers: o.layers, filter: o.filter});

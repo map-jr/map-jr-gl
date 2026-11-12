@@ -41,7 +41,20 @@ map.update(description);
 - A field that the new description leaves out is removed from the map. This holds for `markers`, `controls`,
   `cursor`, `extend` and the limits of the camera. A source keeps the last data that `data` gave it.
 - The fields that are read when the map is made (`renderer`, `fonts`, `fontFamily`, `glyphs`, `interactive`,
-  `antialias`, `attribution`, `hash`) and `initialView` have no effect in `update`.
+  `antialias`, `attribution`, `hash`) and `initialView` have no effect in `update`. A change of one of them gives a
+  warning.
+
+The map writes a warning to the console with `console.warn`, once for each map, for each of these mistakes:
+
+- The container has height 0 when the map is made.
+- An id in `interactiveLayers`, or in `layers` or `sources` of `queryFeatures`, is not in the style.
+- A key of `data` is not the id of a GeoJSON source of the style.
+- A layer of `extend` names a `before` layer or a source that the style does not have.
+- Two marker layers have the same `id`.
+- An option of `queryFeatures` has no effect in that kind of query.
+
+The ids are compared when the style has loaded. The texts of the warnings are in a file that the map loads only when
+there is a mistake.
 
 The library compares each field with the field of the last description:
 
@@ -250,7 +263,10 @@ The options (`FeatureOptions`) depend on the kind of query:
 | `radius` | The distance around the place, in pixels of the screen, within which a feature is found. The default is 3. | With `sources`, at a point or a position. |
 | `geometry` | `true` to give each feature a `geometry` (GeoJSON, in longitude and latitude). The default is `false`, which keeps the answer small. | With `sources`, at a point or a position. In each other query, the features always have a `geometry`. |
 
-An option that has no effect in a query is ignored, with no warning.
+An option that has no effect in a query is ignored, and the map writes one warning for it: `layers` with `sources`,
+`sourceLayers` without `sources`, and `radius` or `geometry: false` in a query that is not a query with `sources` at
+a point or a position. A place that is not one of the three forms (for example `{lng, lat}`) in a query without
+`sources` rejects the promise with an error that names the forms.
 
 A feature of a query without `sources` has `id`, `properties`, `geometry`, `source`, `sourceLayer`, `layer` (the
 style layer) and `state`. A feature of a query with `sources` has `id`, `properties`, `source`, `sourceLayer`,
