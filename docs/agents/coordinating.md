@@ -65,10 +65,13 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
   not the tests and not the whole pull request. Merge with the head SHA that you read.
 - **CI must be green on the current `main`, not on the `main` of an hour ago.** On 2026-11-12 three pull requests
   that each passed alone put a page script 19 bytes over its budget, and `main` was red for 20 minutes. When two
-  open pull requests change the same built file and its budget has less than about 0.3 KB of room, or when they
-  change the same function, merge one, update the other (`update_pull_request_branch`, which needs no worker), and
-  wait for its CI. Pull requests that touch different built files can merge one after the other without the wait.
-- **A worker that makes room by rewriting other code has made a larger change.** Ask for a review (below).
+  open pull requests change the same function, or a budget is nearly reached, merge one, update the other
+  (`update_pull_request_branch`, which needs no worker), and wait for its CI. Pull requests that touch different
+  code can merge one after the other without the wait.
+- **Do not send a worker to fight for bytes.** On 2026-11-12 the budgets had less than 0.3 KB of room, and four
+  pull requests each went back to their worker once or twice only for size, about an hour and 100,000 tokens in
+  all. The owner then gave each budget about 2 KB of room. If a budget is reached again, ask the owner at once.
+- **A worker that rewrites code it did not need to touch has made a larger change.** Ask for a review (below).
 - **A change that needs the owner but depends on an open pull request** can be a pull request against that branch
   (#106 on #90). The owner then sees only the new part.
 
