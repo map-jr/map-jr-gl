@@ -12,7 +12,7 @@ function withStaticImports(file, seen = new Set()) {
     return seen;
 }
 const gz = files => [...files].reduce((sum, f) => sum + gzipSync(readFileSync('dist/' + f)).length, 0) / 1024;
-const page = withStaticImports('map-jr-gl.js'), compat = withStaticImports('map-jr-gl-maplibre-compat.js'), engine = withStaticImports(readdirSync('dist').find(f => f.startsWith('map-jr-gl-engine-entry')));
+const page = withStaticImports('map-jr-gl.js'), compat = withStaticImports('map-jr-gl-maplibre-compat.js'), engine = withStaticImports(readdirSync('dist').find(f => f.startsWith('map-jr-gl-engine-entry') && f.endsWith('.js')));
 for (const f of compat) engine.delete(f); // the page has these already when it loads the engine
 
 // The budgets were raised on 2026-11-12, when the fixes of the review of that day had filled them: the page scripts by
