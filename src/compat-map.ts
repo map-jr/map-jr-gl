@@ -5,7 +5,26 @@
 import {Map as CoreMap, type MapOptions, type CameraInput, type PointLike, type RenderedFeature, type RenderedQueryOptions, type PaddingInput, type ImageOptions} from './map.ts';
 import type {QueriedFeature} from './query.ts';
 import type {LngLatLike} from './geo.ts';
+import type {AddLayerObject, GeoJSONFeature, MapGeoJSONFeature, MapEventType, MapLayerEventType, Source} from './compat-types.ts';
 
+/**
+ * The types of `on`, `once`, `off` and `getSource` as in MapLibre GL JS: the event of a listener follows from the name
+ * of the event, and a name that is not in the list gets an event of the type `any`. (Types only: the methods are those
+ * of the core map.)
+ */
+export interface Map {
+    on<T extends keyof MapLayerEventType>(type: T, layerId: string, listener: (e: MapLayerEventType[T]) => void): this;
+    on<T extends keyof MapEventType>(type: T, listener: (e: MapEventType[T]) => void): this;
+    on(type: string, listener: (e: any) => void): this;
+    on(type: string, layerId: string, listener: (e: any) => void): this;
+    once<T extends keyof MapEventType>(type: T, listener: (e: MapEventType[T]) => void): this;
+    once(type: string, listener: (e: any) => void): this;
+    off<T extends keyof MapLayerEventType>(type: T, layerId: string, listener: (e: MapLayerEventType[T]) => void): this;
+    off<T extends keyof MapEventType>(type: T, listener: (e: MapEventType[T]) => void): this;
+    off(type: string, listener: (e: any) => void): this;
+    off(type: string, layerId: string, listener: (e: any) => void): this;
+    getSource<T extends Source = Source>(id: string): T | undefined;
+}
 export class Map extends CoreMap {
     // ---- Accepted, with no effect ----
     // Frameworks for MapLibre GL JS call these methods when an application sets the option, often with the default
@@ -70,7 +89,7 @@ export class Map extends CoreMap {
         this.fire('error', {error});
         return this;
     }
-    addLayer(layer: {id: string; type?: string; source?: unknown}, beforeId?: string) {
+    addLayer(layer: AddLayerObject, beforeId?: string) {
         // (A custom layer has functions: it cannot go to the worker, and it is not kept in the style.)
         if (layer.type === 'custom') return this.unsupported('A layer of the type "custom"', false);
         if (this.rawStyle && this.getLayer(layer.id)) return this.refused(`addLayer: the style has a layer with the id "${layer.id}" already. Remove that layer first, or use another id.`);
@@ -175,7 +194,7 @@ export class Map extends CoreMap {
      * that can also be awaited: at once it has the features of a GeoJSON source whose data the page has (clusters too);
      * awaited, it has the features of each kind of source.
      */
-    querySourceFeatures(sourceId: string, options: {sourceLayer?: string; filter?: unknown} = {}): RenderedFeature[] & PromiseLike<RenderedFeature[]> {
+    querySourceFeatures(sourceId: string, options: {sourceLayer?: string; filter?: unknown} = {}): GeoJSONFeature[] & PromiseLike<GeoJSONFeature[]> {
         const sets = [{layer: '', source: sourceId, sourceLayer: options.sourceLayer, filter: options.filter, radius: 0}], box: [number, number, number, number] = [0, 0, this.tr.width, this.tr.height];
         const features = (found: QueriedFeature[]): RenderedFeature[] => found.map(f => ({type: 'Feature', id: f.id, geometry: f.geometry!, properties: f.properties, source: f.source, sourceLayer: f.sourceLayer || undefined,
             state: f.id === undefined ? {} : this.getFeatureState({source: f.source, sourceLayer: f.sourceLayer || undefined, id: f.id})}));
@@ -188,7 +207,7 @@ export class Map extends CoreMap {
             return features(found);
         });
         Object.defineProperty(result, 'then', {value: (done?: (v: RenderedFeature[]) => unknown, failed?: (e: unknown) => unknown) => { awaited = true; return all.then(done, failed); }});
-        return result as RenderedFeature[] & PromiseLike<RenderedFeature[]>;
+        return result as unknown[] as GeoJSONFeature[] & PromiseLike<GeoJSONFeature[]>;
     }
 
     protected override styleChanged() {
@@ -204,7 +223,7 @@ export class Map extends CoreMap {
      * features of the GeoJSON sources whose data is in the style (which the page can read itself), and not those of
      * tile sources. Plugins that draw and edit on the map query their own GeoJSON sources in this way.
      */
-    queryRenderedFeatures(geometry?: PointLike | [PointLike, PointLike] | RenderedQueryOptions, options?: RenderedQueryOptions): RenderedFeature[] & PromiseLike<RenderedFeature[]> {
+    queryRenderedFeatures(geometry?: PointLike | [PointLike, PointLike] | RenderedQueryOptions, options?: RenderedQueryOptions): MapGeoJSONFeature[] & PromiseLike<MapGeoJSONFeature[]> {
         const {box, sets, features} = this.rendered(geometry, options);
         // At once: the answer of the engine to the same question before, if there is one (see `answers`).
         const key = this.questionKey(box, sets), all = this.questionKey(box), kept = this.answers.get(key);
@@ -233,7 +252,7 @@ export class Map extends CoreMap {
         }) : Promise.resolve([]);
         let awaited = false;
         Object.defineProperty(result, 'then', {value: (done?: (v: RenderedFeature[]) => unknown, failed?: (e: unknown) => unknown) => { awaited = true; return later.then(done, failed); }});
-        return result as RenderedFeature[] & PromiseLike<RenderedFeature[]>;
+        return result as unknown[] as MapGeoJSONFeature[] & PromiseLike<MapGeoJSONFeature[]>;
     }
     /**
      * The last answers of the engine to `queryRenderedFeatures`, by question (the view, the place on the screen, the
