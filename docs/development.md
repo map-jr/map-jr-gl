@@ -97,6 +97,10 @@ Some members cannot be private, because other files use them (`tr.worldSize`). T
 has such names, and the build shortens them too. Add a name to the list only when the class is not part of the API,
 and no browser object has a property with that name. The build fails if the name is also a key of an object
 literal, a field of a type, or a string.
+
+The build also replaces the helper that Vite puts around each `import()` (the plugin `noPreload` in `build.mjs`).
+The helper loads CSS files and other chunks before the imported file. The library has no CSS files, so the built
+files call `import()` directly.
 The same step gives short names to the uniforms, attributes and varyings in the shaders of `src/gl.ts`. Name them
 `u_...`, `a_...` and `v_...`, and use those names only for that.
 It also gives short names to the local names in the shaders. Do not give a uniform a name without `u_`, and do not

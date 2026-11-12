@@ -38,9 +38,19 @@ const allInOne = {
     },
 };
 
+/**
+ * Vite puts a helper around each `import()` that loads the CSS files and the other chunks of the imported file first.
+ * The library has no CSS files, and a chunk imports what it needs itself, so the helper is replaced by a plain call.
+ */
+const noPreload = {
+    name: 'no-preload-helper',
+    enforce: 'pre',
+    load: id => id === '\0vite/preload-helper.js' ? 'export const __vitePreload = load => load();' : null,
+};
+
 /** One Vite build. Everything is written to dist/ next to what earlier builds put there. */
 const run = (options, define = {__WORKER_SRC__: '""'}, plugins = []) => build({
-    configFile: false, logLevel: 'warn', define, plugins: [shaders, privates, ...plugins],
+    configFile: false, logLevel: 'warn', define, plugins: [shaders, privates, noPreload, ...plugins],
     build: {target: 'es2022', minify: true, emptyOutDir: false, outDir: 'dist', copyPublicDir: false, reportCompressedSize: false, modulePreload: false, ...options},
 });
 
