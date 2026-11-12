@@ -9,7 +9,7 @@ import {LINE_VERTEX, buildTile, tessellate, type Batch} from '../../src/tile.ts'
 import {queryTile, sampleElevation} from '../../src/query.ts';
 import {CollisionGrid, renderItems} from '../../src/placement.ts';
 import {fillTemplate, sizedSVG} from '../../src/markers.ts';
-import {renderToSVG} from '../../src/server.ts';
+import {cleanCredits, renderToSVG} from '../../src/server.ts';
 import {decodePNG, decodeWebPLossless} from '../../src/webp.ts';
 import {deflateSync} from 'node:zlib';
 import {createHash} from 'node:crypto';
@@ -587,4 +587,22 @@ test('vector tiles: zeros after the end of the tile are not read', async () => {
     const padded = new Uint8Array(bytes.length + 4096);
     padded.set(bytes);
     assert.deepEqual(Object.keys(decodeVectorTile(padded)), Object.keys(decodeVectorTile(bytes)));
+});
+
+test('server: the credits of the first view keep text and http(s) links only', () => {
+    assert.equal(cleanCredits('© <a href="https://osm.org/copyright" onclick="x()" target="_blank">OpenStreetMap</a> contributors'), '© <a href="https://osm.org/copyright">OpenStreetMap</a> contributors');
+    assert.equal(cleanCredits('&copy; Tiles & data'), '&copy; Tiles &amp; data');
+    // Hostile values: nothing but text and the links that the function writes can come out.
+    for (const bad of [
+        '© Tiles <img src=x onerror=window.xss=1 ',
+        '<img src=x onerror="window.xss=1">',
+        '<a href="javascript:alert(1)">x</a>',
+        '<a href="https://ok.example/" onmouseover="alert(1)">x</a><script>alert(1)</script>',
+        '<a href="https://ok.example/"><img src=x onerror=alert(1)></a',
+        '<svg/onload=alert(1)>', '"><script>alert(1)</script>', '<a href=\'https://ok.example/"onclick="x\'>y</a>',
+    ]) {
+        const out = cleanCredits(bad), tags = out.match(/<[^>]*>?/g) ?? [];
+        assert.ok(tags.every(t => t === '</a>' || /^<a href="https?:\/\/[^"<>]*">$/.test(t)), `${bad} -> ${out}`);
+        assert.ok(!out.includes('javascript:'), `${bad} -> ${out}`);
+    }
 });

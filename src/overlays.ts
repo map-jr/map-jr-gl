@@ -192,10 +192,12 @@ export class Marker extends Overlay {
         this.offset = options.offset ?? [0, 0];
         if (options.element) this.el = options.element;
         else {
-            const s = options.scale ?? 1;
+            const s = +(options.scale ?? 1) || 1;
             this.el = document.createElement('div');
             this.el.innerHTML = `<svg width="${27 * s}" height="${41 * s}" viewBox="0 0 27 41" style="display:block;filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))">` +
-                `<path d="M13.500 0C6 0 0 6 0 13.500 0 23 13.500 41 13.500 41S27 23 27 13.500C27 6 21 0 13.500 0z" fill="${options.color ?? '#3fb1ce'}"/><circle cx="13.500" cy="13.500" r="5.500" fill="#fff"/></svg>`;
+                `<path d="M13.500 0C6 0 0 6 0 13.500 0 23 13.500 41 13.500 41S27 23 27 13.500C27 6 21 0 13.500 0z"/><circle cx="13.500" cy="13.500" r="5.500" fill="#fff"/></svg>`;
+            // (The colour can come from data: it is set as an attribute, never as HTML.)
+            this.el.querySelector('path')!.setAttribute('fill', options.color ?? '#3fb1ce');
         }
         this.el.classList.add('map-jr-marker', 'maplibregl-marker', ...(options.className?.split(' ').filter(Boolean) ?? []));
         this.el.style.zIndex = '3';

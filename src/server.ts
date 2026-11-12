@@ -136,10 +136,28 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
  * `attribution` gives the credits to show, when they must not come from the sources; `false` shows none.
  * Only text and links to http(s) addresses are kept from the HTML of the credits.
  */
+/**
+ * The HTML of credits, made safe: text, and links to http(s) addresses that this function writes itself. Each other
+ * tag is taken out, also one that is not complete, and the text is escaped. (The credits can come from the TileJSON
+ * of another party, and the page puts this HTML into the document.)
+ */
+export function cleanCredits(html: string): string {
+    const text = (t: string) => t.replace(/&(?!#?\w+;)/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    let out = '', open = 0;
+    for (const [part] of html.matchAll(/<a\b[^>]*>|<\/a\s*>|<[^>]*>?|[^<]+/gi)) {
+        if (part[0] !== '<') out += text(part);
+        else if (/^<\/a/i.test(part)) { if (open) { open--; out += '</a>'; } }
+        else if (/^<a\b/i.test(part) && part.endsWith('>')) {
+            const href = /href\s*=\s*(?:"(https?:\/\/[^"]*)"|'(https?:\/\/[^']*)')/i.exec(part);
+            if (href) { open++; out += `<a href="${text(href[1] ?? href[2])}">`; }
+        }
+    }
+    return out + '</a>'.repeat(open);
+}
+
 export async function renderFirstView(o: RenderOptions & {attribution?: string | string[] | false}): Promise<string> {
     const made = await renderToSVG(o);
-    const credits = o.attribution === false ? [] : [o.attribution ?? made.attribution].flat().map(html => html.replace(/<(?!\/?a(?=[\s>]))[^>]*>/gi, '')
-        .replace(/<a\b([^>]*)>/gi, (_, attrs: string) => { const m = /href\s*=\s*"(https?:[^"]*)"/i.exec(attrs); return m ? `<a href="${m[1]}">` : '<a>'; })).filter(Boolean);
+    const credits = o.attribution === false ? [] : [o.attribution ?? made.attribution].flat().map(cleanCredits).filter(Boolean);
     return made.svg + (credits.length ? `<div data-map-jr-ssr="" style="position:absolute;right:0;bottom:0;background:rgba(255,255,255,.75);color:#333;font:11px/1.4 sans-serif;padding:2px 6px">${credits.join(' ')}</div>` : '');
 }
 

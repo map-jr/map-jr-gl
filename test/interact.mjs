@@ -466,6 +466,19 @@ for (const mode of ['main', 'worker']) {
         const atOnce = await page.evaluate(() => { window.map.off('idle', window.atOnceIdle); return window.atOnce; });
         check(`[${mode}] queryRenderedFeatures read at once has the features of tiles: in a click listener, and on idle`, atOnce.click > 0 && atOnce.idle.at(-1) > 0 && atOnce.idle.length <= 3, JSON.stringify(atOnce));
     }
+    // The colour of a marker can come from data: it cannot bring HTML into the page.
+    {
+        const marker = await page.evaluate(async () => {
+            const lib = await import('/dist/map-jr-gl-maplibre-compat.js'), m = window.map;
+            const one = new lib.Marker({color: '"/></svg><img src=x onerror="window.markerScript=1">'}).setLngLat(m.getCenter()).addTo(m);
+            await new Promise(r => setTimeout(r, 300));
+            const out = {ran: !!window.markerScript, images: one.getElement().querySelectorAll('img').length, paths: one.getElement().querySelectorAll('path').length};
+            one.remove();
+            return out;
+        });
+        check(`[${mode}] a marker colour with HTML in it stays an attribute`, !marker.ran && marker.images === 0 && marker.paths === 1, JSON.stringify(marker));
+    }
+
 
     const clusters = await page.evaluate(async () => {
         const m = window.map, c = m.getCenter();
