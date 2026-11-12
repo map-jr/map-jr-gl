@@ -54,9 +54,22 @@ The map writes a warning to the console with `console.warn`, once for each map, 
 - An option of `queryFeatures` has no effect in that kind of query.
 
 The ids of the description are compared each time that the map is idle, so a layer or a source that the application
-adds itself in `load` gives no warning. The checks and the texts of the warnings are in a file of about 1.3 KB (gzip)
-that the map loads after it has started, so they add nothing to what a page downloads before the map can start. When
-that file does not load, the map works and gives none of these warnings.
+adds itself in `load` gives no warning.
+
+The checks run in the development build only. `package.json` names that build under the `development` condition, so
+a bundler that sets the condition takes it in development and takes the production build otherwise. Vite does so
+(ran with Vite 8: the development server takes the development build, and `vite build` takes the production build).
+Node.js resolves the development build with `--conditions=development`. Webpack and Nuxt are not checked. The
+production build makes no request for the checks and gives none of these warnings.
+
+| How the page gets `map-jr-gl` | Checks |
+|---|---|
+| A bundler in development that sets the `development` condition | Yes. The map loads a file of about 1.3 KB (gzip) after it has started. |
+| A bundler that builds for production | No. |
+| The file `dist/map-jr-gl.js` by URL, with no bundler | No. Import `dist/map-jr-gl.dev.js` instead while you develop. |
+| The standalone file (`map-jr-gl/standalone`) | Yes. The checks are inside the file. |
+
+When the file of the checks does not load, the map works and gives none of these warnings.
 
 The library compares each field with the field of the last description:
 
