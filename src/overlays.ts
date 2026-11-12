@@ -160,12 +160,14 @@ export class Popup extends Overlay {
     remove() {
         if (!this.map) return this;
         this.map.off('click', this.closeOnMapClick);
+        const closing = this.transition(true);
         const finish = () => {
+            // (The closing animation keeps its last frame. Without this, the popup is transparent when it opens again.)
+            closing?.cancel();
             if (this.el.contains(document.activeElement)) this.opener?.focus();
             this.detach();
             this.fire('close');
         };
-        const closing = this.transition(true);
         // Stay attached (and tracking the map) until the fade has played.
         if (closing) closing.finished.then(finish, finish); else finish();
         return this;
@@ -215,7 +217,11 @@ export class Marker extends Overlay {
             if (!this.popup || (e.key !== 'Enter' && e.key !== ' ')) return;
             const opens = !this.popup.isOpen();
             e.preventDefault(); e.stopPropagation(); this.togglePopup();
-            if (opens) (this.popup.getElement().querySelector('[href],button,input,select,textarea,[tabindex]') as HTMLElement | null)?.focus();
+            // (A candidate can refuse the focus: a disabled button, a hidden link. The close button is the last candidate.)
+            if (opens) for (const c of this.popup.getElement().querySelectorAll<HTMLElement>('[href],button,input,select,textarea,[tabindex]')) {
+                c.focus({preventScroll: true});
+                if (document.activeElement === c) break;
+            }
         });
         this.el.addEventListener('pointerdown', e => this.startDrag(e));
         this.setDraggable(!!options.draggable);

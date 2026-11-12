@@ -22,7 +22,7 @@ export interface RenderOptions {
     fontFamily?: string;
     /**
      * The name of the SVG for assistive technology. The SVG has `role="img"` and this text as its `aria-label`.
-     * The default is "Map". Say what the map shows, for example "Map of the hotels in Bern".
+     * The default is "Map". It has no effect on the image of `renderToImage`. Say what the map shows, for example "Map of the hotels in Bern".
      */
     label?: string;
     /** Return false to leave a style layer out of the server output, e.g. dense building footprints, to keep the markup small. */

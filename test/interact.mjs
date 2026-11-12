@@ -1023,7 +1023,25 @@ for (const mode of ['main', 'worker']) {
             const focusLink = document.activeElement?.tagName === 'A';
             el.dispatchEvent(new KeyboardEvent('keydown', {key: ' ', bubbles: true}));
             await new Promise(r => setTimeout(r, 400));
-            window.a11yFocus = {focusIn, focusBack, focusClick, focusLink, closed: !popup.isOpen()};
+            // Candidates that cannot take the focus are passed over, up to the close button.
+            popup.setHTML('<button disabled>Off</button><input type="hidden"><a href="https://example.com/" style="display:none">Hidden</a><link href="data:text/css,">');
+            el.focus();
+            el.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
+            const focusSkips = document.activeElement === close;
+            await new Promise(r => setTimeout(r, 400));
+            // (This is a second opening: the box is opaque when the opening animation has ended.)
+            const opacity = getComputedStyle(close.parentElement).opacity;
+            close.click();
+            await new Promise(r => setTimeout(r, 400));
+            // A popup wider than the map does not scroll the container when it takes the focus.
+            popup.setMaxWidth('520px').setHTML('<div style="width:500px">Wide</div>');
+            el.focus();
+            el.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
+            await new Promise(r => setTimeout(r, 100));
+            const scroll = [document.activeElement === close, window.a11yEl.scrollLeft, window.a11yEl.scrollTop].join();
+            close.click();
+            await new Promise(r => setTimeout(r, 400));
+            window.a11yFocus = {focusIn, focusBack, focusClick, focusLink, focusSkips, opacity, scroll, closed: !popup.isOpen()};
             return {label: el.getAttribute('aria-label'), role: el.getAttribute('role'), tab: el.tabIndex, plainRole: plain.getAttribute('role'), plainTab: plain.getAttribute('tabindex'), open, closed: !window.a11yMarker.getPopup().isOpen(),
                 fullscreen: button.getAttribute('aria-label'), title: button.title, pressed: button.getAttribute('aria-pressed')};
         });
@@ -1038,7 +1056,7 @@ for (const mode of ['main', 'worker']) {
         check('[main] a marker with a popup is a button that Enter and the space bar work; the fullscreen button says what it does',
             marker.label === 'Map marker' && marker.role === 'button' && marker.tab === 0 && marker.plainRole === null && marker.plainTab === null && marker.open && marker.closed && marker.fullscreen === 'Enter fullscreen' && marker.title === 'Enter fullscreen' && marker.pressed === 'false', JSON.stringify(marker));
         const focus = await page.evaluate(() => window.a11yFocus);
-        check('[main] the focus goes into a popup that the keyboard opens, and back to the marker when the popup closes', focus.focusIn && focus.focusBack && focus.focusClick && focus.focusLink && focus.closed, JSON.stringify(focus));
+        check('[main] the focus goes into a popup that the keyboard opens, and back to the marker when the popup closes', focus.focusIn && focus.focusBack && focus.focusClick && focus.focusLink && focus.focusSkips && focus.opacity === '1' && focus.scroll === 'true,0,0' && focus.closed, JSON.stringify(focus));
         check('[main] a camera animation jumps with "reduce motion", but for essential: true', moving < 3.9 && reduced === 4 && essential < 3.9, JSON.stringify({moving, reduced, essential}));
     }
     // The credits of a small map: they do not go under the controls of the other corner, markers are below them, and a

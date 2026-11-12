@@ -112,7 +112,7 @@ Notes for Cloudflare Workers:
 | `center`, `zoom`, `width`, `height` | The view. Required. |
 | `bearing` | The rotation of the map in degrees |
 | `markers` | A list of marker layer options. See [Markers](markers.md). |
-| `label` | The name of the SVG for assistive technology. The SVG has `role="img"` and this text as its `aria-label`. The default is `"Map"`. |
+| `label` | The name of the SVG for assistive technology. The SVG has `role="img"` and this text as its `aria-label`. The default is `"Map"`. `renderToImage` accepts the option, but an image cannot carry it. |
 | `resolveImage` | A function that supplies an icon as SVG when the sprite does not contain it |
 | `layerFilter` | A function that returns `false` for a layer to leave out |
 | `inlineImages` | When `true`, raster tiles and the sprite go into the SVG as data. Required when the SVG is shown with an `<img>` element. |
