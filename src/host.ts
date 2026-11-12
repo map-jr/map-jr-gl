@@ -11,8 +11,15 @@ import {createStore, type Readable} from './store.ts';
 import {Marker, Popup, type OverlayAnchor} from './overlays.ts';
 import type {MarkerInput, MarkerLayerOptions} from './markers.ts';
 import type {QueriedFeature} from './query.ts';
+import type {Checked} from './mistakes.ts';
 import type {FontSource} from './engine.ts';
 import type {LngLatBounds, LngLatBoundsInput} from './lnglat.ts';
+
+/**
+ * Set by the build (`define` in build.mjs). True in the development build (`dist/*.dev.js`, which the `development`
+ * condition of package.json names) and in the standalone file; false in the production build.
+ */
+declare const __DEV__: boolean;
 
 /** The description of a control: see `map-jr-gl/controls`. Controls with the same `key` are the same control. */
 export interface ControlSpec { key: string; position?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'; create(): {onAdd(map: Map): HTMLElement; onRemove(map: Map): void} }
@@ -243,11 +250,21 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
         attributionControl: spec.attribution, minZoom: spec.minZoom, maxZoom: spec.maxZoom, maxPitch: spec.maxPitch,
     };
     for (const k in options) if ((options as any)[k] === undefined) delete (options as any)[k];
-    // (With additions, the style is given after the map is made, with a function that adds them when it has loaded.)
-    if (spec.extend) delete options.style;
+    // (The style is given after the map is made, with a function that adds the additions of `extend` when it has loaded.)
+    delete options.style;
     const map = new Map(options);
-    const restyle = (next: MapSpec) => map.setStyle(next.style, {transformStyle: (_, style) => extended(style, next.extend)});
-    if (spec.extend) restyle(spec);
+    // The checks for mistakes of the user, and the texts of their warnings, are in a file that is loaded after the map
+    // has started: `check` gives it the kind of the check (see `src/mistakes.ts`). A file that does not load gives no check.
+    // `styled`: the map has the style of the last description, so its layers and sources can be compared with the description.
+    let styled = false;
+    // Only the development build loads the file (see `__DEV__`): the production build has no request for it and no check.
+    const checks = (): Promise<typeof import('./mistakes.ts')> => __DEV__ ? import('./mistakes.ts') : Promise.reject();
+    const checked: Checked = {map, warned: new Set(), spec: () => now, ready: () => alive && styled && state.get().loaded};
+    const check = (kind: number, a?: unknown, b?: unknown) => { if (__DEV__) checks().then(m => m.check(checked, kind, a, b), () => {}); };
+    const restyle = (next: MapSpec) => { styled = false; map.setStyle(next.style, {transformStyle: (_, style) => { styled = true; check(4, style, next.extend); return extended(style, next.extend); }}); };
+    restyle(spec);
+    // (The height of the container is read after a second, so that a container which gets its height a moment later gives no warning.)
+    setTimeout(() => check(0), 1000);
     const viewOf = (): View => { const c = map.getCenter(); return {center: [c.lng, c.lat], zoom: map.getZoom(), bearing: map.getBearing(), pitch: map.getPitch()}; };
     const state = createStore<MapState>({loaded: false, idle: false, moving: false, view: viewOf(), hover: [], renderer: undefined, error: undefined});
     const markers = new globalThis.Map<string, {layer: MarkerLayer; options: MarkerLayerOptions}>();
@@ -306,11 +323,14 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
     const sent = new globalThis.Map<string, unknown>();
     const giveData = () => {
         for (const id in now.data) {
-            const source = sent.get(id) !== now.data[id] && map.getSource(id) as {setData?: (data: unknown) => void} | undefined;
-            if (source && source.setData) { sent.set(id, now.data[id]); source.setData(now.data[id]); }
+            if (sent.get(id) === now.data[id]) continue;
+            const source = map.getSource(id) as {setData?: (data: unknown) => void} | undefined;
+            if (source?.setData) { sent.set(id, now.data[id]); source.setData(now.data[id]); }
         }
     };
     map.on('styledata', giveData);
+    // (At `idle`, and not when the style comes: an application can add a layer or a source itself in `load`.)
+    map.on('idle', () => check(1));
 
     const apply = (next: MapSpec, before?: MapSpec) => {
         // (A description that is made again each time, as in a template of a framework, has new objects with the same
@@ -343,6 +363,7 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
             }
         }
         if (differ(next.interactiveLayers, before?.interactiveLayers)) hover();
+        check(2, next, before);
         now = next;
         if (next.data !== before?.data && !restyled) giveData();
     };
@@ -351,6 +372,8 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
     const isPosition = (at: FeaturePlace): at is [number, number] => typeof (at as number[])[0] === 'number';
     const queryFeatures: MapHost['queryFeatures'] = (at, o = {}) => {
         const box = Array.isArray(at) && !isPosition(at) ? [at[0].x, at[0].y, at[1].x, at[1].y] as [number, number, number, number] : undefined;
+        check(3, at, o);
+        if (at && !box && !o.sources && !isPosition(at) && typeof (at as {x: number}).x !== 'number') return checks().then(m => m.mistake(9, JSON.stringify(at)), () => '[map-jr-gl] queryFeatures(): the place is not {x, y} or [lng, lat].').then(text => { throw new Error(text); });
         if (o.sources) return at && !box ? map.queryFeatures(at as [number, number] | {x: number; y: number}, o) : map.querySources(box, o.sources, o);
         const point = at && !box ? isPosition(at) ? map.project(at) : at as {x: number; y: number} : undefined;
         return map.queryLayers(box ? [[box[0], box[1]], [box[2], box[3]]] : point ? [point.x, point.y] : {layers: o.layers, filter: o.filter}, {layers: o.layers, filter: o.filter});

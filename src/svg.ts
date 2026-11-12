@@ -57,6 +57,8 @@ export interface SVGScene {
     fontFamily: string;
     /** Extra attributes for the root element, e.g. a data attribute the client looks for when hydrating. */
     rootAttrs?: string;
+    /** The name of the image for assistive technology (`aria-label`). The default is "Map". */
+    label?: string;
 }
 
 /** Serialises one frame as a standalone SVG document. Pure string building: runs on any JavaScript server. */
@@ -217,6 +219,6 @@ export function renderSVG(s: SVGScene): string {
         body.push(...uses);
     }
 
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="${tr.width}" height="${tr.height}" viewBox="0 0 ${tr.width} ${tr.height}"${s.rootAttrs ? ' ' + s.rootAttrs : ''}>` +
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${tr.width}" height="${tr.height}" viewBox="0 0 ${tr.width} ${tr.height}" role="img" aria-label="${escapeXML(s.label ?? 'Map')}"${s.rootAttrs ? ' ' + s.rootAttrs : ''}>` +
         `<defs>${defs.join('')}</defs>${body.join('')}</svg>`;
 }

@@ -97,36 +97,43 @@
   "exports": {
     ".": {
       "types": "./dist/types/index.d.ts",
+      "development": "./dist/map-jr-gl.dev.js",
       "import": "./dist/map-jr-gl.js",
       "default": "./dist/map-jr-gl.js"
     },
     "./maplibre-compat": {
       "types": "./dist/types/maplibre-compat.d.ts",
+      "development": "./dist/map-jr-gl-maplibre-compat.dev.js",
       "import": "./dist/map-jr-gl-maplibre-compat.js",
       "default": "./dist/map-jr-gl-maplibre-compat.js"
     },
     "./controls": {
       "types": "./dist/types/control-specs.d.ts",
+      "development": "./dist/controls.dev.js",
       "import": "./dist/controls.js",
       "default": "./dist/controls.js"
     },
     "./react": {
       "types": "./dist/types/react.d.ts",
+      "development": "./dist/react.dev.js",
       "import": "./dist/react.js",
       "default": "./dist/react.js"
     },
     "./svelte": {
       "types": "./dist/types/svelte.d.ts",
+      "development": "./dist/svelte.dev.js",
       "import": "./dist/svelte.js",
       "default": "./dist/svelte.js"
     },
     "./nuxt": {
       "types": "./dist/types/nuxt.d.ts",
+      "development": "./dist/nuxt.dev.js",
       "import": "./dist/nuxt.js",
       "default": "./dist/nuxt.js"
     },
     "./vue": {
       "types": "./dist/types/vue.d.ts",
+      "development": "./dist/vue.dev.js",
       "import": "./dist/vue.js",
       "default": "./dist/vue.js"
     },

@@ -75,6 +75,9 @@ A change is done when all of these that apply are true. The pull request templat
 6. **Mistakes get a message.** A mistake by the user gets a message that says what is wrong and what to write
    instead. An option or method that is accepted but has no effect warns once. The library does not ignore input
    in silence.
+   The checks for common mistakes of the main API (`src/mistakes.ts`) are in the development build only (the
+   `development` export condition, `dist/*.dev.js`): a production build and a page that loads `dist/map-jr-gl.js`
+   by URL do not have them. A new check of that kind goes into that file, not into the page script.
 7. **State is per map.** No map-specific state at module level, in the page, the engine or the tile workers: two
    maps on one page must not see each other.
 8. **Untrusted input.** Styles, TileJSON, tiles, glyph files and GeoJSON come from other parties. Bound sizes,
