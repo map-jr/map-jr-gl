@@ -200,7 +200,7 @@ export class Map extends CoreMap {
      */
     querySourceFeatures(sourceId: string, options: {sourceLayer?: string; filter?: unknown} = {}): GeoJSONFeature[] & PromiseLike<GeoJSONFeature[]> {
         const sets = [{layer: '', source: sourceId, sourceLayer: options.sourceLayer, filter: options.filter, radius: 0}], box: [number, number, number, number] = [0, 0, this.tr.width, this.tr.height];
-        const features = (found: QueriedFeature[]): RenderedFeature[] => found.map(f => ({type: 'Feature', id: f.id, geometry: f.geometry!, properties: f.properties, source: f.source, sourceLayer: f.sourceLayer || undefined,
+        const features = (found: QueriedFeature[]): Omit<RenderedFeature, 'layer'>[] => found.map(f => ({type: 'Feature', id: f.id, geometry: f.geometry!, properties: f.properties, source: f.source, sourceLayer: f.sourceLayer || undefined,
             state: f.id === undefined ? {} : this.getFeatureState({source: f.source, sourceLayer: f.sourceLayer || undefined, id: f.id})}));
         const spec = this.rawStyle?.sources[sourceId], data = spec?.type === 'geojson' && this.geoData(sourceId);
         let now: QueriedFeature[] = [];
@@ -210,7 +210,7 @@ export class Map extends CoreMap {
             if (!awaited && found.length !== had) this.incomplete('querySourceFeatures', had, found.length);
             return features(found);
         });
-        Object.defineProperty(result, 'then', {value: (done?: (v: RenderedFeature[]) => unknown, failed?: (e: unknown) => unknown) => { awaited = true; return all.then(done, failed); }});
+        Object.defineProperty(result, 'then', {value: (done?: (v: Omit<RenderedFeature, 'layer'>[]) => unknown, failed?: (e: unknown) => unknown) => { awaited = true; return all.then(done, failed); }});
         return result as unknown[] as GeoJSONFeature[] & PromiseLike<GeoJSONFeature[]>;
     }
 
