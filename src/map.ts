@@ -91,7 +91,12 @@ export interface RenderedQueryOptions { layers?: string[]; filter?: unknown; val
 /** A feature from `queryRenderedFeatures` or `querySourceFeatures`: GeoJSON, with its source, its style layer and its state. */
 export interface RenderedFeature {
     type: 'Feature'; id?: number | string; geometry: {type: string; coordinates: unknown}; properties: Record<string, unknown>;
-    source: string; sourceLayer?: string; layer?: unknown; state: Record<string, unknown>;
+    source: string; sourceLayer?: string; /** The style layer that draws the feature. */ layer: StyleLayer; state: Record<string, unknown>;
+}
+/** A layer of the style, as the style has it (the MapLibre style specification). */
+export interface StyleLayer {
+    id: string; type: string; source?: string; 'source-layer'?: string; minzoom?: number; maxzoom?: number; filter?: unknown;
+    layout?: Record<string, unknown>; paint?: Record<string, unknown>; metadata?: unknown;
 }
 
 export interface MapEvent { type: string; target: Map; point?: {x: number; y: number}; lngLat?: {lng: number; lat: number}; [key: string]: unknown }
@@ -220,10 +225,13 @@ export class Map {
     constructor(private options: MapOptions) {
         const c = typeof options.container === 'string' ? document.getElementById(options.container) : options.container;
         if (!c) throw new Error('Map container not found');
+        // Two maps in one element leave two canvases. Hot module replacement and an effect without a clean-up do this.
+        if (c.querySelector(':scope > .map-jr-canvas')) console.warn('[map-jr-gl] The container already has a map. Remove that map first: remove(), or destroy() in the main API.');
         this.container = c;
         if (getComputedStyle(c).position === 'static') c.style.position = 'relative';
         if (getComputedStyle(c).overflow === 'visible') c.style.overflow = 'hidden'; // a frame from before a shrink must not spill out
         this.canvas = document.createElement('canvas');
+        this.canvas.className = 'map-jr-canvas';
         // `object-fit: none` shows the canvas's current frame unscaled and centred, whatever size that frame is. With
         // worker rendering a new frame arrives a moment after the container resizes; until it does, the old frame simply
         // stays centred instead of being stretched to the new shape. The box is sized in device pixels and scaled back
@@ -301,8 +309,10 @@ export class Map {
         do {
             turn = this.styleTurn;
             try { raw = await this.loadStyle(o.style); } catch (error) { if (turn === this.styleTurn) { this.starting = false; giveBack(); throw error; } }
-        } while (turn !== this.styleTurn);
+        } while (turn !== this.styleTurn && !this.removed);
         this.starting = false;
+        // (The map can be removed during each `await` of this method. What this start acquired is then given back.)
+        if (this.removed) { giveBack(); return; }
         this.rawStyle = this.firstChange?.(undefined, raw) ?? raw;
         this.firstChange = undefined; // (a restart of the engine starts from the style as it is then)
         for (const fn of this.beforeStyle.splice(0)) fn();
@@ -313,6 +323,7 @@ export class Map {
         const sc = this.rawStyle;
         if (o.center === undefined && o.zoom === undefined && o.bearing === undefined && o.pitch === undefined && !o.bounds) this.tr.set(sc.center, sc.zoom, sc.bearing, sc.pitch);
         const restyled = this.restyled, first = await resolveStyle(this.rawStyle, this.fetchAs('Source'), this.styleBase, undefined, this.sourceFailed);
+        if (this.removed) { giveBack(); return; }
         if (!(o.glyphs ?? !o.fonts)) first.glyphs = undefined;
         // (A change of the style during that step has its own result, which is newer. The engine gets it after its start.)
         if (restyled === this.restyled) this.resolved = first;
@@ -324,9 +335,10 @@ export class Map {
             minZoom: tr.minZoom, maxZoom: tr.maxZoom, maxPitch: tr.maxPitch, antialias: o.antialias,
         };
 
-        this.tilePool = await pool || undefined;
+        const tiles = await pool;
         let engineWorker = await engine;
         if (this.removed) { giveBack(); return; }
+        this.tilePool = tiles || undefined;
         const ports = this.tilePool?.connect() ?? [];
         // (An engine in a worker needs the tile workers: without them the engine runs on this thread.)
         if (!ports.length) { engineWorker?.terminate(); engineWorker = null; }
@@ -346,6 +358,7 @@ export class Map {
                 this.ready = false;
                 w.terminate();
                 this.startMainEngine(fresh, {...engineOptions, style: this.resolved, center: [this.tr.lng, this.tr.lat], zoom: this.tr.zoom, bearing: this.tr.bearing}, []).then(() => {
+                    if (this.removed) return;
                     this.ready = true;
                     for (const [c, t] of this.queue.splice(0)) this.send(c, t);
                     this.resend();
@@ -362,6 +375,7 @@ export class Map {
             this.renderer = 'worker';
         } else {
             await this.startMainEngine(this.canvas, engineOptions, ports);
+            if (this.removed) return; // (`remove` gave the tile workers back, and no engine was made)
         }
         this.ready = true;
         for (const [c, t] of this.queue) this.send(c, t);
@@ -392,6 +406,7 @@ export class Map {
             this.observer?.disconnect();
             for (const w of this.workers.splice(0)) w.terminate();
             this.tilePool?.release();
+            this.tilePool = undefined; // (a `remove` during the start below must not give the same workers back again)
             this.ready = false; this.queue = []; this.tilesLoaded = false; this.seq = 0;
             this.loadedSources.clear(); // (the new engine has no tiles)
             const fresh = this.canvas.cloneNode() as HTMLCanvasElement, tr = this.tr;
@@ -421,6 +436,7 @@ export class Map {
     /** Runs the engine on this thread. Its code is a separate chunk, fetched only when this path is taken. */
     private async startMainEngine(canvas: HTMLCanvasElement, options: import('./engine.ts').EngineOptions, ports: MessagePort[]) {
         const {Engine, LocalBackend, PortBackend} = await import('./engine-entry.ts');
+        if (this.removed) return;
         const backends: TileBackend[] = ports.length ? ports.map(p => new PortBackend(p)) : [new LocalBackend()];
         const engine = new Engine(canvas, options, backends, e => this.onEngineEvent(e));
         this.send = c => engine.command(c);
@@ -1155,7 +1171,7 @@ export class Map {
                     shown = new Set();
                     const grid = new CollisionGrid();
                     for (let i = 0; i < layer.data.length; i++) {
-                        const [x, y] = this.tr.project(...layer.data[i].lngLat), x0 = x + ox, y0 = y + oy, x1 = x0 + o.width, y1 = y0 + o.height;
+                        const [x, y] = this.tr.project(...layer.data[i].lngLat as [number, number]), x0 = x + ox, y0 = y + oy, x1 = x0 + o.width, y1 = y0 + o.height;
                         if (x0 > this.tr.width || y0 > this.tr.height || x1 < 0 || y1 < 0 || grid.hits(x0, y0, x1, y1)) continue;
                         grid.insert(x0, y0, x1, y1);
                         shown.add(i);
@@ -1166,7 +1182,7 @@ export class Map {
             for (let i = layer.data.length - 1; i >= 0; i--) {
                 const ll = layer.data[i].lngLat;
                 if (near && (ll[0] < w || ll[0] > e || ll[1] < s || ll[1] > n)) continue;
-                const [x, y] = this.tr.project(...ll);
+                const [x, y] = this.tr.project(...ll as [number, number]);
                 if (point.x >= x + ox && point.x <= x + ox + o.width && point.y >= y + oy && point.y <= y + oy + o.height && visible(i)) return {layer, index: i, marker: layer.data[i]};
             }
         }
