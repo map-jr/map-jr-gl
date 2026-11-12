@@ -7,7 +7,8 @@
     "test:consistency": "node scripts/check-consistency.mjs",
     "test:examples": "node test/examples.mjs",
     "test:size": "node scripts/size-check.mjs",
-    "build": "tsc -p . && node build.mjs && tsc -p tsconfig.types.json",
+    "test:package": "node scripts/check-package.mjs",
+    "build": "tsc -p . && node build.mjs",
     "demo": "node build.mjs && node scripts/site.mjs && node demo/serve.mjs",
     "site": "node build.mjs && node scripts/site.mjs",
     "screenshots": "node scripts/screenshots.mjs",
@@ -23,8 +24,26 @@
     "test:react": "node test/react.mjs",
     "test:render": "node test/conformance/render.mjs --min=815"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "map",
+    "maps",
+    "webgl",
+    "webgl2",
+    "vector-tiles",
+    "maplibre",
+    "maplibre-gl",
+    "mapbox-style",
+    "pmtiles",
+    "geojson",
+    "offscreencanvas",
+    "web-worker",
+    "server-rendering",
+    "vue",
+    "nuxt",
+    "react",
+    "svelte"
+  ],
+  "author": "Sam Margulies <sam@belabor.org>",
   "license": "MIT",
   "devDependencies": {
     "@takumi-rs/core": "^2.20.0",
@@ -34,8 +53,10 @@
     "@types/react-dom": "^19.3.0",
     "earcut": "^3.2.4",
     "esbuild": "^0.28.2",
+    "magic-string": "^1.4.5",
     "maplibre-gl": "^6.17.0",
     "miniflare": "^4.20260730.0",
+    "publint": "^0.3.25",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "typescript": "^7.0.2",
@@ -43,11 +64,15 @@
     "vue": "^3.5.45"
   },
   "peerDependencies": {
+    "@nuxt/kit": "^3.0.0 || ^4.0.0",
     "react": "^18.0.0 || ^19.0.0",
     "react-dom": "^18.0.0 || ^19.0.0",
     "vue": "^3.5.0"
   },
   "peerDependenciesMeta": {
+    "@nuxt/kit": {
+      "optional": true
+    },
     "react": {
       "optional": true
     },
@@ -59,6 +84,9 @@
     }
   },
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
   "private": true,
   "pnpm": {
     "onlyBuiltDependencies": [
@@ -92,7 +120,11 @@
       "import": "./dist/svelte.js",
       "default": "./dist/svelte.js"
     },
-    "./nuxt": "./dist/nuxt.js",
+    "./nuxt": {
+      "types": "./dist/types/nuxt.d.ts",
+      "import": "./dist/nuxt.js",
+      "default": "./dist/nuxt.js"
+    },
     "./vue": {
       "types": "./dist/types/vue.d.ts",
       "import": "./dist/vue.js",
@@ -113,7 +145,10 @@
       "import": "./dist/server.js",
       "default": "./dist/server.js"
     },
-    "./worker": "./dist/map-jr-gl-worker.js",
+    "./worker": {
+      "types": "./dist/types/worker.d.ts",
+      "default": "./dist/map-jr-gl-worker.js"
+    },
     "./package.json": "./package.json"
   },
   "module": "./dist/map-jr-gl.js",
@@ -124,12 +159,15 @@
     "LICENSE",
     "ACKNOWLEDGEMENTS.md",
     "THIRD-PARTY-LICENSES.md",
-    "docs"
+    "docs/*.md"
   ],
   "sideEffects": false,
   "repository": {
     "type": "git",
     "url": "git+https://github.com/map-jr/map-jr-gl.git"
   },
-  "homepage": "https://map-jr.github.io/map-jr-gl/"
+  "homepage": "https://map-jr.github.io/map-jr-gl/",
+  "bugs": {
+    "url": "https://github.com/map-jr/map-jr-gl/issues"
+  }
 }
