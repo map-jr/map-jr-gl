@@ -58,6 +58,8 @@ export function parseFontName(name: string): {family: string; weight: number; st
 
 /** What the network gave for a source of a style (its TileJSON, its GeoJSON, the header of its archive), by source object. */
 const fetched = new WeakMap<object, {url: string; p: Promise<any>; v?: any; err?: any; told?: boolean; late?: () => void}>();
+/** Puts data that the map fetched itself (`setData` with a URL) in the place of the kept result of a source. */
+export function keep(raw: object, url: string, v: unknown) { fetched.set(raw, {url, p: Promise.resolve(v), v}); }
 /** For a change of a style that is in use: a source whose data is not there yet is left out, and `late` is called when it is. */
 export interface Partial { late(): void; fail(error: unknown): void }
 const SKIP = Symbol();

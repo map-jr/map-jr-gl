@@ -739,6 +739,54 @@ for (const mode of ['main', 'worker']) {
         // (The browser writes its own line to the console for each 404 that this test asks for.)
         for (let i = errors.length; i-- > errorsBefore;) if (errors[i].startsWith('Failed to load resource')) errors.splice(i, 1);
     }
+    // The kept network result of a source: new data at the same URL stays after a change of the style, and two maps
+    // that are given the same source object both load it.
+    {
+        const square = JSON.stringify({type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[-20, -20], [20, -20], [20, 20], [-20, 20], [-20, -20]]]}});
+        let body = square;
+        await page.route('**/test-kept.json', async r => { await new Promise(res => setTimeout(res, 150)); r.fulfill({contentType: 'application/json', body}); });
+        const kept = await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), wait = ms => new Promise(r => setTimeout(r, ms));
+            const idle = m => new Promise(r => { m.once('idle', () => r(true)); setTimeout(() => r(false), 6000); });
+            const count = m => Promise.race([m.queryRenderedFeatures({layers: ['fill']}).then(f => f.length), wait(4000).then(() => -1)]);
+            const make = sources => {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+                return new mod.Map({container: el, renderer: mode, attributionControl: false, center: [0, 0], zoom: 1, style: {version: 8, sources, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]}});
+            };
+            const a = window.keptMap = make({g: {type: 'geojson', data: '/test-kept.json'}});
+            await new Promise(r => a.once('load', r));
+            a.addLayer({id: 'fill', type: 'fill', source: 'g'});
+            await idle(a);
+            window.keptFirst = await count(a);
+            // Two other maps get one source object.
+            const shared = {type: 'geojson', data: '/test-kept.json'}, pair = [make({}), make({})];
+            await Promise.all(pair.map(m => new Promise(r => m.once('load', r))));
+            for (const m of pair) { m.addSource('g', shared); m.addLayer({id: 'fill', type: 'fill', source: 'g'}); }
+            const idles = await Promise.all(pair.map(idle));
+            const two = {idles, drawn: await Promise.all(pair.map(count))};
+            for (const m of pair) { const el = m.getContainer(); m.remove(); el.remove(); }
+            return two;
+        }, mode);
+        body = JSON.stringify({type: 'FeatureCollection', features: []});
+        const after = await page.evaluate(async () => {
+            const a = window.keptMap, wait = ms => new Promise(r => setTimeout(r, ms));
+            const idle = () => new Promise(r => { a.once('idle', () => r(true)); setTimeout(() => r(false), 6000); });
+            const count = () => Promise.race([a.queryRenderedFeatures({layers: ['fill']}).then(f => f.length), wait(4000).then(() => -1)]);
+            a.getSource('g').setData('/test-kept.json');
+            await wait(600); await idle();
+            const fresh = await count();
+            // A change of another layer and a zoom: the map must not go back to the data that it had first.
+            a.setPaintProperty('bg', 'background-color', '#eee');
+            a.jumpTo({zoom: 2.5});
+            await wait(600); await idle();
+            const later = await count();
+            const el = a.getContainer(); a.remove(); el.remove();
+            return {first: window.keptFirst, fresh, later};
+        });
+        await page.unroute('**/test-kept.json');
+        check(`[${mode}] setData with the same URL: the new data stays after a change of the style and a zoom`, after.first > 0 && after.fresh === 0 && after.later === 0, JSON.stringify(after));
+        check(`[${mode}] two maps that are given one source object both load it`, kept.idles.every(Boolean) && kept.drawn.every(n => n > 0), JSON.stringify(kept));
+    }
     // fragment moves the map.
     const hash = await page.evaluate(async () => {
         const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:400px;height:300px'}));
