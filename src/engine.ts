@@ -1064,9 +1064,6 @@ export class Engine {
     private frame(now: number) {
         const tr = this.tr, frameNo = ++this.frameNo, began = performance.now();
         compileFor(this.states); // (the light of the style is compiled when it is drawn)
-        // The page always gets a `frame` event for the first frame of an engine with a WebGL context, also for a map with
-        // no size, which draws nothing. A new engine that sends none has no context (see `watch` in map.ts).
-        if (!this.drew && !this.lost && !this.renderer.gl.isContextLost()) { this.drew = true; this.emit({type: 'frame'}); }
         if (!tr.width || !tr.height || this.lost) return;
         const dt = Math.min(100, now - this.lastTime || 16);
         this.lastTime = now;
@@ -1331,8 +1328,10 @@ export class Engine {
         if (settling && !busy) setTimeout(() => this.repaint(), 200);
         if (this.contourWait) { this.contourWait = false; setTimeout(() => this.repaint(), CONTOUR_WAIT + 20); }
         // (A context can be lost with no event. Nothing was drawn then, and the page must not take this for a frame.)
-        // (A context can be lost with no event. Nothing was drawn then, and the page must not take this for a frame.)
-        if (this.reportFrames && !this.renderer.gl.isContextLost()) this.emit({type: 'frame'});
+        // The page always gets a `frame` event for the first frame that an engine has drawn to its end: a new engine that
+        // sends none cannot draw (see `watch` in map.ts). The event comes after the drawing, because the drawing can fail,
+        // and not while the context is lost, because a context can be lost with no event.
+        if ((this.reportFrames || !this.drew) && !this.renderer.gl.isContextLost()) { this.drew = true; this.emit({type: 'frame'}); }
         if (idle && !this.wasIdle) this.emit({type: 'idle', seq: this.seq});
         this.wasIdle = idle;
         if (busy) this.repaint();

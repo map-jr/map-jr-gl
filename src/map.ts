@@ -382,7 +382,7 @@ export class Map {
         this.queue = [];
         this.send({type: 'repaint'});
         // (After a restart, an engine in a worker has 5 seconds for its first frame, and an engine on this thread has 15.)
-        this.watch(!this.restarting ? 0 : this.renderer === 'worker' ? 5000 : 15000);
+        this.watch(!this.restarting ? 0 : this.renderer === 'worker' ? 5 : 15);
         this.styleEvents(true);
 
         this.observer = new ResizeObserver(() => this.resize());
@@ -437,21 +437,19 @@ export class Map {
     private lostAt = 0;
     private watchTurn = 0;
     /**
-     * Waits for the first frame of a new engine. With `limit`, an engine that reports none within that many
-     * milliseconds counts as an engine that lost its context. The time is counted in frames of the page, so the time
-     * that the page is hidden does not count: a hidden page draws no frames.
+     * Waits for the first frame of a new engine. With `limit`, an engine that reports none within that many seconds
+     * counts as an engine that lost its context. A second counts only while the page is visible and the map has a size,
+     * because an engine draws no frame without them. The clock is a timer and not the frames of the page: the page
+     * need not draw for the time to pass.
      */
     private watch(limit = 0) {
         const turn = ++this.watchTurn;
         this.drew = false;
-        let shown = 0, last = 0;
-        const tick = (now: number) => {
+        const tick = () => {
             if (this.drew || turn !== this.watchTurn) return;
-            if (last) shown += Math.min(now - last, 100);
-            last = now;
-            if (shown > limit) this.contextLost(); else requestAnimationFrame(tick);
+            if (!document.hidden && this.tr.width && this.tr.height && !limit--) this.contextLost(); else setTimeout(tick, 1000);
         };
-        if (limit) requestAnimationFrame(tick);
+        if (limit) tick();
     }
 
     /**
