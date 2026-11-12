@@ -93,8 +93,9 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
         base = url;
         style = await res.json();
     }
-    const sources: Record<string, SourceInfo> = {};
-    for (const [name, raw] of Object.entries<any>(style.sources ?? {})) {
+    // The sources are asked for at the same time: each TileJSON, GeoJSON file or archive header is a request of its own.
+    const sources: Record<string, SourceInfo> = {}, raws = Object.entries<any>(style.sources ?? {});
+    const made = await Promise.all(raws.map(async ([name, raw]): Promise<SourceInfo | undefined> => {
         if (raw.type === 'geojson') {
             let data = raw.data;
             if (typeof data === 'string') {
@@ -104,27 +105,25 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
                     if (!res.ok) throw new Error(`Failed to load GeoJSON ${url}: ${res.status}`);
                     return res.json();
                 });
-                if (data === SKIP) continue;
+                if (data === SKIP) return;
             }
-            sources[name] = {type: 'geojson', data, options: raw.cluster || raw.promoteId || raw.filter ? {filter: raw.filter, cluster: raw.cluster, clusterRadius: raw.clusterRadius, clusterMaxZoom: raw.clusterMaxZoom, clusterMinPoints: raw.clusterMinPoints, clusterProperties: raw.clusterProperties, promoteId: raw.promoteId} : undefined, tiles: [`geojson://${name}/{z}/{x}/{y}`], minzoom: 0, maxzoom: raw.maxzoom ?? 18, tileSize: 512, attribution: raw.attribution};
-            continue;
+            return {type: 'geojson', data, options: raw.cluster || raw.promoteId || raw.filter ? {filter: raw.filter, cluster: raw.cluster, clusterRadius: raw.clusterRadius, clusterMaxZoom: raw.clusterMaxZoom, clusterMinPoints: raw.clusterMinPoints, clusterProperties: raw.clusterProperties, promoteId: raw.promoteId} : undefined, tiles: [`geojson://${name}/{z}/{x}/{y}`], minzoom: 0, maxzoom: raw.maxzoom ?? 18, tileSize: 512, attribution: raw.attribution};
         }
         if (raw.type === 'image' && raw.url && raw.coordinates?.length === 4) {
-            sources[name] = {type: 'image', url: base ? new URL(raw.url, base).href : raw.url, coordinates: raw.coordinates, tiles: [], minzoom: 0, maxzoom: 22, tileSize: 512};
-            continue;
+            return {type: 'image', url: base ? new URL(raw.url, base).href : raw.url, coordinates: raw.coordinates, tiles: [], minzoom: 0, maxzoom: 22, tileSize: 512};
         }
-        if (raw.type !== 'vector' && raw.type !== 'raster' && raw.type !== 'raster-dem') continue;
+        if (raw.type !== 'vector' && raw.type !== 'raster' && raw.type !== 'raster-dem') return;
         if (!raw.tiles && !raw.url) {
             // (Reported one time for the source object, not again for each change of the style.)
             if (!fetched.has(raw)) { fetched.set(raw, {url: '', p: Promise.resolve(), err: 1}); bad(new Error(`[map-jr-gl] The source "${name}" has no "tiles" and no "url". Give it one of them.`)); }
-            continue;
+            return;
         }
         let src = raw;
         if (typeof src.url === 'string' && src.url.startsWith(PM_PREFIX)) {
             // A PMTiles archive: its header supplies the zoom range, and tiles are addressed inside the archive.
             const at = src.url.slice(PM_PREFIX.length), file = base ? new URL(at, base).href : at;
             const info = await get(raw, file, async () => (await import('./pmtiles-info.ts')).archive(file, fetchFn).info());
-            if (info === SKIP) continue;
+            if (info === SKIP) return;
             src = {minzoom: info.minzoom, maxzoom: info.maxzoom, attribution: info.attribution, ...raw, tiles: [`${PM_PREFIX}${file}/{z}/{x}/{y}`], head: info.head && {url: file, bytes: info.head}};
         } else if (!src.tiles && src.url) {
             const url = base ? new URL(src.url, base).href : src.url;
@@ -133,19 +132,21 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
                 if (!res.ok) throw new Error(`Failed to load source ${url}: ${res.status}`);
                 return res.json();
             });
-            if (json === SKIP) continue;
+            if (json === SKIP) return;
             src = {...json, ...Object.fromEntries(Object.entries(raw).filter(([k]) => k !== 'url'))};
             src.tiles = src.tiles.map((t: string) => decodeURI(new URL(t, url).href));
         } else if (base) {
             src = {...src, tiles: src.tiles.map((t: string) => t.startsWith(PM_PREFIX) ? t : decodeURI(new URL(t, base).href))};
         }
-        sources[name] = {
+        return {
             type: raw.type, tiles: src.tiles, minzoom: src.minzoom ?? 0, maxzoom: src.maxzoom ?? (raw.type === 'vector' ? 14 : 22),
             tileSize: raw.type === 'vector' ? 512 : src.tileSize ?? 512, attribution: src.attribution, tms: src.scheme === 'tms', bounds: src.bounds,
             encoding: raw.type === 'raster-dem' ? (src.encoding === 'terrarium' ? 'terrarium' : 'mapbox') : undefined, // (from the source or from its TileJSON)
             head: src.head,
         };
-    }
+    }));
+    // (In the order of the style, whichever answer came first.)
+    raws.forEach(([name], i) => { if (made[i]) sources[name] = made[i]!; });
     // Contour sources (an extension to the style specification) are resolved last: each needs its elevation source.
     for (const [name, raw] of Object.entries<any>(style.sources ?? {})) {
         if (raw.type !== 'contour') continue;

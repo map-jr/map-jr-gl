@@ -282,11 +282,22 @@ export class Map {
         const o = this.options;
         if (!o.style) return; // the style comes later, with setStyle
         // (`setStyle` during this request gives another style: that one is fetched, and this answer is not used.)
+        // The workers start now, at the same time as the request for the style: each is a download of its own.
+        // Tile workers come from a pool shared by all maps. If workers cannot be started at all (the file is missing,
+        // or a security policy forbids them), everything still works on this thread, just less smoothly.
+        const want = o.renderer ?? loadDefaults.renderer ?? 'auto';
+        const pool = acquireTileWorkers(o).catch((err: Error) => {
+            console.warn(`[map-jr-gl] Workers are unavailable (${err.message}); running on the main thread. ` +
+                'If the worker file is not next to the library, pass `workerUrl` or `createWorker`, or use the standalone build.');
+        });
+        const engine = want !== 'main' && 'transferControlToOffscreen' in this.canvas ? workerReady(createWorker(o)).catch(() => null) : null;
+        // (When the style fails, or the map is removed, the workers of this start are given back.)
+        const giveBack = () => { pool.then(p => p?.release()); engine?.then(w => w?.terminate()); };
         let raw: any, turn: number;
         this.starting = true;
         do {
             turn = this.styleTurn;
-            try { raw = await this.loadStyle(o.style); } catch (error) { if (turn === this.styleTurn) { this.starting = false; throw error; } }
+            try { raw = await this.loadStyle(o.style); } catch (error) { if (turn === this.styleTurn) { this.starting = false; giveBack(); throw error; } }
         } while (turn !== this.styleTurn);
         this.starting = false;
         this.rawStyle = this.firstChange?.(undefined, raw) ?? raw;
@@ -309,23 +320,12 @@ export class Map {
             minZoom: tr.minZoom, maxZoom: tr.maxZoom, maxPitch: tr.maxPitch, antialias: o.antialias,
         };
 
-        // Tile workers come from a pool shared by all maps. If workers cannot be started at all (the file is missing,
-        // or a security policy forbids them), everything still works on this thread, just less smoothly.
-        let ports: MessagePort[] = [];
-        try {
-            this.tilePool = await acquireTileWorkers(o);
-            ports = this.tilePool.connect();
-        } catch (err) {
-            console.warn(`[map-jr-gl] Workers are unavailable (${(err as Error).message}); running on the main thread. ` +
-                'If the worker file is not next to the library, pass `workerUrl` or `createWorker`, or use the standalone build.');
-        }
-
-        const want = o.renderer ?? loadDefaults.renderer ?? 'auto', wantWorker = want !== 'main';
-        let engineWorker: Worker | null = null;
-        if (wantWorker && ports.length && 'transferControlToOffscreen' in this.canvas) {
-            try { engineWorker = await workerReady(createWorker(o)); } catch { engineWorker = null; }
-        }
-        if (this.removed) { engineWorker?.terminate(); return; }
+        this.tilePool = await pool || undefined;
+        let engineWorker = await engine;
+        if (this.removed) { giveBack(); return; }
+        const ports = this.tilePool?.connect() ?? [];
+        // (An engine in a worker needs the tile workers: without them the engine runs on this thread.)
+        if (!ports.length) { engineWorker?.terminate(); engineWorker = null; }
         if (engineWorker) {
             const off = this.canvas.transferControlToOffscreen(), w = engineWorker;
             this.workers.push(w);
