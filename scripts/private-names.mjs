@@ -17,6 +17,7 @@
 import {readdirSync, readFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
 import path from 'node:path';
+import MagicString from 'magic-string';
 import {pathToFileURL} from 'node:url';
 
 // (On Windows, a module can be imported by a file URL only, not by a path with a drive letter.)
@@ -127,22 +128,36 @@ function shortenShaderLocals(code) {
         : '`' + text.split(hole).map((part, i) => i % 2 ? part : part.replace(words, name => short.get(name))).join('') + '`') : code;
 }
 
-/** The Vite plugin: renames the members in each file of src/ before the file is compiled. */
+/**
+ * The Vite plugins: the first renames the members in each file of src/ before the file is compiled, and the second
+ * renames in the shaders. Each returns a source map of its change, so that the source maps of the built files point at
+ * the right lines of src/.
+ */
 export function shortenPrivateNames() {
-    const short = privateNames();
-    return {
+    const short = privateNames(), map = (edited, id) => ({code: edited.toString(), map: edited.generateMap({source: id, hires: true})});
+    return [{
         name: 'shorten-private-names',
         enforce: 'pre',
         transform(code, id) {
             const file = id.split('?')[0];
             // (Vite gives a path with forward slashes on each system.)
             if (!file.endsWith('.ts') || path.resolve(path.dirname(file)) !== src) return null;
-            const u = uses(code, file), edits = [...u.sites, ...u.loose.filter(l => INTERNAL.includes(l.name))].filter(s => short.has(s.name)).sort((a, b) => b.start - a.start);
-            for (const s of edits) code = code.slice(0, s.start) + short.get(s.name) + code.slice(s.end);
-            if (file.endsWith('gl.ts')) code = shortenShaderLocals(shortenShaderNames(code));
-            return {code, map: null};
+            const u = uses(code, file), edited = new MagicString(code);
+            for (const s of [...u.sites, ...u.loose.filter(l => INTERNAL.includes(l.name))]) if (short.has(s.name)) edited.overwrite(s.start, s.end, short.get(s.name));
+            return map(edited, id);
         },
-    };
+    }, {
+        name: 'shorten-shader-names',
+        enforce: 'pre',
+        transform(code, id) {
+            if (path.resolve(id.split('?')[0]) !== path.join(src, 'gl.ts')) return null;
+            // The renaming keeps each line on its line, so the source map is made line by line.
+            const edited = new MagicString(code), after = shortenShaderLocals(shortenShaderNames(code)).split('\n');
+            let at = 0;
+            code.split('\n').forEach((line, i) => { if (line !== after[i] && line.length) edited.overwrite(at, at + line.length, after[i]); at += line.length + 1; });
+            return map(edited, id);
+        },
+    }];
 }
 
 if (process.argv[1] === import.meta.filename) { const names = privateNames(); console.log([...names.keys()].join(' ')); console.log(names.size + ' names'); }
