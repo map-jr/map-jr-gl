@@ -408,6 +408,32 @@ for (const mode of ['main', 'worker']) {
         && ['mousedown', 'mouseup', 'mousemove', 'dblclick', 'contextmenu', 'wheel', 'mouseout'].every(t => ev.types.includes(t)) && ev.renders > 5 && ev.sourcedata > 0 && ev.lngLat && ev.bounds && ev.handler && zBox > zBox0 + 1,
         JSON.stringify({c0, cBlocked, cOff, cMoved, zBlocked, zMoved, zBox0, zBox, ...ev}));
 
+    // #7: `dblclick` reaches the listener after a query of the engine. preventDefault() there still stops the zoom, and
+    // without it the map zooms. The array of queryRenderedFeatures is not an answer from before setData.
+    const dbl = async prevent => {
+        await page.evaluate(() => window.map.jumpTo({center: [-74.0065, 40.7085], zoom: 14})); await settle(page);
+        await page.evaluate(prevent => { window.dbl = 0; window.map.once('dblclick', e => { window.dbl++; if (prevent) e.preventDefault(); }); }, prevent);
+        await page.mouse.dblclick(500, 350); await page.waitForFunction(() => window.dbl > 0, null, {timeout: 5000}).catch(() => {}); await page.waitForTimeout(700); await settle(page);
+        return (await centre())[2];
+    };
+    const zPrevented = await dbl(true), zDouble = await dbl(false);
+    check(`[${mode}] dblclick: preventDefault() in a listener stops the zoom, and without it the map zooms in`, zPrevented === 14 && Math.abs(zDouble - 15) < 0.01, JSON.stringify({zPrevented, zDouble}));
+    const stale = await page.evaluate(async () => {
+        const m = window.map, idle = () => new Promise(r => m.once('idle', r)), at = [-74.0065, 40.7085];
+        m.jumpTo({center: at, zoom: 14});
+        m.addSource('stale', {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: at}}});
+        m.addLayer({id: 'stale-dot', type: 'circle', source: 'stale', paint: {'circle-radius': 8}});
+        await idle();
+        const p = m.project(at), ask = () => m.queryRenderedFeatures(p, {layers: ['stale-dot']});
+        const first = (await ask()).length, kept = ask().length;
+        let wait = idle(); m.getSource('stale').setData({type: 'FeatureCollection', features: []}); await wait;
+        const array = ask().length, awaited = (await ask()).length;
+        m.removeLayer('stale-dot'); m.removeSource('stale');
+        return {first, kept, array, awaited};
+    });
+    check(`[${mode}] queryRenderedFeatures: the array is not the answer from before setData`, stale.first === 1 && stale.kept === 1 && stale.array === 0 && stale.awaited === 0, JSON.stringify(stale));
+    await settle(page);
+
     // transformRequest and addProtocol: the functions are on the page, and the requests are made in workers.
     const requests = await page.evaluate(async () => {
         const m = window.map, mod = await import('/dist/map-jr-gl-maplibre-compat.js'), c = m.getCenter(), kinds = new Set();
@@ -611,6 +637,34 @@ for (const mode of ['main', 'worker']) {
         });
         check('[main] idle comes after changed data is drawn (setData, setFeatureState, setFilter, refreshTiles), and the source is not loaded before that',
             late.setData === '255,255,255' && late.back === '255,0,0' && late.featureState === '0,0,255' && late.setFilter === '255,255,255' && late.refreshTiles === '0,0,255' && !late.loadedAfterSetData && !late.loadedAfterRefresh, JSON.stringify(late));
+
+        // refreshTiles with four tile workers: queries after it see the new tile, and each query goes to the worker
+        // that loaded the tile, so the tile is requested one time before the refresh and one time after it.
+        const fresh = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            // A vector tile with one layer "a" that has `n` points in the middle of the tile.
+            const point = [0x18, 1, 0x22, 5, 9, 0x80, 0x20, 0x80, 0x20];
+            const tile = n => { const layer = [0x78, 2, 0x0a, 1, 0x61, ...Array.from({length: n}, () => [0x12, point.length, ...point]).flat(), 0x28, 0x80, 0x20]; return new Uint8Array([0x1a, layer.length, ...layer]).buffer; };
+            let points = 5, requests = 0;
+            mod.addProtocol('fresh', async () => { requests++; return {data: tile(points)}; });
+            // (A worker URL of its own gives this map its own tile workers: the other maps of the page keep theirs.)
+            const m = new mod.Map({container: el, renderer: 'main', tileWorkers: 4, workerUrl: '/dist/map-jr-gl-worker.js?fresh', center: [0, 0], zoom: 1, attributionControl: false,
+                style: {version: 8, sources: {v: {type: 'vector', tiles: ['fresh://{z}/{x}/{y}'], minzoom: 0, maxzoom: 0}}, layers: [{id: 'a', type: 'circle', source: 'v', 'source-layer': 'a'}]}});
+            await new Promise(r => m.once('idle', r));
+            const counts = async () => { const out = []; for (let i = 0; i < 8; i++) out.push((await m.queryFeatures([0, 0], {sources: ['v'], radius: 5})).length, (await m.queryRenderedFeatures({layers: ['a']})).length); return out; };
+            const before = await counts(), requestsBefore = requests;
+            points = 1;
+            m.refreshTiles('v');
+            // Asked at once, while the new tile loads, and again when it is on the map.
+            const during = await counts();
+            if (!m.areTilesLoaded()) await new Promise(r => m.once('idle', r));
+            const requestsLoaded = requests, after = await counts();
+            m.remove(); el.remove(); mod.removeProtocol('fresh');
+            return {before, during, after, requestsBefore, requestsForQueries: requests - requestsLoaded};
+        });
+        check('[main] with four tile workers, queries after refreshTiles see the new tile, and a tile on the map is not requested again for a query',
+            fresh.before.every(n => n === 5) && fresh.during.every(n => n === 1) && fresh.after.every(n => n === 1) && fresh.requestsBefore === 1 && fresh.requestsForQueries === 0, JSON.stringify(fresh));
     }
     // Two styles that are asked for one after the other: the last one wins, also when the first answers later, and
     // also when the first is the style of the constructor. The style, the layers and the pixels agree.

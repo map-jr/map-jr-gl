@@ -9,16 +9,24 @@
 import {Map, markerSize, type MapOptions, type MarkerLayer, type RenderedFeature} from './map.ts';
 import {createStore, type Readable} from './store.ts';
 import {Marker, Popup, type OverlayAnchor} from './overlays.ts';
-import type {MarkerLayerOptions} from './markers.ts';
+import type {MarkerInput, MarkerLayerOptions} from './markers.ts';
 import type {QueriedFeature} from './query.ts';
 import type {FontSource} from './engine.ts';
-import type {LngLatBoundsInput} from './lnglat.ts';
+import type {LngLatBounds, LngLatBoundsInput} from './lnglat.ts';
 
 /** The description of a control: see `map-jr-gl/controls`. Controls with the same `key` are the same control. */
-export interface ControlSpec { key: string; position?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'; create(): {onAdd(map: any): HTMLElement; onRemove(map: any): void} }
+export interface ControlSpec { key: string; position?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'; create(): {onAdd(map: Map): HTMLElement; onRemove(map: Map): void} }
 
+/**
+ * A position that the application gives: `[lng, lat]`. It is `readonly number[]` and not a pair, because TypeScript
+ * gives an array that is declared apart from its use (`const NYC = [-74, 40.7]`) the type `number[]`. A position
+ * that the map gives (`state.view.center`, the result of `unproject`) is `[number, number]`.
+ */
+export type Position = readonly number[];
 /** Where the camera is. */
 export interface View { center: [number, number]; zoom: number; bearing: number; pitch: number }
+/** A view that the application gives: each field is optional. */
+export interface ViewInput { center?: Position; zoom?: number; bearing?: number; pitch?: number }
 export interface MapPointer { point: {x: number; y: number}; lngLat: [number, number]; /** The features of `interactiveLayers` at the point, the top one first. */ features: RenderedFeature[] }
 
 /** Additions to a style: see `extend` in `MapSpec`. */
@@ -41,12 +49,12 @@ export interface MapSpec extends MapSetup {
      */
     extend?: StyleExtension;
     /** The view at the start. The user then moves the map. */
-    initialView?: Partial<View>;
+    initialView?: ViewInput;
     /**
      * A view that the application owns. Give it together with `onViewChange` and write each change back, or change it
      * to move the map. (The map does not wait for the application: a view that the map itself reported is not applied again.)
      */
-    view?: Partial<View>;
+    view?: ViewInput;
     onViewChange?: (view: View) => void;
     /**
      * GeoJSON data for sources of the style, by the id of the source: `{routes: featureCollection}`. The source is in
@@ -96,7 +104,7 @@ export interface MapState {
 
 /** Where an element of the page is on the map. */
 export interface OverlayOptions {
-    lngLat: [number, number];
+    lngLat: Position;
     /** The part of the element that is at the position: `'center'` (the default), `'bottom'`, `'top-left'` and others. */
     anchor?: OverlayAnchor;
     /** A distance in pixels from the position, to the right and down. */
@@ -108,8 +116,63 @@ export interface OverlayOptions {
 export interface MapOverlay { update(options: OverlayOptions): void; remove(): void }
 
 /** Where to look for features: a point of the screen, a position `[lng, lat]`, or a rectangle of the screen (two points). */
-export type FeaturePlace = {x: number; y: number} | [number, number] | [{x: number; y: number}, {x: number; y: number}];
+export type FeaturePlace = {x: number; y: number} | Position | readonly {x: number; y: number}[];
 export interface FeatureOptions { layers?: string[]; filter?: unknown; sources?: string[]; sourceLayers?: string[]; radius?: number; geometry?: boolean }
+
+/** What each event of `listen` has: its type, and the map object behind the host (see `map` in `MapHost`). */
+export interface MapEventBase<T extends string = string> { type: T; target: Map }
+/** A marker of a marker layer under the pointer: the layer, the index of the marker in the `data` of the layer, and the marker. */
+export interface MarkerHit { layer: MarkerLayer; index: number; marker: MarkerInput }
+/** An event of the pointer. A listener that calls `preventDefault()` stops what the map does for the event (a drag, a zoom). */
+export interface MapPointerEvent<T extends string = string, E extends MouseEvent = MouseEvent> extends MapEventBase<T> {
+    /** The place in CSS pixels from the top left corner of the map. */
+    point: {x: number; y: number};
+    lngLat: {lng: number; lat: number};
+    originalEvent: E;
+    preventDefault(): void;
+    readonly defaultPrevented: boolean;
+}
+/** An event of a touch: `points` and `lngLats` have one entry for each finger on the map. */
+export interface MapTouchEvent<T extends string = string> extends MapPointerEvent<T, PointerEvent> { points: {x: number; y: number}[]; lngLats: {lng: number; lat: number}[] }
+/** An event of the data of the map: `dataType` says whether the style or one source (`sourceId`) is concerned. */
+export interface MapDataEvent<T extends string = string> extends MapEventBase<T> { dataType: 'source' | 'style'; sourceId?: string; isSourceLoaded?: boolean; source?: unknown }
+
+type Plain<K extends string> = {[T in K]: MapEventBase<T>};
+type Pointed<K extends string> = {[T in K]: MapPointerEvent<T>};
+/**
+ * The events of `listen`, by type. The state of the map (`state`) and the callbacks of the description (`onClick`,
+ * `onViewChange`, `onError`) cover the common needs. These events are those of the map object behind the host.
+ */
+export interface MapEvents extends
+    Plain<'load' | 'idle' | 'render' | 'resize' | 'remove' | 'style.load' | 'webglcontextlost' | 'webglcontextrestored'>,
+    Plain<'movestart' | 'move' | 'moveend' | 'zoomstart' | 'zoom' | 'zoomend' | 'rotatestart' | 'rotate' | 'rotateend' | 'pitchstart' | 'pitch' | 'pitchend' | 'dragstart'>,
+    Pointed<'dblclick' | 'contextmenu' | 'mousedown' | 'mousemove' | 'mouseup' | 'mouseover' | 'mouseout'>,
+    Record<'touchstart' | 'touchmove' | 'touchend' | 'touchcancel', MapTouchEvent>,
+    Record<'styledata' | 'sourcedata' | 'data' | 'styledataloading' | 'sourcedataloading' | 'dataloading', MapDataEvent> {
+    /** `marker` is the marker of a marker layer at the point, or `null`. */
+    click: MapPointerEvent<'click'> & {marker: MarkerHit | null};
+    wheel: MapPointerEvent<'wheel', WheelEvent>;
+    /** A click on a marker of a marker layer. */
+    markerclick: MapPointerEvent<'markerclick'> & MarkerHit;
+    /** The pointer comes to a marker of a marker layer, or leaves it. */
+    markerenter: MapEventBase<'markerenter'> & MarkerHit;
+    markerleave: MapEventBase<'markerleave'> & MarkerHit;
+    /** The box of a zoom with the Shift key and a drag. `boxzoomend` has the bounds of the box. */
+    boxzoomstart: MapEventBase<'boxzoomstart'> & {originalEvent: PointerEvent};
+    boxzoomcancel: MapEventBase<'boxzoomcancel'> & {originalEvent: Event};
+    boxzoomend: MapEventBase<'boxzoomend'> & {originalEvent: Event; boxZoomBounds: LngLatBounds};
+    /** About once a second while the map draws: frames per second, and the time of a frame on the CPU in milliseconds. */
+    stats: MapEventBase<'stats'> & {fps: number; frameMs: number};
+    /** The style names an image (`id`) that the map does not have. */
+    styleimagemissing: MapEventBase<'styleimagemissing'> & {id: string};
+    /** The terrain of the style has changed. */
+    terrain: MapEventBase<'terrain'> & {terrain: {source: string; exaggeration?: number} | null};
+    /** The geolocate control of `map-jr-gl/controls` has a position. */
+    geolocate: MapEventBase<'geolocate'> & {coords: GeolocationCoordinates};
+    /** `error` is usually an `Error`. (`onError` and `state.error` always have an `Error`.) */
+    error: MapEventBase<'error'> & {error: unknown};
+}
+
 export interface MapHost {
     /** Changes the map to a new description. Give the complete description each time: a description with no `style` throws. */
     update(spec: MapSpec): void;
@@ -132,11 +195,11 @@ export interface MapHost {
      */
     watchFeatures(at: FeaturePlace | undefined, options: FeatureOptions, listener: (features: (RenderedFeature | QueriedFeature)[]) => void): () => void;
     /** The height of the ground in metres at a position (`[lng, lat]`) or a point of the screen, from the elevation source of the style. `null` where there is no data. */
-    queryElevation(at: [number, number] | {x: number; y: number}): Promise<number | null>;
+    queryElevation(at: Position | {x: number; y: number}): Promise<number | null>;
     /** Moves the camera now, with an animation when `duration` is not 0. */
-    moveTo(view: Partial<View> & {duration?: number}): void;
+    moveTo(view: ViewInput & {duration?: number}): void;
     fitBounds(bounds: LngLatBoundsInput, options?: {padding?: number; duration?: number; maxZoom?: number}): void;
-    project(lngLat: [number, number]): {x: number; y: number};
+    project(lngLat: Position): {x: number; y: number};
     unproject(point: {x: number; y: number}): [number, number];
     /**
      * Puts an element of the page at a position of the map: a marker with your own content, a label, a popup. The
@@ -144,14 +207,14 @@ export interface MapHost {
      * on the canvas and is much faster.
      */
     overlay(element: HTMLElement, options: OverlayOptions): MapOverlay;
-    /** Calls `fn` for each event of that type. Returns a function that stops it. */
-    listen(type: string, fn: (event: any) => void): () => void;
+    /** Calls `fn` for each event of that type (the types are the names of `MapEvents`). Returns a function that stops it. */
+    listen<K extends keyof MapEvents>(type: K, fn: (event: MapEvents[K]) => void): () => void;
     readonly container: HTMLElement;
     /** The map object behind this host, for a need that this API does not cover yet. It can change between versions. */
     readonly map: Map;
 }
 
-const same = (a: Partial<View> | undefined, b: Partial<View> | undefined) => !!a && !!b && a.zoom === b.zoom && a.bearing === b.bearing && a.pitch === b.pitch && a.center?.[0] === b.center?.[0] && a.center?.[1] === b.center?.[1];
+const same = (a: ViewInput | undefined, b: ViewInput | undefined) => !!a && !!b && a.zoom === b.zoom && a.bearing === b.bearing && a.pitch === b.pitch && a.center?.[0] === b.center?.[0] && a.center?.[1] === b.center?.[1];
 
 /** Reports a mistake of the user: the number of a message of `src/mistakes.ts`, and the names that the message has. */
 type Warn = (code: number, a?: string, b?: string) => void;
@@ -381,7 +444,7 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
                 remove() { const old = made; made = null; old?.remove(); },
             };
         },
-        listen(type, fn) { map.on(type, fn); return () => { map.off(type, fn); }; },
+        listen(type, fn: (event: any) => void) { map.on(type, fn); return () => { map.off(type, fn); }; },
         container: map.getContainer(),
         map,
     };
