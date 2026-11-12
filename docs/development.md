@@ -181,7 +181,88 @@ set the floors again.
 
 See [CLAUDE.md](../CLAUDE.md) for who may merge what, and for the definition of done.
 
+## How a release is made
+
+The package has had no release yet. This section describes the process for the first release and the ones after it.
+A change of this process needs the owner.
+
+### The version number
+
+The version is in `package.json`. The first line of each built file that `package.json` names also has it.
+
+While the version is 0.x, the second number says whether code that worked can stop working:
+
+| Change | Version | Example |
+|---|---|---|
+| A breaking change: public API of either entry is removed or renamed, or a default changes | The second number increases | 0.2.3 to 0.3.0 |
+| A fix or a new feature that breaks nothing | The third number increases | 0.2.3 to 0.2.4 |
+
+`npm install map-jr-gl` writes a range such as `^0.2.0` into the `package.json` of an application. For a 0.x
+version, npm reads this range as 0.2.0 or later and below 0.3.0, so an application does not get a breaking change
+without a change of its own `package.json`.
+
+### How a breaking change is announced
+
+- The entry of the version in `CHANGELOG.md` starts with a section "Breaking changes". Each item names the entry
+  (`map-jr-gl` or `map-jr-gl/maplibre-compat`), says what stopped working, and says what to write instead.
+- The release on GitHub has the same text.
+- The pull request of the breaking change is not merged without the owner (see [CLAUDE.md](../CLAUDE.md)), and it
+  adds its item to the changelog itself.
+- A version with the same second number never has a breaking change. If one is merged by mistake, the next version
+  with that second number takes it back.
+
+### The steps
+
+1. **Check `main`.** The workflow `CI` is green for the commit to release. Read the results of the workflow
+   `Browsers` for the same commit (`git fetch origin bench-results && git show origin/bench-results:README.md`).
+2. **Choose the version** with the table above, from the pull requests since the last tag
+   (`git log v0.2.0..origin/main --oneline`, with the last tag in place of `v0.2.0`).
+3. **Open a pull request for the release** (`docs/release-0.3.0`). It changes `"version"` in `package.json`, adds
+   the entry to [CHANGELOG.md](../CHANGELOG.md), and updates [Browser support](browser-support.md) when the
+   results of the browsers changed. The entry is written for a reader who decides whether to update: breaking
+   changes first, then what is new, then what was fixed, each with a link to its pull request.
+4. **Check the package** on that branch:
+
+   ```bash
+   pnpm build && pnpm test && pnpm test:package
+   ```
+
+   `pnpm test:package` packs the tarball and checks it (see [Commands](#commands)). `package.json` has no script
+   that builds before a publish, so a tarball contains the `dist` folder as the last build left it.
+5. **Merge** the pull request when `CI` is green. The owner merges it.
+6. **Tag** the merge commit and push the tag:
+
+   ```bash
+   git fetch origin main && git tag v0.3.0 origin/main && git push origin v0.3.0
+   ```
+
+7. **Publish to npm.** See below.
+8. **Make the release on GitHub** from the tag, with the entry of the changelog as its text.
+
+### Publishing to npm
+
+The aim is that a GitHub workflow publishes, so that the package has a provenance statement: npm then shows the
+commit and the workflow run that built the tarball. This workflow does not exist yet. When it is added, it does
+these steps for a pushed tag `v*`:
+
+1. It checks that the tag is the version in `package.json`.
+2. It runs `pnpm install --frozen-lockfile`, `pnpm build`, `pnpm test` and `pnpm test:package`.
+3. It runs `npm publish --provenance --access public`. The job needs the permission `id-token: write`, and npm
+   must trust the workflow (a trusted publisher in the settings of the package on npm) or have a token as a secret
+   of the repository.
+
+npm makes a provenance statement only in a supported CI system. A publish from the owner's computer
+(`pnpm build && pnpm test:package && npm publish --access public`) works, but the package then has no provenance
+statement.
+
+`npm publish` refuses a package that has `"private": true` in `package.json`, which is the case today.
+
+A published version cannot be changed. If a version has a fault, publish a new version with the fix, and mark the
+faulty version with `npm deprecate` and a message that names the version to use.
+
 ## Facts about browsers that the code depends on
+
+See [Browser support](browser-support.md) for what was seen in which browser.
 
 - **WebGL2 is required.** `supported()` of both entries tests for it. Without it the map fires one `error` and puts
   a message into the container (`.map-jr-unavailable`; see `cannotShow` in `src/map.ts`).
