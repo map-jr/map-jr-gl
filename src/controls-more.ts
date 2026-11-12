@@ -5,8 +5,10 @@ import {cls, toggleClass, type Control, type ControlPosition} from './controls.t
 
 const svg = (path: string, extra = '') => `<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" ${extra}>${path}</svg>`;
 
-function button(group: HTMLElement, label: string, icon: string, onClick: () => void): HTMLButtonElement {
+/** `name` gives the button the class name that MapLibre GL JS gives it (`maplibregl-ctrl-zoom-in`), for stylesheets and tests written for that library. */
+function button(group: HTMLElement, name: string, label: string, icon: string, onClick: () => void): HTMLButtonElement {
     const b = document.createElement('button');
+    b.className = 'maplibregl-ctrl-' + name;
     b.type = 'button';
     b.title = label;
     b.setAttribute('aria-label', label);
@@ -31,11 +33,11 @@ export class NavigationControl implements Control {
         const el = this.el = group();
         let zoomIn: HTMLButtonElement | undefined, zoomOut: HTMLButtonElement | undefined, needle: SVGElement | null = null;
         if (this.options.showZoom !== false) {
-            zoomIn = button(el, 'Zoom in', svg('<path d="M9 4v10M4 9h10"/>'), () => map.zoomIn());
-            zoomOut = button(el, 'Zoom out', svg('<path d="M4 9h10"/>'), () => map.zoomOut());
+            zoomIn = button(el, 'zoom-in', 'Zoom in', svg('<path d="M9 4v10M4 9h10"/>'), () => map.zoomIn());
+            zoomOut = button(el, 'zoom-out', 'Zoom out', svg('<path d="M4 9h10"/>'), () => map.zoomOut());
         }
         if (this.options.showCompass !== false) {
-            const b = button(el, 'Reset bearing to north', svg('<path d="M9 2.500 12 9H6z" fill="currentColor" stroke="none"/><path d="M9 15.500 6 9h6z" fill="currentColor" stroke="none" opacity=".35"/>'),
+            const b = button(el, 'compass', 'Reset bearing to north', svg('<path d="M9 2.500 12 9H6z" fill="currentColor" stroke="none"/><path d="M9 15.500 6 9h6z" fill="currentColor" stroke="none" opacity=".35"/>'),
                 () => map.easeTo({bearing: 0, pitch: 0}));
             needle = b.querySelector('svg');
         }
@@ -82,7 +84,7 @@ export class FullscreenControl implements Control {
     private el?: HTMLElement;
     onAdd(map: Map) {
         const el = this.el = group(), c = map.getContainer();
-        const b = button(el, '', svg('<path d="M3 7V3h4M11 3h4v4M15 11v4h-4M7 15H3v-4"/>'),
+        const b = button(el, 'fullscreen', '', svg('<path d="M3 7V3h4M11 3h4v4M15 11v4h-4M7 15H3v-4"/>'),
             () => { if (document.fullscreenElement) document.exitFullscreen(); else c.requestFullscreen?.(); });
         // The name of the button says what a press does now, and `aria-pressed` says whether the map fills the screen.
         const name = this.name = () => {
@@ -105,7 +107,7 @@ export class TerrainControl implements Control {
     constructor(public options: {source: string; exaggeration?: number}) {}
     onAdd(map: Map) {
         const el = this.el = group();
-        button(el, 'Toggle terrain', svg('<path d="M1.500 14.500l5-8 3 4.500 2-3 5 6.500z"/>'), () => { map.setTerrain(map.getTerrain() ? null : this.options); });
+        button(el, 'terrain', 'Toggle terrain', svg('<path d="M1.500 14.500l5-8 3 4.500 2-3 5 6.500z"/>'), () => { map.setTerrain(map.getTerrain() ? null : this.options); });
         return el;
     }
     onRemove() { this.el?.remove(); }
@@ -125,7 +127,7 @@ export class GeolocateControl implements Control {
     constructor(private options: {zoom?: number; positionOptions?: PositionOptions} = {}) {}
     onAdd(map: Map) {
         const el = this.el = group();
-        const b = button(el, 'Find my location', svg('<circle cx="9" cy="9" r="4"/><path d="M9 1.500v3M9 13.500v3M1.500 9h3M13.500 9h3"/>'), () => {
+        const b = button(el, 'geolocate', 'Find my location', svg('<circle cx="9" cy="9" r="4"/><path d="M9 1.500v3M9 13.500v3M1.500 9h3M13.500 9h3"/>'), () => {
             b.disabled = true;
             navigator.geolocation.getCurrentPosition(p => {
                 b.disabled = false;
