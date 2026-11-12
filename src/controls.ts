@@ -92,7 +92,7 @@ export class AttributionControl implements Control {
         inner.className = cls('ctrl-attrib-inner');
         const toggle = Object.assign(document.createElement('button'), {type: 'button', className: cls('ctrl-attrib-button'), textContent: 'i', title: 'Map data credits'});
         toggle.setAttribute('aria-label', 'Toggle map data credits');
-        toggle.addEventListener('click', () => toggle.setAttribute('aria-expanded', String(toggleClass(el, 'compact-show'))));
+        toggle.addEventListener('click', () => { toggle.setAttribute('aria-expanded', String(toggleClass(el, 'compact-show'))); this.update(); });
         el.append(toggle, inner);
         let interacted = false;
         const collapse = () => { interacted = true; toggleClass(el, 'compact-show', false); toggle.setAttribute('aria-expanded', 'false'); };
@@ -105,12 +105,21 @@ export class AttributionControl implements Control {
             // On small maps the credits start open, as MapLibre shows them, and fold away at the first drag.
             if (compact && !el.classList.contains('map-jr-compact') && !interacted) { toggleClass(el, 'compact-show', true); toggle.setAttribute('aria-expanded', 'true'); }
             toggleClass(el, 'compact', compact);
+            // The credits end where the controls of the other corner of the same edge begin: they do not go under them.
+            const corner = el.parentElement, c = map.getContainer();
+            const other = corner && c.querySelector<HTMLElement>('.' + corner.className.split(' ')[0].replace(/left|right/, side => side === 'left' ? 'right' : 'left'));
+            el.style.maxWidth = corner ? c.clientWidth - (other?.offsetWidth ?? 0) - 30 + 'px' : '';
         };
         map.on('styledata', this.update);
         map.on('resize', this.update);
-        map.on('dragstart', collapse);
-        this.cleanup = () => { map.off('styledata', this.update); map.off('resize', this.update); map.off('dragstart', collapse); };
+        map.on('idle', this.update); // (controls that were added since)
+        // The open credits of a small map close when the user touches the map: a press, a tap or the start of a drag.
+        const presses = ['dragstart', 'mousedown', 'touchstart'];
+        for (const type of presses) map.on(type, collapse);
+        this.cleanup = () => { map.off('styledata', this.update); map.off('resize', this.update); map.off('idle', this.update); for (const type of presses) map.off(type, collapse); };
         this.update();
+        // (The control is in the page after this function returns: its width is set then.)
+        queueMicrotask(this.update);
         return el;
     }
     private cleanup = () => {};
