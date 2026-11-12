@@ -91,7 +91,12 @@ export interface RenderedQueryOptions { layers?: string[]; filter?: unknown; val
 /** A feature from `queryRenderedFeatures` or `querySourceFeatures`: GeoJSON, with its source, its style layer and its state. */
 export interface RenderedFeature {
     type: 'Feature'; id?: number | string; geometry: {type: string; coordinates: unknown}; properties: Record<string, unknown>;
-    source: string; sourceLayer?: string; layer?: unknown; state: Record<string, unknown>;
+    source: string; sourceLayer?: string; /** The style layer that draws the feature. */ layer: StyleLayer; state: Record<string, unknown>;
+}
+/** A layer of the style, as the style has it (the MapLibre style specification). */
+export interface StyleLayer {
+    id: string; type: string; source?: string; 'source-layer'?: string; minzoom?: number; maxzoom?: number; filter?: unknown;
+    layout?: Record<string, unknown>; paint?: Record<string, unknown>; metadata?: unknown;
 }
 
 export interface MapEvent { type: string; target: Map; point?: {x: number; y: number}; lngLat?: {lng: number; lat: number}; [key: string]: unknown }
@@ -1162,7 +1167,7 @@ export class Map {
                     shown = new Set();
                     const grid = new CollisionGrid();
                     for (let i = 0; i < layer.data.length; i++) {
-                        const [x, y] = this.tr.project(...layer.data[i].lngLat), x0 = x + ox, y0 = y + oy, x1 = x0 + o.width, y1 = y0 + o.height;
+                        const [x, y] = this.tr.project(...layer.data[i].lngLat as [number, number]), x0 = x + ox, y0 = y + oy, x1 = x0 + o.width, y1 = y0 + o.height;
                         if (x0 > this.tr.width || y0 > this.tr.height || x1 < 0 || y1 < 0 || grid.hits(x0, y0, x1, y1)) continue;
                         grid.insert(x0, y0, x1, y1);
                         shown.add(i);
@@ -1173,7 +1178,7 @@ export class Map {
             for (let i = layer.data.length - 1; i >= 0; i--) {
                 const ll = layer.data[i].lngLat;
                 if (near && (ll[0] < w || ll[0] > e || ll[1] < s || ll[1] > n)) continue;
-                const [x, y] = this.tr.project(...ll);
+                const [x, y] = this.tr.project(...ll as [number, number]);
                 if (point.x >= x + ox && point.x <= x + ox + o.width && point.y >= y + oy && point.y <= y + oy + o.height && visible(i)) return {layer, index: i, marker: layer.data[i]};
             }
         }
