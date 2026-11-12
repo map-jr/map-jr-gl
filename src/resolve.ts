@@ -78,7 +78,14 @@ function once(raw: object, url: string, load: () => Promise<any>, partial?: Part
     return m.v;
 }
 
-export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) => fetch(...a), base?: string, partial?: Partial): Promise<ResolvedStyle> {
+/**
+ * With `fail`, a source that cannot be used (its request failed, or it has no tiles) is reported to that function and
+ * left out: the other sources and their layers are drawn. Without it, such a source makes the whole style fail.
+ */
+export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) => fetch(...a), base?: string, partial?: Partial, fail = partial?.fail): Promise<ResolvedStyle> {
+    const bad = (error: unknown): typeof SKIP => { if (!fail) throw error; fail(error); return SKIP; };
+    // (With `partial`, `once` reports a failure itself.)
+    const get = (raw: object, url: string, load: () => Promise<any>) => partial ? once(raw, url, load, partial) : once(raw, url, load).catch(bad);
     if (typeof style === 'string') {
         const url = base ? new URL(style, base).href : style;
         const res = await fetchFn(url);
@@ -92,11 +99,11 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
             let data = raw.data;
             if (typeof data === 'string') {
                 const url = base ? new URL(data, base).href : data;
-                data = await once(raw, url, async () => {
+                data = await get(raw, url, async () => {
                     const res = await fetchFn(url);
                     if (!res.ok) throw new Error(`Failed to load GeoJSON ${url}: ${res.status}`);
                     return res.json();
-                }, partial);
+                });
                 if (data === SKIP) continue;
             }
             sources[name] = {type: 'geojson', data, options: raw.cluster || raw.promoteId || raw.filter ? {filter: raw.filter, cluster: raw.cluster, clusterRadius: raw.clusterRadius, clusterMaxZoom: raw.clusterMaxZoom, clusterMinPoints: raw.clusterMinPoints, clusterProperties: raw.clusterProperties, promoteId: raw.promoteId} : undefined, tiles: [`geojson://${name}/{z}/{x}/{y}`], minzoom: 0, maxzoom: raw.maxzoom ?? 18, tileSize: 512, attribution: raw.attribution};
@@ -107,20 +114,25 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
             continue;
         }
         if (raw.type !== 'vector' && raw.type !== 'raster' && raw.type !== 'raster-dem') continue;
+        if (!raw.tiles && !raw.url) {
+            // (Reported one time for the source object, not again for each change of the style.)
+            if (!fetched.has(raw)) { fetched.set(raw, {url: '', p: Promise.resolve(), err: 1}); bad(new Error(`[map-jr-gl] The source "${name}" has no "tiles" and no "url". Give it one of them.`)); }
+            continue;
+        }
         let src = raw;
         if (typeof src.url === 'string' && src.url.startsWith(PM_PREFIX)) {
             // A PMTiles archive: its header supplies the zoom range, and tiles are addressed inside the archive.
             const at = src.url.slice(PM_PREFIX.length), file = base ? new URL(at, base).href : at;
-            const info = await once(raw, file, async () => (await import('./pmtiles-info.ts')).archive(file, fetchFn).info(), partial);
+            const info = await get(raw, file, async () => (await import('./pmtiles-info.ts')).archive(file, fetchFn).info());
             if (info === SKIP) continue;
             src = {minzoom: info.minzoom, maxzoom: info.maxzoom, attribution: info.attribution, ...raw, tiles: [`${PM_PREFIX}${file}/{z}/{x}/{y}`], head: info.head && {url: file, bytes: info.head}};
         } else if (!src.tiles && src.url) {
             const url = base ? new URL(src.url, base).href : src.url;
-            const json = await once(raw, url, async () => {
+            const json = await get(raw, url, async () => {
                 const res = await fetchFn(url);
                 if (!res.ok) throw new Error(`Failed to load source ${url}: ${res.status}`);
                 return res.json();
-            }, partial);
+            });
             if (json === SKIP) continue;
             src = {...json, ...Object.fromEntries(Object.entries(raw).filter(([k]) => k !== 'url'))};
             src.tiles = src.tiles.map((t: string) => decodeURI(new URL(t, url).href));
@@ -138,7 +150,7 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
     for (const [name, raw] of Object.entries<any>(style.sources ?? {})) {
         if (raw.type !== 'contour') continue;
         const dem = sources[raw.source];
-        if (!dem || dem.type !== 'raster-dem') throw new Error(`Contour source "${name}" needs "source" to name a raster-dem source`);
+        if (!dem || dem.type !== 'raster-dem') { bad(new Error(`Contour source "${name}" needs "source" to name a raster-dem source`)); continue; }
         const zooms = Object.keys(raw.thresholds ?? {}).map(Number);
         sources[name] = {
             type: 'contour', tiles: [`contour://${name}/{z}/{x}/{y}`], minzoom: Math.max(0, Math.min(...zooms, 24)), maxzoom: raw.maxzoom ?? 15, tileSize: 512, attribution: dem.attribution,

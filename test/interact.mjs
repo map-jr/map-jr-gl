@@ -646,6 +646,66 @@ for (const mode of ['main', 'worker']) {
         check(`[${mode}] setStyle two times, the first answer last: the last style is the style, in getStyle, the layers and the pixels`, ok(later), JSON.stringify({...later, shot: later.shot.equals(wanted)}));
         check(`[${mode}] setStyle before the style of the constructor has come: the new style takes its place`, ok(first), JSON.stringify({...first, shot: first.shot.equals(wanted)}));
     }
+    // A source or a style that fails: the map reports it with an `error` event and goes on with the rest.
+    {
+        const errorsBefore = errors.length;
+        const failed = await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), wait = ms => new Promise(r => setTimeout(r, ms));
+            // (A map that never starts does not answer a query: the test must not wait for ever.)
+            const count = query => Promise.race([query.then(found => found.length), wait(4000).then(() => -1)]);
+            const make = style => {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+                const m = new mod.Map({container: el, style, renderer: mode, attributionControl: false, center: [0, 0], zoom: 1}), seen = [];
+                for (const type of ['error', 'load', 'style.load']) m.on(type, e => seen.push(type === 'error' ? 'error: ' + (e.error?.message ?? e.error) : type));
+                return {m, el, seen};
+            };
+            const rejections = [], onRejection = e => rejections.push(String(e.reason?.message ?? e.reason));
+            addEventListener('unhandledrejection', onRejection);
+            const square = {type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[-20, -20], [20, -20], [20, 20], [-20, 20], [-20, -20]]]}};
+            const good = {version: 8, sources: {g: {type: 'geojson', data: square}}, layers: [{id: 'bg', type: 'background'}, {id: 'fill', type: 'fill', source: 'g'}]};
+            const out = {};
+            // 1. One good source and one whose TileJSON is not there.
+            const a = make({...good, sources: {...good.sources, gone: {type: 'vector', url: '/no-such-tilejson.json'}}, layers: [...good.layers, {id: 'lost', type: 'line', source: 'gone', 'source-layer': 'x'}]});
+            await wait(2500);
+            out.oneSource = {seen: a.seen, loaded: a.m.loaded(), drawn: await count(a.m.queryRenderedFeatures({layers: ['fill']}))};
+            // 2. A first style that fails, then a good style.
+            const b = make('/no-such-style.json');
+            await wait(1200);
+            const firstError = b.seen.join();
+            b.m.setStyle(good);
+            await wait(2000);
+            out.afterFailure = {firstError, seen: b.seen.slice(1), loaded: b.m.loaded(), styleLoaded: b.m.isStyleLoaded()};
+            // 3. setStyle with a URL that fails: an `error` event, a promise that is not rejected, and the map keeps its style.
+            const c = make(good);
+            await wait(1500);
+            const before = c.seen.length;
+            let rejected = false;
+            await Promise.race([c.m.setStyle('/no-such-style.json').catch(() => { rejected = true; }), wait(4000)]);
+            await wait(500);
+            out.badStyle = {seen: c.seen.slice(before), rejected, kept: !!c.m.getLayer('fill')};
+            // 4. A source with no tiles and no url: one `error`, and later changes of the style work.
+            const errorsBefore = c.seen.length;
+            c.m.addSource('bad', {type: 'vector'});
+            await wait(500);
+            c.m.addLayer({id: 'later', type: 'fill', source: 'g', paint: {'fill-color': '#f00'}});
+            c.m.setPaintProperty('fill', 'fill-color', '#00f');
+            await wait(1500);
+            out.badSource = {seen: c.seen.slice(errorsBefore), later: await count(c.m.queryRenderedFeatures({layers: ['later']}))};
+            removeEventListener('unhandledrejection', onRejection);
+            for (const x of [a, b, c]) { x.m.remove(); x.el.remove(); }
+            return {...out, rejections};
+        }, mode);
+        check(`[${mode}] a source that fails: one error with the URL, the other layers are drawn and load fires`,
+            failed.oneSource.seen.filter(s => s.startsWith('error')).length === 1 && failed.oneSource.seen[0].includes('/no-such-tilejson.json') && failed.oneSource.seen.includes('load') && failed.oneSource.loaded && failed.oneSource.drawn > 0, JSON.stringify(failed.oneSource));
+        check(`[${mode}] a first style that fails says the URL and the status, and setStyle with a good style then loads the map`,
+            /Style \/no-such-style\.json: HTTP 404/.test(failed.afterFailure.firstError) && failed.afterFailure.seen.includes('load') && failed.afterFailure.loaded && failed.afterFailure.styleLoaded, JSON.stringify(failed.afterFailure));
+        check(`[${mode}] setStyle with a URL that fails: an error event, no rejected promise, and the map keeps its style`,
+            failed.badStyle.seen.length === 1 && /HTTP 404/.test(failed.badStyle.seen[0]) && !failed.badStyle.rejected && failed.badStyle.kept && !failed.rejections.length, JSON.stringify({...failed.badStyle, rejections: failed.rejections}));
+        check(`[${mode}] addSource with no tiles and no url: one error that names the source, and later changes of the style work`,
+            failed.badSource.seen.length === 1 && failed.badSource.seen[0].includes('"bad"') && failed.badSource.later > 0, JSON.stringify(failed.badSource));
+        // (The browser writes its own line to the console for each 404 that this test asks for.)
+        for (let i = errors.length; i-- > errorsBefore;) if (errors[i].startsWith('Failed to load resource')) errors.splice(i, 1);
+    }
     // fragment moves the map.
     const hash = await page.evaluate(async () => {
         const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:400px;height:300px'}));

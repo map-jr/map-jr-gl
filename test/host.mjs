@@ -63,6 +63,17 @@ for (const renderer of ['worker', 'main']) {
         });
         check(`[${renderer}] update with a new style: a layer comes and goes, and queries find features`, style.withLayer > 0 && style.without === 0 && style.raw > 0, JSON.stringify(style));
 
+        // 3a. A style URL that fails, with `extend`: the error is in the state with the URL and the status, and no promise is left rejected.
+        const badStyle = await page.evaluate(async () => {
+            const t = window.t, el = document.body.appendChild(document.createElement('div'));
+            const host = t.lib.createMap(el, {style: '/no-such-style.json', extend: {layers: [{id: 'extra', type: 'background'}]}, attribution: false});
+            await new Promise(r => { host.state.subscribe(s => s.error, e => e && r()); setTimeout(r, 4000); });
+            const message = host.state.get().error?.message;
+            host.destroy(); el.remove();
+            return message;
+        });
+        check(`[${renderer}] a style URL that fails: state.error has the URL and the status, and no promise is left rejected`, /Style \/no-such-style\.json: HTTP 404/.test(badStyle ?? '') && !errors.length, JSON.stringify({badStyle, errors}));
+
         // 3b. A description with no style (only the changed fields) throws at once with a message, and the map is not harmed.
         const partial = await page.evaluate(async () => {
             const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), said = fn => { try { fn(); return ''; } catch (e) { return e.message; } };

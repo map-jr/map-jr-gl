@@ -253,7 +253,7 @@ export class Map {
         protocolListeners.add(this.sendRequestRules);
         this.sendRequestRules(); // before the style, so that the first requests follow the rules
         this.cleanup.push(() => protocolListeners.delete(this.sendRequestRules));
-        this.start().catch(err => this.fire('error', {error: err}));
+        this.start().catch(this.sourceFailed);
     }
 
     private pixelRatio?: number;
@@ -282,7 +282,7 @@ export class Map {
         this.starting = true;
         do {
             turn = this.styleTurn;
-            try { raw = typeof o.style === 'string' ? await (await this.fetchAs('Style')(o.style)).json() : structuredClone(o.style); } catch (error) { if (turn === this.styleTurn) { this.starting = false; throw error; } }
+            try { raw = await this.loadStyle(o.style); } catch (error) { if (turn === this.styleTurn) { this.starting = false; throw error; } }
         } while (turn !== this.styleTurn);
         this.starting = false;
         this.rawStyle = this.firstChange?.(undefined, raw) ?? raw;
@@ -293,7 +293,7 @@ export class Map {
         // the camera: with a zoom in the options and no centre, the centre is [0, 0], not that of the style.
         const sc = this.rawStyle;
         if (o.center === undefined && o.zoom === undefined && o.bearing === undefined && o.pitch === undefined && !o.bounds) this.tr.set(sc.center, sc.zoom, sc.bearing, sc.pitch);
-        const restyled = this.restyled, first = await resolveStyle(this.rawStyle, fetch, this.styleBase);
+        const restyled = this.restyled, first = await resolveStyle(this.rawStyle, fetch, this.styleBase, undefined, this.sourceFailed);
         if (!(o.glyphs ?? !o.fonts)) first.glyphs = undefined;
         // (A change of the style during that step has its own result, which is newer. The engine gets it after its start.)
         if (restyled === this.restyled) this.resolved = first;
@@ -689,8 +689,8 @@ export class Map {
             if (!same) this.loadedSources.delete(id);
         }
         // A change of a style that the map shows does not wait for a source that is new: the source comes later.
-        const partial = this.newStyle || !this.resolved ? undefined : {late: () => { if (this.rawStyle) this.restyle(true); }, fail: (error: unknown) => this.fire('error', {error})};
-        resolveStyle(this.rawStyle, this.fetchAs('Source'), this.styleBase, partial).then(style => {
+        const partial = this.newStyle || !this.resolved ? undefined : {late: () => { if (this.rawStyle) this.restyle(true); }, fail: this.sourceFailed};
+        resolveStyle(this.rawStyle, this.fetchAs('Source'), this.styleBase, partial, this.sourceFailed).then(style => {
             if (turn !== this.restyles) return;
             reload = this.reloadPending;
             this.reloadPending = false;
@@ -762,12 +762,23 @@ export class Map {
     setLight(light: {anchor?: 'map' | 'viewport'; position?: [number, number, number]; color?: string; intensity?: number}) {
         return this.editStyle(s => { s.light = {...s.light, ...light}; });
     }
+    /** A source or a style that cannot be used: the map reports it, and draws the rest of the style or keeps its style. */
+    private sourceFailed = (error: unknown) => { this.fire('error', {error}); };
+    /** The JSON of a style: a copy of an object, or the answer of a URL. */
+    private async loadStyle(style: unknown) {
+        if (typeof style !== 'string') return structuredClone(style);
+        const res = await this.fetchAs('Style')(style);
+        if (!res.ok) throw new Error(`[map-jr-gl] Style ${style}: HTTP ${res.status}`);
+        return res.json();
+    }
     /** `transformStyle` gets the style before and the new style, and returns the style to use (as in MapLibre). */
     async setStyle(style: unknown, options?: {transformStyle?: StyleChange}) {
         const turn = ++this.styleTurn;
         // Before the first style has come, the new style takes its place.
-        if (!this.rawStyle) { this.options.style = style; this.firstChange = options?.transformStyle; return this.starting ? undefined : this.start(); }
-        const next = typeof style === 'string' ? await (await this.fetchAs('Style')(style)).json() : structuredClone(style);
+        if (!this.rawStyle) { this.options.style = style; this.firstChange = options?.transformStyle; return this.starting ? undefined : this.start().catch(this.sourceFailed); }
+        // (A style that cannot be loaded is an `error` event, as a failure of the first style is. The map keeps its style.)
+        let next: any;
+        try { next = await this.loadStyle(style); } catch (error) { if (turn === this.styleTurn) this.fire('error', {error}); return; }
         // (A style that was asked for later has replaced this one.)
         if (turn !== this.styleTurn) return;
         this.styleBase = typeof style === 'string' ? new URL(style, location.href).href : location.href;
