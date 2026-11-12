@@ -1,0 +1,8 @@
+{
+  "compilerOptions": {
+    "target": "ES2022", "module": "ESNext", "moduleResolution": "bundler", "strict": true, "noEmit": true,
+    "lib": ["ES2023", "DOM", "DOM.Iterable"], "types": [],
+    "paths": {"map-jr-gl/maplibre-compat": ["../../dist/types/maplibre-compat.d.ts"]}
+  },
+  "include": ["*.ts"]
+}

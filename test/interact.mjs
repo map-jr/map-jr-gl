@@ -811,6 +811,29 @@ for (const mode of ['main', 'worker']) {
         check(`[${mode}] setData with the same URL: the new data stays after a change of the style and a zoom`, after.first > 0 && after.fresh === 0 && after.later === 0, JSON.stringify(after));
         check(`[${mode}] two maps that are given one source object both load it`, kept.idles.every(Boolean) && kept.drawn.every(n => n > 0), JSON.stringify(kept));
     }
+    // The sources of the first style go through transformRequest and addProtocol, as those of a later addSource do.
+    {
+        await page.route('**/test-first-tiles.json*', route => route.fulfill({contentType: 'application/json', body: JSON.stringify({tilejson: '2.2.0', tiles: [new URL('/test-first/{z}/{x}/{y}.pbf', page.url()).href], minzoom: 0, maxzoom: 14})}));
+        const first = await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), asked = [], errors = [];
+            mod.addProtocol('first', async request => ({data: {type: 'Feature', properties: {from: request.url}, geometry: {type: 'Point', coordinates: [0, 0]}}}));
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const m = new mod.Map({container: el, renderer: mode, attributionControl: false, center: [0, 0], zoom: 1,
+                transformRequest: (url, kind) => { asked.push([kind, url.replace(location.origin, '')]); return {url: url + (url.includes('?') ? '&' : '?') + 'seen=1'}; },
+                style: {version: 8, sources: {t: {type: 'vector', url: '/test-first-tiles.json'}, g: {type: 'geojson', data: 'first://point'}},
+                    layers: [{id: 'point', type: 'circle', source: 'g', paint: {'circle-radius': 6}}]}});
+            m.on('error', e => errors.push(String(e.error?.message ?? e.error)));
+            await new Promise(r => { m.once('idle', r); setTimeout(r, 8000); });
+            const found = await Promise.race([m.queryRenderedFeatures({layers: ['point']}), new Promise(r => setTimeout(() => r([]), 4000))]);
+            const tileJson = performance.getEntriesByType('resource').some(e => e.name.includes('/test-first-tiles.json?seen=1'));
+            m.remove(); el.remove(); mod.removeProtocol('first');
+            return {asked, errors, from: found[0]?.properties.from, tileJson};
+        }, mode);
+        await page.unroute('**/test-first-tiles.json*');
+        const kind = url => first.asked.find(a => a[1] === url)?.[0];
+        check(`[${mode}] the sources of the first style: transformRequest gets the TileJSON and the GeoJSON as Source, and addProtocol supplies the GeoJSON`,
+            kind('/test-first-tiles.json') === 'Source' && kind('first://point') === 'Source' && first.tileJson && first.from === 'first://point?seen=1' && !first.errors.length, JSON.stringify(first));
+    }
     // A worker that cannot make a WebGL2 context: the map goes to the main thread, `load` and `idle` fire, and what the
     // page sent before the fall back (the rules for requests, a change of the style) is not lost.
     if (mode === 'worker') {
@@ -843,7 +866,9 @@ for (const mode of ['main', 'worker']) {
             const warnings = [], warn = console.warn;
             console.warn = (...a) => warnings.push(a.join(' '));
             const make = options => { const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'})); return new mod.Map({container: el, renderer: 'main', attributionControl: false, style: {version: 8, sources: {g: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}}, layers: [{id: 'bg', type: 'background'}]}, ...options}); };
-            const m = make({cooperativeGestures: true, locale: {x: 'y'}, projection: {type: 'globe'}, renderWorldCopies: false, canvasContextAttributes: {antialias: true, preserveDrawingBuffer: true}, maxBounds: [[-10, -10], [10, 10]]});
+            const m = make({cooperativeGestures: true, locale: {x: 'y'}, projection: {type: 'globe'}, renderWorldCopies: false, canvasContextAttributes: {antialias: true, preserveDrawingBuffer: true}, center: [50, 50], zoom: 3, maxBounds: [[-10, -10], [10, 10]]});
+            // The centre is inside maxBounds directly after the constructor, before the engine reports the camera (as in MapLibre).
+            const clamped = m.getCenter().toArray();
             const options = warnings.splice(0), errors = [];
             m.on('error', e => errors.push(e.error.message));
             await new Promise(r => m.once('load', r));
@@ -855,7 +880,7 @@ for (const mode of ['main', 'worker']) {
             m.addLayer({id: 'uses-g', type: 'fill', source: 'g'});
             m.removeSource('g');
             await wait(300);
-            const out = {options, custom, errors, layers: m.getStyle().layers.map(l => l.id).join(), source: !!m.getSource('g'), bounds: m.getMaxBounds()?.toArray()};
+            const out = {options, custom, errors, layers: m.getStyle().layers.map(l => l.id).join(), source: !!m.getSource('g'), bounds: m.getMaxBounds()?.toArray(), clamped, later: m.getCenter().toArray()};
             // The defaults give no warning.
             const plain = make({projection: {type: 'mercator'}, renderWorldCopies: true, canvasContextAttributes: {antialias: false}});
             out.plain = warnings.splice(0);
@@ -870,11 +895,34 @@ for (const mode of ['main', 'worker']) {
             return {...out, thrown, thrownCall};
         });
         check('[main] maplibre-compat: each option with no effect gives one warning, the defaults give none, and maxBounds works',
-            quiet.options.length === 5 && ['cooperativeGestures', 'locale', 'projection', 'renderWorldCopies', 'canvasContextAttributes'].every(n => quiet.options.some(w => w.startsWith('[map-jr-gl] The option ' + n))) && quiet.plain.length === 0 && String(quiet.bounds) === '-10,-10,10,10' && quiet.custom.length === 1 && quiet.custom[0].includes('"custom"'), JSON.stringify({options: quiet.options, plain: quiet.plain, bounds: quiet.bounds, custom: quiet.custom}));
+            quiet.options.length === 5 && ['cooperativeGestures', 'locale', 'projection', 'renderWorldCopies', 'canvasContextAttributes'].every(n => quiet.options.some(w => w.startsWith('[map-jr-gl] The option ' + n))) && quiet.plain.length === 0 && String(quiet.bounds) === '-10,-10,10,10' && String(quiet.clamped) === '10,10' && String(quiet.later) === '10,10' && quiet.custom.length === 1 && quiet.custom[0].includes('"custom"'), JSON.stringify({options: quiet.options, plain: quiet.plain, bounds: quiet.bounds, clamped: quiet.clamped, later: quiet.later, custom: quiet.custom}));
         check('[main] maplibre-compat: a layer or source id that exists, a source that is not there, and a source in use fire error and change nothing',
             quiet.errors.length === 4 && /addLayer: the style has a layer with the id "bg"/.test(quiet.errors[0]) && /names the source "nowhere"/.test(quiet.errors[1]) && /addSource: the style has a source with the id "g"/.test(quiet.errors[2]) && /removeSource: the layer "uses-g" uses the source "g"/.test(quiet.errors[3]) && quiet.layers === 'bg,uses-g' && quiet.source, JSON.stringify({errors: quiet.errors, layers: quiet.layers, source: quiet.source}));
         check('[main] maplibre-compat: strict: true throws for an option with no effect and for a refused style call',
             quiet.thrown.startsWith('[map-jr-gl] The option cooperativeGestures has no effect') && /addLayer: the style has a layer with the id "bg"/.test(quiet.thrownCall), JSON.stringify({thrown: quiet.thrown, thrownCall: quiet.thrownCall}));
+    }
+    // Class names of MapLibre GL JS: stylesheets and end-to-end tests written for that library select by them.
+    if (mode === 'main') {
+        const names = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px;z-index:1000'}));
+            const m = new mod.Map({container: el, renderer: 'main', center: [0, 0], zoom: 2, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            for (const control of [new mod.NavigationControl(), new mod.FullscreenControl(), new mod.GeolocateControl(), new mod.TerrainControl({source: 'none'}), new mod.ScaleControl()]) m.addControl(control);
+            new mod.Marker().setLngLat([0, 0]).setPopup(new mod.Popup().setText('A popup')).addTo(m).togglePopup();
+            await new Promise(r => m.once('load', r));
+            const expected = ['div.maplibregl-map', 'canvas.maplibregl-canvas', '.maplibregl-ctrl-top-right', '.maplibregl-ctrl-bottom-right',
+                '.maplibregl-ctrl.maplibregl-ctrl-group', 'button.maplibregl-ctrl-zoom-in', 'button.maplibregl-ctrl-zoom-out', 'button.maplibregl-ctrl-compass', 'button.maplibregl-ctrl-fullscreen',
+                'button.maplibregl-ctrl-geolocate', 'button.maplibregl-ctrl-terrain', '.maplibregl-ctrl.maplibregl-ctrl-scale', '.maplibregl-ctrl.maplibregl-ctrl-attrib', '.maplibregl-ctrl-attrib-inner',
+                'button.maplibregl-ctrl-attrib-button', '.maplibregl-marker', '.maplibregl-popup', '.maplibregl-popup-content', '.maplibregl-popup-tip', 'button.maplibregl-popup-close-button'];
+            const missing = expected.filter(selector => !el.matches(selector) && !el.querySelector(selector));
+            const canvasInMap = m.getCanvas().matches('.maplibregl-map > .maplibregl-canvas');
+            m.remove();
+            const left = el.classList.contains('maplibregl-map');
+            el.remove();
+            return {missing, canvasInMap, left};
+        });
+        check('[main] maplibre-compat: the container, the canvas, the controls, their buttons, markers and popups have their maplibregl-* class names, and remove() takes the name from the container',
+            names.missing.length === 0 && names.canvasInMap && !names.left, JSON.stringify(names));
     }
     // Accessibility: the canvas says that it is a map and shows the keyboard focus, a marker with a popup works with the
     // keyboard, the fullscreen button says what it does, and a camera animation respects "reduce motion".

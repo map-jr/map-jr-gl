@@ -12,7 +12,7 @@ pnpm install
 
 | Command | What it does |
 |---|---|
-| `pnpm build` | Checks the types and builds the library into `dist` with Vite |
+| `pnpm build` | Checks the types and builds the library into `dist` with Vite. `node build.mjs` is the same without the type check. Both write the type declarations into `dist/types` and a source map beside each built file. |
 | `pnpm demo` | Builds the library and the gallery. Then starts a server at `http://localhost:8080`. |
 | `pnpm site` | Builds the gallery into `site-dist`. GitHub Pages publishes this folder. |
 | `pnpm test` | Runs the unit tests, the MapLibre expression tests and the API check |
@@ -21,6 +21,7 @@ pnpm install
 | `pnpm test:cloudflare` | Runs the server renderer in the Cloudflare runtime. Start `pnpm demo` first. |
 | `pnpm test:render` | Runs the MapLibre render tests. This takes about 10 minutes. |
 | `pnpm test:size` | Fails if a built file is larger than its budget in `scripts/size-check.mjs`. Run `pnpm build` first. |
+| `pnpm test:package` | Packs the tarball with `pnpm pack` into `.cache/package` and runs `publint` on it. Fails if a file that `package.json` names is not in the tarball, if a source map points at the wrong lines of `src/`, if an image is in the tarball, or if `README.md` shows an image by a relative path (npm shows the README without the images of the repository, so the README uses `https://raw.githubusercontent.com/map-jr/map-jr-gl/main/docs/images/...`). Run `pnpm build` first. |
 | `node test/conformance/ecosystem.mjs --write` | Reads popular plugins and frameworks from npm and writes which parts of the MapLibre API they use that the library does not have (`docs/ecosystem.md`). |
 | `node test/conformance/plugins.mjs --write` | Runs popular plugins with the library in a browser, each in a short scenario. |
 | `node test/conformance/examples.mjs --write` | Runs each example page of the MapLibre documentation with MapLibre GL JS and with the library, and writes the pages that give an error or a different image into `docs/ecosystem.md`. It takes about 30 minutes. `--filter=<regex>` runs a part of the pages. |
@@ -99,6 +100,15 @@ has such names, and the build shortens them too. Add a name to the list only whe
 and no browser object has a property with that name. The build fails if the name is also a key of an object
 literal, a field of a type, or a string.
 
+Each built file has a source map beside it (`dist/<file>.js.map`), and its last line names the map. A browser fetches
+a source map only when its developer tools are open, and `pnpm test:size` does not count the maps. The map contains
+the text of the files of `src/`. A plugin of the build that changes code must return a source map of its change
+(`withMap` in `build.mjs`): `pnpm test:package` fails when a map points at the wrong lines.
+
+The first line of each built file that `package.json` names is a comment with the name, the version and the licence
+of the package. The chunks that these files share do not have the comment, because each line counts against the size
+budgets.
+
 The build also replaces the helper that Vite puts around each `import()` (the plugin `noPreload` in `build.mjs`).
 The helper loads CSS files and other chunks before the imported file. The library has no CSS files, so the built
 files call `import()` directly.
@@ -147,7 +157,7 @@ Every change goes through a pull request. The workflow `CI` (`.github/workflows/
 
 | Job | What it runs |
 |---|---|
-| `checks` | `pnpm build` (type check, build, type declarations), a check that each file named in `exports` exists, and `pnpm test` (unit tests, expression and API floors, size budgets, examples, consistency of code and documentation) |
+| `checks` | `pnpm build` (type check, build, type declarations), `pnpm test:package` (the tarball: `publint`, each file that `package.json` names, the source maps), and `pnpm test` (unit tests, expression and API floors, size budgets, examples, consistency of code and documentation) |
 | `browser` | In Chromium: `test/interact.mjs`, `test/host.mjs`, `test/vue.mjs`, `test/react.mjs`, `test/loading.mjs`. A suite that fails is run one more time, because the tiles come from the live network. |
 | `render` | `pnpm test:render`: MapLibre's render tests against the floor in `package.json` |
 

@@ -311,7 +311,7 @@ export class Map {
         // the camera: with a zoom in the options and no centre, the centre is [0, 0], not that of the style.
         const sc = this.rawStyle;
         if (o.center === undefined && o.zoom === undefined && o.bearing === undefined && o.pitch === undefined && !o.bounds) this.tr.set(sc.center, sc.zoom, sc.bearing, sc.pitch);
-        const restyled = this.restyled, first = await resolveStyle(this.rawStyle, fetch, this.styleBase, undefined, this.sourceFailed);
+        const restyled = this.restyled, first = await resolveStyle(this.rawStyle, this.fetchAs('Source'), this.styleBase, undefined, this.sourceFailed);
         if (!(o.glyphs ?? !o.fonts)) first.glyphs = undefined;
         // (A change of the style during that step has its own result, which is newer. The engine gets it after its start.)
         if (restyled === this.restyled) this.resolved = first;
@@ -650,6 +650,8 @@ export class Map {
     setMaxBounds(bounds?: LngLatBoundsInput | null) {
         const flat = bounds && LngLatBounds.convert(bounds).toArray().flat();
         this.tr.maxBounds = flat ? [flat[0], flat[1], flat[2], flat[3]] : null;
+        // The engine clamps its own camera when it gets the limits. This clamps the copy here, so that `getCenter()` is right at once.
+        this.tr.constrain();
         return this.limits();
     }
     getMaxBounds() { const b = this.tr.maxBounds; return b && {getWest: () => b[0], getSouth: () => b[1], getEast: () => b[2], getNorth: () => b[3], toArray: () => [[b[0], b[1]], [b[2], b[3]]]}; }
