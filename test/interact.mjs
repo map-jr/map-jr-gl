@@ -746,6 +746,13 @@ for (const mode of ['main', 'worker']) {
         const square = JSON.stringify({type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[-20, -20], [20, -20], [20, 20], [-20, 20], [-20, -20]]]}});
         let body = square;
         await page.route('**/test-kept.json', async r => { await new Promise(res => setTimeout(res, 150)); r.fulfill({contentType: 'application/json', body}); });
+        // The first, third, ... request for this URL is answered late with the square, the others at once with no features.
+        let orderRequests = 0;
+        await page.route('**/test-order.json', async r => {
+            const slow = orderRequests++ % 2 === 0;
+            await new Promise(res => setTimeout(res, slow ? 900 : 20));
+            r.fulfill({contentType: 'application/json', body: slow ? square : JSON.stringify({type: 'FeatureCollection', features: []})});
+        });
         const kept = await page.evaluate(async mode => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), wait = ms => new Promise(r => setTimeout(r, ms));
             const idle = m => new Promise(r => { m.once('idle', () => r(true)); setTimeout(() => r(false), 6000); });
@@ -781,10 +788,26 @@ for (const mode of ['main', 'worker']) {
             a.jumpTo({zoom: 2.5});
             await wait(600); await idle();
             const later = await count();
+            // Two calls of setData: the data of the later call stays, also when the earlier call is answered after it.
+            a.getSource('g').setData('/test-order.json');
+            a.getSource('g').setData('/test-order.json');
+            await wait(1800);
+            const sameURL = await count();
+            const none = {type: 'FeatureCollection', features: []};
+            a.getSource('g').setData('/test-order.json');
+            a.getSource('g').setData(none);
+            await wait(1800);
+            const order = {sameURL, object: await count(), data: a.getSource('g').data === none};
+            a.setPaintProperty('bg', 'background-color', '#ddd');
+            await wait(600);
+            order.afterStyle = await count();
             const el = a.getContainer(); a.remove(); el.remove();
-            return {first: window.keptFirst, fresh, later};
+            return {first: window.keptFirst, fresh, later, order};
         });
         await page.unroute('**/test-kept.json');
+        await page.unroute('**/test-order.json');
+        check(`[${mode}] two setData calls: the later one stays when the earlier one is answered after it`,
+            after.order.sameURL === 0 && after.order.object === 0 && after.order.data && after.order.afterStyle === 0 && orderRequests === 3, JSON.stringify({...after.order, requests: orderRequests}));
         check(`[${mode}] setData with the same URL: the new data stays after a change of the style and a zoom`, after.first > 0 && after.fresh === 0 && after.later === 0, JSON.stringify(after));
         check(`[${mode}] two maps that are given one source object both load it`, kept.idles.every(Boolean) && kept.drawn.every(n => n > 0), JSON.stringify(kept));
     }
