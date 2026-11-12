@@ -306,7 +306,8 @@ export class Map {
         this.rawStyle = this.firstChange?.(undefined, raw) ?? raw;
         this.firstChange = undefined; // (a restart of the engine starts from the style as it is then)
         for (const fn of this.beforeStyle.splice(0)) fn();
-        this.styleBase = typeof o.style === 'string' ? new URL(o.style, location.href).href : location.href;
+        // (A restart gives the style as an object. Its relative URLs still belong to the place that the style came from.)
+        if (!this.restarting) this.styleBase = typeof o.style === 'string' ? new URL(o.style, location.href).href : location.href;
         // As in MapLibre, a style may carry its own starting camera. It is used only when the options give no part of
         // the camera: with a zoom in the options and no centre, the centre is [0, 0], not that of the style.
         const sc = this.rawStyle;
