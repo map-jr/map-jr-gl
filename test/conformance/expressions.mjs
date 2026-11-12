@@ -12,7 +12,7 @@ const root = path.resolve(import.meta.dirname, '../..'), repo = path.join(root, 
 const commit = 'f94442fd4c768a40f1896630ccb64dd50067d94b';
 if (!existsSync(repo)) execSync(`git init -q "${repo}" && git -C "${repo}" fetch -q --depth 1 https://github.com/maplibre/maplibre-style-spec.git ${commit} && git -C "${repo}" checkout -q FETCH_HEAD`, {stdio: 'inherit'});
 await build({entryPoints: [path.join(root, 'src/expr.ts')], bundle: true, format: 'esm', outfile: path.join(root, '.cache/expr.mjs'), logLevel: 'error'});
-const {compileExpr, compileProp, parseColor, setGlobalState} = await import(path.join(root, '.cache/expr.mjs'));
+const {compileExpr, compileProp, parseColor, compileFor} = await import(path.join(root, '.cache/expr.mjs'));
 const warn = console.warn; console.warn = () => {};
 
 const TYPES = {Point: 1, MultiPoint: 1, LineString: 2, MultiLineString: 2, Polygon: 3, MultiPolygon: 3};
@@ -35,7 +35,7 @@ const walk = dir => {
         if (t.expected?.compiled?.result !== 'success' || !t.inputs) { skipped++; r.skipped++; continue; }
         let ok = true, why = '';
         try {
-            setGlobalState(t.globalState);
+            compileFor({g: t.globalState ?? {}, f: {}});
             const isColor = t.propertySpec?.type === 'color' || t.expected.compiled.type === 'color';
             // Legacy "function" objects ({stops: ...}) go through the property compiler, as they do in a real style.
             const legacy = !Array.isArray(t.expression) && typeof t.expression === 'object' && t.expression !== null;
