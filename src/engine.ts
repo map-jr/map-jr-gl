@@ -550,8 +550,8 @@ export class Engine {
     private async loadIcons(spec: string) {
         const sheets: {id: string; url: string}[] = spec[0] === '[' ? JSON.parse(spec) : [{id: 'default', url: spec}];
         const loaded = await Promise.all(sheets.map(async ({id, url}) => {
-            const sprite = await loadSprite(url, this.dpr > 1, this.fetchAs('SpriteJSON'));
-            const res = await this.fetchAs('SpriteImage')(sprite.image);
+            // (The two files of a sprite are asked for at the same time: the URL of the image does not depend on the JSON.)
+            const dense = this.dpr > 1, [sprite, res] = await Promise.all([loadSprite(url, dense, this.fetchAs('SpriteJSON')), this.fetchAs('SpriteImage')(url + (dense ? '@2x.png' : '.png'))]);
             if (!res.ok) throw new Error(`Failed to load sprite image ${sprite.image}: ${res.status}`);
             return {id, sprite, image: await createImageBitmap(await res.blob())};
         }));

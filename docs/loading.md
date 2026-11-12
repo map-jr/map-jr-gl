@@ -29,7 +29,7 @@ All maps on a page use the same group of workers to read tiles.
 | File | What loads it | When |
 |---|---|---|
 | `map-jr-gl.js` and one shared part | The page | Always |
-| `map-jr-gl-worker.js` | A worker | Always, at the same time as the page script |
+| `map-jr-gl-worker.js` | A worker | Always. The map asks for it when it is made, at the same time as the style. |
 | `map-jr-gl-engine-entry-*.js` | The page | Only when the map draws on the main thread |
 | `map-jr-gl-standalone.js` | The page | Only when you import the one-file build |
 
