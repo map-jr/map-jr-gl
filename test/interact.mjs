@@ -625,6 +625,8 @@ for (const mode of ['main', 'worker']) {
         const errorsBefore = errors.length;
         const failed = await page.evaluate(async mode => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), wait = ms => new Promise(r => setTimeout(r, ms));
+            // (A map that never starts does not answer a query: the test must not wait for ever.)
+            const count = query => Promise.race([query.then(found => found.length), wait(4000).then(() => -1)]);
             const make = style => {
                 const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
                 const m = new mod.Map({container: el, style, renderer: mode, attributionControl: false, center: [0, 0], zoom: 1}), seen = [];
@@ -639,7 +641,7 @@ for (const mode of ['main', 'worker']) {
             // 1. One good source and one whose TileJSON is not there.
             const a = make({...good, sources: {...good.sources, gone: {type: 'vector', url: '/no-such-tilejson.json'}}, layers: [...good.layers, {id: 'lost', type: 'line', source: 'gone', 'source-layer': 'x'}]});
             await wait(2500);
-            out.oneSource = {seen: a.seen, loaded: a.m.loaded(), drawn: (await a.m.queryRenderedFeatures({layers: ['fill']})).length};
+            out.oneSource = {seen: a.seen, loaded: a.m.loaded(), drawn: await count(a.m.queryRenderedFeatures({layers: ['fill']}))};
             // 2. A first style that fails, then a good style.
             const b = make('/no-such-style.json');
             await wait(1200);
@@ -652,7 +654,7 @@ for (const mode of ['main', 'worker']) {
             await wait(1500);
             const before = c.seen.length;
             let rejected = false;
-            await c.m.setStyle('/no-such-style.json').catch(() => { rejected = true; });
+            await Promise.race([c.m.setStyle('/no-such-style.json').catch(() => { rejected = true; }), wait(4000)]);
             await wait(500);
             out.badStyle = {seen: c.seen.slice(before), rejected, kept: !!c.m.getLayer('fill')};
             // 4. A source with no tiles and no url: one `error`, and later changes of the style work.
@@ -662,7 +664,7 @@ for (const mode of ['main', 'worker']) {
             c.m.addLayer({id: 'later', type: 'fill', source: 'g', paint: {'fill-color': '#f00'}});
             c.m.setPaintProperty('fill', 'fill-color', '#00f');
             await wait(1500);
-            out.badSource = {seen: c.seen.slice(errorsBefore), later: (await c.m.queryRenderedFeatures({layers: ['later']})).length};
+            out.badSource = {seen: c.seen.slice(errorsBefore), later: await count(c.m.queryRenderedFeatures({layers: ['later']}))};
             removeEventListener('unhandledrejection', onRejection);
             for (const x of [a, b, c]) { x.m.remove(); x.el.remove(); }
             return {...out, rejections};
