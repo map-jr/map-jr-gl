@@ -337,7 +337,18 @@ export class Map {
                 this.canvas.replaceWith(fresh);
                 for (const fn of this.inputCleanup.splice(0)) fn();
                 this.canvas = fresh;
-                this.startMainEngine(fresh, {...engineOptions, center: [this.tr.lng, this.tr.lat], zoom: this.tr.zoom, bearing: this.tr.bearing}, []).then(() => {
+                // The commands that the page sent so far went to the worker, which does not answer them. Until the new
+                // engine runs, commands wait. It then gets the style as it is now, and what `resend` sends.
+                this.ready = false;
+                w.terminate();
+                this.startMainEngine(fresh, {...engineOptions, style: this.resolved, center: [this.tr.lng, this.tr.lat], zoom: this.tr.zoom, bearing: this.tr.bearing}, []).then(() => {
+                    this.ready = true;
+                    for (const [c, t] of this.queue.splice(0)) this.send(c, t);
+                    this.resend();
+                    // (The data of GeoJSON sources and changes of the style since the start. It is also a numbered command:
+                    // the new engine reports `idle` with the number that the page waits for.)
+                    this.restyle(true);
+                    for (const [name, [source, options]] of this.imageInputs) this.addImage(name, source, options);
                     for (const layer of this.markerLayers.values()) { this.variantIds.clear(); this._syncMarkers(layer); }
                     if (o.interactive !== false) this.bindInput();
                 }, error => this.fire('error', {error}));
@@ -383,17 +394,21 @@ export class Map {
             this.canvas = fresh;
             this.options = {...this.options, style: this.rawStyle, center: [tr.lng, tr.lat], zoom: tr.zoom, bearing: tr.bearing, pitch: tr.pitch};
             await this.start();
-            // What the engine got through commands, and not through the style, goes again.
-            this.limits();
-            if (this.rulesSent) this.sendRequestRules();
-            if (this.wantsFrames) this.post({type: 'frames', on: true});
+            this.resend();
             if (Object.keys(this.globalState).length) this.restyle(false);
-            for (const source of Object.keys(this.featureStates)) this.sendFeatureState(source);
             for (const [name, [source, options]] of this.imageInputs) await this.addImage(name, source, options);
             this.variantIds.clear();
             for (const layer of this.markerLayers.values()) this._syncMarkers(layer);
             this.fire('webglcontextrestored');
         } catch (error) { this.fire('error', {error}); } finally { this.restarting = false; }
+    }
+
+    /** Sends again what an engine gets through commands, and not through the style. A new engine needs it. */
+    private resend() {
+        this.limits();
+        if (this.rulesSent) this.sendRequestRules();
+        if (this.wantsFrames) this.post({type: 'frames', on: true});
+        for (const source of Object.keys(this.featureStates)) this.sendFeatureState(source);
     }
 
     /** Runs the engine on this thread. Its code is a separate chunk, fetched only when this path is taken. */
