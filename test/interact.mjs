@@ -408,6 +408,32 @@ for (const mode of ['main', 'worker']) {
         && ['mousedown', 'mouseup', 'mousemove', 'dblclick', 'contextmenu', 'wheel', 'mouseout'].every(t => ev.types.includes(t)) && ev.renders > 5 && ev.sourcedata > 0 && ev.lngLat && ev.bounds && ev.handler && zBox > zBox0 + 1,
         JSON.stringify({c0, cBlocked, cOff, cMoved, zBlocked, zMoved, zBox0, zBox, ...ev}));
 
+    // #7: `dblclick` reaches the listener after a query of the engine. preventDefault() there still stops the zoom, and
+    // without it the map zooms. The array of queryRenderedFeatures is not an answer from before setData.
+    const dbl = async prevent => {
+        await page.evaluate(() => window.map.jumpTo({center: [-74.0065, 40.7085], zoom: 14})); await settle(page);
+        await page.evaluate(prevent => { window.dbl = 0; window.map.once('dblclick', e => { window.dbl++; if (prevent) e.preventDefault(); }); }, prevent);
+        await page.mouse.dblclick(500, 350); await page.waitForFunction(() => window.dbl > 0, null, {timeout: 5000}).catch(() => {}); await page.waitForTimeout(700); await settle(page);
+        return (await centre())[2];
+    };
+    const zPrevented = await dbl(true), zDouble = await dbl(false);
+    check(`[${mode}] dblclick: preventDefault() in a listener stops the zoom, and without it the map zooms in`, zPrevented === 14 && Math.abs(zDouble - 15) < 0.01, JSON.stringify({zPrevented, zDouble}));
+    const stale = await page.evaluate(async () => {
+        const m = window.map, idle = () => new Promise(r => m.once('idle', r)), at = [-74.0065, 40.7085];
+        m.jumpTo({center: at, zoom: 14});
+        m.addSource('stale', {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: at}}});
+        m.addLayer({id: 'stale-dot', type: 'circle', source: 'stale', paint: {'circle-radius': 8}});
+        await idle();
+        const p = m.project(at), ask = () => m.queryRenderedFeatures(p, {layers: ['stale-dot']});
+        const first = (await ask()).length, kept = ask().length;
+        let wait = idle(); m.getSource('stale').setData({type: 'FeatureCollection', features: []}); await wait;
+        const array = ask().length, awaited = (await ask()).length;
+        m.removeLayer('stale-dot'); m.removeSource('stale');
+        return {first, kept, array, awaited};
+    });
+    check(`[${mode}] queryRenderedFeatures: the array is not the answer from before setData`, stale.first === 1 && stale.kept === 1 && stale.array === 0 && stale.awaited === 0, JSON.stringify(stale));
+    await settle(page);
+
     // transformRequest and addProtocol: the functions are on the page, and the requests are made in workers.
     const requests = await page.evaluate(async () => {
         const m = window.map, mod = await import('/dist/map-jr-gl-maplibre-compat.js'), c = m.getCenter(), kinds = new Set();
