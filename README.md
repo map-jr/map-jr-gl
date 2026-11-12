@@ -90,6 +90,14 @@ The build writes the library to the `dist` folder. Then use one of these methods
 - **Without a bundler:** copy the `dist` folder to your web server. Then import `dist/map-jr-gl.js` in a module
   script (or `dist/map-jr-gl-maplibre-compat.js` for the API of MapLibre GL JS).
 
+The package contains ES modules only (`"type": "module"`). It has no CommonJS build, so `require('map-jr-gl')` does
+not work: use `import`. The tests of the server renderer (`map-jr-gl/server`) run with Node.js 22, and `engines` in
+`package.json` asks for Node.js 22 or later. The module for Nuxt (`map-jr-gl/nuxt`) imports `@nuxt/kit`, which a Nuxt
+application has already. `package.json` names it as an optional peer dependency (version 3 or 4).
+
+Each built file has a source map beside it (`dist/<file>.js.map`), so that an error tracker can show the lines of the
+source for a stack trace.
+
 ## Use
 
 ### Show a map
