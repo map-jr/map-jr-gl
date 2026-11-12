@@ -33,4 +33,8 @@ for (const [name, kb, budget] of sizes) {
     if (kb > budget) ok = false;
     console.log(`${kb > budget ? 'OVER ' : 'ok   '} ${name}: ${kb.toFixed(1)} KB gzip (budget ${budget} KB)`);
 }
+// The budgets are for the production build. The development build (`dist/*.dev.js`) has no budget: it is the same code
+// with the loader of the checks for common mistakes, and that file of checks is downloaded after the map has started.
+const dev = withStaticImports('map-jr-gl.dev.js'), mistakes = readdirSync('dist').filter(f => /^map-jr-gl-mistakes-.*\.js$/.test(f));
+console.log(`info  page script of the development build, up front: ${gz(dev).toFixed(1)} KB gzip (${Math.round((gz(dev) - gz(page)) * 1024)} bytes more), and ${gz(mistakes).toFixed(1)} KB gzip of checks on demand`);
 if (!ok) { console.error('The built library is larger than a budget. Make it smaller, or change the budget in scripts/size-check.mjs on purpose.'); process.exit(1); }

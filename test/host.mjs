@@ -14,7 +14,8 @@ for (const renderer of ['worker', 'main']) {
         await page.goto(`${origin}/bench`); // (a page of the demo server, for its origin; the benchmark does not start)
         // 1. A map from a description, and its state.
         const start = await page.evaluate(async renderer => {
-            const lib = await import('/dist/map-jr-gl.js'), style = await (await fetch('/style.json')).json();
+            // (The development build: it has the checks for common mistakes. The production build is tested at the end.)
+            const lib = await import('/dist/map-jr-gl.dev.js'), style = await (await fetch('/style.json')).json();
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {id: 'host', style: 'position:fixed;inset:0;z-index:99;background:#fff'}));
             const t = window.t = {lib, style, views: [], seen: [], clicks: []};
             t.spec = {style, initialView: {center: [-74.0065, 40.7085], zoom: 14.3}, renderer, attribution: false, onViewChange: v => t.views.push(v)};
@@ -398,15 +399,17 @@ for (const renderer of ['worker', 'main']) {
     await page.close();
 }
 
-// The file with the checks and the texts of the warnings does not load: the map works with no check, a wrong place of a
-// query is still refused with a short message, and no promise is left rejected.
-{
-    const page = await browser.newPage({viewport: {width: 900, height: 600}});
+// The map with no checks: the development build when the file with the checks and the texts of the warnings does not
+// load, and the production build, which must not ask for that file. The map works, a wrong place of a query is still
+// refused with a short message, and no promise is left rejected.
+for (const [build, file] of [['the development build, and the file of the checks does not load', 'map-jr-gl.dev.js'], ['the production build', 'map-jr-gl.js']]) {
+    const page = await browser.newPage({viewport: {width: 900, height: 600}}), asked = [];
+    page.on('request', r => { if (/map-jr-gl-mistakes-/.test(r.url())) asked.push(r.url()); });
     await page.route(/map-jr-gl-mistakes-/, route => route.abort());
     try {
         await page.goto(`${origin}/bench`);
-        const lost = await page.evaluate(async () => {
-            const lib = await import('/dist/map-jr-gl.js'), style = await (await fetch('/style.json')).json(), said = [], unhandled = [], log = console.warn;
+        const lost = await page.evaluate(async file => {
+            const lib = await import('/dist/' + file), style = await (await fetch('/style.json')).json(), said = [], unhandled = [], log = console.warn;
             console.warn = (...a) => said.push(a.join(' '));
             addEventListener('unhandledrejection', e => unhandled.push(String(e.reason)));
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99;background:#fff'}));
@@ -418,10 +421,11 @@ for (const renderer of ['worker', 'main']) {
             const drawn = (await host.queryFeatures(undefined, {radius: 5})).length;
             host.destroy(); el.remove(); console.warn = log;
             return {said, unhandled, place, drawn};
-        });
-        check('the file of the checks does not load: the map draws, a wrong place of a query is refused with a short message, and no rejection is unhandled',
-            lost.said.length === 0 && lost.drawn > 0 && lost.place === '[map-jr-gl] queryFeatures(): the place is not {x, y} or [lng, lat].' && !lost.unhandled.length, JSON.stringify(lost));
-    } catch (e) { check('the file of the checks does not load: the test run was completed', false, String(e.message).split('\n')[0]); }
+        }, file);
+        lost.asked = asked.length;
+        check(`${build}: the map draws with no warning, a wrong place of a query is refused with a short message, no rejection is unhandled, and ${file === 'map-jr-gl.js' ? 'the file of the checks is not requested' : 'the file of the checks was requested'}`,
+            (file === 'map-jr-gl.js' ? asked.length === 0 : asked.length > 0) && lost.said.length === 0 && lost.drawn > 0 && lost.place === '[map-jr-gl] queryFeatures(): the place is not {x, y} or [lng, lat].' && !lost.unhandled.length, JSON.stringify(lost));
+    } catch (e) { check(`${build}: the test run was completed`, false, String(e.message).split('\n')[0]); }
     await page.close();
 }
 

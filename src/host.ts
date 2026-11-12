@@ -15,6 +15,12 @@ import type {Checked} from './mistakes.ts';
 import type {FontSource} from './engine.ts';
 import type {LngLatBounds, LngLatBoundsInput} from './lnglat.ts';
 
+/**
+ * Set by the build (`define` in build.mjs). True in the development build (`dist/*.dev.js`, which the `development`
+ * condition of package.json names) and in the standalone file; false in the production build.
+ */
+declare const __DEV__: boolean;
+
 /** The description of a control: see `map-jr-gl/controls`. Controls with the same `key` are the same control. */
 export interface ControlSpec { key: string; position?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'; create(): {onAdd(map: Map): HTMLElement; onRemove(map: Map): void} }
 
@@ -251,9 +257,10 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
     // has started: `check` gives it the kind of the check (see `src/mistakes.ts`). A file that does not load gives no check.
     // `styled`: the map has the style of the last description, so its layers and sources can be compared with the description.
     let styled = false;
-    const checks = () => import('./mistakes.ts');
+    // Only the development build loads the file (see `__DEV__`): the production build has no request for it and no check.
+    const checks = (): Promise<typeof import('./mistakes.ts')> => __DEV__ ? import('./mistakes.ts') : Promise.reject();
     const checked: Checked = {map, warned: new Set(), spec: () => now, ready: () => alive && styled && state.get().loaded};
-    const check = (kind: number, a?: unknown, b?: unknown) => { checks().then(m => m.check(checked, kind, a, b), () => {}); };
+    const check = (kind: number, a?: unknown, b?: unknown) => { if (__DEV__) checks().then(m => m.check(checked, kind, a, b), () => {}); };
     const restyle = (next: MapSpec) => { styled = false; map.setStyle(next.style, {transformStyle: (_, style) => { styled = true; check(4, style, next.extend); return extended(style, next.extend); }}); };
     restyle(spec);
     // (The height of the container is read after a second, so that a container which gets its height a moment later gives no warning.)
