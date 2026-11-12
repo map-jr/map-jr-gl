@@ -2,6 +2,7 @@
 import {launch, browserName} from './launch.mjs';
 const out = process.argv[2];
 const browser = await launch();
+const origin = `http://localhost:${process.env.PORT || 8080}`; // (the demo server; PORT lets two runs use two servers)
 let failed = 0, mainFrames = 0;
 const check = (name, ok, detail = '') => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${name} ${detail}`); if (!ok) failed++; };
 // The map is settled when it does not move and the camera has been the same for a quarter of a second. (A browser
@@ -20,7 +21,7 @@ for (const mode of ['main', 'worker']) {
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
     page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
-    await page.goto(`http://localhost:8080/?renderer=${mode}`);
+    await page.goto(`${origin}/?renderer=${mode}`);
     await page.waitForFunction(() => window.mapLoaded, null, {timeout: 30000});
     // Some browsers cannot make a WebGL context in a worker (WebKit on Linux and Windows, Safari before 16.4). The map
     // must then render on the main thread, and the tests of the worker have nothing to test.
@@ -1023,7 +1024,7 @@ for (const mode of ['main', 'worker']) {
 // Hydration: server markup is visible before the client runs, then replaced once the canvas shows the same view.
 const page = await browser.newPage({viewport: {width: 1000, height: 700}});
 await page.route('**/dist/map-jr-gl-maplibre-compat.js', async r => { await new Promise(res => setTimeout(res, 800)); r.continue(); });
-await page.goto('http://localhost:8080/ssr', {waitUntil: 'domcontentloaded'});
+await page.goto(`${origin}/ssr`, {waitUntil: 'domcontentloaded'});
 check('[ssr] server SVG is in the initial HTML', await page.evaluate(() => !!document.querySelector('#map > svg[data-map-jr-ssr]')));
 await page.screenshot({path: `${out}/ssr-before.png`});
 await page.waitForFunction(() => window.mapLoaded, null, {timeout: 30000});

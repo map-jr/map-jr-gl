@@ -16,7 +16,7 @@ pnpm install
 | `pnpm demo` | Builds the library and the gallery. Then starts a server at `http://localhost:8080`. |
 | `pnpm site` | Builds the gallery into `site-dist`. GitHub Pages publishes this folder. |
 | `pnpm test` | Runs the unit tests, the MapLibre expression tests and the API check |
-| `pnpm test:browser` | Drives the map in a browser. Start `pnpm demo` first. |
+| `pnpm test:browser` | Drives the map in a browser. Start `pnpm demo` first. Both commands read the port from the environment variable `PORT` (default 8080), so two checkouts can run their tests at the same time. |
 | `pnpm test:loading` | Checks each method of loading the library. Start `pnpm demo` first. |
 | `pnpm test:cloudflare` | Runs the server renderer in the Cloudflare runtime. Start `pnpm demo` first. |
 | `pnpm test:render` | Runs the MapLibre render tests. This takes about 10 minutes. |
