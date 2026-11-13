@@ -12,7 +12,7 @@ const places = {type: 'FeatureCollection', features: [
 ]};
 
 export default function (container, {show}) {
-  const map = new Map({container, style, center: [-74.004, 40.715], zoom: 13, attributionControl: {compact: true}});
+  const map = new Map({container, style, center: [-74.006, 40.7175], zoom: 12.7, attributionControl: {compact: true}});
   map.on('load', () => {
     map.addImage('pin', pin);
     map.addImage('pin-park', parkPin);

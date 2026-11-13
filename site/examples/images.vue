@@ -32,7 +32,7 @@ const extend = {
 <template>
   <MapJr
     :map-style="style"
-    :initial-view="{center: [-74.004, 40.715], zoom: 13}"
+    :initial-view="{center: [-74.006, 40.7175], zoom: 12.7}"
     :attribution="{compact: true}"
     :images="{pin}"
     :extend="extend"
