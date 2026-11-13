@@ -24,6 +24,7 @@ The name of the package is `@map-jr/map-jr-gl`
   MapLibre GL JS. [MapLibre compatibility](docs/maplibre-compatibility.md) lists the differences.
 - The map draws in a worker when the browser can do that, and on the main thread when it cannot.
   [Browser support](docs/browser-support.md) says what each renderer needs.
+- The field `images` of the description gives images (SVG, a URL or pixels) to the style layers by name (#120).
 - A marker layer draws markers on the canvas. `Marker` and `Popup` are also available as elements of the page.
 - 3D terrain, hillshade, contour lines and elevation queries use one elevation source.
 - The entry `@map-jr/map-jr-gl/server` renders the first view as SVG or as an image on Node.js 22 and on Cloudflare Workers.

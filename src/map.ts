@@ -211,6 +211,9 @@ export class Map {
     private removed = false;
     private beforeStyle: (() => void)[] = [];
     protected imageNames = new Set<string>();
+    /** A count for each image name. It goes up when the image is added or removed, so that an image that was still loading knows that it is too late. */
+    private imageTurns = new globalThis.Map<string, number>();
+    private imageTurn(name: string) { const turn = (this.imageTurns.get(name) ?? 0) + 1; this.imageTurns.set(name, turn); return turn; }
     private imageResolver: ((id: string) => void | Promise<void>) | null = null;
     private tilesLoaded = false;
     /** The number of the last command to the engine that can change what is loaded. */
@@ -1085,6 +1088,7 @@ export class Map {
      */
     async addImage(name: string, source: string | CanvasImageSource | ImageData | {width: number; height: number; data: Uint8Array | Uint8ClampedArray}, options: ImageOptions = {}) {
         let drawable: CanvasImageSource, width = options.width, height = options.height, sourceWidth = 0;
+        const turn = this.imageTurn(name);
         if (typeof source === 'string') {
             const img = new Image();
             if (source.trimStart().startsWith('<')) {
@@ -1093,6 +1097,8 @@ export class Map {
                 img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(sizedSVG(source, width, height));
             } else { img.crossOrigin = 'anonymous'; img.src = source; }
             await img.decode();
+            // (While the image loaded, the map was removed, or the name got another image or was removed.)
+            if (this.removed || this.imageTurns.get(name) !== turn) return this;
             width ??= img.naturalWidth / (options.pixelRatio ?? 1); height ??= img.naturalHeight / (options.pixelRatio ?? 1);
             sourceWidth = img.naturalWidth;
             drawable = img;
@@ -1117,7 +1123,7 @@ export class Map {
             content: scale(options.content) as [number, number, number, number] | undefined, textFitWidth: options.textFitWidth, textFitHeight: options.textFitHeight}, [data.buffer]);
         return this;
     }
-    removeImage(name: string) { this.imageNames.delete(name); this.imageInputs.delete(name); this.post({type: 'removeImage', name}); return this; }
+    removeImage(name: string) { this.imageTurn(name); this.imageNames.delete(name); this.imageInputs.delete(name); this.post({type: 'removeImage', name}); return this; }
     /** Replaces an image added earlier; icons using it are redrawn. */
     updateImage(name: string, source: Parameters<Map['addImage']>[1], options: ImageOptions = {}) {
         if (!this.imageNames.has(name)) throw new Error(`There is no image with ID "${name}"`);

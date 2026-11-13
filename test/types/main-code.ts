@@ -14,6 +14,7 @@ const description: MapSpec = {
     initialView: {center: NYC, zoom: 13.6},
     view: {center: FIXED},
     markers: [pins],
+    images: {pin: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 4"/>', photo: {image: 'https://demotiles.maplibre.org/favicon.ico', width: 16, height: 16, pixelRatio: 2}},
     controls: [navigation(), {key: 'own', create: () => ({onAdd: map => { map.getZoom(); return document.createElement('div'); }, onRemove() {}})}],
     interactiveLayers: ['parks'],
     onViewChange: view => { const [lng, lat]: [number, number] = view.center; console.log(lng, lat); },

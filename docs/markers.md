@@ -16,6 +16,26 @@ The two entries of the library give markers to the map in different ways:
 
 The template and the options are the same for the two entries.
 
+## A marker layer or a symbol layer
+
+A symbol layer of the style can also draw an image at each point. With `@map-jr/map-jr-gl`, give the image in the
+field `images` of the description (see [Images for style layers](api.md#images-for-style-layers)). With
+`@map-jr/map-jr-gl/maplibre-compat`, call `map.addImage`.
+
+| | Marker layer | Symbol layer with an image |
+|---|---|---|
+| Data | An array in the page | A GeoJSON source or a vector tile source |
+| Look of each point | One SVG template with values of the point | An image by name, chosen by an expression |
+| Place in the layer order | Above all style layers | The place of the layer in the style |
+| Filter, expressions by zoom, text beside the icon, `feature-state` | Not available | Available |
+| Hit test | `queryMarkers`: synchronous, the rectangle of the marker | `queryFeatures`: a promise |
+| `select`, `openPopup` | Available | Not available |
+| Cost for each frame | Does not grow with the number of markers | Grows with the number of icons in view |
+
+In a measurement with software WebGL (headless Chromium, the main-thread renderer, 500 different images, all icons
+permitted to overlap), the script time for each frame was 6 ms for a marker layer with 1,000, 10,000 and 100,000
+markers. For a symbol layer it was 7 ms, 17 ms and 92 ms. This was not measured on a GPU.
+
 ## With the main API
 
 A marker layer is an object in the list `markers` of the description (`MapSpec`). Each layer has an `id`.

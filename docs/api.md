@@ -119,6 +119,7 @@ The library compares each field with the field of the last description:
 | `initialView` | The view at the start: `center` (`[lng, lat]`), `zoom`, `bearing`, `pitch`. The user then moves the map. |
 | `view`, `onViewChange` | A view that your application owns. See below. |
 | `data` | GeoJSON data for GeoJSON sources, by the id of the source. The source is in the style or in `extend.sources`. See below. |
+| `images` | Images for the style layers, by name: an SVG document, the URL of an image, or `{image, width, height}`. See [Images for style layers](#images-for-style-layers). |
 | `markers` | A list of marker layers, each with an `id`. See [Markers](markers.md). A layer with a new `data` array gets the new data. |
 | `controls` | A list of controls. See below. |
 | `interactiveLayers` | The ids of style layers. The features of these layers under the pointer are in `state.hover` and in `onClick`. |
@@ -155,6 +156,48 @@ createMap(container, {
 `extend` adds sources and layers to the style when the style has loaded. A layer with `before` goes below the layer
 with that id; without it, the layer goes on top. Give `extend` with other content to change the additions. (A style
 from a URL is then requested again; the browser has it in its cache.)
+
+## Images for style layers
+
+The field `images` gives images to the style layers by name. A symbol layer uses an image with `icon-image`.
+
+```js
+import {createMap} from '@map-jr/map-jr-gl';
+
+const pin = '<svg viewBox="0 0 24 31"><path fill="#d6453d" d="M12 30C12 30 2 17 2 11a10 10 0 0 1 20 0c0 6-10 19-10 19z"/></svg>';
+const map = createMap(document.getElementById('map'), {
+  style: 'https://tiles.openfreemap.org/styles/liberty',
+  initialView: {center: [-74.006, 40.7128], zoom: 12},
+  images: {pin},
+  extend: {
+    sources: {places: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [-74.006, 40.7128]}}}},
+    layers: [{id: 'places', type: 'symbol', source: 'places', layout: {'icon-image': 'pin', 'icon-anchor': 'bottom'}}],
+  },
+});
+```
+
+A value of `images` is one of these:
+
+| Value | Meaning |
+|---|---|
+| A string that starts with `<` | An SVG document. The library draws it at the pixel density of the screen. Its size is the size of its `viewBox`, or 24 by 24 CSS pixels without a `viewBox`. |
+| Another string | The URL of an image. The server of the image must permit the request (CORS). |
+| An `ImageBitmap`, a canvas, an image element or `ImageData` | The pixels of the object. |
+| `{image, width, height, pixelRatio, ...}` | One of the values above as `image`, with options. `width` and `height` are the size in CSS pixels. `pixelRatio` is the number of image pixels for one CSS pixel (the default is 1). The options `stretchX`, `stretchY`, `content`, `textFitWidth` and `textFitHeight` are those of `addImage` in MapLibre GL JS. |
+
+`update` follows the field:
+
+- A name that is new gets its image. A name that the new description leaves out loses its image.
+- A value that is a string, or that has a string as `image`, is compared by its content. Another value is compared
+  by identity: give a new object to replace the image.
+- An image of `images` is used in place of an image of the sprite of the style that has the same name.
+
+An image that does not load is an error of the map (`onError`, `state.error`) with the name of the image. The map
+draws the layer without that image.
+
+A symbol layer with images is a style layer: it has a place in the layer order, a filter, expressions and text
+beside the icon. For many points that only need a picture, a marker layer is faster. See
+[Markers](markers.md#a-marker-layer-or-a-symbol-layer).
 
 ## GeoJSON data that changes
 

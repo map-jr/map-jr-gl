@@ -143,6 +143,8 @@ export const MapJr = defineComponent({
         initialView: Object as PropType<ViewInput>,
         /** Your own sources and layers on a style from a URL: `{sources, layers, terrain}`. */
         extend: Object as PropType<MapSpec['extend']>,
+        /** Images for `icon-image` of style layers, by name. A value is an SVG document, the URL of an image, or `{image, width, height}`. */
+        images: Object as PropType<MapSpec['images']>,
         markers: Array as PropType<MarkerLayerOptions[]>,
         /** GeoJSON data for sources of the style, by the id of the source. Each value is compared by identity: give a new object to change it. */
         data: Object as PropType<Record<string, unknown>>,
@@ -198,12 +200,19 @@ export const MapJr = defineComponent({
             for (const id in props.data) out[id] = toRaw(props.data[id]);
             return lastData && Object.keys(out).length === Object.keys(lastData).length && Object.keys(out).every(id => out[id] === lastData![id]) ? lastData : lastData = out;
         });
+        // (Each image is the object behind Vue's object: an image element or a bitmap cannot be copied.)
+        const images = computed(() => {
+            if (!props.images) return undefined;
+            const out: NonNullable<MapSpec['images']> = {};
+            for (const name in props.images) out[name] = toRaw(props.images[name]);
+            return out;
+        });
         const layers = computed(() => props.interactiveLayers && [...props.interactiveLayers]);
         const controls = computed(() => props.controls && [...props.controls].map(c => toRaw(c)));
         const listensForError = !!getCurrentInstance()?.vnode.props?.onError;
         const spec = computed<MapSpec>(() => {
             const out: MapSpec = {
-                style: style.value, extend: extend.value, view: view.value, initialView: props.initialView && toRaw(props.initialView), markers: markers.value, data: data.value, interactiveLayers: layers.value, controls: controls.value,
+                style: style.value, extend: extend.value, view: view.value, initialView: props.initialView && toRaw(props.initialView), images: images.value, markers: markers.value, data: data.value, interactiveLayers: layers.value, controls: controls.value,
                 minZoom: props.minZoom, maxZoom: props.maxZoom, maxPitch: props.maxPitch, maxBounds: props.maxBounds && toRaw(props.maxBounds), cursor: props.cursor,
                 renderer: props.renderer, fonts: props.fonts && toRaw(props.fonts), fontFamily: props.fontFamily, glyphs: props.glyphs, interactive: props.interactive, antialias: props.antialias,
                 attribution: (props.attribution as unknown) === true ? undefined : props.attribution && toRaw(props.attribution), hash: props.hash,

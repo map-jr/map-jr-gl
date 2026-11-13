@@ -85,6 +85,10 @@ function Zoom() {
 `onClose`, as for `overlay` in [the main API](api.md). The children are React content. For many markers, use the
 `markers` prop.
 
+The prop `images` gives images to the style layers by name. See
+[Images for style layers](api.md#images-for-style-layers). A value that is a string is compared by its content, so it
+needs no `useMemo`.
+
 ## Server rendering
 
 A server can render the first view as SVG, so that the page shows a map before a script has run. Make the HTML on

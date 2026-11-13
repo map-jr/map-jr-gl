@@ -219,6 +219,53 @@ for (const renderer of ['worker', 'main']) {
         });
         check(`[${renderer}] marker layers follow the description`, markers.one === 1 && markers.moved === 0 && markers.back === 1 && markers.none === 0, JSON.stringify(markers));
 
+        {
+        // Images: added, replaced and removed by the description. A symbol layer draws a square of 40 pixels at the centre.
+        // (The colour of the square is read from a picture of the page, at two places inside the square.)
+        const colourAt = async () => page.evaluate(async png => {
+            const bitmap = await createImageBitmap(await (await fetch('data:image/png;base64,' + png)).blob()), c = new OffscreenCanvas(bitmap.width, bitmap.height).getContext('2d');
+            c.drawImage(bitmap, 0, 0);
+            return [[438, 288], [462, 312]].map(([x, y]) => '#' + [...c.getImageData(x, y, 1, 1).data.slice(0, 3)].map(v => (v >> 4).toString(16)).join(''));
+        }, (await page.screenshot()).toString('base64'));
+        const shows = async colour => { let got; for (let i = 0; i < 40 && !(got = await colourAt()).includes(colour); i++) await page.waitForTimeout(150); return got.includes(colour) ? colour : got.join(' '); };
+        const images = await page.evaluate(async () => {
+            const t = window.t, map = t.host.map, c = t.host.unproject({x: 450, y: 300}), add = map.addImage;
+            t.square = colour => `<svg viewBox="0 0 40 40"><rect width="40" height="40" fill="${colour}"/></svg>`;
+            t.added = []; t.imageErrors = [];
+            map.addImage = function (name, ...rest) { t.added.push(name); return add.call(this, name, ...rest); };
+            const style = {...t.style, sources: {...t.style.sources, spot: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: c}}}},
+                layers: [...t.style.layers, {id: 'spot', type: 'symbol', source: 'spot', layout: {'icon-image': 'square', 'icon-allow-overlap': true, 'icon-ignore-placement': true}}]};
+            t.host.update(t.spec = {...t.spec, style, images: {square: t.square('#f0f')}, onError: e => t.imageErrors.push(e.message)});
+        });
+        const first = await shows('#f0f');
+        // The same content in a new object is the same image. Then other content with options: the image is replaced.
+        const again = await page.evaluate(() => { const t = window.t, n = t.added.length; t.host.update(t.spec = {...t.spec, images: {square: t.square('#f0f')}}); const same = t.added.length - n;
+            t.host.update(t.spec = {...t.spec, images: {square: {image: t.square('#0ff'), width: 40, height: 40}}}); return same; });
+        const replaced = await shows('#0ff');
+        // Two changes at once: the last one stays, also when the image of the first is ready later.
+        await page.evaluate(() => { const t = window.t; t.host.update({...t.spec, images: {square: t.square('#0f0')}}); t.host.update(t.spec = {...t.spec, images: {square: t.square('#00f')}}); });
+        const last = await shows('#00f');
+        await page.waitForTimeout(500);
+        const stays = (await colourAt()).includes('#00f');
+        // An image that does not load is an error with the name of the image, and the map goes on. A description without the field removes the images.
+        const gone = await page.evaluate(async () => {
+            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms));
+            t.host.update(t.spec = {...t.spec, images: {square: t.square('#00f'), lost: '/no-such-image.png'}});
+            for (let i = 0; i < 50 && !t.imageErrors.length; i++) await wait(100);
+            // (An image that is added and removed at once does not come back when it is ready.)
+            t.host.update({...t.spec, images: {...t.spec.images, late: t.square('#f00')}});
+            const {images: _, onError: __, ...rest} = t.spec;
+            t.host.update(t.spec = rest);
+            return {errors: t.imageErrors, has: t.host.map.hasImage('square')};
+        });
+        await page.waitForTimeout(700);
+        const after = await colourAt(), late = await page.evaluate(() => window.t.host.map.hasImage('late'));
+        await page.evaluate(() => { const t = window.t; delete t.host.map.addImage; t.host.update(t.spec = {...t.spec, style: t.style}); });
+        check(`[${renderer}] images follow the description: added, the same content is not added again, replaced, the last of two changes stays, removed, and an image that does not load is an error`,
+            first === '#f0f' && again === 0 && replaced === '#0ff' && last === '#00f' && stays && !gone.has && !late && !after.includes('#00f') && gone.errors.length === 1 && gone.errors[0].startsWith('[map-jr-gl] images: the image "lost" did not load.'),
+            JSON.stringify({first, again, replaced, last, stays, gone, late, after}));
+        }
+
         // GeoJSON data apart from the style: it goes to its source alone, and stays over a new style.
         const data = await page.evaluate(async () => {
             const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), c = t.host.state.get().view.center;
