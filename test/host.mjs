@@ -131,6 +131,30 @@ for (const renderer of ['worker', 'main']) {
         check(`[${renderer}] queryFeatures: radius widens a query for drawn features, and its default is 0 there and 3 with sources`,
             radius.on === 1 && radius.none === 0 && radius.small === 0 && radius.point === 1 && radius.position === 1 && radius.data === 1 && radius.dataDefault === 0 && radius.layer === 'own-line', JSON.stringify(radius));
 
+        // 3d. A source of `extend` gets its features from `data`; an owned view with only some fields that equals a reported view does not move the map (#33).
+        const extendData = await page.evaluate(async renderer => {
+            const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const idle = host => new Promise(r => { host.state.subscribe(s => s.idle, v => v && r()); setTimeout(r, 8000); });
+            const square = {type: 'Feature', properties: {name: 'square'}, geometry: {type: 'Polygon', coordinates: [[[-74.02, 40.70], [-73.99, 40.70], [-73.99, 40.72], [-74.02, 40.72], [-74.02, 40.70]]]}};
+            const spec = {style: t.style, initialView: {center: [-74.0065, 40.7085], zoom: 13}, renderer, attribution: false,
+                extend: {sources: {own: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}}, layers: [{id: 'own-fill', type: 'fill', source: 'own'}]}};
+            const host = t.lib.createMap(el, spec);
+            await idle(host);
+            const before = (await host.queryFeatures({x: 100, y: 75}, {layers: ['own-fill']})).length;
+            host.update({...spec, data: {own: {type: 'FeatureCollection', features: [square]}}});
+            await new Promise(r => setTimeout(r, 300)); await idle(host);
+            const after = (await host.queryFeatures({x: 100, y: 75}, {layers: ['own-fill']})).length;
+            let jumps = 0; const jump = host.map.jumpTo; host.map.jumpTo = (...a) => { jumps++; return jump.apply(host.map, a); };
+            host.map.jumpTo({center: [-74.0, 40.71], zoom: 13.5}); jumps = 0;
+            await new Promise(r => setTimeout(r, 200));
+            const v = host.state.get().view;
+            host.update({...spec, data: {own: {type: 'FeatureCollection', features: [square]}}, view: {center: v.center, zoom: v.zoom}});
+            host.destroy(); el.remove();
+            return {before, after, jumps};
+        }, renderer);
+        check(`[${renderer}] extend.sources gets features from data, and a partial owned view that the map reported is not applied again`,
+            extendData.before === 0 && extendData.after === 1 && extendData.jumps === 0, JSON.stringify(extendData));
+
         // 3e. Common mistakes: each gives one warning that says what to write, and a correct description gives none.
         const warnings = await page.evaluate(async renderer => {
             const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), said = [], log = console.warn;

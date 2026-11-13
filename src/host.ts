@@ -236,7 +236,8 @@ export interface MapHost {
     readonly map: Map;
 }
 
-const same = (a: ViewInput | undefined, b: ViewInput | undefined) => !!a && !!b && a.zoom === b.zoom && a.bearing === b.bearing && a.pitch === b.pitch && a.center?.[0] === b.center?.[0] && a.center?.[1] === b.center?.[1];
+// (A field that `a` does not have is not compared: an owned view such as `{center, zoom}` equals a full view that the map reported.)
+const same = (a: ViewInput | undefined, b: ViewInput | undefined) => !!a && !!b && (['zoom', 'bearing', 'pitch'] as const).every(k => a[k] === undefined || a[k] === b[k]) && (!a.center || (a.center[0] === b.center?.[0] && a.center[1] === b.center?.[1]));
 
 /** A style with the additions of `extend`. */
 function extended(style: any, extend?: StyleExtension) {
@@ -360,7 +361,7 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
         // (After a new style the data waits for the `styledata` event: the engine must have the new style first.)
         const restyled = !!before && (differ(next.style, before.style) || differ(next.extend, before.extend));
         if (restyled) { state.set({idle: false}); sent.clear(); restyle(next); }
-        if (next.view && !same(next.view, before?.view) && !reported.some(v => same(v, next.view)) && before) map.jumpTo(next.view);
+        if (next.view && !same(next.view, before?.view) && !reported.some(v => same(next.view, v)) && before) map.jumpTo(next.view);
         if (next.minZoom !== before?.minZoom && before) map.setMinZoom(next.minZoom);
         if (next.maxZoom !== before?.maxZoom && before) map.setMaxZoom(next.maxZoom);
         if (next.maxPitch !== before?.maxPitch && before) map.setMaxPitch(next.maxPitch);

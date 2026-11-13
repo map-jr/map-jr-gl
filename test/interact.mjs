@@ -172,6 +172,15 @@ for (const mode of ['main', 'worker']) {
     await page.mouse.up();
     check(`[${mode}] a drag released out of sight does not stick`, c1.lng === c2.lng && c1.lat === c2.lat);
 
+    // `once` with no listener returns a promise for the event, as in MapLibre GL JS (#33).
+    const oncePromise = await page.evaluate(async () => {
+        const m = window.map, p = m.once('moveend'), isPromise = p instanceof Promise;
+        m.jumpTo({center: m.getCenter(), zoom: m.getZoom() + 0.01});
+        const e = await Promise.race([p, new Promise(r => setTimeout(() => r(null), 3000))]);
+        return {isPromise, type: e?.type, chained: m.once('idle', () => {}) === m};
+    });
+    check(`[${mode}] once with no listener returns a promise for the event`, oncePromise.isPromise && oncePromise.type === 'moveend' && oncePromise.chained, JSON.stringify(oncePromise));
+
     // Runtime style changes and camera helpers from MapLibre's API.
     const api = await page.evaluate(async () => {
         const m = window.map;

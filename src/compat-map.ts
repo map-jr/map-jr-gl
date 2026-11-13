@@ -19,6 +19,9 @@ export interface Map {
     on(type: string, layerId: string, listener: (e: any) => void): this;
     once<T extends keyof MapEventType>(type: T, listener: (e: MapEventType[T]) => void): this;
     once(type: string, listener: (e: any) => void): this;
+    once<T extends keyof MapLayerEventType>(type: T, layerId: string, listener: (e: MapLayerEventType[T]) => void): this;
+    once<T extends keyof MapEventType>(type: T, layerId?: string): Promise<MapEventType[T]>;
+    once(type: string, layerId?: string): Promise<any>;
     off<T extends keyof MapLayerEventType>(type: T, layerId: string, listener: (e: MapLayerEventType[T]) => void): this;
     off<T extends keyof MapEventType>(type: T, listener: (e: MapEventType[T]) => void): this;
     off(type: string, listener: (e: any) => void): this;
@@ -26,6 +29,14 @@ export interface Map {
     getSource<T extends Source = Source>(id: string): T | undefined;
 }
 export class Map extends CoreMap {
+    /** As in MapLibre GL JS: with no listener, `once` returns a promise for the event; a layer id makes it a layer event. */
+    once(type: string, a?: any, b?: any): any {
+        const layer = typeof a === 'string' ? a : undefined, fn = typeof a === 'function' ? a : b;
+        if (!fn) return new Promise(resolve => layer ? this.once(type, layer, resolve) : this.once(type, resolve));
+        if (!layer) return super.once(type, fn);
+        const wrap = (e: any) => { this.off(type, layer, wrap); fn(e); };
+        return this.on(type, layer, wrap);
+    }
     // ---- Accepted, with no effect ----
     // Frameworks for MapLibre GL JS call these methods when an application sets the option, often with the default
     // value. They are here so that such code does not stop. A value that this library cannot do gives one warning.
