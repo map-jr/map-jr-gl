@@ -153,8 +153,11 @@ test('tiles: icons that need no place among the labels are a batch of the tile, 
     assert.equal(labels.length, batch.name.length);
     assert.deepEqual([...batch.pos.subarray(0, 2)], [labels[0].x, labels[0].y]);
     assert.equal(batch.names[batch.name[0]], labels[0].icon!.name);
-    // An icon with text, an icon that labels avoid, and an icon that can be hidden are placed with the labels.
-    for (const layout of [{...free, 'text-field': '{name}'}, {...free, 'icon-ignore-placement': false}, {...free, 'icon-allow-overlap': false}, {...free, 'symbol-sort-key': ['get', 'rank']}]) {
+    // An icon that labels avoid is in the batch too, and the batch says so.
+    const avoided = build({...free, 'icon-ignore-placement': false}, true);
+    assert.ok(avoided.icons!.poi.avoid === true && !batch.avoid && avoided.icons!.poi.name.length === batch.name.length && !avoided.labels.poi);
+    // An icon with text and an icon that can be hidden are placed with the labels.
+    for (const layout of [{...free, 'text-field': '{name}'}, {...free, 'icon-allow-overlap': false}, {...free, 'symbol-sort-key': ['get', 'rank']}]) {
         const ir = build(layout, true);
         assert.ok(ir.labels.poi.length > 0);
         assert.ok(!ir.icons?.poi || ir.icons.poi.name.length < batch.name.length, JSON.stringify(layout)); // (a feature with no name has no text)

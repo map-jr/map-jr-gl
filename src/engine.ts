@@ -824,9 +824,20 @@ export class Engine {
     private async queryRendered(c: Extract<Command, {type: 'queryRendered'}>): Promise<QueriedFeature[]> {
         const jobs: Promise<QueriedFeature[]>[] = [];
         for (const [name, src] of Object.entries(this.style.sources)) {
-            const sets = c.sets.filter(s => s.source === name);
-            if (!sets.length || !isGeometrySource(src)) continue;
-            for (const t of tilesUnderBox(this.tr, c.box, src.minzoom, src.maxzoom)) {
+            const mine = c.sets.filter(s => s.source === name);
+            if (!mine.length || !isGeometrySource(src)) continue;
+            // A feature of a symbol layer is found where its icon is drawn: the rectangle of the question grows by the
+            // reach of the icons of the layer, in the other direction (an icon that reaches 30 pixels up from its point
+            // is under a pointer that is 30 pixels above the point). Sets with the same rectangle are asked together.
+            const boxes = new Map<string, {box: number[]; sets: typeof mine}>();
+            for (const s of mine) {
+                const L = this.layers.find(l => l.id === s.layer), reach = L?.type === 'symbol' ? this.iconReach(L) : null, r = s.radius;
+                const box = reach ? [c.box[0] - Math.max(reach[2], r), c.box[1] - Math.max(reach[3], r), c.box[2] - Math.min(reach[0], -r), c.box[3] - Math.min(reach[1], -r)] : c.box, key = box.join();
+                const group = boxes.get(key) ?? {box, sets: []};
+                group.sets.push(reach ? {...s, radius: 0} : s);
+                boxes.set(key, group);
+            }
+            for (const {box, sets} of boxes.values()) for (const t of tilesUnderBox(this.tr, box, src.minzoom, src.maxzoom)) {
                 jobs.push(this.queryBackend(name, t.z, t.x, t.y).query(tileURL(src, t.z, t.x, t.y), {
                     source: name, z: t.z, x: t.x, y: t.y, px: 0, py: 0, radius: 0, box: t.box, geometry: c.geometry,
                     sets: sets.map(s => ({layer: s.layer, sourceLayer: s.sourceLayer, filter: s.filter, also: s.also, radius: s.radius * t.scale})),
@@ -1273,7 +1284,7 @@ export class Engine {
         const place = this.placeDirty && now - this.lastPlace >= (zooming ? ZOOMING_PLACE_INTERVAL : PLACE_INTERVAL);
         if (place) this.fade = zooming ? ZOOMING_FADE : FADE;
         const grid = place ? new CollisionGrid() : null;
-        if (grid) this.reserve(grid);
+        if (grid) this.reserve(grid, items);
         if (place) {
             this.placeDirty = false;
             this.lastPlace = now;
@@ -1285,7 +1296,7 @@ export class Engine {
                 // The glyph atlas filled up and was emptied part-way through: earlier labels now point at stale
                 // glyphs. Place again; the fresh atlas only has to hold this view's text.
                 const again = new CollisionGrid();
-                this.reserve(again);
+                this.reserve(again, items);
                 placed = placeLabels(tr, all, this.layers, this.atlas, again, this.icon);
             }
             for (const p of placed) {
@@ -1418,10 +1429,64 @@ export class Engine {
         return this.markerAnims.size > 0;
     }
 
+    /**
+     * Where an icon of a symbol layer is drawn around the point of its feature, in pixels: the middle of the icon, and
+     * half of the width and of the height of the box around it. `w` and `h` are the size of the image, and `turn` is
+     * `icon-rotate` in radians. (The same rules as for an icon that is placed with the labels: see `placeLabels`.)
+     */
+    private iconBox(L: CompiledLayer, w: number, h: number, size: number, turn: number): [number, number, number, number] {
+        const z = this.tr.zoom, anchor = L.p.iconAnchor.eval(z) as string, offset = L.p.iconOffset.eval(z) as number[], move = L.p.iconTranslate.eval(z) as number[] | null;
+        const angle = (L.p.iconAlign.eval(z) === 'map' ? -this.tr.bearing * Math.PI / 180 : 0) + turn, cos = Math.abs(Math.cos(angle)), sin = Math.abs(Math.sin(angle));
+        return [(offset[0] + (anchor.includes('left') ? 0.5 : anchor.includes('right') ? -0.5 : 0) * w) * size + (move?.[0] ?? 0), (offset[1] + (anchor.includes('top') ? 0.5 : anchor.includes('bottom') ? -0.5 : 0) * h) * size + (move?.[1] ?? 0),
+            (w * cos + h * sin) / 2 * size, (w * sin + h * cos) / 2 * size];
+    }
+
+    /**
+     * How far from the point of a feature the icons of a symbol layer reach on the screen: to the left, up, to the right
+     * and down, in pixels (left and up are negative). It is found from the images that the tiles of the layer use now.
+     * Null: the tiles have no icon of the layer.
+     */
+    private iconReach(L: CompiledLayer): [number, number, number, number] | null {
+        const names = new Set<string>(), z = this.tr.zoom;
+        let size = L.p.iconSize.dd ? 0 : L.p.iconSize.eval(z);
+        for (const [key, t] of this.tiles) {
+            if (!t.gl || !key.startsWith(L.source + '|')) continue;
+            const b = t.gl.icons?.[L.id]?.src;
+            if (b) { for (const name of b.names) names.add(name); if (b.size) for (const s of b.size) if (s > size) size = s; }
+            for (const l of t.gl.labels[L.id] ?? []) if (l.icon) { names.add(l.icon.name); if (L.p.iconSize.dd) size = Math.max(size, l.icon.size, l.icon.size1); }
+        }
+        let w = 0, h = 0;
+        for (const name of names) { const m = this.images.get(name) ?? this.sprite?.icons[name]; if (m) { w = Math.max(w, m.width / m.pixelRatio); h = Math.max(h, m.height / m.pixelRatio); } }
+        if (!w) return null;
+        // (An icon with a turn for each feature can reach as far as its corner in each direction.)
+        if (L.p.iconRotate.dd) w = h = Math.hypot(w, h);
+        const [cx, cy, hw, hh] = this.iconBox(L, w, h, size, L.p.iconRotate.dd ? 0 : L.p.iconRotate.eval(z) * Math.PI / 180);
+        return [cx - hw, cy - hh, cx + hw, cy + hh];
+    }
+
     /** Reserves space in the label collision grid for markers that labels should avoid, and for registered obstacles. */
-    private reserve(grid: CollisionGrid) {
+    private reserve(grid: CollisionGrid, items: Map<string, RenderItem<GLTile>[]>) {
         const tr = this.tr;
         const zoom = tr.zoom;
+        // The icons that the tiles have in buffers and that labels avoid (see `IconBatch`). They are always shown, so
+        // each one gets its space before the labels are placed.
+        for (const L of this.layers) {
+            if (L.type !== 'symbol' || !L.visible || zoom < L.minzoom || zoom >= L.maxzoom) continue;
+            for (const it of items.get(L.source!) ?? []) {
+                const b = it.tile.icons?.[L.id]?.src;
+                if (!b?.avoid) continue;
+                const images = b.names.map(this.icon), t = clamp(zoom - it.id.z, 0, 1), pad = L.p.iconPadding.eval(zoom), fixed = L.p.iconSize.dd ? 1 : L.p.iconSize.eval(zoom), turn = L.p.iconRotate.dd ? 0 : L.p.iconRotate.eval(zoom) * Math.PI / 180;
+                for (let i = 0; i < b.name.length; i++) {
+                    const m = images[b.name[i]], x = b.pos[i * 2], y = b.pos[i * 2 + 1];
+                    if (!m || x < it.clip[0] || y < it.clip[1] || x >= it.clip[2] || y >= it.clip[3]) continue;
+                    const [ax, ay, depth] = tr.projectTile(it.id, x, y);
+                    if (ax < -100 || ay < -100 || ax > tr.width + 100 || ay > tr.height + 100) continue;
+                    const size = (b.size ? b.size[i * 2] + (b.size[i * 2 + 1] - b.size[i * 2]) * t : fixed) * (tr.pitch ? Math.min(4, 0.5 + 0.5 * tr.cameraDistance / depth) : 1);
+                    const [cx, cy, hw, hh] = this.iconBox(L, m.width / m.pixelRatio, m.height / m.pixelRatio, size, b.rotate ? b.rotate[i] : turn);
+                    grid.insert(ax + cx - hw - pad, ay + cy - hh - pad, ax + cx + hw + pad, ay + cy + hh + pad);
+                }
+            }
+        }
         for (const m of this.markers.values()) {
             if (zoom < m.minZoom || zoom >= m.maxZoom) continue;
             if (m.hideOverlaps && m.gpu && m.data) {

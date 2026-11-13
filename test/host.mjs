@@ -363,6 +363,48 @@ for (const renderer of ['worker', 'main']) {
             same.every(p => p.red > 3000 && p.different < 60), JSON.stringify(same));
         check(`[${renderer}] the engine places no icon among the labels when the tiles have the icons in buffers (and it places them when they are not)`,
             placedFromBuffers.length > 0 && placedFromBuffers.every(n => n === 0) && placedWithLabels.length > 0 && placedWithLabels.every(n => n > 0), JSON.stringify({placedFromBuffers, placedWithLabels}));
+
+        // A question for drawn features finds a feature of a symbol layer where its icon is drawn. The icon is a square of
+        // 40 pixels that stands on its point (the anchor is `bottom`), at the centre of the map.
+        const reach = await page.evaluate(async () => {
+            const t = window.t, c = t.host.unproject({x: 450, y: 300}), wait = ms => new Promise(r => setTimeout(r, ms));
+            const point = {type: 'Feature', id: 1, properties: {}, geometry: {type: 'Point', coordinates: c}};
+            t.spot = (icon, text) => ({...t.style, sources: {...t.style.sources, spot: {type: 'geojson', data: point}}, layers: [...t.style.layers.filter(l => l.type !== 'symbol'),
+                {id: 'spot-icon', type: 'symbol', source: 'spot', layout: {'icon-image': 'square', 'icon-allow-overlap': true, ...icon}},
+                ...(text ? [{id: 'spot-text', type: 'symbol', source: 'spot', layout: {'text-field': 'Here', 'text-size': 14}}] : [])]});
+            const found = async (icon, places) => {
+                t.host.update(t.spec = {...t.spec, style: t.spot(icon, false), images: {square: t.square('#f0f')}});
+                await wait(300); await t.settle();
+                const out = [];
+                for (const [dx, dy] of places) out.push((await t.host.queryFeatures({x: 450 + dx, y: 300 + dy}, {layers: ['spot-icon']})).length);
+                return out.join('');
+            };
+            // Above the point, below it, at the side inside the icon, and at the side outside it.
+            const places = [[0, -32], [0, 32], [15, -20], [30, -20]];
+            return {bottom: await found({'icon-anchor': 'bottom', 'icon-ignore-placement': true}, places), top: await found({'icon-anchor': 'top', 'icon-ignore-placement': true}, places),
+                placed: await found({'icon-anchor': 'bottom', 'symbol-sort-key': 1}, places), large: await found({'icon-anchor': 'bottom', 'icon-size': 2}, [[0, -70], [35, -40], [45, -40]])};
+        });
+        check(`[${renderer}] a question for drawn features finds a feature of a symbol layer where its icon is drawn: for each anchor, for an icon from a buffer and a placed icon, and for a larger icon`,
+            reach.bottom === '1010' && reach.top === '0100' && reach.placed === '1010' && reach.large === '110', JSON.stringify(reach));
+
+        // Labels keep away from an icon from a buffer, unless the layer has `icon-ignore-placement`. The text is at the
+        // point of the icon. (While the map moves, the engine says how many labels it placed.)
+        const avoided = await page.evaluate(async () => {
+            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms));
+            const placed = async icon => {
+                t.host.update(t.spec = {...t.spec, style: t.spot({'icon-anchor': 'center', ...icon}, true)});
+                await wait(300); await t.settle();
+                t.placed.length = 0;
+                t.host.moveTo({bearing: 20, duration: 1800}); await wait(2200);
+                t.host.moveTo({bearing: 0}); await wait(300);
+                return t.placed.splice(0).join();
+            };
+            const out = {avoid: await placed({}), ignore: await placed({'icon-ignore-placement': true})};
+            const {images: _, ...rest} = t.spec;
+            t.host.update(t.spec = {...rest, style: t.style});
+            return out;
+        });
+        check(`[${renderer}] labels keep away from an icon from a buffer, and not when the layer has icon-ignore-placement`, /^0(,0)*$/.test(avoided.avoid) && /^1(,1)*$/.test(avoided.ignore), JSON.stringify(avoided));
         }
 
         // GeoJSON data apart from the style: it goes to its source alone, and stays over a new style.
