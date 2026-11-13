@@ -373,7 +373,7 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
         if (next.cursor !== before?.cursor) map.setCursor(next.cursor ?? '');
         if (next.images !== before?.images) {
             const wanted = next.images ?? {};
-            for (const name of images.keys()) if (!(name in wanted)) { images.delete(name); map.removeImage(name); }
+            for (const name of images.keys()) if (!Object.hasOwn(wanted, name)) { images.delete(name); map.removeImage(name); }
             for (const name in wanted) {
                 const v = wanted[name], key = imageKey(v);
                 if (images.has(name) && images.get(name) === key) continue;

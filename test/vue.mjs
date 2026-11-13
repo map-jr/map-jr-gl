@@ -36,9 +36,14 @@ import {MapJr, MapOverlay, MapImage} from '/dist/vue.js';
 import {navigation, scale} from '/dist/controls.js';
 const style = await (await fetch('/style.json')).json();
 const view = ref(${JSON.stringify(view)}), markers = ref([${JSON.stringify(pins)}]), layers = ref(['water', 'park', 'building']), images = ref({dot: '<svg viewBox="0 0 4 4"><rect width="4" height="4"/></svg>'});
-const tone = ref('#fff'), arrow = ref(true);
-const t = window.t = {view, markers, layers, images, tone, arrow, clicks: [], loads: 0, views: 0, map: ref(null), pin: ref([-74.0065, 40.7085]), tip: ref(true), closed: 0};
-const make = (create, ssr) => create({render: () => h('div', {id: 'frame', style: 'width:800px;height:500px'}, [h(MapJr, {ref: t.map, mapStyle: style, controls: [navigation(), scale({position: 'bottom-left'})], ...(ssr ? {initialView: view.value, ...(ssr === 'svg' ? {ssr: {width: 800, height: 500}} : {})} : {view: view.value, 'onUpdate:view': v => { t.views++; view.value = v; }, interactiveLayers: layers.value, onClick: e => t.clicks.push(e)}), markers: markers.value, images: images.value, attribution: false, onLoad: () => t.loads++}, ssr ? undefined : {default: () => [h(MapOverlay, {lngLat: t.pin.value, anchor: 'bottom'}, () => h('b', {id: 'own-pin'}, 'here')), arrow.value ? h(MapImage, {name: 'arrow', params: ['color']}, {default: ({color}) => h('svg', {viewBox: '0 0 8 8'}, [h('path', {d: 'M4 0 8 8 0 8z', fill: color, stroke: tone.value})])}) : null, h(MapImage, {name: 'photo', src: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%224%22 height=%224%22/%3E', width: 4, height: 4}), t.tip.value ? h(MapOverlay, {lngLat: t.pin.value, popup: true, onClose: () => { t.closed++; t.tip.value = false; }}, () => h('span', {id: 'own-tip'}, 'A popup')) : null]})])});
+const tone = ref('#fff'), arrow = ref(true), twin = ref(false), full = ref(true), radius = ref(2);
+// (A component inside the SVG of an image: its own change must reach the map.)
+const Dot = {render: () => h('circle', {cx: 4, cy: 4, r: radius.value})};
+const t = window.t = {view, markers, layers, images, tone, arrow, twin, full, radius, clicks: [], loads: 0, views: 0, map: ref(null), pin: ref([-74.0065, 40.7085]), tip: ref(true), closed: 0};
+const make = (create, ssr) => create({render: () => h('div', {id: 'frame', style: 'width:800px;height:500px'}, [h(MapJr, {ref: t.map, mapStyle: style, controls: [navigation(), scale({position: 'bottom-left'})], ...(ssr ? {initialView: view.value, ...(ssr === 'svg' ? {ssr: {width: 800, height: 500}} : {})} : {view: view.value, 'onUpdate:view': v => { t.views++; view.value = v; }, interactiveLayers: layers.value, onClick: e => t.clicks.push(e)}), markers: markers.value, images: images.value, attribution: false, onLoad: () => t.loads++}, ssr ? undefined : {default: () => [h(MapOverlay, {lngLat: t.pin.value, anchor: 'bottom'}, () => h('b', {id: 'own-pin'}, 'here')), arrow.value ? h(MapImage, {name: 'arrow', params: ['color']}, {default: ({color}) => h('svg', {viewBox: '0 0 8 8'}, [h('path', {d: 'M4 0 8 8 0 8z', fill: color, stroke: tone.value})])}) : null, twin.value ? h(MapImage, {name: 'arrow'}, () => h('svg', {viewBox: '0 0 8 8'}, [h('path', {d: 'M4 0 8 8 0 8z'})])) : null,
+  h(MapImage, {name: 'maybe'}, () => full.value ? h('svg', {viewBox: '0 0 8 8'}, [h('style', 'p{color:rgb(1,2,3)}'), h('rect', {id: 'in-image', width: 8, height: 8})]) : null),
+  h(MapImage, {name: 'nested'}, () => h('svg', {viewBox: '0 0 8 8'}, [h(Dot)])),
+  h(MapImage, {name: 'photo', src: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%224%22 height=%224%22/%3E', width: 4, height: 4}), t.tip.value ? h(MapOverlay, {lngLat: t.pin.value, popup: true, onClose: () => { t.closed++; t.tip.value = false; }}, () => h('span', {id: 'own-tip'}, 'A popup')) : null]})])});
 if (location.search === '?ssr') make(createSSRApp, 'svg').mount('#app'); else if (location.search === '?bare') make(createSSRApp, 'bare').mount('#app'); else make(createApp, false).mount('#app');
 window.ready = true;`;
 const server = http.createServer((req, res) => {
@@ -126,21 +131,35 @@ try {
     // An image as a child component: the SVG of its slot is a template of the map, and it follows the component.
     const child = await page.evaluate(async () => {
         const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), map = t.map.value.host.map, add = map.addImage, given = [];
-        const first = [map.hasImage('arrow'), map.hasImage('photo')], hidden = document.querySelector('#frame svg[viewBox="0 0 8 8"]')?.getClientRects().length === 0;
-        map.addImage = function (name, source, ...rest) { given.push([name, source]); return add.call(this, name, source, ...rest); };
+        const first = ['arrow', 'photo', 'maybe', 'nested'].map(name => map.hasImage(name)).join();
+        // (The SVG is not in the page: its <style> is no style of the page, and its id is no id of the page.)
+        const p = document.body.appendChild(document.createElement('p')), apart = !document.querySelector('svg[viewBox="0 0 8 8"]') && !document.getElementById('in-image') && getComputedStyle(p).color !== 'rgb(1, 2, 3)';
+        p.remove();
+        map.addImage = function (name, source, ...rest) { given.push(name + ' ' + source); return add.call(this, name, source, ...rest); };
         t.view.value = {...t.view.value}; // (a render with the same content gives the image no second time)
         await wait(300);
         const again = given.length;
         t.tone.value = '#00f';
         await wait(300);
-        const changed = given.map(([name, source]) => name + ' ' + source).join();
-        t.arrow.value = false;
+        const changed = given.splice(0).join();
+        // A change that a component inside the SVG makes.
+        t.radius.value = 3;
         await wait(300);
+        const nested = given.splice(0).join();
+        // Two components with one name: the image stays while one of them is there.
+        t.twin.value = true; await wait(300);
+        t.arrow.value = false; await wait(300);
+        const kept = map.hasImage('arrow');
+        t.twin.value = false; await wait(300);
+        const gone = !map.hasImage('arrow');
+        // Content that becomes empty: the image goes.
+        t.full.value = false; await wait(300);
         delete map.addImage;
-        return {first, again, changed, gone: !map.hasImage('arrow'), hidden};
+        return {first, apart, again, changed, nested, kept, gone, emptied: !map.hasImage('maybe')};
     });
-    check('browser: MapImage gives the SVG of its slot to the map as a template, gives it again only when it changes, and takes it away', child.first.join() === 'true,true' && child.again === 0
-        && /^arrow <svg[^>]*viewBox="0 0 8 8"[^>]*><path d="M4 0 8 8 0 8z" fill="\{\{color\}\}" stroke="#00f"\/?>(<\/path>)?<\/svg>$/.test(child.changed) && child.gone && child.hidden, JSON.stringify(child));
+    check('browser: MapImage gives the SVG of its slot to the map as a template and keeps it out of the page; it gives it again only when it changes (also inside a nested component); the image stays while a second component has its name, and goes with its content',
+        child.first === 'true,true,true,true' && child.apart && child.again === 0 && /^arrow <svg[^>]*viewBox="0 0 8 8"[^>]*><path d="M4 0 8 8 0 8z" fill="\{\{color\}\}" stroke="#00f"\/?>(<\/path>)?<\/svg>$/.test(child.changed)
+        && /^nested <svg[^>]*><circle cx="4" cy="4" r="3"\/?>(<\/circle>)?<\/svg>$/.test(child.nested) && child.kept && child.gone && child.emptied, JSON.stringify(child));
     // Elements of the page on the map: a marker with own content and a popup, as child components.
     const overlays = await page.evaluate(async () => {
         const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), host = t.map.value.host;

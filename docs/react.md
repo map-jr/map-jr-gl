@@ -118,7 +118,8 @@ and `pixelRatio`. A parameter is not a value of React. Each feature of the layer
 the feature that has the name of the parameter, or the value of an expression in the layer. See
 [An image that is a template](api.md#an-image-that-is-a-template). React renders the SVG one time, and the map
 draws it one time for each different set of values. With TypeScript, a parameter that is not in `params` is a type
-error.
+error. The SVG is not in the page, and components inside it can change it. An image of a `MapImage` is used before
+an image of the prop `images` with the same name.
 
 The prop `images` gives images to the style layers by name. See
 [Images for style layers](api.md#images-for-style-layers). A value that is a string is compared by its content, so it
