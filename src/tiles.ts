@@ -20,6 +20,8 @@ export class TileBuilder {
     private aborts = new Map<number, AbortController>();
     /** Recently fetched tiles, kept so feature queries on visible tiles need no second download. */
     private recent = new Map<string, Uint8Array>();
+    /** Downloads of tiles that are loading, by the same key, so a query about such a tile waits for it instead of fetching it again. */
+    private loading = new Map<string, Promise<Uint8Array | null>>();
     /** Counts the calls of `forget`: bytes that were asked for before a call are not kept after it. */
     private forgotten = 0;
     private geojson = new Map<string, PreparedSource>();
@@ -111,7 +113,12 @@ export class TileBuilder {
         this.aborts.set(req.id, ac);
         try {
             const key = req.source + '|' + req.url, n = this.forgotten;
-            const bytes = req.again && this.recent.get(key) || await fetchTile(req.url, this.fetchFn, ac.signal);
+            let bytes = req.again && this.recent.get(key) || null;
+            if (!bytes) {
+                const p = fetchTile(req.url, this.fetchFn, ac.signal);
+                this.loading.set(key, p);
+                try { bytes = await p; } finally { if (this.loading.get(key) === p) this.loading.delete(key); }
+            }
             if (!bytes) return {layers: {}, labels: {}};
             if (n === this.forgotten) this.remember(key, bytes);
             return bytes.length ? buildTile(bytes, req.z, this.bySource.get(req.source) ?? [], req.overscaled, this.states.f, this.templates, req.direct) : {layers: {}, labels: {}};
@@ -128,6 +135,7 @@ export class TileBuilder {
      */
     forget(source?: string) {
         this.forgotten++;
+        for (const key of this.loading.keys()) if (!source || key.startsWith(source + '|')) this.loading.delete(key);
         for (const key of this.recent.keys()) if (!source || key.startsWith(source + '|')) this.recent.delete(key);
         this.dems.clear();
     }
@@ -148,7 +156,8 @@ export class TileBuilder {
         const key = q.source + '|' + url, n = this.forgotten;
         let bytes = this.recent.get(key);
         if (!bytes) {
-            const fetched = await fetchTile(url, this.fetchFn);
+            // A load that is cancelled or fails does not answer the query: the query then fetches the tile itself.
+            const shared = this.loading.get(key), fetched = shared && await shared.catch(() => undefined) || await fetchTile(url, this.fetchFn);
             if (!fetched) return [];
             bytes = fetched;
             if (n === this.forgotten) this.remember(key, bytes);
