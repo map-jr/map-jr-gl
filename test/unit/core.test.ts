@@ -95,6 +95,14 @@ test('images: a template has its slots, and the image expression with params giv
     assert.equal(flags.dd, true);
 });
 
+test('tiles: an icon name from data that is the name of a member of every object is no template', () => {
+    const layer = (icon: unknown) => [compileLayer({id: 'poi', type: 'symbol', source: 's', 'source-layer': 'poi', layout: {'icon-image': icon}})!];
+    for (const name of ['toString', 'constructor', '__proto__', 'valueOf']) {
+        const labels = buildTile(bytes, TILE.z, layer(name), true, undefined, {pin: ['color']}).labels.poi;
+        assert.ok(labels.length > 0 && labels.every(l => l.icon!.name === name), name);
+    }
+});
+
 test('tessellation: triangles cover exactly the polygon area, holes excluded', () => {
     // 100x100 square with a 20x20 hole (opposite winding).
     const batch: Batch = {type: 'fill', geom: {coords: Int16Array.from([0, 0, 100, 0, 100, 100, 0, 100, 40, 40, 40, 60, 60, 60, 60, 40]), ringEnds: Uint32Array.from([4, 8]), featEnds: Uint32Array.from([2])}};

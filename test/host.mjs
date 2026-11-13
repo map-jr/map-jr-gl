@@ -279,7 +279,8 @@ for (const renderer of ['worker', 'main']) {
             const point = (id, coordinates, properties) => ({type: 'Feature', id, properties, geometry: {type: 'Point', coordinates}});
             t.tiles = icon => ({...t.style, sources: {...t.style.sources, spot: {type: 'geojson', data: {type: 'FeatureCollection', features: [point(1, c, {colour: '#f0f', kind: 'a'}), point(2, right, {colour: '#0ff', kind: 'b'})]}}},
                 layers: [...t.style.layers, {id: 'spot', type: 'symbol', source: 'spot', layout: {'icon-image': icon, 'icon-allow-overlap': true, 'icon-ignore-placement': true}}]});
-            t.imageErrors = [];
+            t.imageErrors = []; t.asked = [];
+            t.host.listen('styleimagemissing', e => t.asked.push(e.id));
             t.host.update(t.spec = {...t.spec, style: t.tiles('tile'), images: {tile: t.square('{{colour}}')}, onError: e => t.imageErrors.push(e.message)});
         });
         const fromProperties = await becomes('#f0f #f0f #0ff #0ff');
@@ -298,6 +299,24 @@ for (const renderer of ['worker', 'main']) {
         await page.evaluate(() => { const t = window.t; t.host.update(t.spec = {...t.spec, style: t.tiles(['image', 'tile', {params: {colour: ['concat', '#0ff', '"/><rect width="40" height="40" fill="#f00']}}])}); });
         await page.waitForTimeout(1500);
         const unsafe = await halves();
+        // A large template that is replaced many times: each variant takes the place in the texture of the variant before
+        // it, so the texture does not fill. Then the template goes, and a plain image has its name: the page hears of no
+        // image with the name of a variant. A template that is not well-formed gives one error with its name.
+        const replaced30 = await page.evaluate(async () => {
+            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms));
+            const big = n => `<svg viewBox="0 0 40 40" data-n="${n}"><rect width="40" height="40" fill="{{colour}}"/></svg>`;
+            t.host.update(t.spec = {...t.spec, style: t.tiles('tile')});
+            for (let n = 0; n < 30; n++) { t.host.update(t.spec = {...t.spec, images: {tile: {image: big(n), width: 400, height: 400}}}); await wait(120); }
+            await wait(600);
+            const full = t.imageErrors.filter(e => e.includes('texture of the images')).length;
+            t.host.update(t.spec = {...t.spec, images: {tile: t.square('#0ff')}});
+            await wait(600);
+            const asked = t.asked.filter(id => id.includes('\u001f')).length, before = t.imageErrors.length;
+            t.host.update(t.spec = {...t.spec, images: {tile: '<svg viewBox="0 0 40 40"><rect width="40" height="40" fill="{{colour}}"></svg>'}});
+            for (let i = 0; i < 60 && t.imageErrors.length === before; i++) await wait(100);
+            await wait(500);
+            return {full, asked, broken: t.imageErrors.slice(before)};
+        });
         // More different values than the limit: one error names the image, and the map goes on.
         const many = await page.evaluate(async () => {
             const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), c = t.host.unproject({x: 450, y: 300}), before = t.imageErrors.length;
@@ -313,8 +332,9 @@ for (const renderer of ['worker', 'main']) {
         });
         check(`[${renderer}] an image that is an SVG template: slots get the properties of each feature or the params of the image expression (also with feature-state), another template draws the variants again, a value is not markup, and too many variants give one error`,
             fromProperties === '#f0f #f0f #0ff #0ff' && fromParams === '#ff0 #ff0 #00f #00f' && otherTemplate === '#000 #ff0 #000 #00f' && stateOff === '#000 #0f0 #000 #0f0' && stateOn === '#000 #0f0 #000 #f00'
-            && !unsafe.includes('#f00') && many.length === 1 && many[0].startsWith('[map-jr-gl] The image "tiny" has more than 1000 different sets of values'),
-            JSON.stringify({fromProperties, fromParams, otherTemplate, stateOff, stateOn, unsafe, many}));
+            && !unsafe.includes('#f00') && many.length === 1 && many[0].startsWith('[map-jr-gl] The image "tiny" has more than 1000 different sets of values')
+            && replaced30.full === 0 && replaced30.asked === 0 && replaced30.broken.length === 1 && replaced30.broken[0].startsWith('[map-jr-gl] The image "tile" cannot be drawn with the values of its slots'),
+            JSON.stringify({fromProperties, fromParams, otherTemplate, stateOff, stateOn, unsafe, many, replaced30}));
 
         // Icons that need no place among the labels are drawn from buffers of the tiles. The picture is the same as for
         // icons that are placed with the labels (a sort key makes the layer use that way). The style has no labels here:
