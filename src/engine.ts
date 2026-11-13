@@ -203,11 +203,15 @@ export class Engine {
     private styleFonts = '';
     private images = new Map<string, SpriteIcon & {custom: true}>();
     private missing = new Set<string>();
+    /** The images of the map changed: the icons that the tiles have in buffers are made again (ten times a second at most, because images often come one after another). */
+    private iconsDirty = false;
+    private iconsAt = 0;
     private dem = new Map<string, Promise<{width: number; height: number; data: Uint8ClampedArray} | null>>();
     private dpr = 1;
 
     constructor(canvas: HTMLCanvasElement | OffscreenCanvas, o: EngineOptions, private backends: TileBackend[], private emit: (e: EngineEvent) => void) {
         this.renderer = new GLRenderer(canvas, o.antialias);
+        this.renderer.iconOf = this.icon;
         (canvas as EventTarget).addEventListener('webglcontextlost', () => { if (!this.lost) { this.lost = true; this.emit({type: 'contextlost'}); } }); // (not when the map itself freed the context)
         this.atlas = new GlyphAtlas(o.fontFamily);
         this.atlas.images = name => this.icon(name);
@@ -582,6 +586,7 @@ export class Engine {
         }
         this.renderer.setIcons(all ?? loaded[0].image, width, height);
         this.sprite = {icons, image: '', width, height};
+        this.iconsDirty = true;
         this.styleVersion++;
         this.invalidate();
     }
@@ -730,17 +735,17 @@ export class Engine {
                 const rect = this.addSprite(c.w, c.h, c.data);
                 if (rect) this.images.set(c.name, {x: rect[0], y: rect[1], width: c.w, height: c.h, pixelRatio: c.w / c.width, custom: true, stretchX: c.stretchX, stretchY: c.stretchY, content: c.content, textFitWidth: c.textFitWidth, textFitHeight: c.textFitHeight});
                 this.styleVersion++;
-                this.placeDirty = true;
+                this.placeDirty = this.iconsDirty = true;
                 break;
             }
-            case 'removeImage': this.images.delete(c.name); this.placeDirty = true; break;
+            case 'removeImage': this.images.delete(c.name); this.placeDirty = this.iconsDirty = true; break;
             case 'templates':
                 for (const b of this.backends) b.setTemplates(c.slots);
                 for (const names of [this.images, this.missing]) for (const name of [...names.keys()]) if (c.changed.includes(name.split(VARIANT)[0])) names.delete(name);
                 // (Only tiles with shapes are built again: `band` is the zoom that such a tile was built for.)
                 if (c.rebuild) for (const t of this.tiles.values()) if (t.band !== undefined) { t.stale = true; t.rev = ++this.tilesVersion; }
                 this.styleVersion++;
-                this.placeDirty = true;
+                this.placeDirty = this.iconsDirty = true;
                 break;
             case 'geojson': {
                 // New data for one source: keep drawing its current tiles and rebuild them in place, so nothing blinks.
@@ -1051,7 +1056,7 @@ export class Engine {
     private build(req: number, source: string, id: TileID, t: TileState): TileRequest {
         const src = this.style.sources[source], band = t.band = this.buildZoom(source, id);
         t.rules = this.sourceSigs.get(source)?.[1];
-        return {id: req, source, url: tileURL(src, id.z, id.x, id.y), z: this.zoomBuilt.has(source) ? band : id.z, overscaled: band >= src.maxzoom && band};
+        return {id: req, source, url: tileURL(src, id.z, id.x, id.y), z: this.zoomBuilt.has(source) ? band : id.z, overscaled: band >= src.maxzoom && band, direct: true};
     }
     private zoomBuilt = new Set<string | undefined>();
     /** Builds a tile again when its data is out of date, or when it was built for another zoom than it is now for. */
@@ -1318,6 +1323,11 @@ export class Engine {
             }
             labels.push({...p, x: p.x + dx, y: p.y + dy, icon: p.icon && {...p.icon, x: p.icon.x + dx, y: p.icon.y + dy}, opacity: st.opacity});
         }
+        if (this.iconsDirty && now - this.iconsAt >= 100) {
+            this.iconsDirty = false;
+            this.iconsAt = now;
+            for (const t of this.tiles.values()) if (t.gl?.icons) this.renderer.refreshIcons(t.gl);
+        }
         const markers: MarkerBuffers[] = [];
         for (const m of this.markers.values()) {
             if (!m.gpu?.count) continue;
@@ -1343,7 +1353,7 @@ export class Engine {
             this.moving = animating;
             this.emit({type: 'camera', lng: tr.lng, lat: tr.lat, zoom: tr.zoom, bearing: tr.bearing, pitch: tr.pitch, elevation: tr.elevation, exaggeration: this.exaggeration, groundRange: tr.groundRange, padding: tr.padding, moving: animating});
         }
-        const busy = animating || markersAnimating || fading || this.placeDirty || behind || this.meshBehind;
+        const busy = animating || markersAnimating || fading || this.placeDirty || this.iconsDirty || behind || this.meshBehind;
         const idle = complete && !busy && !settling && !this.spritePending && !this.contourWait && !this.atlas.loading;
         if (settling && !busy) setTimeout(() => this.repaint(), 200);
         if (this.contourWait) { this.contourWait = false; setTimeout(() => this.repaint(), CONTOUR_WAIT + 20); }

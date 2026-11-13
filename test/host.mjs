@@ -315,6 +315,47 @@ for (const renderer of ['worker', 'main']) {
             fromProperties === '#f0f #f0f #0ff #0ff' && fromParams === '#ff0 #ff0 #00f #00f' && otherTemplate === '#000 #ff0 #000 #00f' && stateOff === '#000 #0f0 #000 #0f0' && stateOn === '#000 #0f0 #000 #f00'
             && !unsafe.includes('#f00') && many.length === 1 && many[0].startsWith('[map-jr-gl] The image "tiny" has more than 1000 different sets of values'),
             JSON.stringify({fromProperties, fromParams, otherTemplate, stateOff, stateOn, unsafe, many}));
+
+        // Icons that need no place among the labels are drawn from buffers of the tiles. The picture is the same as for
+        // icons that are placed with the labels (a sort key makes the layer use that way). The style has no labels here:
+        // a label is drawn over a placed icon.
+        const shot = async () => { await page.evaluate(() => window.t.settle()); return (await page.screenshot()).toString('base64'); };
+        await page.evaluate(() => {
+            const t = window.t, c = t.host.state.get().view.center;
+            let seed = 7; const rand = () => (seed = (seed * 1664525 + 1013904223) % 4294967296) / 4294967296;
+            const features = Array.from({length: 300}, (_, i) => ({type: 'Feature', id: i, properties: {size: 0.6 + (i % 4) * 0.4, turn: i * 17 % 360, alpha: 0.4 + (i % 3) * 0.3},
+                geometry: {type: 'Point', coordinates: [c[0] + (rand() - 0.5) * 0.02, c[1] + (rand() - 0.5) * 0.012]}}));
+            t.arrows = more => ({...t.style, sources: {...t.style.sources, arrows: {type: 'geojson', data: {type: 'FeatureCollection', features}}},
+                layers: [...t.style.layers.filter(l => l.type !== 'symbol'), {id: 'arrows', type: 'symbol', source: 'arrows', paint: {'icon-opacity': ['get', 'alpha'], 'icon-translate': [7, 3]},
+                    layout: {'icon-image': 'arrow', 'icon-allow-overlap': true, 'icon-ignore-placement': true, 'icon-anchor': 'top-left', 'icon-offset': [6, -4], 'icon-size': ['get', 'size'], 'icon-rotate': ['get', 'turn'], ...more}}]});
+            // (The map is idle and stays idle for a second.)
+            t.settle = () => new Promise(done => { let at = 0; const off = t.host.state.subscribe(s => s.idle, idle => { at = idle ? performance.now() : 0; }), timer = setInterval(() => { if (at && performance.now() - at > 1000) { clearInterval(timer); off(); done(); } }, 100); setTimeout(done, 30000); });
+            t.host.moveTo({bearing: 0, pitch: 0}); // (an earlier test turned the map)
+            t.host.update(t.spec = {...t.spec, style: t.arrows({}), images: {arrow: '<svg viewBox="0 0 24 30"><path d="M12 1 23 29 12 22 1 29z" fill="#d6453d" stroke="#fff" stroke-width="1.5"/></svg>'}});
+        });
+        const flat = await shot();
+        await page.evaluate(() => window.t.host.moveTo({bearing: 40, pitch: 50}));
+        const tilted = await shot();
+        await page.evaluate(() => { const t = window.t; t.host.update(t.spec = {...t.spec, style: t.arrows({'symbol-sort-key': 1})}); });
+        const tiltedPlaced = await shot();
+        await page.evaluate(() => window.t.host.moveTo({bearing: 0, pitch: 0}));
+        const flatPlaced = await shot();
+        const same = await page.evaluate(async pairs => {
+            const pixels = async png => { const bitmap = await createImageBitmap(await (await fetch('data:image/png;base64,' + png)).blob()), c = new OffscreenCanvas(bitmap.width, bitmap.height).getContext('2d'); c.drawImage(bitmap, 0, 0); return c.getImageData(0, 0, bitmap.width, bitmap.height).data; };
+            const out = [];
+            for (const [a, b] of pairs) {
+                const A = await pixels(a), B = await pixels(b);
+                let different = 0, red = 0;
+                for (let i = 0; i < A.length; i += 4) { if (Math.abs(A[i] - B[i]) + Math.abs(A[i + 1] - B[i + 1]) + Math.abs(A[i + 2] - B[i + 2]) > 48) different++; if (A[i] > 150 && A[i + 1] < 130 && A[i + 2] < 120) red++; }
+                out.push({different, red});
+            }
+            const t = window.t, {images: _, ...rest} = t.spec;
+            t.host.update(t.spec = {...rest, style: t.style});
+            return out;
+        }, [[flat, flatPlaced], [tilted, tiltedPlaced]]);
+        // (Some pixels can differ: the two ways round the place of an icon at different points of the calculation.)
+        check(`[${renderer}] icons from the buffers of the tiles are drawn as icons that are placed with the labels: on a flat map and on a turned and tilted map, with a size, a turn and an opacity for each feature`,
+            same.every(p => p.red > 3000 && p.different < 60), JSON.stringify(same));
         }
 
         // GeoJSON data apart from the style: it goes to its source alone, and stays over a new style.
