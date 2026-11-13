@@ -1015,22 +1015,24 @@ export class Map {
      * MapLibre's `updateData`: adds, removes and changes features of a GeoJSON source by their id (the `id` of the
      * feature, or the property that `promoteId` names). The new data replaces the old in one step.
      */
-    private updateGeoJSON(id: string, diff: GeoJSONDiff, data: any = this.rawStyle.sources[id].data): Promise<void> {
-        if (typeof data === 'string') return this.fetchAs('Source')(new URL(data, this.styleBase)).then(r => r.json()).then(d => this.updateGeoJSON(id, diff, d));
-        const key = this.rawStyle.sources[id].promoteId, idOf = (f: any) => key ? f.properties?.[key] : f.id;
-        let features: any[] = diff.removeAll ? [] : data?.type === 'FeatureCollection' ? data.features : data?.type === 'Feature' ? [data] : [];
-        const added = new Set((diff.add ?? []).map(idOf));
-        features = [...features.filter(f => !diff.remove?.includes(idOf(f)) && !added.has(idOf(f))), ...diff.add ?? []];
-        for (const u of diff.update ?? []) {
-            const i = features.findIndex(f => idOf(f) === u.id);
-            if (i < 0) continue;
-            const f = features[i] = {...features[i], properties: u.removeAllProperties ? {} : {...features[i].properties}};
-            if (u.newGeometry) f.geometry = u.newGeometry;
-            for (const k of u.removeProperties ?? []) delete f.properties[k];
-            for (const p of u.addOrUpdateProperties ?? []) f.properties[p.key] = p.value;
-        }
-        return this.setGeoJSON(id, {type: 'FeatureCollection', features});
+    private updateGeoJSON(id: string, diff: GeoJSONDiff): Promise<void> {
+        const raw = this.rawStyle.sources[id], data = raw.data, call = this.dataCalls.get(id) ?? 0;
+        if (typeof data !== 'string') return this.setGeoJSON(id, applyDiff(data, diff, raw.promoteId));
+        // (A URL: the diffs that arrive while it loads are applied in order to the one answer. A newer `setData`, or
+        // the removal of the source, drops them.)
+        const queued = this.diffQueues.get(id);
+        if (queued?.call === call && queued.raw === raw) { queued.diffs.push(diff); return queued.p; }
+        const q = {call, raw, diffs: [diff], p: undefined as unknown as Promise<void>};
+        q.p = this.fetchAs('Source')(new URL(data, this.styleBase)).then(r => r.json()).then(d => {
+            if (this.diffQueues.get(id) === q) this.diffQueues.delete(id);
+            if (this.rawStyle?.sources[id] !== raw || this.dataCalls.get(id) !== call) return;
+            return this.setGeoJSON(id, q.diffs.reduce((d, f) => applyDiff(d, f, raw.promoteId), d));
+        });
+        this.diffQueues.set(id, q);
+        return q.p;
     }
+    /** The diffs of `updateData` that wait for the URL of a GeoJSON source, with the call number they started from. */
+    private diffQueues = new globalThis.Map<string, {call: number, raw: object, diffs: GeoJSONDiff[], p: Promise<void>}>();
     /** The number of the newest call that set the data of each GeoJSON source: an answer for an older call is dropped. */
     private dataCalls = new globalThis.Map<string, number>();
     private async setGeoJSON(id: string, data: unknown) {
@@ -1669,4 +1671,21 @@ function pixels(source: CanvasImageSource, w: number, h: number): Uint8Array {
         out[i] = px[i] * a; out[i + 1] = px[i + 1] * a; out[i + 2] = px[i + 2] * a; out[i + 3] = px[i + 3];
     }
     return out;
+}
+
+/** Applies one diff of `updateData` to GeoJSON data and returns a new FeatureCollection. */
+function applyDiff(data: any, diff: GeoJSONDiff, key?: string) {
+    const idOf = (f: any) => key ? f.properties?.[key] : f.id;
+    let features: any[] = diff.removeAll ? [] : data?.type === 'FeatureCollection' ? data.features : data?.type === 'Feature' ? [data] : [];
+    const added = new Set((diff.add ?? []).map(idOf));
+    features = [...features.filter(f => !diff.remove?.includes(idOf(f)) && !added.has(idOf(f))), ...diff.add ?? []];
+    for (const u of diff.update ?? []) {
+        const i = features.findIndex(f => idOf(f) === u.id);
+        if (i < 0) continue;
+        const f = features[i] = {...features[i], properties: u.removeAllProperties ? {} : {...features[i].properties}};
+        if (u.newGeometry) f.geometry = u.newGeometry;
+        for (const k of u.removeProperties ?? []) delete f.properties[k];
+        for (const p of u.addOrUpdateProperties ?? []) f.properties[p.key] = p.value;
+    }
+    return {type: 'FeatureCollection', features};
 }
