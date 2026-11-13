@@ -5,7 +5,7 @@
  * the map does the rest. On a server the component can render the first view as SVG; in the browser the map takes
  * over that SVG, so a page from Nuxt shows a map before any script has run.
  */
-import {computed, defineComponent, getCurrentInstance, h, inject, provide, isProxy, isReactive, onBeforeUnmount, onMounted, onServerPrefetch, shallowRef, toRaw, toValue, watch, type ComputedRef, type MaybeRefOrGetter, type PropType, type ShallowRef} from 'vue';
+import {computed, defineComponent, getCurrentInstance, h, inject, provide, isProxy, isReactive, onBeforeUnmount, onMounted, onServerPrefetch, onUpdated, shallowRef, toRaw, toValue, watch, type AllowedComponentProps, type ComponentCustomProps, type SetupContext, type SlotsType, type VNode, type VNodeProps, type ComputedRef, type MaybeRefOrGetter, type PropType, type ShallowRef} from 'vue';
 import {createMap, type ControlSpec, type FeatureOptions, type FeaturePlace, type MapHost, type MapOverlay as Overlay, type OverlayOptions, type MapPointer, type MapSpec, type MapState, type View, type ViewInput} from './host.ts';
 import type {SSROverrides} from './style.ts';
 import type {RenderedFeature} from './map.ts';
@@ -124,6 +124,63 @@ export const MapOverlay = defineComponent({
         return () => h('div', {ref: el, style: 'display:none'}, slots.default?.());
     },
 });
+
+/** The props of `MapImage`. `P` has the names of the parameters. */
+export interface MapImageProps<P extends string = never> {
+    /** The name of the image, for `icon-image` of a style layer. */
+    name: string;
+    /** The names of the parameters of the image. The slot gets a prop for each one. */
+    params?: readonly P[];
+    /** The URL of an image, in place of an SVG in the slot. */
+    src?: string;
+    /** The size in CSS pixels. Without it, an SVG has the size of its `viewBox`, and another image has its own size. */
+    width?: number; height?: number;
+    /** The number of image pixels for one CSS pixel (2 for an image "@2x"). */
+    pixelRatio?: number;
+}
+/**
+ * An image for the style layers of the map, for the inside of `MapJr`. Write the SVG in the slot:
+ *
+ * ```vue
+ * <MapJr :map-style="style" :extend="places">
+ *   <MapImage name="pin" :params="['color']" v-slot="{color}">
+ *     <svg viewBox="0 0 24 31"><path :fill="color" d="M12 30C12 30 2 17 2 11a10 10 0 0 1 20 0c0 6-10 19-10 19z"/></svg>
+ *   </MapImage>
+ * </MapJr>
+ * ```
+ * A layer uses the image with `'icon-image': 'pin'`. A parameter gets its value for each feature of the layer: from the
+ * property of the feature with that name, or from `params` of the `image` expression of the layer. Vue renders the SVG
+ * one time, not one time for each feature. `<MapImage name="photo" src="/photo.png" />` is an image from a URL.
+ */
+export const MapImage = defineComponent(<P extends string>(props: MapImageProps<P>, {slots}: SetupContext<{}, SlotsType<{default?: (params: Record<P, string>) => any}>>) => {
+    const host = useMapHost(), el = shallowRef<HTMLElement | null>(null);
+    // What the map has of this component: the name, and the content with the options (as one text).
+    let has = '', given = '';
+    const give = () => {
+        const map = host.value?.map, svg = el.value?.querySelector('svg');
+        if (!map) return;
+        // (The SVG as XML. The value of a parameter in it is the text of a slot of a template: `{{color}}`.)
+        const image = props.src ?? (svg ? new XMLSerializer().serializeToString(svg) : ''), now = JSON.stringify([image, props.width, props.height, props.pixelRatio]);
+        if (has === props.name && given === now) return;
+        if (has && has !== props.name) map.removeImage(has);
+        has = image ? props.name : '';
+        given = now;
+        if (!image) return;
+        // (An image that does not load is an error of the map.)
+        map.addImage(props.name, image, {width: props.width, height: props.height, pixelRatio: props.pixelRatio}).catch(() =>
+            map.fire('error', {error: new Error(`[map-jr-gl] MapImage: the image "${props.name}" did not load. Write an SVG in the slot, or give the URL of an image that the page can read as "src".`)}));
+    };
+    // The map starts after this component is there, and the content can change with each render.
+    watch([host, el], give, {flush: 'post', immediate: true});
+    onUpdated(give);
+    onBeforeUnmount(() => { if (has) host.value?.map.removeImage(has); has = ''; });
+    // (The element is not shown: the map draws the image.)
+    return () => h('div', {ref: el, style: 'display:none'}, slots.default?.(Object.fromEntries((props.params ?? []).map(p => [p, `{{${p}}}`])) as Record<P, string>));
+// (The type is written out. The type that `defineComponent` gives a generic function has no types for the slot.)
+}, {name: 'MapImage', props: ['name', 'params', 'src', 'width', 'height', 'pixelRatio']}) as unknown as new <const P extends string = never>(props: MapImageProps<P> & VNodeProps & AllowedComponentProps & ComponentCustomProps) => {
+    $props: MapImageProps<P>;
+    $slots: {default?: (params: Record<P, string>) => VNode[]};
+};
 
 /**
  * The map as a component. It fills its parent element, so give the parent a height.

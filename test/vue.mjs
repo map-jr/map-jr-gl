@@ -32,12 +32,13 @@ const bare = await renderToString(createSSRApp({render: () => h('div', {id: 'fra
 // 2. In a browser: the page from the server, then Vue and the map.
 const types = {'.js': 'text/javascript', '.json': 'application/json'};
 const client = `import {createSSRApp, createApp, h, ref} from 'vue';
-import {MapJr, MapOverlay} from '/dist/vue.js';
+import {MapJr, MapOverlay, MapImage} from '/dist/vue.js';
 import {navigation, scale} from '/dist/controls.js';
 const style = await (await fetch('/style.json')).json();
 const view = ref(${JSON.stringify(view)}), markers = ref([${JSON.stringify(pins)}]), layers = ref(['water', 'park', 'building']), images = ref({dot: '<svg viewBox="0 0 4 4"><rect width="4" height="4"/></svg>'});
-const t = window.t = {view, markers, layers, images, clicks: [], loads: 0, views: 0, map: ref(null), pin: ref([-74.0065, 40.7085]), tip: ref(true), closed: 0};
-const make = (create, ssr) => create({render: () => h('div', {id: 'frame', style: 'width:800px;height:500px'}, [h(MapJr, {ref: t.map, mapStyle: style, controls: [navigation(), scale({position: 'bottom-left'})], ...(ssr ? {initialView: view.value, ...(ssr === 'svg' ? {ssr: {width: 800, height: 500}} : {})} : {view: view.value, 'onUpdate:view': v => { t.views++; view.value = v; }, interactiveLayers: layers.value, onClick: e => t.clicks.push(e)}), markers: markers.value, images: images.value, attribution: false, onLoad: () => t.loads++}, ssr ? undefined : {default: () => [h(MapOverlay, {lngLat: t.pin.value, anchor: 'bottom'}, () => h('b', {id: 'own-pin'}, 'here')), t.tip.value ? h(MapOverlay, {lngLat: t.pin.value, popup: true, onClose: () => { t.closed++; t.tip.value = false; }}, () => h('span', {id: 'own-tip'}, 'A popup')) : null]})])});
+const tone = ref('#fff'), arrow = ref(true);
+const t = window.t = {view, markers, layers, images, tone, arrow, clicks: [], loads: 0, views: 0, map: ref(null), pin: ref([-74.0065, 40.7085]), tip: ref(true), closed: 0};
+const make = (create, ssr) => create({render: () => h('div', {id: 'frame', style: 'width:800px;height:500px'}, [h(MapJr, {ref: t.map, mapStyle: style, controls: [navigation(), scale({position: 'bottom-left'})], ...(ssr ? {initialView: view.value, ...(ssr === 'svg' ? {ssr: {width: 800, height: 500}} : {})} : {view: view.value, 'onUpdate:view': v => { t.views++; view.value = v; }, interactiveLayers: layers.value, onClick: e => t.clicks.push(e)}), markers: markers.value, images: images.value, attribution: false, onLoad: () => t.loads++}, ssr ? undefined : {default: () => [h(MapOverlay, {lngLat: t.pin.value, anchor: 'bottom'}, () => h('b', {id: 'own-pin'}, 'here')), arrow.value ? h(MapImage, {name: 'arrow', params: ['color']}, {default: ({color}) => h('svg', {viewBox: '0 0 8 8'}, [h('path', {d: 'M4 0 8 8 0 8z', fill: color, stroke: tone.value})])}) : null, h(MapImage, {name: 'photo', src: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%224%22 height=%224%22/%3E', width: 4, height: 4}), t.tip.value ? h(MapOverlay, {lngLat: t.pin.value, popup: true, onClose: () => { t.closed++; t.tip.value = false; }}, () => h('span', {id: 'own-tip'}, 'A popup')) : null]})])});
 if (location.search === '?ssr') make(createSSRApp, 'svg').mount('#app'); else if (location.search === '?bare') make(createSSRApp, 'bare').mount('#app'); else make(createApp, false).mount('#app');
 window.ready = true;`;
 const server = http.createServer((req, res) => {
@@ -122,6 +123,24 @@ try {
         return {image, imageAfter: host.map.hasImage('dot'), followed, moved, field, views: t.views, pushed, replaced: replaced.join(), before, after: host.map.queryMarkers(host.project([-74.0065, 40.7085])) ? 1 : 0};
     });
     check('browser: v-model:view follows the map and moves it; markers and images follow their props, also when the data changes in place', model.image && !model.imageAfter && model.followed === 15 && model.moved === 13.5 && model.field === 14.2 && model.views > 2 && model.pushed === 1 && model.replaced === '0,1' && model.before === 1 && model.after === 0, JSON.stringify(model));
+    // An image as a child component: the SVG of its slot is a template of the map, and it follows the component.
+    const child = await page.evaluate(async () => {
+        const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), map = t.map.value.host.map, add = map.addImage, given = [];
+        const first = [map.hasImage('arrow'), map.hasImage('photo')], hidden = document.querySelector('#frame svg[viewBox="0 0 8 8"]')?.getClientRects().length === 0;
+        map.addImage = function (name, source, ...rest) { given.push([name, source]); return add.call(this, name, source, ...rest); };
+        t.view.value = {...t.view.value}; // (a render with the same content gives the image no second time)
+        await wait(300);
+        const again = given.length;
+        t.tone.value = '#00f';
+        await wait(300);
+        const changed = given.map(([name, source]) => name + ' ' + source).join();
+        t.arrow.value = false;
+        await wait(300);
+        delete map.addImage;
+        return {first, again, changed, gone: !map.hasImage('arrow'), hidden};
+    });
+    check('browser: MapImage gives the SVG of its slot to the map as a template, gives it again only when it changes, and takes it away', child.first.join() === 'true,true' && child.again === 0
+        && /^arrow <svg[^>]*viewBox="0 0 8 8"[^>]*><path d="M4 0 8 8 0 8z" fill="\{\{color\}\}" stroke="#00f"\/?>(<\/path>)?<\/svg>$/.test(child.changed) && child.gone && child.hidden, JSON.stringify(child));
     // Elements of the page on the map: a marker with own content and a popup, as child components.
     const overlays = await page.evaluate(async () => {
         const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), host = t.map.value.host;

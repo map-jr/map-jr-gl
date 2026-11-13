@@ -85,6 +85,41 @@ function Zoom() {
 `onClose`, as for `overlay` in [the main API](api.md). The children are React content. For many markers, use the
 `markers` prop.
 
+`MapImage` gives an image to the style layers of the map. Its content is an `<svg>` element, or a function that gets
+the parameters of the image and returns one. A layer uses the image by its name in `icon-image`.
+
+```jsx
+import {MapJr, MapImage} from '@map-jr/map-jr-gl/react';
+
+const places = {type: 'FeatureCollection', features: [
+  {type: 'Feature', properties: {color: '#d6453d'}, geometry: {type: 'Point', coordinates: [-74.006, 40.7128]}},
+  {type: 'Feature', properties: {color: '#2f7fd1'}, geometry: {type: 'Point', coordinates: [-73.9857, 40.7484]}},
+]};
+const extend = {
+  sources: {places: {type: 'geojson', data: places}},
+  layers: [{id: 'places', type: 'symbol', source: 'places', layout: {'icon-image': 'pin', 'icon-anchor': 'bottom', 'icon-allow-overlap': true}}],
+};
+
+export default function Places() {
+  return (
+    <div style={{height: 400}}>
+      <MapJr mapStyle="https://tiles.openfreemap.org/styles/liberty" initialView={{center: [-73.996, 40.73], zoom: 11.5}} extend={extend}>
+        <MapImage name="pin" params={['color']}>
+          {({color}) => <svg viewBox="0 0 24 31"><path fill={color} stroke="#fff" d="M12 30C12 30 2 17 2 11a10 10 0 0 1 20 0c0 6-10 19-10 19z"/></svg>}
+        </MapImage>
+      </MapJr>
+    </div>
+  );
+}
+```
+
+The props are `name` (required), `params`, `src` (the URL of an image, in place of the content), `width`, `height`
+and `pixelRatio`. A parameter is not a value of React. Each feature of the layer gives it a value: the property of
+the feature that has the name of the parameter, or the value of an expression in the layer. See
+[An image that is a template](api.md#an-image-that-is-a-template). React renders the SVG one time, and the map
+draws it one time for each different set of values. With TypeScript, a parameter that is not in `params` is a type
+error.
+
 The prop `images` gives images to the style layers by name. See
 [Images for style layers](api.md#images-for-style-layers). A value that is a string is compared by its content, so it
 needs no `useMemo`.

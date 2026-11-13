@@ -91,4 +91,51 @@ export function MapOverlay({children, ...options}: OverlayOptions & {children?: 
     useEffect(() => { overlay.current?.update(now()); });
     return el && host ? createPortal(children, el) : null;
 }
+
+/** The props of `MapImage`. `P` has the names of the parameters. */
+export interface MapImageProps<P extends string = never> {
+    /** The name of the image, for `icon-image` of a style layer. */
+    name: string;
+    /** The names of the parameters of the image. The function in `children` gets a value for each one. */
+    params?: readonly P[];
+    /** The URL of an image, in place of an SVG in `children`. */
+    src?: string;
+    /** The size in CSS pixels. Without it, an SVG has the size of its `viewBox`, and another image has its own size. */
+    width?: number; height?: number;
+    /** The number of image pixels for one CSS pixel (2 for an image "@2x"). */
+    pixelRatio?: number;
+    /** An `<svg>` element, or a function that gets the parameters and returns one. */
+    children?: ReactNode | ((params: Record<P, string>) => ReactNode);
+}
+/**
+ * An image for the style layers of the map, for the inside of `MapJr`. The SVG is the content:
+ * `<MapImage name="pin" params={['color']}>{({color}) => <svg viewBox="0 0 24 31"><path fill={color} d="..."/></svg>}</MapImage>`.
+ * A layer uses the image with `'icon-image': 'pin'`. A parameter gets its value for each feature of the layer: from the
+ * property of the feature with that name, or from `params` of the `image` expression of the layer. React renders the SVG
+ * one time, not one time for each feature. `<MapImage name="photo" src="/photo.png" />` is an image from a URL.
+ */
+export function MapImage<const P extends string = never>({name, params, src, width, height, pixelRatio, children}: MapImageProps<P>) {
+    const host = useContext(Host), [el] = useState(() => typeof document === 'undefined' ? null : document.createElement('div'));
+    // What the map has of this component: the name, and the content with the options (as one text).
+    const has = useRef(''), given = useRef('');
+    useEffect(() => {
+        const map = host?.map, svg = el?.querySelector('svg');
+        if (!map) return;
+        // (The SVG as XML. The value of a parameter in it is the text of a slot of a template: `{{color}}`.)
+        const image = src ?? (svg ? new XMLSerializer().serializeToString(svg) : ''), now = JSON.stringify([image, width, height, pixelRatio]);
+        if (has.current === name && given.current === now) return;
+        if (has.current && has.current !== name) map.removeImage(has.current);
+        has.current = image ? name : '';
+        given.current = now;
+        if (!image) return;
+        // (An image that does not load is an error of the map.)
+        map.addImage(name, image, {width, height, pixelRatio}).catch(() =>
+            map.fire('error', {error: new Error(`[map-jr-gl] MapImage: the image "${name}" did not load. Give an <svg> element as the content, or the URL of an image that the page can read as "src".`)}));
+    });
+    // (The map of this component goes, or the component goes: the image goes with it.)
+    useEffect(() => () => { if (has.current) host?.map.removeImage(has.current); has.current = given.current = ''; }, [host]);
+    const slots = Object.fromEntries((params ?? []).map(p => [p, `{{${p}}}`])) as Record<P, string>;
+    // (The content is rendered into an element that is not in the page: the map draws the image.)
+    return el ? createPortal(typeof children === 'function' ? children(slots) : children, el) : null;
+}
 export type {MapHost, MapPointer, MapSpec, MapState, OverlayOptions, View};
