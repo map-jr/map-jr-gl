@@ -8,15 +8,18 @@
  * `fullscreenControl()`, `geolocateControl()`, `terrainControl()`.
  */
 // @ts-ignore: the kit of Nuxt comes with the application, it is not a dependency of this library
-import {addComponent, addImports, createResolver, defineNuxtModule} from '@nuxt/kit';
+import {addComponent, addImports, defineNuxtModule} from '@nuxt/kit';
 
 // (The type is written out, so that the declaration of this file does not need the types of Nuxt: with them installed,
 // the compiler writes a declaration that names types it does not import.)
 const nuxtModule: any = defineNuxtModule({
     meta: {name: '@map-jr/map-jr-gl', configKey: 'mapJr'},
-    setup() {
-        // (The files beside this one, by their path: the same files that `@map-jr/map-jr-gl/vue` and `@map-jr/map-jr-gl/controls` name.)
-        const {resolve} = createResolver(import.meta.url), vue = resolve('./vue.js'), controls = resolve('./controls.js');
+    setup(_options: unknown, nuxt: any) {
+        // (By package specifier, so that the generated `components.d.ts` and `imports.d.ts` take the types from `exports`.)
+        const vue = '@map-jr/map-jr-gl/vue', controls = '@map-jr/map-jr-gl/controls';
+        // Vite in development must not pre-bundle the package, or the URL of the tile worker breaks (docs/loading.md).
+        const deps = ((nuxt.options.vite ||= {}).optimizeDeps ||= {});
+        deps.exclude = [...(deps.exclude || []), '@map-jr/map-jr-gl', vue, controls];
         for (const name of ['MapJr', 'MapOverlay', 'MapImage']) addComponent({name, export: name, filePath: vue});
         addImports(['useMap', 'useMapHost', 'useMapFeatures'].map(name => ({name, from: vue})));
         addImports(['navigation', 'scale', 'fullscreen', 'geolocate', 'terrain'].map(name => ({name, as: name + 'Control', from: controls})));

@@ -294,6 +294,9 @@ const {host, state} = useMap(useTemplateRef('el'), computed(() => ({
 export default defineNuxtConfig({modules: ['@map-jr/map-jr-gl/nuxt']});
 ```
 
+The module adds `@map-jr/map-jr-gl` to `vite.optimizeDeps.exclude`, so that Vite in development does not pre-bundle
+the package and the tile workers load (see `docs/loading.md`). Without the module, add that setting yourself.
+
 With the module, a page uses the components without an import:
 
 ```vue
