@@ -961,6 +961,32 @@ for (const mode of ['main', 'worker']) {
         check('[worker] a worker without WebGL2: the map uses the main thread, load and idle fire, and transformRequest sees the tile requests',
             fell.renderer === 'main' && fell.seen.includes('load') && fell.seen.includes('idle') && !fell.seen.includes('error') && fell.tiles > 0 && fell.layer > 0, JSON.stringify(fell));
     }
+    // The same with the engine chunk delayed by 6 seconds, on a page of its own (the chunk is not in its module cache).
+    // The watch of the worker must not count while the chunk loads: one warning, no `webglcontextlost`, one canvas.
+    if (mode === 'worker') {
+        const slowContext = await page.context().browser().newContext({viewport: page.viewportSize()}), slow = await slowContext.newPage();
+        await slow.route(/engine-entry-.*\.js/, async r => { await new Promise(f => setTimeout(f, 6000)); await r.continue(); });
+        await slow.goto(page.url());
+        const late = await slow.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:300px;height:200px'}));
+            const code = `const get = OffscreenCanvas.prototype.getContext; OffscreenCanvas.prototype.getContext = function (kind, ...rest) { return /webgl/.test(kind) ? null : get.call(this, kind, ...rest); }; importScripts(${JSON.stringify(location.origin + '/dist/map-jr-gl-worker.js')});`;
+            const url = URL.createObjectURL(new Blob([code], {type: 'text/javascript'}));
+            const seen = [], warnings = [], warn = console.warn;
+            console.warn = (...a) => warnings.push(a.join(' '));
+            const m = new mod.Map({container: el, style: '/style.json', center: [-74.0065, 40.7085], zoom: 14, attributionControl: false, createWorker: () => new Worker(url)});
+            for (const type of ['load', 'idle', 'error', 'webglcontextlost']) m.on(type, () => seen.push(type));
+            await new Promise(r => { m.once('idle', r); setTimeout(r, 20000); });
+            await new Promise(r => setTimeout(r, 2000));
+            console.warn = warn;
+            const out = {renderer: m.renderer, seen: [...new Set(seen)], warnings: warnings.filter(w => /using the main thread/.test(w)).length, canvases: el.querySelectorAll('canvas').length};
+            m.remove(); el.remove();
+            return out;
+        });
+        await slowContext.close();
+        check('[worker] a worker without WebGL2 and an engine chunk that takes 6 seconds: one engine on the main thread, one warning, and no webglcontextlost',
+            late.renderer === 'main' && late.seen.includes('idle') && !late.seen.includes('webglcontextlost') && !late.seen.includes('error') && late.warnings === 1 && late.canvases === 1, JSON.stringify(late));
+    }
     // A worker whose WebGL context is lost (#78). In each case the map must go to the main thread and warn once.
     // - `now`: each worker loses the context directly after the start, before its first frame or just after it.
     // - `quiet`: the first worker loses the context after some frames, so the map starts a second worker. That one gets
@@ -971,8 +997,9 @@ for (const mode of ['main', 'worker']) {
     //   2026-11-12: one loss, one restore, a first frame, and then no answer from the worker).
     // - `hidden`: as `hang`, while the page is hidden for 8 seconds. That time does not count, because an engine draws
     //   nothing for a hidden page.
+    // - `first`: the first worker draws its first frame and then stops, with no lost context at all (#119).
     if (mode === 'worker') {
-        for (const kind of ['now', 'quiet', 'hang', 'hidden']) {
+        for (const kind of ['now', 'quiet', 'hang', 'hidden', 'first']) {
             const fell = await page.evaluate(async kind => {
                 const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
                 const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:300px;height:200px'}));
@@ -986,7 +1013,7 @@ for (const mode of ['main', 'worker']) {
                 console.warn = (...a) => warnings.push(a.join(' '));
                 let lost = 0, secondLoss = 0;
                 const m = new mod.Map({container: el, style: '/style.json', center: [-74.0065, 40.7085], zoom: 14, attributionControl: false,
-                    createWorker: () => new Worker(kind === 'now' ? now : !lost ? later : kind === 'quiet' ? silent : hang)});
+                    createWorker: () => new Worker(kind === 'first' ? hang : kind === 'now' ? now : !lost ? later : kind === 'quiet' ? silent : hang)});
                 for (const type of ['load', 'idle', 'error']) m.on(type, () => seen.push(type));
                 m.on('webglcontextlost', () => { if (++lost === 2) secondLoss = performance.now(); });
                 let firstLoss = 0, hide = false, whileHidden;
@@ -996,17 +1023,19 @@ for (const mode of ['main', 'worker']) {
                     hide = true;
                     setTimeout(() => { whileHidden = m.renderer; hide = false; }, 8000);
                 });
-                for (let i = 0; i < 300 && !(m.renderer === 'main' && m.areTilesLoaded()); i++) await new Promise(r => setTimeout(r, 100));
+                let toMain = 0;
+                for (let i = 0; i < 300 && !(m.renderer === 'main' && m.areTilesLoaded()); i++) { await new Promise(r => setTimeout(r, 100)); if (!toMain && m.renderer === 'main') toMain = performance.now() - start; }
                 console.warn = warn;
                 delete document.hidden; // (the property of the test: the one of the browser is on the prototype)
                 const out = {renderer: m.renderer, lost, whileHidden, seen: [...new Set(seen)], warnings: warnings.filter(w => /using the main thread: the WebGL context was lost/.test(w)).length,
-                    waited: Math.round(secondLoss - firstLoss), loaded: m.areTilesLoaded(), layer: (await Promise.race([m.queryRenderedFeatures({layers: ['building']}), new Promise(r => setTimeout(() => r([]), 4000))])).length};
+                    waited: Math.round(secondLoss - firstLoss), toMain: Math.round(toMain), loaded: m.areTilesLoaded(), layer: (await Promise.race([m.queryRenderedFeatures({layers: ['building']}), new Promise(r => setTimeout(() => r([]), 4000))])).length};
                 m.remove(); el.remove();
                 return out;
             }, kind);
             const ok = fell.renderer === 'main' && fell.seen.includes('load') && fell.seen.includes('idle') && !fell.seen.includes('error') && fell.warnings === 1 && fell.loaded && fell.layer > 0;
             if (kind === 'now') check('[worker] a worker that loses its WebGL context at once: the map goes to the main thread after one or two losses, warns once, and load and idle fire', ok && fell.lost <= 2, JSON.stringify(fell));
-            else if (kind !== 'hidden') check(`[worker] one loss, one restore, then a worker that ${kind === 'quiet' ? 'cannot draw' : 'stops after its first frame'}: the map goes to the main thread after 5 seconds, warns once, and load and idle fire`, ok && fell.lost === 2 && fell.waited >= 5000 && fell.waited < 9000, JSON.stringify(fell));
+            else if (kind === 'quiet' || kind === 'hang') check(`[worker] one loss, one restore, then a worker that ${kind === 'quiet' ? 'cannot draw' : 'stops after its first frame'}: the map goes to the main thread after 5 seconds, warns once, and load and idle fire`, ok && fell.lost === 2 && fell.waited >= 5000 && fell.waited < 9000, JSON.stringify(fell));
+            else if (kind === 'first') check('[worker] a worker that stops after its first frame at its first start, with no lost context: the map goes to the main thread after 5 seconds, warns once, and load and idle fire', ok && fell.lost === 1 && fell.toMain >= 5000 && fell.toMain < 10000, JSON.stringify(fell));
             else check('[worker] the same while the page is hidden for 8 seconds: the map stays with the worker for that time, and goes to the main thread 5 seconds later', ok && fell.lost === 2 && fell.whileHidden === 'worker' && fell.waited >= 13000, JSON.stringify(fell));
         }
     }

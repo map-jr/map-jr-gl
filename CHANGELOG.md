@@ -80,8 +80,8 @@ These changes matter if you used a build of the repository from before 2026-11-1
 - A query is rejected when the map is removed or loses its WebGL context. When a listener throws, the map fires
   `error`, and the listeners after it get the event ([#109]).
 - A map with the worker renderer goes to the main thread and writes one warning when the worker loses its WebGL
-  context before its first frame, loses it twice within 10 seconds, or does not draw in the 5 seconds after the map
-  has started it again. Before, the map started a worker again without end and did not load. When the main thread
+  context before its first frame, loses it twice within 10 seconds, or does not draw in the 5 seconds after its first
+  start ([issue 119](https://github.com/map-jr/map-jr-gl/issues/119)) or after the map has started it again. Before, the map started a worker again without end and did not load. When the main thread
   fails in the same way after a restart, the map fires `error`
   ([issue 78](https://github.com/map-jr/map-jr-gl/issues/78), [#110]).
 - A map that cannot start, for example without WebGL2, fires one `error` that says what to do, and it shows a

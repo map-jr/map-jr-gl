@@ -312,6 +312,7 @@ export class Map {
                 // The commands that the page sent so far went to the worker, which does not answer them. Until the new
                 // engine runs, commands wait. It then gets the style as it is now, and what `resend` sends.
                 this.ready = false;
+                this.watchTurn++; // (the watch of the worker must not count while the engine chunk loads; #146)
                 w.terminate();
                 this.startMainEngine(fresh, {...engineOptions, style: this.resolved, center: [this.tr.lng, this.tr.lat], zoom: this.tr.zoom, bearing: this.tr.bearing}, []).then(() => {
                     if (this.removed) return;
@@ -341,8 +342,9 @@ export class Map {
         for (const [c, t] of this.queue) this.send(c, t);
         this.queue = [];
         this.send({type: 'repaint'});
-        // (After a restart, an engine in a worker must show for 5 seconds that it draws, and an engine on this thread for 15.)
-        this.watch(!this.restarting ? 0 : this.renderer === 'worker' ? 5 : 15);
+        // (An engine in a worker must show for 5 seconds that it draws, at the first start too: a worker can hang with no
+        // event (#119). After a restart, an engine on this thread must show it for 15 seconds.)
+        this.watch(this.renderer === 'worker' ? 5 : this.restarting ? 15 : 0);
         this.styleEvents(true);
 
         this.observer = new ResizeObserver(() => this.resize());
