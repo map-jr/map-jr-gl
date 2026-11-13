@@ -363,7 +363,7 @@ export class GlyphAtlas extends BaseShaper {
 }
 
 /** Reads a glyph file: for each glyph a record of its fields by number (1 id, 3 width, 4 height, 5 left, 6 top, 7 advance) and its bitmap. */
-function readGlyphs(bytes: Uint8Array) {
+export function readGlyphs(bytes: Uint8Array) {
     const out = new Map<number, {bitmap?: Uint8Array; [field: number]: number}>(), file = new Pbf(bytes);
     while (file.pos < file.end) {
         const tag = file.varint();
