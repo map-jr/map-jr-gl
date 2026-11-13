@@ -174,6 +174,15 @@ for (const mode of ['main', 'worker']) {
     await page.mouse.up();
     check(`[${mode}] a drag released out of sight does not stick`, c1.lng === c2.lng && c1.lat === c2.lat);
 
+    // `once` with no listener returns a promise for the event, as in MapLibre GL JS (#33).
+    const oncePromise = await page.evaluate(async () => {
+        const m = window.map, p = m.once('moveend'), isPromise = p instanceof Promise;
+        m.jumpTo({center: m.getCenter(), zoom: m.getZoom() + 0.01});
+        const e = await Promise.race([p, new Promise(r => setTimeout(() => r(null), 3000))]);
+        return {isPromise, type: e?.type, chained: m.once('idle', () => {}) === m};
+    });
+    check(`[${mode}] once with no listener returns a promise for the event`, oncePromise.isPromise && oncePromise.type === 'moveend' && oncePromise.chained, JSON.stringify(oncePromise));
+
     // Runtime style changes and camera helpers from MapLibre's API.
     const api = await page.evaluate(async () => {
         const m = window.map;
@@ -428,6 +437,19 @@ for (const mode of ['main', 'worker']) {
     };
     const zPrevented = await dbl(true), zDouble = await dbl(false);
     check(`[${mode}] dblclick: preventDefault() in a listener stops the zoom, and without it the map zooms in`, zPrevented === 14 && Math.abs(zDouble - 15) < 0.01, JSON.stringify({zPrevented, zDouble}));
+    // A touch double-tap: preventDefault() in a `dblclick` listener stops its zoom too, and `defaultPrevented` reads true.
+    const tap2 = async prevent => {
+        await page.evaluate(() => window.map.jumpTo({center: [-74.0065, 40.7085], zoom: 14})); await settle(page);
+        await page.evaluate(async prevent => {
+            window.dbl = 0; window.dblSeen = null;
+            window.map.once('dblclick', e => { window.dbl++; if (prevent) e.preventDefault(); window.dblSeen = e.defaultPrevented; });
+            for (let i = 0; i < 2; i++) { window.touch('pointerdown', 11, 500, 350); window.touch('pointerup', 11, 500, 350); await new Promise(r => setTimeout(r, 60)); }
+        }, prevent);
+        await page.waitForFunction(() => window.dbl > 0, null, {timeout: 5000}).catch(() => {}); await page.waitForTimeout(700); await settle(page);
+        return {z: (await centre())[2], seen: await page.evaluate(() => window.dblSeen)};
+    };
+    const tPrevented = await tap2(true), tDouble = await tap2(false);
+    check(`[${mode}] touch double-tap: preventDefault() in a dblclick listener stops the zoom and sets defaultPrevented`, tPrevented.z === 14 && tPrevented.seen === true && Math.abs(tDouble.z - 15) < 0.01 && tDouble.seen === false, JSON.stringify({tPrevented, tDouble}));
     const stale = await page.evaluate(async () => {
         const m = window.map, idle = () => new Promise(r => m.once('idle', r)), at = [-74.0065, 40.7085];
         m.jumpTo({center: at, zoom: 14});
