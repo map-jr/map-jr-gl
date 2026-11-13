@@ -17,13 +17,14 @@ const check = (name, ok, detail = '') => { console.log(`${ok ? 'PASS' : 'FAIL'} 
 
 const tiles = (await (await fetch('https://tiles.openfreemap.org/planet')).json()).tiles[0];
 const style = makeStyle(tiles, '<a href="https://example.com/credits">Example tiles</a>'), view = {center: [-74.0065, 40.7085], zoom: 14.3};
-const pins = {id: 'pins', svg: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="{{color}}"/></svg>', width: 24, height: 24, data: [{lngLat: view.center, props: {color: '#d00'}}]};
+const disc = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="{{color}}"/></svg>';
+const pins = {id: 'pins', image: 'disc', data: [{lngLat: view.center, props: {color: '#d00'}}]};
 
 // 1. On the server: the first view from the server entry, given to the component.
-const firstView = await renderFirstView({style, ...view, width: 800, height: 500, markers: [pins], overrides: {building: {hidden: true}}});
+const firstView = await renderFirstView({style, ...view, width: 800, height: 500, images: {disc}, markers: [pins], overrides: {building: {hidden: true}}});
 const frame = child => h('div', {id: 'frame', style: {width: 800, height: 500}}, child);
-const html = renderToString(frame(h(MapJr, {mapStyle: style, initialView: view, markers: [pins], firstView})));
-check('server: the component renders the first view', /<svg[^>]*data-map-jr-ssr/.test(html) && html.includes('Example tiles') && html.includes('map-jr-react'), `${(html.length / 1024).toFixed(0)} KB of HTML`);
+const html = renderToString(frame(h(MapJr, {mapStyle: style, initialView: view, images: {disc}, markers: [pins], firstView})));
+check('server: the component renders the first view, with the marker from its image (a template with the colour of the marker)', /<svg[^>]*data-map-jr-ssr/.test(html) && html.includes('Example tiles') && html.includes('map-jr-react') && /<circle cx="12" cy="12" r="10" fill="#d00"/.test(html), `${(html.length / 1024).toFixed(0)} KB of HTML`);
 
 // 2. In a browser. React for the browser is made into module files one time (the package has no such files).
 const esm = path.join(root, '.cache/react-esm'), require = createRequire(import.meta.url), entryPoints = {};
@@ -39,7 +40,7 @@ import {createRoot, hydrateRoot} from 'react-dom/client';
 import {MapJr, MapOverlay, MapImage, useMapState} from '/dist/react.js';
 import {navigation, scale} from '/dist/controls.js';
 const style = await (await fetch('/style.json')).json();
-const pins = ${JSON.stringify(pins)}, t = window.t = {loads: 0, views: 0, clicks: [], closed: 0, renders: 0};
+const pins = ${JSON.stringify(pins)}, images = {disc: ${JSON.stringify(disc)}}, t = window.t = {loads: 0, views: 0, clicks: [], closed: 0, renders: 0};
 function Zoom() { const zoom = useMapState(s => s.view.zoom); return h('p', {id: 'zoom'}, zoom === undefined ? '' : zoom.toFixed(1)); }
 function App({ssr}) {
     const [view, setView] = useState(${JSON.stringify(view)}), [markers, setMarkers] = useState([pins]), [pin, setPin] = useState([-74.0065, 40.7085]), [tip, setTip] = useState(true), [tone, setTone] = useState('#fff'), [arrow, setArrow] = useState(true), map = useRef(null);
@@ -47,8 +48,8 @@ function App({ssr}) {
     t.renders++;
     // (The props are made again in each render, as React code does: the arrays of controls and layers, the functions.)
     return h('div', {id: 'frame', style: {width: 800, height: 500}}, ssr
-        ? h(MapJr, {ref: map, mapStyle: style, initialView: view, markers, controls: [navigation()], onLoad: () => t.loads++})
-        : h(MapJr, {ref: map, mapStyle: style, view, onViewChange: v => { t.views++; setView(v); }, markers, controls: [navigation(), scale({position: 'bottom-left'})], interactiveLayers: ['water', 'park', 'building'],
+        ? h(MapJr, {ref: map, mapStyle: style, initialView: view, images, markers, controls: [navigation()], onLoad: () => t.loads++})
+        : h(MapJr, {ref: map, mapStyle: style, view, onViewChange: v => { t.views++; setView(v); }, images, markers, controls: [navigation(), scale({position: 'bottom-left'})], interactiveLayers: ['water', 'park', 'building'],
             onClick: e => t.clicks.push(e), onLoad: () => t.loads++, attribution: false},
             h(Zoom), h(MapOverlay, {lngLat: pin, anchor: 'bottom'}, h('b', {id: 'own-pin'}, 'here')),
             arrow && h(MapImage, {name: 'arrow', params: ['color']}, ({color}) => h('svg', {viewBox: '0 0 8 8'}, h('path', {d: 'M4 0 8 8 0 8z', fill: color, stroke: tone}))),
@@ -106,9 +107,10 @@ try {
         t.setPin([-74.0, 40.71]); await wait(400);
         const pinMoved = near(where('own-pin'), host.project([-74.0, 40.71]));
         document.querySelector('.map-jr-popup-close-button')?.click(); await wait(300);
-        const before = host.map.queryMarkers(host.project([-74.0065, 40.7085])) ? 1 : 0;
+        // (A marker is a feature of the layer of its marker layer.)
+        const before = (await host.queryFeatures(host.project([-74.0065, 40.7085]), {layers: ['pins']})).length ? 1 : 0;
         t.setMarkers([]); await wait(600);
-        return {followed, shown, controls, moved, pinOk, tip, pinMoved, closed: t.closed, tipGone: !document.getElementById('own-tip'), views: t.views, before, after: host.map.queryMarkers(host.project([-74.0065, 40.7085])) ? 1 : 0};
+        return {followed, shown, controls, moved, pinOk, tip, pinMoved, closed: t.closed, tipGone: !document.getElementById('own-tip'), views: t.views, before, after: host.map.getLayer('pins') ? 1 : 0};
     });
     check('browser: the view follows the map and moves it; useMapState, controls, overlays and markers follow React', model.followed === 15 && model.shown === '15.0' && model.controls === 2 && model.moved === 14 && model.pinOk && model.tip && model.pinMoved
         && model.closed === 1 && model.tipGone && model.views > 1 && model.before === 1 && model.after === 0, JSON.stringify(model));

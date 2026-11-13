@@ -20,7 +20,7 @@ The [status table](../README.md#status) gives the current test results.
 |---|---|
 | Worker rendering | The renderer can run in a worker. The option is `renderer: 'auto'`, `'worker'` or `'main'`. |
 | Server rendering | `renderToSVG` and `renderToImage` draw a map without a browser. See [Server rendering](server-rendering.md). |
-| Marker layers | `addMarkerLayer` draws many SVG markers on the canvas. See [Markers](markers.md). |
+| Many markers | A symbol layer draws icons that are always shown from a buffer on the GPU: the cost of a frame does not grow with their number. See [Which icons are fast](markers.md#which-icons-are-fast). |
 | SVG images | `addImage` accepts an SVG string. The image is sharp on each screen. |
 | SVG templates | An SVG string with slots (`{{name}}`) is a template. Each feature gives the slots their values, from its properties or from `params` of the `image` expression: `['image', 'pin', {params: {color: ['get', 'color']}}]`. MapLibre GL JS does not have `params`. See [An image that is a template](api.md#an-image-that-is-a-template). |
 | Fonts | Text uses the glyph files of the style (`glyphs`), as in MapLibre GL JS. A style without `glyphs` needs no glyph files: text then uses the fonts of the browser. The option `glyphs: false` selects that for each style. The style can also give font files in `font-faces`. |
@@ -121,7 +121,7 @@ Other:
 
 **Accepted, with no effect** (12; a value that the library cannot do gives one warning): `setAnisotropicFilterPitch`, `setCenterClampedToGround`, `setCenterElevation`, `setProjection`, `setRenderWorldCopies`, `setRoll`, `setSky`, `setSourceTileLodParams`, `setTransformCameraUpdate`, `setTransformConstrain`, `setVerticalFieldOfView`, `setZoomSnap`
 
-**Only in this library:** `addFonts`, `addMarkerLayer`, `fire`, `getAttributions`, `queryElevation`, `queryFeatures`, `queryMarkers`, `removeMarkerLayer`, `setCursor`, `setEventedParent`
+**Only in this library:** `addFonts`, `fire`, `getAttributions`, `queryElevation`, `queryFeatures`, `setCursor`, `setEventedParent`
 
 **Not available:** `applyTerrainChange`, `applyTransformChange`, `applyUpdatedTransform`, `calculateAnchoredCameraOptions`, `calculateCameraOptionsFromCameraLngLatAltRotation`, `calculateCameraOptionsFromTo`, `captureRotationPivot`, `clampCenterToGround`, `coveringTiles`, `fitScreenCoordinates`, `getStyleUrl`, `getTransformForUpdate`, `holdElevation`, `isRolling`, `migrateProjection`, `moveCenterOntoTerrain`, `orbitRotationPivot`, `prepareNextFrame`, `putCenterBackOnTerrain`, `releaseElevation`
 <!-- api:end -->

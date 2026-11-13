@@ -4,7 +4,7 @@ import {TileBuilder} from './tiles.ts';
 import type {TileImage, TileIR} from './tile.ts';
 import {CollisionGrid, placeLabels, renderItems, type RenderItem} from './placement.ts';
 import {DEFAULT_FONT, EstimateShaper} from './text.ts';
-import {anchorOffset, type MarkerLayerOptions} from './markers.ts';
+import {fillTemplate, templateSlots, withMarkers, VARIANT, type MarkerLayerOptions} from './markers.ts';
 import {renderSVG} from './svg.ts';
 import type {ImageDecoder} from './contour.ts';
 import {decodeImage, decodePNG, decodeWebPLossless} from './webp.ts';
@@ -18,7 +18,14 @@ export interface RenderOptions {
     bearing?: number;
     width: number;
     height: number;
+    /** Marker layers, as in the description of a map: each one is a source and a symbol layer with the image `image`. */
     markers?: MarkerLayerOptions[];
+    /**
+     * Images for the style layers and the marker layers, by name: SVG documents. An SVG with slots (`{{name}}`) is a
+     * template, as in the description of a map. `{image, width, height}` gives a size in CSS pixels; without it the
+     * size is the size of the `viewBox`, or 24 by 24. An image that is not an SVG document is not drawn.
+     */
+    images?: Record<string, string | {image: string; width?: number; height?: number}>;
     fontFamily?: string;
     /**
      * The name of the SVG for assistive technology. The SVG has `role="img"` and this text as its `aria-label`.
@@ -143,7 +150,14 @@ function limitedFetch(o: RenderOptions, fetchFn: typeof fetch): typeof fetch {
 export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
     // Wrapped, not passed by reference: Cloudflare Workers reject calls to a detached global `fetch`.
     const fetchFn = limitedFetch(o, o.fetch ?? ((...a) => fetch(...a)));
-    const style = await resolveStyle(o.style, fetchFn);
+    // (A marker layer is a source and a layer of the style. A style from a URL is fetched here, to add them to it.)
+    let given = o.style, base: string | undefined;
+    if (o.markers?.length && typeof given === 'string') {
+        const res = await fetchFn(base = given);
+        if (!res.ok) throw new Error(`Failed to load style ${given}: ${res.status}`);
+        given = await res.json();
+    }
+    const style = await resolveStyle(withMarkers(given, o.markers, true), fetchFn, base);
     if (o.overrides) style.layers = style.layers.map(l => o.overrides![l.id] ? {...l, metadata: {...l.metadata, [SSR_KEY]: {...(l.metadata?.[SSR_KEY] as object), ...o.overrides![l.id]}}} : l);
     if (o.ssrOverrides !== false) style.layers = applySSROverrides(style.layers);
     if (o.layerFilter) style.layers = style.layers.filter(l => o.layerFilter!(l.id));
@@ -154,6 +168,9 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
 
     const builder = new TileBuilder(fetchFn);
     builder.setStyle(style.layers, style.state);
+    // The images of `images` that are SVG documents: the SVG and the size, and for a template its slots.
+    const documents = new Map(Object.entries(o.images ?? {}).map(([name, v]) => [name, typeof v === 'string' ? {image: v} : v] as const).filter(([, v]) => typeof v.image === 'string' && v.image.trimStart().startsWith('<')));
+    builder.setTemplates(Object.fromEntries([...documents].map(([name, v]) => [name, templateSlots(v.image)] as const).filter(([, slots]) => slots.length)));
     builder.decodeImage = o.decodeImage ?? decodeImage;
     builder.setContours(Object.fromEntries(Object.entries(style.sources).filter(([, s]) => s.contour).map(([name, s]) => [name, s.contour!])));
     for (const [name, src] of Object.entries(style.sources)) if (src.type === 'geojson') builder.setGeoJSON(name, src.data, src.options, src.maxzoom);
@@ -190,23 +207,24 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
     await Promise.all(jobs);
 
     const grid = new CollisionGrid(), images = new Map<string, {svg: string; width: number; height: number}>();
-    for (const m of o.markers ?? []) {
-        if (!m.collide) continue;
-        const [ox, oy] = anchorOffset(m.anchor, m.width, m.height);
-        for (const d of m.data) {
-            const [x, y] = tr.project(d.lngLat[0], d.lngLat[1]);
-            grid.insert(x + ox, y + oy, x + ox + m.width, y + oy + m.height);
-        }
-    }
     const labels = placeLabels(tr, all, layers, new EstimateShaper(), grid, name => {
         const fromSprite = (sprite as Sprite | null)?.icons[name];
         if (fromSprite) return fromSprite;
-        if (!images.has(name)) { const img = o.resolveImage?.(name); if (img) images.set(name, img); else return undefined; }
+        if (!images.has(name)) {
+            // An image of `images`: for a template, the name has the value of each slot (see `buildTile`).
+            const [image, ...values] = name.split(VARIANT), own = documents.get(image);
+            let img = o.resolveImage?.(name);
+            if (own && !img) {
+                const slots = templateSlots(own.image), box = /viewBox\s*=\s*["']\s*[\d.-]+[\s,]+[\d.-]+[\s,]+([\d.]+)[\s,]+([\d.]+)/.exec(own.image);
+                img = {svg: fillTemplate(own.image, Object.fromEntries(slots.map((s, i) => [s, values[i]]))), width: own.width ?? (box ? +box[1] : 24), height: own.height ?? (box ? +box[2] : 24)};
+            }
+            if (img) images.set(name, img); else return undefined;
+        }
         const img = images.get(name)!;
         return {x: 0, y: 0, width: img.width, height: img.height, pixelRatio: 1, custom: true};
     });
     const svg = renderSVG({
-        tr, layers, items, labels, sprite, images, markers: o.markers ?? [], fontFamily: o.fontFamily ?? DEFAULT_FONT, label: o.label,
+        tr, layers, items, labels, sprite, images, fontFamily: o.fontFamily ?? DEFAULT_FONT, label: o.label,
         rootAttrs: 'data-map-jr-ssr="" style="position:absolute;inset:0;width:100%;height:100%"',
     });
     return {svg, tiles: urls, attribution: [...new Set(Object.values(style.sources).map(s => s.attribution).filter((a): a is string => !!a))]};

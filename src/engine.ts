@@ -4,7 +4,7 @@ import {compileFor, type MapStates} from './expr.ts';
 import {VARIANT} from './markers.ts';
 import {layerRules} from './rules.ts';
 import {compileLayer, isGeometrySource, loadSprite, tileURL, type CompiledLayer, type FontSource, type ResolvedStyle, type Sprite, type SpriteIcon} from './style.ts';
-import {GLRenderer, MARKER_FLOATS, MARKER_STRIDE, SPRITE_ATLAS, type DemRef, type GLTile, type MarkerBuffers, type TerrainTile} from './gl.ts';
+import {GLRenderer, SPRITE_ATLAS, type DemRef, type GLTile, type TerrainTile} from './gl.ts';
 import {CollisionGrid, placeLabels, renderItems, type Placed, type RenderItem} from './placement.ts';
 import {GlyphAtlas} from './text.ts';
 import {fetchWith, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
@@ -19,7 +19,6 @@ export interface EngineOptions extends CameraOptions {
     style: ResolvedStyle; width: number; height: number; dpr: number; fontFamily: string; fonts?: FontSource[];
     minZoom?: number; maxZoom?: number; maxPitch?: number; antialias?: boolean;
 }
-export interface MarkerImage { variant: number; w: number; h: number; data: Uint8Array }
 export interface FeatureQuery { radius: number; zoom?: number; sources?: string[]; sourceLayers?: string[]; filter?: unknown; geometry?: boolean }
 export type Command =
     | {type: 'resize'; width: number; height: number; dpr: number}
@@ -36,18 +35,11 @@ export type Command =
     /** Throws away a source's tiles (all sources if none is named) and loads them again. */
     | {type: 'refresh'; source?: string}
     | {type: 'style'; style: ResolvedStyle; reload: boolean; /** A number for each source that changes when the page changes what its tiles are built from. */ versions?: Record<string, number>}
-    | {type: 'markers'; id: string; width: number; height: number; offset: [number, number]; collide: boolean; minZoom: number; maxZoom: number; hideOverlaps: boolean;
-        merc: Float64Array; variant: Uint32Array; images: MarkerImage[]}
     /**
      * The images that are SVG templates: the slots of each one by name. `changed` has the names whose template is new,
      * other or gone: their variants are dropped and asked for again. `rebuild`: the slots are different, so tiles are built again.
      */
     | {type: 'templates'; slots: Record<string, string[]>; changed: string[]; rebuild: boolean}
-    | {type: 'removeMarkers'; id: string}
-    /** Animates one marker to a new size, about its anchor point. */
-    | {type: 'markerScale'; id: string; index: number; scale: number; duration: number}
-    /** A screen-space box pinned to a map position that labels must keep clear of (e.g. an open callout). Omit `box` to remove it. */
-    | {type: 'obstacle'; id: string; merc?: [number, number]; box?: [number, number, number, number]}
     | {type: 'fonts'; fonts: FontSource[]}
     | {type: 'image'; name: string; w: number; h: number; width: number; height: number; data: Uint8Array; stretchX?: [number, number][]; stretchY?: [number, number][]; content?: [number, number, number, number]; textFitWidth?: 'stretchOrShrink' | 'stretchOnly' | 'proportional'; textFitHeight?: 'stretchOrShrink' | 'stretchOnly' | 'proportional'}
     | {type: 'removeImage'; name: string}
@@ -109,13 +101,6 @@ function sourceSignature(style: ResolvedStyle, name: string): [string, string] {
 }
 
 interface TileState { state: 'loading' | 'ok' | 'error'; gl?: GLTile; /** An image tile that the server does not have (404). */ missing?: boolean; /** The zoom that the tile was built for (see `buildZoom`). */ band?: number; /** A number that changes each time the state or the content of the tile changes. */ rev?: number; /** Elevation tiles shaping 3D terrain: the lowest and highest ground on the tile, in metres. */ range?: [number, number]; /** An elevation tile: its heights, for when it shapes 3D terrain (see `ground`). */ dem?: {grid: Float32Array; lo: number; hi: number}; used: number; cancel(): void; /** Shown, but built from data that has since changed. */ stale?: boolean; rebuilding?: boolean; /** The tile worker that loaded the tile. */ backend?: number; /** The rules of the style that the tile was built for (see `sourceSignature`). */ rules?: string }
-interface MarkerLayer {
-    width: number; height: number; offset: [number, number]; collide: boolean; merc: Float64Array; variant: Uint32Array;
-    minZoom: number; maxZoom: number; hideOverlaps: boolean;
-    gpu?: MarkerBuffers; data?: Float32Array; scale?: Float32Array;
-    /** 3D terrain: which buffers and which set of elevation tiles the markers' ground heights were last worked out for. */
-    heightsFor?: MarkerBuffers; heightsVersion?: number;
-}
 interface LabelState { placed: Placed; opacity: number; target: number }
 
 const raf: (cb: (t: number) => void) => unknown = globalThis.requestAnimationFrame
@@ -194,11 +179,7 @@ export class Engine {
     private placeZoom = 0;
     private fade = FADE;
 
-    private markers = new Map<string, MarkerLayer>();
-    private spriteRects = new Map<number, [number, number, number, number]>();
     private spritePen = [1, 1, 0];
-    private markerAnims = new Map<string, {layer: string; index: number; from: number; to: number; start: number; duration: number}>();
-    private obstacles = new Map<string, {merc: [number, number]; box: [number, number, number, number]}>();
     private sprite: Sprite | null = null;
     private spriteUrl = '';
     private styleFonts = '';
@@ -261,7 +242,6 @@ export class Engine {
     private rawElevation = 0;
     private lastPose = '';
     private movedAt = 0;
-    private markerHeightsAt = 0;
     /** 3D terrain: the exaggeration in force this frame (zero when looking straight down, or with no terrain). */
     private exaggeration = 0;
     /** Counts changes to the style and its images, so cached terrain pictures know when they are out of date. */
@@ -712,25 +692,6 @@ export class Engine {
                     }
                 }
                 break;
-            case 'markers': {
-                for (const img of c.images) { const rect = this.addSprite(img.w, img.h, img.data); if (rect) this.spriteRects.set(img.variant, rect); }
-                // Re-sent data (e.g. after a property change) keeps each marker's current size when the count is unchanged.
-                const previous = this.markers.get(c.id), layer: MarkerLayer = {...c, gpu: previous?.gpu, scale: previous?.scale?.length === c.variant.length ? previous.scale : undefined};
-                this.markers.set(c.id, layer);
-                this.uploadMarkers(layer);
-                this.placeDirty = true;
-                break;
-            }
-            case 'removeMarkers': { const m = this.markers.get(c.id); if (m?.gpu) this.renderer.removeMarkers(m.gpu); this.markers.delete(c.id); this.placeDirty = true; break; }
-            case 'markerScale': {
-                const m = this.markers.get(c.id), from = m?.scale?.[c.index] ?? 1;
-                if (m) this.markerAnims.set(c.id + '|' + c.index, {layer: c.id, index: c.index, from, to: c.scale, start: performance.now(), duration: Math.max(1, c.duration)});
-                break;
-            }
-            case 'obstacle':
-                if (c.box && c.merc) this.obstacles.set(c.id, {merc: c.merc, box: c.box}); else this.obstacles.delete(c.id);
-                this.placeDirty = true;
-                break;
             case 'fonts': this.loadFonts(c.fonts); break;
             case 'image': {
                 const rect = this.addSprite(c.w, c.h, c.data);
@@ -1106,7 +1067,7 @@ export class Engine {
         this.lastTime = now;
         this.frameTime = began;
         if (tr.zoom !== this.zoomSeen) { if (!Number.isNaN(this.zoomSeen)) this.zoomMovedAt = began; this.zoomSeen = tr.zoom; }
-        const cameraAnimating = this.animate(now), markersAnimating = this.animateMarkers(now), animating = cameraAnimating;
+        const cameraAnimating = this.animate(now), animating = cameraAnimating;
         this.flushUploads();
 
         const items = new Map<string, RenderItem<GLTile>[]>(), all: RenderItem<GLTile>[] = [];
@@ -1172,17 +1133,6 @@ export class Engine {
             } else this.rawElevation = 0;
         }
         const ground = terrain ? this.terrainTiles(wanted) : undefined;
-        if (terrain && now - this.markerHeightsAt > 300) {
-            // Markers stand on the ground: look up the height under each when its layer or the elevation data changes.
-            for (const m of this.markers.values()) {
-                if (!m.gpu || (m.heightsFor === m.gpu && m.heightsVersion === this.demVersion)) continue;
-                const metres = new Float32Array(m.gpu.count);
-                for (let i = 0; i < metres.length; i++) metres[i] = this.rawHeightAt(m.merc[i * 2], m.merc[i * 2 + 1]);
-                this.renderer.setMarkerHeights(m.gpu, metres);
-                m.heightsFor = m.gpu; m.heightsVersion = this.demVersion;
-                this.markerHeightsAt = now;
-            }
-        }
         for (const source in this.style.sources) {
             // Skip sources nothing visible draws from at this zoom (e.g. low-zoom relief imagery when zoomed in). With 3D
             // terrain, the flat layers are drawn into the ground textures, which ask for their own tiles (see groundSources):
@@ -1340,13 +1290,6 @@ export class Engine {
             this.iconsAt = now;
             for (const t of this.tiles.values()) if (t.gl?.icons) this.renderer.refreshIcons(t.gl);
         }
-        const markers: MarkerBuffers[] = [];
-        for (const m of this.markers.values()) {
-            if (!m.gpu?.count) continue;
-            // Fade over the last fifth of a zoom level at either end of the layer's range, so paired layers cross-fade.
-            m.gpu.opacity = Math.max(0, Math.min(1, (tr.zoom - m.minZoom) / 0.2 + 1, (m.maxZoom - tr.zoom) / 0.2));
-            if (m.gpu.opacity > 0) markers.push(m.gpu);
-        }
         // 3D terrain that has just been switched on, or a camera just sent somewhere new: until the height of the ground
         // at the centre is known the camera cannot be placed, and drawing from sea level would show the wrong view and
         // then jump. Keep what is on screen for a moment instead (but not for long, in case the data never comes).
@@ -1356,7 +1299,7 @@ export class Engine {
         // For a moment after the camera stops, a frame is drawn as for a map that moves. One more frame comes after it:
         // the frame for the map at rest (sharp images). The map is not idle before that frame.
         const settling = began - this.cameraMovedAt < 200;
-        const behind = hold || this.renderer.render({tr, layers: this.layers, items, labels, atlas: this.atlas, markers, icon: this.icon, light: this.style.light, moving: settling,
+        const behind = hold || this.renderer.render({tr, layers: this.layers, items, labels, atlas: this.atlas, icon: this.icon, light: this.style.light, moving: settling,
             // (Past the time limit and still unplaced: draw flat rather than raise terrain around a camera in the wrong place.)
             terrain: ground && !unplaced ? {exaggeration: this.exaggeration, tiles: ground, dem: this.demRef} : undefined});
 
@@ -1365,7 +1308,7 @@ export class Engine {
             this.moving = animating;
             this.emit({type: 'camera', lng: tr.lng, lat: tr.lat, zoom: tr.zoom, bearing: tr.bearing, pitch: tr.pitch, elevation: tr.elevation, exaggeration: this.exaggeration, groundRange: tr.groundRange, padding: tr.padding, moving: animating});
         }
-        const busy = animating || markersAnimating || fading || this.placeDirty || this.iconsDirty || behind || this.meshBehind;
+        const busy = animating || fading || this.placeDirty || this.iconsDirty || behind || this.meshBehind;
         const idle = complete && !busy && !settling && !this.spritePending && !this.contourWait && !this.atlas.loading;
         if (settling && !busy) setTimeout(() => this.repaint(), 200);
         if (this.contourWait) { this.contourWait = false; setTimeout(() => this.repaint(), CONTOUR_WAIT + 20); }
@@ -1390,43 +1333,6 @@ export class Engine {
         }
         // After a pause the next burst of frames starts a fresh measurement instead of averaging in the idle time.
         if (!busy) this.stats.since = 0;
-    }
-
-    /** Uploads a marker layer to the GPU. Markers whose image is not ready yet get a scale of zero (hidden). */
-    private uploadMarkers(m: MarkerLayer) {
-        const n = m.variant.length, data = m.data = new Float32Array(n * MARKER_FLOATS);
-        for (let i = 0; i < n; i++) {
-            const rect = this.spriteRects.get(m.variant[i]), x = m.merc[i * 2], y = m.merc[i * 2 + 1], xh = Math.fround(x), yh = Math.fround(y);
-            for (let k = 0; k < 4; k++) {
-                const o = i * MARKER_FLOATS + k * MARKER_STRIDE;
-                data[o] = xh; data[o + 1] = x - xh; data[o + 2] = yh; data[o + 3] = y - yh;
-                if (rect) data.set(rect, o + 4);
-                data[o + 8] = k & 1; data[o + 9] = k >> 1;
-                data[o + 10] = rect ? m.scale?.[i] ?? 1 : 0;
-                data[o + 11] = 1;
-            }
-        }
-        m.gpu = this.renderer.setMarkers(m.gpu, data, n, m.width, m.height, m.offset);
-    }
-
-    /** Sets one per-marker value (10 = scale, 11 = opacity) on all four of a marker's vertices. */
-    private setMarkerValue(m: MarkerLayer, i: number, field: 10 | 11, value: number) {
-        for (let k = 0; k < 4; k++) m.data![i * MARKER_FLOATS + k * MARKER_STRIDE + field] = value;
-    }
-
-    /** Advances marker size animations; returns true while any is running. */
-    private animateMarkers(now: number): boolean {
-        for (const [key, a] of this.markerAnims) {
-            const m = this.markers.get(a.layer);
-            if (!m?.gpu || !m.data || a.index >= m.variant.length) { this.markerAnims.delete(key); continue; }
-            const t = Math.min(1, (now - a.start) / a.duration), scale = a.from + (a.to - a.from) * inertiaEasing(t), o = a.index * MARKER_FLOATS;
-            (m.scale ??= new Float32Array(m.variant.length).fill(1))[a.index] = scale;
-            if (this.spriteRects.has(m.variant[a.index])) this.setMarkerValue(m, a.index, 10, scale);
-            this.renderer.updateMarker(m.gpu, a.index, m.data.subarray(o, o + MARKER_FLOATS));
-            if (m.collide) this.placeDirty = true;
-            if (t >= 1) this.markerAnims.delete(key);
-        }
-        return this.markerAnims.size > 0;
     }
 
     /**
@@ -1464,7 +1370,7 @@ export class Engine {
         return [cx - hw, cy - hh, cx + hw, cy + hh];
     }
 
-    /** Reserves space in the label collision grid for markers that labels should avoid, and for registered obstacles. */
+    /** Gives the icons that are always shown, and that labels avoid, their space among the labels. */
     private reserve(grid: CollisionGrid, items: Map<string, RenderItem<GLTile>[]>) {
         const tr = this.tr;
         const zoom = tr.zoom;
@@ -1486,43 +1392,6 @@ export class Engine {
                     grid.insert(ax + cx - hw - pad, ay + cy - hh - pad, ax + cx + hw + pad, ay + cy + hh + pad);
                 }
             }
-        }
-        for (const m of this.markers.values()) {
-            if (zoom < m.minZoom || zoom >= m.maxZoom) continue;
-            if (m.hideOverlaps && m.gpu && m.data) {
-                // Markers compete for space among themselves, first come first served, exactly as labels do.
-                const own = new CollisionGrid();
-                const changed: number[] = [];
-                for (let i = 0; i < m.variant.length; i++) {
-                    const s = m.scale?.[i] ?? 1, mx = m.merc[i * 2] + Math.round(mercX(tr.lng) - m.merc[i * 2]), [x, y] = tr.mercToScreen(mx, m.merc[i * 2 + 1]);
-                    const x0 = x + m.offset[0] * s, y0 = y + m.offset[1] * s, x1 = x0 + m.width * s, y1 = y0 + m.height * s;
-                    let show = 1;
-                    const was = m.data[i * MARKER_FLOATS + 11];
-                    if (x0 > tr.width || y0 > tr.height || x1 < 0 || y1 < 0) show = was; // off screen: leave as it was
-                    else if (own.hits(x0, y0, x1, y1)) show = 0;
-                    else { own.insert(x0, y0, x1, y1); if (m.collide) grid.insert(x0, y0, x1, y1); }
-                    if (was !== show) { this.setMarkerValue(m, i, 11, show); changed.push(i); }
-                }
-                // Send only what changed: a few markers one by one, or else the part of the buffer that holds them all.
-                // (The whole buffer of a large layer is some megabytes, and this runs each time labels are placed.)
-                if (changed.length && changed.length <= 64) for (const i of changed) this.renderer.updateMarker(m.gpu, i, m.data.subarray(i * MARKER_FLOATS, (i + 1) * MARKER_FLOATS));
-                else if (changed.length) {
-                    const first = changed[0], last = changed[changed.length - 1];
-                    this.renderer.updateMarker(m.gpu, first, m.data.subarray(first * MARKER_FLOATS, (last + 1) * MARKER_FLOATS));
-                }
-                continue;
-            }
-            if (!m.collide) continue;
-            for (let i = 0; i < m.variant.length; i++) {
-                const s = m.scale?.[i] ?? 1, mx = m.merc[i * 2] + Math.round(mercX(tr.lng) - m.merc[i * 2]), [x, y] = tr.mercToScreen(mx, m.merc[i * 2 + 1]);
-                const x0 = x + m.offset[0] * s, y0 = y + m.offset[1] * s;
-                if (x0 > tr.width || y0 > tr.height || x0 + m.width * s < 0 || y0 + m.height * s < 0) continue;
-                grid.insert(x0, y0, x0 + m.width * s, y0 + m.height * s);
-            }
-        }
-        for (const o of this.obstacles.values()) {
-            const [x, y] = tr.mercToScreen(o.merc[0] + Math.round(mercX(tr.lng) - o.merc[0]), o.merc[1]);
-            grid.insert(x + o.box[0], y + o.box[1], x + o.box[2], y + o.box[3]);
         }
     }
 }

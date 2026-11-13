@@ -2,7 +2,7 @@
 // (The URLs are relative: the page is at /bench of the demo server, and in the folder bench/ of the gallery site.)
 import * as mapjr from '../dist/map-jr-gl-maplibre-compat.js';
 import * as maplibre from '../ml/maplibre-gl.mjs';
-import {manyMarkers} from './markers.mjs';
+import {manyMarkers, addImages, addMarkers} from './markers.mjs';
 
 maplibre.setWorkerUrl(new URL('../ml/maplibre-gl-worker.mjs', import.meta.url).href);
 const q = new URLSearchParams(location.search);
@@ -33,12 +33,6 @@ const scenarios = [
         {name: `${n.toLocaleString()} markers: marker layer, worker`, lib: 'worker', markers: n},
     ])),
     ...(q.has('nomarkers') ? [] : [{name: '100,000 markers: marker layer, worker', lib: 'worker', markers: 100000}]),
-    // The same points as a symbol layer with SVG images. The icons are always shown, so the tiles have them in buffers.
-    ...(q.has('nomarkers') ? [] : [
-        {name: '10,000 icons: symbol layer, main thread', lib: 'main', markers: 10000, symbol: true},
-        {name: '10,000 icons: symbol layer, worker', lib: 'worker', markers: 10000, symbol: true},
-        {name: '100,000 icons: symbol layer, worker', lib: 'worker', markers: 100000, symbol: true},
-    ]),
     // 3D terrain: the same style with an elevation source, relief shading and terrain, flown around the Matterhorn.
     ...(q.has('noterrain') ? [] : [
         {name: '3D terrain: MapLibre GL JS', lib: 'maplibre', terrain: true},
@@ -83,13 +77,8 @@ async function run(s) {
     if (s.markers) {
         const layer = manyMarkers(s.markers, VIEW.center, 0.05), a0 = performance.now();
         if (s.lib === 'maplibre') for (const d of layer.data) new maplibre.Marker({color: d.props.color}).setLngLat(d.lngLat).addTo(map);
-        else if (s.symbol) {
-            // The template of the markers is an image of the map: each feature gives the slots their values.
-            await map.addImage('pin', layer.svg, {width: layer.width, height: layer.height});
-            map.addSource('points', {type: 'geojson', data: {type: 'FeatureCollection', features: layer.data.map(d => ({type: 'Feature', properties: d.props, geometry: {type: 'Point', coordinates: d.lngLat}}))}});
-            map.addLayer({id: 'points', type: 'symbol', source: 'points', layout: {'icon-image': 'pin', 'icon-anchor': 'bottom', 'icon-allow-overlap': true, 'icon-ignore-placement': true}});
-        }
-        else map.addMarkerLayer(layer);
+        // (A marker layer is a symbol layer with an image that is an SVG template: each marker fills its slots.)
+        else { await addImages(map); addMarkers(map, layer); }
         add = performance.now() - a0;
         await sleep(1500);
     }

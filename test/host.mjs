@@ -76,13 +76,12 @@ for (const renderer of ['worker', 'main']) {
         });
         check(`[${renderer}] a style URL that fails: state.error has the URL and the status, and no promise is left rejected`, /Style \/no-such-style\.json: HTTP 404/.test(badStyle ?? '') && !errors.length, JSON.stringify({badStyle, errors}));
 
-        // 3c. Mistakes and errors: a container that is not there and a marker layer with no size have a message; `onError`
+        // 3c. Mistakes and errors: a container that is not there has a message; `onError`
         // gets each error; without it the error is written to the console.
         const mistakes = await page.evaluate(async () => {
             const t = window.t, said = fn => { try { fn(); return ''; } catch (e) { return e.message; } }, wait = ms => new Promise(r => setTimeout(r, ms));
             const out = {noId: said(() => t.lib.createMap('nope', {style: t.style})), isNull: said(() => t.lib.createMap(null, {style: t.style}))};
             const el = document.body.appendChild(document.createElement('div'));
-            out.marker = said(() => t.lib.createMap(el, {style: t.style, markers: [{id: 'm', svg: '<svg viewBox="0 0 2 2"/>', data: []}]}));
             out.left = el.childElementCount;
             const logged = [], log = console.error;
             console.error = (...a) => logged.push(a.map(x => x?.message ?? String(x)).join(' '));
@@ -96,8 +95,8 @@ for (const renderer of ['worker', 'main']) {
             without.destroy(); el.remove(); console.error = log;
             return out;
         });
-        check(`[${renderer}] mistakes have a message: a container that is not there, a marker layer with no size`,
-            mistakes.noId === '[map-jr-gl] createMap(): no element with the id "nope".' && mistakes.isNull.startsWith('[map-jr-gl] createMap(): the container is null.') && mistakes.marker.startsWith('[map-jr-gl] Marker layer "m": width and height are required.') && mistakes.left === 0, JSON.stringify(mistakes));
+        check(`[${renderer}] mistakes have a message: a container that is not there`,
+            mistakes.noId === '[map-jr-gl] createMap(): no element with the id "nope".' && mistakes.isNull.startsWith('[map-jr-gl] createMap(): the container is null.') && mistakes.left === 0, JSON.stringify(mistakes));
         check(`[${renderer}] onError gets each error, and without it the error is written to the console`,
             /HTTP 404/.test(mistakes.hook) && mistakes.loggedWithHook === 0 && /^\[map-jr-gl\] .*HTTP 404/.test(mistakes.logged) && /HTTP 404/.test(mistakes.state ?? ''), JSON.stringify(mistakes));
 
@@ -137,10 +136,10 @@ for (const renderer of ['worker', 'main']) {
             console.warn = (...a) => said.push(a.join(' '));
             const div = style => document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;' + style}));
             const idle = host => new Promise(r => { host.state.subscribe(s => s.idle, v => v && r(true)); setTimeout(() => r(false), 8000); });
-            const empty = {type: 'FeatureCollection', features: []}, pin = id => ({id, svg: '<svg viewBox="0 0 8 8"><circle cx="4" cy="4" r="4"/></svg>', width: 8, height: 8, data: [{lngLat: [-74.0065, 40.7085]}]});
+            const empty = {type: 'FeatureCollection', features: []}, dot = '<svg viewBox="0 0 8 8"><circle cx="4" cy="4" r="4"/></svg>', pin = id => ({id, image: 'dot', data: [{lngLat: [-74.0065, 40.7085]}]});
             const base = {style: t.style, initialView: {center: [-74.0065, 40.7085], zoom: 14.3}, renderer, attribution: false, onError: () => {}};
             // A correct description, with each of the fields that the checks read.
-            const goodEl = div('height:150px'), good = t.lib.createMap(goodEl, {...base, interactiveLayers: ['own-fill'], data: {own: empty}, markers: [pin('a'), pin('b')],
+            const goodEl = div('height:150px'), good = t.lib.createMap(goodEl, {...base, interactiveLayers: ['own-fill'], data: {own: empty}, images: {dot}, markers: [pin('a'), pin('b')],
                 extend: {sources: {own: {type: 'geojson', data: empty}}, layers: [{id: 'own-fill', type: 'fill', source: 'own', before: t.style.layers[1].id}]}});
             await idle(good);
             await good.queryFeatures({x: 100, y: 75}, {layers: ['own-fill']});
@@ -160,7 +159,7 @@ for (const renderer of ['worker', 'main']) {
             const correct = said.splice(0);
             for (const [el, host] of [[ownEl, own], [hiddenEl, hidden], [lateEl, late]]) { host.destroy(); el.remove(); }
             // The same map with mistakes.
-            const spec = {...base, interactiveLayers: ['nope'], data: {nosuch: empty}, markers: [pin('a'), pin('a')],
+            const spec = {...base, interactiveLayers: ['nope'], data: {nosuch: empty}, markers: [pin('a'), pin('a'), {id: 'old', svg: dot, width: 8, height: 8, data: []}, {...pin('gone'), image: 'nothing'}],
                 images: {dot: '<svg viewBox="0 0 4 4"><rect width="4" height="4" fill="{{fill}}"/></svg>'},
                 extend: {sources: {icons: {type: 'geojson', data: empty}}, layers: [{id: 'lost', type: 'fill', source: 'missing', before: 'nonexistent'}, {id: 'icons', type: 'symbol', source: 'icons', layout: {'icon-image': ['image', 'dot', {params: {fill: '#d00', colour: '#00d'}}]}}]}};
             const badEl = div('height:150px'), bad = t.lib.createMap(badEl, spec);
@@ -181,7 +180,7 @@ for (const renderer of ['worker', 'main']) {
             return {correct, said, place};
         }, renderer);
         const expected = ['createMap(): the container has height 0', 'interactiveLayers: the style has no layer "nope"', 'data: the style has no GeoJSON source "nosuch"', 'queryFeatures(): the style has no layer "nope"',
-            'queryFeatures(): the style has no source "nope"', 'extend: the layer "lost" has before: "nonexistent"', 'extend: the layer "lost" uses the source "missing"', 'markers: two marker layers have the id "a"', 'images: a layer gives the parameter "colour" to the image "dot"',
+            'queryFeatures(): the style has no source "nope"', 'extend: the layer "lost" has before: "nonexistent"', 'extend: the layer "lost" uses the source "missing"', 'markers: two marker layers have the id "a"', 'images: a layer gives the parameter "colour" to the image "dot"', 'markers: the marker layer "old" has no "image"', 'markers: a marker layer has the image "nothing"',
             'update(): "interactive" changed', 'update(): "initialView" changed', 'queryFeatures(): "sourceLayers" has an effect only', 'queryFeatures(): "radius" has an effect only in a query at a point or a position', 'queryFeatures(): "geometry" has an effect only', 'queryFeatures(): "zoom" has an effect only',
             'queryFeatures(): "layers" has no effect'];
         check(`[${renderer}] common mistakes: each gives one warning, a wrong place of a query is refused with a message, and a correct description gives no warning`,
@@ -200,25 +199,40 @@ for (const renderer of ['worker', 'main']) {
             partial.update.startsWith('[map-jr-gl] update(): the description has no "style".') && partial.update.includes('map.update({...description, cursor: ') && partial.none.startsWith('[map-jr-gl] update()')
             && partial.create.startsWith('[map-jr-gl] createMap(): the description has no "style".') && partial.drawn > 0 && !errors.length, JSON.stringify({...partial, errors}));
 
-        // 4. Marker layers: added, changed and removed by the description.
+        // 4. Marker layers: each one is a source and a symbol layer of the style, and they follow the description.
         const markers = await page.evaluate(async () => {
-            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), count = () => t.host.map.queryMarkers({x: 450, y: 300}) ? 1 : 0;
+            const t = window.t, map = t.host.map, wait = ms => new Promise(r => setTimeout(r, ms)), at = () => t.host.queryFeatures({x: 450, y: 300}, {layers: ['pins']});
             const centre = t.host.unproject({x: 450, y: 300});
-            const layer = data => ({id: 'pins', svg: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="{{color}}"/></svg>', width: 24, height: 24, data});
-            t.host.update(t.spec = {...t.spec, markers: [layer([{lngLat: centre, props: {color: '#d00'}}])]});
-            await wait(700);
-            const one = count();
+            const layer = (data, more) => ({id: 'pins', image: 'disc', data, ...more});
+            t.host.update(t.spec = {...t.spec, images: {disc: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="{{color}}"/></svg>'}, markers: [layer([{lngLat: centre, props: {color: '#d00'}}])]});
+            await wait(900);
+            const one = await at(), made = map.getLayer('pins'), top = map.getStyle().layers.at(-1).id;
+            // Other data: the markers move, and the style is the same.
+            let restyled = 0;
+            const count = () => restyled++;
+            map.on('style.load', count);
             t.host.update(t.spec = {...t.spec, markers: [layer([{lngLat: [centre[0] + 1, centre[1]], props: {color: '#d00'}}])]});
             await wait(700);
-            const moved = count();
-            t.host.update(t.spec = {...t.spec, markers: [layer([{lngLat: centre, props: {color: '#00d'}}])]});
+            const moved = (await at()).length;
+            t.host.update(t.spec = {...t.spec, markers: [layer([{lngLat: [0, 0], props: {}}, {lngLat: centre, props: {color: '#00d'}}])]});
             await wait(700);
-            const back = count();
-            t.host.update(t.spec = {...t.spec, markers: undefined});
-            await wait(500);
-            return {one, moved, back, none: count()};
+            const back = await at(), sameStyle = restyled === 0;
+            map.off('style.load', count);
+            // Other options: the layer is another layer of the style (here: below the first layer, and labels keep away).
+            const first = map.getStyle().layers[0].id;
+            t.host.update(t.spec = {...t.spec, markers: [layer([{lngLat: centre, props: {color: '#00d'}}], {before: first, anchor: 'bottom', collide: true, minZoom: 3, overlap: 'hide'})]});
+            await wait(900);
+            const changed = map.getLayer('pins'), below = map.getStyle().layers.findIndex(l => l.id === 'pins') === 0;
+            const {images: _, markers: __, ...rest} = t.spec;
+            t.host.update(t.spec = rest);
+            await wait(700);
+            return {one: one.length, id: one[0]?.id, top, layout: made?.layout, moved, back: back.length, index: back[0]?.id, color: back[0]?.properties.color, sameStyle,
+                changed: changed && {...changed.layout, minzoom: changed.minzoom}, below, none: !map.getLayer('pins') && !map.getSource('pins')};
         });
-        check(`[${renderer}] marker layers follow the description`, markers.one === 1 && markers.moved === 0 && markers.back === 1 && markers.none === 0, JSON.stringify(markers));
+        check(`[${renderer}] a marker layer is a source and a symbol layer: it follows the description, its markers are features with the index as the id, and new data is no new style`,
+            markers.one === 1 && markers.id === 0 && markers.top === 'pins' && JSON.stringify(markers.layout) === JSON.stringify({'icon-image': 'disc', 'icon-anchor': 'center', 'icon-allow-overlap': true, 'icon-ignore-placement': true})
+            && markers.moved === 0 && markers.back === 1 && markers.index === 1 && markers.color === '#00d' && markers.sameStyle
+            && JSON.stringify(markers.changed) === JSON.stringify({'icon-image': 'disc', 'icon-anchor': 'bottom', 'icon-allow-overlap': false, 'icon-ignore-placement': false, minzoom: 3}) && markers.below && markers.none, JSON.stringify(markers));
 
         {
         // Images: added, replaced and removed by the description. A symbol layer draws a square of 40 pixels at the centre.
@@ -658,7 +672,7 @@ for (const [build, file] of [['the development build, and the file of the checks
             console.warn = (...a) => said.push(a.join(' '));
             addEventListener('unhandledrejection', e => unhandled.push(String(e.reason)));
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99;background:#fff'}));
-            const pin = {id: 'a', svg: '<svg viewBox="0 0 8 8"><circle cx="4" cy="4" r="4"/></svg>', width: 8, height: 8, data: []};
+            const pin = {id: 'a', image: 'dot', data: []};
             const host = lib.createMap(el, {style, initialView: {center: [-74.0065, 40.7085], zoom: 14.3}, attribution: false, markers: [pin, pin]});
             const place = await host.queryFeatures({lng: -74.0065, lat: 40.7085}).then(() => '', e => e.message);
             await new Promise(r => host.state.subscribe(s => s.idle, v => v && r()));

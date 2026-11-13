@@ -24,6 +24,8 @@ const texts: ((a: string, b: string) => string)[] = [
     /* 12 */ () => 'queryFeatures(): "layers" has no effect in a query with "sources". Remove "layers", or remove "sources" to ask for what the style layers draw.',
     /* 13 */ () => 'queryFeatures(): "radius" has an effect only in a query at a point or a position. This query ignores it.',
     /* 14 */ (a, b) => `images: a layer gives the parameter "${a}" to the image "${b}", but that image has no slot {{${a}}}, so the parameter has no effect. Write {{${a}}} in the SVG of "${b}" in "images", or remove the parameter.`,
+    /* 15 */ a => `markers: the marker layer "${a}" has no "image". Give the SVG in "images" of the description, and its name as "image" of the marker layer. (The fields "svg", "width" and "height" of a marker layer are gone.)`,
+    /* 16 */ a => `markers: a marker layer has the image "${a}", and the map has no image with that name. Add "${a}" to "images" of the description, or correct "image" of the marker layer.`,
 ];
 
 /** The message with the number `code` for the names `a` and `b`. */
@@ -36,7 +38,8 @@ const differ = (a: unknown, b: unknown) => a !== b && JSON.stringify(a) !== JSON
 /**
  * One check of a map. The kinds: 0, the container, a second after the map is made; 1, the ids of the description, when
  * the map is idle; 2, a description (`a`) after the description before it (`b`, none for the first); 3, a query for
- * features at `a` with the options `b`; 4, the style `a` and the additions of `extend` (`b`) to it.
+ * features at `a` with the options `b`; 4, the style `a` and the additions of `extend` (`b`) to it; 5, an image with
+ * the name `a` that a marker layer has and the map does not have.
  */
 export function check(c: Checked, kind: number, a?: any, b?: any) {
     const {map} = c;
@@ -57,7 +60,7 @@ export function check(c: Checked, kind: number, a?: any, b?: any) {
         for (const id in spec.data) if (!(map.getSource(id) as {setData?: unknown} | undefined)?.setData) warn(2, id);
     } else if (kind === 2) {
         const next = a as MapSpec, before = b as MapSpec | undefined, ids = new Set<string>();
-        for (const m of next.markers ?? []) { if (ids.has(m.id)) warn(7, m.id); ids.add(m.id); }
+        for (const m of next.markers ?? []) { if (ids.has(m.id)) warn(7, m.id); ids.add(m.id); if (!m.image) warn(15, m.id); }
         if (before) for (const k of setupOnly) if (differ(next[k], before[k])) warn(8, k);
     } else if (kind === 3) {
         const o = b as FeatureOptions, place = !!a && !(Array.isArray(a) && typeof a[0] !== 'number');
@@ -66,7 +69,8 @@ export function check(c: Checked, kind: number, a?: any, b?: any) {
         if (!o.sources && o.sourceLayers) warn(10, 'sourceLayers');
         if (!place && o.radius !== undefined) warn(13);
         if (!o.sources || !place) { if (o.geometry === false) warn(11, 'geometry'); if (o.zoom !== undefined) warn(11, 'zoom'); }
-    } else {
+    } else if (kind === 5) warn(16, a);
+    else {
         // The parameters that a layer gives to an image (`['image', name, {params}]`): each one is a slot of that image.
         const images = c.spec().images ?? {}, params = (e: unknown) => {
             if (!Array.isArray(e)) return;

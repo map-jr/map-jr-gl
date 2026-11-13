@@ -44,8 +44,8 @@ The component fills its parent element. Give the parent a height.
 | `view` | The view, for `v-model:view`. Without it, the map starts at `initial-view` and the user moves it. |
 | `initial-view` | The view at the start. |
 | `extend` | Your own sources and layers on a style from a URL: `{sources, layers, terrain}`. See [the main API](api.md). |
-| `images` | Images for the style layers, by name: `:images="{pin: pinSvg}"`. See [Images for style layers](api.md#images-for-style-layers). The render on the server does not draw them. |
-| `markers` | A list of marker layers. See [Markers](markers.md). |
+| `images` | Images for the style layers, by name: `:images="{pin: pinSvg}"`. See [Images for style layers](api.md#images-for-style-layers). The render on the server draws those that are SVG documents. |
+| `markers` | A list of marker layers, each with the name of an image of `images` (or of a `MapImage`). See [Markers](markers.md). |
 | `data` | GeoJSON data for sources of the style, by the id of the source: `:data="{routes}"`. See "GeoJSON data that changes" in [the main API](api.md). Use a `shallowRef` for each value, and give a new object to change it. |
 | `interactive-layers` | The ids of style layers whose features are found under the pointer. |
 | `controls` | Controls from `@map-jr/map-jr-gl/controls`: `:controls="[navigation(), scale()]"`. See [the main API](api.md). |
@@ -316,7 +316,8 @@ With the `ssr` prop, the server also renders the first view as SVG:
 - In the browser, Vue takes over the HTML, and the map removes the SVG when it has drawn its first frame. The
   controls show from that moment; they are not in the SVG.
 - The server needs the style as an object or as a URL that it can fetch.
-- The server renders `map-style`, the centre, the zoom and the bearing of the view, and `markers`. It does not use
+- The server renders `map-style`, the centre, the zoom and the bearing of the view, and `markers` with the images
+  of `images` that are SVG documents. It does not use
   `extend` and `data`, and it renders a tilted view (`pitch`) from straight above. Sources and layers from `extend`,
   and GeoJSON from `data`, show when the map starts in the browser.
 - The requests of the server have time limits: 10 seconds for one request and 30 seconds for all requests of one

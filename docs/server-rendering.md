@@ -111,7 +111,8 @@ Notes for Cloudflare Workers:
 | `style` | A style object or the URL of a style. Required. |
 | `center`, `zoom`, `width`, `height` | The view. Required. |
 | `bearing` | The rotation of the map in degrees |
-| `markers` | A list of marker layer options. See [Markers](markers.md). |
+| `markers` | A list of marker layers, as in the description of a map. See [Markers](markers.md). |
+| `images` | Images for the style layers and the marker layers, by name: SVG documents, or `{image, width, height}`. An SVG with slots (`{{name}}`) is a template, as in the description of a map. An image that is not an SVG document is not drawn. |
 | `label` | The name of the SVG for assistive technology. The SVG has `role="img"` and this text as its `aria-label`. The default is `"Map"`. `renderToImage` accepts the option, but an image cannot carry it. |
 | `resolveImage` | A function that supplies an icon as SVG when the sprite does not contain it |
 | `layerFilter` | A function that returns `false` for a layer to leave out |

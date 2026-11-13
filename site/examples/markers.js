@@ -14,24 +14,36 @@ const places = Array.from({length: 50000}, (_, i) => {
 const some = places.slice(0, 500);
 
 export default function (container, {show}) {
+  let popup = null;
   const map = createMap(container, {
     style,
     initialView: {center: NYC, zoom: 11.4},
     attribution: {compact: true},
-    // A marker layer is one SVG template with {{slots}} and a list of positions.
+    // An image is an SVG template with {{slots}}. Each marker fills the slots from its `props`.
+    images: {dot, pin},
+    // A marker layer draws an image at a list of positions.
     markers: [
-      {id: 'dots', svg: dot, width: 12, height: 12, anchor: 'center', data: places.slice(500)},
+      {id: 'dots', image: 'dot', data: places.slice(500)},
       // 500 of the places are pins when the zoom is 12 or more, and dots below that.
-      {id: 'dots-below-pins', svg: dot, width: 12, height: 12, anchor: 'center', maxZoom: 12, data: some},
-      {id: 'pins', svg: pin, width: 24, height: 31, anchor: 'bottom', minZoom: 12,
-        overlap: 'hide',   // do not pile up
-        collide: true,     // map labels keep clear
+      {id: 'dots-below-pins', image: 'dot', maxZoom: 12, data: some},
+      {id: 'pins', image: 'pin', anchor: 'bottom', minZoom: 12,
+        overlap: 'hide',   // do not pile up; map labels keep clear
         data: some},
     ],
+    // A marker layer is a layer of the style: a click finds its markers.
+    interactiveLayers: ['pins', 'dots-below-pins', 'dots'],
+    onClick: e => {
+      popup?.remove();
+      popup = null;
+      const marker = e.features[0];
+      if (!marker) return;
+      const at = marker.geometry.coordinates, text = document.createElement('div');
+      text.textContent = `Marker at ${at.map(v => v.toFixed(3)).join(', ')}`;
+      // A popup that points at the marker, above it.
+      popup = map.overlay(text, {lngLat: at, popup: true, offset: [0, marker.layer.id === 'pins' ? -30 : -6], onClose: () => { popup?.remove(); popup = null; }});
+    },
   });
 
-  // A click on a marker opens a callout. Map labels move away from it.
-  map.listen('markerclick', e => e.layer.openPopup(e.index, `Marker at ${e.marker.lngLat.map(v => v.toFixed(3)).join(', ')}`));
   map.listen('stats', e => show(`50,000 markers, ${e.fps.toFixed(0)} frames per second. Past zoom 12, 500 of them become pins.`));
   show('50,000 markers. Zoom in past 12: 500 of them become pins. Click one.');
   return map;
