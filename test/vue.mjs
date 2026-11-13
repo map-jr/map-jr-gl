@@ -26,6 +26,17 @@ check('server: the credits of the sources are in the page, as text and links onl
 const small = await renderToString(createSSRApp({render: () => h(MapJr, {mapStyle: style, initialView: view, ssr: {width: 800, height: 500, overrides: {building: {hidden: true}, 'building-outline': {hidden: true}, road: {minzoom: 20}}, attribution: 'Own credits'}})}));
 check('server: overrides for style layers make the render smaller, and the credits can be given', small.length < html.length * 0.8 && small.includes('>Own credits</div>'), `${(small.length / 1024).toFixed(0)} KB against ${(html.length / 1024).toFixed(0)} KB`);
 const plain = await renderToString(createSSRApp({render: () => h(MapJr, {mapStyle: style, initialView: view})}));
+const square = c => ({type: 'FeatureCollection', features: [{type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[c[0] - 0.002, c[1] - 0.002], [c[0] + 0.002, c[1] - 0.002], [c[0] + 0.002, c[1] + 0.002], [c[0] - 0.002, c[1] + 0.002], [c[0] - 0.002, c[1] - 0.002]]]}}]});
+const empty = {type: 'geojson', data: {type: 'FeatureCollection', features: []}};
+const extended = await renderToString(createSSRApp({render: () => h(MapJr, {mapStyle: style, initialView: view, attribution: false, ssr: {timeout: 20000, allowHosts: [new URL(tiles).host]},
+    extend: {sources: {own: {type: 'geojson', data: square(view.center)}, live: empty}, layers: [{id: 'own', type: 'fill', source: 'own', paint: {'fill-color': '#123456'}}, {id: 'live', type: 'fill', source: 'live', paint: {'fill-color': '#654321'}}]},
+    data: {live: square([view.center[0] + 0.004, view.center[1]])}})}));
+check('server: the SVG has the layers of extend and the GeoJSON of data', extended.includes('#123456') && extended.includes('#654321'), JSON.stringify({extend: extended.includes('#123456'), data: extended.includes('#654321')}));
+let blocked = '';
+const guarded = createSSRApp({render: () => h(MapJr, {mapStyle: style, initialView: view, ssr: {allowHosts: ['other.example.com']}})});
+guarded.config.errorHandler = e => { blocked = e.message; };
+await renderToString(guarded);
+check('server: the ssr prop passes allowHosts to the server renderer', blocked.includes('allowHosts'), blocked.slice(0, 120));
 check('server: without the ssr prop the component renders an empty element', !plain.includes('<svg') && plain.includes('map-jr-vue'), plain.slice(0, 120));
 
 const bare = await renderToString(createSSRApp({render: () => h('div', {id: 'frame', style: 'width:800px;height:500px'}, [h(MapJr, {mapStyle: style, initialView: view, images: {disc}, markers: [pins], attribution: false})])}));

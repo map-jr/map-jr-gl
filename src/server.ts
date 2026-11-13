@@ -4,7 +4,7 @@ import {TileBuilder} from './tiles.ts';
 import type {TileImage, TileIR} from './tile.ts';
 import {CollisionGrid, placeLabels, renderItems, type RenderItem} from './placement.ts';
 import {DEFAULT_FONT, EstimateShaper} from './text.ts';
-import {fillTemplate, templateSlots, withMarkers, VARIANT, type MarkerLayerOptions} from './markers.ts';
+import {extended, fillTemplate, templateSlots, withMarkers, VARIANT, type MarkerLayerOptions} from './markers.ts';
 import {renderSVG} from './svg.ts';
 import type {ImageDecoder} from './contour.ts';
 import {decodeImage, decodePNG, decodeWebPLossless} from './webp.ts';
@@ -51,6 +51,10 @@ export interface RenderOptions {
      * `{building: {hidden: true}, 'road-minor': {minzoom: 15}}`. A value here comes before the value in the style.
      */
     overrides?: Record<string, SSROverrides>;
+    /** Sources and layers to add to the style, as `extend` in the description of a map (`MapSpec`). */
+    extend?: {sources?: Record<string, object>; layers?: ({id: string; before?: string} & Record<string, unknown>)[]; terrain?: object | null};
+    /** GeoJSON data for GeoJSON sources of the style, by the id of the source, as `data` in the description of a map. */
+    data?: Record<string, unknown>;
     fetch?: typeof fetch;
     /**
      * The time in milliseconds that all requests of one render can take together. The default is 30000. The render
@@ -152,12 +156,14 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
     const fetchFn = limitedFetch(o, o.fetch ?? ((...a) => fetch(...a)));
     // (A marker layer is a source and a layer of the style. A style from a URL is fetched here, to add them to it.)
     let given = o.style, base: string | undefined;
-    if (o.markers?.length && typeof given === 'string') {
+    if ((o.markers?.length || o.extend || o.data) && typeof given === 'string') {
         const res = await fetchFn(base = given);
         if (!res.ok) throw new Error(`Failed to load style ${given}: ${res.status}`);
         given = await res.json();
     }
-    const style = await resolveStyle(withMarkers(given, o.markers, true), fetchFn, base);
+    const full: any = withMarkers(extended(given, o.extend), o.markers, true);
+    for (const [id, data] of Object.entries(o.data ?? {})) if (full.sources?.[id]?.type === 'geojson') full.sources = {...full.sources, [id]: {...full.sources[id], data}};
+    const style = await resolveStyle(full, fetchFn, base);
     if (o.overrides) style.layers = style.layers.map(l => o.overrides![l.id] ? {...l, metadata: {...l.metadata, [SSR_KEY]: {...(l.metadata?.[SSR_KEY] as object), ...o.overrides![l.id]}}} : l);
     if (o.ssrOverrides !== false) style.layers = applySSROverrides(style.layers);
     if (o.layerFilter) style.layers = style.layers.filter(l => o.layerFilter!(l.id));

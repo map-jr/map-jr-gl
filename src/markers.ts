@@ -98,3 +98,13 @@ export function sizedSVG(svg: string, w: number, h: number): string {
     return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${w}" height="${h}" viewBox="${viewBox ?? `0 0 ${w} ${h}`}">${inner}</svg>`;
 }
 
+/** A style with the additions of `extend`. */
+export function extended(style: any, extend?: {sources?: Record<string, object>; layers?: ({id: string; before?: string} & Record<string, unknown>)[]; terrain?: object | null}) {
+    if (!extend) return style;
+    const layers = [...style.layers];
+    for (const {before, ...layer} of extend.layers ?? []) {
+        const at = before ? layers.findIndex(l => l.id === before) : -1;
+        layers.splice(at < 0 ? layers.length : at, 0, layer);
+    }
+    return {...style, sources: {...style.sources, ...extend.sources}, layers, ...(extend.terrain === undefined ? {} : {terrain: extend.terrain ?? undefined})};
+}

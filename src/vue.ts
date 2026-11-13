@@ -242,9 +242,10 @@ export const MapJr = defineComponent({
          * On a server: render the first view as SVG into the page. `true`, or options: the size in pixels that the map
          * has on most screens (800 by 500 without them), `overrides` (changes to style layers for the server render, by
          * the id of the layer: `{building: {hidden: true}}`), and `attribution` (the credits to show, when the server
-         * must not take them from the sources of the style).
+         * must not take them from the sources of the style), and the limits for requests of the server renderer
+         * (`timeout`, `requestTimeout`, `maxBytes`, `allowHosts`). The server also renders `extend` and `data`.
          */
-        ssr: {type: [Boolean, Object] as PropType<boolean | {width?: number; height?: number; overrides?: Record<string, SSROverrides>; attribution?: string | string[]}>, default: false},
+        ssr: {type: [Boolean, Object] as PropType<boolean | {width?: number; height?: number; overrides?: Record<string, SSROverrides>; attribution?: string | string[]; timeout?: number; requestTimeout?: number; maxBytes?: number; allowHosts?: string[]}>, default: false},
     },
     emits: {
         'update:view': (_view: View) => true,
@@ -331,7 +332,7 @@ export const MapJr = defineComponent({
             // @ts-ignore: the package refers to itself, which the type check of this project does not resolve
             const server = await import('@map-jr/map-jr-gl/server') as typeof import('./server.ts');
             first.value = await server.renderFirstView({style: toRaw(props.mapStyle), center: view.center ?? [0, 0], zoom: view.zoom ?? 0, bearing: view.bearing, width: o.width ?? 800, height: o.height ?? 500,
-                markers: props.markers && plain(props.markers), images: props.images && toRaw(props.images) as Record<string, string>, overrides: o.overrides, attribution: props.attribution === false ? false : o.attribution});
+                markers: props.markers && plain(props.markers), images: props.images && toRaw(props.images) as Record<string, string>, overrides: o.overrides, extend: toRaw(props.extend), data: props.data && toRaw(props.data), timeout: o.timeout, requestTimeout: o.requestTimeout, maxBytes: o.maxBytes, allowHosts: o.allowHosts, attribution: props.attribution === false ? false : o.attribution});
         });
         return () => h('div', {class: 'map-jr-vue', style: 'position:relative;width:100%;height:100%'}, [
             h('div', {ref: el, style: 'position:absolute;inset:0', innerHTML: first.value}),
