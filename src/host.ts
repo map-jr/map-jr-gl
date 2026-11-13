@@ -6,7 +6,7 @@
  * The adapters for the frameworks (`@map-jr/map-jr-gl/vue` and others) are thin layers over `createMap`.
  * (For the API of MapLibre GL JS, see `@map-jr/map-jr-gl/maplibre-compat`.)
  */
-import {Map, type FeatureOptions, type FeaturePlace, type ImageOptions, type MapOptions, type RenderedFeature} from './map.ts';
+import {Map, logError, type FeatureOptions, type FeaturePlace, type ImageOptions, type MapOptions, type RenderedFeature} from './map.ts';
 export type {FeatureOptions, FeaturePlace};
 import {createStore, type Readable} from './store.ts';
 import {Marker, Popup, type OverlayAnchor} from './overlays.ts';
@@ -305,7 +305,7 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
         const error = e.error instanceof Error ? e.error : new Error(String(e.error));
         state.set({error});
         // (This listener takes the place of the report of the map itself: an error must not be lost in silence.)
-        if (now.onError) now.onError(error); else console.error('[map-jr-gl]', error);
+        if (now.onError) now.onError(error); else logError(error);
     });
     const moved = (moving: boolean) => {
         const view = viewOf();
