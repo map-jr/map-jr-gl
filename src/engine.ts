@@ -60,8 +60,8 @@ export type Command =
     | ({type: 'resourceResult'; id: number} & RequestAnswer)
     /** Asks for a `frame` event after each frame that is drawn (for the `render` event of the map). */
     | {type: 'frames'; on: boolean}
-    /** Asks for a `debug` event. Only the development build of the page sends it. */
-    | {type: 'debug'};
+    /** Asks for a `pong` event with the same number after the next frame that the engine has drawn to its end. */
+    | {type: 'ping'; n: number};
 export type EngineEvent =
     | {type: 'camera'; lng: number; lat: number; zoom: number; bearing: number; pitch: number; /** Ground height at the centre with 3D terrain, else 0. */ elevation: number; exaggeration: number; groundRange?: [number, number]; padding: [number, number, number, number]; moving: boolean}
     | {type: 'idle'; seq: number}
@@ -72,8 +72,8 @@ export type EngineEvent =
     /** About once a second while drawing: frames drawn per second and the engine's average CPU time per frame. */
     | {type: 'stats'; fps: number; frameMs: number}
     | {type: 'frame'}
-    /** What the engine knows about its context and its frames (the answer to the `debug` command). */
-    | {type: 'debug'; info: Record<string, unknown>}
+    /** The engine has drawn a frame to its end after the `ping` command with this number. */
+    | {type: 'pong'; n: number}
     /** The browser took the WebGL context away (for example, a phone that needs the memory). The page starts the map again. */
     | {type: 'contextlost'}
     /** A question to the page about one request. */
@@ -169,6 +169,7 @@ export class Engine {
     private contourWait = false;
     private reportFrames = false;
     private drew = false;
+    private pinged = 0;
     /** The WebGL context is gone: nothing more is drawn. */
     private lost = false;
     // Requests that the page can change. This thread and the tile workers ask the page through `ask`.
@@ -606,7 +607,7 @@ export class Engine {
     command(c: Command) {
         const tr = this.tr;
         // Whatever was asked, report when the map has settled again, so callers can wait on any change.
-        if (c.type !== 'query' && c.type !== 'elevation' && c.type !== 'queryRendered') this.wasIdle = false;
+        if (c.type !== 'query' && c.type !== 'elevation' && c.type !== 'queryRendered' && c.type !== 'ping') this.wasIdle = false;
         // (The page numbers its commands. `idle` and `source` carry the last number, so that the page can tell a report
         // about a state from before its last command.)
         const seq = (c as {seq?: number}).seq;
@@ -757,11 +758,7 @@ export class Engine {
             case 'repaint': break;
             case 'destroy': this.lost = true; this.renderer.destroy(); return;
             case 'frames': this.reportFrames = c.on; break;
-            case 'debug': {
-                const gl = this.renderer.gl;
-                this.emit({type: 'debug', info: {lostEvent: this.lost, isContextLost: gl.isContextLost(), glError: gl.getError(), frames: this.frameNo, firstFrameReported: this.drew, width: this.tr.width, height: this.tr.height, buffer: gl.drawingBufferWidth + 'x' + gl.drawingBufferHeight}});
-                return;
-            }
+            case 'ping': this.pinged = c.n; break; // (and a frame follows)
             case 'requests': this.rules = c.rules; for (const b of this.backends) b.setRequests(c.rules, this.ask); break;
             case 'resourceResult': this.asked.get(c.id)?.(c); this.asked.delete(c.id); break;
         }
@@ -1340,7 +1337,11 @@ export class Engine {
         // The page always gets a `frame` event for the first frame that an engine has drawn to its end: a new engine that
         // sends none cannot draw (see `watch` in map.ts). The event comes after the drawing, because the drawing can fail,
         // and not while the context is lost, because a context can be lost with no event.
-        if ((this.reportFrames || !this.drew) && !this.renderer.gl.isContextLost()) { this.drew = true; this.emit({type: 'frame'}); }
+        if (!this.renderer.gl.isContextLost()) {
+            if (this.reportFrames || !this.drew) { this.drew = true; this.emit({type: 'frame'}); }
+            // (The answer to `ping`: this worker still takes messages and still draws.)
+            if (this.pinged) { this.emit({type: 'pong', n: this.pinged}); this.pinged = 0; }
+        }
         if (idle && !this.wasIdle) this.emit({type: 'idle', seq: this.seq});
         this.wasIdle = idle;
         if (busy) this.repaint();

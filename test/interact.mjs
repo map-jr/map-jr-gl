@@ -912,14 +912,18 @@ for (const mode of ['main', 'worker']) {
         check('[worker] a worker without WebGL2: the map uses the main thread, load and idle fire, and transformRequest sees the tile requests',
             fell.renderer === 'main' && fell.seen.includes('load') && fell.seen.includes('idle') && !fell.seen.includes('error') && fell.tiles > 0 && fell.layer > 0, JSON.stringify(fell));
     }
-    // A worker whose WebGL context is lost (#78). `now`: each worker loses it directly after the start, before its first
-    // frame or just after it. The map goes to the main thread at the first loss or at the second. `quiet`: the first
-    // worker loses it after some frames, so the map starts a second worker. That one gets no event and cannot draw (each
-    // drawing call fails, and the worker keeps that error to itself), so it reports no frame, and after 5 seconds the map goes to the main thread. This is what
-    // Safari did on a machine without a GPU: one loss, one restore, and then no frame. `hidden`: the same while the page
-    // is hidden for 8 seconds. That time does not count, because an engine draws nothing for a hidden page.
+    // A worker whose WebGL context is lost (#78). In each case the map must go to the main thread and warn once.
+    // - `now`: each worker loses the context directly after the start, before its first frame or just after it.
+    // - `quiet`: the first worker loses the context after some frames, so the map starts a second worker. That one gets
+    //   no event and cannot draw (each drawing call fails, and the worker keeps that error to itself), so it reports
+    //   no frame. After 5 seconds the map goes to the main thread.
+    // - `hang`: as `quiet`, but the second worker draws its first frame and then stops: it takes no messages and draws
+    //   nothing. This is what Safari 27.2 did on a machine without a GPU (the debug record of the Safari job of
+    //   2026-11-12: one loss, one restore, a first frame, and then no answer from the worker).
+    // - `hidden`: as `hang`, while the page is hidden for 8 seconds. That time does not count, because an engine draws
+    //   nothing for a hidden page.
     if (mode === 'worker') {
-        for (const kind of ['now', 'quiet', 'hidden']) {
+        for (const kind of ['now', 'quiet', 'hang', 'hidden']) {
             const fell = await page.evaluate(async kind => {
                 const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
                 const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:300px;height:200px'}));
@@ -927,11 +931,13 @@ for (const mode of ['main', 'worker']) {
                 const now = wrap('setTimeout(lose, 0);');
                 const later = wrap('let n = 0; const f = () => ++n < 30 ? requestAnimationFrame(f) : lose(); f();');
                 const silent = wrap(`self.onerror = () => true; for (const call of ['clear', 'drawArrays', 'drawElements', 'drawArraysInstanced', 'drawElementsInstanced']) gl[call] = () => { throw new Error('no drawing'); };`);
+                // (The worker stops 50 ms after the message of its first frame: a loop without end, until the map ends the worker.)
+                const hang = URL.createObjectURL(new Blob([`const post = self.postMessage; self.postMessage = function (m, ...rest) { post.call(this, m, ...rest); if (m && m.type === 'frame') setTimeout(() => { for (;;); }, 50); }; importScripts(${JSON.stringify(location.origin + '/dist/map-jr-gl-worker.js')});`], {type: 'text/javascript'}));
                 const seen = [], warnings = [], warn = console.warn, start = performance.now();
                 console.warn = (...a) => warnings.push(a.join(' '));
                 let lost = 0, secondLoss = 0;
                 const m = new mod.Map({container: el, style: '/style.json', center: [-74.0065, 40.7085], zoom: 14, attributionControl: false,
-                    createWorker: () => new Worker(kind === 'now' ? now : lost ? silent : later)});
+                    createWorker: () => new Worker(kind === 'now' ? now : !lost ? later : kind === 'quiet' ? silent : hang)});
                 for (const type of ['load', 'idle', 'error']) m.on(type, () => seen.push(type));
                 m.on('webglcontextlost', () => { if (++lost === 2) secondLoss = performance.now(); });
                 let firstLoss = 0, hide = false, whileHidden;
@@ -951,7 +957,7 @@ for (const mode of ['main', 'worker']) {
             }, kind);
             const ok = fell.renderer === 'main' && fell.seen.includes('load') && fell.seen.includes('idle') && !fell.seen.includes('error') && fell.warnings === 1 && fell.loaded && fell.layer > 0;
             if (kind === 'now') check('[worker] a worker that loses its WebGL context at once: the map goes to the main thread after one or two losses, warns once, and load and idle fire', ok && fell.lost <= 2, JSON.stringify(fell));
-            else if (kind === 'quiet') check('[worker] one loss, one restore, then a worker that cannot draw: the map goes to the main thread after 5 seconds, warns once, and load and idle fire', ok && fell.lost === 2 && fell.waited >= 5000 && fell.waited < 9000, JSON.stringify(fell));
+            else if (kind !== 'hidden') check(`[worker] one loss, one restore, then a worker that ${kind === 'quiet' ? 'cannot draw' : 'stops after its first frame'}: the map goes to the main thread after 5 seconds, warns once, and load and idle fire`, ok && fell.lost === 2 && fell.waited >= 5000 && fell.waited < 9000, JSON.stringify(fell));
             else check('[worker] the same while the page is hidden for 8 seconds: the map stays with the worker for that time, and goes to the main thread 5 seconds later', ok && fell.lost === 2 && fell.whileHidden === 'worker' && fell.waited >= 13000, JSON.stringify(fell));
         }
     }

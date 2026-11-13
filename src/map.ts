@@ -389,10 +389,8 @@ export class Map {
         for (const [c, t] of this.queue) this.send(c, t);
         this.queue = [];
         this.send({type: 'repaint'});
-        // (After a restart, an engine in a worker has 5 seconds for its first frame, and an engine on this thread has 15.)
+        // (After a restart, an engine in a worker must show for 5 seconds that it draws, and an engine on this thread for 15.)
         this.watch(!this.restarting ? 0 : this.renderer === 'worker' ? 5 : 15);
-        // (For the debug record of the development build: what each engine says about its context, 2 and 8 seconds after its start.)
-        if (__DEV__ && (globalThis as {__mapJrDebug?: unknown}).__mapJrDebug) for (const ms of [2000, 8000]) setTimeout(() => { if (this.ready && !this.removed) this.send({type: 'debug'}); }, ms);
         this.styleEvents(true);
 
         this.observer = new ResizeObserver(() => this.resize());
@@ -446,36 +444,38 @@ export class Map {
 
     /** The engine of the last start has drawn a frame. */
     private drew = false;
+    /** The number of the last `ping` that the engine has answered with a frame. */
+    private pong = 0;
     private lostAt = 0;
     private watchTurn = 0;
     /**
-     * Waits for the first frame of a new engine. With `limit`, an engine that reports none within that many seconds
-     * counts as an engine that lost its context. A second counts only while the page is visible and the map has a size,
-     * because an engine draws no frame without them. The clock is a timer and not the frames of the page: the page
-     * need not draw for the time to pass.
+     * Watches a new engine. With `limit`, the engine must show for that many seconds that it draws: it reports its first
+     * frame, and it answers the question of each second (`ping`) with a frame. An engine that has no first frame at the
+     * end, or has not answered the question that it got 3 seconds before the end, counts as an engine without a WebGL
+     * context. (Safari on a machine without a GPU: a worker draws one frame and then takes no messages and draws
+     * nothing, and no event says so.)
+     *
+     * A second counts only while the page is visible and the map has a size, because an engine draws no frame without
+     * them. The clock is a timer and not the frames of the page.
      */
     private watch(limit = 0) {
         const turn = ++this.watchTurn;
         this.drew = false;
+        this.pong = 0;
+        let n = 0;
         if (__DEV__) this.note('watch', {limit, renderer: this.renderer});
         const tick = () => {
-            if (__DEV__) {
-                this.note('tick', {drew: this.drew, replaced: turn !== this.watchTurn, hidden: document.hidden, visibility: document.visibilityState, width: this.tr.width, height: this.tr.height, secondsLeft: limit});
-                // (The engine answers with what it knows about its context and its frames: see `debug` in engine.ts.)
-                if (this.ready && turn === this.watchTurn) this.send({type: 'debug'});
+            if (__DEV__) this.note('tick', {drew: this.drew, pong: this.pong, asked: n, replaced: turn !== this.watchTurn, hidden: document.hidden, width: this.tr.width, height: this.tr.height});
+            if (turn !== this.watchTurn || this.removed) return;
+            if (!document.hidden && this.tr.width && this.tr.height) {
+                if (n === limit) { if (!this.drew || this.pong < n - 2) this.contextLost(true); return; }
+                this.send({type: 'ping', n: ++n});
             }
-            if (this.drew || turn !== this.watchTurn) return;
-            if (!document.hidden && this.tr.width && this.tr.height && !limit--) this.contextLost(); else setTimeout(tick, 1000);
+            setTimeout(tick, 1000);
         };
         if (limit) tick();
     }
 
-    /**
-     * The engine has no WebGL context. An engine that drew before starts again in the same way. An engine in a worker
-     * that loses the context before its first frame, or within 10 seconds of the loss before, would lose it again: the
-     * engine then starts on the main thread. An engine on the main thread that was started again already and loses the
-     * context before its first frame is an error.
-     */
     /**
      * The development build only: when the page has set `__mapJrDebug` to an array, the map writes there what it does
      * about a lost WebGL context, each entry as [milliseconds since the page started, what, data]. The array holds at
@@ -486,15 +486,22 @@ export class Map {
         if (record && record.length < 400) record.push([Math.round(performance.now()), what, data]);
     }
 
-    private contextLost() {
-        if (__DEV__) this.note('contextLost()', {removed: this.removed, restarting: this.restarting, restarted: this.restarted, renderer: this.renderer, drew: this.drew, sinceLastLoss: Date.now() - this.lostAt});
+    /**
+     * The engine has no WebGL context: the browser says so, or (`silent`) the engine did not draw in the time that
+     * `watch` gave it. An engine that drew before starts again in the same way. An engine in a worker that loses the
+     * context before its first frame, or within 10 seconds of the loss before, or that did not draw in its time, would
+     * fail again: the engine then starts on the main thread. An engine on the main thread that was started again
+     * already and fails before its first frame, or does not draw in its time, is an error.
+     */
+    private contextLost(silent?: boolean) {
+        if (__DEV__) this.note('contextLost()', {silent: !!silent, removed: this.removed, restarting: this.restarting, restarted: this.restarted, renderer: this.renderer, drew: this.drew, sinceLastLoss: Date.now() - this.lostAt});
         if (this.removed) return;
         // (The new engine lost its context while `restart` still waits, for the images for example.)
-        if (this.restarting) return void setTimeout(() => this.contextLost(), 1000);
-        const worker = this.renderer === 'worker', now = Date.now(), toMain = worker && (!this.drew || now - this.lostAt < 10000);
+        if (this.restarting) return void setTimeout(() => this.contextLost(silent), 1000);
+        const worker = this.renderer === 'worker', now = Date.now(), drew = this.drew && !silent, toMain = worker && (!drew || now - this.lostAt < 10000);
         this.lostAt = now;
-        if (__DEV__) this.note('decision', this.drew || worker || !this.restarted ? toMain ? 'restart on the main thread' : 'restart with the same renderer' : 'error, no restart');
-        if (this.drew || worker || !this.restarted) {
+        if (__DEV__) this.note('decision', drew || worker || !this.restarted ? toMain ? 'restart on the main thread' : 'restart with the same renderer' : 'error, no restart');
+        if (drew || worker || !this.restarted) {
             if (toMain) console.warn('[map-jr-gl] Worker rendering unavailable, using the main thread: the WebGL context was lost');
             this.restart(toMain);
         } else {
@@ -548,7 +555,7 @@ export class Map {
     }
 
     private onEngineEvent(e: EngineEvent) {
-        if (__DEV__ && e.type !== 'camera' && e.type !== 'heights' && e.type !== 'result') this.note('engine: ' + e.type, e.type === 'debug' ? e.info : e.type === 'idle' ? {seq: e.seq, expected: this.seq} : e.type === 'frame' ? {first: !this.drew} : e.type === 'error' ? e.message : undefined);
+        if (__DEV__ && e.type !== 'camera' && e.type !== 'heights' && e.type !== 'result') this.note('engine: ' + e.type, e.type === 'pong' ? e.n : e.type === 'idle' ? {seq: e.seq, expected: this.seq} : e.type === 'frame' ? {first: !this.drew} : e.type === 'error' ? e.message : undefined);
         if (e.type === 'camera') {
             const zoomed = e.zoom !== this.tr.zoom;
             const turned = e.bearing !== this.tr.bearing, tilted = e.pitch !== this.tr.pitch;
@@ -578,6 +585,8 @@ export class Map {
             this.answer(e.url, e.kind).then(a => a, (err): RequestAnswer => ({error: String(err.message)})).then(a => this.post({type: 'resourceResult', id: e.id, ...a}, a.data ? [a.data] : undefined));
         } else if (e.type === 'contextlost') {
             this.contextLost();
+        } else if (e.type === 'pong') {
+            this.pong = e.n;
         } else if (e.type === 'frame') {
             this.drew = true; // (an engine reports its first frame also when the page did not ask for frames)
             this.fire('render');

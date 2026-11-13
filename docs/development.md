@@ -44,8 +44,8 @@ file of the main API is built with `__DEV__` true, and the checks are inside it.
 
 The development build also keeps a record of what a map does about a lost WebGL context. Set `window.__mapJrDebug = []`
 before the map is made. The map then adds one entry for each step, as `[milliseconds, what, data]`: the start of an
-engine in a worker, each event of the engine, each restart, each second of the wait for the first frame, the decision
-after a lost context, and what the engine says about its context (the `debug` command of the engine). The record has at
+engine in a worker, an error of that worker, each event of the engine, each restart, each second in which the map
+watches a new engine (with the last answer of the engine), and the decision after a lost context. The record has at
 most 400 entries. `test/bench/webdriver.mjs` prints it for a renderer that did not load.
 
 ## The demo server
