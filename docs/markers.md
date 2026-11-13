@@ -28,7 +28,7 @@ field `images` of the description (see [Images for style layers](api.md#images-f
 | Look of each point | One SVG template with values of the point | An image by name. The image can be an SVG template with values of the feature or of expressions. See [An image that is a template](api.md#an-image-that-is-a-template). |
 | Place in the layer order | Above all style layers | The place of the layer in the style |
 | Filter, expressions, text beside the icon, `feature-state` | Not available | Available |
-| Hit test | `queryMarkers`: synchronous, the rectangle of the marker | `queryFeatures`: a promise. A feature is found where its icon is drawn. |
+| Hit test | `queryMarkers`: synchronous, the rectangle of the marker | `queryFeatures`: a promise. A feature is found where its icon is drawn: in the rectangle around the icon, with its size, anchor, offset and turn. A feature with text is also found within 10 pixels of its point. |
 | `select`, `openPopup` | Available | Not available |
 | Cost for each frame | Does not grow with the number of markers | Does not grow with the number of icons, for icons that are always shown (see below). It grows for icons that can be hidden or that have text. |
 | Time until the points show | Shorter | Longer: the data is cut into tiles |
@@ -54,9 +54,12 @@ An icon from a buffer differs from a placed icon in these points:
   are drawn below all labels and below all placed icons.
 - The map asks for the image of each icon of a tile (`styleimagemissing`), also for an icon outside the view.
 
-Labels keep away from such an icon, unless the layer has `icon-ignore-placement: true`. The map then gives each
-icon its space each time it places the labels. That work grows with the number of icons in view: in the
-measurement below it was 14 ms for a frame with 100,000 icons, and 6 ms with 10,000.
+Labels of the layers below keep away from such an icon, unless the layer of the icon has
+`icon-ignore-placement: true`. The map then gives each icon its space each time it places the labels, which is some
+times a second while the map moves. That work grows with the number of icons in view. In a measurement with
+software WebGL, the script time for a frame while the map turned was 1 ms with 10,000 such icons. With 100,000 it was
+20 ms on average, and the frames that place the labels took more than 100 ms each. Use `icon-ignore-placement: true`
+for very many icons.
 
 In a measurement with software WebGL (headless Chromium, the main-thread renderer, 500 different images, icons that
 are always shown), the script time for each frame was 6 ms for a marker layer with 1,000, 10,000 and 100,000

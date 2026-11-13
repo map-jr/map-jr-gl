@@ -1250,7 +1250,8 @@ export class Map {
             radius: l.type === 'line' ? Math.max(3, number(l.paint?.['line-width'], 4) / 2) : l.type === 'circle' ? number(l.paint?.['circle-radius'], 5) + number(l.paint?.['circle-stroke-width'], 0) : l.type === 'symbol' ? 10 : 0,
         }));
         const order = new globalThis.Map(layers.map((l, i) => [l.id, i]));
-        const features = (found: QueriedFeature[]): RenderedFeature[] => found.sort((a, b) => order.get(b.layer!)! - order.get(a.layer!)!).map(f => ({
+        // (From the top layer down, and in a layer the feature that is drawn last, which is on top, first.)
+        const features = (found: QueriedFeature[]): RenderedFeature[] => found.reverse().sort((a, b) => order.get(b.layer!)! - order.get(a.layer!)!).map(f => ({
             type: 'Feature', id: f.id, geometry: f.geometry!, properties: f.properties, source: f.source, sourceLayer: f.sourceLayer || undefined,
             layer: this.getLayer(f.layer!), state: f.id === undefined ? {} : this.getFeatureState({source: f.source, sourceLayer: f.sourceLayer || undefined, id: f.id}),
         }));

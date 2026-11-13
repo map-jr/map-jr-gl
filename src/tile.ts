@@ -146,7 +146,7 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
             type Piece = {base: any; ring: number[]; type: number; along: boolean; spacing: number; key: number};
             const pieces: Piece[] = [], starts = new Map<string, Piece>(), ends = new Map<string, Piece>();
             // (The icons of `IconBatch`. The layer gives them one anchor, offset, alignment and colour, and no order.)
-            const plain = direct && !sorted && !p.iconAnchor.dd && !p.iconOffset.dd && !p.iconAlign.dd && !p.iconColor.dd;
+            const plain = direct && !sorted && !p.iconAnchor.dd && !p.iconOffset.dd && !p.iconAlign.dd && !p.iconColor.dd && !p.iconPadding.dd;
             const iconNames = new Map<string, number>(), iconName: number[] = [], iconPos: number[] = [], iconRotate: number[] = [], iconSize: number[] = [], iconAlpha: number[] = [];
             let iconAvoid: boolean | undefined;
             for (const f of vl.features) {
