@@ -16,6 +16,9 @@ import {AttributionControl, CONTROL_CSS, adoptClasses, cls, type Control, type C
 declare const __DEV__: boolean;
 
 
+/** Logs an error with the prefix `[map-jr-gl]`, unless its message already starts with it. */
+export const logError = (error: unknown) => /^\[map-jr-gl\]/.test((error as Error)?.message) ? console.error(error) : console.error('[map-jr-gl]', error);
+
 export interface MapOptions extends CameraOptions, LoadOptions {
     container: HTMLElement | string;
     /** The style: an object or a URL. Leave it out to give the style later with `setStyle`. */
@@ -656,9 +659,9 @@ export class Map {
      */
     fire(type: string, data: Record<string, unknown> = {}): void | PromiseLike<unknown> {
         const list = this.listeners[type];
-        if (type === 'error' && !list?.length) console.error('[map-jr-gl]', data.error);
+        if (type === 'error' && !list?.length) logError(data.error);
         // A listener that throws does not stop the listeners after it: its error is an `error` event.
-        if (list) for (const fn of [...list]) try { fn({type, target: this, ...data}); } catch (error) { if (type === 'error') console.error('[map-jr-gl]', error); else this.fire('error', {error}); }
+        if (list) for (const fn of [...list]) try { fn({type, target: this, ...data}); } catch (error) { if (type === 'error') logError(error); else this.fire('error', {error}); }
         // (A query that the removal of the map or the loss of the context rejects is not an error of the map.)
         if ((type === 'click' || type === 'mousemove') && this.layerListeners.length && data.point) this.dispatchLayerEvents(type, data).catch(error => this.removed || this.restarting || this.fire('error', {error}));
     }
