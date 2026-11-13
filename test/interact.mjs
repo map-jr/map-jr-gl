@@ -1,6 +1,6 @@
-// Drives the demo in Chromium and checks behaviour in both renderer modes: node test/interact.mjs <outDir>
+// Drives the demo in Chromium and checks behaviour in both renderer modes: node test/interact.mjs [outDir] (default .cache/shots)
 import {launch, browserName} from './launch.mjs';
-const out = process.argv[2];
+const out = process.argv[2] || '.cache/shots'; // (the directory for the screenshots; Playwright creates it)
 const browser = await launch();
 const origin = `http://localhost:${process.env.PORT || 8080}`; // (the demo server; PORT lets two runs use two servers)
 let failed = 0, mainFrames = 0;
