@@ -25,9 +25,9 @@ field `images` of the description (see [Images for style layers](api.md#images-f
 | | Marker layer | Symbol layer with an image |
 |---|---|---|
 | Data | An array in the page | A GeoJSON source or a vector tile source |
-| Look of each point | One SVG template with values of the point | An image by name, chosen by an expression |
+| Look of each point | One SVG template with values of the point | An image by name. The image can be an SVG template with values of the feature or of expressions. See [An image that is a template](api.md#an-image-that-is-a-template). |
 | Place in the layer order | Above all style layers | The place of the layer in the style |
-| Filter, expressions by zoom, text beside the icon, `feature-state` | Not available | Available |
+| Filter, expressions, text beside the icon, `feature-state` | Not available | Available |
 | Hit test | `queryMarkers`: synchronous, the rectangle of the marker | `queryFeatures`: a promise |
 | `select`, `openPopup` | Available | Not available |
 | Cost for each frame | Does not grow with the number of markers | Grows with the number of icons in view |

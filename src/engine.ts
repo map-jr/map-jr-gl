@@ -1,6 +1,7 @@
 import {heightsChanged} from './geo.ts';
 import {EXTENT, HEIGHT_GRID, TILE_SIZE, Transform, bezier, groundHeight, clamp, latFromMerc, lngFromMerc, mercX, mercY, type LngLatLike, type TileID} from './geo.ts';
 import {compileFor, type MapStates} from './expr.ts';
+import {VARIANT} from './markers.ts';
 import {layerRules} from './rules.ts';
 import {compileLayer, isGeometrySource, loadSprite, tileURL, type CompiledLayer, type FontSource, type ResolvedStyle, type Sprite, type SpriteIcon} from './style.ts';
 import {GLRenderer, MARKER_FLOATS, MARKER_STRIDE, SPRITE_ATLAS, type DemRef, type GLTile, type MarkerBuffers, type TerrainTile} from './gl.ts';
@@ -37,6 +38,11 @@ export type Command =
     | {type: 'style'; style: ResolvedStyle; reload: boolean; /** A number for each source that changes when the page changes what its tiles are built from. */ versions?: Record<string, number>}
     | {type: 'markers'; id: string; width: number; height: number; offset: [number, number]; collide: boolean; minZoom: number; maxZoom: number; hideOverlaps: boolean;
         merc: Float64Array; variant: Uint32Array; images: MarkerImage[]}
+    /**
+     * The images that are SVG templates: the slots of each one by name. `changed` has the names whose template is new,
+     * other or gone: their variants are dropped and asked for again. `rebuild`: the slots are different, so tiles are built again.
+     */
+    | {type: 'templates'; slots: Record<string, string[]>; changed: string[]; rebuild: boolean}
     | {type: 'removeMarkers'; id: string}
     /** Animates one marker to a new size, about its anchor point. */
     | {type: 'markerScale'; id: string; index: number; scale: number; duration: number}
@@ -728,6 +734,14 @@ export class Engine {
                 break;
             }
             case 'removeImage': this.images.delete(c.name); this.placeDirty = true; break;
+            case 'templates':
+                for (const b of this.backends) b.setTemplates(c.slots);
+                for (const names of [this.images, this.missing]) for (const name of [...names.keys()]) if (c.changed.includes(name.split(VARIANT)[0])) names.delete(name);
+                // (Only tiles with shapes are built again: `band` is the zoom that such a tile was built for.)
+                if (c.rebuild) for (const t of this.tiles.values()) if (t.band !== undefined) { t.stale = true; t.rev = ++this.tilesVersion; }
+                this.styleVersion++;
+                this.placeDirty = true;
+                break;
             case 'geojson': {
                 // New data for one source: keep drawing its current tiles and rebuild them in place, so nothing blinks.
                 if (this.style.sources[c.source]) this.style.sources[c.source].data = c.data;

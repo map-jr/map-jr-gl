@@ -23,6 +23,7 @@ const texts: ((a: string, b: string) => string)[] = [
     /* 11 */ a => `queryFeatures(): "${a}" has an effect only in a query with "sources" at a point or a position. This query ignores it.`,
     /* 12 */ () => 'queryFeatures(): "layers" has no effect in a query with "sources". Remove "layers", or remove "sources" to ask for what the style layers draw.',
     /* 13 */ () => 'queryFeatures(): "radius" has an effect only in a query at a point or a position. This query ignores it.',
+    /* 14 */ (a, b) => `images: a layer gives the parameter "${a}" to the image "${b}", but that image has no slot {{${a}}}, so the parameter has no effect. Write {{${a}}} in the SVG of "${b}" in "images", or remove the parameter.`,
 ];
 
 /** The message with the number `code` for the names `a` and `b`. */
@@ -35,7 +36,7 @@ const differ = (a: unknown, b: unknown) => a !== b && JSON.stringify(a) !== JSON
 /**
  * One check of a map. The kinds: 0, the container, a second after the map is made; 1, the ids of the description, when
  * the map is idle; 2, a description (`a`) after the description before it (`b`, none for the first); 3, a query for
- * features at `a` with the options `b`; 4, the additions of `extend` (`b`) to the style `a`.
+ * features at `a` with the options `b`; 4, the style `a` and the additions of `extend` (`b`) to it.
  */
 export function check(c: Checked, kind: number, a?: any, b?: any) {
     const {map} = c;
@@ -65,7 +66,18 @@ export function check(c: Checked, kind: number, a?: any, b?: any) {
         if (!o.sources && o.sourceLayers) warn(10, 'sourceLayers');
         if (!place && o.radius !== undefined) warn(13);
         if (!o.sources || !place) { if (o.geometry === false) warn(11, 'geometry'); if (o.zoom !== undefined) warn(11, 'zoom'); }
-    } else if (b) {
+    } else {
+        // The parameters that a layer gives to an image (`['image', name, {params}]`): each one is a slot of that image.
+        const images = c.spec().images ?? {}, params = (e: unknown) => {
+            if (!Array.isArray(e)) return;
+            if (e[0] === 'image' && typeof e[1] === 'string' && e[2]?.params) {
+                const v = images[e[1]] as unknown, svg = String((v as {image?: unknown})?.image ?? v ?? '');
+                for (const k in e[2].params) if (!new RegExp(`\\{\\{\\s*${k}\\s*\\}\\}`).test(svg)) warn(14, k, e[1]);
+            }
+            e.forEach(params);
+        };
+        for (const l of [...a.layers, ...b?.layers ?? []]) params(l.layout?.['icon-image']);
+        if (!b) return;
         const extend = b as StyleExtension, sources = {...a.sources, ...extend.sources}, ids = new Set<string>(a.layers.map((l: {id: string}) => l.id));
         for (const {id, before, source} of extend.layers ?? []) {
             if (before && !ids.has(before)) warn(5, id, before);
