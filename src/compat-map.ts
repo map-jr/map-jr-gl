@@ -296,7 +296,8 @@ export class Map extends CoreMap {
         const point = data.point as {x: number; y: number} | undefined;
         if (!point || !/^(click|dblclick|contextmenu)$/.test(type) || data.asked || !this.rawStyle) return super.fire(type, data);
         const {box, sets} = this.rendered([point.x, point.y]), key = this.questionKey(box);
-        const send = () => super.fire(type, {...data, asked: true});
+        // (The descriptors are copied, so that the getter `defaultPrevented` stays live.)
+        const send = () => super.fire(type, Object.defineProperties({asked: true}, Object.getOwnPropertyDescriptors(data)));
         if (!sets.length) return send();
         const turn = this.turn;
         return this.ask<QueriedFeature[]>(id => ({type: 'queryRendered', id, box, sets, geometry: true})).then(found => this.keep(key, found, turn), () => {}).then(send);
