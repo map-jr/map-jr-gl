@@ -33,11 +33,13 @@ for (const mode of ['main', 'worker']) {
     check(`[${mode}] loads with requested renderer`, await page.evaluate(() => window.map.renderer) === (workerCan ? mode : 'main'));
 
     // Drag pan: the point under the cursor should follow it.
-    const before = await page.evaluate(() => window.map.getCenter());
+    const before = await page.evaluate(() => { window.dragEvents = []; for (const t of ['dragstart', 'drag', 'dragend']) window.map.on(t, e => window.dragEvents.push(t + (e.originalEvent ? '' : '!'))); return window.map.getCenter(); });
     await page.mouse.move(500, 350); await page.mouse.down(); await page.mouse.move(400, 300, {steps: 8}); await page.mouse.up();
     await page.waitForFunction(b => window.map.getCenter().lng !== b.lng, before, {timeout: 5000}).catch(() => {}); // the drag has reached the page
     await settle(page);
     const after = await page.evaluate(() => window.map.getCenter());
+    const dragEvents = await page.evaluate(() => window.dragEvents);
+    check(`[${mode}] a drag fires dragstart, drag and dragend once each in order, with originalEvent`, dragEvents[0] === 'dragstart' && dragEvents.at(-1) === 'dragend' && dragEvents.filter(t => t === 'drag').length === dragEvents.length - 2 && dragEvents.length > 2, dragEvents.join(' '));
     check(`[${mode}] drag pans east and south`, after.lng > before.lng && after.lat < before.lat, `Δlng=${(after.lng - before.lng).toFixed(5)} Δlat=${(after.lat - before.lat).toFixed(5)}`);
 
     // Wheel zoom keeps the location under the cursor fixed.
