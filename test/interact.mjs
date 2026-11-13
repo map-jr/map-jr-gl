@@ -316,6 +316,21 @@ for (const mode of ['main', 'worker']) {
         return {both, kept};
     });
     check(`[${mode}] GeoJSON source with a URL: updateData keeps both diffs and a newer setData`, urlDiff.both === 'one,two,three' && urlDiff.kept === 'newer', JSON.stringify(urlDiff));
+    // setData with a URL: a newer setData aborts the older request, and getData uses the kept answer without a request (#83).
+    const urlReq = await page.evaluate(async () => {
+        const m = window.map, source = m.getSource('zones'), real = window.fetch, seen = [];
+        const blob = name => URL.createObjectURL(new Blob([JSON.stringify({type: 'FeatureCollection', features: [{type: 'Feature', properties: {name}, geometry: {type: 'Point', coordinates: [-74.008, 40.7085]}}]})], {type: 'application/json'}));
+        const first = blob('first'), second = blob('second');
+        window.fetch = (input, init) => { seen.push({url: String(input), signal: init?.signal}); return real(input, init); };
+        try {
+            const old = source.setData(first);
+            await source.setData(second);
+            await old;
+            const names = [(await source.getData()).features[0].properties.name, (await source.getData()).features[0].properties.name].join();
+            return {aborted: seen.find(s => s.url === first)?.signal?.aborted ?? null, requests: seen.filter(s => s.url === second).length, names};
+        } finally { window.fetch = real; }
+    });
+    check(`[${mode}] GeoJSON source with a URL: a newer setData aborts the older request, and getData makes no request`, urlReq.aborted === true && urlReq.requests === 1 && urlReq.names === 'second,second', JSON.stringify(urlReq));
     await page.evaluate(() => { window.map.removeLayer('zones-fill'); window.map.removeSource('zones'); });
 
     // DOM marker and popup with MapLibre's API.
@@ -849,10 +864,10 @@ for (const mode of ['main', 'worker']) {
         const square = JSON.stringify({type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[-20, -20], [20, -20], [20, 20], [-20, 20], [-20, -20]]]}});
         let body = square;
         await page.route('**/test-kept.json', async r => { await new Promise(res => setTimeout(res, 150)); r.fulfill({contentType: 'application/json', body}); });
-        // The first, third, ... request for this URL is answered late with the square, the others at once with no features.
-        let orderRequests = 0;
-        await page.route('**/test-order.json', async r => {
-            const slow = orderRequests++ % 2 === 0;
+        // A request with "?slow" is answered late with the square, the others at once with no features. (A newer setData
+        // aborts the older request, so that request may never arrive here.)
+        await page.route('**/test-order.json*', async r => {
+            const slow = r.request().url().endsWith('?slow');
             await new Promise(res => setTimeout(res, slow ? 900 : 20));
             r.fulfill({contentType: 'application/json', body: slow ? square : JSON.stringify({type: 'FeatureCollection', features: []})});
         });
@@ -892,12 +907,12 @@ for (const mode of ['main', 'worker']) {
             await wait(600); await idle();
             const later = await count();
             // Two calls of setData: the data of the later call stays, also when the earlier call is answered after it.
-            a.getSource('g').setData('/test-order.json');
+            a.getSource('g').setData('/test-order.json?slow');
             a.getSource('g').setData('/test-order.json');
             await wait(1800);
             const sameURL = await count();
             const none = {type: 'FeatureCollection', features: []};
-            a.getSource('g').setData('/test-order.json');
+            a.getSource('g').setData('/test-order.json?slow');
             a.getSource('g').setData(none);
             await wait(1800);
             const order = {sameURL, object: await count(), data: a.getSource('g').data === none};
@@ -908,9 +923,9 @@ for (const mode of ['main', 'worker']) {
             return {first: window.keptFirst, fresh, later, order};
         });
         await page.unroute('**/test-kept.json');
-        await page.unroute('**/test-order.json');
+        await page.unroute('**/test-order.json*');
         check(`[${mode}] two setData calls: the later one stays when the earlier one is answered after it`,
-            after.order.sameURL === 0 && after.order.object === 0 && after.order.data && after.order.afterStyle === 0 && orderRequests === 3, JSON.stringify({...after.order, requests: orderRequests}));
+            after.order.sameURL === 0 && after.order.object === 0 && after.order.data && after.order.afterStyle === 0, JSON.stringify(after.order));
         check(`[${mode}] setData with the same URL: the new data stays after a change of the style and a zoom`, after.first > 0 && after.fresh === 0 && after.later === 0, JSON.stringify(after));
         check(`[${mode}] two maps that are given one source object both load it`, kept.idles.every(Boolean) && kept.drawn.every(n => n > 0), JSON.stringify(kept));
     }
