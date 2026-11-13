@@ -1,5 +1,5 @@
 export {Map} from './compat-map.ts';
-export {MarkerLayer, InteractionHandler, type MapOptions, type MapEvent, type RenderedFeature, type PointLike, type FeatureOptions, type FeaturePlace} from './map.ts';
+export {InteractionHandler, type MapOptions, type MapEvent, type RenderedFeature, type PointLike, type FeatureOptions, type FeaturePlace} from './map.ts';
 export {addProtocol, removeProtocol, type ProtocolFunction} from './protocols.ts';
 export {LngLat, LngLatBounds, type LngLatInput, type LngLatBoundsInput} from './lnglat.ts';
 export type {MarkerLayerOptions, MarkerInput, Anchor} from './markers.ts';
@@ -38,14 +38,14 @@ export const getRTLTextPluginStatus = () => 'loaded';
 // `maplibre-gl` to this library. An application itself uses the named exports.
 // (A bundler leaves the object out when nothing imports it.)
 import {Map} from './compat-map.ts';
-import {MarkerLayer, InteractionHandler} from './map.ts';
+import {InteractionHandler} from './map.ts';
 import {LngLat, LngLatBounds} from './lnglat.ts';
 import {addProtocol, removeProtocol} from './protocols.ts';
 import {AttributionControl} from './controls.ts';
 import {NavigationControl, ScaleControl, FullscreenControl, GeolocateControl, TerrainControl, LogoControl} from './controls-more.ts';
 import {Marker, Popup} from './overlays.ts';
 export default {
-    Map, MarkerLayer, InteractionHandler, LngLat, LngLatBounds, addProtocol, removeProtocol, Marker, Popup, configure: set,
+    Map, InteractionHandler, LngLat, LngLatBounds, addProtocol, removeProtocol, Marker, Popup, configure: set,
     AttributionControl, NavigationControl, ScaleControl, FullscreenControl, GeolocateControl, TerrainControl, LogoControl, GlobeControl,
     supported, getVersion, setWorkerUrl, getWorkerUrl, setWorkerCount, getWorkerCount, setMaxParallelImageRequests, getMaxParallelImageRequests, setRTLTextPlugin, getRTLTextPluginStatus,
 };

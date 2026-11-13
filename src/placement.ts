@@ -93,6 +93,8 @@ const rx_ = (anchor: string, r: number) => anchor.includes('-') ? r / Math.SQRT2
 export function placeLabels(
     tr: Transform, items: RenderItem<{labels: Record<string, LabelSrc[]>}>[], layers: CompiledLayer[], shaper: Shaper, grid: CollisionGrid,
     icons?: IconLookup,
+    /** Called when the placement comes to a symbol layer, before its labels: for what takes space with that layer and is not placed here. */
+    before?: (layer: CompiledLayer) => void,
 ): Placed[] {
     const out: Placed[] = [], seen = new Map<string, number[]>();
     let itemNo = 0;
@@ -103,6 +105,7 @@ export function placeLabels(
     for (let li = layers.length - 1; li >= 0; li--) {
         const L = layers[li];
         if (L.type !== 'symbol' || !L.visible || tr.zoom < L.minzoom || tr.zoom >= L.maxzoom) continue;
+        before?.(L);
         // The same text is a duplicate only in its own layer (the same feature from two tiles, or a road name that
         // repeats). Two layers can show the same text at one point, as in MapLibre.
         seen.clear();

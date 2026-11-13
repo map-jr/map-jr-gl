@@ -8,7 +8,7 @@
 // runs. The Vue and React forms are shown as text; `node test/examples.mjs` checks that they compile.
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 import {configure} from '@map-jr/map-jr-gl';
-import {markers, view} from '../demo/markers.mjs';
+import {markers, view, addImages, addMarkers} from '../demo/markers.mjs';
 import {shield} from '../demo/shields.mjs';
 import makeStyle from '../demo/style.mjs';
 
@@ -36,7 +36,7 @@ const example = (id, title, points) => ({id, title, points,
 const rows = [
     example('basic', 'A MapLibre style, drawn off the main thread', ['Reads the MapLibre style specification: sources, layers, expressions.', 'Draws in a worker when the browser allows it, so a busy page does not make the map stutter.', 'Zoom, compass, scale and fullscreen controls are included.']),
     example('reactive', 'One description, and state to watch', ['The main API makes a map from one description. To change the map, give a new description: the library finds what is different.', 'The state of the map (the view, the features under the pointer) is a store. Frameworks read it directly.', 'The components for Vue and React are thin layers over this.']),
-    example('markers', 'Tens of thousands of markers, drawn on the canvas', ['A marker layer is one SVG template with {{slots}} and a list of positions.', 'Markers are drawn by the GPU. 50,000 cost about the same as 50.', 'Layers can swap by zoom, hide overlaps, and open a callout that map labels move away from.']),
+    example('markers', 'Tens of thousands of markers, drawn on the canvas', ['An image is one SVG template with {{slots}}. A marker layer draws it at a list of positions, and each marker fills the slots.', 'Markers are drawn by the GPU. 50,000 cost about the same as 50.', 'A marker layer is a symbol layer of the style: a click finds its features, and a popup can point at one.']),
     example('terrain', '3D terrain, relief shading and contour lines from one elevation source', ['Terrain raises the ground. Buildings, labels and markers stay on the surface.', 'A contour source makes labelled contour lines in the tile workers. You do not need another library.', 'queryElevation reads the height at a position. Click the map.']),
     example('query', 'Ask the map what is at a position', ['queryFeatures reads the tile data directly. You do not need a style layer, and hidden data is included.', 'The result is a promise, because the tile data is in a worker.', 'Click the map. The features at that position show in a box on the map.']),
     example('pmtiles', 'One file of tiles: PMTiles', ['A PMTiles archive is a single static file. The map reads the tiles it needs with HTTP range requests.', 'You do not need a tile server. Any file host that supports range requests is sufficient.', 'Here the purple lines come from one PMTiles file of 2025 United States boundaries. The base map is a usual tile source.']),
@@ -47,6 +47,7 @@ const rows = [
 const {svg} = await renderToSVG({
   style, center: [-74.0065, 40.7085], zoom: 14.3,
   width: 800, height: 500,
+  images: {pin},
   markers: [placesLayer],
 });
 
@@ -65,7 +66,8 @@ const {image, contentType} = await renderToImage({...options, rasteriser});`,
             const map = base(el.querySelector('.live'), view);
             map.setMissingStyleImageResolver(id => { const s = shield(id); if (s) return map.addImage(id, s.svg, s); });
             await loaded(map);
-            map.addMarkerLayer(structuredClone(markers));
+            await addImages(map);
+            addMarkers(map, markers);
             row.out('Move the live map. The image stays as the server made it.'); return map; }},
 ];
 

@@ -25,11 +25,12 @@ uses the same renderer and has its own tests in a browser.
 ## Why use this library
 
 - **It is small.** A page with a map transfers about 90 KB of script (gzip): about 29 KB for the page script of
-  `@map-jr/map-jr-gl` and about 60 KB for the worker file. MapLibre GL JS 6.17 transfers about 444 KB (page script, worker
+  `@map-jr/map-jr-gl` and about 61 KB for the worker file. MapLibre GL JS 6.17 transfers about 444 KB (page script, worker
   and CSS). The smaller size does not include a globe and other projections, sky, fog, custom layers and the other
   items in [What is not available](docs/maplibre-compatibility.md#what-is-not-available).
 - **It does not block your page.** The map draws in a worker. Your page stays responsive while the map moves.
-- **It draws many markers.** A marker layer draws 100,000 SVG markers at 60 frames per second.
+- **It draws many markers.** A marker layer draws 100,000 SVG markers at 60 frames per second. A marker layer is a
+  symbol layer of the style with an SVG template as its image.
 - **It draws on the server.** You can render the first view of a map as SVG or as an image, without a browser.
   This works on Node.js and on Cloudflare Workers.
 - **It includes elevation tools.** 3D terrain, relief shading, contour lines and elevation queries use one
@@ -49,16 +50,16 @@ These figures are written by `pnpm status`. They compare this library with MapLi
 
 | Measure | Result |
 |---|---|
-| Unit tests | 44 pass, 0 fail |
+| Unit tests | 47 pass, 0 fail |
 | MapLibre expression tests | 330 of 425 pass |
 | MapLibre `Map` methods | 118 of 150 are available; 12 more are accepted and have no effect |
 | MapLibre plugins, run in a browser | 15 of 15 work (see [Plugins and frameworks](docs/ecosystem.md)) |
 | Plugins and frameworks, read from npm | 17 of 26 use only API that the library has |
 | Example pages of the MapLibre documentation, with this library in place of MapLibre | 110 of 142 work. Most of the others need a globe, another projection or a custom 3D layer. |
 | MapLibre render tests | 819 of 1429 are the same (1% of pixels or less are different). 280 more are near (5% or less). |
-| Page script (gzip) | 32 KB. MapLibre GL JS: 299 KB. |
-| Worker script (gzip) | 60 KB. MapLibre GL JS: 145 KB. |
-| Server renderer (gzip) | 37 KB |
+| Page script (gzip) | 31 KB. MapLibre GL JS: 299 KB. |
+| Worker script (gzip) | 61 KB. MapLibre GL JS: 145 KB. |
+| Server renderer (gzip) | 38 KB |
 <!-- status:end -->
 
 The library is new. Read [MapLibre compatibility](docs/maplibre-compatibility.md) before you use it in production.
@@ -193,18 +194,18 @@ The library has a default export for such plugins only, because some of them con
 
 ### Add markers
 
-A marker layer draws many markers on the map canvas. Each marker is an SVG template with values from your data.
+A marker layer draws many markers on the map canvas. It draws an image at each position, and the image can be an SVG
+template that each marker fills with its values.
 
-With `@map-jr/map-jr-gl`, a marker layer is an entry of `markers` in the description:
+With `@map-jr/map-jr-gl`, an image is an entry of `images` in the description, and a marker layer is an entry of
+`markers`:
 
 ```js
 import {createMap} from '@map-jr/map-jr-gl';
 
 const places = {
   id: 'places',
-  svg: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="{{color}}"/></svg>',
-  width: 24,
-  height: 24,
+  image: 'disc',
   data: [
     {lngLat: [-74.006, 40.7128], props: {color: '#d6453d', name: 'City Hall'}},
     {lngLat: [-73.9857, 40.7484], props: {color: '#2f7fd1', name: 'Empire State Building'}},
@@ -214,23 +215,17 @@ const places = {
 const map = createMap(document.getElementById('map'), {
   style: 'https://tiles.openfreemap.org/styles/liberty',
   initialView: {center: [-73.996, 40.73], zoom: 11.5},
+  images: {disc: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="{{color}}"/></svg>'},
   markers: [places],
-});
-
-map.listen('markerclick', event => {
-  event.layer.openPopup(event.index, event.marker.props.name);
-});
-```
-
-With `@map-jr/map-jr-gl/maplibre-compat`, `map` is a `Map`, and the same layer and listener are method calls:
-
-```js
-map.addMarkerLayer(places);
-
-map.on('markerclick', event => {
-  event.layer.openPopup(event.index, event.marker.props.name);
+  // A marker is a feature of its layer: a click has it in `features`.
+  interactiveLayers: ['places'],
+  onClick: event => console.log(event.features[0]?.properties.name),
 });
 ```
+
+A marker layer is shorthand for a GeoJSON source and a symbol layer of the style. With
+`@map-jr/map-jr-gl/maplibre-compat`, write those yourself, as with MapLibre GL JS (`map.addImage`, `map.addSource`,
+`map.addLayer`). [Markers](docs/markers.md) has the code.
 
 For a small number of markers with HTML content, use `map.overlay` (`@map-jr/map-jr-gl`) or `Marker` and `Popup`
 (`@map-jr/map-jr-gl/maplibre-compat`, the same API as MapLibre GL JS). See [Markers](docs/markers.md).
@@ -378,19 +373,19 @@ build and other configurations.
 ## Speed
 
 <!-- speed:start -->
-Measured by the workflow [Browsers](https://github.com/map-jr/map-jr-gl/tree/bench-results) on 2026-11-12 (commit a7ea4e8). Each cell is MapLibre GL JS 6.17.0 / **this library** (worker renderer where the browser has it).
+Measured by the workflow [Browsers](https://github.com/map-jr/map-jr-gl/tree/bench-results) on 2026-11-13 (commit cd2ec92). Each cell is MapLibre GL JS 6.17.0 / **this library** (worker renderer where the browser has it).
 
 | System, browser | Load to idle, ms | Frames per second, map moving | Frames per second, 10,000 markers |
 |---|---|---|---|
-| macOS, Chromium | 1789 / **722** | 22 / **29** | 2 / **24** |
-| macOS, Firefox | 4239 / **3649** | 3 / **62** | 4 / **7** |
-| macOS, WebKit | 2696 / **1234** | 56 / **55** | 2 / **60** |
-| Linux, Chromium | 622 / **786** | 16 / **15** | 3 / **17** |
-| Linux, Firefox | 1879 / **1593** | 17 / **59** | 4 / **57** |
-| Linux, WebKit | 1625 / **1077** | 21 / **19** | 4 / **17** |
-| Windows, Chromium | 1196 / **1444** | 43 / **34** | 2 / **32** |
-| Windows, Firefox | 1480 / **1724** | 36 / **21** | 4 / **21** |
-| Windows, WebKit | 1514 / **1487** | 19 / **17** | 4 / **16** |
+| macOS, Chromium | 1737 / **834** | 46 / **34** | 2 / **29** |
+| macOS, Firefox | 5250 / **6457** | 2 / **60** | 2 / **60** |
+| macOS, WebKit | 2559 / **1245** | 53 / **57** | 6 / **61** |
+| Linux, Chromium | 571 / **849** | 15 / **15** | 3 / **15** |
+| Linux, Firefox | 1971 / **1564** | 17 / **58** | 5 / **58** |
+| Linux, WebKit | 2289 / **940** | 13 / **14** | 2 / **13** |
+| Windows, Chromium | 1275 / **1764** | 41 / **28** | 2 / **25** |
+| Windows, Firefox | 1274 / **1519** | 36 / **26** | 5 / **21** |
+| Windows, WebKit | 1701 / **1495** | 14 / **15** | 3 / **14** |
 <!-- speed:end -->
 
 These computers are virtual machines, and those for Linux and Windows have no GPU: use the table to compare the
@@ -406,7 +401,7 @@ To measure on your device, open [the benchmark page](https://map-jr.github.io/ma
 - [React](docs/react.md): the component, the hooks, server rendering.
 - [Svelte](docs/svelte.md): an action and a store.
 - [Loading](docs/loading.md): how the files load, and how to change that.
-- [Markers](docs/markers.md): marker layers, callouts, and DOM markers.
+- [Markers](docs/markers.md): marker layers, images that are SVG templates, and DOM markers.
 - [Terrain and elevation](docs/terrain-and-elevation.md): terrain, relief shading, contour lines, elevation queries.
 - [Server rendering](docs/server-rendering.md): SVG and images on Node.js and Cloudflare Workers.
 - [Accessibility](docs/accessibility.md): what the library does for keyboard users and assistive technology, and what it

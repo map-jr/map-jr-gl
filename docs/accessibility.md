@@ -17,7 +17,7 @@ yet. It applies to the two entries (`@map-jr/map-jr-gl` and `@map-jr/map-jr-gl/m
 
 ## What the library does not do yet
 
-- **Marker layers are not visible to assistive technology.** They are drawn on the canvas. When the markers carry
+- **Marker layers and symbol layers are not visible to assistive technology.** They are drawn on the canvas. When the markers carry
   information that a user needs, give the same information in the page, for example as a list next to the map
   that moves the map to a place. For a small number of places, use `map.overlay` (`@map-jr/map-jr-gl`) or `Marker`
   (`@map-jr/map-jr-gl/maplibre-compat`): these are elements of the page.

@@ -74,9 +74,9 @@ export interface LabelSrc {
     };
 }
 /**
- * The icons of a symbol layer that are always shown and that no label avoids: no text, at a point, with
- * `icon-allow-overlap` and `icon-ignore-placement`. They need no place among the labels, so the GPU has them in a
- * buffer of the tile, and a frame costs the same for ten of them and for 100,000.
+ * The icons of a symbol layer that are always shown: no text, at a point, with `icon-allow-overlap`. They need no
+ * place among the labels, so the GPU has them in a buffer of the tile, and a frame costs the same for ten of them and
+ * for 100,000.
  */
 export interface IconBatch {
     /** The names of the images, each one time. */
@@ -87,6 +87,8 @@ export interface IconBatch {
     pos: Float32Array;
     /** Present when the property has a value for each feature: `icon-rotate` in radians; `icon-size` at the zoom of the tile and at the next; `icon-opacity`. */
     rotate?: Float32Array; size?: Float32Array; alpha?: Float32Array;
+    /** Labels keep away from these icons (`icon-ignore-placement` is not set): the map gives each one its space when it places the labels. */
+    avoid?: boolean;
 }
 export interface TileIR { layers: Record<string, Batch>; labels: Record<string, LabelSrc[]>; icons?: Record<string, IconBatch> }
 
@@ -144,8 +146,9 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
             type Piece = {base: any; ring: number[]; type: number; along: boolean; spacing: number; key: number};
             const pieces: Piece[] = [], starts = new Map<string, Piece>(), ends = new Map<string, Piece>();
             // (The icons of `IconBatch`. The layer gives them one anchor, offset, alignment and colour, and no order.)
-            const plain = direct && !sorted && !p.iconAnchor.dd && !p.iconOffset.dd && !p.iconAlign.dd && !p.iconColor.dd;
+            const plain = direct && !sorted && !p.iconAnchor.dd && !p.iconOffset.dd && !p.iconAlign.dd && !p.iconColor.dd && !p.iconPadding.dd;
             const iconNames = new Map<string, number>(), iconName: number[] = [], iconPos: number[] = [], iconRotate: number[] = [], iconSize: number[] = [], iconAlpha: number[] = [];
+            let iconAvoid: boolean | undefined;
             for (const f of vl.features) {
                 ctx.f = f;
                 f.state = f.id === undefined ? undefined : states?.[L.source!]?.[`${L.sourceLayer ?? ''}|${f.id}`];
@@ -227,7 +230,7 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
                     // Everything a feature's labels have in common lives on a shared object behind each label, so a
                     // road with twenty anchors does not carry twenty copies of its text, colours and fonts.
                     const ic = base.icon;
-                    if (plain && ic && !text && !along && ic.overlap && ic.ignore && ic.fit === 'none' && !(ic.haloWidth > 0 && ic.halo[3] > 0)) {
+                    if (plain && ic && !text && !along && ic.overlap && ic.fit === 'none' && !(ic.haloWidth > 0 && ic.halo[3] > 0) && (iconAvoid ??= !ic.ignore) === !ic.ignore) {
                         let n = iconNames.get(ic.name);
                         if (n === undefined) iconNames.set(ic.name, n = iconNames.size);
                         iconName.push(n); iconPos.push(a[0], a[1]); iconRotate.push(ic.rotate * Math.PI / 180); iconSize.push(ic.size, ic.size1); iconAlpha.push(ic.opacity);
@@ -241,7 +244,7 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
             }
             // symbol-sort-key: lower keys are placed first, so they win when labels compete for space.
             if (iconName.length) (out.icons ??= {})[L.id] = {names: [...iconNames.keys()], name: Uint32Array.from(iconName), pos: Float32Array.from(iconPos),
-                rotate: p.iconRotate.dd ? Float32Array.from(iconRotate) : undefined, size: p.iconSize.dd ? Float32Array.from(iconSize) : undefined, alpha: p.iconOpacity.dd ? Float32Array.from(iconAlpha) : undefined};
+                rotate: p.iconRotate.dd ? Float32Array.from(iconRotate) : undefined, size: p.iconSize.dd ? Float32Array.from(iconSize) : undefined, alpha: p.iconOpacity.dd ? Float32Array.from(iconAlpha) : undefined, avoid: iconAvoid};
             if (sorted) { const order = labels.map((_, i) => i).sort((a, b) => keys[a] - keys[b] || a - b); out.labels[L.id] = order.map(i => labels[i]); continue; }
             if (labels.length) out.labels[L.id] = labels;
             continue;

@@ -305,31 +305,6 @@ void main() {
   o = accent * (1.0 - shadeColor.a) + shadeColor;
 }`],
 
-    // Instanced markers. Mercator positions arrive as high + low float pairs and are subtracted from the centre
-    // (split the same way) before anything else, which keeps sub-pixel precision at any zoom.
-    marker: [`uniform vec2 u_view; uniform vec2 u_centre; uniform vec4 u_center; uniform float u_world; uniform vec2 u_rot; uniform vec3 u_pitch;
-uniform vec2 u_size; uniform vec2 u_offset; uniform vec2 u_tex;
-layout(location=0) in vec2 a_corner; layout(location=1) in vec4 a_merc; layout(location=2) in vec4 a_rect; layout(location=3) in vec2 a_scale;
-layout(location=4) in float a_height; uniform vec2 u_lift; // metres to pixels (exaggerated), and the height of the map centre in pixels
-uniform float u_opacity; out vec2 v_uv; out float v_alpha; // a_corner is 0 or 1 on each axis out vec2 v_uv; out float v_alpha;
-void main() {
-  float dx = (a_merc.x - u_center.x) + (a_merc.y - u_center.y);
-  dx -= floor(dx + 0.5); // nearest copy of the world
-  float dy = (a_merc.z - u_center.z) + (a_merc.w - u_center.w);
-  vec2 w = vec2(dx, dy) * u_world;
-  float rx = u_rot.x * w.x - u_rot.y * w.y, ry = u_rot.y * w.x + u_rot.x * w.y;
-  float z = a_height * u_lift.x - u_lift.y; // above the ground at the map centre; zero without 3D terrain
-  float k = u_pitch.z / (u_pitch.z - ry * u_pitch.y - z * u_pitch.x);
-  vec2 corner = a_corner;
-  // Markers stay upright and keep their size; a scale other than 1 grows them about their anchor point.
-  vec2 px = vec2(rx * k, (ry * u_pitch.x - z * u_pitch.y) * k) + u_centre + (u_offset + corner * u_size) * a_scale.x;
-  v_alpha = a_scale.y * u_opacity;
-  v_uv = (a_rect.xy + corner * a_rect.zw) / u_tex;
-  vec2 c = px / u_view * 2.0 - 1.0;
-  gl_Position = a_scale.x > 0.0 && v_alpha > 0.0 ? vec4(c.x, -c.y, 0.0, 1.0) : vec4(2.0, 2.0, 2.0, 1.0);
-}`, `
-uniform sampler2D u_img; in vec2 v_uv; in float v_alpha; out vec4 o; void main() { o = texture(u_img, v_uv) * v_alpha; }`],
-
     // The icons of a tile that need no place among the labels (see `IconBatch`). The GPU finds the place of each one
     // from its point in the tile, as for circles. `a_v`: the point, and the corner in the texture. `a_d`: the corner
     // from the centre of the icon in pixels at size 1, and 1 for a distance-field icon.
@@ -429,7 +404,6 @@ export interface Scene {
     items: Map<string, RenderItem<GLTile>[]>;
     labels: Placed[];
     atlas: GlyphAtlas;
-    markers: MarkerBuffers[];
     /** 3D terrain: the ground tiles to draw, and a lookup of the heights under any tile (for buildings). */
     terrain?: {exaggeration: number; tiles: TerrainTile[]; dem(id: TileID): DemRef | null};
     /** The light on buildings. */
@@ -445,11 +419,6 @@ export const SPRITE_ATLAS = 2048;
 const LIGHT_X = -1, LIGHT_Y = -1, LIGHT_TURN = 1;
 
 type IconOf = (name: string) => {x: number; y: number; width: number; height: number; pixelRatio: number; custom?: boolean; sdf?: boolean} | undefined;
-/** Floats per marker vertex: mercator x and y each split into high and low parts, atlas rectangle, corner, scale, opacity. */
-export const MARKER_STRIDE = 12;
-/** Each marker is four such vertices. */
-export const MARKER_FLOATS = MARKER_STRIDE * 4;
-export interface MarkerBuffers { vao: WebGLVertexArrayObject; buffer: WebGLBuffer; index: WebGLBuffer; /** Ground height in metres under each marker (per vertex), for 3D terrain. */ heights: WebGLBuffer; count: number; width: number; height: number; offset: [number, number]; /** Whole-layer opacity, used to fade a layer in and out at the ends of its zoom range. */ opacity: number }
 
 export class GLRenderer {
     gl: WebGL2RenderingContext;
@@ -680,7 +649,7 @@ export class GLRenderer {
 
     /**
      * Draws the icons of the layers `from` to `to` (not `to` itself) that the tiles have in buffers. With 3D terrain an
-     * icon stands on the ground, and ground in front of it does not hide it (as for the markers of a marker layer).
+     * icon stands on the ground, and ground in front of it does not hide it.
      */
     private drawIcons(s: Scene, tr: Transform, from: number, to: number) {
         const gl = this.gl, zoom = tr.zoom;
@@ -783,47 +752,7 @@ export class GLRenderer {
         for (const b of Object.values(t.icons ?? {})) { this.gl.deleteVertexArray(b.vao); for (const buf of b.bufs) this.gl.deleteBuffer(buf); }
     }
 
-    /** Creates or replaces the GPU buffers for a marker layer. `data` holds MARKER_FLOATS floats per marker. */
-    setMarkers(old: MarkerBuffers | undefined, data: Float32Array, count: number, width: number, height: number, offset: [number, number]): MarkerBuffers {
-        const gl = this.gl;
-        if (old) this.removeMarkers(old);
-        const vao = gl.createVertexArray()!, buffer = gl.createBuffer()!;
-        gl.bindVertexArray(vao);
-        gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-        gl.bufferData(gl.ARRAY_BUFFER, data, gl.DYNAMIC_DRAW);
-        for (const [loc, size, at] of [[1, 4, 0], [2, 4, 4], [0, 2, 8], [3, 2, 10]]) {
-            gl.enableVertexAttribArray(loc);
-            gl.vertexAttribPointer(loc, size, gl.FLOAT, false, MARKER_STRIDE * 4, at * 4);
-        }
-        const heights = gl.createBuffer()!;
-        gl.bindBuffer(gl.ARRAY_BUFFER, heights);
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(count * 4), gl.DYNAMIC_DRAW);
-        gl.enableVertexAttribArray(4);
-        gl.vertexAttribPointer(4, 1, gl.FLOAT, false, 0, 0);
-        // Plain indexed quads rather than instancing, which software renderers execute very slowly.
-        const idx = new Uint32Array(count * 6), index = gl.createBuffer()!;
-        for (let i = 0; i < count; i++) idx.set([i * 4, i * 4 + 1, i * 4 + 2, i * 4 + 1, i * 4 + 3, i * 4 + 2], i * 6);
-        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, index);
-        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, idx, gl.STATIC_DRAW);
-        gl.bindVertexArray(null);
-        return {vao, buffer, index, heights, count, width, height, offset, opacity: 1};
-    }
-
-    /** Sets the ground height under each marker of a layer (one value per marker, in metres). */
-    setMarkerHeights(m: MarkerBuffers, metres: Float32Array) {
-        const gl = this.gl, perVertex = new Float32Array(m.count * 4);
-        for (let i = 0; i < m.count; i++) perVertex.fill(metres[i], i * 4, i * 4 + 4);
-        gl.bindBuffer(gl.ARRAY_BUFFER, m.heights);
-        gl.bufferSubData(gl.ARRAY_BUFFER, 0, perVertex);
-    }
-    removeMarkers(m: MarkerBuffers) { this.gl.deleteVertexArray(m.vao); this.gl.deleteBuffer(m.buffer); this.gl.deleteBuffer(m.index); this.gl.deleteBuffer(m.heights); }
-    /** Rewrites the instance data of one marker, or of a run of markers that starts at `index`. */
-    updateMarker(m: MarkerBuffers, index: number, values: Float32Array) {
-        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, m.buffer);
-        this.gl.bufferSubData(this.gl.ARRAY_BUFFER, index * MARKER_FLOATS * 4, values);
-    }
-
-    /** Copies premultiplied RGBA pixels for one marker image into the sprite atlas. */
+    /** Copies premultiplied RGBA pixels for one image into the texture of the images that are added at runtime. */
     uploadSprite(x: number, y: number, w: number, h: number, pixels: Uint8Array) {
         const gl = this.gl;
         gl.bindTexture(gl.TEXTURE_2D, this.spriteTex);
@@ -1474,28 +1403,6 @@ export class GLRenderer {
 
         this.drawIcons(s, tr, above, s.layers.length);
 
-        if (s.markers.length) {
-            // Markers are positioned by the GPU from their map coordinates: nothing is recomputed per marker per frame.
-            const u = use('marker'), split = (v: number) => { const hi = Math.fround(v); return [hi, v - hi]; };
-            const a = -tr.bearing * Math.PI / 180, p = tr.pitch * Math.PI / 180;
-            gl.activeTexture(gl.TEXTURE0);
-            gl.bindTexture(gl.TEXTURE_2D, this.spriteTex);
-            gl.uniform1i(u.u_img, 0);
-            gl.uniform2f(u.u_tex, SPRITE_ATLAS, SPRITE_ATLAS);
-            gl.uniform4f(u.u_center, ...split(mercX(tr.lng)) as [number, number], ...split(mercY(tr.lat)) as [number, number]);
-            gl.uniform1f(u.u_world, tr.worldSize);
-            gl.uniform2f(u.u_rot, Math.cos(a), Math.sin(a));
-            gl.uniform3f(u.u_pitch, Math.cos(p), Math.sin(p), tr.cameraDistance);
-            gl.uniform2f(u.u_centre, tr.cx, tr.cy);
-            gl.uniform2f(u.u_lift, (s.terrain?.exaggeration ?? 0) * tr.pixelsPerMetre, s.terrain ? tr.elevation * tr.pixelsPerMetre : 0);
-            for (const m of s.markers) {
-                gl.uniform2f(u.u_size, m.width, m.height);
-                gl.uniform2f(u.u_offset, m.offset[0], m.offset[1]);
-                gl.uniform1f(u.u_opacity, m.opacity);
-                gl.bindVertexArray(m.vao);
-                gl.drawElements(gl.TRIANGLES, m.count * 6, gl.UNSIGNED_INT, 0);
-            }
-        }
         gl.bindVertexArray(null);
         return behind;
     }

@@ -18,11 +18,18 @@ export default function (container, {show, button}) {
     report();
   });
 
-  let layer = null;
+  // The markers: a source with a point for each place, and a symbol layer with an image. The image is an SVG template
+  // (an addition of this library), and each feature fills its slot `color`.
+  map.addImage('dot', dot, {width: 14, height: 14});
+  let shown = false;
   button('Add markers', b => {
-    if (layer) { layer.remove(); layer = null; }
-    else layer = map.addMarkerLayer({id: 'pins', svg: dot, width: 14, height: 14, data: places.map(lngLat => ({lngLat, props: {color: '#d6453d'}}))});
-    b.textContent = layer ? 'Remove markers' : 'Add markers';
+    if (shown) { map.removeLayer('pins'); map.removeSource('pins'); }
+    else {
+      map.addSource('pins', {type: 'geojson', data: {type: 'FeatureCollection', features: places.map(coordinates => ({type: 'Feature', properties: {color: '#d6453d'}, geometry: {type: 'Point', coordinates}}))}});
+      map.addLayer({id: 'pins', type: 'symbol', source: 'pins', layout: {'icon-image': 'dot', 'icon-allow-overlap': true, 'icon-ignore-placement': true}});
+    }
+    shown = !shown;
+    b.textContent = shown ? 'Remove markers' : 'Add markers';
   });
   button('Tilt', () => map.easeTo({pitch: map.getPitch() ? 0 : 50, duration: 600}));
   return map;
