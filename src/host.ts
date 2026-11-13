@@ -12,6 +12,7 @@ import {createStore, type Readable} from './store.ts';
 import {Marker, Popup, type OverlayAnchor} from './overlays.ts';
 import {markerFeatures, markerStyle, withMarkers, type MarkerLayerOptions} from './markers.ts';
 import type {QueriedFeature} from './query.ts';
+import type {Control, ControlPosition} from './controls.ts';
 import type {Checked} from './mistakes.ts';
 import type {FontSource} from './engine.ts';
 import type {LngLatBounds, LngLatBoundsInput} from './lnglat.ts';
@@ -23,7 +24,7 @@ import type {LngLatBounds, LngLatBoundsInput} from './lnglat.ts';
 declare const __DEV__: boolean;
 
 /** The description of a control: see `@map-jr/map-jr-gl/controls`. Controls with the same `key` are the same control. */
-export interface ControlSpec { key: string; position?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'; create(): {onAdd(map: Map): HTMLElement; onRemove(map: Map): void} }
+export interface ControlSpec { key: string; position?: ControlPosition; create(): Control }
 
 /**
  * A position that the application gives: `[lng, lat]`. It is `readonly number[]` and not a pair, because TypeScript
@@ -379,7 +380,7 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
         if (next.controls !== before?.controls) {
             const wanted = new Set((next.controls ?? []).map(c => c.key));
             for (const [key, c] of controls) if (!wanted.has(key)) { map.removeControl(c as any); controls.delete(key); }
-            for (const c of next.controls ?? []) if (!controls.has(c.key)) { const made = c.create(); controls.set(c.key, made); map.addControl(made as any, c.position); }
+            for (const c of next.controls ?? []) if (!controls.has(c.key)) { const made = c.create(); controls.set(c.key, made); map.addControl(made, c.position); }
         }
         if (next.cursor !== before?.cursor) map.setCursor(next.cursor ?? '');
         if (next.images !== before?.images) {
