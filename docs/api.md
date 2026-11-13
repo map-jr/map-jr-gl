@@ -457,7 +457,9 @@ A query whose map goes away is rejected, so that code that awaits it does not wa
 Catch the error where a query can be open while the map is removed, for example in a handler of a component that
 can unmount. `watchFeatures` needs no such code: it does not call its listener after `destroy()`, and after a lost
 context it asks again by itself. When its listener throws, the browser reports the error as an unhandled rejection,
-and the watch goes on.
+and the watch goes on. When the question itself is wrong (for example a place that is not `{x, y}` or `[lng, lat]`),
+the rejection is an `error` event of the map (`onError`, or the console when there is no `onError`), once until the
+answer changes.
 
 For users of MapLibre GL JS: `queryRenderedFeatures` is `queryFeatures` without `sources`, and
 `querySourceFeatures` is `queryFeatures(undefined, {sources: [id]})`. The two MapLibre methods are in the entry
