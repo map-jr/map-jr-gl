@@ -66,6 +66,11 @@ These changes matter if you used a build of the repository from before 2026-11-1
   later ([#61]). The same is true for two `setData` calls with URLs ([#81]).
 - A query is rejected when the map is removed or loses its WebGL context. When a listener throws, the map fires
   `error`, and the listeners after it get the event ([#109]).
+- A map with the worker renderer goes to the main thread and writes one warning when the worker loses its WebGL
+  context before its first frame, loses it twice within 10 seconds, or does not draw in the 5 seconds after the map
+  has started it again. Before, the map started a worker again without end and did not load. When the main thread
+  fails in the same way after a restart, the map fires `error`
+  ([issue 78](https://github.com/map-jr/map-jr-gl/issues/78), [#110]).
 - A map that cannot start, for example without WebGL2, fires one `error` that says what to do, and it shows a
   message in the container (an element with the class `map-jr-unavailable`). Before, the container stayed empty
   ([#116]).
@@ -93,9 +98,10 @@ These changes matter if you used a build of the repository from before 2026-11-1
 - **The server renderer** does not draw heatmap and hillshade layers.
 - **Terrain, hillshade and contour lines** need `OffscreenCanvas` in a worker. No automatic run covers a browser
   without it, a real iPhone or Android. See [Browser support](docs/browser-support.md).
-- **Safari 27.2 on a hosted macOS runner** loses the WebGL context of a worker, and the map with the worker
-  renderer does not load there ([issue 78](https://github.com/map-jr/map-jr-gl/issues/78)). The same Safari draws
-  in a worker on a Mac with a GPU.
+- **Safari 27.2 on a hosted macOS runner** cannot use the worker renderer: a worker draws one frame and then
+  stops, and its WebGL context is lost. Since [#110] the map goes to the main thread there and loads (seen in one
+  run of the Safari job). The cause is not known. A worker that stops with no lost context at the first start is
+  not detected. The same Safari draws in a worker on a Mac with a GPU.
 - The package contains ES modules only. `require('@map-jr/map-jr-gl')` does not work.
 - The [open issues](https://github.com/map-jr/map-jr-gl/issues) list the other known faults by priority.
 
@@ -115,6 +121,7 @@ These changes matter if you used a build of the repository from before 2026-11-1
 [#98]: https://github.com/map-jr/map-jr-gl/pull/98
 [#106]: https://github.com/map-jr/map-jr-gl/pull/106
 [#109]: https://github.com/map-jr/map-jr-gl/pull/109
+[#110]: https://github.com/map-jr/map-jr-gl/pull/110
 [#115]: https://github.com/map-jr/map-jr-gl/pull/115
 [#116]: https://github.com/map-jr/map-jr-gl/pull/116
 [#117]: https://github.com/map-jr/map-jr-gl/pull/117

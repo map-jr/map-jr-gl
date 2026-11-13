@@ -24,7 +24,7 @@ in `@map-jr/map-jr-gl`, and `map.renderer` in `@map-jr/map-jr-gl/maplibre-compat
 
 | Feature | What it needs | What happens without it | Where it comes from |
 |---|---|---|---|
-| Worker renderer | `transferControlToOffscreen` on a canvas, a WebGL2 context in a worker, and tile workers that started | The map draws on the main thread and writes a warning to the console. `renderer: 'worker'` falls back in the same way. | Code: `src/map.ts`, `src/worker.ts` |
+| Worker renderer | `transferControlToOffscreen` on a canvas, a WebGL2 context in a worker, and tile workers that started | The map draws on the main thread and writes a warning to the console. `renderer: 'worker'` falls back in the same way. The map also goes to the main thread later, when the worker loses its WebGL context before its first frame, loses it twice within 10 seconds, or does not draw in the 5 seconds after a restart. A worker that stops drawing with no lost context at the first start is not detected. | Code: `src/map.ts`, `src/worker.ts` |
 | Main-thread renderer | A WebGL2 context on the page | See "What is required". | Code: `src/gl.ts` |
 | Tile workers | Workers that the page is allowed to start | The tiles are built on the main thread, and the map writes a warning. | Code: `src/map.ts` |
 | Elevation tiles (3D terrain, hillshade, contour lines, elevation queries) | `OffscreenCanvas` with a 2D context and `createImageBitmap` in a worker | The elevation tiles are not decoded. Safari before 16.4 does not have `OffscreenCanvas` in workers. | Code: `src/contour.ts`; the Safari version is from issue 17 and no run tested it |
@@ -70,7 +70,7 @@ third line. It runs only when somebody starts the workflow by hand
 
 | Browser | Where | Seen |
 |---|---|---|
-| Safari 27.2, macOS 26.7.2 | Hosted GitHub runner with a virtual GPU, through `safaridriver` | A worker has `OffscreenCanvas` with a WebGL2 context and a 2D context. The map loads with the main-thread renderer. With the worker renderer, the WebGL context is lost at once and the map does not load ([issue 78](https://github.com/map-jr/map-jr-gl/issues/78)). |
+| Safari 27.2, macOS 26.7.2 | Hosted GitHub runner with a virtual GPU, through `safaridriver` | A worker has `OffscreenCanvas` with a WebGL2 context and a 2D context. The map loads with the main-thread renderer. With the worker renderer, a worker draws one frame and then answers nothing, and its WebGL context is lost about 2.4 seconds later. A second worker does the same with no event (the debug record of run 43328734147). The map then goes to the main thread and loads: run 43334734769 (commit `ceb1b8c`, 2026-11-13) reports "worker: loaded, renderer main", and 21.9 seconds from load to idle on the benchmark page. Why the worker stops is not known ([issue 78](https://github.com/map-jr/map-jr-gl/issues/78)). |
 | Safari 27.2 | The owner's Mac with a GPU, by hand | The worker renderer works. No numbers were recorded. |
 | Safari 26.5, iOS 26.5 | iOS Simulator (iPhone 17 Pro) on the hosted runner | The map loads with the worker renderer and with the main-thread renderer. The benchmark did not finish, so there are no numbers. |
 
