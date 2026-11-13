@@ -1,10 +1,10 @@
 import {heightsChanged} from './geo.ts';
 import {EXTENT, HEIGHT_GRID, TILE_SIZE, Transform, bezier, groundHeight, clamp, latFromMerc, lngFromMerc, mercX, mercY, type LngLatLike, type TileID} from './geo.ts';
-import {compileFor, type MapStates} from './expr.ts';
+import {compileFor, type Feature, type MapStates} from './expr.ts';
 import {VARIANT} from './markers.ts';
 import {layerRules} from './rules.ts';
 import {compileLayer, isGeometrySource, loadSprite, tileURL, type CompiledLayer, type FontSource, type ResolvedStyle, type Sprite, type SpriteIcon} from './style.ts';
-import {GLRenderer, MARKER_FLOATS, MARKER_STRIDE, SPRITE_ATLAS, type DemRef, type GLTile, type MarkerBuffers, type TerrainTile} from './gl.ts';
+import {GLRenderer, SPRITE_ATLAS, type DemRef, type GLTile, type TerrainTile} from './gl.ts';
 import {CollisionGrid, placeLabels, renderItems, type Placed, type RenderItem} from './placement.ts';
 import {GlyphAtlas} from './text.ts';
 import {fetchWith, withTimeout, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
@@ -19,7 +19,6 @@ export interface EngineOptions extends CameraOptions {
     style: ResolvedStyle; width: number; height: number; dpr: number; fontFamily: string; fonts?: FontSource[];
     minZoom?: number; maxZoom?: number; maxPitch?: number; antialias?: boolean;
 }
-export interface MarkerImage { variant: number; w: number; h: number; data: Uint8Array }
 export interface FeatureQuery { radius: number; zoom?: number; sources?: string[]; sourceLayers?: string[]; filter?: unknown; geometry?: boolean }
 export type Command =
     | {type: 'resize'; width: number; height: number; dpr: number}
@@ -36,18 +35,11 @@ export type Command =
     /** Throws away a source's tiles (all sources if none is named) and loads them again. */
     | {type: 'refresh'; source?: string}
     | {type: 'style'; style: ResolvedStyle; reload: boolean; /** A number for each source that changes when the page changes what its tiles are built from. */ versions?: Record<string, number>}
-    | {type: 'markers'; id: string; width: number; height: number; offset: [number, number]; collide: boolean; minZoom: number; maxZoom: number; hideOverlaps: boolean;
-        merc: Float64Array; variant: Uint32Array; images: MarkerImage[]}
     /**
      * The images that are SVG templates: the slots of each one by name. `changed` has the names whose template is new,
      * other or gone: their variants are dropped and asked for again. `rebuild`: the slots are different, so tiles are built again.
      */
     | {type: 'templates'; slots: Record<string, string[]>; changed: string[]; rebuild: boolean}
-    | {type: 'removeMarkers'; id: string}
-    /** Animates one marker to a new size, about its anchor point. */
-    | {type: 'markerScale'; id: string; index: number; scale: number; duration: number}
-    /** A screen-space box pinned to a map position that labels must keep clear of (e.g. an open callout). Omit `box` to remove it. */
-    | {type: 'obstacle'; id: string; merc?: [number, number]; box?: [number, number, number, number]}
     | {type: 'fonts'; fonts: FontSource[]}
     | {type: 'image'; name: string; w: number; h: number; width: number; height: number; data: Uint8Array; stretchX?: [number, number][]; stretchY?: [number, number][]; content?: [number, number, number, number]; textFitWidth?: 'stretchOrShrink' | 'stretchOnly' | 'proportional'; textFitHeight?: 'stretchOrShrink' | 'stretchOnly' | 'proportional'}
     | {type: 'removeImage'; name: string}
@@ -109,13 +101,6 @@ function sourceSignature(style: ResolvedStyle, name: string): [string, string] {
 }
 
 interface TileState { state: 'loading' | 'ok' | 'error'; gl?: GLTile; /** An image tile that the server does not have (404). */ missing?: boolean; /** The zoom that the tile was built for (see `buildZoom`). */ band?: number; /** A number that changes each time the state or the content of the tile changes. */ rev?: number; /** Elevation tiles shaping 3D terrain: the lowest and highest ground on the tile, in metres. */ range?: [number, number]; /** An elevation tile: its heights, for when it shapes 3D terrain (see `ground`). */ dem?: {grid: Float32Array; lo: number; hi: number}; used: number; cancel(): void; /** Shown, but built from data that has since changed. */ stale?: boolean; rebuilding?: boolean; /** The tile worker that loaded the tile. */ backend?: number; /** The rules of the style that the tile was built for (see `sourceSignature`). */ rules?: string }
-interface MarkerLayer {
-    width: number; height: number; offset: [number, number]; collide: boolean; merc: Float64Array; variant: Uint32Array;
-    minZoom: number; maxZoom: number; hideOverlaps: boolean;
-    gpu?: MarkerBuffers; data?: Float32Array; scale?: Float32Array;
-    /** 3D terrain: which buffers and which set of elevation tiles the markers' ground heights were last worked out for. */
-    heightsFor?: MarkerBuffers; heightsVersion?: number;
-}
 interface LabelState { placed: Placed; opacity: number; target: number }
 
 const raf: (cb: (t: number) => void) => unknown = globalThis.requestAnimationFrame
@@ -194,11 +179,7 @@ export class Engine {
     private placeZoom = 0;
     private fade = FADE;
 
-    private markers = new Map<string, MarkerLayer>();
-    private spriteRects = new Map<number, [number, number, number, number]>();
     private spritePen = [1, 1, 0];
-    private markerAnims = new Map<string, {layer: string; index: number; from: number; to: number; start: number; duration: number}>();
-    private obstacles = new Map<string, {merc: [number, number]; box: [number, number, number, number]}>();
     private sprite: Sprite | null = null;
     private spriteUrl = '';
     private styleFonts = '';
@@ -267,7 +248,6 @@ export class Engine {
     private rawElevation = 0;
     private lastPose = '';
     private movedAt = 0;
-    private markerHeightsAt = 0;
     /** 3D terrain: the exaggeration in force this frame (zero when looking straight down, or with no terrain). */
     private exaggeration = 0;
     /** Counts changes to the style and its images, so cached terrain pictures know when they are out of date. */
@@ -354,7 +334,7 @@ export class Engine {
             if (st?.gl) this.renderer.destroyTile(st.gl);
             const state: {url: string; gl?: GLTile} = st = {url: src.url!};
             this.pictures.set(source, state);
-            this.fetchAs('Image')(src.url!).then(async res => {
+            withTimeout(this.fetchAs('Image'))(src.url!).then(async res => {
                 if (!res.ok) throw new Error(`Failed to load image ${src.url}: ${res.status}`);
                 const image = await createImageBitmap(await res.blob());
                 if (this.pictures.get(source) === state) { state.gl = this.renderer.createImageTile(image, undefined, {z: 0, x: 0, y: 0, w: 0, key: '0/0/0'}); this.styleVersion++; this.invalidate(); }
@@ -605,7 +585,7 @@ export class Engine {
         Promise.all(fonts.map(async f => {
             // The font file is fetched here and given to the browser as bytes. WebKit (Safari) does not load a font from a
             // URL inside a worker, and the labels then used a fallback font.
-            const bytes = await (await this.fetchAs('Font')(f.src)).arrayBuffer();
+            const bytes = await (await withTimeout(this.fetchAs('Font'))(f.src)).arrayBuffer();
             const face = new FontFace(f.family, bytes, {weight: String(f.weight ?? '400'), style: f.style ?? 'normal', ...(f.unicodeRange ? {unicodeRange: f.unicodeRange} : {})});
             set.add(await face.load());
         })).then(() => { this.atlas.clear(true); this.relabel(); },
@@ -719,25 +699,6 @@ export class Engine {
                     }
                 }
                 break;
-            case 'markers': {
-                for (const img of c.images) { const rect = this.addSprite(img.w, img.h, img.data); if (rect) this.spriteRects.set(img.variant, rect); }
-                // Re-sent data (e.g. after a property change) keeps each marker's current size when the count is unchanged.
-                const previous = this.markers.get(c.id), layer: MarkerLayer = {...c, gpu: previous?.gpu, scale: previous?.scale?.length === c.variant.length ? previous.scale : undefined};
-                this.markers.set(c.id, layer);
-                this.uploadMarkers(layer);
-                this.placeDirty = true;
-                break;
-            }
-            case 'removeMarkers': { const m = this.markers.get(c.id); if (m?.gpu) this.renderer.removeMarkers(m.gpu); this.markers.delete(c.id); this.placeDirty = true; break; }
-            case 'markerScale': {
-                const m = this.markers.get(c.id), from = m?.scale?.[c.index] ?? 1;
-                if (m) this.markerAnims.set(c.id + '|' + c.index, {layer: c.id, index: c.index, from, to: c.scale, start: performance.now(), duration: Math.max(1, c.duration)});
-                break;
-            }
-            case 'obstacle':
-                if (c.box && c.merc) this.obstacles.set(c.id, {merc: c.merc, box: c.box}); else this.obstacles.delete(c.id);
-                this.placeDirty = true;
-                break;
             case 'fonts': this.loadFonts(c.fonts); break;
             case 'image': {
                 this.dropImage(c.name);
@@ -850,12 +811,27 @@ export class Engine {
     /** The features that the given style layers draw in a rectangle of the screen, from the tiles of the present zoom. */
     private async queryRendered(c: Extract<Command, {type: 'queryRendered'}>): Promise<QueriedFeature[]> {
         const jobs: Promise<QueriedFeature[]>[] = [];
+        // (The symbol layers of the question whose features are tested with their icon, and the distance in pixels for their text.)
+        const radii = new Map<string, number>();
         for (const [name, src] of Object.entries(this.style.sources)) {
-            const sets = c.sets.filter(s => s.source === name);
-            if (!sets.length || !isGeometrySource(src)) continue;
-            for (const t of tilesUnderBox(this.tr, c.box, src.minzoom, src.maxzoom)) {
+            const mine = c.sets.filter(s => s.source === name);
+            if (!mine.length || !isGeometrySource(src)) continue;
+            // A feature of a symbol layer is found where its icon is drawn. The tiles are asked with a rectangle that
+            // has grown by the farthest reach of an icon of the layer, in the other direction (an icon that reaches 30
+            // pixels up from its point is under a pointer that is 30 pixels above the point). Each feature that
+            // comes back is then tested with its own icon (`underIcon`). Sets with the same rectangle are asked together.
+            const boxes = new Map<string, {box: number[]; sets: typeof mine; exact: boolean}>();
+            for (const s of mine) {
+                const L = this.layers.find(l => l.id === s.layer), reach = L?.type === 'symbol' ? this.iconReach(L) : null, r = s.radius;
+                if (reach) radii.set(s.layer, r);
+                const box = reach ? [c.box[0] - Math.max(reach[2], r), c.box[1] - Math.max(reach[3], r), c.box[2] - Math.min(reach[0], -r), c.box[3] - Math.min(reach[1], -r)] : c.box, key = box.join();
+                const group = boxes.get(key) ?? {box, sets: [], exact: !!reach};
+                group.sets.push(reach ? {...s, radius: 0} : s);
+                boxes.set(key, group);
+            }
+            for (const {box, sets, exact} of boxes.values()) for (const t of tilesUnderBox(this.tr, box, src.minzoom, src.maxzoom)) {
                 jobs.push(this.queryBackend(name, t.z, t.x, t.y).query(tileURL(src, t.z, t.x, t.y), {
-                    source: name, z: t.z, x: t.x, y: t.y, px: 0, py: 0, radius: 0, box: t.box, geometry: c.geometry,
+                    source: name, z: t.z, x: t.x, y: t.y, px: 0, py: 0, radius: 0, box: t.box, geometry: c.geometry || exact,
                     sets: sets.map(s => ({layer: s.layer, sourceLayer: s.sourceLayer, filter: s.filter, also: s.also, radius: s.radius * t.scale})),
                 }));
             }
@@ -863,6 +839,9 @@ export class Engine {
         // A feature with an id that is in two tiles is given one time.
         const seen = new Set<string>();
         return (await Promise.all(jobs)).flat().filter(f => {
+            const L = radii.has(f.layer!) && this.layers.find(l => l.id === f.layer);
+            if (L && !this.underIcon(L, f, c.box, radii.get(f.layer!)!)) return false;
+            if (L && !c.geometry) delete f.geometry;
             if (f.id === undefined) return true;
             const key = `${f.layer}|${f.source}|${f.sourceLayer}|${f.id}`;
             return seen.has(key) ? false : (seen.add(key), true);
@@ -1122,7 +1101,7 @@ export class Engine {
         this.lastTime = now;
         this.frameTime = began;
         if (tr.zoom !== this.zoomSeen) { if (!Number.isNaN(this.zoomSeen)) this.zoomMovedAt = began; this.zoomSeen = tr.zoom; }
-        const cameraAnimating = this.animate(now), markersAnimating = this.animateMarkers(now), animating = cameraAnimating;
+        const cameraAnimating = this.animate(now), animating = cameraAnimating;
         this.flushUploads();
 
         const items = new Map<string, RenderItem<GLTile>[]>(), all: RenderItem<GLTile>[] = [];
@@ -1188,17 +1167,6 @@ export class Engine {
             } else this.rawElevation = 0;
         }
         const ground = terrain ? this.terrainTiles(wanted) : undefined;
-        if (terrain && now - this.markerHeightsAt > 300) {
-            // Markers stand on the ground: look up the height under each when its layer or the elevation data changes.
-            for (const m of this.markers.values()) {
-                if (!m.gpu || (m.heightsFor === m.gpu && m.heightsVersion === this.demVersion)) continue;
-                const metres = new Float32Array(m.gpu.count);
-                for (let i = 0; i < metres.length; i++) metres[i] = this.rawHeightAt(m.merc[i * 2], m.merc[i * 2 + 1]);
-                this.renderer.setMarkerHeights(m.gpu, metres);
-                m.heightsFor = m.gpu; m.heightsVersion = this.demVersion;
-                this.markerHeightsAt = now;
-            }
-        }
         for (const source in this.style.sources) {
             // Skip sources nothing visible draws from at this zoom (e.g. low-zoom relief imagery when zoomed in). With 3D
             // terrain, the flat layers are drawn into the ground textures, which ask for their own tiles (see groundSources):
@@ -1300,20 +1268,18 @@ export class Engine {
         const place = this.placeDirty && now - this.lastPlace >= (zooming ? ZOOMING_PLACE_INTERVAL : PLACE_INTERVAL);
         if (place) this.fade = zooming ? ZOOMING_FADE : FADE;
         const grid = place ? new CollisionGrid() : null;
-        if (grid) this.reserve(grid);
         if (place) {
             this.placeDirty = false;
             this.lastPlace = now;
             this.placeZoom = tr.zoom;
             this.placeAngle = -tr.bearing * Math.PI / 180;
             const keep = new Set<string>(), resets = this.atlas.resets;
-            let placed = placeLabels(tr, all, this.layers, this.atlas, grid!, this.icon);
+            let placed = placeLabels(tr, all, this.layers, this.atlas, grid!, this.icon, L => this.reserve(grid!, items, L));
             if (this.atlas.resets !== resets) {
                 // The glyph atlas filled up and was emptied part-way through: earlier labels now point at stale
                 // glyphs. Place again; the fresh atlas only has to hold this view's text.
                 const again = new CollisionGrid();
-                this.reserve(again);
-                placed = placeLabels(tr, all, this.layers, this.atlas, again, this.icon);
+                placed = placeLabels(tr, all, this.layers, this.atlas, again, this.icon, L => this.reserve(again, items, L));
             }
             for (const p of placed) {
                 keep.add(p.key);
@@ -1361,13 +1327,6 @@ export class Engine {
                 this.iconsAll = false;
             }
         }
-        const markers: MarkerBuffers[] = [];
-        for (const m of this.markers.values()) {
-            if (!m.gpu?.count) continue;
-            // Fade over the last fifth of a zoom level at either end of the layer's range, so paired layers cross-fade.
-            m.gpu.opacity = Math.max(0, Math.min(1, (tr.zoom - m.minZoom) / 0.2 + 1, (m.maxZoom - tr.zoom) / 0.2));
-            if (m.gpu.opacity > 0) markers.push(m.gpu);
-        }
         // 3D terrain that has just been switched on, or a camera just sent somewhere new: until the height of the ground
         // at the centre is known the camera cannot be placed, and drawing from sea level would show the wrong view and
         // then jump. Keep what is on screen for a moment instead (but not for long, in case the data never comes).
@@ -1377,7 +1336,7 @@ export class Engine {
         // For a moment after the camera stops, a frame is drawn as for a map that moves. One more frame comes after it:
         // the frame for the map at rest (sharp images). The map is not idle before that frame.
         const settling = began - this.cameraMovedAt < 200;
-        const behind = hold || this.renderer.render({tr, layers: this.layers, items, labels, atlas: this.atlas, markers, icon: this.icon, light: this.style.light, moving: settling,
+        const behind = hold || this.renderer.render({tr, layers: this.layers, items, labels, atlas: this.atlas, icon: this.icon, light: this.style.light, moving: settling,
             // (Past the time limit and still unplaced: draw flat rather than raise terrain around a camera in the wrong place.)
             terrain: ground && !unplaced ? {exaggeration: this.exaggeration, tiles: ground, dem: this.demRef} : undefined});
 
@@ -1386,7 +1345,7 @@ export class Engine {
             this.moving = animating;
             this.emit({type: 'camera', lng: tr.lng, lat: tr.lat, zoom: tr.zoom, bearing: tr.bearing, pitch: tr.pitch, elevation: tr.elevation, exaggeration: this.exaggeration, groundRange: tr.groundRange, padding: tr.padding, moving: animating});
         }
-        const busy = animating || markersAnimating || fading || this.placeDirty || this.iconsRev !== this.iconsDone || behind || this.meshBehind;
+        const busy = animating || fading || this.placeDirty || this.iconsRev !== this.iconsDone || behind || this.meshBehind;
         const idle = complete && !busy && !settling && !this.spritePending && !this.contourWait && !this.atlas.loading;
         if (settling && !busy) setTimeout(() => this.repaint(), 200);
         if (this.contourWait) { this.contourWait = false; setTimeout(() => this.repaint(), CONTOUR_WAIT + 20); }
@@ -1413,83 +1372,106 @@ export class Engine {
         if (!busy) this.stats.since = 0;
     }
 
-    /** Uploads a marker layer to the GPU. Markers whose image is not ready yet get a scale of zero (hidden). */
-    private uploadMarkers(m: MarkerLayer) {
-        const n = m.variant.length, data = m.data = new Float32Array(n * MARKER_FLOATS);
-        for (let i = 0; i < n; i++) {
-            const rect = this.spriteRects.get(m.variant[i]), x = m.merc[i * 2], y = m.merc[i * 2 + 1], xh = Math.fround(x), yh = Math.fround(y);
-            for (let k = 0; k < 4; k++) {
-                const o = i * MARKER_FLOATS + k * MARKER_STRIDE;
-                data[o] = xh; data[o + 1] = x - xh; data[o + 2] = yh; data[o + 3] = y - yh;
-                if (rect) data.set(rect, o + 4);
-                data[o + 8] = k & 1; data[o + 9] = k >> 1;
-                data[o + 10] = rect ? m.scale?.[i] ?? 1 : 0;
-                data[o + 11] = 1;
-            }
+    /**
+     * Where an icon of a symbol layer is drawn around the point of its feature, in pixels: the middle of the icon, and
+     * half of the width and of the height of the box around it. `w` and `h` are the size of the image, and `turn` is
+     * `icon-rotate` in radians. (The same rules as for an icon that is placed with the labels: see `placeLabels`.)
+     */
+    private iconBox(L: CompiledLayer, w: number, h: number, size: number, turn: number, f?: Feature): [number, number, number, number] {
+        const z = this.tr.zoom, anchor = L.p.iconAnchor.eval(z, f) as string, offset = L.p.iconOffset.eval(z, f) as number[], move = L.p.iconTranslate.eval(z) as number[] | null;
+        const angle = (L.p.iconAlign.eval(z, f) === 'map' ? -this.tr.bearing * Math.PI / 180 : 0) + turn, cos = Math.abs(Math.cos(angle)), sin = Math.abs(Math.sin(angle));
+        return [(offset[0] + (anchor.includes('left') ? 0.5 : anchor.includes('right') ? -0.5 : 0) * w) * size + (move?.[0] ?? 0), (offset[1] + (anchor.includes('top') ? 0.5 : anchor.includes('bottom') ? -0.5 : 0) * h) * size + (move?.[1] ?? 0),
+            (w * cos + h * sin) / 2 * size, (w * sin + h * cos) / 2 * size];
+    }
+
+    /** The image with a name, or (for the name of a template) one of its variants: they all have one size. */
+    private imageNamed(name: string) {
+        const found = this.images.get(name) ?? (this.sprite && Object.hasOwn(this.sprite.icons, name) ? this.sprite.icons[name] : undefined);
+        if (found) return found;
+        for (const [key, image] of this.images) if (key.startsWith(name + VARIANT)) return image;
+    }
+
+    /**
+     * Whether a feature of a symbol layer that a question found is drawn in the rectangle of the question (in pixels
+     * of the screen): its own icon, with its image, size, anchor, offset and turn, is in the rectangle, or its point is
+     * within `radius` pixels of it and the feature has text. (A feature with no point, and an icon whose image the map
+     * does not have, is found within `radius` pixels of its geometry as before.)
+     */
+    private underIcon(L: CompiledLayer, q: QueriedFeature, box: number[], radius: number): boolean {
+        const tr = this.tr, z = tr.zoom, g = q.geometry, f: Feature = {type: 1, id: q.id, properties: q.properties};
+        const points = g?.type === 'Point' ? [g.coordinates as number[]] : g?.type === 'MultiPoint' ? g.coordinates as number[][] : null;
+        const image = this.imageNamed(String(L.p.icon.eval(z, f) ?? '').split(VARIANT)[0].replace(/\{([^}]+)\}/g, (_, k) => f.properties[k] ?? '').trim());
+        if (!points) return true;
+        const near = !image || !!String(L.p.field.eval(z, f) ?? ''), turn = L.p.iconRotate.eval(z, f) * Math.PI / 180;
+        return points.some(([lng, lat]) => {
+            const [x, y] = tr.project(lng, lat);
+            if (near && x >= box[0] - radius && x <= box[2] + radius && y >= box[1] - radius && y <= box[3] + radius) return true;
+            if (!image) return false;
+            // (On a tilted map a near icon is larger and a far icon is smaller, as it is drawn.)
+            const depth = tr.pitch ? tr.projectTile({z: 0, x: 0, y: 0, w: 0, key: ''}, mercX(lng) * EXTENT, mercY(lat) * EXTENT)[2] : 0;
+            const size = L.p.iconSize.eval(z, f) * (depth > 0 ? Math.min(4, 0.5 + 0.5 * tr.cameraDistance / depth) : 1);
+            const [cx, cy, hw, hh] = this.iconBox(L, image.width / image.pixelRatio, image.height / image.pixelRatio, size, turn, f);
+            return x + cx - hw <= box[2] && x + cx + hw >= box[0] && y + cy - hh <= box[3] && y + cy + hh >= box[1];
+        });
+    }
+
+    /**
+     * How far from the point of a feature the icons of a symbol layer can reach on the screen: to the left, up, to the
+     * right and down, in pixels (left and up are negative). It is found from the images that the tiles of the layer use
+     * now, and it is the reach of the largest one in each direction: a question asks the tiles with it, and tests each
+     * feature that comes back with its own icon. Null: the tiles have no icon of the layer.
+     */
+    private reaches = new Map<string, {at: string; reach: [number, number, number, number] | null}>();
+    private iconReach(L: CompiledLayer): [number, number, number, number] | null {
+        // (The answer is kept while the tiles, the images and the view are the same: a question comes with each move of the pointer.)
+        const tr = this.tr, z = tr.zoom, at = `${this.tilesVersion}|${this.tiles.size}|${this.styleVersion}|${this.iconsRev}|${z}|${tr.bearing}|${tr.pitch}`, kept = this.reaches.get(L.id);
+        if (kept?.at === at) return kept.reach;
+        const names = new Set<string>(), each = L.p.iconAnchor.dd || L.p.iconOffset.dd || L.p.iconRotate.dd || L.p.iconAlign.dd;
+        let size = L.p.iconSize.dd ? 0 : L.p.iconSize.eval(z);
+        for (const [key, t] of this.tiles) {
+            if (!t.gl || !key.startsWith(L.source + '|')) continue;
+            const b = t.gl.icons?.[L.id]?.src;
+            if (b) { for (const name of b.names) names.add(name); if (b.size) for (const s of b.size) if (s > size) size = s; }
+            for (const l of t.gl.labels[L.id] ?? []) if (l.icon) { names.add(l.icon.name); if (L.p.iconSize.dd) size = Math.max(size, l.icon.size, l.icon.size1); }
         }
-        m.gpu = this.renderer.setMarkers(m.gpu, data, n, m.width, m.height, m.offset);
-    }
-
-    /** Sets one per-marker value (10 = scale, 11 = opacity) on all four of a marker's vertices. */
-    private setMarkerValue(m: MarkerLayer, i: number, field: 10 | 11, value: number) {
-        for (let k = 0; k < 4; k++) m.data![i * MARKER_FLOATS + k * MARKER_STRIDE + field] = value;
-    }
-
-    /** Advances marker size animations; returns true while any is running. */
-    private animateMarkers(now: number): boolean {
-        for (const [key, a] of this.markerAnims) {
-            const m = this.markers.get(a.layer);
-            if (!m?.gpu || !m.data || a.index >= m.variant.length) { this.markerAnims.delete(key); continue; }
-            const t = Math.min(1, (now - a.start) / a.duration), scale = a.from + (a.to - a.from) * inertiaEasing(t), o = a.index * MARKER_FLOATS;
-            (m.scale ??= new Float32Array(m.variant.length).fill(1))[a.index] = scale;
-            if (this.spriteRects.has(m.variant[a.index])) this.setMarkerValue(m, a.index, 10, scale);
-            this.renderer.updateMarker(m.gpu, a.index, m.data.subarray(o, o + MARKER_FLOATS));
-            if (m.collide) this.placeDirty = true;
-            if (t >= 1) this.markerAnims.delete(key);
+        let w = 0, h = 0, reach: [number, number, number, number] | null = null;
+        for (const name of names) { const m = this.imageNamed(name); if (m) { w = Math.max(w, m.width / m.pixelRatio); h = Math.max(h, m.height / m.pixelRatio); } }
+        if (w) {
+            // (A tilted map can draw an icon up to four times larger. With an anchor, an offset or a turn for each
+            // feature, an icon can reach as far as its corner and its offset in each direction.)
+            size *= tr.pitch ? 4 : 1;
+            const [cx, cy, hw, hh] = this.iconBox(L, w, h, size, L.p.iconRotate.dd ? 0 : L.p.iconRotate.eval(z) * Math.PI / 180);
+            const far = Math.hypot(w, h) * size + Math.hypot(cx, cy) + 64 * size;
+            reach = each ? [-far, -far, far, far] : [cx - hw, cy - hh, cx + hw, cy + hh];
         }
-        return this.markerAnims.size > 0;
+        this.reaches.set(L.id, {at, reach});
+        return reach;
     }
 
-    /** Reserves space in the label collision grid for markers that labels should avoid, and for registered obstacles. */
-    private reserve(grid: CollisionGrid) {
+    /**
+     * Gives the icons of a symbol layer that the tiles have in buffers, and that labels avoid (see `IconBatch`), their
+     * space among the labels. They are always shown, so each one gets its space when the placement comes to its layer:
+     * before the labels of that layer and of the layers below it, and after the labels of the layers above it, as for
+     * an icon that is placed.
+     */
+    private reserve(grid: CollisionGrid, items: Map<string, RenderItem<GLTile>[]>, only: CompiledLayer) {
         const tr = this.tr;
         const zoom = tr.zoom;
-        for (const m of this.markers.values()) {
-            if (zoom < m.minZoom || zoom >= m.maxZoom) continue;
-            if (m.hideOverlaps && m.gpu && m.data) {
-                // Markers compete for space among themselves, first come first served, exactly as labels do.
-                const own = new CollisionGrid();
-                const changed: number[] = [];
-                for (let i = 0; i < m.variant.length; i++) {
-                    const s = m.scale?.[i] ?? 1, mx = m.merc[i * 2] + Math.round(mercX(tr.lng) - m.merc[i * 2]), [x, y] = tr.mercToScreen(mx, m.merc[i * 2 + 1]);
-                    const x0 = x + m.offset[0] * s, y0 = y + m.offset[1] * s, x1 = x0 + m.width * s, y1 = y0 + m.height * s;
-                    let show = 1;
-                    const was = m.data[i * MARKER_FLOATS + 11];
-                    if (x0 > tr.width || y0 > tr.height || x1 < 0 || y1 < 0) show = was; // off screen: leave as it was
-                    else if (own.hits(x0, y0, x1, y1)) show = 0;
-                    else { own.insert(x0, y0, x1, y1); if (m.collide) grid.insert(x0, y0, x1, y1); }
-                    if (was !== show) { this.setMarkerValue(m, i, 11, show); changed.push(i); }
+        for (const L of [only]) {
+            for (const it of items.get(L.source!) ?? []) {
+                const b = it.tile.icons?.[L.id]?.src;
+                if (!b?.avoid) continue;
+                const images = b.names.map(this.icon), t = clamp(zoom - it.id.z, 0, 1), pad = L.p.iconPadding.eval(zoom), fixed = L.p.iconSize.dd ? 1 : L.p.iconSize.eval(zoom), turn = L.p.iconRotate.dd ? 0 : L.p.iconRotate.eval(zoom) * Math.PI / 180;
+                for (let i = 0; i < b.name.length; i++) {
+                    const m = images[b.name[i]], x = b.pos[i * 2], y = b.pos[i * 2 + 1];
+                    if (!m || x < it.clip[0] || y < it.clip[1] || x >= it.clip[2] || y >= it.clip[3]) continue;
+                    const [ax, ay, depth] = tr.projectTile(it.id, x, y);
+                    if (ax < -100 || ay < -100 || ax > tr.width + 100 || ay > tr.height + 100) continue;
+                    const size = (b.size ? b.size[i * 2] + (b.size[i * 2 + 1] - b.size[i * 2]) * t : fixed) * (tr.pitch ? Math.min(4, 0.5 + 0.5 * tr.cameraDistance / depth) : 1);
+                    const [cx, cy, hw, hh] = this.iconBox(L, m.width / m.pixelRatio, m.height / m.pixelRatio, size, b.rotate ? b.rotate[i] : turn);
+                    grid.insert(ax + cx - hw - pad, ay + cy - hh - pad, ax + cx + hw + pad, ay + cy + hh + pad);
                 }
-                // Send only what changed: a few markers one by one, or else the part of the buffer that holds them all.
-                // (The whole buffer of a large layer is some megabytes, and this runs each time labels are placed.)
-                if (changed.length && changed.length <= 64) for (const i of changed) this.renderer.updateMarker(m.gpu, i, m.data.subarray(i * MARKER_FLOATS, (i + 1) * MARKER_FLOATS));
-                else if (changed.length) {
-                    const first = changed[0], last = changed[changed.length - 1];
-                    this.renderer.updateMarker(m.gpu, first, m.data.subarray(first * MARKER_FLOATS, (last + 1) * MARKER_FLOATS));
-                }
-                continue;
             }
-            if (!m.collide) continue;
-            for (let i = 0; i < m.variant.length; i++) {
-                const s = m.scale?.[i] ?? 1, mx = m.merc[i * 2] + Math.round(mercX(tr.lng) - m.merc[i * 2]), [x, y] = tr.mercToScreen(mx, m.merc[i * 2 + 1]);
-                const x0 = x + m.offset[0] * s, y0 = y + m.offset[1] * s;
-                if (x0 > tr.width || y0 > tr.height || x0 + m.width * s < 0 || y0 + m.height * s < 0) continue;
-                grid.insert(x0, y0, x0 + m.width * s, y0 + m.height * s);
-            }
-        }
-        for (const o of this.obstacles.values()) {
-            const [x, y] = tr.mercToScreen(o.merc[0] + Math.round(mercX(tr.lng) - o.merc[0]), o.merc[1]);
-            grid.insert(x + o.box[0], y + o.box[1], x + o.box[2], y + o.box[3]);
         }
     }
 }

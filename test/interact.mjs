@@ -75,7 +75,9 @@ for (const mode of ['main', 'worker']) {
     check(`[${mode}] marker hover sets pointer cursor`, await page.evaluate(() => window.map.getCanvas().style.cursor) === 'pointer');
     await page.screenshot({path: `${out}/hover-${mode}.png`, clip: {x: pt.x - 80, y: pt.y - 90, width: 160, height: 120}});
     await page.mouse.click(pt.x, pt.y - 20);
-    check(`[${mode}] marker click reports the marker`, await page.evaluate(() => window.lastMarkerClick) === '3');
+    // (The pin is a feature of a symbol layer, and the answer to the click is a promise.)
+    const clicked = await page.waitForFunction(() => window.lastMarkerClick, null, {timeout: 5000}).then(h => h.jsonValue(), () => null);
+    check(`[${mode}] marker click reports the marker`, clicked === '3', String(clicked));
 
     // Rotation and animated camera.
     await page.evaluate(() => window.map.easeTo({bearing: 40, zoom: 15, duration: 300}));
@@ -173,6 +175,15 @@ for (const mode of ['main', 'worker']) {
     const c2 = await page.evaluate(() => window.map.getCenter());
     await page.mouse.up();
     check(`[${mode}] a drag released out of sight does not stick`, c1.lng === c2.lng && c1.lat === c2.lat);
+
+    // `once` with no listener returns a promise for the event, as in MapLibre GL JS (#33).
+    const oncePromise = await page.evaluate(async () => {
+        const m = window.map, p = m.once('moveend'), isPromise = p instanceof Promise;
+        m.jumpTo({center: m.getCenter(), zoom: m.getZoom() + 0.01});
+        const e = await Promise.race([p, new Promise(r => setTimeout(() => r(null), 3000))]);
+        return {isPromise, type: e?.type, chained: m.once('idle', () => {}) === m};
+    });
+    check(`[${mode}] once with no listener returns a promise for the event`, oncePromise.isPromise && oncePromise.type === 'moveend' && oncePromise.chained, JSON.stringify(oncePromise));
 
     // Runtime style changes and camera helpers from MapLibre's API.
     const api = await page.evaluate(async () => {
@@ -290,6 +301,21 @@ for (const mode of ['main', 'worker']) {
         return {names: data.features.map(f => f.properties.name).join(), at: data.features[0].geometry.coordinates[0], drawn};
     });
     check(`[${mode}] GeoJSON source: updateData adds, changes and removes features by id`, diff.names === 'changed,three' && diff.at === -74.007 && diff.drawn[0] === 'changed', JSON.stringify(diff));
+    // updateData on a source whose data is a URL: two diffs in a row both apply, and a newer setData is kept (#83).
+    const urlDiff = await page.evaluate(async () => {
+        const m = window.map, source = m.getSource('zones'), point = (id, name) => ({type: 'Feature', id, properties: {name}, geometry: {type: 'Point', coordinates: [-74.008, 40.7085]}});
+        const url = URL.createObjectURL(new Blob([JSON.stringify({type: 'FeatureCollection', features: [point(1, 'one')]})], {type: 'application/json'}));
+        await source.setData(url);
+        await Promise.all([source.updateData({add: [point(2, 'two')]}), source.updateData({add: [point(3, 'three')]})]);
+        const both = (await source.getData()).features.map(f => f.properties.name).join();
+        await source.setData(url);
+        const c = source.updateData({add: [point(4, 'four')]});
+        source.setData({type: 'FeatureCollection', features: [point(5, 'newer')]});
+        await c;
+        const kept = (await source.getData()).features.map(f => f.properties.name).join();
+        return {both, kept};
+    });
+    check(`[${mode}] GeoJSON source with a URL: updateData keeps both diffs and a newer setData`, urlDiff.both === 'one,two,three' && urlDiff.kept === 'newer', JSON.stringify(urlDiff));
     await page.evaluate(() => { window.map.removeLayer('zones-fill'); window.map.removeSource('zones'); });
 
     // DOM marker and popup with MapLibre's API.
@@ -428,6 +454,19 @@ for (const mode of ['main', 'worker']) {
     };
     const zPrevented = await dbl(true), zDouble = await dbl(false);
     check(`[${mode}] dblclick: preventDefault() in a listener stops the zoom, and without it the map zooms in`, zPrevented === 14 && Math.abs(zDouble - 15) < 0.01, JSON.stringify({zPrevented, zDouble}));
+    // A touch double-tap: preventDefault() in a `dblclick` listener stops its zoom too, and `defaultPrevented` reads true.
+    const tap2 = async prevent => {
+        await page.evaluate(() => window.map.jumpTo({center: [-74.0065, 40.7085], zoom: 14})); await settle(page);
+        await page.evaluate(async prevent => {
+            window.dbl = 0; window.dblSeen = null;
+            window.map.once('dblclick', e => { window.dbl++; if (prevent) e.preventDefault(); window.dblSeen = e.defaultPrevented; });
+            for (let i = 0; i < 2; i++) { window.touch('pointerdown', 11, 500, 350); window.touch('pointerup', 11, 500, 350); await new Promise(r => setTimeout(r, 60)); }
+        }, prevent);
+        await page.waitForFunction(() => window.dbl > 0, null, {timeout: 5000}).catch(() => {}); await page.waitForTimeout(700); await settle(page);
+        return {z: (await centre())[2], seen: await page.evaluate(() => window.dblSeen)};
+    };
+    const tPrevented = await tap2(true), tDouble = await tap2(false);
+    check(`[${mode}] touch double-tap: preventDefault() in a dblclick listener stops the zoom and sets defaultPrevented`, tPrevented.z === 14 && tPrevented.seen === true && Math.abs(tDouble.z - 15) < 0.01 && tDouble.seen === false, JSON.stringify({tPrevented, tDouble}));
     const stale = await page.evaluate(async () => {
         const m = window.map, idle = () => new Promise(r => m.once('idle', r)), at = [-74.0065, 40.7085];
         m.jumpTo({center: at, zoom: 14});

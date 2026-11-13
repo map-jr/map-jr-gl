@@ -1,4 +1,4 @@
-import {useMemo, useRef, useState} from 'react';
+import {useMemo, useState} from 'react';
 import {MapJr, MapOverlay} from '@map-jr/map-jr-gl/react';
 
 const style = 'https://tiles.openfreemap.org/styles/liberty';
@@ -15,23 +15,24 @@ const places = Array.from({length: 50000}, (_, i) => {
 const some = places.slice(0, 500);
 
 export default function Markers() {
-  const map = useRef(null);
+  // A marker layer is a layer of the style: a click finds its markers. The marker under the click, or null.
   const [selected, setSelected] = useState(null);
+  // An image is an SVG template with {{slots}}. Each marker fills the slots from its `props`.
+  const images = useMemo(() => ({dot, pin}), []);
   // Marker data is compared by identity: these layers are made one time.
   const layers = useMemo(() => [
-    {id: 'dots', svg: dot, width: 12, height: 12, anchor: 'center', data: places.slice(500)},
-    {id: 'dots-below-pins', svg: dot, width: 12, height: 12, anchor: 'center', maxZoom: 12, data: some},
-    {id: 'pins', svg: pin, width: 24, height: 31, anchor: 'bottom', minZoom: 12, overlap: 'hide', collide: true, data: some},
+    {id: 'dots', image: 'dot', data: places.slice(500)},
+    // 500 of the places are pins when the zoom is 12 or more, and dots below that.
+    {id: 'dots-below-pins', image: 'dot', maxZoom: 12, data: some},
+    {id: 'pins', image: 'pin', anchor: 'bottom', minZoom: 12, overlap: 'hide', data: some},
   ], []);
 
-  // The click on a marker is an event of the map.
-  const started = () => map.current.listen('markerclick', e => setSelected(e.marker));
-
   return (
-    <MapJr ref={map} mapStyle={style} initialView={{center: NYC, zoom: 11.4}} markers={layers} onLoad={started}>
+    <MapJr mapStyle={style} initialView={{center: NYC, zoom: 11.4}} images={images} markers={layers}
+      interactiveLayers={['pins', 'dots-below-pins', 'dots']} onClick={e => setSelected(e.features[0] ?? null)}>
       {selected && (
-        <MapOverlay lngLat={selected.lngLat} offset={[0, -30]} popup onClose={() => setSelected(null)}>
-          Marker at {selected.lngLat.map(v => v.toFixed(3)).join(', ')}
+        <MapOverlay lngLat={selected.geometry.coordinates} offset={[0, selected.layer.id === 'pins' ? -30 : -6]} popup onClose={() => setSelected(null)}>
+          Marker at {selected.geometry.coordinates.map(v => v.toFixed(3)).join(', ')}
         </MapOverlay>
       )}
     </MapJr>

@@ -80,6 +80,8 @@ The map writes a warning to the console with `console.warn`, once for each map, 
 - A key of `data` is not the id of a GeoJSON source of the style.
 - A layer of `extend` names a `before` layer or a source that the style does not have.
 - Two marker layers have the same `id`.
+- A marker layer has no `image`, or it names an image that the map does not have.
+- A layer gives an image a parameter that is not a slot of the image.
 - An option of `queryFeatures` has no effect in that kind of query.
 
 The ids of the description are compared each time that the map is idle, so a layer or a source that the application
@@ -120,7 +122,7 @@ The library compares each field with the field of the last description:
 | `view`, `onViewChange` | A view that your application owns. See below. |
 | `data` | GeoJSON data for GeoJSON sources, by the id of the source. The source is in the style or in `extend.sources`. See below. |
 | `images` | Images for the style layers, by name: an SVG document, the URL of an image, or `{image, width, height}`. See [Images for style layers](#images-for-style-layers). |
-| `markers` | A list of marker layers, each with an `id`. See [Markers](markers.md). A layer with a new `data` array gets the new data. |
+| `markers` | A list of marker layers, each with an `id` and an `image`. A marker layer is shorthand for a GeoJSON source and a symbol layer with that id. See [Markers](markers.md). A layer with a new `data` array gets the new data. |
 | `controls` | A list of controls. See below. |
 | `interactiveLayers` | The ids of style layers. The features of these layers under the pointer are in `state.hover` and in `onClick`. |
 | `onClick` | A function that is called for a click, with `point`, `lngLat` and `features`. |
@@ -195,6 +197,35 @@ A value of `images` is one of these:
 An image that does not load is an error of the map (`onError`, `state.error`) with the name of the image. The map
 draws the layer without that image.
 
+### An image that the style asks for
+
+When a layer names an image that the map does not have, the map reports the event `styleimagemissing` with the
+name as `id`. Add an image with that name to `images`, and the map draws it. Use this for images that your code
+makes from the name, for example a badge for each value of a property.
+
+```js
+import {createMap} from '@map-jr/map-jr-gl';
+
+let description = {
+  style: 'https://tiles.openfreemap.org/styles/liberty',
+  initialView: {center: [-74.006, 40.7128], zoom: 12},
+  images: {},
+};
+const map = createMap(document.getElementById('map'), description);
+map.listen('styleimagemissing', event => {
+  if (!event.id.startsWith('badge-')) return;   // a name that this code does not make
+  const badge = `<svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="9" fill="#d6453d"/></svg>`;
+  map.update(description = {...description, images: {...description.images, [event.id]: badge}});
+});
+```
+
+- The map reports each name one time. The listener can add the image later, for example after a request.
+- The event also comes for a name that no code of yours makes, such as an icon that the sprite of the style does
+  not have. Leave such a name out.
+- The map asks for the image of each icon of a loaded tile, also for an icon outside the view.
+- The Vue and React components pass the event on (`@styleimagemissing`, `onStyleimagemissing`). The server
+  renderer has no events: give it the same images with its options `images` and `resolveImage`.
+
 ### An image that is a template
 
 An SVG document with slots is a template. Write `{{name}}` where a value must go. The library draws the template
@@ -256,11 +287,11 @@ What to know about a template:
 - In the development build, a parameter whose name is not a slot of the image gives a warning.
 - `params` is not part of the MapLibre style specification. Mapbox GL JS has the same form for the colours of an
   SVG icon. A style with `params` shows the icon in this library only.
-- The server renderer does not draw a template.
+- The server renderer draws a template that is given to it in its option `images`. See [Server rendering](server-rendering.md).
 
-A symbol layer with images is a style layer: it has a place in the layer order, a filter, expressions and text
-beside the icon. For many points that only need a picture, a marker layer is faster. See
-[Markers](markers.md#a-marker-layer-or-a-symbol-layer).
+For points that only need a picture, a marker layer is shorter to write: it is shorthand for a GeoJSON source and a
+symbol layer with an image. See [Markers](markers.md). [Which icons are fast](markers.md#which-icons-are-fast) says
+when the cost of a frame does not grow with the number of icons.
 
 ## GeoJSON data that changes
 
@@ -542,11 +573,9 @@ has the right type, and a name that is not in the table does not compile.
 | `rotatestart`, `rotate`, `rotateend` | The bearing changes. | |
 | `pitchstart`, `pitch`, `pitchend` | The pitch changes. | |
 | `dragstart` | The user starts to drag the map. | |
-| `click`, `dblclick`, `contextmenu`, `mousedown`, `mousemove`, `mouseup`, `mouseover`, `mouseout` | An event of the mouse on the map. | `point` (`{x, y}` in CSS pixels), `lngLat` (`{lng, lat}`), `originalEvent`, `preventDefault()`, `defaultPrevented`. `click` also has `marker`: the marker of a marker layer at the point as `{layer, index, marker}`, or `null`. |
+| `click`, `dblclick`, `contextmenu`, `mousedown`, `mousemove`, `mouseup`, `mouseover`, `mouseout` | An event of the mouse on the map. | `point` (`{x, y}` in CSS pixels), `lngLat` (`{lng, lat}`), `originalEvent`, `preventDefault()`, `defaultPrevented`. |
 | `wheel` | The user turns the wheel over the map. | The same as for the mouse; `originalEvent` is a `WheelEvent`. |
 | `touchstart`, `touchmove`, `touchend`, `touchcancel` | An event of a touch on the map. | The same as for the mouse, and `points` and `lngLats`: one entry for each finger on the map. |
-| `markerclick` | A click on a marker of a marker layer. See [Markers](markers.md). | The same as for the mouse, and `layer`, `index`, `marker`. |
-| `markerenter`, `markerleave` | The pointer comes to a marker of a marker layer, or leaves it. | `layer`, `index`, `marker`. |
 | `boxzoomstart`, `boxzoomend`, `boxzoomcancel` | A zoom to a box (the Shift key and a drag). | `originalEvent`. `boxzoomend` also has `boxZoomBounds`. |
 | `styledata`, `style.load` | The style has changed; a complete style has loaded. | `styledata` has `dataType: 'style'`. |
 | `sourcedata` | A source has new data. | `dataType: 'source'`, `sourceId`, `isSourceLoaded`, `source`. |
@@ -554,7 +583,7 @@ has the right type, and a name that is not in the table does not compile.
 | `styledataloading`, `sourcedataloading`, `dataloading` | A style or a source starts to load. | `dataType`, and `sourceId` for a source. |
 | `styleimagemissing` | The style names an image that the map does not have. | `id`. |
 | `terrain` | The terrain has changed. | `terrain`: `{source, exaggeration}` or `null`. |
-| `stats` | At most one time each second while the map draws. | `fps` (frames per second), `frameMs` (the CPU time of a frame in milliseconds), `labels` (the number of labels and icons that the last frame placed among the labels; icons that are drawn from buffers are not counted, see [Markers](markers.md#a-marker-layer-or-a-symbol-layer)). |
+| `stats` | At most one time each second while the map draws. | `fps` (frames per second), `frameMs` (the CPU time of a frame in milliseconds), `labels` (the number of labels and icons that the last frame placed among the labels; icons that are drawn from buffers are not counted, see [Markers](markers.md#which-icons-are-fast)). |
 | `geolocate` | The geolocate control has a position. | `coords`. |
 | `webglcontextlost`, `webglcontextrestored` | The browser has taken the WebGL context away, or the map has it again. The map starts again on a new canvas with the same view and data. A map with the worker renderer starts again on the main thread and writes one warning when the worker loses the context before its first frame, loses it twice within 10 seconds, or does not draw in the 5 seconds after a restart (it reports no first frame, or stops drawing after it). When the main thread then loses the context again before its first frame, or does not draw in the 15 seconds after the restart, the map fires `error` and does not start again. The time that the page is hidden, or that the map has no size, does not count. | |
 | `error` | An error of the map. `onError` and `state.error` have the same errors as an `Error`. | `error`. |

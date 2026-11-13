@@ -7,7 +7,7 @@
  */
 import {computed, defineComponent, getCurrentInstance, h, inject, provide, isProxy, isReactive, onBeforeUnmount, onMounted, onServerPrefetch, shallowRef, Teleport, toRaw, toValue, watch, type AllowedComponentProps, type ComponentCustomProps, type SetupContext, type SlotsType, type VNode, type VNodeProps, type ComputedRef, type MaybeRefOrGetter, type PropType, type ShallowRef} from 'vue';
 declare const __DEV__: boolean;
-import {createMap, type ControlSpec, type FeatureOptions, type FeaturePlace, type MapHost, type MapOverlay as Overlay, type OverlayOptions, type MapPointer, type MapSpec, type MapState, type View, type ViewInput} from './host.ts';
+import {createMap, type ControlSpec, type FeatureOptions, type FeaturePlace, type MapHost, type MapOverlay as Overlay, type OverlayOptions, type MapEvents, type MapPointer, type MapSpec, type MapState, type View, type ViewInput} from './host.ts';
 import type {SSROverrides} from './style.ts';
 import type {RenderedFeature} from './map.ts';
 import type {QueriedFeature} from './query.ts';
@@ -128,6 +128,22 @@ export const MapOverlay = defineComponent({
     },
 });
 
+/**
+ * The events of the map that `MapJr` passes on as they are: `@moveend`, `@styleimagemissing` and the others. The value
+ * is the event of `listen` of the main API. (`click`, `load`, `idle` and `error` are events of the component with a
+ * value of their own. The event `style.load` has the name `styleload` here: a dot in the name of an event is a
+ * modifier in a template.)
+ */
+type Forwarded = Exclude<keyof MapEvents, 'click' | 'load' | 'idle' | 'error'>;
+const FORWARDED = ['render', 'resize', 'remove', 'style.load', 'webglcontextlost', 'webglcontextrestored', 'movestart', 'move', 'moveend', 'zoomstart', 'zoom', 'zoomend',
+    'rotatestart', 'rotate', 'rotateend', 'pitchstart', 'pitch', 'pitchend', 'dragstart', 'dblclick', 'contextmenu', 'mousedown', 'mousemove', 'mouseup', 'mouseover', 'mouseout',
+    'touchstart', 'touchmove', 'touchend', 'touchcancel', 'styledata', 'sourcedata', 'data', 'styledataloading', 'sourcedataloading', 'dataloading', 'wheel',
+    'boxzoomstart', 'boxzoomcancel', 'boxzoomend', 'stats', 'styleimagemissing', 'terrain', 'geolocate'] as const satisfies readonly Forwarded[];
+// (The type check fails here when the map gets an event that the list does not have.)
+true satisfies (Forwarded extends typeof FORWARDED[number] ? true : false);
+type Undotted<K extends string> = K extends `${infer A}.${infer B}` ? `${A}${B}` : K;
+const forwarded = Object.fromEntries(FORWARDED.map(name => [name.replace('.', ''), () => true])) as unknown as {[K in Forwarded as Undotted<K>]: (event: MapEvents[K]) => true};
+
 /** The props of `MapImage`. `P` has the names of the parameters. */
 export interface MapImageProps<P extends string = never> {
     /** The name of the image, for `icon-image` of a style layer. */
@@ -237,6 +253,7 @@ export const MapJr = defineComponent({
         load: () => true,
         idle: () => true,
         error: (_error: Error) => true,
+        ...forwarded,
     },
     setup(props, {emit, slots, expose}) {
         const el = shallowRef<HTMLElement | null>(null);
@@ -293,6 +310,11 @@ export const MapJr = defineComponent({
         const {host, state} = useMap(el, spec);
         provide(HOST, host);
         watch(() => state.value?.loaded, loaded => { if (loaded) emit('load'); });
+        // The other events of the map, each one only when the component has a listener for it.
+        const listeners = getCurrentInstance()?.vnode.props ?? {};
+        watch(host, map => {
+            if (map) for (const name of FORWARDED) { const event = name.replace('.', '') as 'move'; if (listeners['on' + event[0].toUpperCase() + event.slice(1)]) map.listen(name as 'move', e => emit(event, e)); }
+        }, {immediate: true});
         watch(() => state.value?.idle, idle => { if (idle) emit('idle'); });
         watch(() => state.value?.hover, hover => { if (hover) emit('hover', hover); });
         expose({host, state});
@@ -309,7 +331,7 @@ export const MapJr = defineComponent({
             // @ts-ignore: the package refers to itself, which the type check of this project does not resolve
             const server = await import('@map-jr/map-jr-gl/server') as typeof import('./server.ts');
             first.value = await server.renderFirstView({style: toRaw(props.mapStyle), center: view.center ?? [0, 0], zoom: view.zoom ?? 0, bearing: view.bearing, width: o.width ?? 800, height: o.height ?? 500,
-                markers: props.markers && plain(props.markers), overrides: o.overrides, attribution: props.attribution === false ? false : o.attribution});
+                markers: props.markers && plain(props.markers), images: props.images && toRaw(props.images) as Record<string, string>, overrides: o.overrides, attribution: props.attribution === false ? false : o.attribution});
         });
         return () => h('div', {class: 'map-jr-vue', style: 'position:relative;width:100%;height:100%'}, [
             h('div', {ref: el, style: 'position:absolute;inset:0', innerHTML: first.value}),

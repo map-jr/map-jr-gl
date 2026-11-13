@@ -33,6 +33,7 @@ package, so they work with each version of Svelte.
   with the element.
 - `ready` gets the map (for `queryFeatures`, `moveTo`, `overlay`).
 - `mapState(map)` is a store with the state of the map.
+- For an event of the map, call `host.listen(type, fn)` on the map that `ready` gives. See [Events](api.md#events).
 - The description is the description of [the main API](api.md). A part that is made again with the same content
   does no work. Marker data and the values of `data` are compared by identity: `$derived` keeps them until their
   inputs change.

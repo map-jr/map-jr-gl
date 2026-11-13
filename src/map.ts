@@ -5,14 +5,12 @@ import {Transform, groundHeight, heightsChanged, mercX, mercY, toLngLat, type Ln
 import type {PreparedSource} from './geojson.ts';
 import {DEFAULT_FONT, keep, resolveStyle, type ResolvedStyle} from './resolve.ts';
 import {layerRules} from './rules.ts';
-import type {CameraOptions, Command, EngineEvent, FontSource, MarkerImage} from './engine.ts';
+import type {CameraOptions, Command, EngineEvent, FontSource} from './engine.ts';
 import type {QueriedFeature} from './query.ts';
 import type {TileBackend} from './tiles.ts';
 import {acquireTileWorkers, createWorker, defaults as loadDefaults, workerReady, type LoadOptions} from './loader.ts';
-import {anchorOffset, fillTemplate, resolveVariants, sizedSVG, templateSlots, VARIANT, type MarkerInput, type MarkerLayerOptions} from './markers.ts';
+import {fillTemplate, sizedSVG, templateSlots, VARIANT} from './markers.ts';
 import {AttributionControl, CONTROL_CSS, adoptClasses, cls, type Control, type ControlPosition} from './controls.ts';
-import {Popup, type PopupOptions} from './overlays.ts';
-import {CollisionGrid} from './collision.ts';
 
 /** True in the development build (`dist/*.dev.js`). Code behind it is not in the production build. */
 declare const __DEV__: boolean;
@@ -109,78 +107,6 @@ export interface StyleLayer {
 export interface MapEvent { type: string; target: Map; point?: {x: number; y: number}; lngLat?: {lng: number; lat: number}; [key: string]: unknown }
 type Listener = (e: MapEvent) => void;
 
-/** A set of markers drawn on the map canvas from an SVG template. */
-/** Stops a marker layer with no size, with a message (the image of a marker cannot be made without one). */
-export function markerSize(o: MarkerLayerOptions) {
-    if (!(o.width > 0 && o.height > 0)) throw new Error(`[map-jr-gl] Marker layer "${o.id}": width and height are required. Give the size of a marker in CSS pixels.`);
-}
-export class MarkerLayer {
-    data: MarkerInput[];
-    constructor(private map: Map, readonly options: MarkerLayerOptions) { this.data = options.data; }
-    setData(data: MarkerInput[]) { this.data = this.options.data = data; this.map._syncMarkers(this); return this; }
-    /** Changes one marker's template properties, e.g. to show a hover or selected state. */
-    setProps(index: number, props: Record<string, unknown>) {
-        this.data[index] = {...this.data[index], props: {...this.data[index].props, ...props}};
-        this.map._syncMarkers(this);
-        return this;
-    }
-    remove() { this.map.removeMarkerLayer(this.options.id); }
-
-    private selected: number | null = null;
-    private callout?: Popup;
-
-    /**
-     * Marks one marker as selected: it grows smoothly about its anchor point (pass null to clear). Labels move out
-     * of the way of the larger marker when the layer has `collide` set.
-     */
-    select(index: number | null, options: {scale?: number; duration?: number} = {}) {
-        const duration = options.duration ?? 180, id = this.options.id;
-        if (this.selected !== null && this.selected !== index) this.map._command({type: 'markerScale', id, index: this.selected, scale: 1, duration});
-        this.selected = index;
-        if (index !== null) this.map._command({type: 'markerScale', id, index, scale: options.scale ?? 1.35, duration});
-        return this;
-    }
-    getSelected() { return this.selected; }
-
-    /**
-     * Selects a marker and opens a callout pointing at it. Map labels reflow around the callout while it is open.
-     * `content` is text, or a DOM node for rich content. Closing the callout clears the selection.
-     */
-    openPopup(index: number, content: string | Node, options: PopupOptions & {scale?: number} = {}) {
-        const o = this.options, scale = options.scale ?? 1.35, [ox, oy] = anchorOffset(o.anchor, o.width, o.height), key = 'callout:' + o.id;
-        this.callout?.remove();
-        this.select(index, {scale});
-        // The enlarged marker's edges relative to its map position. The callout sits just clear of whichever edge it
-        // ends up beside: above by default, below or to one side when the marker is near the edge of the map.
-        const top = oy * scale - 2, bottom = (oy + o.height) * scale + 2, left = ox * scale, right = (ox + o.width) * scale;
-        const popup = this.callout = new Popup({offset: {
-            bottom: [0, top], 'bottom-left': [left, top], 'bottom-right': [right, top],
-            top: [0, bottom], 'top-left': [left, bottom], 'top-right': [right, bottom],
-        }, ...options});
-        if (typeof content === 'string') popup.setText(content); else popup.setDOMContent(content);
-        popup.setLngLat(this.data[index].lngLat).addTo(this.map);
-        const [lng, lat] = this.data[index].lngLat;
-        // Labels keep clear of the callout; told again if it flips to another side.
-        let side = '';
-        const reserve = () => {
-            if (popup.getAnchor() === side) return;
-            side = popup.getAnchor();
-            const box = popup.getBox();
-            if (box) this.map._command({type: 'obstacle', id: key, merc: [mercX(lng), mercY(lat)], box});
-        };
-        reserve();
-        this.map.on('moveend', reserve);
-        popup.on('close', () => {
-            this.map.off('moveend', reserve);
-            if (this.callout !== popup) return;
-            this.callout = undefined;
-            this.map._command({type: 'obstacle', id: key});
-            if (this.selected === index) this.select(null);
-        });
-        return popup;
-    }
-}
-
 export class Map {
     protected container: HTMLElement;
     private canvas: HTMLCanvasElement;
@@ -201,9 +127,6 @@ export class Map {
     readonly keyboard = new InteractionHandler();
     /** Shift and drag draws a box, and the map zooms to it. */
     readonly boxZoom = new InteractionHandler();
-    private markerLayers = new globalThis.Map<string, MarkerLayer>();
-    private variantIds = new globalThis.Map<string, number>();
-    private hovered: {layer: MarkerLayer; index: number} | null = null;
     private observer?: ResizeObserver;
     private cleanup: (() => void)[] = [];
     private inputCleanup: (() => void)[] = [];
@@ -396,7 +319,6 @@ export class Map {
                     // the new engine reports `idle` with the number that the page waits for.)
                     this.restyle(true);
                     for (const [name, [source, options]] of this.imageInputs) this.addImage(name, source, options);
-                    for (const layer of this.markerLayers.values()) { this.variantIds.clear(); this._syncMarkers(layer); }
                     if (o.interactive !== false) this.bindInput();
                 }, error => this.fire('error', {error}));
             };
@@ -462,8 +384,6 @@ export class Map {
             // accept the report that a source is loaded), the layers that the page has hidden, and the global state.
             this.restyle(true);
             for (const [name, [source, options]] of this.imageInputs) await this.addImage(name, source, options);
-            this.variantIds.clear();
-            for (const layer of this.markerLayers.values()) this._syncMarkers(layer);
             this.fire('webglcontextrestored');
             if (__DEV__) this.note('restart() ended', {renderer: this.renderer, drew: this.drew});
         } catch (error) { if (__DEV__) this.note('restart() failed', String(error)); this.fire('error', {error}); } finally { this.restarting = false; }
@@ -574,7 +494,6 @@ export class Map {
     }
 
     /** @internal Sends a command to the engine. */
-    _command(c: Command) { this.post(c); }
 
     private post(c: Command, transfer?: Transferable[]) {
         if (c.type !== 'query' && c.type !== 'elevation' && c.type !== 'queryRendered' && c.type !== 'frames') { this.tilesLoaded = false; (c as {seq?: number}).seq = ++this.seq; }
@@ -739,7 +658,7 @@ export class Map {
         const list = this.listeners[type];
         if (type === 'error' && !list?.length) console.error('[map-jr-gl]', data.error);
         // A listener that throws does not stop the listeners after it: its error is an `error` event.
-        if (list) for (const fn of [...list]) try { fn({type, target: this, ...data}); } catch (error) { if (type === 'error') console.error('[map-jr-gl]', error); else this.fire('error', {error}); }
+        if (list) for (const fn of [...list]) try { fn(Object.defineProperties({type, target: this}, Object.getOwnPropertyDescriptors(data))); } catch (error) { if (type === 'error') console.error('[map-jr-gl]', error); else this.fire('error', {error}); }
         // (A query that the removal of the map or the loss of the context rejects is not an error of the map.)
         if ((type === 'click' || type === 'mousemove') && this.layerListeners.length && data.point) this.dispatchLayerEvents(type, data).catch(error => this.removed || this.restarting || this.fire('error', {error}));
     }
@@ -1015,22 +934,24 @@ export class Map {
      * MapLibre's `updateData`: adds, removes and changes features of a GeoJSON source by their id (the `id` of the
      * feature, or the property that `promoteId` names). The new data replaces the old in one step.
      */
-    private updateGeoJSON(id: string, diff: GeoJSONDiff, data: any = this.rawStyle.sources[id].data): Promise<void> {
-        if (typeof data === 'string') return this.fetchAs('Source')(new URL(data, this.styleBase)).then(r => r.json()).then(d => this.updateGeoJSON(id, diff, d));
-        const key = this.rawStyle.sources[id].promoteId, idOf = (f: any) => key ? f.properties?.[key] : f.id;
-        let features: any[] = diff.removeAll ? [] : data?.type === 'FeatureCollection' ? data.features : data?.type === 'Feature' ? [data] : [];
-        const added = new Set((diff.add ?? []).map(idOf));
-        features = [...features.filter(f => !diff.remove?.includes(idOf(f)) && !added.has(idOf(f))), ...diff.add ?? []];
-        for (const u of diff.update ?? []) {
-            const i = features.findIndex(f => idOf(f) === u.id);
-            if (i < 0) continue;
-            const f = features[i] = {...features[i], properties: u.removeAllProperties ? {} : {...features[i].properties}};
-            if (u.newGeometry) f.geometry = u.newGeometry;
-            for (const k of u.removeProperties ?? []) delete f.properties[k];
-            for (const p of u.addOrUpdateProperties ?? []) f.properties[p.key] = p.value;
-        }
-        return this.setGeoJSON(id, {type: 'FeatureCollection', features});
+    private updateGeoJSON(id: string, diff: GeoJSONDiff): Promise<void> {
+        const raw = this.rawStyle.sources[id], data = raw.data, call = this.dataCalls.get(id) ?? 0;
+        if (typeof data !== 'string') return this.setGeoJSON(id, applyDiff(data, diff, raw.promoteId));
+        // (A URL: the diffs that arrive while it loads are applied in order to the one answer. A newer `setData`, or
+        // the removal of the source, drops them.)
+        const queued = this.diffQueues.get(id);
+        if (queued?.call === call && queued.raw === raw) { queued.diffs.push(diff); return queued.p; }
+        const q = {call, raw, diffs: [diff], p: undefined as unknown as Promise<void>};
+        q.p = this.fetchAs('Source')(new URL(data, this.styleBase)).then(r => r.json()).then(d => {
+            if (this.diffQueues.get(id) === q) this.diffQueues.delete(id);
+            if (this.rawStyle?.sources[id] !== raw || this.dataCalls.get(id) !== call) return;
+            return this.setGeoJSON(id, q.diffs.reduce((d, f) => applyDiff(d, f, raw.promoteId), d));
+        });
+        this.diffQueues.set(id, q);
+        return q.p;
     }
+    /** The diffs of `updateData` that wait for the URL of a GeoJSON source, with the call number they started from. */
+    private diffQueues = new globalThis.Map<string, {call: number, raw: object, diffs: GeoJSONDiff[], p: Promise<void>}>();
     /** The number of the newest call that set the data of each GeoJSON source: an answer for an older call is dropped. */
     private dataCalls = new globalThis.Map<string, number>();
     private async setGeoJSON(id: string, data: unknown) {
@@ -1250,7 +1171,8 @@ export class Map {
             radius: l.type === 'line' ? Math.max(3, number(l.paint?.['line-width'], 4) / 2) : l.type === 'circle' ? number(l.paint?.['circle-radius'], 5) + number(l.paint?.['circle-stroke-width'], 0) : l.type === 'symbol' ? 10 : 0,
         }));
         const order = new globalThis.Map(layers.map((l, i) => [l.id, i]));
-        const features = (found: QueriedFeature[]): RenderedFeature[] => found.sort((a, b) => order.get(b.layer!)! - order.get(a.layer!)!).map(f => ({
+        // (From the top layer down, and in a layer the feature that is drawn last, which is on top, first.)
+        const features = (found: QueriedFeature[]): RenderedFeature[] => found.reverse().sort((a, b) => order.get(b.layer!)! - order.get(a.layer!)!).map(f => ({
             type: 'Feature', id: f.id, geometry: f.geometry!, properties: f.properties, source: f.source, sourceLayer: f.sourceLayer || undefined,
             layer: this.getLayer(f.layer!), state: f.id === undefined ? {} : this.getFeatureState({source: f.source, sourceLayer: f.sourceLayer || undefined, id: f.id}),
         }));
@@ -1268,50 +1190,6 @@ export class Map {
     queryElevation(at: LngLatLike | {x: number; y: number}, options: {source?: string; zoom?: number} = {}): Promise<number | null> {
         const [lng, lat] = 'x' in at ? this.tr.unproject(at.x, at.y) : toLngLat(at);
         return this.ask(id => ({type: 'elevation', id, lng, lat, ...options}));
-    }
-
-    // ---- markers ----
-    addMarkerLayer(options: MarkerLayerOptions): MarkerLayer {
-        markerSize(options);
-        const layer = new MarkerLayer(this, options);
-        this.markerLayers.set(options.id, layer);
-        this._syncMarkers(layer);
-        return layer;
-    }
-    removeMarkerLayer(id: string) {
-        this.markerLayers.delete(id);
-        this.post({type: 'removeMarkers', id});
-    }
-
-    /** @internal Rasterises any new marker appearances and hands the layer to the engine. */
-    async _syncMarkers(layer: MarkerLayer) {
-        const o = layer.options, {svgs: resolved, variant} = resolveVariants(o);
-        // An SVG drawn as an image cannot fetch anything itself, so pictures it references are embedded first.
-        const svgs = await Promise.all(resolved.map(svg => this.embedImages(svg)));
-        const w = Math.ceil(o.width * this.dpr), h = Math.ceil(o.height * this.dpr);
-        const local = new Uint32Array(svgs.length), images: MarkerImage[] = [];
-        await Promise.all(svgs.map(async (svg, i) => {
-            const key = `${w}x${h}|${svg}`;
-            let id = this.variantIds.get(key);
-            if (id === undefined) {
-                id = this.variantIds.size;
-                this.variantIds.set(key, id);
-                try {
-                    images.push({variant: id, w, h, data: await rasterise(sizedSVG(svg, o.width, o.height), w, h)});
-                } catch (err) {
-                    this.fire('error', {error: new Error(`Marker layer "${o.id}": could not render SVG (${(err as Error).message})`)});
-                }
-            }
-            local[i] = id;
-        }));
-        if (this.markerLayers.get(o.id) !== layer || layer.data !== o.data) return; // replaced while rasterising
-        const merc = new Float64Array(o.data.length * 2);
-        o.data.forEach((m, i) => { merc[i * 2] = mercX(m.lngLat[0]); merc[i * 2 + 1] = mercY(m.lngLat[1]); });
-        const globalVariant = variant.map(v => local[v]);
-        this.post({
-            type: 'markers', id: o.id, width: o.width, height: o.height, offset: anchorOffset(o.anchor, o.width, o.height),
-            collide: !!o.collide, minZoom: o.minZoom ?? -Infinity, maxZoom: o.maxZoom ?? Infinity, hideOverlaps: o.overlap === 'hide', merc, variant: globalVariant, images,
-        }, [merc.buffer, globalVariant.buffer, ...images.map(i => i.data.buffer)]);
     }
 
     private embedded = new globalThis.Map<string, Promise<string>>();
@@ -1333,44 +1211,6 @@ export class Map {
             svg = svg.split(url).join(await data.catch(error => { this.fire('error', {error}); return ''; }));
         }
         return svg;
-    }
-
-    /** Topmost marker under a screen point. Runs on the calling thread against the mirrored camera, so it is synchronous. */
-    queryMarkers(point: {x: number; y: number}): {layer: MarkerLayer; index: number; marker: MarkerInput} | null {
-        const layers = [...this.markerLayers.values()].reverse();
-        for (const layer of layers) {
-            const o = layer.options, [ox, oy] = anchorOffset(o.anchor, o.width, o.height);
-            if (this.tr.zoom < (o.minZoom ?? -Infinity) || this.tr.zoom >= (o.maxZoom ?? Infinity)) continue;
-            // Only markers whose position falls in the patch of map around the pointer can be under it; comparing raw
-            // coordinates first keeps this cheap with very many markers.
-            const reach = [[-o.width, -o.height], [o.width, -o.height], [-o.width, o.height], [o.width, o.height]].map(([dx, dy]) => this.tr.unproject(point.x + dx, point.y + dy));
-            const w = Math.min(...reach.map(r => r[0])), e = Math.max(...reach.map(r => r[0])), s = Math.min(...reach.map(r => r[1])), n = Math.max(...reach.map(r => r[1]));
-            const near = e - w < 180; // not when the view spans the antimeridian or most of the world
-            // Layers that hide overlapping markers: the same first-come-first-served decision the renderer makes,
-            // worked out only once something is actually under the pointer.
-            let shown: Set<number> | null = null;
-            const visible = (index: number) => {
-                if (o.overlap !== 'hide') return true;
-                if (!shown) {
-                    shown = new Set();
-                    const grid = new CollisionGrid();
-                    for (let i = 0; i < layer.data.length; i++) {
-                        const [x, y] = this.tr.project(...layer.data[i].lngLat as [number, number]), x0 = x + ox, y0 = y + oy, x1 = x0 + o.width, y1 = y0 + o.height;
-                        if (x0 > this.tr.width || y0 > this.tr.height || x1 < 0 || y1 < 0 || grid.hits(x0, y0, x1, y1)) continue;
-                        grid.insert(x0, y0, x1, y1);
-                        shown.add(i);
-                    }
-                }
-                return shown.has(index);
-            };
-            for (let i = layer.data.length - 1; i >= 0; i--) {
-                const ll = layer.data[i].lngLat;
-                if (near && (ll[0] < w || ll[0] > e || ll[1] < s || ll[1] > n)) continue;
-                const [x, y] = this.tr.project(...ll as [number, number]);
-                if (point.x >= x + ox && point.x <= x + ox + o.width && point.y >= y + oy && point.y <= y + oy + o.height && visible(i)) return {layer, index: i, marker: layer.data[i]};
-            }
-        }
-        return null;
     }
 
     // ---- input ----
@@ -1449,13 +1289,6 @@ export class Map {
             if (e.pointerType === 'mouse' && e.buttons === 0 && pointers.has(e.pointerId)) up(e);
             const p = pos(e), prev = pointers.get(e.pointerId);
             if (!prev) {
-                const hit = this.queryMarkers(p), was = this.hovered;
-                if (hit?.layer !== was?.layer || hit?.index !== was?.index) {
-                    if (was) this.fire('markerleave', {...was, marker: was.layer.data[was.index]});
-                    this.hovered = hit;
-                    if (hit) this.fire('markerenter', hit);
-                    el.style.cursor = hit ? 'pointer' : '';
-                }
                 mouseEvent('mousemove', e);
                 return;
             }
@@ -1539,7 +1372,11 @@ export class Map {
             this.dragging = false;
             if (wasDragging) this.fire('dragend', {originalEvent: e});
             if (tapDrag) {
-                if (!tapDrag.zoomed && this.doubleClickZoom.isEnabled() && (e.type === 'blur' || !mouseEvent('dblclick', e))) this.easeTo({zoom: this.tr.zoom + 1, around: [tapDrag.x, tapDrag.y], duration: 300});
+                if (!tapDrag.zoomed) {
+                    // (The zoom waits for the listeners of `dblclick`, which the compat entry calls later: see `mouseEvent`.)
+                    const {x, y} = tapDrag, zoom = () => { if (this.doubleClickZoom.isEnabled()) this.easeTo({zoom: this.tr.zoom + 1, around: [x, y], duration: 300}); };
+                    if (e.type === 'blur') zoom(); else mouseEvent('dblclick', e, {}, zoom);
+                }
                 tapDrag = null;
                 lastTap.t = 0;
                 if (wasDragging) { this.moving = false; this.fire('moveend'); }
@@ -1553,10 +1390,9 @@ export class Map {
                 this.post({type: 'fling', dx: last.x - first.x, dy: last.y - first.y, ms: now - first.t});
             } else if (wasDragging) { this.moving = false; this.fire('moveend'); }
             if (moved <= 3 && e.type === 'pointerup' && e.button === 0 && !suppressClick) {
-                const at = pos(e), hit = this.queryMarkers(at);
+                const at = pos(e);
                 if (e.pointerType === 'touch') lastTap = {t: now, x: at.x, y: at.y};
-                if (hit) mouseEvent('markerclick', e, hit);
-                mouseEvent('click', e, {marker: hit});
+                mouseEvent('click', e);
             }
         };
         listen('pointerup', up);
@@ -1633,14 +1469,6 @@ export class Map {
     }
 }
 
-/** SVG string -> premultiplied RGBA pixels, via an <img>, which is the one SVG rasterisation path every browser supports. */
-async function rasterise(svg: string, w: number, h: number): Promise<Uint8Array> {
-    const img = new Image();
-    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
-    await img.decode();
-    return pixels(img, w, h);
-}
-
 /** Padding as MapLibre takes it: one number for all sides, or any of the four sides. */
 export type PaddingInput = number | Partial<Record<'top' | 'right' | 'bottom' | 'left', number>>;
 export type CameraInput = Omit<CameraOptions, 'padding'> & {padding?: PaddingInput};
@@ -1672,4 +1500,21 @@ function pixels(source: CanvasImageSource, w: number, h: number): Uint8Array {
         out[i] = px[i] * a; out[i + 1] = px[i + 1] * a; out[i + 2] = px[i + 2] * a; out[i + 3] = px[i + 3];
     }
     return out;
+}
+
+/** Applies one diff of `updateData` to GeoJSON data and returns a new FeatureCollection. */
+function applyDiff(data: any, diff: GeoJSONDiff, key?: string) {
+    const idOf = (f: any) => key ? f.properties?.[key] : f.id;
+    let features: any[] = diff.removeAll ? [] : data?.type === 'FeatureCollection' ? data.features : data?.type === 'Feature' ? [data] : [];
+    const added = new Set((diff.add ?? []).map(idOf));
+    features = [...features.filter(f => !diff.remove?.includes(idOf(f)) && !added.has(idOf(f))), ...diff.add ?? []];
+    for (const u of diff.update ?? []) {
+        const i = features.findIndex(f => idOf(f) === u.id);
+        if (i < 0) continue;
+        const f = features[i] = {...features[i], properties: u.removeAllProperties ? {} : {...features[i].properties}};
+        if (u.newGeometry) f.geometry = u.newGeometry;
+        for (const k of u.removeProperties ?? []) delete f.properties[k];
+        for (const p of u.addOrUpdateProperties ?? []) f.properties[p.key] = p.value;
+    }
+    return {type: 'FeatureCollection', features};
 }

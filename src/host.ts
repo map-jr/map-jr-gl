@@ -6,11 +6,11 @@
  * The adapters for the frameworks (`@map-jr/map-jr-gl/vue` and others) are thin layers over `createMap`.
  * (For the API of MapLibre GL JS, see `@map-jr/map-jr-gl/maplibre-compat`.)
  */
-import {Map, markerSize, type FeatureOptions, type FeaturePlace, type ImageOptions, type MapOptions, type MarkerLayer, type RenderedFeature} from './map.ts';
+import {Map, type FeatureOptions, type FeaturePlace, type ImageOptions, type MapOptions, type RenderedFeature} from './map.ts';
 export type {FeatureOptions, FeaturePlace};
 import {createStore, type Readable} from './store.ts';
 import {Marker, Popup, type OverlayAnchor} from './overlays.ts';
-import type {MarkerInput, MarkerLayerOptions} from './markers.ts';
+import {markerFeatures, markerStyle, withMarkers, type MarkerLayerOptions} from './markers.ts';
 import type {QueriedFeature} from './query.ts';
 import type {Checked} from './mistakes.ts';
 import type {FontSource} from './engine.ts';
@@ -84,7 +84,10 @@ export interface MapSpec extends MapSetup {
      * place of an image of the sprite that has the same name.
      */
     images?: Record<string, ImageInput>;
-    /** Marker layers, each with an `id`. A layer whose `data` is a new array gets the new data. */
+    /**
+     * Marker layers, each with an `id`. A marker layer is shorthand for a GeoJSON source and a symbol layer with that
+     * id, which draws the image `image` at each marker. A layer whose `data` is a new array gets the new data.
+     */
     markers?: MarkerLayerOptions[];
     /** Controls from `@map-jr/map-jr-gl/controls`: `[navigation(), scale()]`. */
     controls?: ControlSpec[];
@@ -139,8 +142,6 @@ export interface MapOverlay { update(options: OverlayOptions): void; remove(): v
 
 /** What each event of `listen` has: its type, and the map object behind the host (see `map` in `MapHost`). */
 export interface MapEventBase<T extends string = string> { type: T; target: Map }
-/** A marker of a marker layer under the pointer: the layer, the index of the marker in the `data` of the layer, and the marker. */
-export interface MarkerHit { layer: MarkerLayer; index: number; marker: MarkerInput }
 /** An event of the pointer. A listener that calls `preventDefault()` stops what the map does for the event (a drag, a zoom). */
 export interface MapPointerEvent<T extends string = string, E extends MouseEvent = MouseEvent> extends MapEventBase<T> {
     /** The place in CSS pixels from the top left corner of the map. */
@@ -167,14 +168,8 @@ export interface MapEvents extends
     Pointed<'dblclick' | 'contextmenu' | 'mousedown' | 'mousemove' | 'mouseup' | 'mouseover' | 'mouseout'>,
     Record<'touchstart' | 'touchmove' | 'touchend' | 'touchcancel', MapTouchEvent>,
     Record<'styledata' | 'sourcedata' | 'data' | 'styledataloading' | 'sourcedataloading' | 'dataloading', MapDataEvent> {
-    /** `marker` is the marker of a marker layer at the point, or `null`. */
-    click: MapPointerEvent<'click'> & {marker: MarkerHit | null};
+    click: MapPointerEvent<'click'>;
     wheel: MapPointerEvent<'wheel', WheelEvent>;
-    /** A click on a marker of a marker layer. */
-    markerclick: MapPointerEvent<'markerclick'> & MarkerHit;
-    /** The pointer comes to a marker of a marker layer, or leaves it. */
-    markerenter: MapEventBase<'markerenter'> & MarkerHit;
-    markerleave: MapEventBase<'markerleave'> & MarkerHit;
     /** The box of a zoom with the Shift key and a drag. `boxzoomend` has the bounds of the box. */
     boxzoomstart: MapEventBase<'boxzoomstart'> & {originalEvent: PointerEvent};
     boxzoomcancel: MapEventBase<'boxzoomcancel'> & {originalEvent: Event};
@@ -236,7 +231,11 @@ export interface MapHost {
     readonly map: Map;
 }
 
-const same = (a: ViewInput | undefined, b: ViewInput | undefined) => !!a && !!b && a.zoom === b.zoom && a.bearing === b.bearing && a.pitch === b.pitch && a.center?.[0] === b.center?.[0] && a.center?.[1] === b.center?.[1];
+// (A field that `a` does not have is not compared: an owned view such as `{center, zoom}` equals a full view that the map reported.)
+const same = (a: ViewInput | undefined, b: ViewInput | undefined) => !!a && !!b && (['zoom', 'bearing', 'pitch'] as const).every(k => a[k] === undefined || a[k] === b[k]) && (!a.center || (a.center[0] === b.center?.[0] && a.center[1] === b.center?.[1]));
+
+/** What of the marker layers is a part of the style: the source and the layer of each one (not the data). */
+const markerStyles = (markers?: MarkerLayerOptions[]) => (markers ?? []).map(markerStyle);
 
 /** A style with the additions of `extend`. */
 function extended(style: any, extend?: StyleExtension) {
@@ -249,10 +248,9 @@ function extended(style: any, extend?: StyleExtension) {
     return {...style, sources: {...style.sources, ...extend.sources}, layers, ...(extend.terrain === undefined ? {} : {terrain: extend.terrain ?? undefined})};
 }
 
-/** Stops a description with no style or with a marker layer with no size, with a message that says what to write (a caller in JavaScript has no type check). */
+/** Stops a description with no style, with a message that says what to write (a caller in JavaScript has no type check). */
 function complete(spec: MapSpec, method: string, fix: string) {
     if (!spec?.style) throw new Error(`[map-jr-gl] ${method}(): the description has no "style". ${fix}`);
-    spec.markers?.forEach(markerSize);
 }
 
 export function createMap(container: HTMLElement | string, spec: MapSpec): MapHost {
@@ -276,13 +274,21 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
     const checks = (): Promise<typeof import('./mistakes.ts')> => __DEV__ ? import('./mistakes.ts') : Promise.reject();
     const checked: Checked = {map, warned: new Set(), spec: () => now, ready: () => alive && styled && state.get().loaded};
     const check = (kind: number, a?: unknown, b?: unknown) => { if (__DEV__) checks().then(m => m.check(checked, kind, a, b), () => {}); };
-    const restyle = (next: MapSpec) => { styled = false; map.setStyle(next.style, {transformStyle: (_, style) => { styled = true; check(4, style, next.extend); return extended(style, next.extend); }}); };
+    // The data that each source has from the description: the GeoJSON of `data`, and the markers of a marker layer.
+    const sent = new globalThis.Map<string, unknown>();
+    const restyle = (next: MapSpec) => { styled = false; map.setStyle(next.style, {transformStyle: (_, style) => {
+        styled = true;
+        // (The sources of the new style have no data of the description yet: data that was given since `restyle` went to
+        // the sources of the style before. It is given again when the new style is there: see `giveData`.)
+        sent.clear();
+        check(4, style, next.extend);
+        return withMarkers(extended(style, next.extend), next.markers);
+    }}); };
     restyle(spec);
     // (The height of the container is read after a second, so that a container which gets its height a moment later gives no warning.)
     setTimeout(() => check(0), 1000);
     const viewOf = (): View => { const c = map.getCenter(); return {center: [c.lng, c.lat], zoom: map.getZoom(), bearing: map.getBearing(), pitch: map.getPitch()}; };
     const state = createStore<MapState>({loaded: false, idle: false, moving: false, view: viewOf(), hover: [], renderer: undefined, error: undefined});
-    const markers = new globalThis.Map<string, {layer: MarkerLayer; options: MarkerLayerOptions}>();
     const controls = new globalThis.Map<string, ReturnType<ControlSpec['create']>>();
     // The images of `images` that the map has, by name. The value says what the image was made from: the text of an
     // image that is given as text (so the same content in a new object is the same image), or else the object itself.
@@ -341,15 +347,20 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
 
     // The GeoJSON data of `data`. A source gets its data when the style has it (a style from a URL comes later), and
     // again after a new style, which has the data of the style itself.
-    const sent = new globalThis.Map<string, unknown>();
     const giveData = () => {
-        for (const id in now.data) {
-            if (sent.get(id) === now.data[id]) continue;
+        const give = (id: string, data: unknown, made?: (data: any) => unknown) => {
+            if (sent.get(id) === data) return;
             const source = map.getSource(id) as {setData?: (data: unknown) => void} | undefined;
-            if (source?.setData) { sent.set(id, now.data[id]); source.setData(now.data[id]); }
-        }
+            if (source?.setData) { sent.set(id, data); source.setData(made ? made(data) : data); }
+        };
+        for (const id in now.data) give(id, now.data[id]);
+        // (The markers of a marker layer are the data of its source: a point for each one.)
+        for (const m of now.markers ?? []) give(m.id, m.data, markerFeatures);
     };
     map.on('styledata', giveData);
+    // An image that a marker layer names and that the map does not have. (A style can name other images that nothing
+    // has. An image from a URL, and an image of a later description, come a moment later: the check waits for them.)
+    map.on('styleimagemissing', e => setTimeout(() => { if (alive && !map.hasImage(e.id as string) && now.markers?.some(m => m.image === e.id)) check(5, e.id); }, 3000));
     // (At `idle`, and not when the style comes: an application can add a layer or a source itself in `load`.)
     map.on('idle', () => check(1));
 
@@ -358,9 +369,9 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
         // content. So where the identity is different, the content is compared before the map does work.)
         const differ = (a: unknown, b: unknown) => a !== b && JSON.stringify(a) !== JSON.stringify(b);
         // (After a new style the data waits for the `styledata` event: the engine must have the new style first.)
-        const restyled = !!before && (differ(next.style, before.style) || differ(next.extend, before.extend));
+        const restyled = !!before && (differ(next.style, before.style) || differ(next.extend, before.extend) || differ(markerStyles(next.markers), markerStyles(before.markers)));
         if (restyled) { state.set({idle: false}); sent.clear(); restyle(next); }
-        if (next.view && !same(next.view, before?.view) && !reported.some(v => same(v, next.view)) && before) map.jumpTo(next.view);
+        if (next.view && !same(next.view, before?.view) && !reported.some(v => same(next.view, v)) && before) map.jumpTo(next.view);
         if (next.minZoom !== before?.minZoom && before) map.setMinZoom(next.minZoom);
         if (next.maxZoom !== before?.maxZoom && before) map.setMaxZoom(next.maxZoom);
         if (next.maxPitch !== before?.maxPitch && before) map.setMaxPitch(next.maxPitch);
@@ -386,22 +397,10 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
                 });
             }
         }
-        if (next.markers !== before?.markers) {
-            const wanted = new Set((next.markers ?? []).map(m => m.id));
-            for (const [id, m] of markers) if (!wanted.has(id)) { m.layer.remove(); markers.delete(id); }
-            for (const m of next.markers ?? []) {
-                const have = markers.get(m.id);
-                if (have?.options === m) continue;
-                // Only the data is new: the layer keeps its images. Another change makes the layer again.
-                const {data: a, ...restA} = m, {data: b, ...restB} = have?.options ?? {data: null};
-                if (have && JSON.stringify(restA) === JSON.stringify(restB)) { if (a !== b) have.layer.setData(a); have.options = m; }
-                else { have?.layer.remove(); markers.set(m.id, {layer: map.addMarkerLayer({...m}), options: m}); }
-            }
-        }
         if (differ(next.interactiveLayers, before?.interactiveLayers)) hover();
         check(2, next, before);
         now = next;
-        if (next.data !== before?.data && !restyled) giveData();
+        if ((next.data !== before?.data || next.markers !== before?.markers) && !restyled) giveData();
     };
     apply(spec);
 
