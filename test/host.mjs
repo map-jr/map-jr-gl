@@ -175,7 +175,8 @@ for (const renderer of ['worker', 'main']) {
             }
             const place = await bad.queryFeatures({lng: -74.0065, lat: 40.7085}).then(() => '', e => e.message);
             const flatEl = div('height:0'), flat = t.lib.createMap(flatEl, base);
-            await wait(1500);
+            // (The warning for an image that the map does not have waits three seconds for the image.)
+            await wait(3500);
             for (const [el, host] of [[goodEl, good], [badEl, bad], [flatEl, flat]]) { host.destroy(); el.remove(); }
             console.warn = log;
             return {correct, said, place};
