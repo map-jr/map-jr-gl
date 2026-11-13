@@ -601,7 +601,8 @@ export class Engine {
     }
 
     private icon = (name: string) => {
-        const found = this.images.get(name) ?? this.sprite?.icons[name];
+        // (The name can come from data: `toString` is no icon of the sprite.)
+        const found = this.images.get(name) ?? (this.sprite && Object.hasOwn(this.sprite.icons, name) ? this.sprite.icons[name] : undefined);
         // Ask the page for images the style names but nothing provides (once each, and only after the sprite has had its chance).
         if (!found && (this.sprite || !this.spriteUrl) && !this.missing.has(name)) {
             this.missing.add(name);
@@ -727,16 +728,17 @@ export class Engine {
                 break;
             case 'fonts': this.loadFonts(c.fonts); break;
             case 'image': {
+                this.dropImage(c.name);
                 const rect = this.addSprite(c.w, c.h, c.data);
                 if (rect) this.images.set(c.name, {x: rect[0], y: rect[1], width: c.w, height: c.h, pixelRatio: c.w / c.width, custom: true, stretchX: c.stretchX, stretchY: c.stretchY, content: c.content, textFitWidth: c.textFitWidth, textFitHeight: c.textFitHeight});
                 this.styleVersion++;
                 this.placeDirty = true;
                 break;
             }
-            case 'removeImage': this.images.delete(c.name); this.placeDirty = true; break;
+            case 'removeImage': this.dropImage(c.name); this.placeDirty = true; break;
             case 'templates':
                 for (const b of this.backends) b.setTemplates(c.slots);
-                for (const names of [this.images, this.missing]) for (const name of [...names.keys()]) if (c.changed.includes(name.split(VARIANT)[0])) names.delete(name);
+                for (const name of [...this.images.keys(), ...this.missing]) if (c.changed.includes(name.split(VARIANT)[0])) { this.dropImage(name); this.missing.delete(name); }
                 // (Only tiles with shapes are built again: `band` is the zoom that such a tile was built for.)
                 if (c.rebuild) for (const t of this.tiles.values()) if (t.band !== undefined) { t.stale = true; t.rev = ++this.tilesVersion; }
                 this.styleVersion++;
@@ -787,11 +789,29 @@ export class Engine {
         this.tr.setLocationAt(lng, lat, x, y);
     }
 
+    /** The places in the texture of images that the map has no more, by size ("24x31"): an image of the same size takes one. */
+    private freed = new Map<string, [number, number][]>();
+    private atlasFull = false;
+    /** Takes an image from the map. Its place in the texture is free for an image of the same size (a template is drawn again with each change, in the same size). */
+    private dropImage(name: string) {
+        const img = this.images.get(name);
+        if (!img) return;
+        const key = img.width + 'x' + img.height;
+        this.freed.set(key, [...this.freed.get(key) ?? [], [img.x, img.y]]);
+        this.images.delete(name);
+    }
     /** Copies an image into the dynamic atlas shared by markers and runtime-added icons. */
     private addSprite(w: number, h: number, data: Uint8Array): [number, number, number, number] | null {
-        const pen = this.spritePen;
+        const pen = this.spritePen, spare = this.freed.get(w + 'x' + h)?.pop();
+        // (The place of an image of this size that the map has no more: see `dropImage`.)
+        if (spare) { this.renderer.uploadSprite(spare[0], spare[1], w, h, data); return [spare[0], spare[1], w, h]; }
         if (pen[0] + w + 1 > SPRITE_ATLAS) { pen[0] = 1; pen[1] += pen[2] + 1; pen[2] = 0; }
-        if (pen[1] + h + 1 > SPRITE_ATLAS) { this.emit({type: 'error', message: 'Image atlas is full'}); return null; }
+        if (pen[1] + h + 1 > SPRITE_ATLAS) {
+            // (One message, not one for each image that follows.)
+            if (!this.atlasFull) this.emit({type: 'error', message: '[map-jr-gl] The texture of the images is full, so this image and the images after it are not drawn. Use fewer or smaller images. (An SVG template is drawn one time for each different set of values.)'});
+            this.atlasFull = true;
+            return null;
+        }
         this.renderer.uploadSprite(pen[0], pen[1], w, h, data);
         const rect: [number, number, number, number] = [pen[0], pen[1], w, h];
         pen[0] += w + 1;

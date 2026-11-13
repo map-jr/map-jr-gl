@@ -238,10 +238,20 @@ What to know about a template:
 
 - `icon-image` is a layout property. A parameter is evaluated when a tile is built, at a whole zoom level. For a
   value that changes without steps, use `icon-size`, `icon-opacity` or `icon-rotate`.
-- A parameter can read `feature-state`. The map then builds the tiles of the source again when the state of a
-  feature changes. MapLibre GL JS does not permit `feature-state` in a layout property.
+- A parameter can read `feature-state`, as `stroke` does in the example. The description has no field for the
+  state of a feature: set it on the map object of the host, for example
+  `map.map.setFeatureState({source: 'places', id: 1}, {hover: true})`. The map then builds the tiles of the source
+  again. MapLibre GL JS does not permit `feature-state` in a layout property.
 - A map draws 1,000 variants of one template at most. More different sets of values give one error of the map with
   the name of the image, and the other variants are not drawn. Give the slots values from a small set.
+- All images that are added at runtime share one texture of 2048 by 2048 pixels, so large variants reach its end
+  before the limit of 1,000: about 600 variants of 40 by 40 CSS pixels fit on a screen with a pixel ratio of 2. The
+  map then reports one error, and later images are not drawn. A variant of a template that is replaced gives its
+  place back.
+- A template works in `icon-image`. A template in `format` text or in a pattern property is not drawn.
+- A template that is not well-formed gives one error of the map with the name of the image.
+- A slot in the `href` of an `<image>` element makes the page request the URL that a feature gives. Use such a
+  slot only with data that you trust.
 - A slot with no parameter and no property of that name gets an empty text.
 - In the development build, a parameter whose name is not a slot of the image gives a warning.
 - `params` is not part of the MapLibre style specification. Mapbox GL JS has the same form for the colours of an
