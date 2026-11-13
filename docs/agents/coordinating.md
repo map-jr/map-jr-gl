@@ -36,7 +36,8 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
 
 - Give each worker its own port (8101, 8102, …). Before `test/interact.mjs` and `test/host.mjs` read `PORT`, the
   workers waited for one shared port, and a fix of five lines took 20 to 35 minutes. With its own port a worker took
-  4 minutes.
+  4 minutes. Do not give a port again while its worker can still be running: a worker that has reported can still
+  get a follow-up, and on 2026-11-13 two workers met on port 8104. Count the ports up for the whole session.
 - Give each worker its own git worktree (`isolation: "worktree"`). The worktrees are in `.claude/worktrees/`; add
   that path to `.git/info/exclude` so that the main checkout stays clean.
 - Use low effort for a worker on one issue. A worker used 90,000 to 160,000 tokens for an issue at low effort.
@@ -74,6 +75,21 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
 - **A worker that rewrites code it did not need to touch has made a larger change.** Ask for a review (below).
 - **A change that needs the owner but depends on an open pull request** can be a pull request against that branch
   (#106 on #90). The owner then sees only the new part.
+- **A run of merges cancels CI on `main`.** Each push to `main` cancels the run of the push before it. On 2026-11-13
+  twelve merges in a row left `main` with no finished run for an hour. After a run of merges, let one CI run on
+  `main` finish before you merge more, and before a change that alters how every map starts.
+- **A stack of pull requests after a squash merge.** When the first pull request of a stack is squashed into `main`,
+  the next branch conflicts with `main` on the lines that both have, and `update_pull_request_branch` refuses. Retarget
+  the next pull request to `main`, and merge `main` into its branch by hand:
+  - If `git diff origin/main <merged head>` is empty, `main` adds nothing that the branch lacks. Then
+    `git merge -s ours origin/main` gives the right tree, and the diff of the branch does not change.
+  - Otherwise merge normally. In a conflict on a file that the other new commits of `main` do not touch, take the
+    side of the branch (`git checkout --ours`). Then check that `git diff <old head> HEAD` is exactly the diff of
+    those other commits.
+  - Push with `--force-with-lease=<branch>:<old head>`. The session that wrote the stack can push to the same
+    branches at the same time (it did on 2026-11-13).
+  - Two pull requests of a stack that only pass together (#130 was 15 bytes over a budget until #131 took code out)
+    can be one squash commit: merge the upper one, and close the lower one with a link. Ask the owner first.
 
 ## Independent review
 
@@ -83,7 +99,9 @@ of questions, not the report of the author. It must reproduce a fault before it 
 the coordinator. The two reviews of 2026-11-12 cost about 120,000 and 160,000 tokens and found six faults that the
 authors' own tests did not (a false warning, an unhandled rejection, a popup that scrolls the map, a popup that
 is invisible when it opens a second time). A reviewer that has Firefox and WebKit of Playwright finds what the
-author's Chromium run cannot.
+author's Chromium run cannot. The review of #146 on 2026-11-13 cost about 115,000 tokens and found a false fall back
+that left two engines and input bound twice. Tell a reviewer to start its demo server and stop it in the same
+command, as the brief does: the permission check can refuse a later `kill`, and the server then keeps its port.
 
 ## When the usage limit stops the workers
 
@@ -96,4 +114,9 @@ issues. Before you wait, push the branch of each stopped worker, so that the wor
 1. Run `pnpm status` once on `main` and open one pull request with the result.
 2. Update the roadmap issue (#55): tick what closed, and correct the text of issues that were partly done.
 3. Change the brief or these notes when a worker report shows a fault in them (in the first batch: an attribution
-   line that the session rules replace, and a file `.demo.pid` that the test command left behind).
+   line that the session rules replace, and a file `.demo.pid` that the test command left behind; in the batch of
+   2026-11-13: workers that did not run the new test without the fix).
+4. Read the results of the `Browsers` workflow on the last merged commit
+   (`git fetch origin bench-results && git show origin/bench-results:README.md`, and `<system>-<browser>-tests.txt`
+   for the names of the failing checks). CI runs only Chromium. On 2026-11-13 the checks of the new images and icons
+   failed in WebKit (#150).
