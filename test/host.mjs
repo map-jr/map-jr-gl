@@ -333,13 +333,18 @@ for (const renderer of ['worker', 'main']) {
             t.host.moveTo({bearing: 0, pitch: 0}); // (an earlier test turned the map)
             t.host.update(t.spec = {...t.spec, style: t.arrows({}), images: {arrow: '<svg viewBox="0 0 24 30"><path d="M12 1 23 29 12 22 1 29z" fill="#d6453d" stroke="#fff" stroke-width="1.5"/></svg>'}});
         });
+        // (While the map moves, the engine says how many icons it placed among the labels: none of those of the buffers.)
+        await page.evaluate(() => { const t = window.t; t.placed = []; t.host.listen('stats', e => t.placed.push(e.labels)); });
         const flat = await shot();
-        await page.evaluate(() => window.t.host.moveTo({bearing: 40, pitch: 50}));
+        await page.evaluate(() => window.t.host.moveTo({bearing: 40, pitch: 50, duration: 2500}));
         const tilted = await shot();
+        const placedFromBuffers = await page.evaluate(() => window.t.placed.splice(0));
         await page.evaluate(() => { const t = window.t; t.host.update(t.spec = {...t.spec, style: t.arrows({'symbol-sort-key': 1})}); });
         const tiltedPlaced = await shot();
-        await page.evaluate(() => window.t.host.moveTo({bearing: 0, pitch: 0}));
+        await page.evaluate(() => window.t.placed.splice(0));
+        await page.evaluate(() => window.t.host.moveTo({bearing: 0, pitch: 0, duration: 2500}));
         const flatPlaced = await shot();
+        const placedWithLabels = await page.evaluate(() => window.t.placed.splice(0));
         const same = await page.evaluate(async pairs => {
             const pixels = async png => { const bitmap = await createImageBitmap(await (await fetch('data:image/png;base64,' + png)).blob()), c = new OffscreenCanvas(bitmap.width, bitmap.height).getContext('2d'); c.drawImage(bitmap, 0, 0); return c.getImageData(0, 0, bitmap.width, bitmap.height).data; };
             const out = [];
@@ -356,6 +361,8 @@ for (const renderer of ['worker', 'main']) {
         // (Some pixels can differ: the two ways round the place of an icon at different points of the calculation.)
         check(`[${renderer}] icons from the buffers of the tiles are drawn as icons that are placed with the labels: on a flat map and on a turned and tilted map, with a size, a turn and an opacity for each feature`,
             same.every(p => p.red > 3000 && p.different < 60), JSON.stringify(same));
+        check(`[${renderer}] the engine places no icon among the labels when the tiles have the icons in buffers (and it places them when they are not)`,
+            placedFromBuffers.length > 0 && placedFromBuffers.every(n => n === 0) && placedWithLabels.length > 0 && placedWithLabels.every(n => n > 0), JSON.stringify({placedFromBuffers, placedWithLabels}));
         }
 
         // GeoJSON data apart from the style: it goes to its source alone, and stays over a new style.

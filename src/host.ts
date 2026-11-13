@@ -180,7 +180,7 @@ export interface MapEvents extends
     boxzoomcancel: MapEventBase<'boxzoomcancel'> & {originalEvent: Event};
     boxzoomend: MapEventBase<'boxzoomend'> & {originalEvent: Event; boxZoomBounds: LngLatBounds};
     /** About once a second while the map draws: frames per second, and the time of a frame on the CPU in milliseconds. */
-    stats: MapEventBase<'stats'> & {fps: number; frameMs: number};
+    stats: MapEventBase<'stats'> & {fps: number; frameMs: number; labels: number};
     /** The style names an image (`id`) that the map does not have. */
     styleimagemissing: MapEventBase<'styleimagemissing'> & {id: string};
     /** The terrain of the style has changed. */

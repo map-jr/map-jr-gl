@@ -76,7 +76,8 @@ export type EngineEvent =
     /** 3D terrain: the height grid of an elevation tile that has loaded (or, without `grid`, been dropped). */
     | {type: 'heights'; key: string; grid?: Float32Array}
     /** About once a second while drawing: frames drawn per second and the engine's average CPU time per frame. */
-    | {type: 'stats'; fps: number; frameMs: number}
+    /** `labels`: how many labels and icons of the last frame were placed among the labels (the icons that the tiles have in buffers are not counted). */
+    | {type: 'stats'; fps: number; frameMs: number; labels: number}
     | {type: 'frame'}
     /** The engine has drawn a frame to its end after the `ping` command with this number. */
     | {type: 'pong'; n: number}
@@ -1373,7 +1374,7 @@ export class Engine {
         st.frames++; st.cpu += end - began;
         if (!st.since) st.since = began;
         else if (end - st.since >= 1000) {
-            this.emit({type: 'stats', fps: st.frames / ((end - st.since) / 1000), frameMs: st.cpu / st.frames});
+            this.emit({type: 'stats', fps: st.frames / ((end - st.since) / 1000), frameMs: st.cpu / st.frames, labels: labels.length});
             this.stats = {since: end, frames: 0, cpu: 0};
         }
         // After a pause the next burst of frames starts a fresh measurement instead of averaging in the idle time.
