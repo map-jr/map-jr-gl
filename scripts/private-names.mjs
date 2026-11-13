@@ -24,7 +24,7 @@ import {pathToFileURL} from 'node:url';
 const {parseAst} = await import(pathToFileURL(createRequire(createRequire(import.meta.url).resolve('vite')).resolve('rolldown/parseAst')).href);
 const src = path.resolve(import.meta.dirname, '../src');
 const INTERNAL = ['heightAt', 'cameraDistance', 'pixelsPerMetre', 'worldSize', 'screenToMerc', 'screenToGround', 'coveringTiles', 'projectTile', 'mercToScreen',
-    'createImageTile', 'createTile', 'destroyTile', 'setLocationAt', 'updateMarker', 'setMarkerHeights', 'setMarkers', 'tileMatrix4', 'tileMatrix',
+    'createImageTile', 'createTile', 'destroyTile', 'setLocationAt', 'tileMatrix4', 'tileMatrix',
     'tileScale', 'cameraPosition', 'unprojectFlat', 'recenterOnGround', 'uploadSprite', 'setIcons', 'zoomFloor',
     'varint', 'svarint', 'skip', 'constrain', 'occluded', 'loadIR', 'onReset', 'resets', 'expansionZoom', 'setFetch', 'dirty', 'hits', 'command', 'leaves'];
 

@@ -15,11 +15,12 @@ const check = (name, ok, detail = '') => { console.log(`${ok ? 'PASS' : 'FAIL'} 
 
 const tiles = (await (await fetch('https://tiles.openfreemap.org/planet')).json()).tiles[0];
 const style = makeStyle(tiles, '<a href="https://example.com/credits" onclick="x()">Example <b>tiles</b></a>'), view = {center: [-74.0065, 40.7085], zoom: 14.3};
-const pins = {id: 'pins', svg: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="{{color}}"/></svg>', width: 24, height: 24, data: [{lngLat: view.center, props: {color: '#d00'}}]};
+const disc = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="{{color}}"/></svg>';
+const pins = {id: 'pins', image: 'disc', data: [{lngLat: view.center, props: {color: '#d00'}}]};
 
 // 1. On the server.
-const html = await renderToString(createSSRApp({render: () => h('div', {id: 'frame', style: 'width:800px;height:500px'}, [h(MapJr, {mapStyle: style, initialView: view, markers: [pins], ssr: {width: 800, height: 500}, attribution: false})])}));
-check('server: the component renders the first view as SVG', /<svg[^>]*data-map-jr-ssr/.test(html) && html.length > 20000 && html.includes('map-jr-vue'), `${(html.length / 1024).toFixed(0)} KB of HTML`);
+const html = await renderToString(createSSRApp({render: () => h('div', {id: 'frame', style: 'width:800px;height:500px'}, [h(MapJr, {mapStyle: style, initialView: view, images: {disc}, markers: [pins], ssr: {width: 800, height: 500}, attribution: false})])}));
+check('server: the component renders the first view as SVG, with the marker from its image (a template with the colour of the marker)', /<svg[^>]*data-map-jr-ssr/.test(html) && html.length > 20000 && html.includes('map-jr-vue') && /<circle cx="12" cy="12" r="10" fill="#d00"/.test(html), `${(html.length / 1024).toFixed(0)} KB of HTML`);
 const credited = await renderToString(createSSRApp({render: () => h(MapJr, {mapStyle: style, initialView: view, ssr: true})}));
 check('server: the credits of the sources are in the page, as text and links only', !html.includes('example.com/credits') && /<div data-map-jr-ssr[^>]*><a href="https:\/\/example.com\/credits">Example tiles<\/a><\/div>/.test(credited), credited.match(/<div data-map-jr-ssr[^>]*>.{0,120}/)?.[0] ?? 'no credits');
 const small = await renderToString(createSSRApp({render: () => h(MapJr, {mapStyle: style, initialView: view, ssr: {width: 800, height: 500, overrides: {building: {hidden: true}, 'building-outline': {hidden: true}, road: {minzoom: 20}}, attribution: 'Own credits'}})}));
@@ -27,7 +28,7 @@ check('server: overrides for style layers make the render smaller, and the credi
 const plain = await renderToString(createSSRApp({render: () => h(MapJr, {mapStyle: style, initialView: view})}));
 check('server: without the ssr prop the component renders an empty element', !plain.includes('<svg') && plain.includes('map-jr-vue'), plain.slice(0, 120));
 
-const bare = await renderToString(createSSRApp({render: () => h('div', {id: 'frame', style: 'width:800px;height:500px'}, [h(MapJr, {mapStyle: style, initialView: view, markers: [pins], attribution: false})])}));
+const bare = await renderToString(createSSRApp({render: () => h('div', {id: 'frame', style: 'width:800px;height:500px'}, [h(MapJr, {mapStyle: style, initialView: view, images: {disc}, markers: [pins], attribution: false})])}));
 
 // 2. In a browser: the page from the server, then Vue and the map.
 const types = {'.js': 'text/javascript', '.json': 'application/json'};
@@ -35,7 +36,7 @@ const client = `import {createSSRApp, createApp, h, ref} from 'vue';
 import {MapJr, MapOverlay, MapImage} from '/dist/vue.js';
 import {navigation, scale} from '/dist/controls.js';
 const style = await (await fetch('/style.json')).json();
-const view = ref(${JSON.stringify(view)}), markers = ref([${JSON.stringify(pins)}]), layers = ref(['water', 'park', 'building']), images = ref({dot: '<svg viewBox="0 0 4 4"><rect width="4" height="4"/></svg>'});
+const view = ref(${JSON.stringify(view)}), markers = ref([${JSON.stringify(pins)}]), layers = ref(['water', 'park', 'building']), images = ref({dot: '<svg viewBox="0 0 4 4"><rect width="4" height="4"/></svg>', disc: ${JSON.stringify(disc)}});
 const tone = ref('#fff'), arrow = ref(true), twin = ref(false), full = ref(true), radius = ref(2);
 // (A component inside the SVG of an image: its own change must reach the map.)
 const Dot = {render: () => h('circle', {cx: 4, cy: 4, r: radius.value})};
@@ -109,23 +110,24 @@ try {
         t.view.value.zoom = 14.2; // a field of the view, in place
         await wait(800);
         const field = host.state.get().view.zoom;
-        const at = lngLat => host.map.queryMarkers(host.project(lngLat)) ? 1 : 0;
+        // (A marker is a feature of the layer of its marker layer.)
+        const at = async lngLat => (await host.queryFeatures(host.project(lngLat), {layers: ['pins']})).length ? 1 : 0;
         // Changes in place, as Vue code makes them: a marker more, a marker replaced.
         t.markers.value[0].data.push({lngLat: [-74.0, 40.71], props: {color: '#00d'}});
         await wait(600);
-        const pushed = at([-74.0, 40.71]);
+        const pushed = await at([-74.0, 40.71]);
         t.markers.value[0].data[0] = {lngLat: [-73.99, 40.71], props: {color: '#0a0'}};
         await wait(600);
-        const replaced = [at([-74.0065, 40.7085]), at([-73.99, 40.71])];
+        const replaced = [await at([-74.0065, 40.7085]), await at([-73.99, 40.71])];
         t.markers.value[0].data[0] = {lngLat: [-74.0065, 40.7085], props: {color: '#d00'}};
         await wait(600);
-        const before = host.map.queryMarkers(host.project([-74.0065, 40.7085])) ? 1 : 0;
+        const before = await at([-74.0065, 40.7085]);
         t.markers.value = [];
         // An image of the prop `images`, and a change in place that removes it.
         const image = host.map.hasImage('dot');
         delete t.images.value.dot;
         await wait(600);
-        return {image, imageAfter: host.map.hasImage('dot'), followed, moved, field, views: t.views, pushed, replaced: replaced.join(), before, after: host.map.queryMarkers(host.project([-74.0065, 40.7085])) ? 1 : 0};
+        return {image, imageAfter: host.map.hasImage('dot'), followed, moved, field, views: t.views, pushed, replaced: replaced.join(), before, after: host.map.getLayer('pins') ? 1 : 0};
     });
     check('browser: v-model:view follows the map and moves it; markers and images follow their props, also when the data changes in place', model.image && !model.imageAfter && model.followed === 15 && model.moved === 13.5 && model.field === 14.2 && model.views > 2 && model.pushed === 1 && model.replaced === '0,1' && model.before === 1 && model.after === 0, JSON.stringify(model));
     // An image as a child component: the SVG of its slot is a template of the map, and it follows the component.

@@ -4,7 +4,7 @@ import type {Batch, TileImage, TileIR} from './tile.ts';
 import type {Sprite} from './style.ts';
 import type {Placed, RenderItem} from './placement.ts';
 import {lineMiddle, BASELINE, EM} from './text.ts';
-import {anchorOffset, escapeXML, parseSVG, resolveVariants, type MarkerLayerOptions} from './markers.ts';
+import {escapeXML, parseSVG} from './markers.ts';
 import type {RGBA} from './expr.ts';
 
 /** Tile coordinates are written at half resolution: sub-pixel accuracy at native zoom for roughly a third less markup. */
@@ -53,7 +53,6 @@ export interface SVGScene {
     sprite?: Sprite | null;
     /** Icons supplied as SVG by name (e.g. generated highway shields); emitted as vector symbols. */
     images?: Map<string, {svg: string; width: number; height: number}>;
-    markers: MarkerLayerOptions[];
     fontFamily: string;
     /** Extra attributes for the root element, e.g. a data attribute the client looks for when hydrating. */
     rootAttrs?: string;
@@ -199,24 +198,6 @@ export function renderSVG(s: SVGScene): string {
             });
         }
         body.push('</g>');
-    }
-
-    let symbols = 0;
-    for (const layer of s.markers) {
-        const {svgs, variant} = resolveVariants(layer), base = symbols, [ox, oy] = anchorOffset(layer.anchor, layer.width, layer.height);
-        const used = new Set<number>(), uses: string[] = [];
-        layer.data.forEach((m, i) => {
-            const [px, py] = tr.project(m.lngLat[0], m.lngLat[1]), x = px + ox, y = py + oy;
-            if (x > tr.width || y > tr.height || x + layer.width < 0 || y + layer.height < 0) return;
-            used.add(variant[i]);
-            uses.push(`<use href="#m${base + variant[i]}" x="${num(x)}" y="${num(y)}" width="${layer.width}" height="${layer.height}"/>`);
-        });
-        for (const v of used) {
-            const {viewBox, inner} = parseSVG(svgs[v]);
-            defs.push(`<symbol id="m${base + v}" viewBox="${viewBox ?? `0 0 ${layer.width} ${layer.height}`}">${inner}</symbol>`);
-        }
-        symbols += svgs.length;
-        body.push(...uses);
     }
 
     return `<svg xmlns="http://www.w3.org/2000/svg" width="${tr.width}" height="${tr.height}" viewBox="0 0 ${tr.width} ${tr.height}" role="img" aria-label="${escapeXML(s.label ?? 'Map')}"${s.rootAttrs ? ' ' + s.rootAttrs : ''}>` +

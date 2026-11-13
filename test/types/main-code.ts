@@ -7,7 +7,7 @@ import {navigation} from '@map-jr/map-jr-gl/controls';
 const NYC = [-74.0065, 40.7085];
 const FIXED = [-74.0065, 40.7085] as const;
 const places = [[-74.0134, 40.7033], [-74.009, 40.7061]];
-const pins = {id: 'pins', svg: '<svg xmlns="http://www.w3.org/2000/svg"/>', width: 14, height: 14, data: places.map(lngLat => ({lngLat, props: {color: '#d6453d'}}))};
+const pins = {id: 'pins', image: 'pin', data: places.map(lngLat => ({lngLat, props: {color: '#d6453d'}}))};
 
 const description: MapSpec = {
     style: 'https://demotiles.maplibre.org/style.json',
@@ -54,9 +54,8 @@ const view: View = map.state.get().view;
 console.log(given, view);
 
 // The event follows from the type of the event.
-map.listen('markerclick', e => e.layer.openPopup(e.index, `Marker at ${e.marker.lngLat.map(v => v.toFixed(3)).join(', ')}`));
 map.listen('stats', e => console.log(e.fps.toFixed(0), e.frameMs));
-map.listen('click', e => { e.preventDefault(); console.log(e.point.x, e.lngLat.lng, e.originalEvent.button, e.marker?.index, e.target.getZoom()); });
+map.listen('click', e => { e.preventDefault(); console.log(e.point.x, e.lngLat.lng, e.originalEvent.button, e.target.getZoom()); });
 map.listen('wheel', e => console.log(e.originalEvent.deltaY));
 map.listen('touchmove', e => console.log(e.points.length, e.lngLats[0].lat));
 map.listen('sourcedata', e => console.log(e.sourceId, e.dataType === 'source'));
