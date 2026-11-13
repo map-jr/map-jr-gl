@@ -4,6 +4,7 @@
  */
 import type {Map} from './map.ts';
 import type {FeatureOptions, MapSpec, StyleExtension} from './host.ts';
+import {templateSlots} from './markers.ts';
 
 /** What a check reads of one map. `warned` has the warnings that the map gave: each mistake gives one warning for each map. */
 export interface Checked { map: Map; warned: Set<string>; spec(): MapSpec; /** The map exists and has loaded the style of the description. */ ready(): boolean }
@@ -41,7 +42,7 @@ const differ = (a: unknown, b: unknown) => a !== b && JSON.stringify(a) !== JSON
 export function check(c: Checked, kind: number, a?: any, b?: any) {
     const {map} = c;
     const warn = (code: number, x = '', y = '') => {
-        const key = code + ' ' + x;
+        const key = code + ' ' + x + ' ' + y;
         if (!c.warned.has(key)) { c.warned.add(key); console.warn(mistake(code, x, y)); }
     };
     /** Warns for each id that is not a layer (or a source) of the style. */
@@ -72,7 +73,8 @@ export function check(c: Checked, kind: number, a?: any, b?: any) {
             if (!Array.isArray(e)) return;
             if (e[0] === 'image' && typeof e[1] === 'string' && e[2]?.params) {
                 const v = images[e[1]] as unknown, svg = String((v as {image?: unknown})?.image ?? v ?? '');
-                for (const k in e[2].params) if (!new RegExp(`\\{\\{\\s*${k}\\s*\\}\\}`).test(svg)) warn(14, k, e[1]);
+                // (Only for an image that the description has now: an image can come with a later description.)
+                if (svg.trimStart().startsWith('<')) for (const k in e[2].params) if (!templateSlots(svg).includes(k)) warn(14, k, e[1]);
             }
             e.forEach(params);
         };

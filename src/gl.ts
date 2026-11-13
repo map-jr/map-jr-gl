@@ -347,7 +347,7 @@ void main() {
   // An upright icon is put on whole device pixels: between pixels, the texture filter smears fine detail.
   if (a == 0.0) { vec2 corner = centre - ext; centre += floor(corner * u_dpr + 0.5) / u_dpr - corner; }
   vec2 q = a_d.xy * s, p = centre + vec2(q.x * cos(a) - q.y * sin(a), q.x * sin(a) + q.y * cos(a));
-  v_uv = a_v.zw / u_tex; v_alpha = a_alpha * u_opacity; v_sdf = a_d.z;
+  v_uv = a_v.zw / u_tex; v_alpha = clamp(a_alpha * u_opacity, 0.0, 1.0); v_sdf = a_d.z;
   bool inside = a_v.x >= u_clip.x && a_v.y >= u_clip.y && a_v.x < u_clip.z && a_v.y < u_clip.w;
   gl_Position = inside && c.w > 0.0 ? vec4((p / u_view * 2.0 - 1.0) * vec2(1.0, -1.0), 0.0, 1.0) : vec4(2.0, 2.0, 2.0, 1.0);
 }`, `
@@ -381,6 +381,8 @@ interface IconBuffers {
     src: IconBatch; vao: WebGLVertexArrayObject; vertices: WebGLBuffer; index: WebGLBuffer; bufs: WebGLBuffer[];
     /** How many indices are for images that were added at runtime, and how many for images of the sprite of the style. They are in that order. */
     counts: [number, number];
+    /** An image of an icon was not there when the vertices were made. */
+    waits?: boolean;
 }
 interface GLBuffers {
     type: GLBatch['type']; vao: WebGLVertexArrayObject; count: number; /** UNSIGNED_SHORT or UNSIGNED_INT. */ indexType: number; color: boolean; scalar: boolean; bufs: WebGLBuffer[];
@@ -647,13 +649,14 @@ export class GLRenderer {
     /** Finds an image by name when the icons of a tile are made. The engine sets it. */
     iconOf?: IconOf;
     /** The icons of a tile again, after the images of the map changed: an image came, went or has another place in its texture. */
-    refreshIcons(t: GLTile) { for (const b of Object.values(t.icons ?? {})) this.fillIcons(b); this.gl.bindVertexArray(null); }
+    refreshIcons(t: GLTile, all: boolean) { for (const b of Object.values(t.icons ?? {})) if (all || b.waits) this.fillIcons(b); this.gl.bindVertexArray(null); }
     /** Writes the corners of each icon for the images that the map has now. An icon whose image is not there is not drawn. */
     private fillIcons(b: IconBuffers) {
         const gl = this.gl, {names, name, pos} = b.src, n = name.length, images = names.map(nm => this.iconOf?.(nm));
         const v = new Float32Array(n * 4 * ICON_VERTEX), idx = new Uint32Array(n * 6);
         let count = 0;
         b.counts = [0, 0];
+        b.waits = images.includes(undefined);
         for (const custom of [true, false]) {
             for (let i = 0; i < n; i++) {
                 const m = images[name[i]];
@@ -1179,7 +1182,7 @@ export class GLRenderer {
         const gl = this.gl, zoom = tr.zoom, w = Math.max(1, Math.ceil(target[0] / HEAT_SCALE)), h = Math.max(1, Math.ceil(target[1] / HEAT_SCALE));
         const back = gl.getParameter(gl.FRAMEBUFFER_BINDING) as WebGLFramebuffer | null;
         // Densities add up past 1, so the picture holds half-float values where the browser can draw to them.
-        this.floatTargets ??= !!gl.getExtension('EXT_color_buffer_float') || !!gl.getExtension('EXT_color_buffer_extfloat');
+        this.floatTargets ??= !!gl.getExtension('EXT_color_buffer_float') || !!gl.getExtension('EXT_color_buffer_half_float');
         let t = this.heatTarget;
         if (!t || t.w !== w || t.h !== h) {
             if (t) { gl.deleteTexture(t.tex); gl.deleteFramebuffer(t.fb); }

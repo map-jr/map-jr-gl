@@ -214,12 +214,12 @@ export class Map {
     /** A count for each image name. It goes up when the image is added or removed, so that an image that was still loading knows that it is too late. */
     private imageTurns = new globalThis.Map<string, number>();
     /** The images that are SVG templates, by name. `count` is the number of variants that the engine asked for. */
-    private templates = new globalThis.Map<string, {svg: string; options: ImageOptions; slots: string[]; count: number}>();
+    private templates = new globalThis.Map<string, {svg: string; options: ImageOptions; slots: string[]; count: number; failed?: boolean}>();
     private sendTemplates(changed: string, rebuild: boolean) {
         this.post({type: 'templates', slots: Object.fromEntries([...this.templates].map(([name, t]) => [name, t.slots])), changed: [changed], rebuild});
     }
     /** Draws one variant of a template: the SVG with the value of each slot, made safe for XML. */
-    private async addVariant(name: string, image: string, template: {svg: string; options: ImageOptions; slots: string[]; count: number}, values: string[]) {
+    private async addVariant(name: string, image: string, template: {svg: string; options: ImageOptions; slots: string[]; count: number; failed?: boolean}, values: string[]) {
         if (++template.count > MAX_VARIANTS) {
             if (template.count === MAX_VARIANTS + 1) this.fire('error', {error: new Error(`[map-jr-gl] The image "${image}" has more than ${MAX_VARIANTS} different sets of values for its slots, and the others are not drawn. Give its slots values from a small set.`)});
             return;
@@ -227,7 +227,11 @@ export class Map {
         // (A picture that the SVG names is put into it first, as for a marker template.)
         const svg = await this.embedImages(fillTemplate(template.svg, Object.fromEntries(template.slots.map((s, i) => [s, values[i]]))));
         if (this.removed || this.templates.get(image) !== template) return;
-        this.putImage(name, svg, template.options, true).catch(error => this.fire('error', {error}));
+        // (A template that cannot be drawn gives one error with its name, not one for each of its variants.)
+        this.putImage(name, svg, template.options, true).catch(error => {
+            if (!template.failed) this.fire('error', {error: new Error(`[map-jr-gl] The image "${image}" cannot be drawn with the values of its slots (${(error as Error).message}). Check that the SVG is well-formed, also with a value in each slot.`)});
+            template.failed = true;
+        });
     }
     private imageTurn(name: string) { const turn = (this.imageTurns.get(name) ?? 0) + 1; this.imageTurns.set(name, turn); return turn; }
     private imageResolver: ((id: string) => void | Promise<void>) | null = null;
@@ -648,8 +652,9 @@ export class Map {
             if (e.error) p?.reject(new Error(e.error)); else p?.resolve(e.value);
         } else if (e.type === 'imagemissing') {
             // A variant of an SVG template: the name has the values of the slots (see `buildTile`).
+            // (Such a name is not a name of the style: the page hears nothing of it, also when the template is gone.)
             const [image, ...values] = e.name.split(VARIANT), template = this.templates.get(image);
-            if (template) { if (values.length) this.addVariant(e.name, image, template, values); return; }
+            if (template || values.length) { if (template && values.length) this.addVariant(e.name, image, template, values); return; }
             // Give the resolver the first chance to supply the image; the event is for anything it leaves unresolved.
             Promise.resolve(this.imageResolver?.(e.name)).catch(error => this.fire('error', {error})).then(() => {
                 if (!this.imageNames.has(e.name)) this.fire('styleimagemissing', {id: e.name});
@@ -1322,6 +1327,8 @@ export class Map {
                     return new Promise<string>((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result as string); r.onerror = () => reject(r.error); r.readAsDataURL(blob); });
                 });
                 this.embedded.set(url, data);
+                // (The URL can come from data, through a slot of a template: the list has a limit.)
+                if (this.embedded.size > 200) this.embedded.delete(this.embedded.keys().next().value!);
             }
             svg = svg.split(url).join(await data.catch(error => { this.fire('error', {error}); return ''; }));
         }

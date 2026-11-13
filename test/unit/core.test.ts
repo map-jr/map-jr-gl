@@ -95,6 +95,22 @@ test('images: a template has its slots, and the image expression with params giv
     assert.equal(flags.dd, true);
 });
 
+test('tiles: an icon name from data that is the name of a member of every object is no template', () => {
+    const layer = (icon: unknown) => [compileLayer({id: 'poi', type: 'symbol', source: 's', 'source-layer': 'poi', layout: {'icon-image': icon}})!];
+    for (const name of ['toString', 'constructor', '__proto__', 'valueOf']) {
+        const labels = buildTile(bytes, TILE.z, layer(name), true, undefined, {pin: ['color']}).labels.poi;
+        assert.ok(labels.length > 0 && labels.every(l => l.icon!.name === name), name);
+    }
+});
+
+test('renderer: each WebGL extension that the code asks for is a name of an extension', () => {
+    // (A replacement of text in src/gl.ts once changed a name to one that no browser has, and the heatmap lost its fallback.)
+    const asked = [...readFileSync(new URL('../../src/gl.ts', import.meta.url), 'utf8').matchAll(/getExtension\('([^']+)'\)/g)].map(m => m[1]);
+    const known = ['EXT_color_buffer_float', 'EXT_color_buffer_half_float', 'OES_texture_float_linear', 'EXT_texture_filter_anisotropic', 'WEBGL_lose_context', 'EXT_float_blend', 'OES_texture_half_float_linear'];
+    assert.ok(asked.includes('EXT_color_buffer_half_float'));
+    assert.deepEqual(asked.filter(name => !known.includes(name)), []);
+});
+
 test('tessellation: triangles cover exactly the polygon area, holes excluded', () => {
     // 100x100 square with a 20x20 hole (opposite winding).
     const batch: Batch = {type: 'fill', geom: {coords: Int16Array.from([0, 0, 100, 0, 100, 100, 0, 100, 40, 40, 40, 60, 60, 60, 60, 40]), ringEnds: Uint32Array.from([4, 8]), featEnds: Uint32Array.from([2])}};
