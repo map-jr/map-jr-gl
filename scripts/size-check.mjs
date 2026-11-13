@@ -31,6 +31,8 @@ const sizes = [
     ['map-jr-gl-worker.js', gz(['map-jr-gl-worker.js']), 64],
     // Only when the engine runs on the main thread (no worker is possible).
     ['engine on the main thread, on demand', gz(engine), 61],
+    // The server renderer (`@map-jr/map-jr-gl/server`), with the files that it imports when it loads.
+    ['server.js (' + [...withStaticImports('server.js')].length + ' files)', gz(withStaticImports('server.js')), 40],
 ];
 let ok = true;
 for (const [name, kb, budget] of sizes) {
