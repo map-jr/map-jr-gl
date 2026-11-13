@@ -299,6 +299,21 @@ for (const mode of ['main', 'worker']) {
         return {names: data.features.map(f => f.properties.name).join(), at: data.features[0].geometry.coordinates[0], drawn};
     });
     check(`[${mode}] GeoJSON source: updateData adds, changes and removes features by id`, diff.names === 'changed,three' && diff.at === -74.007 && diff.drawn[0] === 'changed', JSON.stringify(diff));
+    // updateData on a source whose data is a URL: two diffs in a row both apply, and a newer setData is kept (#83).
+    const urlDiff = await page.evaluate(async () => {
+        const m = window.map, source = m.getSource('zones'), point = (id, name) => ({type: 'Feature', id, properties: {name}, geometry: {type: 'Point', coordinates: [-74.008, 40.7085]}});
+        const url = URL.createObjectURL(new Blob([JSON.stringify({type: 'FeatureCollection', features: [point(1, 'one')]})], {type: 'application/json'}));
+        await source.setData(url);
+        await Promise.all([source.updateData({add: [point(2, 'two')]}), source.updateData({add: [point(3, 'three')]})]);
+        const both = (await source.getData()).features.map(f => f.properties.name).join();
+        await source.setData(url);
+        const c = source.updateData({add: [point(4, 'four')]});
+        source.setData({type: 'FeatureCollection', features: [point(5, 'newer')]});
+        await c;
+        const kept = (await source.getData()).features.map(f => f.properties.name).join();
+        return {both, kept};
+    });
+    check(`[${mode}] GeoJSON source with a URL: updateData keeps both diffs and a newer setData`, urlDiff.both === 'one,two,three' && urlDiff.kept === 'newer', JSON.stringify(urlDiff));
     await page.evaluate(() => { window.map.removeLayer('zones-fill'); window.map.removeSource('zones'); });
 
     // DOM marker and popup with MapLibre's API.
