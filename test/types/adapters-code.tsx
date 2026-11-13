@@ -1,7 +1,7 @@
 // TypeScript code for the adapter for React (`@map-jr/map-jr-gl/react`).
 // `node test/examples.mjs` checks that it compiles against the built types (dist/types). It is not run.
 // (The types of the Vue component are for templates. `vue-tsc` checks those, and the repository does not have it.)
-import {MapImage} from '@map-jr/map-jr-gl/react';
+import {MapImage, MapJr} from '@map-jr/map-jr-gl/react';
 
 // The parameters of an image are the argument of the function in its content.
 export const pin = <MapImage name="pin" params={['color', 'stroke']}>
@@ -11,3 +11,9 @@ export const pin = <MapImage name="pin" params={['color', 'stroke']}>
 export const wrong = <MapImage name="pin" params={['color']}>{({colour}) => <svg fill={colour}/>}</MapImage>;
 export const plain = <MapImage name="dot"><svg viewBox="0 0 4 4"><circle cx="2" cy="2" r="2"/></svg></MapImage>;
 export const photo = <MapImage name="photo" src="/photo.png" width={32} height={32}/>;
+
+// Each event of the map is a prop of the component, with the event of `listen` as its value.
+export const events = <MapJr mapStyle="https://demotiles.maplibre.org/style.json" onMoveend={e => e.target.getZoom()} onStyleimagemissing={e => e.id.length}
+    onStyleload={e => e.type} onWheel={e => e.originalEvent.deltaY} onClick={e => e.features.length}/>;
+// @ts-expect-error -- there is no event with this name
+export const noEvent = <MapJr mapStyle="https://demotiles.maplibre.org/style.json" onMovend={() => {}}/>;

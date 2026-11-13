@@ -40,12 +40,12 @@ import {createRoot, hydrateRoot} from 'react-dom/client';
 import {MapJr, MapOverlay, MapImage, useMapState} from '/dist/react.js';
 import {navigation, scale} from '/dist/controls.js';
 const style = await (await fetch('/style.json')).json();
-const pins = ${JSON.stringify(pins)}, images = {disc: ${JSON.stringify(disc)}}, t = window.t = {loads: 0, views: 0, clicks: [], closed: 0, renders: 0};
+const pins = ${JSON.stringify(pins)}, images = {disc: ${JSON.stringify(disc)}}, t = window.t = {loads: 0, views: 0, clicks: [], closed: 0, renders: 0, moves: [], asked: []};
 function Zoom() { const zoom = useMapState(s => s.view.zoom); return h('p', {id: 'zoom'}, zoom === undefined ? '' : zoom.toFixed(1)); }
 // (A component inside the SVG of an image: its own change must reach the map.)
 function Dot() { const [r, setR] = useState(2); t.setRadius = setR; return h('circle', {cx: 4, cy: 4, r}); }
 function App({ssr}) {
-    const [view, setView] = useState(${JSON.stringify(view)}), [markers, setMarkers] = useState([pins]), [pin, setPin] = useState([-74.0065, 40.7085]), [tip, setTip] = useState(true), [tone, setTone] = useState('#fff'), [arrow, setArrow] = useState(true), [twin, setTwin] = useState(false), [full, setFull] = useState(true), map = useRef(null);
+    const [view, setView] = useState(${JSON.stringify(view)}), [markers, setMarkers] = useState([pins]), [pin, setPin] = useState([-74.0065, 40.7085]), [tip, setTip] = useState(true), [tone, setTone] = useState('#fff'), [arrow, setArrow] = useState(true), [twin, setTwin] = useState(false), [full, setFull] = useState(true), [more, setMore] = useState({}), map = useRef(null);
     Object.assign(t, {setView, setMarkers, setPin, setTone, setArrow, setTwin, setFull, map, view});
     t.renders++;
     // (The props are made again in each render, as React code does: the arrays of controls and layers, the functions.)
@@ -53,8 +53,10 @@ function App({ssr}) {
         // (The tree that takes over the HTML of the server has an image too: it must not disturb the hydration.)
         ? h(MapJr, {ref: map, mapStyle: style, initialView: view, images, markers, controls: [navigation()], onLoad: () => t.loads++},
             h(MapImage, {name: 'hydrated', params: ['color']}, ({color}) => h('svg', {viewBox: '0 0 8 8'}, h('rect', {width: 8, height: 8, fill: color}))))
-        : h(MapJr, {ref: map, mapStyle: style, view, onViewChange: v => { t.views++; setView(v); }, images, markers, controls: [navigation(), scale({position: 'bottom-left'})], interactiveLayers: ['water', 'park', 'building'],
-            onClick: e => t.clicks.push(e), onLoad: () => t.loads++, attribution: false},
+        : h(MapJr, {ref: map, mapStyle: style, view, onViewChange: v => { t.views++; setView(v); }, images: {...images, ...more}, markers, controls: [navigation(), scale({position: 'bottom-left'})], interactiveLayers: ['water', 'park', 'building'],
+            onClick: e => t.clicks.push(e), onLoad: () => t.loads++, attribution: false, onMoveend: e => t.moves.push(e.type + ' ' + typeof e.target.getZoom()),
+            // An image that the style asks for and the map does not have: the application adds it to the prop images.
+            onStyleimagemissing: e => { t.asked.push(e.id); setMore(more => ({...more, [e.id]: '<svg viewBox="0 0 4 4"><rect width="4" height="4"/></svg>'})); }},
             h(Zoom), h(MapOverlay, {lngLat: pin, anchor: 'bottom'}, h('b', {id: 'own-pin'}, 'here')),
             arrow && h(MapImage, {name: 'arrow', params: ['color']}, ({color}) => h('svg', {viewBox: '0 0 8 8'}, h('path', {d: 'M4 0 8 8 0 8z', fill: color, stroke: tone}))),
             twin && h(MapImage, {name: 'arrow'}, h('svg', {viewBox: '0 0 8 8'}, h('path', {d: 'M4 0 8 8 0 8z'}))),
@@ -117,8 +119,9 @@ try {
         // (A marker is a feature of the layer of its marker layer.)
         const before = (await host.queryFeatures(host.project([-74.0065, 40.7085]), {layers: ['pins']})).length ? 1 : 0;
         t.setMarkers([]); await wait(600);
-        return {followed, shown, controls, moved, pinOk, tip, pinMoved, closed: t.closed, tipGone: !document.getElementById('own-tip'), views: t.views, before, after: host.map.getLayer('pins') ? 1 : 0};
+        return {events: t.moves[0], asked: t.asked.length, added: t.asked.length > 0 && t.asked.every(id => host.map.hasImage(id)), followed, shown, controls, moved, pinOk, tip, pinMoved, closed: t.closed, tipGone: !document.getElementById('own-tip'), views: t.views, before, after: host.map.getLayer('pins') ? 1 : 0};
     });
+    check('browser: an event of the map is a prop of the component (onMoveend), and an image that the style asks for (onStyleimagemissing) is on the map after the listener adds it to the prop images', model.events === 'moveend number' && model.asked > 0 && model.added, JSON.stringify({events: model.events, asked: model.asked, added: model.added}));
     check('browser: the view follows the map and moves it; useMapState, controls, overlays and markers follow React', model.followed === 15 && model.shown === '15.0' && model.controls === 2 && model.moved === 14 && model.pinOk && model.tip && model.pinMoved
         && model.closed === 1 && model.tipGone && model.views > 1 && model.before === 1 && model.after === 0, JSON.stringify(model));
     await page.evaluate(() => window.t.setPin([-73.5, 41])); // (the element of the pin must not be under the click)

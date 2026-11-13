@@ -197,6 +197,35 @@ A value of `images` is one of these:
 An image that does not load is an error of the map (`onError`, `state.error`) with the name of the image. The map
 draws the layer without that image.
 
+### An image that the style asks for
+
+When a layer names an image that the map does not have, the map reports the event `styleimagemissing` with the
+name as `id`. Add an image with that name to `images`, and the map draws it. Use this for images that your code
+makes from the name, for example a badge for each value of a property.
+
+```js
+import {createMap} from '@map-jr/map-jr-gl';
+
+let description = {
+  style: 'https://tiles.openfreemap.org/styles/liberty',
+  initialView: {center: [-74.006, 40.7128], zoom: 12},
+  images: {},
+};
+const map = createMap(document.getElementById('map'), description);
+map.listen('styleimagemissing', event => {
+  if (!event.id.startsWith('badge-')) return;   // a name that this code does not make
+  const badge = `<svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="9" fill="#d6453d"/></svg>`;
+  map.update(description = {...description, images: {...description.images, [event.id]: badge}});
+});
+```
+
+- The map reports each name one time. The listener can add the image later, for example after a request.
+- The event also comes for a name that no code of yours makes, such as an icon that the sprite of the style does
+  not have. Leave such a name out.
+- The map asks for the image of each icon of a loaded tile, also for an icon outside the view.
+- The Vue and React components pass the event on (`@styleimagemissing`, `onStyleimagemissing`). The server
+  renderer has no events: give it the same images with its options `images` and `resolveImage`.
+
 ### An image that is a template
 
 An SVG document with slots is a template. Write `{{name}}` where a value must go. The library draws the template
