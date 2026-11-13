@@ -44,6 +44,7 @@ The component fills its parent element. Give the parent a height.
 | `view` | The view, for `v-model:view`. Without it, the map starts at `initial-view` and the user moves it. |
 | `initial-view` | The view at the start. |
 | `extend` | Your own sources and layers on a style from a URL: `{sources, layers, terrain}`. See [the main API](api.md). |
+| `images` | Images for the style layers, by name: `:images="{pin: pinSvg}"`. See [Images for style layers](api.md#images-for-style-layers). The render on the server does not draw them. |
 | `markers` | A list of marker layers. See [Markers](markers.md). |
 | `data` | GeoJSON data for sources of the style, by the id of the source: `:data="{routes}"`. See "GeoJSON data that changes" in [the main API](api.md). Use a `shallowRef` for each value, and give a new object to change it. |
 | `interactive-layers` | The ids of style layers whose features are found under the pointer. |

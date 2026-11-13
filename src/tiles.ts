@@ -89,6 +89,9 @@ export class TileBuilder {
     /** The global state and the feature state of the map of this builder. */
     private states: MapStates = {g: {}, f: {}};
     setFeatureState(source: string, states: Record<string, Record<string, unknown>>) { this.states.f[source] = states; }
+    /** The slots of each image that is an SVG template, by the name of the image. */
+    private templates: Record<string, string[]> = {};
+    setTemplates(templates: Record<string, string[]>) { this.templates = templates; }
     setStyle(layers: LayerJSON[], state?: Record<string, unknown>) {
         this.states.g = state ?? {};
         compileFor(this.states);
@@ -102,8 +105,8 @@ export class TileBuilder {
     }
 
     async loadIR(req: TileRequest): Promise<TileIR> {
-        if (req.url.startsWith(GEOJSON_PREFIX)) return buildTile(this.slice(req.url), req.z, this.bySource.get(req.source) ?? [], req.overscaled, this.states.f);
-        if (req.url.startsWith('contour://')) return buildTile(await this.contour(req.url), req.z, this.bySource.get(req.source) ?? [], req.overscaled, this.states.f);
+        if (req.url.startsWith(GEOJSON_PREFIX)) return buildTile(this.slice(req.url), req.z, this.bySource.get(req.source) ?? [], req.overscaled, this.states.f, this.templates);
+        if (req.url.startsWith('contour://')) return buildTile(await this.contour(req.url), req.z, this.bySource.get(req.source) ?? [], req.overscaled, this.states.f, this.templates);
         const ac = new AbortController();
         this.aborts.set(req.id, ac);
         try {
@@ -111,7 +114,7 @@ export class TileBuilder {
             const bytes = req.again && this.recent.get(key) || await fetchTile(req.url, this.fetchFn, ac.signal);
             if (!bytes) return {layers: {}, labels: {}};
             if (n === this.forgotten) this.remember(key, bytes);
-            return bytes.length ? buildTile(bytes, req.z, this.bySource.get(req.source) ?? [], req.overscaled, this.states.f) : {layers: {}, labels: {}};
+            return bytes.length ? buildTile(bytes, req.z, this.bySource.get(req.source) ?? [], req.overscaled, this.states.f, this.templates) : {layers: {}, labels: {}};
         } finally {
             this.aborts.delete(req.id);
         }
@@ -164,6 +167,8 @@ export interface TileBackend {
     setGeoJSON(source: string, data: unknown, options?: GeoJSONOptions, maxzoom?: number): void;
     /** Replaces the feature state of one source: "sourceLayer|id" -> state. */
     setFeatureState(source: string, states: Record<string, Record<string, unknown>>): void;
+    /** The slots of each image that is an SVG template. Tiles that are built later give each icon the name of its variant. */
+    setTemplates(templates: Record<string, string[]>): void;
     setContours(sources: Record<string, ContourConfig>): void;
     /** The first bytes of a PMTiles archive, which the page has read already. */
     setHead(url: string, bytes: Uint8Array): void;
@@ -181,6 +186,7 @@ export class LocalBackend implements TileBackend {
     setStyle(layers: LayerJSON[], state?: Record<string, unknown>) { this.builder.setStyle(layers, state); }
     setGeoJSON(source: string, data: unknown, options?: GeoJSONOptions, maxzoom?: number) { this.builder.setGeoJSON(source, data, options, maxzoom); }
     setFeatureState(source: string, states: Record<string, Record<string, unknown>>) { this.builder.setFeatureState(source, states); }
+    setTemplates(templates: Record<string, string[]>) { this.builder.setTemplates(templates); }
     setContours(sources: Record<string, ContourConfig>) { this.builder.setContours(sources); }
     setHead(url: string, bytes: Uint8Array) { heads.set(url, bytes); }
     async load(req: TileRequest) { return toGL(await this.builder.loadIR(req)).tile; }
@@ -220,6 +226,7 @@ export class PortBackend implements TileBackend {
     }
     setGeoJSON(source: string, data: unknown, options?: GeoJSONOptions, maxzoom?: number) { this.port.postMessage({type: 'geojson', source, data, options, maxzoom}); }
     setFeatureState(source: string, states: Record<string, Record<string, unknown>>) { this.port.postMessage({type: 'featureState', source, states}); }
+    setTemplates(templates: Record<string, string[]>) { this.port.postMessage({type: 'templates', templates}); }
     setContours(sources: Record<string, ContourConfig>) { this.port.postMessage({type: 'contours', sources}); }
     setHead(url: string, bytes: Uint8Array) { this.port.postMessage({type: 'head', url, bytes}); }
     load(req: TileRequest) {
@@ -252,6 +259,7 @@ export function serveTiles(port: Port) {
         else if (m.type === 'style') builder.setStyle(m.layers, m.state);
         else if (m.type === 'geojson') builder.setGeoJSON(m.source, m.data, m.options, m.maxzoom);
         else if (m.type === 'featureState') builder.setFeatureState(m.source, m.states);
+        else if (m.type === 'templates') builder.setTemplates(m.templates);
         else if (m.type === 'contours') builder.setContours(m.sources);
         else if (m.type === 'head') heads.set(m.url, m.bytes);
         else if (m.type === 'cancel') builder.cancel(m.id);

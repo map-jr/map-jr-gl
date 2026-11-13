@@ -22,6 +22,7 @@ The [status table](../README.md#status) gives the current test results.
 | Server rendering | `renderToSVG` and `renderToImage` draw a map without a browser. See [Server rendering](server-rendering.md). |
 | Marker layers | `addMarkerLayer` draws many SVG markers on the canvas. See [Markers](markers.md). |
 | SVG images | `addImage` accepts an SVG string. The image is sharp on each screen. |
+| SVG templates | An SVG string with slots (`{{name}}`) is a template. Each feature gives the slots their values, from its properties or from `params` of the `image` expression: `['image', 'pin', {params: {color: ['get', 'color']}}]`. MapLibre GL JS does not have `params`. See [An image that is a template](api.md#an-image-that-is-a-template). |
 | Fonts | Text uses the glyph files of the style (`glyphs`), as in MapLibre GL JS. A style without `glyphs` needs no glyph files: text then uses the fonts of the browser. The option `glyphs: false` selects that for each style. The style can also give font files in `font-faces`. |
 | `queryFeatures` | Finds features, with the meaning that it has in `@map-jr/map-jr-gl`. With `sources`, it reads the tile data of those sources, and you do not need a style layer. Without `sources`, it gives what the style layers draw. See [Queries](api.md#queries). |
 | `queryElevation` | Gives the elevation at a position from a `raster-dem` source. |

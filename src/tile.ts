@@ -4,6 +4,7 @@ import {decodeVectorTile} from './mvt.ts';
 import {GEOJSON_LAYER} from './geojson.ts';
 import {parseFontName, type CompiledLayer} from './style.ts';
 import {type Feature, type MapStates, type RGBA} from './expr.ts';
+import {VARIANT} from './markers.ts';
 
 /**
  * Renderer-neutral tile geometry: flat rings in tile units plus per-feature paint values.
@@ -99,7 +100,7 @@ const WHITE: RGBA = [1, 1, 1, 1];
 export type TileLayers = Record<string, {features: TileFeature[]}>;
 export interface TileFeature extends Feature { geometry(extent: number, coords: number[], ringEnds: number[]): number }
 
-export function buildTile(data: Uint8Array | TileLayers, z: number, layers: CompiledLayer[], overscaled: number | false, states?: MapStates['f']): TileIR {
+export function buildTile(data: Uint8Array | TileLayers, z: number, layers: CompiledLayer[], overscaled: number | false, states?: MapStates['f'], templates?: Record<string, string[]>): TileIR {
     const vt: TileLayers = data instanceof Uint8Array ? decodeVectorTile(data) : data;
     const geomCache = new Map<TileFeature, {coords: number[]; ringEnds: number[]}>();
     const geometry = (f: TileFeature) => {
@@ -133,7 +134,12 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
                 if (L.filter && !L.filter(ctx)) continue;
                 const tokens = (v: unknown) => String(v ?? '').replace(/\{([^}]+)\}/g, (_, k) => f.properties[k] ?? '').trim();
                 let text = tokens(p.field.eval(z, f));
-                const iconName = tokens(p.icon.eval(z, f));
+                // An image that is an SVG template: the name gets the value of each slot of the template, from `params` of
+                // the `image` expression, or else from the property of the feature that has the name of the slot.
+                const icon = String(p.icon.eval(z, f) ?? ''), [image, ...given] = icon.includes(VARIANT) ? icon.split(VARIANT) : [tokens(icon)];
+                // (The name comes from data: `toString` is no template.)
+                const slots = templates && Object.hasOwn(templates, image) ? templates[image] : undefined;
+                const iconName = slots ? [image, ...slots.map(s => given.find(g => g.startsWith(s + '='))?.slice(s.length + 1) ?? String(f.properties[s] ?? '').replaceAll(VARIANT, ''))].join(VARIANT) : image;
                 if (!text && !iconName) continue;
                 const tt = p.transform.eval(z, f);
                 if (tt === 'uppercase' || tt === 'lowercase') {

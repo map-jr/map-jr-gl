@@ -8,7 +8,7 @@ import {applySSROverrides, compileLayer} from '../../src/style.ts';
 import {LINE_VERTEX, buildTile, tessellate, type Batch} from '../../src/tile.ts';
 import {queryTile, sampleElevation} from '../../src/query.ts';
 import {CollisionGrid, renderItems} from '../../src/placement.ts';
-import {fillTemplate, sizedSVG} from '../../src/markers.ts';
+import {fillTemplate, sizedSVG, templateSlots, VARIANT} from '../../src/markers.ts';
 import {cleanCredits, renderToSVG} from '../../src/server.ts';
 import {decodePNG, decodeWebPLossless} from '../../src/webp.ts';
 import {deflateSync} from 'node:zlib';
@@ -83,6 +83,24 @@ test('expressions: data, zoom and legacy forms evaluate', () => {
     assert.equal(compileFilter(['all', ['==', 'class', 'primary'], ['!in', 'class', 'path']])!({zoom: 0, f}), true);
     assert.equal(compileFilter(['==', ['geometry-type'], 'Polygon'])!({zoom: 0, f}), false);
     assert.equal(compileExpr(['number-format', 1234.5, {'max-fraction-digits': 0, locale: 'en-US'}], {dd: false, zoom: false})({zoom: 0, f: null}), '1,235');
+});
+
+test('images: a template has its slots, and the image expression with params gives the name with the values', () => {
+    assert.deepEqual(templateSlots('<svg><path fill="{{color}}" stroke="{{ stroke }}"/><text fill="{{color}}">{{label}}</text></svg>'), ['color', 'stroke', 'label']);
+    assert.deepEqual(templateSlots('<svg viewBox="0 0 4 4"/>'), []);
+    const f = {type: 1, properties: {class: 'primary', lanes: 3}}, flags = {dd: false, zoom: false};
+    assert.equal(compileExpr(['image', 'pin'], flags)({zoom: 0, f}), 'pin');
+    assert.equal(compileExpr(['image', 'pin', {params: {color: ['match', ['get', 'class'], 'primary', '#d00', '#00d'], label: ['+', ['get', 'lanes'], 1], tint: ['rgb', 255, 0, 0]}}], flags)({zoom: 0, f}),
+        ['pin', 'color=#d00', 'label=4', 'tint=rgba(255,0,0,1)'].join(VARIANT));
+    assert.equal(flags.dd, true);
+});
+
+test('tiles: an icon name from data that is the name of a member of every object is no template', () => {
+    const layer = (icon: unknown) => [compileLayer({id: 'poi', type: 'symbol', source: 's', 'source-layer': 'poi', layout: {'icon-image': icon}})!];
+    for (const name of ['toString', 'constructor', '__proto__', 'valueOf']) {
+        const labels = buildTile(bytes, TILE.z, layer(name), true, undefined, {pin: ['color']}).labels.poi;
+        assert.ok(labels.length > 0 && labels.every(l => l.icon!.name === name), name);
+    }
 });
 
 test('tessellation: triangles cover exactly the polygon area, holes excluded', () => {

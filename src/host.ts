@@ -6,7 +6,7 @@
  * The adapters for the frameworks (`@map-jr/map-jr-gl/vue` and others) are thin layers over `createMap`.
  * (For the API of MapLibre GL JS, see `@map-jr/map-jr-gl/maplibre-compat`.)
  */
-import {Map, markerSize, type FeatureOptions, type FeaturePlace, type MapOptions, type MarkerLayer, type RenderedFeature} from './map.ts';
+import {Map, markerSize, type FeatureOptions, type FeaturePlace, type ImageOptions, type MapOptions, type MarkerLayer, type RenderedFeature} from './map.ts';
 export type {FeatureOptions, FeaturePlace};
 import {createStore, type Readable} from './store.ts';
 import {Marker, Popup, type OverlayAnchor} from './overlays.ts';
@@ -47,6 +47,14 @@ export interface StyleExtension {
     terrain?: {source: string; exaggeration?: number} | null;
 }
 
+/** What an image is made from: an SVG document, the URL of an image, or an object that a canvas can draw (an `ImageBitmap`, a canvas, `ImageData`). */
+export type ImageSource = Parameters<Map['addImage']>[1];
+/**
+ * An image of the field `images` of `MapSpec`: an `ImageSource`, or an object with the source as `image` and the
+ * options of the image (`width` and `height` in CSS pixels, `pixelRatio`, and the options for an icon that fits text).
+ */
+export type ImageInput = ImageSource | ({image: ImageSource} & ImageOptions);
+
 /** The description of a map. Each field can change in `update`, but for those of `MapSetup`. */
 export interface MapSpec extends MapSetup {
     /** A style object or the URL of a style (the MapLibre style specification). A new object or URL is a new style. */
@@ -70,6 +78,12 @@ export interface MapSpec extends MapSetup {
      * identity and goes to the map alone: use it for data that changes, so that the style stays as it is.
      */
     data?: Record<string, unknown>;
+    /**
+     * Images for `icon-image` of style layers, by name: `{pin: '<svg ...>...</svg>'}`. A
+     * value is an SVG document, the URL of an image, or `{image, width, height}`. An image of this field is used in
+     * place of an image of the sprite that has the same name.
+     */
+    images?: Record<string, ImageInput>;
     /** Marker layers, each with an `id`. A layer whose `data` is a new array gets the new data. */
     markers?: MarkerLayerOptions[];
     /** Controls from `@map-jr/map-jr-gl/controls`: `[navigation(), scale()]`. */
@@ -270,6 +284,10 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
     const state = createStore<MapState>({loaded: false, idle: false, moving: false, view: viewOf(), hover: [], renderer: undefined, error: undefined});
     const markers = new globalThis.Map<string, {layer: MarkerLayer; options: MarkerLayerOptions}>();
     const controls = new globalThis.Map<string, ReturnType<ControlSpec['create']>>();
+    // The images of `images` that the map has, by name. The value says what the image was made from: the text of an
+    // image that is given as text (so the same content in a new object is the same image), or else the object itself.
+    const images = new globalThis.Map<string, unknown>();
+    const imageKey = (v: ImageInput) => typeof v === 'string' ? v : typeof (v as {image?: unknown}).image === 'string' ? JSON.stringify(v) : v;
     // The views that the map reported a short time ago. An application that owns the view gives them back, often some
     // frames later; they are not applied again, or the map would go back while the user moves it.
     const reported: View[] = [];
@@ -353,6 +371,21 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
             for (const c of next.controls ?? []) if (!controls.has(c.key)) { const made = c.create(); controls.set(c.key, made); map.addControl(made as any, c.position); }
         }
         if (next.cursor !== before?.cursor) map.setCursor(next.cursor ?? '');
+        if (next.images !== before?.images) {
+            const wanted = next.images ?? {};
+            for (const name of images.keys()) if (!Object.hasOwn(wanted, name)) { images.delete(name); map.removeImage(name); }
+            for (const name in wanted) {
+                const v = wanted[name], key = imageKey(v);
+                if (images.has(name) && images.get(name) === key) continue;
+                if (images.has(name)) map.removeImage(name);
+                images.set(name, key);
+                const spec = v && typeof v === 'object' && 'image' in v ? v : null;
+                // (An image that does not load is an error of the map, and the map goes on without it.)
+                map.addImage(name, spec ? spec.image : v as ImageSource, spec ?? {}).catch(() => {
+                    if (alive && images.get(name) === key) map.fire('error', {error: new Error(`[map-jr-gl] images: the image "${name}" did not load. Give an SVG document or the URL of an image that the page can read.`)});
+                });
+            }
+        }
         if (next.markers !== before?.markers) {
             const wanted = new Set((next.markers ?? []).map(m => m.id));
             for (const [id, m] of markers) if (!wanted.has(id)) { m.layer.remove(); markers.delete(id); }

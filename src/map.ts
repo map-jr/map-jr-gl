@@ -9,7 +9,7 @@ import type {CameraOptions, Command, EngineEvent, FontSource, MarkerImage} from 
 import type {QueriedFeature} from './query.ts';
 import type {TileBackend} from './tiles.ts';
 import {acquireTileWorkers, createWorker, defaults as loadDefaults, workerReady, type LoadOptions} from './loader.ts';
-import {anchorOffset, resolveVariants, sizedSVG, type MarkerInput, type MarkerLayerOptions} from './markers.ts';
+import {anchorOffset, fillTemplate, resolveVariants, sizedSVG, templateSlots, VARIANT, type MarkerInput, type MarkerLayerOptions} from './markers.ts';
 import {AttributionControl, CONTROL_CSS, adoptClasses, cls, type Control, type ControlPosition} from './controls.ts';
 import {Popup, type PopupOptions} from './overlays.ts';
 import {CollisionGrid} from './collision.ts';
@@ -211,6 +211,29 @@ export class Map {
     private removed = false;
     private beforeStyle: (() => void)[] = [];
     protected imageNames = new Set<string>();
+    /** A count for each image name. It goes up when the image is added or removed, so that an image that was still loading knows that it is too late. */
+    private imageTurns = new globalThis.Map<string, number>();
+    /** The images that are SVG templates, by name. `count` is the number of variants that the engine asked for. */
+    private templates = new globalThis.Map<string, {svg: string; options: ImageOptions; slots: string[]; count: number; failed?: boolean}>();
+    private sendTemplates(changed: string, rebuild: boolean) {
+        this.post({type: 'templates', slots: Object.fromEntries([...this.templates].map(([name, t]) => [name, t.slots])), changed: [changed], rebuild});
+    }
+    /** Draws one variant of a template: the SVG with the value of each slot, made safe for XML. */
+    private async addVariant(name: string, image: string, template: {svg: string; options: ImageOptions; slots: string[]; count: number; failed?: boolean}, values: string[]) {
+        if (++template.count > MAX_VARIANTS) {
+            if (template.count === MAX_VARIANTS + 1) this.fire('error', {error: new Error(`[map-jr-gl] The image "${image}" has more than ${MAX_VARIANTS} different sets of values for its slots, and the others are not drawn. Give its slots values from a small set.`)});
+            return;
+        }
+        // (A picture that the SVG names is put into it first, as for a marker template.)
+        const svg = await this.embedImages(fillTemplate(template.svg, Object.fromEntries(template.slots.map((s, i) => [s, values[i]]))));
+        if (this.removed || this.templates.get(image) !== template) return;
+        // (A template that cannot be drawn gives one error with its name, not one for each of its variants.)
+        this.putImage(name, svg, template.options, true).catch(error => {
+            if (!template.failed) this.fire('error', {error: new Error(`[map-jr-gl] The image "${image}" cannot be drawn with the values of its slots (${(error as Error).message}). Check that the SVG is well-formed, also with a value in each slot.`)});
+            template.failed = true;
+        });
+    }
+    private imageTurn(name: string) { const turn = (this.imageTurns.get(name) ?? 0) + 1; this.imageTurns.set(name, turn); return turn; }
     private imageResolver: ((id: string) => void | Promise<void>) | null = null;
     private tilesLoaded = false;
     /** The number of the last command to the engine that can change what is loaded. */
@@ -628,6 +651,10 @@ export class Map {
             this.pending.delete(e.id);
             if (e.error) p?.reject(new Error(e.error)); else p?.resolve(e.value);
         } else if (e.type === 'imagemissing') {
+            // A variant of an SVG template: the name has the values of the slots (see `buildTile`).
+            // (Such a name is not a name of the style: the page hears nothing of it, also when the template is gone.)
+            const [image, ...values] = e.name.split(VARIANT), template = this.templates.get(image);
+            if (template || values.length) { if (template && values.length) this.addVariant(e.name, image, template, values); return; }
             // Give the resolver the first chance to supply the image; the event is for anything it leaves unresolved.
             Promise.resolve(this.imageResolver?.(e.name)).catch(error => this.fire('error', {error})).then(() => {
                 if (!this.imageNames.has(e.name)) this.fire('styleimagemissing', {id: e.name});
@@ -1082,9 +1109,26 @@ export class Map {
      * Makes an image available to `icon-image` under `name`. `source` may be an SVG document (rasterised at the
      * screen's pixel density, so it stays sharp), an image URL, or anything drawable such as an ImageBitmap or canvas.
      * `width`/`height` are the display size in CSS pixels; they default to the image's natural size.
+     *
+     * An SVG document with slots (`{{name}}`) is a template. It is drawn one time for each different set of values that
+     * the features of a layer give its slots: see "Images for style layers" in docs/api.md.
      */
-    async addImage(name: string, source: string | CanvasImageSource | ImageData | {width: number; height: number; data: Uint8Array | Uint8ClampedArray}, options: ImageOptions = {}) {
+    addImage(name: string, source: string | CanvasImageSource | ImageData | {width: number; height: number; data: Uint8Array | Uint8ClampedArray}, options: ImageOptions = {}) { return this.putImage(name, source, options); }
+    /** `variant`: the image is one variant of a template. It is not an image that the page added, and it is not looked at for slots. */
+    private async putImage(name: string, source: Parameters<Map['addImage']>[1], options: ImageOptions, variant?: boolean): Promise<this> {
         let drawable: CanvasImageSource, width = options.width, height = options.height, sourceWidth = 0;
+        const turn = this.imageTurn(name);
+        if (!variant) {
+            const slots = typeof source === 'string' && source.trimStart().startsWith('<') ? templateSlots(source) : [], before = this.templates.get(name);
+            if (slots.length) {
+                this.templates.set(name, {svg: source as string, options, slots, count: 0});
+                this.imageNames.add(name);
+                this.imageInputs.set(name, [source, options]);
+                this.sendTemplates(name, String(before?.slots) !== String(slots));
+                return this;
+            }
+            if (this.templates.delete(name)) this.sendTemplates(name, true);
+        }
         if (typeof source === 'string') {
             const img = new Image();
             if (source.trimStart().startsWith('<')) {
@@ -1093,6 +1137,8 @@ export class Map {
                 img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(sizedSVG(source, width, height));
             } else { img.crossOrigin = 'anonymous'; img.src = source; }
             await img.decode();
+            // (While the image loaded, the map was removed, or the name got another image or was removed.)
+            if (this.removed || this.imageTurns.get(name) !== turn) return this;
             width ??= img.naturalWidth / (options.pixelRatio ?? 1); height ??= img.naturalHeight / (options.pixelRatio ?? 1);
             sourceWidth = img.naturalWidth;
             drawable = img;
@@ -1111,13 +1157,17 @@ export class Map {
         const w = Math.ceil(width * this.dpr), h = Math.ceil(height * this.dpr), data = pixels(drawable, w, h);
         // Stretch ranges and the content box are given in the source image's pixels; the stored copy may be another size.
         const k = sourceWidth ? w / sourceWidth : 1, scale = (v?: number[]) => v?.map(n => n * k);
-        this.imageNames.add(name);
-        this.imageInputs.set(name, [source, options]);
+        if (!variant) { this.imageNames.add(name); this.imageInputs.set(name, [source, options]); }
         this.post({type: 'image', name, w, h, width, height, data, stretchX: options.stretchX?.map(r => scale(r) as [number, number]), stretchY: options.stretchY?.map(r => scale(r) as [number, number]),
             content: scale(options.content) as [number, number, number, number] | undefined, textFitWidth: options.textFitWidth, textFitHeight: options.textFitHeight}, [data.buffer]);
         return this;
     }
-    removeImage(name: string) { this.imageNames.delete(name); this.imageInputs.delete(name); this.post({type: 'removeImage', name}); return this; }
+    removeImage(name: string) {
+        this.imageTurn(name); this.imageNames.delete(name); this.imageInputs.delete(name);
+        if (this.templates.delete(name)) this.sendTemplates(name, true);
+        this.post({type: 'removeImage', name});
+        return this;
+    }
     /** Replaces an image added earlier; icons using it are redrawn. */
     updateImage(name: string, source: Parameters<Map['addImage']>[1], options: ImageOptions = {}) {
         if (!this.imageNames.has(name)) throw new Error(`There is no image with ID "${name}"`);
@@ -1277,6 +1327,8 @@ export class Map {
                     return new Promise<string>((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result as string); r.onerror = () => reject(r.error); r.readAsDataURL(blob); });
                 });
                 this.embedded.set(url, data);
+                // (The URL can come from data, through a slot of a template: the list has a limit.)
+                if (this.embedded.size > 200) this.embedded.delete(this.embedded.keys().next().value!);
             }
             svg = svg.split(url).join(await data.catch(error => { this.fire('error', {error}); return ''; }));
         }
@@ -1592,6 +1644,9 @@ export type CameraInput = Omit<CameraOptions, 'padding'> & {padding?: PaddingInp
 function paddingOf(p: PaddingInput): [number, number, number, number] {
     return typeof p === 'number' ? [p, p, p, p] : [p.top ?? 0, p.right ?? 0, p.bottom ?? 0, p.left ?? 0];
 }
+
+/** The largest number of variants of one SVG template that a map draws. The values come from data, and the texture of the images has a fixed size. */
+const MAX_VARIANTS = 1000;
 
 /** Options for `addImage`, as in MapLibre, plus an explicit size in CSS pixels. */
 export interface ImageOptions {

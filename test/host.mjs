@@ -161,7 +161,8 @@ for (const renderer of ['worker', 'main']) {
             for (const [el, host] of [[ownEl, own], [hiddenEl, hidden], [lateEl, late]]) { host.destroy(); el.remove(); }
             // The same map with mistakes.
             const spec = {...base, interactiveLayers: ['nope'], data: {nosuch: empty}, markers: [pin('a'), pin('a')],
-                extend: {layers: [{id: 'lost', type: 'fill', source: 'missing', before: 'nonexistent'}]}};
+                images: {dot: '<svg viewBox="0 0 4 4"><rect width="4" height="4" fill="{{fill}}"/></svg>'},
+                extend: {sources: {icons: {type: 'geojson', data: empty}}, layers: [{id: 'lost', type: 'fill', source: 'missing', before: 'nonexistent'}, {id: 'icons', type: 'symbol', source: 'icons', layout: {'icon-image': ['image', 'dot', {params: {fill: '#d00', colour: '#00d'}}]}}]}};
             const badEl = div('height:150px'), bad = t.lib.createMap(badEl, spec);
             await idle(bad);
             for (let i = 0; i < 2; i++) { // (twice: a warning comes once)
@@ -180,7 +181,7 @@ for (const renderer of ['worker', 'main']) {
             return {correct, said, place};
         }, renderer);
         const expected = ['createMap(): the container has height 0', 'interactiveLayers: the style has no layer "nope"', 'data: the style has no GeoJSON source "nosuch"', 'queryFeatures(): the style has no layer "nope"',
-            'queryFeatures(): the style has no source "nope"', 'extend: the layer "lost" has before: "nonexistent"', 'extend: the layer "lost" uses the source "missing"', 'markers: two marker layers have the id "a"',
+            'queryFeatures(): the style has no source "nope"', 'extend: the layer "lost" has before: "nonexistent"', 'extend: the layer "lost" uses the source "missing"', 'markers: two marker layers have the id "a"', 'images: a layer gives the parameter "colour" to the image "dot"',
             'update(): "interactive" changed', 'update(): "initialView" changed', 'queryFeatures(): "sourceLayers" has an effect only', 'queryFeatures(): "radius" has an effect only in a query at a point or a position', 'queryFeatures(): "geometry" has an effect only', 'queryFeatures(): "zoom" has an effect only',
             'queryFeatures(): "layers" has no effect'];
         check(`[${renderer}] common mistakes: each gives one warning, a wrong place of a query is refused with a message, and a correct description gives no warning`,
@@ -218,6 +219,123 @@ for (const renderer of ['worker', 'main']) {
             return {one, moved, back, none: count()};
         });
         check(`[${renderer}] marker layers follow the description`, markers.one === 1 && markers.moved === 0 && markers.back === 1 && markers.none === 0, JSON.stringify(markers));
+
+        {
+        // Images: added, replaced and removed by the description. A symbol layer draws a square of 40 pixels at the centre.
+        // (The colour of the square is read from a picture of the page, at two places inside the square.)
+        const colourAt = async () => page.evaluate(async png => {
+            const bitmap = await createImageBitmap(await (await fetch('data:image/png;base64,' + png)).blob()), c = new OffscreenCanvas(bitmap.width, bitmap.height).getContext('2d');
+            c.drawImage(bitmap, 0, 0);
+            return [[438, 288], [462, 312]].map(([x, y]) => '#' + [...c.getImageData(x, y, 1, 1).data.slice(0, 3)].map(v => (v >> 4).toString(16)).join(''));
+        }, (await page.screenshot()).toString('base64'));
+        const shows = async colour => { let got; for (let i = 0; i < 40 && !(got = await colourAt()).includes(colour); i++) await page.waitForTimeout(150); return got.includes(colour) ? colour : got.join(' '); };
+        const images = await page.evaluate(async () => {
+            const t = window.t, map = t.host.map, c = t.host.unproject({x: 450, y: 300}), add = map.addImage;
+            t.square = colour => `<svg viewBox="0 0 40 40"><rect width="40" height="40" fill="${colour}"/></svg>`;
+            t.added = []; t.imageErrors = [];
+            map.addImage = function (name, ...rest) { t.added.push(name); return add.call(this, name, ...rest); };
+            const style = {...t.style, sources: {...t.style.sources, spot: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: c}}}},
+                layers: [...t.style.layers, {id: 'spot', type: 'symbol', source: 'spot', layout: {'icon-image': 'square', 'icon-allow-overlap': true, 'icon-ignore-placement': true}}]};
+            t.host.update(t.spec = {...t.spec, style, images: {square: t.square('#f0f')}, onError: e => t.imageErrors.push(e.message)});
+        });
+        const first = await shows('#f0f');
+        // The same content in a new object is the same image. Then other content with options: the image is replaced.
+        const again = await page.evaluate(() => { const t = window.t, n = t.added.length; t.host.update(t.spec = {...t.spec, images: {square: t.square('#f0f')}}); const same = t.added.length - n;
+            t.host.update(t.spec = {...t.spec, images: {square: {image: t.square('#0ff'), width: 40, height: 40}}}); return same; });
+        const replaced = await shows('#0ff');
+        // Two changes at once: the last one stays, also when the image of the first is ready later.
+        await page.evaluate(() => { const t = window.t; t.host.update({...t.spec, images: {square: t.square('#0f0')}}); t.host.update(t.spec = {...t.spec, images: {square: t.square('#00f')}}); });
+        const last = await shows('#00f');
+        await page.waitForTimeout(500);
+        const stays = (await colourAt()).includes('#00f');
+        // An image that does not load is an error with the name of the image, and the map goes on. A description without the field removes the images.
+        const gone = await page.evaluate(async () => {
+            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms));
+            t.host.update(t.spec = {...t.spec, images: {square: t.square('#00f'), lost: '/no-such-image.png'}});
+            for (let i = 0; i < 50 && !t.imageErrors.length; i++) await wait(100);
+            // (An image that is added and removed at once does not come back when it is ready.)
+            t.host.update({...t.spec, images: {...t.spec.images, late: t.square('#f00')}});
+            const {images: _, onError: __, ...rest} = t.spec;
+            t.host.update(t.spec = rest);
+            return {errors: t.imageErrors, has: t.host.map.hasImage('square')};
+        });
+        await page.waitForTimeout(700);
+        const after = await colourAt(), late = await page.evaluate(() => window.t.host.map.hasImage('late'));
+        await page.evaluate(() => { const t = window.t; delete t.host.map.addImage; t.host.update(t.spec = {...t.spec, style: t.style}); });
+        check(`[${renderer}] images follow the description: added, the same content is not added again, replaced, the last of two changes stays, removed, and an image that does not load is an error`,
+            first === '#f0f' && again === 0 && replaced === '#0ff' && last === '#00f' && stays && !gone.has && !late && !after.includes('#00f') && gone.errors.length === 1 && gone.errors[0].startsWith('[map-jr-gl] images: the image "lost" did not load.'),
+            JSON.stringify({first, again, replaced, last, stays, gone, late, after}));
+
+        // An image that is an SVG template: each feature gives the slots their values. Two squares, the second 60 pixels to the right.
+        // (Of each square, the colour of its upper half and of its lower half is read.)
+        const halves = async () => page.evaluate(async png => {
+            const bitmap = await createImageBitmap(await (await fetch('data:image/png;base64,' + png)).blob()), c = new OffscreenCanvas(bitmap.width, bitmap.height).getContext('2d');
+            c.drawImage(bitmap, 0, 0);
+            return [[450, 290], [450, 310], [510, 290], [510, 310]].map(([x, y]) => '#' + [...c.getImageData(x, y, 1, 1).data.slice(0, 3)].map(v => (v >> 4).toString(16)).join('')).join(' ');
+        }, (await page.screenshot()).toString('base64'));
+        const becomes = async want => { let got; for (let i = 0; i < 40 && (got = await halves()) !== want; i++) await page.waitForTimeout(150); return got; };
+        await page.evaluate(() => {
+            const t = window.t, c = t.host.unproject({x: 450, y: 300}), right = t.host.unproject({x: 510, y: 300});
+            const point = (id, coordinates, properties) => ({type: 'Feature', id, properties, geometry: {type: 'Point', coordinates}});
+            t.tiles = icon => ({...t.style, sources: {...t.style.sources, spot: {type: 'geojson', data: {type: 'FeatureCollection', features: [point(1, c, {colour: '#f0f', kind: 'a'}), point(2, right, {colour: '#0ff', kind: 'b'})]}}},
+                layers: [...t.style.layers, {id: 'spot', type: 'symbol', source: 'spot', layout: {'icon-image': icon, 'icon-allow-overlap': true, 'icon-ignore-placement': true}}]});
+            t.imageErrors = []; t.asked = [];
+            t.host.listen('styleimagemissing', e => t.asked.push(e.id));
+            t.host.update(t.spec = {...t.spec, style: t.tiles('tile'), images: {tile: t.square('{{colour}}')}, onError: e => t.imageErrors.push(e.message)});
+        });
+        const fromProperties = await becomes('#f0f #f0f #0ff #0ff');
+        // `params` of the `image` expression: an expression gives the value of a slot.
+        await page.evaluate(() => { const t = window.t; t.host.update(t.spec = {...t.spec, style: t.tiles(['image', 'tile', {params: {colour: ['match', ['get', 'kind'], 'a', '#ff0', '#00f']}}])}); });
+        const fromParams = await becomes('#ff0 #ff0 #00f #00f');
+        // Another template with the same slots: the variants are drawn again (the upper half is black now).
+        await page.evaluate(() => { const t = window.t; t.host.update(t.spec = {...t.spec, images: {tile: '<svg viewBox="0 0 40 40"><rect width="40" height="40" fill="#000"/><rect y="20" width="40" height="20" fill="{{colour}}"/></svg>'}}); });
+        const otherTemplate = await becomes('#000 #ff0 #000 #00f');
+        // The state of a feature in a parameter: the tiles are built again when the state changes.
+        await page.evaluate(() => { const t = window.t; t.host.update(t.spec = {...t.spec, style: t.tiles(['image', 'tile', {params: {colour: ['case', ['boolean', ['feature-state', 'on'], false], '#f00', '#0f0']}}])}); });
+        const stateOff = await becomes('#000 #0f0 #000 #0f0');
+        await page.evaluate(() => window.t.host.map.setFeatureState({source: 'spot', id: 2}, {on: true}));
+        const stateOn = await becomes('#000 #0f0 #000 #f00');
+        // A value with characters of XML is text in the SVG and not markup: the image is drawn, and the map has no error.
+        await page.evaluate(() => { const t = window.t; t.host.update(t.spec = {...t.spec, style: t.tiles(['image', 'tile', {params: {colour: ['concat', '#0ff', '"/><rect width="40" height="40" fill="#f00']}}])}); });
+        await page.waitForTimeout(1500);
+        const unsafe = await halves();
+        // A large template that is replaced many times: each variant takes the place in the texture of the variant before
+        // it, so the texture does not fill. Then the template goes, and a plain image has its name: the page hears of no
+        // image with the name of a variant. A template that is not well-formed gives one error with its name.
+        const replaced30 = await page.evaluate(async () => {
+            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms));
+            const big = n => `<svg viewBox="0 0 40 40" data-n="${n}"><rect width="40" height="40" fill="{{colour}}"/></svg>`;
+            t.host.update(t.spec = {...t.spec, style: t.tiles('tile')});
+            for (let n = 0; n < 30; n++) { t.host.update(t.spec = {...t.spec, images: {tile: {image: big(n), width: 400, height: 400}}}); await wait(120); }
+            await wait(600);
+            const full = t.imageErrors.filter(e => e.includes('texture of the images')).length;
+            t.host.update(t.spec = {...t.spec, images: {tile: t.square('#0ff')}});
+            await wait(600);
+            const asked = t.asked.filter(id => id.includes('\u001f')).length, before = t.imageErrors.length;
+            t.host.update(t.spec = {...t.spec, images: {tile: '<svg viewBox="0 0 40 40"><rect width="40" height="40" fill="{{colour}}"></svg>'}});
+            for (let i = 0; i < 60 && t.imageErrors.length === before; i++) await wait(100);
+            await wait(500);
+            return {full, asked, broken: t.imageErrors.slice(before)};
+        });
+        // More different values than the limit: one error names the image, and the map goes on.
+        const many = await page.evaluate(async () => {
+            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), c = t.host.unproject({x: 450, y: 300}), before = t.imageErrors.length;
+            const features = Array.from({length: 1040}, (_, i) => ({type: 'Feature', id: i, properties: {n: i}, geometry: {type: 'Point', coordinates: [c[0] + (i % 40 - 20) * 1e-4, c[1] + (Math.floor(i / 40) - 13) * 1e-4]}}));
+            const style = {...t.style, sources: {...t.style.sources, lots: {type: 'geojson', data: {type: 'FeatureCollection', features}}},
+                layers: [...t.style.layers, {id: 'lots', type: 'symbol', source: 'lots', layout: {'icon-image': 'tiny', 'icon-allow-overlap': true, 'icon-ignore-placement': true}}]};
+            t.host.update(t.spec = {...t.spec, style, images: {tiny: '<svg viewBox="0 0 4 4"><rect width="4" height="4" fill="#00{{n}}"/></svg>'}});
+            for (let i = 0; i < 100 && t.imageErrors.length === before; i++) await wait(100);
+            await wait(500);
+            const errors = t.imageErrors.slice(before), {images: _, onError: __, ...rest} = t.spec;
+            t.host.update(t.spec = {...rest, style: t.style});
+            return errors;
+        });
+        check(`[${renderer}] an image that is an SVG template: slots get the properties of each feature or the params of the image expression (also with feature-state), another template draws the variants again, a value is not markup, and too many variants give one error`,
+            fromProperties === '#f0f #f0f #0ff #0ff' && fromParams === '#ff0 #ff0 #00f #00f' && otherTemplate === '#000 #ff0 #000 #00f' && stateOff === '#000 #0f0 #000 #0f0' && stateOn === '#000 #0f0 #000 #f00'
+            && !unsafe.includes('#f00') && many.length === 1 && many[0].startsWith('[map-jr-gl] The image "tiny" has more than 1000 different sets of values')
+            && replaced30.full === 0 && replaced30.asked === 0 && replaced30.broken.length === 1 && replaced30.broken[0].startsWith('[map-jr-gl] The image "tile" cannot be drawn with the values of its slots'),
+            JSON.stringify({fromProperties, fromParams, otherTemplate, stateOff, stateOn, unsafe, many, replaced30}));
+        }
 
         // GeoJSON data apart from the style: it goes to its source alone, and stays over a new style.
         const data = await page.evaluate(async () => {

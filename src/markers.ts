@@ -30,6 +30,15 @@ export function fillTemplate(svg: string, props: Record<string, unknown> | undef
     return svg.replace(/\{\{\s*([\w-]+)\s*\}\}/g, (_, k) => escapeXML(props?.[k]));
 }
 
+/** The names of the slots of a template, each one time, in the order of the template. */
+export const templateSlots = (svg: string) => [...new Set([...svg.matchAll(/\{\{\s*([\w-]+)\s*\}\}/g)].map(m => m[1]))];
+
+/**
+ * Between the parts of the name of a variant of a template image. The tile worker makes the name: the name of the
+ * template, then the value of each slot in the order of `templateSlots`. The page splits it to draw the variant.
+ */
+export const VARIANT = '\u001f';
+
 export function parseSVG(svg: string): {viewBox: string | null; inner: string} {
     const m = /^\s*(?:<\?xml[^>]*>\s*)?<svg\b([^>]*)>([\s\S]*)<\/svg>\s*$/.exec(svg);
     if (!m) throw new Error('Marker template must be a single <svg> element');

@@ -119,6 +119,7 @@ The library compares each field with the field of the last description:
 | `initialView` | The view at the start: `center` (`[lng, lat]`), `zoom`, `bearing`, `pitch`. The user then moves the map. |
 | `view`, `onViewChange` | A view that your application owns. See below. |
 | `data` | GeoJSON data for GeoJSON sources, by the id of the source. The source is in the style or in `extend.sources`. See below. |
+| `images` | Images for the style layers, by name: an SVG document, the URL of an image, or `{image, width, height}`. See [Images for style layers](#images-for-style-layers). |
 | `markers` | A list of marker layers, each with an `id`. See [Markers](markers.md). A layer with a new `data` array gets the new data. |
 | `controls` | A list of controls. See below. |
 | `interactiveLayers` | The ids of style layers. The features of these layers under the pointer are in `state.hover` and in `onClick`. |
@@ -155,6 +156,111 @@ createMap(container, {
 `extend` adds sources and layers to the style when the style has loaded. A layer with `before` goes below the layer
 with that id; without it, the layer goes on top. Give `extend` with other content to change the additions. (A style
 from a URL is then requested again; the browser has it in its cache.)
+
+## Images for style layers
+
+The field `images` gives images to the style layers by name. A symbol layer uses an image with `icon-image`.
+
+```js
+import {createMap} from '@map-jr/map-jr-gl';
+
+const pin = '<svg viewBox="0 0 24 31"><path fill="#d6453d" d="M12 30C12 30 2 17 2 11a10 10 0 0 1 20 0c0 6-10 19-10 19z"/></svg>';
+const map = createMap(document.getElementById('map'), {
+  style: 'https://tiles.openfreemap.org/styles/liberty',
+  initialView: {center: [-74.006, 40.7128], zoom: 12},
+  images: {pin},
+  extend: {
+    sources: {places: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [-74.006, 40.7128]}}}},
+    layers: [{id: 'places', type: 'symbol', source: 'places', layout: {'icon-image': 'pin', 'icon-anchor': 'bottom'}}],
+  },
+});
+```
+
+A value of `images` is one of these:
+
+| Value | Meaning |
+|---|---|
+| A string that starts with `<` | An SVG document. The library draws it at the pixel density of the screen. Its size is the size of its `viewBox`, or 24 by 24 CSS pixels without a `viewBox`. With slots (`{{name}}`), it is a template: see [An image that is a template](#an-image-that-is-a-template). |
+| Another string | The URL of an image. The server of the image must permit the request (CORS). |
+| An `ImageBitmap`, a canvas, an image element or `ImageData` | The pixels of the object. |
+| `{image, width, height, pixelRatio, ...}` | One of the values above as `image`, with options. `width` and `height` are the size in CSS pixels. `pixelRatio` is the number of image pixels for one CSS pixel (the default is 1). The options `stretchX`, `stretchY`, `content`, `textFitWidth` and `textFitHeight` are those of `addImage` in MapLibre GL JS. |
+
+`update` follows the field:
+
+- A name that is new gets its image. A name that the new description leaves out loses its image.
+- A value that is a string, or that has a string as `image`, is compared by its content. Another value is compared
+  by identity: give a new object to replace the image.
+- An image of `images` is used in place of an image of the sprite of the style that has the same name.
+
+An image that does not load is an error of the map (`onError`, `state.error`) with the name of the image. The map
+draws the layer without that image.
+
+### An image that is a template
+
+An SVG document with slots is a template. Write `{{name}}` where a value must go. The library draws the template
+one time for each different set of values, and it makes each value safe for XML.
+
+A slot gets its value in one of two ways:
+
+- Without more, a slot gets the property of the feature that has the name of the slot. With the image
+  `pin` below, `'icon-image': 'pin'` gives `{{color}}` the property `color` of each feature.
+- A layer gives a slot a value with `params` in the `image` expression. Each parameter is an expression of the style.
+
+```js
+import {createMap} from '@map-jr/map-jr-gl';
+
+const pin = '<svg viewBox="0 0 24 31"><path fill="{{color}}" stroke="{{stroke}}" d="M12 30C12 30 2 17 2 11a10 10 0 0 1 20 0c0 6-10 19-10 19z"/></svg>';
+const places = {type: 'FeatureCollection', features: [
+  {type: 'Feature', id: 1, properties: {kind: 'cafe'}, geometry: {type: 'Point', coordinates: [-74.006, 40.7128]}},
+  {type: 'Feature', id: 2, properties: {kind: 'park'}, geometry: {type: 'Point', coordinates: [-73.9857, 40.7484]}},
+]};
+const map = createMap(document.getElementById('map'), {
+  style: 'https://tiles.openfreemap.org/styles/liberty',
+  initialView: {center: [-73.996, 40.73], zoom: 11.5},
+  images: {pin},
+  extend: {
+    sources: {places: {type: 'geojson', data: places}},
+    layers: [{
+      id: 'places', type: 'symbol', source: 'places',
+      layout: {
+        'icon-anchor': 'bottom',
+        'icon-image': ['image', 'pin', {params: {
+          color: ['match', ['get', 'kind'], 'cafe', '#d6453d', 'park', '#2e9d5b', '#2f7fd1'],
+          stroke: ['case', ['boolean', ['feature-state', 'hover'], false], '#222', '#fff'],
+        }}],
+      },
+    }],
+  },
+});
+```
+
+What to know about a template:
+
+- `icon-image` is a layout property. A parameter is evaluated when a tile is built, at a whole zoom level. For a
+  value that changes without steps, use `icon-size`, `icon-opacity` or `icon-rotate`.
+- A parameter can read `feature-state`, as `stroke` does in the example. The description has no field for the
+  state of a feature: set it on the map object of the host, for example
+  `map.map.setFeatureState({source: 'places', id: 1}, {hover: true})`. The map then builds the tiles of the source
+  again. MapLibre GL JS does not permit `feature-state` in a layout property.
+- A map draws 1,000 variants of one template at most. More different sets of values give one error of the map with
+  the name of the image, and the other variants are not drawn. Give the slots values from a small set.
+- All images that are added at runtime share one texture of 2048 by 2048 pixels, so large variants reach its end
+  before the limit of 1,000: about 600 variants of 40 by 40 CSS pixels fit on a screen with a pixel ratio of 2. The
+  map then reports one error, and later images are not drawn. A variant of a template that is replaced gives its
+  place back.
+- A template works in `icon-image`. A template in `format` text or in a pattern property is not drawn.
+- A template that is not well-formed gives one error of the map with the name of the image.
+- A slot in the `href` of an `<image>` element makes the page request the URL that a feature gives. Use such a
+  slot only with data that you trust.
+- A slot with no parameter and no property of that name gets an empty text.
+- In the development build, a parameter whose name is not a slot of the image gives a warning.
+- `params` is not part of the MapLibre style specification. Mapbox GL JS has the same form for the colours of an
+  SVG icon. A style with `params` shows the icon in this library only.
+- The server renderer does not draw a template.
+
+A symbol layer with images is a style layer: it has a place in the layer order, a filter, expressions and text
+beside the icon. For many points that only need a picture, a marker layer is faster. See
+[Markers](markers.md#a-marker-layer-or-a-symbol-layer).
 
 ## GeoJSON data that changes
 
