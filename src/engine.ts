@@ -7,7 +7,7 @@ import {compileLayer, isGeometrySource, loadSprite, tileURL, type CompiledLayer,
 import {GLRenderer, MARKER_FLOATS, MARKER_STRIDE, SPRITE_ATLAS, type DemRef, type GLTile, type MarkerBuffers, type TerrainTile} from './gl.ts';
 import {CollisionGrid, placeLabels, renderItems, type Placed, type RenderItem} from './placement.ts';
 import {GlyphAtlas} from './text.ts';
-import {fetchWith, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
+import {fetchWith, withTimeout, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
 import {decodeElevation, sampleElevation, tilesUnderBox, type QueriedFeature, type QuerySet} from './query.ts';
 import type {TileBackend, TileRequest} from './tiles.ts';
 import type {TileGL} from './tile.ts';
@@ -223,7 +223,7 @@ export class Engine {
         this.atlas = new GlyphAtlas(o.fontFamily);
         this.atlas.images = name => this.icon(name);
         this.atlas.onReset = () => this.labels.clear();
-        this.atlas.fetchGlyphs = this.fetchAs('Glyphs');
+        this.atlas.fetchGlyphs = withTimeout(this.fetchAs('Glyphs'));
         this.atlas.onGlyphs = () => this.relabel();
         this.tr.width = o.width;
         this.tr.height = o.height;
@@ -578,7 +578,7 @@ export class Engine {
         const sheets: {id: string; url: string}[] = spec[0] === '[' ? JSON.parse(spec) : [{id: 'default', url: spec}];
         const loaded = await Promise.all(sheets.map(async ({id, url}) => {
             // (The two files of a sprite are asked for at the same time: the URL of the image does not depend on the JSON.)
-            const dense = this.dpr > 1, [sprite, res] = await Promise.all([loadSprite(url, dense, this.fetchAs('SpriteJSON')), this.fetchAs('SpriteImage')(url + (dense ? '@2x.png' : '.png'))]);
+            const dense = this.dpr > 1, [sprite, res] = await Promise.all([loadSprite(url, dense, withTimeout(this.fetchAs('SpriteJSON'))), withTimeout(this.fetchAs('SpriteImage'))(url + (dense ? '@2x.png' : '.png'))]);
             if (!res.ok) throw new Error(`Failed to load sprite image ${sprite.image}: ${res.status}`);
             return {id, sprite, image: await createImageBitmap(await res.blob())};
         }));
