@@ -136,7 +136,7 @@ export const MapOverlay = defineComponent({
  */
 type Forwarded = Exclude<keyof MapEvents, 'click' | 'load' | 'idle' | 'error'>;
 const FORWARDED = ['render', 'resize', 'remove', 'style.load', 'webglcontextlost', 'webglcontextrestored', 'movestart', 'move', 'moveend', 'zoomstart', 'zoom', 'zoomend',
-    'rotatestart', 'rotate', 'rotateend', 'pitchstart', 'pitch', 'pitchend', 'dragstart', 'dblclick', 'contextmenu', 'mousedown', 'mousemove', 'mouseup', 'mouseover', 'mouseout',
+    'rotatestart', 'rotate', 'rotateend', 'pitchstart', 'pitch', 'pitchend', 'dragstart', 'drag', 'dragend', 'dblclick', 'contextmenu', 'mousedown', 'mousemove', 'mouseup', 'mouseover', 'mouseout',
     'touchstart', 'touchmove', 'touchend', 'touchcancel', 'styledata', 'sourcedata', 'data', 'styledataloading', 'sourcedataloading', 'dataloading', 'wheel',
     'boxzoomstart', 'boxzoomcancel', 'boxzoomend', 'stats', 'styleimagemissing', 'terrain', 'geolocate'] as const satisfies readonly Forwarded[];
 // (The type check fails here when the map gets an event that the list does not have.)

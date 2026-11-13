@@ -576,7 +576,7 @@ has the right type, and a name that is not in the table does not compile.
 | `zoomstart`, `zoom`, `zoomend` | The zoom changes. | |
 | `rotatestart`, `rotate`, `rotateend` | The bearing changes. | |
 | `pitchstart`, `pitch`, `pitchend` | The pitch changes. | |
-| `dragstart` | The user starts to drag the map. | |
+| `dragstart`, `drag`, `dragend` | The user starts to drag the map, drags it, and stops. | `originalEvent` (a `MouseEvent` or a `TouchEvent`). |
 | `click`, `dblclick`, `contextmenu`, `mousedown`, `mousemove`, `mouseup`, `mouseover`, `mouseout` | An event of the mouse on the map. | `point` (`{x, y}` in CSS pixels), `lngLat` (`{lng, lat}`), `originalEvent`, `preventDefault()`, `defaultPrevented`. |
 | `wheel` | The user turns the wheel over the map. | The same as for the mouse; `originalEvent` is a `WheelEvent`. |
 | `touchstart`, `touchmove`, `touchend`, `touchcancel` | An event of a touch on the map. | The same as for the mouse, and `points` and `lngLats`: one entry for each finger on the map. |
