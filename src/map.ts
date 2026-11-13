@@ -658,7 +658,7 @@ export class Map {
         const list = this.listeners[type];
         if (type === 'error' && !list?.length) console.error('[map-jr-gl]', data.error);
         // A listener that throws does not stop the listeners after it: its error is an `error` event.
-        if (list) for (const fn of [...list]) try { fn({type, target: this, ...data}); } catch (error) { if (type === 'error') console.error('[map-jr-gl]', error); else this.fire('error', {error}); }
+        if (list) for (const fn of [...list]) try { fn(Object.defineProperties({type, target: this}, Object.getOwnPropertyDescriptors(data))); } catch (error) { if (type === 'error') console.error('[map-jr-gl]', error); else this.fire('error', {error}); }
         // (A query that the removal of the map or the loss of the context rejects is not an error of the map.)
         if ((type === 'click' || type === 'mousemove') && this.layerListeners.length && data.point) this.dispatchLayerEvents(type, data).catch(error => this.removed || this.restarting || this.fire('error', {error}));
     }
@@ -1367,7 +1367,11 @@ export class Map {
             const wasDragging = this.dragging;
             this.dragging = false;
             if (tapDrag) {
-                if (!tapDrag.zoomed && this.doubleClickZoom.isEnabled() && (e.type === 'blur' || !mouseEvent('dblclick', e))) this.easeTo({zoom: this.tr.zoom + 1, around: [tapDrag.x, tapDrag.y], duration: 300});
+                if (!tapDrag.zoomed) {
+                    // (The zoom waits for the listeners of `dblclick`, which the compat entry calls later: see `mouseEvent`.)
+                    const {x, y} = tapDrag, zoom = () => { if (this.doubleClickZoom.isEnabled()) this.easeTo({zoom: this.tr.zoom + 1, around: [x, y], duration: 300}); };
+                    if (e.type === 'blur') zoom(); else mouseEvent('dblclick', e, {}, zoom);
+                }
                 tapDrag = null;
                 lastTap.t = 0;
                 if (wasDragging) { this.moving = false; this.fire('moveend'); }
