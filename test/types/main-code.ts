@@ -17,6 +17,7 @@ const description: MapSpec = {
     images: {pin: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 4"/>', photo: {image: 'https://demotiles.maplibre.org/favicon.ico', width: 16, height: 16, pixelRatio: 2}},
     controls: [navigation(), {key: 'own', create: () => ({onAdd: map => { map.getZoom(); return document.createElement('div'); }, onRemove() {}})}],
     interactiveLayers: ['parks'],
+
     onViewChange: view => { const [lng, lat]: [number, number] = view.center; console.log(lng, lat); },
     onClick: e => console.log(e.features[0]?.layer.id, e.lngLat[0]),
 };
@@ -74,3 +75,17 @@ map.listen('stats', e => e.nothing.here);
 map.listen('move', e => e.point.x);
 // @ts-expect-error -- a position is an array of numbers
 map.moveTo({center: ['-74', '40.7']});
+
+// A control of `controls` is checked: `create()` returns a control (onAdd, onRemove, optional getDefaultPosition).
+const ownControl: MapSpec['controls'] = [
+    {key: 'pos', position: 'bottom-left', create: () => ({onAdd: () => document.createElement('div'), onRemove() {}, getDefaultPosition: () => 'top-left' as const})},
+    // @ts-expect-error onAdd must return an HTMLElement
+    {key: 'bad', create: () => ({onAdd: () => 1, onRemove() {}})},
+    // @ts-expect-error a position must be one of the four corners
+    {key: 'bad2', position: 'middle', create: () => ({onAdd: () => document.createElement('div'), onRemove() {}})},
+];
+console.log(ownControl);
+// The result of `create()` is the same Control type that `addControl` takes.
+const made = navigation().create();
+const corner: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | undefined = made.getDefaultPosition?.();
+console.log(corner);
