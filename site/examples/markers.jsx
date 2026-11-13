@@ -1,5 +1,5 @@
 import {useMemo, useRef, useState} from 'react';
-import {MapJr, MapOverlay} from 'map-jr-gl/react';
+import {MapJr, MapOverlay} from '@map-jr/map-jr-gl/react';
 
 const style = 'https://tiles.openfreemap.org/styles/liberty';
 const NYC = [-74.0065, 40.7085];

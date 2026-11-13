@@ -1,14 +1,16 @@
 // Checks the package as npm would publish it. Run after a build (`pnpm build` or `node build.mjs`): pnpm test:package
 //
-//   1. Packs the tarball with `pnpm pack` and runs `publint` on it. A warning of publint is a failure.
+//   1. Packs the tarball with `pnpm pack` and runs `publint` and `arethetypeswrong` on it. A warning of publint is a
+//      failure.
 //   2. Each file that `exports`, `module` and `types` of package.json name is in the tarball.
 //   3. No image of docs/images is in the tarball, and each image of the README has an absolute URL: npm shows the
 //      README without the images of the repository.
 //   4. Each built file that names a source map has that map in the tarball, and the map points at the right lines of
 //      src/: each string of ten or more plain characters in a built file is looked up through the map, and the text
 //      must be on that line of the source file.
+//   5. An application (test/consumer) that has the tarball in its node_modules builds with Vite in production mode.
 import {execFileSync} from 'node:child_process';
-import {mkdirSync, readFileSync, rmSync, statSync} from 'node:fs';
+import {cpSync, mkdirSync, readFileSync, rmSync, statSync} from 'node:fs';
 import {SourceMap} from 'node:module';
 import path from 'node:path';
 
@@ -25,6 +27,27 @@ run('pnpm', ['pack', '--out', tarball]);
 const packed = new Set(run('tar', ['-tzf', tarball]).split('\n').filter(Boolean).map(f => f.replace(/^package\//, '')));
 
 try { console.log(run('pnpm', ['exec', 'publint', 'run', tarball, '--strict']).trim()); } catch { failures.push('publint reports a fault in the tarball (see its output above)'); }
+// (The package has ES modules only, so the profile leaves out the two ways of resolving that need CommonJS.)
+try { run('pnpm', ['exec', 'attw', tarball, '--profile', 'esm-only', '--format', 'ascii', '--no-emoji']); console.log('ok    arethetypeswrong finds the types of each entry (profile esm-only)'); } catch (e) { console.log(e.stdout ?? ''); failures.push('arethetypeswrong reports a fault in the types of the tarball (see its output above)'); }
+
+// 5. An application that installs the tarball: test/consumer, built with Vite in production mode. The package has no
+//    dependencies of its own, so unpacking the tarball into node_modules of the application is what an install does,
+//    and it needs no network. An import that does not resolve, or a name that an entry does not export, fails the build.
+{
+    const app = path.join(out, 'consumer'), installed = path.join(app, 'node_modules', ...pkg.name.split('/'));
+    cpSync(path.join(root, 'test/consumer'), app, {recursive: true});
+    mkdirSync(installed, {recursive: true});
+    run('tar', ['-xzf', tarball, '-C', installed, '--strip-components=1']);
+    try {
+        const {build} = await import('vite');
+        const result = await build({root: app, configFile: false, logLevel: 'error', mode: 'production', build: {outDir: path.join(app, 'dist'), emptyOutDir: true}});
+        const code = [result].flat().flatMap(r => r.output).filter(o => o.type === 'chunk').map(o => o.code).join('\n');
+        // (The built application contains the library, not a reference to a file outside it, and it is the production build.)
+        if (!code.includes('[map-jr-gl]')) failures.push('the application of test/consumer builds, but its files do not contain the library');
+        else if (/map-jr-gl-mistakes/.test(code)) failures.push('the application of test/consumer got the development build of the library in a production build');
+        else console.log(`ok    test/consumer imports ${pkg.name} and ${pkg.name}/maplibre-compat from the tarball and builds with Vite (${(code.length / 1024).toFixed(0)} KB of scripts)`);
+    } catch (e) { failures.push(`the application of test/consumer does not build against the tarball: ${String(e.message ?? e).split('\n').slice(0, 3).join(' ')}`); }
+}
 
 const named = new Map();
 const collect = (value, where) => { if (typeof value === 'string') named.set(value.replace(/^\.\//, ''), where); else for (const [k, v] of Object.entries(value ?? {})) collect(v, `${where} > ${k}`); };

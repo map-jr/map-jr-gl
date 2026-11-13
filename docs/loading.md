@@ -7,7 +7,7 @@ This document explains how the library loads its files and how to change that.
 Import the library. You do not need any settings.
 
 ```js
-import {Map} from 'map-jr-gl/maplibre-compat';
+import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
 const map = new Map({container: 'map', style: 'https://example.com/style.json', center: [-74, 40.7], zoom: 12});
 ```
@@ -63,22 +63,22 @@ worker, so they cannot have this fault.
 
 ## Other configurations
 
-The two entries take these settings in different places. In `map-jr-gl`, the description (`MapSpec`) has `renderer`
-only, and the other settings go to `configure()`. In `map-jr-gl/maplibre-compat`, each setting is an option of
+The two entries take these settings in different places. In `@map-jr/map-jr-gl`, the description (`MapSpec`) has `renderer`
+only, and the other settings go to `configure()`. In `@map-jr/map-jr-gl/maplibre-compat`, each setting is an option of
 `new Map()`, and `configure()` sets the default for the maps that do not give the option.
 
-| You want to | `map-jr-gl` | `map-jr-gl/maplibre-compat` |
+| You want to | `@map-jr/map-jr-gl` | `@map-jr/map-jr-gl/maplibre-compat` |
 |---|---|---|
 | Put the worker file at a different URL | `configure({workerUrl: '/assets/map-jr-gl-worker.js'})` | `new Map({workerUrl: '/assets/map-jr-gl-worker.js'})` |
-| Use the worker syntax of your bundler | `configure({createWorker: () => new Worker(new URL('map-jr-gl/worker', import.meta.url))})` | `new Map({createWorker: () => new Worker(new URL('map-jr-gl/worker', import.meta.url))})` |
+| Use the worker syntax of your bundler | `configure({createWorker: () => new Worker(new URL('@map-jr/map-jr-gl/worker', import.meta.url))})` | `new Map({createWorker: () => new Worker(new URL('@map-jr/map-jr-gl/worker', import.meta.url))})` |
 | Change the number of tile workers | `configure({tileWorkers: 2})` | `new Map({tileWorkers: 2})` |
 | Draw on the main thread | `createMap(container, {style, renderer: 'main'})`, or `configure({renderer: 'main'})` for all maps | `new Map({renderer: 'main'})` |
-| Use one file only | `import {createMap} from 'map-jr-gl/standalone'` (the main API and its controls) | `import {Map} from 'map-jr-gl/maplibre-compat/standalone'` |
+| Use one file only | `import {createMap} from '@map-jr/map-jr-gl/standalone'` (the main API and its controls) | `import {Map} from '@map-jr/map-jr-gl/maplibre-compat/standalone'` |
 
 Both entries export `configure`. Call it before you make the first map:
 
 ```js
-import {configure, createMap} from 'map-jr-gl';
+import {configure, createMap} from '@map-jr/map-jr-gl';
 
 configure({workerUrl: '/assets/map-jr-gl-worker.js', tileWorkers: 2});
 
@@ -100,8 +100,8 @@ a hash of eight characters that changes from one version of the library to the n
 
 | Entry | File | Parts that it imports |
 |---|---|---|
-| `map-jr-gl` | `map-jr-gl.js` | `map-jr-gl-host-<hash>.js`, `map-jr-gl-map-<hash>.js` |
-| `map-jr-gl/maplibre-compat` | `map-jr-gl-maplibre-compat.js` | `map-jr-gl-map-<hash>.js`, `map-jr-gl-controls-more-<hash>.js` |
+| `@map-jr/map-jr-gl` | `map-jr-gl.js` | `map-jr-gl-host-<hash>.js`, `map-jr-gl-map-<hash>.js` |
+| `@map-jr/map-jr-gl/maplibre-compat` | `map-jr-gl-maplibre-compat.js` | `map-jr-gl-map-<hash>.js`, `map-jr-gl-controls-more-<hash>.js` |
 
 The browser learns the names of the parts only when it has read the entry file, so the parts are a second step of
 requests. When your page loads the files of `dist/` as they are (from your server or from a CDN), name the parts in
@@ -115,7 +115,7 @@ file:
 ```
 
 The two hashes in this example are those of one build. Copy the names for your version from the `import` statements
-at the start of the entry file in `node_modules/map-jr-gl/dist/`, and change them when you update the library.
+at the start of the entry file in `node_modules/@map-jr/map-jr-gl/dist/`, and change them when you update the library.
 
 A bundler puts the parts into the files of your application. Then the names above are not in your build, and the
 preloading is the task of the bundler.
@@ -142,7 +142,7 @@ Vite configuration:
 
 ```js
 export default {
-  optimizeDeps: {exclude: ['map-jr-gl']},
+  optimizeDeps: {exclude: ['@map-jr/map-jr-gl']},
 };
 ```
 
@@ -152,7 +152,7 @@ problem.
 ### Frameworks that render on the server
 
 It is safe to import the library on the server. The library does not use a browser API until you call `createMap()`
-(`map-jr-gl`) or `new Map()` (`map-jr-gl/maplibre-compat`).
+(`@map-jr/map-jr-gl`) or `new Map()` (`@map-jr/map-jr-gl/maplibre-compat`).
 Create the map in the function that runs after the component is in the page, for example `onMounted` or
 `useEffect`.
 

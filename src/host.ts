@@ -3,10 +3,11 @@
  * description. The library finds what is different. The state of the map (the view, loaded, idle, the features under
  * the pointer) is in a store that code can watch.
  *
- * The adapters for the frameworks (`map-jr-gl/vue` and others) are thin layers over `createMap`.
- * (For the API of MapLibre GL JS, see `map-jr-gl/maplibre-compat`.)
+ * The adapters for the frameworks (`@map-jr/map-jr-gl/vue` and others) are thin layers over `createMap`.
+ * (For the API of MapLibre GL JS, see `@map-jr/map-jr-gl/maplibre-compat`.)
  */
-import {Map, markerSize, type MapOptions, type MarkerLayer, type RenderedFeature} from './map.ts';
+import {Map, markerSize, type FeatureOptions, type FeaturePlace, type MapOptions, type MarkerLayer, type RenderedFeature} from './map.ts';
+export type {FeatureOptions, FeaturePlace};
 import {createStore, type Readable} from './store.ts';
 import {Marker, Popup, type OverlayAnchor} from './overlays.ts';
 import type {MarkerInput, MarkerLayerOptions} from './markers.ts';
@@ -21,7 +22,7 @@ import type {LngLatBounds, LngLatBoundsInput} from './lnglat.ts';
  */
 declare const __DEV__: boolean;
 
-/** The description of a control: see `map-jr-gl/controls`. Controls with the same `key` are the same control. */
+/** The description of a control: see `@map-jr/map-jr-gl/controls`. Controls with the same `key` are the same control. */
 export interface ControlSpec { key: string; position?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'; create(): {onAdd(map: Map): HTMLElement; onRemove(map: Map): void} }
 
 /**
@@ -71,7 +72,7 @@ export interface MapSpec extends MapSetup {
     data?: Record<string, unknown>;
     /** Marker layers, each with an `id`. A layer whose `data` is a new array gets the new data. */
     markers?: MarkerLayerOptions[];
-    /** Controls from `map-jr-gl/controls`: `[navigation(), scale()]`. */
+    /** Controls from `@map-jr/map-jr-gl/controls`: `[navigation(), scale()]`. */
     controls?: ControlSpec[];
     /** Style layers whose features are found under the pointer: they are in `state.hover` and in `onClick`. */
     interactiveLayers?: string[];
@@ -122,10 +123,6 @@ export interface OverlayOptions {
 }
 export interface MapOverlay { update(options: OverlayOptions): void; remove(): void }
 
-/** Where to look for features: a point of the screen, a position `[lng, lat]`, or a rectangle of the screen (two points). */
-export type FeaturePlace = {x: number; y: number} | Position | readonly {x: number; y: number}[];
-export interface FeatureOptions { layers?: string[]; filter?: unknown; sources?: string[]; sourceLayers?: string[]; radius?: number; geometry?: boolean }
-
 /** What each event of `listen` has: its type, and the map object behind the host (see `map` in `MapHost`). */
 export interface MapEventBase<T extends string = string> { type: T; target: Map }
 /** A marker of a marker layer under the pointer: the layer, the index of the marker in the `data` of the layer, and the marker. */
@@ -174,7 +171,7 @@ export interface MapEvents extends
     styleimagemissing: MapEventBase<'styleimagemissing'> & {id: string};
     /** The terrain of the style has changed. */
     terrain: MapEventBase<'terrain'> & {terrain: {source: string; exaggeration?: number} | null};
-    /** The geolocate control of `map-jr-gl/controls` has a position. */
+    /** The geolocate control of `@map-jr/map-jr-gl/controls` has a position. */
     geolocate: MapEventBase<'geolocate'> & {coords: GeolocationCoordinates};
     /** `error` is usually an `Error`. (`onError` and `state.error` always have an `Error`.) */
     error: MapEventBase<'error'> & {error: unknown};
@@ -194,13 +191,17 @@ export interface MapHost {
      *   position they need not be on the screen (the tile is fetched if necessary). Without `sources`, the features
      *   that the style layers draw (`layers` selects layers), the top one first.
      */
-    queryFeatures(at?: FeaturePlace, options?: FeatureOptions): Promise<(RenderedFeature | QueriedFeature)[]>;
+    queryFeatures(at: FeaturePlace | undefined, options: FeatureOptions & {sources: string[]}): Promise<QueriedFeature[]>;
+    queryFeatures(at?: FeaturePlace, options?: FeatureOptions & {sources?: undefined}): Promise<RenderedFeature[]>;
+    queryFeatures(at?: FeaturePlace, options?: FeatureOptions): Promise<RenderedFeature[] | QueriedFeature[]>;
     /**
      * The same question, kept up to date: `listener` gets the answer now, and again each time that the answer
      * changes (new tiles, a change of the style, and for a place on the screen also a movement of the map).
      * Returns a function that stops it.
      */
-    watchFeatures(at: FeaturePlace | undefined, options: FeatureOptions, listener: (features: (RenderedFeature | QueriedFeature)[]) => void): () => void;
+    watchFeatures(at: FeaturePlace | undefined, options: FeatureOptions & {sources: string[]}, listener: (features: QueriedFeature[]) => void): () => void;
+    watchFeatures(at: FeaturePlace | undefined, options: FeatureOptions & {sources?: undefined}, listener: (features: RenderedFeature[]) => void): () => void;
+    watchFeatures(at: FeaturePlace | undefined, options: FeatureOptions, listener: (features: RenderedFeature[] | QueriedFeature[]) => void): () => void;
     /** The height of the ground in metres at a position (`[lng, lat]`) or a point of the screen, from the elevation source of the style. `null` where there is no data. */
     queryElevation(at: Position | {x: number; y: number}): Promise<number | null>;
     /** Moves the camera now, with an animation when `duration` is not 0. */
@@ -301,7 +302,7 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
         while (alive) {
             const at = pointer, layers = now.interactiveLayers;
             // (A query is rejected when the map is removed or loses its WebGL context: nothing is under the pointer then.)
-            const found = at && layers?.length ? await map.queryLayers([at.x, at.y], {layers}).catch(() => []) : [];
+            const found = at && layers?.length ? await map.queryFeatures(at, {layers}).catch(() => []) : [];
             if (!alive) break;
             const before = state.get().hover;
             if (found.length !== before.length || found.some((f, i) => f.id !== before[i].id || (f.layer as any)?.id !== (before[i].layer as any)?.id || f.source !== before[i].source)) state.set({hover: found});
@@ -316,7 +317,7 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
     map.on('click', async e => {
         const click = now.onClick, layers = now.interactiveLayers;
         if (!click || !e.point || !e.lngLat) return;
-        const features = layers?.length ? await map.queryLayers([e.point.x, e.point.y], {layers}).catch(() => []) : [];
+        const features = layers?.length ? await map.queryFeatures(e.point, {layers}).catch(() => []) : [];
         if (alive) click({point: e.point, lngLat: [e.lngLat.lng, e.lngLat.lat], features});
     });
 
@@ -372,14 +373,12 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
     apply(spec);
 
     const isPosition = (at: FeaturePlace): at is [number, number] => typeof (at as number[])[0] === 'number';
-    const queryFeatures: MapHost['queryFeatures'] = (at, o = {}) => {
-        const box = Array.isArray(at) && !isPosition(at) ? [at[0].x, at[0].y, at[1].x, at[1].y] as [number, number, number, number] : undefined;
+    const queryFeatures = ((at?: FeaturePlace, o: FeatureOptions = {}) => {
+        const box = Array.isArray(at) && !isPosition(at);
         check(3, at, o);
         if (at && !box && !o.sources && !isPosition(at) && typeof (at as {x: number}).x !== 'number') return checks().then(m => m.mistake(9, JSON.stringify(at)), () => '[map-jr-gl] queryFeatures(): the place is not {x, y} or [lng, lat].').then(text => { throw new Error(text); });
-        if (o.sources) return at && !box ? map.queryFeatures(at as [number, number] | {x: number; y: number}, o) : map.querySources(box, o.sources, o);
-        const point = at && !box ? isPosition(at) ? map.project(at) : at as {x: number; y: number} : undefined;
-        return map.queryLayers(box ? [[box[0], box[1]], [box[2], box[3]]] : point ? [point.x, point.y] : {layers: o.layers, filter: o.filter}, {layers: o.layers, filter: o.filter});
-    };
+        return map.queryFeatures(at, o);
+    }) as MapHost['queryFeatures'];
 
     return {
         update(next) {
@@ -389,7 +388,7 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
         destroy() { if (!alive) return; alive = false; map.remove(); },
         state,
         queryFeatures,
-        watchFeatures(at, o, listener) {
+        watchFeatures(at: FeaturePlace | undefined, o: FeatureOptions, listener: (features: any) => void) {
             // One question at a time. An event during a question asks again after it.
             let last: string | undefined, busy = false, again = false, stopped = false;
             const run = () => {

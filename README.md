@@ -2,9 +2,9 @@
 
 A small, fast map library for the web. It reads MapLibre styles. It has two entries:
 
-- `map-jr-gl`: a map from one description, with state that your code can watch. The adapters for frameworks
-  (`map-jr-gl/vue`, `map-jr-gl/react`) use this entry.
-- `map-jr-gl/maplibre-compat`: an API that is almost the same as MapLibre GL JS, for code and plugins that were
+- `@map-jr/map-jr-gl`: a map from one description, with state that your code can watch. The adapters for frameworks
+  (`@map-jr/map-jr-gl/vue`, `@map-jr/map-jr-gl/react`) use this entry.
+- `@map-jr/map-jr-gl/maplibre-compat`: an API that is almost the same as MapLibre GL JS, for code and plugins that were
   written for that library.
 
 ![A 3D terrain map with relief shading and contour lines](https://raw.githubusercontent.com/map-jr/map-jr-gl/main/docs/images/terrain.jpg)
@@ -15,17 +15,17 @@ Which entry to use:
 
 | You have | Use | Why |
 |---|---|---|
-| A new application, or an application with Vue, Nuxt, React or Svelte | `map-jr-gl` and its adapters | New features go to this entry first. |
-| Code or plugins that were written for MapLibre GL JS | `map-jr-gl/maplibre-compat` | The code keeps its calls (`new Map`, `map.on`, `map.addLayer`). |
+| A new application, or an application with Vue, Nuxt, React or Svelte | `@map-jr/map-jr-gl` and its adapters | New features go to this entry first. |
+| Code or plugins that were written for MapLibre GL JS | `@map-jr/map-jr-gl/maplibre-compat` | The code keeps its calls (`new Map`, `map.on`, `map.addLayer`). |
 
 The two entries have different methods. Each example below names its entry. The comparisons with MapLibre GL JS in
-[Status](#status) (render tests, example pages, plugins) test `map-jr-gl/maplibre-compat`. The entry `map-jr-gl`
+[Status](#status) (render tests, example pages, plugins) test `@map-jr/map-jr-gl/maplibre-compat`. The entry `@map-jr/map-jr-gl`
 uses the same renderer and has its own tests in a browser.
 
 ## Why use this library
 
-- **It is small.** A page with a map transfers about 88 KB of script (gzip): about 28 KB for the page script of
-  `map-jr-gl` and about 60 KB for the worker file. MapLibre GL JS 6.17 transfers about 444 KB (page script, worker
+- **It is small.** A page with a map transfers about 90 KB of script (gzip): about 29 KB for the page script of
+  `@map-jr/map-jr-gl` and about 60 KB for the worker file. MapLibre GL JS 6.17 transfers about 444 KB (page script, worker
   and CSS). The smaller size does not include a globe and other projections, sky, fog, custom layers and the other
   items in [What is not available](docs/maplibre-compatibility.md#what-is-not-available).
 - **It does not block your page.** The map draws in a worker. Your page stays responsive while the map moves.
@@ -38,7 +38,7 @@ uses the same renderer and has its own tests in a browser.
   need a style layer.
 - **Fonts as the style gives them, or none to download.** Text uses the glyph files of the style, as MapLibre GL JS does. With `glyphs: false`, text uses the fonts of the browser: no requests for fonts.
 - **It is easy to change to.** Most MapLibre GL JS code works after you change the import to
-  `map-jr-gl/maplibre-compat`.
+  `@map-jr/map-jr-gl/maplibre-compat`.
 - **It works with MapLibre plugins.** mapbox-gl-draw, terra-draw, the compare and sync-move plugins and others run
   without changes. See [Plugins and frameworks](docs/ecosystem.md).
 
@@ -49,23 +49,32 @@ These figures are written by `pnpm status`. They compare this library with MapLi
 
 | Measure | Result |
 |---|---|
-| Unit tests | 37 pass, 0 fail |
+| Unit tests | 44 pass, 0 fail |
 | MapLibre expression tests | 330 of 425 pass |
 | MapLibre `Map` methods | 118 of 150 are available; 12 more are accepted and have no effect |
 | MapLibre plugins, run in a browser | 15 of 15 work (see [Plugins and frameworks](docs/ecosystem.md)) |
 | Plugins and frameworks, read from npm | 17 of 26 use only API that the library has |
 | Example pages of the MapLibre documentation, with this library in place of MapLibre | 110 of 142 work. Most of the others need a globe, another projection or a custom 3D layer. |
 | MapLibre render tests | 819 of 1429 are the same (1% of pixels or less are different). 280 more are near (5% or less). |
-| Page script (gzip) | 29 KB. MapLibre GL JS: 299 KB. |
+| Page script (gzip) | 32 KB. MapLibre GL JS: 299 KB. |
 | Worker script (gzip) | 60 KB. MapLibre GL JS: 145 KB. |
-| Server renderer (gzip) | 36 KB |
+| Server renderer (gzip) | 37 KB |
 <!-- status:end -->
 
 The library is new. Read [MapLibre compatibility](docs/maplibre-compatibility.md) before you use it in production.
 
 ## Install
 
-The package is not on npm yet. Build it from this repository:
+The name of the package is `@map-jr/map-jr-gl`. Version 0.2.0 is the first version, and it is not on npm yet. When
+it is, install it with your package manager:
+
+```bash
+npm install @map-jr/map-jr-gl
+```
+
+Then import from `@map-jr/map-jr-gl`, or from `@map-jr/map-jr-gl/maplibre-compat` for the API of MapLibre GL JS.
+
+Until then, build the package from this repository:
 
 ```bash
 git clone https://github.com/map-jr/map-jr-gl.git
@@ -86,14 +95,17 @@ pnpm build
 The build writes the library to the `dist` folder. Then use one of these methods:
 
 - **With a bundler (Vite, webpack, Rollup, Parcel):** add the folder to your project as a dependency
-  (`pnpm add ../map-jr-gl`). Then import from `map-jr-gl`.
+  (`pnpm add ../map-jr-gl`). Then import from `@map-jr/map-jr-gl`.
 - **Without a bundler:** copy the `dist` folder to your web server. Then import `dist/map-jr-gl.js` in a module
   script (or `dist/map-jr-gl-maplibre-compat.js` for the API of MapLibre GL JS).
 
-The package contains ES modules only (`"type": "module"`). It has no CommonJS build, so `require('map-jr-gl')` does
-not work: use `import`. The tests of the server renderer (`map-jr-gl/server`) run with Node.js 22, and `engines` in
-`package.json` asks for Node.js 22 or later. The module for Nuxt (`map-jr-gl/nuxt`) imports `@nuxt/kit`, which a Nuxt
+The package contains ES modules only (`"type": "module"`). It has no CommonJS build, so `require('@map-jr/map-jr-gl')` does
+not work: use `import`. The tests of the server renderer (`@map-jr/map-jr-gl/server`) run with Node.js 22, and `engines` in
+`package.json` asks for Node.js 22 or later. The module for Nuxt (`@map-jr/map-jr-gl/nuxt`) imports `@nuxt/kit`, which a Nuxt
 application has already. `package.json` names it as an optional peer dependency (version 3 or 4).
+
+A browser must have WebGL2. [Browser support](docs/browser-support.md) says what each renderer needs and in which
+browsers the library was run.
 
 Each built file has a source map beside it (`dist/<file>.js.map`), so that an error tracker can show the lines of the
 source for a stack trace.
@@ -102,12 +114,12 @@ source for a stack trace.
 
 ### Show a map
 
-This example uses the entry `map-jr-gl`.
+This example uses the entry `@map-jr/map-jr-gl`.
 
 ```html
 <div id="map" style="height: 400px"></div>
 <script type="module">
-  import {createMap} from 'map-jr-gl';
+  import {createMap} from '@map-jr/map-jr-gl';
 
   const map = createMap(document.getElementById('map'), {
     style: 'https://tiles.openfreemap.org/styles/liberty',
@@ -129,7 +141,7 @@ You do not need a CSS file. See [The main API](docs/api.md).
 ```vue
 <script setup>
 import {ref} from 'vue';
-import {MapJr} from 'map-jr-gl/vue';
+import {MapJr} from '@map-jr/map-jr-gl/vue';
 
 const view = ref({center: [-74.0065, 40.7085], zoom: 13.6});
 </script>
@@ -146,20 +158,20 @@ browser. See [Vue and Nuxt](docs/vue.md).
 
 ### Change from MapLibre GL JS
 
-The entry `map-jr-gl/maplibre-compat` has the API of MapLibre GL JS: `new Map({...})`, `map.on(...)`,
+The entry `@map-jr/map-jr-gl/maplibre-compat` has the API of MapLibre GL JS: `new Map({...})`, `map.on(...)`,
 `map.addLayer(...)`, controls, `Marker` and `Popup`.
 
 1. Change the name of the module in each import:
 
    ```js
    // import {Map, Marker, Popup} from 'maplibre-gl';
-   import {Map, Marker, Popup} from 'map-jr-gl/maplibre-compat';
+   import {Map, Marker, Popup} from '@map-jr/map-jr-gl/maplibre-compat';
    ```
 
    If your code uses one object for the library (`maplibregl.Map`), import all the names into that object:
 
    ```js
-   import * as maplibregl from 'map-jr-gl/maplibre-compat';
+   import * as maplibregl from '@map-jr/map-jr-gl/maplibre-compat';
    ```
 
 2. Remove the import of `maplibre-gl.css`.
@@ -173,7 +185,7 @@ A plugin that was written for MapLibre GL JS imports `maplibre-gl` itself. Map t
 bundler (`resolve.alias` in Vite, `alias` in esbuild) or in an import map:
 
 ```html
-<script type="importmap">{"imports": {"maplibre-gl": "/node_modules/map-jr-gl/dist/map-jr-gl-maplibre-compat.js"}}</script>
+<script type="importmap">{"imports": {"maplibre-gl": "/node_modules/@map-jr/map-jr-gl/dist/map-jr-gl-maplibre-compat.js"}}</script>
 ```
 
 The library has a default export for such plugins only, because some of them contain
@@ -183,10 +195,10 @@ The library has a default export for such plugins only, because some of them con
 
 A marker layer draws many markers on the map canvas. Each marker is an SVG template with values from your data.
 
-With `map-jr-gl`, a marker layer is an entry of `markers` in the description:
+With `@map-jr/map-jr-gl`, a marker layer is an entry of `markers` in the description:
 
 ```js
-import {createMap} from 'map-jr-gl';
+import {createMap} from '@map-jr/map-jr-gl';
 
 const places = {
   id: 'places',
@@ -210,7 +222,7 @@ map.listen('markerclick', event => {
 });
 ```
 
-With `map-jr-gl/maplibre-compat`, `map` is a `Map`, and the same layer and listener are method calls:
+With `@map-jr/map-jr-gl/maplibre-compat`, `map` is a `Map`, and the same layer and listener are method calls:
 
 ```js
 map.addMarkerLayer(places);
@@ -220,17 +232,17 @@ map.on('markerclick', event => {
 });
 ```
 
-For a small number of markers with HTML content, use `map.overlay` (`map-jr-gl`) or `Marker` and `Popup`
-(`map-jr-gl/maplibre-compat`, the same API as MapLibre GL JS). See [Markers](docs/markers.md).
+For a small number of markers with HTML content, use `map.overlay` (`@map-jr/map-jr-gl`) or `Marker` and `Popup`
+(`@map-jr/map-jr-gl/maplibre-compat`, the same API as MapLibre GL JS). See [Markers](docs/markers.md).
 
 ![Fifty thousand markers on a map](https://raw.githubusercontent.com/map-jr/map-jr-gl/main/docs/images/markers.jpg)
 
 ### Show terrain, relief and contour lines
 
-With `map-jr-gl`, the elevation source, the layers and the terrain are additions to the style (`extend`):
+With `@map-jr/map-jr-gl`, the elevation source, the layers and the terrain are additions to the style (`extend`):
 
 ```js
-import {createMap} from 'map-jr-gl';
+import {createMap} from '@map-jr/map-jr-gl';
 
 const map = createMap(document.getElementById('map'), {
   style: 'https://tiles.openfreemap.org/styles/liberty',
@@ -251,7 +263,7 @@ const map = createMap(document.getElementById('map'), {
 const metres = await map.queryElevation([7.6586, 45.9763]);
 ```
 
-With `map-jr-gl/maplibre-compat`, where `map` is a `Map` whose style has loaded:
+With `@map-jr/map-jr-gl/maplibre-compat`, where `map` is a `Map` whose style has loaded:
 
 ```js
 map.addSource('dem', {
@@ -279,12 +291,13 @@ See [Terrain and elevation](docs/terrain-and-elevation.md).
 
 ### Find what is at a position
 
-With `map-jr-gl`, `queryFeatures` with `sources` reads the tile data of those sources. It finds data that the style
+With `@map-jr/map-jr-gl`, `queryFeatures` with `sources` reads the tile data of those sources. It finds data that the style
 does not draw, and it also works for a position that is not on the screen. Without `sources`, it gives the features
-that the style layers draw. See [Queries](docs/api.md#queries).
+that the style layers draw, and it never reads other data. `radius` is the distance around the place in pixels, in
+both kinds of query. See [Queries](docs/api.md#queries).
 
 ```js
-import {createMap} from 'map-jr-gl';
+import {createMap} from '@map-jr/map-jr-gl';
 
 const map = createMap(document.getElementById('map'), {
   style: 'https://tiles.openfreemap.org/styles/liberty',
@@ -297,12 +310,15 @@ const map = createMap(document.getElementById('map'), {
 });
 ```
 
-With `map-jr-gl/maplibre-compat`, `map.queryFeatures(lngLat, {radius: 8})` always reads the tile data.
-`queryRenderedFeatures` and `querySourceFeatures` are also available:
+With `@map-jr/map-jr-gl/maplibre-compat`, `map.queryFeatures` is the same method. `queryRenderedFeatures` and
+`querySourceFeatures` are also available:
 
 ```js
+import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
+
+const map = new Map({container: 'map', style: 'https://tiles.openfreemap.org/styles/liberty', center: [-74.0065, 40.7085], zoom: 16});
 map.on('click', async event => {
-  const features = await map.queryFeatures(event.lngLat, {radius: 8});
+  const features = await map.queryFeatures(event.lngLat, {sources: ['openmaptiles'], radius: 8});
   console.log(features.map(feature => feature.properties));
 });
 ```
@@ -311,10 +327,10 @@ map.on('click', async event => {
 
 ### Render the first view on the server
 
-This example uses the entry `map-jr-gl/server`.
+This example uses the entry `@map-jr/map-jr-gl/server`.
 
 ```js
-import {renderToSVG} from 'map-jr-gl/server';
+import {renderToSVG} from '@map-jr/map-jr-gl/server';
 
 const {svg} = await renderToSVG({
   style: 'https://tiles.openfreemap.org/styles/liberty',
@@ -332,7 +348,7 @@ See [Server rendering](docs/server-rendering.md).
 
 ### Use highway shields and other icons that are generated on demand
 
-This example uses the entry `map-jr-gl/maplibre-compat`, where `map` is a `Map`. The description of `map-jr-gl` has
+This example uses the entry `@map-jr/map-jr-gl/maplibre-compat`, where `map` is a `Map`. The description of `@map-jr/map-jr-gl` has
 no field for this yet.
 
 ```js
@@ -362,19 +378,19 @@ build and other configurations.
 ## Speed
 
 <!-- speed:start -->
-Measured by the workflow [Browsers](https://github.com/map-jr/map-jr-gl/tree/bench-results) on 2026-11-12 (commit 20a7ec0). Each cell is MapLibre GL JS 6.17.0 / **this library** (worker renderer where the browser has it).
+Measured by the workflow [Browsers](https://github.com/map-jr/map-jr-gl/tree/bench-results) on 2026-11-12 (commit a7ea4e8). Each cell is MapLibre GL JS 6.17.0 / **this library** (worker renderer where the browser has it).
 
 | System, browser | Load to idle, ms | Frames per second, map moving | Frames per second, 10,000 markers |
 |---|---|---|---|
-| macOS, Chromium | 2011 / **747** | 26 / **25** | 3 / **19** |
-| macOS, Firefox | 4746 / **8118** | 1 / **11** | 2 / **56** |
-| macOS, WebKit | 2438 / **1373** | 58 / **49** | 2 / **57** |
-| Linux, Chromium | 865 / **1030** | 12 / **9** | 2 / **10** |
-| Linux, Firefox | 1760 / **1272** | 16 / **59** | 5 / **59** |
-| Linux, WebKit | 1532 / **1140** | 23 / **23** | 3 / **22** |
-| Windows, Chromium | 1214 / **1480** | 42 / **34** | 2 / **30** |
-| Windows, Firefox | 1585 / **1940** | 32 / **21** | 4 / **24** |
-| Windows, WebKit | 1751 / **1651** | 14 / **14** | 3 / **14** |
+| macOS, Chromium | 1789 / **722** | 22 / **29** | 2 / **24** |
+| macOS, Firefox | 4239 / **3649** | 3 / **62** | 4 / **7** |
+| macOS, WebKit | 2696 / **1234** | 56 / **55** | 2 / **60** |
+| Linux, Chromium | 622 / **786** | 16 / **15** | 3 / **17** |
+| Linux, Firefox | 1879 / **1593** | 17 / **59** | 4 / **57** |
+| Linux, WebKit | 1625 / **1077** | 21 / **19** | 4 / **17** |
+| Windows, Chromium | 1196 / **1444** | 43 / **34** | 2 / **32** |
+| Windows, Firefox | 1480 / **1724** | 36 / **21** | 4 / **21** |
+| Windows, WebKit | 1514 / **1487** | 19 / **17** | 4 / **16** |
 <!-- speed:end -->
 
 These computers are virtual machines, and those for Linux and Windows have no GPU: use the table to compare the
@@ -398,7 +414,10 @@ To measure on your device, open [the benchmark page](https://map-jr.github.io/ma
 - [MapLibre compatibility](docs/maplibre-compatibility.md): what is the same, what is different, what is not
   available.
 - [Plugins and frameworks](docs/ecosystem.md): which popular MapLibre plugins find the API that they use.
-- [Development](docs/development.md): how to build, test and measure the library.
+- [Browser support](docs/browser-support.md): what a browser must have, what each renderer needs, and where the
+  library was run.
+- [Development](docs/development.md): how to build, test, measure and release the library.
+- [Changelog](CHANGELOG.md): what each version contains, and what is known not to work.
 - [Contributing](CONTRIBUTING.md) and the [open issues](https://github.com/map-jr/map-jr-gl/issues): what is known to be wrong or missing, by priority.
 
 ## How this project is made

@@ -1,14 +1,14 @@
 # React
 
-The entry `map-jr-gl/react` has a component and hooks for React 18 and 19. They are a thin layer over
+The entry `@map-jr/map-jr-gl/react` has a component and hooks for React 18 and 19. They are a thin layer over
 [the main API](api.md): after each render, the component gives its props to the map as one description.
 
 ## The component
 
 ```jsx
 import {useMemo, useState} from 'react';
-import {MapJr, MapOverlay} from 'map-jr-gl/react';
-import {navigation, scale} from 'map-jr-gl/controls';
+import {MapJr, MapOverlay} from '@map-jr/map-jr-gl/react';
+import {navigation, scale} from '@map-jr/map-jr-gl/controls';
 
 export function Places({places}) {
   const [view, setView] = useState({center: [-74.0065, 40.7085], zoom: 13.6});
@@ -67,7 +67,7 @@ the `data` prop (GeoJSON for sources of the style). Keep them (`useMemo`, state)
 Use these in a component inside `MapJr`.
 
 ```jsx
-import {useMap, useMapState} from 'map-jr-gl/react';
+import {useMap, useMapState} from '@map-jr/map-jr-gl/react';
 
 function Zoom() {
   const zoom = useMapState(state => state.view.zoom);   // renders again only when the zoom changes
@@ -92,7 +92,7 @@ the server with `renderFirstView`, and give it to the component:
 
 ```jsx
 // On the server (for example a server component of Next.js):
-import {renderFirstView} from 'map-jr-gl/server';
+import {renderFirstView} from '@map-jr/map-jr-gl/server';
 
 const firstView = await renderFirstView({
   style: 'https://tiles.openfreemap.org/styles/liberty',

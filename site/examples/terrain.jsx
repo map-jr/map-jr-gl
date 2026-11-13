@@ -1,5 +1,5 @@
 import {useMemo, useRef, useState} from 'react';
-import {MapJr} from 'map-jr-gl/react';
+import {MapJr} from '@map-jr/map-jr-gl/react';
 
 const style = 'https://tiles.openfreemap.org/styles/liberty';
 const MATTERHORN = [7.6586, 45.9763];

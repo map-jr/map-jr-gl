@@ -1,5 +1,5 @@
 import {useRef, useState} from 'react';
-import {MapJr} from 'map-jr-gl/react';
+import {MapJr} from '@map-jr/map-jr-gl/react';
 
 const style = 'https://tiles.openfreemap.org/styles/liberty';
 

@@ -1,4 +1,4 @@
-import {createMap} from 'map-jr-gl';
+import {createMap} from '@map-jr/map-jr-gl';
 
 const style = 'https://tiles.openfreemap.org/styles/liberty';
 const MATTERHORN = [7.6586, 45.9763];

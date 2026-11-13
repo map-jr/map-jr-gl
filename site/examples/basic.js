@@ -1,5 +1,5 @@
-import {createMap} from 'map-jr-gl';
-import {navigation, scale, fullscreen} from 'map-jr-gl/controls';
+import {createMap} from '@map-jr/map-jr-gl';
+import {navigation, scale, fullscreen} from '@map-jr/map-jr-gl/controls';
 
 const style = 'https://tiles.openfreemap.org/styles/liberty';
 const NYC = [-74.0065, 40.7085];

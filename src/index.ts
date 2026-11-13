@@ -1,5 +1,5 @@
 // The main entry of the library: a map from one description, with state that code can watch (see host.ts).
-// The entry with the API of MapLibre GL JS is `map-jr-gl/maplibre-compat`.
+// The entry with the API of MapLibre GL JS is `@map-jr/map-jr-gl/maplibre-compat`.
 export {createMap, type ControlSpec, type FeatureOptions, type FeaturePlace, type MapHost, type StyleExtension, type MapOverlay, type OverlayOptions, type MapSpec, type MapSetup, type MapState, type MapPointer, type View, type ViewInput, type Position, type MapEvents, type MapEventBase, type MapPointerEvent, type MapTouchEvent, type MapDataEvent, type MarkerHit} from './host.ts';
 export {createStore, type Readable, type Store} from './store.ts';
 export {addProtocol, removeProtocol, type ProtocolFunction} from './protocols.ts';

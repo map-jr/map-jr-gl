@@ -1,4 +1,4 @@
-// The map of the entry `map-jr-gl/maplibre-compat`: the core map (map.ts) with the rest of the API of MapLibre GL JS.
+// The map of the entry `@map-jr/map-jr-gl/maplibre-compat`: the core map (map.ts) with the rest of the API of MapLibre GL JS.
 // These methods are here, and not in the core, because the main entry does not need them: other names for a camera
 // change, values that are fixed in this library, methods that only frameworks for MapLibre GL JS read, and query
 // results that are arrays and promises at the same time.

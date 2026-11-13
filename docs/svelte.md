@@ -1,12 +1,12 @@
 # Svelte
 
-The entry `map-jr-gl/svelte` has an action and a store for [the main API](api.md). They do not need the Svelte
+The entry `@map-jr/map-jr-gl/svelte` has an action and a store for [the main API](api.md). They do not need the Svelte
 package, so they work with each version of Svelte.
 
 ```svelte
 <script>
-  import {mapJr, mapState} from 'map-jr-gl/svelte';
-  import {navigation} from 'map-jr-gl/controls';
+  import {mapJr, mapState} from '@map-jr/map-jr-gl/svelte';
+  import {navigation} from '@map-jr/map-jr-gl/controls';
 
   let {places} = $props();
   let map = $state(null);
@@ -38,5 +38,5 @@ package, so they work with each version of Svelte.
   inputs change.
 
 There is no component for Svelte, and no server rendering in this entry yet. On a server, call `renderFirstView`
-from `map-jr-gl/server` and put the HTML into the element (`{@html firstView}`): the map takes it over. This is not
+from `@map-jr/map-jr-gl/server` and put the HTML into the element (`{@html firstView}`): the map takes it over. This is not
 tested with SvelteKit.

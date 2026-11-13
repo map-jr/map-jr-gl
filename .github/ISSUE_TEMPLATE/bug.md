@@ -6,7 +6,7 @@ labels: bug
 
 **What happens, and what you expected**
 
-**How to reproduce** (the smallest style and code that shows it; which entry: `map-jr-gl` or `map-jr-gl/maplibre-compat`)
+**How to reproduce** (the smallest style and code that shows it; which entry: `@map-jr/map-jr-gl` or `@map-jr/map-jr-gl/maplibre-compat`)
 
 **Where** (browser and version, system, device; `renderer: 'worker'` or `'main'` if you know)
 

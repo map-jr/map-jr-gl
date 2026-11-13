@@ -1,4 +1,4 @@
-import {Map} from 'map-jr-gl/maplibre-compat';
+import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
 const style = 'https://tiles.openfreemap.org/styles/liberty';
 const NYC = [-74.0065, 40.7085];

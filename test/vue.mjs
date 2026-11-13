@@ -1,4 +1,4 @@
-// Tests of the Vue adapter (`map-jr-gl/vue`): the server render with Vue's own server renderer, then the same page in
+// Tests of the Vue adapter (`@map-jr/map-jr-gl/vue`): the server render with Vue's own server renderer, then the same page in
 // a browser, where Vue takes over the HTML and the map takes over the SVG.   node test/vue.mjs   (after pnpm build)
 import http from 'node:http';
 import path from 'node:path';

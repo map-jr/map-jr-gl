@@ -1,6 +1,6 @@
 <script setup>
 import {ref} from 'vue';
-import {MapJr} from 'map-jr-gl/vue';
+import {MapJr} from '@map-jr/map-jr-gl/vue';
 
 const style = 'https://tiles.openfreemap.org/styles/liberty';
 const NYC = [-74.0065, 40.7085];

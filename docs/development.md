@@ -21,7 +21,7 @@ pnpm install
 | `pnpm test:cloudflare` | Runs the server renderer in the Cloudflare runtime. Start `pnpm demo` first. |
 | `pnpm test:render` | Runs the MapLibre render tests. This takes about 10 minutes. |
 | `pnpm test:size` | Fails if a built file is larger than its budget in `scripts/size-check.mjs`. Run `pnpm build` first. |
-| `pnpm test:package` | Packs the tarball with `pnpm pack` into `.cache/package` and runs `publint` on it. Fails if a file that `package.json` names is not in the tarball, if a source map points at the wrong lines of `src/`, if an image is in the tarball, or if `README.md` shows an image by a relative path (npm shows the README without the images of the repository, so the README uses `https://raw.githubusercontent.com/map-jr/map-jr-gl/main/docs/images/...`). Run `pnpm build` first. |
+| `pnpm test:package` | Packs the tarball with `pnpm pack` into `.cache/package` and runs `publint` and `arethetypeswrong` (profile `esm-only`) on it. Then it unpacks the tarball into `node_modules` of a copy of the application in `test/consumer`, which imports `@map-jr/map-jr-gl`, `@map-jr/map-jr-gl/controls` and `@map-jr/map-jr-gl/maplibre-compat`, and builds that application with Vite in production mode. This step needs no network. Fails if the build of the application fails, if a file that `package.json` names is not in the tarball, if a source map points at the wrong lines of `src/`, if an image is in the tarball, or if `README.md` shows an image by a relative path (npm shows the README without the images of the repository, so the README uses `https://raw.githubusercontent.com/map-jr/map-jr-gl/main/docs/images/...`). Run `pnpm build` first. |
 | `node test/conformance/ecosystem.mjs --write` | Reads popular plugins and frameworks from npm and writes which parts of the MapLibre API they use that the library does not have (`docs/ecosystem.md`). |
 | `node test/conformance/plugins.mjs --write` | Runs popular plugins with the library in a browser, each in a short scenario. |
 | `node test/conformance/examples.mjs --write` | Runs each example page of the MapLibre documentation with MapLibre GL JS and with the library, and writes the pages that give an error or a different image into `docs/ecosystem.md`. It takes about 30 minutes. `--filter=<regex>` runs a part of the pages. |
@@ -93,8 +93,8 @@ To use it, do this step one time: in the repository settings, open **Pages** and
 | File | Content |
 |---|---|
 | `src/index.ts`, `src/host.ts`, `src/store.ts` | The main entry: `createMap`, a map from one description, and its state store |
-| `src/vue.ts` | The adapter for Vue (`map-jr-gl/vue`) |
-| `src/maplibre-compat.ts`, `src/compat-map.ts`, `src/compat-types.ts` | The entry `map-jr-gl/maplibre-compat`: the map with the rest of the API of MapLibre GL JS, the functions of the module, the types |
+| `src/vue.ts` | The adapter for Vue (`@map-jr/map-jr-gl/vue`) |
+| `src/maplibre-compat.ts`, `src/compat-map.ts`, `src/compat-types.ts` | The entry `@map-jr/map-jr-gl/maplibre-compat`: the map with the rest of the API of MapLibre GL JS, the functions of the module, the types |
 | `src/map.ts` | The core map class, which the two entries use. It sends commands to the engine. |
 | `src/engine.ts` | The work for each frame: camera, tiles, labels. It does not use the DOM, so it can run in a worker. |
 | `src/gl.ts` | The WebGL2 renderer |
@@ -173,7 +173,7 @@ Every change goes through a pull request. The workflow `CI` (`.github/workflows/
 
 | Job | What it runs |
 |---|---|
-| `checks` | `pnpm build` (type check, build, type declarations), `pnpm test:package` (the tarball: `publint`, each file that `package.json` names, the source maps), and `pnpm test` (unit tests, expression and API floors, size budgets, examples, consistency of code and documentation) |
+| `checks` | `pnpm build` (type check, build, type declarations), `pnpm test:package` (the tarball: `publint`, `arethetypeswrong`, each file that `package.json` names, the source maps, and an application that builds against it), and `pnpm test` (unit tests, expression and API floors, size budgets, examples, consistency of code and documentation) |
 | `browser` | In Chromium: `test/interact.mjs`, `test/host.mjs`, `test/vue.mjs`, `test/react.mjs`, `test/loading.mjs`. A suite that fails is run one more time, because the tiles come from the live network. |
 | `render` | `pnpm test:render`: MapLibre's render tests against the floor in `package.json` |
 
@@ -187,7 +187,161 @@ set the floors again.
 
 See [CLAUDE.md](../CLAUDE.md) for who may merge what, and for the definition of done.
 
+## How a release is made
+
+The package has had no release yet. Its name on npm is `@map-jr/map-jr-gl`. This section describes the process for the first release and the ones after it.
+A change of this process needs the owner.
+
+### The version number
+
+The version is in `package.json`. The first line of each built file that `package.json` names also has it.
+
+While the version is 0.x, the second number says whether code that worked can stop working:
+
+| Change | Version | Example |
+|---|---|---|
+| A breaking change: public API of either entry is removed or renamed, or a default changes | The second number increases | 0.2.3 to 0.3.0 |
+| A fix or a new feature that breaks nothing | The third number increases | 0.2.3 to 0.2.4 |
+
+`npm install @map-jr/map-jr-gl` writes a range such as `^0.2.0` into the `package.json` of an application. For a 0.x
+version, npm reads this range as 0.2.0 or later and below 0.3.0, so an application does not get a breaking change
+without a change of its own `package.json`.
+
+### How a breaking change is announced
+
+- The entry of the version in `CHANGELOG.md` starts with a section "Breaking changes". Each item names the entry
+  (`@map-jr/map-jr-gl` or `@map-jr/map-jr-gl/maplibre-compat`), says what stopped working, and says what to write instead.
+- The release on GitHub has the same text.
+- The pull request of the breaking change is not merged without the owner (see [CLAUDE.md](../CLAUDE.md)), and it
+  adds its item to the changelog itself.
+- A version with the same second number never has a breaking change. If one is merged by mistake, the next version
+  with that second number takes it back.
+
+### The steps
+
+1. **Check `main`.** The workflow `CI` is green for the commit to release. Read the results of the workflow
+   `Browsers` for the same commit (`git fetch origin bench-results && git show origin/bench-results:README.md`).
+2. **Choose the version** with the table above, from the pull requests since the last tag
+   (`git log v0.2.0..origin/main --oneline`, with the last tag in place of `v0.2.0`).
+3. **Open a pull request for the release** (`docs/release-0.3.0`). It changes `"version"` in `package.json`, adds
+   the entry to [CHANGELOG.md](../CHANGELOG.md), and updates [Browser support](browser-support.md) when the
+   results of the browsers changed. The entry is written for a reader who decides whether to update: breaking
+   changes first, then what is new, then what was fixed, each with a link to its pull request.
+4. **Check the package** on that branch:
+
+   ```bash
+   pnpm build && pnpm test && pnpm test:package
+   ```
+
+   `pnpm test:package` packs the tarball and checks it (see [Commands](#commands)). `package.json` has no script
+   that builds before a publish, so a tarball contains the `dist` folder as the last build left it.
+5. **Merge** the pull request when `CI` is green. The owner merges it.
+6. **Tag** the merge commit and push the tag:
+
+   ```bash
+   git fetch origin main && git tag v0.3.0 origin/main && git push origin v0.3.0
+   ```
+
+7. **Publish to npm.** The pushed tag starts the workflow `Release`, which publishes. Read its result. The first
+   version is different: see below.
+8. **Make the release on GitHub** from the tag, with the entry of the changelog as its text.
+
+### Publishing to npm
+
+The workflow `Release` (`.github/workflows/release.yml`) publishes the package when a tag `v*` is pushed. The
+repository stores no token of npm. npm trusts the workflow by its file name (a *trusted publisher* in the settings
+of the package), and the job proves its identity with OpenID Connect (the permission `id-token: write`). npm adds
+a provenance statement to a version that is published this way: the page of the package then shows the commit and
+the run of the workflow that built the tarball.
+
+For a pushed tag, the workflow does these steps:
+
+1. It checks that the tag is `v` and the version in `package.json`. If not, it stops.
+2. It runs `pnpm install --frozen-lockfile`, `pnpm build`, `pnpm test` and `pnpm test:package`.
+3. It asks npm whether this version exists already. If it does, the workflow publishes nothing and says so.
+4. It runs `npm publish --provenance --access public`. A package with a scope is private by default, and
+   `--access public` makes it public.
+
+The workflow has not run yet: no tag was pushed, and nothing was published.
+
+### What the owner does on npmjs.com
+
+The steps below follow the documentation of npm as it was read on 2026-11-12:
+[Trusted publishing](https://docs.npmjs.com/trusted-publishers),
+[Creating and publishing scoped public packages](https://docs.npmjs.com/creating-and-publishing-scoped-public-packages),
+[Generating provenance statements](https://docs.npmjs.com/generating-provenance-statements),
+[Creating an organization](https://docs.npmjs.com/creating-an-organization) and
+[Configuring two-factor authentication](https://docs.npmjs.com/configuring-two-factor-authentication).
+None of the steps was carried out, so the names of the buttons can differ from what the website shows.
+
+The documentation describes a trusted publisher only as a setting of a package that exists
+(**Packages → the package → Settings → Trusted publishing**). It describes no way to add one for a name that was
+never published. For this reason the first version is published by hand, and it has no provenance statement. The
+workflow publishes the versions after it.
+
+**One time, before the first version:**
+
+1. Sign in on npmjs.com, or make a user account.
+2. Turn on two-factor authentication: click the profile picture, then **Account**, then **Enable 2FA** under
+   "Two-Factor Authentication". Save the recovery codes. npm refuses a publish from an account without it.
+3. Make the organization `map-jr`: click the profile picture, then **Add an Organization**. Write `map-jr` in the
+   field **Name**, choose the free plan **Unlimited public packages**, and click **Create**. The name of the
+   organization is the scope `@map-jr`. Whether the name `map-jr` is free on npm was not checked. If it is taken,
+   the name of the package must change before anything is published.
+
+**The first version (0.2.0), by hand:**
+
+4. Do steps 1 to 6 of [The steps](#the-steps). For step 4, use a clean checkout of the commit that the tag names.
+5. On your computer, in that checkout, sign in to npm with `npm login`, and then publish:
+
+   ```bash
+   pnpm install --frozen-lockfile && pnpm build && pnpm test && pnpm test:package && npm publish --access public
+   ```
+
+   npm asks for the second factor. The workflow `Release` also runs for the tag. It fails at the step "Publish"
+   when it runs before the package exists, because npm does not trust it yet. It publishes nothing when it runs
+   after your publish. Both results are expected for the first version.
+6. Check `https://www.npmjs.com/package/@map-jr/map-jr-gl`: the page shows "public" below the name.
+
+**One time, before the second version:**
+
+A new trusted publisher expires when no publish uses it within 2 days. Add it when the next version is ready, not
+directly after the first one.
+
+7. Open **Packages → @map-jr/map-jr-gl → Settings → Trusted publishing** on npmjs.com, and click
+   **GitHub Actions**.
+8. Fill in the fields. npm does not check them when you save, so a mistake shows only when the workflow publishes.
+
+   | Field | Value |
+   |---|---|
+   | Organization or user | `map-jr` |
+   | Repository | `map-jr-gl` |
+   | Workflow filename | `release.yml` |
+   | Environment name | Leave it empty. The workflow uses no environment. |
+   | Allowed actions | Allow `npm publish`. Without it, the workflow can only stage a version (`npm stage publish`), which the workflow does not do. |
+
+9. Push the tag of the next version within 2 days, and read the result of the workflow `Release`.
+10. After the workflow has published one version, open **Settings → Publishing access** of the package, select
+    **Require two-factor authentication and disallow tokens**, and save. The workflow still publishes, because it
+    uses no token.
+
+Facts that the documentation states and that the workflow depends on:
+
+- Trusted publishing needs npm 11.5.1 or later and Node.js 22.14.0 or later. The workflow uses Node.js 24 and stops
+  when its npm is older.
+- It needs a runner that GitHub hosts.
+- `repository.url` in `package.json` must name this repository, with the same upper and lower case.
+- npm makes the provenance statement only when the repository and the package are public.
+- A trusted publisher cannot be edited. To change a field, delete it and add a new one.
+
+A publish from the owner's computer works for every version, but such a version has no provenance statement.
+
+A published version cannot be changed. If a version has a fault, publish a new version with the fix, and mark the
+faulty version with `npm deprecate` and a message that names the version to use.
+
 ## Facts about browsers that the code depends on
+
+See [Browser support](browser-support.md) for what was seen in which browser.
 
 - **WebGL2 is required.** `supported()` of both entries tests for it. Without it the map fires one `error` and puts
   a message into the container (`.map-jr-unavailable`; see `cannotShow` in `src/map.ts`).
@@ -212,5 +366,5 @@ See [CLAUDE.md](../CLAUDE.md) for who may merge what, and for the definition of 
 - **Labels of layers for much higher zooms** are not built into a tile of the deepest level of its source; the tile
   is built again when the map reaches another whole zoom. After a fast zoom from 14 to 17, the labels of small
   places come about half a second after the zoom stops.
-- **The default export** of `map-jr-gl/maplibre-compat` exists for plugins that contain
+- **The default export** of `@map-jr/map-jr-gl/maplibre-compat` exists for plugins that contain
   `import maplibregl from 'maplibre-gl'` (4 of the 15 tested). The documentation uses named imports.
