@@ -143,6 +143,11 @@ export interface MapOverlay { update(options: OverlayOptions): void; remove(): v
 
 /** What each event of `listen` has: its type, and the map object behind the host (see `map` in `MapHost`). */
 export interface MapEventBase<T extends string = string> { type: T; target: Map }
+/** An event of a drag of the map by the user (`dragstart`, `drag`, `dragend`). */
+export interface MapDragEvent extends MapEventBase<'dragstart' | 'drag' | 'dragend'> {
+    /** The event of the mouse or the touch that moved the map. */
+    originalEvent: MouseEvent | TouchEvent;
+}
 /** An event of the pointer. A listener that calls `preventDefault()` stops what the map does for the event (a drag, a zoom). */
 export interface MapPointerEvent<T extends string = string, E extends MouseEvent = MouseEvent> extends MapEventBase<T> {
     /** The place in CSS pixels from the top left corner of the map. */
@@ -165,7 +170,8 @@ type Pointed<K extends string> = {[T in K]: MapPointerEvent<T>};
  */
 export interface MapEvents extends
     Plain<'load' | 'idle' | 'render' | 'resize' | 'remove' | 'style.load' | 'webglcontextlost' | 'webglcontextrestored'>,
-    Plain<'movestart' | 'move' | 'moveend' | 'zoomstart' | 'zoom' | 'zoomend' | 'rotatestart' | 'rotate' | 'rotateend' | 'pitchstart' | 'pitch' | 'pitchend' | 'dragstart'>,
+    Plain<'movestart' | 'move' | 'moveend' | 'zoomstart' | 'zoom' | 'zoomend' | 'rotatestart' | 'rotate' | 'rotateend' | 'pitchstart' | 'pitch' | 'pitchend'>,
+    Record<'dragstart' | 'drag' | 'dragend', MapDragEvent>,
     Pointed<'dblclick' | 'contextmenu' | 'mousedown' | 'mousemove' | 'mouseup' | 'mouseover' | 'mouseout'>,
     Record<'touchstart' | 'touchmove' | 'touchend' | 'touchcancel', MapTouchEvent>,
     Record<'styledata' | 'sourcedata' | 'data' | 'styledataloading' | 'sourcedataloading' | 'dataloading', MapDataEvent> {

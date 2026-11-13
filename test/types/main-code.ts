@@ -1,6 +1,6 @@
 // TypeScript code for the main API (`@map-jr/map-jr-gl`), as the documentation and the gallery write it.
 // `node test/examples.mjs` checks that it compiles against the built types (dist/types). It is not run.
-import {createMap, type FeatureOptions, type MapEvents, type MapSpec, type Position, type RenderedFeature, type View} from '@map-jr/map-jr-gl';
+import {createMap, type FeatureOptions, type MapDragEvent, type MapEvents, type MapSpec, type Position, type RenderedFeature, type View} from '@map-jr/map-jr-gl';
 import {navigation} from '@map-jr/map-jr-gl/controls';
 
 // A position that is declared apart from the call has the type number[].
@@ -57,6 +57,8 @@ console.log(given, view);
 // The event follows from the type of the event.
 map.listen('stats', e => console.log(e.fps.toFixed(0), e.frameMs));
 map.listen('click', e => { e.preventDefault(); console.log(e.point.x, e.lngLat.lng, e.originalEvent.button, e.target.getZoom()); });
+map.listen('drag', e => console.log(e.type, e.originalEvent instanceof MouseEvent ? e.originalEvent.clientX : e.originalEvent.touches.length));
+map.listen('dragend', (e: MapDragEvent) => console.log(e.originalEvent.timeStamp));
 map.listen('wheel', e => console.log(e.originalEvent.deltaY));
 map.listen('touchmove', e => console.log(e.points.length, e.lngLats[0].lat));
 map.listen('sourcedata', e => console.log(e.sourceId, e.dataType === 'source'));
