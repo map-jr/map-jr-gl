@@ -204,9 +204,15 @@ export class Engine {
     private styleFonts = '';
     private images = new Map<string, SpriteIcon & {custom: true}>();
     private missing = new Set<string>();
-    /** The images of the map changed: the icons that the tiles have in buffers are made again (ten times a second at most, because images often come one after another). */
-    private iconsDirty = false;
-    private iconsAt = 0;
+    /** The images of the map changed (`iconsRev` counts the changes): the icons that the tiles have in buffers are made again. */
+    private iconsRev = 0;
+    private iconsDone = 0;
+    /** The last change that a frame saw, when it saw it, and when the first change since the last refresh was. */
+    private iconsSeen = 0;
+    private iconsLast = 0;
+    private iconsSince = 0;
+    /** An image that the map had is gone or has another place: each buffer is made again, not only those that wait for an image. */
+    private iconsAll = false;
     private dem = new Map<string, Promise<{width: number; height: number; data: Uint8ClampedArray} | null>>();
     private dpr = 1;
 
@@ -587,7 +593,7 @@ export class Engine {
         }
         this.renderer.setIcons(all ?? loaded[0].image, width, height);
         this.sprite = {icons, image: '', width, height};
-        this.iconsDirty = true;
+        this.iconsRev++; this.iconsAll = true;
         this.styleVersion++;
         this.invalidate();
     }
@@ -738,17 +744,17 @@ export class Engine {
                 const rect = this.addSprite(c.w, c.h, c.data);
                 if (rect) this.images.set(c.name, {x: rect[0], y: rect[1], width: c.w, height: c.h, pixelRatio: c.w / c.width, custom: true, stretchX: c.stretchX, stretchY: c.stretchY, content: c.content, textFitWidth: c.textFitWidth, textFitHeight: c.textFitHeight});
                 this.styleVersion++;
-                this.placeDirty = this.iconsDirty = true;
+                this.placeDirty = true; this.iconsRev++;
                 break;
             }
-            case 'removeImage': this.dropImage(c.name); this.placeDirty = this.iconsDirty = true; break;
+            case 'removeImage': this.dropImage(c.name); this.placeDirty = true; this.iconsRev++; break;
             case 'templates':
                 for (const b of this.backends) b.setTemplates(c.slots);
                 for (const name of [...this.images.keys(), ...this.missing]) if (c.changed.includes(name.split(VARIANT)[0])) { this.dropImage(name); this.missing.delete(name); }
                 // (Only tiles with shapes are built again: `band` is the zoom that such a tile was built for.)
                 if (c.rebuild) for (const t of this.tiles.values()) if (t.band !== undefined) { t.stale = true; t.rev = ++this.tilesVersion; }
                 this.styleVersion++;
-                this.placeDirty = this.iconsDirty = true;
+                this.placeDirty = true; this.iconsRev++;
                 break;
             case 'geojson': {
                 // New data for one source: keep drawing its current tiles and rebuild them in place, so nothing blinks.
@@ -802,6 +808,7 @@ export class Engine {
     private dropImage(name: string) {
         const img = this.images.get(name);
         if (!img) return;
+        this.iconsAll = true;
         const key = img.width + 'x' + img.height;
         this.freed.set(key, [...this.freed.get(key) ?? [], [img.x, img.y]]);
         this.images.delete(name);
@@ -1344,10 +1351,15 @@ export class Engine {
             }
             labels.push({...p, x: p.x + dx, y: p.y + dy, icon: p.icon && {...p.icon, x: p.icon.x + dx, y: p.icon.y + dy}, opacity: st.opacity});
         }
-        if (this.iconsDirty && now - this.iconsAt >= 100) {
-            this.iconsDirty = false;
-            this.iconsAt = now;
-            for (const t of this.tiles.values()) if (t.gl?.icons) this.renderer.refreshIcons(t.gl);
+        if (this.iconsRev !== this.iconsDone) {
+            // Images often come one after another (the variants of a template, the answers to missing images). The
+            // buffers are made again when no image came for a tenth of a second, and after a second at the latest.
+            if (this.iconsRev !== this.iconsSeen) { this.iconsSeen = this.iconsRev; this.iconsLast = now; this.iconsSince ||= now; }
+            if (now - this.iconsLast >= 100 || now - this.iconsSince >= 1000) {
+                this.iconsDone = this.iconsRev; this.iconsSince = 0;
+                for (const t of this.tiles.values()) if (t.gl?.icons) this.renderer.refreshIcons(t.gl, this.iconsAll);
+                this.iconsAll = false;
+            }
         }
         const markers: MarkerBuffers[] = [];
         for (const m of this.markers.values()) {
@@ -1374,7 +1386,7 @@ export class Engine {
             this.moving = animating;
             this.emit({type: 'camera', lng: tr.lng, lat: tr.lat, zoom: tr.zoom, bearing: tr.bearing, pitch: tr.pitch, elevation: tr.elevation, exaggeration: this.exaggeration, groundRange: tr.groundRange, padding: tr.padding, moving: animating});
         }
-        const busy = animating || markersAnimating || fading || this.placeDirty || this.iconsDirty || behind || this.meshBehind;
+        const busy = animating || markersAnimating || fading || this.placeDirty || this.iconsRev !== this.iconsDone || behind || this.meshBehind;
         const idle = complete && !busy && !settling && !this.spritePending && !this.contourWait && !this.atlas.loading;
         if (settling && !busy) setTimeout(() => this.repaint(), 200);
         if (this.contourWait) { this.contourWait = false; setTimeout(() => this.repaint(), CONTOUR_WAIT + 20); }
