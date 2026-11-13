@@ -643,7 +643,7 @@ export class Map {
             heightsChanged(this.heights);
             if (this.tr.heightAt && !this.moving) this.fire('move'); // overlays re-position onto the newly known ground (while moving, every frame does this anyway)
         } else if (e.type === 'stats') {
-            this.fire('stats', {fps: e.fps, frameMs: e.frameMs});
+            this.fire('stats', {fps: e.fps, frameMs: e.frameMs, labels: e.labels});
         } else if (e.type === 'resized') {
             this.fire('resize');
         } else if (e.type === 'result') {

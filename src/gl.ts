@@ -1,7 +1,7 @@
 import {EXTENT, latFromMerc, mercX, mercY, type TileID, type Transform} from './geo.ts';
 import type {CompiledLayer, Light} from './style.ts';
 import {compileProp} from './expr.ts';
-import {LINE_VERTEX, WALL_OTHER, WALL_TOP, type GLBatch, type LabelSrc, type TileGL} from './tile.ts';
+import {LINE_VERTEX, WALL_OTHER, WALL_TOP, type GLBatch, type IconBatch, type LabelSrc, type TileGL} from './tile.ts';
 import type {Placed, RenderItem} from './placement.ts';
 import {lineMiddle, BASELINE, EM, SDF_BUFFER, SDF_RADIUS, type GlyphAtlas} from './text.ts';
 
@@ -330,6 +330,35 @@ void main() {
 }`, `
 uniform sampler2D u_img; in vec2 v_uv; in float v_alpha; out vec4 o; void main() { o = texture(u_img, v_uv) * v_alpha; }`],
 
+    // The icons of a tile that need no place among the labels (see `IconBatch`). The GPU finds the place of each one
+    // from its point in the tile, as for circles. `a_v`: the point, and the corner in the texture. `a_d`: the corner
+    // from the centre of the icon in pixels at size 1, and 1 for a distance-field icon.
+    icon: [`uniform mat4 u_matrix; uniform vec2 u_view; ${TERRAIN_GLSL}
+layout(location=0) in vec4 a_v; layout(location=1) in vec3 a_d; layout(location=2) in float a_angle; layout(location=3) in vec2 a_size; layout(location=4) in float a_alpha;
+uniform float u_zt; uniform float u_size; uniform float u_north; uniform float u_persp; uniform float u_dpr; uniform float u_opacity;
+uniform vec2 u_offset; uniform vec2 u_anchor; uniform vec2 u_translate; uniform vec2 u_tex; uniform vec4 u_clip;
+out vec2 v_uv; out float v_alpha; out float v_sdf;
+void main() {
+  vec4 c = u_matrix * vec4(a_v.xy, ground(a_v.xy / ${EXTENT}.0), 1.0);
+  float s = mix(a_size.x, a_size.y, u_zt) * u_size, a = u_north + a_angle;
+  // On a tilted map, far icons are smaller and near icons are larger, by half of what the perspective does (as for labels).
+  if (u_persp > 0.0) s *= min(4.0, 0.5 + 0.5 * u_persp / c.w);
+  vec2 ext = abs(a_d.xy) * s, centre = (c.xy / c.w * vec2(0.5, -0.5) + 0.5) * u_view + (u_offset + u_anchor * abs(a_d.xy) * 2.0) * s + u_translate;
+  // An upright icon is put on whole device pixels: between pixels, the texture filter smears fine detail.
+  if (a == 0.0) { vec2 corner = centre - ext; centre += floor(corner * u_dpr + 0.5) / u_dpr - corner; }
+  vec2 q = a_d.xy * s, p = centre + vec2(q.x * cos(a) - q.y * sin(a), q.x * sin(a) + q.y * cos(a));
+  v_uv = a_v.zw / u_tex; v_alpha = clamp(a_alpha * u_opacity, 0.0, 1.0); v_sdf = a_d.z;
+  bool inside = a_v.x >= u_clip.x && a_v.y >= u_clip.y && a_v.x < u_clip.z && a_v.y < u_clip.w;
+  gl_Position = inside && c.w > 0.0 ? vec4((p / u_view * 2.0 - 1.0) * vec2(1.0, -1.0), 0.0, 1.0) : vec4(2.0, 2.0, 2.0, 1.0);
+}`, `
+uniform sampler2D u_img; uniform vec4 u_color; in vec2 v_uv; in float v_alpha; in float v_sdf; out vec4 o;
+void main() {
+  vec4 t = texture(u_img, v_uv);
+  if (v_sdf < 0.5) { o = t * v_alpha; return; }
+  float g = max(fwidth(t.a) * 0.7, 0.01), a = smoothstep(0.75 - g, 0.75 + g, t.a) * u_color.a * v_alpha;
+  o = vec4(u_color.rgb * a, a);
+}`],
+
     // Icons. A colour with alpha >= 0 marks a distance-field icon, drawn in that colour with an edge that stays sharp.
     sprite: [`uniform vec2 u_view; uniform vec2 u_tex; layout(location=0) in vec4 a_v; layout(location=1) in float a_alpha; layout(location=2) in vec4 a_color;
 out vec2 v_uv; out float v_alpha; out vec4 v_color;
@@ -346,6 +375,15 @@ void main() {
 };
 
 interface Program { prog: WebGLProgram; u: Record<string, WebGLUniformLocation> }
+/** Floats for one corner of an icon: see `a_v` and `a_d` of the `icon` program. */
+const ICON_VERTEX = 7;
+interface IconBuffers {
+    src: IconBatch; vao: WebGLVertexArrayObject; vertices: WebGLBuffer; index: WebGLBuffer; bufs: WebGLBuffer[];
+    /** How many indices are for images that were added at runtime, and how many for images of the sprite of the style. They are in that order. */
+    counts: [number, number];
+    /** An image of an icon was not there when the vertices were made. */
+    waits?: boolean;
+}
 interface GLBuffers {
     type: GLBatch['type']; vao: WebGLVertexArrayObject; count: number; /** UNSIGNED_SHORT or UNSIGNED_INT. */ indexType: number; color: boolean; scalar: boolean; bufs: WebGLBuffer[];
     edgeVao?: WebGLVertexArrayObject; edgeCount?: number;
@@ -354,6 +392,8 @@ export interface GLTile {
     /** Distinguishes this tile's contents from any other's, including an earlier build of the same tile. */
     uid?: number;
     labels: Record<string, LabelSrc[]>; batches: Record<string, GLBuffers>;
+    /** The icons that are drawn from buffers of the tile, by layer (see `IconBatch`). */
+    icons?: Record<string, IconBuffers>;
     /** Raster tiles: the image. Elevation tiles: slopes derived from it. */
     tex?: WebGLTexture;
     /** Latitude of the tile's top and bottom edges, for hillshade. */
@@ -397,13 +437,14 @@ export interface Scene {
     /** True while the camera moves. */
     moving?: boolean;
     /** Looks up a sprite or runtime image by name, for patterns. */
-    icon?: (name: string) => {x: number; y: number; width: number; height: number; pixelRatio: number; custom?: boolean} | undefined;
+    icon?: IconOf;
 }
 
 export const SPRITE_ATLAS = 2048;
 // How the light's direction maps to tile coordinates (y points south) and turns with the bearing.
 const LIGHT_X = -1, LIGHT_Y = -1, LIGHT_TURN = 1;
 
+type IconOf = (name: string) => {x: number; y: number; width: number; height: number; pixelRatio: number; custom?: boolean; sdf?: boolean} | undefined;
 /** Floats per marker vertex: mercator x and y each split into high and low parts, atlas rectangle, corner, scale, opacity. */
 export const MARKER_STRIDE = 12;
 /** Each marker is four such vertices. */
@@ -581,8 +622,110 @@ export class GLRenderer {
             }
             batches[id] = {type: b.type, vao, count, indexType, color: !!b.color, scalar, bufs, edgeVao, edgeCount: b.type === 'fill' ? b.edges?.length : undefined};
         }
+        let icons: Record<string, IconBuffers> | undefined;
+        for (const id in t.icons) {
+            const src = t.icons[id], vao = gl.createVertexArray()!, vertices = gl.createBuffer()!, index = gl.createBuffer()!, bufs = [vertices, index];
+            gl.bindVertexArray(vao);
+            gl.bindBuffer(gl.ARRAY_BUFFER, vertices);
+            gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 4, gl.FLOAT, false, ICON_VERTEX * 4, 0);
+            gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 3, gl.FLOAT, false, ICON_VERTEX * 4, 16);
+            // A value for each feature: the same for the four corners of its icon.
+            [src.rotate, src.size, src.alpha].forEach((values, i) => {
+                if (!values) return;
+                const size = i === 1 ? 2 : 1, data = new Float32Array(values.length * 4), buffer = gl.createBuffer()!;
+                for (let k = 0; k < data.length; k++) data[k] = values[Math.floor(k / (size * 4)) * size + k % size];
+                bufs.push(buffer);
+                gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+                gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+                gl.enableVertexAttribArray(2 + i); gl.vertexAttribPointer(2 + i, size, gl.FLOAT, false, 0, 0);
+            });
+            (icons ??= {})[id] = {src, vao, vertices, index, bufs, counts: [0, 0]};
+            this.fillIcons(icons[id]);
+        }
         gl.bindVertexArray(null);
-        return {uid: ++this.uids, labels: t.labels, batches};
+        return {uid: ++this.uids, labels: t.labels, batches, icons};
+    }
+
+    /** Finds an image by name when the icons of a tile are made. The engine sets it. */
+    iconOf?: IconOf;
+    /** The icons of a tile again, after the images of the map changed: an image came, went or has another place in its texture. */
+    refreshIcons(t: GLTile, all: boolean) { for (const b of Object.values(t.icons ?? {})) if (all || b.waits) this.fillIcons(b); this.gl.bindVertexArray(null); }
+    /** Writes the corners of each icon for the images that the map has now. An icon whose image is not there is not drawn. */
+    private fillIcons(b: IconBuffers) {
+        const gl = this.gl, {names, name, pos} = b.src, n = name.length, images = names.map(nm => this.iconOf?.(nm));
+        const v = new Float32Array(n * 4 * ICON_VERTEX), idx = new Uint32Array(n * 6);
+        let count = 0;
+        b.counts = [0, 0];
+        b.waits = images.includes(undefined);
+        for (const custom of [true, false]) {
+            for (let i = 0; i < n; i++) {
+                const m = images[name[i]];
+                if (!m || !!m.custom !== custom) continue;
+                const w = m.width / m.pixelRatio, h = m.height / m.pixelRatio, o = i * 4;
+                for (let k = 0; k < 4; k++) {
+                    const cx = k & 1, cy = k >> 1;
+                    v.set([pos[i * 2], pos[i * 2 + 1], m.x + cx * m.width, m.y + cy * m.height, (cx - 0.5) * w, (cy - 0.5) * h, m.sdf ? 1 : 0], (o + k) * ICON_VERTEX);
+                }
+                idx.set([o, o + 1, o + 2, o + 1, o + 3, o + 2], count);
+                count += 6;
+            }
+            if (custom) b.counts[0] = count; else b.counts[1] = count - b.counts[0];
+        }
+        gl.bindVertexArray(b.vao);
+        gl.bindBuffer(gl.ARRAY_BUFFER, b.vertices);
+        gl.bufferData(gl.ARRAY_BUFFER, v, gl.DYNAMIC_DRAW);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, b.index);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, idx.subarray(0, count), gl.DYNAMIC_DRAW);
+    }
+
+    /**
+     * Draws the icons of the layers `from` to `to` (not `to` itself) that the tiles have in buffers. With 3D terrain an
+     * icon stands on the ground, and ground in front of it does not hide it (as for the markers of a marker layer).
+     */
+    private drawIcons(s: Scene, tr: Transform, from: number, to: number) {
+        const gl = this.gl, zoom = tr.zoom;
+        for (let li = from; li < to; li++) {
+            const L = s.layers[li];
+            if (L.type !== 'symbol' || !L.visible || zoom < L.minzoom || zoom >= L.maxzoom) continue;
+            let u: Record<string, WebGLUniformLocation> | undefined;
+            for (const it of s.items.get(L.source!) ?? []) {
+                const b = it.tile.icons?.[L.id];
+                if (!b || !(b.counts[0] + b.counts[1])) continue;
+                const p = L.p;
+                if (!u) {
+                    u = this.use('icon', tr);
+                    const anchor = p.iconAnchor.eval(zoom) as string, offset = p.iconOffset.eval(zoom) as number[], translate = p.iconTranslate.eval(zoom) as number[], color = p.iconColor.eval(zoom) as number[];
+                    gl.uniform1f(u.u_size, p.iconSize.dd ? 1 : p.iconSize.eval(zoom));
+                    gl.uniform1f(u.u_opacity, p.iconOpacity.dd ? 1 : p.iconOpacity.eval(zoom));
+                    // (`icon-rotation-alignment`: an icon that is aligned with the map turns with the map.)
+                    gl.uniform1f(u.u_north, p.iconAlign.eval(zoom) === 'map' ? -tr.bearing * Math.PI / 180 : 0);
+                    gl.uniform1f(u.u_persp, tr.pitch ? tr.cameraDistance : 0);
+                    gl.uniform1f(u.u_dpr, this.dpr);
+                    gl.uniform2f(u.u_offset, offset[0], offset[1]);
+                    gl.uniform2f(u.u_anchor, anchor.includes('left') ? 0.5 : anchor.includes('right') ? -0.5 : 0, anchor.includes('top') ? 0.5 : anchor.includes('bottom') ? -0.5 : 0);
+                    gl.uniform2f(u.u_translate, translate?.[0] ?? 0, translate?.[1] ?? 0);
+                    gl.uniform4f(u.u_color, color[0], color[1], color[2], color[3]);
+                    gl.uniform1i(u.u_img, 0);
+                }
+                this.bindDem(u, s.terrain ? s.terrain.dem(it.id) : null, s.terrain?.exaggeration ?? 0, s.terrain ? s.tr.elevation : 0);
+                gl.uniformMatrix4fv(u.u_matrix, false, it.matrix4);
+                gl.uniform4fv(u.u_clip, it.clip);
+                gl.uniform1f(u.u_zt, Math.min(1, Math.max(0, zoom - it.id.z)));
+                gl.bindVertexArray(b.vao);
+                // (An attribute without a buffer reads these values: the layer has one value for all its icons.)
+                if (!b.src.rotate) gl.vertexAttrib1f(2, p.iconRotate.eval(zoom) * Math.PI / 180);
+                if (!b.src.size) gl.vertexAttrib2f(3, 1, 1);
+                if (!b.src.alpha) gl.vertexAttrib1f(4, 1);
+                gl.activeTexture(gl.TEXTURE0);
+                // Images that were added at runtime and images of the sprite of the style are in two textures.
+                [[this.spriteTex, SPRITE_ATLAS, SPRITE_ATLAS], [this.iconTex, this.iconSize[0], this.iconSize[1]]].forEach(([tex, w, h], g) => {
+                    if (!b.counts[g]) return;
+                    gl.bindTexture(gl.TEXTURE_2D, tex as WebGLTexture);
+                    gl.uniform2f(u!.u_tex, w as number, h as number);
+                    gl.drawElements(gl.TRIANGLES, b.counts[g], gl.UNSIGNED_INT, g ? b.counts[0] * 4 : 0);
+                });
+            }
+        }
     }
 
     /** The style's sprite sheet (icons for symbol layers). `scale` is its pixel density. */
@@ -637,6 +780,7 @@ export class GLRenderer {
             if (b.edgeVao) this.gl.deleteVertexArray(b.edgeVao);
             for (const buf of b.bufs) this.gl.deleteBuffer(buf);
         }
+        for (const b of Object.values(t.icons ?? {})) { this.gl.deleteVertexArray(b.vao); for (const buf of b.bufs) this.gl.deleteBuffer(buf); }
     }
 
     /** Creates or replaces the GPU buffers for a marker layer. `data` holds MARKER_FLOATS floats per marker. */
@@ -1282,6 +1426,12 @@ export class GLRenderer {
         else this.drawLayers(s, tr, s.items, target, 'all');
         const use = (name: keyof typeof SHADERS) => this.use(name, tr);
 
+        // The icons that the tiles have in buffers. Those of a layer that is above each layer with labels are drawn
+        // over the labels, as that layer is in the style. The others are drawn below all labels.
+        let above = 0;
+        s.layers.forEach((L, i) => { if (L.type === 'symbol' && s.items.get(L.source!)?.some(it => it.tile.labels[L.id]?.length)) above = i + 1; });
+        this.drawIcons(s, tr, 0, above);
+
         // Style-sheet icons and images added at runtime live in different textures.
         for (const custom of [false, true]) {
             const icons = this.iconQuads(s.labels, custom, s.icon);
@@ -1321,6 +1471,8 @@ export class GLRenderer {
             gl.uniform1i(u.u_pass, 0);
             gl.drawArrays(gl.TRIANGLES, 0, n);
         }
+
+        this.drawIcons(s, tr, above, s.layers.length);
 
         if (s.markers.length) {
             // Markers are positioned by the GPU from their map coordinates: nothing is recomputed per marker per frame.

@@ -103,6 +103,14 @@ test('tiles: an icon name from data that is the name of a member of every object
     }
 });
 
+test('renderer: each WebGL extension that the code asks for is a name of an extension', () => {
+    // (A replacement of text in src/gl.ts once changed a name to one that no browser has, and the heatmap lost its fallback.)
+    const asked = [...readFileSync(new URL('../../src/gl.ts', import.meta.url), 'utf8').matchAll(/getExtension\('([^']+)'\)/g)].map(m => m[1]);
+    const known = ['EXT_color_buffer_float', 'EXT_color_buffer_half_float', 'OES_texture_float_linear', 'EXT_texture_filter_anisotropic', 'WEBGL_lose_context', 'EXT_float_blend', 'OES_texture_half_float_linear'];
+    assert.ok(asked.includes('EXT_color_buffer_half_float'));
+    assert.deepEqual(asked.filter(name => !known.includes(name)), []);
+});
+
 test('tessellation: triangles cover exactly the polygon area, holes excluded', () => {
     // 100x100 square with a 20x20 hole (opposite winding).
     const batch: Batch = {type: 'fill', geom: {coords: Int16Array.from([0, 0, 100, 0, 100, 100, 0, 100, 40, 40, 40, 60, 60, 60, 60, 40]), ringEnds: Uint32Array.from([4, 8]), featEnds: Uint32Array.from([2])}};
@@ -147,6 +155,33 @@ test('tiles: a real tile builds layers and labels from a style', () => {
     const label = ir.labels.names[0];
     assert.ok(label.text.length > 0 && label.angle !== null);
     assert.equal(label.font, 'italic 600|Open Sans|Open Sans Semibold Italic');
+});
+
+test('tiles: icons that need no place among the labels are a batch of the tile, and an icon of a template has the name of its variant', () => {
+    const poi = (layout: object) => [compileLayer({id: 'poi', type: 'symbol', source: 's', 'source-layer': 'poi', layout})!];
+    const free = {'icon-image': ['get', 'class'], 'icon-allow-overlap': true, 'icon-ignore-placement': true};
+    const build = (layout: object, direct: boolean, templates?: Record<string, string[]>) => buildTile(bytes, TILE.z, poi(layout), true, undefined, templates, direct);
+    // The map draws such icons from a buffer. A renderer that does not ask for that (the server) gets them as labels.
+    const batch = build(free, true).icons!.poi, labels = build(free, false).labels.poi;
+    assert.ok(batch.name.length > 10 && batch.pos.length === batch.name.length * 2 && batch.names.every(name => typeof name === 'string'));
+    assert.equal(build(free, true).labels.poi, undefined);
+    assert.equal(build(free, false).icons, undefined);
+    assert.equal(labels.length, batch.name.length);
+    assert.deepEqual([...batch.pos.subarray(0, 2)], [labels[0].x, labels[0].y]);
+    assert.equal(batch.names[batch.name[0]], labels[0].icon!.name);
+    // An icon with text, an icon that labels avoid, and an icon that can be hidden are placed with the labels.
+    for (const layout of [{...free, 'text-field': '{name}'}, {...free, 'icon-ignore-placement': false}, {...free, 'icon-allow-overlap': false}, {...free, 'symbol-sort-key': ['get', 'rank']}]) {
+        const ir = build(layout, true);
+        assert.ok(ir.labels.poi.length > 0);
+        assert.ok(!ir.icons?.poi || ir.icons.poi.name.length < batch.name.length, JSON.stringify(layout)); // (a feature with no name has no text)
+    }
+    // A value for each feature goes with its icon.
+    const sized = build({...free, 'icon-size': ['case', ['==', ['get', 'class'], 'park'], 2, 1], 'icon-rotate': ['get', 'rank']}, true).icons!.poi;
+    assert.ok(sized.size!.length === sized.name.length * 2 && sized.rotate!.length === sized.name.length && !sized.alpha);
+    // A template: the name of the variant has the value of each slot, from the property of the feature or from `params`.
+    const names = (icon: unknown) => build({...free, 'icon-image': icon}, true, {pin: ['class', 'tone']}).icons!.poi.names;
+    assert.ok(names('pin').every(name => /^pin\u001f[a-z_]+\u001f$/.test(name)), names('pin')[0]);
+    assert.ok(names(['image', 'pin', {params: {tone: ['concat', '#', 'd00']}}]).every(name => /^pin\u001f[a-z_]+\u001f#d00$/.test(name)));
 });
 
 test('queries: features are found from raw tile data, with filters and geometry', () => {

@@ -12,7 +12,7 @@ import {contourTile, decodeDEM, decodePixels, type ContourConfig, type DEM, type
 export interface ElevationRequest { id: number; url: string; encoding: string }
 export interface ElevationTile { width: number; height: number; pixels: Uint8Array; grid: Float32Array; lo: number; hi: number }
 /** `overscaled`: for a tile of the deepest level of its source, the zoom of the map that the tile is built for. */
-export interface TileRequest { id: number; source: string; url: string; z: number; overscaled: number | false; /** Built again after a change of the style: the bytes that the builder has are good. */ again?: boolean }
+export interface TileRequest { id: number; source: string; url: string; z: number; overscaled: number | false; /** Built again after a change of the style: the bytes that the builder has are good. */ again?: boolean; /** The map draws icons from buffers of the tile (see `IconBatch`). */ direct?: boolean }
 
 /** Fetches and parses tiles. The same class backs tile workers, the main-thread fallback and server rendering. */
 export class TileBuilder {
@@ -105,8 +105,8 @@ export class TileBuilder {
     }
 
     async loadIR(req: TileRequest): Promise<TileIR> {
-        if (req.url.startsWith(GEOJSON_PREFIX)) return buildTile(this.slice(req.url), req.z, this.bySource.get(req.source) ?? [], req.overscaled, this.states.f, this.templates);
-        if (req.url.startsWith('contour://')) return buildTile(await this.contour(req.url), req.z, this.bySource.get(req.source) ?? [], req.overscaled, this.states.f, this.templates);
+        if (req.url.startsWith(GEOJSON_PREFIX)) return buildTile(this.slice(req.url), req.z, this.bySource.get(req.source) ?? [], req.overscaled, this.states.f, this.templates, req.direct);
+        if (req.url.startsWith('contour://')) return buildTile(await this.contour(req.url), req.z, this.bySource.get(req.source) ?? [], req.overscaled, this.states.f, this.templates, req.direct);
         const ac = new AbortController();
         this.aborts.set(req.id, ac);
         try {
@@ -114,7 +114,7 @@ export class TileBuilder {
             const bytes = req.again && this.recent.get(key) || await fetchTile(req.url, this.fetchFn, ac.signal);
             if (!bytes) return {layers: {}, labels: {}};
             if (n === this.forgotten) this.remember(key, bytes);
-            return bytes.length ? buildTile(bytes, req.z, this.bySource.get(req.source) ?? [], req.overscaled, this.states.f, this.templates) : {layers: {}, labels: {}};
+            return bytes.length ? buildTile(bytes, req.z, this.bySource.get(req.source) ?? [], req.overscaled, this.states.f, this.templates, req.direct) : {layers: {}, labels: {}};
         } finally {
             this.aborts.delete(req.id);
         }
@@ -214,7 +214,7 @@ export class PortBackend implements TileBackend {
             if (!p) return;
             this.pending.delete(e.data.id);
             if (e.data.error) p.reject(new Error(e.data.error));
-            else if (e.data.tile) p.resolve({layers: e.data.tile.layers, labels: unpackLabels(e.data.tile.labels)});
+            else if (e.data.tile) p.resolve({layers: e.data.tile.layers, labels: unpackLabels(e.data.tile.labels), icons: e.data.tile.icons});
             else p.resolve(e.data.result);
         };
     }
@@ -273,7 +273,7 @@ export function serveTiles(port: Port) {
         } else if (m.type === 'load') {
             try {
                 const {tile, transfer} = toGL(await builder.loadIR(m.req));
-                port.postMessage({id: m.req.id, tile: {layers: tile.layers, labels: packLabels(tile.labels)}}, transfer);
+                port.postMessage({id: m.req.id, tile: {layers: tile.layers, labels: packLabels(tile.labels), icons: tile.icons}}, transfer);
             } catch (err) {
                 port.postMessage({id: m.req.id, error: (err as Error).name === 'AbortError' ? 'aborted' : String((err as Error).message)});
             }

@@ -73,14 +73,29 @@ export interface LabelSrc {
         overlap: boolean; optional: boolean; upright: boolean;
     };
 }
-export interface TileIR { layers: Record<string, Batch>; labels: Record<string, LabelSrc[]> }
+/**
+ * The icons of a symbol layer that are always shown and that no label avoids: no text, at a point, with
+ * `icon-allow-overlap` and `icon-ignore-placement`. They need no place among the labels, so the GPU has them in a
+ * buffer of the tile, and a frame costs the same for ten of them and for 100,000.
+ */
+export interface IconBatch {
+    /** The names of the images, each one time. */
+    names: string[];
+    /** For each icon: the index of its image in `names`. */
+    name: Uint32Array;
+    /** For each icon: x and y in tile units. */
+    pos: Float32Array;
+    /** Present when the property has a value for each feature: `icon-rotate` in radians; `icon-size` at the zoom of the tile and at the next; `icon-opacity`. */
+    rotate?: Float32Array; size?: Float32Array; alpha?: Float32Array;
+}
+export interface TileIR { layers: Record<string, Batch>; labels: Record<string, LabelSrc[]>; icons?: Record<string, IconBatch> }
 
 export type GLBatch =
     | {type: 'fill'; pos: Int16Array; idx: Uint32Array; color?: Uint8Array; /** Polygon edges as vertex index pairs, drawn as one-pixel antialiased lines. */ edges?: Uint32Array}
     | {type: 'extrusion'; v: Float32Array; idx: Uint32Array; color?: Uint8Array}
     | {type: 'line'; /** Packed vertices, LINE_VERTEX bytes each: see tessellateLine. */ v: Uint8Array; idx: Uint32Array; color?: Uint8Array; width?: Float32Array; width1?: Float32Array}
     | {type: 'circle'; /** x, y, cornerX, cornerY per vertex */ pos: Int16Array; idx: Uint32Array; color?: Uint8Array; radius?: Float32Array; radius1?: Float32Array};
-export interface TileGL { layers: Record<string, GLBatch>; labels: Record<string, LabelSrc[]> }
+export interface TileGL { layers: Record<string, GLBatch>; labels: Record<string, LabelSrc[]>; icons?: Record<string, IconBatch> }
 /** A raster tile as the SVG backend sees it: just somewhere to load the image from. */
 export interface TileImage { href: string }
 
@@ -100,7 +115,7 @@ const WHITE: RGBA = [1, 1, 1, 1];
 export type TileLayers = Record<string, {features: TileFeature[]}>;
 export interface TileFeature extends Feature { geometry(extent: number, coords: number[], ringEnds: number[]): number }
 
-export function buildTile(data: Uint8Array | TileLayers, z: number, layers: CompiledLayer[], overscaled: number | false, states?: MapStates['f'], templates?: Record<string, string[]>): TileIR {
+export function buildTile(data: Uint8Array | TileLayers, z: number, layers: CompiledLayer[], overscaled: number | false, states?: MapStates['f'], templates?: Record<string, string[]>, /** Icons that need no place among the labels go to `icons` (see `IconBatch`). */ direct?: boolean): TileIR {
     const vt: TileLayers = data instanceof Uint8Array ? decodeVectorTile(data) : data;
     const geomCache = new Map<TileFeature, {coords: number[]; ringEnds: number[]}>();
     const geometry = (f: TileFeature) => {
@@ -128,6 +143,9 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
             const labels: LabelSrc[] = [], keys: number[] = [], sorted = p.sortKey.dd || p.sortKey.eval(z) !== 0;
             type Piece = {base: any; ring: number[]; type: number; along: boolean; spacing: number; key: number};
             const pieces: Piece[] = [], starts = new Map<string, Piece>(), ends = new Map<string, Piece>();
+            // (The icons of `IconBatch`. The layer gives them one anchor, offset, alignment and colour, and no order.)
+            const plain = direct && !sorted && !p.iconAnchor.dd && !p.iconOffset.dd && !p.iconAlign.dd && !p.iconColor.dd;
+            const iconNames = new Map<string, number>(), iconName: number[] = [], iconPos: number[] = [], iconRotate: number[] = [], iconSize: number[] = [], iconAlpha: number[] = [];
             for (const f of vl.features) {
                 ctx.f = f;
                 f.state = f.id === undefined ? undefined : states?.[L.source!]?.[`${L.sourceLayer ?? ''}|${f.id}`];
@@ -208,6 +226,13 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
                     if (a[0] < 0 || a[0] >= EXTENT || a[1] < 0 || a[1] >= EXTENT) continue;
                     // Everything a feature's labels have in common lives on a shared object behind each label, so a
                     // road with twenty anchors does not carry twenty copies of its text, colours and fonts.
+                    const ic = base.icon;
+                    if (plain && ic && !text && !along && ic.overlap && ic.ignore && ic.fit === 'none' && !(ic.haloWidth > 0 && ic.halo[3] > 0)) {
+                        let n = iconNames.get(ic.name);
+                        if (n === undefined) iconNames.set(ic.name, n = iconNames.size);
+                        iconName.push(n); iconPos.push(a[0], a[1]); iconRotate.push(ic.rotate * Math.PI / 180); iconSize.push(ic.size, ic.size1); iconAlpha.push(ic.opacity);
+                        continue;
+                    }
                     const label: LabelSrc = Object.assign(Object.create(base), {x: a[0], y: a[1], angle: along ? a[2] : null, len: a[3]});
                     if (a.length > 4) { label.pathIndex = a[4]; label.path = a.slice(5); }
                     labels.push(label);
@@ -215,6 +240,8 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
                 }
             }
             // symbol-sort-key: lower keys are placed first, so they win when labels compete for space.
+            if (iconName.length) (out.icons ??= {})[L.id] = {names: [...iconNames.keys()], name: Uint32Array.from(iconName), pos: Float32Array.from(iconPos),
+                rotate: p.iconRotate.dd ? Float32Array.from(iconRotate) : undefined, size: p.iconSize.dd ? Float32Array.from(iconSize) : undefined, alpha: p.iconOpacity.dd ? Float32Array.from(iconAlpha) : undefined};
             if (sorted) { const order = labels.map((_, i) => i).sort((a, b) => keys[a] - keys[b] || a - b); out.labels[L.id] = order.map(i => labels[i]); continue; }
             if (labels.length) out.labels[L.id] = labels;
             continue;
@@ -606,7 +633,8 @@ function tessellateLine(b: Batch): GLBatch | null {
 }
 
 export function toGL(ir: TileIR): {tile: TileGL; transfer: ArrayBuffer[]} {
-    const tile: TileGL = {layers: {}, labels: ir.labels}, transfer = new Set<ArrayBuffer>();
+    const tile: TileGL = {layers: {}, labels: ir.labels, icons: ir.icons}, transfer = new Set<ArrayBuffer>();
+    for (const b of Object.values(ir.icons ?? {})) for (const a of Object.values(b)) if (ArrayBuffer.isView(a)) transfer.add(a.buffer as ArrayBuffer);
     for (const id in ir.layers) {
         const b = ir.layers[id];
         const g = tessellate(b);

@@ -76,7 +76,8 @@ export type EngineEvent =
     /** 3D terrain: the height grid of an elevation tile that has loaded (or, without `grid`, been dropped). */
     | {type: 'heights'; key: string; grid?: Float32Array}
     /** About once a second while drawing: frames drawn per second and the engine's average CPU time per frame. */
-    | {type: 'stats'; fps: number; frameMs: number}
+    /** `labels`: how many labels and icons of the last frame were placed among the labels (the icons that the tiles have in buffers are not counted). */
+    | {type: 'stats'; fps: number; frameMs: number; labels: number}
     | {type: 'frame'}
     /** The engine has drawn a frame to its end after the `ping` command with this number. */
     | {type: 'pong'; n: number}
@@ -203,11 +204,21 @@ export class Engine {
     private styleFonts = '';
     private images = new Map<string, SpriteIcon & {custom: true}>();
     private missing = new Set<string>();
+    /** The images of the map changed (`iconsRev` counts the changes): the icons that the tiles have in buffers are made again. */
+    private iconsRev = 0;
+    private iconsDone = 0;
+    /** The last change that a frame saw, when it saw it, and when the first change since the last refresh was. */
+    private iconsSeen = 0;
+    private iconsLast = 0;
+    private iconsSince = 0;
+    /** An image that the map had is gone or has another place: each buffer is made again, not only those that wait for an image. */
+    private iconsAll = false;
     private dem = new Map<string, Promise<{width: number; height: number; data: Uint8ClampedArray} | null>>();
     private dpr = 1;
 
     constructor(canvas: HTMLCanvasElement | OffscreenCanvas, o: EngineOptions, private backends: TileBackend[], private emit: (e: EngineEvent) => void) {
         this.renderer = new GLRenderer(canvas, o.antialias);
+        this.renderer.iconOf = this.icon;
         (canvas as EventTarget).addEventListener('webglcontextlost', () => { if (!this.lost) { this.lost = true; this.emit({type: 'contextlost'}); } }); // (not when the map itself freed the context)
         this.atlas = new GlyphAtlas(o.fontFamily);
         this.atlas.images = name => this.icon(name);
@@ -582,6 +593,7 @@ export class Engine {
         }
         this.renderer.setIcons(all ?? loaded[0].image, width, height);
         this.sprite = {icons, image: '', width, height};
+        this.iconsRev++; this.iconsAll = true;
         this.styleVersion++;
         this.invalidate();
     }
@@ -732,17 +744,17 @@ export class Engine {
                 const rect = this.addSprite(c.w, c.h, c.data);
                 if (rect) this.images.set(c.name, {x: rect[0], y: rect[1], width: c.w, height: c.h, pixelRatio: c.w / c.width, custom: true, stretchX: c.stretchX, stretchY: c.stretchY, content: c.content, textFitWidth: c.textFitWidth, textFitHeight: c.textFitHeight});
                 this.styleVersion++;
-                this.placeDirty = true;
+                this.placeDirty = true; this.iconsRev++;
                 break;
             }
-            case 'removeImage': this.dropImage(c.name); this.placeDirty = true; break;
+            case 'removeImage': this.dropImage(c.name); this.placeDirty = true; this.iconsRev++; break;
             case 'templates':
                 for (const b of this.backends) b.setTemplates(c.slots);
                 for (const name of [...this.images.keys(), ...this.missing]) if (c.changed.includes(name.split(VARIANT)[0])) { this.dropImage(name); this.missing.delete(name); }
                 // (Only tiles with shapes are built again: `band` is the zoom that such a tile was built for.)
                 if (c.rebuild) for (const t of this.tiles.values()) if (t.band !== undefined) { t.stale = true; t.rev = ++this.tilesVersion; }
                 this.styleVersion++;
-                this.placeDirty = true;
+                this.placeDirty = true; this.iconsRev++;
                 break;
             case 'geojson': {
                 // New data for one source: keep drawing its current tiles and rebuild them in place, so nothing blinks.
@@ -796,6 +808,7 @@ export class Engine {
     private dropImage(name: string) {
         const img = this.images.get(name);
         if (!img) return;
+        this.iconsAll = true;
         const key = img.width + 'x' + img.height;
         this.freed.set(key, [...this.freed.get(key) ?? [], [img.x, img.y]]);
         this.images.delete(name);
@@ -1071,7 +1084,7 @@ export class Engine {
     private build(req: number, source: string, id: TileID, t: TileState): TileRequest {
         const src = this.style.sources[source], band = t.band = this.buildZoom(source, id);
         t.rules = this.sourceSigs.get(source)?.[1];
-        return {id: req, source, url: tileURL(src, id.z, id.x, id.y), z: this.zoomBuilt.has(source) ? band : id.z, overscaled: band >= src.maxzoom && band};
+        return {id: req, source, url: tileURL(src, id.z, id.x, id.y), z: this.zoomBuilt.has(source) ? band : id.z, overscaled: band >= src.maxzoom && band, direct: true};
     }
     private zoomBuilt = new Set<string | undefined>();
     /** Builds a tile again when its data is out of date, or when it was built for another zoom than it is now for. */
@@ -1338,6 +1351,16 @@ export class Engine {
             }
             labels.push({...p, x: p.x + dx, y: p.y + dy, icon: p.icon && {...p.icon, x: p.icon.x + dx, y: p.icon.y + dy}, opacity: st.opacity});
         }
+        if (this.iconsRev !== this.iconsDone) {
+            // Images often come one after another (the variants of a template, the answers to missing images). The
+            // buffers are made again when no image came for a tenth of a second, and after a second at the latest.
+            if (this.iconsRev !== this.iconsSeen) { this.iconsSeen = this.iconsRev; this.iconsLast = now; this.iconsSince ||= now; }
+            if (now - this.iconsLast >= 100 || now - this.iconsSince >= 1000) {
+                this.iconsDone = this.iconsRev; this.iconsSince = 0;
+                for (const t of this.tiles.values()) if (t.gl?.icons) this.renderer.refreshIcons(t.gl, this.iconsAll);
+                this.iconsAll = false;
+            }
+        }
         const markers: MarkerBuffers[] = [];
         for (const m of this.markers.values()) {
             if (!m.gpu?.count) continue;
@@ -1363,7 +1386,7 @@ export class Engine {
             this.moving = animating;
             this.emit({type: 'camera', lng: tr.lng, lat: tr.lat, zoom: tr.zoom, bearing: tr.bearing, pitch: tr.pitch, elevation: tr.elevation, exaggeration: this.exaggeration, groundRange: tr.groundRange, padding: tr.padding, moving: animating});
         }
-        const busy = animating || markersAnimating || fading || this.placeDirty || behind || this.meshBehind;
+        const busy = animating || markersAnimating || fading || this.placeDirty || this.iconsRev !== this.iconsDone || behind || this.meshBehind;
         const idle = complete && !busy && !settling && !this.spritePending && !this.contourWait && !this.atlas.loading;
         if (settling && !busy) setTimeout(() => this.repaint(), 200);
         if (this.contourWait) { this.contourWait = false; setTimeout(() => this.repaint(), CONTOUR_WAIT + 20); }
@@ -1383,7 +1406,7 @@ export class Engine {
         st.frames++; st.cpu += end - began;
         if (!st.since) st.since = began;
         else if (end - st.since >= 1000) {
-            this.emit({type: 'stats', fps: st.frames / ((end - st.since) / 1000), frameMs: st.cpu / st.frames});
+            this.emit({type: 'stats', fps: st.frames / ((end - st.since) / 1000), frameMs: st.cpu / st.frames, labels: labels.length});
             this.stats = {since: end, frames: 0, cpu: 0};
         }
         // After a pause the next burst of frames starts a fresh measurement instead of averaging in the idle time.

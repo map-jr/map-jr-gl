@@ -30,11 +30,34 @@ field `images` of the description (see [Images for style layers](api.md#images-f
 | Filter, expressions, text beside the icon, `feature-state` | Not available | Available |
 | Hit test | `queryMarkers`: synchronous, the rectangle of the marker | `queryFeatures`: a promise |
 | `select`, `openPopup` | Available | Not available |
-| Cost for each frame | Does not grow with the number of markers | Grows with the number of icons in view |
+| Cost for each frame | Does not grow with the number of markers | Does not grow with the number of icons, for icons that are always shown (see below). It grows for icons that can be hidden or that have text. |
+| Time until the points show | Shorter | Longer: the data is cut into tiles |
 
-In a measurement with software WebGL (headless Chromium, the main-thread renderer, 500 different images, all icons
-permitted to overlap), the script time for each frame was 6 ms for a marker layer with 1,000, 10,000 and 100,000
-markers. For a symbol layer it was 7 ms, 17 ms and 92 ms. This was not measured on a GPU.
+A symbol layer draws an icon from a buffer on the GPU, as a marker layer does, when the icon needs no place among
+the labels. That is the case when all of these are true:
+
+- The feature has no text.
+- `symbol-placement` is `point` (the default).
+- `icon-allow-overlap` and `icon-ignore-placement` are `true`.
+- `icon-text-fit` is `none` (the default), and the icon has no halo (`icon-halo-width`).
+- The layer has no `symbol-sort-key`, and `icon-anchor`, `icon-offset`, `icon-rotation-alignment` and `icon-color`
+  have one value for the layer. `icon-size`, `icon-rotate` and `icon-opacity` can have a value for each feature.
+
+The library places other icons with the labels, and their cost grows with their number.
+
+An icon from a buffer differs from a placed icon in these points:
+
+- With 3D terrain it stands on the ground, and ground in front of it does not hide it. (MapLibre GL JS and a placed
+  icon are hidden.)
+- It shows with its tile and does not fade in.
+- The icons of a layer that is above each layer with labels are drawn over the labels. The icons of another layer
+  are drawn below all labels and below all placed icons.
+- The map asks for the image of each icon of a tile (`styleimagemissing`), also for an icon outside the view.
+
+In a measurement with software WebGL (headless Chromium, the main-thread renderer, 500 different images, icons that
+are always shown), the script time for each frame was 6 ms for a marker layer with 1,000, 10,000 and 100,000
+markers. For a symbol layer it was 7 ms, 6 ms and 5 ms. With 100,000 points, the marker layer was ready after 0.9 s
+and the symbol layer after 3.1 s. This was not measured on a GPU.
 
 ## With the main API
 
