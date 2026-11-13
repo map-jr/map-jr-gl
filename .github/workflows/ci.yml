@@ -11,6 +11,42 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  # Which of the slow jobs a pull request needs. A push to main runs all of them. A pull request that changes only
+  # documents skips "browser", and one that changes nothing that the built files or the render tests read skips
+  # "render". A skipped job counts as passed for a required check, so these jobs can stay required.
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      browser: ${{ steps.files.outputs.browser }}
+      render: ${{ steps.files.outputs.render }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: files
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "$EVENT" != pull_request ]; then echo "browser=true" >> "$GITHUB_OUTPUT"; echo "render=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          browser=false; render=false
+          while read -r f; do
+            [ -z "$f" ] && continue
+            echo "$f"
+            # Documents: no browser test and no build reads them ("checks" compares them with the code).
+            case "$f" in
+              docs/*|*.md|LICENSE*|.github/ISSUE_TEMPLATE/*) ;;
+              *) browser=true ;;
+            esac
+            # What the built files and the render tests are made from.
+            case "$f" in
+              src/*|build.mjs|package.json|pnpm-lock.yaml|tsconfig*.json|scripts/private-names.mjs|test/conformance/render*|.github/workflows/ci.yml) render=true ;;
+            esac
+          done <<< "$(git diff --name-only "$BASE"...HEAD)"
+          echo "browser=$browser" >> "$GITHUB_OUTPUT"; echo "render=$render" >> "$GITHUB_OUTPUT"
+          echo "browser: $browser, render: $render" | tee -a "$GITHUB_STEP_SUMMARY"
+
   # Types, build, unit tests, conformance floors, size budgets, examples, and the agreement of code and documents.
   checks:
     runs-on: ubuntu-latest
@@ -39,6 +75,8 @@ jobs:
 
   # The behaviour of the map in a browser (Chromium): both entries, the adapters, and the ways to load the library.
   browser:
+    needs: changes
+    if: needs.changes.outputs.browser == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -73,6 +111,8 @@ jobs:
   # MapLibre's own render tests, against a floor (see "test:render" in package.json). A change that makes fewer
   # tests match fails here.
   render:
+    needs: changes
+    if: needs.changes.outputs.render == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:

@@ -177,6 +177,15 @@ Every change goes through a pull request. The workflow `CI` (`.github/workflows/
 | `browser` | In Chromium: `test/interact.mjs`, `test/host.mjs`, `test/vue.mjs`, `test/react.mjs`, `test/loading.mjs`. A suite that fails is run one more time, because the tiles come from the live network. |
 | `render` | `pnpm test:render`: MapLibre's render tests against the floor in `package.json` |
 
+A pull request runs `browser` and `render` only when it needs them. The job `changes` reads the changed files:
+
+- `browser` is skipped when every changed file is a document (`docs/`, a `.md` file, a licence file, an issue template).
+- `render` runs only when a file that the built files or the render tests are made from changed: `src/`, `build.mjs`,
+  `package.json`, `pnpm-lock.yaml`, `tsconfig*.json`, `scripts/private-names.mjs`, `test/conformance/render*` or
+  `.github/workflows/ci.yml`.
+
+A skipped job counts as passed for a required check. A push to `main` runs all three jobs.
+
 `pnpm test:consistency` (`scripts/check-consistency.mjs`) fails when a field of the description has no Vue prop or
 no documentation, when a member of the map is not in `docs/api.md`, when a gallery example lacks one of its four
 forms, when no document names an entry of the package, or when a link between documents is broken.
