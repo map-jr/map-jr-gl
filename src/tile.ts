@@ -3,8 +3,8 @@ import {EXTENT} from './geo.ts';
 import {decodeVectorTile} from './mvt.ts';
 import {GEOJSON_LAYER} from './geojson.ts';
 import {parseFontName, type CompiledLayer} from './style.ts';
-import {type Feature, type MapStates, type RGBA} from './expr.ts';
-import {VARIANT} from './markers.ts';
+import {IMAGE_CLOSE, IMAGE_IN_TEXT, IMAGE_OPEN, type Feature, type MapStates, type RGBA} from './expr.ts';
+import {VARIANT, variantName} from './markers.ts';
 
 /**
  * Renderer-neutral tile geometry: flat rings in tile units plus per-feature paint values.
@@ -157,10 +157,9 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
                 let text = tokens(p.field.eval(z, f));
                 // An image that is an SVG template: the name gets the value of each slot of the template, from `params` of
                 // the `image` expression, or else from the property of the feature that has the name of the slot.
-                const icon = String(p.icon.eval(z, f) ?? ''), [image, ...given] = icon.includes(VARIANT) ? icon.split(VARIANT) : [tokens(icon)];
-                // (The name comes from data: `toString` is no template.)
-                const slots = templates && Object.hasOwn(templates, image) ? templates[image] : undefined;
-                const iconName = slots ? [image, ...slots.map(s => given.find(g => g.startsWith(s + '='))?.slice(s.length + 1) ?? String(f.properties[s] ?? '').replaceAll(VARIANT, ''))].join(VARIANT) : image;
+                const icon = String(p.icon.eval(z, f) ?? ''), iconName = variantName(icon.includes(VARIANT) ? icon : tokens(icon), templates, f.properties);
+                // (The same for the images inside `format` text.)
+                if (templates && text.includes(IMAGE_OPEN)) text = text.replace(IMAGE_IN_TEXT, (_, n) => IMAGE_OPEN + variantName(n, templates, f.properties) + IMAGE_CLOSE);
                 if (!text && !iconName) continue;
                 const tt = p.transform.eval(z, f);
                 if (tt === 'uppercase' || tt === 'lowercase') {

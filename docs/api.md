@@ -279,7 +279,9 @@ What to know about a template:
   before the limit of 1,000: about 600 variants of 40 by 40 CSS pixels fit on a screen with a pixel ratio of 2. The
   map then reports one error, and later images are not drawn. A variant of a template that is replaced gives its
   place back.
-- A template works in `icon-image`. A template in `format` text or in a pattern property is not drawn.
+- A template works in `icon-image`, in an image of `format` text, and in `fill-pattern`, `line-pattern` and
+  `background-pattern`. In a pattern property, a slot that has no parameter gets an empty text, because a pattern
+  is the same for the whole layer and reads no property of a feature.
 - A template that is not well-formed gives one error of the map with the name of the image.
 - A slot in the `href` of an `<image>` element makes the page request the URL that a feature gives. Use such a
   slot only with data that you trust.

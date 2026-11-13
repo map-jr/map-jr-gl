@@ -1,7 +1,7 @@
 import {heightsChanged} from './geo.ts';
 import {EXTENT, HEIGHT_GRID, TILE_SIZE, Transform, bezier, groundHeight, clamp, latFromMerc, lngFromMerc, mercX, mercY, type LngLatLike, type TileID} from './geo.ts';
 import {compileFor, type Feature, type MapStates} from './expr.ts';
-import {VARIANT} from './markers.ts';
+import {VARIANT, variantName} from './markers.ts';
 import {layerRules} from './rules.ts';
 import {compileLayer, isGeometrySource, loadSprite, tileURL, type CompiledLayer, type FontSource, type ResolvedStyle, type Sprite, type SpriteIcon} from './style.ts';
 import {GLRenderer, SPRITE_ATLAS, type DemRef, type GLTile, type TerrainTile} from './gl.ts';
@@ -592,6 +592,11 @@ export class Engine {
             err => this.emit({type: 'error', message: `Could not load font: ${err.message}`})).finally(() => { this.spritePending--; this.invalidate(); });
     }
 
+    /** The slots of each SVG template (see the command `templates`). */
+    private slots: Record<string, string[]> = {};
+    /** An image for a pattern: the name of a template with `params` names one of its variants (see `variantName`). */
+    private pattern = (name: string) => this.icon(name.includes(VARIANT) ? variantName(name, this.slots) : name);
+
     private icon = (name: string) => {
         // (The name can come from data: `toString` is no icon of the sprite.)
         const found = this.images.get(name) ?? (this.sprite && Object.hasOwn(this.sprite.icons, name) ? this.sprite.icons[name] : undefined);
@@ -710,6 +715,7 @@ export class Engine {
             }
             case 'removeImage': this.dropImage(c.name); this.placeDirty = true; this.iconsRev++; break;
             case 'templates':
+                this.slots = c.slots;
                 for (const b of this.backends) b.setTemplates(c.slots);
                 for (const name of [...this.images.keys(), ...this.missing]) if (c.changed.includes(name.split(VARIANT)[0])) { this.dropImage(name); this.missing.delete(name); }
                 // (Only tiles with shapes are built again: `band` is the zoom that such a tile was built for.)
@@ -1336,7 +1342,7 @@ export class Engine {
         // For a moment after the camera stops, a frame is drawn as for a map that moves. One more frame comes after it:
         // the frame for the map at rest (sharp images). The map is not idle before that frame.
         const settling = began - this.cameraMovedAt < 200;
-        const behind = hold || this.renderer.render({tr, layers: this.layers, items, labels, atlas: this.atlas, icon: this.icon, light: this.style.light, moving: settling,
+        const behind = hold || this.renderer.render({tr, layers: this.layers, items, labels, atlas: this.atlas, icon: this.pattern, light: this.style.light, moving: settling,
             // (Past the time limit and still unplaced: draw flat rather than raise terrain around a camera in the wrong place.)
             terrain: ground && !unplaced ? {exaggeration: this.exaggeration, tiles: ground, dem: this.demRef} : undefined});
 

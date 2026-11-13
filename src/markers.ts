@@ -76,6 +76,16 @@ export const templateSlots = (svg: string) => [...new Set([...svg.matchAll(/\{\{
  */
 export const VARIANT = '\u001f';
 
+/**
+ * The name of the variant for a name that an `image` expression gives (the template, then `slot=value` parts from
+ * `params`): the value of each slot in the order of `slots`, from `params` or else from the property of the feature
+ * with the name of the slot. A name that is not of a template loses its `params`.
+ */
+export const variantName = (name: string, templates: Record<string, string[]> | undefined, properties: Record<string, unknown> = {}) => {
+    const [image, ...given] = name.split(VARIANT), slots = templates && Object.hasOwn(templates, image) ? templates[image] : undefined;
+    return slots ? [image, ...slots.map(s => given.find(g => g.startsWith(s + '='))?.slice(s.length + 1) ?? String(properties[s] ?? '').replaceAll(VARIANT, ''))].join(VARIANT) : image;
+};
+
 export function parseSVG(svg: string): {viewBox: string | null; inner: string} {
     const m = /^\s*(?:<\?xml[^>]*>\s*)?<svg\b([^>]*)>([\s\S]*)<\/svg>\s*$/.exec(svg);
     if (!m) throw new Error('Marker template must be a single <svg> element');
