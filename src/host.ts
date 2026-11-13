@@ -430,7 +430,12 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
                 queryFeatures(at, o).then(found => {
                     const text = JSON.stringify(found.map(f => [(f.layer as {id?: string})?.id ?? f.layer, f.source, f.id, f.properties]));
                     if (alive && !stopped && text !== last) { last = text; listener(found); }
-                }, () => {}).finally(() => { busy = false; if (again && !stopped) { again = false; run(); } });
+                }, e => {
+                    // (A query of a removed map or of a lost context has no answer and is asked again later. Any other
+                    // rejection is a mistake of the caller: it is an error of the map, once until the answer changes.)
+                    const text = 'e' + (e as Error)?.message;
+                    if (alive && !stopped && text !== last && !text.includes('has no answer')) { last = text; map.fire('error', {error: e}); }
+                }).finally(() => { busy = false; if (again && !stopped) { again = false; run(); } });
             };
             const data = (e: any) => { if (!o.sources || !e.sourceId || o.sources.includes(e.sourceId)) run(); };
             const moved = () => { if (!at || !isPosition(at)) run(); };

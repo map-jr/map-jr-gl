@@ -593,6 +593,17 @@ for (const renderer of ['worker', 'main']) {
         check(`[${renderer}] a watchFeatures listener that throws is called again, and a listener that throws leaves the next listener its event and is reported as an error`,
             thrown.calls >= 2 && thrown.second === 1 && thrown.error === 'thrown by a listener', JSON.stringify(thrown));
 
+        // 5c. A rejection of the question of watchFeatures is an error of the map, and is not lost (#92).
+        const rejected = await page.evaluate(async () => {
+            const h = window.t.host, log = console.error;
+            console.error = () => {};
+            const stop = h.watchFeatures({lng: -74.0105, lat: 40.7045}, {}, () => {});
+            await new Promise(r => setTimeout(r, 600));
+            stop(); console.error = log;
+            return h.state.get().error?.message ?? '';
+        });
+        check(`[${renderer}] a watchFeatures question that is rejected is reported as an error of the map`, rejected.includes('queryFeatures()'), rejected);
+
         // 6. The end. The queries that have no answer yet are rejected, and so is a query after it. No callback runs after it.
         const end = await page.evaluate(async () => {
             const t = window.t, h = t.host, said = p => Promise.race([p.then(() => 'answered', e => e.message), new Promise(r => setTimeout(() => r('not settled'), 2000))]);
