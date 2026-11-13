@@ -920,6 +920,32 @@ for (const mode of ['main', 'worker']) {
         check('[worker] a worker without WebGL2: the map uses the main thread, load and idle fire, and transformRequest sees the tile requests',
             fell.renderer === 'main' && fell.seen.includes('load') && fell.seen.includes('idle') && !fell.seen.includes('error') && fell.tiles > 0 && fell.layer > 0, JSON.stringify(fell));
     }
+    // The same with the engine chunk delayed by 6 seconds, on a page of its own (the chunk is not in its module cache).
+    // The watch of the worker must not count while the chunk loads: one warning, no `webglcontextlost`, one canvas.
+    if (mode === 'worker') {
+        const slowContext = await page.context().browser().newContext({viewport: page.viewportSize()}), slow = await slowContext.newPage();
+        await slow.route(/engine-entry-.*\.js/, async r => { await new Promise(f => setTimeout(f, 6000)); await r.continue(); });
+        await slow.goto(page.url());
+        const late = await slow.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:300px;height:200px'}));
+            const code = `const get = OffscreenCanvas.prototype.getContext; OffscreenCanvas.prototype.getContext = function (kind, ...rest) { return /webgl/.test(kind) ? null : get.call(this, kind, ...rest); }; importScripts(${JSON.stringify(location.origin + '/dist/map-jr-gl-worker.js')});`;
+            const url = URL.createObjectURL(new Blob([code], {type: 'text/javascript'}));
+            const seen = [], warnings = [], warn = console.warn;
+            console.warn = (...a) => warnings.push(a.join(' '));
+            const m = new mod.Map({container: el, style: '/style.json', center: [-74.0065, 40.7085], zoom: 14, attributionControl: false, createWorker: () => new Worker(url)});
+            for (const type of ['load', 'idle', 'error', 'webglcontextlost']) m.on(type, () => seen.push(type));
+            await new Promise(r => { m.once('idle', r); setTimeout(r, 20000); });
+            await new Promise(r => setTimeout(r, 2000));
+            console.warn = warn;
+            const out = {renderer: m.renderer, seen: [...new Set(seen)], warnings: warnings.filter(w => /using the main thread/.test(w)).length, canvases: el.querySelectorAll('canvas').length};
+            m.remove(); el.remove();
+            return out;
+        });
+        await slowContext.close();
+        check('[worker] a worker without WebGL2 and an engine chunk that takes 6 seconds: one engine on the main thread, one warning, and no webglcontextlost',
+            late.renderer === 'main' && late.seen.includes('idle') && !late.seen.includes('webglcontextlost') && !late.seen.includes('error') && late.warnings === 1 && late.canvases === 1, JSON.stringify(late));
+    }
     // A worker whose WebGL context is lost (#78). In each case the map must go to the main thread and warn once.
     // - `now`: each worker loses the context directly after the start, before its first frame or just after it.
     // - `quiet`: the first worker loses the context after some frames, so the map starts a second worker. That one gets
