@@ -475,12 +475,23 @@ for (const mode of ['main', 'worker']) {
         await idle();
         const p = m.project(at), ask = () => m.queryRenderedFeatures(p, {layers: ['stale-dot']});
         const first = (await ask()).length, kept = ask().length;
-        let wait = idle(); m.getSource('stale').setData({type: 'FeatureCollection', features: []}); await wait;
+        let wait = idle(); m.getSource('stale').setData({type: 'FeatureCollection', features: []});
+        const before = ask().length; await wait;
         const array = ask().length, awaited = (await ask()).length;
         m.removeLayer('stale-dot'); m.removeSource('stale');
-        return {first, kept, array, awaited};
+        return {first, kept, before, array, awaited};
     });
-    check(`[${mode}] queryRenderedFeatures: the array is not the answer from before setData`, stale.first === 1 && stale.kept === 1 && stale.array === 0 && stale.awaited === 0, JSON.stringify(stale));
+    check(`[${mode}] queryRenderedFeatures: the array is not the answer from before setData`, stale.first === 1 && stale.kept === 1 && stale.before === 0 && stale.array === 0 && stale.awaited === 0, JSON.stringify(stale));
+    await settle(page);
+    // #7: `click` and `contextmenu` reach a map listener during the pointer event, as in MapLibre, not after a query.
+    await page.evaluate(() => {
+        window.late = {};
+        for (const t of ['click', 'contextmenu']) window.map.once(t, () => { window.late[t] = window.late[t] ?? 'at once'; });
+        for (const [dom, t] of [['pointerup', 'click'], ['contextmenu', 'contextmenu']]) window.addEventListener(dom, () => { window.late[t] ??= 'late'; }, {once: true});
+    });
+    await page.mouse.click(500, 350); await page.mouse.click(500, 350, {button: 'right'}); await page.waitForTimeout(300);
+    const lateness = await page.evaluate(() => window.late);
+    check(`[${mode}] click and contextmenu: a map listener runs during the pointer event`, lateness.click === "at once" && lateness.contextmenu === "at once", JSON.stringify(lateness));
     await settle(page);
 
     // transformRequest and addProtocol: the functions are on the page, and the requests are made in workers.
@@ -554,6 +565,9 @@ for (const mode of ['main', 'worker']) {
         });
         await page.waitForTimeout(1500);
         const box = await page.locator('canvas').first().boundingBox();
+        // (#7: `click` fires at once and does not wait for the engine. The pointer rests before the click, as a hand does, and
+        // the map asks the engine about that place while it rests.)
+        await page.mouse.move(box.x + box.width / 2 + 60, box.y + box.height / 2 + 40); await page.waitForTimeout(400);
         await page.mouse.click(box.x + box.width / 2 + 60, box.y + box.height / 2 + 40);
         await page.waitForTimeout(1000);
         const atOnce = await page.evaluate(() => { window.map.off('idle', window.atOnceIdle); return window.atOnce; });

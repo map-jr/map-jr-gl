@@ -244,12 +244,13 @@ export class Map extends CoreMap {
         const key = this.questionKey(box, sets), all = this.questionKey(box), kept = this.answers.get(key);
         const wide = !kept && sets.every(s => !s.also) ? this.answers.get(all) : undefined, wanted = new Set(sets.map(s => s.layer));
         let now: QueriedFeature[] = kept?.found ?? wide?.found.filter(f => wanted.has(f.layer!)) ?? [];
-        // If not: the GeoJSON sources that the page has the data of.
-        const sync = this.syncQuery;
-        if (!kept && !wide && sync) for (const [id, spec] of Object.entries<any>(this.rawStyle?.sources ?? {})) {
+        // The GeoJSON sources that the page has the data of are read here, also when an answer was kept: that answer can
+        // be from before a `setData`.
+        const sync = this.syncQuery, own = new Set<string>();
+        if (sync) for (const [id, spec] of Object.entries<any>(this.rawStyle?.sources ?? {})) {
             const mine = sets.filter(s => s.source === id);
             const data = mine.length && spec.type === 'geojson' && this.geoData(id);
-            if (data) try { now.push(...sync.queryGeoJSON(id, {...spec, data}, this.tr, box, mine)); } catch { /* the promise has the complete result or the error */ }
+            if (data) try { const found = sync.queryGeoJSON(id, {...spec, data}, this.tr, box, mine); now = now.filter(f => f.source !== id || own.has(id)); own.add(id); now.push(...found); } catch { /* the promise has the complete result or the error */ }
         }
         const result = features([...now]), given = this.summary(now);
         // Later: all the sources, from the engine.
@@ -295,8 +296,9 @@ export class Map extends CoreMap {
     }
     private summary(found: QueriedFeature[]) { return JSON.stringify(found.map(f => [f.layer, f.id, f.properties])); }
     /**
-     * (A click waits for the features at its place, so that a listener can read them at once. The result is then a
-     * promise for the moment when the listeners have run: the default action of a `dblclick` waits for it.)
+     * (`click`, `dblclick` and `contextmenu` fire at once, as in MapLibre. The engine is asked about the place in the
+     * background, and a pointer that rests also asks: a listener that reads `queryRenderedFeatures(e.point)` at once gets
+     * that answer when it has come. Listeners for a layer get their features from the core map.)
      */
     override fire(type: string, data: Record<string, unknown> = {}): void | PromiseLike<unknown> {
         // The page gave new data (`setData`, a change of the style): the answers from before are old. They are not given.
@@ -305,12 +307,15 @@ export class Map extends CoreMap {
         // it is asked again: if the new answer is another, `idle` fires one more time for that question.)
         if (type === 'sourcedata' || type === 'styledata') this.refired.clear();
         const point = data.point as {x: number; y: number} | undefined;
-        if (!point || !/^(click|dblclick|contextmenu)$/.test(type) || data.asked || !this.rawStyle) return super.fire(type, data);
-        const {box, sets} = this.rendered([point.x, point.y]), key = this.questionKey(box);
-        // (The descriptors are copied, so that the getter `defaultPrevented` stays live.)
-        const send = () => super.fire(type, Object.defineProperties({asked: true}, Object.getOwnPropertyDescriptors(data)));
-        if (!sets.length) return send();
-        const turn = this.turn;
-        return this.ask<QueriedFeature[]>(id => ({type: 'queryRendered', id, box, sets, geometry: true})).then(found => this.keep(key, found, turn), () => {}).then(send);
+        if (point && this.rawStyle && /^(click|dblclick|contextmenu|mousemove)$/.test(type)) {
+            clearTimeout(this.resting);
+            const warm = () => {
+                const {box, sets} = this.rendered([point.x, point.y]), key = this.questionKey(box), turn = this.turn;
+                if (sets.length && !this.answers.has(key)) this.ask<QueriedFeature[]>(id => ({type: 'queryRendered', id, box, sets, geometry: true})).then(found => this.keep(key, found, turn), () => {});
+            };
+            if (type === 'mousemove') this.resting = setTimeout(warm, 50); else warm();
+        }
+        return super.fire(type, data);
     }
+    private resting?: ReturnType<typeof setTimeout>;
 }
