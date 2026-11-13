@@ -1,5 +1,5 @@
 /**
- * Demo marker layer: one SVG template, restyled per marker through {{slots}}.
+ * The images and the marker layers of the demo. An image is an SVG template: each marker fills its {{slots}}.
  * The shadow is a shape of its own. Safari draws a shape that has a filter at a low resolution, so a filter on the pin
  * itself makes the pin look blurred in an SVG that the page shows.
  */
@@ -13,7 +13,7 @@ export const pin = `<svg viewBox="0 0 36 46">
 
 const base = {stroke: '#fff', strokeWidth: 1.5};
 export const markers = {
-    id: 'places', svg: pin, width: 36, height: 46, anchor: 'bottom', collide: true,
+    id: 'places', image: 'pin', anchor: 'bottom', collide: true,
     data: [
         {lngLat: [-74.0134, 40.7033], props: {...base, color: '#d6453d', label: '12'}},
         {lngLat: [-74.0090, 40.7061], props: {...base, color: '#2f7fd1', label: 'A'}},
@@ -34,7 +34,7 @@ export const photoPin = `<svg viewBox="0 0 48 56">
   <circle cx="24" cy="24" r="19" fill="none" stroke="#fff" stroke-width="1.500"/>
 </svg>`;
 export const photos = {
-    id: 'photos', svg: photoPin, width: 48, height: 56, anchor: 'bottom', collide: true,
+    id: 'photos', image: 'photo', anchor: 'bottom', collide: true,
     data: [
         {lngLat: [-74.0445, 40.6892], props: {color: '#2e9d5b', photo: 'https://tiles.openfreemap.org/natural_earth/ne2sr/5/9/12.png', name: 'Relief imagery, tile 5/9/12'}},
         {lngLat: [-73.9969, 40.7061], props: {color: '#2f7fd1', photo: 'https://tiles.openfreemap.org/natural_earth/ne2sr/4/4/6.png', name: 'Relief imagery, tile 4/4/6'}},
@@ -52,7 +52,7 @@ export function manyMarkers(count, [lng, lat] = view.center, spread = 0.6) {
         const r = Math.sqrt(rand()) * spread, a = rand() * 2 * Math.PI;
         data.push({lngLat: [lng + r * Math.cos(a) * 1.3, lat + r * Math.sin(a)], props: {...base, color: colors[i % 5], label: String(i % 100)}});
     }
-    return {id: 'many', svg: pin, width: 24, height: 31, anchor: 'bottom', data};
+    return {id: 'many', image: 'pin-small', anchor: 'bottom', data};
 }
 
 /** A plain dot, for showing the same places compactly when zoomed out. */
@@ -79,4 +79,20 @@ export function cluster(points, zoom, cellPx = 70) {
         else clusters.push({lngLat: [c.lng / c.n, c.lat / c.n], props: {count: c.n > 999 ? Math.round(c.n / 1000) + 'k' : String(c.n)}});
     }
     return {clusters, singles};
+}
+
+/** The images of the demo, by name, as the field `images` of a description takes them. `pin-small` is the pin at two thirds of its size. */
+export const images = {pin, 'pin-small': {image: pin, width: 24, height: 31}, photo: photoPin, dot, bubble};
+
+/** For `@map-jr/map-jr-gl/maplibre-compat`: gives the images to a map (`addImage`). */
+export function addImages(map) {
+    return Promise.all(Object.entries(images).map(([name, v]) => map.addImage(name, v.image ?? v, v.image ? {width: v.width, height: v.height} : {})));
+}
+/**
+ * For `@map-jr/map-jr-gl/maplibre-compat`: a marker layer as the source and the symbol layer that it stands for
+ * (`addSource`, `addLayer`). `layout` has more layout properties for the layer.
+ */
+export function addMarkers(map, m, layout = {}) {
+    map.addSource(m.id, {type: 'geojson', data: {type: 'FeatureCollection', features: m.data.map((d, id) => ({type: 'Feature', id, properties: d.props ?? {}, geometry: {type: 'Point', coordinates: d.lngLat}}))}});
+    map.addLayer({id: m.id, type: 'symbol', source: m.id, layout: {'icon-image': m.image, 'icon-anchor': m.anchor ?? 'center', 'icon-allow-overlap': m.overlap !== 'hide', 'icon-ignore-placement': !m.collide && m.overlap !== 'hide', ...layout}});
 }

@@ -5,8 +5,9 @@
  * each render, and the map finds what is different. Props that are made again with the same content do no work.
  * Marker data is compared by identity: keep the array (`useMemo`, state) until the markers change.
  */
-import {createContext, createElement as h, forwardRef, useContext, useEffect, useImperativeHandle, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode} from 'react';
+import {createContext, createElement as h, forwardRef, useCallback, useContext, useEffect, useImperativeHandle, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode} from 'react';
 import {createPortal} from 'react-dom';
+declare const __DEV__: boolean;
 import {createMap, type MapHost, type MapOverlay as Overlay, type MapPointer, type MapSpec, type MapState, type OverlayOptions, type View} from './host.ts';
 import type {RenderedFeature} from './map.ts';
 
@@ -32,6 +33,9 @@ export interface MapJrProps extends Omit<MapSpec, 'style' | 'onViewChange'> {
 }
 
 const Host = createContext<MapHost | null>(null);
+type GivenImage = [string, {image: string; width?: number; height?: number; pixelRatio?: number}];
+/** How a `MapImage` gives its image to the `MapJr` that it is in: its name and the image, or null when it has none. */
+const Images = createContext<((owner: object, image: GivenImage | null) => void) | null>(null);
 /** The map of the `MapJr` that this component is in, when the map has started. */
 export const useMap = () => useContext(Host);
 /**
@@ -51,7 +55,15 @@ export const MapJr = forwardRef<MapHost | null, MapJrProps>(function MapJr(props
     // The functions of the last render are called, also from a map that an earlier render made.
     const last = useRef(props);
     last.current = props;
-    const spec: MapSpec = {...rest, style: mapStyle, onViewChange: view => last.current.onViewChange?.(view), onClick: event => last.current.onClick?.(event),
+    // The images of the `MapImage` components in this map, by component. They come after the images of the prop: with
+    // one name in both, the image of the component is used.
+    const owners = useRef(new globalThis.Map<object, GivenImage>()), [, again] = useState(0);
+    const give = useCallback((owner: object, image: GivenImage | null) => {
+        if (JSON.stringify(owners.current.get(owner) ?? null) === JSON.stringify(image)) return;
+        if (image) owners.current.set(owner, image); else owners.current.delete(owner);
+        again(n => n + 1);
+    }, []);
+    const spec: MapSpec = {...rest, images: rest.images || owners.current.size ? {...rest.images, ...Object.fromEntries(owners.current.values())} : undefined, style: mapStyle, onViewChange: view => last.current.onViewChange?.(view), onClick: event => last.current.onClick?.(event),
         // (Without `onError`, the map writes each error to the console.)
         onError: onError && (error => last.current.onError?.(error))};
     for (const k in spec) if ((spec as any)[k] === undefined) delete (spec as any)[k];
@@ -70,7 +82,7 @@ export const MapJr = forwardRef<MapHost | null, MapJrProps>(function MapJr(props
     return h('div', {className: 'map-jr-react' + (className ? ' ' + className : ''), style: {position: 'relative', width: '100%', height: '100%', ...style}},
         // (The HTML of the server stays in this element until the map removes it: React does not look at its content.)
         h('div', {ref: el, style: {position: 'absolute', inset: 0}, suppressHydrationWarning: true, dangerouslySetInnerHTML: {__html: firstView ?? ''}}),
-        h(Host.Provider, {value: host}, children));
+        h(Images.Provider, {value: give}, h(Host.Provider, {value: host}, children)));
 });
 
 /**
@@ -90,5 +102,58 @@ export function MapOverlay({children, ...options}: OverlayOptions & {children?: 
     }, [host, el]);
     useEffect(() => { overlay.current?.update(now()); });
     return el && host ? createPortal(children, el) : null;
+}
+
+/** The props of `MapImage`. `P` has the names of the parameters. */
+export interface MapImageProps<P extends string = never> {
+    /** The name of the image, for `icon-image` of a style layer. */
+    name: string;
+    /** The names of the parameters of the image. The function in `children` gets a value for each one. */
+    params?: readonly P[];
+    /** The URL of an image, in place of an SVG in `children`. */
+    src?: string;
+    /** The size in CSS pixels. Without it, an SVG has the size of its `viewBox`, and another image has its own size. */
+    width?: number; height?: number;
+    /** The number of image pixels for one CSS pixel (2 for an image "@2x"). */
+    pixelRatio?: number;
+    /** An `<svg>` element, or a function that gets the parameters and returns one. */
+    children?: ReactNode | ((params: Record<P, string>) => ReactNode);
+}
+/**
+ * An image for the style layers of the map, for the inside of `MapJr`. The SVG is the content:
+ * `<MapImage name="pin" params={['color']}>{({color}) => <svg viewBox="0 0 24 31"><path fill={color} d="..."/></svg>}</MapImage>`.
+ * A layer uses the image with `'icon-image': 'pin'`. A parameter gets its value for each feature of the layer: from the
+ * property of the feature with that name, or from `params` of the `image` expression of the layer. React renders the SVG
+ * one time, not one time for each feature. `<MapImage name="photo" src="/photo.png" />` is an image from a URL.
+ */
+export function MapImage<const P extends string = never>({name, params, src, width, height, pixelRatio, children}: MapImageProps<P>) {
+    // The image is a part of the description of the map, as an image of the prop `images` is: the `MapJr` of this
+    // component gets it from `give`, and the map finds what is different. (Two components can then have one name,
+    // and a component can go: the map has what the components that are there give.)
+    const host = useContext(Host), give = useContext(Images), owner = useRef({});
+    // The content is rendered into an element that is not in the page, and is read as a string of SVG after each
+    // change, also a change that a component inside the SVG makes.
+    const [el] = useState(() => typeof document === 'undefined' ? null : document.createElement('div')), [svg, setSvg] = useState('');
+    useEffect(() => {
+        if (!el) return;
+        const read = () => { const node = el.querySelector('svg'); setSvg(node ? new XMLSerializer().serializeToString(node) : ''); };
+        const changes = new MutationObserver(read);
+        changes.observe(el, {subtree: true, childList: true, attributes: true, characterData: true});
+        read();
+        return () => changes.disconnect();
+    }, [el]);
+    const image = src ?? svg;
+    useEffect(() => { give?.(owner.current, image ? [name, JSON.parse(JSON.stringify({image, width, height, pixelRatio}))] : null); }, [give, name, image, width, height, pixelRatio]);
+    useEffect(() => () => give?.(owner.current, null), [give]);
+    useEffect(() => {
+        if (!__DEV__) return;
+        if (!give) { console.warn(`[map-jr-gl] MapImage "${name}" is not inside MapJr, so no map gets the image. Put it into the children of MapJr.`); return; }
+        const timer = setTimeout(() => { if (!src && !el?.querySelector('svg')) console.warn(`[map-jr-gl] MapImage "${name}" has no image: its content has no <svg> element. Give an <svg> element as the content, or the URL of an image as "src".`); }, 1000);
+        return () => clearTimeout(timer);
+    }, [give]);
+    // (The value of a parameter in the SVG is the text of a slot of a template: `{{color}}`.)
+    const slots = Object.fromEntries((params ?? []).map(p => [p, `{{${p}}}`])) as Record<P, string>;
+    // (Nothing in the first render, as on the server: the map is not there yet.)
+    return el && host ? createPortal(typeof children === 'function' ? children(slots) : children, el) : null;
 }
 export type {MapHost, MapPointer, MapSpec, MapState, OverlayOptions, View};

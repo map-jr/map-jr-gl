@@ -5,7 +5,8 @@
  * the map does the rest. On a server the component can render the first view as SVG; in the browser the map takes
  * over that SVG, so a page from Nuxt shows a map before any script has run.
  */
-import {computed, defineComponent, getCurrentInstance, h, inject, provide, isProxy, isReactive, onBeforeUnmount, onMounted, onServerPrefetch, shallowRef, toRaw, toValue, watch, type ComputedRef, type MaybeRefOrGetter, type PropType, type ShallowRef} from 'vue';
+import {computed, defineComponent, getCurrentInstance, h, inject, provide, isProxy, isReactive, onBeforeUnmount, onMounted, onServerPrefetch, shallowRef, Teleport, toRaw, toValue, watch, type AllowedComponentProps, type ComponentCustomProps, type SetupContext, type SlotsType, type VNode, type VNodeProps, type ComputedRef, type MaybeRefOrGetter, type PropType, type ShallowRef} from 'vue';
+declare const __DEV__: boolean;
 import {createMap, type ControlSpec, type FeatureOptions, type FeaturePlace, type MapHost, type MapOverlay as Overlay, type OverlayOptions, type MapPointer, type MapSpec, type MapState, type View, type ViewInput} from './host.ts';
 import type {SSROverrides} from './style.ts';
 import type {RenderedFeature} from './map.ts';
@@ -68,6 +69,8 @@ const HOST = Symbol('map-jr') as unknown as import('vue').InjectionKey<ShallowRe
 
 /** The map of the `MapJr` component that this component is in (a ref; it has the map when the map has started). */
 export const useMapHost = () => inject(HOST, shallowRef(null));
+/** How a `MapImage` gives its image to the `MapJr` that it is in: its name and the image, or null when it has none. */
+const IMAGES = Symbol('map-jr-images') as unknown as import('vue').InjectionKey<(owner: object, image: [string, {image: string; width?: number; height?: number; pixelRatio?: number}] | null) => void>;
 /**
  * The features at a place of the map, kept up to date (see `watchFeatures` of the map). For a component inside
  * `<MapJr>`. The place and the options can be refs or getters.
@@ -124,6 +127,62 @@ export const MapOverlay = defineComponent({
         return () => h('div', {ref: el, style: 'display:none'}, slots.default?.());
     },
 });
+
+/** The props of `MapImage`. `P` has the names of the parameters. */
+export interface MapImageProps<P extends string = never> {
+    /** The name of the image, for `icon-image` of a style layer. */
+    name: string;
+    /** The names of the parameters of the image. The slot gets a prop for each one. */
+    params?: readonly P[];
+    /** The URL of an image, in place of an SVG in the slot. */
+    src?: string;
+    /** The size in CSS pixels. Without it, an SVG has the size of its `viewBox`, and another image has its own size. */
+    width?: number; height?: number;
+    /** The number of image pixels for one CSS pixel (2 for an image "@2x"). */
+    pixelRatio?: number;
+}
+/**
+ * An image for the style layers of the map, for the inside of `MapJr`. Write the SVG in the slot:
+ *
+ * ```vue
+ * <MapJr :map-style="style" :extend="places">
+ *   <MapImage name="pin" :params="['color']" v-slot="{color}">
+ *     <svg viewBox="0 0 24 31"><path :fill="color" d="M12 30C12 30 2 17 2 11a10 10 0 0 1 20 0c0 6-10 19-10 19z"/></svg>
+ *   </MapImage>
+ * </MapJr>
+ * ```
+ * A layer uses the image with `'icon-image': 'pin'`. A parameter gets its value for each feature of the layer: from the
+ * property of the feature with that name, or from `params` of the `image` expression of the layer. Vue renders the SVG
+ * one time, not one time for each feature. `<MapImage name="photo" src="/photo.png" />` is an image from a URL.
+ */
+export const MapImage = defineComponent(<P extends string>(props: MapImageProps<P>, {slots}: SetupContext<{}, SlotsType<{default?: (params: Record<P, string>) => any}>>) => {
+    // The image is a part of the description of the map, as an image of the prop `images` is: the map of this
+    // component gets it from `give`, and it finds what is different. (Two components can then have one name, and
+    // a component can go: the map has what the components that are there give.)
+    const give = inject(IMAGES, null), owner = {};
+    // The content is rendered into an element that is not in the page: a `<style>` or an id in the SVG is then no
+    // style and no id of the page. (On a server, and in the first render in the browser, the component renders nothing.)
+    const el = typeof document === 'undefined' ? null : document.createElement('div'), mounted = shallowRef(false), svg = shallowRef('');
+    const read = () => { const node = el!.querySelector('svg'); svg.value = node ? new XMLSerializer().serializeToString(node) : ''; };
+    // (Each change of the content is seen, also a change that a component inside the SVG makes.)
+    const changes = el && new MutationObserver(read);
+    const number = (v?: number) => v === undefined ? undefined : +v;
+    onMounted(() => {
+        mounted.value = true;
+        changes!.observe(el!, {subtree: true, childList: true, attributes: true, characterData: true});
+        if (__DEV__ && !give) console.warn(`[map-jr-gl] MapImage "${props.name}" is not inside MapJr, so no map gets the image. Put it into the content of MapJr.`);
+        // (The value of a parameter in the SVG is the text of a slot of a template: `{{color}}`.)
+        if (__DEV__) setTimeout(() => { if (!props.src && !svg.value && mounted.value) console.warn(`[map-jr-gl] MapImage "${props.name}" has no image: its content has no <svg> element. Write an <svg> in its slot, or give the URL of an image as "src".`); }, 1000);
+    });
+    watch(() => [props.name, props.src ?? svg.value, number(props.width), number(props.height), number(props.pixelRatio)] as const, ([name, image, width, height, pixelRatio]) =>
+        give?.(owner, image ? [name, JSON.parse(JSON.stringify({image, width, height, pixelRatio}))] : null), {immediate: true});
+    onBeforeUnmount(() => { mounted.value = false; changes?.disconnect(); give?.(owner, null); });
+    return () => mounted.value ? h(Teleport, {to: el}, slots.default?.(Object.fromEntries((props.params ?? []).map(p => [p, `{{${p}}}`])) as Record<P, string>)) : null;
+// (The type is written out. The type that `defineComponent` gives a generic function has no types for the slot.)
+}, {name: 'MapImage', props: ['name', 'params', 'src', 'width', 'height', 'pixelRatio']}) as unknown as new <const P extends string = never>(props: MapImageProps<P> & VNodeProps & AllowedComponentProps & ComponentCustomProps) => {
+    $props: MapImageProps<P>;
+    $slots: {default?: (params: Record<P, string>) => VNode[]};
+};
 
 /**
  * The map as a component. It fills its parent element, so give the parent a height.
@@ -201,11 +260,19 @@ export const MapJr = defineComponent({
             return lastData && Object.keys(out).length === Object.keys(lastData).length && Object.keys(out).every(id => out[id] === lastData![id]) ? lastData : lastData = out;
         });
         // (Each image is the object behind Vue's object: an image element or a bitmap cannot be copied.)
+        // The images of the `MapImage` components in this map, by component. They come after the images of the prop:
+        // with one name in both, the image of the component is used.
+        const owners = new Map<object, [string, NonNullable<MapSpec['images']>[string]]>(), fromChildren = shallowRef<NonNullable<MapSpec['images']>>({});
+        provide(IMAGES, (owner, image) => {
+            if (JSON.stringify(owners.get(owner) ?? null) === JSON.stringify(image)) return;
+            if (image) owners.set(owner, image); else owners.delete(owner);
+            fromChildren.value = Object.fromEntries(owners.values());
+        });
         const images = computed(() => {
-            if (!props.images) return undefined;
             const out: NonNullable<MapSpec['images']> = {};
             for (const name in props.images) out[name] = toRaw(props.images[name]);
-            return out;
+            Object.assign(out, fromChildren.value);
+            return props.images || owners.size ? out : undefined;
         });
         const layers = computed(() => props.interactiveLayers && [...props.interactiveLayers]);
         const controls = computed(() => props.controls && [...props.controls].map(c => toRaw(c)));
@@ -242,7 +309,7 @@ export const MapJr = defineComponent({
             // @ts-ignore: the package refers to itself, which the type check of this project does not resolve
             const server = await import('@map-jr/map-jr-gl/server') as typeof import('./server.ts');
             first.value = await server.renderFirstView({style: toRaw(props.mapStyle), center: view.center ?? [0, 0], zoom: view.zoom ?? 0, bearing: view.bearing, width: o.width ?? 800, height: o.height ?? 500,
-                markers: props.markers && plain(props.markers), overrides: o.overrides, attribution: props.attribution === false ? false : o.attribution});
+                markers: props.markers && plain(props.markers), images: props.images && toRaw(props.images) as Record<string, string>, overrides: o.overrides, attribution: props.attribution === false ? false : o.attribution});
         });
         return () => h('div', {class: 'map-jr-vue', style: 'position:relative;width:100%;height:100%'}, [
             h('div', {ref: el, style: 'position:absolute;inset:0', innerHTML: first.value}),

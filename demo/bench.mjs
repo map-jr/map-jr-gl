@@ -2,7 +2,7 @@
 // (The URLs are relative: the page is at /bench of the demo server, and in the folder bench/ of the gallery site.)
 import * as mapjr from '../dist/map-jr-gl-maplibre-compat.js';
 import * as maplibre from '../ml/maplibre-gl.mjs';
-import {manyMarkers} from './markers.mjs';
+import {manyMarkers, addImages, addMarkers} from './markers.mjs';
 
 maplibre.setWorkerUrl(new URL('../ml/maplibre-gl-worker.mjs', import.meta.url).href);
 const q = new URLSearchParams(location.search);
@@ -77,7 +77,8 @@ async function run(s) {
     if (s.markers) {
         const layer = manyMarkers(s.markers, VIEW.center, 0.05), a0 = performance.now();
         if (s.lib === 'maplibre') for (const d of layer.data) new maplibre.Marker({color: d.props.color}).setLngLat(d.lngLat).addTo(map);
-        else map.addMarkerLayer(layer);
+        // (A marker layer is a symbol layer with an image that is an SVG template: each marker fills its slots.)
+        else { await addImages(map); addMarkers(map, layer); }
         add = performance.now() - a0;
         await sleep(1500);
     }
