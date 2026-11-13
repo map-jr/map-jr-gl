@@ -4,7 +4,7 @@ import {readFile, writeFile, mkdir} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
 import makeStyle from './style.mjs';
-import {markers, view} from './markers.mjs';
+import {markers, images, view} from './markers.mjs';
 import {shield} from './shields.mjs';
 import {renderToSVG, renderToImage} from '../dist/server.js';
 import {Renderer} from '@takumi-rs/core';
@@ -36,8 +36,8 @@ const page = (body, head = '') => `<!doctype html><html><head><meta charset="utf
 const client = (q) => `<script type="module">
 // ?standalone loads the single-file build (worker embedded); ?from=<origin> loads the library from another origin, as a CDN would serve it.
 const params = new URLSearchParams(location.search);
-const {Map, NavigationControl, ScaleControl} = await import((params.get('from') ?? '') + (params.has('standalone') ? '/dist/map-jr-gl-maplibre-compat-standalone.js' : '/dist/map-jr-gl-maplibre-compat.js'));
-import {markers, view, photos, manyMarkers} from '/demo/markers.mjs';
+const {Map, Popup, NavigationControl, ScaleControl} = await import((params.get('from') ?? '') + (params.has('standalone') ? '/dist/map-jr-gl-maplibre-compat-standalone.js' : '/dist/map-jr-gl-maplibre-compat.js'));
+import {markers, view, photos, manyMarkers, addImages, addMarkers} from '/demo/markers.mjs';
 import {shield} from '/demo/shields.mjs';
 const q = new URLSearchParams(location.search);
 const map = window.map = new Map({container: 'map', style: q.get('style') || ('/style.json' + (q.has('local') ? '?local' : '')), ...view,
@@ -48,29 +48,45 @@ const map = window.map = new Map({container: 'map', style: q.get('style') || ('/
     src: 'https://cdn.jsdelivr.net/fontsource/fonts/open-sans:vf@latest/latin-wght-' + style + '.woff2'}))});
 map.setMissingStyleImageResolver(id => { const s = shield(id); if (s) return map.addImage(id, s.svg, s); });
 if (!q.has('nocontrols')) map.addControl(new NavigationControl()).addControl(new ScaleControl(), 'bottom-left');
-const layer = q.has('nomarkers') ? null : map.addMarkerLayer(structuredClone(markers));
-// ?photos adds markers with a photograph inside the SVG; ?markers=50000 adds that many pins to pan around.
-if (q.has('photos')) map.addMarkerLayer(structuredClone(photos));
-if (q.has('markers')) { const t0 = performance.now(); map.addMarkerLayer(manyMarkers(+q.get('markers'))); window.manyMs = performance.now() - t0; }
+// The markers are symbol layers with an image that is an SVG template. The pointer over a pin sets the state "hover"
+// of its feature, and the template gets its stroke from that state.
+const hover = ['boolean', ['feature-state', 'hover'], false];
+addImages(map);
+window.addMarkers = addMarkers; // (for the benchmark scripts, which add marker layers to this page)
+map.once('load', () => {
+  if (!q.has('nomarkers')) addMarkers(map, markers, {'icon-image': ['image', 'pin', {params: {stroke: ['case', hover, '#222', '#fff'], strokeWidth: ['case', hover, 3, 1.5]}}]});
+  // ?photos adds markers with a photograph inside the SVG; ?markers=50000 adds that many pins to pan around.
+  if (q.has('photos')) addMarkers(map, photos);
+  if (q.has('markers')) { const t0 = performance.now(); addMarkers(map, manyMarkers(+q.get('markers'))); window.manyMs = performance.now() - t0; }
+});
 const hud = document.getElementById('hud');
 let stats = '';
 const show = () => hud.textContent = 'renderer: ' + map.renderer + ' | zoom ' + map.getZoom().toFixed(2) + stats + (map.loaded() ? '' : ' | loading');
 map.on('stats', e => { stats = ' | ' + e.fps.toFixed(0) + ' fps, ' + e.frameMs.toFixed(1) + ' ms/frame'; show(); });
 map.on('move', show); map.on('load', () => { show(); window.mapLoaded = true; window.loadedAt = performance.now(); }); map.on('idle', () => window.mapIdle = (window.mapIdle || 0) + 1);
-map.on('markerenter', e => e.layer.setProps(e.index, {stroke: '#222', strokeWidth: 3}));
-map.on('markerleave', e => e.layer.setProps(e.index, {stroke: '#fff', strokeWidth: 1.5}));
-map.on('markerclick', e => {
-  window.lastMarkerClick = e.marker.props.label;
-  hud.textContent = 'clicked marker ' + (e.marker.props.label ?? e.marker.props.name);
-  // The marker grows and a callout points at it; map labels move out of the callout's way.
-  const body = document.createElement('div');
-  body.innerHTML = '<strong></strong><div style="color:#666;margin-top:2px"></div>';
-  body.firstChild.textContent = e.marker.props.name ?? 'Marker ' + e.marker.props.label;
-  body.lastChild.textContent = e.marker.lngLat.map(v => v.toFixed(4)).join(', ');
-  window.popup = e.layer.openPopup(e.index, body);
-});
+let over = null;
+const setHover = id => {
+  if (over !== null) map.setFeatureState({source: 'places', id: over}, {hover: false});
+  if ((over = id) !== null) map.setFeatureState({source: 'places', id}, {hover: true});
+  map.getCanvas().style.cursor = id === null ? '' : 'pointer';
+};
+map.on('mousemove', 'places', e => { if (e.features[0].id !== over) setHover(e.features[0].id); });
+map.on('mouseleave', 'places', () => setHover(null));
 map.on('click', async e => {
-  if (e.marker) return;
+  // A click on a pin: a popup points at the pin, above it.
+  const pins = await map.queryRenderedFeatures(e.point, {layers: ['places', 'photos'].filter(id => map.getLayer(id))});
+  if (pins.length) {
+    const {properties, geometry} = pins[0];
+    window.lastMarkerClick = properties.label;
+    hud.textContent = 'clicked marker ' + (properties.label ?? properties.name);
+    const body = document.createElement('div');
+    body.innerHTML = '<strong></strong><div style="color:#666;margin-top:2px"></div>';
+    body.firstChild.textContent = properties.name ?? 'Marker ' + properties.label;
+    body.lastChild.textContent = geometry.coordinates.map(v => v.toFixed(4)).join(', ');
+    window.popup?.remove();
+    window.popup = new Popup({offset: {bottom: [0, -46], top: [0, 4]}}).setLngLat(geometry.coordinates).setDOMContent(body).addTo(map);
+    return;
+  }
   const [features, elevation] = await Promise.all([map.queryFeatures(e.lngLat, {sources: Object.keys(map.getStyle().sources)}), map.queryElevation(e.lngLat).catch(() => null)]);
   hud.textContent = (elevation === null ? '' : elevation.toFixed(0) + ' m | ') + features.map(f => f.sourceLayer + (f.properties.name ? ' "' + f.properties.name + '"' : '')).join(', ');
 });
@@ -108,14 +124,14 @@ http.createServer(async (req, res) => {
         if (url.pathname === '/map.jpg') {
             const q = url.searchParams, ratio = +(q.get('ratio') || 1);
             const {image, contentType} = await renderToImage({style, ...view, zoom: +(q.get('zoom') || view.zoom), bearing: +(q.get('bearing') || 0),
-                width: +(q.get('w') || 1000), height: +(q.get('h') || 700), resolveImage: shield, markers: q.has('nomarkers') ? [] : [markers], rasteriser, pixelRatio: ratio});
+                width: +(q.get('w') || 1000), height: +(q.get('h') || 700), resolveImage: shield, images, markers: q.has('nomarkers') ? [] : [markers], rasteriser, pixelRatio: ratio});
             return send(200, contentType, image, {'cache-control': 'max-age=3600'});
         }
         if (url.pathname === '/ssr' || url.pathname === '/ssr.svg' || url.pathname === '/static') {
             const width = +(url.searchParams.get('w') || 1000), height = +(url.searchParams.get('h') || 700);
             const zoom = +(url.searchParams.get('zoom') || view.zoom), bearing = +(url.searchParams.get('bearing') || view.bearing);
             const t0 = performance.now();
-            const {svg, tiles} = await renderToSVG({style, ...view, zoom, bearing, width, height, resolveImage: shield, ssrOverrides: !url.searchParams.has('full'), markers: url.searchParams.has('nomarkers') ? [] : [markers]});
+            const {svg, tiles} = await renderToSVG({style, ...view, zoom, bearing, width, height, resolveImage: shield, ssrOverrides: !url.searchParams.has('full'), images, markers: url.searchParams.has('nomarkers') ? [] : [markers]});
             const ms = (performance.now() - t0).toFixed(0);
             if (url.pathname === '/ssr.svg') return send(200, 'image/svg+xml', svg, {'x-render-ms': ms});
             const preload = tiles.map(u => `<link rel="preload" as="fetch" crossorigin href="${u}">`).join('');

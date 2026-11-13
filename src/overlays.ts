@@ -5,7 +5,7 @@ import {cls} from './controls.ts';
 
 /**
  * DOM overlays with MapLibre's `Marker` and `Popup` API, for the cases where real HTML is wanted (rich content,
- * dragging, links). For many markers, a canvas marker layer (`map.addMarkerLayer`) is far cheaper.
+ * dragging, links). For many markers, a symbol layer with an image is far cheaper.
  */
 type Listener = (e: any) => void;
 class Evented {

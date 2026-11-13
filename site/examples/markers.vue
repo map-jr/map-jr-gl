@@ -17,30 +17,27 @@ const some = places.slice(0, 500);
 
 // (The markers are plain arrays, not refs: Vue does not make 50,000 markers reactive.)
 const layers = [
-  {id: 'dots', svg: dot, width: 12, height: 12, anchor: 'center', data: places.slice(500)},
+  {id: 'dots', image: 'dot', data: places.slice(500)},
   // 500 of the places are pins when the zoom is 12 or more, and dots below that.
-  {id: 'dots-below-pins', svg: dot, width: 12, height: 12, anchor: 'center', maxZoom: 12, data: some},
-  {id: 'pins', svg: pin, width: 24, height: 31, anchor: 'bottom', minZoom: 12, overlap: 'hide', collide: true, data: some},
+  {id: 'dots-below-pins', image: 'dot', maxZoom: 12, data: some},
+  {id: 'pins', image: 'pin', anchor: 'bottom', minZoom: 12, overlap: 'hide', data: some},
 ];
+// A marker layer is a layer of the style: a click finds its markers. The marker under the click, or null.
 const selected = shallowRef(null);
-const map = shallowRef(null);
-
-// The click on a marker is an event of the map.
-function started() {
-  map.value.host.listen('markerclick', e => { selected.value = e.marker; });
-}
 </script>
 
 <template>
+  <!-- An image is an SVG template with {{slots}}. Each marker fills the slots from its `props`. -->
   <MapJr
-    ref="map"
     :map-style="style"
     :initial-view="{center: NYC, zoom: 11.4}"
+    :images="{dot, pin}"
     :markers="layers"
-    @load="started"
+    :interactive-layers="['pins', 'dots-below-pins', 'dots']"
+    @click="e => selected = e.features[0] ?? null"
   >
-    <MapOverlay v-if="selected" :lng-lat="selected.lngLat" :offset="[0, -30]" popup @close="selected = null">
-      Marker at {{ selected.lngLat.map(v => v.toFixed(3)).join(', ') }}
+    <MapOverlay v-if="selected" :lng-lat="selected.geometry.coordinates" :offset="[0, selected.layer.id === 'pins' ? -30 : -6]" popup @close="selected = null">
+      Marker at {{ selected.geometry.coordinates.map(v => v.toFixed(3)).join(', ') }}
     </MapOverlay>
   </MapJr>
 </template>

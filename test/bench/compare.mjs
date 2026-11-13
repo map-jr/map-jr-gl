@@ -53,7 +53,7 @@ async function open(lib, markers) {
         await page.evaluate(async ({layer, lib}) => {
             const t0 = performance.now();
             if (lib === 'maplibre') for (const d of layer.data) new window.ml.Marker({color: d.props.color}).setLngLat(d.lngLat).addTo(window.map);
-            else window.map.addMarkerLayer(layer);
+            else window.addMarkers(window.map, layer); // (the page has the images already)
             window.markerAddMs = performance.now() - t0;
         }, {layer: manyMarkers(markers, VIEW.center, 0.05), lib});
         await page.waitForTimeout(2500);

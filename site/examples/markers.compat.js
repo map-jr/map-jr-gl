@@ -1,4 +1,4 @@
-import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
+import {Map, Popup} from '@map-jr/map-jr-gl/maplibre-compat';
 
 const style = 'https://tiles.openfreemap.org/styles/liberty';
 const NYC = [-74.0065, 40.7085];
@@ -13,15 +13,33 @@ const places = Array.from({length: 50000}, (_, i) => {
 });
 const some = places.slice(0, 500);
 
-// Marker layers are not a part of MapLibre GL JS. This entry has them as an addition.
+const points = list => ({type: 'FeatureCollection', features: list.map((place, id) => ({type: 'Feature', id, properties: place.props, geometry: {type: 'Point', coordinates: place.lngLat}}))});
+
+// The sources and the layers are those of MapLibre GL JS. One thing is an addition of this library: an image can be an
+// SVG template with {{slots}}, and each feature fills the slots from its properties.
 export default function (container, {show}) {
   const map = new Map({container, style, center: NYC, zoom: 11.4, attributionControl: {compact: true}});
 
-  map.addMarkerLayer({id: 'dots', svg: dot, width: 12, height: 12, anchor: 'center', data: places.slice(500)});
-  map.addMarkerLayer({id: 'dots-below-pins', svg: dot, width: 12, height: 12, anchor: 'center', maxZoom: 12, data: some});
-  map.addMarkerLayer({id: 'pins', svg: pin, width: 24, height: 31, anchor: 'bottom', minZoom: 12, overlap: 'hide', collide: true, data: some});
+  map.on('load', async () => {
+    await map.addImage('dot', dot);
+    await map.addImage('pin', pin);
+    map.addSource('rest', {type: 'geojson', data: points(places.slice(500))});
+    map.addSource('some', {type: 'geojson', data: points(some)});
+    // Icons that are always shown: the cost of a frame does not grow with their number.
+    const always = {'icon-image': 'dot', 'icon-allow-overlap': true, 'icon-ignore-placement': true};
+    map.addLayer({id: 'dots', type: 'symbol', source: 'rest', layout: always});
+    // 500 of the places are pins when the zoom is 12 or more, and dots below that.
+    map.addLayer({id: 'dots-below-pins', type: 'symbol', source: 'some', maxzoom: 12, layout: always});
+    // (Without `icon-allow-overlap`, the pins do not pile up, and map labels keep clear.)
+    map.addLayer({id: 'pins', type: 'symbol', source: 'some', minzoom: 12, layout: {'icon-image': 'pin', 'icon-anchor': 'bottom'}});
+  });
 
-  map.on('markerclick', e => e.layer.openPopup(e.index, `Marker at ${e.marker.lngLat.map(v => v.toFixed(3)).join(', ')}`));
+  let popup = null;
+  for (const id of ['pins', 'dots-below-pins', 'dots']) map.on('click', id, e => {
+    const at = e.features[0].geometry.coordinates;
+    popup?.remove();
+    popup = new Popup({offset: id === 'pins' ? 30 : 6}).setLngLat(at).setText(`Marker at ${at.map(v => v.toFixed(3)).join(', ')}`).addTo(map);
+  });
   map.on('stats', e => show(`50,000 markers, ${e.fps.toFixed(0)} frames per second.`));
   return map;
 }
