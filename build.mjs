@@ -131,7 +131,7 @@ report('page script, up front (' + upfront.join(' + ') + ')', Buffer.concat(upfr
 const upfrontDev = [...withStaticImports('map-jr-gl.dev.js', fromDist)];
 report('the same in the development build (' + upfrontDev.join(' + ') + ')', Buffer.concat(upfrontDev.map(f => readFileSync('dist/' + f))));
 report('map-jr-gl-worker.js (loaded in a worker)', readFileSync('dist/map-jr-gl-worker.js'));
-for (const f of readdirSync('dist').filter(f => /^map-jr-gl-.*-[\w-]{8}\.js$/.test(f))) if (!upfront.includes(f) && !upfrontDev.includes(f)) report(`${f} (main-thread engine, on demand)`, readFileSync('dist/' + f));
+for (const f of readdirSync('dist').filter(f => /^map-jr-gl-.*-[\w-]{8}\.js$/.test(f))) if (!upfront.includes(f) && !upfrontDev.includes(f)) report(`${f} (${f.startsWith('map-jr-gl-engine-entry') ? 'main-thread engine, ' : ''}on demand)`, readFileSync('dist/' + f));
 report('map-jr-gl-standalone.js (everything in one file)', readFileSync('dist/map-jr-gl-standalone.js'));
 report('server.js', readFileSync('dist/server.js'));
 
