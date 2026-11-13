@@ -1311,9 +1311,10 @@ export class Map {
                     const da = f.a.y - g.start[0].y, db = f.b.y - g.start[1].y, sideways = Math.abs(f.a.x - g.start[0].x) + Math.abs(f.b.x - g.start[1].x);
                     const together = Math.sign(da) === Math.sign(db) && Math.abs(da) > 4 && Math.abs(db) > 4 && sideways < Math.abs(da) + Math.abs(db);
                     g.mode = together && Math.abs(f.a.y - f.b.y) < 120 && Math.abs(f.dist - g.dist) < 12 ? 'pitch' : 'pinch';
-                    if (!this.dragging) this.fire('dragstart');
+                    if (!this.dragging) this.fire('dragstart', {originalEvent: e});
                     this.dragging = true;
                 }
+                if (g.mode !== 'undecided') this.fire('drag', {originalEvent: e});
                 if (g.mode === 'pitch') { if (this.touchPitch.isEnabled()) this.post({type: 'rotate', delta: 0, pitch: -(f.mid.y - g.mid.y) * 0.5}); }
                 else if (g.mode === 'pinch' && this.touchZoomRotate.isEnabled()) {
                     this.post({type: 'pan', dx: f.mid.x - g.mid.x, dy: f.mid.y - g.mid.y, x: f.mid.x, y: f.mid.y});
@@ -1334,8 +1335,9 @@ export class Map {
                 if (moved > 6) { tapDrag.zoomed = true; this.post({type: 'zoom', delta: dy * 0.01, x: tapDrag.x, y: tapDrag.y}); }
             } else if (rotating) { if (this.dragRotate.isEnabled()) this.post({type: 'rotate', delta: -dx * 0.4, pitch: -dy * 0.5}); } // right- or ctrl-drag: turn and tilt
             else if (moved > 3 && pointers.size === 1 && this.dragPan.isEnabled()) {
-                if (!this.dragging) this.fire('dragstart');
+                if (!this.dragging) this.fire('dragstart', {originalEvent: e});
                 this.dragging = true;
+                this.fire('drag', {originalEvent: e});
                 this.post({type: 'pan', dx, dy, x: p.x, y: p.y});
                 samples.push({t: performance.now(), x: p.x, y: p.y});
                 while (samples.length > 2 && samples[0].t < performance.now() - 160) samples.shift();
@@ -1368,6 +1370,7 @@ export class Map {
             if (pointers.size) return;
             const wasDragging = this.dragging;
             this.dragging = false;
+            if (wasDragging) this.fire('dragend', {originalEvent: e});
             if (tapDrag) {
                 if (!tapDrag.zoomed) {
                     // (The zoom waits for the listeners of `dblclick`, which the compat entry calls later: see `mouseEvent`.)
