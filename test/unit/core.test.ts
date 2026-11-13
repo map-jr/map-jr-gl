@@ -185,6 +185,16 @@ test('tiles: icons that need no place among the labels are a batch of the tile, 
     const names = (icon: unknown) => build({...free, 'icon-image': icon}, true, {pin: ['class', 'tone']}).icons!.poi.names;
     assert.ok(names('pin').every(name => /^pin\u001f[a-z_]+\u001f$/.test(name)), names('pin')[0]);
     assert.ok(names(['image', 'pin', {params: {tone: ['concat', '#', 'd00']}}]).every(name => /^pin\u001f[a-z_]+\u001f#d00$/.test(name)));
+    // A template inside `format` text gets the name of its variant in the same way.
+    const text = build({'text-field': ['format', ['image', 'pin', {params: {tone: '#d00'}}], {}, ['get', 'name'], {}]}, true, {pin: ['class', 'tone']}).labels.poi.map(l => l.text);
+    assert.ok(text.length > 0 && text.every(t => /^pin\u001f[a-z_]+\u001f#d00/.test(t)), JSON.stringify(text[0]));
+});
+
+test('images: a template in a pattern property names its variant, with the values of `params` in the order of the slots', async () => {
+    const {variantName} = await import('../../src/markers.ts');
+    const name = compileProp(['image', 'hatch', {params: {width: 2, color: 'red'}}], 'string', '').eval(0);
+    assert.equal(variantName(name, {hatch: ['color', 'width', 'gap']}), ['hatch', 'red', '2', ''].join(VARIANT));
+    assert.equal(variantName(name, {}), 'hatch', 'a name that is no template loses its params');
 });
 
 test('queries: features are found from raw tile data, with filters and geometry', () => {

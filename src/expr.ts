@@ -377,7 +377,7 @@ export function compileExpr(e: any, flags: Flags): Fn {
             const parts: Fn[] = [];
             for (let i = 1; i < e.length; i++) {
                 const part = e[i];
-                if (Array.isArray(part) && part[0] === 'image') { const name = compileExpr(part[1], flags); parts.push(c => { const n = name(c); return n ? IMAGE_OPEN + n + IMAGE_CLOSE : ''; }); }
+                if (Array.isArray(part) && part[0] === 'image') { const name = compileExpr(part, flags); parts.push(c => { const n = name(c); return n ? IMAGE_OPEN + n + IMAGE_CLOSE : ''; }); }
                 else if (typeof part !== 'object' || Array.isArray(part)) {
                     // The options after a section change its size, font or colour. They go in the string as a marker
                     // before the section (see STYLE_OPEN); an empty marker after the section ends them.
