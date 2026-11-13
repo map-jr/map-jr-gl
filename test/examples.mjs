@@ -36,9 +36,9 @@ for (const file of readdirSync(dir).sort()) {
 {
     const tsc = path.resolve(import.meta.dirname, '../node_modules/.bin/tsc'), run = spawnSync(tsc, ['-p', path.resolve(import.meta.dirname, 'types')], {encoding: 'utf8', shell: process.platform === 'win32'});
     const errors = `${run.stdout ?? ''}${run.stderr ?? ''}${run.error ?? ''}`.split('\n').filter(l => /error/i.test(l));
-    for (const [file, entry] of [['maplibre-code.ts', '@map-jr/map-jr-gl/maplibre-compat'], ['main-code.ts', '@map-jr/map-jr-gl']]) {
+    for (const [file, entry] of [['maplibre-code.ts', '@map-jr/map-jr-gl/maplibre-compat'], ['main-code.ts', '@map-jr/map-jr-gl'], ['adapters-code.tsx', '@map-jr/map-jr-gl/react']]) {
         // (An error that names neither file, such as missing built types, fails both checks.)
-        const mine = errors.filter(l => l.includes(file) || !/(maplibre|main)-code\.ts/.test(l));
+        const mine = errors.filter(l => l.includes(file) || !/(maplibre|main|adapters)-code\.tsx?/.test(l));
         check(`types/${file} (${entry})`, run.status === 0 || mine.length === 0, mine.slice(0, 5).join(' | '));
     }
 }

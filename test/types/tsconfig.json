@@ -1,8 +1,8 @@
 {
   "compilerOptions": {
     "target": "ES2022", "module": "ESNext", "moduleResolution": "bundler", "strict": true, "noEmit": true,
-    "lib": ["ES2023", "DOM", "DOM.Iterable"], "types": [],
-    "paths": {"@map-jr/map-jr-gl": ["../../dist/types/index.d.ts"], "@map-jr/map-jr-gl/controls": ["../../dist/types/control-specs.d.ts"], "@map-jr/map-jr-gl/maplibre-compat": ["../../dist/types/maplibre-compat.d.ts"]}
+    "lib": ["ES2023", "DOM", "DOM.Iterable"], "types": [], "jsx": "react-jsx",
+    "paths": {"@map-jr/map-jr-gl": ["../../dist/types/index.d.ts"], "@map-jr/map-jr-gl/controls": ["../../dist/types/control-specs.d.ts"], "@map-jr/map-jr-gl/maplibre-compat": ["../../dist/types/maplibre-compat.d.ts"], "@map-jr/map-jr-gl/react": ["../../dist/types/react.d.ts"]}
   },
-  "include": ["*.ts"]
+  "include": ["*.ts", "*.tsx"]
 }

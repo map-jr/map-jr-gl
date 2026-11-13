@@ -108,6 +108,57 @@ With a listener for `close`, a popup has a button to close it.
 The content is Vue content: it can have components, events and reactive values. Use `MapOverlay` for some elements.
 For many markers, use the `markers` prop: those are drawn on the canvas.
 
+### An image in the template
+
+`MapImage` gives an image to the style layers of the map. Use it inside `MapJr`, and write the SVG in its slot. A
+layer uses the image by its name in `icon-image`.
+
+```vue
+<script setup>
+import {MapJr, MapImage} from '@map-jr/map-jr-gl/vue';
+
+const places = {type: 'FeatureCollection', features: [
+  {type: 'Feature', properties: {color: '#d6453d'}, geometry: {type: 'Point', coordinates: [-74.006, 40.7128]}},
+  {type: 'Feature', properties: {color: '#2f7fd1'}, geometry: {type: 'Point', coordinates: [-73.9857, 40.7484]}},
+]};
+const extend = {
+  sources: {places: {type: 'geojson', data: places}},
+  layers: [{id: 'places', type: 'symbol', source: 'places', layout: {'icon-image': 'pin', 'icon-anchor': 'bottom', 'icon-allow-overlap': true}}],
+};
+</script>
+
+<template>
+  <MapJr map-style="https://tiles.openfreemap.org/styles/liberty" :initial-view="{center: [-73.996, 40.73], zoom: 11.5}" :extend="extend">
+    <MapImage name="pin" :params="['color']" v-slot="{color}">
+      <svg viewBox="0 0 24 31"><path :fill="color" stroke="#fff" d="M12 30C12 30 2 17 2 11a10 10 0 0 1 20 0c0 6-10 19-10 19z"/></svg>
+    </MapImage>
+  </MapJr>
+</template>
+```
+
+| Prop | Meaning |
+|---|---|
+| `name` | The name of the image. Required. |
+| `params` | The names of the parameters of the image. The slot gets a prop for each name. |
+| `src` | The URL of an image, in place of an SVG in the slot: `<MapImage name="photo" src="/photo.png" />`. |
+| `width`, `height` | The size in CSS pixels. Without them, an SVG has the size of its `viewBox`, and another image has its own size. |
+| `pixel-ratio` | The number of image pixels for one CSS pixel. The default is 1. |
+
+A parameter is not a value of Vue. Each feature of the layer gives it a value: the property of the feature that has
+the name of the parameter, or the value of an expression in the layer (`['image', 'pin', {params: {color: ...}}]`).
+See [An image that is a template](api.md#an-image-that-is-a-template). Vue renders the SVG one time, and the map
+draws it one time for each different set of values.
+
+- Bind a parameter to an attribute (`:fill="color"`) or write it as text (`<text>{{ label }}</text>`).
+- The rest of the SVG is Vue content, also components. When it changes, the map gets the image again.
+- The SVG is not in the page: a `<style>` or an `id` inside it has no effect on the page.
+- An image of a `MapImage` is used before an image of the prop `images` with the same name. With two `MapImage` of
+  one name, the map has the image while one of them is there.
+- In the development build, a `MapImage` outside `MapJr`, and a `MapImage` with no `<svg>` and no `src`, give a
+  warning.
+- With TypeScript, a prop of the slot that is not in `params` is a type error.
+- The server renderer does not draw the image.
+
 A component of your own inside `MapJr` gets the map with `useMapHost()` (a ref).
 
 `useMapFeatures(at, options)` gives the features at a place as a ref that stays up to date (see `watchFeatures` in [the API](api.md#queries)). The place and the options can be refs or functions:
@@ -230,7 +281,7 @@ With the module, a page uses the components without an import:
 </template>
 ```
 
-- `MapJr` and `MapOverlay` are registered, and `useMap`, `useMapHost` and `useMapFeatures`.
+- `MapJr`, `MapOverlay` and `MapImage` are registered, and `useMap`, `useMapHost` and `useMapFeatures`.
 - The controls have longer names, because `scale` and `navigation` are common words: `navigationControl()`,
   `scaleControl()`, `fullscreenControl()`, `geolocateControl()`, `terrainControl()`.
 - `LazyMapJr` puts the code of the map into a file of its own. With `hydrate-on-visible`, the browser loads that file
