@@ -28,7 +28,7 @@ The name of the package is `@map-jr/map-jr-gl`
 - A symbol layer draws icons that are always shown (no text, `icon-allow-overlap`) from buffers on the GPU. The cost
   of a frame does not grow with their number, unless labels must keep away from them (#122).
 - A query for drawn features finds a feature of a symbol layer where its icon is drawn. Before, it was found within
-  10 pixels of its point (#124).
+  10 pixels of its point (#124). In one layer, the feature that is drawn on top comes first.
 - The adapters for Vue and React have the component `MapImage`: an image for the style layers, with the SVG
   written in the template and its parameters as the props of the slot (#128).
 - An SVG image with slots (`{{name}}`) is a template. Each feature gives the slots their values, from its

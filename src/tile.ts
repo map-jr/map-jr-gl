@@ -146,7 +146,7 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
             type Piece = {base: any; ring: number[]; type: number; along: boolean; spacing: number; key: number};
             const pieces: Piece[] = [], starts = new Map<string, Piece>(), ends = new Map<string, Piece>();
             // (The icons of `IconBatch`. The layer gives them one anchor, offset, alignment and colour, and no order.)
-            const plain = direct && !sorted && !p.iconAnchor.dd && !p.iconOffset.dd && !p.iconAlign.dd && !p.iconColor.dd;
+            const plain = direct && !sorted && !p.iconAnchor.dd && !p.iconOffset.dd && !p.iconAlign.dd && !p.iconColor.dd && !p.iconPadding.dd;
             const iconNames = new Map<string, number>(), iconName: number[] = [], iconPos: number[] = [], iconRotate: number[] = [], iconSize: number[] = [], iconAlpha: number[] = [];
             let iconAvoid: boolean | undefined;
             for (const f of vl.features) {
@@ -157,7 +157,9 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
                 let text = tokens(p.field.eval(z, f));
                 // An image that is an SVG template: the name gets the value of each slot of the template, from `params` of
                 // the `image` expression, or else from the property of the feature that has the name of the slot.
-                const icon = String(p.icon.eval(z, f) ?? ''), [image, ...given] = icon.includes(VARIANT) ? icon.split(VARIANT) : [tokens(icon)], slots = templates?.[image];
+                const icon = String(p.icon.eval(z, f) ?? ''), [image, ...given] = icon.includes(VARIANT) ? icon.split(VARIANT) : [tokens(icon)];
+                // (The name comes from data: `toString` is no template.)
+                const slots = templates && Object.hasOwn(templates, image) ? templates[image] : undefined;
                 const iconName = slots ? [image, ...slots.map(s => given.find(g => g.startsWith(s + '='))?.slice(s.length + 1) ?? String(f.properties[s] ?? '').replaceAll(VARIANT, ''))].join(VARIANT) : image;
                 if (!text && !iconName) continue;
                 const tt = p.transform.eval(z, f);

@@ -213,8 +213,9 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
         if (!images.has(name)) {
             // An image of `images`: for a template, the name has the value of each slot (see `buildTile`).
             const [image, ...values] = name.split(VARIANT), own = documents.get(image);
-            let img = o.resolveImage?.(name);
-            if (own && !img) {
+            // (`resolveImage` is asked for a name that `images` does not have, and never for the name of a variant.)
+            let img = own || values.length ? undefined : o.resolveImage?.(name);
+            if (own) {
                 const slots = templateSlots(own.image), box = /viewBox\s*=\s*["']\s*[\d.-]+[\s,]+[\d.-]+[\s,]+([\d.]+)[\s,]+([\d.]+)/.exec(own.image);
                 img = {svg: fillTemplate(own.image, Object.fromEntries(slots.map((s, i) => [s, values[i]]))), width: own.width ?? (box ? +box[1] : 24), height: own.height ?? (box ? +box[2] : 24)};
             }

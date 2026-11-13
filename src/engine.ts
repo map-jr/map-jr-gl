@@ -1,6 +1,6 @@
 import {heightsChanged} from './geo.ts';
 import {EXTENT, HEIGHT_GRID, TILE_SIZE, Transform, bezier, groundHeight, clamp, latFromMerc, lngFromMerc, mercX, mercY, type LngLatLike, type TileID} from './geo.ts';
-import {compileFor, type MapStates} from './expr.ts';
+import {compileFor, type Feature, type MapStates} from './expr.ts';
 import {VARIANT} from './markers.ts';
 import {layerRules} from './rules.ts';
 import {compileLayer, isGeometrySource, loadSprite, tileURL, type CompiledLayer, type FontSource, type ResolvedStyle, type Sprite, type SpriteIcon} from './style.ts';
@@ -185,9 +185,15 @@ export class Engine {
     private styleFonts = '';
     private images = new Map<string, SpriteIcon & {custom: true}>();
     private missing = new Set<string>();
-    /** The images of the map changed: the icons that the tiles have in buffers are made again (ten times a second at most, because images often come one after another). */
-    private iconsDirty = false;
-    private iconsAt = 0;
+    /** The images of the map changed (`iconsRev` counts the changes): the icons that the tiles have in buffers are made again. */
+    private iconsRev = 0;
+    private iconsDone = 0;
+    /** The last change that a frame saw, when it saw it, and when the first change since the last refresh was. */
+    private iconsSeen = 0;
+    private iconsLast = 0;
+    private iconsSince = 0;
+    /** An image that the map had is gone or has another place: each buffer is made again, not only those that wait for an image. */
+    private iconsAll = false;
     private dem = new Map<string, Promise<{width: number; height: number; data: Uint8ClampedArray} | null>>();
     private dpr = 1;
 
@@ -567,7 +573,7 @@ export class Engine {
         }
         this.renderer.setIcons(all ?? loaded[0].image, width, height);
         this.sprite = {icons, image: '', width, height};
-        this.iconsDirty = true;
+        this.iconsRev++; this.iconsAll = true;
         this.styleVersion++;
         this.invalidate();
     }
@@ -587,7 +593,8 @@ export class Engine {
     }
 
     private icon = (name: string) => {
-        const found = this.images.get(name) ?? this.sprite?.icons[name];
+        // (The name can come from data: `toString` is no icon of the sprite.)
+        const found = this.images.get(name) ?? (this.sprite && Object.hasOwn(this.sprite.icons, name) ? this.sprite.icons[name] : undefined);
         // Ask the page for images the style names but nothing provides (once each, and only after the sprite has had its chance).
         if (!found && (this.sprite || !this.spriteUrl) && !this.missing.has(name)) {
             this.missing.add(name);
@@ -694,20 +701,21 @@ export class Engine {
                 break;
             case 'fonts': this.loadFonts(c.fonts); break;
             case 'image': {
+                this.dropImage(c.name);
                 const rect = this.addSprite(c.w, c.h, c.data);
                 if (rect) this.images.set(c.name, {x: rect[0], y: rect[1], width: c.w, height: c.h, pixelRatio: c.w / c.width, custom: true, stretchX: c.stretchX, stretchY: c.stretchY, content: c.content, textFitWidth: c.textFitWidth, textFitHeight: c.textFitHeight});
                 this.styleVersion++;
-                this.placeDirty = this.iconsDirty = true;
+                this.placeDirty = true; this.iconsRev++;
                 break;
             }
-            case 'removeImage': this.images.delete(c.name); this.placeDirty = this.iconsDirty = true; break;
+            case 'removeImage': this.dropImage(c.name); this.placeDirty = true; this.iconsRev++; break;
             case 'templates':
                 for (const b of this.backends) b.setTemplates(c.slots);
-                for (const names of [this.images, this.missing]) for (const name of [...names.keys()]) if (c.changed.includes(name.split(VARIANT)[0])) names.delete(name);
+                for (const name of [...this.images.keys(), ...this.missing]) if (c.changed.includes(name.split(VARIANT)[0])) { this.dropImage(name); this.missing.delete(name); }
                 // (Only tiles with shapes are built again: `band` is the zoom that such a tile was built for.)
                 if (c.rebuild) for (const t of this.tiles.values()) if (t.band !== undefined) { t.stale = true; t.rev = ++this.tilesVersion; }
                 this.styleVersion++;
-                this.placeDirty = this.iconsDirty = true;
+                this.placeDirty = true; this.iconsRev++;
                 break;
             case 'geojson': {
                 // New data for one source: keep drawing its current tiles and rebuild them in place, so nothing blinks.
@@ -754,11 +762,30 @@ export class Engine {
         this.tr.setLocationAt(lng, lat, x, y);
     }
 
+    /** The places in the texture of images that the map has no more, by size ("24x31"): an image of the same size takes one. */
+    private freed = new Map<string, [number, number][]>();
+    private atlasFull = false;
+    /** Takes an image from the map. Its place in the texture is free for an image of the same size (a template is drawn again with each change, in the same size). */
+    private dropImage(name: string) {
+        const img = this.images.get(name);
+        if (!img) return;
+        this.iconsAll = true;
+        const key = img.width + 'x' + img.height;
+        this.freed.set(key, [...this.freed.get(key) ?? [], [img.x, img.y]]);
+        this.images.delete(name);
+    }
     /** Copies an image into the dynamic atlas shared by markers and runtime-added icons. */
     private addSprite(w: number, h: number, data: Uint8Array): [number, number, number, number] | null {
-        const pen = this.spritePen;
+        const pen = this.spritePen, spare = this.freed.get(w + 'x' + h)?.pop();
+        // (The place of an image of this size that the map has no more: see `dropImage`.)
+        if (spare) { this.renderer.uploadSprite(spare[0], spare[1], w, h, data); return [spare[0], spare[1], w, h]; }
         if (pen[0] + w + 1 > SPRITE_ATLAS) { pen[0] = 1; pen[1] += pen[2] + 1; pen[2] = 0; }
-        if (pen[1] + h + 1 > SPRITE_ATLAS) { this.emit({type: 'error', message: 'Image atlas is full'}); return null; }
+        if (pen[1] + h + 1 > SPRITE_ATLAS) {
+            // (One message, not one for each image that follows.)
+            if (!this.atlasFull) this.emit({type: 'error', message: '[map-jr-gl] The texture of the images is full, so this image and the images after it are not drawn. Use fewer or smaller images. (An SVG template is drawn one time for each different set of values.)'});
+            this.atlasFull = true;
+            return null;
+        }
         this.renderer.uploadSprite(pen[0], pen[1], w, h, data);
         const rect: [number, number, number, number] = [pen[0], pen[1], w, h];
         pen[0] += w + 1;
@@ -784,23 +811,27 @@ export class Engine {
     /** The features that the given style layers draw in a rectangle of the screen, from the tiles of the present zoom. */
     private async queryRendered(c: Extract<Command, {type: 'queryRendered'}>): Promise<QueriedFeature[]> {
         const jobs: Promise<QueriedFeature[]>[] = [];
+        // (The symbol layers of the question whose features are tested with their icon, and the distance in pixels for their text.)
+        const radii = new Map<string, number>();
         for (const [name, src] of Object.entries(this.style.sources)) {
             const mine = c.sets.filter(s => s.source === name);
             if (!mine.length || !isGeometrySource(src)) continue;
-            // A feature of a symbol layer is found where its icon is drawn: the rectangle of the question grows by the
-            // reach of the icons of the layer, in the other direction (an icon that reaches 30 pixels up from its point
-            // is under a pointer that is 30 pixels above the point). Sets with the same rectangle are asked together.
-            const boxes = new Map<string, {box: number[]; sets: typeof mine}>();
+            // A feature of a symbol layer is found where its icon is drawn. The tiles are asked with a rectangle that
+            // has grown by the farthest reach of an icon of the layer, in the other direction (an icon that reaches 30
+            // pixels up from its point is under a pointer that is 30 pixels above the point). Each feature that
+            // comes back is then tested with its own icon (`underIcon`). Sets with the same rectangle are asked together.
+            const boxes = new Map<string, {box: number[]; sets: typeof mine; exact: boolean}>();
             for (const s of mine) {
                 const L = this.layers.find(l => l.id === s.layer), reach = L?.type === 'symbol' ? this.iconReach(L) : null, r = s.radius;
+                if (reach) radii.set(s.layer, r);
                 const box = reach ? [c.box[0] - Math.max(reach[2], r), c.box[1] - Math.max(reach[3], r), c.box[2] - Math.min(reach[0], -r), c.box[3] - Math.min(reach[1], -r)] : c.box, key = box.join();
-                const group = boxes.get(key) ?? {box, sets: []};
+                const group = boxes.get(key) ?? {box, sets: [], exact: !!reach};
                 group.sets.push(reach ? {...s, radius: 0} : s);
                 boxes.set(key, group);
             }
-            for (const {box, sets} of boxes.values()) for (const t of tilesUnderBox(this.tr, box, src.minzoom, src.maxzoom)) {
+            for (const {box, sets, exact} of boxes.values()) for (const t of tilesUnderBox(this.tr, box, src.minzoom, src.maxzoom)) {
                 jobs.push(this.queryBackend(name, t.z, t.x, t.y).query(tileURL(src, t.z, t.x, t.y), {
-                    source: name, z: t.z, x: t.x, y: t.y, px: 0, py: 0, radius: 0, box: t.box, geometry: c.geometry,
+                    source: name, z: t.z, x: t.x, y: t.y, px: 0, py: 0, radius: 0, box: t.box, geometry: c.geometry || exact,
                     sets: sets.map(s => ({layer: s.layer, sourceLayer: s.sourceLayer, filter: s.filter, also: s.also, radius: s.radius * t.scale})),
                 }));
             }
@@ -808,6 +839,9 @@ export class Engine {
         // A feature with an id that is in two tiles is given one time.
         const seen = new Set<string>();
         return (await Promise.all(jobs)).flat().filter(f => {
+            const L = radii.has(f.layer!) && this.layers.find(l => l.id === f.layer);
+            if (L && !this.underIcon(L, f, c.box, radii.get(f.layer!)!)) return false;
+            if (L && !c.geometry) delete f.geometry;
             if (f.id === undefined) return true;
             const key = `${f.layer}|${f.source}|${f.sourceLayer}|${f.id}`;
             return seen.has(key) ? false : (seen.add(key), true);
@@ -1234,20 +1268,18 @@ export class Engine {
         const place = this.placeDirty && now - this.lastPlace >= (zooming ? ZOOMING_PLACE_INTERVAL : PLACE_INTERVAL);
         if (place) this.fade = zooming ? ZOOMING_FADE : FADE;
         const grid = place ? new CollisionGrid() : null;
-        if (grid) this.reserve(grid, items);
         if (place) {
             this.placeDirty = false;
             this.lastPlace = now;
             this.placeZoom = tr.zoom;
             this.placeAngle = -tr.bearing * Math.PI / 180;
             const keep = new Set<string>(), resets = this.atlas.resets;
-            let placed = placeLabels(tr, all, this.layers, this.atlas, grid!, this.icon);
+            let placed = placeLabels(tr, all, this.layers, this.atlas, grid!, this.icon, L => this.reserve(grid!, items, L));
             if (this.atlas.resets !== resets) {
                 // The glyph atlas filled up and was emptied part-way through: earlier labels now point at stale
                 // glyphs. Place again; the fresh atlas only has to hold this view's text.
                 const again = new CollisionGrid();
-                this.reserve(again, items);
-                placed = placeLabels(tr, all, this.layers, this.atlas, again, this.icon);
+                placed = placeLabels(tr, all, this.layers, this.atlas, again, this.icon, L => this.reserve(again, items, L));
             }
             for (const p of placed) {
                 keep.add(p.key);
@@ -1285,10 +1317,15 @@ export class Engine {
             }
             labels.push({...p, x: p.x + dx, y: p.y + dy, icon: p.icon && {...p.icon, x: p.icon.x + dx, y: p.icon.y + dy}, opacity: st.opacity});
         }
-        if (this.iconsDirty && now - this.iconsAt >= 100) {
-            this.iconsDirty = false;
-            this.iconsAt = now;
-            for (const t of this.tiles.values()) if (t.gl?.icons) this.renderer.refreshIcons(t.gl);
+        if (this.iconsRev !== this.iconsDone) {
+            // Images often come one after another (the variants of a template, the answers to missing images). The
+            // buffers are made again when no image came for a tenth of a second, and after a second at the latest.
+            if (this.iconsRev !== this.iconsSeen) { this.iconsSeen = this.iconsRev; this.iconsLast = now; this.iconsSince ||= now; }
+            if (now - this.iconsLast >= 100 || now - this.iconsSince >= 1000) {
+                this.iconsDone = this.iconsRev; this.iconsSince = 0;
+                for (const t of this.tiles.values()) if (t.gl?.icons) this.renderer.refreshIcons(t.gl, this.iconsAll);
+                this.iconsAll = false;
+            }
         }
         // 3D terrain that has just been switched on, or a camera just sent somewhere new: until the height of the ground
         // at the centre is known the camera cannot be placed, and drawing from sea level would show the wrong view and
@@ -1308,7 +1345,7 @@ export class Engine {
             this.moving = animating;
             this.emit({type: 'camera', lng: tr.lng, lat: tr.lat, zoom: tr.zoom, bearing: tr.bearing, pitch: tr.pitch, elevation: tr.elevation, exaggeration: this.exaggeration, groundRange: tr.groundRange, padding: tr.padding, moving: animating});
         }
-        const busy = animating || fading || this.placeDirty || this.iconsDirty || behind || this.meshBehind;
+        const busy = animating || fading || this.placeDirty || this.iconsRev !== this.iconsDone || behind || this.meshBehind;
         const idle = complete && !busy && !settling && !this.spritePending && !this.contourWait && !this.atlas.loading;
         if (settling && !busy) setTimeout(() => this.repaint(), 200);
         if (this.contourWait) { this.contourWait = false; setTimeout(() => this.repaint(), CONTOUR_WAIT + 20); }
@@ -1340,20 +1377,56 @@ export class Engine {
      * half of the width and of the height of the box around it. `w` and `h` are the size of the image, and `turn` is
      * `icon-rotate` in radians. (The same rules as for an icon that is placed with the labels: see `placeLabels`.)
      */
-    private iconBox(L: CompiledLayer, w: number, h: number, size: number, turn: number): [number, number, number, number] {
-        const z = this.tr.zoom, anchor = L.p.iconAnchor.eval(z) as string, offset = L.p.iconOffset.eval(z) as number[], move = L.p.iconTranslate.eval(z) as number[] | null;
-        const angle = (L.p.iconAlign.eval(z) === 'map' ? -this.tr.bearing * Math.PI / 180 : 0) + turn, cos = Math.abs(Math.cos(angle)), sin = Math.abs(Math.sin(angle));
+    private iconBox(L: CompiledLayer, w: number, h: number, size: number, turn: number, f?: Feature): [number, number, number, number] {
+        const z = this.tr.zoom, anchor = L.p.iconAnchor.eval(z, f) as string, offset = L.p.iconOffset.eval(z, f) as number[], move = L.p.iconTranslate.eval(z) as number[] | null;
+        const angle = (L.p.iconAlign.eval(z, f) === 'map' ? -this.tr.bearing * Math.PI / 180 : 0) + turn, cos = Math.abs(Math.cos(angle)), sin = Math.abs(Math.sin(angle));
         return [(offset[0] + (anchor.includes('left') ? 0.5 : anchor.includes('right') ? -0.5 : 0) * w) * size + (move?.[0] ?? 0), (offset[1] + (anchor.includes('top') ? 0.5 : anchor.includes('bottom') ? -0.5 : 0) * h) * size + (move?.[1] ?? 0),
             (w * cos + h * sin) / 2 * size, (w * sin + h * cos) / 2 * size];
     }
 
+    /** The image with a name, or (for the name of a template) one of its variants: they all have one size. */
+    private imageNamed(name: string) {
+        const found = this.images.get(name) ?? (this.sprite && Object.hasOwn(this.sprite.icons, name) ? this.sprite.icons[name] : undefined);
+        if (found) return found;
+        for (const [key, image] of this.images) if (key.startsWith(name + VARIANT)) return image;
+    }
+
     /**
-     * How far from the point of a feature the icons of a symbol layer reach on the screen: to the left, up, to the right
-     * and down, in pixels (left and up are negative). It is found from the images that the tiles of the layer use now.
-     * Null: the tiles have no icon of the layer.
+     * Whether a feature of a symbol layer that a question found is drawn in the rectangle of the question (in pixels
+     * of the screen): its own icon, with its image, size, anchor, offset and turn, is in the rectangle, or its point is
+     * within `radius` pixels of it and the feature has text. (A feature with no point, and an icon whose image the map
+     * does not have, is found within `radius` pixels of its geometry as before.)
      */
+    private underIcon(L: CompiledLayer, q: QueriedFeature, box: number[], radius: number): boolean {
+        const tr = this.tr, z = tr.zoom, g = q.geometry, f: Feature = {type: 1, id: q.id, properties: q.properties};
+        const points = g?.type === 'Point' ? [g.coordinates as number[]] : g?.type === 'MultiPoint' ? g.coordinates as number[][] : null;
+        const image = this.imageNamed(String(L.p.icon.eval(z, f) ?? '').split(VARIANT)[0].replace(/\{([^}]+)\}/g, (_, k) => f.properties[k] ?? '').trim());
+        if (!points) return true;
+        const near = !image || !!String(L.p.field.eval(z, f) ?? ''), turn = L.p.iconRotate.eval(z, f) * Math.PI / 180;
+        return points.some(([lng, lat]) => {
+            const [x, y] = tr.project(lng, lat);
+            if (near && x >= box[0] - radius && x <= box[2] + radius && y >= box[1] - radius && y <= box[3] + radius) return true;
+            if (!image) return false;
+            // (On a tilted map a near icon is larger and a far icon is smaller, as it is drawn.)
+            const depth = tr.pitch ? tr.projectTile({z: 0, x: 0, y: 0, w: 0, key: ''}, mercX(lng) * EXTENT, mercY(lat) * EXTENT)[2] : 0;
+            const size = L.p.iconSize.eval(z, f) * (depth > 0 ? Math.min(4, 0.5 + 0.5 * tr.cameraDistance / depth) : 1);
+            const [cx, cy, hw, hh] = this.iconBox(L, image.width / image.pixelRatio, image.height / image.pixelRatio, size, turn, f);
+            return x + cx - hw <= box[2] && x + cx + hw >= box[0] && y + cy - hh <= box[3] && y + cy + hh >= box[1];
+        });
+    }
+
+    /**
+     * How far from the point of a feature the icons of a symbol layer can reach on the screen: to the left, up, to the
+     * right and down, in pixels (left and up are negative). It is found from the images that the tiles of the layer use
+     * now, and it is the reach of the largest one in each direction: a question asks the tiles with it, and tests each
+     * feature that comes back with its own icon. Null: the tiles have no icon of the layer.
+     */
+    private reaches = new Map<string, {at: string; reach: [number, number, number, number] | null}>();
     private iconReach(L: CompiledLayer): [number, number, number, number] | null {
-        const names = new Set<string>(), z = this.tr.zoom;
+        // (The answer is kept while the tiles, the images and the view are the same: a question comes with each move of the pointer.)
+        const tr = this.tr, z = tr.zoom, at = `${this.tilesVersion}|${this.tiles.size}|${this.styleVersion}|${this.iconsRev}|${z}|${tr.bearing}|${tr.pitch}`, kept = this.reaches.get(L.id);
+        if (kept?.at === at) return kept.reach;
+        const names = new Set<string>(), each = L.p.iconAnchor.dd || L.p.iconOffset.dd || L.p.iconRotate.dd || L.p.iconAlign.dd;
         let size = L.p.iconSize.dd ? 0 : L.p.iconSize.eval(z);
         for (const [key, t] of this.tiles) {
             if (!t.gl || !key.startsWith(L.source + '|')) continue;
@@ -1361,23 +1434,30 @@ export class Engine {
             if (b) { for (const name of b.names) names.add(name); if (b.size) for (const s of b.size) if (s > size) size = s; }
             for (const l of t.gl.labels[L.id] ?? []) if (l.icon) { names.add(l.icon.name); if (L.p.iconSize.dd) size = Math.max(size, l.icon.size, l.icon.size1); }
         }
-        let w = 0, h = 0;
-        for (const name of names) { const m = this.images.get(name) ?? this.sprite?.icons[name]; if (m) { w = Math.max(w, m.width / m.pixelRatio); h = Math.max(h, m.height / m.pixelRatio); } }
-        if (!w) return null;
-        // (An icon with a turn for each feature can reach as far as its corner in each direction.)
-        if (L.p.iconRotate.dd) w = h = Math.hypot(w, h);
-        const [cx, cy, hw, hh] = this.iconBox(L, w, h, size, L.p.iconRotate.dd ? 0 : L.p.iconRotate.eval(z) * Math.PI / 180);
-        return [cx - hw, cy - hh, cx + hw, cy + hh];
+        let w = 0, h = 0, reach: [number, number, number, number] | null = null;
+        for (const name of names) { const m = this.imageNamed(name); if (m) { w = Math.max(w, m.width / m.pixelRatio); h = Math.max(h, m.height / m.pixelRatio); } }
+        if (w) {
+            // (A tilted map can draw an icon up to four times larger. With an anchor, an offset or a turn for each
+            // feature, an icon can reach as far as its corner and its offset in each direction.)
+            size *= tr.pitch ? 4 : 1;
+            const [cx, cy, hw, hh] = this.iconBox(L, w, h, size, L.p.iconRotate.dd ? 0 : L.p.iconRotate.eval(z) * Math.PI / 180);
+            const far = Math.hypot(w, h) * size + Math.hypot(cx, cy) + 64 * size;
+            reach = each ? [-far, -far, far, far] : [cx - hw, cy - hh, cx + hw, cy + hh];
+        }
+        this.reaches.set(L.id, {at, reach});
+        return reach;
     }
 
-    /** Gives the icons that are always shown, and that labels avoid, their space among the labels. */
-    private reserve(grid: CollisionGrid, items: Map<string, RenderItem<GLTile>[]>) {
+    /**
+     * Gives the icons of a symbol layer that the tiles have in buffers, and that labels avoid (see `IconBatch`), their
+     * space among the labels. They are always shown, so each one gets its space when the placement comes to its layer:
+     * before the labels of that layer and of the layers below it, and after the labels of the layers above it, as for
+     * an icon that is placed.
+     */
+    private reserve(grid: CollisionGrid, items: Map<string, RenderItem<GLTile>[]>, only: CompiledLayer) {
         const tr = this.tr;
         const zoom = tr.zoom;
-        // The icons that the tiles have in buffers and that labels avoid (see `IconBatch`). They are always shown, so
-        // each one gets its space before the labels are placed.
-        for (const L of this.layers) {
-            if (L.type !== 'symbol' || !L.visible || zoom < L.minzoom || zoom >= L.maxzoom) continue;
+        for (const L of [only]) {
             for (const it of items.get(L.source!) ?? []) {
                 const b = it.tile.icons?.[L.id]?.src;
                 if (!b?.avoid) continue;

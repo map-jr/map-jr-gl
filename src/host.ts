@@ -273,7 +273,16 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
     const checks = (): Promise<typeof import('./mistakes.ts')> => __DEV__ ? import('./mistakes.ts') : Promise.reject();
     const checked: Checked = {map, warned: new Set(), spec: () => now, ready: () => alive && styled && state.get().loaded};
     const check = (kind: number, a?: unknown, b?: unknown) => { if (__DEV__) checks().then(m => m.check(checked, kind, a, b), () => {}); };
-    const restyle = (next: MapSpec) => { styled = false; map.setStyle(next.style, {transformStyle: (_, style) => { styled = true; check(4, style, next.extend); return withMarkers(extended(style, next.extend), next.markers); }}); };
+    // The data that each source has from the description: the GeoJSON of `data`, and the markers of a marker layer.
+    const sent = new globalThis.Map<string, unknown>();
+    const restyle = (next: MapSpec) => { styled = false; map.setStyle(next.style, {transformStyle: (_, style) => {
+        styled = true;
+        // (The sources of the new style have no data of the description yet: data that was given since `restyle` went to
+        // the sources of the style before. It is given again when the new style is there: see `giveData`.)
+        sent.clear();
+        check(4, style, next.extend);
+        return withMarkers(extended(style, next.extend), next.markers);
+    }}); };
     restyle(spec);
     // (The height of the container is read after a second, so that a container which gets its height a moment later gives no warning.)
     setTimeout(() => check(0), 1000);
@@ -337,7 +346,6 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
 
     // The GeoJSON data of `data`. A source gets its data when the style has it (a style from a URL comes later), and
     // again after a new style, which has the data of the style itself.
-    const sent = new globalThis.Map<string, unknown>();
     const giveData = () => {
         const give = (id: string, data: unknown, made?: (data: any) => unknown) => {
             if (sent.get(id) === data) return;
@@ -349,8 +357,9 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
         for (const m of now.markers ?? []) give(m.id, m.data, markerFeatures);
     };
     map.on('styledata', giveData);
-    // (An image that a marker layer names and that the map does not have. A style can name other images that nothing has.)
-    map.on('styleimagemissing', e => { if (now.markers?.some(m => m.image === e.id)) check(5, e.id); });
+    // An image that a marker layer names and that the map does not have. (A style can name other images that nothing
+    // has. An image from a URL, and an image of a later description, come a moment later: the check waits for them.)
+    map.on('styleimagemissing', e => setTimeout(() => { if (alive && !map.hasImage(e.id as string) && now.markers?.some(m => m.image === e.id)) check(5, e.id); }, 3000));
     // (At `idle`, and not when the style comes: an application can add a layer or a source itself in `load`.)
     map.on('idle', () => check(1));
 
@@ -374,7 +383,7 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
         if (next.cursor !== before?.cursor) map.setCursor(next.cursor ?? '');
         if (next.images !== before?.images) {
             const wanted = next.images ?? {};
-            for (const name of images.keys()) if (!(name in wanted)) { images.delete(name); map.removeImage(name); }
+            for (const name of images.keys()) if (!Object.hasOwn(wanted, name)) { images.delete(name); map.removeImage(name); }
             for (const name in wanted) {
                 const v = wanted[name], key = imageKey(v);
                 if (images.has(name) && images.get(name) === key) continue;

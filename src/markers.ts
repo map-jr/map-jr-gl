@@ -56,7 +56,9 @@ export function withMarkers(style: any, markers: MarkerLayerOptions[] | undefine
 }
 /** The data of the source of a marker layer: a point for each marker. The id of a feature is the index of its marker in `data`. */
 export function markerFeatures(data: MarkerInput[]) {
-    return {type: 'FeatureCollection', features: data.map((m, id) => ({type: 'Feature', id, properties: m.props ?? {}, geometry: {type: 'Point', coordinates: [m.lngLat[0], m.lngLat[1]]}}))};
+    // (A marker with no position is left out, and the other markers keep their index.)
+    return {type: 'FeatureCollection', features: data.map((m, id) => ({type: 'Feature', id, properties: m?.props ?? {}, geometry: {type: 'Point', coordinates: [+m?.lngLat?.[0], +m?.lngLat?.[1]]}}))
+        .filter(f => Number.isFinite(f.geometry.coordinates[0]) && Number.isFinite(f.geometry.coordinates[1]))};
 }
 
 export const escapeXML = (v: unknown) => String(v ?? '').replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);

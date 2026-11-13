@@ -159,7 +159,8 @@ for (const renderer of ['worker', 'main']) {
             const correct = said.splice(0);
             for (const [el, host] of [[ownEl, own], [hiddenEl, hidden], [lateEl, late]]) { host.destroy(); el.remove(); }
             // The same map with mistakes.
-            const spec = {...base, interactiveLayers: ['nope'], data: {nosuch: empty}, markers: [pin('a'), pin('a'), {id: 'old', svg: dot, width: 8, height: 8, data: []}, {...pin('gone'), image: 'nothing'}],
+            const spec = {...base, interactiveLayers: ['nope'], data: {nosuch: empty}, markers: [pin('a'), pin('a'), {id: 'old', svg: dot, width: 8, height: 8, data: []}, {...pin('gone'), image: 'nothing'},
+                    {...pin(t.style.layers[1].id), before: 'no-such-layer', data: [{lngLat: [-74.0065, 40.7085]}, {props: {}}, null]}],
                 images: {dot: '<svg viewBox="0 0 4 4"><rect width="4" height="4" fill="{{fill}}"/></svg>'},
                 extend: {sources: {icons: {type: 'geojson', data: empty}}, layers: [{id: 'lost', type: 'fill', source: 'missing', before: 'nonexistent'}, {id: 'icons', type: 'symbol', source: 'icons', layout: {'icon-image': ['image', 'dot', {params: {fill: '#d00', colour: '#00d'}}]}}]}};
             const badEl = div('height:150px'), bad = t.lib.createMap(badEl, spec);
@@ -179,8 +180,9 @@ for (const renderer of ['worker', 'main']) {
             console.warn = log;
             return {correct, said, place};
         }, renderer);
+        const styleLayer = await page.evaluate(() => window.t.style.layers[1].id);
         const expected = ['createMap(): the container has height 0', 'interactiveLayers: the style has no layer "nope"', 'data: the style has no GeoJSON source "nosuch"', 'queryFeatures(): the style has no layer "nope"',
-            'queryFeatures(): the style has no source "nope"', 'extend: the layer "lost" has before: "nonexistent"', 'extend: the layer "lost" uses the source "missing"', 'markers: two marker layers have the id "a"', 'images: a layer gives the parameter "colour" to the image "dot"', 'markers: the marker layer "old" has no "image"', 'markers: a marker layer has the image "nothing"',
+            'queryFeatures(): the style has no source "nope"', 'extend: the layer "lost" has before: "nonexistent"', 'extend: the layer "lost" uses the source "missing"', 'markers: two marker layers have the id "a"', 'images: a layer gives the parameter "colour" to the image "dot"', 'markers: the marker layer "old" has no "image"', 'markers: a marker layer has the image "nothing"', `markers: the marker layer "${styleLayer}" has the id of a layer of the style`, `markers: the marker layer "${styleLayer}" has before: "no-such-layer"`, `markers: the marker 1 of the marker layer "${styleLayer}" has no position`,
             'update(): "interactive" changed', 'update(): "initialView" changed', 'queryFeatures(): "sourceLayers" has an effect only', 'queryFeatures(): "radius" has an effect only in a query at a point or a position', 'queryFeatures(): "geometry" has an effect only', 'queryFeatures(): "zoom" has an effect only',
             'queryFeatures(): "layers" has no effect'];
         check(`[${renderer}] common mistakes: each gives one warning, a wrong place of a query is refused with a message, and a correct description gives no warning`,
@@ -223,16 +225,22 @@ for (const renderer of ['worker', 'main']) {
             t.host.update(t.spec = {...t.spec, markers: [layer([{lngLat: centre, props: {color: '#00d'}}], {before: first, anchor: 'bottom', collide: true, minZoom: 3, overlap: 'hide'})]});
             await wait(900);
             const changed = map.getLayer('pins'), below = map.getStyle().layers.findIndex(l => l.id === 'pins') === 0;
+            // Another option, and other data at once: the new style comes a moment later, and its source gets the data.
+            // A marker with no position is left out, and the others keep their index.
+            t.host.update(t.spec = {...t.spec, markers: [layer([{lngLat: centre, props: {color: '#00d'}}], {anchor: 'top'})]});
+            t.host.update(t.spec = {...t.spec, markers: [layer([{props: {}}, {lngLat: centre, props: {color: '#0a0'}}], {anchor: 'top'})]});
+            await wait(1200);
+            const late = await t.host.queryFeatures({x: 450, y: 310}, {layers: ['pins']});
             const {images: _, markers: __, ...rest} = t.spec;
             t.host.update(t.spec = rest);
             await wait(700);
             return {one: one.length, id: one[0]?.id, top, layout: made?.layout, moved, back: back.length, index: back[0]?.id, color: back[0]?.properties.color, sameStyle,
-                changed: changed && {...changed.layout, minzoom: changed.minzoom}, below, none: !map.getLayer('pins') && !map.getSource('pins')};
+                changed: changed && {...changed.layout, minzoom: changed.minzoom}, below, late: late.map(f => f.id + ' ' + f.properties.color).join(), none: !map.getLayer('pins') && !map.getSource('pins')};
         });
-        check(`[${renderer}] a marker layer is a source and a symbol layer: it follows the description, its markers are features with the index as the id, and new data is no new style`,
+        check(`[${renderer}] a marker layer is a source and a symbol layer: it follows the description, its markers are features with the index as the id, new data is no new style, and data that comes with another option is not lost`,
             markers.one === 1 && markers.id === 0 && markers.top === 'pins' && JSON.stringify(markers.layout) === JSON.stringify({'icon-image': 'disc', 'icon-anchor': 'center', 'icon-allow-overlap': true, 'icon-ignore-placement': true})
             && markers.moved === 0 && markers.back === 1 && markers.index === 1 && markers.color === '#00d' && markers.sameStyle
-            && JSON.stringify(markers.changed) === JSON.stringify({'icon-image': 'disc', 'icon-anchor': 'bottom', 'icon-allow-overlap': false, 'icon-ignore-placement': false, minzoom: 3}) && markers.below && markers.none, JSON.stringify(markers));
+            && JSON.stringify(markers.changed) === JSON.stringify({'icon-image': 'disc', 'icon-anchor': 'bottom', 'icon-allow-overlap': false, 'icon-ignore-placement': false, minzoom: 3}) && markers.below && markers.late === '1 #0a0' && markers.none, JSON.stringify(markers));
 
         {
         // Images: added, replaced and removed by the description. A symbol layer draws a square of 40 pixels at the centre.
@@ -293,7 +301,8 @@ for (const renderer of ['worker', 'main']) {
             const point = (id, coordinates, properties) => ({type: 'Feature', id, properties, geometry: {type: 'Point', coordinates}});
             t.tiles = icon => ({...t.style, sources: {...t.style.sources, spot: {type: 'geojson', data: {type: 'FeatureCollection', features: [point(1, c, {colour: '#f0f', kind: 'a'}), point(2, right, {colour: '#0ff', kind: 'b'})]}}},
                 layers: [...t.style.layers, {id: 'spot', type: 'symbol', source: 'spot', layout: {'icon-image': icon, 'icon-allow-overlap': true, 'icon-ignore-placement': true}}]});
-            t.imageErrors = [];
+            t.imageErrors = []; t.asked = [];
+            t.host.listen('styleimagemissing', e => t.asked.push(e.id));
             t.host.update(t.spec = {...t.spec, style: t.tiles('tile'), images: {tile: t.square('{{colour}}')}, onError: e => t.imageErrors.push(e.message)});
         });
         const fromProperties = await becomes('#f0f #f0f #0ff #0ff');
@@ -312,6 +321,24 @@ for (const renderer of ['worker', 'main']) {
         await page.evaluate(() => { const t = window.t; t.host.update(t.spec = {...t.spec, style: t.tiles(['image', 'tile', {params: {colour: ['concat', '#0ff', '"/><rect width="40" height="40" fill="#f00']}}])}); });
         await page.waitForTimeout(1500);
         const unsafe = await halves();
+        // A large template that is replaced many times: each variant takes the place in the texture of the variant before
+        // it, so the texture does not fill. Then the template goes, and a plain image has its name: the page hears of no
+        // image with the name of a variant. A template that is not well-formed gives one error with its name.
+        const replaced30 = await page.evaluate(async () => {
+            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms));
+            const big = n => `<svg viewBox="0 0 40 40" data-n="${n}"><rect width="40" height="40" fill="{{colour}}"/></svg>`;
+            t.host.update(t.spec = {...t.spec, style: t.tiles('tile')});
+            for (let n = 0; n < 30; n++) { t.host.update(t.spec = {...t.spec, images: {tile: {image: big(n), width: 400, height: 400}}}); await wait(120); }
+            await wait(600);
+            const full = t.imageErrors.filter(e => e.includes('texture of the images')).length;
+            t.host.update(t.spec = {...t.spec, images: {tile: t.square('#0ff')}});
+            await wait(600);
+            const asked = t.asked.filter(id => id.includes('\u001f')).length, before = t.imageErrors.length;
+            t.host.update(t.spec = {...t.spec, images: {tile: '<svg viewBox="0 0 40 40"><rect width="40" height="40" fill="{{colour}}"></svg>'}});
+            for (let i = 0; i < 60 && t.imageErrors.length === before; i++) await wait(100);
+            await wait(500);
+            return {full, asked, broken: t.imageErrors.slice(before)};
+        });
         // More different values than the limit: one error names the image, and the map goes on.
         const many = await page.evaluate(async () => {
             const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), c = t.host.unproject({x: 450, y: 300}), before = t.imageErrors.length;
@@ -327,8 +354,9 @@ for (const renderer of ['worker', 'main']) {
         });
         check(`[${renderer}] an image that is an SVG template: slots get the properties of each feature or the params of the image expression (also with feature-state), another template draws the variants again, a value is not markup, and too many variants give one error`,
             fromProperties === '#f0f #f0f #0ff #0ff' && fromParams === '#ff0 #ff0 #00f #00f' && otherTemplate === '#000 #ff0 #000 #00f' && stateOff === '#000 #0f0 #000 #0f0' && stateOn === '#000 #0f0 #000 #f00'
-            && !unsafe.includes('#f00') && many.length === 1 && many[0].startsWith('[map-jr-gl] The image "tiny" has more than 1000 different sets of values'),
-            JSON.stringify({fromProperties, fromParams, otherTemplate, stateOff, stateOn, unsafe, many}));
+            && !unsafe.includes('#f00') && many.length === 1 && many[0].startsWith('[map-jr-gl] The image "tiny" has more than 1000 different sets of values')
+            && replaced30.full === 0 && replaced30.asked === 0 && replaced30.broken.length === 1 && replaced30.broken[0].startsWith('[map-jr-gl] The image "tile" cannot be drawn with the values of its slots'),
+            JSON.stringify({fromProperties, fromParams, otherTemplate, stateOff, stateOn, unsafe, many, replaced30}));
 
         // Icons that need no place among the labels are drawn from buffers of the tiles. The picture is the same as for
         // icons that are placed with the labels (a sort key makes the layer use that way). The style has no labels here:
@@ -383,9 +411,10 @@ for (const renderer of ['worker', 'main']) {
         const reach = await page.evaluate(async () => {
             const t = window.t, c = t.host.unproject({x: 450, y: 300}), wait = ms => new Promise(r => setTimeout(r, ms));
             const point = {type: 'Feature', id: 1, properties: {}, geometry: {type: 'Point', coordinates: c}};
-            t.spot = (icon, text) => ({...t.style, sources: {...t.style.sources, spot: {type: 'geojson', data: point}}, layers: [...t.style.layers.filter(l => l.type !== 'symbol'),
-                {id: 'spot-icon', type: 'symbol', source: 'spot', layout: {'icon-image': 'square', 'icon-allow-overlap': true, ...icon}},
-                ...(text ? [{id: 'spot-text', type: 'symbol', source: 'spot', layout: {'text-field': 'Here', 'text-size': 14}}] : [])]});
+            // (`text`: a layer with a label at the point, 'above' or 'below' the layer of the icon.)
+            t.spot = (icon, text, data = point) => { const label = {id: 'spot-text', type: 'symbol', source: 'spot', layout: {'text-field': 'Here', 'text-size': 14}};
+                return {...t.style, sources: {...t.style.sources, spot: {type: 'geojson', data}}, layers: [...t.style.layers.filter(l => l.type !== 'symbol'), ...(text === 'below' ? [label] : []),
+                    {id: 'spot-icon', type: 'symbol', source: 'spot', layout: {'icon-image': 'square', 'icon-allow-overlap': true, ...icon}}, ...(text === 'above' ? [label] : [])]}; };
             const found = async (icon, places) => {
                 t.host.update(t.spec = {...t.spec, style: t.spot(icon, false), images: {square: t.square('#f0f')}});
                 await wait(300); await t.settle();
@@ -395,30 +424,40 @@ for (const renderer of ['worker', 'main']) {
             };
             // Above the point, below it, at the side inside the icon, and at the side outside it.
             const places = [[0, -32], [0, 32], [15, -20], [30, -20]];
-            return {bottom: await found({'icon-anchor': 'bottom', 'icon-ignore-placement': true}, places), top: await found({'icon-anchor': 'top', 'icon-ignore-placement': true}, places),
+            const out = {bottom: await found({'icon-anchor': 'bottom', 'icon-ignore-placement': true}, places), top: await found({'icon-anchor': 'top', 'icon-ignore-placement': true}, places),
                 placed: await found({'icon-anchor': 'bottom', 'symbol-sort-key': 1}, places), large: await found({'icon-anchor': 'bottom', 'icon-size': 2}, [[0, -70], [35, -40], [45, -40]])};
+            // Each feature is tested with its own icon: a small icon (a quarter of the size, 10 pixels) beside a large one
+            // (four times the size) is found on its own picture only. Two icons at one place: the one that is drawn on top is first.
+            const right = t.host.unproject({x: 650, y: 300}), at = (id, coordinates, s) => ({type: 'Feature', id, properties: {s}, geometry: {type: 'Point', coordinates}});
+            t.host.update(t.spec = {...t.spec, style: t.spot({'icon-size': ['get', 's'], 'icon-ignore-placement': true}, false, {type: 'FeatureCollection', features: [at(1, c, 0.25), at(2, right, 4), at(3, c, 0.25)]})});
+            await wait(300); await t.settle();
+            const ask = async (x, y) => (await t.host.queryFeatures({x, y}, {layers: ['spot-icon']})).map(f => f.id).join();
+            out.own = [await ask(450, 300), await ask(450 + 4, 300 - 4), await ask(450 + 12, 300), await ask(450, 300 - 30), await ask(650 - 70, 300 + 70), await ask(650 + 90, 300)].join('|');
+            return out;
         });
         check(`[${renderer}] a question for drawn features finds a feature of a symbol layer where its icon is drawn: for each anchor, for an icon from a buffer and a placed icon, and for a larger icon`,
-            reach.bottom === '1010' && reach.top === '0100' && reach.placed === '1010' && reach.large === '110', JSON.stringify(reach));
+            reach.bottom === '1010' && reach.top === '0100' && reach.placed === '1010' && reach.large === '110' && reach.own === '3,1|3,1|||2|', JSON.stringify(reach));
 
-        // Labels keep away from an icon from a buffer, unless the layer has `icon-ignore-placement`. The text is at the
-        // point of the icon. (While the map moves, the engine says how many labels it placed.)
+        // A label of a layer below the layer of an icon from a buffer keeps away from the icon, unless the layer of the icon
+        // has `icon-ignore-placement`. A label of a layer above it is placed first and shows, as with a placed icon. The
+        // text is at the point of the icon. (While the map moves, the engine says how many labels it placed.)
         const avoided = await page.evaluate(async () => {
             const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms));
-            const placed = async icon => {
-                t.host.update(t.spec = {...t.spec, style: t.spot({'icon-anchor': 'center', ...icon}, true)});
+            const placed = async (icon, text) => {
+                t.host.update(t.spec = {...t.spec, style: t.spot({'icon-anchor': 'center', ...icon}, text)});
                 await wait(300); await t.settle();
                 t.placed.length = 0;
                 t.host.moveTo({bearing: 20, duration: 1800}); await wait(2200);
                 t.host.moveTo({bearing: 0}); await wait(300);
                 return t.placed.splice(0).join();
             };
-            const out = {avoid: await placed({}), ignore: await placed({'icon-ignore-placement': true})};
+            const out = {avoid: await placed({}, 'below'), ignore: await placed({'icon-ignore-placement': true}, 'below'), above: await placed({}, 'above')};
             const {images: _, ...rest} = t.spec;
             t.host.update(t.spec = {...rest, style: t.style});
             return out;
         });
-        check(`[${renderer}] labels keep away from an icon from a buffer, and not when the layer has icon-ignore-placement`, /^0(,0)*$/.test(avoided.avoid) && /^1(,1)*$/.test(avoided.ignore), JSON.stringify(avoided));
+        check(`[${renderer}] a label of a layer below keeps away from an icon from a buffer, and not when the layer of the icon has icon-ignore-placement; a label of a layer above shows`,
+            /^0(,0)*$/.test(avoided.avoid) && /^1(,1)*$/.test(avoided.ignore) && /^1(,1)*$/.test(avoided.above), JSON.stringify(avoided));
         }
 
         // GeoJSON data apart from the style: it goes to its source alone, and stays over a new style.

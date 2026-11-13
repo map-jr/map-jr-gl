@@ -4,6 +4,7 @@
  */
 import type {Map} from './map.ts';
 import type {FeatureOptions, MapSpec, StyleExtension} from './host.ts';
+import {templateSlots} from './markers.ts';
 
 /** What a check reads of one map. `warned` has the warnings that the map gave: each mistake gives one warning for each map. */
 export interface Checked { map: Map; warned: Set<string>; spec(): MapSpec; /** The map exists and has loaded the style of the description. */ ready(): boolean }
@@ -26,6 +27,9 @@ const texts: ((a: string, b: string) => string)[] = [
     /* 14 */ (a, b) => `images: a layer gives the parameter "${a}" to the image "${b}", but that image has no slot {{${a}}}, so the parameter has no effect. Write {{${a}}} in the SVG of "${b}" in "images", or remove the parameter.`,
     /* 15 */ a => `markers: the marker layer "${a}" has no "image". Give the SVG in "images" of the description, and its name as "image" of the marker layer. (The fields "svg", "width" and "height" of a marker layer are gone.)`,
     /* 16 */ a => `markers: a marker layer has the image "${a}", and the map has no image with that name. Add "${a}" to "images" of the description, or correct "image" of the marker layer.`,
+    /* 17 */ (a, b) => `markers: the marker layer "${a}" has the id of a ${b} of the style, and takes its place. Give the marker layer an id that the style and "extend" do not have.`,
+    /* 18 */ (a, b) => `markers: the marker layer "${a}" has before: "${b}", but the style has no layer "${b}", so the markers go on top. Write the id of a layer of the style.`,
+    /* 19 */ (a, b) => `markers: the marker ${b} of the marker layer "${a}" has no position, so it is not drawn. Give each marker "lngLat" as [lng, lat].`,
 ];
 
 /** The message with the number `code` for the names `a` and `b`. */
@@ -44,7 +48,7 @@ const differ = (a: unknown, b: unknown) => a !== b && JSON.stringify(a) !== JSON
 export function check(c: Checked, kind: number, a?: any, b?: any) {
     const {map} = c;
     const warn = (code: number, x = '', y = '') => {
-        const key = code + ' ' + x;
+        const key = code + ' ' + x + ' ' + y;
         if (!c.warned.has(key)) { c.warned.add(key); console.warn(mistake(code, x, y)); }
     };
     /** Warns for each id that is not a layer (or a source) of the style. */
@@ -60,7 +64,13 @@ export function check(c: Checked, kind: number, a?: any, b?: any) {
         for (const id in spec.data) if (!(map.getSource(id) as {setData?: unknown} | undefined)?.setData) warn(2, id);
     } else if (kind === 2) {
         const next = a as MapSpec, before = b as MapSpec | undefined, ids = new Set<string>();
-        for (const m of next.markers ?? []) { if (ids.has(m.id)) warn(7, m.id); ids.add(m.id); if (!m.image) warn(15, m.id); }
+        for (const m of next.markers ?? []) {
+            if (ids.has(m.id)) warn(7, m.id);
+            ids.add(m.id);
+            if (!m.image) warn(15, m.id);
+            // (The first marker with no position. The data is read one time for each array.)
+            if (m.data !== before?.markers?.find(o => o.id === m.id)?.data) { const bad = m.data.findIndex(d => !Number.isFinite(+(d?.lngLat?.[0] as number)) || !Number.isFinite(+(d?.lngLat?.[1] as number))); if (bad >= 0) warn(19, m.id, String(bad)); }
+        }
         if (before) for (const k of setupOnly) if (differ(next[k], before[k])) warn(8, k);
     } else if (kind === 3) {
         const o = b as FeatureOptions, place = !!a && !(Array.isArray(a) && typeof a[0] !== 'number');
@@ -76,11 +86,18 @@ export function check(c: Checked, kind: number, a?: any, b?: any) {
             if (!Array.isArray(e)) return;
             if (e[0] === 'image' && typeof e[1] === 'string' && e[2]?.params) {
                 const v = images[e[1]] as unknown, svg = String((v as {image?: unknown})?.image ?? v ?? '');
-                for (const k in e[2].params) if (!new RegExp(`\\{\\{\\s*${k}\\s*\\}\\}`).test(svg)) warn(14, k, e[1]);
+                // (Only for an image that the description has now: an image can come with a later description.)
+                if (svg.trimStart().startsWith('<')) for (const k in e[2].params) if (!templateSlots(svg).includes(k)) warn(14, k, e[1]);
             }
             e.forEach(params);
         };
         for (const l of [...a.layers, ...b?.layers ?? []]) params(l.layout?.['icon-image']);
+        // A marker layer is a source and a layer with its id: the id must be free, and `before` must name a layer.
+        const all = new Set<string>([...a.layers, ...b?.layers ?? []].map((l: {id: string}) => l.id)), named = {...a.sources, ...b?.sources};
+        for (const m of c.spec().markers ?? []) {
+            if (all.has(m.id)) warn(17, m.id, 'layer'); else if (named[m.id]) warn(17, m.id, 'source');
+            if (m.before && !all.has(m.before)) warn(18, m.id, m.before);
+        }
         if (!b) return;
         const extend = b as StyleExtension, sources = {...a.sources, ...extend.sources}, ids = new Set<string>(a.layers.map((l: {id: string}) => l.id));
         for (const {id, before, source} of extend.layers ?? []) {

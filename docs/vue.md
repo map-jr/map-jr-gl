@@ -150,7 +150,12 @@ See [An image that is a template](api.md#an-image-that-is-a-template). Vue rende
 draws it one time for each different set of values.
 
 - Bind a parameter to an attribute (`:fill="color"`) or write it as text (`<text>{{ label }}</text>`).
-- The rest of the SVG is Vue content. When it changes, the map gets the image again.
+- The rest of the SVG is Vue content, also components. When it changes, the map gets the image again.
+- The SVG is not in the page: a `<style>` or an `id` inside it has no effect on the page.
+- An image of a `MapImage` is used before an image of the prop `images` with the same name. With two `MapImage` of
+  one name, the map has the image while one of them is there.
+- In the development build, a `MapImage` outside `MapJr`, and a `MapImage` with no `<svg>` and no `src`, give a
+  warning.
 - With TypeScript, a prop of the slot that is not in `params` is a type error.
 - The server renderer does not draw the image.
 

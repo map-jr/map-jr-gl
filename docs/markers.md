@@ -56,15 +56,27 @@ buffer on the GPU. The number of markers has almost no effect on the speed of a 
 | `data` | Required | The markers: a list of `{lngLat, props}`. `lngLat` is `[lng, lat]`. `props` has the values for the slots of the image, and your own values. |
 | `anchor` | `'center'` | The part of the image that is on the position: `'bottom'`, `'top-left'` and the other values of `icon-anchor`. |
 | `collide` | `false` | When `true`, map labels keep away from the markers. |
-| `overlap` | `'show'` | When `'hide'`, a marker that would cover another marker or a label does not show, and map labels keep away from the markers. |
+| `overlap` | `'show'` | When `'hide'`, a marker that would cover an earlier marker of `data` does not show, and map labels keep away from the markers. (The markers are above the labels of the style, so the markers stay and the labels go.) |
 | `minZoom`, `maxZoom` | None | The zoom range in which the layer shows. |
-| `before` | None | The id of a style layer: the markers are drawn below it. Without it, they are drawn above each layer of the style. |
+| `before` | None | The id of a symbol layer of the style: the markers come before it in the order of the layers, so its labels and icons are placed first. Without it, the markers are the top layer. The library draws each symbol layer above the fill, line and other layers, so `before` with the id of such a layer does not put the markers below it. |
+
+A marker with no `lngLat` is not drawn. In the development build it gives a warning, and so do a marker layer
+whose `id` is the id of a source or a layer of the style, and a `before` that names no layer.
 
 The size of a marker is the size of its image. Give the size with the image: `images: {pin: {image: pin, width: 36,
 height: 46}}`. Without a size, an SVG has the size of its `viewBox`.
 
 To change how a marker looks with zoom, make two layers with the same data and different zoom ranges. For example,
 make small dots below zoom 12 and full pins from zoom 12.
+
+### The image of a marker
+
+- Write `{{name}}` in the SVG where a value of `props` must go. The library makes the value safe for XML.
+- The SVG can contain an `<image>` element with a photograph.
+- Keep the number of different value sets small. Each different set is drawn one time and uses space in a texture.
+  [An image that is a template](api.md#an-image-that-is-a-template) has the limits.
+- A layer of `extend` can give a slot the value of an expression, for example the state of a feature
+  (`['image', 'pin', {params: {...}}]`).
 
 ### What a marker layer stands for
 
@@ -132,7 +144,8 @@ map.update(description = {
 });
 ```
 
-A marker is found where its image is drawn, also with the anchor `bottom`.
+A marker is found where its image is drawn, also with the anchor `bottom`. When markers cover each other, the one
+that is drawn on top is the first of `features`.
 
 ### Elements of the page
 
@@ -179,15 +192,27 @@ frame then does not grow with the number of icons. That is the case when all of 
 - The feature has no text.
 - `symbol-placement` is `point` (the default).
 - `icon-allow-overlap` is `true`. The icon is then always shown.
-- The layer has no `symbol-sort-key`, and `icon-anchor`, `icon-offset`, `icon-rotation-alignment` and `icon-color`
-  have one value for the layer. `icon-size`, `icon-rotate` and `icon-opacity` can have a value for each feature.
+- `icon-text-fit` is `none` (the default), and the icon has no halo (`icon-halo-width`).
+- The layer has no `symbol-sort-key`, and `icon-anchor`, `icon-offset`, `icon-rotation-alignment`, `icon-color` and
+  `icon-padding` have one value for the layer. `icon-size`, `icon-rotate` and `icon-opacity` can have a value for
+  each feature.
 
 A marker layer without `overlap: 'hide'` is such a layer. The library places other icons with the labels, and their
 cost grows with their number.
 
-Labels keep away from such an icon, unless the layer has `icon-ignore-placement: true` (a marker layer has it
-without `collide`). The map then gives each icon its space each time it places the labels. That work grows with the
-number of icons in view.
+An icon from a buffer differs from a placed icon in these points:
+
+- With 3D terrain it stands on the ground, and ground in front of it does not hide it. (MapLibre GL JS and a placed
+  icon are hidden.)
+- It shows with its tile and does not fade in.
+- The icons of a layer that is above each layer with labels are drawn over the labels. The icons of another layer
+  are drawn below all labels and below all placed icons.
+- The map asks for the image of each icon of a tile (`styleimagemissing`), also for an icon outside the view.
+
+Labels of the layers below keep away from such an icon, unless the layer of the icon has
+`icon-ignore-placement: true` (a marker layer has it without `collide`). The map then gives each icon its space each
+time it places the labels, which is some times a second while the map moves. That work grows with the number of
+icons in view. Use `icon-ignore-placement: true` (no `collide`) for very many icons.
 
 These are measurements with software WebGL (headless Chromium, the main-thread renderer, 500 different images),
 for the script time of one frame while the map moves. They were not made on a GPU.
@@ -195,10 +220,29 @@ for the script time of one frame while the map moves. They were not made on a GP
 | Icons | Always shown, labels do not keep away | Always shown, labels keep away |
 |---|---|---|
 | 10,000 | 6 ms | 6 ms |
-| 100,000 | 5 to 8 ms | 14 ms |
+| 100,000 | 5 to 8 ms | 14 to 20 ms on average; the frames that place the labels took more than 100 ms each |
 
 The data of a marker layer is cut into tiles when it is given. With 100,000 markers the map was ready 2 to 3
-seconds after that in the same measurement.
+seconds after that in the same measurement, and with 200,000 markers after 7 seconds or more.
+
+## Coming from the earlier marker layer
+
+Before version 0.2.0 was released, a marker layer had its own SVG (`svg`, `width`, `height`), its own events and
+its own methods. This table says what to write now.
+
+| Before | Now |
+|---|---|
+| `svg`, `width`, `height` of a marker layer | The SVG in `images` of the description, and its name as `image`. The size is the size of the image. |
+| `markerclick`, and `marker` of the `click` event | The id of the marker layer in `interactiveLayers`; `onClick` has the marker in `features`. |
+| `markerenter`, `markerleave` | `state.hover` (or the event `hover` of the Vue component, `onHover` in React) has the marker under the pointer. |
+| `layer.openPopup(index, content)` | `map.overlay(element, {lngLat, popup: true, offset})`. Map labels do not move away from this popup. |
+| `layer.setProps(index, props)` | A new `data` array with other `props` for that marker. |
+| `layer.select(index)` | Not available: a marker does not grow. Give the marker other `props` (another colour or image) in a new `data` array. |
+| `map.queryMarkers(point)` | `map.queryFeatures(point, {layers: [id]})`, which returns a promise. |
+| `map.addMarkerLayer(...)` of `@map-jr/map-jr-gl/maplibre-compat` | `map.addImage`, `map.addSource` and `map.addLayer`: see [With the API of MapLibre GL JS](#with-the-api-of-maplibre-gl-js). |
+
+Two more things are different. A marker layer does not fade at the ends of its zoom range. The markers show later
+after they are given, because the data is cut into tiles: see the measurements above.
 
 ## Groups of markers (clustering)
 
