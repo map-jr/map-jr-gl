@@ -334,7 +334,7 @@ export class Engine {
             if (st?.gl) this.renderer.destroyTile(st.gl);
             const state: {url: string; gl?: GLTile} = st = {url: src.url!};
             this.pictures.set(source, state);
-            this.fetchAs('Image')(src.url!).then(async res => {
+            withTimeout(this.fetchAs('Image'))(src.url!).then(async res => {
                 if (!res.ok) throw new Error(`Failed to load image ${src.url}: ${res.status}`);
                 const image = await createImageBitmap(await res.blob());
                 if (this.pictures.get(source) === state) { state.gl = this.renderer.createImageTile(image, undefined, {z: 0, x: 0, y: 0, w: 0, key: '0/0/0'}); this.styleVersion++; this.invalidate(); }
@@ -585,7 +585,7 @@ export class Engine {
         Promise.all(fonts.map(async f => {
             // The font file is fetched here and given to the browser as bytes. WebKit (Safari) does not load a font from a
             // URL inside a worker, and the labels then used a fallback font.
-            const bytes = await (await this.fetchAs('Font')(f.src)).arrayBuffer();
+            const bytes = await (await withTimeout(this.fetchAs('Font'))(f.src)).arrayBuffer();
             const face = new FontFace(f.family, bytes, {weight: String(f.weight ?? '400'), style: f.style ?? 'normal', ...(f.unicodeRange ? {unicodeRange: f.unicodeRange} : {})});
             set.add(await face.load());
         })).then(() => { this.atlas.clear(true); this.relabel(); },
