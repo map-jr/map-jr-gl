@@ -1,6 +1,6 @@
-// Drives the demo in Chromium and checks behaviour in both renderer modes: node test/interact.mjs <outDir>
+// Drives the demo in Chromium and checks behaviour in both renderer modes: node test/interact.mjs [outDir] (default .cache/shots)
 import {launch, browserName} from './launch.mjs';
-const out = process.argv[2];
+const out = process.argv[2] || '.cache/shots'; // (the directory for the screenshots; Playwright creates it)
 const browser = await launch();
 const origin = `http://localhost:${process.env.PORT || 8080}`; // (the demo server; PORT lets two runs use two servers)
 let failed = 0, mainFrames = 0;
@@ -73,7 +73,9 @@ for (const mode of ['main', 'worker']) {
     check(`[${mode}] marker hover sets pointer cursor`, await page.evaluate(() => window.map.getCanvas().style.cursor) === 'pointer');
     await page.screenshot({path: `${out}/hover-${mode}.png`, clip: {x: pt.x - 80, y: pt.y - 90, width: 160, height: 120}});
     await page.mouse.click(pt.x, pt.y - 20);
-    check(`[${mode}] marker click reports the marker`, await page.evaluate(() => window.lastMarkerClick) === '3');
+    // (The pin is a feature of a symbol layer, and the answer to the click is a promise.)
+    const clicked = await page.waitForFunction(() => window.lastMarkerClick, null, {timeout: 5000}).then(h => h.jsonValue(), () => null);
+    check(`[${mode}] marker click reports the marker`, clicked === '3', String(clicked));
 
     // Rotation and animated camera.
     await page.evaluate(() => window.map.easeTo({bearing: 40, zoom: 15, duration: 300}));

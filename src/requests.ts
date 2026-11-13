@@ -19,3 +19,17 @@ export function fetchWith(rules: () => RequestRules | undefined, ask: Ask, kind 
         return fetch(a.url ?? url, {...init, headers: {...a.headers, ...(init?.headers as Record<string, string> | undefined)}, credentials: a.credentials});
     };
 }
+
+/**
+ * A `fetch` that fails when the response, its body included, has not arrived after `ms` milliseconds. The request is
+ * aborted, and the promise rejects as a failed request does, so the map goes on without the file.
+ */
+export function withTimeout(f: typeof fetch, ms = 30000): typeof fetch {
+    return (input, init) => {
+        const ac = new AbortController();
+        // (The timer is not cleared when the headers arrive: an abort also ends a body that never finishes.)
+        setTimeout(() => ac.abort(), ms);
+        return Promise.race([f(input, {...init, signal: ac.signal}), new Promise<never>((_, fail) => ac.signal.addEventListener('abort',
+            () => fail(new Error(`[map-jr-gl] the request to ${input} did not finish within ${ms} ms.`))))]);
+    };
+}

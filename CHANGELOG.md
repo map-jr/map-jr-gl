@@ -25,9 +25,17 @@ The name of the package is `@map-jr/map-jr-gl`
 - The map draws in a worker when the browser can do that, and on the main thread when it cannot.
   [Browser support](docs/browser-support.md) says what each renderer needs.
 - The field `images` of the description gives images (SVG, a URL or pixels) to the style layers by name (#120).
+- A symbol layer draws icons that are always shown (no text, `icon-allow-overlap`) from buffers on the GPU. The cost
+  of a frame does not grow with their number, unless labels must keep away from them (#122).
+- A query for drawn features finds a feature of a symbol layer where its icon is drawn. Before, it was found within
+  10 pixels of its point (#124). In one layer, the feature that is drawn on top comes first.
+- The adapters for Vue and React have the component `MapImage`: an image for the style layers, with the SVG
+  written in the template and its parameters as the props of the slot (#128).
 - An SVG image with slots (`{{name}}`) is a template. Each feature gives the slots their values, from its
   properties or from `params` of the `image` expression (#125).
-- A marker layer draws markers on the canvas. `Marker` and `Popup` are also available as elements of the page.
+- A marker layer draws markers on the canvas. It is shorthand for a GeoJSON source and a symbol layer with an
+  image, so a click finds its markers and the layer has a place in the layer order (#125). `Marker` and `Popup` are
+  also available as elements of the page.
 - 3D terrain, hillshade, contour lines and elevation queries use one elevation source.
 - The entry `@map-jr/map-jr-gl/server` renders the first view as SVG or as an image on Node.js 22 and on Cloudflare Workers.
 - The adapters are `@map-jr/map-jr-gl/vue`, `@map-jr/map-jr-gl/nuxt`, `@map-jr/map-jr-gl/react` and `@map-jr/map-jr-gl/svelte`.

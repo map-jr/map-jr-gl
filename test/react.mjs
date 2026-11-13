@@ -17,13 +17,14 @@ const check = (name, ok, detail = '') => { console.log(`${ok ? 'PASS' : 'FAIL'} 
 
 const tiles = (await (await fetch('https://tiles.openfreemap.org/planet')).json()).tiles[0];
 const style = makeStyle(tiles, '<a href="https://example.com/credits">Example tiles</a>'), view = {center: [-74.0065, 40.7085], zoom: 14.3};
-const pins = {id: 'pins', svg: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="{{color}}"/></svg>', width: 24, height: 24, data: [{lngLat: view.center, props: {color: '#d00'}}]};
+const disc = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="{{color}}"/></svg>';
+const pins = {id: 'pins', image: 'disc', data: [{lngLat: view.center, props: {color: '#d00'}}]};
 
 // 1. On the server: the first view from the server entry, given to the component.
-const firstView = await renderFirstView({style, ...view, width: 800, height: 500, markers: [pins], overrides: {building: {hidden: true}}});
+const firstView = await renderFirstView({style, ...view, width: 800, height: 500, images: {disc}, markers: [pins], overrides: {building: {hidden: true}}});
 const frame = child => h('div', {id: 'frame', style: {width: 800, height: 500}}, child);
-const html = renderToString(frame(h(MapJr, {mapStyle: style, initialView: view, markers: [pins], firstView})));
-check('server: the component renders the first view', /<svg[^>]*data-map-jr-ssr/.test(html) && html.includes('Example tiles') && html.includes('map-jr-react'), `${(html.length / 1024).toFixed(0)} KB of HTML`);
+const html = renderToString(frame(h(MapJr, {mapStyle: style, initialView: view, images: {disc}, markers: [pins], firstView})));
+check('server: the component renders the first view, with the marker from its image (a template with the colour of the marker)', /<svg[^>]*data-map-jr-ssr/.test(html) && html.includes('Example tiles') && html.includes('map-jr-react') && /<circle cx="12" cy="12" r="10" fill="#d00"/.test(html), `${(html.length / 1024).toFixed(0)} KB of HTML`);
 
 // 2. In a browser. React for the browser is made into module files one time (the package has no such files).
 const esm = path.join(root, '.cache/react-esm'), require = createRequire(import.meta.url), entryPoints = {};
@@ -36,21 +37,30 @@ for (const [name, id] of [['react', 'react'], ['react-dom', 'react-dom'], ['reac
 await require('esbuild').build({entryPoints, bundle: true, splitting: true, format: 'esm', outdir: esm, absWorkingDir: root, define: {'process.env.NODE_ENV': '"development"'}, logLevel: 'silent'});
 const client = `import {createElement as h, useState, useRef} from 'react';
 import {createRoot, hydrateRoot} from 'react-dom/client';
-import {MapJr, MapOverlay, useMapState} from '/dist/react.js';
+import {MapJr, MapOverlay, MapImage, useMapState} from '/dist/react.js';
 import {navigation, scale} from '/dist/controls.js';
 const style = await (await fetch('/style.json')).json();
-const pins = ${JSON.stringify(pins)}, t = window.t = {loads: 0, views: 0, clicks: [], closed: 0, renders: 0};
+const pins = ${JSON.stringify(pins)}, images = {disc: ${JSON.stringify(disc)}}, t = window.t = {loads: 0, views: 0, clicks: [], closed: 0, renders: 0};
 function Zoom() { const zoom = useMapState(s => s.view.zoom); return h('p', {id: 'zoom'}, zoom === undefined ? '' : zoom.toFixed(1)); }
+// (A component inside the SVG of an image: its own change must reach the map.)
+function Dot() { const [r, setR] = useState(2); t.setRadius = setR; return h('circle', {cx: 4, cy: 4, r}); }
 function App({ssr}) {
-    const [view, setView] = useState(${JSON.stringify(view)}), [markers, setMarkers] = useState([pins]), [pin, setPin] = useState([-74.0065, 40.7085]), [tip, setTip] = useState(true), map = useRef(null);
-    Object.assign(t, {setView, setMarkers, setPin, map, view});
+    const [view, setView] = useState(${JSON.stringify(view)}), [markers, setMarkers] = useState([pins]), [pin, setPin] = useState([-74.0065, 40.7085]), [tip, setTip] = useState(true), [tone, setTone] = useState('#fff'), [arrow, setArrow] = useState(true), [twin, setTwin] = useState(false), [full, setFull] = useState(true), map = useRef(null);
+    Object.assign(t, {setView, setMarkers, setPin, setTone, setArrow, setTwin, setFull, map, view});
     t.renders++;
     // (The props are made again in each render, as React code does: the arrays of controls and layers, the functions.)
     return h('div', {id: 'frame', style: {width: 800, height: 500}}, ssr
-        ? h(MapJr, {ref: map, mapStyle: style, initialView: view, markers, controls: [navigation()], onLoad: () => t.loads++})
-        : h(MapJr, {ref: map, mapStyle: style, view, onViewChange: v => { t.views++; setView(v); }, markers, controls: [navigation(), scale({position: 'bottom-left'})], interactiveLayers: ['water', 'park', 'building'],
+        // (The tree that takes over the HTML of the server has an image too: it must not disturb the hydration.)
+        ? h(MapJr, {ref: map, mapStyle: style, initialView: view, images, markers, controls: [navigation()], onLoad: () => t.loads++},
+            h(MapImage, {name: 'hydrated', params: ['color']}, ({color}) => h('svg', {viewBox: '0 0 8 8'}, h('rect', {width: 8, height: 8, fill: color}))))
+        : h(MapJr, {ref: map, mapStyle: style, view, onViewChange: v => { t.views++; setView(v); }, images, markers, controls: [navigation(), scale({position: 'bottom-left'})], interactiveLayers: ['water', 'park', 'building'],
             onClick: e => t.clicks.push(e), onLoad: () => t.loads++, attribution: false},
             h(Zoom), h(MapOverlay, {lngLat: pin, anchor: 'bottom'}, h('b', {id: 'own-pin'}, 'here')),
+            arrow && h(MapImage, {name: 'arrow', params: ['color']}, ({color}) => h('svg', {viewBox: '0 0 8 8'}, h('path', {d: 'M4 0 8 8 0 8z', fill: color, stroke: tone}))),
+            twin && h(MapImage, {name: 'arrow'}, h('svg', {viewBox: '0 0 8 8'}, h('path', {d: 'M4 0 8 8 0 8z'}))),
+            h(MapImage, {name: 'maybe'}, full && h('svg', {viewBox: '0 0 8 8'}, h('rect', {width: 8, height: 8}))),
+            h(MapImage, {name: 'nested'}, h('svg', {viewBox: '0 0 8 8'}, h(Dot))),
+            h(MapImage, {name: 'photo', src: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%224%22 height=%224%22/%3E', width: 4, height: 4}),
             tip && h(MapOverlay, {lngLat: pin, popup: true, onClose: () => { t.closed++; setTip(false); }}, h('span', {id: 'own-tip'}, 'A popup'))));
 }
 if (location.search === '?ssr') hydrateRoot(document.getElementById('app'), h(App, {ssr: true}), {onRecoverableError: e => (window.recovered ||= []).push(String(e.message))});
@@ -104,9 +114,10 @@ try {
         t.setPin([-74.0, 40.71]); await wait(400);
         const pinMoved = near(where('own-pin'), host.project([-74.0, 40.71]));
         document.querySelector('.map-jr-popup-close-button')?.click(); await wait(300);
-        const before = host.map.queryMarkers(host.project([-74.0065, 40.7085])) ? 1 : 0;
+        // (A marker is a feature of the layer of its marker layer.)
+        const before = (await host.queryFeatures(host.project([-74.0065, 40.7085]), {layers: ['pins']})).length ? 1 : 0;
         t.setMarkers([]); await wait(600);
-        return {followed, shown, controls, moved, pinOk, tip, pinMoved, closed: t.closed, tipGone: !document.getElementById('own-tip'), views: t.views, before, after: host.map.queryMarkers(host.project([-74.0065, 40.7085])) ? 1 : 0};
+        return {followed, shown, controls, moved, pinOk, tip, pinMoved, closed: t.closed, tipGone: !document.getElementById('own-tip'), views: t.views, before, after: host.map.getLayer('pins') ? 1 : 0};
     });
     check('browser: the view follows the map and moves it; useMapState, controls, overlays and markers follow React', model.followed === 15 && model.shown === '15.0' && model.controls === 2 && model.moved === 14 && model.pinOk && model.tip && model.pinMoved
         && model.closed === 1 && model.tipGone && model.views > 1 && model.before === 1 && model.after === 0, JSON.stringify(model));
@@ -115,6 +126,35 @@ try {
     await page.mouse.move(400, 250); await page.waitForTimeout(300); await page.mouse.click(400, 250); await page.waitForTimeout(800);
     const click = await page.evaluate(() => ({clicks: window.t.clicks.length, features: Array.isArray(window.t.clicks[0]?.features)}));
     check('browser: a click calls onClick, with the features there', click.clicks === 1 && click.features, JSON.stringify(click));
+    // An image as a child component: the SVG of its content is a template of the map, and it follows the component.
+    const child = await page.evaluate(async () => {
+        const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), map = t.map.current.map, add = map.addImage, given = [];
+        const first = ['arrow', 'photo', 'maybe', 'nested'].map(name => map.hasImage(name)).join(), apart = !document.querySelector('svg[viewBox="0 0 8 8"]');
+        map.addImage = function (name, source, ...rest) { given.push(name + ' ' + source); return add.call(this, name, source, ...rest); };
+        t.setPin([-74.0064, 40.7085]); // (a render with the same image gives the image no second time)
+        await wait(300);
+        const again = given.length;
+        t.setTone('#00f');
+        await wait(300);
+        const changed = given.splice(0).join();
+        // A change that a component inside the SVG makes.
+        t.setRadius(3);
+        await wait(300);
+        const nested = given.splice(0).join();
+        // Two components with one name: the image stays while one of them is there.
+        t.setTwin(true); await wait(300);
+        t.setArrow(false); await wait(300);
+        const kept = map.hasImage('arrow');
+        t.setTwin(false); await wait(300);
+        const gone = !map.hasImage('arrow');
+        // Content that becomes empty: the image goes.
+        t.setFull(false); await wait(300);
+        delete map.addImage;
+        return {first, apart, again, changed, nested, kept, gone, emptied: !map.hasImage('maybe')};
+    });
+    check('browser: MapImage gives the SVG of its content to the map as a template and keeps it out of the page; it gives it again only when it changes (also inside a nested component); the image stays while a second component has its name, and goes with its content',
+        child.first === 'true,true,true,true' && child.apart && child.again === 0 && /^arrow <svg[^>]*viewBox="0 0 8 8"[^>]*><path d="M4 0 8 8 0 8z" fill="\{\{color\}\}" stroke="#00f"\/?>(<\/path>)?<\/svg>$/.test(child.changed)
+        && /^nested <svg[^>]*><circle cx="4" cy="4" r="3"\/?>(<\/circle>)?<\/svg>$/.test(child.nested) && child.kept && child.gone && child.emptied, JSON.stringify(child));
     // `onError` gets each error; without it the map writes the error to the console.
     const failing = await page.evaluate(async () => {
         const {createElement: h} = await import('react'), {createRoot} = await import('react-dom/client'), {MapJr} = await import('/dist/react.js'), wait = ms => new Promise(r => setTimeout(r, ms));

@@ -103,7 +103,7 @@ To use it, do this step one time: in the repository settings, open **Pages** and
 | `src/style.ts`, `src/expr.ts` | The style and the expressions |
 | `src/tile.ts`, `src/tiles.ts`, `src/mvt.ts` | Tile data: decode, build, load |
 | `src/text.ts`, `src/placement.ts` | Text and label placement |
-| `src/markers.ts`, `src/overlays.ts`, `src/controls.ts` | Marker layers, `Marker` and `Popup`, controls |
+| `src/markers.ts`, `src/overlays.ts`, `src/controls.ts` | Marker layers (shorthand for a source and a symbol layer) and SVG templates, `Marker` and `Popup`, controls |
 | `src/contour.ts`, `src/pmtiles.ts`, `src/geojson.ts` | Contour lines, PMTiles, GeoJSON |
 | `src/webp.ts` | PNG and WebP decoders for the server |
 | `src/loader.ts`, `src/worker.ts` | How the workers start |

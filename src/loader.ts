@@ -95,7 +95,8 @@ export async function acquireTileWorkers(o: LoadOptions): Promise<{connect(): Me
         },
         release() {
             for (const p of ports) { try { p.postMessage({type: 'close'}); p.close(); } catch { /* already transferred to the engine worker */ } }
-            if (--mine.users <= 0 && pool === mine) { for (const w of workers) w.terminate(); pool = null; }
+            // A pool that a map with another worker URL replaced is shared no more, so its last map ends it too.
+            if (--mine.users <= 0) { for (const w of workers) w.terminate(); if (pool === mine) pool = null; }
         },
     };
 }
