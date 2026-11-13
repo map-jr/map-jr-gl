@@ -62,6 +62,30 @@ The component fills its parent element. Give the parent a height.
 | `hover` | The features of `interactive-layers` under the pointer. |
 | `load`, `idle` | None |
 | `error` | Each error of the map (an `Error`). Without a listener for this event, the map writes each error to the console. |
+| Each other event of the map | The event of `listen` of the main API: `@moveend`, `@zoomend`, `@styleimagemissing`, `@sourcedata` and the others. See [Events](api.md#events) for the list. The event `style.load` has the name `styleload` here. |
+
+The component listens to an event of the map only when it has a listener for it when it is made. The events
+`click`, `load`, `idle` and `error` of the component have the values of the table, not the events of the map with
+those names: use `host.listen` for those.
+
+An image that the style asks for and the map does not have:
+
+```vue
+<script setup>
+import {ref} from 'vue';
+import {MapJr} from '@map-jr/map-jr-gl/vue';
+
+const images = ref({});
+// The name is in `id`. Add an image with that name, and the map draws it.
+function missing(event) {
+  if (event.id.startsWith('badge-')) images.value[event.id] = `<svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="9" fill="#d6453d"/></svg>`;
+}
+</script>
+
+<template>
+  <MapJr map-style="https://tiles.openfreemap.org/styles/liberty" :images="images" @styleimagemissing="missing" />
+</template>
+```
 
 ### The slot
 

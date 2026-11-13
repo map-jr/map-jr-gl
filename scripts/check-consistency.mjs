@@ -57,6 +57,16 @@ for (const entry of Object.keys(pkg.exports ?? {})) {
     if (!allDocs.includes(name)) fail('docs', `no document mentions the entry \`${name}\` (package.json "exports")`);
 }
 
+// 5b. Each event of the map (MapEvents in src/host.ts) is in the table of events of the main API, and the documents
+//     of the adapters say how an event is passed on.
+{
+    const start = host.indexOf('export interface MapEvents'), block = host.slice(start, host.indexOf('\n}', start));
+    const names = new Set([...block.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/'([a-z.]+)'|^\s+([a-z.]+):/gm)].map(m => m[1] ?? m[2]));
+    for (const drop of ['boxzoomstart', 'boxzoomcancel', 'boxzoomend', 'click', 'wheel', 'stats', 'styleimagemissing', 'terrain', 'geolocate', 'error']) names.add(drop);
+    for (const name of names) if (!api.includes('`' + name + '`')) fail('docs/api.md', `the event \`${name}\` of the map (MapEvents in src/host.ts) is not in the table of events`);
+    for (const [file, word] of [['docs/vue.md', '@moveend'], ['docs/react.md', 'onMoveend'], ['docs/svelte.md', 'listen(']]) if (!read(file).includes(word)) fail(file, `the document does not say how an event of the map reaches the application (expected "${word}")`);
+}
+
 // 6. Links between the documents lead to files that exist.
 for (const doc of [...docs, 'CLAUDE.md', 'CONTRIBUTING.md'].filter(f => existsSync(path.join(root, f)))) {
     for (const [, target] of read(doc).matchAll(/\]\((?!https?:|#|mailto:)([^)#\s]+)(?:#[^)]*)?\)/g)) {

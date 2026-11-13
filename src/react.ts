@@ -8,10 +8,20 @@
 import {createContext, createElement as h, forwardRef, useCallback, useContext, useEffect, useImperativeHandle, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode} from 'react';
 import {createPortal} from 'react-dom';
 declare const __DEV__: boolean;
-import {createMap, type MapHost, type MapOverlay as Overlay, type MapPointer, type MapSpec, type MapState, type OverlayOptions, type View} from './host.ts';
+import {createMap, type MapEvents, type MapHost, type MapOverlay as Overlay, type MapPointer, type MapSpec, type MapState, type OverlayOptions, type View} from './host.ts';
 import type {RenderedFeature} from './map.ts';
 
-export interface MapJrProps extends Omit<MapSpec, 'style' | 'onViewChange'> {
+type Undotted<K extends string> = K extends `${infer A}.${infer B}` ? `${A}${B}` : K;
+/**
+ * A prop for each event of the map: `onMoveend`, `onStyleimagemissing` and the others (`on`, and the name of the event
+ * with a capital first letter; `onStyleload` for `style.load`). The value is the event of `listen` of the main API.
+ * (`onClick`, `onLoad`, `onIdle` and `onError` are props of the component with a value of their own.)
+ */
+export type MapEventProps = {[K in Exclude<keyof MapEvents, 'click' | 'load' | 'idle' | 'error'> as `on${Capitalize<Undotted<K>>}`]?: (event: MapEvents[K]) => void};
+/** The props that are not an event of the map itself. */
+const OWN = new Set(['onViewChange', 'onClick', 'onHover', 'onLoad', 'onIdle', 'onError']);
+
+export interface MapJrProps extends Omit<MapSpec, 'style' | 'onViewChange'>, MapEventProps {
     /** A style object or the URL of a style. (`style` is the CSS style of the element.) */
     mapStyle: string | object;
     /** Called with the view after each change. With `view`, write the value back to own the view. */
@@ -66,7 +76,14 @@ export const MapJr = forwardRef<MapHost | null, MapJrProps>(function MapJr(props
     const spec: MapSpec = {...rest, images: rest.images || owners.current.size ? {...rest.images, ...Object.fromEntries(owners.current.values())} : undefined, style: mapStyle, onViewChange: view => last.current.onViewChange?.(view), onClick: event => last.current.onClick?.(event),
         // (Without `onError`, the map writes each error to the console.)
         onError: onError && (error => last.current.onError?.(error))};
-    for (const k in spec) if ((spec as any)[k] === undefined) delete (spec as any)[k];
+    // The props for the events of the map are no part of the description. Each one is a listener of its event.
+    const events = Object.keys(rest).filter(k => /^on[A-Z]/.test(k) && !OWN.has(k));
+    for (const k in spec) if ((spec as any)[k] === undefined || events.includes(k)) delete (spec as any)[k];
+    useEffect(() => {
+        if (!host) return;
+        const stops = events.map(k => host.listen((k === 'onStyleload' ? 'style.load' : k.slice(2).toLowerCase()) as 'move', e => (last.current as any)[k]?.(e)));
+        return () => { for (const stop of stops) stop(); };
+    }, [host, events.join()]);
     useEffect(() => {
         const map = made.current = createMap(el.current!, spec);
         setHost(map);
