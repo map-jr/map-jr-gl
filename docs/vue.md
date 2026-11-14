@@ -399,6 +399,20 @@ In plain Vitest without Nuxt, the `vi.mock` call is the same. Mount the componen
 instead of `mountSuspended`. The stub renders the default slot of `MapJr`. It declares only the props that the test reads, and
 Vue passes the other props (here `initial-view`) on as attributes of the `div`.
 
+## Plugins that need a MapLibre map
+
+Plugins that take a MapLibre map object, such as deck.gl `MapboxOverlay` (`@deck.gl/mapbox`), `@mapbox/mapbox-gl-draw`
+and terra-draw with `terra-draw-maplibre-gl-adapter`, work with the entry `@map-jr/map-jr-gl/maplibre-compat`. Create the
+map with `new Map()` of that entry in your component, in place of `MapJr`, and give that map to the plugin. The plugin
+tests in [ecosystem.md](ecosystem.md) and the Vue ports of #270 ran deck.gl in its default (non-interleaved) mode,
+mapbox-gl-draw and terra-draw polygon mode this way. [maplibre-compatibility.md](maplibre-compatibility.md) lists what
+differs from MapLibre GL JS.
+
+`MapJr` does not support these plugins yet (#267). `host.map` of `@map-jr/map-jr-gl` is the core map of the library, not a
+MapLibre map. It does not have `getPadding` and `getRenderWorldCopies`, which deck.gl calls, nor
+`queryRenderedFeatures`, which the draw plugins call on each pointer move. It also does not have `setCenter`, `setZoom`,
+`setBearing`, `setPitch`, `flyTo`, `panTo` or `rotateTo`, and its members can change between versions.
+
 ## Nuxt and server rendering
 
 The component works in Nuxt without `<ClientOnly>`. On the server it renders an empty element. In the browser the
