@@ -1142,9 +1142,10 @@ for (const mode of ['main', 'worker']) {
             m.remove(); el.remove();
             return out;
         });
-        // (About 13 world widths of 400 pixels at zoom 5: S is about 5.3, so the flight takes about 1300 ms at speed 4.)
+        // (1820 pixels at zoom 5 in a view of 400 pixels: S is 3.14, so the flight takes 785 ms at speed 4, and its lowest
+        // zoom is 2.77, as the formula of MapLibre GL JS gives.)
         check(`maplibre-compat (${mode}): flyTo zooms out on the way, takes its duration from speed, and maxDuration jumps (#43)`,
-            r.low < 3 && r.end[0] === 40 && r.end[1] === 5 && r.ms > 900 && r.ms < 4000 && r.jump === -40 && r.jumpMs < 500 && r.warns === 0, JSON.stringify(r));
+            r.low < 3.2 && r.end[0] === 40 && r.end[1] === 5 && r.ms > 700 && r.ms < 3000 && r.jump === -40 && r.jumpMs < 500 && r.warns === 0, JSON.stringify(r));
     }
     // #208: fitBounds warns once for speed, curve and linear; Marker takes offset as {x, y}; getImage gives RGBA pixels.
     if (mode === 'main') {
