@@ -31,7 +31,8 @@ export function adoptClasses(root: Element) {
 }
 
 export const CONTROL_CSS = `
-:where(.map-jr-map){position:relative;overflow:hidden}
+:where(.map-jr-map){position:relative;overflow:hidden;font:12px/1.3 system-ui,sans-serif}
+:where(.map-jr-interactive){cursor:grab}:where(.map-jr-interactive:active){cursor:grabbing}
 :where(.map-jr-ctrl-top-left,.map-jr-ctrl-top-right,.map-jr-ctrl-bottom-left,.map-jr-ctrl-bottom-right){position:absolute;z-index:2;pointer-events:none;display:flex;flex-direction:column;gap:10px;max-width:100%;box-sizing:border-box}
 :where(.map-jr-ctrl-top-left){top:0;left:0;align-items:flex-start;padding:10px 10px 10px max(10px,env(safe-area-inset-left))}
 :where(.map-jr-ctrl-top-right){top:0;right:0;align-items:flex-end;padding:10px max(10px,env(safe-area-inset-right)) 10px 10px}
@@ -51,7 +52,7 @@ export const CONTROL_CSS = `
 :where(.map-jr-compact .map-jr-ctrl-attrib-button){display:block}
 .map-jr-ctrl-attrib.map-jr-compact{position:relative}.map-jr-compact>.map-jr-ctrl-attrib-button{position:absolute;top:0;right:0;margin:0}
 @media (pointer:coarse){:where(.map-jr-compact .map-jr-ctrl-attrib-button){width:36px;height:36px;border-radius:18px;line-height:36px}:where(.map-jr-ctrl-attrib.map-jr-compact){border-radius:18px;min-height:36px;padding-right:36px}}
-:where(.map-jr-ctrl){pointer-events:auto;font:12px/1.3 system-ui,sans-serif;color:var(--map-control-color,#222)}
+:where(.map-jr-ctrl){pointer-events:auto;color:var(--map-control-color,#222)}
 :where(.map-jr-ctrl-group){background:var(--map-control-background,#fff);border-radius:var(--map-control-radius,6px);box-shadow:0 0 0 1.5px rgba(0,0,0,.12),0 1px 4px rgba(0,0,0,.15);overflow:hidden}
 :where(.map-jr-ctrl-group button){display:flex;align-items:center;justify-content:center;width:var(--map-control-size,32px);height:var(--map-control-size,32px);padding:0;border:0;background:none;color:inherit;cursor:pointer}
 :where(.map-jr-ctrl-group button+button){border-top:1px solid rgba(0,0,0,.1)}

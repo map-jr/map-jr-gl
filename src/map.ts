@@ -228,6 +228,8 @@ export class Map {
         // The map still fires its mouse events (#253), and a touch scrolls the page until a handler is enabled.
         const still = options.interactive === false;
         if (still) this.canvas.style.touchAction = '';
+        // As in MapLibre's CSS, an interactive map shows `grab`, and `grabbing` while the button is down; setCursor() overrides it.
+        else this.canvas.classList.add(...cls('interactive').split(' '));
         for (const k of ['dragPan', 'scrollZoom', 'doubleClickZoom', 'dragRotate', 'touchZoomRotate', 'touchPitch', 'keyboard', 'boxZoom'] as const) {
             if (options[k] === false || still) this[k].disable();
             if (still) this[k].wake = () => { this.canvas.style.touchAction = 'none'; };
