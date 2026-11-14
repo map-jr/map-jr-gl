@@ -244,6 +244,19 @@ for (const mode of ['main', 'worker']) {
     check(`[${mode}] addLayer/removeLayer and fitBounds`, api.added && api.removed && api.fits && api.zoom > 13 && api.zoom < 16, JSON.stringify(api));
     check(`[${mode}] missing-image resolver supplied generated shields`, api.images > 0, `${api.images} shield images`);
 
+    // #203: as in MapLibre, `project()` and `point`/`points` of mouse and touch events are a `Point` with methods.
+    const points = await page.evaluate(async () => {
+        const m = window.map, c = m.getCanvas(), r = c.getBoundingClientRect(), got = {};
+        const off = [m.on('mousemove', e => { got.mouse ??= typeof e.point.dist === 'function' && typeof e.defaultPrevented === 'boolean'; }), m.on('touchstart', e => { got.touch ??= typeof e.point.sub === 'function' && e.points.every(p => typeof p.add === 'function'); })];
+        c.dispatchEvent(new PointerEvent('pointermove', {pointerId: window.mouseId ?? 1, pointerType: 'mouse', buttons: 0, clientX: r.left + 300, clientY: r.top + 300, bubbles: true}));
+        c.dispatchEvent(new PointerEvent('pointerdown', {pointerId: 31, pointerType: 'touch', isPrimary: true, clientX: r.left + 300, clientY: r.top + 300, button: 0, buttons: 1, bubbles: true}));
+        c.dispatchEvent(new PointerEvent('pointerup', {pointerId: 31, pointerType: 'touch', isPrimary: true, clientX: r.left + 300, clientY: r.top + 300, button: 0, buttons: 0, bubbles: true}));
+        await new Promise(res => setTimeout(res, 400));
+        const p = m.project(m.getCenter());
+        got.project = typeof p.dist === 'function' && p.dist(p.add({x: 3, y: 4})) === 5;
+        return got;
+    });
+    check(`[${mode}] project() and the point of mouse and touch events are a Point with methods`, points.mouse && points.touch && points.project, JSON.stringify(points));
     // Touch gestures, driven with synthetic touch pointers.
     await page.evaluate(() => {
         window.map.jumpTo({center: [-74.0065, 40.7085], zoom: 14, bearing: 0, pitch: 0});
