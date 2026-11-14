@@ -147,7 +147,11 @@ export class Map extends CoreMap {
      * rotate and pitch events). A later camera call or user input replaces it; a nested call (fitBounds calls easeTo) keeps it.
      */
     jumpTo(o: CameraInput, eventData?: EventData) { return this.camera(eventData, () => super.jumpTo(o)); }
-    easeTo(o: EaseToOptions, eventData?: EventData) { return this.camera(eventData, () => super.easeTo(o)); }
+    easeTo(o: EaseToOptions, eventData?: EventData) {
+        this.unsupported('The option offset of easeTo and flyTo', o.offset === undefined);
+        this.unsupported('The option easing of easeTo and flyTo', o.easing === undefined);
+        return this.camera(eventData, () => super.easeTo(o));
+    }
     fitBounds(bounds: Parameters<CoreMap['fitBounds']>[0], o?: FitBoundsOptions, eventData?: EventData) {
         this.unsupported('The options speed, curve and linear of fitBounds', o?.speed === undefined && o?.curve === undefined && o?.linear === undefined);
         return this.camera(eventData, () => super.fitBounds(bounds, o));

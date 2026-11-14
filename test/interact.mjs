@@ -983,13 +983,14 @@ for (const mode of ['main', 'worker']) {
                     new mod.NavigationControl({visualizePitch: true});
                     new mod.FullscreenControl({container: document.body});
                     m.flyTo({center: [1, 1], speed: 2, curve: 1.2, duration: 0});
+                    m.easeTo({center: [0, 0], offset: [0, -150], easing: t => t, duration: 0});
                 }
             } finally { console.warn = warn; }
             m.remove(); el.remove();
-            const names = ['logoPosition', 'validate', 'visualizePitch', 'container', 'speed and curve'];
+            const names = ['logoPosition', 'validate', 'visualizePitch', 'container', 'speed and curve', 'offset', 'easing'];
             return Object.fromEntries(names.map(n => [n, warns.filter(w => w.startsWith('[map-jr-gl]') && w.includes(n)).length]));
         });
-        check('maplibre-compat: logoPosition, validate, visualizePitch, the container of FullscreenControl and speed/curve of flyTo each warn once',
+        check('maplibre-compat: logoPosition, validate, visualizePitch, the container of FullscreenControl and speed/curve of flyTo, offset and easing of easeTo each warn once (#43)',
             Object.values(r).every(n => n === 1), JSON.stringify(r));
     }
     // #208: fitBounds warns once for speed, curve and linear; Marker takes offset as {x, y}; getImage gives RGBA pixels.
