@@ -917,5 +917,44 @@ for (const code of ['core', 'compat']) {
     } catch (e) { check(`gallery, query example (${code}): the test run was completed`, false, String(e.message).split('\n')[0]); }
     await page.close();
 }
+// The cost of a frame does not grow with the number of icons from buffers (#127). The engine reports the script time
+// of its frames on the main thread (`stats`, `frameMs`). The check compares a symbol layer with 100,000 icons with
+// the same layer with 1,000 icons, as a ratio of the medians, so it does not depend on the speed of the machine. With
+// icons from buffers the ratio was 0.4 to 2.0 in local runs on software WebGL. Icons that are placed with the labels
+// in each frame (a sort key makes the layer use that way) gave 63 and 107, so a limit of 5 has room for both.
+{
+    const page = await browser.newPage({viewport: {width: 900, height: 600}});
+    try {
+        await page.goto(`${origin}/bench`);
+        const ms = await page.evaluate(async () => {
+            const lib = await import('/dist/map-jr-gl.js'), style = await (await fetch('/style.json')).json(), wait = ms => new Promise(r => setTimeout(r, ms));
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99;background:#fff'}));
+            const center = [-74.0065, 40.7085], frames = [];
+            const host = lib.createMap(el, {style, initialView: {center, zoom: 13}, renderer: 'main', attribution: false});
+            host.listen('stats', e => frames.push(e.frameMs));
+            const idle = () => new Promise(r => { let at = 0; const off = host.state.subscribe(s => s.idle, v => { at = v ? performance.now() : 0; }), timer = setInterval(() => { if (at && performance.now() - at > 1000) { clearInterval(timer); off(); r(); } }, 100); setTimeout(r, 60000); });
+            const median = a => { const b = [...a].sort((x, y) => x - y); return b[b.length >> 1]; };
+            const measure = async count => {
+                let seed = 9; const rand = () => (seed = (seed * 1664525 + 1013904223) % 4294967296) / 4294967296;
+                const features = Array.from({length: count}, (_, i) => ({type: 'Feature', id: i, properties: {}, geometry: {type: 'Point', coordinates: [center[0] + (rand() - 0.5) * 0.08, center[1] + (rand() - 0.5) * 0.05]}}));
+                host.update({style: {...style, sources: {...style.sources, many: {type: 'geojson', data: {type: 'FeatureCollection', features}}},
+                    layers: [...style.layers, {id: 'many', type: 'symbol', source: 'many', layout: {'icon-image': 'dot', 'icon-allow-overlap': true, 'icon-ignore-placement': true}}]},
+                    images: {dot: '<svg viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" fill="#d6453d" stroke="#fff"/></svg>'}, initialView: {center, zoom: 13}, renderer: 'main', attribution: false});
+                host.moveTo({center, zoom: 13, bearing: 0});
+                await idle();
+                frames.length = 0;
+                host.moveTo({center: [center[0] + 0.01, center[1] + 0.005], zoom: 13.6, bearing: 30, duration: 6000});
+                await wait(6200);
+                return median(frames);
+            };
+            const out = {few: await measure(1000), many: await measure(100000)};
+            host.destroy();
+            return out;
+        });
+        const ratio = ms.many / ms.few;
+        check(`the script time of a frame with 100,000 icons from buffers is less than 5 times that with 1,000 icons (main thread)`, ratio < 5, JSON.stringify({...ms, ratio: +ratio.toFixed(2)}));
+    } catch (e) { check('the comparison of the frame time with 100,000 and 1,000 icons was completed', false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
 await browser.close();
 process.exit(failed ? 1 : 0);
