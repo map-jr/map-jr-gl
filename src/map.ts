@@ -799,7 +799,9 @@ export class Map {
     setMinPitch(p = 0) { this.tr.minPitch = Math.max(0, Math.min(p, this.tr.maxPitch)); return this.limits(); }
     /** Keeps the map centre inside a box (`[[west, south], [east, north]]`), or lifts the restriction with `null`. */
     setMaxBounds(bounds?: LngLatBoundsInput | null) {
-        const flat = bounds && LngLatBounds.convert(bounds).toArray().flat();
+        // The corners are kept as given (as MapLibre keeps them): a west edge east of the east edge crosses the antimeridian.
+        const flat = bounds && (bounds instanceof LngLatBounds ? bounds.toArray().flat()
+            : bounds.length === 4 ? bounds : [...LngLat.convert(bounds[0]).toArray(), ...LngLat.convert(bounds[1]).toArray()]);
         this.tr.maxBounds = flat ? [flat[0], flat[1], flat[2], flat[3]] : null;
         // The engine clamps its own camera when it gets the limits. This clamps the copy here, so that `getCenter()` is right at once.
         this.tr.constrain();

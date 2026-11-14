@@ -141,9 +141,15 @@ export class Transform {
         // there were no bearing and no pitch. When the bounds are smaller than that, the zoom rises until they fill it,
         // centred on them (and can then go past maxZoom, as in MapLibre).
         const [pt, pr, pb, pl] = this.padding, vw = this.width - pl - pr, vh = this.height - pt - pb;
-        const ws = this.worldSize, x0 = mercX(b[0]) * ws, x1 = mercX(b[2]) * ws, y0 = mercY(b[3]) * ws, y1 = mercY(b[1]) * ws;
+        // As in MapLibre, both edges are wrapped into one world, and an east edge west of the west edge (bounds that
+        // cross the antimeridian) lies one world further east. The centre is then wrapped to the copy nearest the bounds.
+        const ws = this.worldSize, wrap = (v: number, lo: number) => { const r = ((v - lo) % ws + ws) % ws + lo; return r === lo ? lo + ws : r; };
+        const x0 = wrap(mercX(b[0]) * ws, 0), y0 = mercY(b[3]) * ws, y1 = mercY(b[1]) * ws;
+        let x1 = wrap(mercX(b[2]) * ws, 0);
+        if (x1 <= x0) x1 += ws;
         const sx = x1 - x0 < vw ? vw / (x1 - x0) : 0, sy = y1 - y0 < vh ? vh / (y1 - y0) : 0;
-        let x = mercX(this.lng) * ws, y2 = mercY(this.lat) * ws;
+        const xw = wrap(mercX(this.lng) * ws, (x0 + x1 - ws) / 2);
+        let x = xw, y2 = mercY(this.lat) * ws;
         if (sx || sy) {
             if (sx) x = (x0 + x1) / 2;
             if (sy) y2 = (y0 + y1) / 2;
@@ -153,8 +159,10 @@ export class Transform {
             x = x - w < x0 ? x0 + w : x + w > x1 ? x1 - w : x;
             y2 = y2 - h < y0 ? y0 + h : y2 + h > y1 ? y1 - h : y2;
         }
-        if (x !== mercX(this.lng) * ws) this.lng = lngFromMerc(x / ws);
-        if (y2 !== mercY(this.lat) * ws) this.lat = latFromMerc(y2 / ws);
+        // As in MapLibre, a centre that moves is wrapped into (-180, 180].
+        const dy = y2 !== mercY(this.lat) * ws;
+        if (x !== xw || dy) { const l = ((lngFromMerc(x === xw ? mercX(this.lng) : x / ws) + 180) % 360 + 360) % 360 - 180; this.lng = l === -180 ? 180 : l; }
+        if (dy) this.lat = latFromMerc(y2 / ws);
     }
 
     /** Distance from the camera to the map centre in pixels; fixes the field of view at MapLibre's 36.87 degrees. */
