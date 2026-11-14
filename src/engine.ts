@@ -24,7 +24,7 @@ export interface FeatureQuery { radius: number; zoom?: number; sources?: string[
 export type Command =
     | {type: 'resize'; width: number; height: number; dpr: number}
     | ({type: 'jump'} & CameraOptions)
-    | ({type: 'ease'; duration: number; around?: [number, number]} & CameraOptions)
+    | ({type: 'ease'; duration: number; around?: [number, number]; easing?: number[]} & CameraOptions)
     /** Moves the map by a screen distance. With `x`, `y` (where the pointer now is) the ground first grabbed stays under the pointer, tilt, terrain and all. */
     | {type: 'pan'; dx: number; dy: number; x?: number; y?: number}
     | {type: 'zoom'; delta: number; x: number; y: number}
@@ -155,7 +155,7 @@ export class Engine {
     private seq = 0;
     private moving = false;
 
-    private ease: {from: number[]; to: number[]; start: number; duration: number; around?: [number, number]; anchor?: [number, number]} | null = null;
+    private ease: {from: number[]; to: number[]; start: number; duration: number; around?: [number, number]; anchor?: [number, number]; easing?: number[]} | null = null;
     private wheel: {
         delta: number; kind: 'wheel' | 'trackpad'; x: number; y: number; lastEvent: number;
         target?: number; start?: number; easing?: (t: number) => number; doneAt?: number;
@@ -673,7 +673,7 @@ export class Engine {
                 db = ((db + 180) % 360 + 360) % 360 - 180;
                 this.ease = {
                     from: [mercX(tr.lng), mercY(tr.lat), tr.zoom, tr.bearing, tr.pitch, ...tr.padding], to: [mercX(to.lng), mercY(to.lat), to.zoom, tr.bearing + db, to.pitch, ...(c.padding ?? tr.padding)],
-                    start: performance.now(), duration: Math.max(1, c.duration), around: c.around,
+                    start: performance.now(), duration: Math.max(1, c.duration), around: c.around, easing: c.easing,
                     anchor: c.around ? tr.unproject(c.around[0], c.around[1]) : undefined,
                 };
                 this.centreGiven = !c.around;
@@ -953,7 +953,7 @@ export class Engine {
     private animate(now: number): boolean {
         const tr = this.tr;
         if (this.ease) {
-            const e = this.ease, t = Math.min(1, (now - e.start) / e.duration), k = defaultEasing(t);
+            const e = this.ease, t = Math.min(1, (now - e.start) / e.duration), q = e.easing, j = t * 64 | 0, k = q ? q[j] + ((q[j + 1] ?? q[j]) - q[j]) * (t * 64 - j) : defaultEasing(t);
             const v = e.from.map((f, i) => f + (e.to[i] - f) * k);
             tr.zoom = v[2];
             tr.padding = [v[5], v[6], v[7], v[8]];

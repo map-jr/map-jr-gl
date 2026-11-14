@@ -148,8 +148,6 @@ export class Map extends CoreMap {
      */
     jumpTo(o: CameraInput, eventData?: EventData) { return this.camera(eventData, () => super.jumpTo(o)); }
     easeTo(o: EaseToOptions, eventData?: EventData) {
-        this.unsupported('The option offset of easeTo and flyTo', o.offset === undefined);
-        this.unsupported('The option easing of easeTo and flyTo', o.easing === undefined);
         return this.camera(eventData, () => super.easeTo(o));
     }
     fitBounds(bounds: Parameters<CoreMap['fitBounds']>[0], o?: FitBoundsOptions, eventData?: EventData) {

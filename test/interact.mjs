@@ -1044,15 +1044,43 @@ for (const mode of ['main', 'worker']) {
                     new mod.NavigationControl({visualizePitch: true});
                     new mod.FullscreenControl({container: document.body});
                     m.flyTo({center: [1, 1], speed: 2, curve: 1.2, duration: 0});
-                    m.easeTo({center: [0, 0], offset: [0, -150], easing: t => t, duration: 0});
                 }
             } finally { console.warn = warn; }
             m.remove(); el.remove();
-            const names = ['logoPosition', 'validate', 'visualizePitch', 'container', 'speed and curve', 'offset', 'easing'];
+            const names = ['logoPosition', 'validate', 'visualizePitch', 'container', 'speed and curve'];
             return Object.fromEntries(names.map(n => [n, warns.filter(w => w.startsWith('[map-jr-gl]') && w.includes(n)).length]));
         });
-        check('maplibre-compat: logoPosition, validate, visualizePitch, the container of FullscreenControl and speed/curve of flyTo, offset and easing of easeTo each warn once (#43)',
+        check('maplibre-compat: logoPosition, validate, visualizePitch, the container of FullscreenControl and speed/curve of flyTo each warn once',
             Object.values(r).every(n => n === 1), JSON.stringify(r));
+    }
+    // #43: easeTo and flyTo of maplibre-compat use `offset` (also with bearing and pitch) and a custom `easing`, without a warning.
+    {
+        const r = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const warns = [], warn = console.warn;
+            console.warn = (...a) => { warns.push(String(a[0])); };
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:400px;height:300px'}));
+            const m = new mod.Map({container: el, center: [0, 0], zoom: 3, attributionControl: false, style: {version: 8, sources: {}, layers: []}});
+            await new Promise(res => m.once('load', res));
+            const out = {};
+            try {
+                m.easeTo({center: [10, 20], offset: [0, -100], bearing: 90, pitch: 30, duration: 0});
+                out.jump = m.project([10, 20]);
+                m.easeTo({center: [10, 20], bearing: 0, pitch: 0, duration: 0});
+                // A step: nothing moves in the first half of the time, then the map is at the end.
+                m.flyTo({center: [-30, 5], offset: {x: 50, y: 0}, easing: t => t < 0.5 ? 0 : 1, duration: 1600});
+                await new Promise(res => setTimeout(res, 400));
+                out.early = m.getCenter().lng;
+                await new Promise(res => m.once('moveend', res));
+                out.end = m.project([-30, 5]);
+            } finally { console.warn = warn; }
+            out.warns = warns.filter(w => w.startsWith('[map-jr-gl]') && /offset|easing/.test(w)).length;
+            m.remove(); el.remove();
+            return out;
+        });
+        const near = (p, x, y) => Math.abs(p.x - x) < 1 && Math.abs(p.y - y) < 1;
+        check(`maplibre-compat (${mode}): easeTo and flyTo put the center at the offset and use a custom easing (#43)`,
+            near(r.jump, 200, 50) && Math.abs(r.early - 10) < 1e-6 && near(r.end, 250, 150) && r.warns === 0, JSON.stringify(r));
     }
     // #208: fitBounds warns once for speed, curve and linear; Marker takes offset as {x, y}; getImage gives RGBA pixels.
     if (mode === 'main') {

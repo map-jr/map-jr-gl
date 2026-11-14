@@ -766,17 +766,33 @@ export class Map {
         this.post({type: 'jump', center: o.center && toLngLat(o.center), zoom: o.zoom, bearing: o.bearing, pitch: o.pitch, padding});
         return this;
     }
-    easeTo(o: CameraInput & {duration?: number; around?: [number, number]}) {
-        // Only plain camera values cross to the engine. Extra options written for MapLibre (such as an `easing`
-        // function, which cannot be sent to a worker) are ignored rather than breaking the call.
-        const {center, zoom, bearing, pitch, around} = o;
+    /**
+     * `offset` ([x, y] or {x, y}, CSS pixels) puts `center` at that distance from the centre of the view, as in
+     * MapLibre GL JS. `easing` maps the time (0 to 1) to the progress (0 to 1); it is sampled into a table of 65
+     * values, because a function cannot be sent to the engine's worker.
+     */
+    easeTo(o: CameraInput & {duration?: number; around?: [number, number]; offset?: PointLike; easing?: (t: number) => number}) {
+        const {zoom, bearing, pitch, around} = o;
+        let center = o.center;
+        const padding = o.padding === undefined ? undefined : paddingOf(o.padding);
+        if (o.offset) {
+            const [ox, oy] = Array.isArray(o.offset) ? o.offset : [o.offset.x, o.offset.y];
+            if (ox || oy) {
+                // The view at the end, with the given centre moved to the offset point (with bearing and pitch).
+                const to = Object.assign(new Transform(), this.tr, padding && {padding});
+                to.set(center, zoom, bearing, pitch);
+                to.setLocationAt(to.lng, to.lat, to.cx + ox, to.cy + oy);
+                center = [to.lng, to.lat];
+            }
+        }
         // A user who asked the system for less motion gets the new view at once (as in MapLibre GL JS, `essential: true`
         // keeps the animation).
         const still = !(o as {essential?: boolean}).essential && matchMedia('(prefers-reduced-motion: reduce)').matches;
         const duration = still ? 0 : o.duration ?? 500;
         // As in MapLibre GL JS, no duration is a jump, so reads right after the call see the new view.
-        if (duration <= 0 && !around) return this.jumpTo(o);
-        this.post({type: 'ease', duration, center: center && toLngLat(center), zoom, bearing, pitch, around, padding: o.padding === undefined ? undefined : paddingOf(o.padding)});
+        if (duration <= 0 && !around) return this.jumpTo({...o, center});
+        const easing = o.easing && Array.from({length: 65}, (_, i) => o.easing!(i / 64));
+        this.post({type: 'ease', duration, center: center && toLngLat(center), zoom, bearing, pitch, around, padding, easing});
         return this;
     }
     stop() { this.post({type: 'stop'}); return this; }
