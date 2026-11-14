@@ -8,7 +8,7 @@
 import {createContext, createElement as h, forwardRef, useCallback, useContext, useEffect, useImperativeHandle, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode} from 'react';
 import {createPortal} from 'react-dom';
 declare const __DEV__: boolean;
-import {createMap, type MapEvents, type MapHost, type MapOverlay as Overlay, type MapPointer, type MapSpec, type MapState, type OverlayOptions, type View} from './host.ts';
+import {makeMap, type MapEvents, type MapHost, type MapOverlay as Overlay, type MapPointer, type MapSpec, type MapState, type OverlayOptions, type View} from './host.ts';
 import type {RenderedFeature} from './map.ts';
 
 type Undotted<K extends string> = K extends `${infer A}.${infer B}` ? `${A}${B}` : K;
@@ -88,7 +88,7 @@ export const MapJr = forwardRef<MapHost | null, MapJrProps>(function MapJr(props
         return () => { for (const stop of stops) stop(); };
     }, [host, events.join()]);
     useEffect(() => {
-        const map = made.current = createMap(el.current!, spec);
+        const map = made.current = makeMap(el.current!, spec, '<MapJr>');
         setHost(map);
         const stops = [
             map.state.subscribe(s => s.loaded, v => { if (v) last.current.onLoad?.(); }),

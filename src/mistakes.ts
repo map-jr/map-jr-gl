@@ -10,7 +10,7 @@ import {templateSlots} from './markers.ts';
 export interface Checked { map: Map; warned: Set<string>; spec(): MapSpec; /** The map exists and has loaded the style of the description. */ ready(): boolean }
 
 const texts: ((a: string, b: string) => string)[] = [
-    /* 0 */ () => 'createMap(): the container has height 0, so the map shows nothing. Give the container a height in CSS.',
+    /* 0 */ a => a + ': the container has height 0, so the map shows nothing. Give the container a height in CSS.',
     /* 1 */ a => `interactiveLayers: the style has no layer "${a}". Write the id of a layer of the style or of "extend".`,
     /* 2 */ a => `data: the style has no GeoJSON source "${a}". Add "${a}": {type: 'geojson', data: {type: 'FeatureCollection', features: []}} to the sources of the style or of "extend".`,
     /* 3 */ a => `queryFeatures(): the style has no layer "${a}". In "layers", write the id of a layer of the style or of "extend".`,
@@ -40,7 +40,7 @@ const setupOnly = ['renderer', 'fonts', 'fontFamily', 'glyphs', 'interactive', '
 const differ = (a: unknown, b: unknown) => a !== b && JSON.stringify(a) !== JSON.stringify(b);
 
 /**
- * One check of a map. The kinds: 0, the container, a second after the map is made; 1, the ids of the description, when
+ * One check of a map. The kinds: 0, the container (`a` is the name that the user wrote), a second after the map is made; 1, the ids of the description, when
  * the map is idle; 2, a description (`a`) after the description before it (`b`, none for the first); 3, a query for
  * features at `a` with the options `b`; 4, the style `a` and the additions of `extend` (`b`) to it; 5, an image with
  * the name `a` that a marker layer has and the map does not have.
@@ -69,7 +69,7 @@ export function check(c: Checked, kind: number, a?: any, b?: any) {
     if (kind === 0) {
         // (An element that is hidden or not in the page has no rectangle: that is not this mistake.)
         const el = map.getContainer();
-        if (el.isConnected && el.getClientRects().length && !el.clientHeight) warn(0);
+        if (el.isConnected && el.getClientRects().length && !el.clientHeight) warn(0, a);
     } else if (kind === 1) {
         if (!c.ready()) return;
         const spec = c.spec();
