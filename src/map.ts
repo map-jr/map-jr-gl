@@ -535,7 +535,7 @@ export class Map {
     private deliver(c: Command, transfer?: Transferable[]) {
         try { this.send(c, transfer); } catch (e) {
             try { if ((e as Error).name !== 'DataCloneError') throw e; this.send(plain(c), transfer); }
-            catch (error) { this.fire('error', {error: new Error(`[map-jr-gl] ${c.type}: the data cannot be copied (${(e as Error).message}). Pass plain objects (toRaw() in Vue).`, {cause: error})}); }
+            catch (error) { this.fire('error', {error: new Error(`[map-jr-gl] The map could not copy data to its workers (${(e as Error).message}). Pass plain objects (toRaw() in Vue).`, {cause: error})}); }
         }
     }
 

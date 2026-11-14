@@ -27,7 +27,7 @@ for (const f of compat) engine.delete(f); // the page has these already when it 
 // release looks for savings in one go.
 const sizes = [
     // What a page downloads before the map can start. The worker file is downloaded at the same time.
-    ['page script, up front (' + [...page].length + ' files)', gz(page), 31],
+    ['page script, up front (' + [...page].length + ' files)', gz(page), 32], // (31 → 32 on 2026-11-14, #242: fallback for data that structured clone refuses; the page script was within 150 B of the ceiling)
     // The same for the entry that is a replacement for MapLibre GL JS (`@map-jr/map-jr-gl/maplibre-compat`).
     ['page script of maplibre-compat, up front (' + [...compat].length + ' files)', gz(compat), 34],
     ['map-jr-gl-worker.js', gz(['map-jr-gl-worker.js']), 64],
