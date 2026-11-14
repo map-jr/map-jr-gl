@@ -1958,8 +1958,10 @@ for (const mode of ['main', 'worker']) {
     // moment and no tile is asked for again.
     {
         const asked = [];
+        let done = 0;
         const count = r => { if (r.url().includes('tiles.mapterhorn.com')) asked.push(r.url()); };
-        page.on('request', count);
+        const ended = r => { if (r.url().includes('tiles.mapterhorn.com')) done++; };
+        page.on('request', count); page.on('requestfinished', ended); page.on('requestfailed', ended);
         await page.evaluate(async mode => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
             const el = window.flashEl = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:400px;height:300px'}));
@@ -1970,6 +1972,9 @@ for (const mode of ['main', 'worker']) {
             await window.flashIdle();
         }, mode);
         await page.waitForTimeout(500);
+        // (`idle` does not wait for the coarse overview tiles. A tile that is still on its way when the terrain goes off
+        // is cancelled, and it is asked for again later: the test starts when no tile is on its way.)
+        for (let i = 0; i < 100 && done < asked.length; i++) await page.waitForTimeout(100);
         const first = asked.length;
         const toggled = await page.evaluate(async () => {
             const m = window.flashMap, out = {};
@@ -1982,7 +1987,7 @@ for (const mode of ['main', 'worker']) {
             const el = m.getContainer(); m.remove(); el.remove();
             return out;
         });
-        page.off('request', count);
+        page.off('request', count); page.off('requestfinished', ended); page.off('requestfailed', ended);
         check(`[${mode}] 3D terrain off and on again asks for no elevation tile again, and the ground has its height at once`,
             first > 0 && asked.length === first && toggled.off && toggled.on && toggled.elevation > 1000, JSON.stringify({first, later: asked.length - first, ...toggled}));
     }
