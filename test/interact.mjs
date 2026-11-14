@@ -1461,7 +1461,7 @@ for (const mode of ['main', 'worker']) {
             console.warn = (...a) => warnings.push(a.join(' '));
             const make = options => { const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'})); return new mod.Map({container: el, renderer: 'main', attributionControl: false, style: {version: 8, sources: {g: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}}, layers: [{id: 'bg', type: 'background'}]}, ...options}); };
             const m = make({cooperativeGestures: true, locale: {x: 'y'}, projection: {type: 'globe'}, renderWorldCopies: false, canvasContextAttributes: {antialias: true, preserveDrawingBuffer: true}, center: [50, 50], zoom: 3, maxBounds: [[-10, -10], [10, 10]]});
-            // The centre is inside maxBounds directly after the constructor, before the engine reports the camera (as in MapLibre).
+            // The view is inside maxBounds directly after the constructor, before the engine reports the camera (MapLibre GL JS 6.17 gives [1.2109, 3.4573]).
             const clamped = m.getCenter().toArray();
             const options = warnings.splice(0), errors = [];
             m.on('error', e => errors.push(e.error.message));
@@ -1489,7 +1489,7 @@ for (const mode of ['main', 'worker']) {
             return {...out, thrown, thrownCall};
         });
         check('[main] maplibre-compat: each option with no effect gives one warning, the defaults give none, and maxBounds works',
-            quiet.options.length === 5 && ['cooperativeGestures', 'locale', 'projection', 'renderWorldCopies', 'canvasContextAttributes'].every(n => quiet.options.some(w => w.startsWith('[map-jr-gl] The option ' + n))) && quiet.plain.length === 0 && String(quiet.bounds) === '-10,-10,10,10' && String(quiet.clamped) === '10,10' && String(quiet.later) === '10,10' && quiet.custom.length === 1 && quiet.custom[0].includes('"custom"'), JSON.stringify({options: quiet.options, plain: quiet.plain, bounds: quiet.bounds, clamped: quiet.clamped, later: quiet.later, custom: quiet.custom}));
+            quiet.options.length === 5 && ['cooperativeGestures', 'locale', 'projection', 'renderWorldCopies', 'canvasContextAttributes'].every(n => quiet.options.some(w => w.startsWith('[map-jr-gl] The option ' + n))) && quiet.plain.length === 0 && String(quiet.bounds) === '-10,-10,10,10' && quiet.clamped.every((v, i) => Math.abs(v - [1.2109, 3.4573][i]) < 1e-3) && quiet.later.every((v, i) => Math.abs(v - [1.2109, 3.4573][i]) < 1e-3) && quiet.custom.length === 1 && quiet.custom[0].includes('"custom"'), JSON.stringify({options: quiet.options, plain: quiet.plain, bounds: quiet.bounds, clamped: quiet.clamped, later: quiet.later, custom: quiet.custom}));
         check('[main] maplibre-compat: a layer or source id that exists, a source that is not there, and a source in use fire error and change nothing',
             quiet.errors.length === 4 && /addLayer: the style has a layer with the id "bg"/.test(quiet.errors[0]) && /names the source "nowhere"/.test(quiet.errors[1]) && /addSource: the style has a source with the id "g"/.test(quiet.errors[2]) && /removeSource: the layer "uses-g" uses the source "g"/.test(quiet.errors[3]) && quiet.layers === 'bg,uses-g' && quiet.source, JSON.stringify({errors: quiet.errors, layers: quiet.layers, source: quiet.source}));
         check('[main] maplibre-compat: strict: true throws for an option with no effect and for a refused style call',
@@ -1622,17 +1622,32 @@ for (const mode of ['main', 'worker']) {
             m.jumpTo({center: [5, 45]});
             m.jumpTo({center: [50, 60]});
             const jumped = [m.getCenter().lng, m.getCenter().lat];
+            // #280: the edges of the view stay inside the bounds, as MapLibre's Mercator transform keeps them. The bearing and
+            // the pitch do not change the result, and the padding makes the view smaller.
+            m.jumpTo({zoom: 6, bearing: 30, pitch: 40});
+            m.jumpTo({center: [50, 60]});
+            const turned = [m.getCenter().lng, m.getCenter().lat, m.getZoom()];
+            m.jumpTo({bearing: 0, pitch: 0});
+            const easedEdge = await end(() => m.easeTo({center: [-50, 20], duration: 100}));
+            m.jumpTo({padding: {left: 100, top: 0, right: 0, bottom: 50}});
+            m.jumpTo({center: [50, 60]});
+            const padded = [m.getCenter().lng, m.getCenter().lat, m.getZoom()];
+            m.jumpTo({padding: 0});
             m.setMaxBounds(null);
             const world = [[-180, -18.3], [180, 83.2]];
             const fitted = await end(() => m.fitBounds(world, {duration: 100}));
             const fittedAtOnce = await end(() => m.fitBounds(world, {duration: 0}));
             m.remove(); el.remove();
-            return {eased, jumped, fitted, fittedAtOnce};
+            return {eased, jumped, fitted, fittedAtOnce, turned, easedEdge, padded};
         });
         const near = (a, b) => Math.abs(a - b) < 1e-6;
         check('[main] maplibre-compat: easeTo and fitBounds end inside maxBounds and the edge of the world, as jumpTo does (#246)',
             near(cam.eased[0], cam.jumped[0]) && near(cam.eased[1], cam.jumped[1]) && cam.eased[0] <= 10 && cam.eased[1] <= 50
             && near(cam.fitted[1], cam.fittedAtOnce[1]) && cam.fitted[1] < 55, JSON.stringify(cam));
+        // The results of MapLibre GL JS 6.17 for the same moves, at a precision of 1e-3.
+        const ml = (a, b) => a.every((v, i) => Math.abs(v - b[i]) < 1e-3);
+        check('[main] maplibre-compat: maxBounds keeps the edges of the view inside, raises the zoom when the view is larger, and counts the padding, as MapLibre does (#280)',
+            ml(cam.jumped, [5, 47.8094]) && ml(cam.eased, [5, 47.8094, 4.3987]) && ml(cam.turned, [8.3521, 49.2886, 6]) && ml(cam.easedEdge, [1.6479, 40.8364, 6]) && ml(cam.padded, [8.9014, 49.4674, 6]), JSON.stringify(cam));
         // #261: the eventData argument of a camera method is on the events of that move, and not on the next move.
         const tagged = await page.evaluate(async () => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js');

@@ -50,7 +50,6 @@ The [status table](../README.md#status) gives the current test results.
 | 3D terrain | Draws terrain at each tilt. | Draws a flat map when you look vertically down. See [Terrain and elevation](terrain-and-elevation.md). |
 | Camera | Tilt to 85 degrees. Roll. Field of view. | Tilt to 60 degrees. No roll. A fixed field of view. Padding is available. |
 | The lowest zoom | `minZoom` is -2 by default. The world is never less tall than the map. | The same. |
-| `setMaxBounds` | Keeps all of the view in the bounds. | Keeps the map centre in the bounds. |
 | The `hash` option | The camera in the fragment of the URL. | The same, with the same format. |
 | Tile URLs | `{z}`, `{x}`, `{y}`, `{bbox-epsg-3857}`, `{quadkey}`, `{ratio}`, `{prefix}`; the `scheme` `tms`. | `{z}`, `{x}`, `{y}`, `{bbox-epsg-3857}` (for WMS servers), `{quadkey}`; the `scheme` `tms`. Not `{ratio}` and `{prefix}`. |
 | The `bounds` of a source | A tile outside the bounds is not requested. | The same, for bounds in the style and in the TileJSON. Not for the bounds in the header of a PMTiles file. |

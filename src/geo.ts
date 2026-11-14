@@ -84,7 +84,7 @@ export class Transform {
     /** Where on screen the map centre is drawn. */
     get cx() { return this.width / 2 + (this.padding[3] - this.padding[1]) / 2; }
     get cy() { return this.height / 2 + (this.padding[0] - this.padding[2]) / 2; }
-    /** If set, the map centre is kept inside this box: west, south, east, north. */
+    /** If set, the view is kept inside this box: west, south, east, north. */
     maxBounds: [number, number, number, number] | null = null;
 
     /**
@@ -111,7 +111,7 @@ export class Transform {
     /** The lowest zoom: `minZoom`, or the zoom at which the world is as tall as the view. */
     get zoomFloor() { return Math.max(this.minZoom, Math.log2(this.height / TILE_SIZE)); }
 
-    /** Keeps the centre on the map, and inside `maxBounds` if there are any. */
+    /** Keeps the view on the map, and inside `maxBounds` if there are any (as MapLibre GL JS does). */
     constrain() {
         // As in MapLibre, the view does not go past the top or the bottom of the world (when the world is taller than the view).
         // (A latitude that needs no change is left exactly as it was given.)
@@ -120,7 +120,25 @@ export class Transform {
         const half = Math.min(0.5, this.height / 2 / this.worldSize), y = mercY(this.lat = clamp(this.lat, -MAX_LAT, MAX_LAT)), inside = clamp(y, half, 1 - half);
         if (inside !== y) this.lat = latFromMerc(inside);
         const b = this.maxBounds;
-        if (b) { this.lng = clamp(this.lng, b[0], b[2]); this.lat = clamp(this.lat, b[1], b[3]); }
+        if (!b) return;
+        // As MapLibre's Mercator transform does, the view stays inside the bounds: the canvas less the padding, as if
+        // there were no bearing and no pitch. When the bounds are smaller than that, the zoom rises until they fill it,
+        // centred on them (and can then go past maxZoom, as in MapLibre).
+        const [pt, pr, pb, pl] = this.padding, vw = this.width - pl - pr, vh = this.height - pt - pb;
+        const ws = this.worldSize, x0 = mercX(b[0]) * ws, x1 = mercX(b[2]) * ws, y0 = mercY(b[3]) * ws, y1 = mercY(b[1]) * ws;
+        const sx = x1 - x0 < vw ? vw / (x1 - x0) : 0, sy = y1 - y0 < vh ? vh / (y1 - y0) : 0;
+        let x = mercX(this.lng) * ws, y2 = mercY(this.lat) * ws;
+        if (sx || sy) {
+            if (sx) x = (x0 + x1) / 2;
+            if (sy) y2 = (y0 + y1) / 2;
+            this.zoom += Math.log2(Math.max(sx, sy));
+        } else {
+            const w = vw / 2, h = vh / 2;
+            x = x - w < x0 ? x0 + w : x + w > x1 ? x1 - w : x;
+            y2 = y2 - h < y0 ? y0 + h : y2 + h > y1 ? y1 - h : y2;
+        }
+        if (x !== mercX(this.lng) * ws) this.lng = lngFromMerc(x / ws);
+        if (y2 !== mercY(this.lat) * ws) this.lat = latFromMerc(y2 / ws);
     }
 
     /** Distance from the camera to the map centre in pixels; fixes the field of view at MapLibre's 36.87 degrees. */
