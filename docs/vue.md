@@ -332,6 +332,58 @@ import {defineAsyncComponent, hydrateOnVisible} from 'vue';
 const MapJr = defineAsyncComponent({loader: () => import('@map-jr/map-jr-gl/vue').then(m => m.MapJr), hydrate: hydrateOnVisible()});
 ```
 
+### `MapJr` in a component test
+
+A component test usually replaces `MapJr` with a stub, because the test environment (happy-dom or jsdom) has no
+WebGL. Replace the export `MapJr` of `@map-jr/map-jr-gl/vue` with `vi.mock` of Vitest. This works with the module
+for Nuxt and without it, because the module registers `MapJr` from that same module name.
+
+`mockComponent('MapJr', ...)` of `@nuxt/test-utils` does not work with the module: it replaces the default export of
+the file that registers the component, but the module registers the named export `MapJr`. The test then fails with
+`No "MapJr" export is defined on the "@map-jr/map-jr-gl/vue" mock`.
+
+The component under test, `app/components/StoreMap.vue`:
+
+```vue
+<template>
+  <div style="height: 400px">
+    <MapJr map-style="https://tiles.openfreemap.org/styles/liberty" :initial-view="{center: [-74.0065, 40.7085], zoom: 13.6}" />
+  </div>
+</template>
+```
+
+A test with `@nuxt/test-utils` (environment `nuxt` in `vitest.config.ts`):
+
+```ts
+// test/StoreMap.test.ts
+import {describe, expect, it, vi} from 'vitest';
+import {mountSuspended} from '@nuxt/test-utils/runtime';
+import StoreMap from '../app/components/StoreMap.vue';
+
+// The stub replaces only MapJr. The other exports of the adapter stay as they are.
+vi.mock('@map-jr/map-jr-gl/vue', async importOriginal => {
+    const {defineComponent, h} = await import('vue');
+    return {
+        ...await importOriginal<typeof import('@map-jr/map-jr-gl/vue')>(),
+        MapJr: defineComponent({
+            props: {mapStyle: String},
+            setup: (props, {slots}) => () => h('div', {'data-test': 'map', 'data-style': props.mapStyle}, slots.default?.()),
+        }),
+    };
+});
+
+describe('StoreMap', () => {
+    it('passes the style to the map', async () => {
+        const wrapper = await mountSuspended(StoreMap);
+        expect(wrapper.find('[data-test="map"]').attributes('data-style')).toBe('https://tiles.openfreemap.org/styles/liberty');
+    });
+});
+```
+
+In plain Vitest without Nuxt, the `vi.mock` call is the same. Mount the component with `mount` of `@vue/test-utils`
+instead of `mountSuspended`. The stub renders the default slot of `MapJr`. It declares only the props that the test reads, and
+Vue passes the other props (here `initial-view`) on as attributes of the `div`.
+
 ## Nuxt and server rendering
 
 The component works in Nuxt without `<ClientOnly>`. On the server it renders an empty element. In the browser the
