@@ -141,8 +141,9 @@ The map fetches the worker file once and starts all of its workers from a `blob:
 cold load requests the file once instead of once per worker. This applies when the library finds the worker file
 itself or you pass `workerUrl`; it does not apply to `createWorker` or the standalone build. When the fetch fails (for
 example, a CDN without CORS) or the policy of the page does not allow `blob:` workers, the map starts the workers from
-the URL of the file instead. With a `worker-src` policy that lacks `blob:`, the page then logs one console error and
-requests the file one more time. Add `blob:` to `worker-src` to avoid both.
+the URL of the file instead. With a `worker-src` policy that lacks `blob:`, the first start of the map logs one console
+error for each worker that it starts (up to 5) and requests the file one more time. Later maps on the page start their
+workers from the URL directly. Add `blob:` to `worker-src` to avoid the errors and the extra request.
 
 ### Vite in development
 

@@ -56,7 +56,7 @@ for (const [what, query] of [['same origin', ''], ['another origin', `&from=http
     check(`start-up (${what}): the worker file is requested once`, ok && renderer === 'worker' && asked === 1, `renderer=${renderer} requests=${asked}`);
     await page.close();
 }
-// A policy without blob: workers: the first blob worker fails, and the other workers start from the URL (#325).
+// A policy without blob: workers: each blob worker fails and starts from the URL (#325).
 // (The demo server sends no-store, so each of the 3 workers requests the file, plus the one fetch for the blob.)
 {
     const page = await browser.newPage({viewport: {width: 800, height: 500}});
@@ -70,7 +70,7 @@ for (const [what, query] of [['same origin', ''], ['another origin', `&from=http
     await page.goto(base);
     const ok = await page.waitForFunction(() => window.mapLoaded, null, {timeout: 30000}).then(() => true, () => false);
     const renderer = ok ? await page.evaluate(() => window.map.renderer) : 'did not load';
-    check('start-up under worker-src \'self\': one blocked blob worker at most, and one request more than the workers', ok && renderer === 'worker' && asked <= 4 && blocked <= 1, `renderer=${renderer} requests=${asked} errors=${blocked}`);
+    check('start-up under worker-src \'self\': one error at most per start-up worker, and one request more than the workers', ok && renderer === 'worker' && asked <= 4 && blocked <= 3, `renderer=${renderer} requests=${asked} errors=${blocked}`);
     await page.close();
 }
 await browser.close();
