@@ -765,6 +765,28 @@ export class Map {
     getContainer() { return this.container; }
     getCanvas() { return this.canvas; }
     /**
+     * The map as an image. Waits until the map is idle, draws one frame and gives the canvas of that frame as a Blob
+     * (`type` and `quality` as in `HTMLCanvasElement.toBlob`; the default is PNG). It works with both renderers: the
+     * main renderer clears its drawing buffer after each frame, so the image is taken in the same task as the frame.
+     */
+    toBlob(type = 'image/png', quality?: number): Promise<Blob> {
+        return new Promise((resolve, reject) => {
+            const gone = () => reject(new Error('[map-jr-gl] toBlob(): the map was removed before its image was taken.'));
+            const shoot = () => {
+                if (this.removed) return gone();
+                this.once('render', () => {
+                    // (The engine reports frames only while a page listens to `render`.)
+                    if (!this.listeners.render?.length) { this.wantsFrames = false; this.post({type: 'frames', on: false}); }
+                    this.off('remove', gone);
+                    this.canvas.toBlob(b => b ? resolve(b) : reject(new Error('[map-jr-gl] toBlob(): the browser could not encode the image as ' + type + '.')), type, quality);
+                });
+                this.triggerRepaint();
+            };
+            this.once('remove', gone);
+            if (this.loaded()) shoot(); else this.once('idle', shoot);
+        });
+    }
+    /**
      * As in MapLibre: `false` from a call of `setStyle`, a style edit, a source change or a camera move until the next
      * complete frame (the frame that fires `idle`).
      */

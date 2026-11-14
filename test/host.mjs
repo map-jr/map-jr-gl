@@ -182,6 +182,25 @@ for (const renderer of ['worker', 'main']) {
         }, renderer);
         check(`[${renderer}] a GeoJSON line with longitudes past 180° is drawn past the antimeridian`, pastAntimeridian === 1, JSON.stringify(pastAntimeridian));
 
+        // 3e. toBlob gives the drawn map as an image in both renderers (#44): the main renderer clears its buffer after each frame.
+        const blob = await page.evaluate(async renderer => {
+            const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const square = {type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[-30, -30], [30, -30], [30, 30], [-30, 30], [-30, -30]]]}};
+            const host = t.lib.createMap(el, {style: {version: 8, sources: {sq: {type: 'geojson', data: square}}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#f00'}}, {id: 'sq', type: 'fill', source: 'sq', paint: {'fill-color': '#00f'}}]},
+                initialView: {center: [0, 0], zoom: 1}, renderer, attribution: false});
+            const b = await Promise.race([host.toBlob(), new Promise(r => setTimeout(() => r(null), 10000))]);
+            if (!b) { host.destroy(); el.remove(); return {timeout: true}; }
+            const bmp = await createImageBitmap(b), c = new OffscreenCanvas(bmp.width, bmp.height), g = c.getContext('2d');
+            g.drawImage(bmp, 0, 0);
+            const px = (x, y) => Array.from(g.getImageData(Math.round(x * bmp.width), Math.round(y * bmp.height), 1, 1).data);
+            const jpeg = await host.toBlob('image/jpeg', 0.8);
+            const later = host.toBlob(); host.destroy(); el.remove();
+            const rejected = await later.then(() => 'resolved', e => e.message);
+            return {type: b.type, w: bmp.width, centre: px(0.5, 0.5), corner: px(0.02, 0.02), jpeg: jpeg.type, rejected};
+        }, renderer);
+        check(`[${renderer}] toBlob gives the drawn map as an image, and rejects after destroy (#44)`,
+            blob.type === 'image/png' && blob.w >= 200 && blob.centre[2] > 200 && blob.centre[0] < 50 && blob.corner[0] > 200 && blob.corner[2] < 50 && blob.jpeg === 'image/jpeg' && /toBlob\(\): the map was removed/.test(blob.rejected), JSON.stringify(blob));
+
         // 3d. `initialView` takes bounds with padding, and `state.view.bounds` follows moves and a new size (#266).
         const viewBounds = await page.evaluate(async renderer => {
             const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));

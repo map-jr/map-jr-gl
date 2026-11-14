@@ -248,6 +248,13 @@ export interface MapHost {
     /** The height of the ground in metres at a position (`[lng, lat]`) or a point of the screen, from the elevation source of the style. `null` where there is no data. */
     queryElevation(at: Position | {x: number; y: number}): Promise<number | null>;
     /**
+     * The map as an image, for a download or for printing. Waits until the map is idle (all tiles drawn), draws one
+     * frame and resolves to a Blob of the canvas. `type` defaults to `'image/png'`; `quality` (0 to 1) applies to
+     * `'image/jpeg'` and `'image/webp'`. The image has the size of the canvas in device pixels and has no markers or
+     * controls (they are elements of the page). The promise rejects when the map is destroyed first.
+     */
+    toBlob(type?: string, quality?: number): Promise<Blob>;
+    /**
      * The cluster methods of a GeoJSON source with `cluster: true`. `clusterId` is `properties.cluster_id` of a cluster
      * feature, for example from `queryFeatures`. `clusterExpansionZoom` gives the zoom level at which the cluster divides,
      * `clusterChildren` the clusters and points that it divides into, and `clusterLeaves` its points (`limit` defaults to
@@ -534,6 +541,7 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
             return () => { stopped = true; map.off('sourcedata', data); map.off('idle', run); map.off('moveend', moved); };
         },
         queryElevation: at => map.queryElevation(at),
+        toBlob: (type, quality) => map.toBlob(type, quality),
         moveTo({duration, fly, ...view}) { if (fly) map.flyTo({...view, duration, ...(fly === true ? {} : fly)}); else if (duration) map.easeTo({...view, duration}); else map.jumpTo(view); },
         fitBounds: (bounds, o) => { map.fitBounds(bounds, o); },
         project: lngLat => map.project(lngLat),

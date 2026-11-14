@@ -673,6 +673,7 @@ as ten. See [Markers](markers.md).
 | `fitBounds(bounds, options)` | Shows an area. The options are `padding` (CSS pixels: a number, or `{top, right, bottom, left}`; it adds to the `padding` of the description), `maxZoom` and `duration` (milliseconds). |
 | `queryFeatures(at, options)`, `watchFeatures(at, options, listener)` | Find features, one time or kept up to date. See [Queries](#queries). |
 | `queryElevation(at)` | The height of the ground in metres at a position (`[lng, lat]`) or a point of the screen (`{x, y}`), from the elevation source of the style. A promise; `null` where there is no data. |
+| `toBlob(type, quality)` | The map as an image, for a download or for printing. It waits until the map is idle, draws one frame and resolves to a `Blob` of the canvas. `type` defaults to `'image/png'`; `quality` (0 to 1) applies to `'image/jpeg'` and `'image/webp'`. It works with both renderers. The image has the size of the canvas in device pixels (CSS size times `devicePixelRatio`) and does not contain markers, popups, controls or the attribution, because those are elements of the page. The promise rejects when the map is destroyed first. Example: `const url = URL.createObjectURL(await map.toBlob())`. To print, put that URL in an `<img>`: the canvas itself may print blank. |
 | `project(lngLat)`, `unproject(point)` | Change between a position on the map and a point of the screen. |
 | `listen(type, fn)` | Calls `fn` for each event of that type. Returns a function that stops it. See [Events](#events). |
 | `container` | The element of the map. |
