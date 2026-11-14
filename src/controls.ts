@@ -31,6 +31,7 @@ export function adoptClasses(root: Element) {
 }
 
 export const CONTROL_CSS = `
+:where(.map-jr-map){position:relative;overflow:hidden}
 :where(.map-jr-ctrl-top-left,.map-jr-ctrl-top-right,.map-jr-ctrl-bottom-left,.map-jr-ctrl-bottom-right){position:absolute;z-index:2;pointer-events:none;display:flex;flex-direction:column;gap:10px;max-width:100%;box-sizing:border-box}
 :where(.map-jr-ctrl-top-left){top:0;left:0;align-items:flex-start;padding:10px 10px 10px max(10px,env(safe-area-inset-left))}
 :where(.map-jr-ctrl-top-right){top:0;right:0;align-items:flex-end;padding:10px max(10px,env(safe-area-inset-right)) 10px 10px}
