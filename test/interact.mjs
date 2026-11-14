@@ -1512,10 +1512,10 @@ for (const mode of ['main', 'worker']) {
     }
     // The coarse overview tiles (zoom 11 for a view at zoom 14.3) are not drawn while the tiles of the view are there.
     // Their arrival does not place the labels again: the map fires no second `idle`, and before the first `idle` it
-    // does not wait for another placement.
+    // does not wait for another placement. They are requested only after the first `idle` (#326).
     {
-        let late = 0;
-        const slow = async r => { await new Promise(res => setTimeout(res, 2000)); late++; r.continue(); };
+        let late = 0, first = 0;
+        const slow = async r => { first ||= Date.now(); await new Promise(res => setTimeout(res, 2000)); late++; r.continue(); };
         await page.route('**/tiles/11/**', slow);
         await page.evaluate(async mode => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
@@ -1523,14 +1523,33 @@ for (const mode of ['main', 'worker']) {
             // (A view with many labels: their fade keeps frames coming after the overview is requested.)
             const m = new mod.Map({container: el, renderer: mode, style: '/style.json', center: [-74.0065, 40.7085], zoom: 14.3, attributionControl: false});
             window.overview = {m, el, idles: 0};
-            m.on('idle', () => window.overview.idles++);
+            m.on('idle', () => { window.overview.idles++; window.overview.at ||= Date.now(); });
             await new Promise(r => { m.once('idle', r); setTimeout(r, 15000); });
         }, mode);
         for (let i = 0; i < 100 && !late; i++) await page.waitForTimeout(100);
         await page.waitForTimeout(1500); // (the tiles arrive and are built, and a frame would place the labels)
-        const idles = await page.evaluate(() => { const {m, el, idles} = window.overview; m.remove(); el.remove(); return idles; });
+        const {idles, at} = await page.evaluate(() => { const {m, el, idles, at} = window.overview; m.remove(); el.remove(); return {idles, at}; });
         await page.unroute('**/tiles/11/**', slow);
-        check(`[${mode}] the overview tiles arrive after the first idle: no second idle`, late > 0 && idles === 1, `idle events=${idles}, late tiles=${late}`);
+        check(`[${mode}] the overview tiles are requested after the first idle and arrive with no second idle`, late > 0 && idles === 1 && at > 0 && first >= at,
+            `idle events=${idles}, late tiles=${late}, first request ${first - at} ms after the first idle`);
+    }
+    // A map that never becomes idle (here one that keeps rotating from the start) still requests its overview tiles (#326).
+    {
+        let asked = 0;
+        const count = r => { asked++; r.continue(); };
+        await page.route('**/tiles/11/**', count);
+        await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:600px;height:400px'}));
+            const m = new mod.Map({container: el, renderer: mode, style: '/style.json', center: [-74.0065, 40.7085], zoom: 14.3, attributionControl: false});
+            m.easeTo({bearing: 170, duration: 60000, easing: t => t});
+            window.spinning = {m, el, idles: 0};
+            m.on('idle', () => window.spinning.idles++);
+        }, mode);
+        for (let i = 0; i < 150 && !asked; i++) await page.waitForTimeout(100);
+        const idles = await page.evaluate(() => { const {m, el, idles} = window.spinning; m.remove(); el.remove(); return idles; });
+        await page.unroute('**/tiles/11/**', count);
+        check(`[${mode}] a map that keeps moving from the start still requests its overview tiles`, asked > 0 && idles === 0, `requests=${asked}, idle events=${idles}`);
     }
     // CSS on `.maplibregl-map` sizes the container before the map measures it, as in MapLibre GL JS (#248).
     if (mode === 'worker') {
