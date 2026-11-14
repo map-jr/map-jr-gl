@@ -412,6 +412,67 @@ for (const mode of ['main', 'worker']) {
         return names;
     });
     check(`[${mode}] GeoJSON source: setData right after addSource and addLayer is kept`, early.join() === 'b', JSON.stringify(early));
+    // setData with the same object again, changed in place or not, sends the data again and the source loads (#8 review).
+    const sameObject = await page.evaluate(async () => {
+        const m = window.map, wait = ms => new Promise(r => setTimeout(r, ms)), x = {type: 'FeatureCollection', features: [{type: 'Feature', properties: {name: 'a'}, geometry: {type: 'Point', coordinates: [-74.008, 40.7085]}}]};
+        m.addSource('same', {type: 'geojson', data: {type: 'FeatureCollection', features: []}});
+        m.addLayer({id: 'same', type: 'circle', source: 'same'});
+        await wait(500);
+        const names = async () => (await m.queryFeatures([-74.008, 40.7085], {sources: ['same'], radius: 5})).map(f => f.properties.name).join();
+        const settled = async () => { for (let i = 0; i < 30 && !m.isSourceLoaded('same'); i++) await wait(100); return m.isSourceLoaded('same'); };
+        m.getSource('same').setData(x);
+        const first = [await settled(), await names()];
+        x.features[0].properties.name = 'b';
+        m.getSource('same').setData(x);
+        const changed = [await settled(), await names()];
+        m.getSource('same').setData(x);
+        const again = [await settled(), await names()];
+        m.removeLayer('same'); m.removeSource('same');
+        return {first, changed, again};
+    });
+    check(`[${mode}] GeoJSON source: setData with the same object again sends its data and the source loads`, sameObject.first.join() === 'true,a' && sameObject.changed.join() === 'true,b' && sameObject.again.join() === 'true,b', JSON.stringify(sameObject));
+    // A paint value that is the same for the whole layer sends no GeoJSON data, and nothing to the tile workers. A new
+    // filter sends the rules of the layers to the tile workers, but not the data (#8).
+    const edit = await page.evaluate(async () => {
+        const m = window.map, count = {geojson: 0, data: 0, rules: 0, contours: 0};
+        const protos = [Worker.prototype, MessagePort.prototype], real = protos.map(p => p.postMessage);
+        protos.forEach((p, i) => { p.postMessage = function (msg, ...rest) {
+            if (msg?.type === 'geojson') count.geojson++;
+            if (msg?.type === 'style' && msg.style) count.data += Object.keys(msg.data ?? {}).length + Object.values(msg.style.sources).filter(s => s.data !== undefined).length;
+            if (msg?.type === 'style' && msg.layers) count.rules++;
+            if (msg?.type === 'contours') count.contours++;
+            return real[i].call(this, msg, ...rest);
+        }; });
+        const settle = () => new Promise(r => setTimeout(r, 300));
+        try {
+            await settle();
+            for (const k in count) count[k] = 0;
+            m.setPaintProperty('zones-fill', 'fill-color', '#0a0');
+            await settle();
+            const paint = {...count};
+            for (const k in count) count[k] = 0;
+            m.setFilter('zones-fill', ['has', 'name']);
+            await settle();
+            const filter = {...count};
+            m.setFilter('zones-fill', null);
+            await settle();
+            // 100 edits in one task compare the rules of the layers once, as one edit does: count the calls of JSON.stringify.
+            const stringify = JSON.stringify;
+            let calls = 0;
+            JSON.stringify = function (...a) { calls++; return stringify.apply(this, a); };
+            try {
+                m.setPaintProperty('zones-fill', 'fill-opacity', 0.4);
+                await Promise.resolve(); await Promise.resolve();
+                const one = calls;
+                calls = 0;
+                for (let i = 0; i < 100; i++) m.setPaintProperty('zones-fill', 'fill-opacity', 0.3 + i / 1000);
+                await Promise.resolve(); await Promise.resolve();
+                return {paint, filter, stringify: {one, hundred: calls}};
+            } finally { JSON.stringify = stringify; await settle(); }
+        } finally { protos.forEach((p, i) => { p.postMessage = real[i]; }); }
+    });
+    check(`[${mode}] A style edit sends no GeoJSON data, and the tile workers get only rules that changed`, Object.values(edit.paint).every(n => n === 0) && edit.filter.geojson === 0 && edit.filter.data === 0 && (mode === 'worker' || edit.filter.rules > 0), JSON.stringify(edit));
+    check(`[${mode}] 100 style edits in one task compare the style once`, edit.stringify.one > 0 && edit.stringify.hundred < edit.stringify.one * 2, JSON.stringify(edit.stringify));
     await page.evaluate(() => { window.map.removeLayer('zones-fill'); window.map.removeSource('zones'); });
 
     // DOM marker and popup with MapLibre's API.

@@ -493,6 +493,7 @@ export class Map {
 
     /** Sends again what an engine gets through commands, and not through the style. A new engine needs it. */
     private resend() {
+        this.geoSent = undefined;
         this.limits();
         if (this.rulesSent) this.sendRequestRules();
         if (this.wantsFrames) this.post({type: 'frames', on: true});
@@ -853,10 +854,18 @@ export class Map {
         this.styleChanged();
         // Two changes to the style in quick succession are resolved at the same time, and the first can finish last.
         // Only the newest result is used. It reloads the sources if one of the changes that it replaces asked for that.
-        const turn = ++this.restyles;
+        ++this.restyles;
         this.reloadPending ||= reload;
         // (The engine does not have this change yet: its reports of what is loaded are old from now on. See `seq`.)
         this.tilesLoaded = false; this.seq++;
+        // The style is compared and resolved once for all the changes of one task (#8).
+        if (this.restyleQueued) return;
+        this.restyleQueued = true;
+        queueMicrotask(() => { this.restyleQueued = false; if (this.rawStyle && !this.removed) this.resolveRestyle(); });
+    }
+    private restyleQueued = false;
+    private resolveRestyle() {
+        const turn = this.restyles;
         // A source whose rules changed is not loaded until the engine says so. The other sources keep their state.
         const texts: Record<string, string> = {}, was = this.sourceRules, versions: Record<string, number> = {};
         for (const l of this.rawStyle.layers ?? []) if (l.source) texts[l.source] = (texts[l.source] ?? '') + JSON.stringify(layerRules(l, this.toggled.has(l.id)));
@@ -870,15 +879,28 @@ export class Map {
         const partial = this.newStyle || !this.resolved ? undefined : {late: () => { if (this.rawStyle) this.restyle(true); }, fail: this.sourceFailed};
         resolveStyle(this.rawStyle, this.fetchAs('Source'), this.styleBase, partial, this.sourceFailed).then(style => {
             if (turn !== this.restyles) return;
-            reload = this.reloadPending;
+            const reload = this.reloadPending;
             this.reloadPending = false;
             if (Object.keys(this.globalState).length) style.state = {...style.state, ...this.globalState};
+            // The data of a GeoJSON source goes to the engine only when it, or the options of the source, changed (#8).
+            const sent = this.geoSent ??= geoOf(this.resolved), data: Record<string, unknown> = {}, sources: typeof style.sources = {};
+            for (const name of [...sent.keys()]) if (style.sources[name]?.type !== 'geojson') sent.delete(name);
+            for (const [name, src] of Object.entries(style.sources)) {
+                if (src.type !== 'geojson') { sources[name] = src; continue; }
+                const old = sent.get(name), key = JSON.stringify([src.options, src.maxzoom]);
+                if (!old || old.data !== src.data || old.key !== key) {
+                    data[name] = src.data; sent.set(name, {data: src.data, key});
+                    // (This message carries the newest data of a `setData` that waits: it is not sent again.)
+                    if (this.geoPending.get(name) === src.data) this.geoPending.delete(name);
+                }
+                sources[name] = {...src, data: undefined};
+            }
             this.resolved = style;
             this.restyled = turn;
             this.checkProjection();
             if (!(this.options.glyphs ?? !this.options.fonts)) style.glyphs = undefined;
             if (this.toggled.size) style.layers = style.layers.map(l => this.toggled.has(l.id) ? {...l, keep: true} : l);
-            this.post({type: 'style', style, reload, versions});
+            this.post({type: 'style', style: {...style, sources}, reload, versions, data});
             this.sendGeo();
             this.styleEvents(this.newStyle);
             this.newStyle = false;
@@ -1080,9 +1102,21 @@ export class Map {
         this.geoPending.set(id, data);
     }
     private sendGeo() {
-        for (const [source, d] of this.geoPending) if (this.rawStyle?.sources[source]) this.post({type: 'geojson', source, data: d});
+        const sent = this.geoSent ??= geoOf(this.resolved);
+        // (Data from `setData` is always sent, also the same object again: it can have changed in place.)
+        for (const [source, d] of this.geoPending) {
+            if (!this.rawStyle?.sources[source]) continue;
+            this.post({type: 'geojson', source, data: d});
+            const old = sent.get(source);
+            if (old) old.data = d;
+        }
         this.geoPending.clear();
     }
+    /**
+     * The data of each GeoJSON source that the engine has, and its options as text. `undefined`: as in `resolved` (the
+     * style that a new engine starts with; `resend` sets it so).
+     */
+    private geoSent?: globalThis.Map<string, {data: unknown, key: string}>;
     /** The newest data of each GeoJSON source that waits to be sent to the engine at the end of the task. */
     private geoPending = new globalThis.Map<string, unknown>();
     // (A copy of the description: the map keeps the network result of a source by this object, and another map that is
@@ -1642,4 +1676,9 @@ function applyDiff(data: any, diff: GeoJSONDiff, key?: string) {
         for (const p of u.addOrUpdateProperties ?? []) f.properties[p.key] = p.value;
     }
     return {type: 'FeatureCollection', features};
+}
+
+/** The data and the options (as text) of each GeoJSON source of a resolved style: what an engine that starts with it has. */
+function geoOf(style?: ResolvedStyle) {
+    return new globalThis.Map(Object.entries(style?.sources ?? {}).filter(([, s]) => s.type === 'geojson').map(([name, s]) => [name, {data: s.data, key: JSON.stringify([s.options, s.maxzoom])}]));
 }
