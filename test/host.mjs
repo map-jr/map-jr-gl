@@ -932,6 +932,36 @@ for (const renderer of ['worker', 'main']) {
     } catch (e) { check(`[${renderer}] the test run was completed`, false, String(e.message).split('\n')[0]); }
     await page.close();
 }
+// With the main renderer, the sprite is requested as soon as the style is known, not once the engine file has loaded
+// (#371). The engine file is held back until both files of the sprite have been requested, for 5 s at most; the
+// engine then uses those answers and asks for no file a second time.
+{
+    const page = await browser.newPage({viewport: {width: 900, height: 600}});
+    try {
+        const asked = [];
+        let release, seen = false;
+        const sprite = new Promise(r => release = r);
+        await page.route(/\/test-sprite\//, route => {
+            const url = new URL(route.request().url()).pathname;
+            asked.push(url);
+            if (asked.length === 2) release();
+            if (url.endsWith('.json')) return route.fulfill({contentType: 'application/json', body: JSON.stringify({dot: {x: 0, y: 0, width: 1, height: 1, pixelRatio: 1}})});
+            route.fulfill({contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==', 'base64')});
+        });
+        await page.route(/map-jr-gl-engine-entry/, async route => { seen = await Promise.race([sprite.then(() => true), new Promise(r => setTimeout(() => r(false), 5000))]); await route.continue(); });
+        await page.goto(origin + '/bench');
+        const idle = await page.evaluate(async () => {
+            const lib = await import('/dist/map-jr-gl.js'), style = await (await fetch('/style.json')).json();
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99;background:#fff'}));
+            const host = lib.createMap(el, {style: {...style, sprite: location.origin + '/test-sprite/s'}, renderer: 'main', attribution: false});
+            const ok = await Promise.race([new Promise(r => host.state.subscribe(s => s.idle, i => i && r(true))), new Promise(r => setTimeout(() => r(false), 30000))]);
+            host.destroy(); el.remove();
+            return ok;
+        });
+        check('[main] the sprite is requested before the engine file has loaded, and only once', seen && idle && asked.length === 2, JSON.stringify({seen, idle, asked}));
+    } catch (e) { check('the early sprite test was completed', false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
 // A map that is destroyed while it loads (React StrictMode does this on each mount), and two maps in one element.
 {
     const page = await browser.newPage({viewport: {width: 900, height: 600}});
