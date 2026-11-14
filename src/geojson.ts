@@ -26,6 +26,8 @@ export interface GeoJSONOptions {
     /** For each name: how to combine values (an operator or an expression with `accumulated`), and the value of one point. */
     clusterProperties?: Record<string, [unknown, unknown]>;
     promoteId?: string | Record<string, string>;
+    /** Each feature's id is its index in the data, replacing any id (as in MapLibre). */
+    generateId?: boolean;
     /** Only features that pass this filter are in the source. */
     filter?: unknown;
 }
@@ -127,7 +129,7 @@ export class ClusterIndex {
 /** Features and, with `cluster`, the cluster index of a GeoJSON source. */
 export interface PreparedSource { features: Prepared[]; clusters?: ClusterIndex; points?: Prepared[] }
 export function prepareSource(data: unknown, o: GeoJSONOptions = {}, sourceMaxZoom = 18): PreparedSource {
-    let all = prepareGeoJSON(data, typeof o.promoteId === 'string' ? o.promoteId : undefined);
+    let all = prepareGeoJSON(data, typeof o.promoteId === 'string' ? o.promoteId : undefined, o.generateId);
     const keep = o.filter ? compileFilter(o.filter) : null;
     if (keep) all = all.filter(f => keep({zoom: 0, f: f as any}));
     if (!o.cluster) return {features: all};
@@ -136,8 +138,9 @@ export function prepareSource(data: unknown, o: GeoJSONOptions = {}, sourceMaxZo
     return {features: rest, points, clusters: new ClusterIndex(points, o, sourceMaxZoom)};
 }
 
-export function prepareGeoJSON(data: any, promoteId?: string): Prepared[] {
+export function prepareGeoJSON(data: any, promoteId?: string, generateId?: boolean): Prepared[] {
     const out: Prepared[] = [];
+    let index = 0;
     const features = !data ? [] : data.type === 'FeatureCollection' ? data.features : data.type === 'Feature' ? [data] : [{type: 'Feature', geometry: data, properties: {}}];
     const ring = (pts: number[][]) => {
         const r = new Float64Array(pts.length * 2);
@@ -149,7 +152,7 @@ export function prepareGeoJSON(data: any, promoteId?: string): Prepared[] {
         for (const r of rings) for (let i = 0; i < r.length; i += 2) {
             bbox[0] = Math.min(bbox[0], r[i]); bbox[1] = Math.min(bbox[1], r[i + 1]); bbox[2] = Math.max(bbox[2], r[i]); bbox[3] = Math.max(bbox[3], r[i + 1]);
         }
-        const id = promoteId ? f.properties?.[promoteId] : f.id;
+        const id = generateId ? index : promoteId ? f.properties?.[promoteId] : f.id;
         if (rings.length) out.push({type, id: typeof id === 'number' || (promoteId && typeof id === 'string') ? id : undefined, properties: f.properties ?? {}, rings, bbox});
     };
     const walk = (f: any, g: any) => {
@@ -166,7 +169,7 @@ export function prepareGeoJSON(data: any, promoteId?: string): Prepared[] {
             case 'GeometryCollection': for (const part of g.geometries) walk(f, part); break;
         }
     };
-    for (const f of features) walk(f, f.geometry);
+    for (const f of features) walk(f, f.geometry), index++;
     return out;
 }
 

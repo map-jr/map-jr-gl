@@ -767,3 +767,14 @@ test('sizes: a size of zoom and feature is found at the zoom that an overzoomed 
     assert.deepEqual([l.size0, l.size1], [28, 32]);
     assert.equal(tile.layers.c.radius![0], 22);
 });
+
+test('geojson: generateId gives each feature its index in the data as its id, replacing any id', async () => {
+    const {prepareSource} = await import('../../src/geojson.ts');
+    const data = {type: 'FeatureCollection', features: [
+        {type: 'Feature', id: 7, properties: {}, geometry: {type: 'Point', coordinates: [0, 0]}},
+        {type: 'Feature', properties: {}, geometry: null},
+        {type: 'Feature', properties: {}, geometry: {type: 'MultiPoint', coordinates: [[1, 1], [2, 2]]}},
+    ]};
+    assert.deepEqual(prepareSource(data).features.map(f => f.id), [7, undefined]);
+    assert.deepEqual(prepareSource(data, {generateId: true}).features.map(f => f.id), [0, 2], 'a feature without geometry still counts');
+});

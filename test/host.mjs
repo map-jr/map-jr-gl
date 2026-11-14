@@ -423,6 +423,13 @@ for (const renderer of ['worker', 'main']) {
         const stateOff = await becomes('#000 #0f0 #000 #0f0');
         await page.evaluate(() => window.t.host.map.setFeatureState({source: 'spot', id: 2}, {on: true}));
         const stateOn = await becomes('#000 #0f0 #000 #f00');
+        // `generateId: true`: each feature's id is its index in the data (0 and 1), replacing the ids 1 and 2 of the data.
+        await page.evaluate(() => { const t = window.t, style = t.tiles(['image', 'tile', {params: {colour: ['case', ['boolean', ['feature-state', 'on'], false], '#f00', '#0f0']}}]);
+            style.sources.spot.generateId = true; t.host.map.removeFeatureState({source: 'spot'}); t.host.update(t.spec = {...t.spec, style}); });
+        const generatedOff = await becomes('#000 #0f0 #000 #0f0');
+        await page.evaluate(() => window.t.host.map.setFeatureState({source: 'spot', id: 0}, {on: true}));
+        const generatedOn = await becomes('#000 #f00 #000 #0f0');
+        check(`[${renderer}] generateId on a GeoJSON source gives each feature its index as its id, and feature state finds it`, generatedOff === '#000 #0f0 #000 #0f0' && generatedOn === '#000 #f00 #000 #0f0', JSON.stringify({generatedOff, generatedOn}));
         // A value with characters of XML is text in the SVG and not markup: the image is drawn, and the map has no error.
         await page.evaluate(() => { const t = window.t; t.host.update(t.spec = {...t.spec, style: t.tiles(['image', 'tile', {params: {colour: ['concat', '#0ff', '"/><rect width="40" height="40" fill="#f00']}}])}); });
         await page.waitForTimeout(1500);
