@@ -880,6 +880,28 @@ for (const mode of ['main', 'worker']) {
         check('[main] with four tile workers, queries after refreshTiles see the new tile, and a tile on the map is not requested again for a query',
             fresh.before.every(n => n === 5) && fresh.during.every(n => n === 1) && fresh.after.every(n => n === 1) && fresh.requestsBefore === 1 && fresh.requestsForQueries === 0, JSON.stringify(fresh));
     }
+    // once('idle') inside a `load` listener that adds a source (#247): the idle comes after the source is loaded, and
+    // a query then finds its feature, as in MapLibre GL JS.
+    {
+        const r = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const m = new mod.Map({container: el, center: [0, 0], zoom: 1, attributionControl: false, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            const data = {type: 'FeatureCollection', features: [{type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[-60, -40], [60, -40], [60, 40], [-60, 40], [-60, -40]]]}}]};
+            const out = await new Promise(res => {
+                m.on('load', () => {
+                    m.addSource('areas', {type: 'geojson', data});
+                    m.addLayer({id: 'areas', type: 'fill', source: 'areas'});
+                    m.once('idle', async () => res({tiles: m.areTilesLoaded(), loaded: m.isSourceLoaded('areas'), found: (await m.queryRenderedFeatures([100, 75], {layers: ['areas']})).length}));
+                });
+                setTimeout(() => res({timeout: true}), 15000);
+            });
+            m.remove(); el.remove();
+            return out;
+        });
+        check('once(\'idle\') in a load listener that adds a source fires after the source is loaded, and a query finds its feature',
+            r.tiles === true && r.loaded === true && r.found === 1, JSON.stringify(r));
+    }
     // setWorkerUrl with the worker file of MapLibre GL JS (#219): the URL is ignored with one warning, and the map
     // keeps the worker of this library.
     {
