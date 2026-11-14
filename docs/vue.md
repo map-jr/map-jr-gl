@@ -37,9 +37,8 @@ const hovered = ref([]);
 The component fills its parent element (`height: 100%`). Give the parent a height. A parent that has only
 `min-height` gives the component a height of 0, because a percentage height needs a parent with a set height: write
 `height` on the parent, or make the parent a flex or grid container. The development build warns about a container
-with a height of 0. A production build has no such warning, and neither has an app of the module for Nuxt at the
-moment, because the module loads the production build in `nuxt dev` too (issue #158). There the map stays empty
-without a message.
+with a height of 0. Vite and the module for Nuxt use the development build in development (`vite`, `nuxt dev`). A
+production build has no such warning, and there the map stays empty without a message.
 
 ### Props
 
