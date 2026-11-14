@@ -737,6 +737,25 @@ for (const mode of ['main', 'worker']) {
     });
     check(`[${mode}] addProtocol('pmtiles') warns once that the library reads pmtiles:// itself`,
         pmWarns.length === 1 && pmWarns[0].startsWith('[map-jr-gl]') && pmWarns[0].includes('pmtiles://'), JSON.stringify(pmWarns));
+    // map.painter (#205): the development build warns once per map, and the value is undefined; the production build does not warn.
+    const painter = await page.evaluate(async () => {
+        const out = {}, warn = console.warn;
+        for (const file of ['map-jr-gl-maplibre-compat.dev.js', 'map-jr-gl-maplibre-compat.js']) {
+            const mod = await import('/dist/' + file), warns = [], maps = [];
+            console.warn = (...a) => { warns.push(String(a[0])); };
+            try {
+                for (let i = 0; i < 2; i++) {
+                    const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:100px;height:100px'}));
+                    maps.push(new mod.Map({container: el, attributionControl: false, style: {version: 8, sources: {}, layers: []}}));
+                }
+                out[file] = {values: maps.flatMap(m => [m.painter, m.painter]).map(v => v === undefined), warns: warns.filter(w => w.includes('painter'))};
+            } finally { console.warn = warn; for (const m of maps) { const el = m.getContainer(); m.remove(); el.remove(); } }
+        }
+        return out;
+    });
+    const devP = painter['map-jr-gl-maplibre-compat.dev.js'], prodP = painter['map-jr-gl-maplibre-compat.js'];
+    check(`[${mode}] map.painter is undefined; the development build warns once per map, the production build does not warn`,
+        [...devP.values, ...prodP.values].every(Boolean) && devP.warns.length === 2 && devP.warns.every(w => w.startsWith('[map-jr-gl] map.painter') && w.includes('supported()')) && prodP.warns.length === 0, JSON.stringify(painter));
     // The AbortController that a protocol gets is aborted when the request is no longer wanted: a newer setData, a newer
     // setData that drops the diffs of updateData, and the removal of the map (#92).
     const aborts = await page.evaluate(async mode => {
