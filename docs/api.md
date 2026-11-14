@@ -156,8 +156,18 @@ createMap(container, {
 ```
 
 `extend` adds sources and layers to the style when the style has loaded. A layer with `before` goes below the layer
-with that id; without it, the layer goes on top. Give `extend` with other content to change the additions. (A style
-from a URL is then requested again; the browser has it in its cache.)
+with that id; without it, the layer goes on top. Give `extend` with other content to change the additions.
+
+When only `extend` changes, `update()` edits the map: it adds and removes sources and layers, and it sets the changed
+paint properties, layout properties (such as `visibility`) and filters. The style is not requested again, and the
+sources and layers that the application added through `host.map` stay. These changes replace the whole style instead,
+so the style from a URL is requested again and the additions through `host.map` are lost:
+
+- a change of `terrain`;
+- a source that changes, or a new source with the id of a source of the style;
+- a layer whose `type`, `source`, `source-layer`, `minzoom`, `maxzoom` or `before` changes;
+- layers that stay but change their order in `extend.layers`, or a new layer that is earlier in `extend.layers` than a layer that stays;
+- a change of `style` or of a marker layer in the same `update()`.
 
 ## Images for style layers
 

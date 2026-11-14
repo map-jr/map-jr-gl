@@ -361,12 +361,40 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
     // (At `idle`, and not when the style comes: an application can add a layer or a source itself in `load`.)
     map.on('idle', () => check(1));
 
+    // A change of `extend` alone goes to the map as edits, so that the style is not loaded again and the layers that the
+    // application added through `host.map` stay. It returns false, with nothing changed, for a change that needs a new
+    // style: a changed `terrain`, a changed source, a source id that the style has, a changed `type`, `source`,
+    // `source-layer`, `minzoom`, `maxzoom` or `before` of a layer, a new order of the layers, or a new layer before
+    // one that stays.
+    const edit = (next: StyleExtension = {}, before: StyleExtension = {}, differ: (a: unknown, b: unknown) => boolean) => {
+        const was = before.layers ?? [], is = next.layers ?? [], ns = next.sources ?? {}, os = before.sources ?? {};
+        const ids = (a: typeof is, b: typeof is) => a.filter(l => b.some(x => x.id === l.id)).map(l => l.id).join('\n');
+        const kept = is.filter(l => was.some(w => w.id === l.id)), keys = ['paint', 'layout', 'filter', 'id'];
+        if (differ(next.terrain, before.terrain) || ids(is, was) !== ids(was, is) || is.some((l, i) => !kept.includes(l) && i < is.indexOf(kept[kept.length - 1]))) return false;
+        for (const id in ns) if (id in os ? differ(ns[id], os[id]) : map.getSource(id)) return false;
+        for (const l of kept) { const w = was.find(x => x.id === l.id)!; if (Object.keys({...l, ...w}).some(k => !keys.includes(k) && differ(l[k], w[k]))) return false; }
+        for (const w of was) if (!kept.some(l => l.id === w.id)) map.removeLayer(w.id);
+        for (const id in os) if (!(id in ns)) { sent.delete(id); map.removeSource(id); }
+        for (const id in ns) if (!(id in os)) { sent.delete(id); map.addSource(id, ns[id]); }
+        for (const l of kept) {
+            const w = was.find(x => x.id === l.id)!;
+            for (const g of ['paint', 'layout'] as const) {
+                const a = (l[g] ?? {}) as Record<string, unknown>, b = (w[g] ?? {}) as Record<string, unknown>;
+                for (const k in {...a, ...b}) if (differ(a[k], b[k])) (g === 'paint' ? map.setPaintProperty : map.setLayoutProperty).call(map, l.id, k, a[k]);
+            }
+            if (differ(l.filter, w.filter)) map.setFilter(l.id, l.filter);
+        }
+        for (const {before: at, ...l} of is) if (!kept.some(k => k.id === l.id)) map.addLayer(l as {id: string}, at && map.getLayer(at) ? at : undefined);
+        giveData();
+        return true;
+    };
+
     const apply = (next: MapSpec, before?: MapSpec) => {
         // (A description that is made again each time, as in a template of a framework, has new objects with the same
         // content. So where the identity is different, the content is compared before the map does work.)
         const differ = (a: unknown, b: unknown) => a !== b && JSON.stringify(a) !== JSON.stringify(b);
         // (After a new style the data waits for the `styledata` event: the engine must have the new style first.)
-        const restyled = !!before && (differ(next.style, before.style) || differ(next.extend, before.extend) || differ(markerStyles(next.markers), markerStyles(before.markers)));
+        const restyled = !!before && (differ(next.style, before.style) || differ(next.extend, before.extend) && !(styled && edit(next.extend, before.extend, differ)) || differ(markerStyles(next.markers), markerStyles(before.markers)));
         if (restyled) { state.set({idle: false}); sent.clear(); restyle(next); }
         if (next.view && !same(next.view, before?.view) && !reported.some(v => same(next.view, v)) && before) map.jumpTo(next.view);
         if (next.minZoom !== before?.minZoom && before) map.setMinZoom(next.minZoom);

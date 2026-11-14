@@ -156,6 +156,38 @@ for (const renderer of ['worker', 'main']) {
         check(`[${renderer}] extend.sources gets features from data, and a partial owned view that the map reported is not applied again`,
             extendData.before === 0 && extendData.after === 1 && extendData.jumps === 0, JSON.stringify(extendData));
 
+        // 3d. A change of `extend` alone is applied as edits: the style URL is not requested again, and a layer that was added through `host.map` stays (#166).
+        const extendEdit = await page.evaluate(async renderer => {
+            const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const idle = host => new Promise(r => { host.state.subscribe(s => s.idle, v => v && r()); setTimeout(r, 8000); });
+            const square = {type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[-74.02, 40.70], [-73.99, 40.70], [-73.99, 40.72], [-74.02, 40.72], [-74.02, 40.70]]]}};
+            const fill = (color, visibility = 'visible') => ({id: 'own-fill', type: 'fill', source: 'own', paint: {'fill-color': color}, layout: {visibility}});
+            const spec = {style: '/style.json', initialView: {center: [-74.0065, 40.7085], zoom: 13}, renderer, attribution: false};
+            const ext = (...layers) => ({sources: {own: {type: 'geojson', data: square}}, layers});
+            const host = t.lib.createMap(el, {...spec, extend: ext(fill('#f00'))});
+            await idle(host);
+            host.map.addLayer({id: 'app-layer', type: 'background', paint: {'background-color': '#00f'}});
+            const requests = () => performance.getEntriesByType('resource').filter(e => e.name.endsWith('/style.json')).length, first = requests();
+            let restyles = 0; const setStyle = host.map.setStyle; host.map.setStyle = (...a) => { restyles++; return setStyle.apply(host.map, a); };
+            const at = {x: 100, y: 75}, hits = async () => (await host.queryFeatures(at, {layers: ['own-fill']})).length;
+            const out = {};
+            host.update({...spec, extend: ext(fill('#0f0'))}); await idle(host);
+            out.paint = host.map.getLayer('own-fill')?.paint?.['fill-color'];
+            host.update({...spec, extend: ext(fill('#0f0', 'none'))}); await idle(host);
+            out.hidden = host.map.getLayer('own-fill')?.layout?.visibility;
+            host.update({...spec, extend: {sources: {own: {type: 'geojson', data: square}, two: {type: 'geojson', data: square}}, layers: [fill('#0f0'), {id: 'two-line', type: 'line', source: 'two'}]}}); await idle(host);
+            out.added = !!host.map.getSource('two') && !!host.map.getLayer('two-line');
+            out.hits = await hits();
+            host.update({...spec, extend: ext(fill('#0f0'))}); await idle(host);
+            out.removed = !host.map.getSource('two') && !host.map.getLayer('two-line');
+            out.app = !!host.map.getLayer('app-layer');
+            out.restyles = restyles; out.requests = requests() - first;
+            host.destroy(); el.remove();
+            return out;
+        }, renderer);
+        check(`[${renderer}] a change of extend alone edits the map: no new style request, and a layer added through host.map stays`,
+            extendEdit.paint === '#0f0' && extendEdit.hidden === 'none' && extendEdit.added && extendEdit.hits === 1 && extendEdit.removed && extendEdit.app && extendEdit.restyles === 0 && extendEdit.requests === 0, JSON.stringify(extendEdit));
+
         // 3e. Common mistakes: each gives one warning that says what to write, and a correct description gives none.
         const warnings = await page.evaluate(async renderer => {
             const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), said = [], log = console.warn;
