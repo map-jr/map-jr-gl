@@ -793,6 +793,12 @@ for (const renderer of ['worker', 'main']) {
         await page.mouse.click(450, 300); await page.waitForTimeout(500);
         const pointer = await page.evaluate(() => { const t = window.t, c = t.clicks[0]; return {clicks: t.clicks.length, lngLat: c?.lngLat?.length, features: Array.isArray(c?.features), hoverEvents: t.seen.filter(x => x.startsWith('hover:')).length}; });
         check(`[${renderer}] the features under the pointer are in the state, and a click has them`, hover > 0 && pointer.clicks === 1 && pointer.lngLat === 2 && pointer.features && pointer.hoverEvents > 0, JSON.stringify({hover, ...pointer}));
+        // A click on an overlay does not call onClick (#198).
+        await page.evaluate(() => { const t = window.t, el = Object.assign(document.createElement('div'), {style: 'width:20px;height:20px;background:#c00'}); t.ov = t.host.overlay(el, {lngLat: t.host.unproject({x: 200, y: 200})}); t.clicks.length = 0; });
+        const ovBox = await page.evaluate(() => { const r = document.querySelector('.map-jr-marker').getBoundingClientRect(); return {x: r.x + r.width / 2, y: r.y + r.height / 2}; });
+        await page.mouse.click(ovBox.x, ovBox.y); await page.waitForTimeout(500);
+        const overlayClicks = await page.evaluate(() => { const t = window.t, n = t.clicks.length; t.ov.remove(); return n; });
+        check(`[${renderer}] a click on an overlay does not call onClick`, overlayClicks === 0, JSON.stringify({overlayClicks}));
 
         // 5b. One method to find features, and the same question kept up to date.
         const found = await page.evaluate(async () => {

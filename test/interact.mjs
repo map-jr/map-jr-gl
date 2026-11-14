@@ -2037,7 +2037,7 @@ for (const mode of ['main', 'worker']) {
             for (const t of ['dragstart', 'drag', 'dragend']) mk.on(t, () => window.markerEvents.push(t));
             mk.getElement().addEventListener('click', () => window.markerEvents.push('click'));
             // #198: the marker has a popup, and another popup with closeOnClick is open.
-            mk.setPopup(new mod.Popup({offset: 40}).setText('Marker')); // (the offset keeps the popup off the marker)
+            (window.popup198 = new mod.Popup({offset: 40}).setText('Marker')), mk.setPopup(window.popup198); // (the offset keeps the popup off the marker)
             m.on('click', () => window.markerEvents.push('map click'));
             await new Promise(r => m.once('load', r));
             window.otherPopup = new mod.Popup().setLngLat(m.unproject({x: 50, y: 50})).setText('Other').addTo(m);
@@ -2045,10 +2045,10 @@ for (const mode of ['main', 'worker']) {
         });
         const box = await page.evaluate(() => { const r = window.dragEl.querySelector('.map-jr-marker').getBoundingClientRect(); return {x: r.x + r.width / 2, y: r.y + r.height / 2}; });
         await page.mouse.click(box.x, box.y);
-        await page.waitForTimeout(100);
+        await page.waitForTimeout(500); // (a map `click` of the compat entry can wait up to 300 ms for the features, and the popup opens after it)
         const click = await page.evaluate(() => window.markerEvents.splice(0).join(' '));
         const afterClick = await page.evaluate(() => ({other: window.otherPopup.isOpen()}));
-        afterClick.own = await page.evaluate(() => !!window.dragEl.querySelector('.maplibregl-popup-content')?.textContent.startsWith('Marker'));
+        afterClick.own = await page.evaluate(() => window.popup198.isOpen());
         await page.mouse.click(box.x, box.y); // closes the popup of the marker again
         await page.waitForTimeout(400);
         await page.evaluate(() => window.markerEvents.splice(0));
@@ -2058,9 +2058,9 @@ for (const mode of ['main', 'worker']) {
         await page.mouse.move(box.x + 30, box.y + 20, {steps: 5}); await page.mouse.up();
         await page.waitForTimeout(100);
         await page.waitForTimeout(300);
-        const popupAfterDrag = await page.evaluate(() => !!window.dragEl.querySelector('.maplibregl-popup-content')?.textContent.startsWith('Marker'));
+        const popupAfterDrag = await page.evaluate(() => window.popup198.isOpen());
         const drag = await page.evaluate(() => { const ev = window.markerEvents.join(' '); window.dragMap.remove(); window.dragEl.remove(); return ev; });
-        check('[main] a click on a draggable marker fires no drag events, and a drag starts after a move and fires no click', click === 'map click click' && early === '' && /^dragstart( drag)+ dragend$/.test(drag), JSON.stringify({click, early, drag}));
+        check('[main] a click on a draggable marker fires no drag events, and a drag starts after a move and fires no click', ['map click click', 'click map click'].includes(click) && early === '' && /^dragstart( drag)+ dragend$/.test(drag), JSON.stringify({click, early, drag}));
         check('[main] a click on a marker toggles its popup and is a click of the map that closes a closeOnClick popup; a drag does not open the popup (#198)', afterClick.own && !afterClick.other && !popupAfterDrag, JSON.stringify({afterClick, popupAfterDrag}));
     }
     // A marker in a container scaled by CSS follows the pointer, and the 3 px threshold is in CSS pixels of the map
