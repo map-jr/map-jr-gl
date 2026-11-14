@@ -1793,11 +1793,34 @@ for (const mode of ['main', 'worker']) {
             const credits = el.querySelector('.map-jr-ctrl-attrib'), a = credits.getBoundingClientRect(), n = el.querySelector('.map-jr-ctrl-group').getBoundingClientRect();
             return {open: credits.classList.contains('map-jr-compact-show'), creditsRight: Math.round(a.right), controlsLeft: Math.round(n.left), markerZ: +getComputedStyle(marker.getElement()).zIndex, cornerZ: +getComputedStyle(credits.parentElement).zIndex};
         });
-        await page.mouse.click(200, 220); // a press on the map, with no drag
+        const isOpen = () => page.evaluate(() => window.creditsEl.querySelector('.map-jr-ctrl-attrib').classList.contains('map-jr-compact-show'));
+        await page.mouse.click(200, 220); // a press on the map, with no drag: MapLibre keeps the credits open
         await page.waitForTimeout(200);
-        const closed = await page.evaluate(() => { const open = window.creditsEl.querySelector('.map-jr-ctrl-attrib').classList.contains('map-jr-compact-show'); window.creditsMap.remove(); window.creditsEl.remove(); return !open; });
-        check('[main] the credits of a small map end before the controls of the other corner, are above markers, and close with a press on the map',
-            box.open && box.creditsRight < box.controlsLeft && box.markerZ < box.cornerZ && closed, JSON.stringify({...box, closed}));
+        const afterClick = await isOpen();
+        await page.mouse.move(200, 220); await page.mouse.down(); await page.mouse.move(240, 240, {steps: 5}); await page.mouse.up();
+        await page.waitForTimeout(200);
+        const closed = !await isOpen();
+        await page.evaluate(() => { window.creditsMap.remove(); window.creditsEl.remove(); });
+        check('[main] the credits of a small map end before the controls of the other corner, are above markers, stay open after a click and close with a drag (#263)',
+            box.open && box.creditsRight < box.controlsLeft && box.markerZ < box.cornerZ && afterClick && closed, JSON.stringify({...box, afterClick, closed}));
+        // As in MapLibre: a source used only by hidden layers or outside the zoom range of its layers gives no credit,
+        // and a blank attribution gives no box (#263).
+        const credits = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:800px;height:300px'}));
+            const fc = a => ({type: 'geojson', attribution: a, data: {type: 'FeatureCollection', features: []}});
+            const m = new mod.Map({container: el, renderer: 'main', center: [0, 0], zoom: 2, style: {version: 8,
+                sources: {shown: fc('Shown'), hidden: fc('Hidden'), far: fc('Far'), unused: fc('Unused'), blank: fc(' ')},
+                layers: [{id: 's', type: 'circle', source: 'shown'}, {id: 'h', type: 'circle', source: 'hidden', layout: {visibility: 'none'}}, {id: 'f', type: 'circle', source: 'far', minzoom: 10}, {id: 'b', type: 'circle', source: 'blank'}]}});
+            await new Promise(r => { m.once('idle', r); setTimeout(r, 3000); });
+            const text = el.querySelector('.map-jr-ctrl-attrib-inner').textContent;
+            m.setLayoutProperty('s', 'visibility', 'none');
+            await new Promise(r => setTimeout(r, 300)); m.triggerRepaint(); await new Promise(r => { m.once('idle', r); setTimeout(r, 2000); });
+            const box = el.querySelector('.map-jr-ctrl-attrib'), shown = box.style.display !== 'none' && box.getBoundingClientRect().width > 0;
+            m.remove(); el.remove();
+            return {text, shown};
+        });
+        check('[main] the credits list only sources of visible layers at the current zoom, and a blank attribution shows no box (#263)', credits.text === 'Shown' && !credits.shown, JSON.stringify(credits));
     }
     // The four corners of the controls exist as soon as the map is made, as in MapLibre GL JS (#200), and the attribution
     // is the lowest control of the bottom-right corner, also below a control that the app added at once (#202).
