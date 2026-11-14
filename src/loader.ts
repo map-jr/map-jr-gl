@@ -33,6 +33,32 @@ export const defaults: LoadOptions = {};
 /** Sets page-wide defaults for how workers are loaded. Individual maps can still override them. */
 export function configure(options: LoadOptions) { Object.assign(defaults, options); }
 
+/** The worker file's URL, or nothing when a `createWorker` function or the standalone build makes the worker. */
+function workerHref(o: LoadOptions): string | undefined {
+    const url = o.workerUrl ?? defaults.workerUrl;
+    if (o.createWorker ?? defaults.createWorker ?? (!url && __WORKER_SRC__)) return;
+    // (The marker comment stops this library's own build from rewriting the line; it is not in the published file.)
+    return new URL(url ?? new URL(/* @vite-ignore */ './map-jr-gl-worker.js', import.meta.url), location.href).href;
+}
+
+/** The worker file, fetched once and kept as a blob URL for a few seconds, so that the start-up workers share one request (#325). */
+const fetched = new globalThis.Map<string, Promise<string>>();
+/**
+ * Starts a worker and resolves once it runs. The tile workers and the engine worker start from one fetch of the worker
+ * file. If that fetch or the worker from the blob fails (CORS, a `worker-src` policy without `blob:`), the worker starts
+ * from its URL as before.
+ */
+export function startWorker(o: LoadOptions = {}): Promise<Worker> {
+    const href = workerHref(o), plain = () => workerReady(createWorker(o));
+    if (!href || !/^https?:/.test(href)) return plain();
+    let blob = fetched.get(href);
+    if (!blob) {
+        fetched.set(href, blob = fetch(href).then(r => r.ok ? r.blob() : Promise.reject()).then(b => URL.createObjectURL(new Blob([b], {type: 'text/javascript'}))));
+        blob.then(u => setTimeout(() => { URL.revokeObjectURL(u); fetched.delete(href); }, 10000), () => fetched.delete(href));
+    }
+    return blob.then(u => workerReady(new Worker(u))).catch(plain);
+}
+
 export function createWorker(o: LoadOptions = {}): Worker {
     const custom = o.createWorker ?? defaults.createWorker;
     if (custom) return custom();
@@ -81,7 +107,7 @@ export async function acquireTileWorkers(o: LoadOptions): Promise<{connect(): Me
     const key = o.createWorker ?? defaults.createWorker ?? String(o.workerUrl ?? defaults.workerUrl ?? '');
     if (!pool || pool.key !== key) {
         const count = o.tileWorkers ?? defaults.tileWorkers ?? Math.max(1, Math.min(4, (navigator.hardwareConcurrency || 4) - 2));
-        const mine = pool = {key, users: 0, workers: Promise.all(Array.from({length: count}, () => workerReady(createWorker(o))))};
+        const mine = pool = {key, users: 0, workers: Promise.all(Array.from({length: count}, () => startWorker(o)))};
         mine.workers.catch(() => { if (pool === mine) pool = null; });
     }
     const mine = pool, workers = await mine.workers;

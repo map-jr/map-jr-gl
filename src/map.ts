@@ -8,7 +8,7 @@ import {layerRules} from './rules.ts';
 import type {CameraOptions, Command, EngineEvent, FontSource} from './engine.ts';
 import type {QueriedFeature} from './query.ts';
 import type {TileBackend} from './tiles.ts';
-import {acquireTileWorkers, createWorker, defaults as loadDefaults, workerReady, type LoadOptions} from './loader.ts';
+import {acquireTileWorkers, defaults as loadDefaults, startWorker, type LoadOptions} from './loader.ts';
 import {fillTemplate, sizedSVG, svgSize, templateSlots, VARIANT} from './markers.ts';
 import {AttributionControl, CONTROL_CSS, adoptClasses, cls, type Control, type ControlPosition} from './controls.ts';
 
@@ -281,7 +281,7 @@ export class Map {
             console.warn(`[map-jr-gl] Workers are unavailable (${err.message}); running on the main thread. ` +
                 'If the worker file is not next to the library, pass `workerUrl` or `createWorker`, or use the standalone build.');
         });
-        const engine = want !== 'main' && 'transferControlToOffscreen' in this.canvas ? workerReady(createWorker(o)).catch(() => null) : null;
+        const engine = want !== 'main' && 'transferControlToOffscreen' in this.canvas ? startWorker(o).catch(() => null) : null;
         if (engine) engine.then(w => w || preload()); else preload();
         // (When the style fails, or the map is removed, the workers of this start are given back.)
         const giveBack = () => { pool.then(p => p?.release()); engine?.then(w => w?.terminate()); };

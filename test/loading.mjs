@@ -44,5 +44,17 @@ for (const [what, file, query] of [['the worker file', /map-jr-gl-worker\.js/, '
     check(`start-up: ${what} is asked for before the style has answered`, ok && !!styleAsked && !!fileAsked && fileAsked < styleAnswered, `loaded=${ok} asked ${fileAsked - styleAsked} ms after the style was asked; the style answered after ${styleAnswered - styleAsked} ms`);
     await page.close();
 }
+
+// The worker file is requested once, although the tile workers and the engine worker all start from it (#325).
+for (const [what, query] of [['same origin', ''], ['another origin', `&from=http://127.0.0.1:${port}`]]) {
+    const page = await browser.newPage({viewport: {width: 800, height: 500}});
+    let asked = 0;
+    page.on('request', r => { if (/map-jr-gl-worker\.js/.test(r.url())) asked++; });
+    await page.goto(base + query);
+    const ok = await page.waitForFunction(() => window.mapLoaded, null, {timeout: 30000}).then(() => true, () => false);
+    const renderer = ok ? await page.evaluate(() => window.map.renderer) : 'did not load';
+    check(`start-up (${what}): the worker file is requested once`, ok && renderer === 'worker' && asked === 1, `renderer=${renderer} requests=${asked}`);
+    await page.close();
+}
 await browser.close();
 process.exit(failed ? 1 : 0);
