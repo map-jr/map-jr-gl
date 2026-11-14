@@ -64,7 +64,7 @@ A marker with no `lngLat` is not drawn. In the development build it gives a warn
 whose `id` is the id of a source or a layer of the style, and a `before` that names no layer.
 
 The size of a marker is the size of its image. Give the size with the image: `images: {pin: {image: pin, width: 36,
-height: 46}}`. Without a size, an SVG has the size of its `viewBox`.
+height: 46}}`. Without a size, an SVG has the size of its `viewBox`, or else of its `width` and `height` attributes (see [Images for style layers](api.md#images-for-style-layers)).
 
 To change how a marker looks with zoom, make two layers with the same data and different zoom ranges. For example,
 make small dots below zoom 12 and full pins from zoom 12.

@@ -4,7 +4,7 @@ import {TileBuilder} from './tiles.ts';
 import type {TileImage, TileIR} from './tile.ts';
 import {CollisionGrid, placeLabels, renderItems, type RenderItem} from './placement.ts';
 import {DEFAULT_FONT, EstimateShaper} from './text.ts';
-import {extended, fillTemplate, templateSlots, withMarkers, VARIANT, type MarkerLayerOptions} from './markers.ts';
+import {extended, fillTemplate, svgSize, templateSlots, withMarkers, VARIANT, type MarkerLayerOptions} from './markers.ts';
 import {renderSVG} from './svg.ts';
 import type {ImageDecoder} from './contour.ts';
 import {decodeImage, decodePNG, decodeWebPLossless} from './webp.ts';
@@ -23,7 +23,7 @@ export interface RenderOptions {
     /**
      * Images for the style layers and the marker layers, by name: SVG documents. An SVG with slots (`{{name}}`) is a
      * template, as in the description of a map. `{image, width, height}` gives a size in CSS pixels; without it the
-     * size is the size of the `viewBox`, or 24 by 24. An image that is not an SVG document is not drawn.
+     * size is the size of the `viewBox`, or else of the `width` and `height` attributes, or 24 by 24. An image that is not an SVG document is not drawn.
      */
     images?: Record<string, string | {image: string; width?: number; height?: number}>;
     fontFamily?: string;
@@ -222,8 +222,8 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
             // (`resolveImage` is asked for a name that `images` does not have, and never for the name of a variant.)
             let img = own || values.length ? undefined : o.resolveImage?.(name);
             if (own) {
-                const slots = templateSlots(own.image), box = /viewBox\s*=\s*["']\s*[\d.-]+[\s,]+[\d.-]+[\s,]+([\d.]+)[\s,]+([\d.]+)/.exec(own.image);
-                img = {svg: fillTemplate(own.image, Object.fromEntries(slots.map((s, i) => [s, values[i]]))), width: own.width ?? (box ? +box[1] : 24), height: own.height ?? (box ? +box[2] : 24)};
+                const slots = templateSlots(own.image), [w, h] = svgSize(own.image);
+                img = {svg: fillTemplate(own.image, Object.fromEntries(slots.map((s, i) => [s, values[i]]))), width: own.width ?? w, height: own.height ?? h};
             }
             if (img) images.set(name, img); else return undefined;
         }

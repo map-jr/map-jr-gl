@@ -8,7 +8,7 @@ import {applySSROverrides, compileLayer} from '../../src/style.ts';
 import {LINE_VERTEX, buildTile, tessellate, type Batch} from '../../src/tile.ts';
 import {queryTile, sampleElevation} from '../../src/query.ts';
 import {CollisionGrid, renderItems} from '../../src/placement.ts';
-import {fillTemplate, markerFeatures, markerStyle, sizedSVG, templateSlots, withMarkers, VARIANT} from '../../src/markers.ts';
+import {fillTemplate, markerFeatures, markerStyle, sizedSVG, svgSize, templateSlots, withMarkers, VARIANT} from '../../src/markers.ts';
 import {cleanCredits, renderToSVG} from '../../src/server.ts';
 import {decodePNG, decodeWebPLossless} from '../../src/webp.ts';
 import {deflateSync} from 'node:zlib';
@@ -244,6 +244,14 @@ test('style: server overrides hide layers, add filters and adjust detail', () =>
 
 test('markers: templates escape values and get explicit sizes', () => {
     assert.equal(fillTemplate('<text>{{label}}</text>', {label: '<b>&'}), '<text>&#60;b&#62;&#38;</text>');
+    // (#175) Without a viewBox: the width and height attributes in CSS pixels, each 24 when missing or in another unit.
+    assert.deepEqual(svgSize('<svg width="9" height="9"><rect/></svg>'), [9, 9]);
+    assert.deepEqual(svgSize("<svg height='12px' width=40><rect/></svg>"), [40, 12]);
+    assert.deepEqual(svgSize('<svg width="50%" height="2em"><rect/></svg>'), [24, 24]);
+    assert.deepEqual(svgSize('<svg width="9"><rect/></svg>'), [9, 24]);
+    assert.deepEqual(svgSize('<svg width="9" height="9" viewBox="0 0 10 20"><rect/></svg>'), [10, 20]);
+    assert.deepEqual(svgSize('<svg><svg viewBox="0 0 5 5"/></svg>'), [24, 24]);
+    assert.match(sizedSVG('<svg width="9" height="9"><rect/></svg>', 18, 18), /width="18" height="18" viewBox="0 0 9 9">/);
     assert.match(sizedSVG('<svg viewBox="0 0 10 20"><rect/></svg>', 30, 60), /^<svg xmlns="http:\/\/www.w3.org\/2000\/svg"[^>]* width="30" height="60" viewBox="0 0 10 20"><rect\/><\/svg>$/);
 });
 

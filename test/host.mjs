@@ -550,6 +550,34 @@ for (const renderer of ['worker', 'main']) {
         });
         check(`[${renderer}] controls follow the description`, controls.two === 2 && controls.still === 2 && controls.one === 1 && controls.none === 0, JSON.stringify(controls));
 
+        // 4b. An SVG image without a viewBox has the size of its width and height attributes (#175): a 9×9 image that
+        // replaces a 40×40 one under the same name is drawn at 9×9 centred on its anchor, and the 40×40 one is not cropped.
+        // (The blue box of each picture is read from a picture of the page; the anchor is at the centre, 450, 300.)
+        {
+            const svg = (s, c) => `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}"><rect width="${s}" height="${s}" fill="${c}"/></svg>`;
+            const box = async () => page.evaluate(async png => {
+                const bitmap = await createImageBitmap(await (await fetch('data:image/png;base64,' + png)).blob()), c = new OffscreenCanvas(bitmap.width, bitmap.height).getContext('2d');
+                c.drawImage(bitmap, 0, 0);
+                const d = c.getImageData(0, 0, bitmap.width, bitmap.height).data;
+                let x0 = 1e9, x1 = -1, y0 = 1e9, y1 = -1;
+                for (let y = 0; y < bitmap.height; y++) for (let x = 0; x < bitmap.width; x++) { const i = (y * bitmap.width + x) * 4; if (d[i + 2] > 200 && d[i] < 80 && d[i + 1] < 80) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); } }
+                return [x0, x1, y0, y1].join();
+            }, (await page.screenshot()).toString('base64'));
+            const seen = async want => { let got; for (let i = 0; i < 40 && (got = await box()) !== want; i++) await page.waitForTimeout(150); return got; };
+            await page.evaluate(async ({renderer, big}) => {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {id: 'sized', style: 'position:fixed;inset:0;z-index:200;background:#fff'}));
+                window.sized = {spec: {style: {version: 8, sources: {p: {type: 'geojson', data: {type: 'Point', coordinates: [0, 0]}}}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}},
+                    {id: 'i', type: 'symbol', source: 'p', layout: {'icon-image': 'b', 'icon-allow-overlap': true}}]}, initialView: {center: [0, 0], zoom: 1}, renderer, attribution: false, images: {b: big}}};
+                window.sized.host = window.t.lib.createMap(el, window.sized.spec);
+            }, {renderer, big: svg(40, '#00f')});
+            const big = await seen('430,469,280,319');
+            await page.evaluate(small => { const s = window.sized; s.host.update(s.spec = {...s.spec, images: {b: small}}); }, svg(9, '#00f'));
+            const small = await seen('446,454,296,304');
+            await page.evaluate(() => { window.sized.host.destroy(); document.getElementById('sized').remove(); });
+            check(`[${renderer}] an SVG image without a viewBox has the size of its width and height: 40×40 is not cropped, and 9×9 after it is centred on its anchor`,
+                big === '430,469,280,319' && small === '446,454,296,304', JSON.stringify({big, small}));
+        }
+
         // 5. The features under the pointer, and a click.
         await page.evaluate(() => { const t = window.t; t.host.update(t.spec = {...t.spec, interactiveLayers: ['water', 'park', 'building', 'road'], onClick: e => t.clicks.push(e)}); t.host.state.subscribe(s => s.hover, h => t.seen.push('hover:' + h.length)); });
         let hover = 0;
