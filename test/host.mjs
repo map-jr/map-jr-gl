@@ -50,6 +50,25 @@ for (const renderer of ['worker', 'main']) {
         check(`[${renderer}] the view: changes are reported, a reported view is not applied again, a new view moves the map`,
             view.reported >= 2 && view.last === 15 && view.afterEcho === 15 && view.moved.join() === '13.5,20,-74' && view.zoomEvents >= 2, JSON.stringify(view));
 
+        // 2b. Padding per side (#212): fitBounds and moveTo take {top, right, bottom, left}, and the description has padding.
+        const padding = await page.evaluate(async () => {
+            const t = window.t, m = t.host.map, b = [[-74.02, 40.70], [-74.00, 40.72]], mid = [-74.01, 40.71];
+            const at = () => { const p = m.project(mid); return [Math.round(p.x), Math.round(p.y)]; };
+            t.host.fitBounds(b, {padding: {left: 400, top: 10, right: 10, bottom: 10}, duration: 0});
+            const fit = at();
+            t.host.moveTo({center: mid, padding: {left: 300}});
+            const moved = at();
+            t.host.update({...t.spec, padding: {right: 300}});
+            const spec = at();
+            t.host.update({...t.spec, padding: 0});
+            const cleared = at();
+            t.host.moveTo({center: mid});
+            return {fit, moved, spec, cleared: at()};
+        });
+        // (The page is 900 × 600: the centre of the rest of the map is at x = 400 + 245 = 645, 300 + 300 = 600 and 300.)
+        check(`[${renderer}] padding per side: fitBounds and moveTo take {top, right, bottom, left}, and padding of the description moves the centre`,
+            Math.abs(padding.fit[0] - 645) <= 2 && padding.moved[0] === 600 && padding.spec[0] === 300 && padding.cleared[0] === 450 && padding.moved[1] === 300, JSON.stringify(padding));
+
         // 3. A new style object: a layer is added and found by a query; with the old style again it is gone.
         const style = await page.evaluate(async () => {
             const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms));
