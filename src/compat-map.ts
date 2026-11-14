@@ -210,12 +210,14 @@ export class Map extends CoreMap {
     }
     private geoKept = new globalThis.Map<string, {from: string; data?: object}>();
     /**
-     * The features of a source in the tiles of the present view. As with `queryRenderedFeatures`, the result is an array
+     * The features of a source in the tiles of the present view, as in MapLibre: all the features of those tiles, also
+     * those that no layer draws and those outside the view. As with `queryRenderedFeatures`, the result is an array
      * that can also be awaited: at once it has the features of a GeoJSON source whose data the page has (clusters too);
      * awaited, it has the features of each kind of source.
      */
     querySourceFeatures(sourceId: string, options: {sourceLayer?: string; filter?: unknown} = {}): GeoJSONFeature[] & PromiseLike<GeoJSONFeature[]> {
-        const sets = [{layer: '', source: sourceId, sourceLayer: options.sourceLayer, filter: options.filter, radius: 0}], box: [number, number, number, number] = [0, 0, this.tr.width, this.tr.height];
+        const sets = [{layer: '', source: sourceId, sourceLayer: options.sourceLayer, filter: options.filter, radius: Infinity}], box: [number, number, number, number] = [0, 0, this.tr.width, this.tr.height];
+        // (A radius without end takes each feature of the tiles under the view, whatever the layers draw.)
         const features = (found: QueriedFeature[]): Omit<RenderedFeature, 'layer'>[] => found.map(f => ({type: 'Feature', id: f.id, geometry: f.geometry!, properties: f.properties, source: f.source, sourceLayer: f.sourceLayer || undefined,
             state: f.id === undefined ? {} : this.getFeatureState({source: f.source, sourceLayer: f.sourceLayer || undefined, id: f.id})}));
         const spec = this.rawStyle?.sources[sourceId], data = spec?.type === 'geojson' && this.geoData(sourceId);
@@ -223,7 +225,7 @@ export class Map extends CoreMap {
         if (data && this.syncQuery) try { now = this.syncQuery.queryGeoJSON(sourceId, {...spec, data}, this.tr, box, sets); } catch { /* the promise has the complete result or the error */ }
         let awaited = false;
         const result = features(now), had = now.length, all = this.ask<QueriedFeature[]>(id => ({type: 'queryRendered', id, box, sets, geometry: true})).then(found => {
-            if (!awaited && found.length !== had) this.incomplete('querySourceFeatures', had, found.length);
+            if (!awaited && found.length > had) this.incomplete('querySourceFeatures', had, found.length);
             return features(found);
         });
         Object.defineProperty(result, 'then', {value: (done?: (v: Omit<RenderedFeature, 'layer'>[]) => unknown, failed?: (e: unknown) => unknown) => { awaited = true; return all.then(done, failed); }});

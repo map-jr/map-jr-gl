@@ -691,6 +691,29 @@ for (const mode of ['main', 'worker']) {
     check(`[${mode}] queryRenderedFeatures: a point, a box, all layers (top layer first), a filter; querySourceFeatures`,
         rendered.point.join() === '7' && rendered.layer === 'asked' && rendered.geometry === 'Point' && rendered.box.join() === '7,8' && rendered.all > 10 && rendered.top === 'asked' && rendered.filtered.join() === '8' && rendered.source === 2, JSON.stringify(rendered));
 
+    // querySourceFeatures reads the tile data of the source, as in MapLibre: also features that no layer draws
+    // (a layer with `circle-radius: 0`, used for HTML markers) and features in a tile under the view but outside the
+    // view. The array at once and the awaited result agree, and an awaited call does not warn (#252).
+    const unseen = await page.evaluate(async () => {
+        // (Point 2 is 3 pixels right of the view, in the tile of the right edge of the view.)
+        const m = window.map, c = m.getCenter(), right = m.getCanvas().clientWidth, cy = m.getCanvas().clientHeight / 2, beyond = m.unproject([right + 3, cy]);
+        const point = (id, lng, lat) => ({type: 'Feature', id, properties: {}, geometry: {type: 'Point', coordinates: [lng, lat]}});
+        m.addSource('unseen', {type: 'geojson', data: {type: 'FeatureCollection', features: [point(1, c.lng, c.lat), point(2, beyond.lng, beyond.lat)]}});
+        m.addLayer({id: 'unseen', type: 'circle', source: 'unseen', paint: {'circle-radius': 0}});
+        const warnings = [], warn = console.warn;
+        console.warn = (...a) => { warnings.push(String(a[0])); warn(...a); };
+        let found = [], now = [];
+        try {
+            for (let i = 0; i < 50 && found.length < 2; i++) { await new Promise(r => setTimeout(r, 100)); found = await m.querySourceFeatures('unseen'); }
+            now = m.querySourceFeatures('unseen'); await now;
+        } finally { console.warn = warn; }
+        const outside = m.project(beyond).x > right;
+        m.removeLayer('unseen'); m.removeSource('unseen');
+        return {found: found.map(f => f.id).sort(), now: [...now].map(f => f.id).sort(), outside, warnings: warnings.filter(w => w.includes('querySourceFeatures'))};
+    });
+    check(`[${mode}] querySourceFeatures: features that no layer draws and features outside the view, the same at once and awaited, no warning`,
+        unseen.found.join() === '1,2' && unseen.now.join() === '1,2' && unseen.outside && !unseen.warnings.length, JSON.stringify(unseen));
+
     // MapLibre code reads the result of queryRenderedFeatures at once. The features of tiles are there when the code
     // asks in a click listener, and when it asks on `idle`.
     {
