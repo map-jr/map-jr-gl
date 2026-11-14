@@ -52,6 +52,22 @@ export const mercY = (lat: number) => {
 export const lngFromMerc = (x: number) => x * 360 - 180;
 export const latFromMerc = (y: number) => Math.atan(Math.sinh(Math.PI * (1 - 2 * y))) * 180 / Math.PI;
 
+/** Padding in CSS pixels: one number for all sides, or some of the sides. */
+export type PaddingInput = number | Partial<Record<'top' | 'right' | 'bottom' | 'left', number>>;
+/**
+ * The centre and zoom that fit the box [west, south, east, north] into a view of `width` by `height` pixels, less
+ * `pad` ([top, right, bottom, left]) on each side. `shift` is the part of the padding that moves the centre.
+ */
+export function fitBox([w, s, e, n]: number[], width: number, height: number, pad: number[], shift: number[], maxZoom: number) {
+    const x0 = mercX(w), x1 = mercX(e), y0 = mercY(n), y1 = mercY(s);
+    const zoom = Math.min(maxZoom, Math.log2(Math.min(Math.max(1, width - pad[1] - pad[3]) / Math.max(x1 - x0, 1e-12), Math.max(1, height - pad[0] - pad[2]) / Math.max(y1 - y0, 1e-12)) / 512));
+    // Shift the centre so the box sits in the middle of the area inside `shift`.
+    const world = 512 * 2 ** zoom;
+    return {center: {lng: lngFromMerc((x0 + x1) / 2 - (shift[3] - shift[1]) / 2 / world), lat: latFromMerc((y0 + y1) / 2 - (shift[0] - shift[2]) / 2 / world)}, zoom};
+}
+/** `PaddingInput` as [top, right, bottom, left]. */
+export const sides = (p: PaddingInput = 0) => typeof p === 'number' ? [p, p, p, p] : [p.top ?? 0, p.right ?? 0, p.bottom ?? 0, p.left ?? 0];
+
 export function toLngLat(v: LngLatLike): [number, number] {
     // (The casts are for the type check only: `Array.isArray` does not separate a readonly array from the objects.)
     return Array.isArray(v) ? v as [number, number] : ['lng' in v ? (v as {lng: number}).lng : (v as {lon: number}).lon, (v as {lat: number}).lat];
