@@ -10,7 +10,7 @@ import {CollisionGrid, placeLabels, renderItems, type Placed, type RenderItem} f
 import {GlyphAtlas} from './text.ts';
 import {fetchWith, withTimeout, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
 import {decodeElevation, sampleElevation, tilesUnderBox, type QueriedFeature, type QuerySet} from './query.ts';
-import type {TileBackend, TileRequest} from './tiles.ts';
+import type {FeatureStates, TileBackend, TileRequest} from './tiles.ts';
 import type {TileGL} from './tile.ts';
 import {fetchTile, heads} from './pmtiles.ts';
 
@@ -46,7 +46,8 @@ export type Command =
     | {type: 'removeImage'; name: string}
     | {type: 'geojson'; source: string; data: unknown}
     /** Replaces the feature state of one source ("sourceLayer|id" -> state); its tiles are rebuilt in place. */
-    | {type: 'featureState'; source: string; states: Record<string, Record<string, unknown>>}
+    /** The states of the features that changed (`null`: no state), or all states of the source with `replace`. */
+    | {type: 'featureState'; source: string; states: FeatureStates; replace?: boolean}
     | ({type: 'query'; id: number; lng: number; lat: number} & FeatureQuery)
     /** Features that style layers draw, in a rectangle of the screen. Each set is one style layer (its radius is in pixels). */
     | {type: 'queryRendered'; id: number; box: [number, number, number, number]; sets: (QuerySet & {source: string})[]; geometry?: boolean}
@@ -736,7 +737,7 @@ export class Engine {
                 break;
             }
             case 'featureState':
-                for (const b of this.backends) b.setFeatureState(c.source, c.states);
+                for (const b of this.backends) b.setFeatureState(c.source, c.states, c.replace);
                 // The tile workers keep the state for a layer that reads it later. Tiles are built again only when a
                 // layer of the source reads feature state now. (A frame comes in each case: it reports `idle` to the page.)
                 if (this.sourceSigs.get(c.source)?.[1].includes('"feature-state"')) for (const [key, t] of this.tiles) if (key.startsWith(c.source + '|')) { t.stale = true; t.rev = ++this.tilesVersion; }

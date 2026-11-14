@@ -90,7 +90,10 @@ export class TileBuilder {
 
     /** The global state and the feature state of the map of this builder. */
     private states: MapStates = {g: {}, f: {}};
-    setFeatureState(source: string, states: Record<string, Record<string, unknown>>) { this.states.f[source] = states; }
+    setFeatureState(source: string, states: FeatureStates, replace?: boolean) {
+        const own = replace || !this.states.f[source] ? (this.states.f[source] = {}) : this.states.f[source];
+        for (const k in states) { const v = states[k]; if (v) own[k] = v; else delete own[k]; }
+    }
     /** The slots of each image that is an SVG template, by the name of the image. */
     private templates: Record<string, string[]> = {};
     setTemplates(templates: Record<string, string[]>) { this.templates = templates; }
@@ -167,6 +170,8 @@ export class TileBuilder {
 }
 
 /** What the engine needs from wherever tiles are built. */
+/** Feature states by "sourceLayer|id"; `null` means that the feature has no state any more. */
+export type FeatureStates = Record<string, Record<string, unknown> | null>;
 export interface TileBackend {
     setStyle(layers: LayerJSON[], state?: Record<string, unknown>): void;
     /** Tells the builder which requests the page wants to change, and how to ask the page. */
@@ -174,8 +179,8 @@ export interface TileBackend {
     /** Fetches and decodes an elevation tile for the GPU and for 3D terrain. */
     loadElevation(req: ElevationRequest): Promise<ElevationTile | null>;
     setGeoJSON(source: string, data: unknown, options?: GeoJSONOptions, maxzoom?: number): void;
-    /** Replaces the feature state of one source: "sourceLayer|id" -> state. */
-    setFeatureState(source: string, states: Record<string, Record<string, unknown>>): void;
+    /** Changes the feature state of one source ("sourceLayer|id" -> state, `null` removes it); `replace` drops the other states. */
+    setFeatureState(source: string, states: FeatureStates, replace?: boolean): void;
     /** The slots of each image that is an SVG template. Tiles that are built later give each icon the name of its variant. */
     setTemplates(templates: Record<string, string[]>): void;
     setContours(sources: Record<string, ContourConfig>): void;
@@ -194,7 +199,7 @@ export class LocalBackend implements TileBackend {
     setRequests(rules: RequestRules, ask: Ask) { this.builder.setFetch(fetchWith(() => rules, ask)); }
     setStyle(layers: LayerJSON[], state?: Record<string, unknown>) { this.builder.setStyle(layers, state); }
     setGeoJSON(source: string, data: unknown, options?: GeoJSONOptions, maxzoom?: number) { this.builder.setGeoJSON(source, data, options, maxzoom); }
-    setFeatureState(source: string, states: Record<string, Record<string, unknown>>) { this.builder.setFeatureState(source, states); }
+    setFeatureState(source: string, states: FeatureStates, replace?: boolean) { this.builder.setFeatureState(source, states, replace); }
     setTemplates(templates: Record<string, string[]>) { this.builder.setTemplates(templates); }
     setContours(sources: Record<string, ContourConfig>) { this.builder.setContours(sources); }
     setHead(url: string, bytes: Uint8Array) { heads.set(url, bytes); }
@@ -234,7 +239,7 @@ export class PortBackend implements TileBackend {
         return new Promise((resolve, reject) => { this.pending.set(req.id, {resolve, reject}); this.port.postMessage({type: 'dem', req}); });
     }
     setGeoJSON(source: string, data: unknown, options?: GeoJSONOptions, maxzoom?: number) { this.port.postMessage({type: 'geojson', source, data, options, maxzoom}); }
-    setFeatureState(source: string, states: Record<string, Record<string, unknown>>) { this.port.postMessage({type: 'featureState', source, states}); }
+    setFeatureState(source: string, states: FeatureStates, replace?: boolean) { this.port.postMessage({type: 'featureState', source, states, replace}); }
     setTemplates(templates: Record<string, string[]>) { this.port.postMessage({type: 'templates', templates}); }
     setContours(sources: Record<string, ContourConfig>) { this.port.postMessage({type: 'contours', sources}); }
     setHead(url: string, bytes: Uint8Array) { this.port.postMessage({type: 'head', url, bytes}); }
@@ -267,7 +272,7 @@ export function serveTiles(port: Port) {
         else if (m.type === 'resourceResult') { asked.get(m.id)?.(m); asked.delete(m.id); }
         else if (m.type === 'style') builder.setStyle(m.layers, m.state);
         else if (m.type === 'geojson') builder.setGeoJSON(m.source, m.data, m.options, m.maxzoom);
-        else if (m.type === 'featureState') builder.setFeatureState(m.source, m.states);
+        else if (m.type === 'featureState') builder.setFeatureState(m.source, m.states, m.replace);
         else if (m.type === 'templates') builder.setTemplates(m.templates);
         else if (m.type === 'contours') builder.setContours(m.sources);
         else if (m.type === 'head') heads.set(m.url, m.bytes);
