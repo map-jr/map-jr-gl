@@ -54,6 +54,12 @@ importers:
       react-dom:
         specifier: ^19.3.1
         version: 19.3.1(react@19.3.1)
+      react-dom-next14:
+        specifier: npm:react-dom@18.3.0-canary-178c267a4e-20241218
+        version: react-dom@18.3.0-canary-178c267a4e-20241218(react@19.3.1)
+      react-next14:
+        specifier: npm:react@18.3.0-canary-178c267a4e-20241218
+        version: react@18.3.0-canary-178c267a4e-20241218
       typescript:
         specifier: ^7.0.2
         version: 7.0.2
@@ -1034,6 +1040,9 @@ packages:
     resolution: {integrity: sha512-zymm5+u+sCsSWyD9qNaejV3DFvhCKclKdizYaJUuHA83RLjb7nSuGnddCHGv0hk+KY7BMAlsWeK4Ueg6EV6XQg==}
     engines: {node: '>=8'}
 
+  js-tokens@4.0.0:
+    resolution: {integrity: sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ==}
+
   json-stringify-pretty-compact@4.0.0:
     resolution: {integrity: sha512-3CNZ2DnrpByG9Nqj6Xo8vqbjT4F6N+tb4Gb28ESAZjYZ5yqvmc56J+/kuIwkaAMOyblTQhUW7PxMkUb8Q36N3Q==}
 
@@ -1117,6 +1126,10 @@ packages:
   lightningcss@1.33.0:
     resolution: {integrity: sha512-WkUDrojuJs0xkgGf2udWxa3yGBRxPtxUkB79i6aCZLRgc7PM8fZe9TosfPDcvEpQZbuFASnHYmRLBLUbmLOIIA==}
     engines: {node: '>= 12.0.0'}
+
+  loose-envify@1.4.0:
+    resolution: {integrity: sha512-lyuxPGr/Wfhrlem2CL/UcnUc1zcqKAImBDzukY7Y5F/yQiNdko6+fRLevlw1HgMySw7f611UIY408EtxRSoK3Q==}
+    hasBin: true
 
   lru-cache@11.5.3:
     resolution: {integrity: sha512-U4N8FgzmWxc8k1VH8Kr6lQg18U7Fjvby6wXHVRX/ZZ7IwWbRMgrRbP0Wrb5q5NVinryp4SQampHKdvtecItxUg==}
@@ -1227,10 +1240,19 @@ packages:
   rc9@3.1.0:
     resolution: {integrity: sha512-ufjkNVzbRHKcCOmTahZkmVsyc3W+MSk3jY03m+a7tGHkIsdVMG9l10/3HvFbWkkKzY5VFp3pkRsIo/UYgmFL7Q==}
 
+  react-dom@18.3.0-canary-178c267a4e-20241218:
+    resolution: {integrity: sha512-uktXo2i3RkqeG5uREgR2e2dFwhbkOOc/KVo1ez0Mv7UxE94XJo5fBFbmWYKniv1OllZDMtoPj0WJPIdUJFPs1A==}
+    peerDependencies:
+      react: 18.3.0-canary-178c267a4e-20241218
+
   react-dom@19.3.1:
     resolution: {integrity: sha512-Y0bARz53lhEC1NMCASs0/j+faB/zqt3R8hpvg1e8+61ZVJ4UL0UdC4cBbXfZMcIuhrfgeILTLe+ZeBCavQPtKQ==}
     peerDependencies:
       react: ^19.3.1
+
+  react@18.3.0-canary-178c267a4e-20241218:
+    resolution: {integrity: sha512-J/nkUsklmfohWLxms4MhiKRvShauw7+/BaT0ZkppS8INFDsUOjLuTMsx76t3dXnNyNwV8HVMW+3K7onybQEs7Q==}
+    engines: {node: '>=0.10.0'}
 
   react@19.3.1:
     resolution: {integrity: sha512-QNhWdt7nrgVWWQG58QuGsAR3jv3Hbe4mb4vz7w2csnHavciZJgda1CPNaldF6eVxv90ud3jUXpKlHL69gO38yw==}
@@ -1255,6 +1277,9 @@ packages:
   sade@1.8.1:
     resolution: {integrity: sha512-xal3CZX1Xlo/k4ApwCFrHVACi9fBqJ7V+mwhBsuf/1IOKbBy098Fex+Wa/5QMubw09pSZ/u8EY8PWgevJsXp1A==}
     engines: {node: '>=6'}
+
+  scheduler@0.24.0-canary-178c267a4e-20241218:
+    resolution: {integrity: sha512-7r/ApTr658/eYhcntoLdGUVZf1ufp8ouzW2Qxeauj2QtsWSQw9C7UDnLx17qvEjbtqbavALfvrdwy500WC/FAQ==}
 
   scheduler@0.28.0:
     resolution: {integrity: sha512-juorfCmIkIw8tT+p5BXSm6PJjQF/ycEYmKyzURCIt/RaZIhL+PulbQ9Yu2z1HdOJDdqDTlxA1+xKBmHXJsczAw==}
@@ -2184,6 +2209,8 @@ snapshots:
 
   is-fullwidth-code-point@3.0.0: {}
 
+  js-tokens@4.0.0: {}
+
   json-stringify-pretty-compact@4.0.0: {}
 
   kdbush@4.1.0: {}
@@ -2240,6 +2267,10 @@ snapshots:
       lightningcss-linux-x64-musl: 1.33.0
       lightningcss-win32-arm64-msvc: 1.33.0
       lightningcss-win32-x64-msvc: 1.33.0
+
+  loose-envify@1.4.0:
+    dependencies:
+      js-tokens: 4.0.0
 
   lru-cache@11.5.3: {}
 
@@ -2368,10 +2399,20 @@ snapshots:
       defu: 6.1.7
       destr: 2.0.5
 
+  react-dom@18.3.0-canary-178c267a4e-20241218(react@19.3.1):
+    dependencies:
+      loose-envify: 1.4.0
+      react: 19.3.1
+      scheduler: 0.24.0-canary-178c267a4e-20241218
+
   react-dom@19.3.1(react@19.3.1):
     dependencies:
       react: 19.3.1
       scheduler: 0.28.0
+
+  react@18.3.0-canary-178c267a4e-20241218:
+    dependencies:
+      loose-envify: 1.4.0
 
   react@19.3.1: {}
 
@@ -2407,6 +2448,10 @@ snapshots:
   sade@1.8.1:
     dependencies:
       mri: 1.2.0
+
+  scheduler@0.24.0-canary-178c267a4e-20241218:
+    dependencies:
+      loose-envify: 1.4.0
 
   scheduler@0.28.0: {}
 

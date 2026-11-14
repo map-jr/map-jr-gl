@@ -34,6 +34,28 @@ for (const [name, id] of [['react', 'react'], ['react-dom', 'react-dom'], ['reac
     const names = Object.keys(require(id)).filter(n => n !== 'default' && /^[A-Za-z_$][\w$]*$/.test(n));
     writeFileSync(entryPoints[name] = path.join(esm, name + '.src.js'), `import m from '${id}';\nexport default m;\nexport const {${names.join(', ')}} = m;\n`);
 }
+// The React that Next.js 14.2 bundles for the app router (a canary of 18.3). It sets `innerHTML` again for each new
+// `dangerouslySetInnerHTML` object, where React 19 compares the strings (#188).
+const esm14 = path.join(root, '.cache/react-esm-next14'), entryPoints14 = {};
+mkdirSync(esm14, {recursive: true});
+for (const [name, id] of [['react', 'react-next14'], ['react-dom', 'react-dom-next14'], ['react-dom-client', 'react-dom-next14/client']]) {
+    // (In Node, that react-dom would load React 19, so the names of its client module are written here.)
+    const names = name === 'react' ? Object.keys(require(id)).filter(n => n !== 'default' && /^[A-Za-z_$][\w$]*$/.test(n)) : name === 'react-dom' ? ['createPortal', 'flushSync', 'version'] : ['createRoot', 'hydrateRoot'];
+    writeFileSync(entryPoints14[name] = path.join(esm14, name + '.src.js'), `import m from '${id}';\nexport default m;\nexport const {${names.join(', ')}} = m;\n`);
+}
+await require('esbuild').build({entryPoints: entryPoints14, bundle: true, splitting: true, format: 'esm', outdir: esm14, absWorkingDir: root, alias: {react: 'react-next14', 'react-dom': 'react-dom-next14'}, define: {'process.env.NODE_ENV': '"development"'}, logLevel: 'silent'});
+// A parent that renders again, in Strict Mode (double effects), and that removes and adds the map.
+const client14 = `import {createElement as h, useState, StrictMode} from 'react';
+import {createRoot} from 'react-dom/client';
+import {MapJr} from '/dist/react.js';
+const style = await (await fetch('/style.json')).json(), t = window.t = {loads: 0};
+function App() {
+    const [n, setN] = useState(0), [shown, setShown] = useState(true);
+    Object.assign(t, {setN, setShown});
+    return h('div', {id: 'frame', 'data-n': n, style: {width: 400, height: 300}}, shown && h(MapJr, {mapStyle: style, initialView: ${JSON.stringify(view)}, attribution: false, onLoad: () => t.loads++}));
+}
+createRoot(document.getElementById('app')).render(h(StrictMode, null, h(App)));
+window.ready = true;`;
 await require('esbuild').build({entryPoints, bundle: true, splitting: true, format: 'esm', outdir: esm, absWorkingDir: root, define: {'process.env.NODE_ENV': '"development"'}, logLevel: 'silent'});
 const client = `import {createElement as h, useState, useRef} from 'react';
 import {createRoot, hydrateRoot} from 'react-dom/client';
@@ -73,6 +95,9 @@ const server = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://x'), send = (body, type) => { res.writeHead(200, {'content-type': type}); res.end(body); };
     try {
         if (url.pathname === '/') return send(`<!doctype html><meta charset="utf-8"><body style="margin:0"><script type="importmap">{"imports": {"react": "/esm/react.js", "react-dom": "/esm/react-dom.js", "react-dom/client": "/esm/react-dom-client.js"}}</script><div id="app">${url.search === '?ssr' ? html : ''}</div><script type="module" src="/client.js${url.search}"></script>`, 'text/html');
+        if (url.pathname === '/next14') return send(`<!doctype html><meta charset="utf-8"><body style="margin:0"><script type="importmap">{"imports": {"react": "/esm14/react.js", "react-dom": "/esm14/react-dom.js", "react-dom/client": "/esm14/react-dom-client.js"}}</script><div id="app"></div><script type="module" src="/client14.js"></script>`, 'text/html');
+        if (url.pathname === '/client14.js') return send(client14, 'text/javascript');
+        if (url.pathname.startsWith('/esm14/')) return send(readFileSync(path.join(esm14, url.pathname.slice(7))), 'text/javascript');
         if (url.pathname === '/client.js') return send(client, 'text/javascript');
         if (url.pathname === '/style.json') return send(JSON.stringify(style), 'application/json');
         if (url.pathname.startsWith('/esm/')) return send(readFileSync(path.join(esm, url.pathname.slice(5))), 'text/javascript');
@@ -180,6 +205,28 @@ try {
     check('browser: onError gets each error, and without it the error is written to the console',
         failing.got.length === 1 && /HTTP 404/.test(failing.got[0]) && failing.loggedWithProp === 0 && failing.logged.length === 1 && /HTTP 404/.test(failing.logged[0]), JSON.stringify(failing));
     check('browser: no page errors', errors.length === 0, errors.slice(0, 2).join(' | '));
+    await page.close();
+
+    // The React of Next.js 14.2 in Strict Mode: the canvas survives a render of the parent, and an unmount and a remount
+    // leave one map (#188).
+    page = await browser.newPage({viewport: {width: 900, height: 600}});
+    const errors14 = [];
+    page.on('pageerror', e => errors14.push(e.message));
+    if (process.env.DEBUG) page.on('console', m => console.log('console14:', m.text().slice(0, 300)));
+    await page.goto(origin + '/next14');
+    await page.waitForFunction(() => window.t?.loads > 0, null, {timeout: 60000});
+    const next14 = await page.evaluate(async () => {
+        const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), count = () => document.querySelectorAll('#frame canvas').length;
+        const version = (await import('react')).version, first = count();
+        t.setN(1); await wait(300); t.setN(2); await wait(300);
+        const rendered = count();
+        t.setShown(false); await wait(300);
+        const removed = document.querySelectorAll('canvas').length;
+        t.setShown(true); await wait(300); t.setN(3); await wait(300);
+        return {version, first, rendered, removed, remounted: count()};
+    });
+    check('browser: under the React of Next.js 14.2 in Strict Mode, the canvas survives renders of the parent, and a remount gives one map',
+        /canary/.test(next14.version) && next14.first === 1 && next14.rendered === 1 && next14.removed === 0 && next14.remounted === 1 && !errors14.length, JSON.stringify({...next14, errors: errors14.slice(0, 2)}));
     await page.close();
 } catch (e) { check('the test run was completed', false, String(e.message).split('\n')[0]); }
 await browser.close();
