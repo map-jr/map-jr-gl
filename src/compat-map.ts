@@ -4,6 +4,7 @@
 // results that are arrays and promises at the same time.
 import {Map as CoreMap, type CameraInput, type PointLike, type RenderedFeature, type RenderedQueryOptions, type PaddingInput, type ImageOptions} from './map.ts';
 import type {QueriedFeature} from './query.ts';
+import {GPUInitializationError} from './gpu-error.ts';
 import type {LngLatLike} from './geo.ts';
 import type {AddLayerObject, GeoJSONFeature, MapGeoJSONFeature, MapEventType, MapLayerEventType, Source, MapOptions, EaseToOptions, StyleSwapOptions, FitBoundsOptions, QuerySourceFeatureOptions, FeatureIdentifier, StyleSpecification} from './compat-types.ts';
 
@@ -35,7 +36,26 @@ export interface Map {
 declare const __VERSION__: string; // the version of package.json, set by the build
 /** The fields that a camera method copies onto the events of its move, as `eventData` in MapLibre GL JS. */
 type EventData = Record<string, unknown>;
+/**
+ * A point in pixels, as `Point` of `@mapbox/point-geometry`, which MapLibre GL JS exports. It has the methods that
+ * applications use most; see docs/maplibre-compatibility.md for the list.
+ */
+export class Point {
+    constructor(public x: number, public y: number) {}
+    static convert(p: Point | [number, number] | {x: number; y: number}) { return p instanceof Point ? p : Array.isArray(p) ? new Point(p[0], p[1]) : new Point(p.x, p.y); }
+    clone() { return new Point(this.x, this.y); }
+    add(p: {x: number; y: number}) { return new Point(this.x + p.x, this.y + p.y); }
+    sub(p: {x: number; y: number}) { return new Point(this.x - p.x, this.y - p.y); }
+    mult(k: number) { return new Point(this.x * k, this.y * k); }
+    div(k: number) { return new Point(this.x / k, this.y / k); }
+    round() { return new Point(Math.round(this.x), Math.round(this.y)); }
+    mag() { return Math.hypot(this.x, this.y); }
+    dist(p: {x: number; y: number}) { return Math.hypot(this.x - p.x, this.y - p.y); }
+    equals(p: {x: number; y: number}) { return this.x === p.x && this.y === p.y; }
+}
 export class Map extends CoreMap {
+    /** As in MapLibre, a `Point` with methods (`dist`, `sub`, …), not a plain object. */
+    override project(lngLat: LngLatLike) { return Point.convert(super.project(lngLat)); }
     /** As in MapLibre GL JS: with no listener, `once` returns a promise for the event; a layer id makes it a layer event. */
     once(type: string, a?: any, b?: any): any {
         const layer = typeof a === 'string' || Array.isArray(a) ? a : undefined, fn = typeof a === 'function' ? a : b;
@@ -398,6 +418,9 @@ export class Map extends CoreMap {
     override fire(type: string, data: Record<string, unknown> = {}): void | PromiseLike<unknown> {
         // The page gave new data (`setData`, a change of the style): the answers from before are old. They are not given.
         if (type === 'dataloading') this.forget();
+        // No engine could start (`cannotShow` of the core): MapLibre GL JS reports this with a GPUInitializationError (#205).
+        const e = data.error as Error | undefined;
+        if (type === 'error' && e?.message?.startsWith('[map-jr-gl] The map cannot be shown:') && !(e instanceof GPUInitializationError)) data = {...data, error: new GPUInitializationError(e.message, null, {cause: e.cause})};
         // (New data in the engine: an answer that was kept while the data loaded can be old. It is still given at once, and
         // it is asked again: if the new answer is another, `idle` fires one more time for that question.)
         if (type === 'sourcedata' || type === 'styledata') this.refired.clear();
@@ -408,7 +431,11 @@ export class Map extends CoreMap {
             data = {...this.moveData, ...data};
             if (type === 'moveend') this.moveData = undefined;
         }
-        const point = data.point as {x: number; y: number} | undefined;
+        // As in MapLibre, `point` and `points` of mouse and touch events are a `Point`.
+        // (In place: the object has a getter, `defaultPrevented`, that a copy would lose.)
+        if (data.point) data.point = Point.convert(data.point as Point);
+        if (Array.isArray(data.points)) data.points = data.points.map(Point.convert);
+        const point = data.point as Point | undefined;
         if (!point || !this.rawStyle || data.asked) return super.fire(type, data);
         const warm = () => {
             const {box, sets} = this.rendered([point.x, point.y]), key = this.questionKey(box), turn = this.turn;

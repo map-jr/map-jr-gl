@@ -793,6 +793,12 @@ for (const renderer of ['worker', 'main']) {
         await page.mouse.click(450, 300); await page.waitForTimeout(500);
         const pointer = await page.evaluate(() => { const t = window.t, c = t.clicks[0]; return {clicks: t.clicks.length, lngLat: c?.lngLat?.length, features: Array.isArray(c?.features), hoverEvents: t.seen.filter(x => x.startsWith('hover:')).length}; });
         check(`[${renderer}] the features under the pointer are in the state, and a click has them`, hover > 0 && pointer.clicks === 1 && pointer.lngLat === 2 && pointer.features && pointer.hoverEvents > 0, JSON.stringify({hover, ...pointer}));
+        // A click on an overlay does not call onClick (#198).
+        await page.evaluate(() => { const t = window.t, el = Object.assign(document.createElement('div'), {style: 'width:20px;height:20px;background:#c00'}); t.ov = t.host.overlay(el, {lngLat: t.host.unproject({x: 200, y: 200})}); t.clicks.length = 0; });
+        const ovBox = await page.evaluate(() => { const r = document.querySelector('.map-jr-marker').getBoundingClientRect(); return {x: r.x + r.width / 2, y: r.y + r.height / 2}; });
+        await page.mouse.click(ovBox.x, ovBox.y); await page.waitForTimeout(500);
+        const overlayClicks = await page.evaluate(() => { const t = window.t, n = t.clicks.length; t.ov.remove(); return n; });
+        check(`[${renderer}] a click on an overlay does not call onClick`, overlayClicks === 0, JSON.stringify({overlayClicks}));
 
         // 5b. One method to find features, and the same question kept up to date.
         const found = await page.evaluate(async () => {
@@ -1059,7 +1065,8 @@ for (const [entry, renderer] of [['main API', 'worker'], ['main API', 'main'], [
                 const lib = await import('/dist/map-jr-gl-maplibre-compat.js');
                 supported = lib.supported() || lib.default.supported();
                 const map = new lib.Map({container: el, style, center: [-74.0065, 40.7085], zoom: 14.3, attributionControl: false, createWorker});
-                map.on('error', e => errors.push(e.error.message));
+                // (#205: the error is a GPUInitializationError, which the module exports, as in MapLibre GL JS.)
+                map.on('error', e => errors.push(e.error.message, ...(e.error instanceof lib.GPUInitializationError && e.error.name === 'GPUInitializationError' && new lib.GPUInitializationError({}, null) instanceof Error ? [] : ['not a GPUInitializationError'])));
                 state = () => ({error: errors[0], loaded: map.loaded()});
                 destroy = () => map.remove();
             }

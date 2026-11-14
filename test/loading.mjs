@@ -62,5 +62,34 @@ for (const [what, file, query] of [['the worker file', /map-jr-gl-worker\.js/, '
     check('start-up: the chunks of the page script are asked for in one round', ok && names.length > 1 && last < first, `loaded=${ok} chunks=${names.map(n => n.replace(/-[\w-]{8}\.js$/, '')).join(', ')}; the last was asked ${last - first} ms after the first answer`);
     await page.close();
 }
+
+// The worker file is requested once, although the tile workers and the engine worker all start from it (#325).
+for (const [what, query] of [['same origin', ''], ['another origin', `&from=http://127.0.0.1:${port}`]]) {
+    const page = await browser.newPage({viewport: {width: 800, height: 500}});
+    let asked = 0;
+    page.on('request', r => { if (/map-jr-gl-worker\.js/.test(r.url())) asked++; });
+    await page.goto(base + query);
+    const ok = await page.waitForFunction(() => window.mapLoaded, null, {timeout: 30000}).then(() => true, () => false);
+    const renderer = ok ? await page.evaluate(() => window.map.renderer) : 'did not load';
+    check(`start-up (${what}): the worker file is requested once`, ok && renderer === 'worker' && asked === 1, `renderer=${renderer} requests=${asked}`);
+    await page.close();
+}
+// A policy without blob: workers: each blob worker fails and starts from the URL (#325).
+// (The demo server sends no-store, so each of the 3 workers requests the file, plus the one fetch for the blob.)
+{
+    const page = await browser.newPage({viewport: {width: 800, height: 500}});
+    let asked = 0, blocked = 0;
+    page.on('request', r => { if (/map-jr-gl-worker\.js$/.test(r.url())) asked++; });
+    page.on('console', m => { if (m.type() === 'error' && /blob:/.test(m.text())) blocked++; });
+    await page.route(u => u.pathname === '/', async r => {
+        const res = await r.fetch();
+        await r.fulfill({response: res, headers: {...res.headers(), 'content-security-policy': "worker-src 'self'"}});
+    });
+    await page.goto(base);
+    const ok = await page.waitForFunction(() => window.mapLoaded, null, {timeout: 30000}).then(() => true, () => false);
+    const renderer = ok ? await page.evaluate(() => window.map.renderer) : 'did not load';
+    check('start-up under worker-src \'self\': one error at most per start-up worker, and one request more than the workers', ok && renderer === 'worker' && asked <= 4 && blocked <= 3, `renderer=${renderer} requests=${asked} errors=${blocked}`);
+    await page.close();
+}
 await browser.close();
 process.exit(failed ? 1 : 0);

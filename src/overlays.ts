@@ -224,7 +224,21 @@ export class Marker extends Overlay {
         }
         this.el.classList.add('map-jr-marker', 'maplibregl-marker', ...(options.className?.split(' ').filter(Boolean) ?? []));
         this.el.style.zIndex = '1';
-        this.el.addEventListener('click', e => { if (this.popup) { e.stopPropagation(); this.togglePopup(); } });
+        // As in MapLibre GL JS, a click on a marker is also a `click` of the map, so that a popup with `closeOnClick` closes
+        // (#198). The map listens on its canvas only, so the marker fires the event. The click that ends a drag does not
+        // get here (see `startDrag`).
+        this.el.addEventListener('click', e => {
+            const map = this.map;
+            if (!map) return;
+            const c = map.getContainer(), r = c.getBoundingClientRect(), sx = r.width / c.offsetWidth || 1, sy = r.height / c.offsetHeight || 1;
+            const point = {x: (e.clientX - r.left) / sx - c.clientLeft, y: (e.clientY - r.top) / sy - c.clientTop};
+            let prevented = false;
+            // The popup opens or closes after the listeners of the map have run, which the compat entry can do later. A popup
+            // that was open at the click is closed at the end, also when its own `closeOnClick` closed it first.
+            const open = this.popup?.isOpen(), toggle = () => { if (this.popup && this.map === map && this.popup.isOpen() === open) this.togglePopup(); };
+            const sent = map.fire('click', {point, lngLat: map.unproject(point), originalEvent: e, preventDefault() { prevented = true; }, get defaultPrevented() { return prevented; }});
+            if (sent) sent.then(toggle, toggle); else toggle();
+        });
         // With the keyboard: Enter or the space bar opens and closes the popup of the marker. The focus moves to the first
         // element of the open popup that takes it (the close button, when the content has none).
         this.el.addEventListener('keydown', e => {

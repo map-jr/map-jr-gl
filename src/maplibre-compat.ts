@@ -38,26 +38,12 @@ export class FullscreenControl extends CoreFullscreen {
     onAdd(map: CoreMap) { this.container = map.getContainer(); document.addEventListener('fullscreenchange', this.change); return super.onAdd(map); }
     onRemove() { document.removeEventListener('fullscreenchange', this.change); super.onRemove(); }
 }
-/**
- * A point in pixels, as `Point` of `@mapbox/point-geometry`, which MapLibre GL JS exports. It has the methods that
- * applications use most; see docs/maplibre-compatibility.md for the list.
- */
-export class Point {
-    constructor(public x: number, public y: number) {}
-    static convert(p: Point | [number, number] | {x: number; y: number}) { return p instanceof Point ? p : Array.isArray(p) ? new Point(p[0], p[1]) : new Point(p.x, p.y); }
-    clone() { return new Point(this.x, this.y); }
-    add(p: {x: number; y: number}) { return new Point(this.x + p.x, this.y + p.y); }
-    sub(p: {x: number; y: number}) { return new Point(this.x - p.x, this.y - p.y); }
-    mult(k: number) { return new Point(this.x * k, this.y * k); }
-    div(k: number) { return new Point(this.x / k, this.y / k); }
-    round() { return new Point(Math.round(this.x), Math.round(this.y)); }
-    mag() { return Math.hypot(this.x, this.y); }
-    dist(p: {x: number; y: number}) { return Math.hypot(this.x - p.x, this.y - p.y); }
-    equals(p: {x: number; y: number}) { return this.x === p.x && this.y === p.y; }
-}
+export {Point} from './compat-map.ts';
+import {Point} from './compat-map.ts';
 import {LogoControl as Empty} from './controls-more.ts';
 /** MapLibre changes between a flat map and a globe with this control. This library has no globe, so the control adds an empty element. */
 export class GlobeControl extends Empty { override getDefaultPosition() { return 'top-right' as const; } }
+export {GPUInitializationError} from './gpu-error.ts';
 export {configure, supported, type LoadOptions} from './loader.ts';
 export type * from './compat-types.ts';
 
@@ -99,7 +85,9 @@ import {addProtocol, removeProtocol} from './protocols.ts';
 import {AttributionControl} from './controls.ts';
 import {NavigationControl, ScaleControl, GeolocateControl, TerrainControl, LogoControl} from './controls-more.ts';
 import {Popup} from './overlays.ts';
+import {GPUInitializationError} from './gpu-error.ts';
 export default {
+    GPUInitializationError,
     Map, MapLibreMap: Map, Point, InteractionHandler, LngLat, LngLatBounds, addProtocol, removeProtocol, Marker, Popup, configure: set,
     AttributionControl, NavigationControl, ScaleControl, FullscreenControl, GeolocateControl, TerrainControl, LogoControl, GlobeControl,
     supported, getVersion, setWorkerUrl, getWorkerUrl, setWorkerCount, getWorkerCount, setMaxParallelImageRequests, getMaxParallelImageRequests, setRTLTextPlugin, getRTLTextPluginStatus,

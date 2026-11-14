@@ -8,7 +8,7 @@ import {layerRules} from './rules.ts';
 import type {CameraOptions, Command, EngineEvent, FontSource} from './engine.ts';
 import type {QueriedFeature} from './query.ts';
 import type {TileBackend} from './tiles.ts';
-import {acquireTileWorkers, createWorker, defaults as loadDefaults, workerReady, type LoadOptions} from './loader.ts';
+import {acquireTileWorkers, defaults as loadDefaults, startWorker, type LoadOptions} from './loader.ts';
 import {fillTemplate, sizedSVG, svgSize, templateSlots, VARIANT} from './markers.ts';
 import {AttributionControl, CONTROL_CSS, adoptClasses, cls, type Control, type ControlPosition} from './controls.ts';
 
@@ -228,6 +228,8 @@ export class Map {
         // The map still fires its mouse events (#253), and a touch scrolls the page until a handler is enabled.
         const still = options.interactive === false;
         if (still) this.canvas.style.touchAction = '';
+        // As in MapLibre's CSS, an interactive map shows `grab`, and `grabbing` while the button is down; setCursor() overrides it.
+        else this.canvas.classList.add(...cls('interactive').split(' '));
         for (const k of ['dragPan', 'scrollZoom', 'doubleClickZoom', 'dragRotate', 'touchZoomRotate', 'touchPitch', 'keyboard', 'boxZoom'] as const) {
             if (options[k] === false || still) this[k].disable();
             if (still) this[k].wake = () => { this.canvas.style.touchAction = 'none'; };
@@ -284,7 +286,7 @@ export class Map {
             console.warn(`[map-jr-gl] Workers are unavailable (${err.message}); running on the main thread. ` +
                 'If the worker file is not next to the library, pass `workerUrl` or `createWorker`, or use the standalone build.');
         });
-        const engine = want !== 'main' && 'transferControlToOffscreen' in this.canvas ? workerReady(createWorker(o)).catch(() => null) : null;
+        const engine = want !== 'main' && 'transferControlToOffscreen' in this.canvas ? startWorker(o).catch(() => null) : null;
         if (engine) engine.then(w => w || preload()); else preload();
         // (When the style fails, or the map is removed, the workers of this start are given back.)
         const giveBack = () => { pool.then(p => p?.release()); engine?.then(w => w?.terminate()); };
@@ -319,6 +321,9 @@ export class Map {
             style: this.resolved, width: tr.width, height: tr.height, dpr: this.dpr, fontFamily: o.fontFamily ?? DEFAULT_FONT, fonts: o.fonts,
             center: [tr.lng, tr.lat] as [number, number], zoom: tr.zoom, bearing: tr.bearing, pitch: tr.pitch,
             minZoom: tr.minZoom, maxZoom: tr.maxZoom, maxPitch: tr.maxPitch, antialias: o.antialias,
+            // (A new engine, after a fall back or a restart too, gets the rules with the style: otherwise its first tiles
+            // would be fetched before `resend` sends them, without `transformRequest`; #355.)
+            requests: this.rulesSent ? this.requestRules() : undefined,
         };
 
         const tiles = await pool;
@@ -670,11 +675,12 @@ export class Map {
     setTransformRequest(fn: RequestTransform | null) { this.transformRequest = fn; this.sendRequestRules(); return this; }
     /** Tells the engine which requests need a question to this thread. */
     private sendRequestRules = () => {
-        const rules = {transform: !!this.transformRequest, protocols: [...protocols.keys()]};
+        const rules = this.requestRules();
         // (Nothing is sent to a map that has never had a rule: most maps have none.)
         if (rules.transform || rules.protocols.length || this.rulesSent) { this.rulesSent = true; this.post({type: 'requests', rules}); }
     };
     private rulesSent = false;
+    private requestRules = () => ({transform: !!this.transformRequest, protocols: [...protocols.keys()]});
     /** What to do with one request: the transform first, then a custom protocol if the URL has one. */
     private async answer(url: string, kind: string, signal?: AbortSignal | null): Promise<RequestAnswer> {
         const t = this.transformRequest?.(url, kind), to = t?.url ?? url, protocol = protocols.get(to.slice(0, to.indexOf(':')));
