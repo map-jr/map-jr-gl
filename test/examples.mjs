@@ -32,13 +32,13 @@ for (const file of readdirSync(dir).sort()) {
 }
 
 // TypeScript code must compile against the built types (dist/types): code that was written for MapLibre GL JS
-// against the compat entry (test/types/maplibre-code.ts, and lines from real projects in test/types/maplibre-projects-code.ts), and code for the main API (test/types/main-code.ts).
+// against the compat entry (test/types/maplibre-code.ts, and lines from real projects in test/types/maplibre-projects-code.ts), code for the main API (test/types/main-code.ts), and a template ref on the Vue component (test/types/vue-code.ts).
 {
     const tsc = path.resolve(import.meta.dirname, '../node_modules/.bin/tsc'), run = spawnSync(tsc, ['-p', path.resolve(import.meta.dirname, 'types')], {encoding: 'utf8', shell: process.platform === 'win32'});
     const errors = `${run.stdout ?? ''}${run.stderr ?? ''}${run.error ?? ''}`.split('\n').filter(l => /error/i.test(l));
-    for (const [file, entry] of [['maplibre-code.ts', '@map-jr/map-jr-gl/maplibre-compat'], ['maplibre-projects-code.ts', '@map-jr/map-jr-gl/maplibre-compat'], ['main-code.ts', '@map-jr/map-jr-gl'], ['adapters-code.tsx', '@map-jr/map-jr-gl/react']]) {
+    for (const [file, entry] of [['maplibre-code.ts', '@map-jr/map-jr-gl/maplibre-compat'], ['maplibre-projects-code.ts', '@map-jr/map-jr-gl/maplibre-compat'], ['main-code.ts', '@map-jr/map-jr-gl'], ['adapters-code.tsx', '@map-jr/map-jr-gl/react'], ['vue-code.ts', '@map-jr/map-jr-gl/vue']]) {
         // (An error that names neither file, such as missing built types, fails both checks.)
-        const mine = errors.filter(l => l.includes(file) || !/(maplibre|maplibre-projects|main|adapters)-code\.tsx?/.test(l));
+        const mine = errors.filter(l => l.includes(file) || !/(maplibre|maplibre-projects|main|adapters|vue)-code\.tsx?/.test(l));
         check(`types/${file} (${entry})`, run.status === 0 || mine.length === 0, mine.slice(0, 5).join(' | '));
     }
 }

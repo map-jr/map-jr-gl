@@ -215,7 +215,13 @@ export const MapImage = defineComponent(<P extends string>(props: MapImageProps<
  * ```
  * The style is the prop `map-style` (`style` is the CSS style of an element in Vue).
  */
-export const MapJr = defineComponent({
+/** What a template ref on `MapJr` has: the map (`null` until it is made) and its state. */
+export interface MapJrExposed {
+    readonly host: MapHost | null;
+    readonly state: MapState | null;
+}
+
+const MapJrComponent = defineComponent({
     name: 'MapJr',
     props: {
         /** A style object or the URL of a style. */
@@ -258,7 +264,8 @@ export const MapJr = defineComponent({
         'update:view': (_view: View) => true,
         click: (_event: MapPointer) => true,
         hover: (_features: RenderedFeature[]) => true,
-        load: () => true,
+        /** The map. */
+        load: (_host: MapHost) => true,
         idle: () => true,
         error: (_error: Error) => true,
         ...forwarded,
@@ -322,7 +329,7 @@ export const MapJr = defineComponent({
         // (`load` and `idle` come from the store of the map and not from a watcher: a watcher runs after both have
         // changed, and a listener of `load` would find the map idle already.)
         watch(host, map => {
-            if (map) map.state.subscribe(s => s.loaded, v => { if (v) emit('load'); });
+            if (map) map.state.subscribe(s => s.loaded, v => { if (v) emit('load', map); });
             if (map) map.state.subscribe(s => s.idle, v => { if (v) emit('idle'); });
             if (map) for (const name of FORWARDED) { const event = name.replace('.', '') as 'move'; if (listeners['on' + event[0].toUpperCase() + event.slice(1)]) map.listen(name as 'move', e => emit(event, e)); }
         }, {immediate: true});
@@ -349,3 +356,6 @@ export const MapJr = defineComponent({
         ]);
     },
 });
+// (Vue unwraps the exposed refs on the instance, but the type of `defineComponent` does not name them: the type adds
+// them, so that `InstanceType<typeof MapJr>['host']` is `MapHost | null`.)
+export const MapJr = MapJrComponent as typeof MapJrComponent & (new (...args: any[]) => InstanceType<typeof MapJrComponent> & MapJrExposed);
