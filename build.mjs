@@ -56,6 +56,16 @@ const noPreload = {
     name: 'no-preload-helper',
     enforce: 'pre',
     load: id => id === '\0vite/preload-helper.js' ? 'export const __vitePreload = load => load();' : null,
+    // Each chunk gets its own copy of that call, which the minifier removes. Otherwise a chunk with an `import()`
+    // imports the chunk that holds the helper (the map) only for the helper (#160).
+    renderChunk: code => {
+        const own = code.replace(/\bimport\s*\{([^}]*)\}\s*from\s*("[^"]*");?/g, (all, names, from) => {
+            const list = names.split(','), rest = list.filter(n => !/(^|\bas\s+)__vitePreload$/.test(n.trim()));
+            if (rest.length === list.length) return all;
+            return (rest.some(n => n.trim()) ? `import {${rest.join(',')}} from ${from};` : '') + 'const __vitePreload = load => load();';
+        });
+        return own === code ? null : {code: own, map: null};
+    },
 };
 
 /**
