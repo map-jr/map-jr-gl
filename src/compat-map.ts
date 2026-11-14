@@ -274,7 +274,7 @@ export class Map extends CoreMap {
      * The last answers of the engine to `queryRenderedFeatures`, by question (the view, the place on the screen, the
      * layers). MapLibre code reads the result of a query at once, but the tile data is in a worker. So the array has
      * the answer to the same question before. Two things make that answer present when the code asks:
-     * the map asks the engine before it sends `click`, `dblclick` and `contextmenu`; and after a first answer that the
+     * the map asks the engine where the pointer rests and when `click`, `dblclick` or `contextmenu` fires; and after a first answer that the
      * caller did not get, the map fires `idle` again.
      */
     private answers = new globalThis.Map<string, {found: QueriedFeature[]}>();
