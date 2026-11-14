@@ -575,6 +575,39 @@ for (const mode of ['main', 'worker']) {
     });
     check(`[${mode}] transformRequest changes tile requests made in workers (each tile arrives), and addProtocol supplies data for a URL`,
         requests.from === 'made://point?seen=1' && requests.kinds.includes('Tile') && requests.kinds.includes('Source') && requests.arrived, JSON.stringify(requests));
+    // The AbortController that a protocol gets is aborted when the request is no longer wanted: a newer setData, a newer
+    // setData that drops the diffs of updateData, and the removal of the map (#92).
+    const aborts = await page.evaluate(async mode => {
+        const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), signals = {}, point = name => ({type: 'Feature', id: 1, properties: {name}, geometry: {type: 'Point', coordinates: [0, 0]}});
+        // A protocol that answers only after 300 ms, and remembers the signal of each URL.
+        mod.addProtocol('slow', (request, ac) => { signals[request.url] = ac.signal; return new Promise(r => setTimeout(() => r({data: {type: 'FeatureCollection', features: [point(request.url)]}}), 300)); });
+        const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+        const m = new mod.Map({container: el, renderer: mode, attributionControl: false, center: [0, 0], zoom: 1, style: {version: 8, sources: {g: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}}, layers: []}});
+        await new Promise(r => m.once('load', r));
+        const source = m.getSource('g');
+        try {
+            // (2) setData with a URL of a protocol, then a newer setData.
+            const old = source.setData('slow://a');
+            await new Promise(r => setTimeout(r, 50));
+            await source.setData('slow://b');
+            await old;
+            const name = (await source.getData()).features[0]?.properties.name;
+            // (3) updateData on a URL source, then a newer setData that drops its diff.
+            const diff = source.updateData({add: [point('diff')]});
+            await new Promise(r => setTimeout(r, 50));
+            const diffSignal = signals['slow://b'];
+            source.setData({type: 'FeatureCollection', features: [point('newer')]});
+            await diff;
+            // (1) A request that runs when the map is removed.
+            source.setData('slow://c');
+            await new Promise(r => setTimeout(r, 50));
+            const removeSignal = signals['slow://c'];
+            m.remove(); el.remove();
+            return {setData: signals['slow://a']?.aborted ?? null, name, updateData: diffSignal?.aborted ?? null, remove: removeSignal?.aborted ?? null};
+        } finally { mod.removeProtocol('slow'); }
+    }, mode);
+    check(`[${mode}] addProtocol: the controller is aborted by a newer setData, by a setData that drops the diffs of updateData, and by remove()`,
+        aborts.setData === true && aborts.name === 'slow://b' && aborts.updateData === true && aborts.remove === true, JSON.stringify(aborts));
 
     // A lost WebGL context (phones take it away to save memory): the map starts again with the same view and data.
     // The context can only be reached from the page when the engine is on the main thread.
