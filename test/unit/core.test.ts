@@ -719,3 +719,8 @@ test('geojson: a line that crosses 180° of longitude is sliced into the tiles o
     const neg = prepareGeoJSON({type: 'Feature', properties: {}, geometry: {type: 'LineString', coordinates: [[-200, 10], [-190, 20]]}});
     assert.ok(Object.values(sliceGeoJSON(neg, 1, 1, 0))[0]?.features.length, 'the part west of -180° is in the eastern tile');
 });
+
+test('text-font defaults to the style specification default (#256)', () => {
+    const l: any = compileLayer({id: 't', type: 'symbol', source: 's', 'source-layer': 'poi', layout: {'text-field': 'x'}})!;
+    assert.deepEqual(l.p.font.eval(10, {properties: {}}), ['Open Sans Regular', 'Arial Unicode MS Regular']);
+});
