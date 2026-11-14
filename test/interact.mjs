@@ -149,6 +149,19 @@ for (const mode of ['main', 'worker']) {
     check(`[${mode}] attribution shows © and keeps links`, attribution.includes('©') && !attribution.includes('&copy') && await page.evaluate(() => document.querySelectorAll('.maplibregl-ctrl-attrib a').length) > 0, attribution);
     const img = await page.evaluate(() => window.map.addImage('star', '<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="gold"/></svg>').then(() => true, e => String(e)));
     check(`[${mode}] addImage accepts an SVG`, img === true, String(img));
+    // Raw pixels at the stored size are premultiplied as they are: no canvas is read back (#26).
+    const reads = await page.evaluate(async () => {
+        const proto = CanvasRenderingContext2D.prototype, get = proto.getImageData, draw = proto.drawImage;
+        let n = 0;
+        proto.getImageData = function (...a) { n++; return get.apply(this, a); };
+        proto.drawImage = function (...a) { n++; return draw.apply(this, a); };
+        try {
+            const r = devicePixelRatio;
+            for (let i = 0; i < 20; i++) await window.map.addImage('raw' + i, new ImageData(16 * r, 16 * r), {pixelRatio: r});
+        } finally { proto.getImageData = get; proto.drawImage = draw; }
+        return n;
+    });
+    check(`[${mode}] addImage with ImageData reads no canvas back`, reads === 0, `${reads} canvas reads for 20 images`);
 
     // A colour that is the same for the whole layer is applied at draw time: no tiles are fetched or rebuilt.
     let refetched = 0;
@@ -1290,6 +1303,37 @@ for (const mode of ['main', 'worker']) {
         check(`[${mode}] the sources of the first style: transformRequest gets the TileJSON and the GeoJSON as Source, and addProtocol supplies the GeoJSON`,
             kind('/test-first-tiles.json') === 'Source' && kind('first://point') === 'Source' && first.tileJson && first.from === 'first://point?seen=1' && !first.errors.length, JSON.stringify(first));
     }
+    // setTiles and setUrl on a raster source replace its tiles, and the map loads the new ones (#255).
+    {
+        await page.route('**/test-255.json', route => route.fulfill({contentType: 'application/json', body: JSON.stringify({tilejson: '2.2.0', tiles: [new URL('/t255c/{z}/{x}/{y}.png', page.url()).href], minzoom: 0, maxzoom: 14})}));
+        const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==', 'base64');
+        await page.route(/\/t255[abc]\//, route => route.fulfill({contentType: 'image/png', body: png}));
+        const r = await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), asked = [];
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const m = new mod.Map({container: el, renderer: mode, attributionControl: false, center: [0, 0], zoom: 1,
+                transformRequest: url => { asked.push(url.replace(location.origin, '')); return {url}; },
+                style: {version: 8, sources: {r: {type: 'raster', tiles: ['/t255a/{z}/{x}/{y}.png'], tileSize: 256}}, layers: [{id: 'r', type: 'raster', source: 'r'}]}});
+            m.on('error', () => {});
+            const idle = () => new Promise(r => { m.once('idle', r); setTimeout(r, 5000); });
+            const seen = p => asked.some(u => u.startsWith(p));
+            await idle();
+            const a = seen('/t255a/'), source = m.getSource('r');
+            const same = source.setTiles(['/t255b/{z}/{x}/{y}.png']) === source;
+            await idle();
+            const b = seen('/t255b/');
+            m.getSource('r').setUrl('/test-255.json');
+            await idle();
+            const c = seen('/t255c/'), spec = m.getStyle().sources.r;
+            let message = '';
+            try { m.getSource('r').setTiles('/t255d/{z}/{x}/{y}.png'); } catch (e) { message = e.message; }
+            m.remove(); el.remove();
+            return {a, b, c, same, url: spec.url, tiles: spec.tiles, message};
+        }, mode);
+        await page.unroute('**/test-255.json'); await page.unroute(/\/t255[abc]\//);
+        check(`[${mode}] raster source: setTiles and setUrl load tiles from the new URLs, and a wrong argument gives a message`,
+            r.a && r.b && r.c && r.same && r.url === '/test-255.json' && !r.tiles && r.message.startsWith('[map-jr-gl] getSource("r").setTiles'), JSON.stringify(r));
+    }
     // CSS on `.maplibregl-map` sizes the container before the map measures it, as in MapLibre GL JS (#248).
     if (mode === 'worker') {
         const sized = await page.evaluate(async () => {
@@ -1589,6 +1633,37 @@ for (const mode of ['main', 'worker']) {
         check('[main] maplibre-compat: easeTo and fitBounds end inside maxBounds and the edge of the world, as jumpTo does (#246)',
             near(cam.eased[0], cam.jumped[0]) && near(cam.eased[1], cam.jumped[1]) && cam.eased[0] <= 10 && cam.eased[1] <= 50
             && near(cam.fitted[1], cam.fittedAtOnce[1]) && cam.fitted[1] < 55, JSON.stringify(cam));
+        // #261: the eventData argument of a camera method is on the events of that move, and not on the next move.
+        const tagged = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+            const m = new mod.Map({container: el, renderer: 'main', center: [5, 45], zoom: 4, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            await new Promise(r => m.once('load', r));
+            const seen = [];
+            for (const t of ['movestart', 'move', 'moveend', 'zoomstart', 'zoomend']) m.on(t, e => seen.push(t + ':' + e.automated));
+            const end = f => new Promise(r => { m.once('moveend', () => setTimeout(r, 50)); f(); });
+            const out = {};
+            for (const [name, f] of [
+                ['fitBounds', () => m.fitBounds([[0, 40], [10, 50]], {duration: 100}, {automated: true})],
+                ['flyTo', () => m.flyTo({zoom: 6, duration: 100}, {automated: true})],
+                ['jumpTo', () => m.jumpTo({zoom: 3}, {automated: true})],
+                ['setCenter', () => m.setCenter([1, 1], {automated: true})],
+                ['plain', () => m.easeTo({zoom: 5, duration: 100})],
+            ]) { seen.length = 0; await end(f); out[name] = [...seen]; }
+            // A jumpTo that does not move the camera, then a drag: the drag's events have no eventData fields.
+            m.jumpTo({center: m.getCenter()}, {automated: true});
+            await new Promise(r => setTimeout(r, 100));
+            seen.length = 0;
+            const c = m.getCanvas(), at = (type, x) => c.dispatchEvent(new PointerEvent(type, {bubbles: true, clientX: x, clientY: 100, pointerId: 1, pointerType: 'mouse', button: 0, buttons: 1, isPrimary: true}));
+            await end(() => { at('pointerdown', 150); for (let x = 160; x <= 220; x += 10) at('pointermove', x); at('pointerup', 220); });
+            out.drag = [...seen];
+            m.remove(); el.remove();
+            return out;
+        });
+        const tags = list => [...new Set(list.map(s => s.split(':')[1]))].join();
+        check('[main] maplibre-compat: the eventData of fitBounds, flyTo, jumpTo and setCenter is on the events of that move only, and not on a later drag (#261)',
+            ['fitBounds', 'flyTo', 'jumpTo', 'setCenter'].every(k => tagged[k].includes('moveend:true') && tags(tagged[k]) === 'true')
+            && tagged.fitBounds.includes('zoomend:true') && tags(tagged.plain) === 'undefined' && tagged.drag.includes('moveend:undefined') && tags(tagged.drag) === 'undefined', JSON.stringify(tagged));
     }
     // Accessibility: the canvas says that it is a map and shows the keyboard focus, a marker with a popup works with the
     // keyboard, the fullscreen button says what it does, and a camera animation respects "reduce motion".
