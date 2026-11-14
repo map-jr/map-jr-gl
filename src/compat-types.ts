@@ -92,13 +92,19 @@ export type CenterZoomBearing = Pick<CoreCameraOptions, 'center' | 'zoom' | 'bea
 /** Style JSON. The library reads the style as MapLibre does; these types do not check each property. */
 export type ExpressionSpecification = [string, ...unknown[]];
 export type FilterSpecification = ExpressionSpecification | boolean;
-/** A layer of the style. The properties of `paint` and `layout` are not checked. */
+/** A layer of the style. The names of `paint` and `layout` are not checked here; the types of one layer type below check their prefix. */
 export type LayerSpecification = {
     id: string; type: string; source?: string | SourceSpecification; 'source-layer'?: string; minzoom?: number; maxzoom?: number;
     filter?: any; paint?: Record<string, any>; layout?: Record<string, any>; metadata?: unknown;
 };
-/** A layer of one type. The names of `paint` and `layout` properties start with the type, as in MapLibre GL JS. */
-type LayerOf<T extends string, P extends string = T> = LayerSpecification & {type: T; source?: string; paint?: Record<`${P}-${string}`, any>; layout?: Partial<Record<`${P}-${string}` | 'visibility', any>>};
+/**
+ * A layer of one type. TypeScript checks the prefix of each name in `paint` and `layout`: a name must start with the
+ * type of the layer (for example `fill-` for a fill layer), and `layout` also accepts `visibility`. The rest of the
+ * name and the values are not checked.
+ */
+type LayerOf<T extends string, P extends string = T, L extends string = P> = Omit<LayerSpecification, 'type' | 'source' | 'paint' | 'layout'> & {
+    type: T; source?: string; paint?: {[K in `${P}-${string}`]?: any}; layout?: {[K in `${L}-${string}` | 'visibility']?: any};
+};
 export type BackgroundLayerSpecification = LayerOf<'background'>;
 export type FillLayerSpecification = LayerOf<'fill'>;
 export type FillExtrusionLayerSpecification = LayerOf<'fill-extrusion'>;
@@ -107,7 +113,7 @@ export type CircleLayerSpecification = LayerOf<'circle'>;
 export type HeatmapLayerSpecification = LayerOf<'heatmap'>;
 export type RasterLayerSpecification = LayerOf<'raster'>;
 export type HillshadeLayerSpecification = LayerOf<'hillshade'>;
-export type SymbolLayerSpecification = LayerSpecification & {type: 'symbol'; source?: string; paint?: Record<`${'text' | 'icon'}-${string}`, any>; layout?: Partial<Record<`${'text' | 'icon' | 'symbol'}-${string}` | 'visibility', any>>};
+export type SymbolLayerSpecification = LayerOf<'symbol', 'text' | 'icon', 'text' | 'icon' | 'symbol'>;
 /** The projection of a style. Only `mercator` is drawn; another projection writes one warning. */
 export type ProjectionSpecification = {type?: string | ExpressionSpecification};
 export type SourceSpecification = {type: string; [key: string]: unknown};
