@@ -630,7 +630,8 @@ export class Engine {
             case 'ease': {
                 this.stop();
                 const to = new Transform();
-                Object.assign(to, {lng: tr.lng, lat: tr.lat, zoom: tr.zoom, bearing: tr.bearing, pitch: tr.pitch, minZoom: tr.minZoom, maxZoom: tr.maxZoom});
+                // (The target is constrained as a jump is: it needs the size, the padding and the bounds of the map.)
+                Object.assign(to, tr, {padding: c.padding ?? tr.padding});
                 to.set(c.center, c.zoom, c.bearing, c.pitch);
                 let db = to.bearing - tr.bearing;
                 db = ((db + 180) % 360 + 360) % 360 - 180;
@@ -927,7 +928,7 @@ export class Engine {
             tr.padding = [v[5], v[6], v[7], v[8]];
             tr.set(undefined, undefined, v[3], v[4]);
             if (e.around && e.anchor) tr.setLocationAt(e.anchor[0], e.anchor[1], e.around[0], e.around[1]);
-            else { tr.lng = lngFromMerc(v[0]); tr.lat = latFromMerc(v[1]); }
+            else { tr.lng = lngFromMerc(v[0]); tr.lat = latFromMerc(v[1]); tr.constrain(); }
             if (t >= 1) this.ease = null;
         }
         const w = this.wheel;

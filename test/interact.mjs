@@ -1396,6 +1396,31 @@ for (const mode of ['main', 'worker']) {
             geo.notAdded === false && geo.triggered === true && geo.events.join() === 'geolocate:true,error:true,outofmaxbounds:true,geolocate:true,off,geolocate:true' && geo.onMap.join() === 'geolocate,error,geolocate,geolocate'
             && geo.warnings.length === 1 && geo.warnings[0].startsWith('[map-jr-gl] GeolocateControl: the option trackUserLocation'), JSON.stringify(geo));
     }
+    if (mode === 'main') {
+        // #246: an animated move and fitBounds end where jumpTo would, inside maxBounds and the edge of the world.
+        const cam = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+            const m = new mod.Map({container: el, renderer: 'main', center: [5, 45], zoom: 4, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            await new Promise(r => m.once('load', r));
+            const end = f => new Promise(r => { m.once('moveend', () => r([m.getCenter().lng, m.getCenter().lat, m.getZoom()])); f(); });
+            m.setMaxBounds([[0, 40], [10, 50]]);
+            const eased = await end(() => m.easeTo({center: [50, 60], duration: 100}));
+            m.jumpTo({center: [5, 45]});
+            m.jumpTo({center: [50, 60]});
+            const jumped = [m.getCenter().lng, m.getCenter().lat];
+            m.setMaxBounds(null);
+            const world = [[-180, -18.3], [180, 83.2]];
+            const fitted = await end(() => m.fitBounds(world, {duration: 100}));
+            const fittedAtOnce = await end(() => m.fitBounds(world, {duration: 0}));
+            m.remove(); el.remove();
+            return {eased, jumped, fitted, fittedAtOnce};
+        });
+        const near = (a, b) => Math.abs(a - b) < 1e-6;
+        check('[main] maplibre-compat: easeTo and fitBounds end inside maxBounds and the edge of the world, as jumpTo does (#246)',
+            near(cam.eased[0], cam.jumped[0]) && near(cam.eased[1], cam.jumped[1]) && cam.eased[0] <= 10 && cam.eased[1] <= 50
+            && near(cam.fitted[1], cam.fittedAtOnce[1]) && cam.fitted[1] < 55, JSON.stringify(cam));
+    }
     // Accessibility: the canvas says that it is a map and shows the keyboard focus, a marker with a popup works with the
     // keyboard, the fullscreen button says what it does, and a camera animation respects "reduce motion".
     if (mode === 'main') {
