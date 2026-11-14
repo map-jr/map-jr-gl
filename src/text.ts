@@ -260,9 +260,13 @@ export class GlyphAtlas extends BaseShaper {
      * Looks up the fonts of the style (values of `text-font`) before the first labels need them. The first use of a
      * font family can take half a second, while the browser looks for the font and its fallback, and the first label
      * placement would wait for it. One font is looked up in each task, so that the messages of the tiles go between.
-     * Nothing is drawn: what the labels look like does not change. Glyph files of the style make this unnecessary.
+     * Nothing is drawn: what the labels look like does not change. A style with glyph files needs no lookup; its first
+     * glyph files are requested here instead.
      */
     warm(fonts: unknown[]) {
+        // With glyph files, the file of the first 256 characters of each font stack is requested now, before the tiles
+        // arrive: nearly every label needs it, and otherwise its request would wait for the first placement (#371).
+        if (this.glyphsURL) { for (const names of fonts) this.file(Array.isArray(names) ? names.join(',') : String(names), 0); return; }
         const todo = fonts.map(names => {
             const f = parseFontName(String(Array.isArray(names) ? names[0] : names));
             return this.css((f.style === 'italic' ? 'italic ' : '') + f.weight + '|' + f.family);
@@ -303,10 +307,9 @@ export class GlyphAtlas extends BaseShaper {
     loading = 0;
     /** By font stack and range: the glyphs of a file by character, 0 while it is on its way, null when there is none. */
     private ranges = new Map<string, Map<number, {bitmap?: Uint8Array; [field: number]: number}> | 0 | null>();
-    private fromFile(text: string, stack: string): Glyph | null | undefined {
-        const code = text.codePointAt(0)!;
-        if (text.length > (code > 0xFFFF ? 2 : 1)) return null;
-        const range = code >> 8, key = stack + '|' + range;
+    /** The glyph file of a font stack and range: requested when it is not known yet (0 while it is on its way). */
+    private file(stack: string, range: number) {
+        const key = stack + '|' + range;
         let glyphs = this.ranges.get(key);
         if (glyphs === undefined) {
             this.ranges.set(key, glyphs = 0);
@@ -318,6 +321,12 @@ export class GlyphAtlas extends BaseShaper {
                 .then(res => res.ok ? res.arrayBuffer() : null).then(bytes => bytes && readGlyphs(new Uint8Array(bytes))).catch(() => null)
                 .then(found => { ranges.set(key, found); this.loading--; this.onGlyphs?.(); });
         }
+        return glyphs;
+    }
+    private fromFile(text: string, stack: string): Glyph | null | undefined {
+        const code = text.codePointAt(0)!;
+        if (text.length > (code > 0xFFFF ? 2 : 1)) return null;
+        const glyphs = this.file(stack, code >> 8);
         if (!glyphs) return glyphs === 0 ? undefined : null;
         const f = glyphs.get(code);
         // (A glyph with a size that cannot be right is not used: it must not write outside its place in the atlas.)
