@@ -1817,6 +1817,28 @@ for (const mode of ['main', 'worker']) {
         const drag = await page.evaluate(() => { const ev = window.markerEvents.join(' '); window.dragMap.remove(); window.dragEl.remove(); return ev; });
         check('[main] a click on a draggable marker fires no drag events, and a drag starts after a move and fires no click', click === 'click' && early === '' && /^dragstart( drag)+ dragend$/.test(drag), JSON.stringify({click, early, drag}));
     }
+    // A marker in a container scaled by CSS follows the pointer, and the 3 px threshold is in CSS pixels of the map
+    // (#234): at scale(0.5), 2 screen pixels are 4 map pixels, and a move of (30, 20) on the screen is (60, 40) on the map.
+    if (mode === 'main') {
+        await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = window.dragEl = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:300px;z-index:1000;transform:scale(0.5);transform-origin:0 0'}));
+            const m = window.dragMap = new mod.Map({container: el, renderer: 'main', attributionControl: false, center: [0, 0], zoom: 2, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            const mk = window.dragMarker = new mod.Marker({draggable: true}).setLngLat(m.unproject({x: 200, y: 150})).addTo(m);
+            window.markerEvents = [];
+            mk.on('dragstart', () => window.markerEvents.push('dragstart'));
+            await new Promise(r => m.once('load', r));
+        });
+        const box = await page.evaluate(() => { const r = window.dragMarker.getElement().getBoundingClientRect(); return {x: r.x + r.width / 2, y: r.y + r.height / 2}; });
+        await page.mouse.move(box.x, box.y); await page.mouse.down();
+        await page.mouse.move(box.x + 2, box.y);
+        const early = await page.evaluate(() => window.markerEvents.join(' '));
+        await page.mouse.move(box.x + 30, box.y + 20, {steps: 5}); await page.mouse.up();
+        await page.waitForTimeout(100);
+        // (The marker moves on the map and the map does not pan, so the centre of the map stays at [0, 0].)
+        const at = await page.evaluate(() => { const m = window.dragMap, p = m.project(window.dragMarker.getLngLat()), c = m.getCenter(); m.remove(); window.dragEl.remove(); return [p.x, p.y, Math.abs(c.lng) + Math.abs(c.lat)]; });
+        check('[main] a marker dragged in a container scaled by CSS follows the pointer, with the threshold in map pixels', early === 'dragstart' && Math.abs(at[0] - 260) < 1.5 && Math.abs(at[1] - 190) < 1.5 && at[2] < 1e-6, JSON.stringify({early, at}));
+    }
     // The credits of a small map: they do not go under the controls of the other corner, markers are below them, and a
     // press on the map closes them.
     if (mode === 'main') {
