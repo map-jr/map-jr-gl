@@ -22,12 +22,14 @@ for (const renderer of ['worker', 'main']) {
             t.host = lib.createMap(el, t.spec);
             t.host.state.subscribe(s => s.loaded, loaded => t.seen.push('loaded:' + loaded));
             t.host.state.subscribe(s => s.view.zoom, zoom => t.seen.push('zoom'));
+            t.host.listen('load', () => t.seen.push('load:idle=' + t.host.state.get().idle));
+            t.host.listen('idle', () => t.seen.push('idle'));
             const before = t.host.state.get();
             await new Promise(r => t.host.state.subscribe(s => s.idle, idle => idle && r()));
             const s = t.host.state.get();
             return {before: before.loaded, loaded: s.loaded, renderer: s.renderer, zoom: s.view.zoom, seen: t.seen, canvas: !!el.querySelector('canvas')};
         }, renderer);
-        check(`[${renderer}] createMap: the map loads, and the state says so`, !start.before && start.loaded && (start.renderer === renderer || (renderer === 'worker' && start.renderer === 'main' /* a browser that cannot draw in a worker */)) && start.zoom === 14.3 && start.seen.includes('loaded:true') && start.canvas, JSON.stringify(start));
+        check(`[${renderer}] createMap: the map loads, and the state says so`, !start.before && start.loaded && (start.renderer === renderer || (renderer === 'worker' && start.renderer === 'main' /* a browser that cannot draw in a worker */)) && start.zoom === 14.3 && start.seen.includes('loaded:true') && start.seen.indexOf('load:idle=false') >= 0 && start.seen.indexOf('load:idle=false') < start.seen.indexOf('idle') && start.canvas, JSON.stringify(start));
 
         // 2. The view: the map reports each change; a view that it reported is not applied again; another view moves the map.
         const view = await page.evaluate(async () => {
