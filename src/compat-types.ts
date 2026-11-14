@@ -63,6 +63,8 @@ export type MapOptions = CoreMapOptions & {
     pitchWithRotate?: boolean;
     /** No effect, and the map writes one warning when it is set. */
     cooperativeGestures?: boolean | object;
+    /** The UI strings of the controls and of the hint of `cooperativeGestures`, with the keys of MapLibre GL JS (`'NavigationControl.ZoomIn'`). A key that is missing keeps the English text of MapLibre GL JS. */
+    locale?: Record<string, string>;
 };
 export type IControl = Control;
 export type LngLatBoundsLike = LngLatBoundsInput;

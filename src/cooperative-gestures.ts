@@ -1,4 +1,5 @@
 import type {Map} from './map.ts';
+import {ui} from './controls.ts';
 
 /**
  * The option `cooperativeGestures` of the compat entry, as in MapLibre GL JS 6.17: the wheel zooms only with Ctrl
@@ -19,7 +20,8 @@ export function cooperate(map: Map) {
         if (gestureType === 'wheel_zoom' && (e as WheelEvent)[mac ? 'metaKey' : 'ctrlKey']) return false;
         map.fire('cooperativegestureprevented', {gestureType, originalEvent: e});
         // The message for touch screens is chosen by the media query of MapLibre GL JS.
-        hint.textContent = matchMedia('(hover: none), (pointer: coarse)').matches ? 'Use two fingers to move the map' : `Use ${mac ? '⌘' : 'Ctrl'} + scroll to zoom the map`;
+        hint.textContent = matchMedia('(hover: none), (pointer: coarse)').matches ? ui(map, 'CooperativeGesturesHandler.MobileHelpText', 'Use two fingers to move the map')
+            : mac ? ui(map, 'CooperativeGesturesHandler.MacHelpText', 'Use ⌘ + scroll to zoom the map') : ui(map, 'CooperativeGesturesHandler.WindowsHelpText', 'Use Ctrl + scroll to zoom the map');
         style.opacity = '1';
         style.transition = 'opacity .05s';
         clearTimeout(timer);
