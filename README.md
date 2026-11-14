@@ -175,7 +175,8 @@ The entry `@map-jr/map-jr-gl/maplibre-compat` has the API of MapLibre GL JS: `ne
    import * as maplibregl from '@map-jr/map-jr-gl/maplibre-compat';
    ```
 
-2. Remove the import of `maplibre-gl.css`.
+2. Remove the import of `maplibre-gl.css`, and remove a call of `setWorkerUrl` that names the worker file of MapLibre GL
+   JS. The library finds `map-jr-gl-worker.js` itself, and it ignores a MapLibre worker file with a warning.
 3. Add `await` where your code calls `queryRenderedFeatures` or `querySourceFeatures`. The tile data is in a worker,
    so the complete result is a promise.
 4. Start your application and read the browser console. The library writes a warning for each style layer or

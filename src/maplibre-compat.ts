@@ -22,7 +22,16 @@ declare const __VERSION__: string; // the version of package.json, set by the bu
 let workerUrl = '', workerCount = 0, imageRequests = 16;
 /** The version of this library. */
 export const getVersion = () => __VERSION__;
-export const setWorkerUrl = (url: string) => { workerUrl = url; set({workerUrl: url}); };
+/** A URL of MapLibre GL JS's worker file (`maplibre-gl-worker.mjs`, `maplibre-gl-csp-worker.js`) is ignored with one warning:
+ * that file cannot run here, and the library finds its own worker file. */
+let warned = 0;
+export const setWorkerUrl = (url: string) => {
+    if (/maplibre-gl[^/]*worker/i.test(String(url))) {
+        if (!warned++) console.warn('[map-jr-gl] setWorkerUrl(): this is the worker file of MapLibre GL JS, which this library cannot use. Remove the call; the library finds map-jr-gl-worker.js itself.');
+        return;
+    }
+    workerUrl = url; set({workerUrl: url});
+};
 export const getWorkerUrl = () => workerUrl;
 export const setWorkerCount = (count: number) => { workerCount = count; set({tileWorkers: count}); };
 export const getWorkerCount = () => workerCount;

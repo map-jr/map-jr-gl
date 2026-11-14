@@ -807,6 +807,26 @@ for (const mode of ['main', 'worker']) {
         check('[main] with four tile workers, queries after refreshTiles see the new tile, and a tile on the map is not requested again for a query',
             fresh.before.every(n => n === 5) && fresh.during.every(n => n === 1) && fresh.after.every(n => n === 1) && fresh.requestsBefore === 1 && fresh.requestsForQueries === 0, JSON.stringify(fresh));
     }
+    // setWorkerUrl with the worker file of MapLibre GL JS (#219): the URL is ignored with one warning, and the map
+    // keeps the worker of this library.
+    {
+        const r = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const warns = [], warn = console.warn;
+            console.warn = (...a) => { warns.push(String(a[0])); };
+            mod.setWorkerUrl('/node_modules/maplibre-gl/dist/maplibre-gl-worker.mjs');
+            mod.setWorkerUrl('https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl-csp-worker.js');
+            console.warn = warn;
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:100px;height:100px'}));
+            const m = new mod.Map({container: el, center: [0, 0], zoom: 1, attributionControl: false, style: {version: 8, sources: {}, layers: []}});
+            await new Promise(res => m.once('idle', res));
+            const out = {renderer: m.renderer, url: mod.getWorkerUrl(), warns: warns.filter(w => w.includes('setWorkerUrl'))};
+            m.remove(); el.remove(); mod.configure({workerUrl: undefined});
+            return out;
+        });
+        check('setWorkerUrl with the worker file of MapLibre GL JS is ignored with one warning, and the map keeps its own worker',
+            r.renderer === 'worker' && r.url === '' && r.warns.length === 1 && r.warns[0].startsWith('[map-jr-gl] setWorkerUrl():'), JSON.stringify(r));
+    }
     // Two styles that are asked for one after the other: the last one wins, also when the first answers later, and
     // also when the first is the style of the constructor. The style, the layers and the pixels agree.
     {
