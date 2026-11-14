@@ -390,6 +390,13 @@ for (const mode of ['main', 'worker']) {
         m.setFeatureState(f, {hover: true});
         await wait(600);
         const read = rebuilds - edit;
+        // The page sends only the features that changed: with 10,000 states, one call sends one state.
+        for (let i = 0; i < 10000; i++) m.setFeatureState({source: 'omt', sourceLayer: 'building', id: 100000 + i}, {hover: true});
+        const sent = [];
+        MessagePort.prototype.postMessage = function (message, ...rest) { if (message?.type === 'featureState') sent.push(JSON.stringify(message.states).length); return post.call(this, message, ...rest); };
+        m.setFeatureState(f, {hover: false});
+        await wait(200);
+        m.removeFeatureState({source: 'omt'});
         MessagePort.prototype.postMessage = post;
         m.setFeatureState(f, {hover: true}); m.setFeatureState(f, {picked: 1});
         const both = m.getFeatureState(f);
@@ -397,10 +404,11 @@ for (const mode of ['main', 'worker']) {
         const one = m.getFeatureState(f);
         m.removeFeatureState({source: 'omt'});
         await new Promise(r => setTimeout(r, 400));
-        return {both, one, none: m.getFeatureState(f), unread, read, idle};
+        return {both, one, none: m.getFeatureState(f), unread, read, idle, sent};
     });
     check(`[${mode}] feature state is set, merged and removed, and the map is idle after a state that no layer reads`, fs.both.hover === true && fs.both.picked === 1 && !('hover' in fs.one) && fs.one.picked === 1 && Object.keys(fs.none).length === 0 && fs.idle, JSON.stringify(fs));
     if (mode === 'main') check('[main] setFeatureState builds tiles again only when a layer of the source reads feature state', fs.unread === 0 && fs.read > 0, JSON.stringify({unread: fs.unread, read: fs.read}));
+    if (mode === 'main') check('[main] setFeatureState sends the tile workers only the state that changed', fs.sent.length > 0 && fs.sent[0] < 200, JSON.stringify(fs.sent));
 
     // Map events and interaction handlers, as plugins for MapLibre use them: a listener can take a drag for itself
     // with preventDefault(), and a handler can be turned off.

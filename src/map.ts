@@ -467,7 +467,7 @@ export class Map {
         this.limits();
         if (this.rulesSent) this.sendRequestRules();
         if (this.wantsFrames) this.post({type: 'frames', on: true});
-        for (const source of Object.keys(this.featureStates)) this.sendFeatureState(source);
+        for (const source of Object.keys(this.featureStates)) this.post({type: 'featureState', source, states: this.featureStates[source], replace: true});
     }
 
     /** Runs the engine on this thread. Its code is a separate chunk, fetched only when this path is taken. */
@@ -833,7 +833,13 @@ export class Map {
     getStyle() { return this.rawStyle ? structuredClone(this.rawStyle) : undefined; }
     // ---- feature state ----
     private featureStates: Record<string, Record<string, Record<string, unknown>>> = {};
-    private sendFeatureState(source: string) { this.post({type: 'featureState', source, states: this.featureStates[source] ?? {}}); return this; }
+    /** Sends the states of the features in `keys` that changed; `null` for a feature that has no state any more. */
+    private sendFeatureState(source: string, keys: string[]) {
+        const states = this.featureStates[source], diff: Record<string, Record<string, unknown> | null> = {};
+        for (const k of keys) diff[k] = states[k] ?? null;
+        if (keys.length) this.post({type: 'featureState', source, states: diff});
+        return this;
+    }
     /**
      * Merges `state` into a feature's state, which `feature-state` expressions in paint properties read (hover and
      * selection highlights). The feature needs an `id`. Tiles showing the source are rebuilt in the background.
@@ -841,7 +847,7 @@ export class Map {
     setFeatureState(feature: {source: string; sourceLayer?: string; id: number | string}, state: Record<string, unknown>) {
         const states = this.featureStates[feature.source] ??= {}, key = `${feature.sourceLayer ?? ''}|${feature.id}`;
         states[key] = {...states[key], ...state};
-        return this.sendFeatureState(feature.source);
+        return this.sendFeatureState(feature.source, [key]);
     }
     getFeatureState(feature: {source: string; sourceLayer?: string; id: number | string}): Record<string, unknown> {
         return {...this.featureStates[feature.source]?.[`${feature.sourceLayer ?? ''}|${feature.id}`]};
@@ -850,12 +856,15 @@ export class Map {
     removeFeatureState(target: {source: string; sourceLayer?: string; id?: number | string}, key?: string) {
         const states = this.featureStates[target.source];
         if (!states) return this;
-        const prefix = `${target.sourceLayer ?? ''}|`;
+        const prefix = `${target.sourceLayer ?? ''}|`, changed: string[] = [];
         for (const k of Object.keys(states)) {
             if (target.id !== undefined ? k !== prefix + target.id : target.sourceLayer !== undefined && !k.startsWith(prefix)) continue;
-            if (key !== undefined && target.id !== undefined) delete states[k][key]; else delete states[k];
+            changed.push(k);
+            if (key !== undefined && target.id !== undefined) states[k] = {...states[k]}, delete states[k][key]; else delete states[k];
         }
-        return this.sendFeatureState(target.source);
+        // (Without an id, many features can change: the page sends the states that remain instead.)
+        if (target.id === undefined) { this.post({type: 'featureState', source: target.source, states, replace: true}); return this; }
+        return this.sendFeatureState(target.source, changed);
     }
 
     /** The values `global-state` expressions read: the style's `state` defaults with anything set since. */
