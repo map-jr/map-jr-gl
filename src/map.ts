@@ -304,6 +304,7 @@ export class Map {
         // (A change of the style during that step has its own result, which is newer. The engine gets it after its start.)
         if (restyled === this.restyled) this.resolved = first;
         if (this.resolved.unsupported.length) console.warn('[map-jr-gl] Skipping unsupported layer types: ' + this.resolved.unsupported.join(', '));
+        this.checkProjection();
         const tr = this.tr;
         const engineOptions = {
             style: this.resolved, width: tr.width, height: tr.height, dpr: this.dpr, fontFamily: o.fontFamily ?? DEFAULT_FONT, fonts: o.fonts,
@@ -881,6 +882,7 @@ export class Map {
             if (Object.keys(this.globalState).length) style.state = {...style.state, ...this.globalState};
             this.resolved = style;
             this.restyled = turn;
+            this.checkProjection();
             if (!(this.options.glyphs ?? !this.options.fonts)) style.glyphs = undefined;
             if (this.toggled.size) style.layers = style.layers.map(l => this.toggled.has(l.id) ? {...l, keep: true} : l);
             this.post({type: 'style', style, reload, versions});
@@ -888,6 +890,14 @@ export class Map {
             this.styleEvents(this.newStyle);
             this.newStyle = false;
         }, err => { this.fire('error', {error: err}); if (turn === this.restyles) { this.restyled = turn; this.sendGeo(); this.post({type: 'repaint'}); } });
+    }
+    private projectionWarned = false;
+    /** Warns once per map when the style names a projection other than `mercator`: only Mercator is drawn. */
+    private checkProjection() {
+        const t = this.rawStyle?.projection?.type;
+        if (t === undefined || t === 'mercator' || this.projectionWarned) return;
+        this.projectionWarned = true;
+        console.warn(`[map-jr-gl] The style has the projection ${JSON.stringify(t)}, which is not supported, so the map uses "mercator".`);
     }
     /** Runs a change to the style JSON now, or as soon as the style has been fetched. */
     protected editStyle(fn: (style: any) => void) {
