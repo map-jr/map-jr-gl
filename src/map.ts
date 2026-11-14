@@ -592,6 +592,8 @@ export class Map {
                 this.isLoaded = true;
                 for (const el of this.container.querySelectorAll('[data-map-jr-ssr]')) el.remove();
                 this.fire('load');
+                // A `load` listener that changed the style or the camera made this report old: wait for the next one.
+                if (e.seq !== this.seq || this.restyled !== this.restyles || this.resolved?.waiting) return;
             }
             // The data of each source is complete now. As in MapLibre, `sourcedata` and `data` tell listeners so.
             {
