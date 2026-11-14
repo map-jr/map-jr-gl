@@ -289,6 +289,7 @@ export class Map {
         // (The map can be removed during each `await` of this method. What this start acquired is then given back.)
         if (this.removed) { giveBack(); return; }
         this.rawStyle = this.firstChange?.(undefined, raw) ?? raw;
+        this.styleChanged();
         this.firstChange = undefined; // (a restart of the engine starts from the style as it is then)
         for (const fn of this.beforeStyle.splice(0)) fn();
         // (A restart gives the style as an object. Its relative URLs still belong to the place that the style came from.)

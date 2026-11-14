@@ -514,7 +514,9 @@ the rejection is an `error` event of the map (`onError`, or the console when the
 answer changes.
 
 For users of MapLibre GL JS: `queryRenderedFeatures` is `queryFeatures` without `sources`, and
-`querySourceFeatures` is `queryFeatures(undefined, {sources: [id]})`. The two MapLibre methods are in the entry
+`querySourceFeatures` is close to `queryFeatures(undefined, {sources: [id]})`. The difference is that
+`querySourceFeatures` returns every feature of the tiles under the view, as MapLibre does, and `queryFeatures` returns
+only the features in the view. The two MapLibre methods are in the entry
 `@map-jr/map-jr-gl/maplibre-compat`. The `Map` of that entry and `map` of the `MapHost` (the core map) have the same
 `queryFeatures` as the `MapHost`.
 
