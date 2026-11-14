@@ -256,11 +256,32 @@ export class GlyphAtlas extends BaseShaper {
         return `${variant} ${EM}px ${family ? `"${family}", ` : ''}${this.family}`;
     }
 
+    /**
+     * Looks up the fonts of the style (values of `text-font`) before the first labels need them. The first use of a
+     * font family can take half a second, while the browser looks for the font and its fallback, and the first label
+     * placement would wait for it. One font is looked up in each task, so that the messages of the tiles go between.
+     * Nothing is drawn: what the labels look like does not change. Glyph files of the style make this unnecessary.
+     */
+    warm(fonts: unknown[]) {
+        const todo = fonts.map(names => {
+            const f = parseFontName(String(Array.isArray(names) ? names[0] : names));
+            return this.css((f.style === 'italic' ? 'italic ' : '') + f.weight + '|' + f.family);
+        });
+        const next = () => {
+            const css = todo.shift();
+            if (!css || this.glyphsURL) return;
+            if (!this.warmed.has(css)) { this.warmed.add(css); this.ctx.font = css; this.ctx.measureText('a'); }
+            setTimeout(next);
+        };
+        setTimeout(next);
+    }
+    private warmed = new Set<string>();
+
     /** Forgets every glyph, e.g. after a web font finishes loading and text must be redrawn with it. */
     clear(fontsChanged = false) {
         // A canvas context remembers which font it resolved for a given font string, so after new fonts load it
         // would keep drawing with the old fallback. A fresh context resolves them again.
-        if (fontsChanged) this.ctx = this.newContext();
+        if (fontsChanged) { this.ctx = this.newContext(); this.warmed.clear(); }
         this.data.fill(0); this.glyphs.clear(); this.reset();
         this.penX = this.penY = 1; this.shelf = 0;
         this.version++; this.resets++; this.dirty = null;
