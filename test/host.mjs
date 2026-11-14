@@ -146,6 +146,32 @@ for (const renderer of ['worker', 'main']) {
         }, renderer);
         check(`[${renderer}] a GeoJSON line with longitudes past 180° is drawn past the antimeridian`, pastAntimeridian === 1, JSON.stringify(pastAntimeridian));
 
+        // 3d. `initialView` takes bounds with padding, and `state.view.bounds` follows moves and a new size (#266).
+        const viewBounds = await page.evaluate(async renderer => {
+            const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const host = t.lib.createMap(el, {style: {version: 8, sources: {}, layers: []}, initialView: {bounds: [[-10, -5], [10, 5]], padding: 20}, renderer, attribution: false});
+            const first = host.state.get().view;
+            const changed = () => new Promise(r => { host.state.subscribe(s => s.view.bounds, () => r()); setTimeout(r, 3000); });
+            let wait = changed();
+            host.moveTo({center: [30, 0], zoom: 3});
+            await wait;
+            const moved = host.state.get().view.bounds;
+            wait = changed();
+            el.style.width = '400px';
+            await wait;
+            const wider = host.state.get().view.bounds;
+            host.destroy(); el.remove();
+            return {first, moved, wider};
+        }, renderer);
+        {
+            const {first, moved, wider} = viewBounds, [[w, s], [e, n]] = first.bounds ?? [[0, 0], [0, 0]];
+            // The box of 20° by 10° fits the width less 40 px of padding: 160 px for 20°, so 200 px show 25°.
+            check(`[${renderer}] initialView with bounds and padding fits the box, and state.view.bounds is the visible box`,
+                Math.abs(first.center[0]) < 1e-6 && Math.abs(first.center[1]) < 1e-6 && Math.abs(w + 12.5) < 0.01 && Math.abs(e - 12.5) < 0.01 && s < -5 && n > 5, JSON.stringify(first));
+            check(`[${renderer}] state.view.bounds follows a move and a new size of the map`,
+                !!moved && moved[0][0] < 30 && moved[1][0] > 30 && !!wider && wider[1][0] - wider[0][0] > 1.9 * (moved[1][0] - moved[0][0]), JSON.stringify({moved, wider}));
+        }
+
         // 3d. A source of `extend` gets its features from `data`; an owned view with only some fields that equals a reported view does not move the map (#33).
         const extendData = await page.evaluate(async renderer => {
             const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));

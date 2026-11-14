@@ -635,6 +635,16 @@ for (const mode of ['main', 'worker']) {
     });
     check(`[${mode}] transformRequest changes tile requests made in workers (each tile arrives), and addProtocol supplies data for a URL`,
         requests.from === 'made://point?seen=1' && requests.kinds.includes('Tile') && requests.kinds.includes('Source') && requests.arrived, JSON.stringify(requests));
+    // A protocol named "pmtiles" (the pmtiles library's) is not used, because the library reads pmtiles:// itself: it warns once (#250).
+    const pmWarns = await page.evaluate(async () => {
+        const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), warns = [], warn = console.warn;
+        console.warn = (...a) => { warns.push(String(a[0])); };
+        try { mod.addProtocol('pmtiles', async () => ({data: new ArrayBuffer(0)})); mod.addProtocol('pmtiles', async () => ({data: new ArrayBuffer(0)})); mod.addProtocol('other', async () => ({data: ''})); }
+        finally { console.warn = warn; mod.removeProtocol('pmtiles'); mod.removeProtocol('other'); }
+        return warns.filter(w => w.includes('addProtocol'));
+    });
+    check(`[${mode}] addProtocol('pmtiles') warns once that the library reads pmtiles:// itself`,
+        pmWarns.length === 1 && pmWarns[0].startsWith('[map-jr-gl]') && pmWarns[0].includes('pmtiles://'), JSON.stringify(pmWarns));
     // The AbortController that a protocol gets is aborted when the request is no longer wanted: a newer setData, a newer
     // setData that drops the diffs of updateData, and the removal of the map (#92).
     const aborts = await page.evaluate(async mode => {
@@ -1895,6 +1905,29 @@ for (const mode of ['main', 'worker']) {
         await page.evaluate(() => { window.creditsMap.remove(); window.creditsEl.remove(); });
         check('[main] the credits of a small map end before the controls of the other corner, are above markers, stay open after a click and close with a drag (#263)',
             box.open && box.creditsRight < box.controlsLeft && box.markerZ < box.cornerZ && afterClick && closed, JSON.stringify({...box, afterClick, closed}));
+        // As in MapLibre: the "i" button is placed absolutely inside the compact credits, so page CSS on `button` does
+        // not move it out of the box, closed or open, in either bottom corner (#263).
+        const placed = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const css = document.head.appendChild(Object.assign(document.createElement('style'), {textContent: 'button{position:static;margin:40px;float:left;display:inline-block}'}));
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:390px;height:300px;z-index:1000'}));
+            const m = new mod.Map({container: el, renderer: 'main', attributionControl: false, center: [0, 0], zoom: 2, style: {version: 8, sources: {}, layers: []}});
+            const out = [];
+            for (const corner of ['bottom-right', 'bottom-left']) {
+                const c = new mod.AttributionControl({compact: true, customAttribution: '© Example contributors'});
+                m.addControl(c, corner);
+                const box = el.querySelector('.map-jr-ctrl-attrib'), b = box.querySelector('.map-jr-ctrl-attrib-button');
+                for (const open of [false, true]) {
+                    box.classList.toggle('map-jr-compact-show', open);
+                    const r = box.getBoundingClientRect(), q = b.getBoundingClientRect();
+                    out.push({corner, open, inside: q.width > 0 && q.left >= r.left - 1 && q.right <= r.right + 1 && q.top >= r.top - 1 && q.bottom <= r.bottom + 1, atRight: Math.abs(q.right - r.right) < 1.5});
+                }
+                m.removeControl(c);
+            }
+            m.remove(); el.remove(); css.remove();
+            return out;
+        });
+        check('[main] page CSS on button does not move the "i" button of the compact credits out of their box (#263)', placed.every(p => p.inside && p.atRight), JSON.stringify(placed));
         // As in MapLibre: a source used only by hidden layers or outside the zoom range of its layers gives no credit,
         // and a blank attribution gives no box (#263).
         const credits = await page.evaluate(async () => {

@@ -111,6 +111,7 @@ Notes for Cloudflare Workers:
 | `style` | A style object or the URL of a style. Required. |
 | `center`, `zoom`, `width`, `height` | The view. Required. |
 | `bearing` | The rotation of the map in degrees |
+| `bounds`, `padding` | A box (`[[west, south], [east, north]]` or `[west, south, east, north]`) to fit into the view, with `padding` in pixels around it (a number or `{top, right, bottom, left}`, default 0). With `bounds`, the renderer uses the box in place of `center` and `zoom` (give them all the same, because they are required). |
 | `markers` | A list of marker layers, as in the description of a map. See [Markers](markers.md). |
 | `images` | Images for the style layers and the marker layers, by name: SVG documents, or `{image, width, height}`. An SVG with slots (`{{name}}`) is a template, as in the description of a map. An image that is not an SVG document is not drawn. An image of `images` is used before `resolveImage`, which is asked only for a name that `images` does not have. |
 | `label` | The name of the SVG for assistive technology. The SVG has `role="img"` and this text as its `aria-label`. The default is `"Map"`. `renderToImage` accepts the option, but an image cannot carry it. |

@@ -52,6 +52,15 @@ const allInOne = {
  * Vite puts a helper around each `import()` that loads the CSS files and the other chunks of the imported file first.
  * The library has no CSS files, and a chunk imports what it needs itself, so the helper is replaced by a plain call.
  */
+// `import.meta.env.SSR` in src/vue.ts is for the bundler of the application, which writes `false` there in a client
+// build and so drops the import of the server renderer. This build would replace it itself, so it reaches the minifier
+// under a name of the same length (so that the source maps stay right) and is written back into the built file.
+const keepEnv = {
+    name: 'keep-import-meta-env',
+    enforce: 'pre',
+    transform: (code, id) => /src[\\/]vue\.ts$/.test(id) ? {code: code.replaceAll('import.meta.env', '__IMPORT_META__'), map: null} : null,
+    renderChunk: code => code.includes('__IMPORT_META__') ? {code: code.replaceAll('__IMPORT_META__', 'import.meta.env'), map: null} : null,
+};
 const noPreload = {
     name: 'no-preload-helper',
     enforce: 'pre',
@@ -74,7 +83,7 @@ const noPreload = {
  * tools are open.
  */
 const run = (options, define = {__WORKER_SRC__: '""'}, plugins = []) => build({
-    configFile: false, logLevel: 'warn', define: {__DEV__: 'false', __VERSION__: JSON.stringify(pkg.version), ...define}, plugins: [shaders, privates, noPreload, ...plugins],
+    configFile: false, logLevel: 'warn', define: {__DEV__: 'false', __VERSION__: JSON.stringify(pkg.version), ...define}, plugins: [shaders, privates, noPreload, keepEnv, ...plugins],
     build: {target: 'es2022', minify: true, sourcemap: true, emptyOutDir: false, outDir: 'dist', copyPublicDir: false, reportCompressedSize: false, modulePreload: false, ...options},
 });
 

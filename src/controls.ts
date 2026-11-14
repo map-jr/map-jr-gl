@@ -43,12 +43,13 @@ export const CONTROL_CSS = `
 :where(.map-jr-unavailable){position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:1em;text-align:center;font:14px/1.4 system-ui,sans-serif;color:#555;background:#f2f2f2}
 :where(.map-jr-ctrl-attrib){background:var(--map-attribution-background,rgba(255,255,255,.75));color:var(--map-control-color,#333);font-size:11px;line-height:1.4;padding:2px 6px;padding-right:max(6px,env(safe-area-inset-right));border-top-left-radius:4px;overflow-wrap:anywhere}
 :where(.map-jr-ctrl-attrib a){color:inherit}
-:where(.map-jr-ctrl-attrib.map-jr-compact){display:flex;flex-direction:row-reverse;align-items:center;padding:0;margin:0 max(10px,env(safe-area-inset-right)) 10px 0;border-radius:14px;background:var(--map-control-background,#fff);box-shadow:0 0 0 1.5px rgba(0,0,0,.12)}
+:where(.map-jr-ctrl-attrib.map-jr-compact){display:flex;align-items:center;min-height:28px;padding:0 28px 0 0;margin:0 max(10px,env(safe-area-inset-right)) 10px 0;border-radius:14px;background:var(--map-control-background,#fff);box-shadow:0 0 0 1.5px rgba(0,0,0,.12)}
 :where(.map-jr-ctrl-attrib.map-jr-compact .map-jr-ctrl-attrib-inner){display:none;padding:2px 4px 2px 10px}
 :where(.map-jr-ctrl-attrib.map-jr-compact.map-jr-compact-show .map-jr-ctrl-attrib-inner){display:block}
 :where(.map-jr-ctrl-attrib-button){display:none;flex:none;width:28px;height:28px;border:0;border-radius:14px;background:none;color:inherit;font:italic 700 14px/28px Georgia,serif;cursor:pointer;padding:0}
 :where(.map-jr-compact .map-jr-ctrl-attrib-button){display:block}
-@media (pointer:coarse){:where(.map-jr-compact .map-jr-ctrl-attrib-button){width:36px;height:36px;border-radius:18px;line-height:36px}:where(.map-jr-ctrl-attrib.map-jr-compact){border-radius:18px}}
+.map-jr-ctrl-attrib.map-jr-compact{position:relative}.map-jr-compact>.map-jr-ctrl-attrib-button{position:absolute;top:0;right:0;margin:0}
+@media (pointer:coarse){:where(.map-jr-compact .map-jr-ctrl-attrib-button){width:36px;height:36px;border-radius:18px;line-height:36px}:where(.map-jr-ctrl-attrib.map-jr-compact){border-radius:18px;min-height:36px;padding-right:36px}}
 :where(.map-jr-ctrl){pointer-events:auto;font:12px/1.3 system-ui,sans-serif;color:var(--map-control-color,#222)}
 :where(.map-jr-ctrl-group){background:var(--map-control-background,#fff);border-radius:var(--map-control-radius,6px);box-shadow:0 0 0 1.5px rgba(0,0,0,.12),0 1px 4px rgba(0,0,0,.15);overflow:hidden}
 :where(.map-jr-ctrl-group button){display:flex;align-items:center;justify-content:center;width:var(--map-control-size,32px);height:var(--map-control-size,32px);padding:0;border:0;background:none;color:inherit;cursor:pointer}

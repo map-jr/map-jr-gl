@@ -1,7 +1,7 @@
 import {fetchWith, type RequestAnswer} from './requests.ts';
 import {protocolListeners, protocols, toBytes} from './protocols.ts';
 import {LngLat, LngLatBounds, type LngLatBoundsInput} from './lnglat.ts';
-import {Transform, groundHeight, heightsChanged, mercX, mercY, toLngLat, type LngLatLike} from './geo.ts';
+import {Transform, fitBox, groundHeight, heightsChanged, mercX, mercY, sides, toLngLat, type LngLatLike} from './geo.ts';
 import type {PreparedSource} from './geojson.ts';
 import {DEFAULT_FONT, keep, kept, resolveStyle, type ResolvedStyle} from './resolve.ts';
 import {layerRules} from './rules.ts';
@@ -781,17 +781,10 @@ export class Map {
     stop() { this.post({type: 'stop'}); return this; }
 
     /** The centre and zoom that fit `bounds` ([west, south, east, north] or [[west, south], [east, north]]) in view. */
-    cameraForBounds(bounds: LngLatBoundsInput, o: {padding?: number | Partial<Record<'top' | 'right' | 'bottom' | 'left', number>>; maxZoom?: number} = {}) {
-        const [w, s, e, n] = LngLatBounds.convert(bounds).toArray().flat();
-        const pad = typeof o.padding === 'number' ? {top: o.padding, right: o.padding, bottom: o.padding, left: o.padding} : {top: 0, right: 0, bottom: 0, left: 0, ...o.padding};
-        const x0 = mercX(w), x1 = mercX(e), y0 = mercY(n), y1 = mercY(s);
+    cameraForBounds(bounds: LngLatBoundsInput, o: {padding?: PaddingInput; maxZoom?: number} = {}) {
         // The map's own padding already moves the centre; padding given here is on top of it.
-        const [pt, pr, pb, pl] = this.tr.padding;
-        const availW = Math.max(1, this.tr.width - pad.left - pad.right - pl - pr), availH = Math.max(1, this.tr.height - pad.top - pad.bottom - pt - pb);
-        const zoom = Math.min(o.maxZoom ?? this.tr.maxZoom, Math.log2(Math.min(availW / Math.max(x1 - x0, 1e-12), availH / Math.max(y1 - y0, 1e-12)) / 512));
-        // Shift the centre so the bounds sit in the middle of the unpadded area.
-        const world = 512 * 2 ** zoom, cx = (x0 + x1) / 2 - (pad.left - pad.right) / 2 / world, cy = (y0 + y1) / 2 - (pad.top - pad.bottom) / 2 / world;
-        return {center: {lng: cx * 360 - 180, lat: Math.atan(Math.sinh(Math.PI * (1 - 2 * cy))) * 180 / Math.PI}, zoom, bearing: 0};
+        const pad = sides(o.padding), own = this.tr.padding;
+        return {...fitBox(LngLatBounds.convert(bounds).toArray().flat(), this.tr.width, this.tr.height, pad.map((v, i) => v + own[i]), pad, o.maxZoom ?? this.tr.maxZoom), bearing: 0};
     }
     fitBounds(bounds: Parameters<Map['cameraForBounds']>[0], o: Parameters<Map['cameraForBounds']>[1] & {duration?: number} = {}) {
         return this.easeTo({...this.cameraForBounds(bounds, o), duration: o.duration ?? 800});
@@ -1595,7 +1588,8 @@ export class Map {
 }
 
 /** Padding as MapLibre takes it: one number for all sides, or any of the four sides. */
-export type PaddingInput = number | Partial<Record<'top' | 'right' | 'bottom' | 'left', number>>;
+export type {PaddingInput} from './geo.ts';
+import type {PaddingInput} from './geo.ts';
 export type CameraInput = Omit<CameraOptions, 'padding'> & {padding?: PaddingInput};
 function paddingOf(p: PaddingInput): [number, number, number, number] {
     return typeof p === 'number' ? [p, p, p, p] : [p.top ?? 0, p.right ?? 0, p.bottom ?? 0, p.left ?? 0];
