@@ -244,6 +244,19 @@ for (const mode of ['main', 'worker']) {
     check(`[${mode}] addLayer/removeLayer and fitBounds`, api.added && api.removed && api.fits && api.zoom > 13 && api.zoom < 16, JSON.stringify(api));
     check(`[${mode}] missing-image resolver supplied generated shields`, api.images > 0, `${api.images} shield images`);
 
+    // #203: as in MapLibre, `project()` and `point`/`points` of mouse and touch events are a `Point` with methods.
+    const points = await page.evaluate(async () => {
+        const m = window.map, c = m.getCanvas(), r = c.getBoundingClientRect(), got = {};
+        const off = [m.on('mousemove', e => { got.mouse ??= typeof e.point.dist === 'function' && typeof e.defaultPrevented === 'boolean'; }), m.on('touchstart', e => { got.touch ??= typeof e.point.sub === 'function' && e.points.every(p => typeof p.add === 'function'); })];
+        c.dispatchEvent(new PointerEvent('pointermove', {pointerId: window.mouseId ?? 1, pointerType: 'mouse', buttons: 0, clientX: r.left + 300, clientY: r.top + 300, bubbles: true}));
+        c.dispatchEvent(new PointerEvent('pointerdown', {pointerId: 31, pointerType: 'touch', isPrimary: true, clientX: r.left + 300, clientY: r.top + 300, button: 0, buttons: 1, bubbles: true}));
+        c.dispatchEvent(new PointerEvent('pointerup', {pointerId: 31, pointerType: 'touch', isPrimary: true, clientX: r.left + 300, clientY: r.top + 300, button: 0, buttons: 0, bubbles: true}));
+        await new Promise(res => setTimeout(res, 400));
+        const p = m.project(m.getCenter());
+        got.project = typeof p.dist === 'function' && p.dist(p.add({x: 3, y: 4})) === 5;
+        return got;
+    });
+    check(`[${mode}] project() and the point of mouse and touch events are a Point with methods`, points.mouse && points.touch && points.project, JSON.stringify(points));
     // Touch gestures, driven with synthetic touch pointers.
     await page.evaluate(() => {
         window.map.jumpTo({center: [-74.0065, 40.7085], zoom: 14, bearing: 0, pitch: 0});
@@ -1503,10 +1516,10 @@ for (const mode of ['main', 'worker']) {
     }
     // The coarse overview tiles (zoom 11 for a view at zoom 14.3) are not drawn while the tiles of the view are there.
     // Their arrival does not place the labels again: the map fires no second `idle`, and before the first `idle` it
-    // does not wait for another placement.
+    // does not wait for another placement. They are requested only after the first `idle` (#326).
     {
-        let late = 0;
-        const slow = async r => { await new Promise(res => setTimeout(res, 2000)); late++; r.continue(); };
+        let late = 0, first = 0;
+        const slow = async r => { first ||= Date.now(); await new Promise(res => setTimeout(res, 2000)); late++; r.continue(); };
         await page.route('**/tiles/11/**', slow);
         await page.evaluate(async mode => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
@@ -1514,14 +1527,33 @@ for (const mode of ['main', 'worker']) {
             // (A view with many labels: their fade keeps frames coming after the overview is requested.)
             const m = new mod.Map({container: el, renderer: mode, style: '/style.json', center: [-74.0065, 40.7085], zoom: 14.3, attributionControl: false});
             window.overview = {m, el, idles: 0};
-            m.on('idle', () => window.overview.idles++);
+            m.on('idle', () => { window.overview.idles++; window.overview.at ||= Date.now(); });
             await new Promise(r => { m.once('idle', r); setTimeout(r, 15000); });
         }, mode);
         for (let i = 0; i < 100 && !late; i++) await page.waitForTimeout(100);
         await page.waitForTimeout(1500); // (the tiles arrive and are built, and a frame would place the labels)
-        const idles = await page.evaluate(() => { const {m, el, idles} = window.overview; m.remove(); el.remove(); return idles; });
+        const {idles, at} = await page.evaluate(() => { const {m, el, idles, at} = window.overview; m.remove(); el.remove(); return {idles, at}; });
         await page.unroute('**/tiles/11/**', slow);
-        check(`[${mode}] the overview tiles arrive after the first idle: no second idle`, late > 0 && idles === 1, `idle events=${idles}, late tiles=${late}`);
+        check(`[${mode}] the overview tiles are requested after the first idle and arrive with no second idle`, late > 0 && idles === 1 && at > 0 && first >= at,
+            `idle events=${idles}, late tiles=${late}, first request ${first - at} ms after the first idle`);
+    }
+    // A map that never becomes idle (here one that keeps rotating from the start) still requests its overview tiles (#326).
+    {
+        let asked = 0;
+        const count = r => { asked++; r.continue(); };
+        await page.route('**/tiles/11/**', count);
+        await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:600px;height:400px'}));
+            const m = new mod.Map({container: el, renderer: mode, style: '/style.json', center: [-74.0065, 40.7085], zoom: 14.3, attributionControl: false});
+            m.easeTo({bearing: 170, duration: 60000, easing: t => t});
+            window.spinning = {m, el, idles: 0};
+            m.on('idle', () => window.spinning.idles++);
+        }, mode);
+        for (let i = 0; i < 150 && !asked; i++) await page.waitForTimeout(100);
+        const idles = await page.evaluate(() => { const {m, el, idles} = window.spinning; m.remove(); el.remove(); return idles; });
+        await page.unroute('**/tiles/11/**', count);
+        check(`[${mode}] a map that keeps moving from the start still requests its overview tiles`, asked > 0 && idles === 0, `requests=${asked}, idle events=${idles}`);
     }
     // CSS on `.maplibregl-map` sizes the container before the map measures it, as in MapLibre GL JS (#248).
     if (mode === 'worker') {
@@ -1550,17 +1582,19 @@ for (const mode of ['main', 'worker']) {
             const seen = [], asked = [], warn = console.warn;
             console.warn = () => {}; // (the map says that it uses the main thread)
             const m = new mod.Map({container: el, style: '/style.json', center: [-74.0065, 40.7085], zoom: 14, attributionControl: false, createWorker: () => new Worker(url),
-                transformRequest: (u, kind) => { asked.push(kind); return {url: u}; }});
+                transformRequest: (u, kind) => { asked.push(kind === 'Tile' && /\/14\//.test(u) ? 'view' : kind); return {url: u}; }});
             for (const type of ['load', 'idle', 'error']) m.on(type, () => seen.push(type));
             // A change of the style at once: it goes to the worker that fails.
             m.once('style.load', () => m.addLayer({id: 'fall-back-test', type: 'background', paint: {'background-color': '#f0f', 'background-opacity': 0.01}}));
             await new Promise(r => { m.once('idle', r); setTimeout(r, 12000); });
             console.warn = warn;
-            const out = {renderer: m.renderer, seen: [...new Set(seen)], tiles: asked.filter(k => k === 'Tile').length, layer: (await Promise.race([m.queryRenderedFeatures({layers: ['building']}), new Promise(r => setTimeout(() => r([]), 4000))])).length};
+            const out = {renderer: m.renderer, seen: [...new Set(seen)], tiles: asked.filter(k => k === 'view').length, layer: (await Promise.race([m.queryRenderedFeatures({layers: ['building']}), new Promise(r => setTimeout(() => r([]), 4000))])).length};
             m.remove(); el.remove();
             return out;
         });
-        check('[worker] a worker without WebGL2: the map uses the main thread, load and idle fire, and transformRequest sees the tile requests',
+        // (Only the tiles of the view count: the coarse overview tiles come later and could hide a tile of the view that
+        // the new engine fetched before it had the rules for requests; #355.)
+        check('[worker] a worker without WebGL2: the map uses the main thread, load and idle fire, and transformRequest sees the tile requests of the view',
             fell.renderer === 'main' && fell.seen.includes('load') && fell.seen.includes('idle') && !fell.seen.includes('error') && fell.tiles > 0 && fell.layer > 0, JSON.stringify(fell));
     }
     // The same with the engine chunk delayed by 6 seconds, on a page of its own (the chunk is not in its module cache).
