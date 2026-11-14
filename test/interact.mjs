@@ -1195,6 +1195,7 @@ for (const mode of ['main', 'worker']) {
             for (const t of ['geolocate', 'error', 'outofmaxbounds', 'trackuserlocationstart', 'trackuserlocationend']) gc.on(t, e => events.push(t + ':' + (e.target === gc)));
             const onMap = [];
             m.on('geolocate', () => onMap.push('geolocate'));
+            m.on('error', () => onMap.push('error'));
             const step = f => new Promise(r => { answer = (ok, fail) => { f(ok, fail); setTimeout(r, 0); }; });
             let s = step(ok => ok({coords: {longitude: 10, latitude: 20}, timestamp: 1}));
             const triggered = gc.trigger();
@@ -1216,7 +1217,7 @@ for (const mode of ['main', 'worker']) {
             return {notAdded, triggered, events, onMap, warnings};
         });
         check('[main] maplibre-compat: GeolocateControl has on/once/trigger() and fires geolocate, error and outofmaxbounds on itself, and warns once for trackUserLocation',
-            geo.notAdded === false && geo.triggered === true && geo.events.join() === 'geolocate:true,error:true,outofmaxbounds:true,geolocate:true,off,geolocate:true' && geo.onMap.length === 3
+            geo.notAdded === false && geo.triggered === true && geo.events.join() === 'geolocate:true,error:true,outofmaxbounds:true,geolocate:true,off,geolocate:true' && geo.onMap.join() === 'geolocate,error,geolocate,geolocate'
             && geo.warnings.length === 1 && geo.warnings[0].startsWith('[map-jr-gl] GeolocateControl: the option trackUserLocation'), JSON.stringify(geo));
     }
     // Accessibility: the canvas says that it is a map and shows the keyboard focus, a marker with a popup works with the
