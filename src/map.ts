@@ -888,7 +888,11 @@ export class Map {
             for (const [name, src] of Object.entries(style.sources)) {
                 if (src.type !== 'geojson') { sources[name] = src; continue; }
                 const old = sent.get(name), key = JSON.stringify([src.options, src.maxzoom]);
-                if (!old || old.data !== src.data || old.key !== key) { data[name] = src.data; sent.set(name, {data: src.data, key}); }
+                if (!old || old.data !== src.data || old.key !== key) {
+                    data[name] = src.data; sent.set(name, {data: src.data, key});
+                    // (This message carries the newest data of a `setData` that waits: it is not sent again.)
+                    if (this.geoPending.get(name) === src.data) this.geoPending.delete(name);
+                }
                 sources[name] = {...src, data: undefined};
             }
             this.resolved = style;
@@ -1099,11 +1103,11 @@ export class Map {
     }
     private sendGeo() {
         const sent = this.geoSent ??= geoOf(this.resolved);
+        // (Data from `setData` is always sent, also the same object again: it can have changed in place.)
         for (const [source, d] of this.geoPending) {
-            const old = sent.get(source);
-            // (The change of the style that was just sent carried this data already.)
-            if (!this.rawStyle?.sources[source] || old?.data === d) continue;
+            if (!this.rawStyle?.sources[source]) continue;
             this.post({type: 'geojson', source, data: d});
+            const old = sent.get(source);
             if (old) old.data = d;
         }
         this.geoPending.clear();

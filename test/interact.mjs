@@ -412,6 +412,25 @@ for (const mode of ['main', 'worker']) {
         return names;
     });
     check(`[${mode}] GeoJSON source: setData right after addSource and addLayer is kept`, early.join() === 'b', JSON.stringify(early));
+    // setData with the same object again, changed in place or not, sends the data again and the source loads (#8 review).
+    const sameObject = await page.evaluate(async () => {
+        const m = window.map, wait = ms => new Promise(r => setTimeout(r, ms)), x = {type: 'FeatureCollection', features: [{type: 'Feature', properties: {name: 'a'}, geometry: {type: 'Point', coordinates: [-74.008, 40.7085]}}]};
+        m.addSource('same', {type: 'geojson', data: {type: 'FeatureCollection', features: []}});
+        m.addLayer({id: 'same', type: 'circle', source: 'same'});
+        await wait(500);
+        const names = async () => (await m.queryFeatures([-74.008, 40.7085], {sources: ['same'], radius: 5})).map(f => f.properties.name).join();
+        const settled = async () => { for (let i = 0; i < 30 && !m.isSourceLoaded('same'); i++) await wait(100); return m.isSourceLoaded('same'); };
+        m.getSource('same').setData(x);
+        const first = [await settled(), await names()];
+        x.features[0].properties.name = 'b';
+        m.getSource('same').setData(x);
+        const changed = [await settled(), await names()];
+        m.getSource('same').setData(x);
+        const again = [await settled(), await names()];
+        m.removeLayer('same'); m.removeSource('same');
+        return {first, changed, again};
+    });
+    check(`[${mode}] GeoJSON source: setData with the same object again sends its data and the source loads`, sameObject.first.join() === 'true,a' && sameObject.changed.join() === 'true,b' && sameObject.again.join() === 'true,b', JSON.stringify(sameObject));
     // A paint value that is the same for the whole layer sends no GeoJSON data, and nothing to the tile workers. A new
     // filter sends the rules of the layers to the tile workers, but not the data (#8).
     const edit = await page.evaluate(async () => {
