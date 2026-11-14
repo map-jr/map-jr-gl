@@ -1436,6 +1436,28 @@ for (const mode of ['main', 'worker']) {
         check(`[${mode}] raster source: setTiles and setUrl load tiles from the new URLs, and a wrong argument gives a message`,
             r.a && r.b && r.c && r.same && r.url === '/test-255.json' && !r.tiles && r.message.startsWith('[map-jr-gl] getSource("r").setTiles'), JSON.stringify(r));
     }
+    // The coarse overview tiles (zoom 11 for a view at zoom 14.3) are not drawn while the tiles of the view are there.
+    // Their arrival does not place the labels again: the map fires no second `idle`, and before the first `idle` it
+    // does not wait for another placement.
+    {
+        let late = 0;
+        const slow = async r => { await new Promise(res => setTimeout(res, 2000)); late++; r.continue(); };
+        await page.route('**/tiles/11/**', slow);
+        await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:1000px;height:700px'}));
+            // (A view with many labels: their fade keeps frames coming after the overview is requested.)
+            const m = new mod.Map({container: el, renderer: mode, style: '/style.json', center: [-74.0065, 40.7085], zoom: 14.3, attributionControl: false});
+            window.overview = {m, el, idles: 0};
+            m.on('idle', () => window.overview.idles++);
+            await new Promise(r => { m.once('idle', r); setTimeout(r, 15000); });
+        }, mode);
+        for (let i = 0; i < 100 && !late; i++) await page.waitForTimeout(100);
+        await page.waitForTimeout(1500); // (the tiles arrive and are built, and a frame would place the labels)
+        const idles = await page.evaluate(() => { const {m, el, idles} = window.overview; m.remove(); el.remove(); return idles; });
+        await page.unroute('**/tiles/11/**', slow);
+        check(`[${mode}] the overview tiles arrive after the first idle: no second idle`, late > 0 && idles === 1, `idle events=${idles}, late tiles=${late}`);
+    }
     // CSS on `.maplibregl-map` sizes the container before the map measures it, as in MapLibre GL JS (#248).
     if (mode === 'worker') {
         const sized = await page.evaluate(async () => {
@@ -2028,8 +2050,10 @@ for (const mode of ['main', 'worker']) {
     // moment and no tile is asked for again.
     {
         const asked = [];
+        let done = 0;
         const count = r => { if (r.url().includes('tiles.mapterhorn.com')) asked.push(r.url()); };
-        page.on('request', count);
+        const ended = r => { if (r.url().includes('tiles.mapterhorn.com')) done++; };
+        page.on('request', count); page.on('requestfinished', ended); page.on('requestfailed', ended);
         await page.evaluate(async mode => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
             const el = window.flashEl = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:400px;height:300px'}));
@@ -2040,6 +2064,9 @@ for (const mode of ['main', 'worker']) {
             await window.flashIdle();
         }, mode);
         await page.waitForTimeout(500);
+        // (`idle` does not wait for the coarse overview tiles. A tile that is still on its way when the terrain goes off
+        // is cancelled, and it is asked for again later: the test starts when no tile is on its way.)
+        for (let i = 0; i < 100 && done < asked.length; i++) await page.waitForTimeout(100);
         const first = asked.length;
         const toggled = await page.evaluate(async () => {
             const m = window.flashMap, out = {};
@@ -2052,7 +2079,7 @@ for (const mode of ['main', 'worker']) {
             const el = m.getContainer(); m.remove(); el.remove();
             return out;
         });
-        page.off('request', count);
+        page.off('request', count); page.off('requestfinished', ended); page.off('requestfailed', ended);
         check(`[${mode}] 3D terrain off and on again asks for no elevation tile again, and the ground has its height at once`,
             first > 0 && asked.length === first && toggled.off && toggled.on && toggled.elevation > 1000, JSON.stringify({first, later: asked.length - first, ...toggled}));
     }
