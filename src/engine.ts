@@ -19,8 +19,6 @@ export type {FontSource} from './style.ts';
 export interface EngineOptions extends CameraOptions {
     style: ResolvedStyle; width: number; height: number; dpr: number; fontFamily: string; fonts?: FontSource[];
     minZoom?: number; maxZoom?: number; maxPitch?: number; antialias?: boolean;
-    /** Which tiles are requested before they are in view (see `prefetch` of `MapOptions`). The default is `true`. */
-    prefetch?: boolean | 'ahead';
     /** The page's rules for requests at the start, so that the first tiles follow them too (#355). */
     requests?: RequestRules;
 }
@@ -189,14 +187,10 @@ export class Engine {
     private wasIdle = false;
     /** The map has been idle once: the overview tiles wait for that (#326). */
     private wentIdle = false;
-    /** See `prefetch` of `MapOptions`: 0 off, 1 the destination of a movement, 2 also one ring ahead of a drag. */
-    private prefetch: number;
-    /** The view at the end of the movement under way, or ahead of a drag: its tiles are requested early (#361). */
+    /** The view at the end of the movement under way, its tiles are requested early (#361). */
     private target: Transform | null = null;
     /** Tiles requested for a target that are on their way: they finish when a newer movement replaces it (#361). */
     private early = new Set<string>();
-    /** Where and when the last drag step was, for the ring ahead of a drag. */
-    private dragStep: {dx: number; dy: number; at: number} | null = null;
     /** When the engine started. A map that never becomes idle (a long animation, a style that keeps repainting) requests
      * its overview this long after the start instead: 3 s is past the first idle of a usual map here, and short enough
      * that a fast pan still lands on blurry map (#326). */
@@ -261,7 +255,6 @@ export class Engine {
 
     constructor(canvas: HTMLCanvasElement | OffscreenCanvas, o: EngineOptions, private backends: TileBackend[], private emit: (e: EngineEvent) => void) {
         this.renderer = new GLRenderer(canvas, o.antialias);
-        this.prefetch = o.prefetch === false ? 0 : o.prefetch === 'ahead' ? 2 : 1;
         this.renderer.iconOf = this.icon;
         (canvas as EventTarget).addEventListener('webglcontextlost', () => { if (!this.lost) { this.lost = true; this.emit({type: 'contextlost'}); } }); // (not when the map itself freed the context)
         this.atlas = new GlyphAtlas(o.fontFamily);
@@ -748,15 +741,6 @@ export class Engine {
                 }
                 tr.setLocationAt(this.grab!.lng, this.grab!.lat, c.x, c.y);
                 this.grab!.at = now;
-                // One ring of tiles ahead of the drag, in its direction (the option `prefetch: 'ahead'`).
-                const d = Math.hypot(c.dx, c.dy);
-                if (this.prefetch > 1 && d) {
-                    const ahead = new Transform();
-                    Object.assign(ahead, tr);
-                    ahead.set(tr.unprojectFlat(tr.cx - c.dx / d * 512, tr.cy - c.dy / d * 512));
-                    this.aim(ahead);
-                    this.dragStep = {dx: c.dx, dy: c.dy, at: now};
-                }
                 break;
             }
             case 'zoom':
@@ -862,7 +846,7 @@ export class Engine {
     private stop() { this.ease = null; this.wheel = null; this.fling = null; this.grab = null; this.target = null; }
 
     /** Sets the view whose tiles are requested early. A newer movement replaces the view of an older one. */
-    private aim(to: Transform) { if (this.prefetch) this.target = to; }
+    private aim(to: Transform) { this.target = to; }
 
     private zoomAround(zoom: number, x: number, y: number) {
         const [lng, lat] = this.tr.unproject(x, y);
@@ -1085,8 +1069,6 @@ export class Engine {
             f.done = k;
             if (t >= 1) this.fling = null, this.target = null;
         }
-        // (The ring ahead of a drag goes when the drag pauses.)
-        if (this.dragStep && now - this.dragStep.at > 300 && !this.ease && !this.fling) { this.dragStep = null; this.target = null; }
         return !!(this.ease || (this.wheel && this.wheel.doneAt === undefined) || glide);
     }
 
