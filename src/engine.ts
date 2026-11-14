@@ -1293,11 +1293,12 @@ export class Engine {
                     const oid = {z, x, y, w: id.w, key: k};
                     // (The overview waits for the first `idle` of the map: its tiles are large, and before that they would take
                     // the connections and the tile workers from the tiles of the view and the engine from the label placement.
-                    // A map that is not idle 3 s after the start requests it then (see `born`). Later it waits until the tiles
-                    // of the view have loaded.)
+                    // A map that is not idle 3 s after the start requests it then (see `born`), once the tiles of the view
+                    // have loaded. After the first `idle` it does not wait for the tiles of the view: a pan that reaches a new
+                    // overview tile would otherwise show no map at its leading edge until the tiles of the view arrive (#360).)
                     // (`used` below 0: a tile that no frame has needed yet. Its arrival changes nothing in the image, so it
                     // does not place the labels again, which would delay the first `idle`. It keeps that mark while it loads.)
-                    if (!t) { if (complete && (this.wentIdle || performance.now() - this.born > 3000)) { this.request(source, oid, key); const made = this.tiles.get(key); if (made) made.used = -1; } } else {
+                    if (!t) { if (this.wentIdle || complete && performance.now() - this.born > 3000) { this.request(source, oid, key); const made = this.tiles.get(key); if (made) made.used = -1; } } else {
                         if (t.state !== 'loading') t.used = frameNo;
                         // Keep the overview current too, or it would flash old data when it stands in for a missing tile.
                         this.refresh(source, oid, key, t);
