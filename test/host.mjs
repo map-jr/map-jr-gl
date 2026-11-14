@@ -1242,45 +1242,45 @@ for (const code of ['core', 'compat']) {
     await page.close();
 }
 // Tiles before they are in view (#361). (1) The tiles of the destination of an `easeTo` and of a `flyTo` are requested
-// when it starts, and not with `prefetch: false`. The movement goes 0.3 degrees east at zoom 13 in 5 s: after 500 ms
+// when it starts. The movement goes 0.3 degrees east at zoom 13 in 5 s: after 500 ms
 // the view is still near the start, so a request for a tile next to the destination is a request made early.
 // (2) A newer movement does not cancel the early requests that are on their way (tile answers are 1.5 s late here).
-// (3) With `prefetch: 'ahead'`, a drag requests tiles beyond the leading edge of the view; with the default it does not.
+// (3) A drag requests no tiles beyond the leading edge of the view.
 const from = [-74.0065, 40.7085], east = from[0] + 0.3;
 const tileOf = (lng, z) => Math.floor((lng + 180) / 360 * 2 ** z);
-const prefetchPage = async (prefetch, late = 0) => {
+const prefetchPage = async (late = 0) => {
     const page = await browser.newPage({viewport: {width: 900, height: 600}});
     const asked = [], failed = [];
     await page.goto(`${origin}/bench`);
     await page.route(/\/tiles\/\d+\/\d+\/\d+\.pbf/, async route => { asked.push(new URL(route.request().url()).pathname.split('/').slice(-3).map(v => parseInt(v))); if (late) await new Promise(r => setTimeout(r, late)); route.continue().catch(() => {}); });
     page.on('requestfailed', r => { if (/\/tiles\//.test(r.url())) failed.push(r.url()); });
-    await page.evaluate(async ([prefetch, from]) => {
+    await page.evaluate(async from => {
         const lib = await import('/dist/map-jr-gl.js'), style = await (await fetch('/style.json')).json();
         const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99;background:#fff'}));
-        window.host = lib.createMap(el, {style, initialView: {center: from, zoom: 13}, renderer: 'main', attribution: false, prefetch});
+        window.host = lib.createMap(el, {style, initialView: {center: from, zoom: 13}, renderer: 'main', attribution: false});
         await new Promise(r => window.host.state.subscribe(s => s.idle, idle => idle && r()));
         await new Promise(r => setTimeout(r, 500));
-    }, [prefetch, from]);
+    }, from);
     return {page, asked, failed};
 };
-for (const [method, prefetch] of [['easeTo', undefined], ['easeTo', false], ['flyTo', undefined], ['flyTo', false]]) {
+for (const method of ['easeTo', 'flyTo']) {
     let page;
     try {
-        const p = await prefetchPage(prefetch); page = p.page;
+        const p = await prefetchPage(); page = p.page;
         const before = p.asked.length;
         await page.evaluate(([method, east, lat]) => window.host.map[method]({center: [east, lat], duration: 5000}), [method, east, from[1]]);
         await page.waitForTimeout(500);
         // (Only tiles of the level of the view: a flyTo zooms out, and its coarser tiles cover the destination early.)
         const zView = Math.max(...p.asked.slice(0, before).map(t => t[0]));
         const early = p.asked.slice(before).filter(([z, x]) => z === zView && Math.abs(x - tileOf(east, z)) <= 1);
-        check(`prefetch: ${prefetch}: the tiles at the destination of ${method} are ${prefetch === false ? 'not ' : ''}requested at its start`, prefetch === false ? early.length === 0 : early.length > 0, JSON.stringify({early: early.length, after: p.asked.length - before}));
-    } catch (e) { check(`prefetch: ${prefetch}, ${method}: the test run was completed`, false, String(e.message).split('\n')[0]); }
+        check(`prefetch: the tiles at the destination of ${method} are requested at its start`, early.length > 0, JSON.stringify({early: early.length, after: p.asked.length - before}));
+    } catch (e) { check(`prefetch, ${method}: the test run was completed`, false, String(e.message).split('\n')[0]); }
     await page?.close();
 }
 {
     let page;
     try {
-        const p = await prefetchPage(undefined, 1500); page = p.page;
+        const p = await prefetchPage(1500); page = p.page;
         const before = p.asked.length;
         await page.evaluate(([east, lat]) => window.host.map.easeTo({center: [east, lat], duration: 5000}), [east, from[1]]);
         await page.waitForTimeout(400);
@@ -1292,19 +1292,19 @@ for (const [method, prefetch] of [['easeTo', undefined], ['easeTo', false], ['fl
     } catch (e) { check('prefetch: the test of a newer movement was completed', false, String(e.message).split('\n')[0]); }
     await page?.close();
 }
-for (const prefetch of [undefined, 'ahead']) {
+{
     let page;
     try {
-        const p = await prefetchPage(prefetch); page = p.page;
+        const p = await prefetchPage(); page = p.page;
         await page.mouse.move(600, 300); await page.mouse.down();
         for (let i = 1; i <= 15; i++) { await page.mouse.move(600 - i * 20, 300); await page.waitForTimeout(40); }
-        // (The button stays down: a release would start the inertia, whose destination is requested in each mode.)
+        // (The button stays down: a release would start the inertia.)
         const edge = await page.evaluate(() => window.host.map.getBounds().getEast());
         const z = Math.max(...p.asked.map(t => t[0]));
         const ahead = p.asked.filter(([tz, x]) => tz === z && x * 360 / 2 ** z - 180 > edge);
         await page.mouse.up();
-        check(`prefetch: ${prefetch}: a drag ${prefetch === 'ahead' ? 'requests' : 'does not request'} tiles beyond the leading edge`, prefetch === 'ahead' ? ahead.length > 0 : ahead.length === 0, JSON.stringify({ahead: ahead.length, z}));
-    } catch (e) { check(`prefetch: ${prefetch}: the drag test was completed`, false, String(e.message).split('\n')[0]); }
+        check('prefetch: a drag requests no tiles beyond the leading edge', ahead.length === 0, JSON.stringify({ahead: ahead.length, z}));
+    } catch (e) { check(`prefetch: the drag test was completed`, false, String(e.message).split('\n')[0]); }
     await page?.close();
 }
 // A tile whose request fails is requested again while the view needs it (#360). The first request of each tile of
