@@ -6,7 +6,7 @@
  * The adapters for the frameworks (`@map-jr/map-jr-gl/vue` and others) are thin layers over `createMap`.
  * (For the API of MapLibre GL JS, see `@map-jr/map-jr-gl/maplibre-compat`.)
  */
-import {Map, logError, type FeatureOptions, type FeaturePlace, type ImageOptions, type MapOptions, type RenderedFeature} from './map.ts';
+import {Map, logError, type FeatureOptions, type FeaturePlace, type ImageOptions, type MapOptions, type FlyOptions, type RenderedFeature} from './map.ts';
 export type {PaddingInput};
 export type {FeatureOptions, FeaturePlace};
 import {createStore, type Readable} from './store.ts';
@@ -256,8 +256,12 @@ export interface MapHost {
     clusterExpansionZoom(sourceId: string, clusterId: number): Promise<number>;
     clusterChildren(sourceId: string, clusterId: number): Promise<ClusterFeature[]>;
     clusterLeaves(sourceId: string, clusterId: number, limit?: number, offset?: number): Promise<ClusterFeature[]>;
-    /** Moves the camera now, with an animation when `duration` is not 0. */
-    moveTo(view: ViewInput & {duration?: number; padding?: PaddingInput}): void;
+    /**
+     * Moves the camera now, with an animation when `duration` is not 0. With `fly` (`true` or the options `curve`,
+     * `speed`, `screenSpeed`, `minZoom`, `maxDuration` of `flyTo` of MapLibre GL JS), the camera zooms out and back in
+     * on the way, and without `duration` the duration follows from the distance.
+     */
+    moveTo(view: ViewInput & {duration?: number; padding?: PaddingInput; fly?: boolean | FlyOptions}): void;
     fitBounds(bounds: LngLatBoundsInput, options?: {padding?: PaddingInput; duration?: number; maxZoom?: number}): void;
     project(lngLat: Position): {x: number; y: number};
     unproject(point: {x: number; y: number}): [number, number];
@@ -530,7 +534,7 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
             return () => { stopped = true; map.off('sourcedata', data); map.off('idle', run); map.off('moveend', moved); };
         },
         queryElevation: at => map.queryElevation(at),
-        moveTo({duration = 0, ...view}) { if (duration) map.easeTo({...view, duration}); else map.jumpTo(view); },
+        moveTo({duration, fly, ...view}) { if (fly) map.flyTo({...view, duration, ...(fly === true ? {} : fly)}); else if (duration) map.easeTo({...view, duration}); else map.jumpTo(view); },
         fitBounds: (bounds, o) => { map.fitBounds(bounds, o); },
         project: lngLat => map.project(lngLat),
         unproject: point => { const p = map.unproject(point); return [p.lng, p.lat]; },

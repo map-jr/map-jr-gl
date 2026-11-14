@@ -28,7 +28,7 @@ export interface FeatureQuery { radius: number; zoom?: number; sources?: string[
 export type Command =
     | {type: 'resize'; width: number; height: number; dpr: number}
     | ({type: 'jump'} & CameraOptions)
-    | ({type: 'ease'; duration: number; around?: [number, number]; easing?: number[]} & CameraOptions)
+    | ({type: 'ease'; duration: number; around?: [number, number]; easing?: number[]; fly?: number[]} & CameraOptions)
     /** Moves the map by a screen distance. With `x`, `y` (where the pointer now is) the ground first grabbed stays under the pointer, tilt, terrain and all. */
     | {type: 'pan'; dx: number; dy: number; x?: number; y?: number}
     | {type: 'zoom'; delta: number; x: number; y: number}
@@ -131,6 +131,33 @@ const ZOOMING_PLACE_INTERVAL = 100, ZOOMING_FADE = 100;
 export const placeDue = (now: number, last: number, cost: number, zooming: boolean, moving: boolean) =>
     now - last >= Math.max(zooming ? ZOOMING_PLACE_INTERVAL : PLACE_INTERVAL, moving ? 3 * cost : 0);
 /** Camera feel, matching MapLibre's defaults so the map responds the way people expect. */
+/**
+ * The curve of flyTo (van Wijk and Nuij, as `flyTo` of MapLibre GL JS 6.17) from `tr` to `to`. `o` is [curve, speed,
+ * screenSpeed, minZoom, maxDuration, 1 when the duration follows from the distance]. Returns [r0, rho, S, the factor of
+ * u, the sign of an exponential zoom when the centre does not move (else 0), the duration in milliseconds]; S is 0 when
+ * the camera eases instead (nothing to fly, or longer than maxDuration, which is then a jump).
+ */
+function flight(tr: Transform, to: Transform, [rho, speed, screenSpeed, minZoom, maxDuration, auto]: number[], given: number) {
+    const [pt, pr, pb, pl] = to.padding, z0 = tr.zoom, world = tr.worldSize;
+    const u1 = Math.hypot((mercX(to.lng) - mercX(tr.lng)) * world, (mercY(to.lat) - mercY(tr.lat)) * world);
+    const w0 = Math.max(tr.width - pl - pr, tr.height - pt - pb), w1 = w0 / 2 ** (to.zoom - z0);
+    if (minZoom > -99) rho = Math.sqrt(w0 / 2 ** (Math.max(tr.minZoom, Math.min(minZoom, z0, to.zoom)) - z0) / u1 * 2);
+    const rho2 = rho * rho, zr = (i: number) => {
+        const b = (w1 * w1 - w0 * w0 + (i ? -1 : 1) * rho2 * rho2 * u1 * u1) / (2 * (i ? w1 : w0) * rho2 * u1);
+        return Math.log(Math.sqrt(b * b + 1) - b);
+    };
+    const r0 = zr(0);
+    let S = (zr(1) - r0) / rho, sign = 0;
+    if (u1 < 2e-6 || !isFinite(S)) {
+        sign = w1 < w0 ? -1 : 1;
+        S = Math.abs(Math.log(w1 / w0)) / rho;
+    }
+    const duration = 1000 * S / (screenSpeed ? screenSpeed / rho : speed);
+    const jump = auto && duration > maxDuration;
+    // (Nothing to fly: the camera eases, in 500 ms as easeTo does when no duration is given.)
+    const still = Math.abs(w0 - w1) < 1e-6 && sign;
+    return [r0, rho, jump || still ? 0 : S, w0 / u1 / rho2, sign, jump ? 1 : !auto ? given : still ? 500 : duration];
+}
 const defaultEasing = bezier(0.25, 0.1, 0.25, 1), inertiaEasing = bezier(0, 0, 0.3, 1);
 const WHEEL_STEP = 4.000244140625, WHEEL_RATE = 1 / 450, TRACKPAD_RATE = 1 / 100;
 
@@ -175,7 +202,7 @@ export class Engine {
     private seq = 0;
     private moving = false;
 
-    private ease: {from: number[]; to: number[]; start: number; duration: number; around?: [number, number]; anchor?: [number, number]; easing?: number[]} | null = null;
+    private ease: {from: number[]; to: number[]; start: number; duration: number; around?: [number, number]; anchor?: [number, number]; easing?: number[]; fly?: number[]} | null = null;
     private wheel: {
         delta: number; kind: 'wheel' | 'trackpad'; x: number; y: number; lastEvent: number;
         target?: number; start?: number; easing?: (t: number) => number; doneAt?: number;
@@ -693,9 +720,10 @@ export class Engine {
                 to.set(c.center, c.zoom, c.bearing, c.pitch);
                 let db = to.bearing - tr.bearing;
                 db = ((db + 180) % 360 + 360) % 360 - 180;
+                const fly = c.fly && flight(tr, to, c.fly, c.duration);
                 this.ease = {
                     from: [mercX(tr.lng), mercY(tr.lat), tr.zoom, tr.bearing, tr.pitch, ...tr.padding], to: [mercX(to.lng), mercY(to.lat), to.zoom, tr.bearing + db, to.pitch, ...(c.padding ?? tr.padding)],
-                    start: performance.now(), duration: Math.max(1, c.duration), around: c.around, easing: c.easing,
+                    start: performance.now(), duration: Math.max(1, fly ? fly[5] : c.duration), around: c.around, easing: c.easing, fly: fly && fly[2] ? fly : undefined,
                     anchor: c.around ? tr.unproject(c.around[0], c.around[1]) : undefined,
                 };
                 // (With `around`, the end differs from `to` in its centre: the point under `around` stays there.)
@@ -996,6 +1024,14 @@ export class Engine {
         if (this.ease) {
             const e = this.ease, t = Math.min(1, (now - e.start) / e.duration), q = e.easing, j = t * 64 | 0, k = q ? q[j] + ((q[j + 1] ?? q[j]) - q[j]) * (t * 64 - j) : defaultEasing(t);
             const v = e.from.map((f, i) => f + (e.to[i] - f) * k);
+            if (e.fly) {
+                // flyTo (van Wijk and Nuij, as in MapLibre GL JS): w is the width of the view relative to the start, u the
+                // part of the way that the centre has gone.
+                const [r0, rho, S, c, sign] = e.fly, s = k * S;
+                const u = sign ? 0 : c * (Math.cosh(r0) * Math.tanh(r0 + rho * s) - Math.sinh(r0));
+                v[0] = e.from[0] + (e.to[0] - e.from[0]) * u; v[1] = e.from[1] + (e.to[1] - e.from[1]) * u;
+                v[2] = k < 1 ? e.from[2] - Math.log2(sign ? Math.exp(sign * rho * s) : Math.cosh(r0) / Math.cosh(r0 + rho * s)) : e.to[2];
+            }
             tr.zoom = v[2];
             tr.padding = [v[5], v[6], v[7], v[8]];
             tr.set(undefined, undefined, v[3], v[4]);
