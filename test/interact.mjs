@@ -1574,6 +1574,30 @@ for (const mode of ['main', 'worker']) {
         await page.unroute('**/tiles/11/**', count);
         check(`[${mode}] a map that keeps moving from the start still requests its overview tiles`, asked > 0 && idles === 0, `requests=${asked}, idle events=${idles}`);
     }
+    // After the first idle, a move to another overview tile requests that tile while the tiles of the view are still on
+    // their way, so that the new area shows blurry map and not the background (#360).
+    {
+        const held = [], hold = r => { held.push(r); };
+        let asked = 0;
+        const count = r => { asked++; r.continue(); };
+        await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:600px;height:400px'}));
+            const m = new mod.Map({container: el, renderer: mode, style: '/style.json', center: [-74.0065, 40.7085], zoom: 14.3, attributionControl: false});
+            window.moved = {m, el};
+            await new Promise(r => { m.once('idle', r); setTimeout(r, 15000); });
+        }, mode);
+        // (The view at -73.80 is in the overview tile 11/604/769; the start is in 11/602/769.)
+        await page.route('**/tiles/14/**', hold);
+        await page.route('**/tiles/11/604/**', count);
+        await page.evaluate(() => window.moved.m.jumpTo({center: [-73.80, 40.7085]}));
+        for (let i = 0; i < 50 && !asked; i++) await page.waitForTimeout(100);
+        await page.unroute('**/tiles/11/604/**', count);
+        await page.unroute('**/tiles/14/**', hold);
+        for (const r of held) r.continue().catch(() => {});
+        await page.evaluate(() => { const {m, el} = window.moved; m.remove(); el.remove(); });
+        check(`[${mode}] after the first idle, a move requests the new overview tile before the tiles of the view arrive`, asked > 0 && held.length > 0, `overview requests=${asked}, held tiles=${held.length}`);
+    }
     // CSS on `.maplibregl-map` sizes the container before the map measures it, as in MapLibre GL JS (#248).
     if (mode === 'worker') {
         const sized = await page.evaluate(async () => {
