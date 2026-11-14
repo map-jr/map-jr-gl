@@ -20,7 +20,7 @@ export type ControlPosition = 'top-left' | 'top-right' | 'bottom-left' | 'bottom
  * The text of a UI string. A map of the compat entry has `_getUIString` (the `locale` option, with the keys of
  * MapLibre GL JS); a map of the core uses the English text `text`.
  */
-export const ui = (map: unknown, key: string, text: string): string => (map as {_getUIString?(key: string): string})._getUIString?.(key) ?? text;
+export const ui = (map: unknown, key: string, text: string): string => (map as {_getUIString?(key: string): string | undefined})._getUIString?.(key) ?? text;
 export const cls = (...names: string[]) => names.map(n => `map-jr-${n} maplibregl-${n}`).join(' ');
 /** Adds or removes a class under both names (see `cls`). */
 export function toggleClass(el: Element, name: string, on?: boolean): boolean {

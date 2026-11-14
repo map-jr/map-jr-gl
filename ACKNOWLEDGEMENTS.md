@@ -8,14 +8,13 @@ Map Jr. GL is possible because of the work of other projects. Thank you to the p
 BSD-3-Clause.
 
 - Map Jr. GL reads the MapLibre style specification and has an API that follows the API of MapLibre GL JS.
-- Map Jr. GL contains no files of MapLibre GL JS. All the code is new, except the texts named below.
+- Map Jr. GL contains no files of MapLibre GL JS. All the code is new, except the CSS named below.
 - Some methods follow MapLibre GL JS, so that a map looks the same in the two libraries. Examples: the line breaks
   in labels, the light on buildings, the size of dashes, and the movement of the camera on 3D terrain.
 - The texts and the CSS of the hint of `cooperativeGestures` in the compat entry follow MapLibre GL JS
   (BSD-3-Clause): `src/ui/handler/cooperative_gestures.ts` and `maplibre-gl.css`.
-- The keys and the English texts of the UI strings in the compat entry (`src/default-locale.ts`) are copied from
-  `src/ui/default_locale.ts` of MapLibre GL JS 6.17.0 (BSD-3-Clause), so that a `locale` object for MapLibre GL JS
-  works unchanged. The licence text is in `THIRD-PARTY-LICENSES.md`.
+- The option `locale` of the compat entry reads the keys of `src/ui/default_locale.ts` of MapLibre GL JS 6.17.0
+  (BSD-3-Clause), so that a `locale` object for MapLibre GL JS works unchanged. The English texts are not copied.
 - The "pseudo fullscreen" of `FullscreenControl` follows MapLibre GL JS 6.17.0 (`src/ui/control/fullscreen_control.ts`).
   The code is new. The rule for `.map-jr-pseudo-fullscreen` copies the CSS of `.maplibregl-pseudo-fullscreen` in
   `maplibre-gl.css`.

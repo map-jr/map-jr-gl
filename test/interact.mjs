@@ -1107,17 +1107,21 @@ for (const mode of ['main', 'worker']) {
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:100px;height:100px'}));
             let m;
             try {
-                m = new mod.Map({container: el, center: [0, 0], zoom: 1, attributionControl: false, logoPosition: 'top-left', validate: false, style: {version: 8, sources: {}, layers: []}});
+                m = new mod.Map({container: el, center: [0, 0], zoom: 1, attributionControl: false, logoPosition: 'top-left', validate: false, fadeDuration: 0, pitchWithRotate: false, style: {version: 8, sources: {}, layers: []}});
                 for (let i = 0; i < 2; i++) {
                     new mod.NavigationControl({visualizePitch: true});
                     new mod.FullscreenControl({container: document.body});
+                    new mod.Popup({focusAfterOpen: false, locationOccludedOpacity: 0.5});
+                    new mod.Marker({opacityWhenCovered: '0.2'});
                 }
+                // (The default values write no warning.)
+                new mod.Map({container: el, attributionControl: false, fadeDuration: 300, pitchWithRotate: true, style: {version: 8, sources: {}, layers: []}}).remove();
             } finally { console.warn = warn; }
             m.remove(); el.remove();
-            const names = ['logoPosition', 'validate', 'visualizePitch', 'container'];
-            return Object.fromEntries(names.map(n => [n, warns.filter(w => w.startsWith('[map-jr-gl]') && w.includes(n)).length]));
+            const names = ['logoPosition', 'validate', 'visualizePitch', 'container', 'fadeDuration', 'pitchWithRotate', 'focusAfterOpen', 'locationOccludedOpacity', 'opacityWhenCovered'];
+            return Object.fromEntries(names.map(n => [n, warns.filter(w => w.startsWith('[map-jr-gl]') && w.toLowerCase().includes('the option ' + n.toLowerCase())).length]));
         });
-        check('maplibre-compat: logoPosition, validate, visualizePitch, and the container of FullscreenControl each warn once',
+        check('maplibre-compat: options with no effect (logoPosition, validate, fadeDuration, pitchWithRotate, visualizePitch, the container of FullscreenControl, and options of Popup and Marker) each warn once',
             Object.values(r).every(n => n === 1), JSON.stringify(r));
     }
     // #43: easeTo and flyTo of maplibre-compat use `offset` (also with bearing and pitch) and a custom `easing`, without a warning.
@@ -2014,8 +2018,8 @@ for (const mode of ['main', 'worker']) {
             return out;
         });
         check('[main] maplibre-compat: locale names the controls and the hint of cooperativeGestures; FullscreenControl falls back to pseudo fullscreen without the Fullscreen API (#42)',
-            r.zoomIn === 'Zoom avant' && r.zoomOut === 'Zoom out' && r.compass === 'Drag to rotate map, click to reset north' && /kilomètres$/.test(r.scale) && r.attrib === 'Attributions'
-            && r.enter === 'Plein écran' && r.uiString === 'Close popup' && ['Ctrl + molette', '⌘ + molette', 'Deux doigts'].includes(r.hint)
+            r.zoomIn === 'Zoom avant' && r.zoomOut === 'Zoom out' && r.compass === 'Reset bearing to north' && /kilomètres$/.test(r.scale) && r.attrib === 'Attributions'
+            && r.enter === 'Plein écran' && r.uiString === undefined && ['Ctrl + molette', '⌘ + molette', 'Deux doigts'].includes(r.hint)
             && r.pseudo && r.position === 'fixed' && r.exit === 'Quitter le plein écran' && r.pressed === 'true' && !r.after && r.enterAgain === 'Plein écran' && r.events === 'start,end'
             && r.warnings.length === 0 && r.coreCompass === 'Reset bearing to north', JSON.stringify(r));
     }

@@ -5,7 +5,6 @@
 import {Map as CoreMap, type CameraInput, type PointLike, type RenderedFeature, type RenderedQueryOptions, type PaddingInput, type ImageOptions, type FlyOptions} from './map.ts';
 import type {QueriedFeature} from './query.ts';
 import {GPUInitializationError} from './gpu-error.ts';
-import {defaultLocale} from './default-locale.ts';
 import type {LngLatLike} from './geo.ts';
 import type {AddLayerObject, GeoJSONFeature, MapGeoJSONFeature, MapEventType, MapLayerEventType, Source, MapOptions, EaseToOptions, StyleSwapOptions, FitBoundsOptions, QuerySourceFeatureOptions, FeatureIdentifier, StyleSpecification} from './compat-types.ts';
 
@@ -80,12 +79,13 @@ export class Map extends CoreMap {
     /** As in MapLibre GL JS: with it on, the wheel zooms only with Ctrl (⌘ on a Mac), and one finger scrolls the page. */
     readonly cooperativeGestures = cooperativeGestures(this);
     /**
-     * The text of a UI string, as in MapLibre GL JS: from the option `locale`, else the English text of MapLibre GL JS.
+     * The text of a UI string from the option `locale`, with the keys of MapLibre GL JS. For a key that the option does
+     * not have it returns undefined, and the control uses its own English text.
      * The controls and the hint of `cooperativeGestures` call it.
      */
-    _getUIString(key: string): string {
+    _getUIString(key: string): string | undefined {
         const text = this.uiLocale?.[key];
-        return typeof text == 'string' ? text : defaultLocale[key] ?? key;
+        return typeof text == 'string' ? text : undefined;
     }
     private uiLocale?: Record<string, unknown>;
     /** As in MapLibre, a `Point` with methods (`dist`, `sub`, …), not a plain object. */
@@ -167,6 +167,9 @@ export class Map extends CoreMap {
         this.unsupported('The option canvasContextAttributes (but for antialias)', !context || !Object.keys(context).some(k => k !== 'antialias'));
         this.unsupported('The option logoPosition', !o.logoPosition);
         this.unsupported('The option validate', o.validate === undefined);
+        // (Labels here always fade for a fixed time, and a drag with the right button always turns and tilts the map.)
+        this.unsupported('The option fadeDuration', o.fadeDuration === undefined || o.fadeDuration === 300);
+        this.unsupported('The option pitchWithRotate: false', o.pitchWithRotate !== false);
     }
 
     // ---- Changes of the style that MapLibre GL JS refuses ----

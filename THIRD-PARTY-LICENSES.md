@@ -28,8 +28,7 @@ THIS SOFTWARE.
 ## MapLibre GL JS
 
 Map Jr. GL contains no files of MapLibre GL JS. Some methods and formulas follow MapLibre GL JS, and the built
-files contain copied texts and CSS of MapLibre GL JS 6.17.0: the English UI strings of the compat entry and the rule
-for pseudo fullscreen (see `ACKNOWLEDGEMENTS.md`). Its licence text is here for that reason.
+files contain one copied CSS rule of MapLibre GL JS 6.17.0, the rule for pseudo fullscreen (see `ACKNOWLEDGEMENTS.md`). Its licence text is here for that reason.
 
 ```
 Copyright (c) 2023, MapLibre contributors

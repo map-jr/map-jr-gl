@@ -61,9 +61,9 @@ export type MapOptions = CoreMapOptions & {
     fadeDuration?: number;
     /** No effect: a drag with the right mouse button changes the bearing and the pitch. */
     pitchWithRotate?: boolean;
-    /** No effect, and the map writes one warning when it is set. */
+    /** The wheel zooms only with Ctrl (⌘ on a Mac), one finger scrolls the page, and a hint shows over the map, as in MapLibre GL JS. */
     cooperativeGestures?: boolean | object;
-    /** The UI strings of the controls and of the hint of `cooperativeGestures`, with the keys of MapLibre GL JS (`'NavigationControl.ZoomIn'`). A key that is missing keeps the English text of MapLibre GL JS. */
+    /** The UI strings of the controls and of the hint of `cooperativeGestures`, with the keys of MapLibre GL JS (`'NavigationControl.ZoomIn'`). A key that is missing keeps the English text of this library. */
     locale?: Record<string, string>;
 };
 export type IControl = Control;
