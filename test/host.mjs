@@ -1307,6 +1307,30 @@ for (const prefetch of [undefined, 'ahead']) {
     } catch (e) { check(`prefetch: ${prefetch}: the drag test was completed`, false, String(e.message).split('\n')[0]); }
     await page?.close();
 }
+// A tile whose request fails is requested again while the view needs it (#360). The first request of each tile of
+// the view fails here as a lost connection does; each of these tiles must be requested a second time, and the map
+// must then be idle.
+{
+    const page = await browser.newPage({viewport: {width: 900, height: 600}});
+    try {
+        const seen = new Map();
+        await page.goto(`${origin}/bench`);
+        await page.route(/\/tiles\/\d+\/\d+\/\d+\.pbf/, route => {
+            const k = new URL(route.request().url()).pathname, n = (seen.get(k) ?? 0) + 1;
+            seen.set(k, n);
+            return n === 1 ? route.abort('connectionreset') : route.continue().catch(() => {});
+        });
+        await page.evaluate(async from => {
+            const lib = await import('/dist/map-jr-gl.js'), style = await (await fetch('/style.json')).json();
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99;background:#fff'}));
+            window.host = lib.createMap(el, {style, initialView: {center: from, zoom: 13}, renderer: 'main', attribution: false});
+            await new Promise(r => setTimeout(r, 6000));
+        }, from);
+        const once = [...seen].filter(([, n]) => n < 2).map(([k]) => k), idle = await page.evaluate(() => window.host.state.get().idle);
+        check('a tile whose request failed is requested again, and the map becomes idle', seen.size > 0 && once.length === 0 && idle, JSON.stringify({tiles: seen.size, once: once.slice(0, 4), idle}));
+    } catch (e) { check('the test of failed tile requests was completed', false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
 // The cost of a frame does not grow with the number of icons from buffers (#127). The engine reports the script time
 // of its frames on the main thread (`stats`, `frameMs`). The check compares a symbol layer with 100,000 icons with
 // the same layer with 1,000 icons, as a ratio of the medians, so it does not depend on the speed of the machine. With
