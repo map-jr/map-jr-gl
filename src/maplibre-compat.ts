@@ -24,7 +24,6 @@ export class Popup extends CorePopup {
 }
 import {FullscreenControl as CoreFullscreen} from './controls-more.ts';
 import {Evented} from './evented.ts';
-import type {Map as CoreMap} from './map.ts';
 /** The marker of the core with the private members `_map` and `_lngLat` that wrappers for MapLibre GL JS read. */
 export class Marker extends CoreMarker {
     constructor(options: MarkerOptions = {}) { super(options); accepted('Marker', options as any, ['opacityWhenCovered']); }
@@ -36,17 +35,10 @@ export class Marker extends CoreMarker {
 /** The control of the core with `on`, `off` and `once`. It fires `fullscreenstart` and `fullscreenend` on itself, as in MapLibre GL JS. */
 export class FullscreenControl extends CoreFullscreen {
     private events = new Evented();
-    private was = false;
     on(type: string, fn: (e: any) => void) { this.events.on(type, fn); return this; }
     off(type: string, fn: (e: any) => void) { this.events.off(type, fn); return this; }
     once(type: string, fn: (e: any) => void) { this.events.once(type, fn); return this; }
-    private change = () => {
-        const on = !!document.fullscreenElement && document.fullscreenElement === this.container;
-        if (on !== this.was) { this.was = on; this.events.fire(on ? 'fullscreenstart' : 'fullscreenend', {target: this}); }
-    };
-    private container?: HTMLElement;
-    onAdd(map: CoreMap) { this.container = map.getContainer(); document.addEventListener('fullscreenchange', this.change); return super.onAdd(map); }
-    onRemove() { document.removeEventListener('fullscreenchange', this.change); super.onRemove(); }
+    protected override changed(on: boolean) { this.events.fire(on ? 'fullscreenstart' : 'fullscreenend', {target: this}); }
 }
 export {Point} from './compat-map.ts';
 import {Point} from './compat-map.ts';

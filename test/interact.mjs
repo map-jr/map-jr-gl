@@ -1798,7 +1798,7 @@ for (const mode of ['main', 'worker']) {
             const plain = make({projection: {type: 'mercator'}, renderWorldCopies: true, canvasContextAttributes: {antialias: false}});
             out.plain = warnings.splice(0);
             let thrown = '';
-            try { make({strict: true, locale: {x: 'y'}}); } catch (e) { thrown = e.message; }
+            try { make({strict: true, renderWorldCopies: false}); } catch (e) { thrown = e.message; }
             const strict = make({strict: true});
             await new Promise(r => strict.once('load', r));
             let thrownCall = '';
@@ -1808,11 +1808,11 @@ for (const mode of ['main', 'worker']) {
             return {...out, thrown, thrownCall};
         });
         check('[main] maplibre-compat: each option with no effect gives one warning, the defaults give none, and maxBounds works',
-            quiet.options.length === 4 && ['locale', 'projection', 'renderWorldCopies', 'canvasContextAttributes'].every(n => quiet.options.some(w => w.startsWith('[map-jr-gl] The option ' + n))) && quiet.plain.length === 0 && String(quiet.bounds) === '-10,-10,10,10' && quiet.clamped.every((v, i) => Math.abs(v - [1.2109, 3.4573][i]) < 1e-3) && quiet.later.every((v, i) => Math.abs(v - [1.2109, 3.4573][i]) < 1e-3) && quiet.custom.length === 1 && quiet.custom[0].includes('"custom"'), JSON.stringify({options: quiet.options, plain: quiet.plain, bounds: quiet.bounds, clamped: quiet.clamped, later: quiet.later, custom: quiet.custom}));
+            quiet.options.length === 3 && ['projection', 'renderWorldCopies', 'canvasContextAttributes'].every(n => quiet.options.some(w => w.startsWith('[map-jr-gl] The option ' + n))) && quiet.plain.length === 0 && String(quiet.bounds) === '-10,-10,10,10' && quiet.clamped.every((v, i) => Math.abs(v - [1.2109, 3.4573][i]) < 1e-3) && quiet.later.every((v, i) => Math.abs(v - [1.2109, 3.4573][i]) < 1e-3) && quiet.custom.length === 1 && quiet.custom[0].includes('"custom"'), JSON.stringify({options: quiet.options, plain: quiet.plain, bounds: quiet.bounds, clamped: quiet.clamped, later: quiet.later, custom: quiet.custom}));
         check('[main] maplibre-compat: a layer or source id that exists, a source that is not there, and a source in use fire error and change nothing',
             quiet.errors.length === 4 && /addLayer: the style has a layer with the id "bg"/.test(quiet.errors[0]) && /names the source "nowhere"/.test(quiet.errors[1]) && /addSource: the style has a source with the id "g"/.test(quiet.errors[2]) && /removeSource: the layer "uses-g" uses the source "g"/.test(quiet.errors[3]) && quiet.layers === 'bg,uses-g' && quiet.source, JSON.stringify({errors: quiet.errors, layers: quiet.layers, source: quiet.source}));
         check('[main] maplibre-compat: strict: true throws for an option with no effect and for a refused style call',
-            quiet.thrown.startsWith('[map-jr-gl] The option locale has no effect') && /addLayer: the style has a layer with the id "bg"/.test(quiet.thrownCall), JSON.stringify({thrown: quiet.thrown, thrownCall: quiet.thrownCall}));
+            quiet.thrown.startsWith('[map-jr-gl] The option renderWorldCopies: false has no effect') && /addLayer: the style has a layer with the id "bg"/.test(quiet.thrownCall), JSON.stringify({thrown: quiet.thrown, thrownCall: quiet.thrownCall}));
     }
     // cooperativeGestures, as in MapLibre GL JS 6.17: a plain wheel and one finger leave the map to the page and show the hint;
     // Ctrl + wheel (⌘ on a Mac) zooms; disable() gives the gestures back.
@@ -1989,6 +1989,55 @@ for (const mode of ['main', 'worker']) {
         check('[main] maplibre-compat: Marker._map/_lngLat, Map._controls/version, FullscreenControl events, Point and MapLibreMap exist (#254)',
             r.sameMap && r.before && r.map && r.lngLat === '3,4' && r.controlFc && r.version && r.events === 'start:true,end'
             && r.point === '5,4,3,6,2,5,true,3', JSON.stringify(r));
+    }
+    if (mode === 'main') {
+        // #42: the option `locale` of the compat entry names the controls and the hint of cooperativeGestures with the
+        // keys of MapLibre GL JS; a key that is missing keeps MapLibre's English text. Without the Fullscreen API
+        // (Safari on iPhone), FullscreenControl falls back to the class `maplibregl-pseudo-fullscreen`.
+        const r = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), wait = ms => new Promise(res => setTimeout(res, ms));
+            const warnings = [], warn = console.warn;
+            console.warn = (...a) => warnings.push(a.join(' '));
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:0;top:0;width:300px;height:200px'}));
+            // (An own property hides the Fullscreen API of the prototype, as on an iPhone.)
+            el.requestFullscreen = undefined;
+            const locale = {'NavigationControl.ZoomIn': 'Zoom avant', 'FullscreenControl.Enter': 'Plein écran', 'FullscreenControl.Exit': 'Quitter le plein écran',
+                'ScaleControl.Kilometers': 'kilomètres', 'AttributionControl.ToggleAttribution': 'Attributions', 'CooperativeGesturesHandler.WindowsHelpText': 'Ctrl + molette', 'CooperativeGesturesHandler.MacHelpText': '⌘ + molette', 'CooperativeGesturesHandler.MobileHelpText': 'Deux doigts'};
+            const m = new mod.Map({container: el, renderer: 'main', locale, cooperativeGestures: true, center: [0, 0], zoom: 2, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            const nav = new mod.NavigationControl(), scale = new mod.ScaleControl(), fc = new mod.FullscreenControl(), events = [];
+            m.addControl(nav); m.addControl(scale); m.addControl(fc);
+            fc.on('fullscreenstart', () => events.push('start')).on('fullscreenend', () => events.push('end'));
+            await new Promise(res => m.once('load', res));
+            await wait(100);
+            const q = s => el.querySelector(s), fb = q('.maplibregl-ctrl-fullscreen');
+            const out = {zoomIn: q('.maplibregl-ctrl-zoom-in').title, zoomOut: q('.maplibregl-ctrl-zoom-out').title, compass: q('.maplibregl-ctrl-compass').title,
+                scale: q('.maplibregl-ctrl-scale').textContent, attrib: q('.maplibregl-ctrl-attrib-button')?.getAttribute('aria-label'), enter: fb.title, uiString: m._getUIString('Popup.Close')};
+            m.getCanvas().dispatchEvent(new WheelEvent('wheel', {deltaY: -100, clientX: 150, clientY: 100, bubbles: true, cancelable: true}));
+            out.hint = q('.maplibregl-cooperative-gesture-screen')?.textContent;
+            fb.click();
+            out.pseudo = el.classList.contains('maplibregl-pseudo-fullscreen') && el.classList.contains('map-jr-pseudo-fullscreen');
+            out.position = getComputedStyle(el).position;
+            out.exit = fb.title; out.pressed = fb.getAttribute('aria-pressed');
+            fb.click();
+            out.after = el.className.includes('pseudo-fullscreen'); out.enterAgain = fb.title; out.events = events.join();
+            out.warnings = warnings.filter(w => /locale/.test(w));
+            console.warn = warn;
+            m.remove(); el.remove();
+            // A map of the main API keeps its own English names.
+            const core = await import('/dist/map-jr-gl.js');
+            const el2 = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:0;top:0;width:300px;height:200px'}));
+            const {navigation} = await import('/dist/controls.js');
+            const m2 = core.createMap(el2, {style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, controls: [navigation()]});
+            for (let i = 0; i < 50 && !el2.querySelector('.maplibregl-ctrl-compass'); i++) await wait(100);
+            out.coreCompass = el2.querySelector('.maplibregl-ctrl-compass')?.title;
+            m2.destroy(); el2.remove();
+            return out;
+        });
+        check('[main] maplibre-compat: locale names the controls and the hint of cooperativeGestures; FullscreenControl falls back to pseudo fullscreen without the Fullscreen API (#42)',
+            r.zoomIn === 'Zoom avant' && r.zoomOut === 'Zoom out' && r.compass === 'Reset bearing to north' && /kilomètres$/.test(r.scale) && r.attrib === 'Attributions'
+            && r.enter === 'Plein écran' && r.uiString === undefined && ['Ctrl + molette', '⌘ + molette', 'Deux doigts'].includes(r.hint)
+            && r.pseudo && r.position === 'fixed' && r.exit === 'Quitter le plein écran' && r.pressed === 'true' && !r.after && r.enterAgain === 'Plein écran' && r.events === 'start,end'
+            && r.warnings.length === 0 && r.coreCompass === 'Reset bearing to north', JSON.stringify(r));
     }
     if (mode === 'main') {
         // #246: an animated move and fitBounds end where jumpTo would, inside maxBounds and the edge of the world.

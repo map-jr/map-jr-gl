@@ -16,6 +16,11 @@ export type ControlPosition = 'top-left' | 'top-right' | 'bottom-left' | 'bottom
  * Class names. The library styles and finds its elements by `map-jr-*` names. Each element also gets the matching
  * `maplibregl-*` name, so stylesheets and plugins written for MapLibre GL JS continue to work.
  */
+/**
+ * The text of a UI string. A map of the compat entry has `_getUIString` (the `locale` option, with the keys of
+ * MapLibre GL JS); a map of the core uses the English text `text`.
+ */
+export const ui = (map: unknown, key: string, text: string): string => (map as {_getUIString?(key: string): string | undefined})._getUIString?.(key) ?? text;
 export const cls = (...names: string[]) => names.map(n => `map-jr-${n} maplibregl-${n}`).join(' ');
 /** Adds or removes a class under both names (see `cls`). */
 export function toggleClass(el: Element, name: string, on?: boolean): boolean {
@@ -43,6 +48,7 @@ export const CONTROL_CSS = `
 :where(.map-jr-fills) :where(.map-jr-ctrl-bottom-right){padding-bottom:env(safe-area-inset-bottom)}
 :where(.map-jr-ctrl-bottom-right>.map-jr-ctrl:not(.map-jr-ctrl-attrib)){margin-right:max(10px,env(safe-area-inset-right))}
 :where(.map-jr-unavailable){position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:1em;text-align:center;font:14px/1.4 system-ui,sans-serif;color:#555;background:#f2f2f2}
+.map-jr-pseudo-fullscreen{position:fixed!important;width:100%!important;height:100%!important;top:0!important;left:0!important;z-index:99999}
 :where(.map-jr-ctrl-attrib){background:var(--map-attribution-background,rgba(255,255,255,.75));color:var(--map-control-color,#333);font-size:11px;line-height:1.4;padding:2px 6px;padding-right:max(6px,env(safe-area-inset-right));border-top-left-radius:4px;overflow-wrap:anywhere}
 :where(.map-jr-ctrl-attrib a){color:inherit}
 :where(.map-jr-ctrl-attrib.map-jr-compact){display:flex;align-items:center;min-height:28px;padding:0 28px 0 0;margin:0 max(10px,env(safe-area-inset-right)) 10px 0;border-radius:14px;background:var(--map-control-background,#fff);box-shadow:0 0 0 1.5px rgba(0,0,0,.12)}
@@ -94,8 +100,8 @@ export class AttributionControl implements Control {
         const el = this.el = document.createElement('div'), inner = document.createElement('div');
         el.className = cls('ctrl', 'ctrl-attrib');
         inner.className = cls('ctrl-attrib-inner');
-        const toggle = Object.assign(document.createElement('button'), {type: 'button', className: cls('ctrl-attrib-button'), textContent: 'i', title: 'Map data credits'});
-        toggle.setAttribute('aria-label', 'Toggle map data credits');
+        const toggle = Object.assign(document.createElement('button'), {type: 'button', className: cls('ctrl-attrib-button'), textContent: 'i', title: ui(map, 'AttributionControl.ToggleAttribution', 'Map data credits')});
+        toggle.setAttribute('aria-label', ui(map, 'AttributionControl.ToggleAttribution', 'Toggle map data credits'));
         toggle.addEventListener('click', () => { toggle.setAttribute('aria-expanded', String(toggleClass(el, 'compact-show'))); this.update(); });
         el.append(toggle, inner);
         let interacted = false;

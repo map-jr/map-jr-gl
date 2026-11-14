@@ -78,6 +78,16 @@ export class Point {
 export class Map extends CoreMap {
     /** As in MapLibre GL JS: with it on, the wheel zooms only with Ctrl (⌘ on a Mac), and one finger scrolls the page. */
     readonly cooperativeGestures = cooperativeGestures(this);
+    /**
+     * The text of a UI string from the option `locale`, with the keys of MapLibre GL JS. For a key that the option does
+     * not have it returns undefined, and the control uses its own English text.
+     * The controls and the hint of `cooperativeGestures` call it.
+     */
+    _getUIString(key: string): string | undefined {
+        const text = this.uiLocale?.[key];
+        return typeof text == 'string' ? text : undefined;
+    }
+    private uiLocale?: Record<string, unknown>;
     /** As in MapLibre, a `Point` with methods (`dist`, `sub`, …), not a plain object. */
     override project(lngLat: LngLatLike) { return Point.convert(super.project(lngLat)); }
     /** As in MapLibre GL JS: with no listener, `once` returns a promise for the event; a layer id makes it a layer event. */
@@ -150,7 +160,8 @@ export class Map extends CoreMap {
         this.getCanvas().classList.add('maplibregl-canvas');
         if (o.maxBounds) this.setMaxBounds(o.maxBounds);
         if (o.cooperativeGestures) this.cooperativeGestures.enable();
-        this.unsupported('The option locale', !o.locale);
+        if (o.locale != null && typeof o.locale != 'object') console.warn('[map-jr-gl] Map: the option locale is not an object. Pass an object such as {"NavigationControl.ZoomIn": "Zoom avant"}.');
+        else this.uiLocale = o.locale;
         this.unsupported('The option projection', !o.projection || (o.projection.type ?? o.projection) === 'mercator');
         this.unsupported('The option renderWorldCopies: false', o.renderWorldCopies !== false);
         this.unsupported('The option canvasContextAttributes (but for antialias)', !context || !Object.keys(context).some(k => k !== 'antialias'));
