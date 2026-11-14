@@ -109,13 +109,18 @@ export class ClusterIndex {
         if (!n) throw new Error('No cluster with the specified id.');
         return n.children!.map(c => this.toGeoJSON(c));
     }
-    /** The points of a cluster. */
+    /** The points of a cluster. As in supercluster, the walk stops only when the result has exactly `limit` points, so -1, 0 and Infinity return all of them. */
     leaves(id: number, limit = 10, offset = 0) {
         const n = this.byId.get(id), out: ClusterNode[] = [];
         if (!n) throw new Error('No cluster with the specified id.');
-        const walk = (m: ClusterNode) => { if (out.length >= offset + limit) return; if (m.children) m.children.forEach(walk); else out.push(m); };
+        let skipped = 0;
+        const walk = (m: ClusterNode): boolean => {
+            if (m.children) return m.children.some(walk);
+            if (skipped < offset) skipped++; else out.push(m);
+            return out.length === limit;
+        };
         walk(n);
-        return out.slice(offset, offset + limit).map(c => this.toGeoJSON(c));
+        return out.map(c => this.toGeoJSON(c));
     }
 }
 
