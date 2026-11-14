@@ -23,7 +23,10 @@ yet. It applies to the two entries (`@map-jr/map-jr-gl` and `@map-jr/map-jr-gl/m
   (`@map-jr/map-jr-gl/maplibre-compat`): these are elements of the page.
 - The compass resets the bearing with a click. You cannot drag it to rotate the map. (Reported in the issue below; not checked again for this document.)
 - Shift with an arrow key moves the map. In MapLibre GL JS it rotates and tilts the map.
-- On a page with `dir="rtl"`, the scale control shows the unit before the number. (Reported in the issue below; not checked again for this document.)
+- On a page with `dir="rtl"`, the scale control shows the unit to the left of the number (for example "km 100"),
+  because the browser orders the label by the direction of the page. MapLibre GL JS 6.17.0 does the same: its
+  scale control and its CSS have no rule for right-to-left pages. To show "100 km", set the direction of the control
+  with the CSS rule `.map-jr-ctrl-scale { direction: ltr; }`.
 - The library has no styles for `forced-colors` and `prefers-contrast`.
 - A popup with `closeButton: false` and no link, button or form field in its content does not take the focus.
   The focus stays on the marker.

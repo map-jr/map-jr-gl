@@ -641,6 +641,21 @@ test('GeoJSON clusters: points join at low zoom and divide at the expansion zoom
     assert.equal(src.clusters!.children(cluster.properties.cluster_id).length, 2);
     // promoteId: a property becomes the id of the feature.
     assert.equal(prepareSource(data, {promoteId: 'n'}).features[2].id, 4);
+    // The object form names the one layer of a GeoJSON source, as in MapLibre GL JS (#294).
+    assert.equal(prepareSource(data, {promoteId: {_geojsonTileLayer: 'n'}}).features[2].id, 4);
+});
+
+test('promoteId on a vector source warns once for the source object (#207)', async () => {
+    const {resolveStyle} = await import('../../src/style.ts');
+    const warn = console.warn, seen: string[] = [];
+    console.warn = (m: string) => { seen.push(m); };
+    try {
+        const style = {version: 8, sources: {areas: {type: 'vector', tiles: ['https://example.com/{z}/{x}/{y}.pbf'], promoteId: 'id'}}, layers: []};
+        await resolveStyle(style);
+        await resolveStyle(style);
+    } finally { console.warn = warn; }
+    assert.equal(seen.length, 1);
+    assert.match(seen[0], /^\[map-jr-gl\] The source "areas": "promoteId" has no effect on vector sources/);
 });
 
 test('rich text: a section of format with a font scale is wider or narrower, and makes its line taller', async () => {

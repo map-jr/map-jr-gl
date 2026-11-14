@@ -25,6 +25,7 @@ export interface GeoJSONOptions {
     cluster?: boolean; clusterRadius?: number; clusterMaxZoom?: number; clusterMinPoints?: number;
     /** For each name: how to combine values (an operator or an expression with `accumulated`), and the value of one point. */
     clusterProperties?: Record<string, [unknown, unknown]>;
+    /** The property that is the id. In the object form, MapLibre reads the name of the one layer of a GeoJSON source, `_geojsonTileLayer`. */
     promoteId?: string | Record<string, string>;
     /** Each feature's id is its index in the data, replacing any id (as in MapLibre). */
     generateId?: boolean;
@@ -129,7 +130,7 @@ export class ClusterIndex {
 /** Features and, with `cluster`, the cluster index of a GeoJSON source. */
 export interface PreparedSource { features: Prepared[]; clusters?: ClusterIndex; points?: Prepared[] }
 export function prepareSource(data: unknown, o: GeoJSONOptions = {}, sourceMaxZoom = 18): PreparedSource {
-    let all = prepareGeoJSON(data, typeof o.promoteId === 'string' ? o.promoteId : undefined, o.generateId);
+    let all = prepareGeoJSON(data, typeof o.promoteId === 'string' ? o.promoteId : o.promoteId?._geojsonTileLayer, o.generateId);
     const keep = o.filter ? compileFilter(o.filter) : null;
     if (keep) all = all.filter(f => keep({zoom: 0, f: f as any}));
     if (!o.cluster) return {features: all};

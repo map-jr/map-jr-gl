@@ -561,8 +561,17 @@ for (const mode of ['main', 'worker']) {
         const one = m.getFeatureState(f);
         m.removeFeatureState({source: 'omt'});
         await new Promise(r => setTimeout(r, 400));
-        return {both, one, none: m.getFeatureState(f), unread, read, idle, sent};
+        // A text id on a vector source has no effect: one warning (#207). A string of digits gives no warning.
+        const warn = console.warn, warned = [];
+        console.warn = msg => warned.push(String(msg));
+        m.setFeatureState({source: 'omt', sourceLayer: 'building', id: '7'}, {hover: true});
+        m.setFeatureState({source: 'omt', sourceLayer: 'building', id: 'abc'}, {hover: true});
+        m.setFeatureState({source: 'omt', sourceLayer: 'building', id: 'def'}, {hover: true});
+        console.warn = warn;
+        m.removeFeatureState({source: 'omt'});
+        return {both, one, none: m.getFeatureState(f), unread, read, idle, sent, warned};
     });
+    check(`[${mode}] setFeatureState with a text id on a vector source warns once`, fs.warned.length === 1 && /setFeatureState\(\): the source "omt"/.test(fs.warned[0]), JSON.stringify(fs.warned));
     check(`[${mode}] feature state is set, merged and removed, and the map is idle after a state that no layer reads`, fs.both.hover === true && fs.both.picked === 1 && !('hover' in fs.one) && fs.one.picked === 1 && Object.keys(fs.none).length === 0 && fs.idle, JSON.stringify(fs));
     if (mode === 'main') check('[main] setFeatureState builds tiles again only when a layer of the source reads feature state', fs.unread === 0 && fs.read > 0, JSON.stringify({unread: fs.unread, read: fs.read}));
     if (mode === 'main') check('[main] setFeatureState sends the tile workers only the state that changed', fs.sent.length > 0 && fs.sent[0] < 200, JSON.stringify(fs.sent));
@@ -739,6 +748,20 @@ for (const mode of ['main', 'worker']) {
     }, mode);
     check(`[${mode}] addProtocol: the controller is aborted by a newer setData, by a setData that drops the diffs of updateData, and by remove()`,
         aborts.setData === true && aborts.name === 'slow://b' && aborts.updateData === true && aborts.remove === true, JSON.stringify(aborts));
+
+    // A map made in a container that is not yet in the page: the container is positioned and clips once it is attached (#201).
+    const detached = await page.evaluate(async mode => {
+        const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+        const el = Object.assign(document.createElement('div'), {style: 'width:100px;height:80px'});
+        const m = new mod.Map({container: el, renderer: mode, attributionControl: false, center: [0, 0], zoom: 1, style: {version: 8, sources: {}, layers: []}});
+        document.body.appendChild(el);
+        const s = getComputedStyle(el), r = {position: s.position, overflow: s.overflow};
+        m.remove();
+        r.after = el.classList.contains('map-jr-map'); el.remove();
+        return r;
+    }, mode);
+    check(`[${mode}] a map made in a detached container gets position: relative and overflow: hidden once attached`,
+        detached.position === 'relative' && detached.overflow === 'hidden' && !detached.after, JSON.stringify(detached));
 
     // A lost WebGL context (phones take it away to save memory): the map starts again with the same view and data.
     // The context can only be reached from the page when the engine is on the main thread.
@@ -1533,17 +1556,19 @@ for (const mode of ['main', 'worker']) {
             const seen = [], asked = [], warn = console.warn;
             console.warn = () => {}; // (the map says that it uses the main thread)
             const m = new mod.Map({container: el, style: '/style.json', center: [-74.0065, 40.7085], zoom: 14, attributionControl: false, createWorker: () => new Worker(url),
-                transformRequest: (u, kind) => { asked.push(kind); return {url: u}; }});
+                transformRequest: (u, kind) => { asked.push(kind === 'Tile' && /\/14\//.test(u) ? 'view' : kind); return {url: u}; }});
             for (const type of ['load', 'idle', 'error']) m.on(type, () => seen.push(type));
             // A change of the style at once: it goes to the worker that fails.
             m.once('style.load', () => m.addLayer({id: 'fall-back-test', type: 'background', paint: {'background-color': '#f0f', 'background-opacity': 0.01}}));
             await new Promise(r => { m.once('idle', r); setTimeout(r, 12000); });
             console.warn = warn;
-            const out = {renderer: m.renderer, seen: [...new Set(seen)], tiles: asked.filter(k => k === 'Tile').length, layer: (await Promise.race([m.queryRenderedFeatures({layers: ['building']}), new Promise(r => setTimeout(() => r([]), 4000))])).length};
+            const out = {renderer: m.renderer, seen: [...new Set(seen)], tiles: asked.filter(k => k === 'view').length, layer: (await Promise.race([m.queryRenderedFeatures({layers: ['building']}), new Promise(r => setTimeout(() => r([]), 4000))])).length};
             m.remove(); el.remove();
             return out;
         });
-        check('[worker] a worker without WebGL2: the map uses the main thread, load and idle fire, and transformRequest sees the tile requests',
+        // (Only the tiles of the view count: the coarse overview tiles come later and could hide a tile of the view that
+        // the new engine fetched before it had the rules for requests; #355.)
+        check('[worker] a worker without WebGL2: the map uses the main thread, load and idle fire, and transformRequest sees the tile requests of the view',
             fell.renderer === 'main' && fell.seen.includes('load') && fell.seen.includes('idle') && !fell.seen.includes('error') && fell.tiles > 0 && fell.layer > 0, JSON.stringify(fell));
     }
     // The same with the engine chunk delayed by 6 seconds, on a page of its own (the chunk is not in its module cache).
@@ -1711,6 +1736,21 @@ for (const mode of ['main', 'worker']) {
         });
         const want = {NavigationControl: 'top-right', GeolocateControl: 'top-right', FullscreenControl: 'top-right', TerrainControl: 'top-right', GlobeControl: 'top-right', ScaleControl: 'bottom-left', AttributionControl: 'bottom-right', LogoControl: 'bottom-left'};
         check('[main] maplibre-compat: each control class added without a position goes to the corner that MapLibre GL JS uses', JSON.stringify(corners) === JSON.stringify(want), JSON.stringify(corners));
+    }
+    // ScaleControl.setUnit() changes the unit, and 'nautical' shows nautical miles, as in MapLibre GL JS (#204).
+    if (mode === 'main') {
+        const texts = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+            const m = new mod.Map({container: el, renderer: 'main', center: [0, 0], zoom: 2, attributionControl: false, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            const c = new mod.ScaleControl({unit: 'nautical'});
+            m.addControl(c);
+            const bar = el.querySelector('.map-jr-ctrl-scale'), out = [bar.textContent];
+            for (const unit of ['imperial', 'metric', 'nautical']) { c.setUnit(unit); out.push(bar.textContent); }
+            m.remove(); el.remove();
+            return out;
+        }).catch(e => [String(e)]);
+        check('[main] maplibre-compat: ScaleControl takes the unit nautical and setUnit() changes the unit', JSON.stringify(texts) === JSON.stringify(['1000 nm', '1000 mi', '1000 km', '1000 nm']), JSON.stringify(texts));
     }
     // GeolocateControl is an event emitter, as react-map-gl 8 expects (#194), with a mocked navigator.geolocation.
     if (mode === 'main') {

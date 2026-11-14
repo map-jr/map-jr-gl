@@ -187,8 +187,10 @@ export class Map {
         if (c.querySelector(':scope > .map-jr-canvas')) console.warn('[map-jr-gl] The container already has a map. Remove that map first: remove(), or destroy() in the main API.');
         this.container = c;
         (this as any).__v_skip = true; // (Vue does not make the map reactive: its proxies cannot be posted, #242)
-        if (getComputedStyle(c).position === 'static') c.style.position = 'relative';
-        if (getComputedStyle(c).overflow === 'visible') c.style.overflow = 'hidden'; // a frame from before a shrink must not spill out
+        // As in MapLibre GL JS, a class gives the container `position: relative` and `overflow: hidden` (a frame from before
+        // a shrink must not spill out). A style rule applies also to a container that is attached to the page later (#201).
+        const mapClass = cls('map').split(' ');
+        c.classList.add(...mapClass);
         this.canvas = document.createElement('canvas');
         this.canvas.className = 'map-jr-canvas';
         // `object-fit: none` shows the canvas's current frame unscaled and centred, whatever size that frame is. With
@@ -234,6 +236,7 @@ export class Map {
         protocolListeners.add(this.sendRequestRules);
         this.sendRequestRules(); // before the style, so that the first requests follow the rules
         this.cleanup.push(() => protocolListeners.delete(this.sendRequestRules));
+        this.cleanup.push(() => c.classList.remove(...mapClass));
         // As in MapLibre GL JS, the four corners of the controls exist from the start: apps query them before they add a control.
         this.styles();
         for (const pos of ['top-left', 'top-right', 'bottom-left', 'bottom-right'] as const) {
@@ -316,6 +319,9 @@ export class Map {
             style: this.resolved, width: tr.width, height: tr.height, dpr: this.dpr, fontFamily: o.fontFamily ?? DEFAULT_FONT, fonts: o.fonts,
             center: [tr.lng, tr.lat] as [number, number], zoom: tr.zoom, bearing: tr.bearing, pitch: tr.pitch,
             minZoom: tr.minZoom, maxZoom: tr.maxZoom, maxPitch: tr.maxPitch, antialias: o.antialias,
+            // (A new engine, after a fall back or a restart too, gets the rules with the style: otherwise its first tiles
+            // would be fetched before `resend` sends them, without `transformRequest`; #355.)
+            requests: this.rulesSent ? this.requestRules() : undefined,
         };
 
         const tiles = await pool;
@@ -667,11 +673,12 @@ export class Map {
     setTransformRequest(fn: RequestTransform | null) { this.transformRequest = fn; this.sendRequestRules(); return this; }
     /** Tells the engine which requests need a question to this thread. */
     private sendRequestRules = () => {
-        const rules = {transform: !!this.transformRequest, protocols: [...protocols.keys()]};
+        const rules = this.requestRules();
         // (Nothing is sent to a map that has never had a rule: most maps have none.)
         if (rules.transform || rules.protocols.length || this.rulesSent) { this.rulesSent = true; this.post({type: 'requests', rules}); }
     };
     private rulesSent = false;
+    private requestRules = () => ({transform: !!this.transformRequest, protocols: [...protocols.keys()]});
     /** What to do with one request: the transform first, then a custom protocol if the URL has one. */
     private async answer(url: string, kind: string, signal?: AbortSignal | null): Promise<RequestAnswer> {
         const t = this.transformRequest?.(url, kind), to = t?.url ?? url, protocol = protocols.get(to.slice(0, to.indexOf(':')));
@@ -953,6 +960,7 @@ export class Map {
     getStyle() { return this.rawStyle ? plain(this.rawStyle) : undefined; }
     // ---- feature state ----
     private featureStates: Record<string, Record<string, Record<string, unknown>>> = {};
+    private warnedTextId = false;
     /** Sends the states of the features in `keys` that changed; `null` for a feature that has no state any more. */
     private sendFeatureState(source: string, keys: string[]) {
         const states = this.featureStates[source], diff: Record<string, Record<string, unknown> | null> = {};
@@ -965,6 +973,11 @@ export class Map {
      * selection highlights). The feature needs an `id`. Tiles showing the source are rebuilt in the background.
      */
     setFeatureState(feature: {source: string; sourceLayer?: string; id: number | string}, state: Record<string, unknown>) {
+        // A string of digits gives the same key as the number, so only other text has no effect.
+        if (typeof feature.id === 'string' && !this.warnedTextId && isNaN(+feature.id) && /^(vector|raster)/.test(this.rawStyle?.sources[feature.source]?.type)) {
+            this.warnedTextId = true;
+            console.warn(`[map-jr-gl] setFeatureState(): the source "${feature.source}" is not GeoJSON, and the id "${feature.id}" is a string. Feature state on a vector source needs the numeric id of the feature in the tile.`);
+        }
         const states = this.featureStates[feature.source] ??= {}, key = `${feature.sourceLayer ?? ''}|${feature.id}`;
         states[key] = {...states[key], ...state};
         return this.sendFeatureState(feature.source, [key]);
@@ -1686,7 +1699,8 @@ function premultiply(px: ArrayLike<number>): Uint8Array {
 }
 
 /** Applies one diff of `updateData` to GeoJSON data and returns a new FeatureCollection. */
-function applyDiff(data: any, diff: GeoJSONDiff, key?: string) {
+function applyDiff(data: any, diff: GeoJSONDiff, promoteId?: string | Record<string, string>) {
+    const key = typeof promoteId === 'string' ? promoteId : promoteId?._geojsonTileLayer;
     const idOf = (f: any) => key ? f.properties?.[key] : f.id;
     let features: any[] = diff.removeAll ? [] : data?.type === 'FeatureCollection' ? data.features : data?.type === 'Feature' ? [data] : [];
     const added = new Set((diff.add ?? []).map(idOf));

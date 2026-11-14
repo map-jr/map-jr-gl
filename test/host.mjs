@@ -1059,7 +1059,8 @@ for (const [entry, renderer] of [['main API', 'worker'], ['main API', 'main'], [
                 const lib = await import('/dist/map-jr-gl-maplibre-compat.js');
                 supported = lib.supported() || lib.default.supported();
                 const map = new lib.Map({container: el, style, center: [-74.0065, 40.7085], zoom: 14.3, attributionControl: false, createWorker});
-                map.on('error', e => errors.push(e.error.message));
+                // (#205: the error is a GPUInitializationError, which the module exports, as in MapLibre GL JS.)
+                map.on('error', e => errors.push(e.error.message, ...(e.error instanceof lib.GPUInitializationError && e.error.name === 'GPUInitializationError' && new lib.GPUInitializationError({}, null) instanceof Error ? [] : ['not a GPUInitializationError'])));
                 state = () => ({error: errors[0], loaded: map.loaded()});
                 destroy = () => map.remove();
             }

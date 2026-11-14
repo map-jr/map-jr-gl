@@ -366,7 +366,7 @@ it makes the map. A control appears a moment after `createMap` or `update` adds 
 | Function | Control | Options (each also has `position`) |
 |---|---|---|
 | `navigation` | Zoom buttons and a compass | `showZoom`, `showCompass` |
-| `scale` | A scale bar | `maxWidth`, `unit` (`'metric'` or `'imperial'`) |
+| `scale` | A scale bar | `maxWidth`, `unit` (`'metric'`, the default; `'imperial'`; or `'nautical'`) |
 | `fullscreen` | A button for the full screen | |
 | `geolocate` | A button that moves the map to the position of the user | `zoom`, `positionOptions` |
 | `terrain` | A button that turns 3D terrain on and off | `source` (required), `exaggeration` |

@@ -19,6 +19,8 @@ export type {FontSource} from './style.ts';
 export interface EngineOptions extends CameraOptions {
     style: ResolvedStyle; width: number; height: number; dpr: number; fontFamily: string; fonts?: FontSource[];
     minZoom?: number; maxZoom?: number; maxPitch?: number; antialias?: boolean;
+    /** The page's rules for requests at the start, so that the first tiles follow them too (#355). */
+    requests?: RequestRules;
 }
 export interface FeatureQuery { radius: number; zoom?: number; sources?: string[]; sourceLayers?: string[]; filter?: unknown; geometry?: boolean }
 export type Command =
@@ -233,6 +235,7 @@ export class Engine {
         this.renderer.resize(o.width, o.height, o.dpr);
         Object.assign(this.tr, {minZoom: o.minZoom ?? -2, maxZoom: o.maxZoom ?? 22, maxPitch: o.maxPitch ?? 60});
         this.tr.set(o.center, o.zoom, o.bearing, o.pitch);
+        if (o.requests) { this.rules = o.requests; for (const b of backends) b.setRequests(o.requests, this.ask); }
         this.setStyle(o.style, true);
         if (o.fonts?.length) this.loadFonts(o.fonts);
     }
