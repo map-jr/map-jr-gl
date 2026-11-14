@@ -8,13 +8,26 @@ export type {QueriedFeature} from './query.ts';
 export type {LngLatLike} from './geo.ts';
 export {AttributionControl, type Control, type ControlPosition} from './controls.ts';
 export {NavigationControl, ScaleControl, GeolocateControl, TerrainControl, LogoControl} from './controls-more.ts';
-export {Popup, type MarkerOptions, type PopupOptions} from './overlays.ts';
-import {Marker as CoreMarker} from './overlays.ts';
+export type {MarkerOptions, PopupOptions} from './overlays.ts';
+import {Marker as CoreMarker, Popup as CorePopup, type MarkerOptions, type PopupOptions} from './overlays.ts';
+/** Options of MapLibre GL JS that `Marker` and `Popup` accept with no effect: each warns once per page. */
+const noEffect: Record<string, 1> = {};
+const accepted = (type: string, options: Record<string, unknown>, names: string[]) => {
+    for (const n of names) if (options[n] !== undefined && !noEffect[n]) {
+        noEffect[n] = 1;
+        console.warn(`[map-jr-gl] ${type}: the option ${n} has no effect. Remove it; see "What is different" in docs/maplibre-compatibility.md.`);
+    }
+};
+/** The popup of the core. `focusAfterOpen` and `locationOccludedOpacity` of MapLibre GL JS warn once. */
+export class Popup extends CorePopup {
+    constructor(options: PopupOptions = {}) { super(options); accepted('Popup', options as any, ['focusAfterOpen', 'locationOccludedOpacity']); }
+}
 import {FullscreenControl as CoreFullscreen} from './controls-more.ts';
 import {Evented} from './evented.ts';
 import type {Map as CoreMap} from './map.ts';
 /** The marker of the core with the private members `_map` and `_lngLat` that wrappers for MapLibre GL JS read. */
 export class Marker extends CoreMarker {
+    constructor(options: MarkerOptions = {}) { super(options); accepted('Marker', options as any, ['opacityWhenCovered']); }
     get _map() { return this.map; }
     get _lngLat() { return this.getLngLat(); }
     /** The offset as a `Point`, as in MapLibre GL JS. */
@@ -81,7 +94,6 @@ import {LngLat, LngLatBounds} from './lnglat.ts';
 import {addProtocol, removeProtocol} from './protocols.ts';
 import {AttributionControl} from './controls.ts';
 import {NavigationControl, ScaleControl, GeolocateControl, TerrainControl, LogoControl} from './controls-more.ts';
-import {Popup} from './overlays.ts';
 import {GPUInitializationError} from './gpu-error.ts';
 export default {
     GPUInitializationError,

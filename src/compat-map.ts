@@ -156,6 +156,9 @@ export class Map extends CoreMap {
         this.unsupported('The option canvasContextAttributes (but for antialias)', !context || !Object.keys(context).some(k => k !== 'antialias'));
         this.unsupported('The option logoPosition', !o.logoPosition);
         this.unsupported('The option validate', o.validate === undefined);
+        // (Labels here always fade for a fixed time, and a drag with the right button always turns and tilts the map.)
+        this.unsupported('The option fadeDuration', o.fadeDuration === undefined || o.fadeDuration === 300);
+        this.unsupported('The option pitchWithRotate: false', o.pitchWithRotate !== false);
     }
 
     // ---- Changes of the style that MapLibre GL JS refuses ----
