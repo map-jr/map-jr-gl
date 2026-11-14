@@ -56,7 +56,7 @@ for (const renderer of ['worker', 'main']) {
             const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), start = t.host.state.get().view;
             let low = 99;
             const off = t.host.state.subscribe(s => s.view.zoom, z => { low = Math.min(low, z); });
-            t.host.moveTo({center: [-73.9, 40.75], zoom: start.zoom, fly: {speed: 3}});
+            t.host.moveTo({center: [-73.9, 40.75], zoom: start.zoom, fly: {speed: 0.6}});
             await wait(200);
             for (let i = 0; i < 100 && t.host.state.get().moving; i++) await wait(100);
             off();
