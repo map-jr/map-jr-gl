@@ -8,7 +8,8 @@
 //   4. Each built file that names a source map has that map in the tarball, and the map points at the right lines of
 //      src/: each string of ten or more plain characters in a built file is looked up through the map, and the text
 //      must be on that line of the source file.
-//   5. An application (test/consumer) that has the tarball in its node_modules builds with Vite in production mode.
+//   5. An application (test/consumer) that has the tarball in its node_modules builds with Vite in production mode,
+//      and its client build does not contain the server renderer.
 import {execFileSync} from 'node:child_process';
 import {cpSync, mkdirSync, readFileSync, rmSync, statSync} from 'node:fs';
 import {SourceMap} from 'node:module';
@@ -41,11 +42,14 @@ try { run('pnpm', ['exec', 'attw', tarball, '--profile', 'esm-only', '--format',
     try {
         const {build} = await import('vite');
         const result = await build({root: app, configFile: false, logLevel: 'error', mode: 'production', build: {outDir: path.join(app, 'dist'), emptyOutDir: true}});
-        const code = [result].flat().flatMap(r => r.output).filter(o => o.type === 'chunk').map(o => o.code).join('\n');
+        const chunks = [result].flat().flatMap(r => r.output).filter(o => o.type === 'chunk'), code = chunks.map(o => o.code).join('\n');
+        // (The Vue adapter loads the server renderer only on a server: a client build must not emit it as a chunk.)
+        const serverChunk = chunks.find(o => Object.keys(o.modules).some(m => /[\\/]dist[\\/]server\.js$/.test(m)));
+        if (serverChunk) failures.push(`the client build of test/consumer emits the server renderer as ${serverChunk.fileName}: the Vue adapter must import it only on a server`);
         // (The built application contains the library, not a reference to a file outside it, and it is the production build.)
         if (!code.includes('[map-jr-gl]')) failures.push('the application of test/consumer builds, but its files do not contain the library');
         else if (/map-jr-gl-mistakes/.test(code)) failures.push('the application of test/consumer got the development build of the library in a production build');
-        else console.log(`ok    test/consumer imports ${pkg.name} and ${pkg.name}/maplibre-compat from the tarball and builds with Vite (${(code.length / 1024).toFixed(0)} KB of scripts)`);
+        else console.log(`ok    test/consumer imports ${pkg.name}, ${pkg.name}/maplibre-compat and ${pkg.name}/vue from the tarball and builds with Vite (${(code.length / 1024).toFixed(0)} KB of scripts)`);
     } catch (e) { failures.push(`the application of test/consumer does not build against the tarball: ${String(e.message ?? e).split('\n').slice(0, 3).join(' ')}`); }
 }
 

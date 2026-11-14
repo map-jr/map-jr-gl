@@ -343,7 +343,10 @@ const MapJrComponent = defineComponent({
         // when the page came from the server, they are read from the element that is there already: the component then
         // renders the same content, and Vue finds no difference. The map removes them when it has drawn its first frame.
         const first = shallowRef((getCurrentInstance()?.vnode.el as HTMLElement | null)?.firstElementChild?.innerHTML ?? '');
-        onServerPrefetch(async () => {
+        // (Vite writes `false` for `import.meta.env.SSR` in a client build, which then drops this code and does not emit
+        // the server renderer as a file. Without Vite, `import.meta.env` is undefined and the server render runs.)
+        // @ts-ignore: `import.meta.env` is Vite's, and it must stay written out in full for Vite to replace it
+        if (!import.meta.env || import.meta.env.SSR) onServerPrefetch(async () => {
             if (!props.ssr) return;
             const view = {...props.initialView, ...props.view}, fit = !props.view && props.initialView?.bounds, o = props.ssr === true ? {} : props.ssr;
             // (By the name of the package, so that this file does not contain the server renderer, and so that a tool that
