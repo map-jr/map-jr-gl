@@ -66,8 +66,8 @@ The library is new. Read [MapLibre compatibility](docs/maplibre-compatibility.md
 
 ## Install
 
-The name of the package is `@map-jr/map-jr-gl`. Version 0.2.0 is the first version, and it is not on npm yet. When
-it is, install it with your package manager:
+The package is `@map-jr/map-jr-gl` on npm ([npmjs.com/package/@map-jr/map-jr-gl](https://www.npmjs.com/package/@map-jr/map-jr-gl)).
+Install it with your package manager:
 
 ```bash
 npm install @map-jr/map-jr-gl

@@ -7,10 +7,10 @@ number, and its entry starts with a section "Breaking changes". See
 `#12` is a link to pull request 12. A change without a number comes from before 2026-11-11, when the repository had
 no pull requests.
 
-## 0.2.0 (not published yet)
+## 0.2.0 (2026-11-14)
 
-This is the first entry. It covers the repository from its first commit (2026-11-10) to 2026-11-12. The package is
-not on npm yet, and the repository has no tag for an earlier version.
+This is the first entry and the first version on npm. It covers the repository from its first commit (2026-11-10) to
+the commit 6777dfa, which has the tag `v0.2.0`.
 
 The name of the package is `@map-jr/map-jr-gl`
 ([issue 17](https://github.com/map-jr/map-jr-gl/issues/17)). Install it with `npm install @map-jr/map-jr-gl`.
