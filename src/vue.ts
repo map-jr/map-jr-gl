@@ -7,7 +7,7 @@
  */
 import {computed, defineComponent, getCurrentInstance, h, inject, provide, isProxy, isReactive, onBeforeUnmount, onMounted, onServerPrefetch, shallowRef, Teleport, toRaw, toValue, watch, type AllowedComponentProps, type ComponentCustomProps, type SetupContext, type SlotsType, type VNode, type VNodeProps, type ComputedRef, type MaybeRefOrGetter, type PropType, type ShallowRef} from 'vue';
 declare const __DEV__: boolean;
-import {createMap, type ControlSpec, type FeatureOptions, type FeaturePlace, type MapHost, type MapOverlay as Overlay, type OverlayOptions, type MapEvents, type MapPointer, type MapSpec, type MapState, type View, type ViewInput} from './host.ts';
+import type {ControlSpec, FeatureOptions, FeaturePlace, MapHost, MapOverlay as Overlay, OverlayOptions, MapEvents, MapPointer, MapSpec, MapState, View, ViewInput} from './host.ts';
 import type {SSROverrides} from './style.ts';
 import type {RenderedFeature} from './map.ts';
 import type {QueriedFeature} from './query.ts';
@@ -51,17 +51,21 @@ function markerData(data: unknown[]): unknown[] {
  */
 export function useMap(container: MaybeRefOrGetter<HTMLElement | null | undefined>, spec: MaybeRefOrGetter<MapSpec>): {host: ShallowRef<MapHost | null>; state: ShallowRef<MapState | null>} {
     const host = shallowRef<MapHost | null>(null), state = shallowRef<MapState | null>(null);
-    let stop: (() => void) | undefined;
-    onMounted(() => {
+    let stop: (() => void) | undefined, gone = false;
+    // (The map code loads here, with `import()`, so that a component that imports only `MapOverlay`, `MapImage` or
+    // `useMapHost` from this file does not load the map (#159).)
+    onMounted(async () => {
         const el = toValue(container);
         if (!el) return;
+        const {createMap} = await import('./host.ts');
+        if (gone) return;
         const made = host.value = createMap(el, unwrapped(toValue(spec)));
         state.value = made.state.get();
         stop = made.state.subscribe(s => { state.value = s; });
     });
     // (A new description object is a change. The fields are compared by the map, not by Vue.)
     watch(() => toValue(spec), next => host.value?.update(unwrapped(next)), {flush: 'post'});
-    onBeforeUnmount(() => { stop?.(); host.value?.destroy(); host.value = null; });
+    onBeforeUnmount(() => { gone = true; stop?.(); host.value?.destroy(); host.value = null; });
     return {host, state};
 }
 
