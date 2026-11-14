@@ -343,7 +343,9 @@ createMap(container, {
 ```
 
 Each function returns the description of a control. The map adds the control, and removes it when a later
-description does not have it. A page loads only the code of the controls that it imports.
+description does not have it. Importing the functions loads about 0.5 KB gzip. The code of the controls (one file
+for all of them) and of the map loads when the map adds its first control, so a page can import the functions before
+it makes the map. A control appears a moment after `createMap` or `update` adds it, when that file has loaded.
 
 | Function | Control | Options (each also has `position`) |
 |---|---|---|

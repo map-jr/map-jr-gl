@@ -529,13 +529,19 @@ for (const renderer of ['worker', 'main']) {
         // Controls: added and removed by the description.
         const controls = await page.evaluate(async () => {
             const t = window.t, {navigation, scale} = await import('/dist/controls.js'), count = () => document.querySelectorAll('#host .map-jr-ctrl-group, #host .map-jr-ctrl-scale').length;
+            // The control classes load with import() when the map adds the first control (#160).
+            const settle = () => new Promise(r => setTimeout(r, 50));
             t.host.update(t.spec = {...t.spec, controls: [navigation(), scale({position: 'bottom-left'})]});
+            for (let i = 0; i < 40 && count() < 2; i++) await settle();
             const two = count();
             t.host.update(t.spec = {...t.spec, controls: [navigation(), scale({position: 'bottom-left'})]}); // made again, the same content
+            await settle();
             const still = count();
             t.host.update(t.spec = {...t.spec, controls: [scale({position: 'bottom-left'})]});
+            await settle();
             const one = count();
             t.host.update(t.spec = {...t.spec, controls: undefined});
+            await settle();
             return {two, still, one, none: count()};
         });
         check(`[${renderer}] controls follow the description`, controls.two === 2 && controls.still === 2 && controls.one === 1 && controls.none === 0, JSON.stringify(controls));

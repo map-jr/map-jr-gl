@@ -32,6 +32,9 @@ const sizes = [
     // Only when the engine runs on the main thread (no worker is possible).
     ['engine on the main thread, on demand', gz(engine), 61],
     // The server renderer (`@map-jr/map-jr-gl/server`), with the files that it imports when it loads.
+    // The control functions (`@map-jr/map-jr-gl/controls`). They load the control classes, and with them the map,
+    // only when the map adds a control, so a page can import them before it makes the map (#160).
+    ['controls.js, up front (' + [...withStaticImports('controls.js')].length + ' files)', gz(withStaticImports('controls.js')), 2.5],
     ['server.js (' + [...withStaticImports('server.js')].length + ' files)', gz(withStaticImports('server.js')), 40],
 ];
 let ok = true;
