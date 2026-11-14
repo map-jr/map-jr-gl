@@ -109,6 +109,25 @@ A worker that stops at a usage limit keeps its context. After the limit resets, 
 it was stopped by the limit, what changed on `main` since, and its port. Do not start new workers for the same
 issues. Before you wait, push the branch of each stopped worker, so that the work survives the end of the session.
 
+## Notes from the batch of 2026-11-14 (afternoon)
+
+About 30 workers and 3 reviewers, one coordinator, 21 pull requests merged.
+
+- **A push to `main` cancels a Safari run that was started by hand.** The `Browsers` workflow cancels its running
+  run when a merge starts a new one, and on 2026-11-14 that cancelled the Safari run once. Start the Safari run
+  (`safari_only`) after the last merge of a run of merges, and merge nothing until it has finished (about 15 minutes).
+- **`main` gets no event when its CI finishes.** To wait for it, schedule a check (`send_later`) for about 25 minutes
+  after the last merge, and let the check merge the next pull requests.
+- **A pull request that waits for another can carry it.** When #349 needed the fix of #355, its worker opened #356
+  for the fix and merged that branch into #349; the coordinator merged #356 first, and the squash merge of #349 then
+  added only its own lines.
+- **Check what a worker calls the cause before you file it.** The worker of #360 measured first, found that the cause
+  was older than the change that the owner suspected, and fixed it with a test that failed without the fix. Ask for
+  the measurement before the fix when the owner reports a symptom on a device.
+- **The compat page script grows with every MapLibre feature.** The owner raised its budget to 42 KB on 2026-11-14.
+  Ask the owner early when the open pull requests together come near a budget.
+- **Workers shared the scratchpad.** The brief now asks for file names that start with the branch name.
+
 ## After a batch
 
 1. Run `pnpm status` once on `main` and open one pull request with the result.
