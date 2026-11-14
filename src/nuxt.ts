@@ -5,7 +5,7 @@
  * Nuxt then also has `LazyMapJr`: the code of the map is a file of its own, and with `hydrate-on-visible` it loads
  * when the map comes into view. It registers the composables (`useMap`, `useMapHost`, `useMapFeatures`) and the controls. The controls
  * get longer names, because `scale` and `navigation` are common words: `navigationControl()`, `scaleControl()`,
- * `fullscreenControl()`, `geolocateControl()`, `terrainControl()`.
+ * `fullscreenControl()`, `geolocateControl()`, `terrainControl()`, `customControl()`.
  */
 // @ts-ignore: the kit of Nuxt comes with the application, it is not a dependency of this library
 import {addComponent, addImports, defineNuxtModule} from '@nuxt/kit';
@@ -22,7 +22,7 @@ const nuxtModule: any = defineNuxtModule({
         deps.exclude = [...(deps.exclude || []), '@map-jr/map-jr-gl', vue, controls];
         for (const name of ['MapJr', 'MapOverlay', 'MapImage']) addComponent({name, export: name, filePath: vue});
         addImports(['useMap', 'useMapHost', 'useMapFeatures'].map(name => ({name, from: vue})));
-        addImports(['navigation', 'scale', 'fullscreen', 'geolocate', 'terrain'].map(name => ({name, as: name + 'Control', from: controls})));
+        addImports(['navigation', 'scale', 'fullscreen', 'geolocate', 'terrain', 'custom'].map(name => ({name, as: name + 'Control', from: controls})));
     },
 });
 export default nuxtModule;

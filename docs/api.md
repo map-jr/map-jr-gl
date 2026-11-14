@@ -369,6 +369,72 @@ it makes the map. A control appears a moment after `createMap` or `update` adds 
 | `fullscreen` | A button for the full screen | |
 | `geolocate` | A button that moves the map to the position of the user | `zoom`, `positionOptions` |
 | `terrain` | A button that turns 3D terrain on and off | `source` (required), `exaggeration` |
+| `custom` | A control of your own (see below) | `key` (required), and `element` or `onAdd` with `onRemove` |
+
+### A control of your own
+
+`custom` puts your own element into a corner, below or beside the other controls of that corner. `key` names the
+control: while the descriptions have a control with that `key`, the map keeps it, and it removes the control when a
+description does not have it. The map gives the element the class `map-jr-ctrl`, which makes it take clicks (the
+corners themselves do not). The element of `custom` shows at once; it does not wait for a file to load.
+
+```js
+import {createMap} from '@map-jr/map-jr-gl';
+import {navigation, custom} from '@map-jr/map-jr-gl/controls';
+
+const button = document.createElement('button');
+button.textContent = 'Layers';
+button.addEventListener('click', () => console.log('open the layer list'));
+
+createMap(document.getElementById('map'), {
+  style: 'https://tiles.openfreemap.org/styles/liberty',
+  controls: [navigation(), custom({key: 'layers', position: 'top-right', element: button})],
+});
+```
+
+A control written for MapLibre GL JS (an object with `onAdd(map)` and `onRemove(map)`) also fits:
+`custom({key: 'ruler', position: 'top-left', onAdd: map => ruler.onAdd(map), onRemove: map => ruler.onRemove(map)})`.
+`onAdd` receives the core map (`map.map` of the main API), not the object that `createMap` returns. The default
+`position` is `'top-right'`.
+
+In React and Vue, make the element once and render your component into it. In React use a portal
+(`@map-jr/map-jr-gl/react`):
+
+```jsx
+import {useMemo} from 'react';
+import {createPortal} from 'react-dom';
+import {MapJr} from '@map-jr/map-jr-gl/react';
+import {navigation, custom} from '@map-jr/map-jr-gl/controls';
+
+export function App() {
+  const corner = useMemo(() => document.createElement('div'), []);
+  const controls = useMemo(() => [navigation(), custom({key: 'styles', position: 'top-right', element: corner})], [corner]);
+  return <>
+    <div style={{height: 400}}><MapJr mapStyle="https://tiles.openfreemap.org/styles/liberty" controls={controls} /></div>
+    {createPortal(<button onClick={() => console.log('switch the style')}>Styles</button>, corner)}
+  </>;
+}
+```
+
+In Vue use `<Teleport>` (`@map-jr/map-jr-gl/vue`):
+
+```vue
+<script setup>
+import {MapJr} from '@map-jr/map-jr-gl/vue';
+import {navigation, custom} from '@map-jr/map-jr-gl/controls';
+
+const corner = document.createElement('div');
+const controls = [navigation(), custom({key: 'styles', position: 'top-right', element: corner})];
+</script>
+
+<template>
+  <div style="height: 400px"><MapJr map-style="https://tiles.openfreemap.org/styles/liberty" :controls="controls" /></div>
+  <Teleport :to="corner"><button @click="console.log('switch the style')">Styles</button></Teleport>
+</template>
+```
+
+With server rendering, make the element in the browser only (in `useEffect` or `onMounted`), because
+`document` does not exist on the server.
 
 The attribution of the data shows without a control of your own. To change it or to turn it off, see `attribution`
 in [The description](#the-description).
