@@ -68,7 +68,9 @@ export interface MapOptions extends CameraOptions, LoadOptions {
  */
 export class InteractionHandler {
     constructor(private on = true) {}
-    enable(_options?: unknown) { this.on = true; }
+    /** @internal Called by `enable()`: a map made with `interactive: false` starts to listen to the input then. */
+    wake?: () => void;
+    enable(_options?: unknown) { this.on = true; this.wake?.(); }
     disable() { this.on = false; }
     isEnabled() { return this.on; }
     /** Always false: the library does not report a gesture in progress for each handler. */
@@ -133,6 +135,8 @@ export class Map {
     private observer?: ResizeObserver;
     private cleanup: (() => void)[] = [];
     private inputCleanup: (() => void)[] = [];
+    /** Whether the canvas listens to the input: not for `interactive: false` until a handler is enabled. */
+    private listening: boolean;
     private tilePool?: {connect(): MessagePort[]; release(): void};
     private removed = false;
     private beforeStyle: (() => void)[] = [];
@@ -219,7 +223,12 @@ export class Map {
         this.tr.set(options.center ?? [0, 0], options.zoom ?? 0, options.bearing ?? 0, options.pitch ?? 0);
         // As in MapLibre, `bounds` comes before `center` and `zoom`: the map starts with that area in view.
         if (options.bounds) { const fit = this.cameraForBounds(options.bounds, options.fitBoundsOptions); this.tr.set([fit.center.lng, fit.center.lat], fit.zoom, options.bearing ?? 0, options.pitch ?? 0); }
-        for (const k of ['dragPan', 'scrollZoom', 'doubleClickZoom', 'dragRotate', 'touchZoomRotate', 'touchPitch', 'keyboard', 'boxZoom'] as const) if (options[k] === false) this[k].disable();
+        this.listening = options.interactive !== false;
+        // As in MapLibre, `interactive: false` turns every handler off, and `enable()` on one turns it on later (#196).
+        for (const k of ['dragPan', 'scrollZoom', 'doubleClickZoom', 'dragRotate', 'touchZoomRotate', 'touchPitch', 'keyboard', 'boxZoom'] as const) {
+            if (options[k] === false || !this.listening) this[k].disable();
+            if (!this.listening) this[k].wake = () => { if (!this.listening) { this.listening = true; if (this.ready && !this.removed) this.bindInput(); } };
+        }
         this.transformRequest = options.transformRequest ?? null;
         protocolListeners.add(this.sendRequestRules);
         this.sendRequestRules(); // before the style, so that the first requests follow the rules
@@ -323,7 +332,7 @@ export class Map {
                     // the new engine reports `idle` with the number that the page waits for.)
                     this.restyle(true);
                     for (const [name, [source, options]] of this.imageInputs) this.addImage(name, source, options);
-                    if (o.interactive !== false) this.bindInput();
+                    if (this.listening) this.bindInput();
                 }, error => this.fire('error', {error}));
             };
             if (__DEV__) {
@@ -349,7 +358,7 @@ export class Map {
 
         this.observer = new ResizeObserver(() => this.resize());
         this.observer.observe(this.container);
-        if (o.interactive !== false) this.bindInput();
+        if (this.listening) this.bindInput();
         if (o.attributionControl !== false && !this.restarted) this.addControl(new AttributionControl(o.attributionControl || {}));
     }
 
@@ -620,14 +629,24 @@ export class Map {
     };
     private rulesSent = false;
     /** What to do with one request: the transform first, then a custom protocol if the URL has one. */
-    private async answer(url: string, kind: string): Promise<RequestAnswer> {
+    private async answer(url: string, kind: string, signal?: AbortSignal | null): Promise<RequestAnswer> {
         const t = this.transformRequest?.(url, kind), to = t?.url ?? url, protocol = protocols.get(to.slice(0, to.indexOf(':')));
         if (!protocol) return {url: to, headers: t?.headers, credentials: t?.credentials};
-        const {data} = await protocol({url: to, type: kind === 'Tile' || kind === 'Image' || kind === 'SpriteImage' ? 'arrayBuffer' : 'json', headers: t?.headers}, new AbortController());
-        return {data: toBytes(data)};
+        // The protocol's controller is aborted when the request is no longer wanted (`signal`) or the map is removed.
+        const ac = new AbortController(), stop = () => ac.abort();
+        if (this.removed || signal?.aborted) stop();
+        signal?.addEventListener('abort', stop);
+        this.protocolAborts.add(ac);
+        try {
+            const {data} = await protocol({url: to, type: kind === 'Tile' || kind === 'Image' || kind === 'SpriteImage' ? 'arrayBuffer' : 'json', headers: t?.headers}, ac);
+            if (ac.signal.aborted) throw new Error(`[map-jr-gl] the request to ${to} was aborted.`);
+            return {data: toBytes(data)};
+        } finally { this.protocolAborts.delete(ac); signal?.removeEventListener('abort', stop); }
     }
+    /** The controllers of the protocol requests that run: `remove()` aborts them. */
+    private protocolAborts = new Set<AbortController>();
     /** A `fetch` for requests that this thread makes itself (the style, its sources, GeoJSON data). */
-    protected fetchAs = (kind: string) => fetchWith(() => ({transform: !!this.transformRequest, protocols: [...protocols.keys()]}), (url, k) => this.answer(url, k), kind);
+    protected fetchAs = (kind: string) => fetchWith(() => ({transform: !!this.transformRequest, protocols: [...protocols.keys()]}), (url, k, signal) => this.answer(url, k, signal), kind);
     private layerListeners: {type: string; layer: string; fn: Listener}[] = [];
     private hoveredLayers = new Set<string>();
     private hoverBusy = false;
@@ -680,7 +699,13 @@ export class Map {
     getMaxZoom() { return this.tr.maxZoom; }
     getContainer() { return this.container; }
     getCanvas() { return this.canvas; }
-    loaded() { return this.isLoaded; }
+    /**
+     * As in MapLibre: `false` from a call of `setStyle`, a style edit, a source change or a camera move until the next
+     * complete frame (the frame that fires `idle`).
+     */
+    loaded() { return this.isLoaded && this.tilesLoaded && !this.styleLoading && this.restyled === this.restyles; }
+    /** A `setStyle` whose style has not come yet. */
+    private styleLoading = false;
     isMoving() { return this.moving; }
     project(lngLat: LngLatLike) { const [x, y] = this.tr.project(...toLngLat(lngLat)); return {x, y}; }
     unproject(point: {x: number; y: number} | [number, number]) {
@@ -907,9 +932,11 @@ export class Map {
         if (!this.rawStyle) { this.options.style = style; this.firstChange = options?.transformStyle; return this.starting ? undefined : this.start().catch(this.sourceFailed); }
         // (A style that cannot be loaded is an `error` event, as a failure of the first style is. The map keeps its style.)
         let next: any;
-        try { next = await this.loadStyle(style); } catch (error) { if (turn === this.styleTurn) this.fire('error', {error}); return; }
+        this.styleLoading = true;
+        try { next = await this.loadStyle(style); } catch (error) { if (turn === this.styleTurn) { this.styleLoading = false; this.fire('error', {error}); } return; }
         // (A style that was asked for later has replaced this one.)
         if (turn !== this.styleTurn) return;
+        this.styleLoading = false;
         this.styleBase = typeof style === 'string' ? new URL(style, location.href).href : location.href;
         this.rawStyle = options?.transformStyle?.(this.rawStyle, next) ?? next;
         this.newStyle = true;
@@ -966,17 +993,17 @@ export class Map {
         // the removal of the source, drops them.)
         const queued = this.diffQueues.get(id);
         if (queued?.call === call && queued.raw === raw) { queued.diffs.push(diff); return queued.p; }
-        const q = {call, raw, diffs: [diff], p: undefined as unknown as Promise<void>};
-        q.p = this.fetchAs('Source')(new URL(data, this.styleBase)).then(r => r.json()).then(d => {
+        const q = {call, raw, diffs: [diff], p: undefined as unknown as Promise<void>, ac: new AbortController()};
+        q.p = this.fetchAs('Source')(new URL(data, this.styleBase), {signal: q.ac.signal}).then(r => r.json()).then(d => {
             if (this.diffQueues.get(id) === q) this.diffQueues.delete(id);
             if (this.rawStyle?.sources[id] !== raw || this.dataCalls.get(id) !== call) return;
             return this.setGeoJSON(id, q.diffs.reduce((d, f) => applyDiff(d, f, raw.promoteId), d));
-        });
+        }, e => { if (!q.ac.signal.aborted && !this.removed) throw e; });
         this.diffQueues.set(id, q);
         return q.p;
     }
     /** The diffs of `updateData` that wait for the URL of a GeoJSON source, with the call number they started from. */
-    private diffQueues = new globalThis.Map<string, {call: number, raw: object, diffs: GeoJSONDiff[], p: Promise<void>}>();
+    private diffQueues = new globalThis.Map<string, {call: number, raw: object, diffs: GeoJSONDiff[], p: Promise<void>, ac: AbortController}>();
     /** The number of the newest call that set the data of each GeoJSON source: an answer for an older call is dropped. */
     private dataCalls = new globalThis.Map<string, number>();
     /** The request of the newest `setData` with a URL of each GeoJSON source, while it loads. */
@@ -990,10 +1017,13 @@ export class Map {
         // A request of an older call is no longer wanted: it is aborted.
         this.dataAborts.get(id)?.abort();
         this.dataAborts.delete(id);
+        // (The fetch of `updateData` for an older call is dropped too. Its promise resolves without a change.)
+        const queued = this.diffQueues.get(id);
+        if (queued && queued.call < call) { queued.ac.abort(); this.diffQueues.delete(id); }
         if (typeof data === 'string') {
             const raw = this.rawStyle.sources[id], url = new URL(data, this.styleBase).href, ac = new AbortController();
             this.dataAborts.set(id, ac);
-            try { data = await (await this.fetchAs('Source')(url, {signal: ac.signal})).json(); } catch (e) { if (ac.signal.aborted) return; throw e; }
+            try { data = await (await this.fetchAs('Source')(url, {signal: ac.signal})).json(); } catch (e) { if (ac.signal.aborted || this.removed) return; throw e; }
             if (this.dataAborts.get(id) === ac) this.dataAborts.delete(id);
             // (The source was removed, or its data was set again since, also to the same URL: this answer is old.)
             if (this.rawStyle?.sources[id] !== raw || this.dataCalls.get(id) !== call) return;
@@ -1491,6 +1521,7 @@ export class Map {
 
     remove() {
         this.removed = true;
+        for (const ac of this.protocolAborts) ac.abort();
         this.fire('remove');
         this.drop('was removed');
         for (const c of [...this.controls.keys()]) this.removeControl(c);

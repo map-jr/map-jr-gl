@@ -2,6 +2,8 @@
  * The places in the texture of images that are added at runtime (#27). Images go in rows. The place of an image that
  * the map no longer has goes to a free list, and later images of any size that fits take it. Free places that touch
  * along a whole edge become one, so cycles of images of different sizes do not cut the texture into small pieces.
+ * Free places that share only part of an edge do not join, so after many replacements the texture can be mostly free
+ * and still have no place for an image: the map then places its images again in a new `AtlasSpace` (`repack`).
  * Each place keeps one empty pixel to its right and below it, so that a filtered image does not read its neighbour.
  */
 export class AtlasSpace {
@@ -43,5 +45,19 @@ export class AtlasSpace {
             }
         }
         this.free.push(r);
+    }
+
+    /**
+     * Places images of the given sizes in this empty space, the tallest first. Returns the corner of each, in the
+     * order given, or null when they do not all fit.
+     */
+    repack(sizes: [number, number][]): [number, number][] | null {
+        const at: [number, number][] = [];
+        for (const i of sizes.map((_, i) => i).sort((a, b) => sizes[b][1] - sizes[a][1])) {
+            const p = this.take(sizes[i][0], sizes[i][1]);
+            if (!p) return null;
+            at[i] = p;
+        }
+        return at;
     }
 }

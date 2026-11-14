@@ -9,6 +9,9 @@ have a problem, and a method in the list is possibly used only in a part of the 
 
 **17 of 26 packages** use only parts of the API that this library has.
 
+react-map-gl 7 does not work with this library, and the tables below read version 8 only. Version 7 reads the private
+`map.transform` of MapLibre GL JS and throws a `TypeError`. Version 8 works (the field test of #187).
+
 <!-- plugins:start -->
 ## Plugins that were run
 

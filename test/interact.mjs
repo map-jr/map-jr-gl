@@ -540,11 +540,11 @@ for (const mode of ['main', 'worker']) {
         const m = window.map, c = m.getCanvas(), r = {}, x = c.clientWidth / 2 - 70, y = c.clientHeight / 2 + 50;
         m.once('click', e => { r.ms = Math.round(performance.now() - r.t0); r.found = [...m.queryRenderedFeatures(e.point)].filter(f => f.sourceLayer).length; });
         await new Promise(f => setTimeout(f, 500)); r.t0 = performance.now(); window.touch('pointerdown', 11, x, y); await new Promise(f => setTimeout(f, 80)); window.touch('pointerup', 11, x, y);
-        await new Promise(f => setTimeout(f, 1000)); delete r.t0; return r;
+        await new Promise(f => setTimeout(f, 1000)); delete r.t0;
+        // The tap lands on a pin, so the demo opens a popup there that would cover the clicks of the tests below.
+        window.popup?.remove(); return r;
     });
     check(`[${mode}] a touch tap with no hover: a click listener reads the features of tiles at once`, tap.found > 0, JSON.stringify(tap));
-    // (Chromium drops the first mouse click after a synthetic touch: this one is not tested.)
-    await page.mouse.click(600, 300); await page.waitForTimeout(400); await settle(page);
     const stale = await page.evaluate(async () => {
         const m = window.map, idle = () => new Promise(r => m.once('idle', r)), at = [-74.0065, 40.7085];
         m.jumpTo({center: at, zoom: 14});
@@ -597,6 +597,39 @@ for (const mode of ['main', 'worker']) {
     });
     check(`[${mode}] transformRequest changes tile requests made in workers (each tile arrives), and addProtocol supplies data for a URL`,
         requests.from === 'made://point?seen=1' && requests.kinds.includes('Tile') && requests.kinds.includes('Source') && requests.arrived, JSON.stringify(requests));
+    // The AbortController that a protocol gets is aborted when the request is no longer wanted: a newer setData, a newer
+    // setData that drops the diffs of updateData, and the removal of the map (#92).
+    const aborts = await page.evaluate(async mode => {
+        const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), signals = {}, point = name => ({type: 'Feature', id: 1, properties: {name}, geometry: {type: 'Point', coordinates: [0, 0]}});
+        // A protocol that answers only after 300 ms, and remembers the signal of each URL.
+        mod.addProtocol('slow', (request, ac) => { signals[request.url] = ac.signal; return new Promise(r => setTimeout(() => r({data: {type: 'FeatureCollection', features: [point(request.url)]}}), 300)); });
+        const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+        const m = new mod.Map({container: el, renderer: mode, attributionControl: false, center: [0, 0], zoom: 1, style: {version: 8, sources: {g: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}}, layers: []}});
+        await new Promise(r => m.once('load', r));
+        const source = m.getSource('g');
+        try {
+            // (2) setData with a URL of a protocol, then a newer setData.
+            const old = source.setData('slow://a');
+            await new Promise(r => setTimeout(r, 50));
+            await source.setData('slow://b');
+            await old;
+            const name = (await source.getData()).features[0]?.properties.name;
+            // (3) updateData on a URL source, then a newer setData that drops its diff.
+            const diff = source.updateData({add: [point('diff')]});
+            await new Promise(r => setTimeout(r, 50));
+            const diffSignal = signals['slow://b'];
+            source.setData({type: 'FeatureCollection', features: [point('newer')]});
+            await diff;
+            // (1) A request that runs when the map is removed.
+            source.setData('slow://c');
+            await new Promise(r => setTimeout(r, 50));
+            const removeSignal = signals['slow://c'];
+            m.remove(); el.remove();
+            return {setData: signals['slow://a']?.aborted ?? null, name, updateData: diffSignal?.aborted ?? null, remove: removeSignal?.aborted ?? null};
+        } finally { mod.removeProtocol('slow'); }
+    }, mode);
+    check(`[${mode}] addProtocol: the controller is aborted by a newer setData, by a setData that drops the diffs of updateData, and by remove()`,
+        aborts.setData === true && aborts.name === 'slow://b' && aborts.updateData === true && aborts.remove === true, JSON.stringify(aborts));
 
     // A lost WebGL context (phones take it away to save memory): the map starts again with the same view and data.
     // The context can only be reached from the page when the engine is on the main thread.
@@ -862,6 +895,33 @@ for (const mode of ['main', 'worker']) {
         check(`[${mode}] setStyle two times, the first answer last: the last style is the style, in getStyle, the layers and the pixels`, ok(later), JSON.stringify({...later, shot: later.shot.equals(wanted)}));
         check(`[${mode}] setStyle before the style of the constructor has come: the new style takes its place`, ok(first), JSON.stringify({...first, shot: first.shot.equals(wanted)}));
     }
+    // #196: with `interactive: false`, the handlers are off, a drag does nothing, and `enable()` on a handler turns it on,
+    // as in MapLibre GL JS.
+    {
+        await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = window.niEl = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:300px;z-index:1000'}));
+            const m = window.niMap = new mod.Map({container: el, renderer: mode, attributionControl: false, interactive: false, center: [0, 0], zoom: 2, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]}});
+            await new Promise(r => m.once('load', r));
+        }, mode);
+        const pose = () => page.evaluate(() => { const c = window.niMap.getCenter(); return [c.lng, c.lat, window.niMap.getZoom()]; });
+        const drag = async () => { await page.mouse.move(200, 150); await page.mouse.down(); for (let i = 1; i <= 8; i++) await page.mouse.move(200 + i * 10, 150, {steps: 1}); await page.mouse.up(); await page.waitForTimeout(600); };
+        const off = await page.evaluate(() => ['dragPan', 'scrollZoom', 'doubleClickZoom', 'dragRotate', 'touchZoomRotate', 'touchPitch', 'keyboard', 'boxZoom'].filter(k => window.niMap[k].isEnabled()));
+        const p0 = await pose();
+        await drag(); await page.mouse.wheel(0, -400); await page.waitForTimeout(600);
+        const pOff = await pose();
+        await page.evaluate(() => { window.niMap.dragPan.enable(); window.niMap.scrollZoom.enable(); });
+        await drag();
+        await page.waitForFunction(x => window.niMap.getCenter().lng !== x, pOff[0], {timeout: 5000, polling: 50}).catch(() => {});
+        const pDrag = await pose();
+        await page.mouse.move(200, 150); await page.mouse.wheel(0, -400);
+        await page.waitForFunction(z => window.niMap.getZoom() > z, pDrag[2], {timeout: 5000, polling: 50}).catch(() => {});
+        await page.waitForTimeout(300);
+        const pWheel = await pose();
+        await page.evaluate(() => { window.niMap.remove(); window.niEl.remove(); });
+        check(`[${mode}] interactive: false turns the handlers off, and enable() on dragPan and scrollZoom turns them on (#196)`,
+            off.length === 0 && pOff.join() === p0.join() && pDrag[0] !== p0[0] && pWheel[2] > pDrag[2], JSON.stringify({off, p0, pOff, pDrag, pWheel}));
+    }
     // Two maps on one page with the same source name: each has its own feature state and its own global state.
     {
         const clip = id => page.evaluate(id => { const r = document.getElementById(id).getBoundingClientRect(); return {x: r.left + r.width / 2 - 2, y: r.top + r.height / 2 - 2, width: 4, height: 4}; }, id);
@@ -954,6 +1014,30 @@ for (const mode of ['main', 'worker']) {
             failed.badSource.seen.length === 1 && failed.badSource.seen[0].includes('"bad"') && failed.badSource.later > 0, JSON.stringify(failed.badSource));
         // (The browser writes its own line to the console for each 404 that this test asks for.)
         for (let i = errors.length; i-- > errorsBefore;) if (errors[i].startsWith('Failed to load resource')) errors.splice(i, 1);
+    }
+    // loaded() is false from setStyle or a style edit until the next idle, as in MapLibre (#190).
+    {
+        const got = await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const style = n => ({version: 8, sources: {}, layers: Array.from({length: n}, (_, i) => ({id: 'bg' + i, type: 'background'}))});
+            const m = new mod.Map({container: el, style: style(1), renderer: mode, attributionControl: false, center: [0, 0], zoom: 1});
+            const idle = () => Promise.race([new Promise(r => m.once('idle', r)), new Promise(r => setTimeout(r, 5000))]);
+            await new Promise(r => m.once('load', r)); if (!m.loaded()) await idle();
+            const out = {start: m.loaded()};
+            m.setLayoutProperty('bg0', 'visibility', 'none');
+            out.afterEdit = m.loaded();
+            await idle(); out.editIdle = m.loaded();
+            const styledata = new Promise(r => m.once('styledata', () => r(m.loaded())));
+            m.setStyle(style(2));
+            out.afterSetStyle = m.loaded();
+            out.onStyledata = await styledata;
+            await idle(); out.styleIdle = m.loaded();
+            m.remove(); el.remove();
+            return out;
+        }, mode);
+        check(`[${mode}] loaded() is false after a style edit and after setStyle until idle`,
+            got.start && !got.afterEdit && got.editIdle && !got.afterSetStyle && !got.onStyledata && got.styleIdle, JSON.stringify(got));
     }
     // The kept network result of a source: new data at the same URL stays after a change of the style, and two maps
     // that are given the same source object both load it.
@@ -1216,6 +1300,51 @@ for (const mode of ['main', 'worker']) {
         });
         check('[main] maplibre-compat: the container, the canvas, the controls, their buttons, markers and popups have their maplibregl-* class names, and remove() takes the name from the container',
             names.missing.length === 0 && names.canvasInMap && !names.left, JSON.stringify(names));
+    }
+    // GeolocateControl is an event emitter, as react-map-gl 8 expects (#194), with a mocked navigator.geolocation.
+    if (mode === 'main') {
+        const geo = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const real = Object.getOwnPropertyDescriptor(Navigator.prototype, 'geolocation');
+            let answer;
+            Object.defineProperty(navigator, 'geolocation', {configurable: true, value: {getCurrentPosition: (ok, fail) => setTimeout(() => answer(ok, fail), 0)}});
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+            const m = new mod.Map({container: el, renderer: 'main', center: [0, 0], zoom: 2, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            const warnings = [], warn = console.warn;
+            console.warn = (...a) => warnings.push(String(a[0]));
+            const gc = new mod.GeolocateControl({trackUserLocation: true});
+            console.warn = warn;
+            const notAdded = gc.trigger();
+            m.addControl(gc);
+            await new Promise(r => m.once('load', r));
+            const events = [];
+            for (const t of ['geolocate', 'error', 'outofmaxbounds', 'trackuserlocationstart', 'trackuserlocationend']) gc.on(t, e => events.push(t + ':' + (e.target === gc)));
+            const onMap = [];
+            m.on('geolocate', () => onMap.push('geolocate'));
+            m.on('error', () => onMap.push('error'));
+            const step = f => new Promise(r => { answer = (ok, fail) => { f(ok, fail); setTimeout(r, 0); }; });
+            let s = step(ok => ok({coords: {longitude: 10, latitude: 20}, timestamp: 1}));
+            const triggered = gc.trigger();
+            await s;
+            s = step((ok, fail) => fail({code: 1, message: 'denied'}));
+            gc.trigger(); await s;
+            m.setMaxBounds([[-5, -5], [5, 5]]);
+            s = step(ok => ok({coords: {longitude: 50, latitude: 50}, timestamp: 2}));
+            gc.trigger(); await s;
+            const off = () => events.push('off');
+            gc.once('geolocate', off);
+            m.setMaxBounds(null);
+            s = step(ok => ok({coords: {longitude: 1, latitude: 1}, timestamp: 3}));
+            gc.trigger(); await s;
+            s = step(ok => ok({coords: {longitude: 1, latitude: 1}, timestamp: 4}));
+            gc.trigger(); await s;
+            m.remove(); el.remove();
+            if (real) delete navigator.geolocation;
+            return {notAdded, triggered, events, onMap, warnings};
+        });
+        check('[main] maplibre-compat: GeolocateControl has on/once/trigger() and fires geolocate, error and outofmaxbounds on itself, and warns once for trackUserLocation',
+            geo.notAdded === false && geo.triggered === true && geo.events.join() === 'geolocate:true,error:true,outofmaxbounds:true,geolocate:true,off,geolocate:true' && geo.onMap.join() === 'geolocate,error,geolocate,geolocate'
+            && geo.warnings.length === 1 && geo.warnings[0].startsWith('[map-jr-gl] GeolocateControl: the option trackUserLocation'), JSON.stringify(geo));
     }
     // Accessibility: the canvas says that it is a map and shows the keyboard focus, a marker with a popup works with the
     // keyboard, the fullscreen button says what it does, and a camera animation respects "reduce motion".
