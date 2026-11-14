@@ -770,6 +770,29 @@ for (const renderer of ['worker', 'main']) {
         check(`[${renderer}] a watchFeatures listener that throws is called again, and a listener that throws leaves the next listener its event and is reported as an error`,
             thrown.calls >= 2 && thrown.second === 1 && thrown.error === 'thrown by a listener', JSON.stringify(thrown));
 
+        // 5d. The cluster methods of a GeoJSON source, as promises, and a message when the source has no clusters (#217).
+        const clusters = await page.evaluate(async renderer => {
+            const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:300px;height:200px'}));
+            const idle = host => new Promise(r => { host.state.subscribe(s => s.idle, v => v && r()); setTimeout(r, 8000); });
+            const points = Array.from({length: 12}, (_, i) => ({type: 'Feature', properties: {i}, geometry: {type: 'Point', coordinates: [-74.0065 + (i % 4) * 0.0004, 40.7085 + Math.floor(i / 4) * 0.0004]}}));
+            const spec = {style: t.style, initialView: {center: [-74.0065, 40.7085], zoom: 10}, renderer, attribution: false,
+                extend: {sources: {pts: {type: 'geojson', cluster: true, data: {type: 'FeatureCollection', features: points}}, plain: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}},
+                    layers: [{id: 'pts-circle', type: 'circle', source: 'pts', paint: {'circle-radius': 20}}]}};
+            const host = t.lib.createMap(el, spec);
+            await idle(host);
+            const found = await host.queryFeatures(undefined, {layers: ['pts-circle']});
+            const id = found.find(f => f.properties.cluster)?.properties.cluster_id;
+            const zoom = await host.clusterExpansionZoom('pts', id), children = await host.clusterChildren('pts', id);
+            const all = await host.clusterLeaves('pts', id, Infinity), two = await host.clusterLeaves('pts', id, 2, 1);
+            const failed = p => p.then(() => 'answered', e => e.message);
+            const errors = [await failed(host.clusterExpansionZoom('plain', 1)), await failed(host.clusterLeaves('nothing', 1)), await failed(host.clusterChildren('pts', 999999))];
+            host.destroy(); el.remove();
+            return {id, zoom, children: children.length, all: all.length, two: two.length, point: all[0]?.geometry.type, errors};
+        }, renderer);
+        check(`[${renderer}] clusterExpansionZoom, clusterChildren and clusterLeaves answer for a cluster, and reject with a message otherwise`,
+            typeof clusters.id === 'number' && clusters.zoom > 10 && clusters.children >= 1 && clusters.all === 12 && clusters.two === 2 && clusters.point === 'Point'
+            && clusters.errors[0].startsWith('[map-jr-gl] clusterExpansionZoom(): ') && clusters.errors[1].includes('"nothing" is not a GeoJSON source') && clusters.errors[2].startsWith('[map-jr-gl] clusterChildren(): '), JSON.stringify(clusters));
+
         // 5c. A rejection of the question of watchFeatures is an error of the map, and is not lost (#92).
         const rejected = await page.evaluate(async () => {
             const h = window.t.host, log = console.error;

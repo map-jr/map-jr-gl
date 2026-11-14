@@ -32,6 +32,8 @@ export interface ControlSpec { key: string; position?: ControlPosition; create()
  * that the map gives (`state.view.center`, the result of `unproject`) is `[number, number]`.
  */
 export type Position = readonly number[];
+/** A cluster or a point that the cluster methods of `MapHost` return, as GeoJSON in longitude and latitude. */
+export interface ClusterFeature {type: 'Feature'; id?: string | number; properties: Record<string, unknown>; geometry: {type: 'Point'; coordinates: [number, number]}}
 /** Where the camera is. */
 export interface View { center: [number, number]; zoom: number; bearing: number; pitch: number }
 /** A view that the application gives: each field is optional. */
@@ -220,6 +222,15 @@ export interface MapHost {
     watchFeatures(at: FeaturePlace | undefined, options: FeatureOptions, listener: (features: RenderedFeature[] | QueriedFeature[]) => void): () => void;
     /** The height of the ground in metres at a position (`[lng, lat]`) or a point of the screen, from the elevation source of the style. `null` where there is no data. */
     queryElevation(at: Position | {x: number; y: number}): Promise<number | null>;
+    /**
+     * The cluster methods of a GeoJSON source with `cluster: true`. `clusterId` is `properties.cluster_id` of a cluster
+     * feature, for example from `queryFeatures`. `clusterExpansionZoom` gives the zoom level at which the cluster divides,
+     * `clusterChildren` the clusters and points that it divides into, and `clusterLeaves` its points (`limit` defaults to
+     * 10, and `offset` to 0). The promise rejects when the source is not a GeoJSON source with clusters, or the cluster is not there.
+     */
+    clusterExpansionZoom(sourceId: string, clusterId: number): Promise<number>;
+    clusterChildren(sourceId: string, clusterId: number): Promise<ClusterFeature[]>;
+    clusterLeaves(sourceId: string, clusterId: number, limit?: number, offset?: number): Promise<ClusterFeature[]>;
     /** Moves the camera now, with an animation when `duration` is not 0. */
     moveTo(view: ViewInput & {duration?: number}): void;
     fitBounds(bounds: LngLatBoundsInput, options?: {padding?: number; duration?: number; maxZoom?: number}): void;
@@ -447,6 +458,12 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
         if (at && !box && !o.sources && !isPosition(at) && typeof (at as {x: number}).x !== 'number') return checks().then(m => m.mistake(9, JSON.stringify(at)), () => '[map-jr-gl] queryFeatures(): the place is not {x, y} or [lng, lat].').then(text => { throw new Error(text); });
         return map.queryFeatures(at, o);
     }) as MapHost['queryFeatures'];
+    // (The cluster methods of the core source, with a message that names the method of the host.)
+    const cluster = (name: string, id: string, run: (source: any) => Promise<any>) => Promise.resolve().then(() => {
+        const source = map.getSource(id) as any;
+        if (!source?.getClusterLeaves) throw new Error(`"${id}" is not a GeoJSON source of the style.`);
+        return run(source);
+    }).catch(e => { throw new Error(`[map-jr-gl] ${name}(): ${(e as Error)?.message?.replace(/^\[map-jr-gl\] /, '')}`); });
 
     return {
         update(next) {
@@ -456,6 +473,9 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
         destroy() { if (!alive) return; alive = false; map.remove(); },
         state,
         queryFeatures,
+        clusterExpansionZoom: (id, clusterId) => cluster('clusterExpansionZoom', id, s => s.getClusterExpansionZoom(clusterId)),
+        clusterChildren: (id, clusterId) => cluster('clusterChildren', id, s => s.getClusterChildren(clusterId)),
+        clusterLeaves: (id, clusterId, limit, offset) => cluster('clusterLeaves', id, s => s.getClusterLeaves(clusterId, limit, offset)),
         watchFeatures(at: FeaturePlace | undefined, o: FeatureOptions, listener: (features: any) => void) {
             // One question at a time. An event during a question asks again after it.
             let last: string | undefined, busy = false, again = false, stopped = false;

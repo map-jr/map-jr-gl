@@ -523,6 +523,41 @@ only the features in the view. The two MapLibre methods are in the entry
 
 The tile data is in a worker, so each query returns a promise.
 
+## Clusters
+
+A GeoJSON source with `cluster: true` has three methods on the `MapHost` of `@map-jr/map-jr-gl`. Each takes the id of
+the source and the id of a cluster (`properties.cluster_id` of a cluster feature, for example from `queryFeatures`), and
+returns a promise:
+
+| Method | Answer |
+|---|---|
+| `clusterExpansionZoom(sourceId, clusterId)` | The zoom level at which the cluster divides. |
+| `clusterChildren(sourceId, clusterId)` | The clusters and points that the cluster divides into, as GeoJSON features (`ClusterFeature[]`). |
+| `clusterLeaves(sourceId, clusterId, limit, offset)` | The points of the cluster, as GeoJSON features. `limit` defaults to 10 and `offset` to 0. A `limit` of `Infinity` gives all of them. |
+
+```js
+import {createMap} from '@map-jr/map-jr-gl';
+
+const map = createMap(document.getElementById('map'), {
+    style: 'https://demotiles.maplibre.org/style.json',
+    extend: {
+        sources: {points: {type: 'geojson', cluster: true, data: 'https://maplibre.org/maplibre-gl-js/docs/assets/earthquakes.geojson'}},
+        layers: [{id: 'clusters', type: 'circle', source: 'points', paint: {'circle-radius': 12}}],
+    },
+    interactiveLayers: ['clusters'],
+    onClick: async e => {
+        const cluster = e.features[0];
+        if (!cluster?.properties.cluster) return;
+        const zoom = await map.clusterExpansionZoom('points', cluster.properties.cluster_id);
+        map.moveTo({center: cluster.geometry.coordinates, zoom, duration: 500});
+    },
+});
+```
+
+The promise rejects with an `Error` whose message starts with `[map-jr-gl]` and the name of the method when the source
+is not a GeoJSON source of the style, when it has no clusters, or when no cluster has that id. These are the methods
+`getClusterExpansionZoom`, `getClusterChildren` and `getClusterLeaves` of the source in MapLibre GL JS.
+
 ## Elements of the page on the map
 
 ```js
