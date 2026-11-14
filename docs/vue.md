@@ -65,7 +65,8 @@ without a message.
 | `update:view` | The view, after each change. |
 | `click` | `{point, lngLat, features}` |
 | `hover` | The features of `interactive-layers` under the pointer. |
-| `load`, `idle` | None. `load` comes once, before the first `idle`. When `load` comes, `host.state.get().idle` is still `false`. |
+| `load` | The map (the `MapHost`). `load` comes once, before the first `idle`. When `load` comes, `host.state.get().idle` is still `false`. |
+| `idle` | None. |
 | `error` | Each error of the map (an `Error`). Without a listener for this event, the map writes each error to the console. |
 | Each other event of the map | The event of `listen` of the main API: `@moveend`, `@zoomend`, `@styleimagemissing`, `@sourcedata` and the others. See [Events](api.md#events) for the list. The event `style.load` has the name `styleload` here. |
 
@@ -103,7 +104,10 @@ The default slot is drawn over the map. It gets `state` (the state of the map) a
 </MapJr>
 ```
 
-A template ref on the component also has `host` and `state`.
+A template ref on the component also has `host` (the map, `null` until it is made) and `state`. In TypeScript,
+type the ref as `InstanceType<typeof MapJr>`: `useTemplateRef<InstanceType<typeof MapJr>>('map')`. The type
+`MapJrExposed` of `@map-jr/map-jr-gl/vue` has only these two members. A template ref on `LazyMapJr` of Nuxt with a
+`hydrate-*` prop does not reach them (see [The module for Nuxt](#the-module-for-nuxt)).
 
 ### Elements of the page on the map
 
@@ -329,6 +333,12 @@ With the module, a page uses the components without an import:
   when the map is mounted, so a component that uses `MapOverlay`, `MapImage` or `useMapHost` next to a `LazyMapJr`
   does not bring the map code into the page. The file `vue.js` and what it imports are about 3 KB (gzip). The `host`
   of `useMap` is `null` until that code has loaded, also in `onMounted`.
+- A template ref on `LazyMapJr` with `hydrate-on-visible` (or another `hydrate-*` prop) is the lazy wrapper that
+  Nuxt puts around `MapJr`, and it has no `host` and no `state`, also after hydration. Without a `hydrate-*` prop,
+  the ref on `LazyMapJr` has them. To reach the map of a lazily hydrated map, use one of these:
+  - `@load`, which gets the map: `<LazyMapJr hydrate-on-visible @load="host => (map = host)" ... />`.
+  - The default slot, which gets `host` and `state`: `<LazyMapJr hydrate-on-visible v-slot="{host}">`.
+  - `useMapHost()` in a component of your own inside `LazyMapJr`.
 
 Without the module, import the components (`import {MapJr} from '@map-jr/map-jr-gl/vue'`). For lazy loading, use
 `defineAsyncComponent` of Vue:
