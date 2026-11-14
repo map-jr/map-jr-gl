@@ -9,7 +9,7 @@
 import {Map, logError, type FeatureOptions, type FeaturePlace, type ImageOptions, type MapOptions, type RenderedFeature} from './map.ts';
 export type {FeatureOptions, FeaturePlace};
 import {createStore, type Readable} from './store.ts';
-import {Marker, Popup, type OverlayAnchor} from './overlays.ts';
+import type {Marker, Popup, OverlayAnchor} from './overlays.ts';
 import {extended, markerFeatures, markerStyle, withMarkers, type MarkerLayerOptions} from './markers.ts';
 import type {QueriedFeature} from './query.ts';
 import type {Control, ControlPosition} from './controls.ts';
@@ -481,22 +481,30 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
         project: lngLat => map.project(lngLat),
         unproject: point => { const p = map.unproject(point); return [p.lng, p.lat]; },
         overlay(element, o) {
-            let now = o;
+            // (Marker and Popup are in a file of their own, which the main API loads when it shows the first overlay.
+            // Until then `made` is null, and the overlay that the file makes shows the options of the last `update`. The
+            // element leaves its place in the page at once, as it did when the overlay was made at once: an adapter shows
+            // it after this call, and it must not appear at its place in the page while the file loads.)
+            let now = o, made: Marker | Popup | null = null, turn = 0;
             const make = () => {
-                if (!now.popup) return new Marker({element, anchor: now.anchor, offset: now.offset}).setLngLat(now.lngLat).addTo(map);
-                const p = new Popup({anchor: now.anchor, offset: now.offset, closeButton: !!now.onClose, closeOnClick: false}).setLngLat(now.lngLat).setDOMContent(element).addTo(map);
-                p.on('close', () => { if (made === p) now.onClose?.(); });
-                return p;
+                const mine = ++turn;
+                import('./overlays.ts').then(({Marker, Popup}) => {
+                    if (!alive || mine !== turn) return;
+                    if (!now.popup) { made = new Marker({element, anchor: now.anchor, offset: now.offset}).setLngLat(now.lngLat).addTo(map); return; }
+                    const p = made = new Popup({anchor: now.anchor, offset: now.offset, closeButton: !!now.onClose, closeOnClick: false}).setLngLat(now.lngLat).setDOMContent(element).addTo(map);
+                    p.on('close', () => { if (made === p) now.onClose?.(); });
+                }, error => alive && map.fire('error', {error}));
             };
-            let made: Marker | Popup | null = make();
+            element.remove();
+            make();
             return {
                 update(next) {
                     const again = !!next.popup !== !!now.popup || next.anchor !== now.anchor || String(next.offset) !== String(now.offset) || !!next.onClose !== !!now.onClose;
                     now = next;
-                    if (!made) return;
-                    if (again) { const old = made; made = null; old.remove(); made = make(); } else made.setLngLat(next.lngLat);
+                    if (turn < 0) return;
+                    if (again) { const old = made; made = null; old?.remove(); make(); } else made?.setLngLat(next.lngLat);
                 },
-                remove() { const old = made; made = null; old?.remove(); },
+                remove() { const old = made; made = null; turn = -1; old?.remove(); },
             };
         },
         listen(type, fn: (event: any) => void) { map.on(type, fn); return () => { map.off(type, fn); }; },

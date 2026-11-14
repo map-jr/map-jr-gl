@@ -537,7 +537,9 @@ marker.remove();
 const popup = map.overlay(content, {lngLat, popup: true, onClose: () => popup.remove()});
 ```
 
-`overlay` puts an element of the page at a position of the map. The element moves with the map.
+`overlay` puts an element of the page at a position of the map. The element moves with the map. The code of the
+overlays is a file of its own, which the map loads when it shows the first overlay: the element leaves its place in the
+page at once and appears on the map when that file has loaded.
 
 | Option | Meaning |
 |---|---|
