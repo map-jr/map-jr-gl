@@ -240,7 +240,8 @@ export class Map {
     /** Sets the number of canvas pixels for each CSS pixel. Without a value, the map follows the screen again. */
     setPixelRatio(ratio?: number | null) { this.pixelRatio = ratio ?? undefined; return this.resize(); }
     private measure() {
-        const r = this.container.getBoundingClientRect();
+        // The layout size, as MapLibre reads it: a bounding box would include the CSS transforms of the ancestors.
+        const r = {width: this.container.clientWidth, height: this.container.clientHeight};
         this.tr.width = r.width; this.tr.height = r.height;
         // Space for the browser's bars at the top and bottom of the screen is only for a map that fills the screen. On a
         // map in a page, that space changes while the page scrolls (Safari hides its toolbar), and the controls would move.
@@ -1291,7 +1292,8 @@ export class Map {
             el.addEventListener(type, fn, opts);
             this.inputCleanup.push(() => el.removeEventListener(type, fn, opts));
         };
-        const pos = (e: MouseEvent) => { const r = this.container.getBoundingClientRect(); return {x: e.clientX - r.left - this.container.clientLeft, y: e.clientY - r.top - this.container.clientTop}; };
+        // Screen pixels are divided by the CSS scale of the container, as in MapLibre's DOM.mousePos.
+        const pos = (e: MouseEvent) => { const c = this.container, r = c.getBoundingClientRect(), sx = r.width / c.offsetWidth || 1, sy = r.height / c.offsetHeight || 1; return {x: (e.clientX - r.left) / sx - c.clientLeft, y: (e.clientY - r.top) / sy - c.clientTop}; };
         /**
          * Fires a map event for a DOM event. Returns true if a listener called preventDefault(): the map then does not act on it.
          * `act` is what the map does when no listener prevents it. It waits when `fire` sends the event later (see `fire`).

@@ -1030,6 +1030,28 @@ for (const mode of ['main', 'worker']) {
         // (The browser writes its own line to the console for each 404 that this test asks for.)
         for (let i = errors.length; i-- > errorsBefore;) if (errors[i].startsWith('Failed to load resource')) errors.splice(i, 1);
     }
+    // A container under a CSS transform (#189): the map takes the layout size, as MapLibre does, and event.point is in
+    // element pixels. One container is scaled itself, the other sits in a scaled parent.
+    {
+        for (const where of ['self', 'parent']) {
+            const out = await page.evaluate(async ({mode, where}) => {
+                const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+                const wrap = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:0;top:0;width:400px;height:300px;transform-origin:0 0;z-index:99' + (where === 'parent' ? ';transform:scale(0.5)' : '')}));
+                const el = wrap.appendChild(Object.assign(document.createElement('div'), {style: 'width:400px;height:300px;transform-origin:0 0' + (where === 'self' ? ';transform:scale(0.5)' : '')}));
+                const m = window.scaledMap = new mod.Map({container: el, renderer: mode, attributionControl: false, center: [0, 0], zoom: 2, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+                await new Promise(r => m.once('load', r));
+                window.scaledClicks = []; m.on('click', e => window.scaledClicks.push(e.point));
+                const p = m.project([0, 0]), c = m.getCanvas();
+                return {p: [p.x, p.y], buffer: [c.width / devicePixelRatio, c.height / devicePixelRatio]};
+            }, {mode, where});
+            // The screen point (100, 75) is element point (200, 150), the centre.
+            await page.mouse.click(100, 75);
+            await new Promise(r => setTimeout(r, 400));
+            const click = await page.evaluate(() => { const c = window.scaledClicks[0]; const el = window.scaledMap.getContainer(); window.scaledMap.remove(); el.parentElement.remove(); return c && [c.x, c.y]; });
+            check(`[${mode}] a container scaled by CSS (${where}) keeps its layout size, and event.point is in element pixels`,
+                Math.abs(out.p[0] - 200) < 0.5 && Math.abs(out.p[1] - 150) < 0.5 && Math.abs(out.buffer[0] - 400) < 1.5 && Math.abs(out.buffer[1] - 300) < 1.5 && click && Math.abs(click[0] - 200) < 1.5 && Math.abs(click[1] - 150) < 1.5, JSON.stringify({...out, click}));
+        }
+    }
     // loaded() is false from setStyle or a style edit until the next idle, as in MapLibre (#190).
     {
         const got = await page.evaluate(async mode => {
