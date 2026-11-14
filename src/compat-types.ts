@@ -1,8 +1,8 @@
 // Types under the names that MapLibre GL JS uses, for TypeScript code that was written for MapLibre.
 // This file has types only, so it adds nothing to the built files.
 import type {Map} from './compat-map.ts';
-import type {MapEvent as CoreMapEvent, MapOptions as CoreMapOptions, RenderedFeature, RenderedQueryOptions, PaddingInput, RequestTransform, GeoJSONDiff} from './map.ts';
-import type {CameraOptions} from './engine.ts';
+import type {Map as CoreMap, MapEvent as CoreMapEvent, MapOptions as CoreMapOptions, RenderedFeature, RenderedQueryOptions, PaddingInput, RequestTransform, GeoJSONDiff} from './map.ts';
+import type {CameraOptions as CoreCameraOptions} from './engine.ts';
 import type {CameraInput} from './map.ts';
 import type {Control} from './controls.ts';
 import type {LngLat, LngLatBounds, LngLatBoundsInput} from './lnglat.ts';
@@ -80,9 +80,14 @@ export type JumpToOptions = Parameters<Map['jumpTo']>[0];
 /** `essential: true` animates the change also when the user asked the system for less motion. */
 export type EaseToOptions = CameraInput & {duration?: number; around?: [number, number]; essential?: boolean};
 export type FlyToOptions = EaseToOptions;
-export type FitBoundsOptions = NonNullable<Parameters<Map['fitBounds']>[1]>;
+/** The options of `map.fitBounds`. `speed`, `curve` and `linear` have no effect: the map always eases to the bounds. */
+export type FitBoundsOptions = NonNullable<Parameters<CoreMap['fitBounds']>[1]> & {essential?: boolean; speed?: number; curve?: number; linear?: boolean};
+/** The camera of a map. `padding` is a number or an object with `top`, `right`, `bottom` and `left`, in pixels. */
+export type CameraOptions = CameraInput;
+/** A feature for `setFeatureState` and `getFeatureState`. Without an `id`, the methods write a warning and do nothing. */
+export type FeatureIdentifier = {source: string; sourceLayer?: string; id?: string | number};
 export type CameraForBoundsOptions = NonNullable<Parameters<Map['cameraForBounds']>[1]>;
-export type CenterZoomBearing = Pick<CameraOptions, 'center' | 'zoom' | 'bearing'>;
+export type CenterZoomBearing = Pick<CoreCameraOptions, 'center' | 'zoom' | 'bearing'>;
 
 /** Style JSON. The library reads the style as MapLibre does; these types do not check each property. */
 export type ExpressionSpecification = [string, ...unknown[]];
