@@ -820,6 +820,33 @@ for (const mode of ['main', 'worker']) {
         check(`[${mode}] setStyle two times, the first answer last: the last style is the style, in getStyle, the layers and the pixels`, ok(later), JSON.stringify({...later, shot: later.shot.equals(wanted)}));
         check(`[${mode}] setStyle before the style of the constructor has come: the new style takes its place`, ok(first), JSON.stringify({...first, shot: first.shot.equals(wanted)}));
     }
+    // #196: with `interactive: false`, the handlers are off, a drag does nothing, and `enable()` on a handler turns it on,
+    // as in MapLibre GL JS.
+    {
+        await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = window.niEl = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:300px;z-index:1000'}));
+            const m = window.niMap = new mod.Map({container: el, renderer: mode, attributionControl: false, interactive: false, center: [0, 0], zoom: 2, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]}});
+            await new Promise(r => m.once('load', r));
+        }, mode);
+        const pose = () => page.evaluate(() => { const c = window.niMap.getCenter(); return [c.lng, c.lat, window.niMap.getZoom()]; });
+        const drag = async () => { await page.mouse.move(200, 150); await page.mouse.down(); for (let i = 1; i <= 8; i++) await page.mouse.move(200 + i * 10, 150, {steps: 1}); await page.mouse.up(); await page.waitForTimeout(600); };
+        const off = await page.evaluate(() => ['dragPan', 'scrollZoom', 'doubleClickZoom', 'dragRotate', 'touchZoomRotate', 'touchPitch', 'keyboard', 'boxZoom'].filter(k => window.niMap[k].isEnabled()));
+        const p0 = await pose();
+        await drag(); await page.mouse.wheel(0, -400); await page.waitForTimeout(600);
+        const pOff = await pose();
+        await page.evaluate(() => { window.niMap.dragPan.enable(); window.niMap.scrollZoom.enable(); });
+        await drag();
+        await page.waitForFunction(x => window.niMap.getCenter().lng !== x, pOff[0], {timeout: 5000, polling: 50}).catch(() => {});
+        const pDrag = await pose();
+        await page.mouse.move(200, 150); await page.mouse.wheel(0, -400);
+        await page.waitForFunction(z => window.niMap.getZoom() > z, pDrag[2], {timeout: 5000, polling: 50}).catch(() => {});
+        await page.waitForTimeout(300);
+        const pWheel = await pose();
+        await page.evaluate(() => { window.niMap.remove(); window.niEl.remove(); });
+        check(`[${mode}] interactive: false turns the handlers off, and enable() on dragPan and scrollZoom turns them on (#196)`,
+            off.length === 0 && pOff.join() === p0.join() && pDrag[0] !== p0[0] && pWheel[2] > pDrag[2], JSON.stringify({off, p0, pOff, pDrag, pWheel}));
+    }
     // Two maps on one page with the same source name: each has its own feature state and its own global state.
     {
         const clip = id => page.evaluate(id => { const r = document.getElementById(id).getBoundingClientRect(); return {x: r.left + r.width / 2 - 2, y: r.top + r.height / 2 - 2, width: 4, height: 4}; }, id);
