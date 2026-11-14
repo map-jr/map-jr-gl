@@ -467,6 +467,18 @@ for (const mode of ['main', 'worker']) {
     };
     const tPrevented = await tap2(true), tDouble = await tap2(false);
     check(`[${mode}] touch double-tap: preventDefault() in a dblclick listener stops the zoom and sets defaultPrevented`, tPrevented.z === 14 && tPrevented.seen === true && Math.abs(tDouble.z - 15) < 0.01 && tDouble.seen === false, JSON.stringify({tPrevented, tDouble}));
+    await page.evaluate(() => window.map.jumpTo({center: [-74.0065, 40.7085], zoom: 14})); await settle(page);
+    // #7: a touch tap with no hover before it: the listener reads the features of tiles at once, and the time from
+    // pointerdown to `click` is printed.
+    const tap = await page.evaluate(async () => {
+        const m = window.map, c = m.getCanvas(), r = {}, x = c.clientWidth / 2 - 70, y = c.clientHeight / 2 + 50;
+        m.once('click', e => { r.ms = Math.round(performance.now() - r.t0); r.found = [...m.queryRenderedFeatures(e.point)].filter(f => f.sourceLayer).length; });
+        await new Promise(f => setTimeout(f, 500)); r.t0 = performance.now(); window.touch('pointerdown', 11, x, y); await new Promise(f => setTimeout(f, 80)); window.touch('pointerup', 11, x, y);
+        await new Promise(f => setTimeout(f, 1000)); delete r.t0; return r;
+    });
+    check(`[${mode}] a touch tap with no hover: a click listener reads the features of tiles at once`, tap.found > 0, JSON.stringify(tap));
+    // (Chromium drops the first mouse click after a synthetic touch: this one is not tested.)
+    await page.mouse.click(600, 300); await page.waitForTimeout(400); await settle(page);
     const stale = await page.evaluate(async () => {
         const m = window.map, idle = () => new Promise(r => m.once('idle', r)), at = [-74.0065, 40.7085];
         m.jumpTo({center: at, zoom: 14});
@@ -483,15 +495,18 @@ for (const mode of ['main', 'worker']) {
     });
     check(`[${mode}] queryRenderedFeatures: the array is not the answer from before setData`, stale.first === 1 && stale.kept === 1 && stale.before === 0 && stale.array === 0 && stale.awaited === 0, JSON.stringify(stale));
     await settle(page);
-    // #7: `click` and `contextmenu` reach a map listener during the pointer event, as in MapLibre, not after a query.
+    // #7: `click` and `contextmenu` reach a map listener within 300 ms of the pointer event (the bounded wait for the
+    // features), not after a query of any length.
     await page.evaluate(() => {
-        window.late = {};
-        for (const t of ['click', 'contextmenu']) window.map.once(t, () => { window.late[t] = window.late[t] ?? 'at once'; });
-        for (const [dom, t] of [['pointerup', 'click'], ['contextmenu', 'contextmenu']]) window.addEventListener(dom, () => { window.late[t] ??= 'late'; }, {once: true});
+        window.late = {}; const t = {};
+        for (const [dom, ev] of [['pointerup', 'click'], ['contextmenu', 'contextmenu']]) {
+            window.addEventListener(dom, () => { t[ev] = performance.now(); }, {once: true, capture: true});
+            window.map.once(ev, () => { window.late[ev] = Math.round(performance.now() - t[ev]); });
+        }
     });
-    await page.mouse.click(500, 350); await page.mouse.click(500, 350, {button: 'right'}); await page.waitForTimeout(300);
+    await page.mouse.click(500, 350); await page.mouse.click(500, 350, {button: 'right'}); await page.waitForTimeout(500);
     const lateness = await page.evaluate(() => window.late);
-    check(`[${mode}] click and contextmenu: a map listener runs during the pointer event`, lateness.click === "at once" && lateness.contextmenu === "at once", JSON.stringify(lateness));
+    check(`[${mode}] click and contextmenu: a map listener runs within 300 ms of the pointer event`, lateness.click <= 330 && lateness.contextmenu <= 330, JSON.stringify(lateness));
     await settle(page);
 
     // transformRequest and addProtocol: the functions are on the page, and the requests are made in workers.
@@ -565,9 +580,6 @@ for (const mode of ['main', 'worker']) {
         });
         await page.waitForTimeout(1500);
         const box = await page.locator('canvas').first().boundingBox();
-        // (#7: `click` fires at once and does not wait for the engine. The pointer rests before the click, as a hand does, and
-        // the map asks the engine about that place while it rests.)
-        await page.mouse.move(box.x + box.width / 2 + 60, box.y + box.height / 2 + 40); await page.waitForTimeout(400);
         await page.mouse.click(box.x + box.width / 2 + 60, box.y + box.height / 2 + 40);
         await page.waitForTimeout(1000);
         const atOnce = await page.evaluate(() => { window.map.off('idle', window.atOnceIdle); return window.atOnce; });

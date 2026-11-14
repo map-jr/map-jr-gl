@@ -296,9 +296,10 @@ export class Map extends CoreMap {
     }
     private summary(found: QueriedFeature[]) { return JSON.stringify(found.map(f => [f.layer, f.id, f.properties])); }
     /**
-     * (`click`, `dblclick` and `contextmenu` fire at once, as in MapLibre. The engine is asked about the place in the
-     * background, and a pointer that rests also asks: a listener that reads `queryRenderedFeatures(e.point)` at once gets
-     * that answer when it has come. Listeners for a layer get their features from the core map.)
+     * (`click`, `dblclick` and `contextmenu` must have the features at their place when a listener reads
+     * `queryRenderedFeatures(e.point)` at once. The map asks the engine at `mousedown` and `touchstart`, which come
+     * before these events, and where a pointer rests. An event fires at once when the answer is there, and else waits
+     * for it for at most 300 ms. Listeners for a layer get their features from the core map.)
      */
     override fire(type: string, data: Record<string, unknown> = {}): void | PromiseLike<unknown> {
         // The page gave new data (`setData`, a change of the style): the answers from before are old. They are not given.
@@ -307,15 +308,23 @@ export class Map extends CoreMap {
         // it is asked again: if the new answer is another, `idle` fires one more time for that question.)
         if (type === 'sourcedata' || type === 'styledata') this.refired.clear();
         const point = data.point as {x: number; y: number} | undefined;
-        if (point && this.rawStyle && /^(click|dblclick|contextmenu|mousemove)$/.test(type)) {
-            clearTimeout(this.resting);
-            const warm = () => {
-                const {box, sets} = this.rendered([point.x, point.y]), key = this.questionKey(box), turn = this.turn;
-                if (sets.length && !this.answers.has(key)) this.ask<QueriedFeature[]>(id => ({type: 'queryRendered', id, box, sets, geometry: true})).then(found => this.keep(key, found, turn), () => {});
-            };
-            if (type === 'mousemove') this.resting = setTimeout(warm, 50); else warm();
-        }
-        return super.fire(type, data);
+        if (!point || !this.rawStyle || data.asked) return super.fire(type, data);
+        const warm = () => {
+            const {box, sets} = this.rendered([point.x, point.y]), key = this.questionKey(box), turn = this.turn;
+            if (!sets.length || this.answers.has(key)) return;
+            if (!this.asking.has(key)) this.asking.set(key, this.ask<QueriedFeature[]>(id => ({type: 'queryRendered', id, box, sets, geometry: true}))
+                .then(found => this.keep(key, found, turn), () => {}).finally(() => this.asking.delete(key)));
+            return this.asking.get(key);
+        };
+        if (type === 'mousemove') { clearTimeout(this.resting); this.resting = setTimeout(warm, 50); }
+        if (type === 'mousedown' || type === 'touchstart') warm();
+        if (!/^(click|dblclick|contextmenu)$/.test(type)) return super.fire(type, data);
+        const pending = warm();
+        // (The descriptors are copied, so that the getter `defaultPrevented` stays live.)
+        const send = () => super.fire(type, Object.defineProperties({asked: true}, Object.getOwnPropertyDescriptors(data)));
+        if (!pending) return send();
+        return Promise.race([pending, new Promise(r => setTimeout(r, 300))]).then(send);
     }
+    private asking = new globalThis.Map<string, Promise<void>>();
     private resting?: ReturnType<typeof setTimeout>;
 }
