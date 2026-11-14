@@ -775,6 +775,40 @@ test('labels: text along a line that is too short for it is rejected before the 
     }
 });
 
+test('labels: the test for the same text nearby reads only nearby labels when one text repeats thousands of times (#332)', async () => {
+    const {placeLabels} = await import('../../src/placement.ts');
+    const {EstimateShaper} = await import('../../src/text.ts');
+    const {prepareGeoJSON, sliceGeoJSON} = await import('../../src/geojson.ts');
+    const layer = compileLayer({id: 'p', type: 'symbol', source: 'g', layout: {'text-field': 'Parking', 'text-allow-overlap': true}})!;
+    const n = 2 ** TILE.z, lng = (TILE.x + 0.5) / n * 360 - 180, lat = Math.atan(Math.sinh(Math.PI * (1 - 2 * (TILE.y + 0.5) / n))) * 180 / Math.PI;
+    const point = {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [lng, lat]}};
+    const base = buildTile(sliceGeoJSON(prepareGeoJSON(point), TILE.z, TILE.x, TILE.y), TILE.z, [layer], true).labels.p[0];
+    // Two tiles side by side, each with 3000 labels "Parking" at random places away from the edges. 40 labels of the left tile lie at its
+    // right edge, less than a pixel from 40 labels of the right tile, which are duplicates of them.
+    let seed = 7;
+    const rnd = () => (seed = seed * 16807 % 2147483647) / 2147483647;
+    const at = (x: number, y: number) => Object.assign(Object.create(base), {x, y});
+    const inside = () => at(64 + rnd() * 3968, rnd() * 4096);
+    const left = Array.from({length: 3000}, (_, i) => i < 40 ? at(4095.9, i * 100 + 50) : inside());
+    const right = Array.from({length: 3000}, (_, i) => i < 40 ? at(0.2, i * 100 + 50) : inside());
+    const ids = [0, 1].map(dx => ({z: TILE.z, x: TILE.x + dx, y: TILE.y, w: 0, key: `${TILE.z}/${TILE.x + dx}/${TILE.y}`}));
+    const tr = new Transform();
+    tr.width = 800; tr.height = 600;
+    tr.set([(TILE.x + 1) / n * 360 - 180, lat], 13, 0, 0);
+    const hypot = Math.hypot;
+    let calls = 0;
+    Math.hypot = (...a: number[]) => { calls++; return hypot(...a); };
+    let out;
+    try {
+        out = placeLabels(tr, renderItems(tr, ids, key => ({labels: {p: key === ids[0].key ? left : right}})), [layer], new EstimateShaper(), new CollisionGrid());
+    } finally { Math.hypot = hypot; }
+    // The old test of every pair placed the same labels: all but the 40 duplicates.
+    assert.equal(out.length, 6000 - 40);
+    assert.ok(out.every(p => p.src.x !== 0.2), 'the labels at the edge of the right tile are the duplicates');
+    // The test of every pair took about 9 million distances here.
+    assert.ok(calls < 60000, `${calls} distances for 6000 labels`);
+});
+
 test('sizes: a size of zoom and feature is found at the zoom that an overzoomed tile is built for (#249)', async () => {
     const {prepareGeoJSON, sliceGeoJSON} = await import('../../src/geojson.ts');
     const n = 2 ** 14, lng = (TILE.x + 0.5) / n * 360 - 180, lat = Math.atan(Math.sinh(Math.PI * (1 - 2 * (TILE.y + 0.5) / n))) * 180 / Math.PI;

@@ -272,11 +272,17 @@ export class Map {
         // Tile workers come from a pool shared by all maps. If workers cannot be started at all (the file is missing,
         // or a security policy forbids them), everything still works on this thread, just less smoothly.
         const want = o.renderer ?? loadDefaults.renderer ?? 'auto';
+        // With the main renderer, the engine chunk and its imports load now, at the same time as the style, and not
+        // once the style and the workers are ready (#325). A map that cannot start the worker renderer loads the chunk as
+        // soon as it knows that. (`startMainEngine` imports the same module again: the browser fetches it once.)
+        const preload = () => void import('./engine-entry.ts').catch(() => {});
         const pool = acquireTileWorkers(o).catch((err: Error) => {
+            preload();
             console.warn(`[map-jr-gl] Workers are unavailable (${err.message}); running on the main thread. ` +
                 'If the worker file is not next to the library, pass `workerUrl` or `createWorker`, or use the standalone build.');
         });
         const engine = want !== 'main' && 'transferControlToOffscreen' in this.canvas ? workerReady(createWorker(o)).catch(() => null) : null;
+        if (engine) engine.then(w => w || preload()); else preload();
         // (When the style fails, or the map is removed, the workers of this start are given back.)
         const giveBack = () => { pool.then(p => p?.release()); engine?.then(w => w?.terminate()); };
         let raw: any, turn: number;
