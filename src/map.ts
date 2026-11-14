@@ -1554,7 +1554,10 @@ export class Map {
 
     /** Attribution strings (as provided, possibly HTML) of the sources in the current style. */
     getAttributions(): string[] {
-        return [...new Set(Object.values(this.resolved?.sources ?? {}).map(s => s.attribution).filter((a): a is string => !!a))];
+        // As in MapLibre GL JS: only the sources that a visible layer uses at the current zoom, and no blank text.
+        const z = this.tr.zoom, sources = this.resolved?.sources ?? {}, layers: any[] = this.rawStyle?.layers ?? [];
+        const used = new Set(layers.filter(l => l.source && l.layout?.visibility !== 'none' && z >= (l.minzoom ?? 0) && z < (l.maxzoom ?? 24)).map(l => l.source as string));
+        return [...new Set(Object.entries(sources).filter(([id]) => used.has(id)).map(([, s]) => s.attribution?.trim()).filter((a): a is string => !!a))];
     }
 
     remove() {

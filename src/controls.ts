@@ -98,7 +98,7 @@ export class AttributionControl implements Control {
         let interacted = false;
         const collapse = () => { interacted = true; toggleClass(el, 'compact-show', false); toggle.setAttribute('aria-expanded', 'false'); };
         this.update = () => {
-            const html = [...new Set([...map.getAttributions(), ...[this.options.customAttribution ?? []].flat()])].join(' | ');
+            const html = [...new Set([...map.getAttributions(), ...[this.options.customAttribution ?? []].flat().map(a => a.trim()).filter(Boolean)])].join(' | ');
             inner.replaceChildren();
             sanitizeAttribution(html, inner);
             el.style.display = html ? '' : 'none';
@@ -114,8 +114,8 @@ export class AttributionControl implements Control {
         map.on('styledata', this.update);
         map.on('resize', this.update);
         map.on('idle', this.update); // (controls that were added since)
-        // The open credits of a small map close when the user touches the map: a press, a tap or the start of a drag.
-        const presses = ['dragstart', 'mousedown', 'touchstart'];
+        // The open credits of a small map close when the user drags the map, as in MapLibre GL JS (a click does not close them).
+        const presses = ['drag'];
         for (const type of presses) map.on(type, collapse);
         this.cleanup = () => { map.off('styledata', this.update); map.off('resize', this.update); map.off('idle', this.update); for (const type of presses) map.off(type, collapse); };
         this.update();
