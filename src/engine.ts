@@ -372,10 +372,11 @@ export class Engine {
      * thread does when tiles arrive, and several often arrive together, so each frame sends only a limited amount.
      */
     private uploads: {bytes: number; make(): GLTile; done(gl: GLTile): void}[] = [];
-    private upload(tile: TileGL): Promise<GLTile> {
+    private upload(tile: TileGL, wanted: () => boolean): Promise<GLTile> {
         let bytes = 0;
         for (const b of Object.values(tile.layers)) for (const v of Object.values(b)) if (ArrayBuffer.isView(v)) bytes += v.byteLength;
-        return this.paced(bytes, () => this.renderer.createTile(tile));
+        // (A tile that is no longer wanted when its turn comes is not sent.)
+        return this.paced(bytes, () => wanted() ? this.renderer.createTile(tile) : {labels: {}, batches: {}});
     }
     /** Does a piece of GPU upload work in its turn, so that one frame never has too much of it. */
     private paced(bytes: number, make: () => GLTile): Promise<GLTile> {
@@ -1149,7 +1150,7 @@ export class Engine {
         else if (isGeometrySource(src)) {
             const backend = this.backends[t.backend = this.nextBackend++ % this.backends.length], req = this.nextReq++;
             t.cancel = () => backend.cancel(req);
-            load = backend.load(this.build(req, source, id, t)).then(tile => (this.tapTile(key, 'ans'), this.upload(tile)));
+            load = backend.load(this.build(req, source, id, t)).then(tile => (this.tapTile(key, 'ans'), this.upload(tile, () => this.tiles.get(key) === t)));
         } else {
             // Elevation tiles are decoded in a tile worker, which also reads the heights that 3D terrain needs: this thread
             // only sends the finished pixels to the GPU. (Reading pixels back here made the map hitch as tiles arrived.)
@@ -1177,7 +1178,8 @@ export class Engine {
             }
         }
         load.then(gl => {
-            if (this.tiles.get(key) !== t) return;
+            // A tile that was dropped while it waited (it left the view, or the source changed) frees what it sent to the GPU (#400).
+            if (this.tiles.get(key) !== t) return this.renderer.destroyTile(gl);
             this.tapTile(key, t.missing ? 'miss' : 'up');
             t.gl = gl;
             t.state = 'ok';
