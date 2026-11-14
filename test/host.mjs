@@ -951,6 +951,38 @@ for (const renderer of ['worker', 'main']) {
     } catch (e) { check(`[${renderer}] the test run was completed`, false, String(e.message).split('\n')[0]); }
     await page.close();
 }
+// The engine starts with the style before the TileJSON of a source has answered (#371): the first frame (the background)
+// comes while the TileJSON is held back, and the map is idle only after it has arrived and the source has loaded.
+for (const renderer of ['main', 'worker']) {
+    const page = await browser.newPage({viewport: {width: 900, height: 600}});
+    try {
+        let release;
+        const held = new Promise(r => release = r);
+        await page.route(/\/test-tilejson$/, async route => {
+            await held;
+            route.fulfill({contentType: 'application/json', body: JSON.stringify({tilejson: '3.0.0', tiles: [origin + '/tiles/{z}/{x}/{y}.pbf'], minzoom: 0, maxzoom: 14})});
+        });
+        await page.goto(origin + '/bench');
+        await page.evaluate(async renderer => {
+            const lib = await import('/dist/map-jr-gl.js'), style = await (await fetch('/style.json')).json();
+            const name = Object.keys(style.sources).find(n => style.sources[n].type === 'vector');
+            style.sources[name] = {type: 'vector', url: location.origin + '/test-tilejson'};
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99;background:#fff'}));
+            const t = window.tj = {seen: []};
+            t.host = lib.createMap(el, {style, initialView: {center: [-74.0065, 40.7085], zoom: 14.3}, renderer, attribution: false});
+            t.host.listen('render', () => { if (!t.seen.includes('render')) t.seen.push('render'); });
+            t.host.listen('idle', () => t.seen.push('idle'));
+        }, renderer);
+        const before = await page.evaluate(async () => { for (let i = 0; i < 100 && !window.tj.seen.length; i++) await new Promise(r => setTimeout(r, 100)); return window.tj.seen.slice(); });
+        release();
+        const after = await page.evaluate(async () => {
+            for (let i = 0; i < 300 && !window.tj.seen.includes('idle'); i++) await new Promise(r => setTimeout(r, 100));
+            const s = window.tj.seen.slice(); window.tj.host.destroy(); return s;
+        });
+        check(`[${renderer}] the map draws its first frame before the TileJSON answers, and is idle after it`, before.join() === 'render' && after.at(-1) === 'idle', JSON.stringify({before, after}));
+    } catch (e) { check(`[${renderer}] the TileJSON test was completed`, false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
 // With the main renderer, the sprite is requested as soon as the style is known, not once the engine file has loaded
 // (#371). The engine file is held back until both files of the sprite have been requested, for 5 s at most; the
 // engine then uses those answers and asks for no file a second time.

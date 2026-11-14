@@ -321,7 +321,11 @@ export class Map {
         // the camera: with a zoom in the options and no centre, the centre is [0, 0], not that of the style.
         const sc = this.rawStyle;
         if (o.center === undefined && o.zoom === undefined && o.bearing === undefined && o.pitch === undefined && !o.bounds) this.tr.set(sc.center, sc.zoom, sc.bearing, sc.pitch);
-        const restyled = this.restyled, first = await resolveStyle(this.rawStyle, this.fetchAs('Source'), this.styleBase, undefined, this.sourceFailed);
+        // The engine starts with the style as soon as it is known, and does not wait for the TileJSON of its sources: a
+        // source that is still on its way is left out, the map is not idle, and the source follows as a change of the
+        // style when it arrives (#371). The first frame then shows the background of the style.
+        const late = {late: () => { if (this.rawStyle && !this.removed) this.restyle(true); }, fail: this.sourceFailed};
+        const restyled = this.restyled, first = await resolveStyle(this.rawStyle, this.fetchAs('Source'), this.styleBase, late, this.sourceFailed);
         if (this.removed) { giveBack(); return; }
         if (!(o.glyphs ?? !o.fonts)) first.glyphs = undefined;
         // (A change of the style during that step has its own result, which is newer. The engine gets it after its start.)
