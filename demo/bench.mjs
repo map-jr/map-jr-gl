@@ -3,6 +3,7 @@
 import * as mapjr from '../dist/map-jr-gl-maplibre-compat.js';
 import * as maplibre from '../ml/maplibre-gl.mjs';
 import {manyMarkers, addImages, addMarkers} from './markers.mjs';
+import {TileReport} from './tile-report.mjs';
 
 maplibre.setWorkerUrl(new URL('../ml/maplibre-gl-worker.mjs', import.meta.url).href);
 const q = new URLSearchParams(location.search);
@@ -58,6 +59,7 @@ async function run(s) {
     if (s.terrain) withTerrain(style);
     const view = s.terrain ? TERRAIN_VIEW : VIEW;
     const t0 = performance.now();
+    const tiles = new TileReport();
     let map, frames = 0, stamps = [], engine = [], engineFps = [];
     const frame = () => { frames++; stamps.push(performance.now()); };
     if (s.lib === 'maplibre') {
@@ -69,17 +71,18 @@ async function run(s) {
         // The engine reports the time that its own code takes for a frame (in a worker or on this thread). A large value
         // means that the processor is the limit; a small value with few frames means that the GPU is.
         map.on('stats', e => { engine.push(e.frameMs); engineFps.push(e.fps); });
-        // The engine keeps the history of each tile from now on, for the report of the tiles that are not drawn (#360).
-        map._tileReport('start');
+        // The engine reports each step of each tile and the tiles of the view of each frame; the report is made here (#360).
+        map.on('tile', e => tiles.event(e));
+        map._tileReport(true);
     }
     // The tile slots of the view that have no tile of their own drawn, with the history of each tile (this library only).
     const undrawn = {};
     let late = null;
-    const report = async when => { if (s.lib === 'maplibre') return; const r = await map._tileReport().catch(err => ({undrawn: [{key: 'report failed', state: err.message, cover: '', history: []}], late: []})); undrawn[when] = r.undrawn; if (when === 'after the pan, at idle') late = r.late; };
+    const report = when => { if (s.lib !== 'maplibre') undrawn[when] = tiles.undrawn(); };
     // (A map that never settles must not stop the scenarios after it: it fails after a minute.)
     if (!await Promise.race([new Promise(r => map.once('idle', () => r(true))), sleep(60000).then(() => false)])) { map.remove(); throw new Error('the map was not idle after 60 seconds'); }
     const load = performance.now() - t0;
-    await report('after load idle');
+    report('after load idle');
     let add = null;
     if (s.markers) {
         const layer = manyMarkers(s.markers, VIEW.center, 0.05), a0 = performance.now();
@@ -92,12 +95,12 @@ async function run(s) {
     await sleep(600);
     frames = 0; stamps = []; engine = []; engineFps = []; scripts.length = 0; blocked = Number.isNaN(blocked) ? NaN : 0;
     const a0 = performance.now();
-    if (s.lib !== 'maplibre') map._tileReport('mark');
+    tiles.mark();
     // (`essential`: the animation is what is measured, so it also runs where the system asks for less motion.)
     map.easeTo({...(s.terrain ? TERRAIN_END : {center: [-73.975, 40.735], zoom: 15.2, bearing: 40}), duration: SECONDS * 1000, essential: true});
     await sleep(SECONDS * 1000 + 100);
-    await report('at the end of the pan');
-    if (s.lib !== 'maplibre') { await Promise.race([new Promise(r => map.once('idle', r)), sleep(10000)]); await report('after the pan, at idle'); }
+    report('at the end of the pan');
+    if (s.lib !== 'maplibre') { await Promise.race([new Promise(r => map.once('idle', r)), sleep(10000)]); report('after the pan, at idle'); late = tiles.late(); }
     // Count only frames drawn while the camera was animating: once it stops, a map that correctly stops drawing
     // would otherwise look slower than one that keeps redrawing an unchanged view.
     const during = stamps.filter(t => t <= a0 + SECONDS * 1000), gaps = during.slice(1).map((t, i) => t - during[i]);

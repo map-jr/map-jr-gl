@@ -182,6 +182,25 @@ for (const renderer of ['worker', 'main']) {
         }, renderer);
         check(`[${renderer}] a GeoJSON line with longitudes past 180° is drawn past the antimeridian`, pastAntimeridian === 1, JSON.stringify(pastAntimeridian));
 
+        // 3e. toBlob gives the drawn map as an image in both renderers (#44): the buffer of the main renderer can be cleared after each frame.
+        const blob = await page.evaluate(async renderer => {
+            const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const square = {type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[-30, -30], [30, -30], [30, 30], [-30, 30], [-30, -30]]]}};
+            const host = t.lib.createMap(el, {style: {version: 8, sources: {sq: {type: 'geojson', data: square}}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#f00'}}, {id: 'sq', type: 'fill', source: 'sq', paint: {'fill-color': '#00f'}}]},
+                initialView: {center: [0, 0], zoom: 1}, renderer, attribution: false});
+            const b = await Promise.race([host.toBlob(), new Promise(r => setTimeout(() => r(null), 10000))]);
+            if (!b) { host.destroy(); el.remove(); return {timeout: true}; }
+            const bmp = await createImageBitmap(b), c = new OffscreenCanvas(bmp.width, bmp.height), g = c.getContext('2d');
+            g.drawImage(bmp, 0, 0);
+            const px = (x, y) => Array.from(g.getImageData(Math.round(x * bmp.width), Math.round(y * bmp.height), 1, 1).data);
+            const jpeg = await host.toBlob('image/jpeg', 0.8);
+            const later = host.toBlob(); host.destroy(); el.remove();
+            const rejected = await later.then(() => 'resolved', e => e.message);
+            return {type: b.type, w: bmp.width, centre: px(0.5, 0.5), corner: px(0.02, 0.02), jpeg: jpeg.type, rejected};
+        }, renderer);
+        check(`[${renderer}] toBlob gives the drawn map as an image, and rejects after destroy (#44)`,
+            blob.type === 'image/png' && blob.w >= 200 && blob.centre[2] > 200 && blob.centre[0] < 50 && blob.corner[0] > 200 && blob.corner[2] < 50 && blob.jpeg === 'image/jpeg' && /toBlob\(\): the map was removed/.test(blob.rejected), JSON.stringify(blob));
+
         // 3d. `initialView` takes bounds with padding, and `state.view.bounds` follows moves and a new size (#266).
         const viewBounds = await page.evaluate(async renderer => {
             const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
@@ -1287,6 +1306,30 @@ for (const prefetch of [undefined, 'ahead']) {
         check(`prefetch: ${prefetch}: a drag ${prefetch === 'ahead' ? 'requests' : 'does not request'} tiles beyond the leading edge`, prefetch === 'ahead' ? ahead.length > 0 : ahead.length === 0, JSON.stringify({ahead: ahead.length, z}));
     } catch (e) { check(`prefetch: ${prefetch}: the drag test was completed`, false, String(e.message).split('\n')[0]); }
     await page?.close();
+}
+// A tile whose request fails is requested again while the view needs it (#360). The first request of each tile of
+// the view fails here as a lost connection does; each of these tiles must be requested a second time, and the map
+// must then be idle.
+{
+    const page = await browser.newPage({viewport: {width: 900, height: 600}});
+    try {
+        const seen = new Map();
+        await page.goto(`${origin}/bench`);
+        await page.route(/\/tiles\/\d+\/\d+\/\d+\.pbf/, route => {
+            const k = new URL(route.request().url()).pathname, n = (seen.get(k) ?? 0) + 1;
+            seen.set(k, n);
+            return n === 1 ? route.abort('connectionreset') : route.continue().catch(() => {});
+        });
+        await page.evaluate(async from => {
+            const lib = await import('/dist/map-jr-gl.js'), style = await (await fetch('/style.json')).json();
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99;background:#fff'}));
+            window.host = lib.createMap(el, {style, initialView: {center: from, zoom: 13}, renderer: 'main', attribution: false});
+            await new Promise(r => setTimeout(r, 6000));
+        }, from);
+        const once = [...seen].filter(([, n]) => n < 2).map(([k]) => k), idle = await page.evaluate(() => window.host.state.get().idle);
+        check('a tile whose request failed is requested again, and the map becomes idle', seen.size > 0 && once.length === 0 && idle, JSON.stringify({tiles: seen.size, once: once.slice(0, 4), idle}));
+    } catch (e) { check('the test of failed tile requests was completed', false, String(e.message).split('\n')[0]); }
+    await page.close();
 }
 // The cost of a frame does not grow with the number of icons from buffers (#127). The engine reports the script time
 // of its frames on the main thread (`stats`, `frameMs`). The check compares a symbol layer with 100,000 icons with

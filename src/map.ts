@@ -631,6 +631,8 @@ export class Map {
             if (e.grid) this.heights.set(e.key, e.grid); else this.heights.delete(e.key);
             heightsChanged(this.heights);
             if (this.tr.heightAt && !this.moving) this.fire('move'); // overlays re-position onto the newly known ground (while moving, every frame does this anyway)
+        } else if (e.type === 'tile') {
+            this.fire('tile', e); // (for the benchmark page, after `_tileReport`; #360)
         } else if (e.type === 'stats') {
             this.fire('stats', {fps: e.fps, frameMs: e.frameMs, labels: e.labels});
         } else if (e.type === 'resized') {
@@ -764,6 +766,28 @@ export class Map {
     getMaxZoom() { return this.tr.maxZoom; }
     getContainer() { return this.container; }
     getCanvas() { return this.canvas; }
+    /**
+     * The map as an image. Waits until the map is idle, draws one frame and gives the canvas of that frame as a Blob
+     * (`type` and `quality` as in `HTMLCanvasElement.toBlob`; the default is PNG). It works with both renderers: the
+     * drawing buffer of the main renderer can be cleared after each frame, so the image is taken in the same task as the frame.
+     */
+    toBlob(type = 'image/png', quality?: number): Promise<Blob> {
+        return new Promise((resolve, reject) => {
+            const gone = () => reject(new Error('[map-jr-gl] toBlob(): the map was removed before its image was taken.'));
+            const shoot = () => {
+                if (this.removed) return gone();
+                this.once('render', () => {
+                    // (The engine reports frames only while a page listens to `render`.)
+                    if (!this.listeners.render?.length) { this.wantsFrames = false; this.post({type: 'frames', on: false}); }
+                    this.off('remove', gone);
+                    this.canvas.toBlob(b => b ? resolve(b) : reject(new Error('[map-jr-gl] toBlob(): the browser could not encode the image as ' + type + '.')), type, quality);
+                });
+                this.triggerRepaint();
+            };
+            this.once('remove', gone);
+            if (this.loaded()) shoot(); else this.once('idle', shoot);
+        });
+    }
     /**
      * As in MapLibre: `false` from a call of `setStyle`, a style edit, a source change or a camera move until the next
      * complete frame (the frame that fires `idle`).
@@ -1317,12 +1341,8 @@ export class Map {
             if (this.removed) this.drop('was removed'); else this.post(command(id));
         });
     }
-    /**
-     * @internal For the benchmark page (#360). `'start'` starts the history of each tile in the engine, and `'mark'`
-     * marks the start of a movement. Without an argument, the answer has the tile slots of the view that are not drawn,
-     * with their history, and the tiles that came into view after the mark and were drawn late (see src/tile-report.ts).
-     */
-    _tileReport(on?: 'start' | 'mark') { return this.ask<{undrawn: import('./tile-report.ts').UndrawnTile[]; late: import('./tile-report.ts').LateTile[]} | null>(id => ({type: 'tileReport', id, on})); }
+    /** @internal For the benchmark page (#360): the engine fires a `tile` event for each step of a tile and for each frame. */
+    _tileReport(on: boolean) { this.post({type: 'tileReport', on}); }
     /** Rejects the queries that have no answer yet. The engine that had them is gone, so no answer can come. */
     private drop(why: string) {
         for (const p of this.pending.values()) p.reject(new Error(`[map-jr-gl] The query has no answer: the map ${why}.`));

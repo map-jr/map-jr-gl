@@ -13,7 +13,6 @@ import {decodeElevation, sampleElevation, tilesUnderBox, type QueriedFeature, ty
 import type {FeatureStates, TileBackend, TileRequest} from './tiles.ts';
 import type {TileGL} from './tile.ts';
 import {fetchTile, heads} from './pmtiles.ts';
-import {lateTiles, logTile, trackView, undrawnTiles, type TileTimes} from './tile-report.ts';
 
 export interface CameraOptions { center?: LngLatLike; zoom?: number; bearing?: number; pitch?: number; /** Space at the edges covered by other things: top, right, bottom, left. */ padding?: [number, number, number, number] }
 export type {FontSource} from './style.ts';
@@ -68,8 +67,8 @@ export type Command =
     | {type: 'frames'; on: boolean}
     /** Asks for a `pong` event with the same number after the next frame that the engine has drawn to its end. */
     | {type: 'ping'; n: number}
-    /** For the benchmark page (#360): `on: 'start'` starts the history of each tile, and `'mark'` marks the start of a movement. Without `on`, the answer has the slots of the view that are not drawn and the tiles drawn late since the mark (see tile-report.ts). */
-    | {type: 'tileReport'; id: number; on?: 'start' | 'mark'};
+    /** For the benchmark page (#360): report the steps of each tile and the tiles of the view of each frame with `tile` events. */
+    | {type: 'tileReport'; on: boolean};
 export type EngineEvent =
     | {type: 'camera'; lng: number; lat: number; zoom: number; bearing: number; pitch: number; /** Ground height at the centre with 3D terrain, else 0. */ elevation: number; exaggeration: number; groundRange?: [number, number]; padding: [number, number, number, number]; moving: boolean}
     | {type: 'idle'; seq: number}
@@ -91,7 +90,9 @@ export type EngineEvent =
     | {type: 'resized'; width: number; height: number; dpr: number}
     | {type: 'result'; id: number; value?: unknown; error?: string}
     | {type: 'imagemissing'; name: string}
-    | {type: 'error'; message: string};
+    | {type: 'error'; message: string}
+    /** After `tileReport`: a step of a tile (`req`, `ans`, `up`, `miss`, `fail`, `drop`), or, with `kind` `frame`, the tile slots of the view in a frame. `t`: the engine's clock, in ms. */
+    | {type: 'tile'; key: string | string[]; kind: string; t: number; error?: string};
 
 /**
  * Describes what a source's tiles depend on: first the source itself, then everything about its layers that is baked
@@ -110,7 +111,7 @@ function sourceSignature(style: ResolvedStyle, name: string): [string, string] {
     return [source, json.includes('"global-state"') ? json + JSON.stringify(style.state ?? {}) : json];
 }
 
-interface TileState { state: 'loading' | 'ok' | 'error'; gl?: GLTile; /** An image tile that the server does not have (404). */ missing?: boolean; /** The zoom that the tile was built for (see `buildZoom`). */ band?: number; /** A number that changes each time the state or the content of the tile changes. */ rev?: number; /** Elevation tiles shaping 3D terrain: the lowest and highest ground on the tile, in metres. */ range?: [number, number]; /** An elevation tile: its heights, for when it shapes 3D terrain (see `ground`). */ dem?: {grid: Float32Array; lo: number; hi: number}; used: number; cancel(): void; /** Shown, but built from data that has since changed. */ stale?: boolean; rebuilding?: boolean; /** The tile worker that loaded the tile. */ backend?: number; /** The rules of the style that the tile was built for (see `sourceSignature`). */ rules?: string }
+interface TileState { state: 'loading' | 'ok' | 'error'; gl?: GLTile; /** An image tile that the server does not have (404). */ missing?: boolean; /** The zoom that the tile was built for (see `buildZoom`). */ band?: number; /** A number that changes each time the state or the content of the tile changes. */ rev?: number; /** Elevation tiles shaping 3D terrain: the lowest and highest ground on the tile, in metres. */ range?: [number, number]; /** An elevation tile: its heights, for when it shapes 3D terrain (see `ground`). */ dem?: {grid: Float32Array; lo: number; hi: number}; used: number; cancel(): void; /** A failed load: how many loads of this tile have failed, and when it is requested again. */ tries?: number; retryAt?: number; /** Shown, but built from data that has since changed. */ stale?: boolean; rebuilding?: boolean; /** The tile worker that loaded the tile. */ backend?: number; /** The rules of the style that the tile was built for (see `sourceSignature`). */ rules?: string }
 interface LabelState { placed: Placed; opacity: number; target: number }
 
 const raf: (cb: (t: number) => void) => unknown = globalThis.requestAnimationFrame
@@ -175,6 +176,8 @@ const touches = (a: TileID, b: TileID) => {
     return a.w === b.w && (d >= 0 ? a.x >> d === b.x && a.y >> d === b.y : b.x >> -d === a.x && b.y >> -d === a.y);
 };
 
+/** How many times a tile whose request failed is requested again. */
+const TILE_RETRIES = 3;
 export class Engine {
     tr = new Transform();
     private renderer: GLRenderer;
@@ -182,13 +185,6 @@ export class Engine {
     private style!: ResolvedStyle;
     private layers: CompiledLayer[] = [];
     private tiles = new Map<string, TileState>();
-    /** The history of each tile and the tile ids of the view in the last frame, kept only while the benchmark page asks (#360). */
-    private tileLog?: Map<string, string[]>;
-    private tileLogStart = 0;
-    private tileTimes = new Map<string, TileTimes>();
-    private tileMark = 0;
-    private lastIdeal = new Map<string, TileID[]>();
-    private logTile(key: string, event: string) { if (this.tileLog) logTile(this.tileLog, key, event, performance.now() - this.tileLogStart, this.tileTimes); }
     private frameNo = 0;
     /** The layers whose fonts the glyph atlas has looked up (see `GlyphAtlas.warm`). */
     private warmed?: CompiledLayer[];
@@ -865,13 +861,7 @@ export class Engine {
             case 'ping': this.pinged = c.n; break; // (and a frame follows)
             case 'requests': this.rules = c.rules; for (const b of this.backends) b.setRequests(c.rules, this.ask); break;
             case 'resourceResult': this.asked.get(c.id)?.(c); this.asked.delete(c.id); break;
-            case 'tileReport': {
-                if (c.on === 'start') { this.tileLog = new Map(); this.tileTimes.clear(); this.tileLogStart = performance.now(); }
-                const ms = performance.now() - this.tileLogStart;
-                if (c.on === 'mark') this.tileMark = ms;
-                this.emit({type: 'result', id: c.id, value: c.on || !this.tileLog ? null : {undrawn: this.undrawn(), late: lateTiles(this.tileTimes, this.tileMark)}});
-                return;
-            }
+            case 'tileReport': this.tap = c.on; return;
         }
         this.repaint();
     }
@@ -1107,14 +1097,21 @@ export class Engine {
         return !!(this.ease || (this.wheel && this.wheel.doneAt === undefined) || glide);
     }
 
-    /** For the benchmark page (#360): the slots of the view in the last frame that have no tile of their own drawn. */
-    private undrawn() {
-        const drawn = (k: string) => { const t = this.tiles.get(k); return t?.state === 'ok' && !t.missing; };
-        return undrawnTiles(this.lastIdeal, drawn, k => this.tiles.get(k)?.state, this.tileLog!);
+    /** The tile of a key, requested again first when its request failed and the time to try again has come. */
+    private retried(source: string, id: TileID, key: string) {
+        const t = this.tiles.get(key);
+        if (!(t?.retryAt! <= performance.now())) return t;
+        this.dropTile(key, t!);
+        this.request(source, id, key, t!.tries! + 1);
+        return this.tiles.get(key);
     }
 
+    /** The benchmark page asks for `tile` events (#360). The report itself is made on the page (demo/tile-report.mjs). */
+    private tap = false;
+    private tapTile(key: string | string[], kind: string, error?: string) { if (this.tap) this.emit({type: 'tile', key, kind, t: performance.now(), error}); }
+
     private dropTile(key: string, t: TileState) {
-        this.logTile(key, t.state === 'loading' ? 'cancelled' : 'evicted');
+        this.tapTile(key, 'drop');
         if (t.state === 'loading') t.cancel();
         if (t.gl) this.renderer.destroyTile(t.gl);
         this.tiles.delete(key);
@@ -1145,16 +1142,16 @@ export class Engine {
         heightsChanged(this.heights);
     }
 
-    private request(source: string, id: TileID, key: string) {
+    private request(source: string, id: TileID, key: string, tries = 0) {
         const src = this.style.sources[source], url = tileURL(src, id.z, id.x, id.y);
         // Contour lines are made from elevation data, which is much work. While the zoom changes, each step would start
         // tiles that are out of date a moment later, and slow devices cannot keep up. The lines of the last zoom stay
         // on the map (they are scaled) until the zoom has been still for a moment.
         if (src.contour && this.frameTime - this.zoomMovedAt < CONTOUR_WAIT) { this.contourWait = true; return; }
-        const t: TileState = {state: 'loading', used: this.frameNo, cancel() {}};
+        const t: TileState = {state: 'loading', used: this.frameNo, tries, cancel() {}};
         this.tiles.set(key, t);
+        this.tapTile(key, 'req');
         t.rev = ++this.tilesVersion;
-        this.logTile(key, 'requested');
         let load: Promise<GLTile>;
         const b = src.bounds, n = 2 ** id.z;
         // A tile outside the bounds of the source is empty, without a request.
@@ -1162,7 +1159,7 @@ export class Engine {
         else if (isGeometrySource(src)) {
             const backend = this.backends[t.backend = this.nextBackend++ % this.backends.length], req = this.nextReq++;
             t.cancel = () => backend.cancel(req);
-            load = backend.load(this.build(req, source, id, t)).then(tile => (this.logTile(key, 'answered'), this.upload(tile)));
+            load = backend.load(this.build(req, source, id, t)).then(tile => (this.tapTile(key, 'ans'), this.upload(tile)));
         } else {
             // Elevation tiles are decoded in a tile worker, which also reads the heights that 3D terrain needs: this thread
             // only sends the finished pixels to the GPU. (Reading pixels back here made the map hitch as tiles arrived.)
@@ -1191,7 +1188,7 @@ export class Engine {
         }
         load.then(gl => {
             if (this.tiles.get(key) !== t) return;
-            this.logTile(key, t.missing ? 'missing' : 'uploaded');
+            this.tapTile(key, t.missing ? 'miss' : 'up');
             t.gl = gl;
             t.state = 'ok';
             t.rev = ++this.tilesVersion;
@@ -1199,10 +1196,14 @@ export class Engine {
             if (t.used >= 0) this.invalidate(); else t.used = this.frameNo;
         }, err => {
             if (this.tiles.get(key) !== t) return;
-            this.logTile(key, 'failed: ' + err.message);
+            this.tapTile(key, 'fail', err.message);
             t.state = 'error';
             t.rev = ++this.tilesVersion;
-            if (err.message !== 'aborted' && err.name !== 'AbortError') this.emit({type: 'error', message: err.message});
+            if (err.message === 'aborted' || err.name === 'AbortError') return this.repaint();
+            this.emit({type: 'error', message: err.message});
+            // A failed request (a lost connection, an error of the server) is made again while the view needs the tile:
+            // after 0.5 s, 1 s and 2 s. Without this, one failed request left a hole in the map until the tile left the view (#360).
+            if (t.tries! < TILE_RETRIES) { const wait = 500 * 2 ** t.tries!; t.retryAt = performance.now() + wait; setTimeout(() => this.repaint(), wait); }
             this.repaint();
         });
     }
@@ -1334,7 +1335,7 @@ export class Engine {
             } else this.rawElevation = 0;
         }
         const ground = terrain ? this.terrainTiles(wanted) : undefined;
-        this.lastIdeal.clear();
+        const view: string[] = [];
         for (const source in this.style.sources) {
             // Skip sources nothing visible draws from at this zoom (e.g. low-zoom relief imagery when zoomed in). With 3D
             // terrain, the flat layers are drawn into the ground textures, which ask for their own tiles (see groundSources):
@@ -1357,18 +1358,18 @@ export class Engine {
             // ground is flat: relief shading then looks the same as on a tilted map, and a tilt loads no other tiles.)
             const ground = this.style.terrain?.source === source;
             const ideal = tr.coveringTiles(src.minzoom, src.maxzoom, ground ? src.tileSize * 2 : src.tileSize, !ground && (src.type === 'raster' || src.type === 'raster-dem'));
-            if (this.tileLog) this.lastIdeal.set(source, ideal);
+            if (this.tap) for (const id of ideal) view.push(source + '|' + id.key);
             for (const id of ideal) {
                 const key = source + '|' + id.key;
                 wanted.add(key);
-                const t = this.tiles.get(key);
+                const t = this.retried(source, id, key);
                 if (!t) this.request(source, id, key);
                 else this.refresh(source, id, key, t);
                 // (A tile that was requested for the overview and that the view now needs: its arrival changes the image.)
                 if (t && t.used < 0) t.used = frameNo;
                 // (A tile that is drawn from old data, or that is being built again, is not complete: `idle` waits for it.
                 // Only a tile of geometry is built again; see `refresh`.)
-                if (!t || t.state === 'loading' || t.rebuilding || t.stale && t.state === 'ok' && t.band !== undefined) complete = false;
+                if (!t || t.state === 'loading' || t.retryAt || t.rebuilding || t.stale && t.state === 'ok' && t.band !== undefined) complete = false;
                 if (!t || t.state === 'loading' || t.stale || t.rebuilding) loading.add(source);
                 // The server does not have this image tile: the nearest tile above it that the server has is drawn in its
                 // place (as in MapLibre GL JS, at most 10 levels above). One level is requested at a time.
@@ -1388,8 +1389,7 @@ export class Engine {
                     const z = Math.max(src.minzoom, id.z - dz), x = id.x >> id.z - z, y = id.y >> id.z - z, k = `${z}/${x}/${y}`, key = source + '|' + k;
                     if (wanted.has(key)) continue;
                     wanted.add(key);
-                    const t = this.tiles.get(key);
-                    const oid = {z, x, y, w: id.w, key: k};
+                    const oid = {z, x, y, w: id.w, key: k}, t = this.retried(source, oid, key);
                     // (The overview waits for the first `idle` of the map: its tiles are large, and before that they would take
                     // the connections and the tile workers from the tiles of the view and the engine from the label placement.
                     // A map that is not idle 3 s after the start requests it then (see `born`), once the tiles of the view
@@ -1434,7 +1434,7 @@ export class Engine {
             items.set(source, list);
             all.push(...list);
         }
-        if (this.tileLog) trackView(this.tileTimes, this.undrawn(), this.lastIdeal, performance.now() - this.tileLogStart);
+        this.tapTile(view, 'frame');
         for (const key of this.early) if (this.tiles.get(key)?.state !== 'loading') this.early.delete(key);
         for (const [key, t] of this.tiles) {
             if (t.state === 'loading' && !wanted.has(key) && !this.early.has(key)) this.dropTile(key, t);
