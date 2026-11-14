@@ -3,6 +3,7 @@
 import * as mapjr from '../dist/map-jr-gl-maplibre-compat.js';
 import * as maplibre from '../ml/maplibre-gl.mjs';
 import {manyMarkers, addImages, addMarkers} from './markers.mjs';
+import {TileReport} from './tile-report.mjs';
 
 maplibre.setWorkerUrl(new URL('../ml/maplibre-gl-worker.mjs', import.meta.url).href);
 const q = new URLSearchParams(location.search);
@@ -58,6 +59,7 @@ async function run(s) {
     if (s.terrain) withTerrain(style);
     const view = s.terrain ? TERRAIN_VIEW : VIEW;
     const t0 = performance.now();
+    const tiles = new TileReport();
     let map, frames = 0, stamps = [], engine = [], engineFps = [];
     const frame = () => { frames++; stamps.push(performance.now()); };
     if (s.lib === 'maplibre') {
@@ -69,10 +71,18 @@ async function run(s) {
         // The engine reports the time that its own code takes for a frame (in a worker or on this thread). A large value
         // means that the processor is the limit; a small value with few frames means that the GPU is.
         map.on('stats', e => { engine.push(e.frameMs); engineFps.push(e.fps); });
+        // The engine reports each step of each tile and the tiles of the view of each frame; the report is made here (#360).
+        map.on('tile', e => tiles.event(e));
+        map._tileReport(true);
     }
+    // The tile slots of the view that have no tile of their own drawn, with the history of each tile (this library only).
+    const undrawn = {};
+    let late = null;
+    const report = when => { if (s.lib !== 'maplibre') undrawn[when] = tiles.undrawn(); };
     // (A map that never settles must not stop the scenarios after it: it fails after a minute.)
     if (!await Promise.race([new Promise(r => map.once('idle', () => r(true))), sleep(60000).then(() => false)])) { map.remove(); throw new Error('the map was not idle after 60 seconds'); }
     const load = performance.now() - t0;
+    report('after load idle');
     let add = null;
     if (s.markers) {
         const layer = manyMarkers(s.markers, VIEW.center, 0.05), a0 = performance.now();
@@ -85,16 +95,19 @@ async function run(s) {
     await sleep(600);
     frames = 0; stamps = []; engine = []; engineFps = []; scripts.length = 0; blocked = Number.isNaN(blocked) ? NaN : 0;
     const a0 = performance.now();
+    tiles.mark();
     // (`essential`: the animation is what is measured, so it also runs where the system asks for less motion.)
     map.easeTo({...(s.terrain ? TERRAIN_END : {center: [-73.975, 40.735], zoom: 15.2, bearing: 40}), duration: SECONDS * 1000, essential: true});
     await sleep(SECONDS * 1000 + 100);
+    report('at the end of the pan');
+    if (s.lib !== 'maplibre') { await Promise.race([new Promise(r => map.once('idle', r)), sleep(10000)]); report('after the pan, at idle'); late = tiles.late(); }
     // Count only frames drawn while the camera was animating: once it stops, a map that correctly stops drawing
     // would otherwise look slower than one that keeps redrawing an unchanged view.
     const during = stamps.filter(t => t <= a0 + SECONDS * 1000), gaps = during.slice(1).map((t, i) => t - during[i]);
     const span = during.length > 1 ? (during[during.length - 1] - during[0]) / 1000 : 1;
     const result = {name: s.name, load, add, fps: Math.max(0, during.length - 1) / span, worstGap: gaps.length ? Math.max(...gaps) : 0, script: median(scripts), worstScript: scripts.length ? Math.max(...scripts) : 0, blocked, engine: engine.length ? engine.reduce((a, b) => a + b, 0) / engine.length : NaN,
         // The frame rate that the engine counted itself. If the page counts fewer frames, the reports from a worker arrived late.
-        engineFps: engineFps.length ? engineFps.reduce((a, b) => a + b, 0) / engineFps.length : NaN};
+        engineFps: engineFps.length ? engineFps.reduce((a, b) => a + b, 0) / engineFps.length : NaN, undrawn, late};
     map.remove();
     await sleep(300);
     return result;
@@ -102,9 +115,14 @@ async function run(s) {
 
 const fmt = (v, d = 0) => v === null || Number.isNaN(v) ? 'n/a' : v.toFixed(d);
 const cells = r => [r.name + (r.add !== null ? ` (added in ${fmt(r.add)} ms)` : ''), `${fmt(r.load)} ms`, fmt(r.fps, 1), `${fmt(r.worstGap)} ms`, `${fmt(r.script, 1)} / ${fmt(r.worstScript, 1)} ms`, `${fmt(r.blocked)} ms`, Number.isNaN(r.engine) ? '' : `${fmt(r.engine, 1)} ms, ${fmt(r.engineFps, 0)} frames per second`];
+/** One line for each moment of the report: "undrawn after load idle: 0", or the count and each slot with its state, cover and last events. */
+const undrawnLines = r => [...Object.entries(r.undrawn ?? {}).map(([when, list]) => `${r.name}, tiles not drawn ${when}: ${list.length}` + list.map(t => `; ${t.key} ${t.state}, cover ${t.cover}, ${t.history.slice(-4).join(' ') || 'no history'}`).join('')),
+    // Tiles that came into view during the pan and were drawn more than 250 ms later: the slowest three with their steps
+    // ("answer": request to the answer of the tile worker, fetch and build; "upload": to the GPU; "draw": to the first frame).
+    ...(r.late ? [`${r.name}, late tiles (drawn over 250 ms after coming into view during the pan): ${r.late.length}` + r.late.slice(0, 3).map(t => `; ${t.key} ${t.ms} ms${t.drawn ? '' : ' in view, never drawn'}: answer ${t.answer ?? '?'}, upload ${t.upload ?? '?'}, draw ${t.draw ?? '?'}, requested ${t.ahead ?? '?'} ms before in view, ${t.bare ? 'no fallback' : 'covered by a parent or children'}`).join('')] : [])];
 const results = [];
 document.getElementById('run').onclick = async e => {
-    e.target.disabled = true; tbody.replaceChildren(); results.length = 0;
+    e.target.disabled = true; tbody.replaceChildren(); document.getElementById('undrawn').replaceChildren(); results.length = 0;
     const only = q.get('only'); // e.g. ?only=terrain
     const list = (document.getElementById('markers').checked ? scenarios : scenarios.filter(s => !s.markers)).filter(s => !only || s.name.toLowerCase().includes(only.toLowerCase()));
     for (const [i, s] of list.entries()) {
@@ -114,6 +132,7 @@ document.getElementById('run').onclick = async e => {
             results.push(r);
             const tr = tbody.insertRow();
             for (const c of cells(r)) tr.insertCell().textContent = c;
+            document.getElementById('undrawn').append(...undrawnLines(r).map(l => Object.assign(document.createElement('div'), {textContent: l})));
         } catch (err) { const tr = tbody.insertRow(); tr.insertCell().textContent = `${s.name}: failed (${err.message})`; tr.cells[0].colSpan = 7; }
     }
     stage.replaceChildren();
@@ -123,7 +142,7 @@ document.getElementById('run').onclick = async e => {
 };
 document.getElementById('copy').onclick = () => {
     const head = [...document.querySelectorAll('#results th')].map(th => th.textContent);
-    const md = [document.getElementById('env').textContent, '', `| ${head.join(' | ')} |`, `|${head.map(() => '---').join('|')}|`, ...results.map(r => `| ${cells(r).join(' | ')} |`)].join('\n');
+    const md = [document.getElementById('env').textContent, '', `| ${head.join(' | ')} |`, `|${head.map(() => '---').join('|')}|`, ...results.map(r => `| ${cells(r).join(' | ')} |`), '', ...results.flatMap(undrawnLines)].join('\n');
     navigator.clipboard.writeText(md).then(() => { status.textContent = 'Copied.'; });
 };
 if (q.has('auto')) document.getElementById('run').click();

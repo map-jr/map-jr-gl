@@ -1107,17 +1107,21 @@ for (const mode of ['main', 'worker']) {
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:100px;height:100px'}));
             let m;
             try {
-                m = new mod.Map({container: el, center: [0, 0], zoom: 1, attributionControl: false, logoPosition: 'top-left', validate: false, style: {version: 8, sources: {}, layers: []}});
+                m = new mod.Map({container: el, center: [0, 0], zoom: 1, attributionControl: false, logoPosition: 'top-left', validate: false, fadeDuration: 0, pitchWithRotate: false, style: {version: 8, sources: {}, layers: []}});
                 for (let i = 0; i < 2; i++) {
                     new mod.NavigationControl({visualizePitch: true});
                     new mod.FullscreenControl({container: document.body});
+                    new mod.Popup({focusAfterOpen: false, locationOccludedOpacity: 0.5});
+                    new mod.Marker({opacityWhenCovered: '0.2'});
                 }
+                // (The default values write no warning.)
+                new mod.Map({container: el, attributionControl: false, fadeDuration: 300, pitchWithRotate: true, style: {version: 8, sources: {}, layers: []}}).remove();
             } finally { console.warn = warn; }
             m.remove(); el.remove();
-            const names = ['logoPosition', 'validate', 'visualizePitch', 'container'];
-            return Object.fromEntries(names.map(n => [n, warns.filter(w => w.startsWith('[map-jr-gl]') && w.includes(n)).length]));
+            const names = ['logoPosition', 'validate', 'visualizePitch', 'container', 'fadeDuration', 'pitchWithRotate', 'focusAfterOpen', 'locationOccludedOpacity', 'opacityWhenCovered'];
+            return Object.fromEntries(names.map(n => [n, warns.filter(w => w.startsWith('[map-jr-gl]') && w.toLowerCase().includes('the option ' + n.toLowerCase())).length]));
         });
-        check('maplibre-compat: logoPosition, validate, visualizePitch, and the container of FullscreenControl each warn once',
+        check('maplibre-compat: options with no effect (logoPosition, validate, fadeDuration, pitchWithRotate, visualizePitch, the container of FullscreenControl, and options of Popup and Marker) each warn once',
             Object.values(r).every(n => n === 1), JSON.stringify(r));
     }
     // #43: easeTo and flyTo of maplibre-compat use `offset` (also with bearing and pitch) and a custom `easing`, without a warning.
@@ -1266,6 +1270,22 @@ for (const mode of ['main', 'worker']) {
         }, mode);
         check(`[${mode}] compat addControl(undefined) and addControl({}): error event, returns the map; a bad position throws`,
             r.same === true && r.errors.length === 2 && r.errors.every(e => e.includes('addControl()')) && r.bad?.includes('"middle"'), JSON.stringify(r));
+    }
+    // #44: in the compat entry, toBlob gives the drawn map, and getCanvas().toDataURL() in a `render` listener is not blank.
+    {
+        const r = await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const m = new mod.Map({container: el, renderer: mode, attributionControl: false, center: [0, 0], zoom: 1, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#0f0'}}]}});
+            const centre = async src => { const bmp = await createImageBitmap(src), c = new OffscreenCanvas(bmp.width, bmp.height), g = c.getContext('2d'); g.drawImage(bmp, 0, 0); return Array.from(g.getImageData(bmp.width >> 1, bmp.height >> 1, 1, 1).data); };
+            const b = await Promise.race([m.toBlob(), new Promise(res => setTimeout(() => res(null), 10000))]);
+            const blob = b ? await centre(b) : null;
+            const url = await new Promise(res => { m.once('render', () => res(m.getCanvas().toDataURL())); m.triggerRepaint(); setTimeout(() => res(null), 5000); });
+            const fromUrl = url ? await centre(await (await fetch(url)).blob()) : null;
+            m.remove(); el.remove();
+            return {blob, fromUrl};
+        }, mode);
+        check(`[${mode}] compat: toBlob and toDataURL in a render listener give the drawn map (#44)`, r.blob?.[1] > 200 && r.blob[0] < 50 && r.fromUrl?.[1] > 200 && r.fromUrl[0] < 50, JSON.stringify(r));
     }
     // #196: with `interactive: false`, the handlers are off, a drag does nothing, and `enable()` on a handler turns it on,
     // as in MapLibre GL JS. #253: the map still fires `click`, `mousemove` and the events of a layer.
