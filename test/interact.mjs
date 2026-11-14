@@ -1516,6 +1516,22 @@ for (const mode of ['main', 'worker']) {
         check('[main] the credits of a small map end before the controls of the other corner, are above markers, and close with a press on the map',
             box.open && box.creditsRight < box.controlsLeft && box.markerZ < box.cornerZ && closed, JSON.stringify({...box, closed}));
     }
+    // The four corners of the controls exist as soon as the map is made, as in MapLibre GL JS (#200), and the attribution
+    // is the lowest control of the bottom-right corner, also below a control that the app added at once (#202).
+    if (mode === 'main') {
+        const r = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:500px;height:300px'}));
+            const m = new mod.Map({container: el, renderer: 'main', center: [0, 0], zoom: 2, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            const corners = ['top-left', 'top-right', 'bottom-left', 'bottom-right'].every(p => el.querySelector(`.maplibregl-ctrl-${p}.map-jr-ctrl-${p}`));
+            m.addControl(new mod.NavigationControl(), 'bottom-right');
+            await new Promise(r => m.once('load', r));
+            const first = el.querySelector('.map-jr-ctrl-bottom-right').firstElementChild?.className ?? '';
+            m.remove(); el.remove();
+            return {corners, first};
+        });
+        check('[main] the four control corners exist at once, and the attribution is the lowest control of its corner', r.corners && r.first.includes('ctrl-attrib'), JSON.stringify(r));
+    }
     // 3D terrain off and on again: the elevation tiles that are loaded stay, so the relief does not go away for a
     // moment and no tile is asked for again.
     {

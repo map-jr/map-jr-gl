@@ -233,6 +233,14 @@ export class Map {
         protocolListeners.add(this.sendRequestRules);
         this.sendRequestRules(); // before the style, so that the first requests follow the rules
         this.cleanup.push(() => protocolListeners.delete(this.sendRequestRules));
+        // As in MapLibre GL JS, the four corners of the controls exist from the start: apps query them before they add a control.
+        this.styles();
+        for (const pos of ['top-left', 'top-right', 'bottom-left', 'bottom-right'] as const) {
+            const corner = this.corners[pos] = document.createElement('div');
+            corner.className = cls('ctrl-' + pos);
+            c.appendChild(corner);
+            this.cleanup.push(() => corner.remove());
+        }
         this.start().catch(this.sourceFailed);
     }
 
@@ -360,7 +368,13 @@ export class Map {
         this.observer = new ResizeObserver(() => this.resize());
         this.observer.observe(this.container);
         if (this.listening) this.bindInput();
-        if (o.attributionControl !== false && !this.restarted) this.addControl(new AttributionControl(o.attributionControl || {}));
+        if (o.attributionControl !== false && !this.restarted) {
+            // The attribution is the lowest control of its corner, as in MapLibre GL JS, also when the app added controls there before this point (#202).
+            const a = new AttributionControl(o.attributionControl || {});
+            this.addControl(a);
+            const el = this.controls.get(a)!;
+            el.parentElement!.prepend(el);
+        }
     }
 
     private restarted = false;
@@ -1072,14 +1086,8 @@ export class Map {
     private controls = new globalThis.Map<Control, HTMLElement>();
     addControl(control: Control, position?: ControlPosition) {
         const pos = position ?? control.getDefaultPosition?.() ?? 'top-right';
-        this.styles();
-        let corner = this.corners[pos];
-        if (!corner) {
-            corner = this.corners[pos] = document.createElement('div');
-            corner.className = cls('ctrl-' + pos);
-            this.container.appendChild(corner);
-            this.cleanup.push(() => corner!.remove());
-        }
+        const corner = this.corners[pos];
+        if (!corner) throw new Error(`[map-jr-gl] addControl(): "${pos}" is not a position. Write "top-left", "top-right", "bottom-left" or "bottom-right".`);
         const el = control.onAdd(this);
         adoptClasses(el); // a control written for MapLibre GL JS gets this library's styles
         this.controls.set(control, el);
