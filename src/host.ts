@@ -10,7 +10,7 @@ import {Map, logError, type FeatureOptions, type FeaturePlace, type ImageOptions
 export type {FeatureOptions, FeaturePlace};
 import {createStore, type Readable} from './store.ts';
 import {Marker, Popup, type OverlayAnchor} from './overlays.ts';
-import {markerFeatures, markerStyle, withMarkers, type MarkerLayerOptions} from './markers.ts';
+import {extended, markerFeatures, markerStyle, withMarkers, type MarkerLayerOptions} from './markers.ts';
 import type {QueriedFeature} from './query.ts';
 import type {Control, ControlPosition} from './controls.ts';
 import type {Checked} from './mistakes.ts';
@@ -244,16 +244,6 @@ const same = (a: ViewInput | undefined, b: ViewInput | undefined) => !!a && !!b 
 /** What of the marker layers is a part of the style: the source and the layer of each one (not the data). */
 const markerStyles = (markers?: MarkerLayerOptions[]) => (markers ?? []).map(markerStyle);
 
-/** A style with the additions of `extend`. */
-function extended(style: any, extend?: StyleExtension) {
-    if (!extend) return style;
-    const layers = [...style.layers];
-    for (const {before, ...layer} of extend.layers ?? []) {
-        const at = before ? layers.findIndex(l => l.id === before) : -1;
-        layers.splice(at < 0 ? layers.length : at, 0, layer);
-    }
-    return {...style, sources: {...style.sources, ...extend.sources}, layers, ...(extend.terrain === undefined ? {} : {terrain: extend.terrain ?? undefined})};
-}
 
 /** Stops a description with no style, with a message that says what to write (a caller in JavaScript has no type check). */
 function complete(spec: MapSpec, method: string, fix: string) {

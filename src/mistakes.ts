@@ -53,6 +53,19 @@ export function check(c: Checked, kind: number, a?: any, b?: any) {
     };
     /** Warns for each id that is not a layer (or a source) of the style. */
     const known = (code: number, ids: string[] | undefined, source?: boolean) => { for (const id of ids ?? []) if (!(source ? map.getSource(id) : map.getLayer(id))) warn(code, id); };
+    /** Warns for each parameter that a layer gives to an image (`['image', name, {params}]`, also in `format`) and that is not a slot of the image. */
+    const slots = (layers: any[], more: any[] = [], images = c.spec().images ?? {}) => {
+        const params = (e: unknown) => {
+            if (!Array.isArray(e)) return;
+            if (e[0] === 'image' && typeof e[1] === 'string' && e[2]?.params) {
+                const v = images[e[1]] as unknown, svg = String((v as {image?: unknown})?.image ?? v ?? '');
+                // (Only for an image that the description has now: an image can come with a later description.)
+                if (svg.trimStart().startsWith('<')) for (const k in e[2].params) if (!templateSlots(svg).includes(k)) warn(14, k, e[1]);
+            }
+            e.forEach(params);
+        };
+        for (const l of [...layers, ...more]) { params(l.layout?.['icon-image']); params(l.layout?.['text-field']); }
+    };
     if (kind === 0) {
         // (An element that is hidden or not in the page has no rectangle: that is not this mistake.)
         const el = map.getContainer();
@@ -71,6 +84,8 @@ export function check(c: Checked, kind: number, a?: any, b?: any) {
             // (The first marker with no position. The data is read one time for each array.)
             if (m.data !== before?.markers?.find(o => o.id === m.id)?.data) { const bad = m.data.findIndex(d => !Number.isFinite(+(d?.lngLat?.[0] as number)) || !Number.isFinite(+(d?.lngLat?.[1] as number))); if (bad >= 0) warn(19, m.id, String(bad)); }
         }
+        // (A template that is replaced by one with other slots: the layers of the map give it the same parameters.)
+        if (before && differ(next.images, before.images) && c.ready()) slots(map.getStyle()?.layers ?? [], [], next.images);
         if (before) for (const k of setupOnly) if (differ(next[k], before[k])) warn(8, k);
     } else if (kind === 3) {
         const o = b as FeatureOptions, place = !!a && !(Array.isArray(a) && typeof a[0] !== 'number');
@@ -81,17 +96,7 @@ export function check(c: Checked, kind: number, a?: any, b?: any) {
         if (!o.sources || !place) { if (o.geometry === false) warn(11, 'geometry'); if (o.zoom !== undefined) warn(11, 'zoom'); }
     } else if (kind === 5) warn(16, a);
     else {
-        // The parameters that a layer gives to an image (`['image', name, {params}]`): each one is a slot of that image.
-        const images = c.spec().images ?? {}, params = (e: unknown) => {
-            if (!Array.isArray(e)) return;
-            if (e[0] === 'image' && typeof e[1] === 'string' && e[2]?.params) {
-                const v = images[e[1]] as unknown, svg = String((v as {image?: unknown})?.image ?? v ?? '');
-                // (Only for an image that the description has now: an image can come with a later description.)
-                if (svg.trimStart().startsWith('<')) for (const k in e[2].params) if (!templateSlots(svg).includes(k)) warn(14, k, e[1]);
-            }
-            e.forEach(params);
-        };
-        for (const l of [...a.layers, ...b?.layers ?? []]) params(l.layout?.['icon-image']);
+        slots(a.layers, b?.layers);
         // A marker layer is a source and a layer with its id: the id must be free, and `before` must name a layer.
         const all = new Set<string>([...a.layers, ...b?.layers ?? []].map((l: {id: string}) => l.id)), named = {...a.sources, ...b?.sources};
         for (const m of c.spec().markers ?? []) {

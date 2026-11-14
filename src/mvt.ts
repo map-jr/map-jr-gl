@@ -52,7 +52,7 @@ export class VTFeature {
             if (field === 1) this.id = p.varint();
             else if (field === 3) this.type = p.varint();
             else if (field === 2 || field === 4) {
-                const len = p.varint();
+                const len = Math.min(p.varint(), p.end - p.pos); // (a length from the file is not trusted past its parent)
                 if (field === 2) { this.tagPos = p.pos; this.tagEnd = p.pos + len; } else { this.geomPos = p.pos; this.geomEnd = p.pos + len; }
                 p.pos += len;
             } else p.skip(tag & 7);

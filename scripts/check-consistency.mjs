@@ -42,6 +42,11 @@ for (const f of spec) {
 // 3. Each member of the map object of the main API is in its document.
 for (const m of fields(host, 'MapHost')) if (!api.includes(m)) fail('docs/api.md', `the member \`${m}\` of the map (MapHost in src/host.ts) is not mentioned`);
 
+// 3b. Each value that the main entry exports (not the types) is in its document.
+for (const [, list] of read('src/index.ts').matchAll(/^export \{([^}]*)\}/gm)) {
+    for (const name of list.split(',').map(s => s.trim()).filter(s => s && !s.startsWith('type '))) if (!api.includes('`' + name + '`') && !api.includes(name + '(')) fail('docs/api.md', `the export \`${name}\` of src/index.ts is not mentioned`);
+}
+
 // 4. Each row of the gallery has its four forms.
 const examples = readdirSync(path.join(root, 'site/examples'));
 for (const row of new Set(examples.map(f => f.split('.')[0]))) {

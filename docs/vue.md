@@ -34,7 +34,12 @@ const hovered = ref([]);
 </template>
 ```
 
-The component fills its parent element. Give the parent a height.
+The component fills its parent element (`height: 100%`). Give the parent a height. A parent that has only
+`min-height` gives the component a height of 0, because a percentage height needs a parent with a set height: write
+`height` on the parent, or make the parent a flex or grid container. The development build warns about a container
+with a height of 0. A production build has no such warning, and neither has an app of the module for Nuxt at the
+moment, because the module loads the production build in `nuxt dev` too (issue #158). There the map stays empty
+without a message.
 
 ### Props
 
@@ -60,7 +65,7 @@ The component fills its parent element. Give the parent a height.
 | `update:view` | The view, after each change. |
 | `click` | `{point, lngLat, features}` |
 | `hover` | The features of `interactive-layers` under the pointer. |
-| `load`, `idle` | None |
+| `load`, `idle` | None. `load` comes once, before the first `idle`. When `load` comes, `host.state.get().idle` is still `false`. |
 | `error` | Each error of the map (an `Error`). Without a listener for this event, the map writes each error to the console. |
 | Each other event of the map | The event of `listen` of the main API: `@moveend`, `@zoomend`, `@styleimagemissing`, `@sourcedata` and the others. See [Events](api.md#events) for the list. The event `style.load` has the name `styleload` here. |
 
@@ -294,6 +299,9 @@ const {host, state} = useMap(useTemplateRef('el'), computed(() => ({
 export default defineNuxtConfig({modules: ['@map-jr/map-jr-gl/nuxt']});
 ```
 
+The module adds `@map-jr/map-jr-gl` to `vite.optimizeDeps.exclude`, so that Vite in development does not pre-bundle
+the package and the tile workers load (see `docs/loading.md`). Without the module, add that setting yourself.
+
 With the module, a page uses the components without an import:
 
 ```vue
@@ -311,6 +319,10 @@ With the module, a page uses the components without an import:
 - `LazyMapJr` puts the code of the map into a file of its own. With `hydrate-on-visible`, the browser loads that file
   and starts the map when the map comes into view. Together with `ssr`, the visitor sees the map from the server at
   once, and a page with a map far down loads no map code until it is necessary.
+- The other exports of `@map-jr/map-jr-gl/vue` do not load the map code. `MapJr` and `useMap` load it with `import()`
+  when the map is mounted, so a component that uses `MapOverlay`, `MapImage` or `useMapHost` next to a `LazyMapJr`
+  does not bring the map code into the page. The file `vue.js` and what it imports are about 3 KB (gzip). The `host`
+  of `useMap` is `null` until that code has loaded, also in `onMounted`.
 
 Without the module, import the components (`import {MapJr} from '@map-jr/map-jr-gl/vue'`). For lazy loading, use
 `defineAsyncComponent` of Vue:
@@ -345,13 +357,13 @@ With the `ssr` prop, the server also renders the first view as SVG:
 - In the browser, Vue takes over the HTML, and the map removes the SVG when it has drawn its first frame. The
   controls show from that moment; they are not in the SVG.
 - The server needs the style as an object or as a URL that it can fetch.
-- The server renders `map-style`, the centre, the zoom and the bearing of the view, and `markers` with the images
-  of `images` that are SVG documents. It does not use
-  `extend` and `data`, and it renders a tilted view (`pitch`) from straight above. Sources and layers from `extend`,
-  and GeoJSON from `data`, show when the map starts in the browser.
+- The server renders `map-style`, the centre, the zoom and the bearing of the view, the sources and layers of
+  `extend`, the GeoJSON of `data`, and `markers` with the images of `images` that are SVG documents. It renders a
+  tilted view (`pitch`) from straight above.
 - The requests of the server have time limits: 10 seconds for one request and 30 seconds for all requests of one
-  render. When the render fails, the component does not catch the error. The `ssr` prop does not take `timeout`,
-  `requestTimeout`, `maxBytes` or `allowHosts`. See "Limits for requests" in [Server rendering](server-rendering.md).
+  render. Change them with `timeout` and `requestTimeout` in the `ssr` prop, limit the size of a response with
+  `maxBytes`, and the hosts with `allowHosts`. When the render fails, the component does not catch the error. See
+  "Limits for requests" in [Server rendering](server-rendering.md).
 - The layout does not shift: the element has its size from your page, and the map changes nothing around it. A
   test of the library measures this.
 
@@ -360,6 +372,7 @@ With the `ssr` prop, the server also renders the first view as SVG:
 | `width`, `height` | The size in pixels that the map has on most screens (800 by 500 without them). The SVG is scaled to the element. |
 | `overrides` | Changes to style layers for the server render only, by the id of the layer. Use them to make the SVG smaller for a style that you do not write yourself. The values are those of `map-jr:ssr`: `hidden`, `filter`, `minzoom`, `maxzoom`, `paint`, `layout`, `simplify`, `minSize`. See "Simplify the server render" in [Server rendering](server-rendering.md). |
 | `attribution` | The credits to show with the SVG: a string or a list of strings. |
+| `timeout`, `requestTimeout`, `maxBytes`, `allowHosts` | The limits for the requests of the server render, as in `renderToSVG`. The defaults are 30000 ms, 10000 ms, no limit and all hosts. |
 
 ### The credits
 

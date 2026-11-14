@@ -3,7 +3,7 @@ import {protocolListeners, protocols, toBytes} from './protocols.ts';
 import {LngLat, LngLatBounds, type LngLatBoundsInput} from './lnglat.ts';
 import {Transform, groundHeight, heightsChanged, mercX, mercY, toLngLat, type LngLatLike} from './geo.ts';
 import type {PreparedSource} from './geojson.ts';
-import {DEFAULT_FONT, keep, resolveStyle, type ResolvedStyle} from './resolve.ts';
+import {DEFAULT_FONT, keep, kept, resolveStyle, type ResolvedStyle} from './resolve.ts';
 import {layerRules} from './rules.ts';
 import type {CameraOptions, Command, EngineEvent, FontSource} from './engine.ts';
 import type {QueriedFeature} from './query.ts';
@@ -467,7 +467,7 @@ export class Map {
         this.limits();
         if (this.rulesSent) this.sendRequestRules();
         if (this.wantsFrames) this.post({type: 'frames', on: true});
-        for (const source of Object.keys(this.featureStates)) this.sendFeatureState(source);
+        for (const source of Object.keys(this.featureStates)) this.post({type: 'featureState', source, states: this.featureStates[source], replace: true});
     }
 
     /** Runs the engine on this thread. Its code is a separate chunk, fetched only when this path is taken. */
@@ -833,7 +833,13 @@ export class Map {
     getStyle() { return this.rawStyle ? structuredClone(this.rawStyle) : undefined; }
     // ---- feature state ----
     private featureStates: Record<string, Record<string, Record<string, unknown>>> = {};
-    private sendFeatureState(source: string) { this.post({type: 'featureState', source, states: this.featureStates[source] ?? {}}); return this; }
+    /** Sends the states of the features in `keys` that changed; `null` for a feature that has no state any more. */
+    private sendFeatureState(source: string, keys: string[]) {
+        const states = this.featureStates[source], diff: Record<string, Record<string, unknown> | null> = {};
+        for (const k of keys) diff[k] = states[k] ?? null;
+        if (keys.length) this.post({type: 'featureState', source, states: diff});
+        return this;
+    }
     /**
      * Merges `state` into a feature's state, which `feature-state` expressions in paint properties read (hover and
      * selection highlights). The feature needs an `id`. Tiles showing the source are rebuilt in the background.
@@ -841,7 +847,7 @@ export class Map {
     setFeatureState(feature: {source: string; sourceLayer?: string; id: number | string}, state: Record<string, unknown>) {
         const states = this.featureStates[feature.source] ??= {}, key = `${feature.sourceLayer ?? ''}|${feature.id}`;
         states[key] = {...states[key], ...state};
-        return this.sendFeatureState(feature.source);
+        return this.sendFeatureState(feature.source, [key]);
     }
     getFeatureState(feature: {source: string; sourceLayer?: string; id: number | string}): Record<string, unknown> {
         return {...this.featureStates[feature.source]?.[`${feature.sourceLayer ?? ''}|${feature.id}`]};
@@ -850,12 +856,15 @@ export class Map {
     removeFeatureState(target: {source: string; sourceLayer?: string; id?: number | string}, key?: string) {
         const states = this.featureStates[target.source];
         if (!states) return this;
-        const prefix = `${target.sourceLayer ?? ''}|`;
+        const prefix = `${target.sourceLayer ?? ''}|`, changed: string[] = [];
         for (const k of Object.keys(states)) {
             if (target.id !== undefined ? k !== prefix + target.id : target.sourceLayer !== undefined && !k.startsWith(prefix)) continue;
-            if (key !== undefined && target.id !== undefined) delete states[k][key]; else delete states[k];
+            changed.push(k);
+            if (key !== undefined && target.id !== undefined) states[k] = {...states[k]}, delete states[k][key]; else delete states[k];
         }
-        return this.sendFeatureState(target.source);
+        // (Without an id, many features can change: the page sends the states that remain instead.)
+        if (target.id === undefined) { this.post({type: 'featureState', source: target.source, states, replace: true}); return this; }
+        return this.sendFeatureState(target.source, changed);
     }
 
     /** The values `global-state` expressions read: the style's `state` defaults with anything set since. */
@@ -914,7 +923,12 @@ export class Map {
         };
         return {
             ...spec, id, setData: (data: unknown) => this.setGeoJSON(id, data),
-            getData: async () => typeof spec.data === 'string' ? (await this.fetchAs('Source')(new URL(spec.data, this.styleBase))).json() : spec.data,
+            // (A URL: the answer that the map keeps for the source, and a request only when it has none for this URL.)
+            getData: async () => {
+                if (typeof spec.data !== 'string') return spec.data;
+                const url = new URL(spec.data, this.styleBase).href;
+                return kept(spec, url) ?? (await this.fetchAs('Source')(url)).json();
+            },
             updateData: (diff: GeoJSONDiff) => this.updateGeoJSON(id, diff),
             // The cluster methods give promises, as in MapLibre. The page makes its own copy of the cluster index for them.
             getClusterExpansionZoom: async (clusterId: number) => (await clusters()).expansionZoom(clusterId),
@@ -959,15 +973,22 @@ export class Map {
     private diffQueues = new globalThis.Map<string, {call: number, raw: object, diffs: GeoJSONDiff[], p: Promise<void>}>();
     /** The number of the newest call that set the data of each GeoJSON source: an answer for an older call is dropped. */
     private dataCalls = new globalThis.Map<string, number>();
+    /** The request of the newest `setData` with a URL of each GeoJSON source, while it loads. */
+    private dataAborts = new globalThis.Map<string, AbortController>();
     private async setGeoJSON(id: string, data: unknown) {
         const call = (this.dataCalls.get(id) ?? 0) + 1;
         this.dataCalls.set(id, call);
         this.rawStyle.sources[id].data = data;
         this.unloaded(id);
         for (const type of ['sourcedataloading', 'dataloading']) this.fire(type, {dataType: 'source', sourceId: id});
+        // A request of an older call is no longer wanted: it is aborted.
+        this.dataAborts.get(id)?.abort();
+        this.dataAborts.delete(id);
         if (typeof data === 'string') {
-            const raw = this.rawStyle.sources[id], url = new URL(data, this.styleBase).href;
-            data = await (await this.fetchAs('Source')(url)).json();
+            const raw = this.rawStyle.sources[id], url = new URL(data, this.styleBase).href, ac = new AbortController();
+            this.dataAborts.set(id, ac);
+            try { data = await (await this.fetchAs('Source')(url, {signal: ac.signal})).json(); } catch (e) { if (ac.signal.aborted) return; throw e; }
+            if (this.dataAborts.get(id) === ac) this.dataAborts.delete(id);
             // (The source was removed, or its data was set again since, also to the same URL: this answer is old.)
             if (this.rawStyle?.sources[id] !== raw || this.dataCalls.get(id) !== call) return;
             // A later change of the style sends the data of the source again: it must be this data, not the first answer.

@@ -431,6 +431,7 @@ export class GLRenderer {
     private sdfTex: WebGLTexture;
     private sdfVersion = -1;
     private spriteTex: WebGLTexture;
+    private spriteSized = false;
     private iconTex: WebGLTexture;
     private iconSize: [number, number] = [1, 1];
     private newTexture: () => WebGLTexture;
@@ -489,8 +490,8 @@ export class GLRenderer {
         this.fbo = gl.createFramebuffer()!;
         this.iconTex = tex();
         this.sdfTex = tex();
+        // (The texture of the images that are added at runtime gets its 16 MB with the first image: see `uploadSprite`.)
         this.spriteTex = tex();
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, SPRITE_ATLAS, SPRITE_ATLAS, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
         gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
     }
 
@@ -756,6 +757,7 @@ export class GLRenderer {
     uploadSprite(x: number, y: number, w: number, h: number, pixels: Uint8Array) {
         const gl = this.gl;
         gl.bindTexture(gl.TEXTURE_2D, this.spriteTex);
+        if (!this.spriteSized) { this.spriteSized = true; gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, SPRITE_ATLAS, SPRITE_ATLAS, 0, gl.RGBA, gl.UNSIGNED_BYTE, null); }
         gl.texSubImage2D(gl.TEXTURE_2D, 0, x, y, w, h, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
     }
 

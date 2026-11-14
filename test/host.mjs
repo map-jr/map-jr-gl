@@ -22,12 +22,14 @@ for (const renderer of ['worker', 'main']) {
             t.host = lib.createMap(el, t.spec);
             t.host.state.subscribe(s => s.loaded, loaded => t.seen.push('loaded:' + loaded));
             t.host.state.subscribe(s => s.view.zoom, zoom => t.seen.push('zoom'));
+            t.host.listen('load', () => t.seen.push('load:idle=' + t.host.state.get().idle));
+            t.host.listen('idle', () => t.seen.push('idle'));
             const before = t.host.state.get();
             await new Promise(r => t.host.state.subscribe(s => s.idle, idle => idle && r()));
             const s = t.host.state.get();
             return {before: before.loaded, loaded: s.loaded, renderer: s.renderer, zoom: s.view.zoom, seen: t.seen, canvas: !!el.querySelector('canvas')};
         }, renderer);
-        check(`[${renderer}] createMap: the map loads, and the state says so`, !start.before && start.loaded && (start.renderer === renderer || (renderer === 'worker' && start.renderer === 'main' /* a browser that cannot draw in a worker */)) && start.zoom === 14.3 && start.seen.includes('loaded:true') && start.canvas, JSON.stringify(start));
+        check(`[${renderer}] createMap: the map loads, and the state says so`, !start.before && start.loaded && (start.renderer === renderer || (renderer === 'worker' && start.renderer === 'main' /* a browser that cannot draw in a worker */)) && start.zoom === 14.3 && start.seen.includes('loaded:true') && start.seen.indexOf('load:idle=false') >= 0 && start.seen.indexOf('load:idle=false') < start.seen.indexOf('idle') && start.canvas, JSON.stringify(start));
 
         // 2. The view: the map reports each change; a view that it reported is not applied again; another view moves the map.
         const view = await page.evaluate(async () => {
@@ -186,11 +188,13 @@ for (const renderer of ['worker', 'main']) {
             const spec = {...base, interactiveLayers: ['nope'], data: {nosuch: empty}, markers: [pin('a'), pin('a'), {id: 'old', svg: dot, width: 8, height: 8, data: []}, {...pin('gone'), image: 'nothing'},
                     {...pin(t.style.layers[1].id), before: 'no-such-layer', data: [{lngLat: [-74.0065, 40.7085]}, {props: {}}, null]}],
                 images: {dot: '<svg viewBox="0 0 4 4"><rect width="4" height="4" fill="{{fill}}"/></svg>'},
-                extend: {sources: {icons: {type: 'geojson', data: empty}}, layers: [{id: 'lost', type: 'fill', source: 'missing', before: 'nonexistent'}, {id: 'icons', type: 'symbol', source: 'icons', layout: {'icon-image': ['image', 'dot', {params: {fill: '#d00', colour: '#00d'}}]}}]}};
+                extend: {sources: {icons: {type: 'geojson', data: empty}}, layers: [{id: 'lost', type: 'fill', source: 'missing', before: 'nonexistent'}, {id: 'icons', type: 'symbol', source: 'icons', layout: {'icon-image': ['image', 'dot', {params: {fill: '#d00', colour: '#00d'}}]}},
+                    {id: 'labels', type: 'symbol', source: 'icons', layout: {'text-field': ['format', ['image', 'dot', {params: {fill: '#d00', size: '2'}}], {}]}}]}};
             const badEl = div('height:150px'), bad = t.lib.createMap(badEl, spec);
             await idle(bad);
             for (let i = 0; i < 2; i++) { // (twice: a warning comes once)
-                bad.update({...spec, interactive: false, initialView: {center: [0, 0], zoom: 2}});
+                // (The second time, the template is replaced by one without the slot {{fill}}.)
+                bad.update({...spec, interactive: false, initialView: {center: [0, 0], zoom: 2}, images: i ? {dot: '<svg viewBox="0 0 4 4"><rect width="4" height="4"/></svg>'} : spec.images});
                 await bad.queryFeatures({x: 100, y: 75}, {layers: ['nope']}).catch(() => {});
                 await bad.queryFeatures({x: 100, y: 75}, {sources: ['nope'], layers: ['lost']}).catch(() => {});
                 await bad.queryFeatures({x: 100, y: 75}, {sourceLayers: ['water'], radius: 5, geometry: false}).catch(() => {});
@@ -207,7 +211,7 @@ for (const renderer of ['worker', 'main']) {
         }, renderer);
         const styleLayer = await page.evaluate(() => window.t.style.layers[1].id);
         const expected = ['createMap(): the container has height 0', 'interactiveLayers: the style has no layer "nope"', 'data: the style has no GeoJSON source "nosuch"', 'queryFeatures(): the style has no layer "nope"',
-            'queryFeatures(): the style has no source "nope"', 'extend: the layer "lost" has before: "nonexistent"', 'extend: the layer "lost" uses the source "missing"', 'markers: two marker layers have the id "a"', 'images: a layer gives the parameter "colour" to the image "dot"', 'markers: the marker layer "old" has no "image"', 'markers: a marker layer has the image "nothing"', `markers: the marker layer "${styleLayer}" has the id of a layer of the style`, `markers: the marker layer "${styleLayer}" has before: "no-such-layer"`, `markers: the marker 1 of the marker layer "${styleLayer}" has no position`,
+            'queryFeatures(): the style has no source "nope"', 'extend: the layer "lost" has before: "nonexistent"', 'extend: the layer "lost" uses the source "missing"', 'markers: two marker layers have the id "a"', 'images: a layer gives the parameter "colour" to the image "dot"', 'images: a layer gives the parameter "size" to the image "dot"', 'images: a layer gives the parameter "fill" to the image "dot"', 'markers: the marker layer "old" has no "image"', 'markers: a marker layer has the image "nothing"', `markers: the marker layer "${styleLayer}" has the id of a layer of the style`, `markers: the marker layer "${styleLayer}" has before: "no-such-layer"`, `markers: the marker 1 of the marker layer "${styleLayer}" has no position`,
             'update(): "interactive" changed', 'update(): "initialView" changed', 'queryFeatures(): "sourceLayers" has an effect only', 'queryFeatures(): "radius" has an effect only in a query at a point or a position', 'queryFeatures(): "geometry" has an effect only', 'queryFeatures(): "zoom" has an effect only',
             'queryFeatures(): "layers" has no effect'];
         check(`[${renderer}] common mistakes: each gives one warning, a wrong place of a query is refused with a message, and a correct description gives no warning`,
@@ -529,13 +533,19 @@ for (const renderer of ['worker', 'main']) {
         // Controls: added and removed by the description.
         const controls = await page.evaluate(async () => {
             const t = window.t, {navigation, scale} = await import('/dist/controls.js'), count = () => document.querySelectorAll('#host .map-jr-ctrl-group, #host .map-jr-ctrl-scale').length;
+            // The control classes load with import() when the map adds the first control (#160).
+            const settle = () => new Promise(r => setTimeout(r, 50));
             t.host.update(t.spec = {...t.spec, controls: [navigation(), scale({position: 'bottom-left'})]});
+            for (let i = 0; i < 40 && count() < 2; i++) await settle();
             const two = count();
             t.host.update(t.spec = {...t.spec, controls: [navigation(), scale({position: 'bottom-left'})]}); // made again, the same content
+            await settle();
             const still = count();
             t.host.update(t.spec = {...t.spec, controls: [scale({position: 'bottom-left'})]});
+            await settle();
             const one = count();
             t.host.update(t.spec = {...t.spec, controls: undefined});
+            await settle();
             return {two, still, one, none: count()};
         });
         check(`[${renderer}] controls follow the description`, controls.two === 2 && controls.still === 2 && controls.one === 1 && controls.none === 0, JSON.stringify(controls));
@@ -915,6 +925,45 @@ for (const code of ['core', 'compat']) {
         const shown = await answerBox();
         check(`gallery, query example (${code}): after two clicks, the answer of the last click is shown`, !!shown && !shown.includes('first-click'), JSON.stringify({shown: shown?.slice(0, 80)}));
     } catch (e) { check(`gallery, query example (${code}): the test run was completed`, false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
+// The cost of a frame does not grow with the number of icons from buffers (#127). The engine reports the script time
+// of its frames on the main thread (`stats`, `frameMs`). The check compares a symbol layer with 100,000 icons with
+// the same layer with 1,000 icons, as a ratio of the medians, so it does not depend on the speed of the machine. With
+// icons from buffers the ratio was 0.4 to 2.0 in local runs on software WebGL. Icons that are placed with the labels
+// in each frame (a sort key makes the layer use that way) gave 63 and 107, so a limit of 5 has room for both.
+{
+    const page = await browser.newPage({viewport: {width: 900, height: 600}});
+    try {
+        await page.goto(`${origin}/bench`);
+        const ms = await page.evaluate(async () => {
+            const lib = await import('/dist/map-jr-gl.js'), style = await (await fetch('/style.json')).json(), wait = ms => new Promise(r => setTimeout(r, ms));
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99;background:#fff'}));
+            const center = [-74.0065, 40.7085], frames = [];
+            const host = lib.createMap(el, {style, initialView: {center, zoom: 13}, renderer: 'main', attribution: false});
+            host.listen('stats', e => frames.push(e.frameMs));
+            const idle = () => new Promise(r => { let at = 0; const off = host.state.subscribe(s => s.idle, v => { at = v ? performance.now() : 0; }), timer = setInterval(() => { if (at && performance.now() - at > 1000) { clearInterval(timer); off(); r(); } }, 100); setTimeout(r, 60000); });
+            const median = a => { const b = [...a].sort((x, y) => x - y); return b[b.length >> 1]; };
+            const measure = async count => {
+                let seed = 9; const rand = () => (seed = (seed * 1664525 + 1013904223) % 4294967296) / 4294967296;
+                const features = Array.from({length: count}, (_, i) => ({type: 'Feature', id: i, properties: {}, geometry: {type: 'Point', coordinates: [center[0] + (rand() - 0.5) * 0.08, center[1] + (rand() - 0.5) * 0.05]}}));
+                host.update({style: {...style, sources: {...style.sources, many: {type: 'geojson', data: {type: 'FeatureCollection', features}}},
+                    layers: [...style.layers, {id: 'many', type: 'symbol', source: 'many', layout: {'icon-image': 'dot', 'icon-allow-overlap': true, 'icon-ignore-placement': true}}]},
+                    images: {dot: '<svg viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" fill="#d6453d" stroke="#fff"/></svg>'}, initialView: {center, zoom: 13}, renderer: 'main', attribution: false});
+                host.moveTo({center, zoom: 13, bearing: 0});
+                await idle();
+                frames.length = 0;
+                host.moveTo({center: [center[0] + 0.01, center[1] + 0.005], zoom: 13.6, bearing: 30, duration: 6000});
+                await wait(6200);
+                return median(frames);
+            };
+            const out = {few: await measure(1000), many: await measure(100000)};
+            host.destroy();
+            return out;
+        });
+        const ratio = ms.many / ms.few;
+        check(`the script time of a frame with 100,000 icons from buffers is less than 5 times that with 1,000 icons (main thread)`, ratio < 5, JSON.stringify({...ms, ratio: +ratio.toFixed(2)}));
+    } catch (e) { check('the comparison of the frame time with 100,000 and 1,000 icons was completed', false, String(e.message).split('\n')[0]); }
     await page.close();
 }
 await browser.close();

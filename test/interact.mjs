@@ -316,6 +316,21 @@ for (const mode of ['main', 'worker']) {
         return {both, kept};
     });
     check(`[${mode}] GeoJSON source with a URL: updateData keeps both diffs and a newer setData`, urlDiff.both === 'one,two,three' && urlDiff.kept === 'newer', JSON.stringify(urlDiff));
+    // setData with a URL: a newer setData aborts the older request, and getData uses the kept answer without a request (#83).
+    const urlReq = await page.evaluate(async () => {
+        const m = window.map, source = m.getSource('zones'), real = window.fetch, seen = [];
+        const blob = name => URL.createObjectURL(new Blob([JSON.stringify({type: 'FeatureCollection', features: [{type: 'Feature', properties: {name}, geometry: {type: 'Point', coordinates: [-74.008, 40.7085]}}]})], {type: 'application/json'}));
+        const first = blob('first'), second = blob('second');
+        window.fetch = (input, init) => { seen.push({url: String(input), signal: init?.signal}); return real(input, init); };
+        try {
+            const old = source.setData(first);
+            await source.setData(second);
+            await old;
+            const names = [(await source.getData()).features[0].properties.name, (await source.getData()).features[0].properties.name].join();
+            return {aborted: seen.find(s => s.url === first)?.signal?.aborted ?? null, requests: seen.filter(s => s.url === second).length, names};
+        } finally { window.fetch = real; }
+    });
+    check(`[${mode}] GeoJSON source with a URL: a newer setData aborts the older request, and getData makes no request`, urlReq.aborted === true && urlReq.requests === 1 && urlReq.names === 'second,second', JSON.stringify(urlReq));
     await page.evaluate(() => { window.map.removeLayer('zones-fill'); window.map.removeSource('zones'); });
 
     // DOM marker and popup with MapLibre's API.
@@ -390,6 +405,13 @@ for (const mode of ['main', 'worker']) {
         m.setFeatureState(f, {hover: true});
         await wait(600);
         const read = rebuilds - edit;
+        // The page sends only the features that changed: with 10,000 states, one call sends one state.
+        for (let i = 0; i < 10000; i++) m.setFeatureState({source: 'omt', sourceLayer: 'building', id: 100000 + i}, {hover: true});
+        const sent = [];
+        MessagePort.prototype.postMessage = function (message, ...rest) { if (message?.type === 'featureState') sent.push(JSON.stringify(message.states).length); return post.call(this, message, ...rest); };
+        m.setFeatureState(f, {hover: false});
+        await wait(200);
+        m.removeFeatureState({source: 'omt'});
         MessagePort.prototype.postMessage = post;
         m.setFeatureState(f, {hover: true}); m.setFeatureState(f, {picked: 1});
         const both = m.getFeatureState(f);
@@ -397,10 +419,11 @@ for (const mode of ['main', 'worker']) {
         const one = m.getFeatureState(f);
         m.removeFeatureState({source: 'omt'});
         await new Promise(r => setTimeout(r, 400));
-        return {both, one, none: m.getFeatureState(f), unread, read, idle};
+        return {both, one, none: m.getFeatureState(f), unread, read, idle, sent};
     });
     check(`[${mode}] feature state is set, merged and removed, and the map is idle after a state that no layer reads`, fs.both.hover === true && fs.both.picked === 1 && !('hover' in fs.one) && fs.one.picked === 1 && Object.keys(fs.none).length === 0 && fs.idle, JSON.stringify(fs));
     if (mode === 'main') check('[main] setFeatureState builds tiles again only when a layer of the source reads feature state', fs.unread === 0 && fs.read > 0, JSON.stringify({unread: fs.unread, read: fs.read}));
+    if (mode === 'main') check('[main] setFeatureState sends the tile workers only the state that changed', fs.sent.length > 0 && fs.sent[0] < 200, JSON.stringify(fs.sent));
 
     // Map events and interaction handlers, as plugins for MapLibre use them: a listener can take a drag for itself
     // with preventDefault(), and a handler can be turned off.
@@ -875,10 +898,10 @@ for (const mode of ['main', 'worker']) {
         const square = JSON.stringify({type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[-20, -20], [20, -20], [20, 20], [-20, 20], [-20, -20]]]}});
         let body = square;
         await page.route('**/test-kept.json', async r => { await new Promise(res => setTimeout(res, 150)); r.fulfill({contentType: 'application/json', body}); });
-        // The first, third, ... request for this URL is answered late with the square, the others at once with no features.
-        let orderRequests = 0;
-        await page.route('**/test-order.json', async r => {
-            const slow = orderRequests++ % 2 === 0;
+        // A request with "?slow" is answered late with the square, the others at once with no features. (A newer setData
+        // aborts the older request, so that request may never arrive here.)
+        await page.route('**/test-order.json*', async r => {
+            const slow = r.request().url().endsWith('?slow');
             await new Promise(res => setTimeout(res, slow ? 900 : 20));
             r.fulfill({contentType: 'application/json', body: slow ? square : JSON.stringify({type: 'FeatureCollection', features: []})});
         });
@@ -918,12 +941,12 @@ for (const mode of ['main', 'worker']) {
             await wait(600); await idle();
             const later = await count();
             // Two calls of setData: the data of the later call stays, also when the earlier call is answered after it.
-            a.getSource('g').setData('/test-order.json');
+            a.getSource('g').setData('/test-order.json?slow');
             a.getSource('g').setData('/test-order.json');
             await wait(1800);
             const sameURL = await count();
             const none = {type: 'FeatureCollection', features: []};
-            a.getSource('g').setData('/test-order.json');
+            a.getSource('g').setData('/test-order.json?slow');
             a.getSource('g').setData(none);
             await wait(1800);
             const order = {sameURL, object: await count(), data: a.getSource('g').data === none};
@@ -934,9 +957,9 @@ for (const mode of ['main', 'worker']) {
             return {first: window.keptFirst, fresh, later, order};
         });
         await page.unroute('**/test-kept.json');
-        await page.unroute('**/test-order.json');
+        await page.unroute('**/test-order.json*');
         check(`[${mode}] two setData calls: the later one stays when the earlier one is answered after it`,
-            after.order.sameURL === 0 && after.order.object === 0 && after.order.data && after.order.afterStyle === 0 && orderRequests === 3, JSON.stringify({...after.order, requests: orderRequests}));
+            after.order.sameURL === 0 && after.order.object === 0 && after.order.data && after.order.afterStyle === 0, JSON.stringify(after.order));
         check(`[${mode}] setData with the same URL: the new data stays after a change of the style and a zoom`, after.first > 0 && after.fresh === 0 && after.later === 0, JSON.stringify(after));
         check(`[${mode}] two maps that are given one source object both load it`, kept.idles.every(Boolean) && kept.drawn.every(n => n > 0), JSON.stringify(kept));
     }
@@ -1198,6 +1221,37 @@ for (const mode of ['main', 'worker']) {
             return {label: el.getAttribute('aria-label'), role: el.getAttribute('role'), tab: el.tabIndex, plainRole: plain.getAttribute('role'), plainTab: plain.getAttribute('tabindex'), open, closed: !window.a11yMarker.getPopup().isOpen(),
                 fullscreen: button.getAttribute('aria-label'), title: button.title, pressed: button.getAttribute('aria-pressed')};
         });
+        // Faults of #92: a popup that opens again during its closing animation stays open, a second remove() fires `close`
+        // once, the focus goes to the map when the marker of a focused popup is removed, and Enter on a child of a
+        // marker element does not toggle the popup.
+        const faults = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), m = window.a11yMap, wait = t => new Promise(r => setTimeout(r, t));
+            let closes = 0;
+            const p = new mod.Popup().setLngLat([0, 0]).setText('Again').on('close', () => closes++).addTo(m);
+            await wait(300);
+            p.remove(); p.remove(); p.addTo(m);
+            await wait(500);
+            const reopened = p.isOpen() && p.getElement().isConnected, closesReopen = closes;
+            p.remove(); p.remove();
+            await wait(500);
+            const closesTwice = closes - closesReopen, gone = !p.getElement().isConnected;
+            const mk = new mod.Marker().setLngLat([0, 0]).setPopup(new mod.Popup().setText('Focus')).addTo(m);
+            mk.getElement().focus();
+            mk.getElement().dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
+            const inPopup = mk.getPopup().getElement().contains(document.activeElement);
+            mk.remove();
+            await wait(500);
+            const focusMap = document.activeElement === m.getCanvas();
+            const custom = Object.assign(document.createElement('div'), {innerHTML: '<button type="button">Child</button>'});
+            const ck = new mod.Marker({element: custom}).setLngLat([0, 0]).setPopup(new mod.Popup().setText('Child')).addTo(m);
+            custom.firstChild.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
+            const childToggles = ck.getPopup().isOpen();
+            ck.remove();
+            await wait(300);
+            return {reopened, closesReopen, closesTwice, gone, inPopup, focusMap, childToggles};
+        });
+        check('[main] Popup: addTo() during the closing animation keeps it open, remove() twice fires close once, the focus goes to the map when its marker is removed, and Enter on a child of the marker does not toggle it',
+            faults.reopened && faults.closesReopen === 1 && faults.closesTwice === 1 && faults.gone && faults.inPopup && faults.focusMap && !faults.childToggles, JSON.stringify(faults));
         // A camera animation of one second: with "reduce motion" the map is there at once; `essential: true` keeps the animation.
         const zoomSoon = async options => page.evaluate(async options => { const m = window.a11yMap; m.jumpTo({zoom: 2}); await new Promise(r => setTimeout(r, 200)); m.easeTo({zoom: 4, duration: 1000, ...options}); await new Promise(r => setTimeout(r, 250)); return m.getZoom(); }, options);
         const moving = await zoomSoon({});

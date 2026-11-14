@@ -7,7 +7,7 @@
  */
 import {computed, defineComponent, getCurrentInstance, h, inject, provide, isProxy, isReactive, onBeforeUnmount, onMounted, onServerPrefetch, shallowRef, Teleport, toRaw, toValue, watch, type AllowedComponentProps, type ComponentCustomProps, type SetupContext, type SlotsType, type VNode, type VNodeProps, type ComputedRef, type MaybeRefOrGetter, type PropType, type ShallowRef} from 'vue';
 declare const __DEV__: boolean;
-import {createMap, type ControlSpec, type FeatureOptions, type FeaturePlace, type MapHost, type MapOverlay as Overlay, type OverlayOptions, type MapEvents, type MapPointer, type MapSpec, type MapState, type View, type ViewInput} from './host.ts';
+import type {ControlSpec, FeatureOptions, FeaturePlace, MapHost, MapOverlay as Overlay, OverlayOptions, MapEvents, MapPointer, MapSpec, MapState, View, ViewInput} from './host.ts';
 import type {SSROverrides} from './style.ts';
 import type {RenderedFeature} from './map.ts';
 import type {QueriedFeature} from './query.ts';
@@ -51,17 +51,21 @@ function markerData(data: unknown[]): unknown[] {
  */
 export function useMap(container: MaybeRefOrGetter<HTMLElement | null | undefined>, spec: MaybeRefOrGetter<MapSpec>): {host: ShallowRef<MapHost | null>; state: ShallowRef<MapState | null>} {
     const host = shallowRef<MapHost | null>(null), state = shallowRef<MapState | null>(null);
-    let stop: (() => void) | undefined;
-    onMounted(() => {
+    let stop: (() => void) | undefined, gone = false;
+    // (The map code loads here, with `import()`, so that a component that imports only `MapOverlay`, `MapImage` or
+    // `useMapHost` from this file does not load the map (#159).)
+    onMounted(async () => {
         const el = toValue(container);
         if (!el) return;
+        const {createMap} = await import('./host.ts');
+        if (gone) return;
         const made = host.value = createMap(el, unwrapped(toValue(spec)));
         state.value = made.state.get();
         stop = made.state.subscribe(s => { state.value = s; });
     });
     // (A new description object is a change. The fields are compared by the map, not by Vue.)
     watch(() => toValue(spec), next => host.value?.update(unwrapped(next)), {flush: 'post'});
-    onBeforeUnmount(() => { stop?.(); host.value?.destroy(); host.value = null; });
+    onBeforeUnmount(() => { gone = true; stop?.(); host.value?.destroy(); host.value = null; });
     return {host, state};
 }
 
@@ -114,17 +118,18 @@ export const MapOverlay = defineComponent({
     },
     emits: ['close'],
     setup(props, {slots}) {
-        const host = useMapHost(), el = shallowRef<HTMLElement | null>(null);
+        const host = useMapHost(), el = shallowRef<HTMLElement | null>(null), shown = shallowRef(false);
         let overlay: Overlay | null = null;
         const options = (): OverlayOptions => ({lngLat: [props.lngLat[0], props.lngLat[1]], anchor: props.anchor, offset: props.offset && [props.offset[0], props.offset[1]], popup: props.popup, onClose: props.onClose});
         // The map starts after this component is there, so the element is put on the map when the two exist.
         watch([host, el, options], ([map, element, o]) => {
             if (!map || !element) return;
-            if (overlay) overlay.update(o); else { overlay = map.overlay(element, o); element.style.display = ''; }
+            if (overlay) overlay.update(o); else { overlay = map.overlay(element, o); shown.value = true; }
         }, {flush: 'post', immediate: true});
         onBeforeUnmount(() => { overlay?.remove(); overlay = null; });
         // (Not shown until it is on the map: on a server, and before the map has started, it has no position.)
-        return () => h('div', {ref: el, style: 'display:none'}, slots.default?.());
+        // The visibility is Vue state, so a re-render with fallthrough attributes does not hide the content again (#161).
+        return () => h('div', {ref: el, style: shown.value ? undefined : 'display:none'}, slots.default?.());
     },
 });
 
@@ -242,9 +247,10 @@ export const MapJr = defineComponent({
          * On a server: render the first view as SVG into the page. `true`, or options: the size in pixels that the map
          * has on most screens (800 by 500 without them), `overrides` (changes to style layers for the server render, by
          * the id of the layer: `{building: {hidden: true}}`), and `attribution` (the credits to show, when the server
-         * must not take them from the sources of the style).
+         * must not take them from the sources of the style), and the limits for requests of the server renderer
+         * (`timeout`, `requestTimeout`, `maxBytes`, `allowHosts`). The server also renders `extend` and `data`.
          */
-        ssr: {type: [Boolean, Object] as PropType<boolean | {width?: number; height?: number; overrides?: Record<string, SSROverrides>; attribution?: string | string[]}>, default: false},
+        ssr: {type: [Boolean, Object] as PropType<boolean | {width?: number; height?: number; overrides?: Record<string, SSROverrides>; attribution?: string | string[]; timeout?: number; requestTimeout?: number; maxBytes?: number; allowHosts?: string[]}>, default: false},
     },
     emits: {
         'update:view': (_view: View) => true,
@@ -309,13 +315,15 @@ export const MapJr = defineComponent({
         });
         const {host, state} = useMap(el, spec);
         provide(HOST, host);
-        watch(() => state.value?.loaded, loaded => { if (loaded) emit('load'); });
         // The other events of the map, each one only when the component has a listener for it.
         const listeners = getCurrentInstance()?.vnode.props ?? {};
+        // (`load` and `idle` come from the store of the map and not from a watcher: a watcher runs after both have
+        // changed, and a listener of `load` would find the map idle already.)
         watch(host, map => {
+            if (map) map.state.subscribe(s => s.loaded, v => { if (v) emit('load'); });
+            if (map) map.state.subscribe(s => s.idle, v => { if (v) emit('idle'); });
             if (map) for (const name of FORWARDED) { const event = name.replace('.', '') as 'move'; if (listeners['on' + event[0].toUpperCase() + event.slice(1)]) map.listen(name as 'move', e => emit(event, e)); }
         }, {immediate: true});
-        watch(() => state.value?.idle, idle => { if (idle) emit('idle'); });
         watch(() => state.value?.hover, hover => { if (hover) emit('hover', hover); });
         expose({host, state});
 
@@ -331,7 +339,7 @@ export const MapJr = defineComponent({
             // @ts-ignore: the package refers to itself, which the type check of this project does not resolve
             const server = await import('@map-jr/map-jr-gl/server') as typeof import('./server.ts');
             first.value = await server.renderFirstView({style: toRaw(props.mapStyle), center: view.center ?? [0, 0], zoom: view.zoom ?? 0, bearing: view.bearing, width: o.width ?? 800, height: o.height ?? 500,
-                markers: props.markers && plain(props.markers), images: props.images && toRaw(props.images) as Record<string, string>, overrides: o.overrides, attribution: props.attribution === false ? false : o.attribution});
+                markers: props.markers && plain(props.markers), images: props.images && toRaw(props.images) as Record<string, string>, overrides: o.overrides, extend: toRaw(props.extend), data: props.data && toRaw(props.data), timeout: o.timeout, requestTimeout: o.requestTimeout, maxBytes: o.maxBytes, allowHosts: o.allowHosts, attribution: props.attribution === false ? false : o.attribution});
         });
         return () => h('div', {class: 'map-jr-vue', style: 'position:relative;width:100%;height:100%'}, [
             h('div', {ref: el, style: 'position:absolute;inset:0', innerHTML: first.value}),

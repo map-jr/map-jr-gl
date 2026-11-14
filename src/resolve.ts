@@ -60,6 +60,8 @@ export function parseFontName(name: string): {family: string; weight: number; st
 const fetched = new WeakMap<object, {url: string; p: Promise<any>; v?: any; err?: any; told?: boolean; late?: () => void}>();
 /** Puts data that the map fetched itself (`setData` with a URL) in the place of the kept result of a source. */
 export function keep(raw: object, url: string, v: unknown) { fetched.set(raw, {url, p: Promise.resolve(v), v}); }
+/** The kept result of a source for this URL, or undefined when the map has none (yet) or has it for another URL. */
+export function kept(raw: object, url: string): unknown { const m = fetched.get(raw); return m?.url === url ? m.v : undefined; }
 /** For a change of a style that is in use: a source whose data is not there yet is left out, and `late` is called when it is. */
 export interface Partial { late(): void; fail(error: unknown): void }
 const SKIP = Symbol();
