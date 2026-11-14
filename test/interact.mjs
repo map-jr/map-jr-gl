@@ -1582,13 +1582,20 @@ for (const mode of ['main', 'worker']) {
                 ['setCenter', () => m.setCenter([1, 1], {automated: true})],
                 ['plain', () => m.easeTo({zoom: 5, duration: 100})],
             ]) { seen.length = 0; await end(f); out[name] = [...seen]; }
+            // A jumpTo that does not move the camera, then a drag: the drag's events have no eventData fields.
+            m.jumpTo({center: m.getCenter()}, {automated: true});
+            await new Promise(r => setTimeout(r, 100));
+            seen.length = 0;
+            const c = m.getCanvas(), at = (type, x) => c.dispatchEvent(new PointerEvent(type, {bubbles: true, clientX: x, clientY: 100, pointerId: 1, pointerType: 'mouse', button: 0, buttons: 1, isPrimary: true}));
+            await end(() => { at('pointerdown', 150); for (let x = 160; x <= 220; x += 10) at('pointermove', x); at('pointerup', 220); });
+            out.drag = [...seen];
             m.remove(); el.remove();
             return out;
         });
         const tags = list => [...new Set(list.map(s => s.split(':')[1]))].join();
-        check('[main] maplibre-compat: the eventData of fitBounds, flyTo, jumpTo and setCenter is on the events of that move only (#261)',
+        check('[main] maplibre-compat: the eventData of fitBounds, flyTo, jumpTo and setCenter is on the events of that move only, and not on a later drag (#261)',
             ['fitBounds', 'flyTo', 'jumpTo', 'setCenter'].every(k => tagged[k].includes('moveend:true') && tags(tagged[k]) === 'true')
-            && tagged.fitBounds.includes('zoomend:true') && tags(tagged.plain) === 'undefined', JSON.stringify(tagged));
+            && tagged.fitBounds.includes('zoomend:true') && tags(tagged.plain) === 'undefined' && tagged.drag.includes('moveend:undefined') && tags(tagged.drag) === 'undefined', JSON.stringify(tagged));
     }
     // Accessibility: the canvas says that it is a map and shows the keyboard focus, a marker with a popup works with the
     // keyboard, the fullscreen button says what it does, and a camera animation respects "reduce motion".

@@ -135,7 +135,7 @@ export class Map extends CoreMap {
 
     /**
      * As in MapLibre GL JS, `eventData` goes onto the events of this move (`movestart` to `moveend`, and the zoom,
-     * rotate and pitch events). A later camera call replaces it; a nested call (fitBounds calls easeTo) keeps it.
+     * rotate and pitch events). A later camera call or user input replaces it; a nested call (fitBounds calls easeTo) keeps it.
      */
     jumpTo(o: CameraInput, eventData?: EventData) { return this.camera(eventData, () => super.jumpTo(o)); }
     easeTo(o: EaseToOptions, eventData?: EventData) { return this.camera(eventData, () => super.easeTo(o)); }
@@ -347,6 +347,8 @@ export class Map extends CoreMap {
         // it is asked again: if the new answer is another, `idle` fires one more time for that question.)
         if (type === 'sourcedata' || type === 'styledata') this.refired.clear();
         // The `eventData` of the camera call that made this move (see `jumpTo`). The move's own fields win.
+        // User input starts a move of the user's: kept eventData (of a call that did not move the camera) is not on it.
+        if (/^(mousedown|touchstart|wheel|dragstart|dblclick)$/.test(type)) this.moveData = undefined;
         if (this.moveData && /^(move|zoom|rotate|pitch)(start|end)?$/.test(type)) {
             data = {...this.moveData, ...data};
             if (type === 'moveend') this.moveData = undefined;
