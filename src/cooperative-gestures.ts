@@ -3,11 +3,11 @@ import type {Map} from './map.ts';
 /**
  * The option `cooperativeGestures` of the compat entry, as in MapLibre GL JS 6.17: the wheel zooms only with Ctrl
  * (⌘ on a Mac), one finger scrolls the page and two fingers move the map. A blocked gesture fires
- * `cooperativegestureprevented` and shows a hint over the map. Returns a function that stops it.
+ * `cooperativegestureprevented` and shows a hint over the map. Returns a function that removes the hint. (The compat entry sets `touch-action`, and it sets and clears `map.gate`.)
  * (The compat entry loads this file only when the option is on.)
  */
 export function cooperate(map: Map) {
-    const canvas = map.getCanvas(), mac = navigator.userAgent.includes('Mac'), touchAction = canvas.style.touchAction;
+    const mac = navigator.userAgent.includes('Mac');
     const hint = map.getContainer().appendChild(document.createElement('div')), style = hint.style;
     hint.className = 'map-jr-cooperative-gesture-screen maplibregl-cooperative-gesture-screen';
     // (The look of the stylesheet of MapLibre GL JS, which this library does not need.)
@@ -15,8 +15,6 @@ export function cooperate(map: Map) {
     // (Screen readers cannot use the gestures.)
     hint.setAttribute('aria-hidden', 'true');
     let timer: ReturnType<typeof setTimeout> | undefined;
-    // One finger scrolls the page. The browser still gives two fingers to the map.
-    canvas.style.touchAction = 'pan-x pan-y';
     map.gate = (gestureType, e) => {
         if (gestureType === 'wheel_zoom' && (e as WheelEvent)[mac ? 'metaKey' : 'ctrlKey']) return false;
         map.fire('cooperativegestureprevented', {gestureType, originalEvent: e});
@@ -28,5 +26,5 @@ export function cooperate(map: Map) {
         timer = setTimeout(() => { style.opacity = '0'; style.transition = 'opacity 1s ease 1s'; }, 100);
         return true;
     };
-    return () => { clearTimeout(timer); hint.remove(); map.gate = undefined; canvas.style.touchAction = touchAction; };
+    return () => { clearTimeout(timer); hint.remove(); };
 }
