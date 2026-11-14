@@ -57,9 +57,28 @@ const cooperativeGestures = (map: CoreMap) => {
 declare const __VERSION__: string; // the version of package.json, set by the build
 /** The fields that a camera method copies onto the events of its move, as `eventData` in MapLibre GL JS. */
 type EventData = Record<string, unknown>;
+/**
+ * A point in pixels, as `Point` of `@mapbox/point-geometry`, which MapLibre GL JS exports. It has the methods that
+ * applications use most; see docs/maplibre-compatibility.md for the list.
+ */
+export class Point {
+    constructor(public x: number, public y: number) {}
+    static convert(p: Point | [number, number] | {x: number; y: number}) { return p instanceof Point ? p : Array.isArray(p) ? new Point(p[0], p[1]) : new Point(p.x, p.y); }
+    clone() { return new Point(this.x, this.y); }
+    add(p: {x: number; y: number}) { return new Point(this.x + p.x, this.y + p.y); }
+    sub(p: {x: number; y: number}) { return new Point(this.x - p.x, this.y - p.y); }
+    mult(k: number) { return new Point(this.x * k, this.y * k); }
+    div(k: number) { return new Point(this.x / k, this.y / k); }
+    round() { return new Point(Math.round(this.x), Math.round(this.y)); }
+    mag() { return Math.hypot(this.x, this.y); }
+    dist(p: {x: number; y: number}) { return Math.hypot(this.x - p.x, this.y - p.y); }
+    equals(p: {x: number; y: number}) { return this.x === p.x && this.y === p.y; }
+}
 export class Map extends CoreMap {
     /** As in MapLibre GL JS: with it on, the wheel zooms only with Ctrl (⌘ on a Mac), and one finger scrolls the page. */
     readonly cooperativeGestures = cooperativeGestures(this);
+    /** As in MapLibre, a `Point` with methods (`dist`, `sub`, …), not a plain object. */
+    override project(lngLat: LngLatLike) { return Point.convert(super.project(lngLat)); }
     /** As in MapLibre GL JS: with no listener, `once` returns a promise for the event; a layer id makes it a layer event. */
     once(type: string, a?: any, b?: any): any {
         const layer = typeof a === 'string' || Array.isArray(a) ? a : undefined, fn = typeof a === 'function' ? a : b;
@@ -435,7 +454,11 @@ export class Map extends CoreMap {
             data = {...this.moveData, ...data};
             if (type === 'moveend') this.moveData = undefined;
         }
-        const point = data.point as {x: number; y: number} | undefined;
+        // As in MapLibre, `point` and `points` of mouse and touch events are a `Point`.
+        // (In place: the object has a getter, `defaultPrevented`, that a copy would lose.)
+        if (data.point) data.point = Point.convert(data.point as Point);
+        if (Array.isArray(data.points)) data.points = data.points.map(Point.convert);
+        const point = data.point as Point | undefined;
         if (!point || !this.rawStyle || data.asked) return super.fire(type, data);
         const warm = () => {
             const {box, sets} = this.rendered([point.x, point.y]), key = this.questionKey(box), turn = this.turn;
