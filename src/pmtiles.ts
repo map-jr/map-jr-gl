@@ -58,10 +58,15 @@ function parseDirectory(b: Uint8Array): Entry[] {
 /** The first bytes of archives (header and root directory) that another thread has read already, by URL. */
 export const heads = new Map<string, Uint8Array>();
 
+const LIMIT = 64 << 20;
+const tooLarge = (url: string, n: number) => new Error(`[map-jr-gl] PMTiles ${url}: the server ignores Range requests, so each tile would download the whole file (${Math.round(n / 1048576)} MB). Serve the file from a server that supports Range requests.`);
+
 export class PMTiles {
     private header?: Promise<{h: PMHeader; root: Entry[]; first: Uint8Array}>;
     private leaves = new Map<number, Promise<Entry[]>>();
     private fetchFn: Fetch;
+    /** The whole file, when the server answered a range request with 200. */
+    private whole?: Uint8Array;
     constructor(readonly url: string, fetchFn: Fetch = fetch) {
         // Always called as a plain function: browsers and Workers reject a global `fetch` invoked as a method of another object.
         this.fetchFn = (...a) => fetchFn(...a);
@@ -69,11 +74,17 @@ export class PMTiles {
 
     /** `fetchFn`: the requests of one map follow the rules of that map, also for an archive that another map opened. */
     private async range(offset: number, length: number, signal?: AbortSignal, fetchFn = this.fetchFn): Promise<Uint8Array> {
+        if (this.whole) return this.whole.subarray(offset, offset + length);
         const res = await fetchFn(this.url, {headers: {Range: `bytes=${offset}-${offset + length - 1}`}, signal});
         if (res.status !== 206 && res.status !== 200) throw new Error(`PMTiles ${this.url}: HTTP ${res.status}`);
+        // A server that ignores Range sends the whole file with 200. Keep it (up to 64 MB) and answer later ranges
+        // from it, instead of downloading the whole file again for each range.
+        const full = res.status === 200, size = +(res.headers.get('content-length') ?? 0);
+        if (full && size > LIMIT) { res.body?.cancel(); throw tooLarge(this.url, size); }
         const bytes = new Uint8Array(await res.arrayBuffer());
-        // A server that ignores Range sends the whole file; that still works for small archives.
-        return res.status === 200 && bytes.length > length ? bytes.subarray(offset, offset + length) : bytes;
+        if (!full) return bytes;
+        if (bytes.length > LIMIT) throw tooLarge(this.url, bytes.length);
+        return (this.whole = bytes).subarray(offset, offset + length);
     }
 
     private open(fetchFn?: Fetch) {
