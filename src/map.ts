@@ -953,6 +953,7 @@ export class Map {
     getStyle() { return this.rawStyle ? plain(this.rawStyle) : undefined; }
     // ---- feature state ----
     private featureStates: Record<string, Record<string, Record<string, unknown>>> = {};
+    private warnedTextId = false;
     /** Sends the states of the features in `keys` that changed; `null` for a feature that has no state any more. */
     private sendFeatureState(source: string, keys: string[]) {
         const states = this.featureStates[source], diff: Record<string, Record<string, unknown> | null> = {};
@@ -965,6 +966,11 @@ export class Map {
      * selection highlights). The feature needs an `id`. Tiles showing the source are rebuilt in the background.
      */
     setFeatureState(feature: {source: string; sourceLayer?: string; id: number | string}, state: Record<string, unknown>) {
+        // A string of digits gives the same key as the number, so only other text has no effect.
+        if (typeof feature.id === 'string' && !this.warnedTextId && isNaN(+feature.id) && /^(vector|raster)/.test(this.rawStyle?.sources[feature.source]?.type)) {
+            this.warnedTextId = true;
+            console.warn(`[map-jr-gl] setFeatureState(): the source "${feature.source}" is not GeoJSON, and the id "${feature.id}" is a string. Feature state on a vector source needs the numeric id of the feature in the tile.`);
+        }
         const states = this.featureStates[feature.source] ??= {}, key = `${feature.sourceLayer ?? ''}|${feature.id}`;
         states[key] = {...states[key], ...state};
         return this.sendFeatureState(feature.source, [key]);
@@ -1686,7 +1692,8 @@ function premultiply(px: ArrayLike<number>): Uint8Array {
 }
 
 /** Applies one diff of `updateData` to GeoJSON data and returns a new FeatureCollection. */
-function applyDiff(data: any, diff: GeoJSONDiff, key?: string) {
+function applyDiff(data: any, diff: GeoJSONDiff, promoteId?: string | Record<string, string>) {
+    const key = typeof promoteId === 'string' ? promoteId : promoteId?._geojsonTileLayer;
     const idOf = (f: any) => key ? f.properties?.[key] : f.id;
     let features: any[] = diff.removeAll ? [] : data?.type === 'FeatureCollection' ? data.features : data?.type === 'Feature' ? [data] : [];
     const added = new Set((diff.add ?? []).map(idOf));
