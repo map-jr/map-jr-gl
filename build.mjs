@@ -191,7 +191,7 @@ if (process.argv.includes('--sizes')) {
     const src = process.cwd() + '/src';
     console.log('\nPage script when importing selectively (tree-shaken):');
     await only('Map', `export {Map} from '${src}/map.ts'`);
-    await only('Map + NavigationControl + ScaleControl', `export {Map} from '${src}/map.ts'; export {NavigationControl, ScaleControl} from '${src}/controls.ts'`);
+    await only('Map + NavigationControl + ScaleControl', `export {Map} from '${src}/map.ts'; export {NavigationControl, ScaleControl} from '${src}/controls-more.ts'`);
     await only('Map + Marker + Popup', `export {Map} from '${src}/map.ts'; export {Marker, Popup} from '${src}/overlays.ts'`);
     await only('everything (index)', `export * from '${src}/index.ts'`);
 }
