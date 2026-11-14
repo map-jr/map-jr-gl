@@ -703,7 +703,7 @@ has the right type, and a name that is not in the table does not compile.
 | Type | When | Other members of the event |
 |---|---|---|
 | `load` | The style and the first tiles have loaded. It comes once, before the first `idle`. | |
-| `idle` | Nothing moves and nothing loads. | |
+| `idle` | Nothing moves and nothing loads. A tile of the view whose request fails is requested again after 0.5 s, 1 s and 2 s, and `idle` waits for these requests; after the fourth failure the map is idle without the tile. Each failure gives an `error` event. | |
 | `render` | The map has drawn a frame. | |
 | `resize` | The size of the map has changed. | |
 | `remove` | The map is removed. | |
