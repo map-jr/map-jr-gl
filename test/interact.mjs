@@ -1856,6 +1856,31 @@ for (const mode of ['main', 'worker']) {
         const same = (a, b) => a.length === b.length && a.every((p, i) => sameLng(p[0], b[i][0]) && Math.abs(p[1] - b[i][1]) < 1e-3);
         check('[main] maplibre-compat and createMap: maxBounds that cross the antimeridian keep the view where MapLibre keeps it, after a jump and a drag (#309)',
             same(anti.compat, anti.ml) && same(anti.main, anti.ml.slice(0, 5)), JSON.stringify(anti));
+        // #334: LngLatBounds keeps its corners as given (as MapLibre does), so a bounds object can cross the antimeridian.
+        // The same calls in MapLibre GL JS (served at /ml/) and in the compat entry give the same results, and
+        // fitBounds with such bounds ends at the same centre and zoom.
+        const llb = await page.evaluate(async () => {
+            const ml = await import('/ml/maplibre-gl.mjs');
+            ml.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const compat = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const run = async lib => {
+                const b = new lib.LngLatBounds([170, -10], [-170, 10]), arr = new lib.LngLatBounds([170, -10, -170, 10]);
+                const out = [b.getWest(), b.getEast(), b.getCenter().lng, b.getCenter().lat, ...b.toArray().flat(), ...arr.toArray().flat(),
+                    ...lib.LngLatBounds.convert([[170, -10], [-170, 10]]).toArray().flat(),
+                    ...[[175, 0], [-175, 0], [0, 0], [180, 0], [-180, 0], [170, 0]].map(p => b.contains(p) ? 1 : 0),
+                    ...new lib.LngLatBounds([10, 20], [0, 0]).toArray().flat(), ...new lib.LngLatBounds([10, 20], [0, 0]).extend([5, 30]).toArray().flat()];
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+                const m = new lib.Map({container: el, renderer: 'main', style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, center: [0, 0], zoom: 1, fadeDuration: 0});
+                await new Promise(r => m.loaded?.() ? r() : m.once('load', r));
+                m.fitBounds(b, {duration: 0});
+                out.push(((m.getCenter().lng % 360) + 360) % 360, m.getCenter().lat, m.getZoom());
+                m.remove(); el.remove();
+                return out;
+            };
+            return {ml: await run(ml), compat: await run(compat)};
+        });
+        check('[main] maplibre-compat: LngLatBounds keeps the corners as given, and contains, getCenter and fitBounds across the antimeridian agree with MapLibre (#334)',
+            llb.ml.length === llb.compat.length && llb.ml.every((v, i) => Math.abs(v - llb.compat[i]) < 1e-3), JSON.stringify(llb));
         // #261: the eventData argument of a camera method is on the events of that move, and not on the next move.
         const tagged = await page.evaluate(async () => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
