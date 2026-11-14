@@ -2,19 +2,12 @@ import {toLngLat, type LngLatLike} from './geo.ts';
 import {LngLat} from './lnglat.ts';
 import type {Map} from './map.ts';
 import {cls} from './controls.ts';
+import {Evented} from './evented.ts';
 
 /**
  * DOM overlays with MapLibre's `Marker` and `Popup` API, for the cases where real HTML is wanted (rich content,
  * dragging, links). For many markers, a symbol layer with an image is far cheaper.
  */
-type Listener = (e: any) => void;
-class Evented {
-    private listeners: Record<string, Listener[]> = {};
-    on(type: string, fn: Listener) { (this.listeners[type] ??= []).push(fn); return this; }
-    off(type: string, fn: Listener) { this.listeners[type] = (this.listeners[type] ?? []).filter(f => f !== fn); return this; }
-    once(type: string, fn: Listener) { const w: Listener = e => { this.off(type, w); fn(e); }; return this.on(type, w); }
-    fire(type: string, data?: Record<string, unknown>) { for (const fn of [...this.listeners[type] ?? []]) fn({type, target: this, ...data}); return this; }
-}
 
 export type OverlayAnchor = 'center' | 'top' | 'bottom' | 'left' | 'right' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
 /** Where the named part of an element is, across and down, in percent: `[50, 100]` for `bottom`. */

@@ -1254,6 +1254,51 @@ for (const mode of ['main', 'worker']) {
         check('[main] maplibre-compat: the container, the canvas, the controls, their buttons, markers and popups have their maplibregl-* class names, and remove() takes the name from the container',
             names.missing.length === 0 && names.canvasInMap && !names.left, JSON.stringify(names));
     }
+    // GeolocateControl is an event emitter, as react-map-gl 8 expects (#194), with a mocked navigator.geolocation.
+    if (mode === 'main') {
+        const geo = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const real = Object.getOwnPropertyDescriptor(Navigator.prototype, 'geolocation');
+            let answer;
+            Object.defineProperty(navigator, 'geolocation', {configurable: true, value: {getCurrentPosition: (ok, fail) => setTimeout(() => answer(ok, fail), 0)}});
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+            const m = new mod.Map({container: el, renderer: 'main', center: [0, 0], zoom: 2, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            const warnings = [], warn = console.warn;
+            console.warn = (...a) => warnings.push(String(a[0]));
+            const gc = new mod.GeolocateControl({trackUserLocation: true});
+            console.warn = warn;
+            const notAdded = gc.trigger();
+            m.addControl(gc);
+            await new Promise(r => m.once('load', r));
+            const events = [];
+            for (const t of ['geolocate', 'error', 'outofmaxbounds', 'trackuserlocationstart', 'trackuserlocationend']) gc.on(t, e => events.push(t + ':' + (e.target === gc)));
+            const onMap = [];
+            m.on('geolocate', () => onMap.push('geolocate'));
+            m.on('error', () => onMap.push('error'));
+            const step = f => new Promise(r => { answer = (ok, fail) => { f(ok, fail); setTimeout(r, 0); }; });
+            let s = step(ok => ok({coords: {longitude: 10, latitude: 20}, timestamp: 1}));
+            const triggered = gc.trigger();
+            await s;
+            s = step((ok, fail) => fail({code: 1, message: 'denied'}));
+            gc.trigger(); await s;
+            m.setMaxBounds([[-5, -5], [5, 5]]);
+            s = step(ok => ok({coords: {longitude: 50, latitude: 50}, timestamp: 2}));
+            gc.trigger(); await s;
+            const off = () => events.push('off');
+            gc.once('geolocate', off);
+            m.setMaxBounds(null);
+            s = step(ok => ok({coords: {longitude: 1, latitude: 1}, timestamp: 3}));
+            gc.trigger(); await s;
+            s = step(ok => ok({coords: {longitude: 1, latitude: 1}, timestamp: 4}));
+            gc.trigger(); await s;
+            m.remove(); el.remove();
+            if (real) delete navigator.geolocation;
+            return {notAdded, triggered, events, onMap, warnings};
+        });
+        check('[main] maplibre-compat: GeolocateControl has on/once/trigger() and fires geolocate, error and outofmaxbounds on itself, and warns once for trackUserLocation',
+            geo.notAdded === false && geo.triggered === true && geo.events.join() === 'geolocate:true,error:true,outofmaxbounds:true,geolocate:true,off,geolocate:true' && geo.onMap.join() === 'geolocate,error,geolocate,geolocate'
+            && geo.warnings.length === 1 && geo.warnings[0].startsWith('[map-jr-gl] GeolocateControl: the option trackUserLocation'), JSON.stringify(geo));
+    }
     // Accessibility: the canvas says that it is a map and shows the keyboard focus, a marker with a popup works with the
     // keyboard, the fullscreen button says what it does, and a camera animation respects "reduce motion".
     if (mode === 'main') {
