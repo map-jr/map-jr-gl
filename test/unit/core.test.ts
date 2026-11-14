@@ -372,6 +372,12 @@ test('pmtiles: a server that ignores Range is read once, and a file above 64 MB 
     const big = (async () => new Response(new ReadableStream({pull(c) { read = true; c.close(); }}, {highWaterMark: 0}), {status: 200, headers: {'content-length': String(100 << 20)}})) as any;
     await assert.rejects(new PMTiles('https://tiles.test/big.pmtiles', big).info(), /^Error: \[map-jr-gl\] PMTiles https:\/\/tiles.test\/big.pmtiles: the server ignores Range requests, .*\(100 MB\)/);
     assert.equal(read, false, 'the body of a file above the limit is not read');
+    // Without Content-Length, the stream is read only until it passes the limit. One 1 MB chunk is sent repeatedly.
+    const chunk = new Uint8Array(1 << 20);
+    let pulls = 0, cancelled = false;
+    const chunked = (async () => new Response(new ReadableStream({pull(c) { pulls++; c.enqueue(chunk); }, cancel() { cancelled = true; }}, {highWaterMark: 0}), {status: 200})) as any;
+    await assert.rejects(new PMTiles('https://tiles.test/chunked.pmtiles', chunked).info(), /the server ignores Range requests/);
+    assert.ok(pulls <= 66 && cancelled, `the stream is cancelled after the limit (${pulls} chunks read)`);
 });
 
 test('geojson: sources are cut into tiles, clipped, and render and query like vector tiles', async () => {

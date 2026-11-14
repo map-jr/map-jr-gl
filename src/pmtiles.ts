@@ -81,9 +81,22 @@ export class PMTiles {
         // from it, instead of downloading the whole file again for each range.
         const full = res.status === 200, size = +(res.headers.get('content-length') ?? 0);
         if (full && size > LIMIT) { res.body?.cancel(); throw tooLarge(this.url, size); }
-        const bytes = new Uint8Array(await res.arrayBuffer());
-        if (!full) return bytes;
-        if (bytes.length > LIMIT) throw tooLarge(this.url, bytes.length);
+        if (!full || !res.body) {
+            const bytes = new Uint8Array(await res.arrayBuffer());
+            if (!full) return bytes;
+            if (bytes.length > LIMIT) throw tooLarge(this.url, bytes.length);
+            return (this.whole = bytes).subarray(offset, offset + length);
+        }
+        // Without Content-Length, read the stream and stop as soon as it passes the limit.
+        const reader = res.body.getReader(), parts: Uint8Array[] = [];
+        let n = 0;
+        for (let r; !(r = await reader.read()).done;) {
+            parts.push(r.value);
+            if ((n += r.value.length) > LIMIT) { reader.cancel(); throw tooLarge(this.url, n); }
+        }
+        const bytes = new Uint8Array(n);
+        n = 0;
+        for (const b of parts) bytes.set(b, n), n += b.length;
         return (this.whole = bytes).subarray(offset, offset + length);
     }
 
