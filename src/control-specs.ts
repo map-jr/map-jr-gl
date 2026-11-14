@@ -45,4 +45,18 @@ export const fullscreen = spec('fullscreen', (m, _o: {}) => new m.FullscreenCont
 export const geolocate = spec('geolocate', (m, o: {zoom?: number; positionOptions?: PositionOptions}) => new m.GeolocateControl(o));
 /** A button that turns 3D terrain on and off. `source` is the id of an elevation source of the style. */
 export const terrain = spec('terrain', (m, o: {source: string; exaggeration?: number}) => new m.TerrainControl(o));
+/**
+ * A control of your own. Give `element` (the map puts it into the corner and takes it out again), or `onAdd` and
+ * `onRemove` as MapLibre GL JS controls have them (`onAdd` receives the map of `map.map` and returns the element).
+ * `key` names the control: a description with the same `key` keeps the control that the map has.
+ */
+export const custom = (options: {key: string; position?: ControlPosition} & ({element: HTMLElement} | Control)): ControlSpec => {
+    const {key, position} = options;
+    if (__DEV__ && (typeof key !== 'string' || !('element' in options || 'onAdd' in options))) throw new Error('[map-jr-gl] custom(): write custom({key: "my-control", element}) or custom({key: "my-control", onAdd(map) { return element; }, onRemove() {}}).');
+    return {key: 'custom:' + key, position, create: () => 'element' in options ? {
+        onAdd: () => { options.element.classList.add('map-jr-ctrl', 'maplibregl-ctrl'); return options.element; },
+        onRemove: () => options.element.remove(),
+    } : options};
+};
+declare const __DEV__: boolean;
 export type {ControlSpec, ControlPosition};

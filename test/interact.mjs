@@ -1034,6 +1034,37 @@ for (const mode of ['main', 'worker']) {
         check('maplibre-compat: logoPosition, validate, visualizePitch, the container of FullscreenControl and speed/curve of flyTo each warn once',
             Object.values(r).every(n => n === 1), JSON.stringify(r));
     }
+    // #208: fitBounds warns once for speed, curve and linear; Marker takes offset as {x, y}; getImage gives RGBA pixels.
+    if (mode === 'main') {
+        const r = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const warns = [], warn = console.warn;
+            console.warn = (...a) => { warns.push(String(a[0])); };
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:100px;height:100px'}));
+            const out = {};
+            let m;
+            try {
+                m = new mod.Map({container: el, center: [0, 0], zoom: 1, attributionControl: false, style: {version: 8, sources: {}, layers: []}});
+                for (let i = 0; i < 2; i++) m.fitBounds([[-1, -1], [1, 1]], {speed: 2, curve: 1, linear: true, duration: 0});
+                out.fit = warns.filter(w => w.startsWith('[map-jr-gl]') && w.includes('fitBounds')).length;
+                out.offset = new mod.Marker({offset: {x: 3, y: -4}}).getOffset();
+                const px = new Uint8Array([255, 0, 0, 255, 0, 255, 0, 128]);
+                await m.addImage('raw', {width: 2, height: 1, data: px});
+                const raw = m.getImage('raw').data;
+                out.raw = [raw.width, raw.height, raw.data instanceof Uint8Array, [...(raw.data ?? [])].join()];
+                const c = Object.assign(document.createElement('canvas'), {width: 2, height: 2}), g = c.getContext('2d');
+                g.fillStyle = '#0000ff'; g.fillRect(0, 0, 2, 2);
+                await m.addImage('canvas', c);
+                const cv = m.getImage('canvas').data;
+                out.canvas = [cv.width, cv.height, cv.data instanceof Uint8Array, [...(cv.data?.slice?.(0, 4) ?? [])].join()];
+            } finally { console.warn = warn; }
+            m.remove(); el.remove();
+            return out;
+        });
+        check('maplibre-compat: fitBounds speed/curve/linear warn once, Marker offset {x, y}, getImage returns RGBA pixels',
+            r.fit === 1 && r.offset?.x === 3 && r.offset?.y === -4 && r.raw?.join('|') === '2|1|true|255,0,0,255,0,255,0,128'
+            && r.canvas?.join('|') === '2|2|true|0,0,255,255', JSON.stringify(r));
+    }
     // Two styles that are asked for one after the other: the last one wins, also when the first answers later, and
     // also when the first is the style of the constructor. The style, the layers and the pixels agree.
     {
