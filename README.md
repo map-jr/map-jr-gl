@@ -37,7 +37,7 @@ uses the same renderer and has its own tests in a browser.
   elevation source. You do not need a plugin.
 - **It answers questions about the data.** `queryFeatures` with `sources` reads the tile data directly. You do not
   need a style layer.
-- **Fonts as the style gives them, or none to download.** Text uses the glyph files of the style, as MapLibre GL JS does. With `glyphs: false`, text uses the fonts of the browser: no requests for fonts.
+- **Fonts as the style gives them.** Text uses the glyph files of the style, as MapLibre GL JS does. A style without `glyphs` uses the fonts of the browser and makes no requests for fonts.
 - **It is easy to change to.** Most MapLibre GL JS code works after you change the import to
   `@map-jr/map-jr-gl/maplibre-compat`.
 - **It works with MapLibre plugins.** mapbox-gl-draw, terra-draw, the compare and sync-move plugins and others run

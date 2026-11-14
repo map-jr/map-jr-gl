@@ -69,7 +69,7 @@ map.update(description);
   `map.update({...description, cursor: 'crosshair'})`, not `map.update({cursor: 'crosshair'})`.
 - A field that the new description leaves out is removed from the map. This holds for `markers`, `controls`,
   `cursor`, `extend` and the limits of the camera. A source keeps the last data that `data` gave it.
-- The fields that are read when the map is made (`renderer`, `fonts`, `fontFamily`, `glyphs`, `interactive`,
+- The fields that are read when the map is made (`renderer`, `fonts`, `fontFamily`, `interactive`,
   `antialias`, `attribution`, `hash`) and `initialView` have no effect in `update`. A change of one of them gives a
   warning.
 
@@ -138,7 +138,6 @@ These fields are read only when the map is made:
 |---|---|
 | `renderer` | `'auto'` (the default), `'worker'` or `'main'`: the thread that draws. See [Loading](loading.md). |
 | `fonts`, `fontFamily` | Web fonts for the labels. |
-| `glyphs` | `false`: do not load the glyph files of the style (its `glyphs` URL). Text then uses the fonts of the device or the web fonts of `fonts`: no requests for fonts, and labels show at once. The default loads the glyph files, unless `fonts` is given. |
 | `interactive` | `false` for a map that the user cannot move. The default is `true`. With `false`, `onClick` and `state.hover` still work, and a touch on the map scrolls the page. |
 | `antialias` | Multisample antialiasing for the canvas. |
 | `attribution` | `false` to show the credits yourself, or options for the built-in credits. |

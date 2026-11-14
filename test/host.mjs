@@ -1032,7 +1032,8 @@ for (const renderer of ['worker', 'main']) {
     } catch (e) { check('removed while loading: the test run was completed', false, String(e.message).split('\n')[0]); }
     await page.close();
 }
-// The glyph files of the style: asked for by default, with the font stack and the range in the URL; not with `glyphs: false`.
+// The glyph files of the style: asked for by default, with the font stack and the range in the URL; not for a style without `glyphs`.
+// The removed field `glyphs` of the description (#52) has no effect and gives a warning in the development build.
 // (The test server has no glyph files: the text then uses the fonts of the device, and the map still becomes idle.)
 {
     const page = await browser.newPage({viewport: {width: 900, height: 600}});
@@ -1041,24 +1042,28 @@ for (const renderer of ['worker', 'main']) {
         let answer = {status: 404, body: ''};
         await page.route(/\/test-glyphs\//, route => { asked.push(decodeURIComponent(new URL(route.request().url()).pathname)); route.fulfill(answer); });
         await page.goto(`${origin}/style.json`);
-        const run = glyphs => page.evaluate(async glyphs => {
-            const lib = await import('/dist/map-jr-gl.js'), style = await (await fetch('/style.json')).json();
-            style.glyphs = '/test-glyphs/{fontstack}/{range}.pbf';
+        const warned = [];
+        page.on('console', m => { if (m.type() === 'warning' && m.text().includes('"glyphs"')) warned.push(m.text()); });
+        const run = how => page.evaluate(async how => {
+            const lib = await import(how === 'removed' ? '/dist/map-jr-gl.dev.js' : '/dist/map-jr-gl.js'), style = await (await fetch('/style.json')).json();
+            if (how !== 'none') style.glyphs = '/test-glyphs/{fontstack}/{range}.pbf'; else delete style.glyphs;
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99;background:#fff'}));
-            const host = lib.createMap(el, {style, initialView: {center: [-74.0065, 40.7085], zoom: 14.3}, attribution: false, ...(glyphs === false ? {glyphs} : {})});
+            const host = lib.createMap(el, {style, initialView: {center: [-74.0065, 40.7085], zoom: 14.3}, attribution: false, ...(how === 'removed' ? {glyphs: false} : {})});
             const loaded = await Promise.race([new Promise(r => host.state.subscribe(s => s.loaded, v => v && r(true))), new Promise(r => setTimeout(() => r(false), 20000))]);
+            await new Promise(r => setTimeout(r, 300));
             host.destroy(); el.remove();
             return loaded;
-        }, glyphs);
-        const withFiles = await run(), count = asked.length, without = await run(false), none = asked.length === count;
+        }, how);
+        const withFiles = await run(), count = asked.length, without = await run('none'), none = asked.length === count;
+        const removed = await run('removed'), stillAsked = asked.length > count, warning = warned.length === 1 && warned[0].startsWith('[map-jr-gl] The description has "glyphs".');
         // A server that answers each URL with a page (200, HTML), and one that sends bytes that are not a glyph file:
         // the map must still load, with the fonts of the device.
         answer = {status: 200, contentType: 'text/html', body: '<!doctype html><html><body>not found</body></html>'};
         const page200 = await run();
         answer = {status: 200, contentType: 'application/x-protobuf', body: Buffer.from([10, 255, 255, 255, 127, 26, 200, 1, 8, 65, 24, 136, 39, 32, 136, 39])};
         const broken = await run();
-        check('glyph files of the style: asked for by default, not with glyphs: false; a map still loads without them or with bad ones',
-            withFiles && without && none && page200 && broken && count > 0 && asked.every(u => /^\/test-glyphs\/[^/]+\/\d+-\d+\.pbf$/.test(u)), JSON.stringify({withFiles, without, none, page200, broken, count, first: asked[0]}));
+        check('glyph files of the style: asked for by default, not for a style without glyphs; the removed field glyphs warns and has no effect; a map still loads without them or with bad ones',
+            withFiles && without && none && removed && stillAsked && warning && page200 && broken && count > 0 && asked.every(u => /^\/test-glyphs\/[^/]+\/\d+-\d+\.pbf$/.test(u)), JSON.stringify({withFiles, without, none, removed, stillAsked, warned, page200, broken, count, first: asked[0]}));
     } catch (e) { check('glyph files: the test run was completed', false, String(e.message).split('\n')[0]); }
     await page.close();
 }
