@@ -29,7 +29,23 @@ test('warm() looks up each font of the style once, in later tasks, and not when 
     await new Promise(r => setTimeout(r, 20));
     assert.deepEqual(measured, ['700 24px "Noto Sans", sans-serif', 'italic 400 24px "Open Sans", sans-serif']);
     atlas.setGlyphs('https://example.com/{fontstack}/{range}.pbf');
+    atlas.fetchGlyphs = () => new Promise(() => {});
     atlas.warm(['Roboto Regular']);
     await new Promise(r => setTimeout(r, 20));
     assert.equal(measured.length, 2, 'glyph files of the style make the lookup unnecessary');
+});
+
+// With glyph files, the file of the first 256 characters of each font stack is requested when the map starts, at the
+// same time as the tiles, instead of after the first label placement, which waits for the tiles (#371).
+test('warm() requests the first glyph file of each font stack once, when the style has glyph files', async () => {
+    const atlas = new GlyphAtlas('sans-serif') as any, urls: string[] = [];
+    atlas.setGlyphs('https://example.com/{fontstack}/{range}.pbf');
+    atlas.fetchGlyphs = (url: string) => { urls.push(url); return Promise.resolve(new Response(null, {status: 404})); };
+    atlas.warm([['Noto Sans Bold', 'Arial Unicode MS Bold'], 'Noto Sans Regular', 'Noto Sans Regular']);
+    assert.deepEqual(urls, ['https://example.com/Noto%20Sans%20Bold%2CArial%20Unicode%20MS%20Bold/0-255.pbf', 'https://example.com/Noto%20Sans%20Regular/0-255.pbf']);
+    assert.equal(atlas.loading, 2, 'the map is not idle while they are on their way');
+    await new Promise(r => setTimeout(r, 0));
+    assert.equal(atlas.loading, 0, 'a file that fails counts as arrived');
+    atlas.warm(['Noto Sans Regular']);
+    assert.equal(urls.length, 2, 'a file is requested once');
 });
