@@ -376,7 +376,8 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
     map.on('moveend', () => { if (pointer) hover(); });
     map.on('click', async e => {
         const click = now.onClick, layers = now.interactiveLayers;
-        if (!click || !e.point || !e.lngLat) return;
+        // (A click on an overlay is a map `click` for the compat entry (#198), but not a click of the map for `onClick`.)
+        if (!click || !e.point || !e.lngLat || (e.originalEvent as Event)?.target !== map.getCanvas()) return;
         const features = layers?.length ? await map.queryFeatures(e.point, {layers}).catch(() => []) : [];
         if (alive) click({point: e.point, lngLat: [e.lngLat.lng, e.lngLat.lat], features});
     });
