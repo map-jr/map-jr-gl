@@ -1119,7 +1119,7 @@ for (const mode of ['main', 'worker']) {
             } finally { console.warn = warn; }
             m.remove(); el.remove();
             const names = ['logoPosition', 'validate', 'visualizePitch', 'container', 'fadeDuration', 'pitchWithRotate', 'focusAfterOpen', 'locationOccludedOpacity', 'opacityWhenCovered'];
-            return Object.fromEntries(names.map(n => [n, warns.filter(w => w.startsWith('[map-jr-gl]') && w.includes(n)).length]));
+            return Object.fromEntries(names.map(n => [n, warns.filter(w => w.startsWith('[map-jr-gl]') && w.toLowerCase().includes('the option ' + n.toLowerCase())).length]));
         });
         check('maplibre-compat: options with no effect (logoPosition, validate, fadeDuration, pitchWithRotate, visualizePitch, the container of FullscreenControl, and options of Popup and Marker) each warn once',
             Object.values(r).every(n => n === 1), JSON.stringify(r));
