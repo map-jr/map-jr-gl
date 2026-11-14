@@ -491,12 +491,16 @@ for (const mode of ['main', 'worker']) {
         marker.togglePopup();
         const tip = marker.getElement().getBoundingClientRect(), at = m.project([-74.0065, 40.7085]);
         const open = document.querySelector('.maplibregl-popup-content')?.textContent;
+        // `offset` is a `PointLike`: `{x, y}` moves the marker as `[x, y]` does (#208).
+        const moved = new Marker({color: '#c00', offset: {x: 7, y: -5}}).setLngLat([-74.0065, 40.7085]).addTo(m), r = moved.getElement().getBoundingClientRect();
+        const shift = [(r.left + r.right) / 2 - (tip.left + tip.right) / 2, r.bottom - tip.bottom], got = moved.setOffset([3, 4]).getOffset();
+        moved.remove();
         marker.remove();
         // The popup plays a short closing animation before it is removed. (A slow machine can take longer than the animation.)
         for (let i = 0; i < 30 && document.querySelector('.maplibregl-marker, .maplibregl-popup'); i++) await new Promise(r => setTimeout(r, 100));
-        return {dx: Math.abs((tip.left + tip.right) / 2 - at.x), dy: Math.abs(tip.bottom - at.y), open, gone: !document.querySelector('.maplibregl-marker, .maplibregl-popup')};
+        return {dx: Math.abs((tip.left + tip.right) / 2 - at.x), dy: Math.abs(tip.bottom - at.y), shift, got, open, gone: !document.querySelector('.maplibregl-marker, .maplibregl-popup')};
     });
-    check(`[${mode}] DOM Marker and Popup`, dom.dx < 1 && dom.dy < 1 && dom.open.startsWith('Hello') && dom.gone, JSON.stringify(dom));
+    check(`[${mode}] DOM Marker and Popup`, dom.dx < 1 && dom.dy < 1 && Math.abs(dom.shift[0] - 7) < 1 && Math.abs(dom.shift[1] + 5) < 1 && dom.got.x === 3 && dom.got.y === 4 && dom.open.startsWith('Hello') && dom.gone, JSON.stringify(dom));
 
     // A PMTiles archive as a vector source, read by range requests.
     const pm = await page.evaluate(async () => {

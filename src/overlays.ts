@@ -1,6 +1,6 @@
 import {toLngLat, type LngLatLike} from './geo.ts';
 import {LngLat} from './lnglat.ts';
-import type {Map} from './map.ts';
+import type {Map, PointLike} from './map.ts';
 import {cls} from './controls.ts';
 import {Evented} from './evented.ts';
 
@@ -11,6 +11,8 @@ import {Evented} from './evented.ts';
 
 export type OverlayAnchor = 'center' | 'top' | 'bottom' | 'left' | 'right' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
 /** Where the named part of an element is, across and down, in percent: `[50, 100]` for `bottom`. */
+/** A `Point`, `{x, y}` or `[x, y]` as a tuple. */
+const xy = (p: PointLike): [number, number] => Array.isArray(p) ? [p[0], p[1]] : [p.x, p.y];
 const part = (a: string) => [['left', 'right'], ['top', 'bottom']].map(([low, high]) => a.includes(low) ? 0 : a.includes(high) ? 100 : 50);
 
 /** Keeps an element positioned over a map location. */
@@ -193,7 +195,7 @@ export class Popup extends Overlay {
     }
 }
 
-export interface MarkerOptions { element?: HTMLElement; color?: string; anchor?: OverlayAnchor; offset?: [number, number]; draggable?: boolean; scale?: number; className?: string; rotation?: number; rotationAlignment?: string; pitchAlignment?: string;
+export interface MarkerOptions { element?: HTMLElement; color?: string; anchor?: OverlayAnchor; offset?: PointLike; draggable?: boolean; scale?: number; className?: string; rotation?: number; rotationAlignment?: string; pitchAlignment?: string;
     /** Accepted for MapLibre GL JS, with no effect: the library has no globe or terrain that can hide a marker. */
     opacityWhenCovered?: string;
 }
@@ -210,7 +212,7 @@ export class Marker extends Overlay {
         this.rotationAlignment = options.rotationAlignment ?? 'auto';
         this.pitchAlignment = options.pitchAlignment ?? 'auto';
         this.anchor = options.anchor ?? (options.element ? 'center' : 'bottom');
-        this.offset = options.offset ?? [0, 0];
+        this.offset = xy(options.offset ?? [0, 0]);
         if (options.element) this.el = options.element;
         else {
             const s = +(options.scale ?? 1) || 1;
@@ -277,7 +279,7 @@ export class Marker extends Overlay {
     setDraggable(on: boolean) { this.draggable = on; this.el.style.cursor = on ? 'grab' : ''; this.el.style.touchAction = on ? 'none' : ''; return this; }
     isDraggable() { return this.draggable; }
     getOffset() { return {x: this.offset[0], y: this.offset[1]}; }
-    setOffset(offset: [number, number] | {x: number; y: number}) { this.offset = Array.isArray(offset) ? offset : [offset.x, offset.y]; this.update(); return this; }
+    setOffset(offset: PointLike) { this.offset = xy(offset); this.update(); return this; }
     getRotation() { return this.rotation; }
     setRotation(degrees = 0) { this.rotation = degrees; this.update(); return this; }
     getRotationAlignment() { return this.rotationAlignment; }
