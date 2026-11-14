@@ -90,7 +90,7 @@ adds itself in `load` gives no warning.
 The checks run in the development build only. `package.json` names that build under the `development` condition, so
 a bundler that sets the condition takes it in development and takes the production build otherwise. Vite does so
 (ran with Vite 8: the development server takes the development build, and `vite build` takes the production build).
-Node.js resolves the development build with `--conditions=development`. Webpack and Nuxt are not checked. The
+Node.js resolves the development build with `--conditions=development`. The development server of webpack in Next.js 14.2 and 16 takes the development build (seen in the field test of #187). Nuxt is not checked. The
 production build makes no request for the checks and gives none of these warnings.
 
 | How the page gets `@map-jr/map-jr-gl` | Checks |
@@ -426,6 +426,8 @@ moment ago (a button "back to where I was") can have no effect. For such a movem
 `moveTo` always moves the map.
 
 To move the map one time with an animation, use `map.moveTo({zoom: 15, duration: 500})` or `map.fitBounds(bounds)`.
+`moveTo` with `duration` eases the camera to the view (as `easeTo` of MapLibre GL JS). The main API has no `flyTo`:
+in place of `flyTo`, use `moveTo` with a `duration`, which does not zoom out and in on the way.
 
 ## Queries
 
@@ -511,7 +513,7 @@ answer changes.
 
 For users of MapLibre GL JS: `queryRenderedFeatures` is `queryFeatures` without `sources`, and
 `querySourceFeatures` is `queryFeatures(undefined, {sources: [id]})`. The two MapLibre methods are in the entry
-`@map-jr/map-jr-gl/maplibre-compat`. The map object of that entry (which is `map` of the `MapHost`) has the same
+`@map-jr/map-jr-gl/maplibre-compat`. The `Map` of that entry and `map` of the `MapHost` (the core map) have the same
 `queryFeatures` as the `MapHost`.
 
 The tile data is in a worker, so each query returns a promise.
@@ -558,7 +560,7 @@ as ten. See [Markers](markers.md).
 | `project(lngLat)`, `unproject(point)` | Change between a position on the map and a point of the screen. |
 | `listen(type, fn)` | Calls `fn` for each event of that type. Returns a function that stops it. See [Events](#events). |
 | `container` | The element of the map. |
-| `map` | The map object behind this API, for a need that this API does not cover yet. It can change between versions. |
+| `map` | The map object behind this API, for a need that this API does not cover yet. It can change between versions. It is the core map of the library, not the `Map` of `@map-jr/map-jr-gl/maplibre-compat`: it has `jumpTo`, `easeTo`, `fitBounds`, `getCenter`, `getZoom`, `on`, `addLayer`, `setPaintProperty` and the gesture handlers, but not `setCenter`, `setZoom`, `setBearing`, `setPitch`, `flyTo`, `panTo`, `rotateTo` or `queryRenderedFeatures`. Its type is the core `Map`, not the compat `Map`. |
 
 ## Events
 

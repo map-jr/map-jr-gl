@@ -175,15 +175,34 @@ The entry `@map-jr/map-jr-gl/maplibre-compat` has the API of MapLibre GL JS: `ne
    import * as maplibregl from '@map-jr/map-jr-gl/maplibre-compat';
    ```
 
-2. Remove the import of `maplibre-gl.css`.
+2. Remove the other imports from `maplibre-gl/...`: the CSS file (`maplibre-gl/dist/maplibre-gl.css`) and the
+   worker file (`maplibre-gl/dist/maplibre-gl-worker...`). Remove each call of `setWorkerUrl(...)` and the
+   `workerUrl` prop of react-map-gl. The library finds its own worker file.
 3. Add `await` where your code calls `queryRenderedFeatures` or `querySourceFeatures`. The tile data is in a worker,
    so the complete result is a promise.
 4. Start your application and read the browser console. The library writes a warning for each style layer or
    property that it cannot draw.
 5. Read [MapLibre compatibility](docs/maplibre-compatibility.md) for the differences.
 
-A plugin that was written for MapLibre GL JS imports `maplibre-gl` itself. Map that name to this library in your
-bundler (`resolve.alias` in Vite, `alias` in esbuild) or in an import map:
+A plugin or a wrapper (react-map-gl, for example) that was written for MapLibre GL JS imports `maplibre-gl` itself.
+Map that name to this library in your bundler or in an import map. The alias must match the name `maplibre-gl`
+exactly: an alias that also matches `maplibre-gl/dist/...` makes the bundler look for those files in this package,
+and the build stops. In Vite:
+
+```js
+// vite.config.js
+import {defineConfig} from 'vite';
+
+export default defineConfig({
+  resolve: {
+    alias: [{find: /^maplibre-gl$/, replacement: '@map-jr/map-jr-gl/maplibre-compat'}],
+  },
+});
+```
+
+With Vite 5 in development, also add `optimizeDeps: {exclude: ['@map-jr/map-jr-gl', 'maplibre-gl']}`, or the map
+draws on the main thread; Vite 8 does not need it (see [Vite in development](docs/loading.md#vite-in-development)).
+For Next.js (webpack and Turbopack), see [Next.js](docs/loading.md#nextjs). In an import map:
 
 ```html
 <script type="importmap">{"imports": {"maplibre-gl": "/node_modules/@map-jr/map-jr-gl/dist/map-jr-gl-maplibre-compat.js"}}</script>
@@ -191,6 +210,14 @@ bundler (`resolve.alias` in Vite, `alias` in esbuild) or in an import map:
 
 The library has a default export for such plugins only, because some of them contain
 `import maplibregl from 'maplibre-gl'`. [Ecosystem](docs/ecosystem.md) lists the plugins that are tested.
+
+- **react-map-gl.** Version 8 (`react-map-gl/maplibre` or `@vis.gl/react-maplibre`) works through the alias.
+  Version 7 does not: it reads the private `map.transform` of MapLibre GL JS and throws a `TypeError`, through the
+  alias and through its `mapLib` prop. Upgrade to version 8 first.
+- **Types.** The alias does not change the types that TypeScript reads. A project that uses react-map-gl keeps
+  `maplibre-gl` installed and keeps its `import type … from 'maplibre-gl'`, because react-map-gl's types refer to
+  that package. The types of the compat entry reject some common MapLibre code (#208), so a change of the type
+  imports can give errors that stop `next build` or `tsc`.
 
 ### Add markers
 
