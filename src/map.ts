@@ -188,6 +188,7 @@ export class Map {
         // Two maps in one element leave two canvases. Hot module replacement and an effect without a clean-up do this.
         if (c.querySelector(':scope > .map-jr-canvas')) console.warn('[map-jr-gl] The container already has a map. Remove that map first: remove(), or destroy() in the main API.');
         this.container = c;
+        (this as any).__v_skip = true; // (Vue does not make the map reactive: its proxies cannot be posted, #242)
         if (getComputedStyle(c).position === 'static') c.style.position = 'relative';
         if (getComputedStyle(c).overflow === 'visible') c.style.overflow = 'hidden'; // a frame from before a shrink must not spill out
         this.canvas = document.createElement('canvas');
@@ -326,7 +327,7 @@ export class Map {
                 this.startMainEngine(fresh, {...engineOptions, style: this.resolved, center: [this.tr.lng, this.tr.lat], zoom: this.tr.zoom, bearing: this.tr.bearing}, []).then(() => {
                     if (this.removed) return;
                     this.ready = true;
-                    for (const [c, t] of this.queue.splice(0)) this.send(c, t);
+                    for (const [c, t] of this.queue.splice(0)) this.deliver(c, t);
                     this.resend();
                     // (The data of GeoJSON sources and changes of the style since the start. It is also a numbered command:
                     // the new engine reports `idle` with the number that the page waits for.)
@@ -340,7 +341,9 @@ export class Map {
                 w.onerror = e => this.note('engine worker: error', `${e.message} (${e.filename}:${e.lineno})`);
                 w.onmessageerror = () => this.note('engine worker: a message could not be read');
             }
-            w.postMessage({role: 'engine', canvas: off, options: engineOptions, ports}, [off, ...ports]);
+            // (A style with a Vue reactive proxy in it cannot be cloned: the engine then gets a JSON copy, #242.)
+            try { w.postMessage({role: 'engine', canvas: off, options: engineOptions, ports}, [off, ...ports]); }
+            catch { w.postMessage({role: 'engine', canvas: off, options: plain(engineOptions), ports}, [off, ...ports]); }
             this.send = (c, transfer) => w.postMessage(c, transfer ?? []);
             this.renderer = 'worker';
         } else {
@@ -348,7 +351,7 @@ export class Map {
             if (this.removed) return; // (`remove` gave the tile workers back, and no engine was made)
         }
         this.ready = true;
-        for (const [c, t] of this.queue) this.send(c, t);
+        for (const [c, t] of this.queue) this.deliver(c, t);
         this.queue = [];
         this.send({type: 'repaint'});
         // (An engine in a worker must show for 5 seconds that it draws, at the first start too: a worker can hang with no
@@ -511,7 +514,14 @@ export class Map {
 
     private post(c: Command, transfer?: Transferable[]) {
         if (c.type !== 'query' && c.type !== 'elevation' && c.type !== 'queryRendered' && c.type !== 'frames') { this.tilesLoaded = false; (c as {seq?: number}).seq = ++this.seq; }
-        if (this.ready) this.send(c, transfer); else this.queue.push([c, transfer]);
+        if (this.ready) this.deliver(c, transfer); else this.queue.push([c, transfer]);
+    }
+    /** Sends a command. A value that structured clone refuses (a Vue reactive proxy, #242) is sent as a JSON copy. */
+    private deliver(c: Command, transfer?: Transferable[]) {
+        try { this.send(c, transfer); } catch (e) {
+            try { if ((e as Error).name !== 'DataCloneError') throw e; this.send(plain(c), transfer); }
+            catch (error) { this.fire('error', {error: new Error(`[map-jr-gl] ${c.type}: the data cannot be copied (${(e as Error).message}). Pass plain objects (toRaw() in Vue).`, {cause: error})}); }
+        }
     }
 
     private seen?: {zoom: number; bearing: number; pitch: number};
@@ -861,7 +871,7 @@ export class Map {
         if (i < 0) throw new Error(`Layer "${id}" does not exist`);
         return i;
     }
-    getStyle() { return this.rawStyle ? structuredClone(this.rawStyle) : undefined; }
+    getStyle() { return this.rawStyle ? plain(this.rawStyle) : undefined; }
     // ---- feature state ----
     private featureStates: Record<string, Record<string, Record<string, unknown>>> = {};
     /** Sends the states of the features in `keys` that changed; `null` for a feature that has no state any more. */
@@ -920,7 +930,7 @@ export class Map {
     private sourceFailed = (error: unknown) => { this.fire('error', {error}); };
     /** The JSON of a style: a copy of an object, or the answer of a URL. */
     private async loadStyle(style: unknown) {
-        if (typeof style !== 'string') return structuredClone(style);
+        if (typeof style !== 'string') return plain(style);
         const res = await this.fetchAs('Style')(style);
         if (!res.ok) throw new Error(`[map-jr-gl] Style ${style}: HTTP ${res.status}`);
         return res.json();
@@ -1548,6 +1558,8 @@ function paddingOf(p: PaddingInput): [number, number, number, number] {
 
 /** The largest number of variants of one SVG template that a map draws. The values come from data, and the texture of the images has a fixed size. */
 const MAX_VARIANTS = 1000;
+/** A deep copy. Structured clone refuses a proxy (a Vue reactive object, #242), and JSON reads through one. */
+function plain<T>(v: T): T { try { return structuredClone(v); } catch { return JSON.parse(JSON.stringify(v)); } }
 
 /** Options for `addImage`, as in MapLibre, plus an explicit size in CSS pixels. */
 export interface ImageOptions {
