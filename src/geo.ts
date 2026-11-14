@@ -59,7 +59,8 @@ export type PaddingInput = number | Partial<Record<'top' | 'right' | 'bottom' | 
  * `pad` ([top, right, bottom, left]) on each side. `shift` is the part of the padding that moves the centre.
  */
 export function fitBox([w, s, e, n]: number[], width: number, height: number, pad: number[], shift: number[], maxZoom: number) {
-    const x0 = mercX(w), x1 = mercX(e), y0 = mercY(n), y1 = mercY(s);
+    // An east edge west of the west edge crosses the antimeridian: the box goes one world further east.
+    const x0 = mercX(w), x1 = mercX(e < w ? e + 360 : e), y0 = mercY(n), y1 = mercY(s);
     const zoom = Math.min(maxZoom, Math.log2(Math.min(Math.max(1, width - pad[1] - pad[3]) / Math.max(x1 - x0, 1e-12), Math.max(1, height - pad[0] - pad[2]) / Math.max(y1 - y0, 1e-12)) / 512));
     // Shift the centre so the box sits in the middle of the area inside `shift`.
     const world = 512 * 2 ** zoom;
