@@ -25,12 +25,14 @@ for (const f of compat) engine.delete(f); // the page has these already when it 
 // page scripts, the worker, the engine and the server renderer by about 4 to 8 KB each and set a new priority: a
 // fast time to idle (the map drawn and ready) comes before the size of the files that load up front. Do not move
 // code that a usual map needs to a file that loads on demand only to save bytes: each such file is one more request
-// before the map is ready. Every pull request still says what it adds (CLAUDE.md, "Size").
+// before the map is ready. Every pull request still says what it adds (CLAUDE.md, "Size"). On 2026-11-14 the owner
+// raised the budget of the compat page script from 39 to 42 KB, because the features of MapLibre GL JS that the compat
+// entry still adds (cooperativeGestures, flyTo, controls) left it less than 1 KB of room.
 const sizes = [
     // What a page downloads before the map can start. The worker file is downloaded at the same time.
     ['page script, up front (' + [...page].length + ' files)', gz(page), 36],
     // The same for the entry that is a replacement for MapLibre GL JS (`@map-jr/map-jr-gl/maplibre-compat`).
-    ['page script of maplibre-compat, up front (' + [...compat].length + ' files)', gz(compat), 39],
+    ['page script of maplibre-compat, up front (' + [...compat].length + ' files)', gz(compat), 42],
     ['map-jr-gl-worker.js', gz(['map-jr-gl-worker.js']), 72],
     // Only when the engine runs on the main thread (no worker is possible).
     ['engine on the main thread, on demand', gz(engine), 68],

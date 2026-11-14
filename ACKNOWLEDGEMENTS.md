@@ -13,6 +13,9 @@ BSD-3-Clause.
   in labels, the light on buildings, the size of dashes, and the movement of the camera on 3D terrain.
 - The texts and the CSS of the hint of `cooperativeGestures` in the compat entry follow MapLibre GL JS
   (BSD-3-Clause): `src/ui/handler/cooperative_gestures.ts` and `maplibre-gl.css`.
+- The curve of `flyTo` (and of `moveTo` with `fly` in the main API) follows `flyTo` of MapLibre GL JS 6.17
+  (`src/ui/camera.ts`), which implements the method of van Wijk and Nuij, "Smooth and efficient zooming and panning"
+  (2003), with the same options and defaults.
 - The tests of MapLibre GL JS and of the MapLibre style specification measure the compatibility of this library.
   The tests are not part of this repository. The test commands download them.
 

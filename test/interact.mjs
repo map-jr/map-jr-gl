@@ -499,17 +499,21 @@ for (const mode of ['main', 'worker']) {
 
     // DOM marker and popup with MapLibre's API.
     const dom = await page.evaluate(async () => {
-        const {Marker, Popup} = await import('/dist/map-jr-gl-maplibre-compat.js'), m = window.map;
+        const {Marker, Popup, Point} = await import('/dist/map-jr-gl-maplibre-compat.js'), m = window.map;
         const marker = new Marker({color: '#c00'}).setLngLat([-74.0065, 40.7085]).setPopup(new Popup({offset: 30}).setText('Hello')).addTo(m);
         marker.togglePopup();
         const tip = marker.getElement().getBoundingClientRect(), at = m.project([-74.0065, 40.7085]);
         const open = document.querySelector('.maplibregl-popup-content')?.textContent;
+        // `offset` is a `PointLike`: `{x, y}` moves the marker as `[x, y]` does (#208).
+        const moved = new Marker({color: '#c00', offset: {x: 7, y: -5}}).setLngLat([-74.0065, 40.7085]).addTo(m), r = moved.getElement().getBoundingClientRect();
+        const shift = [(r.left + r.right) / 2 - (tip.left + tip.right) / 2, r.bottom - tip.bottom], got = moved.setOffset([3, 4]).getOffset(), isPoint = got instanceof Point;
+        moved.remove();
         marker.remove();
         // The popup plays a short closing animation before it is removed. (A slow machine can take longer than the animation.)
         for (let i = 0; i < 30 && document.querySelector('.maplibregl-marker, .maplibregl-popup'); i++) await new Promise(r => setTimeout(r, 100));
-        return {dx: Math.abs((tip.left + tip.right) / 2 - at.x), dy: Math.abs(tip.bottom - at.y), open, gone: !document.querySelector('.maplibregl-marker, .maplibregl-popup')};
+        return {dx: Math.abs((tip.left + tip.right) / 2 - at.x), dy: Math.abs(tip.bottom - at.y), shift, got, isPoint, open, gone: !document.querySelector('.maplibregl-marker, .maplibregl-popup')};
     });
-    check(`[${mode}] DOM Marker and Popup`, dom.dx < 1 && dom.dy < 1 && dom.open.startsWith('Hello') && dom.gone, JSON.stringify(dom));
+    check(`[${mode}] DOM Marker and Popup`, dom.dx < 1 && dom.dy < 1 && Math.abs(dom.shift[0] - 7) < 1 && Math.abs(dom.shift[1] + 5) < 1 && dom.got.x === 3 && dom.got.y === 4 && dom.isPoint && dom.open.startsWith('Hello') && dom.gone, JSON.stringify(dom));
 
     // A PMTiles archive as a vector source, read by range requests.
     const pm = await page.evaluate(async () => {
@@ -737,6 +741,25 @@ for (const mode of ['main', 'worker']) {
     });
     check(`[${mode}] addProtocol('pmtiles') warns once that the library reads pmtiles:// itself`,
         pmWarns.length === 1 && pmWarns[0].startsWith('[map-jr-gl]') && pmWarns[0].includes('pmtiles://'), JSON.stringify(pmWarns));
+    // map.painter (#205): the development build warns once per map, and the value is undefined; the production build does not warn.
+    const painter = await page.evaluate(async () => {
+        const out = {}, warn = console.warn;
+        for (const file of ['map-jr-gl-maplibre-compat.dev.js', 'map-jr-gl-maplibre-compat.js']) {
+            const mod = await import('/dist/' + file), warns = [], maps = [];
+            console.warn = (...a) => { warns.push(String(a[0])); };
+            try {
+                for (let i = 0; i < 2; i++) {
+                    const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:100px;height:100px'}));
+                    maps.push(new mod.Map({container: el, attributionControl: false, style: {version: 8, sources: {}, layers: []}}));
+                }
+                out[file] = {values: maps.flatMap(m => [m.painter, m.painter]).map(v => v === undefined), warns: warns.filter(w => w.includes('painter'))};
+            } finally { console.warn = warn; for (const m of maps) { const el = m.getContainer(); m.remove(); el.remove(); } }
+        }
+        return out;
+    });
+    const devP = painter['map-jr-gl-maplibre-compat.dev.js'], prodP = painter['map-jr-gl-maplibre-compat.js'];
+    check(`[${mode}] map.painter is undefined; the development build warns once per map, the production build does not warn`,
+        [...devP.values, ...prodP.values].every(Boolean) && devP.warns.length === 2 && devP.warns.every(w => w.startsWith('[map-jr-gl] map.painter') && w.includes('supported()')) && prodP.warns.length === 0, JSON.stringify(painter));
     // The AbortController that a protocol gets is aborted when the request is no longer wanted: a newer setData, a newer
     // setData that drops the diffs of updateData, and the removal of the map (#92).
     const aborts = await page.evaluate(async mode => {
@@ -1088,14 +1111,13 @@ for (const mode of ['main', 'worker']) {
                 for (let i = 0; i < 2; i++) {
                     new mod.NavigationControl({visualizePitch: true});
                     new mod.FullscreenControl({container: document.body});
-                    m.flyTo({center: [1, 1], speed: 2, curve: 1.2, duration: 0});
                 }
             } finally { console.warn = warn; }
             m.remove(); el.remove();
-            const names = ['logoPosition', 'validate', 'visualizePitch', 'container', 'speed and curve'];
+            const names = ['logoPosition', 'validate', 'visualizePitch', 'container'];
             return Object.fromEntries(names.map(n => [n, warns.filter(w => w.startsWith('[map-jr-gl]') && w.includes(n)).length]));
         });
-        check('maplibre-compat: logoPosition, validate, visualizePitch, the container of FullscreenControl and speed/curve of flyTo each warn once',
+        check('maplibre-compat: logoPosition, validate, visualizePitch, and the container of FullscreenControl each warn once',
             Object.values(r).every(n => n === 1), JSON.stringify(r));
     }
     // #43: easeTo and flyTo of maplibre-compat use `offset` (also with bearing and pitch) and a custom `easing`, without a warning.
@@ -1126,6 +1148,40 @@ for (const mode of ['main', 'worker']) {
         const near = (p, x, y) => Math.abs(p.x - x) < 1 && Math.abs(p.y - y) < 1;
         check(`maplibre-compat (${mode}): easeTo and flyTo put the center at the offset and use a custom easing (#43)`,
             near(r.jump, 200, 50) && Math.abs(r.early - 10) < 1e-6 && near(r.end, 250, 150) && r.warns === 0, JSON.stringify(r));
+    }
+    // #43: flyTo zooms out and back in on the way (van Wijk and Nuij, as MapLibre GL JS), and without `duration` it takes
+    // the time that follows from the distance and `speed`. `maxDuration` makes a long flight a jump.
+    {
+        const r = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:400px;height:300px'}));
+            const m = new mod.Map({container: el, center: [0, 0], zoom: 5, attributionControl: false, style: {version: 8, sources: {}, layers: []}});
+            await new Promise(res => m.once('load', res));
+            const out = {low: 99, warns: 0};
+            const warn = console.warn;
+            console.warn = (...a) => { if (String(a[0]).startsWith('[map-jr-gl]')) out.warns++; };
+            try {
+                const onMove = () => { out.low = Math.min(out.low, m.getZoom()); };
+                m.on('move', onMove);
+                const t0 = performance.now();
+                m.flyTo({center: [40, 0], zoom: 5, curve: 1.42, speed: 4});
+                await new Promise(res => m.once('moveend', res));
+                out.ms = performance.now() - t0;
+                m.off('move', onMove);
+                out.end = [+m.getCenter().lng.toFixed(4), m.getZoom()];
+                const t1 = performance.now();
+                m.flyTo({center: [-40, 0], maxDuration: 10});
+                await new Promise(res => m.once('moveend', res));
+                out.jumpMs = performance.now() - t1;
+                out.jump = +m.getCenter().lng.toFixed(4);
+            } finally { console.warn = warn; }
+            m.remove(); el.remove();
+            return out;
+        });
+        // (1820 pixels at zoom 5 in a view of 400 pixels: S is 3.14, so the flight takes 785 ms at speed 4, and its lowest
+        // zoom is 2.77, as the formula of MapLibre GL JS gives.)
+        check(`maplibre-compat (${mode}): flyTo zooms out on the way, takes its duration from speed, and maxDuration jumps (#43)`,
+            r.low < 3.2 && r.end[0] === 40 && r.end[1] === 5 && r.ms > 700 && r.ms < 3000 && r.jump === -40 && r.jumpMs < 500 && r.warns === 0, JSON.stringify(r));
     }
     // #208: fitBounds warns once for speed, curve and linear; Marker takes offset as {x, y}; getImage gives RGBA pixels.
     if (mode === 'main') {
@@ -1550,6 +1606,30 @@ for (const mode of ['main', 'worker']) {
         const idles = await page.evaluate(() => { const {m, el, idles} = window.spinning; m.remove(); el.remove(); return idles; });
         await page.unroute('**/tiles/11/**', count);
         check(`[${mode}] a map that keeps moving from the start still requests its overview tiles`, asked > 0 && idles === 0, `requests=${asked}, idle events=${idles}`);
+    }
+    // After the first idle, a move to another overview tile requests that tile while the tiles of the view are still on
+    // their way, so that the new area shows blurry map and not the background (#360).
+    {
+        const held = [], hold = r => { held.push(r); };
+        let asked = 0;
+        const count = r => { asked++; r.continue(); };
+        await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:600px;height:400px'}));
+            const m = new mod.Map({container: el, renderer: mode, style: '/style.json', center: [-74.0065, 40.7085], zoom: 14.3, attributionControl: false});
+            window.moved = {m, el};
+            await new Promise(r => { m.once('idle', r); setTimeout(r, 15000); });
+        }, mode);
+        // (The view at -73.80 is in the overview tile 11/604/769; the start is in 11/602/769.)
+        await page.route('**/tiles/14/**', hold);
+        await page.route('**/tiles/11/604/**', count);
+        await page.evaluate(() => window.moved.m.jumpTo({center: [-73.80, 40.7085]}));
+        for (let i = 0; i < 50 && !asked; i++) await page.waitForTimeout(100);
+        await page.unroute('**/tiles/11/604/**', count);
+        await page.unroute('**/tiles/14/**', hold);
+        for (const r of held) r.continue().catch(() => {});
+        await page.evaluate(() => { const {m, el} = window.moved; m.remove(); el.remove(); });
+        check(`[${mode}] after the first idle, a move requests the new overview tile before the tiles of the view arrive`, asked > 0 && held.length > 0, `overview requests=${asked}, held tiles=${held.length}`);
     }
     // CSS on `.maplibregl-map` sizes the container before the map measures it, as in MapLibre GL JS (#248).
     if (mode === 'worker') {

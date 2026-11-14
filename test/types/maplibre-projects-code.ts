@@ -47,4 +47,8 @@ const layerIds = new Set(map.getStyle().layers?.map(({id}) => id));
 const hovered = (feature: MapGeoJSONFeature) => map.setFeatureState({id: feature.id, source: 'places'}, {hovered: true});
 map.querySourceFeatures('places', {sourceLayer: 'roads', filter: ['==', 'a', 1], validate: false});
 
-console.log(fit, layerIds, hovered, markerOptions, where, projection, record, instance);
+// `offset` of a marker is a `PointLike`, as in MapLibre GL JS (#208).
+const offsetOptions: MarkerOptions = {offset: {x: 0, y: -10}};
+const shifted = new Marker({offset: [0, -10]}).setOffset({x: 2, y: 3}).getOffset().x;
+
+console.log(offsetOptions, shifted, fit, layerIds, hovered, markerOptions, where, projection, record, instance);

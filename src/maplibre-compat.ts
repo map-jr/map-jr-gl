@@ -9,19 +9,16 @@ export type {LngLatLike} from './geo.ts';
 export {AttributionControl, type Control, type ControlPosition} from './controls.ts';
 export {NavigationControl, ScaleControl, GeolocateControl, TerrainControl, LogoControl} from './controls-more.ts';
 export {Popup, type MarkerOptions, type PopupOptions} from './overlays.ts';
-import {Marker as CoreMarker, type MarkerOptions} from './overlays.ts';
+import {Marker as CoreMarker} from './overlays.ts';
 import {FullscreenControl as CoreFullscreen} from './controls-more.ts';
 import {Evented} from './evented.ts';
 import type {Map as CoreMap} from './map.ts';
 /** The marker of the core with the private members `_map` and `_lngLat` that wrappers for MapLibre GL JS read. */
 export class Marker extends CoreMarker {
-    /** `offset` takes a `PointLike` (`[x, y]` or `{x, y}`), as in MapLibre GL JS. */
-    constructor(options: Omit<MarkerOptions, 'offset'> & {offset?: [number, number] | {x: number; y: number}} = {}) {
-        const o = options.offset;
-        super({...options, offset: o && !Array.isArray(o) ? [o.x, o.y] : o});
-    }
     get _map() { return this.map; }
     get _lngLat() { return this.getLngLat(); }
+    /** The offset as a `Point`, as in MapLibre GL JS. */
+    getOffset() { const o = super.getOffset(); return new Point(o.x, o.y); }
 }
 /** The control of the core with `on`, `off` and `once`. It fires `fullscreenstart` and `fullscreenend` on itself, as in MapLibre GL JS. */
 export class FullscreenControl extends CoreFullscreen {

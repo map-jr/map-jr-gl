@@ -500,8 +500,12 @@ moment ago (a button "back to where I was") can have no effect. For such a movem
 `moveTo` always moves the map.
 
 To move the map one time with an animation, use `map.moveTo({zoom: 15, duration: 500})` or `map.fitBounds(bounds)`.
-`moveTo` with `duration` eases the camera to the view (as `easeTo` of MapLibre GL JS). The main API has no `flyTo`:
-in place of `flyTo`, use `moveTo` with a `duration`, which does not zoom out and in on the way.
+`moveTo` with `duration` eases the camera to the view (as `easeTo` of MapLibre GL JS). `moveTo` with `fly` moves the
+camera as `flyTo` of MapLibre GL JS does: it zooms out and back in on the way, for example
+`map.moveTo({center: [2.35, 48.86], zoom: 12, fly: true})`. `fly` is `true` or an object with the options of `flyTo`:
+`curve` (default 1.42), `speed` (default 1.2), `screenSpeed`, `minZoom` and `maxDuration` (milliseconds; a longer
+flight is a jump). Without `duration`, the duration follows from the distance and the speed. When the system asks for
+reduced motion, the camera jumps.
 
 ## Queries
 
@@ -664,14 +668,14 @@ as ten. See [Markers](markers.md).
 |---|---|
 | `update(description)` | Changes the map to a new description. Takes the complete description. See [Change the map](#change-the-map). |
 | `destroy()` | Removes the map and frees its memory. It can be called while the map loads. Call it before you make another map in the same element: a second map in an element that has a map leaves two canvases in the element, and the library warns in the console. |
-| `moveTo(view)` | Moves the camera now. With `duration` (milliseconds), with an animation. With `padding` (a number or `{top, right, bottom, left}`), it also sets the padding of the map, as `padding` of the description does. |
+| `moveTo(view)` | Moves the camera now. With `duration` (milliseconds), with an animation. With `fly` (`true` or `{curve, speed, screenSpeed, minZoom, maxDuration}`), along the curve of `flyTo` of MapLibre GL JS. With `padding` (a number or `{top, right, bottom, left}`), it also sets the padding of the map, as `padding` of the description does. |
 | `fitBounds(bounds, options)` | Shows an area. The options are `padding` (CSS pixels: a number, or `{top, right, bottom, left}`; it adds to the `padding` of the description), `maxZoom` and `duration` (milliseconds). |
 | `queryFeatures(at, options)`, `watchFeatures(at, options, listener)` | Find features, one time or kept up to date. See [Queries](#queries). |
 | `queryElevation(at)` | The height of the ground in metres at a position (`[lng, lat]`) or a point of the screen (`{x, y}`), from the elevation source of the style. A promise; `null` where there is no data. |
 | `project(lngLat)`, `unproject(point)` | Change between a position on the map and a point of the screen. |
 | `listen(type, fn)` | Calls `fn` for each event of that type. Returns a function that stops it. See [Events](#events). |
 | `container` | The element of the map. |
-| `map` | The map object behind this API, for a need that this API does not cover yet. It can change between versions. It is the core map of the library, not the `Map` of `@map-jr/map-jr-gl/maplibre-compat`: it has `jumpTo`, `easeTo`, `fitBounds`, `getCenter`, `getZoom`, `on`, `addLayer`, `setPaintProperty` and the gesture handlers, but not `setCenter`, `setZoom`, `setBearing`, `setPitch`, `flyTo`, `panTo`, `rotateTo` or `queryRenderedFeatures`. Its type is the core `Map`, not the compat `Map`. Plugins that need a MapLibre map (deck.gl `MapboxOverlay`, mapbox-gl-draw, terra-draw) do not work with it, because it lacks `getPadding`, `getRenderWorldCopies` and a synchronous `queryRenderedFeatures`: use the compat entry for them (see [Plugins that need a MapLibre map](vue.md#plugins-that-need-a-maplibre-map)). |
+| `map` | The map object behind this API, for a need that this API does not cover yet. It can change between versions. It is the core map of the library, not the `Map` of `@map-jr/map-jr-gl/maplibre-compat`: it has `jumpTo`, `easeTo`, `fitBounds`, `getCenter`, `getZoom`, `on`, `addLayer`, `setPaintProperty`, `flyTo` and the gesture handlers, but not `setCenter`, `setZoom`, `setBearing`, `setPitch`, `panTo`, `rotateTo` or `queryRenderedFeatures`. Its type is the core `Map`, not the compat `Map`. Plugins that need a MapLibre map (deck.gl `MapboxOverlay`, mapbox-gl-draw, terra-draw) do not work with it, because it lacks `getPadding`, `getRenderWorldCopies` and a synchronous `queryRenderedFeatures`: use the compat entry for them (see [Plugins that need a MapLibre map](vue.md#plugins-that-need-a-maplibre-map)). |
 
 ## Events
 

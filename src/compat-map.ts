@@ -2,7 +2,7 @@
 // These methods are here, and not in the core, because the main entry does not need them: other names for a camera
 // change, values that are fixed in this library, methods that only frameworks for MapLibre GL JS read, and query
 // results that are arrays and promises at the same time.
-import {Map as CoreMap, type CameraInput, type PointLike, type RenderedFeature, type RenderedQueryOptions, type PaddingInput, type ImageOptions} from './map.ts';
+import {Map as CoreMap, type CameraInput, type PointLike, type RenderedFeature, type RenderedQueryOptions, type PaddingInput, type ImageOptions, type FlyOptions} from './map.ts';
 import type {QueriedFeature} from './query.ts';
 import {GPUInitializationError} from './gpu-error.ts';
 import type {LngLatLike} from './geo.ts';
@@ -55,6 +55,7 @@ const cooperativeGestures = (map: CoreMap) => {
     }, disable, isEnabled: () => on, isActive: () => false};
 };
 declare const __VERSION__: string; // the version of package.json, set by the build
+declare const __DEV__: boolean;
 /** The fields that a camera method copies onto the events of its move, as `eventData` in MapLibre GL JS. */
 type EventData = Record<string, unknown>;
 /**
@@ -204,9 +205,8 @@ export class Map extends CoreMap {
     }
     private moveData?: EventData;
     private nested = 0;
-    flyTo(o: EaseToOptions & {speed?: number; curve?: number}, eventData?: EventData) {
-        this.unsupported('The options speed and curve of flyTo', o.speed === undefined && o.curve === undefined);
-        return this.easeTo({duration: 1200, ...o}, eventData);
+    flyTo(o: EaseToOptions & FlyOptions, eventData?: EventData) {
+        return this.camera(eventData, () => super.flyTo(o));
     }
     /** Space at the edges covered by other things (a side panel, a header). The map centre moves to the middle of what is left. */
     setPadding(padding: PaddingInput, eventData?: EventData) { return this.jumpTo({padding}, eventData); }
@@ -486,4 +486,12 @@ export class Map extends CoreMap {
     /** The last `mousemove`, and the one whose listeners run now (see `queryRenderedFeatures`). */
     private lastMove?: {data: Record<string, unknown>; again?: boolean};
     private inMove?: {data: Record<string, unknown>; again?: boolean};
+    // The map of MapLibre GL JS has a `painter`, and some code reads it to check for WebGL (#205). This map has none.
+    // In the development build only, reading it warns once per map; the value stays `undefined`.
+    static {
+        if (__DEV__) Object.defineProperty(this.prototype, 'painter', {configurable: true, get(this: Map) {
+            if (this.warned && !this.warned.has('painter')) this.warned.add('painter'), console.warn('[map-jr-gl] map.painter does not exist in @map-jr/map-jr-gl/maplibre-compat. To check for WebGL, use supported(); a failed start fires "error" with a GPUInitializationError.');
+            return undefined;
+        }});
+    }
 }
