@@ -18,3 +18,18 @@ test('the glyph atlas starts small and grows, keeping the pixels it has', () => 
     assert.equal(atlas.dirty, null, 'a grown atlas is sent again as a whole');
     assert.equal(atlas.data[first.y * atlas.width + first.x], 7);
 });
+
+// The first use of a font family can take half a second, so the fonts of the style are looked up before the first
+// label placement needs them, one font in each task (#326).
+test('warm() looks up each font of the style once, in later tasks, and not when the style has glyph files', async () => {
+    const atlas = new GlyphAtlas('sans-serif') as any, measured: string[] = [];
+    atlas.ctx = {font: '', measureText() { measured.push(this.font); return {width: 0}; }};
+    atlas.warm(['Noto Sans Bold', ['Open Sans Italic', 'Arial Unicode MS Regular'], 'Noto Sans Bold']);
+    assert.deepEqual(measured, [], 'nothing is looked up in the task that asks');
+    await new Promise(r => setTimeout(r, 20));
+    assert.deepEqual(measured, ['700 24px "Noto Sans", sans-serif', 'italic 400 24px "Open Sans", sans-serif']);
+    atlas.setGlyphs('https://example.com/{fontstack}/{range}.pbf');
+    atlas.warm(['Roboto Regular']);
+    await new Promise(r => setTimeout(r, 20));
+    assert.equal(measured.length, 2, 'glyph files of the style make the lookup unnecessary');
+});

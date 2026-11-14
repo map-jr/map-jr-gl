@@ -137,6 +137,8 @@ export class Engine {
     private layers: CompiledLayer[] = [];
     private tiles = new Map<string, TileState>();
     private frameNo = 0;
+    /** The layers whose fonts the glyph atlas has looked up (see `GlyphAtlas.warm`). */
+    private warmed?: CompiledLayer[];
     private scheduled = false;
     private nextReq = 1;
     private nextBackend = 0;
@@ -1122,6 +1124,11 @@ export class Engine {
         const tr = this.tr, frameNo = ++this.frameNo, began = performance.now();
         compileFor(this.states); // (the light of the style is compiled when it is drawn)
         if (!tr.width || !tr.height || this.lost) return;
+        // The fonts of the labels are looked up while the tiles load, and not in the first label placement (#326).
+        if (this.warmed !== this.layers) {
+            this.warmed = this.layers;
+            this.atlas.warm(this.layers.filter(l => l.type === 'symbol' && l.visible && tr.zoom >= l.minzoom && tr.zoom < l.maxzoom && !l.p.font.dd && (l.p.field.dd || l.p.field.eval(tr.zoom) !== '')).map(l => l.p.font.eval(tr.zoom)));
+        }
         const dt = Math.min(100, now - this.lastTime || 16);
         this.lastTime = now;
         this.frameTime = began;
