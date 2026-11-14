@@ -115,6 +115,15 @@ const CONTOUR_WAIT = 250;
 const PLACE_INTERVAL = 250, FADE = 200;
 /** While the zoom is changing quickly labels crowd together (or thin out) fast, so decide and fade sooner. */
 const ZOOMING_PLACE_INTERVAL = 100, ZOOMING_FADE = 100;
+/**
+ * Says whether the labels are placed again in this frame. `now` and `last` are the times of this frame and of the last
+ * placement, and `cost` is how long the last placement took, all in milliseconds. While the camera moves, the time
+ * between two placements is at least three times the cost: with many labels a placement can take longer than the
+ * interval, and the map would place the labels again in every frame (#122). When the camera has stopped, the usual
+ * interval applies, so that the labels settle soon.
+ */
+export const placeDue = (now: number, last: number, cost: number, zooming: boolean, moving: boolean) =>
+    now - last >= Math.max(zooming ? ZOOMING_PLACE_INTERVAL : PLACE_INTERVAL, moving ? 3 * cost : 0);
 /** Camera feel, matching MapLibre's defaults so the map responds the way people expect. */
 const defaultEasing = bezier(0.25, 0.1, 0.25, 1), inertiaEasing = bezier(0, 0, 0.3, 1);
 const WHEEL_STEP = 4.000244140625, WHEEL_RATE = 1 / 450, TRACKPAD_RATE = 1 / 100;
@@ -178,6 +187,8 @@ export class Engine {
     /** How many sprite and font downloads are in progress. */
     private spritePending = 0;
     private lastPlace = -Infinity;
+    /** How long the last placement took, in milliseconds. */
+    private placeCost = 0;
     private placeAngle = 0;
     private placeZoom = 0;
     private fade = FADE;
@@ -1311,7 +1322,7 @@ export class Engine {
 
         // Decide which labels show only every so often; in between they ride along with the map and fade.
         const zooming = Math.abs(tr.zoom - this.placeZoom) > 0.12;
-        const place = this.placeDirty && now - this.lastPlace >= (zooming ? ZOOMING_PLACE_INTERVAL : PLACE_INTERVAL);
+        const place = this.placeDirty && placeDue(now, this.lastPlace, this.placeCost, zooming, cameraChanged);
         if (place) this.fade = zooming ? ZOOMING_FADE : FADE;
         const grid = place ? new CollisionGrid() : null;
         if (place) {
@@ -1319,7 +1330,7 @@ export class Engine {
             this.lastPlace = now;
             this.placeZoom = tr.zoom;
             this.placeAngle = -tr.bearing * Math.PI / 180;
-            const keep = new Set<string>(), resets = this.atlas.resets;
+            const keep = new Set<string>(), resets = this.atlas.resets, start = performance.now();
             let placed = placeLabels(tr, all, this.layers, this.atlas, grid!, this.icon, L => this.reserve(grid!, items, L));
             if (this.atlas.resets !== resets) {
                 // The glyph atlas filled up and was emptied part-way through: earlier labels now point at stale
@@ -1333,6 +1344,7 @@ export class Engine {
                 if (st) { st.placed = p; st.target = 1; } else this.labels.set(p.key, {placed: p, opacity: 0, target: 1});
             }
             for (const [key, st] of this.labels) if (!keep.has(key)) st.target = 0;
+            this.placeCost = performance.now() - start;
         }
         const labels: Placed[] = [];
         let fading = false;
