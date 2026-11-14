@@ -149,6 +149,19 @@ for (const mode of ['main', 'worker']) {
     check(`[${mode}] attribution shows © and keeps links`, attribution.includes('©') && !attribution.includes('&copy') && await page.evaluate(() => document.querySelectorAll('.maplibregl-ctrl-attrib a').length) > 0, attribution);
     const img = await page.evaluate(() => window.map.addImage('star', '<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="gold"/></svg>').then(() => true, e => String(e)));
     check(`[${mode}] addImage accepts an SVG`, img === true, String(img));
+    // Raw pixels at the stored size are premultiplied as they are: no canvas is read back (#26).
+    const reads = await page.evaluate(async () => {
+        const proto = CanvasRenderingContext2D.prototype, get = proto.getImageData, draw = proto.drawImage;
+        let n = 0;
+        proto.getImageData = function (...a) { n++; return get.apply(this, a); };
+        proto.drawImage = function (...a) { n++; return draw.apply(this, a); };
+        try {
+            const r = devicePixelRatio;
+            for (let i = 0; i < 20; i++) await window.map.addImage('raw' + i, new ImageData(16 * r, 16 * r), {pixelRatio: r});
+        } finally { proto.getImageData = get; proto.drawImage = draw; }
+        return n;
+    });
+    check(`[${mode}] addImage with ImageData reads no canvas back`, reads === 0, `${reads} canvas reads for 20 images`);
 
     // A colour that is the same for the whole layer is applied at draw time: no tiles are fetched or rebuilt.
     let refetched = 0;
