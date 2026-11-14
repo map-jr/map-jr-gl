@@ -214,8 +214,8 @@ Notes:
   [Change from MapLibre GL JS](../README.md#change-from-maplibre-gl-js).
 
 Checked: the configuration above with Next.js 16.4.6 and React 19.3, with `next build` (Turbopack) and
-`next build --webpack`; in both builds, `next start` showed the map with the renderer `'worker'`. The component above ran this way with
-`next build --webpack`, and a component that imports `maplibre-gl` through the alias ran with both builds. The field test of
+`next build --webpack`; in both builds, `next start` showed the map with the renderer `'worker'`. The component above, and a component that imports
+`maplibre-gl` through the alias, ran this way with both builds. The field test of
 #187 used Next.js 14.2 and 16 in development, with webpack and Turbopack. The development servers were not run for
 this page.
 
