@@ -1290,6 +1290,37 @@ for (const mode of ['main', 'worker']) {
         check(`[${mode}] the sources of the first style: transformRequest gets the TileJSON and the GeoJSON as Source, and addProtocol supplies the GeoJSON`,
             kind('/test-first-tiles.json') === 'Source' && kind('first://point') === 'Source' && first.tileJson && first.from === 'first://point?seen=1' && !first.errors.length, JSON.stringify(first));
     }
+    // setTiles and setUrl on a raster source replace its tiles, and the map loads the new ones (#255).
+    {
+        await page.route('**/test-255.json', route => route.fulfill({contentType: 'application/json', body: JSON.stringify({tilejson: '2.2.0', tiles: [new URL('/t255c/{z}/{x}/{y}.png', page.url()).href], minzoom: 0, maxzoom: 14})}));
+        const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==', 'base64');
+        await page.route(/\/t255[abc]\//, route => route.fulfill({contentType: 'image/png', body: png}));
+        const r = await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), asked = [];
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const m = new mod.Map({container: el, renderer: mode, attributionControl: false, center: [0, 0], zoom: 1,
+                transformRequest: url => { asked.push(url.replace(location.origin, '')); return {url}; },
+                style: {version: 8, sources: {r: {type: 'raster', tiles: ['/t255a/{z}/{x}/{y}.png'], tileSize: 256}}, layers: [{id: 'r', type: 'raster', source: 'r'}]}});
+            m.on('error', () => {});
+            const idle = () => new Promise(r => { m.once('idle', r); setTimeout(r, 5000); });
+            const seen = p => asked.some(u => u.startsWith(p));
+            await idle();
+            const a = seen('/t255a/'), source = m.getSource('r');
+            const same = source.setTiles(['/t255b/{z}/{x}/{y}.png']) === source;
+            await idle();
+            const b = seen('/t255b/');
+            m.getSource('r').setUrl('/test-255.json');
+            await idle();
+            const c = seen('/t255c/'), spec = m.getStyle().sources.r;
+            let message = '';
+            try { m.getSource('r').setTiles('/t255d/{z}/{x}/{y}.png'); } catch (e) { message = e.message; }
+            m.remove(); el.remove();
+            return {a, b, c, same, url: spec.url, tiles: spec.tiles, message};
+        }, mode);
+        await page.unroute('**/test-255.json'); await page.unroute(/\/t255[abc]\//);
+        check(`[${mode}] raster source: setTiles and setUrl load tiles from the new URLs, and a wrong argument gives a message`,
+            r.a && r.b && r.c && r.same && r.url === '/test-255.json' && !r.tiles && r.message.startsWith('[map-jr-gl] getSource("r").setTiles'), JSON.stringify(r));
+    }
     // CSS on `.maplibregl-map` sizes the container before the map measures it, as in MapLibre GL JS (#248).
     if (mode === 'worker') {
         const sized = await page.evaluate(async () => {
