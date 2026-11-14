@@ -1,4 +1,4 @@
-export {Map} from './compat-map.ts';
+export {Map, Map as MapLibreMap} from './compat-map.ts';
 export {InteractionHandler, type RenderedFeature, type PointLike, type FeatureOptions, type FeaturePlace} from './map.ts';
 export {addProtocol, removeProtocol, type ProtocolFunction} from './protocols.ts';
 export {LngLat, LngLatBounds, type LngLatInput, type LngLatBoundsInput} from './lnglat.ts';
@@ -7,8 +7,49 @@ export type {CameraOptions, FeatureQuery, FontSource} from './engine.ts';
 export type {QueriedFeature} from './query.ts';
 export type {LngLatLike} from './geo.ts';
 export {AttributionControl, type Control, type ControlPosition} from './controls.ts';
-export {NavigationControl, ScaleControl, FullscreenControl, GeolocateControl, TerrainControl, LogoControl} from './controls-more.ts';
-export {Marker, Popup, type MarkerOptions, type PopupOptions} from './overlays.ts';
+export {NavigationControl, ScaleControl, GeolocateControl, TerrainControl, LogoControl} from './controls-more.ts';
+export {Popup, type MarkerOptions, type PopupOptions} from './overlays.ts';
+import {Marker as CoreMarker} from './overlays.ts';
+import {FullscreenControl as CoreFullscreen} from './controls-more.ts';
+import {Evented} from './evented.ts';
+import type {Map as CoreMap} from './map.ts';
+/** The marker of the core with the private members `_map` and `_lngLat` that wrappers for MapLibre GL JS read. */
+export class Marker extends CoreMarker {
+    get _map() { return this.map; }
+    get _lngLat() { return this.getLngLat(); }
+}
+/** The control of the core with `on`, `off` and `once`. It fires `fullscreenstart` and `fullscreenend` on itself, as in MapLibre GL JS. */
+export class FullscreenControl extends CoreFullscreen {
+    private events = new Evented();
+    private was = false;
+    on(type: string, fn: (e: any) => void) { this.events.on(type, fn); return this; }
+    off(type: string, fn: (e: any) => void) { this.events.off(type, fn); return this; }
+    once(type: string, fn: (e: any) => void) { this.events.once(type, fn); return this; }
+    private change = () => {
+        const on = !!document.fullscreenElement && document.fullscreenElement === this.container;
+        if (on !== this.was) { this.was = on; this.events.fire(on ? 'fullscreenstart' : 'fullscreenend', {target: this}); }
+    };
+    private container?: HTMLElement;
+    onAdd(map: CoreMap) { this.container = map.getContainer(); document.addEventListener('fullscreenchange', this.change); return super.onAdd(map); }
+    onRemove() { document.removeEventListener('fullscreenchange', this.change); super.onRemove(); }
+}
+/**
+ * A point in pixels, as `Point` of `@mapbox/point-geometry`, which MapLibre GL JS exports. It has the methods that
+ * applications use most; see docs/maplibre-compatibility.md for the list.
+ */
+export class Point {
+    constructor(public x: number, public y: number) {}
+    static convert(p: Point | [number, number] | {x: number; y: number}) { return p instanceof Point ? p : Array.isArray(p) ? new Point(p[0], p[1]) : new Point(p.x, p.y); }
+    clone() { return new Point(this.x, this.y); }
+    add(p: {x: number; y: number}) { return new Point(this.x + p.x, this.y + p.y); }
+    sub(p: {x: number; y: number}) { return new Point(this.x - p.x, this.y - p.y); }
+    mult(k: number) { return new Point(this.x * k, this.y * k); }
+    div(k: number) { return new Point(this.x / k, this.y / k); }
+    round() { return new Point(Math.round(this.x), Math.round(this.y)); }
+    mag() { return Math.hypot(this.x, this.y); }
+    dist(p: {x: number; y: number}) { return Math.hypot(this.x - p.x, this.y - p.y); }
+    equals(p: {x: number; y: number}) { return this.x === p.x && this.y === p.y; }
+}
 import {LogoControl as Empty} from './controls-more.ts';
 /** MapLibre changes between a flat map and a globe with this control. This library has no globe, so the control adds an empty element. */
 export class GlobeControl extends Empty { override getDefaultPosition() { return 'top-right' as const; } }
@@ -51,10 +92,10 @@ import {InteractionHandler} from './map.ts';
 import {LngLat, LngLatBounds} from './lnglat.ts';
 import {addProtocol, removeProtocol} from './protocols.ts';
 import {AttributionControl} from './controls.ts';
-import {NavigationControl, ScaleControl, FullscreenControl, GeolocateControl, TerrainControl, LogoControl} from './controls-more.ts';
-import {Marker, Popup} from './overlays.ts';
+import {NavigationControl, ScaleControl, GeolocateControl, TerrainControl, LogoControl} from './controls-more.ts';
+import {Popup} from './overlays.ts';
 export default {
-    Map, InteractionHandler, LngLat, LngLatBounds, addProtocol, removeProtocol, Marker, Popup, configure: set,
+    Map, MapLibreMap: Map, Point, InteractionHandler, LngLat, LngLatBounds, addProtocol, removeProtocol, Marker, Popup, configure: set,
     AttributionControl, NavigationControl, ScaleControl, FullscreenControl, GeolocateControl, TerrainControl, LogoControl, GlobeControl,
     supported, getVersion, setWorkerUrl, getWorkerUrl, setWorkerCount, getWorkerCount, setMaxParallelImageRequests, getMaxParallelImageRequests, setRTLTextPlugin, getRTLTextPluginStatus,
 };

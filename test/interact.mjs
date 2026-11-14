@@ -1585,6 +1585,30 @@ for (const mode of ['main', 'worker']) {
             geo.notAdded === false && geo.triggered === true && geo.events.join() === 'geolocate:true,error:true,outofmaxbounds:true,geolocate:true,off,geolocate:true' && geo.onMap.join() === 'geolocate,error,geolocate,geolocate'
             && geo.warnings.length === 1 && geo.warnings[0].startsWith('[map-jr-gl] GeolocateControl: the option trackUserLocation'), JSON.stringify(geo));
     }
+    // #254: members and exports that Vue wrappers and apps read on the compat entry.
+    if (mode === 'main') {
+        const r = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+            const m = new mod.MapLibreMap({container: el, renderer: 'main', center: [0, 0], zoom: 2, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            const marker = new mod.Marker().setLngLat([3, 4]), before = marker._map;
+            marker.addTo(m);
+            const fc = new mod.FullscreenControl(), nav = new mod.NavigationControl(), events = [];
+            m.addControl(fc); m.addControl(nav); m.removeControl(nav);
+            fc.on('fullscreenstart', e => events.push('start:' + (e.target === fc))).on('fullscreenend', () => events.push('end'));
+            const set = v => { Object.defineProperty(document, 'fullscreenElement', {configurable: true, get: () => v}); document.dispatchEvent(new Event('fullscreenchange')); };
+            set(el); set(null); delete document.fullscreenElement;
+            const p = mod.Point.convert([3, 4]);
+            const out = {sameMap: mod.MapLibreMap === mod.Map && mod.default.MapLibreMap === mod.Map && mod.default.Point === mod.Point, before: before === undefined, map: marker._map === m, lngLat: marker._lngLat.toArray().join(),
+                controls: m._controls.map(c => c.constructor.name).join(), controlFc: m._controls.includes(fc) && !m._controls.includes(nav), version: m.version === mod.getVersion(), events: events.join(),
+                point: [p.mag(), p.add({x: 1, y: 1}).x, p.sub(new mod.Point(1, 1)).y, p.mult(2).x, p.div(2).y, p.dist({x: 0, y: 0}), p.equals(p.clone()), p.round().x].join()};
+            m.remove(); el.remove();
+            return out;
+        });
+        check('[main] maplibre-compat: Marker._map/_lngLat, Map._controls/version, FullscreenControl events, Point and MapLibreMap exist (#254)',
+            r.sameMap && r.before && r.map && r.lngLat === '3,4' && r.controlFc && r.version && r.events === 'start:true,end'
+            && r.point === '5,4,3,6,2,5,true,3', JSON.stringify(r));
+    }
     if (mode === 'main') {
         // #246: an animated move and fitBounds end where jumpTo would, inside maxBounds and the edge of the world.
         const cam = await page.evaluate(async () => {
