@@ -109,7 +109,7 @@ export class AttributionControl implements Control {
             // The credits end where the controls of the other corner of the same edge begin: they do not go under them.
             const corner = el.parentElement, c = map.getContainer();
             const other = corner && c.querySelector<HTMLElement>('.' + corner.className.split(' ')[0].replace(/left|right/, side => side === 'left' ? 'right' : 'left'));
-            el.style.maxWidth = corner ? c.clientWidth - (other?.offsetWidth ?? 0) - 30 + 'px' : '';
+            el.style.maxWidth = corner ? c.clientWidth - (other?.firstChild ? other.offsetWidth : 0) - 30 + 'px' : '';
         };
         map.on('styledata', this.update);
         map.on('resize', this.update);

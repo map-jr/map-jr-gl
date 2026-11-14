@@ -386,6 +386,19 @@ for (const mode of ['main', 'worker']) {
         } finally { protos.forEach((p, i) => { p.postMessage = real[i]; }); }
     });
     check(`[${mode}] GeoJSON source: 50 calls of setData in a loop send only the last data`, many.one > 0 && many.fifty === many.one && many.drawn.join() === 'n49', JSON.stringify(many));
+    // setData in the same task as addSource and addLayer is not lost: the data arrives before the engine knows the source (#244).
+    const early = await page.evaluate(async () => {
+        const m = window.map, point = name => ({type: 'Feature', properties: {name}, geometry: {type: 'Point', coordinates: [-74.008, 40.7085]}});
+        m.addSource('early', {type: 'geojson', data: {type: 'FeatureCollection', features: []}});
+        m.addLayer({id: 'early', type: 'circle', source: 'early'});
+        m.getSource('early').setData({type: 'FeatureCollection', features: [point('a')]});
+        m.getSource('early').setData({type: 'FeatureCollection', features: [point('b')]});
+        let names = [];
+        for (let i = 0; i < 30 && !names.length; i++) { await new Promise(r => setTimeout(r, 100)); names = (await m.querySourceFeatures('early')).map(f => f.properties.name); }
+        m.removeLayer('early'); m.removeSource('early');
+        return names;
+    });
+    check(`[${mode}] GeoJSON source: setData right after addSource and addLayer is kept`, early.join() === 'b', JSON.stringify(early));
     await page.evaluate(() => { window.map.removeLayer('zones-fill'); window.map.removeSource('zones'); });
 
     // DOM marker and popup with MapLibre's API.
@@ -867,6 +880,26 @@ for (const mode of ['main', 'worker']) {
         check('[main] with four tile workers, queries after refreshTiles see the new tile, and a tile on the map is not requested again for a query',
             fresh.before.every(n => n === 5) && fresh.during.every(n => n === 1) && fresh.after.every(n => n === 1) && fresh.requestsBefore === 1 && fresh.requestsForQueries === 0, JSON.stringify(fresh));
     }
+    // setWorkerUrl with the worker file of MapLibre GL JS (#219): the URL is ignored with one warning, and the map
+    // keeps the worker of this library.
+    {
+        const r = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const warns = [], warn = console.warn;
+            console.warn = (...a) => { warns.push(String(a[0])); };
+            mod.setWorkerUrl('/node_modules/maplibre-gl/dist/maplibre-gl-worker.mjs');
+            mod.setWorkerUrl('https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl-csp-worker.js');
+            console.warn = warn;
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:100px;height:100px'}));
+            const m = new mod.Map({container: el, center: [0, 0], zoom: 1, attributionControl: false, style: {version: 8, sources: {}, layers: []}});
+            await new Promise(res => m.once('idle', res));
+            const out = {renderer: m.renderer, url: mod.getWorkerUrl(), warns: warns.filter(w => w.includes('setWorkerUrl'))};
+            m.remove(); el.remove(); mod.configure({workerUrl: undefined});
+            return out;
+        });
+        check('setWorkerUrl with the worker file of MapLibre GL JS is ignored with one warning, and the map keeps its own worker',
+            r.renderer === 'worker' && r.url === '' && r.warns.length === 1 && r.warns[0].startsWith('[map-jr-gl] setWorkerUrl():'), JSON.stringify(r));
+    }
     // Two styles that are asked for one after the other: the last one wins, also when the first answers later, and
     // also when the first is the style of the constructor. The style, the layers and the pixels agree.
     {
@@ -1021,6 +1054,28 @@ for (const mode of ['main', 'worker']) {
             failed.badSource.seen.length === 1 && failed.badSource.seen[0].includes('"bad"') && failed.badSource.later > 0, JSON.stringify(failed.badSource));
         // (The browser writes its own line to the console for each 404 that this test asks for.)
         for (let i = errors.length; i-- > errorsBefore;) if (errors[i].startsWith('Failed to load resource')) errors.splice(i, 1);
+    }
+    // A container under a CSS transform (#189): the map takes the layout size, as MapLibre does, and event.point is in
+    // element pixels. One container is scaled itself, the other sits in a scaled parent.
+    {
+        for (const where of ['self', 'parent']) {
+            const out = await page.evaluate(async ({mode, where}) => {
+                const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+                const wrap = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:0;top:0;width:400px;height:300px;transform-origin:0 0;z-index:99' + (where === 'parent' ? ';transform:scale(0.5)' : '')}));
+                const el = wrap.appendChild(Object.assign(document.createElement('div'), {style: 'width:400px;height:300px;transform-origin:0 0' + (where === 'self' ? ';transform:scale(0.5)' : '')}));
+                const m = window.scaledMap = new mod.Map({container: el, renderer: mode, attributionControl: false, center: [0, 0], zoom: 2, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+                await new Promise(r => m.once('load', r));
+                window.scaledClicks = []; m.on('click', e => window.scaledClicks.push(e.point));
+                const p = m.project([0, 0]), c = m.getCanvas();
+                return {p: [p.x, p.y], buffer: [c.width / devicePixelRatio, c.height / devicePixelRatio]};
+            }, {mode, where});
+            // The screen point (100, 75) is element point (200, 150), the centre.
+            await page.mouse.click(100, 75);
+            await new Promise(r => setTimeout(r, 400));
+            const click = await page.evaluate(() => { const c = window.scaledClicks[0]; const el = window.scaledMap.getContainer(); window.scaledMap.remove(); el.parentElement.remove(); return c && [c.x, c.y]; });
+            check(`[${mode}] a container scaled by CSS (${where}) keeps its layout size, and event.point is in element pixels`,
+                Math.abs(out.p[0] - 200) < 0.5 && Math.abs(out.p[1] - 150) < 0.5 && Math.abs(out.buffer[0] - 400) < 1.5 && Math.abs(out.buffer[1] - 300) < 1.5 && click && Math.abs(click[0] - 200) < 1.5 && Math.abs(click[1] - 150) < 1.5, JSON.stringify({...out, click}));
+        }
     }
     // loaded() is false from setStyle or a style edit until the next idle, as in MapLibre (#190).
     {
@@ -1485,6 +1540,22 @@ for (const mode of ['main', 'worker']) {
         const closed = await page.evaluate(() => { const open = window.creditsEl.querySelector('.map-jr-ctrl-attrib').classList.contains('map-jr-compact-show'); window.creditsMap.remove(); window.creditsEl.remove(); return !open; });
         check('[main] the credits of a small map end before the controls of the other corner, are above markers, and close with a press on the map',
             box.open && box.creditsRight < box.controlsLeft && box.markerZ < box.cornerZ && closed, JSON.stringify({...box, closed}));
+    }
+    // The four corners of the controls exist as soon as the map is made, as in MapLibre GL JS (#200), and the attribution
+    // is the lowest control of the bottom-right corner, also below a control that the app added at once (#202).
+    if (mode === 'main') {
+        const r = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:500px;height:300px'}));
+            const m = new mod.Map({container: el, renderer: 'main', center: [0, 0], zoom: 2, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            const corners = ['top-left', 'top-right', 'bottom-left', 'bottom-right'].every(p => el.querySelector(`.maplibregl-ctrl-${p}.map-jr-ctrl-${p}`));
+            m.addControl(new mod.NavigationControl(), 'bottom-right');
+            await new Promise(r => m.once('load', r));
+            const first = el.querySelector('.map-jr-ctrl-bottom-right').firstElementChild?.className ?? '';
+            m.remove(); el.remove();
+            return {corners, first};
+        });
+        check('[main] the four control corners exist at once, and the attribution is the lowest control of its corner', r.corners && r.first.includes('ctrl-attrib'), JSON.stringify(r));
     }
     // 3D terrain off and on again: the elevation tiles that are loaded stay, so the relief does not go away for a
     // moment and no tile is asked for again.

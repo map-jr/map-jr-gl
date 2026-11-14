@@ -57,7 +57,7 @@ const make = (create, ssr) => create({render: () => h('div', {id: 'frame', style
   onStyleimagemissing: e => { t.asked.push(e.id); if (!images.value[e.id]) images.value[e.id] = '<svg viewBox="0 0 4 4"><rect width="4" height="4"/></svg>'; }}, ssr ? undefined : {default: () => [h(MapOverlay, {lngLat: t.pin.value, anchor: 'bottom', 'data-own': '', class: 'own-class', style: 'color: rgb(255, 0, 0)'}, () => h('b', {id: 'own-pin'}, 'here')), arrow.value ? h(MapImage, {name: 'arrow', params: ['color']}, {default: ({color}) => h('svg', {viewBox: '0 0 8 8'}, [h('path', {d: 'M4 0 8 8 0 8z', fill: color, stroke: tone.value})])}) : null, twin.value ? h(MapImage, {name: 'arrow'}, () => h('svg', {viewBox: '0 0 8 8'}, [h('path', {d: 'M4 0 8 8 0 8z'})])) : null,
   h(MapImage, {name: 'maybe'}, () => full.value ? h('svg', {viewBox: '0 0 8 8'}, [h('style', 'p{color:rgb(1,2,3)}'), h('rect', {id: 'in-image', width: 8, height: 8})]) : null),
   h(MapImage, {name: 'nested'}, () => h('svg', {viewBox: '0 0 8 8'}, [h(Dot)])),
-  h(MapImage, {name: 'photo', src: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%224%22 height=%224%22/%3E', width: 4, height: 4}), t.tip.value ? h(MapOverlay, {lngLat: t.pin.value, popup: true, 'pointer-events-none': '', onClose: () => { t.closed++; t.tip.value = false; }}, () => h('span', {id: 'own-tip'}, 'A popup')) : null]})])});
+  h(MapImage, {name: 'photo', src: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%224%22 height=%224%22/%3E', width: 4, height: 4}), h(MapOverlay, {lngLat: t.pin.value}, () => h('i', {id: 'bare-pin'}, 'bare')), t.tip.value ? h(MapOverlay, {lngLat: t.pin.value, popup: true, 'pointer-events-none': '', onClose: () => { t.closed++; t.tip.value = false; }}, () => h('span', {id: 'own-tip'}, 'A popup')) : null]})])});
 if (location.search === '?ssr') make(createSSRApp, 'svg').mount('#app'); else if (location.search === '?bare') make(createSSRApp, 'bare').mount('#app'); else make(createApp, false).mount('#app');
 window.ready = true;`;
 const server = http.createServer((req, res) => {
@@ -191,12 +191,21 @@ try {
         const box = document.getElementById('own-pin')?.parentElement, tipShown = !!document.getElementById('own-tip')?.getClientRects().length;
         const attrsOk = !!box && box.hasAttribute('data-own') && box.classList.contains('own-class') && getComputedStyle(box).color === 'rgb(255, 0, 0)' && box.style.display !== 'none';
         const moved = where('own-pin'), expect = host.project([-74.0, 40.71]);
+        // The overlay keeps position absolute and its place after re-renders, with and without fallthrough attributes (#243).
+        const kept = [];
+        for (const p of [[-74.003, 40.709], [-74.001, 40.711], [-74.0, 40.71]]) {
+            t.pin.value = p; await wait(300);
+            const bare = document.getElementById('bare-pin')?.parentElement, own = document.getElementById('own-pin')?.parentElement, r = bare?.getBoundingClientRect(), q = host.project(p);
+            kept.push(!!bare && !!own && getComputedStyle(bare).position === 'absolute' && getComputedStyle(own).position === 'absolute' && own.classList.contains('own-class')
+                && Math.abs(r.x + r.width / 2 - frame.x - q.x) < 3 && Math.abs(r.y + r.height / 2 - frame.y - q.y) < 3);
+        }
+        const keptOk = kept.every(Boolean);
         // (The callback runs at the click, not after the fade: a busy page plays the fade late. See #172.)
         document.querySelector('.map-jr-popup-close-button')?.click();
         const atOnce = t.closed; await wait(300);
-        return {pinOk: !!pin && Math.abs(pin[0] - (frame.x + at.x)) < 3 && Math.abs(pin[1] - (frame.y + at.y)) < 3, tip, movedOk: !!moved && Math.abs(moved[0] - (frame.x + expect.x)) < 3, atOnce, closed: t.closed, tipGone: !document.getElementById('own-tip'), tipShown, attrsOk};
+        return {pinOk: !!pin && Math.abs(pin[0] - (frame.x + at.x)) < 3 && Math.abs(pin[1] - (frame.y + at.y)) < 3, tip, movedOk: !!moved && Math.abs(moved[0] - (frame.x + expect.x)) < 3, atOnce, closed: t.closed, tipGone: !document.getElementById('own-tip'), tipShown, attrsOk, keptOk, kept};
     });
-    check('browser: MapOverlay puts own content and a popup at a position, follows its prop, and closes at the click', overlays.pinOk && overlays.tip && overlays.movedOk && overlays.atOnce === 1 && overlays.closed === 1 && overlays.tipGone && overlays.tipShown && overlays.attrsOk, JSON.stringify(overlays));
+    check('browser: MapOverlay puts own content and a popup at a position, follows its prop, and closes at the click', overlays.pinOk && overlays.tip && overlays.movedOk && overlays.atOnce === 1 && overlays.closed === 1 && overlays.tipGone && overlays.tipShown && overlays.attrsOk && overlays.keptOk, JSON.stringify(overlays));
     await page.evaluate(() => { window.t.pin.value = [-73.5, 41]; }); // (the element of the pin must not be under the click)
     await page.waitForTimeout(400);
     await page.mouse.move(400, 250); await page.waitForTimeout(300); await page.mouse.click(400, 250); await page.waitForTimeout(600);
@@ -223,6 +232,49 @@ try {
     });
     check('browser: the event error gets each error, and without a listener the error is written to the console',
         failing.got.length === 1 && /HTTP 404/.test(failing.got[0]) && failing.loggedWithListener === 0 && failing.logged.length === 1 && /HTTP 404/.test(failing.logged[0]), JSON.stringify(failing));
+    // Reactive data (Vue proxies, #242): structured clone refuses a proxy, and the map copies it instead, in both entries
+    // and with both renderers. The data must be drawn, getStyle() must work, and no error may be reported.
+    const proxied = await page.evaluate(() => { let step = 'start'; return Promise.race([new Promise(r => setTimeout(() => r({timeout: 'no answer in 60 s at the step: ' + step}), 60000)), (async () => {
+        const {reactive} = await import('vue'), {createMap} = await import('/dist/map-jr-gl.js'), {Map} = await import('/dist/map-jr-gl-maplibre-compat.js');
+        const wait = ms => new Promise(r => setTimeout(r, ms)), out = {};
+        const style = await (await fetch('/style.json')).json();
+        const points = () => reactive({type: 'FeatureCollection', features: [{type: 'Feature', properties: {n: 1}, geometry: {type: 'Point', coordinates: [-74.0065, 40.7085]}}]});
+        const box = () => document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+        for (const renderer of ['worker', 'main']) {
+            const errs = [], el = box();
+            const map = new Map({container: el, style: reactive(structuredClone(style)), center: [-74.0065, 40.7085], zoom: 14, renderer});
+            map.on('error', e => errs.push(String(e.error?.message ?? e.error)));
+            step = 'load of the compat map, ' + renderer;
+            await new Promise(r => map.once('load', r));
+            map.addSource('pts', {type: 'geojson', data: points()});
+            map.addLayer({id: 'pts', type: 'circle', source: 'pts'});
+            map.getSource('pts').setData(points());
+            map.jumpTo({center: reactive([-74.0065, 40.7085])});
+            let style2; try { style2 = !!map.getStyle().sources.pts; } catch (e) { style2 = e.message; }
+            await wait(1500);
+            const found = (await map.querySourceFeatures('pts')).length;
+            // (A value that JSON cannot copy either, here a cycle, is an error event with a message, not an uncaught error.)
+            const cycle = reactive({type: 'FeatureCollection', features: []}); cycle.self = cycle;
+            map.getSource('pts').setData(cycle);
+            await wait(500);
+            out['compat ' + renderer] = {found, style: style2, errs: errs.filter(m => !m.startsWith('[map-jr-gl] The map could not copy data')), cycle: errs.length === 1};
+            map.remove(); el.remove();
+            step = 'main API map, ' + renderer;
+            const herrs = [], hel = box();
+            const host = createMap(hel, {style: reactive(structuredClone(style)), renderer, view: {center: [-74.0065, 40.7085], zoom: 14}, attribution: false, onError: e => herrs.push(e.message),
+                extend: {sources: {pts: {type: 'geojson', data: points()}}, layers: [{id: 'pts', type: 'circle', source: 'pts'}]}});
+            await wait(2500);
+            host.update({style: reactive(structuredClone(style)), renderer, view: {center: [-74.0065, 40.7085], zoom: 14}, attribution: false, onError: e => herrs.push(e.message),
+                extend: {sources: {pts: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}}, layers: [{id: 'pts', type: 'circle', source: 'pts'}]}, data: {pts: points()}});
+            await wait(1500);
+            step = 'queryFeatures of the main API, ' + renderer;
+            out['main API ' + renderer] = {found: (await host.queryFeatures(undefined, {sources: ['pts']})).length, errs: herrs};
+            host.destroy(); hel.remove();
+        }
+        return out;
+    })()]); });
+    check('browser: reactive GeoJSON and a reactive style (Vue proxies) are drawn in both entries and with both renderers, without errors, and data that cannot be copied is an error event (#242)',
+        Object.values(proxied).every(r => r.found >= 1 && r.errs.length === 0 && (r.style ?? true) === true && (r.cycle ?? true)), JSON.stringify(proxied));
     check('browser: no page errors', errors.length === 0, errors.slice(0, 2).join(' | '));
     await page.close();
 } catch (e) { check('the test run was completed', false, String(e.message).split('\n')[0]); }

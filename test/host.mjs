@@ -132,6 +132,20 @@ for (const renderer of ['worker', 'main']) {
         check(`[${renderer}] queryFeatures: radius widens a query for drawn features, and its default is 0 there and 3 with sources`,
             radius.on === 1 && radius.none === 0 && radius.small === 0 && radius.point === 1 && radius.position === 1 && radius.data === 1 && radius.dataDefault === 0 && radius.layer === 'own-line', JSON.stringify(radius));
 
+        // 3d. A GeoJSON line with longitudes past 180° is drawn on the far side of the antimeridian too, as in MapLibre (#197).
+        const pastAntimeridian = await page.evaluate(async renderer => {
+            const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const line = {type: 'Feature', properties: {}, geometry: {type: 'LineString', coordinates: [[150, 40], [210, 40]]}};
+            // The centre is at -170°, which is 190° of the line.
+            const host = t.lib.createMap(el, {style: {version: 8, sources: {}, layers: []}, initialView: {center: [-170, 40], zoom: 3}, renderer, attribution: false,
+                extend: {sources: {own: {type: 'geojson', data: line}}, layers: [{id: 'own-line', type: 'line', source: 'own', paint: {'line-width': 4}}]}});
+            await new Promise(r => { host.state.subscribe(s => s.idle, v => v && r()); setTimeout(r, 8000); });
+            const hits = (await host.queryFeatures({x: 100, y: 75}, {layers: ['own-line'], radius: 3})).length;
+            host.destroy(); el.remove();
+            return hits;
+        }, renderer);
+        check(`[${renderer}] a GeoJSON line with longitudes past 180° is drawn past the antimeridian`, pastAntimeridian === 1, JSON.stringify(pastAntimeridian));
+
         // 3d. A source of `extend` gets its features from `data`; an owned view with only some fields that equals a reported view does not move the map (#33).
         const extendData = await page.evaluate(async renderer => {
             const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
@@ -549,6 +563,20 @@ for (const renderer of ['worker', 'main']) {
         });
         check(`[${renderer}] a question for drawn features finds a feature of a symbol layer where its icon is drawn: for each anchor, for an icon from a buffer and a placed icon, and for a larger icon`,
             reach.bottom === '1010' && reach.top === '0100' && reach.placed === '1010' && reach.large === '110' && reach.own === '3,1|3,1|||2|', JSON.stringify(reach));
+
+        // A feature of a symbol layer with text only is found on the box of its text, as in MapLibre GL JS, and not near
+        // its point outside that box (#199). The text starts at the point (`text-anchor: left`) and is about 200 pixels long.
+        const onText = await page.evaluate(async () => {
+            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), c = t.host.unproject({x: 450, y: 300});
+            t.host.update(t.spec = {...t.spec, style: {...t.style, sources: {...t.style.sources, spot: {type: 'geojson', data: {type: 'Feature', id: 1, properties: {}, geometry: {type: 'Point', coordinates: c}}}},
+                layers: [...t.style.layers.filter(l => l.type !== 'symbol'), {id: 'spot-text', type: 'symbol', source: 'spot', layout: {'text-field': 'A long name for a crag', 'text-size': 20, 'text-anchor': 'left', 'text-max-width': 30, 'text-allow-overlap': true}}]}});
+            await wait(300); await t.settle();
+            const out = [];
+            // On the text near its start, in its middle; then before the point, above the text, and past its end.
+            for (const [dx, dy] of [[20, 0], [150, 5], [-8, 0], [60, -30], [400, 0]]) out.push((await t.host.queryFeatures({x: 450 + dx, y: 300 + dy}, {layers: ['spot-text']})).length);
+            return out.join('');
+        });
+        check(`[${renderer}] a question for drawn features finds a feature of a symbol layer with text only on the box of its text, and not outside it`, onText === '11000', onText);
 
         // A label of a layer below the layer of an icon from a buffer keeps away from the icon, unless the layer of the icon
         // has `icon-ignore-placement`. A label of a layer above it is placed first and shows, as with a placed icon. The

@@ -253,6 +253,12 @@ For the best performance with large data:
 - Give the style as a URL, or as an object that is made one time. An object that the template makes again each time
   is compared with the last one by its content.
 
+Reactive objects (proxies made by `reactive()` or `ref()`) are accepted in both entries, also when a map of
+`@map-jr/map-jr-gl/maplibre-compat` gets them in `addSource`, `setData`, `setStyle` or `jumpTo`. Structured clone
+cannot copy a proxy, so the map sends such data to its workers as a JSON copy. That copy costs time for large GeoJSON,
+and `shallowRef` or `toRaw()` avoids it. Data that JSON cannot copy either, such as an object that contains itself, is
+an `error` event with a `[map-jr-gl]` message. A map object kept in the data of a component is not made reactive.
+
 ## The composable
 
 `useMap` makes a map in an element of your own. The description (`MapSpec`, see [the main API](api.md)) can be a
