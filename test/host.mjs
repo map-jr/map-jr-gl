@@ -50,6 +50,23 @@ for (const renderer of ['worker', 'main']) {
         check(`[${renderer}] the view: changes are reported, a reported view is not applied again, a new view moves the map`,
             view.reported >= 2 && view.last === 15 && view.afterEcho === 15 && view.moved.join() === '13.5,20,-74' && view.zoomEvents >= 2, JSON.stringify(view));
 
+        // 2a. moveTo with `fly` (#43) zooms out and back in on the way, as flyTo of MapLibre GL JS. (For these 1650 pixels
+        // at zoom 13.5 in a view of 900 pixels, the curve goes down by 1.07 zoom levels; the state sees some frames of it.)
+        const fly = await page.evaluate(async () => {
+            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), start = t.host.state.get().view;
+            let low = 99;
+            const off = t.host.state.subscribe(s => s.view.zoom, z => { low = Math.min(low, z); });
+            t.host.moveTo({center: [-73.9, 40.75], zoom: start.zoom, fly: {speed: 0.6}});
+            await wait(200);
+            for (let i = 0; i < 100 && t.host.state.get().moving; i++) await wait(100);
+            off();
+            const end = t.host.state.get().view;
+            t.host.moveTo({center: start.center, zoom: start.zoom});
+            return {low, start: start.zoom, end: [+end.center[0].toFixed(3), end.zoom]};
+        });
+        check(`[${renderer}] moveTo with fly zooms out on the way and ends at the view (#43)`,
+            fly.low < fly.start - 0.5 && fly.end[0] === -73.9 && fly.end[1] === fly.start, JSON.stringify(fly));
+
         // 2b. Padding per side (#212): fitBounds and moveTo take {top, right, bottom, left}, and the description has padding.
         const padding = await page.evaluate(async () => {
             const t = window.t, m = t.host.map, b = [[-74.02, 40.70], [-74.00, 40.72]], mid = [-74.01, 40.71];

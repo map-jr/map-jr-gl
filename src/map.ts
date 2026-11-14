@@ -787,6 +787,7 @@ export class Map {
      * values, because a function cannot be sent to the engine's worker.
      */
     easeTo(o: CameraInput & {duration?: number; around?: [number, number]; offset?: PointLike; easing?: (t: number) => number}) {
+        const fly = this.flight; this.flight = undefined;
         const {zoom, bearing, pitch, around} = o;
         let center = o.center;
         const padding = o.padding === undefined ? undefined : paddingOf(o.padding);
@@ -807,9 +808,20 @@ export class Map {
         // As in MapLibre GL JS, no duration is a jump, so reads right after the call see the new view.
         if (duration <= 0 && !around) return this.jumpTo({...o, center});
         const easing = o.easing && Array.from({length: 65}, (_, i) => o.easing!(i / 64));
-        this.post({type: 'ease', duration, center: center && toLngLat(center), zoom, bearing, pitch, around, padding, easing});
+        this.post({type: 'ease', duration, center: center && toLngLat(center), zoom, bearing, pitch, around, padding, easing, fly});
         return this;
     }
+    /**
+     * Moves the camera along a curve that zooms out and back in (van Wijk and Nuij), with the options of `flyTo` of
+     * MapLibre GL JS 6.17 (`curve` 1.42, `speed` 1.2, `screenSpeed`, `minZoom`, `maxDuration`; without `duration`,
+     * the duration follows from the distance). The engine computes the curve, also in a worker, from these options.
+     */
+    flyTo(o: Parameters<Map['easeTo']>[0] & FlyOptions) {
+        // (The options reach easeTo, also through the override of the compat entry, in this member.)
+        this.flight = [o.curve ?? 1.42, o.speed ?? 1.2, o.screenSpeed ?? 0, o.minZoom ?? -99, o.maxDuration ?? 1e12, o.duration === undefined ? 1 : 0];
+        return this.easeTo({...o, duration: o.duration ?? 1});
+    }
+    private flight?: number[];
     stop() { this.post({type: 'stop'}); return this; }
 
     /** The centre and zoom that fit `bounds` ([west, south, east, north] or [[west, south], [east, north]]) in view. */
@@ -1663,6 +1675,8 @@ export class Map {
 /** Padding as MapLibre takes it: one number for all sides, or any of the four sides. */
 export type {PaddingInput} from './geo.ts';
 import type {PaddingInput} from './geo.ts';
+/** The options of `flyTo` that `easeTo` does not have, as in MapLibre GL JS. */
+export interface FlyOptions {curve?: number; speed?: number; screenSpeed?: number; minZoom?: number; maxDuration?: number}
 export type CameraInput = Omit<CameraOptions, 'padding'> & {padding?: PaddingInput};
 function paddingOf(p: PaddingInput): [number, number, number, number] {
     return typeof p === 'number' ? [p, p, p, p] : [p.top ?? 0, p.right ?? 0, p.bottom ?? 0, p.left ?? 0];
