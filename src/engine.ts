@@ -109,7 +109,7 @@ function sourceSignature(style: ResolvedStyle, name: string): [string, string] {
     return [source, json.includes('"global-state"') ? json + JSON.stringify(style.state ?? {}) : json];
 }
 
-interface TileState { state: 'loading' | 'ok' | 'error'; gl?: GLTile; /** An image tile that the server does not have (404). */ missing?: boolean; /** The zoom that the tile was built for (see `buildZoom`). */ band?: number; /** A number that changes each time the state or the content of the tile changes. */ rev?: number; /** Elevation tiles shaping 3D terrain: the lowest and highest ground on the tile, in metres. */ range?: [number, number]; /** An elevation tile: its heights, for when it shapes 3D terrain (see `ground`). */ dem?: {grid: Float32Array; lo: number; hi: number}; used: number; cancel(): void; /** A failed load: how many loads of this tile have failed, and when it is requested again. */ tries?: number; retryAt?: number; /** Shown, but built from data that has since changed. */ stale?: boolean; rebuilding?: boolean; /** The tile worker that loaded the tile. */ backend?: number; /** The rules of the style that the tile was built for (see `sourceSignature`). */ rules?: string }
+interface TileState { state: 'loading' | 'ok' | 'error'; gl?: GLTile; /** An image tile that the server does not have (404). */ missing?: boolean; /** The zoom that the tile was built for (see `buildZoom`). */ band?: number; /** A number that changes each time the state or the content of the tile changes. */ rev?: number; /** Elevation tiles shaping 3D terrain: the lowest and highest ground on the tile, in metres. */ range?: [number, number]; /** An elevation tile: its heights, for when it shapes 3D terrain (see `ground`). */ dem?: {grid: Float32Array; lo: number; hi: number}; used: number; cancel(): void; /** A failed load: how many loads of this tile have failed, and when it is requested again. */ tries?: number; retryAt?: number; /** Built, and waiting for its turn to be uploaded: it is not cancelled when it leaves the view. */ built?: boolean; /** Shown, but built from data that has since changed. */ stale?: boolean; rebuilding?: boolean; /** The tile worker that loaded the tile. */ backend?: number; /** The rules of the style that the tile was built for (see `sourceSignature`). */ rules?: string }
 interface LabelState { placed: Placed; opacity: number; target: number }
 
 const raf: (cb: (t: number) => void) => unknown = globalThis.requestAnimationFrame
@@ -1141,7 +1141,7 @@ export class Engine {
         else if (isGeometrySource(src)) {
             const backend = this.backends[t.backend = this.nextBackend++ % this.backends.length], req = this.nextReq++;
             t.cancel = () => backend.cancel(req);
-            load = backend.load(this.build(req, source, id, t)).then(tile => (this.tapTile(key, 'ans'), this.upload(tile)));
+            load = backend.load(this.build(req, source, id, t)).then(tile => (t.built = true, this.tapTile(key, 'ans'), this.upload(tile)));
         } else {
             // Elevation tiles are decoded in a tile worker, which also reads the heights that 3D terrain needs: this thread
             // only sends the finished pixels to the GPU. (Reading pixels back here made the map hitch as tiles arrived.)
@@ -1419,7 +1419,10 @@ export class Engine {
         this.tapTile(view, 'frame');
         for (const key of this.early) if (this.tiles.get(key)?.state !== 'loading') this.early.delete(key);
         for (const [key, t] of this.tiles) {
-            if (t.state === 'loading' && !wanted.has(key) && !this.early.has(key)) this.dropTile(key, t);
+            // (A tile that is built and waits for its upload is kept: its work is done, and a view that turns or pans back
+            // often needs it again a moment later. With 3D terrain, a tile at the edge of the view was cancelled there and
+            // requested again 1.4 s later, #384.)
+            if (t.state === 'loading' && !t.built && !wanted.has(key) && !this.early.has(key)) this.dropTile(key, t);
         }
         // Tell the page when the tiles of a source are all there (the map can be busy with other sources still).
         for (const source in this.style.sources) {
