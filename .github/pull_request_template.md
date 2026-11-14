@@ -22,5 +22,6 @@
 ## Needs the owner?
 
 <!-- Yes if this breaks or renames public API, changes a default, raises a size budget, adds a dependency to the
-built files, takes a method from another project, or changes CLAUDE.md, CI or the release process. Otherwise it can
+built files, takes code or a method from a project that is not under a licence listed in CLAUDE.md ("Code and
+methods from other projects"), or changes CLAUDE.md, CI or the release process. Otherwise it can
 be merged (squash) when CI is green. -->

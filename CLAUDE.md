@@ -24,7 +24,8 @@ to protect those qualities.
   of these. Then leave it open and ask the owner:
   - removes or renames public API of either entry, or changes a default;
   - raises a size budget (see "Size");
-  - adds a dependency to the built files, or takes a method from another project;
+  - adds a dependency to the built files, or takes code or a method from a project whose licence is not on the list
+    in "Code and methods from other projects";
   - changes this file, the CI workflows, or the release process;
   - is labelled `needs: owner`.
 - **Before version 1.0, a correction does not need the owner.** A change that makes the types stricter, or that
@@ -89,6 +90,29 @@ A change is done when all of these that apply are true. The pull request templat
     the README) and commit the result.
 12. **Licence.** `ACKNOWLEDGEMENTS.md` and `THIRD-PARTY-LICENSES.md` are correct when a library is added to the
     built files or a method follows another project. The licence is MIT.
+
+## Code and methods from other projects
+
+A change may follow a method of another project, or copy its code, texts or CSS, without the owner when all of the
+following are true. Otherwise leave the pull request open and ask the owner.
+
+- **The licence is permissive:** MIT, ISC, BSD-2-Clause, BSD-3-Clause, 0BSD, Apache-2.0, or public domain (CC0,
+  Unlicense). Read the licence file of the project at the version that you use. Do not copy from GPL, LGPL, AGPL,
+  MPL or CC BY-SA sources (CC BY-SA includes answers on Stack Overflow), or from code that has no licence.
+- **`ACKNOWLEDGEMENTS.md` names it.** The line names the project, its licence and what follows it (the method, the
+  texts, the CSS), and says whether the code in this library is new or copied.
+- **Copied text keeps its notice.** When code, texts or CSS are copied or closely translated, and not only the method
+  is followed, `THIRD-PARTY-LICENSES.md` has the licence text of the project with its copyright line. The package
+  publishes that file with the built files. This meets the condition of MIT, ISC and BSD that the notice goes with
+  every copy, a minified one included. For Apache-2.0, also copy the project's `NOTICE` file if it has one, and say in
+  the file that the code was changed.
+- **No endorsement.** Do not use the name of the project or of its authors to promote this library (the third clause
+  of BSD-3-Clause). Naming them in the acknowledgements and in `docs/maplibre-compatibility.md` is fine.
+
+Copyright protects the expression of code, and not an idea, an algorithm or a formula. New code that implements a
+method (for example the curve of `flyTo`) needs only the line in `ACKNOWLEDGEMENTS.md`. A library that the built files
+contain is a dependency, and it still needs the owner. This section is general guidance, not legal advice; ask the
+owner when a case is unclear.
 
 ## Writing
 
