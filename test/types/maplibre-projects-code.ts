@@ -1,6 +1,6 @@
 // Lines from projects that use MapLibre GL JS (mapcn, open-tacos, afilmory, terraink; issue #208), with the import
 // changed to `@map-jr/map-jr-gl/maplibre-compat`. `node test/examples.mjs` checks that they compile. They are not run.
-import {Map, Marker, Popup, type MapOptions, type PopupOptions, type MarkerOptions, type LngLat, type LayerSpecification, type FillLayerSpecification, type LineLayerSpecification, type CircleLayerSpecification, type SymbolLayerSpecification, type ProjectionSpecification, type StyleSpecification, type MapMouseEvent, type MapLibreEvent} from '@map-jr/map-jr-gl/maplibre-compat';
+import {Map, Marker, Popup, type MapOptions, type PopupOptions, type MarkerOptions, type LngLat, type LayerSpecification, type FillLayerSpecification, type LineLayerSpecification, type CircleLayerSpecification, type SymbolLayerSpecification, type ProjectionSpecification, type StyleSpecification, type MapMouseEvent, type MapLibreEvent, type CameraOptions, type AnimationOptions, type LngLatBoundsLike, type MapGeoJSONFeature} from '@map-jr/map-jr-gl/maplibre-compat';
 
 const options: MapOptions = {container: 'map', fadeDuration: 0, pitchWithRotate: false, cooperativeGestures: false};
 const map = new Map(options);
@@ -39,4 +39,12 @@ let instance: Map | null = null;
 map.on('load', (e: MapLibreEvent) => { instance = e.target; });
 map.on('click', (e: MapMouseEvent) => { const m: Map = e.target; m.getCanvas(); });
 
-console.log(markerOptions, where, projection, record, instance);
+// Lines from Directus and hk-traffic-sign-map (report #270).
+const bbox = [0, 0, 1, 1] as LngLatBoundsLike;
+const fit = (o: CameraOptions & AnimationOptions) => map.fitBounds(bbox, {padding: 80, maxZoom: 8, ...o});
+map.fitBounds(bbox, {padding: 100, speed: 1.3, maxZoom: 14});
+const layerIds = new Set(map.getStyle().layers?.map(({id}) => id));
+const hovered = (feature: MapGeoJSONFeature) => map.setFeatureState({id: feature.id, source: 'places'}, {hovered: true});
+map.querySourceFeatures('places', {sourceLayer: 'roads', filter: ['==', 'a', 1], validate: false});
+
+console.log(fit, layerIds, hovered, markerOptions, where, projection, record, instance);
