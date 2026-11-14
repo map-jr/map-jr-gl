@@ -3,7 +3,7 @@ import {protocolListeners, protocols, toBytes} from './protocols.ts';
 import {LngLat, LngLatBounds, type LngLatBoundsInput} from './lnglat.ts';
 import {Transform, groundHeight, heightsChanged, mercX, mercY, toLngLat, type LngLatLike} from './geo.ts';
 import type {PreparedSource} from './geojson.ts';
-import {DEFAULT_FONT, keep, resolveStyle, type ResolvedStyle} from './resolve.ts';
+import {DEFAULT_FONT, keep, kept, resolveStyle, type ResolvedStyle} from './resolve.ts';
 import {layerRules} from './rules.ts';
 import type {CameraOptions, Command, EngineEvent, FontSource} from './engine.ts';
 import type {QueriedFeature} from './query.ts';
@@ -914,7 +914,12 @@ export class Map {
         };
         return {
             ...spec, id, setData: (data: unknown) => this.setGeoJSON(id, data),
-            getData: async () => typeof spec.data === 'string' ? (await this.fetchAs('Source')(new URL(spec.data, this.styleBase))).json() : spec.data,
+            // (A URL: the answer that the map keeps for the source, and a request only when it has none for this URL.)
+            getData: async () => {
+                if (typeof spec.data !== 'string') return spec.data;
+                const url = new URL(spec.data, this.styleBase).href;
+                return kept(spec, url) ?? (await this.fetchAs('Source')(url)).json();
+            },
             updateData: (diff: GeoJSONDiff) => this.updateGeoJSON(id, diff),
             // The cluster methods give promises, as in MapLibre. The page makes its own copy of the cluster index for them.
             getClusterExpansionZoom: async (clusterId: number) => (await clusters()).expansionZoom(clusterId),
@@ -959,15 +964,22 @@ export class Map {
     private diffQueues = new globalThis.Map<string, {call: number, raw: object, diffs: GeoJSONDiff[], p: Promise<void>}>();
     /** The number of the newest call that set the data of each GeoJSON source: an answer for an older call is dropped. */
     private dataCalls = new globalThis.Map<string, number>();
+    /** The request of the newest `setData` with a URL of each GeoJSON source, while it loads. */
+    private dataAborts = new globalThis.Map<string, AbortController>();
     private async setGeoJSON(id: string, data: unknown) {
         const call = (this.dataCalls.get(id) ?? 0) + 1;
         this.dataCalls.set(id, call);
         this.rawStyle.sources[id].data = data;
         this.unloaded(id);
         for (const type of ['sourcedataloading', 'dataloading']) this.fire(type, {dataType: 'source', sourceId: id});
+        // A request of an older call is no longer wanted: it is aborted.
+        this.dataAborts.get(id)?.abort();
+        this.dataAborts.delete(id);
         if (typeof data === 'string') {
-            const raw = this.rawStyle.sources[id], url = new URL(data, this.styleBase).href;
-            data = await (await this.fetchAs('Source')(url)).json();
+            const raw = this.rawStyle.sources[id], url = new URL(data, this.styleBase).href, ac = new AbortController();
+            this.dataAborts.set(id, ac);
+            try { data = await (await this.fetchAs('Source')(url, {signal: ac.signal})).json(); } catch (e) { if (ac.signal.aborted) return; throw e; }
+            if (this.dataAborts.get(id) === ac) this.dataAborts.delete(id);
             // (The source was removed, or its data was set again since, also to the same URL: this answer is old.)
             if (this.rawStyle?.sources[id] !== raw || this.dataCalls.get(id) !== call) return;
             // A later change of the style sends the data of the source again: it must be this data, not the first answer.
