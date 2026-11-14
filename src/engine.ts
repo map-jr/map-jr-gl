@@ -23,6 +23,8 @@ export interface EngineOptions extends CameraOptions {
     prefetch?: boolean | 'ahead';
     /** The page's rules for requests at the start, so that the first tiles follow them too (#355). */
     requests?: RequestRules;
+    /** Answers that the page requested before the engine started, by URL (only for an engine on the page's thread). */
+    early?: Map<string, Promise<Response>>;
 }
 export interface FeatureQuery { radius: number; zoom?: number; sources?: string[]; sourceLayers?: string[]; filter?: unknown; geometry?: boolean }
 export type Command =
@@ -237,6 +239,8 @@ export class Engine {
     private cameraMovedAt = -1e9;
     /** How many sprite and font downloads are in progress. */
     private spritePending = 0;
+    /** The answers that the page requested before the engine started, while the first style is set. */
+    private answered?: Map<string, Promise<Response>>;
     private lastPlace = -Infinity;
     /** How long the last placement took, in milliseconds. */
     private placeCost = 0;
@@ -278,7 +282,9 @@ export class Engine {
         Object.assign(this.tr, {minZoom: o.minZoom ?? -2, maxZoom: o.maxZoom ?? 22, maxPitch: o.maxPitch ?? 60});
         this.tr.set(o.center, o.zoom, o.bearing, o.pitch);
         if (o.requests) { this.rules = o.requests; for (const b of backends) b.setRequests(o.requests, this.ask); }
+        this.answered = o.early;
         this.setStyle(o.style, true);
+        this.answered = undefined;
         if (o.fonts?.length) this.loadFonts(o.fonts);
     }
 
@@ -648,7 +654,9 @@ export class Engine {
         const sheets: {id: string; url: string}[] = spec[0] === '[' ? JSON.parse(spec) : [{id: 'default', url: spec}];
         const loaded = await Promise.all(sheets.map(async ({id, url}) => {
             // (The two files of a sprite are asked for at the same time: the URL of the image does not depend on the JSON.)
-            const dense = this.dpr > 1, [sprite, res] = await Promise.all([loadSprite(url, dense, withTimeout(this.fetchAs('SpriteJSON'))), withTimeout(this.fetchAs('SpriteImage'))(url + (dense ? '@2x.png' : '.png'))]);
+            // (An answer that the page requested before the engine started is taken once; see `early` of the options.)
+            const early = this.answered, got = (f: typeof fetch): typeof fetch => u => early?.get(String(u)) ?? f(u);
+            const dense = this.dpr > 1, [sprite, res] = await Promise.all([loadSprite(url, dense, got(withTimeout(this.fetchAs('SpriteJSON')))), got(withTimeout(this.fetchAs('SpriteImage')))(url + (dense ? '@2x.png' : '.png'))]);
             if (!res.ok) throw new Error(`Failed to load sprite image ${sprite.image}: ${res.status}`);
             return {id, sprite, image: await createImageBitmap(await res.blob())};
         }));

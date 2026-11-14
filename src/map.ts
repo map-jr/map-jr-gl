@@ -1,4 +1,4 @@
-import {fetchWith, type RequestAnswer} from './requests.ts';
+import {fetchWith, withTimeout, type RequestAnswer} from './requests.ts';
 import {protocolListeners, protocols, toBytes} from './protocols.ts';
 import {LngLat, LngLatBounds, type LngLatBoundsInput} from './lnglat.ts';
 import {Transform, fitBox, groundHeight, heightsChanged, mercX, mercY, sides, toLngLat, type LngLatLike} from './geo.ts';
@@ -314,6 +314,9 @@ export class Map {
         for (const fn of this.beforeStyle.splice(0)) fn();
         // (A restart gives the style as an object. Its relative URLs still belong to the place that the style came from.)
         if (!this.restarting) this.styleBase = typeof o.style === 'string' ? new URL(o.style, location.href).href : location.href;
+        // With the engine on this thread, the files of the sprite are requested now, as in MapLibre GL JS, and not once
+        // the sources are resolved and the engine chunk has loaded; the engine takes these answers (#371).
+        const early = engine ? undefined : this.spriteFiles(this.rawStyle.sprite);
         // As in MapLibre, a style may carry its own starting camera. It is used only when the options give no part of
         // the camera: with a zoom in the options and no centre, the centre is [0, 0], not that of the style.
         const sc = this.rawStyle;
@@ -332,7 +335,7 @@ export class Map {
             minZoom: tr.minZoom, maxZoom: tr.maxZoom, maxPitch: tr.maxPitch, antialias: o.antialias, prefetch: o.prefetch,
             // (A new engine, after a fall back or a restart too, gets the rules with the style: otherwise its first tiles
             // would be fetched before `resend` sends them, without `transformRequest`; #355.)
-            requests: this.rulesSent ? this.requestRules() : undefined,
+            requests: this.rulesSent ? this.requestRules() : undefined, early,
         };
 
         const tiles = await pool;
@@ -521,6 +524,22 @@ export class Map {
         if (this.rulesSent) this.sendRequestRules();
         if (this.wantsFrames) this.post({type: 'frames', on: true});
         for (const source of Object.keys(this.featureStates)) this.post({type: 'featureState', source, states: this.featureStates[source], replace: true});
+    }
+
+    /** Requests the JSON and the image of each sheet of a sprite, by URL, as the engine asks for them (see `loadIcons`). */
+    private spriteFiles(sprite: unknown) {
+        const sheets = typeof sprite === 'string' ? [sprite] : Array.isArray(sprite) ? sprite.map(s => s?.url) : [];
+        const files = new globalThis.Map<string, Promise<Response>>(), dense = this.dpr > 1 ? '@2x' : '';
+        for (const sheet of sheets) {
+            if (typeof sheet !== 'string') continue;
+            const url = new URL(sheet, this.styleBase).href + dense;
+            for (const [ext, kind] of [['.json', 'SpriteJSON'], ['.png', 'SpriteImage']]) {
+                const answer = withTimeout(this.fetchAs(kind))(url + ext);
+                answer.catch(() => {}); // (the engine reports a failure when it takes the answer)
+                files.set(url + ext, answer);
+            }
+        }
+        return files.size ? files : undefined;
     }
 
     /** Runs the engine on this thread. Its code is a separate chunk, fetched only when this path is taken. */
