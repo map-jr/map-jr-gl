@@ -369,6 +369,8 @@ export interface GLTile {
     labels: Record<string, LabelSrc[]>; batches: Record<string, GLBuffers>;
     /** The icons that are drawn from buffers of the tile, by layer (see `IconBatch`). */
     icons?: Record<string, IconBuffers>;
+    /** The zoom that the sizes of the tile were found at (see `TileIR`). */
+    z?: number;
     /** Raster tiles: the image. Elevation tiles: slopes derived from it. */
     tex?: WebGLTexture;
     /** Latitude of the tile's top and bottom edges, for hillshade. */
@@ -613,7 +615,7 @@ export class GLRenderer {
             this.fillIcons(icons[id]);
         }
         gl.bindVertexArray(null);
-        return {uid: ++this.uids, labels: t.labels, batches, icons};
+        return {uid: ++this.uids, labels: t.labels, batches, icons, z: t.z};
     }
 
     /** Finds an image by name when the icons of a tile are made. The engine sets it. */
@@ -680,7 +682,7 @@ export class GLRenderer {
                 this.bindDem(u, s.terrain ? s.terrain.dem(it.id) : null, s.terrain?.exaggeration ?? 0, s.terrain ? s.tr.elevation : 0);
                 gl.uniformMatrix4fv(u.u_matrix, false, it.matrix4);
                 gl.uniform4fv(u.u_clip, it.clip);
-                gl.uniform1f(u.u_zt, Math.min(1, Math.max(0, zoom - it.id.z)));
+                gl.uniform1f(u.u_zt, Math.min(1, Math.max(0, zoom - (it.tile.z ?? it.id.z))));
                 gl.bindVertexArray(b.vao);
                 // (An attribute without a buffer reads these values: the layer has one value for all its icons.)
                 if (!b.src.rotate) gl.vertexAttrib1f(2, p.iconRotate.eval(zoom) * Math.PI / 180);
@@ -996,7 +998,7 @@ export class GLRenderer {
                 // Attributes without a buffer read these constants, so shaders need no variants.
                 if (!b.color) gl.vertexAttrib4f(1, 1, 1, 1, 1);
                 if (!b.scalar) { gl.vertexAttrib1f(3, 1); gl.vertexAttrib1f(5, 1); }
-                if (b.type === 'line' || b.type === 'circle') gl.uniform1f(u.u_zt, Math.min(1, Math.max(0, zoom - it.id.z)));
+                if (b.type === 'line' || b.type === 'circle') gl.uniform1f(u.u_zt, Math.min(1, Math.max(0, zoom - (it.tile.z ?? it.id.z))));
                 if (b.type === 'line') {
                     gl.uniform1f(u.u_scale, it.scale);
                     gl.uniform1f(u.u_cam, tr.cameraDistance);
