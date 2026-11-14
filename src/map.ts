@@ -629,16 +629,24 @@ export class Map {
      * `on(type, listener)`, or `on(type, layerId, listener)` to hear `click`, `mousemove`, `mouseenter` and
      * `mouseleave` only where that style layer's features are, with the features on the event as `e.features`.
      */
-    on(type: string, a: string | Listener, b?: Listener) {
-        if (typeof a === 'string') this.layerListeners.push({type, layer: a, fn: b!}); else (this.listeners[type] ??= []).push(a);
+    on(type: string, a: string | string[] | Listener, b?: Listener) {
+        const layers = this.layerArg(type, a, b);
+        if (layers) this.layerListeners.push({type, layers, fn: b!}); else (this.listeners[type] ??= []).push(a as Listener);
         // The engine reports each frame only when a listener wants the `render` event: most pages do not.
         if (type === 'render' && !this.wantsFrames) { this.wantsFrames = true; this.post({type: 'frames', on: true}); }
         return this;
     }
-    off(type: string, a: string | Listener, b?: Listener) {
-        if (typeof a === 'string') this.layerListeners = this.layerListeners.filter(l => !(l.type === type && l.layer === a && l.fn === b));
+    off(type: string, a: string | string[] | Listener, b?: Listener) {
+        const layers = typeof a === 'string' ? [a] : Array.isArray(a) ? a : null, key = String(layers);
+        if (layers) this.layerListeners = this.layerListeners.filter(l => !(l.type === type && String(l.layers) === key && l.fn === b));
         else this.listeners[type] = (this.listeners[type] ?? []).filter(f => f !== a);
         return this;
+    }
+    /** The layer ids of `on(type, layerIds, listener)` (one id or an array, as in MapLibre GL JS), or null for `on(type, listener)`. */
+    private layerArg(type: string, a: unknown, b: unknown): string[] | null {
+        const layers = typeof a === 'string' ? [a] : Array.isArray(a) && a.every(id => typeof id === 'string') ? a.slice() : null;
+        if (layers ? typeof b !== 'function' : typeof a !== 'function') throw new TypeError(`[map-jr-gl] on("${type}"): ${layers ? 'the listener after the layer id is not a function' : 'the second argument is neither a layer id, an array of layer ids nor a listener'}.`);
+        return layers;
     }
     private wantsFrames = false;
 
@@ -672,27 +680,30 @@ export class Map {
     private protocolAborts = new Set<AbortController>();
     /** A `fetch` for requests that this thread makes itself (the style, its sources, GeoJSON data). */
     protected fetchAs = (kind: string) => fetchWith(() => ({transform: !!this.transformRequest, protocols: [...protocols.keys()]}), (url, k, signal) => this.answer(url, k, signal), kind);
-    private layerListeners: {type: string; layer: string; fn: Listener}[] = [];
-    private hoveredLayers = new Set<string>();
+    private layerListeners: {type: string; layers: string[]; fn: Listener}[] = [];
+    /** The `mouseenter` and `mouseleave` listeners whose layers are under the pointer. */
+    private hovered = new WeakSet<object>();
     private hoverBusy = false;
 
     private async dispatchLayerEvents(kind: 'click' | 'mousemove', data: Record<string, unknown>) {
         const point = data.point as {x: number; y: number};
         const wanted = kind === 'click' ? ['click'] : ['mousemove', 'mouseenter', 'mouseleave'];
-        const layers = [...new Set(this.layerListeners.filter(l => wanted.includes(l.type)).map(l => l.layer))];
+        const listening = this.layerListeners.filter(l => wanted.includes(l.type)), layers = [...new Set(listening.flatMap(l => l.layers))];
         if (!layers.length || (kind === 'mousemove' && this.hoverBusy)) return;
         this.hoverBusy = kind === 'mousemove';
         try {
             // One query for all the layers that have listeners. The features have the form of queryRenderedFeatures.
             const found = await this.queryLayers(point, {layers});
-            for (const layer of layers) {
-                const features = found.filter(f => (f.layer as {id?: string} | undefined)?.id === layer), hit = features.length > 0;
-                const emit = (type: string) => { for (const l of this.layerListeners) if (l.type === type && l.layer === layer) l.fn({type, target: this, ...data, features}); };
-                if (kind === 'click') { if (hit) emit('click'); continue; }
-                const was = this.hoveredLayers.has(layer);
-                if (hit && !was) { this.hoveredLayers.add(layer); emit('mouseenter'); }
-                if (hit) emit('mousemove');
-                if (!hit && was) { this.hoveredLayers.delete(layer); emit('mouseleave'); }
+            // A listener hears the features of any of its layers (as in MapLibre GL JS, which takes an array of ids too).
+            for (const l of listening) {
+                if (!this.layerListeners.includes(l)) continue; // (removed by a listener before it)
+                const features = found.filter(f => l.layers.includes((f.layer as {id: string}).id)), hit = features.length > 0, {type} = l;
+                if (type === 'mouseenter' || type === 'mouseleave') {
+                    if (hit === this.hovered.has(l)) continue;
+                    if (hit) this.hovered.add(l); else this.hovered.delete(l);
+                    if (hit !== (type === 'mouseenter')) continue;
+                } else if (!hit) continue;
+                l.fn({type, target: this, ...data, features});
             }
         } finally { if (kind === 'mousemove') this.hoverBusy = false; }
     }

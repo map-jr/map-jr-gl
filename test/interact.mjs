@@ -297,11 +297,20 @@ for (const mode of ['main', 'worker']) {
         m.addLayer({id: 'zones-fill', type: 'fill', source: 'zones', paint: {'fill-color': '#e11', 'fill-opacity': 0.5}});
         window.zoneClicks = [];
         m.on('click', 'zones-fill', e => window.zoneClicks.push(e.features[0].properties.name));
+        // An array of layer ids, as in MapLibre GL JS (#245); a wrong second argument throws a message and breaks nothing.
+        window.arrayEvents = [];
+        const gone = () => window.arrayEvents.push('removed');
+        m.on('click', ['missing-layer', 'zones-fill'], e => window.arrayEvents.push('click:' + e.features[0].properties.name));
+        m.once('mouseenter', ['zones-fill'], () => window.arrayEvents.push('enter'));
+        m.on('click', ['zones-fill'], gone); m.off('click', ['zones-fill'], gone);
+        try { m.on('mouseenter', 42, () => {}); } catch (error) { window.arrayEvents.push(String(error.message).startsWith('[map-jr-gl] on("mouseenter")') ? 'message' : error.message); }
         await new Promise(r => m.once('idle', r));
         const inside = m.project([-74.008, 40.7085]), found = await m.queryFeatures(inside, {sources: ['zones']});
         return {inside, found: found.map(f => f.properties.name)};
     });
     await page.screenshot({path: `${out}/geojson-${mode}.png`});
+    await page.mouse.move(760, 90); await page.mouse.move(gj.inside.x, gj.inside.y, {steps: 3});
+    await page.waitForFunction(() => window.arrayEvents.includes('enter'), null, {timeout: 5000}).catch(() => {});
     await page.mouse.click(gj.inside.x, gj.inside.y);
     await page.mouse.click(760, 90); // outside the zone: must not fire
     await page.waitForFunction(() => window.zoneClicks.length > 0, null, {timeout: 5000}).catch(() => {});
@@ -312,6 +321,9 @@ for (const mode of ['main', 'worker']) {
         return (await m.queryFeatures([-74.008, 40.7085], {sources: ['zones'], radius: 5})).map(f => f.type + ':' + f.properties.name);
     });
     check(`[${mode}] GeoJSON source, layer click event and setData`, gj.found[0] === 'first' && JSON.stringify(await page.evaluate(() => window.zoneClicks)) === '["first"]' && gj2[0] === 'Point:second', JSON.stringify({found: gj.found, clicks: await page.evaluate(() => window.zoneClicks), after: gj2}));
+    await page.waitForFunction(() => window.arrayEvents.some(e => e.startsWith('click:')), null, {timeout: 5000}).catch(() => {});
+    const arrayEvents = await page.evaluate(() => window.arrayEvents.join());
+    check(`[${mode}] on, once and off with an array of layer ids; a wrong argument gives a message`, arrayEvents === 'message,enter,click:first', arrayEvents);
     // MapLibre's updateData: add, change and remove features of a GeoJSON source by their id.
     const diff = await page.evaluate(async () => {
         const m = window.map, source = m.getSource('zones'), point = (id, name, lng) => ({type: 'Feature', id, properties: {name}, geometry: {type: 'Point', coordinates: [lng, 40.7085]}});
