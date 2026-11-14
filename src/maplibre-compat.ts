@@ -17,6 +17,8 @@ import type {Map as CoreMap} from './map.ts';
 export class Marker extends CoreMarker {
     get _map() { return this.map; }
     get _lngLat() { return this.getLngLat(); }
+    /** The offset as a `Point`, as in MapLibre GL JS. */
+    getOffset() { const o = super.getOffset(); return new Point(o.x, o.y); }
 }
 /** The control of the core with `on`, `off` and `once`. It fires `fullscreenstart` and `fullscreenend` on itself, as in MapLibre GL JS. */
 export class FullscreenControl extends CoreFullscreen {
