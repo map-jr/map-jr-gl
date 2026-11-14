@@ -198,7 +198,9 @@ See [CLAUDE.md](../CLAUDE.md) for who may merge what, and for the definition of 
 
 ## How a release is made
 
-The package has had no release yet. Its name on npm is `@map-jr/map-jr-gl`. This section describes the process for the first release and the ones after it.
+The package is `@map-jr/map-jr-gl` on npm. The first version, 0.2.0, was published by hand on 2026-11-14 from the commit
+6777dfa, which has the tag `v0.2.0`. The workflow `Release` publishes the versions after it. This section describes the
+process.
 A change of this process needs the owner.
 
 ### The version number
@@ -271,7 +273,8 @@ For a pushed tag, the workflow does these steps:
 4. It runs `npm publish --provenance --access public`. A package with a scope is private by default, and
    `--access public` makes it public.
 
-The workflow has not run yet: no tag was pushed, and nothing was published.
+For the tag `v0.2.0`, the workflow ran on 2026-11-14, found 0.2.0 on npm already, and published nothing, as expected for
+the first version.
 
 ### What the owner does on npmjs.com
 
@@ -281,7 +284,8 @@ The steps below follow the documentation of npm as it was read on 2026-11-12:
 [Generating provenance statements](https://docs.npmjs.com/generating-provenance-statements),
 [Creating an organization](https://docs.npmjs.com/creating-an-organization) and
 [Configuring two-factor authentication](https://docs.npmjs.com/configuring-two-factor-authentication).
-None of the steps was carried out, so the names of the buttons can differ from what the website shows.
+The owner carried out these steps for 0.2.0 on 2026-11-14. The names of the buttons can differ from what the website
+shows.
 
 The documentation describes a trusted publisher only as a setting of a package that exists
 (**Packages → the package → Settings → Trusted publishing**). It describes no way to add one for a name that was
