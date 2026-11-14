@@ -92,10 +92,20 @@ export function parseSVG(svg: string): {viewBox: string | null; inner: string} {
     return {viewBox: /viewBox\s*=\s*["']([^"']+)["']/.exec(m[1])?.[1] ?? null, inner: m[2]};
 }
 
+/**
+ * The display size of an SVG document in CSS pixels: the size of its `viewBox`, or else its `width` and `height`
+ * attributes, each 24 when it is missing, is not a positive number of pixels (no unit or `px`), or is a percentage.
+ */
+export function svgSize(svg: string): [number, number] {
+    const root = /<svg\b[^>]*>/i.exec(svg)?.[0] ?? '', box = /\sviewBox\s*=\s*["']\s*[\d.-]+[\s,]+[\d.-]+[\s,]+([\d.]+)[\s,]+([\d.]+)/.exec(root);
+    const length = (k: string) => +(new RegExp(`\\s${k}\\s*=\\s*["']?\\s*([\\d.]+)(?:px)?\\s*(?=["'\\s/>])`).exec(root)?.[1] ?? 0) || 24;
+    return box ? [+box[1], +box[2]] : [length('width'), length('height')];
+}
+
 /** Rewrites the root element with explicit pixel dimensions, which every browser needs to rasterise an SVG image reliably. */
 export function sizedSVG(svg: string, w: number, h: number): string {
     const {viewBox, inner} = parseSVG(svg);
-    return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${w}" height="${h}" viewBox="${viewBox ?? `0 0 ${w} ${h}`}">${inner}</svg>`;
+    return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${w}" height="${h}" viewBox="${viewBox ?? '0 0 ' + svgSize(svg).join(' ')}">${inner}</svg>`;
 }
 
 /** A style with the additions of `extend`. */

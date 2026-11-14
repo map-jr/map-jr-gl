@@ -182,7 +182,7 @@ A value of `images` is one of these:
 
 | Value | Meaning |
 |---|---|
-| A string that starts with `<` | An SVG document. The library draws it at the pixel density of the screen. Its size is the size of its `viewBox`, or 24 by 24 CSS pixels without a `viewBox`. With slots (`{{name}}`), it is a template: see [An image that is a template](#an-image-that-is-a-template). |
+| A string that starts with `<` | An SVG document. The library draws it at the pixel density of the screen. Its size in CSS pixels is the size of its `viewBox`. Without a `viewBox`, the size comes from the `width` and `height` attributes of the `<svg>` element. An attribute that is missing, is a percentage or has a unit other than `px` counts as 24. With slots (`{{name}}`), it is a template: see [An image that is a template](#an-image-that-is-a-template). |
 | Another string | The URL of an image. The server of the image must permit the request (CORS). |
 | An `ImageBitmap`, a canvas, an image element or `ImageData` | The pixels of the object. |
 | `{image, width, height, pixelRatio, ...}` | One of the values above as `image`, with options. `width` and `height` are the size in CSS pixels. `pixelRatio` is the number of image pixels for one CSS pixel (the default is 1). The options `stretchX`, `stretchY`, `content`, `textFitWidth` and `textFitHeight` are those of `addImage` in MapLibre GL JS. |

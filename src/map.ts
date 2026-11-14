@@ -9,7 +9,7 @@ import type {CameraOptions, Command, EngineEvent, FontSource} from './engine.ts'
 import type {QueriedFeature} from './query.ts';
 import type {TileBackend} from './tiles.ts';
 import {acquireTileWorkers, createWorker, defaults as loadDefaults, workerReady, type LoadOptions} from './loader.ts';
-import {fillTemplate, sizedSVG, templateSlots, VARIANT} from './markers.ts';
+import {fillTemplate, sizedSVG, svgSize, templateSlots, VARIANT} from './markers.ts';
 import {AttributionControl, CONTROL_CSS, adoptClasses, cls, type Control, type ControlPosition} from './controls.ts';
 
 /** True in the development build (`dist/*.dev.js`). Code behind it is not in the production build. */
@@ -1070,8 +1070,8 @@ export class Map {
         if (typeof source === 'string') {
             const img = new Image();
             if (source.trimStart().startsWith('<')) {
-                const vb = /viewBox\s*=\s*["']\s*[\d.-]+[\s,]+[\d.-]+[\s,]+([\d.]+)[\s,]+([\d.]+)/.exec(source);
-                width ??= vb ? +vb[1] : 24; height ??= vb ? +vb[2] : 24;
+                const [w, h] = svgSize(source);
+                width ??= w; height ??= h;
                 img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(sizedSVG(source, width, height));
             } else { img.crossOrigin = 'anonymous'; img.src = source; }
             await img.decode();

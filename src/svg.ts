@@ -4,7 +4,7 @@ import type {Batch, TileImage, TileIR} from './tile.ts';
 import type {Sprite} from './style.ts';
 import type {Placed, RenderItem} from './placement.ts';
 import {lineMiddle, BASELINE, EM} from './text.ts';
-import {escapeXML, parseSVG} from './markers.ts';
+import {escapeXML, parseSVG, svgSize} from './markers.ts';
 import type {RGBA} from './expr.ts';
 
 /** Tile coordinates are written at half resolution: sub-pixel accuracy at native zoom for roughly a third less markup. */
@@ -154,7 +154,7 @@ export function renderSVG(s: SVGScene): string {
                 id = 'i' + ids.size;
                 ids.set(i.name, id);
                 const {viewBox, inner} = parseSVG(img.svg);
-                defs.push(`<symbol id="${id}" viewBox="${viewBox ?? `0 0 ${img.width} ${img.height}`}" preserveAspectRatio="none">${inner}</symbol>`);
+                defs.push(`<symbol id="${id}" viewBox="${viewBox ?? '0 0 ' + svgSize(img.svg).join(' ')}" preserveAspectRatio="none">${inner}</symbol>`);
             }
             const rot = i.angle ? ` transform="rotate(${num(i.angle * 180 / Math.PI)} ${num(i.x)} ${num(i.y)})"` : '';
             body.push(`<use href="#${id}" x="${num(i.x - i.w / 2)}" y="${num(i.y - i.h / 2)}" width="${num(i.w)}" height="${num(i.h)}"${rot}/>`);

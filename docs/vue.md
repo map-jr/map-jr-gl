@@ -165,7 +165,7 @@ const extend = {
 | `name` | The name of the image. Required. |
 | `params` | The names of the parameters of the image. The slot gets a prop for each name. |
 | `src` | The URL of an image, in place of an SVG in the slot: `<MapImage name="photo" src="/photo.png" />`. |
-| `width`, `height` | The size in CSS pixels. Without them, an SVG has the size of its `viewBox`, and another image has its own size. |
+| `width`, `height` | The size in CSS pixels. Without them, an SVG has the size of its `viewBox` or else of its `width` and `height` attributes, and another image has its own size. |
 | `pixel-ratio` | The number of image pixels for one CSS pixel. The default is 1. |
 
 A parameter is not a value of Vue. Each feature of the layer gives it a value: the property of the feature that has

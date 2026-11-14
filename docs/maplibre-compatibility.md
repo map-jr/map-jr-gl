@@ -21,7 +21,7 @@ The [status table](../README.md#status) gives the current test results.
 | Worker rendering | The renderer can run in a worker. The option is `renderer: 'auto'`, `'worker'` or `'main'`. |
 | Server rendering | `renderToSVG` and `renderToImage` draw a map without a browser. See [Server rendering](server-rendering.md). |
 | Many markers | A symbol layer draws icons that are always shown from a buffer on the GPU: the cost of a frame does not grow with their number. See [Which icons are fast](markers.md#which-icons-are-fast). |
-| SVG images | `addImage` accepts an SVG string. The image is sharp on each screen. |
+| SVG images | `addImage` accepts an SVG string. The image is sharp on each screen. Its size in CSS pixels is the size of its `viewBox`, or else of its `width` and `height` attributes, or 24 by 24. |
 | Many icons | A symbol layer draws an icon that is always shown (no text, `icon-allow-overlap`) from a buffer on the GPU. Such an icon is not hidden by ground in front of it with 3D terrain, does not fade in, and is drawn below the labels unless its layer is above each layer with labels. See [Markers](markers.md). |
 | SVG templates | An SVG string with slots (`{{name}}`) is a template. Each feature gives the slots their values, from its properties or from `params` of the `image` expression: `['image', 'pin', {params: {color: ['get', 'color']}}]`. MapLibre GL JS does not have `params`. See [An image that is a template](api.md#an-image-that-is-a-template). |
 | Fonts | Text uses the glyph files of the style (`glyphs`), as in MapLibre GL JS. A style without `glyphs` needs no glyph files: text then uses the fonts of the browser. The option `glyphs: false` selects that for each style. The style can also give font files in `font-faces`. |
