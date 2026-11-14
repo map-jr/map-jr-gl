@@ -56,22 +56,27 @@ export class NavigationControl implements Control {
     onRemove(map: Map) { map.off('move', this.update); this.el?.remove(); }
 }
 
-/** A bar showing a round distance at the map's current scale. */
+export type ScaleUnit = 'metric' | 'imperial' | 'nautical';
+
+/** A bar showing a round distance at the map's current scale, in `'metric'` (m, km), `'imperial'` (ft, mi) or `'nautical'` (nm) units. */
 export class ScaleControl implements Control {
     private el?: HTMLElement;
     private update = () => {};
-    constructor(private options: {maxWidth?: number; unit?: 'metric' | 'imperial'} = {}) {}
+    private unit: ScaleUnit;
+    constructor(private options: {maxWidth?: number; unit?: ScaleUnit} = {}) { this.unit = options.unit ?? 'metric'; }
     getDefaultPosition(): ControlPosition { return 'bottom-left'; }
+    /** Changes the unit of the bar, as `setUnit` of MapLibre GL JS does. */
+    setUnit(unit: ScaleUnit) { this.unit = unit; this.update(); }
 
     onAdd(map: Map) {
         const el = this.el = document.createElement('div');
         el.className = cls('ctrl', 'ctrl-scale');
-        const maxWidth = this.options.maxWidth ?? 100, imperial = this.options.unit === 'imperial';
+        const maxWidth = this.options.maxWidth ?? 100;
         this.update = () => {
             const metresPerPixel = 40075016.686 * Math.cos(map.getCenter().lat * Math.PI / 180) / (512 * 2 ** map.getZoom());
             // Pick the unit, then the largest 1/2/3/5 x 10^n distance that fits.
             let max = metresPerPixel * maxWidth, unit = 'm', perUnit = 1;
-            if (imperial) { max *= 3.28084; unit = 'ft'; perUnit = 1 / 3.28084; if (max > 5280) { max /= 5280; unit = 'mi'; perUnit = 1609.344; } } else if (max >= 1000) { max /= 1000; unit = 'km'; perUnit = 1000; }
+            if (this.unit === 'imperial') { max *= 3.28084; unit = 'ft'; perUnit = 1 / 3.28084; if (max > 5280) { max /= 5280; unit = 'mi'; perUnit = 1609.344; } } else if (this.unit === 'nautical') { max /= 1852; unit = 'nm'; perUnit = 1852; } else if (max >= 1000) { max /= 1000; unit = 'km'; perUnit = 1000; }
             const pow = 10 ** Math.floor(Math.log10(max)), lead = max / pow, nice = (lead >= 5 ? 5 : lead >= 3 ? 3 : lead >= 2 ? 2 : 1) * pow;
             el.style.width = nice * perUnit / metresPerPixel + 'px';
             el.textContent = `${nice >= 1 ? nice : +nice.toPrecision(1)} ${unit}`;

@@ -38,7 +38,7 @@ const spec = <O extends object>(name: string, make: (m: typeof More, options: O)
 /** Buttons to zoom in and out, and a compass that turns the map to the north. */
 export const navigation = spec('navigation', (m, o: {showZoom?: boolean; showCompass?: boolean}) => new m.NavigationControl(o));
 /** A scale bar. */
-export const scale = spec('scale', (m, o: {maxWidth?: number; unit?: 'metric' | 'imperial'}) => new m.ScaleControl(o));
+export const scale = spec('scale', (m, o: {maxWidth?: number; unit?: 'metric' | 'imperial' | 'nautical'}) => new m.ScaleControl(o));
 /** A button that shows the map on the full screen. */
 export const fullscreen = spec('fullscreen', (m, _o: {}) => new m.FullscreenControl());
 /** A button that moves the map to the position of the user. */

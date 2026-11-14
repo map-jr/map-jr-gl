@@ -1702,6 +1702,21 @@ for (const mode of ['main', 'worker']) {
         const want = {NavigationControl: 'top-right', GeolocateControl: 'top-right', FullscreenControl: 'top-right', TerrainControl: 'top-right', GlobeControl: 'top-right', ScaleControl: 'bottom-left', AttributionControl: 'bottom-right', LogoControl: 'bottom-left'};
         check('[main] maplibre-compat: each control class added without a position goes to the corner that MapLibre GL JS uses', JSON.stringify(corners) === JSON.stringify(want), JSON.stringify(corners));
     }
+    // ScaleControl.setUnit() changes the unit, and 'nautical' shows nautical miles, as in MapLibre GL JS (#204).
+    if (mode === 'main') {
+        const texts = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+            const m = new mod.Map({container: el, renderer: 'main', center: [0, 0], zoom: 2, attributionControl: false, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            const c = new mod.ScaleControl({unit: 'nautical'});
+            m.addControl(c);
+            const bar = el.querySelector('.map-jr-ctrl-scale'), out = [bar.textContent];
+            for (const unit of ['imperial', 'metric', 'nautical']) { c.setUnit(unit); out.push(bar.textContent); }
+            m.remove(); el.remove();
+            return out;
+        }).catch(e => [String(e)]);
+        check('[main] maplibre-compat: ScaleControl takes the unit nautical and setUnit() changes the unit', JSON.stringify(texts) === JSON.stringify(['1000 nm', '1000 mi', '1000 km', '1000 nm']), JSON.stringify(texts));
+    }
     // GeolocateControl is an event emitter, as react-map-gl 8 expects (#194), with a mocked navigator.geolocation.
     if (mode === 'main') {
         const geo = await page.evaluate(async () => {
