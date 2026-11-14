@@ -1187,6 +1187,37 @@ for (const mode of ['main', 'worker']) {
             return {label: el.getAttribute('aria-label'), role: el.getAttribute('role'), tab: el.tabIndex, plainRole: plain.getAttribute('role'), plainTab: plain.getAttribute('tabindex'), open, closed: !window.a11yMarker.getPopup().isOpen(),
                 fullscreen: button.getAttribute('aria-label'), title: button.title, pressed: button.getAttribute('aria-pressed')};
         });
+        // Faults of #92: a popup that opens again during its closing animation stays open, a second remove() fires `close`
+        // once, the focus goes to the map when the marker of a focused popup is removed, and Enter on a child of a
+        // marker element does not toggle the popup.
+        const faults = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), m = window.a11yMap, wait = t => new Promise(r => setTimeout(r, t));
+            let closes = 0;
+            const p = new mod.Popup().setLngLat([0, 0]).setText('Again').on('close', () => closes++).addTo(m);
+            await wait(300);
+            p.remove(); p.remove(); p.addTo(m);
+            await wait(500);
+            const reopened = p.isOpen() && p.getElement().isConnected, closesReopen = closes;
+            p.remove(); p.remove();
+            await wait(500);
+            const closesTwice = closes - closesReopen, gone = !p.getElement().isConnected;
+            const mk = new mod.Marker().setLngLat([0, 0]).setPopup(new mod.Popup().setText('Focus')).addTo(m);
+            mk.getElement().focus();
+            mk.getElement().dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
+            const inPopup = mk.getPopup().getElement().contains(document.activeElement);
+            mk.remove();
+            await wait(500);
+            const focusMap = document.activeElement === m.getCanvas();
+            const custom = Object.assign(document.createElement('div'), {innerHTML: '<button type="button">Child</button>'});
+            const ck = new mod.Marker({element: custom}).setLngLat([0, 0]).setPopup(new mod.Popup().setText('Child')).addTo(m);
+            custom.firstChild.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
+            const childToggles = ck.getPopup().isOpen();
+            ck.remove();
+            await wait(300);
+            return {reopened, closesReopen, closesTwice, gone, inPopup, focusMap, childToggles};
+        });
+        check('[main] Popup: addTo() during the closing animation keeps it open, remove() twice fires close once, the focus goes to the map when its marker is removed, and Enter on a child of the marker does not toggle it',
+            faults.reopened && faults.closesReopen === 1 && faults.closesTwice === 1 && faults.gone && faults.inPopup && faults.focusMap && !faults.childToggles, JSON.stringify(faults));
         // A camera animation of one second: with "reduce motion" the map is there at once; `essential: true` keeps the animation.
         const zoomSoon = async options => page.evaluate(async options => { const m = window.a11yMap; m.jumpTo({zoom: 2}); await new Promise(r => setTimeout(r, 200)); m.easeTo({zoom: 4, duration: 1000, ...options}); await new Promise(r => setTimeout(r, 250)); return m.getZoom(); }, options);
         const moving = await zoomSoon({});
