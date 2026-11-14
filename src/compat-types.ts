@@ -78,7 +78,7 @@ export type AddLayerObject = Omit<LayerSpecification, 'source'> & {source?: stri
 export type AnimationOptions = {duration?: number; around?: [number, number]};
 export type JumpToOptions = Parameters<Map['jumpTo']>[0];
 /** `essential: true` animates the change also when the user asked the system for less motion. */
-export type EaseToOptions = CameraInput & {duration?: number; around?: [number, number]; essential?: boolean; offset?: unknown; easing?: (t: number) => number};
+export type EaseToOptions = CameraInput & {duration?: number; around?: [number, number]; essential?: boolean; offset?: [number, number] | {x: number; y: number}; easing?: (t: number) => number};
 export type FlyToOptions = EaseToOptions;
 /** The options of `map.fitBounds`. `speed`, `curve` and `linear` have no effect: the map always eases to the bounds. */
 export type FitBoundsOptions = NonNullable<Parameters<CoreMap['fitBounds']>[1]> & {essential?: boolean; speed?: number; curve?: number; linear?: boolean};
