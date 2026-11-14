@@ -1143,7 +1143,7 @@ export class Map {
     addImage(name: string, source: string | CanvasImageSource | ImageData | {width: number; height: number; data: Uint8Array | Uint8ClampedArray}, options: ImageOptions = {}) { return this.putImage(name, source, options); }
     /** `variant`: the image is one variant of a template. It is not an image that the page added, and it is not looked at for slots. */
     private async putImage(name: string, source: Parameters<Map['addImage']>[1], options: ImageOptions, variant?: boolean): Promise<this> {
-        let drawable: CanvasImageSource, width = options.width, height = options.height, sourceWidth = 0;
+        let drawable: CanvasImageSource | undefined, width = options.width, height = options.height, sourceWidth = 0;
         const turn = this.imageTurn(name);
         if (!variant) {
             const slots = typeof source === 'string' && source.trimStart().startsWith('<') ? templateSlots(source) : [], before = this.templates.get(name);
@@ -1170,18 +1170,22 @@ export class Map {
             sourceWidth = img.naturalWidth;
             drawable = img;
         } else if ('data' in source) {
-            // Raw pixels, as MapLibre accepts (ImageData or {width, height, data}): put them on a canvas to draw from.
-            const canvas = document.createElement('canvas');
-            canvas.width = sourceWidth = source.width; canvas.height = source.height;
-            canvas.getContext('2d')!.putImageData(new ImageData(new Uint8ClampedArray(source.data), source.width, source.height), 0, 0);
+            // Raw pixels, as MapLibre accepts (ImageData or {width, height, data}). At the stored size they are premultiplied
+            // directly below; at another size they go on a CPU-backed canvas to scale from, so reading back costs no GPU copy.
+            sourceWidth = source.width;
             width ??= source.width / (options.pixelRatio ?? 1); height ??= source.height / (options.pixelRatio ?? 1);
-            drawable = canvas;
+            if (Math.ceil(width * this.dpr) !== source.width || Math.ceil(height * this.dpr) !== source.height || source.data.length !== source.width * source.height * 4) {
+                const canvas = document.createElement('canvas');
+                canvas.width = source.width; canvas.height = source.height;
+                canvas.getContext('2d', {willReadFrequently: true})!.putImageData(new ImageData(new Uint8ClampedArray(source.data), source.width, source.height), 0, 0);
+                drawable = canvas;
+            }
         } else {
             drawable = source;
             sourceWidth = (source as ImageBitmap).width as number;
             width ??= sourceWidth / (options.pixelRatio ?? 1); height ??= (source as ImageBitmap).height as number / (options.pixelRatio ?? 1);
         }
-        const w = Math.ceil(width * this.dpr), h = Math.ceil(height * this.dpr), data = pixels(drawable, w, h);
+        const w = Math.ceil(width * this.dpr), h = Math.ceil(height * this.dpr), data = drawable ? pixels(drawable, w, h) : premultiply((source as {data: ArrayLike<number>}).data);
         // Stretch ranges and the content box are given in the source image's pixels; the stored copy may be another size.
         const k = sourceWidth ? w / sourceWidth : 1, scale = (v?: number[]) => v?.map(n => n * k);
         if (!variant) { this.imageNames.add(name); this.imageInputs.set(name, [source, options]); }
@@ -1604,7 +1608,11 @@ function pixels(source: CanvasImageSource, w: number, h: number): Uint8Array {
     canvas.width = w; canvas.height = h;
     const ctx = canvas.getContext('2d', {willReadFrequently: true})!;
     ctx.drawImage(source, 0, 0, w, h);
-    const px = ctx.getImageData(0, 0, w, h).data, out = new Uint8Array(px.length);
+    return premultiply(ctx.getImageData(0, 0, w, h).data);
+}
+
+function premultiply(px: ArrayLike<number>): Uint8Array {
+    const out = new Uint8Array(px.length);
     for (let i = 0; i < px.length; i += 4) {
         const a = px[i + 3] / 255;
         out[i] = px[i] * a; out[i + 1] = px[i + 1] * a; out[i + 2] = px[i + 2] * a; out[i + 3] = px[i + 3];
