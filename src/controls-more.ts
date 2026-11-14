@@ -28,7 +28,9 @@ function group(extraClass = ''): HTMLElement {
 export class NavigationControl implements Control {
     private el?: HTMLElement;
     private update = () => {};
-    constructor(private options: {showZoom?: boolean; showCompass?: boolean} = {}) {}
+    constructor(private options: {showZoom?: boolean; showCompass?: boolean; visualizePitch?: boolean} = {}) {
+        if (options.visualizePitch !== undefined) noEffect('NavigationControl', 'visualizePitch', ' The compass always shows the pitch.');
+    }
 
     onAdd(map: Map) {
         const el = this.el = group();
@@ -84,6 +86,9 @@ export class ScaleControl implements Control {
 /** Toggles the map's container in and out of fullscreen. */
 export class FullscreenControl implements Control {
     private el?: HTMLElement;
+    constructor(options: {container?: HTMLElement} = {}) {
+        if (options.container) noEffect('FullscreenControl', 'container', ' The map\'s container goes fullscreen.');
+    }
     onAdd(map: Map) {
         const el = this.el = group(), c = map.getContainer();
         const b = button(el, 'fullscreen', '', svg('<path d="M3 7V3h4M11 3h4v4M15 11v4h-4M7 15H3v-4"/>'),
@@ -135,10 +140,7 @@ export class GeolocateControl extends Evented implements Control {
     private b?: HTMLButtonElement;
     constructor(private options: {zoom?: number; positionOptions?: PositionOptions; trackUserLocation?: boolean; showUserLocation?: boolean} = {}) {
         super();
-        for (const k of ['trackUserLocation', 'showUserLocation'] as const) if (options[k] && !warned[k]) {
-            warned[k] = 1;
-            console.warn(`[map-jr-gl] GeolocateControl: the option ${k} has no effect. The control moves the map to the position once per click.`);
-        }
+        for (const k of ['trackUserLocation', 'showUserLocation'] as const) if (options[k]) noEffect('GeolocateControl', k, ' The control moves the map to the position once per click.');
     }
     onAdd(map: Map) {
         this.map = map;
@@ -172,3 +174,9 @@ export class GeolocateControl extends Evented implements Control {
 }
 // (Warnings are once per page, as the other warnings for options with no effect.)
 const warned: Record<string, 1> = {};
+/** One warning for an option of a control that is accepted and has no effect. */
+function noEffect(control: string, option: string, instead = '') {
+    if (warned[option]) return;
+    warned[option] = 1;
+    console.warn(`[map-jr-gl] ${control}: the option ${option} has no effect.${instead}`);
+}

@@ -945,6 +945,30 @@ for (const mode of ['main', 'worker']) {
         check('setWorkerUrl with the worker file of MapLibre GL JS is ignored with one warning, and the map keeps its own worker',
             r.renderer === 'worker' && r.url === '' && r.warns.length === 1 && r.warns[0].startsWith('[map-jr-gl] setWorkerUrl():'), JSON.stringify(r));
     }
+    // Options that are accepted and have no effect (#262): each warns once, also when it is given twice. The map warns
+    // once per map, and a control once per page, so this runs in one mode. (GeolocateControl is checked further down.)
+    if (mode === 'main') {
+        const r = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const warns = [], warn = console.warn;
+            console.warn = (...a) => { warns.push(String(a[0])); };
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:100px;height:100px'}));
+            let m;
+            try {
+                m = new mod.Map({container: el, center: [0, 0], zoom: 1, attributionControl: false, logoPosition: 'top-left', validate: false, style: {version: 8, sources: {}, layers: []}});
+                for (let i = 0; i < 2; i++) {
+                    new mod.NavigationControl({visualizePitch: true});
+                    new mod.FullscreenControl({container: document.body});
+                    m.flyTo({center: [1, 1], speed: 2, curve: 1.2, duration: 0});
+                }
+            } finally { console.warn = warn; }
+            m.remove(); el.remove();
+            const names = ['logoPosition', 'validate', 'visualizePitch', 'container', 'speed and curve'];
+            return Object.fromEntries(names.map(n => [n, warns.filter(w => w.startsWith('[map-jr-gl]') && w.includes(n)).length]));
+        });
+        check('maplibre-compat: logoPosition, validate, visualizePitch, the container of FullscreenControl and speed/curve of flyTo each warn once',
+            Object.values(r).every(n => n === 1), JSON.stringify(r));
+    }
     // Two styles that are asked for one after the other: the last one wins, also when the first answers later, and
     // also when the first is the style of the constructor. The style, the layers and the pixels agree.
     {
