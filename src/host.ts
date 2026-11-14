@@ -113,6 +113,11 @@ export interface MapSpec extends MapSetup {
     /** The mouse cursor over the map. Without it, the cursor is a pointer over a feature of `interactiveLayers`. */
     cursor?: string;
     /**
+     * `true`: the wheel zooms the map only with Ctrl (⌘ on a Mac), one finger scrolls the page and two fingers move the
+     * map. A blocked gesture shows a hint over the map. For a map in a page that scrolls. The default is `false`.
+     */
+    cooperativeGestures?: boolean;
+    /**
      * Space in CSS pixels at the sides of the map that the view keeps free, for example under a side panel: one number
      * for all sides, or `{top, right, bottom, left}` (a side that is left out is 0). The centre of the view is the centre
      * of the rest of the map. The default is 0.
@@ -325,6 +330,18 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
     const check = (kind: number, a?: unknown, b?: unknown) => { if (__DEV__) checks().then(m => m.check(checked, kind, a, b), () => {}); };
     // The data that each source has from the description: the GeoJSON of `data`, and the markers of a marker layer.
     const sent = new globalThis.Map<string, unknown>();
+    // `cooperativeGestures`: the handler of the compat entry (cooperative-gestures.ts) loads on demand. Until it has
+    // loaded, the gestures are blocked without the hint. `stop` removes the hint; `cooperating` is the wanted state.
+    let cooperating = false, stop: (() => void) | undefined;
+    const canvasStyle = map.getCanvas().style, touchAction = canvasStyle.touchAction;
+    const cooperate = (on: boolean) => {
+        cooperating = on;
+        if (!on) { stop?.(); stop = map.gate = undefined; canvasStyle.touchAction = touchAction; return; }
+        canvasStyle.touchAction = 'pan-x pan-y';
+        map.gate = (type, e) => type === 'touch_pan' || !(e as WheelEvent)[navigator.userAgent.includes('Mac') ? 'metaKey' : 'ctrlKey'];
+        // (After the import, the field may be off again or the map destroyed.)
+        import('./cooperative-gestures.ts').then(m => { if (alive && cooperating && !stop) stop = m.cooperate(map); });
+    };
     // (The layers go to the style as copies: the map writes its edits into the style, and the description stays as the application gave it.)
     const copy = <T>(v: T): T => JSON.parse(JSON.stringify(v));
     // The sources of the base style: an extend source with one of these ids replaces it, and only a new style gives it back.
@@ -486,6 +503,7 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
                 });
             }
         }
+        if (!next.cooperativeGestures !== !before?.cooperativeGestures) cooperate(!!next.cooperativeGestures);
         if (differ(next.interactiveLayers, before?.interactiveLayers)) hover();
         check(2, next, before);
         now = next;
@@ -512,7 +530,7 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
             complete(next, 'update', `update() takes the complete description, not only the changed fields. Write map.update({...description, ${Object.keys(next ?? {})[0] ?? 'field'}: …}).`);
             if (alive) apply(next, now);
         },
-        destroy() { if (!alive) return; alive = false; map.remove(); },
+        destroy() { if (!alive) return; alive = false; cooperate(false); map.remove(); },
         state,
         queryFeatures,
         clusterExpansionZoom: (id, clusterId) => cluster('clusterExpansionZoom', id, s => s.getClusterExpansionZoom(clusterId)),

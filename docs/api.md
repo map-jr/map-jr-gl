@@ -128,6 +128,7 @@ The library compares each field with the field of the last description:
 | `onClick` | A function that is called for a click, with `point`, `lngLat` and `features`. |
 | `onError` | A function that is called with each error of the map (an `Error`): a style or a source that does not load, a mistake in a style edit, a failure of the renderer. Use it to send errors to your error tracker. Without it, the map writes each error to the console with `console.error`. |
 | `minZoom`, `maxZoom`, `maxPitch`, `maxBounds` | The limits of the camera. `maxBounds` keeps the whole view inside the bounds, as MapLibre GL JS does: the canvas less the padding, with no regard to bearing and pitch. When the bounds are smaller than that view, the zoom rises until they fill it. A west edge east of the east edge (for example `[[150, -50], [-120, 10]]`) gives bounds that cross the antimeridian. |
+| `cooperativeGestures` | `true`: the wheel zooms the map only with Ctrl (⌘ on a Mac), one finger scrolls the page and two fingers move the map. A blocked gesture shows a hint over the map. The default is `false`. `update()` can turn it on and off. |
 | `cursor` | The mouse cursor over the map. Without it, the cursor is a pointer over a feature of `interactiveLayers`. |
 | `padding` | Space in CSS pixels at the sides of the map that the view keeps free, for example under a side panel: one number for all sides, or `{top, right, bottom, left}` (a side that is left out is 0). The centre of the view is the centre of the rest of the map. The default is 0. A change moves the camera at once (as `setPadding` of MapLibre GL JS). It is not the `padding` of `initialView`, which is space around `bounds` for the fit at the start only. |
 
@@ -144,9 +145,8 @@ These fields are read only when the map is made:
 | `attribution` | `false` to show the credits yourself, or options for the built-in credits. |
 | `hash` | Keeps the view in the fragment of the URL. |
 
-The main API has no field for cooperative gestures yet. With `interactive: false`, a touch on the map scrolls the
-page. The option `cooperativeGestures` (Ctrl + wheel to zoom, two fingers to move the map) is in the compat entry
-(`@map-jr/map-jr-gl/maplibre-compat`); see [MapLibre compatibility](maplibre-compatibility.md).
+For a map in a page that scrolls, set `cooperativeGestures: true` (see the table of fields above), or
+`interactive: false` for a map that the user cannot move.
 
 ## Your own layers on a style from a URL
 

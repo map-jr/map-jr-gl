@@ -835,6 +835,21 @@ for (const renderer of ['worker', 'main']) {
         await page.mouse.click(ovBox.x, ovBox.y); await page.waitForTimeout(500);
         const overlayClicks = await page.evaluate(() => { const t = window.t, n = t.clicks.length; t.ov.remove(); return n; });
         check(`[${renderer}] a click on an overlay does not call onClick`, overlayClicks === 0, JSON.stringify({overlayClicks}));
+        // `cooperativeGestures` (#41): a plain wheel does not zoom and shows the hint; Ctrl + wheel zooms; update() turns it off.
+        const zoomNow = () => page.evaluate(() => window.t.host.state.get().view.zoom);
+        const wheel = async (ctrl) => { const z = await zoomNow(); await page.mouse.move(450, 300); if (ctrl) await page.keyboard.down('Control'); await page.mouse.wheel(0, -300); if (ctrl) await page.keyboard.up('Control'); await page.waitForTimeout(900); return Math.abs(await zoomNow() - z) > 0.01; };
+        const zoom0 = await zoomNow();
+        await page.evaluate(() => { const t = window.t; t.host.update(t.spec = {...t.spec, cooperativeGestures: true}); });
+        await page.waitForTimeout(500);
+        const plainOn = await wheel(false);
+        const coop = await page.evaluate(() => ({hint: document.querySelectorAll('#host .map-jr-cooperative-gesture-screen').length, touch: document.querySelector('#host canvas').style.touchAction}));
+        const ctrlOn = await wheel(true);
+        await page.evaluate(() => { const t = window.t; t.host.update(t.spec = {...t.spec, cooperativeGestures: false}); });
+        const plainOff = await wheel(false);
+        const off = await page.evaluate(() => document.querySelectorAll('#host .map-jr-cooperative-gesture-screen').length);
+        await page.evaluate(z => window.t.host.moveTo({zoom: z}), zoom0); await page.waitForTimeout(300);
+        check(`[${renderer}] cooperativeGestures: a plain wheel does not zoom and the hint is there, Ctrl + wheel zooms, and update() turns it off`,
+            !plainOn && ctrlOn && plainOff && coop.hint === 1 && coop.touch === 'pan-x pan-y' && off === 0, JSON.stringify({plainOn, ctrlOn, plainOff, ...coop, off}));
 
         // 5b. One method to find features, and the same question kept up to date.
         const found = await page.evaluate(async () => {
