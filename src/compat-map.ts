@@ -34,6 +34,7 @@ export interface Map {
     getStyle(): StyleSpecification;
 }
 declare const __VERSION__: string; // the version of package.json, set by the build
+declare const __DEV__: boolean;
 /** The fields that a camera method copies onto the events of its move, as `eventData` in MapLibre GL JS. */
 type EventData = Record<string, unknown>;
 export class Map extends CoreMap {
@@ -440,4 +441,12 @@ export class Map extends CoreMap {
     /** The last `mousemove`, and the one whose listeners run now (see `queryRenderedFeatures`). */
     private lastMove?: {data: Record<string, unknown>; again?: boolean};
     private inMove?: {data: Record<string, unknown>; again?: boolean};
+    // The map of MapLibre GL JS has a `painter`, and some code reads it to check for WebGL (#205). This map has none.
+    // In the development build only, reading it warns once per map; the value stays `undefined`.
+    static {
+        if (__DEV__) Object.defineProperty(this.prototype, 'painter', {configurable: true, get(this: Map) {
+            if (this.warned && !this.warned.has('painter')) this.warned.add('painter'), console.warn('[map-jr-gl] map.painter does not exist in @map-jr/map-jr-gl/maplibre-compat. To check for WebGL, use supported(); a failed start fires "error" with a GPUInitializationError.');
+            return undefined;
+        }});
+    }
 }
