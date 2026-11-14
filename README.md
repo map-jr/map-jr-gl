@@ -50,15 +50,15 @@ These figures are written by `pnpm status`. They compare this library with MapLi
 
 | Measure | Result |
 |---|---|
-| Unit tests | 79 pass, 0 fail |
+| Unit tests | 83 pass, 0 fail |
 | MapLibre expression tests | 330 of 425 pass |
 | MapLibre `Map` methods | 118 of 150 are available; 12 more are accepted and have no effect |
 | MapLibre plugins, run in a browser | 15 of 15 work (see [Plugins and frameworks](docs/ecosystem.md)) |
 | Plugins and frameworks, read from npm | 17 of 26 use only API that the library has |
 | Example pages of the MapLibre documentation, with this library in place of MapLibre | 110 of 142 work. Most of the others need a globe, another projection or a custom 3D layer. |
 | MapLibre render tests | 821 of 1429 are the same (1% of pixels or less are different). 278 more are near (5% or less). |
-| Page script (gzip) | 37 KB. MapLibre GL JS: 299 KB. |
-| Worker script (gzip) | 64 KB. MapLibre GL JS: 145 KB. |
+| Page script (gzip) | 38 KB. MapLibre GL JS: 299 KB. |
+| Worker script (gzip) | 65 KB. MapLibre GL JS: 145 KB. |
 | Server renderer (gzip) | 39 KB |
 <!-- status:end -->
 
@@ -401,19 +401,19 @@ build and other configurations.
 ## Speed
 
 <!-- speed:start -->
-Measured by the workflow [Browsers](https://github.com/map-jr/map-jr-gl/tree/bench-results) on 2026-11-14 (commit 7be98bc). Each cell is MapLibre GL JS 6.17.0 / **this library** (worker renderer where the browser has it).
+Measured by the workflow [Browsers](https://github.com/map-jr/map-jr-gl/tree/bench-results) on 2026-11-14 (commit 15956de). Each cell is MapLibre GL JS 6.17.0 / **this library** (worker renderer where the browser has it).
 
 | System, browser | Load to idle, ms | Frames per second, map moving | Frames per second, 10,000 markers |
 |---|---|---|---|
-| macOS, Chromium | 1748 / **900** | 34 / **33** | 1 / **36** |
-| macOS, Firefox | 7119 / **7125** | 2 / **63** | 2 / **15** |
-| macOS, WebKit | 3993 / **1214** | 47 / **49** | 2 / **47** |
-| Linux, Chromium | 896 / **1378** | 11 / **8** | 2 / **10** |
-| Linux, Firefox | 1470 / **1133** | 22 / **18** | 5 / **15** |
-| Linux, WebKit | 2111 / **844** | 16 / **16** | 2 / **15** |
-| Windows, Chromium | 1255 / **1558** | 42 / **29** | 2 / **33** |
-| Windows, Firefox | 1186 / **1686** | 38 / **27** | 5 / **27** |
-| Windows, WebKit | 1704 / **1436** | 14 / **15** | 2 / **14** |
+| macOS, Chromium | 1156 / **599** | 28 / **25** | 5 / **27** |
+| macOS, Firefox | 6432 / **4613** | 3 / **6** | 3 / **9** |
+| macOS, WebKit | 2299 / **814** | 58 / **54** | 2 / **55** |
+| Linux, Chromium | 648 / **818** | 13 / **12** | 2 / **10** |
+| Linux, Firefox | 1526 / **865** | 22 / **18** | 6 / **16** |
+| Linux, WebKit | 1943 / **819** | 17 / **17** | 3 / **15** |
+| Windows, Chromium | 688 / **1268** | 47 / **39** | 3 / **42** |
+| Windows, Firefox | 1002 / **1036** | 31 / **27** | 6 / **28** |
+| Windows, WebKit | 1001 / **926** | 27 / **25** | 5 / **22** |
 <!-- speed:end -->
 
 These computers are virtual machines, and those for Linux and Windows have no GPU: use the table to compare the
