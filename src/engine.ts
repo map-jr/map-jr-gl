@@ -184,7 +184,7 @@ export class Engine {
     private sprite: Sprite | null = null;
     private spriteUrl = '';
     private styleFonts = '';
-    private images = new Map<string, SpriteIcon & {custom: true; data: Uint8Array}>();
+    private images = new Map<string, SpriteIcon & {custom: true}>();
     private missing = new Set<string>();
     /** The images of the map changed (`iconsRev` counts the changes): the icons that the tiles have in buffers are made again. */
     private iconsRev = 0;
@@ -709,7 +709,7 @@ export class Engine {
             case 'image': {
                 this.dropImage(c.name);
                 const rect = this.addSprite(c.w, c.h, c.data);
-                if (rect) this.images.set(c.name, {x: rect[0], y: rect[1], width: c.w, height: c.h, pixelRatio: c.w / c.width, custom: true, data: c.data, stretchX: c.stretchX, stretchY: c.stretchY, content: c.content, textFitWidth: c.textFitWidth, textFitHeight: c.textFitHeight});
+                if (rect) this.images.set(c.name, {x: rect[0], y: rect[1], width: c.w, height: c.h, pixelRatio: c.w / c.width, custom: true, stretchX: c.stretchX, stretchY: c.stretchY, content: c.content, textFitWidth: c.textFitWidth, textFitHeight: c.textFitHeight});
                 this.styleVersion++;
                 this.placeDirty = true; this.iconsRev++;
                 break;
@@ -794,7 +794,7 @@ export class Engine {
         return [at[0], at[1], w, h];
     }
     /**
-     * Places all images again in an empty texture and uploads them, then takes a place for an image of `w` by `h`.
+     * Places all images again in an empty texture, moving their pixels on the GPU, then takes a place for an image of `w` by `h`.
      * Free places that share only part of an edge do not join, so a texture that is mostly free can have no place.
      */
     private repack(w: number, h: number): [number, number] | null {
@@ -802,7 +802,7 @@ export class Engine {
         const space = new AtlasSpace(SPRITE_ATLAS), at = space.repack([...list.map(m => [m.width, m.height] as [number, number]), [w, h]]);
         if (!at) return null; // (the images stay where they are)
         this.space = space;
-        list.forEach((m, i) => { m.x = at[i][0]; m.y = at[i][1]; this.renderer.uploadSprite(m.x, m.y, m.width, m.height, m.data); });
+        this.renderer.moveSprites(list.map((m, i) => [m.x, m.y, m.x = at[i][0], m.y = at[i][1], m.width, m.height]));
         this.iconsAll = true;
         return at[list.length];
     }
