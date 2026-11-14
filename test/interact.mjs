@@ -561,8 +561,17 @@ for (const mode of ['main', 'worker']) {
         const one = m.getFeatureState(f);
         m.removeFeatureState({source: 'omt'});
         await new Promise(r => setTimeout(r, 400));
-        return {both, one, none: m.getFeatureState(f), unread, read, idle, sent};
+        // A text id on a vector source has no effect: one warning (#207). A string of digits gives no warning.
+        const warn = console.warn, warned = [];
+        console.warn = msg => warned.push(String(msg));
+        m.setFeatureState({source: 'omt', sourceLayer: 'building', id: '7'}, {hover: true});
+        m.setFeatureState({source: 'omt', sourceLayer: 'building', id: 'abc'}, {hover: true});
+        m.setFeatureState({source: 'omt', sourceLayer: 'building', id: 'def'}, {hover: true});
+        console.warn = warn;
+        m.removeFeatureState({source: 'omt'});
+        return {both, one, none: m.getFeatureState(f), unread, read, idle, sent, warned};
     });
+    check(`[${mode}] setFeatureState with a text id on a vector source warns once`, fs.warned.length === 1 && /setFeatureState\(\): the source "omt"/.test(fs.warned[0]), JSON.stringify(fs.warned));
     check(`[${mode}] feature state is set, merged and removed, and the map is idle after a state that no layer reads`, fs.both.hover === true && fs.both.picked === 1 && !('hover' in fs.one) && fs.one.picked === 1 && Object.keys(fs.none).length === 0 && fs.idle, JSON.stringify(fs));
     if (mode === 'main') check('[main] setFeatureState builds tiles again only when a layer of the source reads feature state', fs.unread === 0 && fs.read > 0, JSON.stringify({unread: fs.unread, read: fs.read}));
     if (mode === 'main') check('[main] setFeatureState sends the tile workers only the state that changed', fs.sent.length > 0 && fs.sent[0] < 200, JSON.stringify(fs.sent));

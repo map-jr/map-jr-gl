@@ -57,6 +57,7 @@ export function parseFontName(name: string): {family: string; weight: number; st
 }
 
 /** What the network gave for a source of a style (its TileJSON, its GeoJSON, the header of its archive), by source object. */
+const told = new WeakSet<object>();
 const fetched = new WeakMap<object, {url: string; p: Promise<any>; v?: any; err?: any; told?: boolean; late?: () => void}>();
 /** Puts data that the map fetched itself (`setData` with a URL) in the place of the kept result of a source. */
 export function keep(raw: object, url: string, v: unknown) { fetched.set(raw, {url, p: Promise.resolve(v), v}); }
@@ -122,6 +123,8 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
             if (!fetched.has(raw)) { fetched.set(raw, {url: '', p: Promise.resolve(), err: 1}); bad(new Error(`[map-jr-gl] The source "${name}" has no "tiles" and no "url". Give it one of them.`)); }
             return;
         }
+        // (Once for the source object, as above.)
+        if (raw.promoteId != null && !told.has(raw)) { told.add(raw); console.warn(`[map-jr-gl] The source "${name}": "promoteId" has no effect on ${raw.type} sources. Feature state needs the numeric id of the feature in the tile.`); }
         let src = raw;
         if (typeof src.url === 'string' && src.url.startsWith(PM_PREFIX)) {
             // A PMTiles archive: its header supplies the zoom range, and tiles are addressed inside the archive.
