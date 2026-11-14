@@ -708,3 +708,14 @@ test('server: the credits of the first view keep text and http(s) links only', (
         assert.ok(!out.includes('javascript:'), `${bad} -> ${out}`);
     }
 });
+
+test('geojson: a line that crosses 180° of longitude is sliced into the tiles on both sides', async () => {
+    const {prepareGeoJSON, sliceGeoJSON} = await import('../../src/geojson.ts');
+    const src = prepareGeoJSON({type: 'Feature', properties: {}, geometry: {type: 'LineString', coordinates: [[121, 31], [200, 40], [241, 34]]}});
+    // At zoom 1, tile (0, 0) covers -180..0 and holds the part of the line from 180 to 241, shifted by one world.
+    assert.ok(Object.values(sliceGeoJSON(src, 1, 0, 0))[0]?.features.length, 'the part past 180° is in the western tile');
+    assert.ok(Object.values(sliceGeoJSON(src, 1, 1, 0))[0]?.features.length);
+    // A line west of -180° is in the eastern tiles.
+    const neg = prepareGeoJSON({type: 'Feature', properties: {}, geometry: {type: 'LineString', coordinates: [[-200, 10], [-190, 20]]}});
+    assert.ok(Object.values(sliceGeoJSON(neg, 1, 1, 0))[0]?.features.length, 'the part west of -180° is in the eastern tile');
+});
