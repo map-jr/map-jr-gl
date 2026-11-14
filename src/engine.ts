@@ -13,6 +13,7 @@ import {decodeElevation, sampleElevation, tilesUnderBox, type QueriedFeature, ty
 import type {FeatureStates, TileBackend, TileRequest} from './tiles.ts';
 import type {TileGL} from './tile.ts';
 import {fetchTile, heads} from './pmtiles.ts';
+import {lateTiles, logTile, trackView, undrawnTiles, type TileTimes} from './tile-report.ts';
 
 export interface CameraOptions { center?: LngLatLike; zoom?: number; bearing?: number; pitch?: number; /** Space at the edges covered by other things: top, right, bottom, left. */ padding?: [number, number, number, number] }
 export type {FontSource} from './style.ts';
@@ -66,7 +67,9 @@ export type Command =
     /** Asks for a `frame` event after each frame that is drawn (for the `render` event of the map). */
     | {type: 'frames'; on: boolean}
     /** Asks for a `pong` event with the same number after the next frame that the engine has drawn to its end. */
-    | {type: 'ping'; n: number};
+    | {type: 'ping'; n: number}
+    /** For the benchmark page (#360): `on: 'start'` starts the history of each tile, and `'mark'` marks the start of a movement. Without `on`, the answer has the slots of the view that are not drawn and the tiles drawn late since the mark (see tile-report.ts). */
+    | {type: 'tileReport'; id: number; on?: 'start' | 'mark'};
 export type EngineEvent =
     | {type: 'camera'; lng: number; lat: number; zoom: number; bearing: number; pitch: number; /** Ground height at the centre with 3D terrain, else 0. */ elevation: number; exaggeration: number; groundRange?: [number, number]; padding: [number, number, number, number]; moving: boolean}
     | {type: 'idle'; seq: number}
@@ -179,6 +182,13 @@ export class Engine {
     private style!: ResolvedStyle;
     private layers: CompiledLayer[] = [];
     private tiles = new Map<string, TileState>();
+    /** The history of each tile and the tile ids of the view in the last frame, kept only while the benchmark page asks (#360). */
+    private tileLog?: Map<string, string[]>;
+    private tileLogStart = 0;
+    private tileTimes = new Map<string, TileTimes>();
+    private tileMark = 0;
+    private lastIdeal = new Map<string, TileID[]>();
+    private logTile(key: string, event: string) { if (this.tileLog) logTile(this.tileLog, key, event, performance.now() - this.tileLogStart, this.tileTimes); }
     private frameNo = 0;
     /** The layers whose fonts the glyph atlas has looked up (see `GlyphAtlas.warm`). */
     private warmed?: CompiledLayer[];
@@ -699,7 +709,7 @@ export class Engine {
     command(c: Command) {
         const tr = this.tr;
         // Whatever was asked, report when the map has settled again, so callers can wait on any change.
-        if (c.type !== 'query' && c.type !== 'elevation' && c.type !== 'queryRendered' && c.type !== 'ping') this.wasIdle = false;
+        if (c.type !== 'query' && c.type !== 'elevation' && c.type !== 'queryRendered' && c.type !== 'ping' && c.type !== 'tileReport') this.wasIdle = false;
         // (The page numbers its commands. `idle` and `source` carry the last number, so that the page can tell a report
         // about a state from before its last command.)
         const seq = (c as {seq?: number}).seq;
@@ -855,6 +865,13 @@ export class Engine {
             case 'ping': this.pinged = c.n; break; // (and a frame follows)
             case 'requests': this.rules = c.rules; for (const b of this.backends) b.setRequests(c.rules, this.ask); break;
             case 'resourceResult': this.asked.get(c.id)?.(c); this.asked.delete(c.id); break;
+            case 'tileReport': {
+                if (c.on === 'start') { this.tileLog = new Map(); this.tileTimes.clear(); this.tileLogStart = performance.now(); }
+                const ms = performance.now() - this.tileLogStart;
+                if (c.on === 'mark') this.tileMark = ms;
+                this.emit({type: 'result', id: c.id, value: c.on || !this.tileLog ? null : {undrawn: this.undrawn(), late: lateTiles(this.tileTimes, this.tileMark)}});
+                return;
+            }
         }
         this.repaint();
     }
@@ -1090,7 +1107,14 @@ export class Engine {
         return !!(this.ease || (this.wheel && this.wheel.doneAt === undefined) || glide);
     }
 
+    /** For the benchmark page (#360): the slots of the view in the last frame that have no tile of their own drawn. */
+    private undrawn() {
+        const drawn = (k: string) => { const t = this.tiles.get(k); return t?.state === 'ok' && !t.missing; };
+        return undrawnTiles(this.lastIdeal, drawn, k => this.tiles.get(k)?.state, this.tileLog!);
+    }
+
     private dropTile(key: string, t: TileState) {
+        this.logTile(key, t.state === 'loading' ? 'cancelled' : 'evicted');
         if (t.state === 'loading') t.cancel();
         if (t.gl) this.renderer.destroyTile(t.gl);
         this.tiles.delete(key);
@@ -1130,6 +1154,7 @@ export class Engine {
         const t: TileState = {state: 'loading', used: this.frameNo, cancel() {}};
         this.tiles.set(key, t);
         t.rev = ++this.tilesVersion;
+        this.logTile(key, 'requested');
         let load: Promise<GLTile>;
         const b = src.bounds, n = 2 ** id.z;
         // A tile outside the bounds of the source is empty, without a request.
@@ -1137,7 +1162,7 @@ export class Engine {
         else if (isGeometrySource(src)) {
             const backend = this.backends[t.backend = this.nextBackend++ % this.backends.length], req = this.nextReq++;
             t.cancel = () => backend.cancel(req);
-            load = backend.load(this.build(req, source, id, t)).then(tile => this.upload(tile));
+            load = backend.load(this.build(req, source, id, t)).then(tile => (this.logTile(key, 'answered'), this.upload(tile)));
         } else {
             // Elevation tiles are decoded in a tile worker, which also reads the heights that 3D terrain needs: this thread
             // only sends the finished pixels to the GPU. (Reading pixels back here made the map hitch as tiles arrived.)
@@ -1166,6 +1191,7 @@ export class Engine {
         }
         load.then(gl => {
             if (this.tiles.get(key) !== t) return;
+            this.logTile(key, t.missing ? 'missing' : 'uploaded');
             t.gl = gl;
             t.state = 'ok';
             t.rev = ++this.tilesVersion;
@@ -1173,6 +1199,7 @@ export class Engine {
             if (t.used >= 0) this.invalidate(); else t.used = this.frameNo;
         }, err => {
             if (this.tiles.get(key) !== t) return;
+            this.logTile(key, 'failed: ' + err.message);
             t.state = 'error';
             t.rev = ++this.tilesVersion;
             if (err.message !== 'aborted' && err.name !== 'AbortError') this.emit({type: 'error', message: err.message});
@@ -1307,6 +1334,7 @@ export class Engine {
             } else this.rawElevation = 0;
         }
         const ground = terrain ? this.terrainTiles(wanted) : undefined;
+        this.lastIdeal.clear();
         for (const source in this.style.sources) {
             // Skip sources nothing visible draws from at this zoom (e.g. low-zoom relief imagery when zoomed in). With 3D
             // terrain, the flat layers are drawn into the ground textures, which ask for their own tiles (see groundSources):
@@ -1329,6 +1357,7 @@ export class Engine {
             // ground is flat: relief shading then looks the same as on a tilted map, and a tilt loads no other tiles.)
             const ground = this.style.terrain?.source === source;
             const ideal = tr.coveringTiles(src.minzoom, src.maxzoom, ground ? src.tileSize * 2 : src.tileSize, !ground && (src.type === 'raster' || src.type === 'raster-dem'));
+            if (this.tileLog) this.lastIdeal.set(source, ideal);
             for (const id of ideal) {
                 const key = source + '|' + id.key;
                 wanted.add(key);
@@ -1405,6 +1434,7 @@ export class Engine {
             items.set(source, list);
             all.push(...list);
         }
+        if (this.tileLog) trackView(this.tileTimes, this.undrawn(), this.lastIdeal, performance.now() - this.tileLogStart);
         for (const key of this.early) if (this.tiles.get(key)?.state !== 'loading') this.early.delete(key);
         for (const [key, t] of this.tiles) {
             if (t.state === 'loading' && !wanted.has(key) && !this.early.has(key)) this.dropTile(key, t);

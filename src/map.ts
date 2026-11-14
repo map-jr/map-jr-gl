@@ -554,7 +554,7 @@ export class Map {
     /** @internal Sends a command to the engine. */
 
     private post(c: Command, transfer?: Transferable[]) {
-        if (c.type !== 'query' && c.type !== 'elevation' && c.type !== 'queryRendered' && c.type !== 'frames') { this.tilesLoaded = false; (c as {seq?: number}).seq = ++this.seq; }
+        if (c.type !== 'query' && c.type !== 'elevation' && c.type !== 'queryRendered' && c.type !== 'frames' && c.type !== 'tileReport') { this.tilesLoaded = false; (c as {seq?: number}).seq = ++this.seq; }
         if (this.ready) this.deliver(c, transfer); else this.queue.push([c, transfer]);
     }
     /** Sends a command. A value that structured clone refuses (a Vue reactive proxy, #242) is sent as a JSON copy. */
@@ -1317,6 +1317,12 @@ export class Map {
             if (this.removed) this.drop('was removed'); else this.post(command(id));
         });
     }
+    /**
+     * @internal For the benchmark page (#360). `'start'` starts the history of each tile in the engine, and `'mark'`
+     * marks the start of a movement. Without an argument, the answer has the tile slots of the view that are not drawn,
+     * with their history, and the tiles that came into view after the mark and were drawn late (see src/tile-report.ts).
+     */
+    _tileReport(on?: 'start' | 'mark') { return this.ask<{undrawn: import('./tile-report.ts').UndrawnTile[]; late: import('./tile-report.ts').LateTile[]} | null>(id => ({type: 'tileReport', id, on})); }
     /** Rejects the queries that have no answer yet. The engine that had them is gone, so no answer can come. */
     private drop(why: string) {
         for (const p of this.pending.values()) p.reject(new Error(`[map-jr-gl] The query has no answer: the map ${why}.`));
