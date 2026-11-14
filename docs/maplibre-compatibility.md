@@ -40,7 +40,7 @@ The [status table](../README.md#status) gives the current test results.
 
 | Subject | MapLibre GL JS | This library |
 |---|---|---|
-| Text | Reads glyph files from the `glyphs` URL. | The same: glyphs and their widths come from the glyph files. Three cases use the fonts of the browser: a character that the files do not have (most ideographs, emoji), text that the browser must shape (Arabic, Hebrew, Indic scripts), and a map with `glyphs: false` or with `fonts`. A label waits for its glyph file, as in MapLibre GL JS. |
+| Text | Reads glyph files from the `glyphs` URL. | The same: glyphs and their widths come from the glyph files. Three cases use the fonts of the browser: a character that the files do not have (most ideographs, emoji), text that the browser must shape (Arabic, Hebrew, Indic scripts), and a map with `glyphs: false` or with `fonts`. A label waits for its glyph file, as in MapLibre GL JS. The map requests the file of the first 256 characters (`0-255`) of each font stack of the symbol layers in view when it starts, at the same time as the first tiles; MapLibre GL JS requests a glyph file only once a tile needs it. |
 | Text on lines | Each character follows the line. The style sets the largest angle. | Each character follows the line. A label does not show where the line turns more than about 35 degrees between characters. |
 | Order of symbol layers | A symbol layer draws at its position in the layer list. | All symbol layers draw above all other layers. |
 | Label placement | Changes gradually, tile by tile. | The library decides about four times each second. Labels fade between decisions. |
