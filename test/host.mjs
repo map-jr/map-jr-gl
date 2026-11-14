@@ -368,6 +368,26 @@ for (const renderer of ['worker', 'main']) {
             await wait(500);
             return {full, asked, broken: t.imageErrors.slice(before)};
         });
+        // A new image that finds no free place makes the map place its images again in an empty texture (#27): two large
+        // images fill two rows, the first goes, and a wider one does not fit in its place. The map reports nothing, and
+        // the squares that were placed before are drawn from their new places.
+        const repack = await page.evaluate(async () => {
+            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), r = devicePixelRatio, before = t.imageErrors.length;
+            const block = (w, h) => ({image: `<svg viewBox="0 0 ${w} ${h}"><rect width="${w}" height="${h}" fill="#888"/></svg>`, width: w / r, height: h / r});
+            const base = {tile: t.square('{{colour}}')};
+            t.host.update(t.spec = {...t.spec, style: t.tiles('tile'), images: base});
+            await wait(1500);
+            t.host.update(t.spec = {...t.spec, images: {...base, a: block(1200, 900), b: block(1200, 900)}});
+            await wait(1500);
+            t.host.update(t.spec = {...t.spec, images: {...base, b: block(1200, 900)}});
+            await wait(800);
+            t.host.update(t.spec = {...t.spec, images: {...base, b: block(1200, 900), c: block(1500, 900)}});
+            await wait(1500);
+            return t.imageErrors.slice(before);
+        });
+        const afterRepack = await becomes('#f0f #f0f #0ff #0ff');
+        check(`[${renderer}] a new image that finds no free place in the texture of the images makes the map place its images again, and they are drawn`,
+            repack.length === 0 && afterRepack === '#f0f #f0f #0ff #0ff', JSON.stringify({repack, afterRepack}));
         // More different values than the limit: one error names the image, and the map goes on.
         const many = await page.evaluate(async () => {
             const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), c = t.host.unproject({x: 450, y: 300}), before = t.imageErrors.length;

@@ -184,7 +184,7 @@ export class Engine {
     private sprite: Sprite | null = null;
     private spriteUrl = '';
     private styleFonts = '';
-    private images = new Map<string, SpriteIcon & {custom: true}>();
+    private images = new Map<string, SpriteIcon & {custom: true; data: Uint8Array}>();
     private missing = new Set<string>();
     /** The images of the map changed (`iconsRev` counts the changes): the icons that the tiles have in buffers are made again. */
     private iconsRev = 0;
@@ -709,7 +709,7 @@ export class Engine {
             case 'image': {
                 this.dropImage(c.name);
                 const rect = this.addSprite(c.w, c.h, c.data);
-                if (rect) this.images.set(c.name, {x: rect[0], y: rect[1], width: c.w, height: c.h, pixelRatio: c.w / c.width, custom: true, stretchX: c.stretchX, stretchY: c.stretchY, content: c.content, textFitWidth: c.textFitWidth, textFitHeight: c.textFitHeight});
+                if (rect) this.images.set(c.name, {x: rect[0], y: rect[1], width: c.w, height: c.h, pixelRatio: c.w / c.width, custom: true, data: c.data, stretchX: c.stretchX, stretchY: c.stretchY, content: c.content, textFitWidth: c.textFitWidth, textFitHeight: c.textFitHeight});
                 this.styleVersion++;
                 this.placeDirty = true; this.iconsRev++;
                 break;
@@ -779,10 +779,11 @@ export class Engine {
         this.iconsAll = true;
         this.space.give(img.x, img.y, img.width, img.height);
         this.images.delete(name);
+        this.atlasFull = false;
     }
     /** Copies an image into the dynamic atlas shared by markers and runtime-added icons. */
     private addSprite(w: number, h: number, data: Uint8Array): [number, number, number, number] | null {
-        const at = this.space.take(w, h);
+        const at = this.space.take(w, h) ?? this.repack(w, h);
         if (!at) {
             // (One message, not one for each image that follows.)
             if (!this.atlasFull) this.emit({type: 'error', message: '[map-jr-gl] The texture of the images is full, so this image and the images after it are not drawn. Use fewer or smaller images. (An SVG template is drawn one time for each different set of values.)'});
@@ -791,6 +792,19 @@ export class Engine {
         }
         this.renderer.uploadSprite(at[0], at[1], w, h, data);
         return [at[0], at[1], w, h];
+    }
+    /**
+     * Places all images again in an empty texture and uploads them, then takes a place for an image of `w` by `h`.
+     * Free places that share only part of an edge do not join, so a texture that is mostly free can have no place.
+     */
+    private repack(w: number, h: number): [number, number] | null {
+        const list = [...this.images.values()];
+        const space = new AtlasSpace(SPRITE_ATLAS), at = space.repack([...list.map(m => [m.width, m.height] as [number, number]), [w, h]]);
+        if (!at) return null; // (the images stay where they are)
+        this.space = space;
+        list.forEach((m, i) => { m.x = at[i][0]; m.y = at[i][1]; this.renderer.uploadSprite(m.x, m.y, m.width, m.height, m.data); });
+        this.iconsAll = true;
+        return at[list.length];
     }
 
     // ---- queries: answered from tile data, independent of what is drawn ----
