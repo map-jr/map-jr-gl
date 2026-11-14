@@ -1,12 +1,14 @@
 // Types under the names that MapLibre GL JS uses, for TypeScript code that was written for MapLibre.
 // This file has types only, so it adds nothing to the built files.
 import type {Map} from './compat-map.ts';
-import type {MapEvent, RenderedFeature, RenderedQueryOptions, PaddingInput, RequestTransform, GeoJSONDiff} from './map.ts';
+import type {MapEvent as CoreMapEvent, MapOptions as CoreMapOptions, RenderedFeature, RenderedQueryOptions, PaddingInput, RequestTransform, GeoJSONDiff} from './map.ts';
 import type {CameraOptions} from './engine.ts';
+import type {CameraInput} from './map.ts';
 import type {Control} from './controls.ts';
 import type {LngLat, LngLatBounds, LngLatBoundsInput} from './lnglat.ts';
-import type {LayerJSON} from './resolve.ts';
 
+/** An event of the map. Its `target` is the map of this entry. */
+export type MapEvent = CoreMapEvent & {target: Map};
 /** The base of each map event. `originalEvent` is the DOM event that caused it, if there is one. */
 export type MapLibreEvent<T = unknown> = MapEvent & {originalEvent?: T};
 type Pointed<T> = MapEvent & {point: {x: number; y: number}; lngLat: LngLat; originalEvent: T; preventDefault(): void; readonly defaultPrevented: boolean};
@@ -50,6 +52,18 @@ export type MapEventType =
 /** The event that a listener of `map.on(type, layerId, listener)` gets. The library fires these four names for a layer. */
 export type MapLayerEventType = Each<'click' | 'mousemove' | 'mouseenter' | 'mouseleave', MapLayerMouseEvent>;
 
+/**
+ * The options of `new Map(options)`. The options of MapLibre GL JS that are listed here and not in the main API are
+ * accepted with no effect (see docs/maplibre-compatibility.md).
+ */
+export type MapOptions = CoreMapOptions & {
+    /** No effect: labels show and hide without a fade. */
+    fadeDuration?: number;
+    /** No effect: a drag with the right mouse button changes the bearing and the pitch. */
+    pitchWithRotate?: boolean;
+    /** No effect, and the map writes one warning when it is set. */
+    cooperativeGestures?: boolean | object;
+};
 export type IControl = Control;
 export type LngLatBoundsLike = LngLatBoundsInput;
 export type PaddingOptions = Exclude<PaddingInput, number>;
@@ -63,8 +77,9 @@ export type AddLayerObject = Omit<LayerSpecification, 'source'> & {source?: stri
 
 export type AnimationOptions = {duration?: number; around?: [number, number]};
 export type JumpToOptions = Parameters<Map['jumpTo']>[0];
-export type EaseToOptions = Parameters<Map['easeTo']>[0];
-export type FlyToOptions = Parameters<Map['flyTo']>[0];
+/** `essential: true` animates the change also when the user asked the system for less motion. */
+export type EaseToOptions = CameraInput & {duration?: number; around?: [number, number]; essential?: boolean};
+export type FlyToOptions = EaseToOptions;
 export type FitBoundsOptions = NonNullable<Parameters<Map['fitBounds']>[1]>;
 export type CameraForBoundsOptions = NonNullable<Parameters<Map['cameraForBounds']>[1]>;
 export type CenterZoomBearing = Pick<CameraOptions, 'center' | 'zoom' | 'bearing'>;
@@ -72,16 +87,38 @@ export type CenterZoomBearing = Pick<CameraOptions, 'center' | 'zoom' | 'bearing
 /** Style JSON. The library reads the style as MapLibre does; these types do not check each property. */
 export type ExpressionSpecification = [string, ...unknown[]];
 export type FilterSpecification = ExpressionSpecification | boolean;
-export type LayerSpecification = LayerJSON;
+/** A layer of the style. The properties of `paint` and `layout` are not checked. */
+export type LayerSpecification = {
+    id: string; type: string; source?: string | SourceSpecification; 'source-layer'?: string; minzoom?: number; maxzoom?: number;
+    filter?: any; paint?: Record<string, any>; layout?: Record<string, any>; metadata?: unknown;
+};
+/** A layer of one type. The names of `paint` and `layout` properties start with the type, as in MapLibre GL JS. */
+type LayerOf<T extends string, P extends string = T> = LayerSpecification & {type: T; source?: string; paint?: Record<`${P}-${string}`, any>; layout?: Partial<Record<`${P}-${string}` | 'visibility', any>>};
+export type BackgroundLayerSpecification = LayerOf<'background'>;
+export type FillLayerSpecification = LayerOf<'fill'>;
+export type FillExtrusionLayerSpecification = LayerOf<'fill-extrusion'>;
+export type LineLayerSpecification = LayerOf<'line'>;
+export type CircleLayerSpecification = LayerOf<'circle'>;
+export type HeatmapLayerSpecification = LayerOf<'heatmap'>;
+export type RasterLayerSpecification = LayerOf<'raster'>;
+export type HillshadeLayerSpecification = LayerOf<'hillshade'>;
+export type SymbolLayerSpecification = LayerSpecification & {type: 'symbol'; source?: string; paint?: Record<`${'text' | 'icon'}-${string}`, any>; layout?: Partial<Record<`${'text' | 'icon' | 'symbol'}-${string}` | 'visibility', any>>};
+/** The projection of a style. Only `mercator` is drawn; another projection writes one warning. */
+export type ProjectionSpecification = {type?: string | ExpressionSpecification};
 export type SourceSpecification = {type: string; [key: string]: unknown};
 export type TerrainSpecification = {source: string; exaggeration?: number};
-export type LightSpecification = {anchor?: 'map' | 'viewport'; position?: unknown; color?: unknown; intensity?: unknown};
+export type LightSpecification = {anchor?: 'map' | 'viewport'; position?: [number, number, number] | ExpressionSpecification; color?: string | ExpressionSpecification; intensity?: number | ExpressionSpecification};
 export type StyleSpecification = {
     version: 8; name?: string; sources: Record<string, SourceSpecification>; layers: LayerSpecification[];
     sprite?: string | {id: string; url: string}[]; glyphs?: string; terrain?: TerrainSpecification; light?: LightSpecification;
     center?: [number, number]; zoom?: number; bearing?: number; pitch?: number; metadata?: unknown; [key: string]: unknown;
 };
 export type StyleSetterOptions = {validate?: boolean};
+/**
+ * The options of `map.setStyle`. The map always replaces the whole style, so `diff` has no effect on the result.
+ * `transformStyle` gets the style before and the new style, and returns the style to use.
+ */
+export type StyleSwapOptions = {diff?: boolean; transformStyle?: (previous: any, next: any) => any};
 export type StyleImageMetadata = {pixelRatio?: number; sdf?: boolean; stretchX?: [number, number][]; stretchY?: [number, number][]; content?: [number, number, number, number]; textFitWidth?: string; textFitHeight?: string};
 
 /**

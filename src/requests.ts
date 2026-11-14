@@ -6,14 +6,14 @@
 export interface RequestRules { transform: boolean; protocols: string[] }
 /** The page's answer for one request: where and how to fetch it, or the data itself (from a protocol). */
 export interface RequestAnswer { url?: string; headers?: Record<string, string>; credentials?: RequestCredentials; data?: ArrayBuffer; error?: string }
-export type Ask = (url: string, kind: string) => Promise<RequestAnswer>;
+export type Ask = (url: string, kind: string, signal?: AbortSignal | null) => Promise<RequestAnswer>;
 
 /** A `fetch` that follows the rules: it asks first when the page has something to say about the request. */
 export function fetchWith(rules: () => RequestRules | undefined, ask: Ask, kind = 'Tile'): typeof fetch {
     return async (input, init) => {
         const url = String(input), r = rules();
         if (!r || !(r.transform || r.protocols.includes(url.slice(0, url.indexOf(':'))))) return fetch(input, init);
-        const a = await ask(url, kind);
+        const a = await ask(url, kind, init?.signal);
         if (a.error) throw new Error(a.error);
         if (a.data) return new Response(a.data);
         return fetch(a.url ?? url, {...init, headers: {...a.headers, ...(init?.headers as Record<string, string> | undefined)}, credentials: a.credentials});

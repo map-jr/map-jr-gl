@@ -759,6 +759,23 @@ export class GLRenderer {
         gl.bindTexture(gl.TEXTURE_2D, this.spriteTex);
         if (!this.spriteSized) { this.spriteSized = true; gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, SPRITE_ATLAS, SPRITE_ATLAS, 0, gl.RGBA, gl.UNSIGNED_BYTE, null); }
         gl.texSubImage2D(gl.TEXTURE_2D, 0, x, y, w, h, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+        // (The empty pixel to the right and below may hold an image that was there before: a filtered edge must not read it.)
+        const zero = new Uint8Array(4 * (Math.max(w, h) + 1));
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, x + w, y, 1, h + 1, gl.RGBA, gl.UNSIGNED_BYTE, zero);
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, x, y + h, w, 1, gl.RGBA, gl.UNSIGNED_BYTE, zero);
+    }
+
+    /** Moves images to new places in a new texture of the runtime images, each move [x, y, new x, new y, w, h], on the GPU. */
+    moveSprites(moves: number[][]) {
+        const gl = this.gl, old = this.spriteTex, fb = gl.createFramebuffer(), back = gl.getParameter(gl.FRAMEBUFFER_BINDING);
+        this.spriteTex = this.newTexture();
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, SPRITE_ATLAS, SPRITE_ATLAS, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, old, 0);
+        for (const [x, y, nx, ny, w, h] of moves) gl.copyTexSubImage2D(gl.TEXTURE_2D, 0, nx, ny, x, y, w, h);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, back);
+        gl.deleteFramebuffer(fb);
+        gl.deleteTexture(old);
     }
 
     /**

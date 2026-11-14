@@ -53,7 +53,14 @@ The props are the fields of the description of a map (see [the main API](api.md)
 | `className`, `style` | For the element of the component. |
 | `children` | Content over the map, and `MapOverlay` elements. |
 
-A ref on the component gets the map (for `queryFeatures`, `moveTo`, `fitBounds`).
+A ref on the component gets the map (the `MapHost` of [the main API](api.md), for `queryFeatures`, `moveTo`,
+`fitBounds`). The component creates the map in an effect, so the ref is `null` during the first render and in the
+effects of the parent that run at mount. Read the ref in an event handler or after `onLoad`, or put the code in a
+child component that calls `useMap()`.
+
+`ref.current.map` (and `useMap().map`) is the core map of the library, not the `Map` of
+`@map-jr/map-jr-gl/maplibre-compat`: it has no `setBearing`, `setZoom` or `flyTo`. See `map` in
+[the main API](api.md). In place of `flyTo`, call `moveTo({...view, duration})`: it eases the camera to the view.
 
 ### What you can make again in each render
 
@@ -79,6 +86,17 @@ function Zoom() {
 
 `useMapState` takes a function that returns a part of the state. Return a part as it is (`state.hover`,
 `state.view.zoom`), not a new object.
+
+To read the state once, in an event handler, without a new render on each change, call `state.get()` of the map:
+
+```jsx
+import {useMap} from '@map-jr/map-jr-gl/react';
+
+function ZoomIn() {
+  const map = useMap();
+  return <button onClick={() => map?.moveTo({zoom: map.state.get().view.zoom + 1, duration: 300})}>+</button>;
+}
+```
 
 ## Elements of the page on the map
 

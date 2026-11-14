@@ -2,10 +2,10 @@
 // These methods are here, and not in the core, because the main entry does not need them: other names for a camera
 // change, values that are fixed in this library, methods that only frameworks for MapLibre GL JS read, and query
 // results that are arrays and promises at the same time.
-import {Map as CoreMap, type MapOptions, type CameraInput, type PointLike, type RenderedFeature, type RenderedQueryOptions, type PaddingInput, type ImageOptions} from './map.ts';
+import {Map as CoreMap, type CameraInput, type PointLike, type RenderedFeature, type RenderedQueryOptions, type PaddingInput, type ImageOptions} from './map.ts';
 import type {QueriedFeature} from './query.ts';
 import type {LngLatLike} from './geo.ts';
-import type {AddLayerObject, GeoJSONFeature, MapGeoJSONFeature, MapEventType, MapLayerEventType, Source} from './compat-types.ts';
+import type {AddLayerObject, GeoJSONFeature, MapGeoJSONFeature, MapEventType, MapLayerEventType, Source, MapOptions, EaseToOptions, StyleSwapOptions} from './compat-types.ts';
 
 /**
  * The types of `on`, `once`, `off` and `getSource` as in MapLibre GL JS: the event of a listener follows from the name
@@ -27,6 +27,8 @@ export interface Map {
     off(type: string, listener: (e: any) => void): this;
     off(type: string, layerId: string, listener: (e: any) => void): this;
     getSource<T extends Source = Source>(id: string): T | undefined;
+    easeTo(o: EaseToOptions): this;
+    setStyle(style: unknown, options?: StyleSwapOptions): Promise<void>;
 }
 export class Map extends CoreMap {
     /** As in MapLibre GL JS: with no listener, `once` returns a promise for the event; a layer id makes it a layer event. */
@@ -79,6 +81,9 @@ export class Map extends CoreMap {
      * The options of MapLibre GL JS that this library does not have give one warning each, so that a change from that
      * library does not look complete when it is not.
      */
+    // (The first signature takes a variable of the type `MapOptions`; the second takes other options of MapLibre GL JS.)
+    constructor(options: MapOptions & {strict?: boolean});
+    constructor(options: MapOptions & {strict?: boolean; [option: string]: unknown});
     constructor(options: MapOptions & {strict?: boolean; [option: string]: unknown}) {
         const o = options as Record<string, any>, context = o.canvasContextAttributes;
         // (MapLibre GL JS has `antialias` in `canvasContextAttributes`.)
@@ -118,7 +123,7 @@ export class Map extends CoreMap {
         return user ? this.refused(`removeSource: the layer "${user.id}" uses the source "${id}". Remove the layer first.`) : super.removeSource(id);
     }
 
-    flyTo(o: CameraInput & {duration?: number}) { return this.easeTo({duration: 1200, ...o}); }
+    flyTo(o: EaseToOptions) { return this.easeTo({duration: 1200, ...o}); }
     /** Space at the edges covered by other things (a side panel, a header). The map centre moves to the middle of what is left. */
     setPadding(padding: PaddingInput) { return this.jumpTo({padding}); }
     getPadding() { const [top, right, bottom, left] = this.tr.padding; return {top, right, bottom, left}; }
@@ -254,8 +259,11 @@ export class Map extends CoreMap {
         }
         const result = features([...now]), given = this.summary(now);
         // Later: all the sources, from the engine.
-        const turn = this.turn, later = sets.length ? this.ask<QueriedFeature[]>(id => ({type: 'queryRendered', id, box, sets, geometry: true})).then(found => {
+        const turn = this.turn, move = this.inMove, later = sets.length ? this.ask<QueriedFeature[]>(id => ({type: 'queryRendered', id, box, sets, geometry: true})).then(found => {
             this.keep(key, found, turn);
+            // A `mousemove` listener read the array (react-map-gl does so for hover): while the pointer has not moved
+            // since, that `mousemove` fires again, and the same question then has the answer at once.
+            if (move && !awaited && this.summary(found) !== given) { if (move === this.lastMove && !move.again) { move.again = true; this.fire('mousemove', move.data); } return features([...found]); }
             if (!awaited && this.summary(found) !== given) this.incomplete('queryRenderedFeatures', now.length, found.length);
             // The array that the caller got at once was not the complete result. Code that reads the array asks again
             // on `idle` (and the map is idle, or will be): tell it, and the same question then has the answer at once.
@@ -316,7 +324,12 @@ export class Map extends CoreMap {
                 .then(found => this.keep(key, found, turn), () => {}).finally(() => this.asking.delete(key)));
             return this.asking.get(key);
         };
-        if (type === 'mousemove') { clearTimeout(this.resting); this.resting = setTimeout(warm, 50); }
+        if (type === 'mousemove') {
+            clearTimeout(this.resting); this.resting = setTimeout(warm, 50);
+            const move = this.lastMove?.data === data ? this.lastMove : this.lastMove = {data};
+            this.inMove = move;
+            try { return super.fire(type, data); } finally { this.inMove = undefined; }
+        }
         if (type === 'mousedown' || type === 'touchstart') warm();
         if (!/^(click|dblclick|contextmenu)$/.test(type)) return super.fire(type, data);
         const pending = warm();
@@ -327,4 +340,7 @@ export class Map extends CoreMap {
     }
     private asking = new globalThis.Map<string, Promise<void>>();
     private resting?: ReturnType<typeof setTimeout>;
+    /** The last `mousemove`, and the one whose listeners run now (see `queryRenderedFeatures`). */
+    private lastMove?: {data: Record<string, unknown>; again?: boolean};
+    private inMove?: {data: Record<string, unknown>; again?: boolean};
 }
