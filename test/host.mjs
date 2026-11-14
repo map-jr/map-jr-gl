@@ -321,6 +321,27 @@ for (const renderer of ['worker', 'main']) {
             warnings.correct.length === 0 && warnings.said.length === expected.length && expected.every(e => warnings.said.filter(w => w.startsWith('[map-jr-gl] ' + e)).length === 1)
             && warnings.place.startsWith('[map-jr-gl] queryFeatures(): {"lng":-74.0065,"lat":40.7085} is not a place.'), JSON.stringify(warnings));
 
+        // 3f. A style whose root names a projection other than mercator: one warning per map, also after setStyle; mercator gives none (#238).
+        const proj = await page.evaluate(async renderer => {
+            const t = window.t, said = [], log = console.warn;
+            console.warn = (...a) => { const m = a.join(' '); if (m.includes('projection')) said.push(m); };
+            const div = () => document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const idle = host => new Promise(r => { host.state.subscribe(s => s.idle, v => v && r(true)); setTimeout(() => r(false), 8000); });
+            const base = {initialView: {center: [-74.0065, 40.7085], zoom: 14.3}, renderer, attribution: false, onError: () => {}};
+            const merc = t.lib.createMap(div(), {...base, style: {...t.style, projection: {type: 'mercator'}}});
+            await idle(merc);
+            const mercSaid = said.length;
+            const globe = t.lib.createMap(div(), {...base, style: {...t.style, projection: {type: 'globe'}}});
+            await idle(globe);
+            globe.map.setStyle({...t.style, projection: {type: 'globe'}});
+            await idle(globe);
+            console.warn = log;
+            merc.destroy(); globe.destroy();
+            return {mercSaid, said};
+        }, renderer);
+        check(`[${renderer}] a style with the projection "globe" writes one warning, and "mercator" writes none`,
+            proj.mercSaid === 0 && proj.said.length === 1 && proj.said[0] === '[map-jr-gl] The style has the projection "globe", which is not supported, so the map uses "mercator".', JSON.stringify(proj));
+
         // 3b. A description with no style (only the changed fields) throws at once with a message, and the map is not harmed.
         const partial = await page.evaluate(async () => {
             const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), said = fn => { try { fn(); return ''; } catch (e) { return e.message; } };

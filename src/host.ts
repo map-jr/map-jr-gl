@@ -259,7 +259,10 @@ function complete(spec: MapSpec, method: string, fix: string) {
     if (!spec?.style) throw new Error(`[map-jr-gl] ${method}(): the description has no "style". ${fix}`);
 }
 
-export function createMap(container: HTMLElement | string, spec: MapSpec): MapHost {
+export function createMap(container: HTMLElement | string, spec: MapSpec): MapHost { return makeMap(container, spec, 'createMap()'); }
+
+/** `createMap` for the adapters: `name` is what the user wrote (`<MapJr>`, `useMap()`), for the warnings that name it. */
+export function makeMap(container: HTMLElement | string, spec: MapSpec, name: string): MapHost {
     complete(spec, 'createMap', 'Pass the URL of a style or a style object as "style".');
     if (!container) throw new Error('[map-jr-gl] createMap(): the container is ' + container + '. In a framework, make the map after the element is mounted.');
     if (typeof container === 'string' && !document.getElementById(container)) throw new Error(`[map-jr-gl] createMap(): no element with the id "${container}".`);
@@ -299,7 +302,7 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
     }}); };
     restyle(spec);
     // (The height of the container is read after a second, so that a container which gets its height a moment later gives no warning.)
-    setTimeout(() => check(0), 1000);
+    setTimeout(() => check(0, name), 1000);
     const viewOf = (): View => { const c = map.getCenter(), b = map.getBounds().toArray() as View['bounds']; return {center: [c.lng, c.lat], zoom: map.getZoom(), bearing: map.getBearing(), pitch: map.getPitch(), bounds: b}; };
     const state = createStore<MapState>({loaded: false, idle: false, moving: false, view: viewOf(), hover: [], renderer: undefined, error: undefined});
     const controls = new globalThis.Map<string, ReturnType<ControlSpec['create']>>();
