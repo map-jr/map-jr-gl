@@ -323,28 +323,14 @@ export class Map {
             this.workers.push(w);
             w.onmessage = e => {
                 if (e.data.type !== 'fatal') return this.onEngineEvent(e.data);
-                // The worker could not create a WebGL2 context. A transferred canvas cannot be taken back, so swap in a new one.
+                // The worker could not create a WebGL2 context: the engine starts on the main thread (src/restart.ts).
                 console.warn('[map-jr-gl] Worker rendering unavailable, using the main thread: ' + e.data.message);
-                const fresh = this.canvas.cloneNode() as HTMLCanvasElement;
-                this.canvas.replaceWith(fresh);
-                for (const fn of this.inputCleanup.splice(0)) fn();
-                this.canvas = fresh;
                 // The commands that the page sent so far went to the worker, which does not answer them. Until the new
-                // engine runs, commands wait. It then gets the style as it is now, and what `resend` sends.
+                // engine runs, commands wait.
                 this.ready = false;
                 this.watchTurn++; // (the watch of the worker must not count while the engine chunk loads; #146)
                 w.terminate();
-                this.startMainEngine(fresh, {...engineOptions, style: this.resolved, center: [this.tr.lng, this.tr.lat], zoom: this.tr.zoom, bearing: this.tr.bearing}, []).then(() => {
-                    if (this.removed) return;
-                    this.ready = true;
-                    for (const [c, t] of this.queue.splice(0)) this.deliver(c, t);
-                    this.resend();
-                    // (The data of GeoJSON sources and changes of the style since the start. It is also a numbered command:
-                    // the new engine reports `idle` with the number that the page waits for.)
-                    this.restyle(true);
-                    for (const [name, [source, options]] of this.imageInputs) this.addImage(name, source, options);
-                    if (this.listening) this.bindInput();
-                }, error => this.fire('error', {error}));
+                import('./restart.ts').then(m => m.fallBack.call(this, engineOptions)).catch(error => this.fire('error', {error}));
             };
             if (__DEV__) {
                 this.note('engine worker starts', {restarting: this.restarting, ports: ports.length});
@@ -396,30 +382,11 @@ export class Map {
         this.watchTurn++;
         this.fire('webglcontextlost');
         this.drop('lost its WebGL context. Ask again');
-        try {
-            // (An engine on the main thread does not end with a worker. It must stop: it can still have a context when
-            // the restart is for an engine that reported no frame.)
-            if (this.ready) this.send({type: 'destroy'});
-            for (const fn of this.inputCleanup.splice(0)) fn();
-            this.observer?.disconnect();
-            for (const w of this.workers.splice(0)) w.terminate();
-            this.tilePool?.release();
-            this.tilePool = undefined; // (a `remove` during the start below must not give the same workers back again)
-            this.ready = false; this.queue = []; this.tilesLoaded = false; this.seq = 0;
-            this.loadedSources.clear(); // (the new engine has no tiles)
-            const fresh = this.canvas.cloneNode() as HTMLCanvasElement, tr = this.tr;
-            this.canvas.replaceWith(fresh);
-            this.canvas = fresh;
-            this.options = {...this.options, style: this.rawStyle, center: [tr.lng, tr.lat], zoom: tr.zoom, bearing: tr.bearing, pitch: tr.pitch, ...(main && {renderer: 'main' as const})};
-            await this.start();
-            this.resend();
-            // The engine got the style without what `restyle` adds: the number of each source (without it the page does not
-            // accept the report that a source is loaded), the layers that the page has hidden, and the global state.
-            this.restyle(true);
-            for (const [name, [source, options]] of this.imageInputs) await this.addImage(name, source, options);
-            this.fire('webglcontextrestored');
-            if (__DEV__) this.note('restart() ended', {renderer: this.renderer, drew: this.drew});
-        } catch (error) { if (__DEV__) this.note('restart() failed', String(error)); this.fire('error', {error}); } finally { this.restarting = false; }
+        // (Until the new engine runs, commands wait. The rest of the restart is in src/restart.ts, which loads now.)
+        const ready = this.ready;
+        this.ready = false;
+        try { await (await import('./restart.ts')).restart.call(this, ready, main); }
+        catch (error) { if (__DEV__) this.note('restart() failed', String(error)); this.fire('error', {error}); } finally { this.restarting = false; }
     }
 
     /** The engine of the last start has drawn a frame. */
