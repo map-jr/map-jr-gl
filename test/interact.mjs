@@ -989,6 +989,7 @@ for (const mode of ['main', 'worker']) {
             check(`[${mode}] a container scaled by CSS (${where}) keeps its layout size, and event.point is in element pixels`,
                 Math.abs(out.p[0] - 200) < 0.5 && Math.abs(out.p[1] - 150) < 0.5 && Math.abs(out.buffer[0] - 400) < 1.5 && Math.abs(out.buffer[1] - 300) < 1.5 && click && Math.abs(click[0] - 200) < 1.5 && Math.abs(click[1] - 150) < 1.5, JSON.stringify({...out, click}));
         }
+    }
     // loaded() is false from setStyle or a style edit until the next idle, as in MapLibre (#190).
     {
         const got = await page.evaluate(async mode => {
