@@ -657,6 +657,12 @@ The entry `@map-jr/map-jr-gl` has TypeScript types for the description (`MapSpec
 - A feature of `state.hover` and of `onClick` has `layer`, the style layer that draws it, with the type `StyleLayer`
   (`id`, `type`, `source`, `paint` and the other members of a layer of the style). `queryFeatures` returns
   `(RenderedFeature | QueriedFeature)[]`: a `QueriedFeature` (a query with `sources`) has no style layer.
+- A style that you build in code can use the style types of this entry: `StyleSpecification`,
+  `SourceSpecification`, `LayerSpecification`, one type for each kind of layer (`FillLayerSpecification`,
+  `LineLayerSpecification`, `SymbolLayerSpecification` and the others, with the names of MapLibre GL JS),
+  `ExpressionSpecification` and `FilterSpecification`. They need neither `maplibre-gl` nor
+  `@maplibre/maplibre-gl-style-spec`. They check the structure of the style and of each layer, but not the names
+  or the values of `paint` and `layout` properties.
 
 ## What is not in this entry yet
 
