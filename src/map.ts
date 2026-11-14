@@ -234,6 +234,14 @@ export class Map {
         protocolListeners.add(this.sendRequestRules);
         this.sendRequestRules(); // before the style, so that the first requests follow the rules
         this.cleanup.push(() => protocolListeners.delete(this.sendRequestRules));
+        // As in MapLibre GL JS, the four corners of the controls exist from the start: apps query them before they add a control.
+        this.styles();
+        for (const pos of ['top-left', 'top-right', 'bottom-left', 'bottom-right'] as const) {
+            const corner = this.corners[pos] = document.createElement('div');
+            corner.className = cls('ctrl-' + pos);
+            c.appendChild(corner);
+            this.cleanup.push(() => corner.remove());
+        }
         this.start().catch(this.sourceFailed);
     }
 
@@ -241,7 +249,8 @@ export class Map {
     /** Sets the number of canvas pixels for each CSS pixel. Without a value, the map follows the screen again. */
     setPixelRatio(ratio?: number | null) { this.pixelRatio = ratio ?? undefined; return this.resize(); }
     private measure() {
-        const r = this.container.getBoundingClientRect();
+        // The layout size, as MapLibre reads it: a bounding box would include the CSS transforms of the ancestors.
+        const r = {width: this.container.clientWidth, height: this.container.clientHeight};
         this.tr.width = r.width; this.tr.height = r.height;
         // Space for the browser's bars at the top and bottom of the screen is only for a map that fills the screen. On a
         // map in a page, that space changes while the page scrolls (Safari hides its toolbar), and the controls would move.
@@ -362,7 +371,13 @@ export class Map {
         this.observer = new ResizeObserver(() => this.resize());
         this.observer.observe(this.container);
         if (this.listening) this.bindInput();
-        if (o.attributionControl !== false && !this.restarted) this.addControl(new AttributionControl(o.attributionControl || {}));
+        if (o.attributionControl !== false && !this.restarted) {
+            // The attribution is the lowest control of its corner, as in MapLibre GL JS, also when the app added controls there before this point (#202).
+            const a = new AttributionControl(o.attributionControl || {});
+            this.addControl(a);
+            const el = this.controls.get(a)!;
+            el.parentElement!.prepend(el);
+        }
     }
 
     private restarted = false;
@@ -1081,14 +1096,8 @@ export class Map {
     private controls = new globalThis.Map<Control, HTMLElement>();
     addControl(control: Control, position?: ControlPosition) {
         const pos = position ?? control.getDefaultPosition?.() ?? 'top-right';
-        this.styles();
-        let corner = this.corners[pos];
-        if (!corner) {
-            corner = this.corners[pos] = document.createElement('div');
-            corner.className = cls('ctrl-' + pos);
-            this.container.appendChild(corner);
-            this.cleanup.push(() => corner!.remove());
-        }
+        const corner = this.corners[pos];
+        if (!corner) throw new Error(`[map-jr-gl] addControl(): "${pos}" is not a position. Write "top-left", "top-right", "bottom-left" or "bottom-right".`);
         const el = control.onAdd(this);
         adoptClasses(el); // a control written for MapLibre GL JS gets this library's styles
         this.controls.set(control, el);
@@ -1301,7 +1310,8 @@ export class Map {
             el.addEventListener(type, fn, opts);
             this.inputCleanup.push(() => el.removeEventListener(type, fn, opts));
         };
-        const pos = (e: MouseEvent) => { const r = this.container.getBoundingClientRect(); return {x: e.clientX - r.left - this.container.clientLeft, y: e.clientY - r.top - this.container.clientTop}; };
+        // Screen pixels are divided by the CSS scale of the container, as in MapLibre's DOM.mousePos.
+        const pos = (e: MouseEvent) => { const c = this.container, r = c.getBoundingClientRect(), sx = r.width / c.offsetWidth || 1, sy = r.height / c.offsetHeight || 1; return {x: (e.clientX - r.left) / sx - c.clientLeft, y: (e.clientY - r.top) / sy - c.clientTop}; };
         /**
          * Fires a map event for a DOM event. Returns true if a listener called preventDefault(): the map then does not act on it.
          * `act` is what the map does when no listener prevents it. It waits when `fire` sends the event later (see `fire`).

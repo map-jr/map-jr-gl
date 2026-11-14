@@ -129,7 +129,9 @@ export const MapOverlay = defineComponent({
         onBeforeUnmount(() => { overlay?.remove(); overlay = null; });
         // (Not shown until it is on the map: on a server, and before the map has started, it has no position.)
         // The visibility is Vue state, so a re-render with fallthrough attributes does not hide the content again (#161).
-        return () => h('div', {ref: el, style: shown.value ? undefined : 'display:none'}, slots.default?.());
+        // The style is an object: Vue then sets and removes only `display`, and keeps the `position` and the transform
+        // that the overlay writes into the inline style (#243). A string or `undefined` would replace the whole style.
+        return () => h('div', {ref: el, style: {display: shown.value ? undefined : 'none'}}, slots.default?.());
     },
 });
 

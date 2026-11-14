@@ -259,8 +259,11 @@ export class Map extends CoreMap {
         }
         const result = features([...now]), given = this.summary(now);
         // Later: all the sources, from the engine.
-        const turn = this.turn, later = sets.length ? this.ask<QueriedFeature[]>(id => ({type: 'queryRendered', id, box, sets, geometry: true})).then(found => {
+        const turn = this.turn, move = this.inMove, later = sets.length ? this.ask<QueriedFeature[]>(id => ({type: 'queryRendered', id, box, sets, geometry: true})).then(found => {
             this.keep(key, found, turn);
+            // A `mousemove` listener read the array (react-map-gl does so for hover): while the pointer has not moved
+            // since, that `mousemove` fires again, and the same question then has the answer at once.
+            if (move && !awaited && this.summary(found) !== given) { if (move === this.lastMove && !move.again) { move.again = true; this.fire('mousemove', move.data); } return features([...found]); }
             if (!awaited && this.summary(found) !== given) this.incomplete('queryRenderedFeatures', now.length, found.length);
             // The array that the caller got at once was not the complete result. Code that reads the array asks again
             // on `idle` (and the map is idle, or will be): tell it, and the same question then has the answer at once.
@@ -321,7 +324,12 @@ export class Map extends CoreMap {
                 .then(found => this.keep(key, found, turn), () => {}).finally(() => this.asking.delete(key)));
             return this.asking.get(key);
         };
-        if (type === 'mousemove') { clearTimeout(this.resting); this.resting = setTimeout(warm, 50); }
+        if (type === 'mousemove') {
+            clearTimeout(this.resting); this.resting = setTimeout(warm, 50);
+            const move = this.lastMove?.data === data ? this.lastMove : this.lastMove = {data};
+            this.inMove = move;
+            try { return super.fire(type, data); } finally { this.inMove = undefined; }
+        }
         if (type === 'mousedown' || type === 'touchstart') warm();
         if (!/^(click|dblclick|contextmenu)$/.test(type)) return super.fire(type, data);
         const pending = warm();
@@ -332,4 +340,7 @@ export class Map extends CoreMap {
     }
     private asking = new globalThis.Map<string, Promise<void>>();
     private resting?: ReturnType<typeof setTimeout>;
+    /** The last `mousemove`, and the one whose listeners run now (see `queryRenderedFeatures`). */
+    private lastMove?: {data: Record<string, unknown>; again?: boolean};
+    private inMove?: {data: Record<string, unknown>; again?: boolean};
 }

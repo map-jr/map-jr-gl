@@ -219,8 +219,9 @@ export function sliceGeoJSON(source: Prepared[] | PreparedSource, z: number, x: 
     const features = src.clusters ? [...src.features, ...(src.clusters.at(z) ?? src.points!)] : src.features;
     const n = 2 ** z, pad = BUFFER / EXTENT / n, x0 = x / n - pad, y0 = y / n - pad, x1 = (x + 1) / n + pad, y1 = (y + 1) / n + pad;
     const out: SlicedFeature[] = [];
-    for (const f of features) {
-        if (f.bbox[2] < x0 || f.bbox[0] > x1 || f.bbox[3] < y0 || f.bbox[1] > y1) continue;
+    // A feature past ±180° of longitude is also sliced shifted by one world, as the wrap step of geojson-vt does.
+    for (const w of [0, -1, 1]) for (const f of features) {
+        if (f.bbox[2] + w < x0 || f.bbox[0] + w > x1 || f.bbox[3] < y0 || f.bbox[1] > y1) continue;
         const rings: number[][] = [];
         const feature = (rings: number[][], properties: Record<string, unknown>) => out.push({
             type: f.type, id: f.id, properties,
@@ -233,7 +234,7 @@ export function sliceGeoJSON(source: Prepared[] | PreparedSource, z: number, x: 
         for (const r of f.rings) {
             let pts: number[] = [];
             for (let i = 0; i < r.length; i += 2) {
-                const tx = Math.round((r[i] * n - x) * EXTENT), ty = Math.round((r[i + 1] * n - y) * EXTENT), m = pts.length;
+                const tx = Math.round(((r[i] + w) * n - x) * EXTENT), ty = Math.round((r[i + 1] * n - y) * EXTENT), m = pts.length;
                 if (m < 2 || tx !== pts[m - 2] || ty !== pts[m - 1]) pts.push(tx, ty); // also thins vertices closer than a tile unit
             }
             if (f.type === 2 && metrics) {

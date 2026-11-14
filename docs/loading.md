@@ -137,17 +137,87 @@ If your page has a strict Content Security Policy, add `worker-src blob:` to it.
 
 ### Vite in development
 
-In development, Vite puts dependencies in a cache folder. The worker file is not in that folder. Add this to your
-Vite configuration:
+In development, Vite puts dependencies in a cache folder (`node_modules/.vite/deps/`). With Vite 5, the worker file
+is not in that folder, and the map draws on the main thread and writes the warning "Workers are unavailable". Add
+this to your Vite configuration:
 
 ```js
-export default {
+// vite.config.js
+import {defineConfig} from 'vite';
+
+export default defineConfig({
   optimizeDeps: {exclude: ['@map-jr/map-jr-gl']},
-};
+});
 ```
 
-If you do not, the map draws on the main thread and writes a warning. A production build does not have this
-problem.
+If an alias maps `maplibre-gl` to the compat entry (see
+[Change from MapLibre GL JS](../README.md#change-from-maplibre-gl-js)), Vite caches the library under the name
+`maplibre-gl`. Then exclude that name too: `optimizeDeps: {exclude: ['@map-jr/map-jr-gl', 'maplibre-gl']}`.
+
+| Vite | Needs `optimizeDeps.exclude` in development |
+|---|---|
+| 5.4.21 | Yes (ran: without it, the renderer is `'main'`; with it, `'worker'`) |
+| 6, 7 | Not checked. Add the setting if you see the warning. |
+| 8.3.8 | No (ran: the renderer is `'worker'` without it, also with the alias). The field test of #187 saw the same with 8.3.4 and 8.3.7. |
+
+A production build (`vite build`) does not have this problem.
+
+### Next.js
+
+The library works in a client component of Next.js with webpack and with Turbopack. Both load the worker file with
+no setting. Create the map in `useEffect` of a component that starts with `'use client'`; `next/dynamic` is not
+needed, because the server can import the library.
+
+```jsx
+'use client';
+import {useEffect, useRef} from 'react';
+import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
+
+export default function MapView() {
+  const el = useRef(null);
+  useEffect(() => {
+    const map = new Map({container: el.current, style: 'https://tiles.openfreemap.org/styles/liberty', center: [0, 0], zoom: 1});
+    return () => map.remove();
+  }, []);
+  return <div ref={el} style={{height: 400}} />;
+}
+```
+
+Code that imports `maplibre-gl` itself (react-map-gl, a plugin) needs an alias. The key of the webpack alias ends
+with `$`, so that it matches `maplibre-gl` exactly and not `maplibre-gl/dist/...`:
+
+```js
+// next.config.mjs (Next.js 15 and 16)
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  turbopack: {
+    resolveAlias: {'maplibre-gl': '@map-jr/map-jr-gl/maplibre-compat'},
+  },
+  webpack(config) {
+    config.resolve.alias['maplibre-gl$'] = '@map-jr/map-jr-gl/maplibre-compat';
+    return config;
+  },
+};
+
+export default nextConfig;
+```
+
+In Next.js 14.2, the Turbopack setting is `experimental: {turbo: {resolveAlias: {...}}}`.
+
+Notes:
+
+- In development, React StrictMode runs each effect twice. The cleanup function must remove the map
+  (`map.remove()`), as in the example.
+- The development server of webpack takes the development build of the library (the `development` export
+  condition), so the checks for common mistakes run there (seen with Next.js 14.2 and 16 in the field test of #187).
+- The alias does not change the types that TypeScript reads. See
+  [Change from MapLibre GL JS](../README.md#change-from-maplibre-gl-js).
+
+Checked: the configuration above with Next.js 16.4.6 and React 19.3, with `next build` (Turbopack) and
+`next build --webpack`; in both builds, `next start` showed the map with the renderer `'worker'`. The component above, and a component that imports
+`maplibre-gl` through the alias, ran this way with both builds. The field test of
+#187 used Next.js 14.2 and 16 in development, with webpack and Turbopack. The development servers were not run for
+this page.
 
 ### Frameworks that render on the server
 

@@ -148,8 +148,9 @@ export class Popup extends Overlay {
     /** The popup's box relative to the map position it points at, in pixels: [left, top, right, bottom]. */
     getBox(): [number, number, number, number] | null {
         if (!this.map || !this.lngLat) return null;
-        const r = this.box.getBoundingClientRect(), c = this.map.getContainer().getBoundingClientRect(), p = this.map.project(this.lngLat);
-        return [r.left - c.left - p.x, r.top - c.top - p.y, r.right - c.left - p.x, r.bottom - c.top - p.y];
+        const el = this.map.getContainer(), r = this.box.getBoundingClientRect(), c = el.getBoundingClientRect(), p = this.map.project(this.lngLat);
+        const sx = c.width / el.offsetWidth || 1, sy = c.height / el.offsetHeight || 1;
+        return [(r.left - c.left) / sx - p.x, (r.top - c.top) / sy - p.y, (r.right - c.left) / sx - p.x, (r.bottom - c.top) / sy - p.y];
     }
     addTo(map: Map) {
         // (A popup that opens again during its closing animation closes now, so that the animation cannot remove it later.)
