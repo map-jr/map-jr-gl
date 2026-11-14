@@ -684,6 +684,21 @@ for (const mode of ['main', 'worker']) {
         const atOnce = await page.evaluate(() => { window.map.off('idle', window.atOnceIdle); return window.atOnce; });
         check(`[${mode}] queryRenderedFeatures read at once has the features of tiles: in a click listener, and on idle`, atOnce.click > 0 && atOnce.idle.at(-1) > 0 && atOnce.idle.length <= 3, JSON.stringify(atOnce));
     }
+    // react-map-gl 8 drives `onMouseEnter` and `cursor` with `queryRenderedFeatures(e.point, {layers})`, read at once in
+    // its `mousemove` listener (#195). One move of the mouse onto features of tiles must reach the enter state.
+    {
+        await page.evaluate(() => {
+            const m = window.map, layers = m.getStyle().layers.filter(l => l.source && l.type !== 'raster').map(l => l.id);
+            window.hover = {enter: 0, moves: 0};
+            window.hoverMove = e => { window.hover.moves++; const f = m.queryRenderedFeatures(e.point, {layers}); if (f.length && !window.hover.on) { window.hover.on = true; window.hover.enter++; } };
+            m.on('mousemove', window.hoverMove);
+        });
+        const box = await page.locator('canvas').first().boundingBox();
+        await page.mouse.move(box.x + box.width / 2 - 70, box.y + box.height / 2 - 30);
+        await page.waitForTimeout(1500);
+        const hover = await page.evaluate(() => { window.map.off('mousemove', window.hoverMove); return window.hover; });
+        check(`[${mode}] react-map-gl hover: a mousemove listener that reads queryRenderedFeatures with layers at once gets the features`, hover.enter === 1, JSON.stringify(hover));
+    }
     // The colour of a marker can come from data: it cannot bring HTML into the page.
     {
         const marker = await page.evaluate(async () => {
