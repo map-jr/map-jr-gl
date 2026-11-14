@@ -16,6 +16,7 @@ import type {Control, ControlPosition} from './controls.ts';
 import type {Checked} from './mistakes.ts';
 import type {FontSource} from './engine.ts';
 import type {LngLatBounds, LngLatBoundsInput} from './lnglat.ts';
+import type {PaddingInput} from './geo.ts';
 
 /**
  * Set by the build (`define` in build.mjs). True in the development build (`dist/*.dev.js`, which the `development`
@@ -32,10 +33,18 @@ export interface ControlSpec { key: string; position?: ControlPosition; create()
  * that the map gives (`state.view.center`, the result of `unproject`) is `[number, number]`.
  */
 export type Position = readonly number[];
-/** Where the camera is. */
-export interface View { center: [number, number]; zoom: number; bearing: number; pitch: number }
+/**
+ * Where the camera is. `bounds` is `[[west, south], [east, north]]`: the smallest box that contains the visible map,
+ * as `getBounds()` gives it in MapLibre GL JS.
+ */
+export interface View { center: [number, number]; zoom: number; bearing: number; pitch: number; bounds: [[number, number], [number, number]] }
 /** A view that the application gives: each field is optional. */
 export interface ViewInput { center?: Position; zoom?: number; bearing?: number; pitch?: number }
+/**
+ * The view at the start. `bounds` ([west, south, east, north] or [[west, south], [east, north]]) is fitted into the
+ * map, with `padding` in CSS pixels (default 0), and takes the place of `center` and `zoom`, as in MapLibre GL JS.
+ */
+export interface InitialView extends ViewInput { bounds?: LngLatBoundsInput; padding?: PaddingInput }
 export interface MapPointer { point: {x: number; y: number}; lngLat: [number, number]; /** The features of `interactiveLayers` at the point, the top one first. */ features: RenderedFeature[] }
 
 /** Additions to a style: see `extend` in `MapSpec`. */
@@ -65,8 +74,8 @@ export interface MapSpec extends MapSetup {
      * the style when it has loaded. A new object with other content changes the map.
      */
     extend?: StyleExtension;
-    /** The view at the start. The user then moves the map. */
-    initialView?: ViewInput;
+    /** The view at the start: a view, or `bounds` to fit with `padding`. The user then moves the map. */
+    initialView?: InitialView;
     /**
      * A view that the application owns. Give it together with `onViewChange` and write each change back, or change it
      * to move the map. (The map does not wait for the application: a view that the map itself reported is not applied again.)
@@ -254,9 +263,11 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
     complete(spec, 'createMap', 'Pass the URL of a style or a style object as "style".');
     if (!container) throw new Error('[map-jr-gl] createMap(): the container is ' + container + '. In a framework, make the map after the element is mounted.');
     if (typeof container === 'string' && !document.getElementById(container)) throw new Error(`[map-jr-gl] createMap(): no element with the id "${container}".`);
-    const first = {...spec.initialView, ...spec.view};
+    const {bounds, padding, ...first} = {...spec.initialView, ...spec.view} as InitialView & {bounds?: unknown};
     const options: MapOptions = {
-        container, style: spec.style, ...first, renderer: spec.renderer, fonts: spec.fonts, fontFamily: spec.fontFamily, glyphs: spec.glyphs, interactive: spec.interactive, antialias: spec.antialias, hash: spec.hash,
+        container, style: spec.style, center: first.center, zoom: first.zoom, bearing: first.bearing, pitch: first.pitch,
+        // (A `view` from the state has `bounds` too: it is a view, and only `initialView` gives a box to fit.)
+        bounds: spec.view ? undefined : bounds as LngLatBoundsInput, fitBoundsOptions: {padding}, renderer: spec.renderer, fonts: spec.fonts, fontFamily: spec.fontFamily, glyphs: spec.glyphs, interactive: spec.interactive, antialias: spec.antialias, hash: spec.hash,
         attributionControl: spec.attribution, minZoom: spec.minZoom, maxZoom: spec.maxZoom, maxPitch: spec.maxPitch,
     };
     for (const k in options) if ((options as any)[k] === undefined) delete (options as any)[k];
@@ -289,7 +300,7 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
     restyle(spec);
     // (The height of the container is read after a second, so that a container which gets its height a moment later gives no warning.)
     setTimeout(() => check(0), 1000);
-    const viewOf = (): View => { const c = map.getCenter(); return {center: [c.lng, c.lat], zoom: map.getZoom(), bearing: map.getBearing(), pitch: map.getPitch()}; };
+    const viewOf = (): View => { const c = map.getCenter(), b = map.getBounds().toArray() as View['bounds']; return {center: [c.lng, c.lat], zoom: map.getZoom(), bearing: map.getBearing(), pitch: map.getPitch(), bounds: b}; };
     const state = createStore<MapState>({loaded: false, idle: false, moving: false, view: viewOf(), hover: [], renderer: undefined, error: undefined});
     const controls = new globalThis.Map<string, ReturnType<ControlSpec['create']>>();
     // The images of `images` that the map has, by name. The value says what the image was made from: the text of an
@@ -311,7 +322,8 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
     });
     const moved = (moving: boolean) => {
         const view = viewOf();
-        if (same(view, state.get().view)) return state.set({moving, idle: false});
+        // (A new size of the map changes only `bounds`.)
+        if (same(view, state.get().view) && view.bounds + '' === state.get().view.bounds + '') return state.set({moving, idle: false});
         reported.push(view);
         if (reported.length > 60) reported.shift();
         state.set({view, moving, idle: false});
@@ -320,6 +332,7 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
     map.on('movestart', () => moved(true));
     map.on('move', () => moved(true));
     map.on('moveend', () => moved(false));
+    map.on('resize', () => moved(state.get().moving));
 
     // The features under the pointer: one query at a time, and the last position is asked again when it has changed.
     const hover = async () => {

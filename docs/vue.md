@@ -297,6 +297,8 @@ const {host, state} = useMap(useTemplateRef('el'), computed(() => ({
 - A change inside a `ref` is not seen. With `const description = ref({style, cursor: ''})`, the assignment
   `description.value.cursor = 'crosshair'` does nothing. Write
   `description.value = {...description.value, cursor: 'crosshair'}`.
+- `initialView` can be a box: `{bounds: [[-74.03, 40.69], [-73.97, 40.73]], padding: 20}`. The `ssr` prop renders the
+  same box on the server, at the `width` and `height` of the `ssr` prop.
 - `initialView` is read only when the map is made, so a ref inside `initialView` does not move the map. To move the
   map, call `host.value.moveTo(view)`, or give `view` and `onViewChange` in the description. See "A view that the
   application owns" in [the main API](api.md).

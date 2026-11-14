@@ -118,7 +118,7 @@ The library compares each field with the field of the last description:
 |---|---|
 | `style` | A style object or the URL of a style (the MapLibre style specification). Required. A new object or URL is a new style. |
 | `extend` | Your own sources and layers on a style from a URL. See below. |
-| `initialView` | The view at the start: `center` (`[lng, lat]`), `zoom`, `bearing`, `pitch`. The user then moves the map. |
+| `initialView` | The view at the start: `center` (`[lng, lat]`), `zoom`, `bearing`, `pitch`. In place of `center` and `zoom`, give `bounds` (`[[west, south], [east, north]]` or `[west, south, east, north]`) and the map starts with that box fitted into the view, with `padding` in CSS pixels around it (a number or `{top, right, bottom, left}`, default 0). This is `bounds` with `fitBoundsOptions.padding` of MapLibre GL JS. When the description also has `view`, the map starts at `view` and `bounds` has no effect. The user then moves the map. |
 | `view`, `onViewChange` | A view that your application owns. See below. |
 | `data` | GeoJSON data for GeoJSON sources, by the id of the source. The source is in the style or in `extend.sources`. See below. |
 | `images` | Images for the style layers, by name: an SVG document, the URL of an image, or `{image, width, height}`. See [Images for style layers](#images-for-style-layers). |
@@ -393,7 +393,7 @@ stop(); // stops the first subscription
 | `loaded` | The style and the first tiles have loaded. |
 | `idle` | Nothing moves and nothing loads. |
 | `moving` | The camera moves. |
-| `view` | `{center, zoom, bearing, pitch}` |
+| `view` | `{center, zoom, bearing, pitch, bounds}`. `bounds` is `[[west, south], [east, north]]`: the smallest box that contains the visible map, also with bearing and pitch, as `getBounds()` gives it in MapLibre GL JS. It changes when the map moves and when the size of the map changes. |
 | `hover` | The features of `interactiveLayers` under the pointer, the top one first. |
 | `renderer` | `'worker'` or `'main'`, when the map has started. |
 | `error` | The last error only. An earlier error is not kept: use `onError` in the description to get each one. |

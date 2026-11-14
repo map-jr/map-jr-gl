@@ -50,6 +50,7 @@ The props are the fields of the description of a map (see [the main API](api.md)
 | `onClick`, `onHover`, `onLoad`, `onIdle`, `onError` | Events of the map. `onError` gets each error (an `Error`). Without it, the map writes each error to the console. |
 | `onMoveend`, `onZoomend`, `onStyleimagemissing`, `onSourcedata` and the others | A prop for each other event of the map: `on`, and the name of the event with a capital first letter (`onStyleload` for `style.load`). The value is the event of `listen` of the main API. See [Events](api.md#events) for the list. For an image that the style asks for and the map does not have, add an image with the name `event.id` to the prop `images` in `onStyleimagemissing`: see [An image that the style asks for](api.md#an-image-that-the-style-asks-for). |
 | `firstView` | The first view from a server. See below. |
+| `initialView` | The view at the start, as in the main API: a view, or `{bounds, padding}` to start with a box in view. To render the same box on the server, give `bounds` and `padding` to `renderFirstView`. |
 | `className`, `style` | For the element of the component. |
 | `children` | Content over the map, and `MapOverlay` elements. |
 
