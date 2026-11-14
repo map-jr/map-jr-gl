@@ -740,6 +740,20 @@ for (const mode of ['main', 'worker']) {
     check(`[${mode}] addProtocol: the controller is aborted by a newer setData, by a setData that drops the diffs of updateData, and by remove()`,
         aborts.setData === true && aborts.name === 'slow://b' && aborts.updateData === true && aborts.remove === true, JSON.stringify(aborts));
 
+    // A map made in a container that is not yet in the page: the container is positioned and clips once it is attached (#201).
+    const detached = await page.evaluate(async mode => {
+        const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+        const el = Object.assign(document.createElement('div'), {style: 'width:100px;height:80px'});
+        const m = new mod.Map({container: el, renderer: mode, attributionControl: false, center: [0, 0], zoom: 1, style: {version: 8, sources: {}, layers: []}});
+        document.body.appendChild(el);
+        const s = getComputedStyle(el), r = {position: s.position, overflow: s.overflow};
+        m.remove();
+        r.after = el.classList.contains('map-jr-map'); el.remove();
+        return r;
+    }, mode);
+    check(`[${mode}] a map made in a detached container gets position: relative and overflow: hidden once attached`,
+        detached.position === 'relative' && detached.overflow === 'hidden' && !detached.after, JSON.stringify(detached));
+
     // A lost WebGL context (phones take it away to save memory): the map starts again with the same view and data.
     // The context can only be reached from the page when the engine is on the main thread.
     if (mode === 'main') {

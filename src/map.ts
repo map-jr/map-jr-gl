@@ -187,8 +187,10 @@ export class Map {
         if (c.querySelector(':scope > .map-jr-canvas')) console.warn('[map-jr-gl] The container already has a map. Remove that map first: remove(), or destroy() in the main API.');
         this.container = c;
         (this as any).__v_skip = true; // (Vue does not make the map reactive: its proxies cannot be posted, #242)
-        if (getComputedStyle(c).position === 'static') c.style.position = 'relative';
-        if (getComputedStyle(c).overflow === 'visible') c.style.overflow = 'hidden'; // a frame from before a shrink must not spill out
+        // As in MapLibre GL JS, a class gives the container `position: relative` and `overflow: hidden` (a frame from before
+        // a shrink must not spill out). A style rule applies also to a container that is attached to the page later (#201).
+        const mapClass = cls('map').split(' ');
+        c.classList.add(...mapClass);
         this.canvas = document.createElement('canvas');
         this.canvas.className = 'map-jr-canvas';
         // `object-fit: none` shows the canvas's current frame unscaled and centred, whatever size that frame is. With
@@ -234,6 +236,7 @@ export class Map {
         protocolListeners.add(this.sendRequestRules);
         this.sendRequestRules(); // before the style, so that the first requests follow the rules
         this.cleanup.push(() => protocolListeners.delete(this.sendRequestRules));
+        this.cleanup.push(() => c.classList.remove(...mapClass));
         // As in MapLibre GL JS, the four corners of the controls exist from the start: apps query them before they add a control.
         this.styles();
         for (const pos of ['top-left', 'top-right', 'bottom-left', 'bottom-right'] as const) {
