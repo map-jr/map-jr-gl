@@ -182,7 +182,7 @@ for (const renderer of ['worker', 'main']) {
         }, renderer);
         check(`[${renderer}] a GeoJSON line with longitudes past 180° is drawn past the antimeridian`, pastAntimeridian === 1, JSON.stringify(pastAntimeridian));
 
-        // 3e. toBlob gives the drawn map as an image in both renderers (#44): the main renderer clears its buffer after each frame.
+        // 3e. toBlob gives the drawn map as an image in both renderers (#44): the buffer of the main renderer can be cleared after each frame.
         const blob = await page.evaluate(async renderer => {
             const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
             const square = {type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[-30, -30], [30, -30], [30, 30], [-30, 30], [-30, -30]]]}};

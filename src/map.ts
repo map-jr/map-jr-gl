@@ -767,7 +767,7 @@ export class Map {
     /**
      * The map as an image. Waits until the map is idle, draws one frame and gives the canvas of that frame as a Blob
      * (`type` and `quality` as in `HTMLCanvasElement.toBlob`; the default is PNG). It works with both renderers: the
-     * main renderer clears its drawing buffer after each frame, so the image is taken in the same task as the frame.
+     * drawing buffer of the main renderer can be cleared after each frame, so the image is taken in the same task as the frame.
      */
     toBlob(type = 'image/png', quality?: number): Promise<Blob> {
         return new Promise((resolve, reject) => {
