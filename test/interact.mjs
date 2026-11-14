@@ -1773,6 +1773,61 @@ for (const mode of ['main', 'worker']) {
         const ml = (a, b) => a.every((v, i) => Math.abs(v - b[i]) < 1e-3);
         check('[main] maplibre-compat: maxBounds keeps the edges of the view inside, raises the zoom when the view is larger, and counts the padding, as MapLibre does (#280)',
             ml(cam.jumped, [5, 47.8094]) && ml(cam.eased, [5, 47.8094, 4.3987]) && ml(cam.turned, [8.3521, 49.2886, 6]) && ml(cam.easedEdge, [1.6479, 40.8364, 6]) && ml(cam.padded, [8.9014, 49.4674, 6]), JSON.stringify(cam));
+        // #309: maxBounds whose west edge is east of the east edge cross the antimeridian. The same jumps and drags, in
+        // MapLibre GL JS (served at /ml/), in the compat entry and in the main API, end at the same centre.
+        const anti = await page.evaluate(async () => {
+            const ml = await import('/ml/maplibre-gl.mjs');
+            ml.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const compat = await import('/dist/map-jr-gl-maplibre-compat.js'), lib = await import('/dist/map-jr-gl.js');
+            const style = {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, maxBounds = [[150, -50], [-120, 10]];
+            const jumps = [[-170, -20], [100, 0], [-100, 0], [190, -60], [-200, 30]];
+            const run = async make => {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+                const m = await make(el);
+                const at = () => [m.getCenter().lng, m.getCenter().lat];
+                const out = [];
+                for (const c of jumps) { m.jumpTo({center: c, zoom: 3}); out.push(at()); }
+                // Narrower bounds (20 degrees, 455 pixels at zoom 4): a drag across the antimeridian stops at the edge in
+                // both libraries, whatever their drag does with the first and the last pixels.
+                m.setMaxBounds([[170, -50], [-170, 10]]);
+                const c = m.getCanvas(), r = c.getBoundingClientRect();
+                const ptr = (type, x) => c.dispatchEvent(new PointerEvent(type, {bubbles: true, clientX: r.left + x, clientY: r.top + 100, pointerId: 1, pointerType: 'mouse', button: 0, buttons: type === 'pointerup' ? 0 : 1, isPrimary: true}));
+                const mouse = (type, x) => c.dispatchEvent(new MouseEvent(type, {bubbles: true, clientX: r.left + x, clientY: r.top + 100, button: 0, buttons: type === 'mouseup' ? 0 : 1}));
+                for (const [lng, from, to] of [[177, 280, 20], [-177, 20, 280]]) {
+                    m.jumpTo({center: [lng, -20], zoom: 4});
+                    await new Promise(res => setTimeout(res, 50));
+                    ptr('pointerdown', from); mouse('mousedown', from);
+                    for (let i = 1; i <= 10; i++) { const x = from + (to - from) * i / 10; ptr('pointermove', x); mouse('mousemove', x); await new Promise(res => setTimeout(res, 40)); }
+                    ptr('pointerup', to); mouse('mouseup', to);
+                    await new Promise(res => setTimeout(res, 200));
+                    out.push(at());
+                }
+                m.remove(); el.remove();
+                return out;
+            };
+            const loaded = m => new Promise(r => m.loaded?.() ? r(m) : m.once('load', () => r(m)));
+            const opts = el => ({container: el, style, maxBounds, center: [170, -20], zoom: 3, fadeDuration: 0, dragPan: {inertia: false}});
+            const mlr = await run(el => loaded(new ml.Map(opts(el))));
+            const cr = await run(el => loaded(new compat.Map({...opts(el), renderer: 'main'})));
+            // The main API: the description carries the bounds, and the view moves by jumps (no drag here).
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+            const host = lib.createMap(el, {style, maxBounds, view: {center: [170, -20], zoom: 3}, renderer: 'main'});
+            await new Promise(r => host.state.subscribe(s => s.loaded, l => l && r()));
+            const hr = [];
+            for (const c of jumps) {
+                host.update({style, maxBounds, view: {center: c, zoom: 3}, renderer: 'main'});
+                // (Each expected centre differs from the one before: wait up to 2 s for the state to report it.)
+                const was = host.state.get().view.center[0];
+                for (let i = 0; i < 40 && host.state.get().view.center[0] === was; i++) await new Promise(r => setTimeout(r, 50));
+                hr.push(host.state.get().view.center);
+            }
+            host.destroy(); el.remove();
+            return {ml: mlr, compat: cr, main: hr};
+        });
+        const sameLng = (a, b) => Math.abs(((a - b) % 360 + 540) % 360 - 180) < 1e-3;
+        const same = (a, b) => a.length === b.length && a.every((p, i) => sameLng(p[0], b[i][0]) && Math.abs(p[1] - b[i][1]) < 1e-3);
+        check('[main] maplibre-compat and createMap: maxBounds that cross the antimeridian keep the view where MapLibre keeps it, after a jump and a drag (#309)',
+            same(anti.compat, anti.ml) && same(anti.main, anti.ml.slice(0, 5)), JSON.stringify(anti));
         // #261: the eventData argument of a camera method is on the events of that move, and not on the next move.
         const tagged = await page.evaluate(async () => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
