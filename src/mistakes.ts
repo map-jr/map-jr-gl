@@ -30,6 +30,7 @@ const texts: ((a: string, b: string) => string)[] = [
     /* 17 */ (a, b) => `markers: the marker layer "${a}" has the id of a ${b} of the style, and takes its place. Give the marker layer an id that the style and "extend" do not have.`,
     /* 18 */ (a, b) => `markers: the marker layer "${a}" has before: "${b}", but the style has no layer "${b}", so the markers go on top. Write the id of a layer of the style.`,
     /* 19 */ (a, b) => `markers: the marker ${b} of the marker layer "${a}" has no position, so it is not drawn. Give each marker "lngLat" as [lng, lat].`,
+    /* 20 */ (a, b) => `images: the SVG of the image "${a}" has "width" or "height" and no "viewBox", so it is drawn at 24×24 CSS pixels. Add a viewBox to its <svg> element, for example viewBox="0 0 ${b}".`,
 ];
 
 /** The message with the number `code` for the names `a` and `b`. */
@@ -83,6 +84,12 @@ export function check(c: Checked, kind: number, a?: any, b?: any) {
             if (!m.image) warn(15, m.id);
             // (The first marker with no position. The data is read one time for each array.)
             if (m.data !== before?.markers?.find(o => o.id === m.id)?.data) { const bad = m.data.findIndex(d => !Number.isFinite(+(d?.lngLat?.[0] as number)) || !Number.isFinite(+(d?.lngLat?.[1] as number))); if (bad >= 0) warn(19, m.id, String(bad)); }
+        }
+        // An SVG without a viewBox is drawn at 24×24, whatever its width and height say (see "Images for style layers" in docs/api.md).
+        for (const name in next.images) {
+            const v = next.images[name] as unknown, root = /<svg\b[^>]*>/i.exec(String((v as {image?: unknown})?.image ?? v ?? ''))?.[0] ?? '';
+            const size = (k: string) => new RegExp(`\\s${k}\\s*=\\s*["']?\\s*([\\d.]+)`).exec(root)?.[1];
+            if (root && !/\sviewBox\s*=/.test(root) && (size('width') || size('height'))) warn(20, name, (size('width') ?? size('height')) + ' ' + (size('height') ?? size('width')));
         }
         // (A template that is replaced by one with other slots: the layers of the map give it the same parameters.)
         if (before && differ(next.images, before.images) && c.ready()) slots(map.getStyle()?.layers ?? [], [], next.images);
