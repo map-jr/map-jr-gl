@@ -68,6 +68,9 @@ export const MapJr = forwardRef<MapHost | null, MapJrProps>(function MapJr(props
     // The images of the `MapImage` components in this map, by component. They come after the images of the prop: with
     // one name in both, the image of the component is used.
     const owners = useRef(new globalThis.Map<object, GivenImage>()), [, again] = useState(0);
+    // One object for the life of the component: some React versions (the 18.3 canary of Next.js 14) set `innerHTML`
+    // again for a new object, which deletes the canvas of the map (#188).
+    const [html] = useState(() => ({__html: firstView ?? ''}));
     const give = useCallback((owner: object, image: GivenImage | null) => {
         if (JSON.stringify(owners.current.get(owner) ?? null) === JSON.stringify(image)) return;
         if (image) owners.current.set(owner, image); else owners.current.delete(owner);
@@ -98,7 +101,7 @@ export const MapJr = forwardRef<MapHost | null, MapJrProps>(function MapJr(props
     useImperativeHandle(ref, () => host as MapHost, [host]);
     return h('div', {className: 'map-jr-react' + (className ? ' ' + className : ''), style: {position: 'relative', width: '100%', height: '100%', ...style}},
         // (The HTML of the server stays in this element until the map removes it: React does not look at its content.)
-        h('div', {ref: el, style: {position: 'absolute', inset: 0}, suppressHydrationWarning: true, dangerouslySetInnerHTML: {__html: firstView ?? ''}}),
+        h('div', {ref: el, style: {position: 'absolute', inset: 0}, suppressHydrationWarning: true, dangerouslySetInnerHTML: html}),
         h(Images.Provider, {value: give}, h(Host.Provider, {value: host}, children)));
 });
 
