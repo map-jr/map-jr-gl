@@ -635,6 +635,16 @@ for (const mode of ['main', 'worker']) {
     });
     check(`[${mode}] transformRequest changes tile requests made in workers (each tile arrives), and addProtocol supplies data for a URL`,
         requests.from === 'made://point?seen=1' && requests.kinds.includes('Tile') && requests.kinds.includes('Source') && requests.arrived, JSON.stringify(requests));
+    // A protocol named "pmtiles" (the pmtiles library's) is not used, because the library reads pmtiles:// itself: it warns once (#250).
+    const pmWarns = await page.evaluate(async () => {
+        const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), warns = [], warn = console.warn;
+        console.warn = (...a) => { warns.push(String(a[0])); };
+        try { mod.addProtocol('pmtiles', async () => ({data: new ArrayBuffer(0)})); mod.addProtocol('pmtiles', async () => ({data: new ArrayBuffer(0)})); mod.addProtocol('other', async () => ({data: ''})); }
+        finally { console.warn = warn; mod.removeProtocol('pmtiles'); mod.removeProtocol('other'); }
+        return warns.filter(w => w.includes('addProtocol'));
+    });
+    check(`[${mode}] addProtocol('pmtiles') warns once that the library reads pmtiles:// itself`,
+        pmWarns.length === 1 && pmWarns[0].startsWith('[map-jr-gl]') && pmWarns[0].includes('pmtiles://'), JSON.stringify(pmWarns));
     // The AbortController that a protocol gets is aborted when the request is no longer wanted: a newer setData, a newer
     // setData that drops the diffs of updateData, and the removal of the map (#92).
     const aborts = await page.evaluate(async mode => {

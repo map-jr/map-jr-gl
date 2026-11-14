@@ -54,7 +54,7 @@ The props are the fields of the description of a map (see [the main API](api.md)
 | `className`, `style` | For the element of the component. |
 | `children` | Content over the map, and `MapOverlay` elements. |
 
-A ref on the component gets the map (the `MapHost` of [the main API](api.md), for `queryFeatures`, `moveTo`,
+A ref on the component gets the map (the `MapHost` of [the main API](api.md), for `queryFeatures`, `clusterExpansionZoom`, `moveTo`,
 `fitBounds`). The component creates the map in an effect, so the ref is `null` during the first render and in the
 effects of the parent that run at mount. Read the ref in an event handler or after `onLoad`, or put the code in a
 child component that calls `useMap()`.
