@@ -200,7 +200,7 @@ export class Engine {
     private workload: Workload;
 
     constructor(canvas: HTMLCanvasElement | OffscreenCanvas, o: EngineOptions, private backends: TileBackend[], private emit: (e: EngineEvent) => void) {
-        this.workload = new Workload(backends.length);
+        this.workload = new Workload(backends.length, 2); // (two jobs per worker: one can download while the other is built)
         this.renderer = new GLRenderer(canvas, o.antialias);
         this.renderer.iconOf = this.icon;
         (canvas as EventTarget).addEventListener('webglcontextlost', () => { if (!this.lost) { this.lost = true; this.emit({type: 'contextlost'}); } }); // (not when the map itself freed the context)
@@ -755,7 +755,7 @@ export class Engine {
                 this.queryElevation(c).then(value => this.emit({type: 'result', id: c.id, value}), err => this.emit({type: 'result', id: c.id, error: String(err.message)}));
                 return;
             case 'repaint': break;
-            case 'destroy': this.lost = true; this.renderer.destroy(); return;
+            case 'destroy': this.lost = true; this.workload.stop(); this.renderer.destroy(); return;
             case 'frames': this.reportFrames = c.on; break;
             case 'ping': this.pinged = c.n; break; // (and a frame follows)
             case 'requests': this.rules = c.rules; for (const b of this.backends) b.setRequests(c.rules, this.ask); break;
@@ -1028,16 +1028,16 @@ export class Engine {
         if (b && (id.x + 1 <= mercX(b[0]) * n || id.x >= mercX(b[2]) * n || id.y + 1 <= mercY(b[3]) * n || id.y >= mercY(b[1]) * n)) load = Promise.resolve({labels: {}, batches: {}});
         else if (isGeometrySource(src)) {
             // (Each tile worker has the style and the data of every GeoJSON source, so any of them can build a new tile.)
-            const i = t.backend = this.workload.pick(), backend = this.backends[i], req = this.nextReq++;
-            t.cancel = () => backend.cancel(req);
-            load = this.workload.track(i, backend.load(this.build(req, source, id, t))).then(tile => this.upload(tile));
+            const req = this.nextReq++, {job, cancel} = this.workload.run(i => this.backends[t.backend = i].load(this.build(req, source, id, t)), src.type === 'geojson');
+            t.cancel = () => t.backend === undefined ? cancel() : this.backends[t.backend].cancel(req);
+            load = job.then(tile => this.upload(tile));
         } else {
             // Elevation tiles are decoded in a tile worker, which also reads the heights that 3D terrain needs: this thread
             // only sends the finished pixels to the GPU. (Reading pixels back here made the map hitch as tiles arrived.)
             if (src.type === 'raster-dem') {
-                const i = this.workload.pick(), backend = this.backends[i], req = this.nextReq++, encoding = src.encoding ?? 'mapbox';
-                t.cancel = () => backend.cancel(req);
-                load = this.workload.track(i, backend.loadElevation({id: req, url, encoding})).then(dem => !dem ? (t.missing = true, {labels: {}, batches: {}}) : this.paced(dem.pixels.length * 2, () => {
+                const req = this.nextReq++, encoding = src.encoding ?? 'mapbox', {job, cancel} = this.workload.run(i => this.backends[t.backend = i].loadElevation({id: req, url, encoding}));
+                t.cancel = () => t.backend === undefined ? cancel() : this.backends[t.backend].cancel(req);
+                load = job.then(dem => !dem ? (t.missing = true, {labels: {}, batches: {}}) : this.paced(dem.pixels.length * 2, () => {
                     if (this.tiles.get(key) !== t) return {labels: {}, batches: {}};
                     t.dem = {grid: dem.grid, lo: dem.lo, hi: dem.hi};
                     if (this.style.terrain?.source === source) this.ground(key, t, true);

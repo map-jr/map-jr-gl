@@ -51,3 +51,43 @@ test('two maps on the same workers keep separate counts', () => {
     assert.equal(one.pick(), 1);
     assert.equal(two.pick(), 0);
 });
+
+test('a job waits while every worker is at its limit, and the worker that is free first takes it', async () => {
+    const w = new Workload(2, 1), jobs = [job(), job(), job()], started: number[] = [];
+    const runs = jobs.map((j, k) => w.run(i => { started[k] = i; return j.promise; }));
+    assert.deepEqual(started, [0, 1]);
+    jobs[1].resolve(); // worker 1 ends first, while worker 0 still builds a dense tile
+    await settle();
+    assert.equal(started[2], 1);
+    jobs[0].resolve();
+    jobs[2].resolve();
+    await Promise.all(runs.map(r => r.job));
+});
+
+test('a job that is cancelled while it waits fails as aborted and never starts', async () => {
+    const w = new Workload(1, 1), first = job();
+    let starts = 0;
+    w.run(() => { starts++; return first.promise; });
+    const second = w.run(() => { starts++; return job().promise; });
+    second.cancel();
+    await assert.rejects(second.job, /aborted/);
+    first.resolve();
+    await settle();
+    assert.equal(starts, 1);
+});
+
+test('a job with `now` starts at once, on the worker with the fewest jobs', () => {
+    const w = new Workload(2, 1), started: number[] = [];
+    w.run(() => job().promise);
+    w.run(() => job().promise);
+    w.run(() => job().promise); // waits
+    w.run(i => { started.push(i); return job().promise; }, true);
+    assert.deepEqual(started, [0]);
+});
+
+test('a job that throws when it starts fails, and the worker is free again', async () => {
+    const w = new Workload(1, 1);
+    await assert.rejects(w.run(() => { throw new Error('bad'); }).job, /bad/);
+    await settle();
+    assert.equal(await w.run(() => Promise.resolve(7)).job, 7);
+});
