@@ -888,7 +888,7 @@ for (const mode of ['main', 'worker']) {
             // (A worker URL of its own gives this map its own tile workers: the other maps of the page keep theirs.)
             const m = new mod.Map({container: el, renderer: 'main', tileWorkers: 4, workerUrl: '/dist/map-jr-gl-worker.js?fresh', center: [0, 0], zoom: 1, attributionControl: false,
                 style: {version: 8, sources: {v: {type: 'vector', tiles: ['fresh://{z}/{x}/{y}'], minzoom: 0, maxzoom: 0}}, layers: [{id: 'a', type: 'circle', source: 'v', 'source-layer': 'a'}]}});
-            await new Promise(r => m.once('idle', r));
+            await new Promise(r => { m.once('idle', r); setTimeout(r, 2000); });
             const counts = async () => { const out = []; for (let i = 0; i < 8; i++) out.push((await m.queryFeatures([0, 0], {sources: ['v'], radius: 5})).length, (await m.queryRenderedFeatures({layers: ['a']})).length); return out; };
             const before = await counts(), requestsBefore = requests;
             points = 1;
@@ -981,14 +981,21 @@ for (const mode of ['main', 'worker']) {
         check(`[${mode}] setStyle before the style of the constructor has come: the new style takes its place`, ok(first), JSON.stringify({...first, shot: first.shot.equals(wanted)}));
     }
     // #196: with `interactive: false`, the handlers are off, a drag does nothing, and `enable()` on a handler turns it on,
-    // as in MapLibre GL JS.
+    // as in MapLibre GL JS. #253: the map still fires `click`, `mousemove` and the events of a layer.
     {
         await page.evaluate(async mode => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
             const el = window.niEl = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:300px;z-index:1000'}));
-            const m = window.niMap = new mod.Map({container: el, renderer: mode, attributionControl: false, interactive: false, center: [0, 0], zoom: 2, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]}});
+            const m = window.niMap = new mod.Map({container: el, renderer: mode, attributionControl: false, interactive: false, center: [0, 0], zoom: 2, style: {version: 8, sources: {sq: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[-30, -30], [30, -30], [30, 30], [-30, 30], [-30, -30]]]}}}}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}, {id: 'sq', type: 'fill', source: 'sq', paint: {'fill-color': '#00f'}}]}});
+            const seen = window.niSeen = [];
+            for (const t of ['click', 'mousemove']) m.on(t, () => seen.includes(t) || seen.push(t));
+            m.on('click', 'sq', e => seen.includes('click sq') || seen.push(e.features?.length ? 'click sq' : 'click sq, no features'));
             await new Promise(r => m.once('load', r));
+            await new Promise(r => { m.once('idle', r); setTimeout(r, 2000); });
         }, mode);
+        await page.mouse.move(190, 140); await page.mouse.move(200, 150); await page.mouse.click(200, 150);
+        await page.waitForFunction(() => window.niSeen.includes('click sq'), null, {timeout: 3000, polling: 50}).catch(() => {});
+        const seen = await page.evaluate(() => window.niSeen.slice().sort());
         const pose = () => page.evaluate(() => { const c = window.niMap.getCenter(); return [c.lng, c.lat, window.niMap.getZoom()]; });
         const drag = async () => { await page.mouse.move(200, 150); await page.mouse.down(); for (let i = 1; i <= 8; i++) await page.mouse.move(200 + i * 10, 150, {steps: 1}); await page.mouse.up(); await page.waitForTimeout(600); };
         const off = await page.evaluate(() => ['dragPan', 'scrollZoom', 'doubleClickZoom', 'dragRotate', 'touchZoomRotate', 'touchPitch', 'keyboard', 'boxZoom'].filter(k => window.niMap[k].isEnabled()));
@@ -1006,6 +1013,7 @@ for (const mode of ['main', 'worker']) {
         await page.evaluate(() => { window.niMap.remove(); window.niEl.remove(); });
         check(`[${mode}] interactive: false turns the handlers off, and enable() on dragPan and scrollZoom turns them on (#196)`,
             off.length === 0 && pOff.join() === p0.join() && pDrag[0] !== p0[0] && pWheel[2] > pDrag[2], JSON.stringify({off, p0, pOff, pDrag, pWheel}));
+        check(`[${mode}] interactive: false still fires click, mousemove and the click of a layer (#253)`, seen.join() === 'click,click sq,mousemove', JSON.stringify(seen));
     }
     // Two maps on one page with the same source name: each has its own feature state and its own global state.
     {
@@ -1600,7 +1608,7 @@ for (const mode of ['main', 'worker']) {
             m.addControl(new mod.AttributionControl({customAttribution: '© Mapterhorn | OpenFreeMap © OpenMapTiles Data from OpenStreetMap contributors and more'}), 'top-left');
             m.addControl(new mod.NavigationControl({showCompass: false}), 'top-right');
             const marker = new mod.Marker().setLngLat(m.unproject({x: 150, y: 40})).addTo(m);
-            await new Promise(r => m.once('idle', r));
+            await new Promise(r => { m.once('idle', r); setTimeout(r, 2000); });
             await new Promise(r => setTimeout(r, 100));
             const credits = el.querySelector('.map-jr-ctrl-attrib'), a = credits.getBoundingClientRect(), n = el.querySelector('.map-jr-ctrl-group').getBoundingClientRect();
             return {open: credits.classList.contains('map-jr-compact-show'), creditsRight: Math.round(a.right), controlsLeft: Math.round(n.left), markerZ: +getComputedStyle(marker.getElement()).zIndex, cornerZ: +getComputedStyle(credits.parentElement).zIndex};
