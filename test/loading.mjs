@@ -44,5 +44,23 @@ for (const [what, file, query] of [['the worker file', /map-jr-gl-worker\.js/, '
     check(`start-up: ${what} is asked for before the style has answered`, ok && !!styleAsked && !!fileAsked && fileAsked < styleAnswered, `loaded=${ok} asked ${fileAsked - styleAsked} ms after the style was asked; the style answered after ${styleAnswered - styleAsked} ms`);
     await page.close();
 }
+// The chunks of the page script load in one round: the entry names every chunk that it needs at start, also those that
+// it reaches through another chunk, so the browser asks for all of them before any of them has answered (#325).
+{
+    const page = await browser.newPage({viewport: {width: 800, height: 500}});
+    const asked = {}, answered = {};
+    await page.route(/map-jr-gl-(?!worker|engine-entry)[\w-]+-[\w-]{8}\.js$/, async r => {
+        const name = r.request().url().split('/').pop();
+        asked[name] ??= Date.now();
+        await new Promise(res => setTimeout(res, 400));
+        answered[name] ??= Date.now();
+        r.continue().catch(() => {});
+    });
+    await page.goto(base);
+    const ok = await page.waitForFunction(() => window.mapLoaded, null, {timeout: 30000}).then(() => true, () => false);
+    const names = Object.keys(asked), last = Math.max(...Object.values(asked)), first = Math.min(...Object.values(answered));
+    check('start-up: the chunks of the page script are asked for in one round', ok && names.length > 1 && last < first, `loaded=${ok} chunks=${names.map(n => n.replace(/-[\w-]{8}\.js$/, '')).join(', ')}; the last was asked ${last - first} ms after the first answer`);
+    await page.close();
+}
 await browser.close();
 process.exit(failed ? 1 : 0);
