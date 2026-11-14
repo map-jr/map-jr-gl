@@ -391,9 +391,13 @@ export function packLabels(labels: Record<string, LabelSrc[]>): PackedLabels {
     }
     return out;
 }
+/** Rebuilds each label as one plain object, because engines read an object whose prototype was set afterwards many times slower (#332). */
 export function unpackLabels(packed: PackedLabels): Record<string, LabelSrc[]> {
     const out: Record<string, LabelSrc[]> = {};
-    for (const id in packed) out[id] = packed[id].own.map(([i, own]) => (i < 0 ? own : Object.setPrototypeOf(own, packed[id].shared[i])) as LabelSrc);
+    for (const id in packed) {
+        const shared = packed[id].shared;
+        out[id] = packed[id].own.map(([i, own]) => (i < 0 ? own : {...shared[i], ...own}) as LabelSrc);
+    }
     return out;
 }
 
