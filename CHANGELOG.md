@@ -7,6 +7,12 @@ number, and its entry starts with a section "Breaking changes". See
 `#12` is a link to pull request 12. A change without a number comes from before 2026-11-11, when the repository had
 no pull requests.
 
+## Unreleased
+
+### Breaking changes
+
+- `@map-jr/map-jr-gl/vue` and the Nuxt module: the composable `useMap` is renamed to `useMapJr` ([#389]).
+
 ## 0.3.0 (2026-11-14)
 
 This entry covers the changes after 0.2.0 (the tag `v0.2.0`).

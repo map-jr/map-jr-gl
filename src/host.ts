@@ -295,7 +295,7 @@ function complete(spec: MapSpec, method: string, fix: string) {
 
 export function createMap(container: HTMLElement | string, spec: MapSpec): MapHost { return makeMap(container, spec, 'createMap()'); }
 
-/** `createMap` for the adapters: `name` is what the user wrote (`<MapJr>`, `useMap()`), for the warnings that name it. */
+/** `createMap` for the adapters: `name` is what the user wrote (`<MapJr>`, `useMapJr()`), for the warnings that name it. */
 export function makeMap(container: HTMLElement | string, spec: MapSpec, name: string): MapHost {
     complete(spec, 'createMap', 'Pass the URL of a style or a style object as "style".');
     if (!container) throw new Error('[map-jr-gl] createMap(): the container is ' + container + '. In a framework, make the map after the element is mounted.');

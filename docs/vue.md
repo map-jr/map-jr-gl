@@ -270,16 +270,16 @@ To put your own component into a control corner, give the map `custom({key, posi
 
 ## The composable
 
-`useMap` makes a map in an element of your own. The description (`MapSpec`, see [the main API](api.md)) can be a
+`useMapJr` makes a map in an element of your own. The description (`MapSpec`, see [the main API](api.md)) can be a
 ref, a computed value or a function.
 
 ```vue
 <script setup>
 import {computed, ref, useTemplateRef} from 'vue';
-import {useMap} from '@map-jr/map-jr-gl/vue';
+import {useMapJr} from '@map-jr/map-jr-gl/vue';
 
 const measuring = ref(false);
-const {host, state} = useMap(useTemplateRef('el'), computed(() => ({
+const {host, state} = useMapJr(useTemplateRef('el'), computed(() => ({
   style: 'https://tiles.openfreemap.org/styles/liberty',
   initialView: {center: [-74.0065, 40.7085], zoom: 13.6},
   cursor: measuring.value ? 'crosshair' : undefined,
@@ -296,7 +296,7 @@ const {host, state} = useMap(useTemplateRef('el'), computed(() => ({
 
 `state` is a ref with the state of the map. `host` is a ref with the map when it is there.
 
-`useMap` calls `update` of the map each time that the description is a new object:
+`useMapJr` calls `update` of the map each time that the description is a new object:
 
 - Give a new description object for each change. A computed value or a function does this when a ref that it reads
   changes, as `measuring` does in the example.
@@ -330,16 +330,16 @@ With the module, a page uses the components without an import:
 </template>
 ```
 
-- `MapJr`, `MapOverlay` and `MapImage` are registered, and `useMap`, `useMapHost` and `useMapFeatures`.
+- `MapJr`, `MapOverlay` and `MapImage` are registered, and `useMapJr`, `useMapHost` and `useMapFeatures`.
 - The controls have longer names, because `scale` and `navigation` are common words: `navigationControl()`,
   `scaleControl()`, `fullscreenControl()`, `geolocateControl()`, `terrainControl()`.
 - `LazyMapJr` puts the code of the map into a file of its own. With `hydrate-on-visible`, the browser loads that file
   and starts the map when the map comes into view. Together with `ssr`, the visitor sees the map from the server at
   once, and a page with a map far down loads no map code until it is necessary.
-- The other exports of `@map-jr/map-jr-gl/vue` do not load the map code. `MapJr` and `useMap` load it with `import()`
+- The other exports of `@map-jr/map-jr-gl/vue` do not load the map code. `MapJr` and `useMapJr` load it with `import()`
   when the map is mounted, so a component that uses `MapOverlay`, `MapImage` or `useMapHost` next to a `LazyMapJr`
   does not bring the map code into the page. The file `vue.js` and what it imports are about 3 KB (gzip). The `host`
-  of `useMap` is `null` until that code has loaded, also in `onMounted`.
+  of `useMapJr` is `null` until that code has loaded, also in `onMounted`.
 - A template ref on `LazyMapJr` with `hydrate-on-visible` (or another `hydrate-*` prop) is the lazy wrapper that
   Nuxt puts around `MapJr`, and it has no `host` and no `state`, also after hydration. Without a `hydrate-*` prop,
   the ref on `LazyMapJr` has them. To reach the map of a lazily hydrated map, use one of these:
