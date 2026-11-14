@@ -353,6 +353,33 @@ test('pmtiles: tiles are read from an archive by range request, through director
     assert.equal(await fetchTile('pmtiles://https://tiles.test/a.pmtiles/3/1/1', fetch), null);
 });
 
+test('pmtiles: a server that ignores Range is read once, and a file above 64 MB fails with a message', async () => {
+    const {PMTiles} = await import('../../src/pmtiles.ts');
+    const file = new Uint8Array(134 + 20000), v = new DataView(file.buffer);
+    file.set(new TextEncoder().encode('PMTiles')); file[7] = 3;
+    // Root directory at 127 with one entry (tile 0, run 1, length 20000, offset 0); the tile data lies beyond the first 16 KB.
+    v.setUint32(8, 127, true); v.setUint32(16, 7, true); v.setUint32(56, 134, true); v.setUint32(64, 20000, true);
+    file[97] = 1; file[98] = 1; file[99] = 1; file[100] = 0; file[101] = 0;
+    file.set([1, 0, 1, 0xa0, 0x9c, 0x01, 1], 127);
+    for (let i = 134; i < file.length; i++) file[i] = i & 255;
+    let calls = 0;
+    const fetch = (async () => { calls++; return new Response(file, {status: 200}); }) as any;
+    const pm = new PMTiles('https://tiles.test/full.pmtiles', fetch);
+    assert.deepEqual(await pm.tile(0, 0, 0), file.subarray(134, 134 + 20000));
+    await pm.tile(0, 0, 0);
+    assert.equal(calls, 1, 'the whole file is downloaded once');
+    let read = false;
+    const big = (async () => new Response(new ReadableStream({pull(c) { read = true; c.close(); }}, {highWaterMark: 0}), {status: 200, headers: {'content-length': String(100 << 20)}})) as any;
+    await assert.rejects(new PMTiles('https://tiles.test/big.pmtiles', big).info(), /^Error: \[map-jr-gl\] PMTiles https:\/\/tiles.test\/big.pmtiles: the server ignores Range requests, .*\(100 MB\)/);
+    assert.equal(read, false, 'the body of a file above the limit is not read');
+    // Without Content-Length, the stream is read only until it passes the limit. One 1 MB chunk is sent repeatedly.
+    const chunk = new Uint8Array(1 << 20);
+    let pulls = 0, cancelled = false;
+    const chunked = (async () => new Response(new ReadableStream({pull(c) { pulls++; c.enqueue(chunk); }, cancel() { cancelled = true; }}, {highWaterMark: 0}), {status: 200})) as any;
+    await assert.rejects(new PMTiles('https://tiles.test/chunked.pmtiles', chunked).info(), /the server ignores Range requests/);
+    assert.ok(pulls <= 66 && cancelled, `the stream is cancelled after the limit (${pulls} chunks read)`);
+});
+
 test('geojson: sources are cut into tiles, clipped, and render and query like vector tiles', async () => {
     const {prepareGeoJSON, sliceGeoJSON} = await import('../../src/geojson.ts');
     const n = 2 ** 14, lng = (x: number) => x / n * 360 - 180, lat = (y: number) => Math.atan(Math.sinh(Math.PI * (1 - 2 * y / n))) * 180 / Math.PI;
