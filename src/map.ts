@@ -321,6 +321,9 @@ export class Map {
             style: this.resolved, width: tr.width, height: tr.height, dpr: this.dpr, fontFamily: o.fontFamily ?? DEFAULT_FONT, fonts: o.fonts,
             center: [tr.lng, tr.lat] as [number, number], zoom: tr.zoom, bearing: tr.bearing, pitch: tr.pitch,
             minZoom: tr.minZoom, maxZoom: tr.maxZoom, maxPitch: tr.maxPitch, antialias: o.antialias,
+            // (A new engine, after a fall back or a restart too, gets the rules with the style: otherwise its first tiles
+            // would be fetched before `resend` sends them, without `transformRequest`; #355.)
+            requests: this.rulesSent ? this.requestRules() : undefined,
         };
 
         const tiles = await pool;
@@ -672,11 +675,12 @@ export class Map {
     setTransformRequest(fn: RequestTransform | null) { this.transformRequest = fn; this.sendRequestRules(); return this; }
     /** Tells the engine which requests need a question to this thread. */
     private sendRequestRules = () => {
-        const rules = {transform: !!this.transformRequest, protocols: [...protocols.keys()]};
+        const rules = this.requestRules();
         // (Nothing is sent to a map that has never had a rule: most maps have none.)
         if (rules.transform || rules.protocols.length || this.rulesSent) { this.rulesSent = true; this.post({type: 'requests', rules}); }
     };
     private rulesSent = false;
+    private requestRules = () => ({transform: !!this.transformRequest, protocols: [...protocols.keys()]});
     /** What to do with one request: the transform first, then a custom protocol if the URL has one. */
     private async answer(url: string, kind: string, signal?: AbortSignal | null): Promise<RequestAnswer> {
         const t = this.transformRequest?.(url, kind), to = t?.url ?? url, protocol = protocols.get(to.slice(0, to.indexOf(':')));

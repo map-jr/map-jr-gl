@@ -19,6 +19,8 @@ export type {FontSource} from './style.ts';
 export interface EngineOptions extends CameraOptions {
     style: ResolvedStyle; width: number; height: number; dpr: number; fontFamily: string; fonts?: FontSource[];
     minZoom?: number; maxZoom?: number; maxPitch?: number; antialias?: boolean;
+    /** The page's rules for requests at the start, so that the first tiles follow them too (#355). */
+    requests?: RequestRules;
 }
 export interface FeatureQuery { radius: number; zoom?: number; sources?: string[]; sourceLayers?: string[]; filter?: unknown; geometry?: boolean }
 export type Command =
@@ -181,6 +183,12 @@ export class Engine {
     private nextBackend = 0;
     private lastCamera = '';
     private wasIdle = false;
+    /** The map has been idle once: the overview tiles wait for that (#326). */
+    private wentIdle = false;
+    /** When the engine started. A map that never becomes idle (a long animation, a style that keeps repainting) requests
+     * its overview this long after the start instead: 3 s is past the first idle of a usual map here, and short enough
+     * that a fast pan still lands on blurry map (#326). */
+    private readonly born = performance.now();
     private seq = 0;
     private moving = false;
 
@@ -254,6 +262,7 @@ export class Engine {
         this.renderer.resize(o.width, o.height, o.dpr);
         Object.assign(this.tr, {minZoom: o.minZoom ?? -2, maxZoom: o.maxZoom ?? 22, maxPitch: o.maxPitch ?? 60});
         this.tr.set(o.center, o.zoom, o.bearing, o.pitch);
+        if (o.requests) { this.rules = o.requests; for (const b of backends) b.setRequests(o.requests, this.ask); }
         this.setStyle(o.style, true);
         if (o.fonts?.length) this.loadFonts(o.fonts);
     }
@@ -1318,11 +1327,13 @@ export class Engine {
                     wanted.add(key);
                     const t = this.tiles.get(key);
                     const oid = {z, x, y, w: id.w, key: k};
-                    // (The overview waits until the tiles of the view have loaded: its tiles are large, and they would take
-                    // the connections and the tile workers from the tiles that the view needs.)
+                    // (The overview waits for the first `idle` of the map: its tiles are large, and before that they would take
+                    // the connections and the tile workers from the tiles of the view and the engine from the label placement.
+                    // A map that is not idle 3 s after the start requests it then (see `born`). Later it waits until the tiles
+                    // of the view have loaded.)
                     // (`used` below 0: a tile that no frame has needed yet. Its arrival changes nothing in the image, so it
                     // does not place the labels again, which would delay the first `idle`. It keeps that mark while it loads.)
-                    if (!t) { if (complete) { this.request(source, oid, key); const made = this.tiles.get(key); if (made) made.used = -1; } } else {
+                    if (!t) { if (complete && (this.wentIdle || performance.now() - this.born > 3000)) { this.request(source, oid, key); const made = this.tiles.get(key); if (made) made.used = -1; } } else {
                         if (t.state !== 'loading') t.used = frameNo;
                         // Keep the overview current too, or it would flash old data when it stands in for a missing tile.
                         this.refresh(source, oid, key, t);
@@ -1460,6 +1471,8 @@ export class Engine {
             if (this.pinged) { this.emit({type: 'pong', n: this.pinged}); this.pinged = 0; }
         }
         if (idle && !this.wasIdle) this.emit({type: 'idle', seq: this.seq});
+        // (One more frame after the first `idle`: it requests the overview tiles.)
+        if (idle && !this.wentIdle) { this.wentIdle = true; this.repaint(); }
         this.wasIdle = idle;
         if (busy) this.repaint();
         const st = this.stats, end = performance.now();

@@ -78,12 +78,37 @@ const noPreload = {
 };
 
 /**
+ * A chunk imports every chunk that it needs at start, also those that it reaches only through another chunk. Otherwise
+ * the browser finds them one level at a time: the entry, then the host and the map, then the runtime of the bundler, a
+ * serial round of requests for each level (#325). Rollup does this itself (`hoistTransitiveImports`); Rolldown does not.
+ * The imports go at the end of the file, so that the source map stays right. A chunk that loads on demand is not in
+ * `imports`, so it is not added.
+ */
+const hoistImports = {
+    name: 'hoist-transitive-imports',
+    generateBundle(_, bundle) {
+        const all = (name, seen = new Set()) => {
+            for (const dep of bundle[name]?.imports ?? []) if (!seen.has(dep) && bundle[dep]) { seen.add(dep); all(dep, seen); }
+            return seen;
+        };
+        for (const chunk of Object.values(bundle)) {
+            if (chunk.type !== 'chunk') continue;
+            const extra = [...all(chunk.fileName)].filter(dep => !chunk.imports.includes(dep));
+            if (!extra.length) continue;
+            // (Before the line that names the source map, which stays the last line.)
+            const add = extra.map(dep => `import"./${dep}";`).join('') + '\n', at = chunk.code.lastIndexOf('\n//# sourceMappingURL=');
+            chunk.code = at < 0 ? chunk.code + '\n' + add : chunk.code.slice(0, at + 1) + add + chunk.code.slice(at + 1);
+        }
+    },
+};
+
+/**
  * One Vite build. Everything is written to dist/ next to what earlier builds put there. Each built file gets a source
  * map beside it (`<file>.map`) and a last line that names the map. A browser fetches the map only when its developer
  * tools are open.
  */
 const run = (options, define = {__WORKER_SRC__: '""'}, plugins = []) => build({
-    configFile: false, logLevel: 'warn', define: {__DEV__: 'false', __VERSION__: JSON.stringify(pkg.version), ...define}, plugins: [shaders, privates, noPreload, keepEnv, ...plugins],
+    configFile: false, logLevel: 'warn', define: {__DEV__: 'false', __VERSION__: JSON.stringify(pkg.version), ...define}, plugins: [shaders, privates, noPreload, keepEnv, hoistImports, ...plugins],
     build: {target: 'es2022', minify: true, sourcemap: true, emptyOutDir: false, outDir: 'dist', copyPublicDir: false, reportCompressedSize: false, modulePreload: false, ...options},
 });
 
