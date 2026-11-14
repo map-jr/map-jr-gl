@@ -935,6 +935,30 @@ for (const mode of ['main', 'worker']) {
         // (The browser writes its own line to the console for each 404 that this test asks for.)
         for (let i = errors.length; i-- > errorsBefore;) if (errors[i].startsWith('Failed to load resource')) errors.splice(i, 1);
     }
+    // loaded() is false from setStyle or a style edit until the next idle, as in MapLibre (#190).
+    {
+        const got = await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const style = n => ({version: 8, sources: {}, layers: Array.from({length: n}, (_, i) => ({id: 'bg' + i, type: 'background'}))});
+            const m = new mod.Map({container: el, style: style(1), renderer: mode, attributionControl: false, center: [0, 0], zoom: 1});
+            const idle = () => Promise.race([new Promise(r => m.once('idle', r)), new Promise(r => setTimeout(r, 5000))]);
+            await new Promise(r => m.once('load', r)); if (!m.loaded()) await idle();
+            const out = {start: m.loaded()};
+            m.setLayoutProperty('bg0', 'visibility', 'none');
+            out.afterEdit = m.loaded();
+            await idle(); out.editIdle = m.loaded();
+            const styledata = new Promise(r => m.once('styledata', () => r(m.loaded())));
+            m.setStyle(style(2));
+            out.afterSetStyle = m.loaded();
+            out.onStyledata = await styledata;
+            await idle(); out.styleIdle = m.loaded();
+            m.remove(); el.remove();
+            return out;
+        }, mode);
+        check(`[${mode}] loaded() is false after a style edit and after setStyle until idle`,
+            got.start && !got.afterEdit && got.editIdle && !got.afterSetStyle && !got.onStyledata && got.styleIdle, JSON.stringify(got));
+    }
     // The kept network result of a source: new data at the same URL stays after a change of the style, and two maps
     // that are given the same source object both load it.
     {

@@ -680,7 +680,13 @@ export class Map {
     getMaxZoom() { return this.tr.maxZoom; }
     getContainer() { return this.container; }
     getCanvas() { return this.canvas; }
-    loaded() { return this.isLoaded; }
+    /**
+     * As in MapLibre: `false` from a call of `setStyle`, a style edit, a source change or a camera move until the next
+     * complete frame (the frame that fires `idle`).
+     */
+    loaded() { return this.isLoaded && this.tilesLoaded && !this.styleLoading && this.restyled === this.restyles; }
+    /** A `setStyle` whose style has not come yet. */
+    private styleLoading = false;
     isMoving() { return this.moving; }
     project(lngLat: LngLatLike) { const [x, y] = this.tr.project(...toLngLat(lngLat)); return {x, y}; }
     unproject(point: {x: number; y: number} | [number, number]) {
@@ -907,9 +913,11 @@ export class Map {
         if (!this.rawStyle) { this.options.style = style; this.firstChange = options?.transformStyle; return this.starting ? undefined : this.start().catch(this.sourceFailed); }
         // (A style that cannot be loaded is an `error` event, as a failure of the first style is. The map keeps its style.)
         let next: any;
-        try { next = await this.loadStyle(style); } catch (error) { if (turn === this.styleTurn) this.fire('error', {error}); return; }
+        this.styleLoading = true;
+        try { next = await this.loadStyle(style); } catch (error) { if (turn === this.styleTurn) { this.styleLoading = false; this.fire('error', {error}); } return; }
         // (A style that was asked for later has replaced this one.)
         if (turn !== this.styleTurn) return;
+        this.styleLoading = false;
         this.styleBase = typeof style === 'string' ? new URL(style, location.href).href : location.href;
         this.rawStyle = options?.transformStyle?.(this.rawStyle, next) ?? next;
         this.newStyle = true;
