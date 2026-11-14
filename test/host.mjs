@@ -50,6 +50,25 @@ for (const renderer of ['worker', 'main']) {
         check(`[${renderer}] the view: changes are reported, a reported view is not applied again, a new view moves the map`,
             view.reported >= 2 && view.last === 15 && view.afterEcho === 15 && view.moved.join() === '13.5,20,-74' && view.zoomEvents >= 2, JSON.stringify(view));
 
+        // 2b. Padding per side (#212): fitBounds and moveTo take {top, right, bottom, left}, and the description has padding.
+        const padding = await page.evaluate(async () => {
+            const t = window.t, m = t.host.map, b = [[-74.02, 40.70], [-74.00, 40.72]], mid = [-74.01, 40.71];
+            const at = () => { const p = m.project(mid); return [Math.round(p.x), Math.round(p.y)]; };
+            t.host.fitBounds(b, {padding: {left: 400, top: 10, right: 10, bottom: 10}, duration: 0});
+            const fit = at();
+            t.host.moveTo({center: mid, padding: {left: 300}});
+            const moved = at();
+            t.host.update({...t.spec, padding: {right: 300}});
+            const spec = at();
+            t.host.update({...t.spec, padding: 0});
+            const cleared = at();
+            t.host.moveTo({center: mid});
+            return {fit, moved, spec, cleared: at()};
+        });
+        // (The page is 900 × 600: the centre of the rest of the map is at x = 400 + 245 = 645, 300 + 300 = 600 and 300.)
+        check(`[${renderer}] padding per side: fitBounds and moveTo take {top, right, bottom, left}, and padding of the description moves the centre`,
+            Math.abs(padding.fit[0] - 645) <= 2 && padding.moved[0] === 600 && padding.spec[0] === 300 && padding.cleared[0] === 450 && padding.moved[1] === 300, JSON.stringify(padding));
+
         // 3. A new style object: a layer is added and found by a query; with the old style again it is gone.
         const style = await page.evaluate(async () => {
             const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms));
@@ -715,6 +734,27 @@ for (const renderer of ['worker', 'main']) {
         });
         check(`[${renderer}] controls follow the description`, controls.two === 2 && controls.still === 2 && controls.one === 1 && controls.none === 0, JSON.stringify(controls));
 
+        // A control of your own (#216): an element, and an object with onAdd/onRemove, follow the description by key.
+        const custom = await page.evaluate(async () => {
+            const t = window.t, {navigation, custom} = await import('/dist/controls.js');
+            const settle = () => new Promise(r => setTimeout(r, 50));
+            const el = Object.assign(document.createElement('button'), {id: 'own-ctrl'});
+            let added = 0, removed = 0;
+            const obj = {onAdd: () => { added++; return Object.assign(document.createElement('div'), {id: 'own-obj'}); }, onRemove: () => { removed++; document.getElementById('own-obj')?.remove(); }};
+            const spec = () => [navigation(), custom({key: 'el', position: 'top-left', element: el}), custom({key: 'obj', ...obj})];
+            t.host.update(t.spec = {...t.spec, controls: spec()});
+            await settle();
+            const inCorner = !!el.parentElement?.matches('#host .map-jr-ctrl-top-left') && el.classList.contains('map-jr-ctrl');
+            const objIn = !!document.querySelector('#host .map-jr-ctrl-top-right #own-obj');
+            t.host.update(t.spec = {...t.spec, controls: spec()}); // made again: the same keys keep the controls
+            await settle();
+            const kept = added === 1 && removed === 0 && el.isConnected;
+            t.host.update(t.spec = {...t.spec, controls: undefined});
+            await settle();
+            return {inCorner, objIn, kept, gone: !el.isConnected && removed === 1 && !document.getElementById('own-obj')};
+        });
+        check(`[${renderer}] custom controls go into their corner and follow the description by key`, custom.inCorner && custom.objIn && custom.kept && custom.gone, JSON.stringify(custom));
+
         // 4b. An SVG image without a viewBox has the size of its width and height attributes (#175): a 9×9 image that
         // replaces a 40×40 one under the same name is drawn at 9×9 centred on its anchor, and the 40×40 one is not cropped.
         // (The blue box of each picture is read from a picture of the page; the anchor is at the centre, 450, 300.)
@@ -795,6 +835,29 @@ for (const renderer of ['worker', 'main']) {
         });
         check(`[${renderer}] a watchFeatures listener that throws is called again, and a listener that throws leaves the next listener its event and is reported as an error`,
             thrown.calls >= 2 && thrown.second === 1 && thrown.error === 'thrown by a listener', JSON.stringify(thrown));
+
+        // 5d. The cluster methods of a GeoJSON source, as promises, and a message when the source has no clusters (#217).
+        const clusters = await page.evaluate(async renderer => {
+            const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:300px;height:200px'}));
+            const idle = host => new Promise(r => { host.state.subscribe(s => s.idle, v => v && r()); setTimeout(r, 8000); });
+            const points = Array.from({length: 12}, (_, i) => ({type: 'Feature', properties: {i}, geometry: {type: 'Point', coordinates: [-74.0065 + (i % 4) * 0.0004, 40.7085 + Math.floor(i / 4) * 0.0004]}}));
+            const spec = {style: t.style, initialView: {center: [-74.0065, 40.7085], zoom: 10}, renderer, attribution: false,
+                extend: {sources: {pts: {type: 'geojson', cluster: true, data: {type: 'FeatureCollection', features: points}}, plain: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}},
+                    layers: [{id: 'pts-circle', type: 'circle', source: 'pts', paint: {'circle-radius': 20}}]}};
+            const host = t.lib.createMap(el, spec);
+            await idle(host);
+            const found = await host.queryFeatures(undefined, {layers: ['pts-circle']});
+            const id = found.find(f => f.properties.cluster)?.properties.cluster_id;
+            const zoom = await host.clusterExpansionZoom('pts', id), children = await host.clusterChildren('pts', id);
+            const all = await host.clusterLeaves('pts', id, Infinity), two = await host.clusterLeaves('pts', id, 2, 1);
+            const failed = p => p.then(() => 'answered', e => e.message);
+            const errors = [await failed(host.clusterExpansionZoom('plain', 1)), await failed(host.clusterLeaves('nothing', 1)), await failed(host.clusterChildren('pts', 999999))];
+            host.destroy(); el.remove();
+            return {id, zoom, children: children.length, all: all.length, two: two.length, point: all[0]?.geometry.type, errors};
+        }, renderer);
+        check(`[${renderer}] clusterExpansionZoom, clusterChildren and clusterLeaves answer for a cluster, and reject with a message otherwise`,
+            typeof clusters.id === 'number' && clusters.zoom > 10 && clusters.children >= 1 && clusters.all === 12 && clusters.two === 2 && clusters.point === 'Point'
+            && clusters.errors[0].startsWith('[map-jr-gl] clusterExpansionZoom(): ') && clusters.errors[1].includes('"nothing" is not a GeoJSON source') && clusters.errors[2].startsWith('[map-jr-gl] clusterChildren(): '), JSON.stringify(clusters));
 
         // 5c. A rejection of the question of watchFeatures is an error of the map, and is not lost (#92).
         const rejected = await page.evaluate(async () => {

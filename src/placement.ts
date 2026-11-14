@@ -301,6 +301,12 @@ function followLine(
     tr: Transform, it: RenderItem<unknown>, l: LabelSrc, line: {advances: number[]}, s: number, ax: number, ay: number, w: number, h: number, flat = 0,
 ): {curve: number[]; ground?: number[]; boxes: Box[]} | null {
     const path = l.path!, n = path.length / 2;
+    // Most text that comes here does not fit its line at this zoom, so the length is tested first, before the points
+    // are projected. The length on the screen (or on the ground, for a tilted map) is the length in the tile times
+    // `it.scale`. (The exact test below decides the cases within a thousandth of a pixel.)
+    let before = 0, total = 0;
+    for (let i = 1; i < n; i++) { const d = Math.hypot(path[i * 2] - path[i * 2 - 2], path[i * 2 + 1] - path[i * 2 - 1]); total += d; if (i <= l.pathIndex!) before += d; }
+    if (Math.min(before, total - before) * it.scale < w * (flat || s) / s / 2 - 1e-3) return null;
     // The points of the line: on the screen, and in the tile (for lengths on the ground).
     let xs: number[] = [], ys: number[] = [], us: number[] = [], vs: number[] = [];
     for (let i = 0; i < n; i++) { const u = path[i * 2], v = path[i * 2 + 1], [x, y] = tr.projectTile(it.id, u, v); xs.push(x); ys.push(y); us.push(u); vs.push(v); }
