@@ -190,6 +190,21 @@ export class Map extends CoreMap {
     getGlyphs() { return this.rawStyle?.glyphs ?? null; }
     /** Sets the URL of the glyph files of the style. The map loads them from this URL, unless the option `glyphs` is `false` or `fonts` is given. */
     setGlyphs(url: string | null) { return this.editStyle(s => { if (url) s.glyphs = url; else delete s.glyphs; }); }
+    /**
+     * As in MapLibre GL JS, a vector, raster or raster-dem source has `setTiles(tiles)` and `setUrl(url)` (a TileJSON
+     * URL), which replace its tiles and load them again. The TileJSON goes through the same request as in the style.
+     */
+    getSource(id: string): any {
+        const spec = super.getSource(id);
+        if (!/^(vector|raster)/.test(spec?.type)) return spec;
+        const set = (k: string, v: unknown, ok: boolean) => {
+            if (!ok) throw new Error(`[map-jr-gl] getSource("${id}").${k === 'url' ? 'setUrl(url): "url" must be a string' : 'setTiles(tiles): "tiles" must be an array of URL strings'}.`);
+            this.editStyle(s => { const src = s.sources[id]; if (src) delete src.url, delete src.tiles, src[k] = Array.isArray(v) ? [...v] : v; });
+            return source;
+        };
+        const source = {...spec, id, setTiles: (t: string[]) => set('tiles', t, Array.isArray(t) && t.every(x => typeof x === 'string')), setUrl: (u: string) => set('url', u, typeof u === 'string')};
+        return source;
+    }
     getFontFaces() { return this.rawStyle?.['font-faces'] ?? {}; }
     setFontFaces(faces: Record<string, unknown> | null) { return this.editStyle(s => { if (faces) s['font-faces'] = faces; else delete s['font-faces']; }); }
     /** The image that addImage was given, with its options, or undefined. (MapLibre returns the decoded pixels.) */
