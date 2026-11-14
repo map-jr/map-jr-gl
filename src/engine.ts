@@ -105,7 +105,7 @@ function sourceSignature(style: ResolvedStyle, name: string): [string, string] {
     return [source, json.includes('"global-state"') ? json + JSON.stringify(style.state ?? {}) : json];
 }
 
-interface TileState { state: 'loading' | 'ok' | 'error'; gl?: GLTile; /** An image tile that the server does not have (404). */ missing?: boolean; /** The zoom that the tile was built for (see `buildZoom`). */ band?: number; /** A number that changes each time the state or the content of the tile changes. */ rev?: number; /** Elevation tiles shaping 3D terrain: the lowest and highest ground on the tile, in metres. */ range?: [number, number]; /** An elevation tile: its heights, for when it shapes 3D terrain (see `ground`). */ dem?: {grid: Float32Array; lo: number; hi: number}; used: number; cancel(): void; /** Shown, but built from data that has since changed. */ stale?: boolean; rebuilding?: boolean; /** The tile worker that loaded the tile. */ backend?: number; /** The rules of the style that the tile was built for (see `sourceSignature`). */ rules?: string }
+interface TileState { state: 'loading' | 'ok' | 'error'; gl?: GLTile; /** An image tile that the server does not have (404). */ missing?: boolean; /** The zoom that the tile was built for (see `buildZoom`). */ band?: number; /** A number that changes each time the state or the content of the tile changes. */ rev?: number; /** Elevation tiles shaping 3D terrain: the lowest and highest ground on the tile, in metres. */ range?: [number, number]; /** An elevation tile: its heights, for when it shapes 3D terrain (see `ground`). */ dem?: {grid: Float32Array; lo: number; hi: number}; used: number; cancel(): void; /** A failed load: how many loads of this tile have failed, and when it is requested again. */ tries?: number; retryAt?: number; /** Shown, but built from data that has since changed. */ stale?: boolean; rebuilding?: boolean; /** The tile worker that loaded the tile. */ backend?: number; /** The rules of the style that the tile was built for (see `sourceSignature`). */ rules?: string }
 interface LabelState { placed: Placed; opacity: number; target: number }
 
 const raf: (cb: (t: number) => void) => unknown = globalThis.requestAnimationFrame
@@ -170,6 +170,8 @@ const touches = (a: TileID, b: TileID) => {
     return a.w === b.w && (d >= 0 ? a.x >> d === b.x && a.y >> d === b.y : b.x >> -d === a.x && b.y >> -d === a.y);
 };
 
+/** How many times a tile whose request failed is requested again. */
+const TILE_RETRIES = 3;
 export class Engine {
     tr = new Transform();
     private renderer: GLRenderer;
@@ -1072,6 +1074,15 @@ export class Engine {
         return !!(this.ease || (this.wheel && this.wheel.doneAt === undefined) || glide);
     }
 
+    /** The tile of a key, requested again first when its request failed and the time to try again has come. */
+    private retried(source: string, id: TileID, key: string) {
+        const t = this.tiles.get(key);
+        if (!(t?.retryAt! <= performance.now())) return t;
+        this.dropTile(key, t!);
+        this.request(source, id, key, t!.tries! + 1);
+        return this.tiles.get(key);
+    }
+
     private dropTile(key: string, t: TileState) {
         if (t.state === 'loading') t.cancel();
         if (t.gl) this.renderer.destroyTile(t.gl);
@@ -1103,13 +1114,13 @@ export class Engine {
         heightsChanged(this.heights);
     }
 
-    private request(source: string, id: TileID, key: string) {
+    private request(source: string, id: TileID, key: string, tries = 0) {
         const src = this.style.sources[source], url = tileURL(src, id.z, id.x, id.y);
         // Contour lines are made from elevation data, which is much work. While the zoom changes, each step would start
         // tiles that are out of date a moment later, and slow devices cannot keep up. The lines of the last zoom stay
         // on the map (they are scaled) until the zoom has been still for a moment.
         if (src.contour && this.frameTime - this.zoomMovedAt < CONTOUR_WAIT) { this.contourWait = true; return; }
-        const t: TileState = {state: 'loading', used: this.frameNo, cancel() {}};
+        const t: TileState = {state: 'loading', used: this.frameNo, tries, cancel() {}};
         this.tiles.set(key, t);
         t.rev = ++this.tilesVersion;
         let load: Promise<GLTile>;
@@ -1157,7 +1168,11 @@ export class Engine {
             if (this.tiles.get(key) !== t) return;
             t.state = 'error';
             t.rev = ++this.tilesVersion;
-            if (err.message !== 'aborted' && err.name !== 'AbortError') this.emit({type: 'error', message: err.message});
+            if (err.message === 'aborted' || err.name === 'AbortError') return this.repaint();
+            this.emit({type: 'error', message: err.message});
+            // A failed request (a lost connection, an error of the server) is made again while the view needs the tile:
+            // after 0.5 s, 1 s and 2 s. Without this, one failed request left a hole in the map until the tile left the view (#360).
+            if (t.tries! < TILE_RETRIES) { const wait = 500 * 2 ** t.tries!; t.retryAt = performance.now() + wait; setTimeout(() => this.repaint(), wait); }
             this.repaint();
         });
     }
@@ -1314,14 +1329,14 @@ export class Engine {
             for (const id of ideal) {
                 const key = source + '|' + id.key;
                 wanted.add(key);
-                const t = this.tiles.get(key);
+                const t = this.retried(source, id, key);
                 if (!t) this.request(source, id, key);
                 else this.refresh(source, id, key, t);
                 // (A tile that was requested for the overview and that the view now needs: its arrival changes the image.)
                 if (t && t.used < 0) t.used = frameNo;
                 // (A tile that is drawn from old data, or that is being built again, is not complete: `idle` waits for it.
                 // Only a tile of geometry is built again; see `refresh`.)
-                if (!t || t.state === 'loading' || t.rebuilding || t.stale && t.state === 'ok' && t.band !== undefined) complete = false;
+                if (!t || t.state === 'loading' || t.retryAt || t.rebuilding || t.stale && t.state === 'ok' && t.band !== undefined) complete = false;
                 if (!t || t.state === 'loading' || t.stale || t.rebuilding) loading.add(source);
                 // The server does not have this image tile: the nearest tile above it that the server has is drawn in its
                 // place (as in MapLibre GL JS, at most 10 levels above). One level is requested at a time.
@@ -1341,8 +1356,7 @@ export class Engine {
                     const z = Math.max(src.minzoom, id.z - dz), x = id.x >> id.z - z, y = id.y >> id.z - z, k = `${z}/${x}/${y}`, key = source + '|' + k;
                     if (wanted.has(key)) continue;
                     wanted.add(key);
-                    const t = this.tiles.get(key);
-                    const oid = {z, x, y, w: id.w, key: k};
+                    const oid = {z, x, y, w: id.w, key: k}, t = this.retried(source, oid, key);
                     // (The overview waits for the first `idle` of the map: its tiles are large, and before that they would take
                     // the connections and the tile workers from the tiles of the view and the engine from the label placement.
                     // A map that is not idle 3 s after the start requests it then (see `born`), once the tiles of the view
