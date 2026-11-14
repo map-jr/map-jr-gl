@@ -1344,6 +1344,28 @@ for (const mode of ['main', 'worker']) {
         check(`[${mode}] raster source: setTiles and setUrl load tiles from the new URLs, and a wrong argument gives a message`,
             r.a && r.b && r.c && r.same && r.url === '/test-255.json' && !r.tiles && r.message.startsWith('[map-jr-gl] getSource("r").setTiles'), JSON.stringify(r));
     }
+    // The coarse overview tiles (zoom 11 for a view at zoom 14.3) are not drawn while the tiles of the view are there.
+    // Their arrival does not place the labels again: the map fires no second `idle`, and before the first `idle` it
+    // does not wait for another placement.
+    {
+        let late = 0;
+        const slow = async r => { await new Promise(res => setTimeout(res, 2000)); late++; r.continue(); };
+        await page.route('**/tiles/11/**', slow);
+        await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:1000px;height:700px'}));
+            // (A view with many labels: their fade keeps frames coming after the overview is requested.)
+            const m = new mod.Map({container: el, renderer: mode, style: '/style.json', center: [-74.0065, 40.7085], zoom: 14.3, attributionControl: false});
+            window.overview = {m, el, idles: 0};
+            m.on('idle', () => window.overview.idles++);
+            await new Promise(r => { m.once('idle', r); setTimeout(r, 15000); });
+        }, mode);
+        for (let i = 0; i < 100 && !late; i++) await page.waitForTimeout(100);
+        await page.waitForTimeout(1500); // (the tiles arrive and are built, and a frame would place the labels)
+        const idles = await page.evaluate(() => { const {m, el, idles} = window.overview; m.remove(); el.remove(); return idles; });
+        await page.unroute('**/tiles/11/**', slow);
+        check(`[${mode}] the overview tiles arrive after the first idle: no second idle`, late > 0 && idles === 1, `idle events=${idles}, late tiles=${late}`);
+    }
     // CSS on `.maplibregl-map` sizes the container before the map measures it, as in MapLibre GL JS (#248).
     if (mode === 'worker') {
         const sized = await page.evaluate(async () => {

@@ -1059,7 +1059,8 @@ export class Engine {
             t.gl = gl;
             t.state = 'ok';
             t.rev = ++this.tilesVersion;
-            if (t.used >= 0) this.invalidate();
+            // (A tile of the overview that no frame has drawn yet changes nothing in the image. From now on it ages like any other tile.)
+            if (t.used >= 0) this.invalidate(); else t.used = this.frameNo;
         }, err => {
             if (this.tiles.get(key) !== t) return;
             t.state = 'error';
@@ -1219,6 +1220,8 @@ export class Engine {
                 const t = this.tiles.get(key);
                 if (!t) this.request(source, id, key);
                 else this.refresh(source, id, key, t);
+                // (A tile that was requested for the overview and that the view now needs: its arrival changes the image.)
+                if (t && t.used < 0) t.used = frameNo;
                 // (A tile that is drawn from old data, or that is being built again, is not complete: `idle` waits for it.
                 // Only a tile of geometry is built again; see `refresh`.)
                 if (!t || t.state === 'loading' || t.rebuilding || t.stale && t.state === 'ok' && t.band !== undefined) complete = false;
@@ -1245,9 +1248,10 @@ export class Engine {
                     const oid = {z, x, y, w: id.w, key: k};
                     // (The overview waits until the tiles of the view have loaded: its tiles are large, and they would take
                     // the connections and the tile workers from the tiles that the view needs.)
-                    // (`used` below 0: a tile that no frame has needed yet. Its arrival changes nothing in the image.)
+                    // (`used` below 0: a tile that no frame has needed yet. Its arrival changes nothing in the image, so it
+                    // does not place the labels again, which would delay the first `idle`. It keeps that mark while it loads.)
                     if (!t) { if (complete) { this.request(source, oid, key); const made = this.tiles.get(key); if (made) made.used = -1; } } else {
-                        t.used = frameNo;
+                        if (t.state !== 'loading') t.used = frameNo;
                         // Keep the overview current too, or it would flash old data when it stands in for a missing tile.
                         this.refresh(source, oid, key, t);
                     }
