@@ -980,6 +980,24 @@ for (const mode of ['main', 'worker']) {
         check(`[${mode}] setStyle two times, the first answer last: the last style is the style, in getStyle, the layers and the pixels`, ok(later), JSON.stringify({...later, shot: later.shot.equals(wanted)}));
         check(`[${mode}] setStyle before the style of the constructor has come: the new style takes its place`, ok(first), JSON.stringify({...first, shot: first.shot.equals(wanted)}));
     }
+    // #259: addControl with a value that is not a control fires `error` and returns the map, as in MapLibre GL JS.
+    // A position that does not exist throws.
+    {
+        const r = await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:200px;height:150px'}));
+            const m = new mod.Map({container: el, style: {version: 8, sources: {}, layers: []}, renderer: mode, attributionControl: false});
+            const errors = [];
+            m.on('error', e => errors.push(String(e.error?.message)));
+            const out = {};
+            try { out.same = m.addControl(undefined) === m && m.addControl({}, 'top-left') === m; } catch (e) { out.threw = String(e); }
+            try { m.addControl(new mod.NavigationControl(), 'middle'); } catch (e) { out.bad = String(e.message); }
+            m.remove(); el.remove();
+            return {...out, errors};
+        }, mode);
+        check(`[${mode}] compat addControl(undefined) and addControl({}): error event, returns the map; a bad position throws`,
+            r.same === true && r.errors.length === 2 && r.errors.every(e => e.includes('addControl()')) && r.bad?.includes('"middle"'), JSON.stringify(r));
+    }
     // #196: with `interactive: false`, the handlers are off, a drag does nothing, and `enable()` on a handler turns it on,
     // as in MapLibre GL JS.
     {

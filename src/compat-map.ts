@@ -110,6 +110,10 @@ export class Map extends CoreMap {
         this.fire('error', {error});
         return this;
     }
+    // A value that is not a control fires `error`, as in MapLibre GL JS. A bad position throws, as there (from the core).
+    addControl(control: Parameters<CoreMap['addControl']>[0], position?: Parameters<CoreMap['addControl']>[1]) {
+        return (control as {onAdd?: unknown} | undefined)?.onAdd ? super.addControl(control, position) : this.refused('addControl(): the argument is not a control. Pass an object with onAdd and onRemove methods.');
+    }
     addLayer(layer: AddLayerObject, beforeId?: string) {
         // (A custom layer has functions: it cannot go to the worker, and it is not kept in the style.)
         if (layer.type === 'custom') return this.unsupported('A layer of the type "custom"', false);
