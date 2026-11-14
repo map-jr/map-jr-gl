@@ -193,6 +193,20 @@ export interface TileBackend {
     query(url: string, q: TileQuery): Promise<QueriedFeature[]>;
 }
 
+/**
+ * Chooses the tile worker for each job of one engine: the worker with the fewest of its jobs in progress (the first
+ * of equals), so that a worker that is free takes the next tile while another still builds a dense one (#324). The
+ * counts belong to the engine and end with it. A map does not see the jobs of another map on the same workers.
+ */
+export class Workload {
+    private busy: number[];
+    constructor(workers: number) { this.busy = Array(workers).fill(0); }
+    /** The worker for a new job. */
+    pick() { let best = 0; for (let i = 1; i < this.busy.length; i++) if (this.busy[i] < this.busy[best]) best = i; return best; }
+    /** Counts a job on worker `i` until it is answered or fails. */
+    track<T>(i: number, job: Promise<T>) { this.busy[i]++; const done = () => { this.busy[i]--; }; job.then(done, done); return job; }
+}
+
 export class LocalBackend implements TileBackend {
     private builder = new TileBuilder();
     loadElevation(req: ElevationRequest) { return this.builder.loadElevation(req); }

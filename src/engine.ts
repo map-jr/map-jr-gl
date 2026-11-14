@@ -10,7 +10,7 @@ import {CollisionGrid, placeLabels, renderItems, type Placed, type RenderItem} f
 import {EM, GlyphAtlas} from './text.ts';
 import {fetchWith, withTimeout, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
 import {decodeElevation, sampleElevation, tilesUnderBox, type QueriedFeature, type QuerySet} from './query.ts';
-import type {FeatureStates, TileBackend, TileRequest} from './tiles.ts';
+import {Workload, type FeatureStates, type TileBackend, type TileRequest} from './tiles.ts';
 import type {TileGL} from './tile.ts';
 import {fetchTile, heads} from './pmtiles.ts';
 
@@ -139,7 +139,6 @@ export class Engine {
     private frameNo = 0;
     private scheduled = false;
     private nextReq = 1;
-    private nextBackend = 0;
     private lastCamera = '';
     private wasIdle = false;
     private seq = 0;
@@ -197,8 +196,11 @@ export class Engine {
     private iconsAll = false;
     private dem = new Map<string, Promise<{width: number; height: number; data: Uint8ClampedArray} | null>>();
     private dpr = 1;
+    /** The jobs of this map in progress on each tile worker (see `Workload`). */
+    private workload: Workload;
 
     constructor(canvas: HTMLCanvasElement | OffscreenCanvas, o: EngineOptions, private backends: TileBackend[], private emit: (e: EngineEvent) => void) {
+        this.workload = new Workload(backends.length);
         this.renderer = new GLRenderer(canvas, o.antialias);
         this.renderer.iconOf = this.icon;
         (canvas as EventTarget).addEventListener('webglcontextlost', () => { if (!this.lost) { this.lost = true; this.emit({type: 'contextlost'}); } }); // (not when the map itself freed the context)
@@ -819,10 +821,10 @@ export class Engine {
 
     /**
      * The tile worker that answers a query about a tile: the one that loaded the tile, because it has the bytes that
-     * the map shows. A tile that the map does not have goes to the next worker in turn.
+     * the map shows. A tile that the map does not have goes to the worker with the fewest jobs.
      */
     private queryBackend(source: string, z: number, x: number, y: number) {
-        return this.backends[this.tiles.get(`${source}|${z}/${x}/${y}`)?.backend ?? this.nextBackend++ % this.backends.length];
+        return this.backends[this.tiles.get(`${source}|${z}/${x}/${y}`)?.backend ?? this.workload.pick()];
     }
 
     /** The features that the given style layers draw in a rectangle of the screen, from the tiles of the present zoom. */
@@ -1025,16 +1027,17 @@ export class Engine {
         // A tile outside the bounds of the source is empty, without a request.
         if (b && (id.x + 1 <= mercX(b[0]) * n || id.x >= mercX(b[2]) * n || id.y + 1 <= mercY(b[3]) * n || id.y >= mercY(b[1]) * n)) load = Promise.resolve({labels: {}, batches: {}});
         else if (isGeometrySource(src)) {
-            const backend = this.backends[t.backend = this.nextBackend++ % this.backends.length], req = this.nextReq++;
+            // (Each tile worker has the style and the data of every GeoJSON source, so any of them can build a new tile.)
+            const i = t.backend = this.workload.pick(), backend = this.backends[i], req = this.nextReq++;
             t.cancel = () => backend.cancel(req);
-            load = backend.load(this.build(req, source, id, t)).then(tile => this.upload(tile));
+            load = this.workload.track(i, backend.load(this.build(req, source, id, t))).then(tile => this.upload(tile));
         } else {
             // Elevation tiles are decoded in a tile worker, which also reads the heights that 3D terrain needs: this thread
             // only sends the finished pixels to the GPU. (Reading pixels back here made the map hitch as tiles arrived.)
             if (src.type === 'raster-dem') {
-                const backend = this.backends[this.nextBackend++ % this.backends.length], req = this.nextReq++, encoding = src.encoding ?? 'mapbox';
+                const i = this.workload.pick(), backend = this.backends[i], req = this.nextReq++, encoding = src.encoding ?? 'mapbox';
                 t.cancel = () => backend.cancel(req);
-                load = backend.loadElevation({id: req, url, encoding}).then(dem => !dem ? (t.missing = true, {labels: {}, batches: {}}) : this.paced(dem.pixels.length * 2, () => {
+                load = this.workload.track(i, backend.loadElevation({id: req, url, encoding})).then(dem => !dem ? (t.missing = true, {labels: {}, batches: {}}) : this.paced(dem.pixels.length * 2, () => {
                     if (this.tiles.get(key) !== t) return {labels: {}, batches: {}};
                     t.dem = {grid: dem.grid, lo: dem.lo, hi: dem.hi};
                     if (this.style.terrain?.source === source) this.ground(key, t, true);
@@ -1102,9 +1105,9 @@ export class Engine {
 
     private rebuild(source: string, id: TileID, key: string, t: TileState) {
         // (The tile worker that loaded the tile has its bytes still: it builds the tile again without a request.)
-        const backend = this.backends[t.backend ?? this.nextBackend++ % this.backends.length], req = this.nextReq++;
+        const i = t.backend ?? this.workload.pick(), backend = this.backends[i], req = this.nextReq++;
         t.rebuilding = true; // one rebuild at a time per tile; data that changes meanwhile marks it stale again
-        backend.load({...this.build(req, source, id, t), again: true}).then(tile => {
+        this.workload.track(i, backend.load({...this.build(req, source, id, t), again: true})).then(tile => {
             t.rebuilding = false;
             if (this.tiles.get(key) !== t) return;
             const old = t.gl;
