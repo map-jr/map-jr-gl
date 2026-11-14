@@ -980,6 +980,24 @@ for (const mode of ['main', 'worker']) {
         check(`[${mode}] setStyle two times, the first answer last: the last style is the style, in getStyle, the layers and the pixels`, ok(later), JSON.stringify({...later, shot: later.shot.equals(wanted)}));
         check(`[${mode}] setStyle before the style of the constructor has come: the new style takes its place`, ok(first), JSON.stringify({...first, shot: first.shot.equals(wanted)}));
     }
+    // #259: addControl with a value that is not a control fires `error` and returns the map, as in MapLibre GL JS.
+    // A position that does not exist throws.
+    {
+        const r = await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:200px;height:150px'}));
+            const m = new mod.Map({container: el, style: {version: 8, sources: {}, layers: []}, renderer: mode, attributionControl: false});
+            const errors = [];
+            m.on('error', e => errors.push(String(e.error?.message)));
+            const out = {};
+            try { out.same = m.addControl(undefined) === m && m.addControl({}, 'top-left') === m; } catch (e) { out.threw = String(e); }
+            try { m.addControl(new mod.NavigationControl(), 'middle'); } catch (e) { out.bad = String(e.message); }
+            m.remove(); el.remove();
+            return {...out, errors};
+        }, mode);
+        check(`[${mode}] compat addControl(undefined) and addControl({}): error event, returns the map; a bad position throws`,
+            r.same === true && r.errors.length === 2 && r.errors.every(e => e.includes('addControl()')) && r.bad?.includes('"middle"'), JSON.stringify(r));
+    }
     // #196: with `interactive: false`, the handlers are off, a drag does nothing, and `enable()` on a handler turns it on,
     // as in MapLibre GL JS.
     {
@@ -1239,6 +1257,22 @@ for (const mode of ['main', 'worker']) {
         const kind = url => first.asked.find(a => a[1] === url)?.[0];
         check(`[${mode}] the sources of the first style: transformRequest gets the TileJSON and the GeoJSON as Source, and addProtocol supplies the GeoJSON`,
             kind('/test-first-tiles.json') === 'Source' && kind('first://point') === 'Source' && first.tileJson && first.from === 'first://point?seen=1' && !first.errors.length, JSON.stringify(first));
+    }
+    // CSS on `.maplibregl-map` sizes the container before the map measures it, as in MapLibre GL JS (#248).
+    if (mode === 'worker') {
+        const sized = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const css = document.head.appendChild(Object.assign(document.createElement('style'), {textContent: '.sized-248.maplibregl-map{height:300px}'}));
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {className: 'sized-248', style: 'position:absolute;left:-2000px;top:0;width:300px'}));
+            const m = new mod.Map({container: el, style: '/style.json', center: [0, 0], zoom: 1, attributionControl: false});
+            // The bounds right after the constructor come from the size that the map measured (0 high without the class).
+            const b = m.getBounds(), first = Math.round((b.getNorth() - b.getSouth()) * 1000) / 1000;
+            // As in Directus: fitBounds on `load` uses the size that the map measured.
+            const zoom = await new Promise(r => { m.once('load', () => { m.fitBounds([[-0.01, -0.01], [0.01, 0.01]], {maxZoom: 8, duration: 0}); r(m.getZoom()); }); setTimeout(() => r(-1), 12000); });
+            m.remove(); el.remove(); css.remove();
+            return {first, zoom};
+        });
+        check('[worker] compat: CSS on .maplibregl-map gives the container its height before the first measurement', sized.first > 0 && Math.abs(sized.zoom - 8) < 0.01, JSON.stringify(sized));
     }
     // A worker that cannot make a WebGL2 context: the map goes to the main thread, `load` and `idle` fire, and what the
     // page sent before the fall back (the rules for requests, a change of the style) is not lost.
@@ -1611,6 +1645,31 @@ for (const mode of ['main', 'worker']) {
         const focus = await page.evaluate(() => window.a11yFocus);
         check('[main] the focus goes into a popup that the keyboard opens, and back to the marker when the popup closes', focus.focusIn && focus.focusBack && focus.focusClick && focus.focusLink && focus.focusSkips && focus.opacity === '1' && focus.scroll === 'true,0,0' && focus.closed, JSON.stringify(focus));
         check('[main] a camera animation jumps with "reduce motion", but for essential: true', moving < 3.9 && reduced === 4 && essential < 3.9, JSON.stringify({moving, reduced, essential}));
+    }
+    // A click on a draggable marker fires no drag events, and a drag fires dragstart only after the pointer moves, with
+    // no click after it, as in MapLibre GL JS (#258).
+    if (mode === 'main') {
+        await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = window.dragEl = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:300px;z-index:1000'}));
+            const m = window.dragMap = new mod.Map({container: el, renderer: 'main', center: [0, 0], zoom: 2, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            const mk = new mod.Marker({draggable: true}).setLngLat(m.unproject({x: 200, y: 150})).addTo(m);
+            window.markerEvents = [];
+            for (const t of ['dragstart', 'drag', 'dragend']) mk.on(t, () => window.markerEvents.push(t));
+            mk.getElement().addEventListener('click', () => window.markerEvents.push('click'));
+            await new Promise(r => m.once('load', r));
+        });
+        const box = await page.evaluate(() => { const r = window.dragEl.querySelector('.map-jr-marker').getBoundingClientRect(); return {x: r.x + r.width / 2, y: r.y + r.height / 2}; });
+        await page.mouse.click(box.x, box.y);
+        await page.waitForTimeout(100);
+        const click = await page.evaluate(() => window.markerEvents.splice(0).join(' '));
+        await page.mouse.move(box.x, box.y); await page.mouse.down();
+        await page.mouse.move(box.x + 1, box.y);
+        const early = await page.evaluate(() => window.markerEvents.join(' '));
+        await page.mouse.move(box.x + 30, box.y + 20, {steps: 5}); await page.mouse.up();
+        await page.waitForTimeout(100);
+        const drag = await page.evaluate(() => { const ev = window.markerEvents.join(' '); window.dragMap.remove(); window.dragEl.remove(); return ev; });
+        check('[main] a click on a draggable marker fires no drag events, and a drag starts after a move and fires no click', click === 'click' && early === '' && /^dragstart( drag)+ dragend$/.test(drag), JSON.stringify({click, early, drag}));
     }
     // The credits of a small map: they do not go under the controls of the other corner, markers are below them, and a
     // press on the map closes them.
