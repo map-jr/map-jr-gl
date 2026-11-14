@@ -30,6 +30,7 @@ export interface Map {
     easeTo(o: EaseToOptions): this;
     setStyle(style: unknown, options?: StyleSwapOptions): Promise<void>;
 }
+declare const __VERSION__: string; // the version of package.json, set by the build
 export class Map extends CoreMap {
     /** As in MapLibre GL JS: with no listener, `once` returns a promise for the event; a layer id makes it a layer event. */
     once(type: string, a?: any, b?: any): any {
@@ -39,6 +40,11 @@ export class Map extends CoreMap {
         const wrap = (e: any) => { this.off(type, layer, wrap); fn(e); };
         return this.on(type, layer, wrap);
     }
+    /** The version of this library, as the member `version` of a map of MapLibre GL JS. */
+    get version() { return __VERSION__; }
+    /** The controls on the map, in the order they were added. vue-maplibre-gl reads this private member of MapLibre GL JS. */
+    get _controls() { return this.added = (this.added ?? []).filter(c => this.hasControl(c)); }
+    declare private added?: Parameters<CoreMap['addControl']>[0][];
     // ---- Accepted, with no effect ----
     // Frameworks for MapLibre GL JS call these methods when an application sets the option, often with the default
     // value. They are here so that such code does not stop. A value that this library cannot do gives one warning.
@@ -114,7 +120,8 @@ export class Map extends CoreMap {
     }
     // A value that is not a control fires `error`, as in MapLibre GL JS. A bad position throws, as there (from the core).
     addControl(control: Parameters<CoreMap['addControl']>[0], position?: Parameters<CoreMap['addControl']>[1]) {
-        return (control as {onAdd?: unknown} | undefined)?.onAdd ? super.addControl(control, position) : this.refused('addControl(): the argument is not a control. Pass an object with onAdd and onRemove methods.');
+        // (The core adds the attribution in its constructor, before the fields of this class exist: hence `??=`.)
+        return (control as {onAdd?: unknown} | undefined)?.onAdd ? ((this.added ??= []).push(control), super.addControl(control, position)) : this.refused('addControl(): the argument is not a control. Pass an object with onAdd and onRemove methods.');
     }
     addLayer(layer: AddLayerObject, beforeId?: string) {
         // (A custom layer has functions: it cannot go to the worker, and it is not kept in the style.)
