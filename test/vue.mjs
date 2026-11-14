@@ -191,10 +191,12 @@ try {
         const box = document.getElementById('own-pin')?.parentElement, tipShown = !!document.getElementById('own-tip')?.getClientRects().length;
         const attrsOk = !!box && box.hasAttribute('data-own') && box.classList.contains('own-class') && getComputedStyle(box).color === 'rgb(255, 0, 0)' && box.style.display !== 'none';
         const moved = where('own-pin'), expect = host.project([-74.0, 40.71]);
-        document.querySelector('.map-jr-popup-close-button')?.click(); await wait(300);
-        return {pinOk: !!pin && Math.abs(pin[0] - (frame.x + at.x)) < 3 && Math.abs(pin[1] - (frame.y + at.y)) < 3, tip, movedOk: !!moved && Math.abs(moved[0] - (frame.x + expect.x)) < 3, closed: t.closed, tipGone: !document.getElementById('own-tip'), tipShown, attrsOk};
+        // (The callback runs at the click, not after the fade: a busy page plays the fade late. See #172.)
+        document.querySelector('.map-jr-popup-close-button')?.click();
+        const atOnce = t.closed; await wait(300);
+        return {pinOk: !!pin && Math.abs(pin[0] - (frame.x + at.x)) < 3 && Math.abs(pin[1] - (frame.y + at.y)) < 3, tip, movedOk: !!moved && Math.abs(moved[0] - (frame.x + expect.x)) < 3, atOnce, closed: t.closed, tipGone: !document.getElementById('own-tip'), tipShown, attrsOk};
     });
-    check('browser: MapOverlay puts own content and a popup at a position, follows its prop, and closes', overlays.pinOk && overlays.tip && overlays.movedOk && overlays.closed === 1 && overlays.tipGone && overlays.tipShown && overlays.attrsOk, JSON.stringify(overlays));
+    check('browser: MapOverlay puts own content and a popup at a position, follows its prop, and closes at the click', overlays.pinOk && overlays.tip && overlays.movedOk && overlays.atOnce === 1 && overlays.closed === 1 && overlays.tipGone && overlays.tipShown && overlays.attrsOk, JSON.stringify(overlays));
     await page.evaluate(() => { window.t.pin.value = [-73.5, 41]; }); // (the element of the pin must not be under the click)
     await page.waitForTimeout(400);
     await page.mouse.move(400, 250); await page.waitForTimeout(300); await page.mouse.click(400, 250); await page.waitForTimeout(600);

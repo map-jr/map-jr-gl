@@ -80,6 +80,8 @@ export class Popup extends Overlay {
     private tip = document.createElement('div');
     private content = document.createElement('div');
     private closeOnMapClick = () => this.remove();
+    /** Set by `remove()` while the closing fade plays: the popup counts as closed, and `addTo()` clears it. */
+    private closing = false;
     /** The marker of this popup. The keyboard focus returns to it when the popup closes with the focus inside. */
     opener?: HTMLElement;
     constructor(readonly options: PopupOptions = {}) {
@@ -143,7 +145,7 @@ export class Popup extends Overlay {
     /** Sets HTML content. As in MapLibre, the caller is responsible for it being safe. */
     setHTML(html: string) { this.content.innerHTML = html; return this; }
     setDOMContent(node: Node) { this.content.replaceChildren(node); return this; }
-    isOpen() { return !!this.map; }
+    isOpen() { return !!this.map && !this.closing; }
     /** The popup's box relative to the map position it points at, in pixels: [left, top, right, bottom]. */
     getBox(): [number, number, number, number] | null {
         if (!this.map || !this.lngLat) return null;
@@ -151,6 +153,7 @@ export class Popup extends Overlay {
         return [r.left - c.left - p.x, r.top - c.top - p.y, r.right - c.left - p.x, r.bottom - c.top - p.y];
     }
     addTo(map: Map) {
+        this.closing = false;
         this.attach(map);
         // Deferred so the click that opened the popup does not immediately close it.
         if (this.options.closeOnClick !== false) setTimeout(() => this.map?.on('click', this.closeOnMapClick));
@@ -158,19 +161,23 @@ export class Popup extends Overlay {
         return this.fire('open');
     }
     remove() {
-        if (!this.map) return this;
+        if (!this.map || this.closing) return this;
+        this.closing = true;
         this.map.off('click', this.closeOnMapClick);
-        const closing = this.transition(true);
+        const fade = this.transition(true);
         const finish = () => {
             // (The closing animation keeps its last frame. Without this, the popup is transparent when it opens again.)
-            closing?.cancel();
+            fade?.cancel();
+            // (A popup that opened again during the fade stays.)
+            if (!this.closing) return;
+            this.closing = false;
             if (this.el.contains(document.activeElement)) this.opener?.focus();
             this.detach();
-            this.fire('close');
         };
-        // Stay attached (and tracking the map) until the fade has played.
-        if (closing) closing.finished.then(finish, finish); else finish();
-        return this;
+        // The element stays on the map (and follows it) until the fade has played. The event `close` comes at once, as in
+        // MapLibre GL JS: a page that is busy can play the fade late, and the application must not wait for it.
+        if (fade) fade.finished.then(finish, finish); else finish();
+        return this.fire('close');
     }
 
     /** Fades in while easing a few pixels toward its resting place; the shape itself never changes. */
