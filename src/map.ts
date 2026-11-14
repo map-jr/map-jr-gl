@@ -620,14 +620,24 @@ export class Map {
     };
     private rulesSent = false;
     /** What to do with one request: the transform first, then a custom protocol if the URL has one. */
-    private async answer(url: string, kind: string): Promise<RequestAnswer> {
+    private async answer(url: string, kind: string, signal?: AbortSignal | null): Promise<RequestAnswer> {
         const t = this.transformRequest?.(url, kind), to = t?.url ?? url, protocol = protocols.get(to.slice(0, to.indexOf(':')));
         if (!protocol) return {url: to, headers: t?.headers, credentials: t?.credentials};
-        const {data} = await protocol({url: to, type: kind === 'Tile' || kind === 'Image' || kind === 'SpriteImage' ? 'arrayBuffer' : 'json', headers: t?.headers}, new AbortController());
-        return {data: toBytes(data)};
+        // The protocol's controller is aborted when the request is no longer wanted (`signal`) or the map is removed.
+        const ac = new AbortController(), stop = () => ac.abort();
+        if (this.removed || signal?.aborted) stop();
+        signal?.addEventListener('abort', stop);
+        this.protocolAborts.add(ac);
+        try {
+            const {data} = await protocol({url: to, type: kind === 'Tile' || kind === 'Image' || kind === 'SpriteImage' ? 'arrayBuffer' : 'json', headers: t?.headers}, ac);
+            if (ac.signal.aborted) throw new Error(`[map-jr-gl] the request to ${to} was aborted.`);
+            return {data: toBytes(data)};
+        } finally { this.protocolAborts.delete(ac); signal?.removeEventListener('abort', stop); }
     }
+    /** The controllers of the protocol requests that run: `remove()` aborts them. */
+    private protocolAborts = new Set<AbortController>();
     /** A `fetch` for requests that this thread makes itself (the style, its sources, GeoJSON data). */
-    protected fetchAs = (kind: string) => fetchWith(() => ({transform: !!this.transformRequest, protocols: [...protocols.keys()]}), (url, k) => this.answer(url, k), kind);
+    protected fetchAs = (kind: string) => fetchWith(() => ({transform: !!this.transformRequest, protocols: [...protocols.keys()]}), (url, k, signal) => this.answer(url, k, signal), kind);
     private layerListeners: {type: string; layer: string; fn: Listener}[] = [];
     private hoveredLayers = new Set<string>();
     private hoverBusy = false;
@@ -974,17 +984,17 @@ export class Map {
         // the removal of the source, drops them.)
         const queued = this.diffQueues.get(id);
         if (queued?.call === call && queued.raw === raw) { queued.diffs.push(diff); return queued.p; }
-        const q = {call, raw, diffs: [diff], p: undefined as unknown as Promise<void>};
-        q.p = this.fetchAs('Source')(new URL(data, this.styleBase)).then(r => r.json()).then(d => {
+        const q = {call, raw, diffs: [diff], p: undefined as unknown as Promise<void>, ac: new AbortController()};
+        q.p = this.fetchAs('Source')(new URL(data, this.styleBase), {signal: q.ac.signal}).then(r => r.json()).then(d => {
             if (this.diffQueues.get(id) === q) this.diffQueues.delete(id);
             if (this.rawStyle?.sources[id] !== raw || this.dataCalls.get(id) !== call) return;
             return this.setGeoJSON(id, q.diffs.reduce((d, f) => applyDiff(d, f, raw.promoteId), d));
-        });
+        }, e => { if (!q.ac.signal.aborted && !this.removed) throw e; });
         this.diffQueues.set(id, q);
         return q.p;
     }
     /** The diffs of `updateData` that wait for the URL of a GeoJSON source, with the call number they started from. */
-    private diffQueues = new globalThis.Map<string, {call: number, raw: object, diffs: GeoJSONDiff[], p: Promise<void>}>();
+    private diffQueues = new globalThis.Map<string, {call: number, raw: object, diffs: GeoJSONDiff[], p: Promise<void>, ac: AbortController}>();
     /** The number of the newest call that set the data of each GeoJSON source: an answer for an older call is dropped. */
     private dataCalls = new globalThis.Map<string, number>();
     /** The request of the newest `setData` with a URL of each GeoJSON source, while it loads. */
@@ -998,10 +1008,13 @@ export class Map {
         // A request of an older call is no longer wanted: it is aborted.
         this.dataAborts.get(id)?.abort();
         this.dataAborts.delete(id);
+        // (The fetch of `updateData` for an older call is dropped too. Its promise resolves without a change.)
+        const queued = this.diffQueues.get(id);
+        if (queued && queued.call < call) { queued.ac.abort(); this.diffQueues.delete(id); }
         if (typeof data === 'string') {
             const raw = this.rawStyle.sources[id], url = new URL(data, this.styleBase).href, ac = new AbortController();
             this.dataAborts.set(id, ac);
-            try { data = await (await this.fetchAs('Source')(url, {signal: ac.signal})).json(); } catch (e) { if (ac.signal.aborted) return; throw e; }
+            try { data = await (await this.fetchAs('Source')(url, {signal: ac.signal})).json(); } catch (e) { if (ac.signal.aborted || this.removed) return; throw e; }
             if (this.dataAborts.get(id) === ac) this.dataAborts.delete(id);
             // (The source was removed, or its data was set again since, also to the same URL: this answer is old.)
             if (this.rawStyle?.sources[id] !== raw || this.dataCalls.get(id) !== call) return;
@@ -1499,6 +1512,7 @@ export class Map {
 
     remove() {
         this.removed = true;
+        for (const ac of this.protocolAborts) ac.abort();
         this.fire('remove');
         this.drop('was removed');
         for (const c of [...this.controls.keys()]) this.removeControl(c);
