@@ -56,5 +56,22 @@ for (const [what, query] of [['same origin', ''], ['another origin', `&from=http
     check(`start-up (${what}): the worker file is requested once`, ok && renderer === 'worker' && asked === 1, `renderer=${renderer} requests=${asked}`);
     await page.close();
 }
+// A policy without blob: workers: the first blob worker fails, and the other workers start from the URL (#325).
+// (The demo server sends no-store, so each of the 3 workers requests the file, plus the one fetch for the blob.)
+{
+    const page = await browser.newPage({viewport: {width: 800, height: 500}});
+    let asked = 0, blocked = 0;
+    page.on('request', r => { if (/map-jr-gl-worker\.js$/.test(r.url())) asked++; });
+    page.on('console', m => { if (m.type() === 'error' && /blob:/.test(m.text())) blocked++; });
+    await page.route(u => u.pathname === '/', async r => {
+        const res = await r.fetch();
+        await r.fulfill({response: res, headers: {...res.headers(), 'content-security-policy': "worker-src 'self'"}});
+    });
+    await page.goto(base);
+    const ok = await page.waitForFunction(() => window.mapLoaded, null, {timeout: 30000}).then(() => true, () => false);
+    const renderer = ok ? await page.evaluate(() => window.map.renderer) : 'did not load';
+    check('start-up under worker-src \'self\': one blocked blob worker at most, and one request more than the workers', ok && renderer === 'worker' && asked <= 4 && blocked <= 1, `renderer=${renderer} requests=${asked} errors=${blocked}`);
+    await page.close();
+}
 await browser.close();
 process.exit(failed ? 1 : 0);

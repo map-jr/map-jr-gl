@@ -44,19 +44,32 @@ function workerHref(o: LoadOptions): string | undefined {
 /** The worker file, fetched once and kept as a blob URL for a few seconds, so that the start-up workers share one request (#325). */
 const fetched = new globalThis.Map<string, Promise<string>>();
 /**
+ * Per worker URL, whether a worker from the blob has started: the first try decides it for the later workers. A
+ * `worker-src` policy without `blob:` makes it false, and the page then logs one error instead of one per worker.
+ */
+const blobWorks = new globalThis.Map<string, Promise<boolean>>();
+/**
  * Starts a worker and resolves once it runs. The tile workers and the engine worker start from one fetch of the worker
  * file. If that fetch or the worker from the blob fails (CORS, a `worker-src` policy without `blob:`), the worker starts
- * from its URL as before.
+ * from its URL as before, and so do the later workers of that URL.
  */
 export function startWorker(o: LoadOptions = {}): Promise<Worker> {
     const href = workerHref(o), plain = () => workerReady(createWorker(o));
     if (!href || !/^https?:/.test(href)) return plain();
     let blob = fetched.get(href);
     if (!blob) {
-        fetched.set(href, blob = fetch(href).then(r => r.ok ? r.blob() : Promise.reject()).then(b => URL.createObjectURL(new Blob([b], {type: 'text/javascript'}))));
+        // (The source map comment of the file is relative, and a blob: URL cannot resolve it: the blob gets an absolute one.)
+        fetched.set(href, blob = fetch(href).then(r => r.ok ? r.blob() : Promise.reject())
+            .then(b => URL.createObjectURL(new Blob([b, `\n//# sourceMappingURL=${href}.map`], {type: 'text/javascript'}))));
         blob.then(u => setTimeout(() => { URL.revokeObjectURL(u); fetched.delete(href); }, 10000), () => fetched.delete(href));
     }
-    return blob.then(u => workerReady(new Worker(u))).catch(plain);
+    const known = blobWorks.get(href);
+    if (!known) {
+        const first = blob.then(u => workerReady(new Worker(u)));
+        blobWorks.set(href, first.then(() => true, () => false));
+        return first.catch(plain);
+    }
+    return known.then(ok => ok ? blob.then(u => workerReady(new Worker(u))) : Promise.reject()).catch(plain);
 }
 
 export function createWorker(o: LoadOptions = {}): Worker {
