@@ -68,6 +68,28 @@ for (const mode of ['main', 'worker']) {
     check(`[${mode}] jumpTo is readable synchronously`, sync[0] === 14.3 && sync[1] === -74.0065);
     await page.waitForTimeout(800);
 
+    // A camera call with duration 0 is a jump (#193), and jumps fire zoom, rotate and pitch (#192), as in MapLibre GL JS.
+    const instant = await page.evaluate(async () => {
+        const m = window.map, seen = [], on = t => m.on(t, () => seen.push(t));
+        ['zoom', 'rotate', 'pitch'].forEach(on);
+        m.easeTo({center: [-74.0, 40.71], zoom: 13, duration: 0});
+        const now = m.getZoom();
+        m.jumpTo({padding: {left: 0}});
+        m.fitBounds([[-74.02, 40.70], [-74.0, 40.72]], {duration: 0});
+        const fit = m.getZoom();
+        await new Promise(r => setTimeout(r, 600));
+        const kept = m.getZoom();
+        seen.length = 0;
+        m.jumpTo({zoom: 14.3, bearing: 10, pitch: 10});
+        await new Promise(r => setTimeout(r, 600));
+        const events = [...new Set(seen)];
+        m.jumpTo({bearing: 0, pitch: 0});
+        await new Promise(r => setTimeout(r, 400));
+        return {now, fit, kept, events};
+    });
+    check(`[${mode}] easeTo and fitBounds with duration 0 apply at once and survive a following jumpTo`, instant.now === 13 && instant.fit > 13 && Math.abs(instant.kept - instant.fit) < 1e-9, JSON.stringify(instant));
+    check(`[${mode}] jumpTo fires zoom, rotate and pitch`, ['zoom', 'rotate', 'pitch'].every(t => instant.events.includes(t)), instant.events.join(' '));
+
     // Marker hit testing and events.
     const pt = await page.evaluate(() => window.map.project([-74.0060, 40.7127]));
     await page.mouse.move(pt.x, pt.y - 20);
@@ -518,11 +540,11 @@ for (const mode of ['main', 'worker']) {
         const m = window.map, c = m.getCanvas(), r = {}, x = c.clientWidth / 2 - 70, y = c.clientHeight / 2 + 50;
         m.once('click', e => { r.ms = Math.round(performance.now() - r.t0); r.found = [...m.queryRenderedFeatures(e.point)].filter(f => f.sourceLayer).length; });
         await new Promise(f => setTimeout(f, 500)); r.t0 = performance.now(); window.touch('pointerdown', 11, x, y); await new Promise(f => setTimeout(f, 80)); window.touch('pointerup', 11, x, y);
-        await new Promise(f => setTimeout(f, 1000)); delete r.t0; return r;
+        await new Promise(f => setTimeout(f, 1000)); delete r.t0;
+        // The tap lands on a pin, so the demo opens a popup there that would cover the clicks of the tests below.
+        window.popup?.remove(); return r;
     });
     check(`[${mode}] a touch tap with no hover: a click listener reads the features of tiles at once`, tap.found > 0, JSON.stringify(tap));
-    // (Chromium drops the first mouse click after a synthetic touch: this one is not tested.)
-    await page.mouse.click(600, 300); await page.waitForTimeout(400); await settle(page);
     const stale = await page.evaluate(async () => {
         const m = window.map, idle = () => new Promise(r => m.once('idle', r)), at = [-74.0065, 40.7085];
         m.jumpTo({center: at, zoom: 14});
@@ -575,6 +597,39 @@ for (const mode of ['main', 'worker']) {
     });
     check(`[${mode}] transformRequest changes tile requests made in workers (each tile arrives), and addProtocol supplies data for a URL`,
         requests.from === 'made://point?seen=1' && requests.kinds.includes('Tile') && requests.kinds.includes('Source') && requests.arrived, JSON.stringify(requests));
+    // The AbortController that a protocol gets is aborted when the request is no longer wanted: a newer setData, a newer
+    // setData that drops the diffs of updateData, and the removal of the map (#92).
+    const aborts = await page.evaluate(async mode => {
+        const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), signals = {}, point = name => ({type: 'Feature', id: 1, properties: {name}, geometry: {type: 'Point', coordinates: [0, 0]}});
+        // A protocol that answers only after 300 ms, and remembers the signal of each URL.
+        mod.addProtocol('slow', (request, ac) => { signals[request.url] = ac.signal; return new Promise(r => setTimeout(() => r({data: {type: 'FeatureCollection', features: [point(request.url)]}}), 300)); });
+        const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+        const m = new mod.Map({container: el, renderer: mode, attributionControl: false, center: [0, 0], zoom: 1, style: {version: 8, sources: {g: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}}, layers: []}});
+        await new Promise(r => m.once('load', r));
+        const source = m.getSource('g');
+        try {
+            // (2) setData with a URL of a protocol, then a newer setData.
+            const old = source.setData('slow://a');
+            await new Promise(r => setTimeout(r, 50));
+            await source.setData('slow://b');
+            await old;
+            const name = (await source.getData()).features[0]?.properties.name;
+            // (3) updateData on a URL source, then a newer setData that drops its diff.
+            const diff = source.updateData({add: [point('diff')]});
+            await new Promise(r => setTimeout(r, 50));
+            const diffSignal = signals['slow://b'];
+            source.setData({type: 'FeatureCollection', features: [point('newer')]});
+            await diff;
+            // (1) A request that runs when the map is removed.
+            source.setData('slow://c');
+            await new Promise(r => setTimeout(r, 50));
+            const removeSignal = signals['slow://c'];
+            m.remove(); el.remove();
+            return {setData: signals['slow://a']?.aborted ?? null, name, updateData: diffSignal?.aborted ?? null, remove: removeSignal?.aborted ?? null};
+        } finally { mod.removeProtocol('slow'); }
+    }, mode);
+    check(`[${mode}] addProtocol: the controller is aborted by a newer setData, by a setData that drops the diffs of updateData, and by remove()`,
+        aborts.setData === true && aborts.name === 'slow://b' && aborts.updateData === true && aborts.remove === true, JSON.stringify(aborts));
 
     // A lost WebGL context (phones take it away to save memory): the map starts again with the same view and data.
     // The context can only be reached from the page when the engine is on the main thread.
@@ -934,6 +989,29 @@ for (const mode of ['main', 'worker']) {
             check(`[${mode}] a container scaled by CSS (${where}) keeps its layout size, and event.point is in element pixels`,
                 Math.abs(out.p[0] - 200) < 0.5 && Math.abs(out.p[1] - 150) < 0.5 && Math.abs(out.buffer[0] - 400) < 1.5 && Math.abs(out.buffer[1] - 300) < 1.5 && click && Math.abs(click[0] - 200) < 1.5 && Math.abs(click[1] - 150) < 1.5, JSON.stringify({...out, click}));
         }
+    // loaded() is false from setStyle or a style edit until the next idle, as in MapLibre (#190).
+    {
+        const got = await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const style = n => ({version: 8, sources: {}, layers: Array.from({length: n}, (_, i) => ({id: 'bg' + i, type: 'background'}))});
+            const m = new mod.Map({container: el, style: style(1), renderer: mode, attributionControl: false, center: [0, 0], zoom: 1});
+            const idle = () => Promise.race([new Promise(r => m.once('idle', r)), new Promise(r => setTimeout(r, 5000))]);
+            await new Promise(r => m.once('load', r)); if (!m.loaded()) await idle();
+            const out = {start: m.loaded()};
+            m.setLayoutProperty('bg0', 'visibility', 'none');
+            out.afterEdit = m.loaded();
+            await idle(); out.editIdle = m.loaded();
+            const styledata = new Promise(r => m.once('styledata', () => r(m.loaded())));
+            m.setStyle(style(2));
+            out.afterSetStyle = m.loaded();
+            out.onStyledata = await styledata;
+            await idle(); out.styleIdle = m.loaded();
+            m.remove(); el.remove();
+            return out;
+        }, mode);
+        check(`[${mode}] loaded() is false after a style edit and after setStyle until idle`,
+            got.start && !got.afterEdit && got.editIdle && !got.afterSetStyle && !got.onStyledata && got.styleIdle, JSON.stringify(got));
     }
     // The kept network result of a source: new data at the same URL stays after a change of the style, and two maps
     // that are given the same source object both load it.

@@ -37,7 +37,8 @@ abstract class Overlay extends Evented {
     protected rotation = 0;
     protected rotationAlignment = 'auto';
     setLngLat(lngLat: LngLatLike) { this.lngLat = toLngLat(lngLat); this.update(); return this; }
-    getLngLat() { return this.lngLat ? new LngLat(this.lngLat[0], this.lngLat[1]) : undefined; }
+    /** The map position. Before `setLngLat`, it is `undefined`, although the type says `LngLat`, as in MapLibre GL JS. */
+    getLngLat(): LngLat { return (this.lngLat ? new LngLat(this.lngLat[0], this.lngLat[1]) : undefined) as LngLat; }
     getElement() { return this.el; }
     addClassName(name: string) { this.el.classList.add(name); }
     removeClassName(name: string) { this.el.classList.remove(name); }
@@ -71,6 +72,13 @@ export interface PopupOptions {
     offset?: PopupOffset;
     /** Set false to show and hide without the short fade. */
     animate?: boolean;
+    /**
+     * Accepted for MapLibre GL JS, with no effect. The focus moves into a popup only when Enter or the space bar on its
+     * marker opens it (see docs/maplibre-compatibility.md).
+     */
+    focusAfterOpen?: boolean;
+    /** Accepted for MapLibre GL JS, with no effect: the library has no globe or terrain that can hide the map position. */
+    locationOccludedOpacity?: number | string;
 }
 
 export class Popup extends Overlay {
@@ -192,12 +200,15 @@ export class Popup extends Overlay {
     }
 }
 
-export interface MarkerOptions { element?: HTMLElement; color?: string; anchor?: OverlayAnchor; offset?: [number, number]; draggable?: boolean; scale?: number; className?: string; rotation?: number; rotationAlignment?: string; pitchAlignment?: string }
+export interface MarkerOptions { element?: HTMLElement; color?: string; anchor?: OverlayAnchor; offset?: [number, number]; draggable?: boolean; scale?: number; className?: string; rotation?: number; rotationAlignment?: string; pitchAlignment?: string;
+    /** Accepted for MapLibre GL JS, with no effect: the library has no globe or terrain that can hide a marker. */
+    opacityWhenCovered?: string;
+}
 
 export class Marker extends Overlay {
     protected el: HTMLElement;
     protected anchor: OverlayAnchor;
-    private popup?: Popup;
+    private popup?: Popup | null;
     private draggable = false;
     private pitchAlignment: string;
     constructor(options: MarkerOptions = {}) {
@@ -241,7 +252,7 @@ export class Marker extends Overlay {
     remove() { this.popup?.remove(); this.detach(); return this; }
     // (A marker with a popup is a button for the keyboard and for assistive technology. An element that has a role or a
     // tab position of its own keeps it.)
-    setPopup(popup?: Popup) {
+    setPopup(popup?: Popup | null) {
         this.popup?.remove(); this.popup = popup;
         if (popup) {
             popup.opener = this.el;

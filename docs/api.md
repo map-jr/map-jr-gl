@@ -289,7 +289,9 @@ What to know about a template:
 - All images that are added at runtime share one texture of 2048 by 2048 pixels, so large variants reach its end
   before the limit of 1,000: about 600 variants of 40 by 40 CSS pixels fit on a screen with a pixel ratio of 2. The
   map then reports one error, and later images are not drawn. An image that is removed or replaced, and a variant
-  of a template that is replaced, gives its place back, and a later image of any size that fits takes it. The map
+  of a template that is replaced, gives its place back. When a new image finds no free place, the map places all of its images again in an empty
+  texture, so the error comes only when the images that the map has, with the new one, do not fit together. After
+  an image is removed, a later image that does not fit gives the error again. The map
   allocates the 16 MB of this texture when it gets its first such image.
 - A template works in `icon-image`, in an image of `format` text, and in `fill-pattern`, `line-pattern` and
   `background-pattern`. In a pattern property, a slot that has no parameter gets an empty text, because a pattern
@@ -615,7 +617,7 @@ In a mouse event, `lngLat` is an object (`{lng, lat}`). In `onClick`, `lngLat` i
 
 `addProtocol(name, fn)` of `@map-jr/map-jr-gl` makes every map of the page load each URL that starts with `name://`
 through `fn`. It has the arguments of `addProtocol` of
-MapLibre GL JS. `fn` gets `{url, type, headers}` and an `AbortController`, and returns a promise of `{data}`. The map does not call `abort()` of that controller at present. The
+MapLibre GL JS. `fn` gets `{url, type, headers}` and an `AbortController`, and returns a promise of `{data}`. The map calls `abort()` of that controller when the map is removed, and when a newer `setData` of a GeoJSON source replaces the request (also the request of `updateData` whose diffs that `setData` drops). A tile request that is no longer needed is not aborted. After an abort, the map ignores the answer of `fn`. The
 data can be an `ArrayBuffer`, a typed array, a string or an object (which the map turns into JSON).
 `removeProtocol(name)` removes it. The protocols are the same for every map of the page, and a map that exists
 already uses a protocol added later.
