@@ -68,7 +68,9 @@ export interface MapOptions extends CameraOptions, LoadOptions {
  */
 export class InteractionHandler {
     constructor(private on = true) {}
-    enable(_options?: unknown) { this.on = true; }
+    /** @internal Called by `enable()`: a map made with `interactive: false` starts to listen to the input then. */
+    wake?: () => void;
+    enable(_options?: unknown) { this.on = true; this.wake?.(); }
     disable() { this.on = false; }
     isEnabled() { return this.on; }
     /** Always false: the library does not report a gesture in progress for each handler. */
@@ -133,6 +135,8 @@ export class Map {
     private observer?: ResizeObserver;
     private cleanup: (() => void)[] = [];
     private inputCleanup: (() => void)[] = [];
+    /** Whether the canvas listens to the input: not for `interactive: false` until a handler is enabled. */
+    private listening: boolean;
     private tilePool?: {connect(): MessagePort[]; release(): void};
     private removed = false;
     private beforeStyle: (() => void)[] = [];
@@ -219,7 +223,12 @@ export class Map {
         this.tr.set(options.center ?? [0, 0], options.zoom ?? 0, options.bearing ?? 0, options.pitch ?? 0);
         // As in MapLibre, `bounds` comes before `center` and `zoom`: the map starts with that area in view.
         if (options.bounds) { const fit = this.cameraForBounds(options.bounds, options.fitBoundsOptions); this.tr.set([fit.center.lng, fit.center.lat], fit.zoom, options.bearing ?? 0, options.pitch ?? 0); }
-        for (const k of ['dragPan', 'scrollZoom', 'doubleClickZoom', 'dragRotate', 'touchZoomRotate', 'touchPitch', 'keyboard', 'boxZoom'] as const) if (options[k] === false) this[k].disable();
+        this.listening = options.interactive !== false;
+        // As in MapLibre, `interactive: false` turns every handler off, and `enable()` on one turns it on later (#196).
+        for (const k of ['dragPan', 'scrollZoom', 'doubleClickZoom', 'dragRotate', 'touchZoomRotate', 'touchPitch', 'keyboard', 'boxZoom'] as const) {
+            if (options[k] === false || !this.listening) this[k].disable();
+            if (!this.listening) this[k].wake = () => { if (!this.listening) { this.listening = true; if (this.ready && !this.removed) this.bindInput(); } };
+        }
         this.transformRequest = options.transformRequest ?? null;
         protocolListeners.add(this.sendRequestRules);
         this.sendRequestRules(); // before the style, so that the first requests follow the rules
@@ -323,7 +332,7 @@ export class Map {
                     // the new engine reports `idle` with the number that the page waits for.)
                     this.restyle(true);
                     for (const [name, [source, options]] of this.imageInputs) this.addImage(name, source, options);
-                    if (o.interactive !== false) this.bindInput();
+                    if (this.listening) this.bindInput();
                 }, error => this.fire('error', {error}));
             };
             if (__DEV__) {
@@ -349,7 +358,7 @@ export class Map {
 
         this.observer = new ResizeObserver(() => this.resize());
         this.observer.observe(this.container);
-        if (o.interactive !== false) this.bindInput();
+        if (this.listening) this.bindInput();
         if (o.attributionControl !== false && !this.restarted) this.addControl(new AttributionControl(o.attributionControl || {}));
     }
 
