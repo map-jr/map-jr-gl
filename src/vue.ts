@@ -49,7 +49,10 @@ function markerData(data: unknown[]): unknown[] {
  * `state` has the state of the map as a ref (`state.value.view`, `state.value.hover`), and `host` the map itself
  * when it is there (for `queryFeatures`, `moveTo`, `fitBounds`).
  */
-export function useMap(container: MaybeRefOrGetter<HTMLElement | null | undefined>, spec: MaybeRefOrGetter<MapSpec>): {host: ShallowRef<MapHost | null>; state: ShallowRef<MapState | null>} {
+export function useMap(container: MaybeRefOrGetter<HTMLElement | null | undefined>, spec: MaybeRefOrGetter<MapSpec>): {host: ShallowRef<MapHost | null>; state: ShallowRef<MapState | null>} { return mapIn(container, spec, 'useMap()'); }
+
+// `useMap` with the name that the warnings give the map: the name that the user wrote.
+function mapIn(container: MaybeRefOrGetter<HTMLElement | null | undefined>, spec: MaybeRefOrGetter<MapSpec>, name: string): {host: ShallowRef<MapHost | null>; state: ShallowRef<MapState | null>} {
     const host = shallowRef<MapHost | null>(null), state = shallowRef<MapState | null>(null);
     let stop: (() => void) | undefined, gone = false;
     // (The map code loads here, with `import()`, so that a component that imports only `MapOverlay`, `MapImage` or
@@ -57,9 +60,9 @@ export function useMap(container: MaybeRefOrGetter<HTMLElement | null | undefine
     onMounted(async () => {
         const el = toValue(container);
         if (!el) return;
-        const {createMap} = await import('./host.ts');
+        const {makeMap} = await import('./host.ts');
         if (gone) return;
-        const made = host.value = createMap(el, unwrapped(toValue(spec)));
+        const made = host.value = makeMap(el, unwrapped(toValue(spec)), name);
         state.value = made.state.get();
         stop = made.state.subscribe(s => { state.value = s; });
     });
@@ -315,7 +318,7 @@ export const MapJr = defineComponent({
             for (const k in out) if ((out as any)[k] === undefined) delete (out as any)[k];
             return out;
         });
-        const {host, state} = useMap(el, spec);
+        const {host, state} = mapIn(el, spec, '<MapJr>');
         provide(HOST, host);
         // The other events of the map, each one only when the component has a listener for it.
         const listeners = getCurrentInstance()?.vnode.props ?? {};

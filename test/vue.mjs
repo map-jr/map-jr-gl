@@ -232,6 +232,24 @@ try {
     });
     check('browser: the event error gets each error, and without a listener the error is written to the console',
         failing.got.length === 1 && /HTTP 404/.test(failing.got[0]) && failing.loggedWithListener === 0 && failing.logged.length === 1 && /HTTP 404/.test(failing.logged[0]), JSON.stringify(failing));
+    // The warning for a container of height 0 names what the user wrote: `<MapJr>` or `useMap()`, not `createMap()` (#268).
+    const flat = await page.evaluate(async () => {
+        const {createApp, h, ref} = await import('vue'), {MapJr, useMap} = await import('/dist/vue.dev.js');
+        const warned = [], warn = console.warn;
+        console.warn = (...a) => { if (/height 0/.test(String(a[0]))) warned.push(String(a[0])); };
+        const run = async component => {
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:200px'}));
+            const app = createApp(component);
+            app.mount(el);
+            await new Promise(r => setTimeout(r, 2500));
+            app.unmount(); el.remove();
+        };
+        await run({render: () => h(MapJr, {mapStyle: '/style.json', attribution: false, style: 'height:0'})});
+        await run({setup() { const box = ref(null); useMap(box, {style: '/style.json', attribution: false}); return () => h('div', {ref: box, style: 'height:0'}); }});
+        console.warn = warn;
+        return warned;
+    });
+    check('browser: the warning for height 0 names <MapJr> and useMap()', flat.length === 2 && flat[0].startsWith('[map-jr-gl] <MapJr>: the container has height 0') && flat[1].startsWith('[map-jr-gl] useMap(): the container has height 0'), JSON.stringify(flat));
     // Reactive data (Vue proxies, #242): structured clone refuses a proxy, and the map copies it instead, in both entries
     // and with both renderers. The data must be drawn, getStyle() must work, and no error may be reported.
     const proxied = await page.evaluate(() => { let step = 'start'; return Promise.race([new Promise(r => setTimeout(() => r({timeout: 'no answer in 60 s at the step: ' + step}), 60000)), (async () => {
