@@ -286,13 +286,14 @@ What to know about a template:
   again. MapLibre GL JS does not permit `feature-state` in a layout property.
 - A map draws 1,000 variants of one template at most. More different sets of values give one error of the map with
   the name of the image, and the other variants are not drawn. Give the slots values from a small set.
-- All images that are added at runtime share one texture of 2048 by 2048 pixels, so large variants reach its end
+- All images that are added at runtime share one texture of at most 2048 by 2048 pixels, so large variants reach its end
   before the limit of 1,000: about 600 variants of 40 by 40 CSS pixels fit on a screen with a pixel ratio of 2. The
   map then reports one error, and later images are not drawn. An image that is removed or replaced, and a variant
   of a template that is replaced, gives its place back. When a new image finds no free place, the map places all of its images again in an empty
   texture, so the error comes only when the images that the map has, with the new one, do not fit together. After
   an image is removed, a later image that does not fit gives the error again. The map
-  allocates the 16 MB of this texture when it gets its first such image.
+  makes this texture with its first such image at 256 by 256 pixels (256 KB), and doubles its width and height, up
+  to 2048 by 2048 pixels (16 MB), when the images do not fit. The texture does not become smaller again.
 - A template works in `icon-image`, in an image of `format` text, and in `fill-pattern`, `line-pattern` and
   `background-pattern`. In a pattern property, a slot that has no parameter gets an empty text, because a pattern
   is the same for the whole layer and reads no property of a feature.

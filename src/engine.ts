@@ -771,7 +771,7 @@ export class Engine {
     }
 
     /** The places in the texture of images: the place of an image that the map has no more goes to later images (#27). */
-    private space = new AtlasSpace(SPRITE_ATLAS);
+    private space = new AtlasSpace(256);
     private atlasFull = false;
     /** Takes an image from the map, and frees its place in the texture. */
     private dropImage(name: string) {
@@ -797,13 +797,15 @@ export class Engine {
     /**
      * Places all images again in an empty texture, moving their pixels on the GPU, then takes a place for an image of `w` by `h`.
      * Free places that share only part of an edge do not join, so a texture that is mostly free can have no place.
+     * The texture starts at 256² (256 KB) and doubles here up to SPRITE_ATLAS² (16 MB) when the images do not fit (#27).
      */
     private repack(w: number, h: number): [number, number] | null {
         const list = [...this.images.values()];
-        const space = new AtlasSpace(SPRITE_ATLAS), at = space.repack([...list.map(m => [m.width, m.height] as [number, number]), [w, h]]);
+        let space: AtlasSpace, at: [number, number][] | null = null;
+        for (let size = this.space.size; !at && size <= SPRITE_ATLAS; size *= 2) at = (space = new AtlasSpace(size)).repack([...list.map(m => [m.width, m.height] as [number, number]), [w, h]]);
         if (!at) return null; // (the images stay where they are)
-        this.space = space;
-        this.renderer.moveSprites(list.map((m, i) => [m.x, m.y, m.x = at[i][0], m.y = at[i][1], m.width, m.height]));
+        this.space = space!;
+        this.renderer.moveSprites(list.map((m, i) => [m.x, m.y, m.x = at[i][0], m.y = at[i][1], m.width, m.height]), space!.size);
         this.iconsAll = true;
         return at[list.length];
     }

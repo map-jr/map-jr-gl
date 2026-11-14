@@ -10,7 +10,7 @@ export class AtlasSpace {
     private pen = [1, 1, 0];
     /** Free places as [x, y, width, height], with the empty pixel included. */
     free: number[][] = [];
-    constructor(private size: number) {}
+    constructor(readonly size: number) {}
 
     /** The corner of a place for an image of `w` by `h` pixels, or null when the texture has no place for it. */
     take(w: number, h: number): [number, number] | null {

@@ -212,7 +212,8 @@ type Canvas2D = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 /** Single-channel SDF atlas with shelf packing. Works on the main thread and in workers (OffscreenCanvas). */
 export class GlyphAtlas extends BaseShaper {
     readonly width = 2048;
-    readonly height = 2048;
+    /** Starts at 128 rows (256 KB) and doubles up to 2048 rows (4 MB) as glyphs arrive (#27). */
+    height = 128;
     data = new Uint8Array(this.width * this.height);
     /** Bumped whenever pixels change, so the renderer knows to re-upload. */
     version = 0;
@@ -313,6 +314,12 @@ export class GlyphAtlas extends BaseShaper {
     /** Puts the distance field of a glyph into the atlas. */
     private pack(g: Glyph, sdf: Uint8Array, w: number, h: number) {
         if (this.penX + w + 1 > this.width) { this.penX = 1; this.penY += this.shelf + 1; this.shelf = 0; }
+        while (this.penY + h + 1 > this.height && this.height < 2048) {
+            // Rows keep their offsets when the atlas grows, so the old pixels are copied as they are; the renderer
+            // then sends the whole atlas again (dirty = null).
+            const data = new Uint8Array(this.width * (this.height *= 2));
+            data.set(this.data); this.data = data; this.dirty = null;
+        }
         if (this.penY + h + 1 > this.height) {
             // Atlas full: start over. Shaped text holds glyph references, so drop those too.
             this.clear();

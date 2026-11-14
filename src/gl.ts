@@ -434,6 +434,8 @@ export class GLRenderer {
     private sdfVersion = -1;
     private spriteTex: WebGLTexture;
     private spriteSized = false;
+    /** The width and height of the texture of the images that are added at runtime. */
+    private spriteSize = 256;
     private iconTex: WebGLTexture;
     private iconSize: [number, number] = [1, 1];
     private newTexture: () => WebGLTexture;
@@ -492,7 +494,7 @@ export class GLRenderer {
         this.fbo = gl.createFramebuffer()!;
         this.iconTex = tex();
         this.sdfTex = tex();
-        // (The texture of the images that are added at runtime gets its 16 MB with the first image: see `uploadSprite`.)
+        // (The texture of the images that are added at runtime is made with the first image, at 256² (256 KB), and grows: see `moveSprites`.)
         this.spriteTex = tex();
         gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
     }
@@ -690,7 +692,7 @@ export class GLRenderer {
                 if (!b.src.alpha) gl.vertexAttrib1f(4, 1);
                 gl.activeTexture(gl.TEXTURE0);
                 // Images that were added at runtime and images of the sprite of the style are in two textures.
-                [[this.spriteTex, SPRITE_ATLAS, SPRITE_ATLAS], [this.iconTex, this.iconSize[0], this.iconSize[1]]].forEach(([tex, w, h], g) => {
+                [[this.spriteTex, this.spriteSize, this.spriteSize], [this.iconTex, this.iconSize[0], this.iconSize[1]]].forEach(([tex, w, h], g) => {
                     if (!b.counts[g]) return;
                     gl.bindTexture(gl.TEXTURE_2D, tex as WebGLTexture);
                     gl.uniform2f(u!.u_tex, w as number, h as number);
@@ -759,7 +761,7 @@ export class GLRenderer {
     uploadSprite(x: number, y: number, w: number, h: number, pixels: Uint8Array) {
         const gl = this.gl;
         gl.bindTexture(gl.TEXTURE_2D, this.spriteTex);
-        if (!this.spriteSized) { this.spriteSized = true; gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, SPRITE_ATLAS, SPRITE_ATLAS, 0, gl.RGBA, gl.UNSIGNED_BYTE, null); }
+        if (!this.spriteSized) { this.spriteSized = true; gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, this.spriteSize, this.spriteSize, 0, gl.RGBA, gl.UNSIGNED_BYTE, null); }
         gl.texSubImage2D(gl.TEXTURE_2D, 0, x, y, w, h, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
         // (The empty pixel to the right and below may hold an image that was there before: a filtered edge must not read it.)
         const zero = new Uint8Array(4 * (Math.max(w, h) + 1));
@@ -768,10 +770,11 @@ export class GLRenderer {
     }
 
     /** Moves images to new places in a new texture of the runtime images, each move [x, y, new x, new y, w, h], on the GPU. */
-    moveSprites(moves: number[][]) {
+    moveSprites(moves: number[][], size: number) {
         const gl = this.gl, old = this.spriteTex, fb = gl.createFramebuffer(), back = gl.getParameter(gl.FRAMEBUFFER_BINDING);
         this.spriteTex = this.newTexture();
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, SPRITE_ATLAS, SPRITE_ATLAS, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        this.spriteSized = true;
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, this.spriteSize = size, size, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
         gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
         gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, old, 0);
         for (const [x, y, nx, ny, w, h] of moves) gl.copyTexSubImage2D(gl.TEXTURE_2D, 0, nx, ny, x, y, w, h);
@@ -805,7 +808,7 @@ export class GLRenderer {
             gl.activeTexture(gl.TEXTURE0);
             gl.bindTexture(gl.TEXTURE_2D, img.custom ? this.spriteTex : this.iconTex);
             gl.uniform1i(u.u_img, 0);
-            gl.uniform2f(u.u_tex, img.custom ? SPRITE_ATLAS : this.iconSize[0], img.custom ? SPRITE_ATLAS : this.iconSize[1]);
+            gl.uniform2f(u.u_tex, img.custom ? this.spriteSize : this.iconSize[0], img.custom ? this.spriteSize : this.iconSize[1]);
             gl.uniform4f(u.u_rect, img.x, img.y, img.width, img.height);
             gl.uniform2f(u.u_fade, 0, opacity);
             /** `m` maps the drawn coordinates to world pixels at zoom Z (column-major 3x3). */
@@ -977,7 +980,7 @@ export class GLRenderer {
                             gl.activeTexture(gl.TEXTURE0);
                             gl.bindTexture(gl.TEXTURE_2D, img.custom ? this.spriteTex : this.iconTex);
                             gl.uniform1i(u.u_img, 0);
-                            gl.uniform2f(u.u_tex, img.custom ? SPRITE_ATLAS : this.iconSize[0], img.custom ? SPRITE_ATLAS : this.iconSize[1]);
+                            gl.uniform2f(u.u_tex, img.custom ? this.spriteSize : this.iconSize[0], img.custom ? this.spriteSize : this.iconSize[1]);
                             gl.uniform4f(u.u_rect, img.x, img.y, img.width, img.height);
                             gl.uniform4f(u.u_color, 1, 1, 1, L.p.opacity.dd ? 1 : L.p.opacity.eval(zoom));
                         }
@@ -1389,7 +1392,7 @@ export class GLRenderer {
             const u = use('sprite');
             gl.activeTexture(gl.TEXTURE0);
             gl.bindTexture(gl.TEXTURE_2D, custom ? this.spriteTex : this.iconTex);
-            gl.uniform2f(u.u_tex, custom ? SPRITE_ATLAS : this.iconSize[0], custom ? SPRITE_ATLAS : this.iconSize[1]);
+            gl.uniform2f(u.u_tex, custom ? this.spriteSize : this.iconSize[0], custom ? this.spriteSize : this.iconSize[1]);
             gl.uniform1i(u.u_img, 0);
             gl.bindVertexArray(this.spriteVao);
             gl.bindBuffer(gl.ARRAY_BUFFER, this.spriteBuf);
