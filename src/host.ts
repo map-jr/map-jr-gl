@@ -128,6 +128,15 @@ export interface MapSetup {
     glyphs?: boolean;
     interactive?: boolean;
     antialias?: boolean;
+    /**
+     * Which tiles the map requests before they are in view. `true` (the default): when the destination of a movement is
+     * known (`easeTo`, `flyTo`, `fitBounds`, the inertia after a drag), the map requests up to 6 tiles of each source of
+     * the view at that destination when the movement starts. A newer movement stops these requests; tiles on their way finish.
+     * `'ahead'`: the same, and during a drag also the tiles 512 CSS pixels (the size of a usual vector tile) ahead of the view, in the
+     * direction of the drag. `false`: only the tiles of the view and its overview, for applications that must save data.
+     * The default is `true`.
+     */
+    prefetch?: boolean | 'ahead';
     attribution?: false | {compact?: boolean; customAttribution?: string | string[]};
     hash?: boolean | string;
 }
@@ -292,7 +301,7 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
     const options: MapOptions = {
         container, style: spec.style, center: first.center, zoom: first.zoom, bearing: first.bearing, pitch: first.pitch,
         // (A `view` from the state has `bounds` too: it is a view, and only `initialView` gives a box to fit.)
-        bounds: spec.view ? undefined : bounds as LngLatBoundsInput, fitBoundsOptions: {padding}, renderer: spec.renderer, fonts: spec.fonts, fontFamily: spec.fontFamily, glyphs: spec.glyphs, interactive: spec.interactive, antialias: spec.antialias, hash: spec.hash,
+        bounds: spec.view ? undefined : bounds as LngLatBoundsInput, fitBoundsOptions: {padding}, renderer: spec.renderer, fonts: spec.fonts, fontFamily: spec.fontFamily, glyphs: spec.glyphs, interactive: spec.interactive, antialias: spec.antialias, prefetch: spec.prefetch, hash: spec.hash,
         attributionControl: spec.attribution, minZoom: spec.minZoom, maxZoom: spec.maxZoom, maxPitch: spec.maxPitch,
     };
     for (const k in options) if ((options as any)[k] === undefined) delete (options as any)[k];

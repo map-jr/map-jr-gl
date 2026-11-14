@@ -1207,6 +1207,72 @@ for (const code of ['core', 'compat']) {
     } catch (e) { check(`gallery, query example (${code}): the test run was completed`, false, String(e.message).split('\n')[0]); }
     await page.close();
 }
+// Tiles before they are in view (#361). (1) The tiles of the destination of an `easeTo` and of a `flyTo` are requested
+// when it starts, and not with `prefetch: false`. The movement goes 0.3 degrees east at zoom 13 in 5 s: after 500 ms
+// the view is still near the start, so a request for a tile next to the destination is a request made early.
+// (2) A newer movement does not cancel the early requests that are on their way (tile answers are 1.5 s late here).
+// (3) With `prefetch: 'ahead'`, a drag requests tiles beyond the leading edge of the view; with the default it does not.
+const from = [-74.0065, 40.7085], east = from[0] + 0.3;
+const tileOf = (lng, z) => Math.floor((lng + 180) / 360 * 2 ** z);
+const prefetchPage = async (prefetch, late = 0) => {
+    const page = await browser.newPage({viewport: {width: 900, height: 600}});
+    const asked = [], failed = [];
+    await page.goto(`${origin}/bench`);
+    await page.route(/\/tiles\/\d+\/\d+\/\d+\.pbf/, async route => { asked.push(new URL(route.request().url()).pathname.split('/').slice(-3).map(v => parseInt(v))); if (late) await new Promise(r => setTimeout(r, late)); route.continue().catch(() => {}); });
+    page.on('requestfailed', r => { if (/\/tiles\//.test(r.url())) failed.push(r.url()); });
+    await page.evaluate(async ([prefetch, from]) => {
+        const lib = await import('/dist/map-jr-gl.js'), style = await (await fetch('/style.json')).json();
+        const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99;background:#fff'}));
+        window.host = lib.createMap(el, {style, initialView: {center: from, zoom: 13}, renderer: 'main', attribution: false, prefetch});
+        await new Promise(r => window.host.state.subscribe(s => s.idle, idle => idle && r()));
+        await new Promise(r => setTimeout(r, 500));
+    }, [prefetch, from]);
+    return {page, asked, failed};
+};
+for (const [method, prefetch] of [['easeTo', undefined], ['easeTo', false], ['flyTo', undefined], ['flyTo', false]]) {
+    let page;
+    try {
+        const p = await prefetchPage(prefetch); page = p.page;
+        const before = p.asked.length;
+        await page.evaluate(([method, east, lat]) => window.host.map[method]({center: [east, lat], duration: 5000}), [method, east, from[1]]);
+        await page.waitForTimeout(500);
+        // (Only tiles of the level of the view: a flyTo zooms out, and its coarser tiles cover the destination early.)
+        const zView = Math.max(...p.asked.slice(0, before).map(t => t[0]));
+        const early = p.asked.slice(before).filter(([z, x]) => z === zView && Math.abs(x - tileOf(east, z)) <= 1);
+        check(`prefetch: ${prefetch}: the tiles at the destination of ${method} are ${prefetch === false ? 'not ' : ''}requested at its start`, prefetch === false ? early.length === 0 : early.length > 0, JSON.stringify({early: early.length, after: p.asked.length - before}));
+    } catch (e) { check(`prefetch: ${prefetch}, ${method}: the test run was completed`, false, String(e.message).split('\n')[0]); }
+    await page?.close();
+}
+{
+    let page;
+    try {
+        const p = await prefetchPage(undefined, 1500); page = p.page;
+        const before = p.asked.length;
+        await page.evaluate(([east, lat]) => window.host.map.easeTo({center: [east, lat], duration: 5000}), [east, from[1]]);
+        await page.waitForTimeout(400);
+        const early = p.asked.slice(before).filter(([z, x]) => Math.abs(x - tileOf(east, z)) <= 1).map(t => '/' + t.join('/') + '.pbf');
+        await page.evaluate(([lng, lat]) => window.host.map.easeTo({center: [lng, lat], duration: 5000}), [from[0] - 0.3, from[1]]);
+        await page.waitForTimeout(2500);
+        const cancelled = p.failed.filter(u => early.some(e => u.endsWith(e)));
+        check('prefetch: a newer movement lets the early requests of an older one finish', early.length > 0 && cancelled.length === 0, JSON.stringify({early: early.length, cancelled: cancelled.length}));
+    } catch (e) { check('prefetch: the test of a newer movement was completed', false, String(e.message).split('\n')[0]); }
+    await page?.close();
+}
+for (const prefetch of [undefined, 'ahead']) {
+    let page;
+    try {
+        const p = await prefetchPage(prefetch); page = p.page;
+        await page.mouse.move(600, 300); await page.mouse.down();
+        for (let i = 1; i <= 15; i++) { await page.mouse.move(600 - i * 20, 300); await page.waitForTimeout(40); }
+        // (The button stays down: a release would start the inertia, whose destination is requested in each mode.)
+        const edge = await page.evaluate(() => window.host.map.getBounds().getEast());
+        const z = Math.max(...p.asked.map(t => t[0]));
+        const ahead = p.asked.filter(([tz, x]) => tz === z && x * 360 / 2 ** z - 180 > edge);
+        await page.mouse.up();
+        check(`prefetch: ${prefetch}: a drag ${prefetch === 'ahead' ? 'requests' : 'does not request'} tiles beyond the leading edge`, prefetch === 'ahead' ? ahead.length > 0 : ahead.length === 0, JSON.stringify({ahead: ahead.length, z}));
+    } catch (e) { check(`prefetch: ${prefetch}: the drag test was completed`, false, String(e.message).split('\n')[0]); }
+    await page?.close();
+}
 // The cost of a frame does not grow with the number of icons from buffers (#127). The engine reports the script time
 // of its frames on the main thread (`stats`, `frameMs`). The check compares a symbol layer with 100,000 icons with
 // the same layer with 1,000 icons, as a ratio of the medians, so it does not depend on the speed of the machine. With

@@ -60,6 +60,15 @@ export interface MapOptions extends CameraOptions, LoadOptions {
     attributionControl?: false | {compact?: boolean; customAttribution?: string | string[]};
     /** Multisample antialiasing for the whole canvas. Smoother polygon edges, at a real cost in fill rate. */
     antialias?: boolean;
+    /**
+     * Which tiles the map requests before they are in view. `true` (the default): when the destination of a movement is
+     * known (`easeTo`, `flyTo`, `fitBounds`, the inertia after a drag), the map requests up to 6 tiles of each source of
+     * the view at that destination when the movement starts. A newer movement stops these requests; tiles on their way finish.
+     * `'ahead'`: the same, and during a drag also the tiles 512 CSS pixels (the size of a usual vector tile) ahead of the view, in the
+     * direction of the drag. `false`: only the tiles of the view and its overview, for applications that must save data.
+     * MapLibre GL JS does not have this option.
+     */
+    prefetch?: boolean | 'ahead';
 }
 
 /**
@@ -320,7 +329,7 @@ export class Map {
         const engineOptions = {
             style: this.resolved, width: tr.width, height: tr.height, dpr: this.dpr, fontFamily: o.fontFamily ?? DEFAULT_FONT, fonts: o.fonts,
             center: [tr.lng, tr.lat] as [number, number], zoom: tr.zoom, bearing: tr.bearing, pitch: tr.pitch,
-            minZoom: tr.minZoom, maxZoom: tr.maxZoom, maxPitch: tr.maxPitch, antialias: o.antialias,
+            minZoom: tr.minZoom, maxZoom: tr.maxZoom, maxPitch: tr.maxPitch, antialias: o.antialias, prefetch: o.prefetch,
             // (A new engine, after a fall back or a restart too, gets the rules with the style: otherwise its first tiles
             // would be fetched before `resend` sends them, without `transformRequest`; #355.)
             requests: this.rulesSent ? this.requestRules() : undefined,

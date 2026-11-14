@@ -54,7 +54,7 @@ production build has no such warning, and there the map stays empty without a me
 | `interactive-layers` | The ids of style layers whose features are found under the pointer. |
 | `controls` | Controls from `@map-jr/map-jr-gl/controls`: `:controls="[navigation(), scale()]"`. See [the main API](api.md). |
 | `min-zoom`, `max-zoom`, `max-pitch`, `max-bounds`, `cursor`, `padding` | As in [the main API](api.md). |
-| `renderer`, `fonts`, `font-family`, `glyphs`, `interactive`, `antialias`, `attribution`, `hash` | Read only when the map is made. |
+| `renderer`, `fonts`, `font-family`, `glyphs`, `interactive`, `antialias`, `prefetch`, `attribution`, `hash` | Read only when the map is made. |
 | `ssr` | Render the first view on the server. See below. |
 
 ### Events

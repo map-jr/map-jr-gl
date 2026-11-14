@@ -70,7 +70,7 @@ map.update(description);
 - A field that the new description leaves out is removed from the map. This holds for `markers`, `controls`,
   `cursor`, `extend` and the limits of the camera. A source keeps the last data that `data` gave it.
 - The fields that are read when the map is made (`renderer`, `fonts`, `fontFamily`, `glyphs`, `interactive`,
-  `antialias`, `attribution`, `hash`) and `initialView` have no effect in `update`. A change of one of them gives a
+  `antialias`, `prefetch`, `attribution`, `hash`) and `initialView` have no effect in `update`. A change of one of them gives a
   warning.
 
 The map writes a warning to the console with `console.warn`, once for each map, for each of these mistakes:
@@ -140,6 +140,7 @@ These fields are read only when the map is made:
 | `glyphs` | `false`: do not load the glyph files of the style (its `glyphs` URL). Text then uses the fonts of the device or the web fonts of `fonts`: no requests for fonts, and labels show at once. The default loads the glyph files, unless `fonts` is given. |
 | `interactive` | `false` for a map that the user cannot move. The default is `true`. With `false`, `onClick` and `state.hover` still work, and a touch on the map scrolls the page. |
 | `antialias` | Multisample antialiasing for the canvas. |
+| `prefetch` | Which tiles the map requests before they are in view. With `true` (the default), a movement whose destination is known (`easeTo`, `flyTo`, `fitBounds`, the inertia after a drag) requests up to 6 tiles of each source of the view at its destination when it starts, nearest to the centre first. When a newer movement starts, the map requests no more tiles for the older one, and the tiles that are on their way finish and stay in the cache. With `'ahead'`, a drag also requests the tiles 512 CSS pixels (the size of a usual vector tile) ahead of the view in its direction, up to 6 per source. With `false`, the map requests only the tiles of the view and its overview. |
 | `attribution` | `false` to show the credits yourself, or options for the built-in credits. |
 | `hash` | Keeps the view in the fragment of the URL. |
 
