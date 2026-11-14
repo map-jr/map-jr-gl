@@ -1240,6 +1240,22 @@ for (const mode of ['main', 'worker']) {
         check(`[${mode}] the sources of the first style: transformRequest gets the TileJSON and the GeoJSON as Source, and addProtocol supplies the GeoJSON`,
             kind('/test-first-tiles.json') === 'Source' && kind('first://point') === 'Source' && first.tileJson && first.from === 'first://point?seen=1' && !first.errors.length, JSON.stringify(first));
     }
+    // CSS on `.maplibregl-map` sizes the container before the map measures it, as in MapLibre GL JS (#248).
+    if (mode === 'worker') {
+        const sized = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const css = document.head.appendChild(Object.assign(document.createElement('style'), {textContent: '.sized-248.maplibregl-map{height:300px}'}));
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {className: 'sized-248', style: 'position:absolute;left:-2000px;top:0;width:300px'}));
+            const m = new mod.Map({container: el, style: '/style.json', center: [0, 0], zoom: 1, attributionControl: false});
+            // The bounds right after the constructor come from the size that the map measured (0 high without the class).
+            const b = m.getBounds(), first = Math.round((b.getNorth() - b.getSouth()) * 1000) / 1000;
+            // As in Directus: fitBounds on `load` uses the size that the map measured.
+            const zoom = await new Promise(r => { m.once('load', () => { m.fitBounds([[-0.01, -0.01], [0.01, 0.01]], {maxZoom: 8, duration: 0}); r(m.getZoom()); }); setTimeout(() => r(-1), 12000); });
+            m.remove(); el.remove(); css.remove();
+            return {first, zoom};
+        });
+        check('[worker] compat: CSS on .maplibregl-map gives the container its height before the first measurement', sized.first > 0 && Math.abs(sized.zoom - 8) < 0.01, JSON.stringify(sized));
+    }
     // A worker that cannot make a WebGL2 context: the map goes to the main thread, `load` and `idle` fire, and what the
     // page sent before the fall back (the rules for requests, a change of the style) is not lost.
     if (mode === 'worker') {

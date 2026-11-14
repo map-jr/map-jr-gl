@@ -86,11 +86,13 @@ export class Map extends CoreMap {
     constructor(options: MapOptions & {strict?: boolean; [option: string]: unknown});
     constructor(options: MapOptions & {strict?: boolean; [option: string]: unknown}) {
         const o = options as Record<string, any>, context = o.canvasContextAttributes;
+        // The name that stylesheets for MapLibre GL JS select by, added before the core measures the container, as
+        // MapLibre GL JS does: CSS on `.maplibregl-map` can give the container its size.
+        (typeof o.container == 'string' ? document.getElementById(o.container) : o.container)?.classList?.add('maplibregl-map');
         // (MapLibre GL JS has `antialias` in `canvasContextAttributes`.)
         super(context?.antialias === undefined ? options : {...options, antialias: context.antialias});
         this.strict = !!o.strict;
-        // The names that stylesheets and tests for MapLibre GL JS select by. (A canvas that replaces this one is a copy of it.)
-        this.getContainer().classList.add('maplibregl-map');
+        // (A canvas that replaces this one is a copy of it.)
         this.getCanvas().classList.add('maplibregl-canvas');
         if (o.maxBounds) this.setMaxBounds(o.maxBounds);
         this.unsupported('The option cooperativeGestures', !o.cooperativeGestures);
