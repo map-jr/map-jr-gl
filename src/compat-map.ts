@@ -98,6 +98,8 @@ export class Map extends CoreMap {
         this.unsupported('The option projection', !o.projection || (o.projection.type ?? o.projection) === 'mercator');
         this.unsupported('The option renderWorldCopies: false', o.renderWorldCopies !== false);
         this.unsupported('The option canvasContextAttributes (but for antialias)', !context || !Object.keys(context).some(k => k !== 'antialias'));
+        this.unsupported('The option logoPosition', !o.logoPosition);
+        this.unsupported('The option validate', o.validate === undefined);
     }
 
     // ---- Changes of the style that MapLibre GL JS refuses ----
@@ -123,7 +125,10 @@ export class Map extends CoreMap {
         return user ? this.refused(`removeSource: the layer "${user.id}" uses the source "${id}". Remove the layer first.`) : super.removeSource(id);
     }
 
-    flyTo(o: EaseToOptions) { return this.easeTo({duration: 1200, ...o}); }
+    flyTo(o: EaseToOptions & {speed?: number; curve?: number}) {
+        this.unsupported('The options speed and curve of flyTo', o.speed === undefined && o.curve === undefined);
+        return this.easeTo({duration: 1200, ...o});
+    }
     /** Space at the edges covered by other things (a side panel, a header). The map centre moves to the middle of what is left. */
     setPadding(padding: PaddingInput) { return this.jumpTo({padding}); }
     getPadding() { const [top, right, bottom, left] = this.tr.padding; return {top, right, bottom, left}; }
