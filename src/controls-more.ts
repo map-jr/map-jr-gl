@@ -1,6 +1,7 @@
 // The controls that an application adds itself (the control for the credits is in controls.ts, because the map adds it).
 // They are a file of their own, so that a page that does not use them does not load them.
 import type {Map} from './map.ts';
+import {Evented} from './evented.ts';
 import {cls, toggleClass, type Control, type ControlPosition} from './controls.ts';
 
 const svg = (path: string, extra = '') => `<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" ${extra}>${path}</svg>`;
@@ -121,22 +122,52 @@ export class LogoControl implements Control {
     getDefaultPosition(): ControlPosition { return 'bottom-left'; }
 }
 
-/** Moves the map to the user's position (after the browser's permission prompt) and fires `geolocate` or `error`. */
-export class GeolocateControl implements Control {
+/**
+ * Moves the map to the user's position (after the browser's permission prompt). It fires `geolocate`, `error` or
+ * `outofmaxbounds` on itself, as MapLibre GL JS does, and `geolocate` and `error` also on the map. Tracking
+ * (`trackUserLocation`) and the position dot (`showUserLocation`) are not supported: the options warn once, and
+ * `trackuserlocationstart` and `trackuserlocationend` never fire.
+ */
+export class GeolocateControl extends Evented implements Control {
     private el?: HTMLElement;
-    constructor(private options: {zoom?: number; positionOptions?: PositionOptions} = {}) {}
+    private map?: Map;
+    private b?: HTMLButtonElement;
+    constructor(private options: {zoom?: number; positionOptions?: PositionOptions; trackUserLocation?: boolean; showUserLocation?: boolean} = {}) {
+        super();
+        for (const k of ['trackUserLocation', 'showUserLocation'] as const) if (options[k] && !warned[k]) {
+            warned[k] = 1;
+            console.warn(`[map-jr-gl] GeolocateControl: the option ${k} has no effect. The control moves the map to the position once per click.`);
+        }
+    }
     onAdd(map: Map) {
+        this.map = map;
         const el = this.el = group();
-        const b = button(el, 'geolocate', 'Find my location', svg('<circle cx="9" cy="9" r="4"/><path d="M9 1.500v3M9 13.500v3M1.500 9h3M13.500 9h3"/>'), () => {
-            b.disabled = true;
-            navigator.geolocation.getCurrentPosition(p => {
-                b.disabled = false;
-                map.easeTo({duration: 1200, center: [p.coords.longitude, p.coords.latitude], zoom: Math.max(map.getZoom(), this.options.zoom ?? 14)});
-                map.fire('geolocate', {coords: p.coords});
-            }, err => { b.disabled = false; map.fire('error', {error: new Error(err.message)}); }, this.options.positionOptions);
-        });
+        const b = this.b = button(el, 'geolocate', 'Find my location', svg('<circle cx="9" cy="9" r="4"/><path d="M9 1.500v3M9 13.500v3M1.500 9h3M13.500 9h3"/>'), () => this.trigger());
         if (!('geolocation' in navigator)) b.disabled = true;
         return el;
     }
-    onRemove() { this.el?.remove(); }
+    /** Asks for the position once. Returns `false` when the control is not on a map or the browser has no geolocation. */
+    trigger() {
+        const map = this.map, b = this.b;
+        if (!map || !b || !('geolocation' in navigator)) return false;
+        b.disabled = true;
+        navigator.geolocation.getCurrentPosition(p => {
+            b.disabled = false;
+            if (this.map !== map) return;
+            const {longitude: x, latitude: y} = p.coords, m = map.getMaxBounds();
+            if (m && (x < m.getWest() || x > m.getEast() || y < m.getSouth() || y > m.getNorth())) { this.fire('outofmaxbounds', {coords: p.coords, timestamp: p.timestamp}); return; }
+            map.easeTo({duration: 1200, center: [x, y], zoom: Math.max(map.getZoom(), this.options.zoom ?? 14)});
+            this.fire('geolocate', {coords: p.coords, timestamp: p.timestamp});
+            map.fire('geolocate', {coords: p.coords});
+        }, err => {
+            b.disabled = false;
+            if (this.map !== map) return;
+            this.fire('error', {code: err.code, message: err.message});
+            map.fire('error', {error: new Error(err.message)});
+        }, this.options.positionOptions);
+        return true;
+    }
+    onRemove() { this.el?.remove(); this.map = undefined; }
 }
+// (Warnings are once per page, as the other warnings for options with no effect.)
+const warned: Record<string, 1> = {};
