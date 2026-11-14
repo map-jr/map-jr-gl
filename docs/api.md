@@ -382,6 +382,9 @@ stop(); // stops the first subscription
 | `renderer` | `'worker'` or `'main'`, when the map has started. |
 | `error` | The last error only. An earlier error is not kept: use `onError` in the description to get each one. |
 
+`loaded` becomes `true` before `idle` does, in the same task. A listener of the `load` event and a subscriber of
+`loaded` see `idle: false`, so code there that waits for the first `idle` gets it.
+
 A state object never changes. Each change makes a new object, and a part that did not change is the same object as
 before. This is the contract that frameworks use: `useSyncExternalStore` in React, a `shallowRef` in Vue, a store
 in Svelte, `from` in Solid.
@@ -451,7 +454,7 @@ The options (`FeatureOptions`) depend on the kind of query:
 | `filter` | A filter expression of the MapLibre style specification, for example `['==', ['get', 'class'], 'park']`. The query returns only the features that pass it. | In each query. |
 | `radius` | The distance around the place, in pixels of the screen, within which a feature is found. Without `sources`, the query asks a square of that many pixels to each side of the place, and the default is 0. With `sources`, the default is 3. | At a point or a position. |
 | `geometry` | `true` to give each feature a `geometry` (GeoJSON, in longitude and latitude). The default is `false`, which keeps the answer small. | With `sources`, at a point or a position. In each other query, the features always have a `geometry`. |
-| `zoom` | The zoom level of the tiles to read. The default is the zoom of the map. | With `sources`, at a point or a position. |
+| `zoom` | The zoom level of the tiles to read. The default is the zoom of the map. The query rounds it down to a whole number and keeps it between the `minzoom` and the `maxzoom` of the source: above the `maxzoom`, it reads the tile at the `maxzoom`, which is the deepest tile of the source. | With `sources`, at a point or a position. |
 
 An option that has no effect in a query is ignored, and the map writes one warning for it: `layers` with `sources`,
 `sourceLayers` without `sources`, `radius` in a query for a rectangle or the whole map, and `geometry: false` or
@@ -567,7 +570,7 @@ has the right type, and a name that is not in the table does not compile.
 
 | Type | When | Other members of the event |
 |---|---|---|
-| `load` | The style and the first tiles have loaded. | |
+| `load` | The style and the first tiles have loaded. It comes once, before the first `idle`. | |
 | `idle` | Nothing moves and nothing loads. | |
 | `render` | The map has drawn a frame. | |
 | `resize` | The size of the map has changed. | |
@@ -593,6 +596,32 @@ has the right type, and a name that is not in the table does not compile.
 | `error` | An error of the map. `onError` and `state.error` have the same errors as an `Error`. | `error`. |
 
 In a mouse event, `lngLat` is an object (`{lng, lat}`). In `onClick`, `lngLat` is an array (`[lng, lat]`).
+
+## Custom protocols
+
+`addProtocol(name, fn)` of `@map-jr/map-jr-gl` makes every map of the page load each URL that starts with `name://`
+through `fn`. It has the arguments of `addProtocol` of
+MapLibre GL JS. `fn` gets `{url, type, headers}` and an `AbortController`, and returns a promise of `{data}`. The map does not call `abort()` of that controller at present. The
+data can be an `ArrayBuffer`, a typed array, a string or an object (which the map turns into JSON).
+`removeProtocol(name)` removes it. The protocols are the same for every map of the page, and a map that exists
+already uses a protocol added later.
+
+```js
+import {addProtocol, createMap} from '@map-jr/map-jr-gl';
+
+addProtocol('local', async ({url}, abort) => {
+  const response = await fetch(url.replace('local://', 'https://demotiles.maplibre.org/'), {signal: abort.signal});
+  return {data: await response.arrayBuffer()};
+});
+const map = createMap('map', {style: 'local://style.json'});
+```
+
+## Other exports
+
+| Export of `@map-jr/map-jr-gl` | Meaning |
+|---|---|
+| `configure(options)` | Sets how the library loads its workers (`workerUrl`, `createWorker`, `tileWorkers` and the others) for the maps made after the call. See [Loading](loading.md). |
+| `createStore(value)` | Makes a store of the kind that `map.state` is (see [The state](#the-state)), with `get()`, `subscribe()` and `set(part)`. `set` makes a new object and calls the subscribers only when a field changes (compared with `Object.is`). |
 
 ## Types
 

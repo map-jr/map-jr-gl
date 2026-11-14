@@ -34,7 +34,12 @@ const hovered = ref([]);
 </template>
 ```
 
-The component fills its parent element. Give the parent a height.
+The component fills its parent element (`height: 100%`). Give the parent a height. A parent that has only
+`min-height` gives the component a height of 0, because a percentage height needs a parent with a set height: write
+`height` on the parent, or make the parent a flex or grid container. The development build warns about a container
+with a height of 0. A production build has no such warning, and neither has an app of the module for Nuxt at the
+moment, because the module loads the production build in `nuxt dev` too (issue #158). There the map stays empty
+without a message.
 
 ### Props
 
@@ -60,7 +65,7 @@ The component fills its parent element. Give the parent a height.
 | `update:view` | The view, after each change. |
 | `click` | `{point, lngLat, features}` |
 | `hover` | The features of `interactive-layers` under the pointer. |
-| `load`, `idle` | None |
+| `load`, `idle` | None. `load` comes once, before the first `idle`. When `load` comes, `host.state.get().idle` is still `false`. |
 | `error` | Each error of the map (an `Error`). Without a listener for this event, the map writes each error to the console. |
 | Each other event of the map | The event of `listen` of the main API: `@moveend`, `@zoomend`, `@styleimagemissing`, `@sourcedata` and the others. See [Events](api.md#events) for the list. The event `style.load` has the name `styleload` here. |
 

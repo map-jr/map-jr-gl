@@ -309,13 +309,15 @@ export const MapJr = defineComponent({
         });
         const {host, state} = useMap(el, spec);
         provide(HOST, host);
-        watch(() => state.value?.loaded, loaded => { if (loaded) emit('load'); });
         // The other events of the map, each one only when the component has a listener for it.
         const listeners = getCurrentInstance()?.vnode.props ?? {};
+        // (`load` and `idle` come from the store of the map and not from a watcher: a watcher runs after both have
+        // changed, and a listener of `load` would find the map idle already.)
         watch(host, map => {
+            if (map) map.state.subscribe(s => s.loaded, v => { if (v) emit('load'); });
+            if (map) map.state.subscribe(s => s.idle, v => { if (v) emit('idle'); });
             if (map) for (const name of FORWARDED) { const event = name.replace('.', '') as 'move'; if (listeners['on' + event[0].toUpperCase() + event.slice(1)]) map.listen(name as 'move', e => emit(event, e)); }
         }, {immediate: true});
-        watch(() => state.value?.idle, idle => { if (idle) emit('idle'); });
         watch(() => state.value?.hover, hover => { if (hover) emit('hover', hover); });
         expose({host, state});
 
