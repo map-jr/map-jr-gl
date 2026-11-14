@@ -1431,26 +1431,41 @@ export class GLRenderer {
         return behind;
     }
 
+    /** Kept between frames and grown when necessary, as `textData` is: icons are built again on each frame. */
+    private iconData = new Float32Array(0);
     private iconQuads(labels: Placed[], custom: boolean, lookup?: Scene['icon']): Float32Array {
-        const mine = labels.filter(l => l.icon && !!l.icon.custom === custom && l.opacity > 0);
-        const out: number[] = [];
-        for (const {icon, opacity} of mine) {
-            const i = icon!, cos = Math.cos(i.angle), sin = Math.sin(i.angle), [sx, sy, sw, sh] = i.rect;
+        let f = this.iconData, o = 0;
+        const dpr = this.dpr, snap = (v: number) => Math.round(v * dpr) / dpr;
+        /** Makes room for `n` more floats. */
+        const room = (n: number) => { if (o + n > f.length) { const g = new Float32Array(Math.max(1024, (o + n) * 2)); g.set(f.subarray(0, o)); f = this.iconData = g; } };
+        /** One vertex: position, place in the texture, alpha, tint. */
+        const vertex = (x: number, y: number, u: number, v: number, alpha: number, tint: number[]) => {
+            f[o] = x; f[o + 1] = y; f[o + 2] = u; f[o + 3] = v; f[o + 4] = alpha;
+            f[o + 5] = tint[0]; f[o + 6] = tint[1]; f[o + 7] = tint[2]; f[o + 8] = tint[3]; o += 9;
+        };
+        const plain = [0, 0, 0, -1];
+        for (const {icon: i, opacity} of labels) {
+            if (!i || !!i.custom !== custom || !(opacity > 0)) continue;
+            const cos = Math.cos(i.angle), sin = Math.sin(i.angle), [sx, sy, sw, sh] = i.rect;
             // Plain icons are one quad; stretched ones are a grid whose fixed cells keep their size.
             const gx = i.gx ?? [0, 0, sw, i.w], gy = i.gy ?? [0, 0, sh, i.h];
-            const col = i.color ?? [0, 0, 0, -1];
+            const col = i.color ?? plain, hw = i.w / 2, hh = i.h / 2;
             // Upright icons are placed on whole device pixels. Between pixels, the texture filter would smear fine
             // detail such as a one-pixel outline into its neighbours.
-            const snap = (v: number) => Math.round(v * this.dpr) / this.dpr;
-            const ox = i.angle === 0 ? snap(i.x - i.w / 2) - (i.x - i.w / 2) : 0, oy = i.angle === 0 ? snap(i.y - i.h / 2) - (i.y - i.h / 2) : 0;
+            const ox = i.angle === 0 ? snap(i.x - hw) - (i.x - hw) : 0, oy = i.angle === 0 ? snap(i.y - hh) - (i.y - hh) : 0;
+            const x = i.x + ox, y = i.y + oy;
+            room((i.halo ? 2 : 1) * ((gx.length - 2) >> 1) * ((gy.length - 2) >> 1) * 54);
             // A halo is the same picture drawn first, in the halo colour and out to a lower level of the distance field.
-            for (const halo of i.halo ? [true, false] : [false]) {
-                const tint = halo ? i.halo! : col, alpha = Math.min(1, Math.max(0, opacity * i.opacity)) * 0.999 + (halo ? Math.round(i.haloReach! * 100) : 0);
+            for (let pass = i.halo ? 0 : 1; pass < 2; pass++) {
+                const halo = pass === 0, tint = halo ? i.halo! : col, alpha = Math.min(1, Math.max(0, opacity * i.opacity)) * 0.999 + (halo ? Math.round(i.haloReach! * 100) : 0);
                 for (let a = 0; a + 3 < gx.length; a += 2) for (let b = 0; b + 3 < gy.length; b += 2) {
-                    for (const [cx, cy] of [[0, 0], [1, 0], [0, 1], [1, 0], [1, 1], [0, 1]]) {
-                        const dx = gx[a + cx * 2 + 1] - i.w / 2, dy = gy[b + cy * 2 + 1] - i.h / 2;
-                        out.push(i.x + ox + dx * cos - dy * sin, i.y + oy + dx * sin + dy * cos, sx + gx[a + cx * 2], sy + gy[b + cy * 2], alpha, ...tint);
-                    }
+                    // The two triangles of a cell: corners (0, 0), (1, 0), (0, 1) and (1, 0), (1, 1), (0, 1).
+                    const x0 = gx[a + 1] - hw, x1 = gx[a + 3] - hw, y0 = gy[b + 1] - hh, y1 = gy[b + 3] - hh;
+                    const u0 = sx + gx[a], u1 = sx + gx[a + 2], v0 = sy + gy[b], v1 = sy + gy[b + 2];
+                    const p00x = x + x0 * cos - y0 * sin, p00y = y + x0 * sin + y0 * cos, p10x = x + x1 * cos - y0 * sin, p10y = y + x1 * sin + y0 * cos;
+                    const p01x = x + x0 * cos - y1 * sin, p01y = y + x0 * sin + y1 * cos, p11x = x + x1 * cos - y1 * sin, p11y = y + x1 * sin + y1 * cos;
+                    vertex(p00x, p00y, u0, v0, alpha, tint); vertex(p10x, p10y, u1, v0, alpha, tint); vertex(p01x, p01y, u0, v1, alpha, tint);
+                    vertex(p10x, p10y, u1, v0, alpha, tint); vertex(p11x, p11y, u1, v1, alpha, tint); vertex(p01x, p01y, u0, v1, alpha, tint);
                 }
             }
         }
@@ -1468,18 +1483,18 @@ export class GLRenderer {
                     const img = g.image ? lookup(g.image) : undefined;
                     if (img && !!img.custom === custom) {
                         const w = g.advance * k, h = g.imageHeight! * k, cx = (pen + g.advance / 2) * k, cy = mid * k;
-                        const snap = (v: number) => Math.round(v * this.dpr) / this.dpr;
                         const x0 = l.angle === 0 ? snap(l.x + cx - w / 2) - l.x : cx - w / 2, y0 = l.angle === 0 ? snap(l.y + cy - h / 2) - l.y : cy - h / 2;
+                        room(54);
                         for (const [ux, uy] of [[0, 0], [1, 0], [0, 1], [1, 0], [1, 1], [0, 1]]) {
                             const dx = x0 + ux * w, dy = y0 + uy * h;
-                            out.push(l.x + dx * cos - dy * sin, l.y + dx * sin + dy * cos, img.x + ux * img.width, img.y + uy * img.height, Math.min(1, l.opacity) * 0.999, 0, 0, 0, -1);
+                            vertex(l.x + dx * cos - dy * sin, l.y + dx * sin + dy * cos, img.x + ux * img.width, img.y + uy * img.height, Math.min(1, l.opacity) * 0.999, plain);
                         }
                     }
                     pen += g.advance + l.src.spacing * EM;
                 }
             });
         }
-        return new Float32Array(out);
+        return f.subarray(0, o);
     }
 
     /** Kept between frames and grown when necessary: text is rebuilt on each frame, and must not make garbage. */

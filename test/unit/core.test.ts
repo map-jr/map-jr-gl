@@ -752,6 +752,29 @@ test('text-font defaults to the style specification default (#256)', () => {
     assert.deepEqual(l.p.font.eval(10, {properties: {}}), ['Open Sans Regular', 'Arial Unicode MS Regular']);
 });
 
+test('labels: text along a line that is too short for it is rejected before the points of the line are projected (#49)', async () => {
+    const {placeLabels} = await import('../../src/placement.ts');
+    const {EstimateShaper} = await import('../../src/text.ts');
+    const layer = compileLayer({id: 'names', type: 'symbol', source: 's', 'source-layer': 'transportation_name', layout: {'text-field': '{name}', 'symbol-placement': 'line'}})!;
+    const real = buildTile(bytes, TILE.z, [layer], true).labels.names.find(l => l.path && l.text.length > 8)!;
+    const id = {...TILE, w: 0, key: `${TILE.z}/${TILE.x}/${TILE.y}`}, n = 2 ** TILE.z;
+    for (const pitch of [0, 50]) {
+        const tr = camera(pitch, 20);
+        // A straight line of 41 points through the centre of the view, `step` tile units apart.
+        const x = (mercX(-74.006) * n - TILE.x) * 4096, y = (mercY(40.7128) * n - TILE.y) * 4096;
+        // (A label has most of its fields, the text among them, on its prototype, so it is changed in place rather than copied.)
+        const line = (step: number) => Object.assign(real, {x, y, angle: 0, path: Array.from({length: 82}, (_, i) => i % 2 ? y : x + (i / 2 - 20) * step), pathIndex: 20});
+        let calls = 0;
+        const project = tr.projectTile.bind(tr);
+        tr.projectTile = (...a: Parameters<typeof project>) => { calls++; return project(...a); };
+        const place = (l: typeof real) => { calls = 0; return placeLabels(tr, renderItems(tr, [id], () => ({labels: {names: [l]}})), [layer], new EstimateShaper(), new CollisionGrid()); };
+        assert.equal(place(line(1)).length, 0);
+        assert.equal(calls, 2, `pitch ${pitch}: only the anchor and the direction of the line are projected`);
+        assert.equal(place(line(40)).length, 1, `pitch ${pitch}: text that fits its line is placed`);
+        assert.ok(calls > 41);
+    }
+});
+
 test('sizes: a size of zoom and feature is found at the zoom that an overzoomed tile is built for (#249)', async () => {
     const {prepareGeoJSON, sliceGeoJSON} = await import('../../src/geojson.ts');
     const n = 2 ** 14, lng = (TILE.x + 0.5) / n * 360 - 180, lat = Math.atan(Math.sinh(Math.PI * (1 - 2 * (TILE.y + 0.5) / n))) * 180 / Math.PI;

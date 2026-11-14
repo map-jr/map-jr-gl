@@ -147,8 +147,13 @@ export class Map extends CoreMap {
      * rotate and pitch events). A later camera call or user input replaces it; a nested call (fitBounds calls easeTo) keeps it.
      */
     jumpTo(o: CameraInput, eventData?: EventData) { return this.camera(eventData, () => super.jumpTo(o)); }
-    easeTo(o: EaseToOptions, eventData?: EventData) { return this.camera(eventData, () => super.easeTo(o)); }
-    fitBounds(bounds: Parameters<CoreMap['fitBounds']>[0], o?: FitBoundsOptions, eventData?: EventData) { return this.camera(eventData, () => super.fitBounds(bounds, o)); }
+    easeTo(o: EaseToOptions, eventData?: EventData) {
+        return this.camera(eventData, () => super.easeTo(o));
+    }
+    fitBounds(bounds: Parameters<CoreMap['fitBounds']>[0], o?: FitBoundsOptions, eventData?: EventData) {
+        this.unsupported('The options speed, curve and linear of fitBounds', o?.speed === undefined && o?.curve === undefined && o?.linear === undefined);
+        return this.camera(eventData, () => super.fitBounds(bounds, o));
+    }
     private camera(eventData: EventData | undefined, f: () => this) {
         if (!this.nested) this.moveData = eventData;
         this.nested++;
@@ -234,7 +239,6 @@ export class Map extends CoreMap {
     }
     getFontFaces() { return this.rawStyle?.['font-faces'] ?? {}; }
     setFontFaces(faces: Record<string, unknown> | null) { return this.editStyle(s => { if (faces) s['font-faces'] = faces; else delete s['font-faces']; }); }
-    /** The image that addImage was given, with its options, or undefined. (MapLibre returns the decoded pixels.) */
     /** As in MapLibre GL JS, the feature can come without an `id` (a feature of a query); then nothing changes and the map warns once. */
     setFeatureState(feature: FeatureIdentifier, state: Record<string, unknown>) { return this.hasId(feature, 'setFeatureState') ? super.setFeatureState(feature, state) : this; }
     getFeatureState(feature: FeatureIdentifier) { return this.hasId(feature, 'getFeatureState') ? super.getFeatureState(feature) : {}; }
@@ -243,7 +247,26 @@ export class Map extends CoreMap {
         if (!this.warned.has(name)) this.warned.add(name), console.warn(`[map-jr-gl] ${name}(): the feature has no "id". Give the source features an id, or set "promoteId" on the source.`);
         return false;
     }
-    getImage(name: string) { const i = this.imageInputs.get(name); return i && {data: i[0], pixelRatio: i[1].pixelRatio ?? 1, sdf: false, ...i[1]}; }
+    /**
+     * The image that addImage was given, with its options, or undefined. Raw pixels and drawable sources (canvas, image,
+     * bitmap) come back as `{width, height, data}` with RGBA pixels, as in MapLibre; a URL or SVG text comes back as given.
+     */
+    getImage(name: string) {
+        const i = this.imageInputs.get(name);
+        if (!i) return;
+        let data: unknown = i[0];
+        if (typeof data === 'object' && data) {
+            if ('data' in data) { const d = data as {width: number; height: number; data: ArrayLike<number>}; data = {width: d.width, height: d.height, data: new Uint8Array(d.data)}; }
+            else try {
+                const s = data as HTMLImageElement, width = s.naturalWidth || s.width, height = s.naturalHeight || s.height, c = document.createElement('canvas');
+                c.width = width; c.height = height;
+                const g = c.getContext('2d', {willReadFrequently: true})!;
+                g.drawImage(s, 0, 0);
+                data = {width, height, data: new Uint8Array(g.getImageData(0, 0, width, height).data.buffer)};
+            } catch { /* A source of another origin or with no size stays as given. */ }
+        }
+        return {pixelRatio: i[1].pixelRatio ?? 1, sdf: false, ...i[1], data};
+    }
     listImages() { return [...this.imageNames]; }
     /** Fetches and decodes an image, in the shape MapLibre returns it. */
     async loadImage(url: string) {

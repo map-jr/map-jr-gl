@@ -54,7 +54,7 @@ The props are the fields of the description of a map (see [the main API](api.md)
 | `className`, `style` | For the element of the component. |
 | `children` | Content over the map, and `MapOverlay` elements. |
 
-A ref on the component gets the map (the `MapHost` of [the main API](api.md), for `queryFeatures`, `moveTo`,
+A ref on the component gets the map (the `MapHost` of [the main API](api.md), for `queryFeatures`, `clusterExpansionZoom`, `moveTo`,
 `fitBounds`). The component creates the map in an effect, so the ref is `null` during the first render and in the
 effects of the parent that run at mount. Read the ref in an event handler or after `onLoad`, or put the code in a
 child component that calls `useMap()`.
@@ -70,6 +70,12 @@ you can write `controls={[navigation()]}`, `interactiveLayers={['places']}` and 
 
 Two things are compared by identity only, because they can be large: the `data` of a marker layer, and each value of
 the `data` prop (GeoJSON for sources of the style). Keep them (`useMemo`, state) until they change, as in the example.
+
+## Your own controls
+
+To put your own component into a control corner, give the map `custom({key, position, element})` from
+`@map-jr/map-jr-gl/controls` and render the component into `element` with a portal. The example is in
+[A control of your own](api.md#a-control-of-your-own).
 
 ## Hooks
 

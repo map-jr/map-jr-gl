@@ -127,8 +127,9 @@ The library compares each field with the field of the last description:
 | `interactiveLayers` | The ids of style layers. The features of these layers under the pointer are in `state.hover` and in `onClick`. |
 | `onClick` | A function that is called for a click, with `point`, `lngLat` and `features`. |
 | `onError` | A function that is called with each error of the map (an `Error`): a style or a source that does not load, a mistake in a style edit, a failure of the renderer. Use it to send errors to your error tracker. Without it, the map writes each error to the console with `console.error`. |
-| `minZoom`, `maxZoom`, `maxPitch`, `maxBounds` | The limits of the camera. `maxBounds` keeps the whole view inside the bounds, as MapLibre GL JS does: the canvas less the padding, with no regard to bearing and pitch. When the bounds are smaller than that view, the zoom rises until they fill it. |
+| `minZoom`, `maxZoom`, `maxPitch`, `maxBounds` | The limits of the camera. `maxBounds` keeps the whole view inside the bounds, as MapLibre GL JS does: the canvas less the padding, with no regard to bearing and pitch. When the bounds are smaller than that view, the zoom rises until they fill it. A west edge east of the east edge (for example `[[150, -50], [-120, 10]]`) gives bounds that cross the antimeridian. |
 | `cursor` | The mouse cursor over the map. Without it, the cursor is a pointer over a feature of `interactiveLayers`. |
+| `padding` | Space in CSS pixels at the sides of the map that the view keeps free, for example under a side panel: one number for all sides, or `{top, right, bottom, left}` (a side that is left out is 0). The centre of the view is the centre of the rest of the map. The default is 0. A change moves the camera at once (as `setPadding` of MapLibre GL JS). It is not the `padding` of `initialView`, which is space around `bounds` for the fit at the start only. |
 
 These fields are read only when the map is made:
 
@@ -369,6 +370,72 @@ it makes the map. A control appears a moment after `createMap` or `update` adds 
 | `fullscreen` | A button for the full screen | |
 | `geolocate` | A button that moves the map to the position of the user | `zoom`, `positionOptions` |
 | `terrain` | A button that turns 3D terrain on and off | `source` (required), `exaggeration` |
+| `custom` | A control of your own (see below) | `key` (required), and `element` or `onAdd` with `onRemove` |
+
+### A control of your own
+
+`custom` puts your own element into a corner, below or beside the other controls of that corner. `key` names the
+control: while the descriptions have a control with that `key`, the map keeps it, and it removes the control when a
+description does not have it. The map gives the element the class `map-jr-ctrl`, which makes it take clicks (the
+corners themselves do not). The element of `custom` shows at once; it does not wait for a file to load.
+
+```js
+import {createMap} from '@map-jr/map-jr-gl';
+import {navigation, custom} from '@map-jr/map-jr-gl/controls';
+
+const button = document.createElement('button');
+button.textContent = 'Layers';
+button.addEventListener('click', () => console.log('open the layer list'));
+
+createMap(document.getElementById('map'), {
+  style: 'https://tiles.openfreemap.org/styles/liberty',
+  controls: [navigation(), custom({key: 'layers', position: 'top-right', element: button})],
+});
+```
+
+A control written for MapLibre GL JS (an object with `onAdd(map)` and `onRemove(map)`) also fits:
+`custom({key: 'ruler', position: 'top-left', onAdd: map => ruler.onAdd(map), onRemove: map => ruler.onRemove(map)})`.
+`onAdd` receives the core map (`map.map` of the main API), not the object that `createMap` returns. The default
+`position` is `'top-right'`.
+
+In React and Vue, make the element once and render your component into it. In React use a portal
+(`@map-jr/map-jr-gl/react`):
+
+```jsx
+import {useMemo} from 'react';
+import {createPortal} from 'react-dom';
+import {MapJr} from '@map-jr/map-jr-gl/react';
+import {navigation, custom} from '@map-jr/map-jr-gl/controls';
+
+export function App() {
+  const corner = useMemo(() => document.createElement('div'), []);
+  const controls = useMemo(() => [navigation(), custom({key: 'styles', position: 'top-right', element: corner})], [corner]);
+  return <>
+    <div style={{height: 400}}><MapJr mapStyle="https://tiles.openfreemap.org/styles/liberty" controls={controls} /></div>
+    {createPortal(<button onClick={() => console.log('switch the style')}>Styles</button>, corner)}
+  </>;
+}
+```
+
+In Vue use `<Teleport>` (`@map-jr/map-jr-gl/vue`):
+
+```vue
+<script setup>
+import {MapJr} from '@map-jr/map-jr-gl/vue';
+import {navigation, custom} from '@map-jr/map-jr-gl/controls';
+
+const corner = document.createElement('div');
+const controls = [navigation(), custom({key: 'styles', position: 'top-right', element: corner})];
+</script>
+
+<template>
+  <div style="height: 400px"><MapJr map-style="https://tiles.openfreemap.org/styles/liberty" :controls="controls" /></div>
+  <Teleport :to="corner"><button @click="console.log('switch the style')">Styles</button></Teleport>
+</template>
+```
+
+With server rendering, make the element in the browser only (in `useEffect` or `onMounted`), because
+`document` does not exist on the server.
 
 The attribution of the data shows without a control of your own. To change it or to turn it off, see `attribution`
 in [The description](#the-description).
@@ -523,6 +590,41 @@ only the features in the view. The two MapLibre methods are in the entry
 
 The tile data is in a worker, so each query returns a promise.
 
+## Clusters
+
+A GeoJSON source with `cluster: true` has three methods on the `MapHost` of `@map-jr/map-jr-gl`. Each takes the id of
+the source and the id of a cluster (`properties.cluster_id` of a cluster feature, for example from `queryFeatures`), and
+returns a promise:
+
+| Method | Answer |
+|---|---|
+| `clusterExpansionZoom(sourceId, clusterId)` | The zoom level at which the cluster divides. |
+| `clusterChildren(sourceId, clusterId)` | The clusters and points that the cluster divides into, as GeoJSON features (`ClusterFeature[]`). |
+| `clusterLeaves(sourceId, clusterId, limit, offset)` | The points of the cluster, as GeoJSON features. `limit` defaults to 10 and `offset` to 0. A `limit` of `Infinity` gives all of them. |
+
+```js
+import {createMap} from '@map-jr/map-jr-gl';
+
+const map = createMap(document.getElementById('map'), {
+    style: 'https://demotiles.maplibre.org/style.json',
+    extend: {
+        sources: {points: {type: 'geojson', cluster: true, data: 'https://maplibre.org/maplibre-gl-js/docs/assets/earthquakes.geojson'}},
+        layers: [{id: 'clusters', type: 'circle', source: 'points', paint: {'circle-radius': 12}}],
+    },
+    interactiveLayers: ['clusters'],
+    onClick: async e => {
+        const cluster = e.features[0];
+        if (!cluster?.properties.cluster) return;
+        const zoom = await map.clusterExpansionZoom('points', cluster.properties.cluster_id);
+        map.moveTo({center: cluster.geometry.coordinates, zoom, duration: 500});
+    },
+});
+```
+
+The promise rejects with an `Error` whose message starts with `[map-jr-gl]` and the name of the method when the source
+is not a GeoJSON source of the style, when it has no clusters, or when no cluster has that id. These are the methods
+`getClusterExpansionZoom`, `getClusterChildren` and `getClusterLeaves` of the source in MapLibre GL JS.
+
 ## Elements of the page on the map
 
 ```js
@@ -558,8 +660,8 @@ as ten. See [Markers](markers.md).
 |---|---|
 | `update(description)` | Changes the map to a new description. Takes the complete description. See [Change the map](#change-the-map). |
 | `destroy()` | Removes the map and frees its memory. It can be called while the map loads. Call it before you make another map in the same element: a second map in an element that has a map leaves two canvases in the element, and the library warns in the console. |
-| `moveTo(view)` | Moves the camera now. With `duration` (milliseconds), with an animation. |
-| `fitBounds(bounds, options)` | Shows an area. |
+| `moveTo(view)` | Moves the camera now. With `duration` (milliseconds), with an animation. With `padding` (a number or `{top, right, bottom, left}`), it also sets the padding of the map, as `padding` of the description does. |
+| `fitBounds(bounds, options)` | Shows an area. The options are `padding` (CSS pixels: a number, or `{top, right, bottom, left}`; it adds to the `padding` of the description), `maxZoom` and `duration` (milliseconds). |
 | `queryFeatures(at, options)`, `watchFeatures(at, options, listener)` | Find features, one time or kept up to date. See [Queries](#queries). |
 | `queryElevation(at)` | The height of the ground in metres at a position (`[lng, lat]`) or a point of the screen (`{x, y}`), from the elevation source of the style. A promise; `null` where there is no data. |
 | `project(lngLat)`, `unproject(point)` | Change between a position on the map and a point of the screen. |

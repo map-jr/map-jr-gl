@@ -53,7 +53,7 @@ production build has no such warning, and there the map stays empty without a me
 | `data` | GeoJSON data for sources of the style, by the id of the source: `:data="{routes}"`. See "GeoJSON data that changes" in [the main API](api.md). Use a `shallowRef` for each value, and give a new object to change it. |
 | `interactive-layers` | The ids of style layers whose features are found under the pointer. |
 | `controls` | Controls from `@map-jr/map-jr-gl/controls`: `:controls="[navigation(), scale()]"`. See [the main API](api.md). |
-| `min-zoom`, `max-zoom`, `max-pitch`, `max-bounds`, `cursor` | As in [the main API](api.md). |
+| `min-zoom`, `max-zoom`, `max-pitch`, `max-bounds`, `cursor`, `padding` | As in [the main API](api.md). |
 | `renderer`, `fonts`, `font-family`, `glyphs`, `interactive`, `antialias`, `attribution`, `hash` | Read only when the map is made. |
 | `ssr` | Render the first view on the server. See below. |
 
@@ -95,7 +95,7 @@ function missing(event) {
 ### The slot
 
 The default slot is drawn over the map. It gets `state` (the state of the map) and `host` (the map, for
-`queryFeatures`, `moveTo` and `fitBounds`).
+`queryFeatures`, `clusterExpansionZoom`, `moveTo` and `fitBounds`).
 
 ```vue
 <MapJr :map-style="style" v-slot="{state}">
@@ -261,6 +261,12 @@ Reactive objects (proxies made by `reactive()` or `ref()`) are accepted in both 
 cannot copy a proxy, so the map sends such data to its workers as a JSON copy. That copy costs time for large GeoJSON,
 and `shallowRef` or `toRaw()` avoids it. Data that JSON cannot copy either, such as an object that contains itself, is
 an `error` event with a `[map-jr-gl]` message. A map object kept in the data of a component is not made reactive.
+
+## Your own controls
+
+To put your own component into a control corner, give the map `custom({key, position, element})` from
+`@map-jr/map-jr-gl/controls` and render the component into `element` with `<Teleport>`. The example is in
+[A control of your own](api.md#a-control-of-your-own).
 
 ## The composable
 
