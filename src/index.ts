@@ -8,3 +8,4 @@ export type {ImageOptions, RenderedFeature, StyleLayer} from './map.ts';
 export type {MarkerLayerOptions, MarkerInput, Anchor} from './markers.ts';
 export type {FontSource} from './engine.ts';
 export type {QueriedFeature} from './query.ts';
+export type {StyleSpecification, SourceSpecification, LayerSpecification, BackgroundLayerSpecification, FillLayerSpecification, FillExtrusionLayerSpecification, LineLayerSpecification, CircleLayerSpecification, HeatmapLayerSpecification, RasterLayerSpecification, HillshadeLayerSpecification, SymbolLayerSpecification, ExpressionSpecification, FilterSpecification, ProjectionSpecification, TerrainSpecification, LightSpecification} from './compat-types.ts';
