@@ -1,4 +1,3 @@
-import {GPUInitializationError} from './gpu-error.ts';
 import {fetchWith, type RequestAnswer} from './requests.ts';
 import {protocolListeners, protocols, toBytes} from './protocols.ts';
 import {LngLat, LngLatBounds, type LngLatBoundsInput} from './lnglat.ts';
@@ -532,7 +531,7 @@ export class Map {
             el.textContent = 'This browser cannot show the map.';
             this.canvas.after(el);
         }
-        return new GPUInitializationError(`[map-jr-gl] The map cannot be shown: ${cause.message}.` + (/WebGL2/.test(cause.message) ? ' Call supported() before you make a map, and show other content when it returns false.' : ''), null, {cause});
+        return new Error(`[map-jr-gl] The map cannot be shown: ${cause.message}.` + (/WebGL2/.test(cause.message) ? ' Call supported() before you make a map, and show other content when it returns false.' : ''), {cause});
     }
 
     /** @internal Sends a command to the engine. */
