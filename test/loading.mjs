@@ -19,27 +19,29 @@ async function load(name, url, {expect, block} = {}) {
     await page.close();
 }
 
-const base = 'http://localhost:8080/?nomarkers&nocontrols&nofonts';
+const port = process.env.PORT || 8080; // (the demo server; PORT lets two runs use two servers)
+const base = `http://localhost:${port}/?nomarkers&nocontrols&nofonts`;
 await load('default: small entry, worker found beside it, no main-thread engine downloaded', base, {expect: {renderer: 'worker', files: ['map-jr-gl-maplibre-compat.js', 'map-jr-gl-worker.js'], not: ['map-jr-gl-engine-entry.js', 'map-jr-gl-maplibre-compat-standalone.js']}});
 await load('renderer "main": the engine chunk is fetched on demand', base + '&renderer=main', {expect: {renderer: 'main', files: ['map-jr-gl-maplibre-compat.js', 'map-jr-gl-engine-entry.js', 'map-jr-gl-worker.js']}});
 await load('standalone: one file, nothing else requested', base + '&standalone', {expect: {renderer: 'worker', files: ['map-jr-gl-maplibre-compat-standalone.js'], not: ['map-jr-gl-worker.js', 'map-jr-gl-maplibre-compat.js']}});
-await load('served from another origin (as from a CDN): worker starts through a same-origin stub', base + '&from=http://127.0.0.1:8080', {expect: {renderer: 'worker', files: ['map-jr-gl-maplibre-compat.js', 'map-jr-gl-worker.js']}});
+await load('served from another origin (as from a CDN): worker starts through a same-origin stub', base + `&from=http://127.0.0.1:${port}`, {expect: {renderer: 'worker', files: ['map-jr-gl-maplibre-compat.js', 'map-jr-gl-worker.js']}});
 await load('worker file missing: falls back to the main thread and explains', base, {block: '**/map-jr-gl-worker.js', expect: {renderer: 'main', files: ['map-jr-gl-maplibre-compat.js', 'map-jr-gl-engine-entry.js'], warns: 'Workers are unavailable'}});
 
 // Start-up in parallel: the map asks for the worker file while the style is still on its way, not after its answer.
-{
+// With the main renderer, the engine chunk is asked for at the same time too (#325).
+for (const [what, file, query] of [['the worker file', /map-jr-gl-worker\.js/, ''], ['renderer "main": the engine chunk', /map-jr-gl-engine-entry-[\w-]{8}\.js/, '&renderer=main']]) {
     const page = await browser.newPage({viewport: {width: 800, height: 500}});
-    let workerAsked = 0, styleAsked = 0, styleAnswered = 0;
-    page.on('request', r => { if (/map-jr-gl-worker\.js/.test(r.url())) workerAsked ||= Date.now(); });
+    let fileAsked = 0, styleAsked = 0, styleAnswered = 0;
+    page.on('request', r => { if (file.test(r.url())) fileAsked ||= Date.now(); });
     await page.route(u => /style[^/]*\.json/.test(u.pathname) || /\/styles\//.test(u.pathname), async r => {
         styleAsked ||= Date.now();
         await new Promise(res => setTimeout(res, 700));
         styleAnswered ||= Date.now();
         r.continue().catch(() => {});
     });
-    await page.goto(base);
+    await page.goto(base + query);
     const ok = await page.waitForFunction(() => window.mapLoaded, null, {timeout: 30000}).then(() => true, () => false);
-    check('start-up: the worker file is asked for before the style has answered', ok && !!styleAsked && !!workerAsked && workerAsked < styleAnswered, `loaded=${ok} worker asked ${workerAsked - styleAsked} ms after the style was asked; the style answered after ${styleAnswered - styleAsked} ms`);
+    check(`start-up: ${what} is asked for before the style has answered`, ok && !!styleAsked && !!fileAsked && fileAsked < styleAnswered, `loaded=${ok} asked ${fileAsked - styleAsked} ms after the style was asked; the style answered after ${styleAnswered - styleAsked} ms`);
     await page.close();
 }
 await browser.close();

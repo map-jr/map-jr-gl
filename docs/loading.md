@@ -30,7 +30,7 @@ All maps on a page use the same group of workers to read tiles.
 |---|---|---|
 | The entry file and its parts (see [Preload the parts](#preload-the-parts)) | The page | Always |
 | `map-jr-gl-worker.js` | A worker | Always. The map asks for it when it is made, at the same time as the style. |
-| `map-jr-gl-engine-entry-*.js` | The page | Only when the map draws on the main thread |
+| `map-jr-gl-engine-entry-*.js` | The page | Only when the map draws on the main thread. With `renderer: 'main'`, or in a browser without `OffscreenCanvas`, the map asks for it when it is made, at the same time as the style. When a worker cannot start, the map asks for it at that moment. |
 | `map-jr-gl-standalone.js` | The page | Only when you import the one-file build |
 
 The [status table](../README.md#status) gives the current sizes.
