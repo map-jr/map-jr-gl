@@ -1645,7 +1645,7 @@ for (const mode of ['main', 'worker']) {
             const warnings = [], warn = console.warn;
             console.warn = (...a) => warnings.push(a.join(' '));
             const make = options => { const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'})); return new mod.Map({container: el, renderer: 'main', attributionControl: false, style: {version: 8, sources: {g: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}}, layers: [{id: 'bg', type: 'background'}]}, ...options}); };
-            const m = make({cooperativeGestures: true, locale: {x: 'y'}, projection: {type: 'globe'}, renderWorldCopies: false, canvasContextAttributes: {antialias: true, preserveDrawingBuffer: true}, center: [50, 50], zoom: 3, maxBounds: [[-10, -10], [10, 10]]});
+            const m = make({locale: {x: 'y'}, projection: {type: 'globe'}, renderWorldCopies: false, canvasContextAttributes: {antialias: true, preserveDrawingBuffer: true}, center: [50, 50], zoom: 3, maxBounds: [[-10, -10], [10, 10]]});
             // The view is inside maxBounds directly after the constructor, before the engine reports the camera (MapLibre GL JS 6.17 gives [1.2109, 3.4573]).
             const clamped = m.getCenter().toArray();
             const options = warnings.splice(0), errors = [];
@@ -1664,7 +1664,7 @@ for (const mode of ['main', 'worker']) {
             const plain = make({projection: {type: 'mercator'}, renderWorldCopies: true, canvasContextAttributes: {antialias: false}});
             out.plain = warnings.splice(0);
             let thrown = '';
-            try { make({strict: true, cooperativeGestures: true}); } catch (e) { thrown = e.message; }
+            try { make({strict: true, locale: {x: 'y'}}); } catch (e) { thrown = e.message; }
             const strict = make({strict: true});
             await new Promise(r => strict.once('load', r));
             let thrownCall = '';
@@ -1674,11 +1674,58 @@ for (const mode of ['main', 'worker']) {
             return {...out, thrown, thrownCall};
         });
         check('[main] maplibre-compat: each option with no effect gives one warning, the defaults give none, and maxBounds works',
-            quiet.options.length === 5 && ['cooperativeGestures', 'locale', 'projection', 'renderWorldCopies', 'canvasContextAttributes'].every(n => quiet.options.some(w => w.startsWith('[map-jr-gl] The option ' + n))) && quiet.plain.length === 0 && String(quiet.bounds) === '-10,-10,10,10' && quiet.clamped.every((v, i) => Math.abs(v - [1.2109, 3.4573][i]) < 1e-3) && quiet.later.every((v, i) => Math.abs(v - [1.2109, 3.4573][i]) < 1e-3) && quiet.custom.length === 1 && quiet.custom[0].includes('"custom"'), JSON.stringify({options: quiet.options, plain: quiet.plain, bounds: quiet.bounds, clamped: quiet.clamped, later: quiet.later, custom: quiet.custom}));
+            quiet.options.length === 4 && ['locale', 'projection', 'renderWorldCopies', 'canvasContextAttributes'].every(n => quiet.options.some(w => w.startsWith('[map-jr-gl] The option ' + n))) && quiet.plain.length === 0 && String(quiet.bounds) === '-10,-10,10,10' && quiet.clamped.every((v, i) => Math.abs(v - [1.2109, 3.4573][i]) < 1e-3) && quiet.later.every((v, i) => Math.abs(v - [1.2109, 3.4573][i]) < 1e-3) && quiet.custom.length === 1 && quiet.custom[0].includes('"custom"'), JSON.stringify({options: quiet.options, plain: quiet.plain, bounds: quiet.bounds, clamped: quiet.clamped, later: quiet.later, custom: quiet.custom}));
         check('[main] maplibre-compat: a layer or source id that exists, a source that is not there, and a source in use fire error and change nothing',
             quiet.errors.length === 4 && /addLayer: the style has a layer with the id "bg"/.test(quiet.errors[0]) && /names the source "nowhere"/.test(quiet.errors[1]) && /addSource: the style has a source with the id "g"/.test(quiet.errors[2]) && /removeSource: the layer "uses-g" uses the source "g"/.test(quiet.errors[3]) && quiet.layers === 'bg,uses-g' && quiet.source, JSON.stringify({errors: quiet.errors, layers: quiet.layers, source: quiet.source}));
         check('[main] maplibre-compat: strict: true throws for an option with no effect and for a refused style call',
-            quiet.thrown.startsWith('[map-jr-gl] The option cooperativeGestures has no effect') && /addLayer: the style has a layer with the id "bg"/.test(quiet.thrownCall), JSON.stringify({thrown: quiet.thrown, thrownCall: quiet.thrownCall}));
+            quiet.thrown.startsWith('[map-jr-gl] The option locale has no effect') && /addLayer: the style has a layer with the id "bg"/.test(quiet.thrownCall), JSON.stringify({thrown: quiet.thrown, thrownCall: quiet.thrownCall}));
+    }
+    // cooperativeGestures, as in MapLibre GL JS 6.17: a plain wheel and one finger leave the map to the page and show the hint;
+    // Ctrl + wheel (⌘ on a Mac) zooms; disable() gives the gestures back.
+    if (mode === 'main') {
+        const coop = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), wait = ms => new Promise(r => setTimeout(r, ms));
+            const warnings = [], warn = console.warn;
+            console.warn = (...a) => warnings.push(a.join(' '));
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:0;top:0;width:300px;height:200px'}));
+            const m = new mod.Map({container: el, renderer: 'main', attributionControl: false, cooperativeGestures: true, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, center: [0, 0], zoom: 3});
+            console.warn = warn;
+            await new Promise(r => m.once('load', r));
+            await wait(100);
+            const c = m.getCanvas(), prevented = [];
+            m.on('cooperativegestureprevented', e => prevented.push(e.gestureType));
+            const wheel = (ctrlKey, metaKey) => { const e = new WheelEvent('wheel', {deltaY: -100, clientX: 150, clientY: 100, ctrlKey, metaKey, bubbles: true, cancelable: true}); c.dispatchEvent(e); return e.defaultPrevented; };
+            const touch = (type, x) => c.dispatchEvent(new PointerEvent(type, {pointerId: 21, pointerType: 'touch', isPrimary: true, clientX: x, clientY: 100, button: 0, buttons: type === 'pointerup' ? 0 : 1, bubbles: true}));
+            const out = {warnings, enabled: m.cooperativeGestures.isEnabled(), touchAction: c.style.touchAction};
+            const z0 = m.getZoom();
+            out.plainPrevented = wheel(false, false);
+            // (The hint shows at once and fades from 100 ms on, as in MapLibre GL JS.)
+            out.hint = el.querySelector('.maplibregl-cooperative-gesture-screen')?.textContent;
+            out.hintOpacity = el.querySelector('.maplibregl-cooperative-gesture-screen')?.style.opacity;
+            await wait(300);
+            out.plainZoom = m.getZoom() - z0;
+            const x0 = m.getCenter().lng;
+            touch('pointerdown', 150); for (const x of [170, 190, 210, 230]) touch('pointermove', x); touch('pointerup', 230);
+            await wait(300);
+            out.touchMoved = m.getCenter().lng - x0;
+            out.prevented = prevented.join();
+            const mac = navigator.userAgent.includes('Mac');
+            wheel(!mac, mac);
+            await wait(400);
+            out.bypassZoom = m.getZoom() - z0;
+            m.cooperativeGestures.disable();
+            const z1 = m.getZoom();
+            wheel(false, false);
+            await wait(400);
+            out.afterZoom = m.getZoom() - z1;
+            out.afterHint = !!el.querySelector('.maplibregl-cooperative-gesture-screen');
+            out.afterTouchAction = c.style.touchAction;
+            out.afterEnabled = m.cooperativeGestures.isEnabled();
+            m.remove(); el.remove();
+            return out;
+        });
+        check('[main] maplibre-compat: cooperativeGestures: a plain wheel and one finger leave the map to the page, fire cooperativegestureprevented and show the hint; Ctrl + wheel zooms; disable() gives the gestures back',
+            coop.warnings.length === 0 && coop.enabled && coop.touchAction === 'pan-x pan-y' && !coop.plainPrevented && coop.plainZoom === 0 && /scroll to zoom the map/.test(coop.hint) && coop.hintOpacity === '1' && coop.touchMoved === 0 && coop.prevented.startsWith('wheel_zoom,touch_pan') && coop.bypassZoom > 0.1 && coop.afterZoom > 0.1 && !coop.afterHint && coop.afterTouchAction === 'none' && !coop.afterEnabled, JSON.stringify(coop));
     }
     // Class names of MapLibre GL JS: stylesheets and end-to-end tests written for that library select by them.
     if (mode === 'main') {

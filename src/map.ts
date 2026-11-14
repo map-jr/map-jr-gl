@@ -1398,6 +1398,8 @@ export class Map {
     // ---- input ----
     private dragging = false;
     private awaitingInertia = false;
+    /** @internal Set by `cooperativeGestures` of the compat entry: returns true when the gesture is blocked (the page scrolls). */
+    gate?: (gestureType: 'wheel_zoom' | 'touch_pan', e: Event) => boolean;
     private bindInput() {
         const el = this.canvas, pointers = new globalThis.Map<number, {x: number; y: number}>();
         const listen = <K extends keyof HTMLElementEventMap>(type: K, fn: (e: HTMLElementEventMap[K]) => void, opts?: AddEventListenerOptions) => {
@@ -1517,7 +1519,7 @@ export class Map {
                 // Second tap held and dragged: down zooms in, up zooms out, around where the taps landed.
                 if (moved > 6) { tapDrag.zoomed = true; this.post({type: 'zoom', delta: dy * 0.01, x: tapDrag.x, y: tapDrag.y}); }
             } else if (rotating) { if (this.dragRotate.isEnabled()) this.post({type: 'rotate', delta: -dx * 0.4, pitch: -dy * 0.5}); } // right- or ctrl-drag: turn and tilt
-            else if (moved > 3 && pointers.size === 1 && this.dragPan.isEnabled()) {
+            else if (moved > 3 && pointers.size === 1 && this.dragPan.isEnabled() && !(e.pointerType === 'touch' && this.gate?.('touch_pan', e))) {
                 if (!this.dragging) this.fire('dragstart', {originalEvent: e});
                 this.dragging = true;
                 this.fire('drag', {originalEvent: e});
@@ -1586,7 +1588,7 @@ export class Map {
         this.inputCleanup.push(() => window.removeEventListener('blur', blur));
         listen('wheel', e => {
             // With scroll zoom off, the wheel scrolls the page as it does outside the map.
-            if (mouseEvent('wheel', e) || !this.scrollZoom.isEnabled()) return;
+            if (mouseEvent('wheel', e) || !this.scrollZoom.isEnabled() || this.gate?.('wheel_zoom', e)) return;
             e.preventDefault();
             const p = pos(e), now = performance.now(), gap = now - lastWheel;
             let value = e.deltaMode === 1 ? e.deltaY * 40 : e.deltaY;
