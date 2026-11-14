@@ -94,6 +94,7 @@ async function once(spec) {
         'first tile requested': first('req', TILE),
         'first tile answered': first('done', TILE),
         'last tile answered before idle': lastBefore('done', TILE),
+        'sprite requested': first('req', /sprite.*\.json/),
         'sprite answered': first('done', /sprite.*\.png/),
         'first glyphs requested': first('req', GLYPH),
         'last glyphs answered before idle': lastBefore('done', GLYPH),
