@@ -1075,14 +1075,13 @@ for (const mode of ['main', 'worker']) {
                 for (let i = 0; i < 2; i++) {
                     new mod.NavigationControl({visualizePitch: true});
                     new mod.FullscreenControl({container: document.body});
-                    m.flyTo({center: [1, 1], speed: 2, curve: 1.2, duration: 0});
                 }
             } finally { console.warn = warn; }
             m.remove(); el.remove();
-            const names = ['logoPosition', 'validate', 'visualizePitch', 'container', 'speed and curve'];
+            const names = ['logoPosition', 'validate', 'visualizePitch', 'container'];
             return Object.fromEntries(names.map(n => [n, warns.filter(w => w.startsWith('[map-jr-gl]') && w.includes(n)).length]));
         });
-        check('maplibre-compat: logoPosition, validate, visualizePitch, the container of FullscreenControl and speed/curve of flyTo each warn once',
+        check('maplibre-compat: logoPosition, validate, visualizePitch, and the container of FullscreenControl each warn once',
             Object.values(r).every(n => n === 1), JSON.stringify(r));
     }
     // #43: easeTo and flyTo of maplibre-compat use `offset` (also with bearing and pitch) and a custom `easing`, without a warning.
@@ -1113,6 +1112,39 @@ for (const mode of ['main', 'worker']) {
         const near = (p, x, y) => Math.abs(p.x - x) < 1 && Math.abs(p.y - y) < 1;
         check(`maplibre-compat (${mode}): easeTo and flyTo put the center at the offset and use a custom easing (#43)`,
             near(r.jump, 200, 50) && Math.abs(r.early - 10) < 1e-6 && near(r.end, 250, 150) && r.warns === 0, JSON.stringify(r));
+    }
+    // #43: flyTo zooms out and back in on the way (van Wijk and Nuij, as MapLibre GL JS), and without `duration` it takes
+    // the time that follows from the distance and `speed`. `maxDuration` makes a long flight a jump.
+    {
+        const r = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:400px;height:300px'}));
+            const m = new mod.Map({container: el, center: [0, 0], zoom: 5, attributionControl: false, style: {version: 8, sources: {}, layers: []}});
+            await new Promise(res => m.once('load', res));
+            const out = {low: 99, warns: 0};
+            const warn = console.warn;
+            console.warn = (...a) => { if (String(a[0]).startsWith('[map-jr-gl]')) out.warns++; };
+            try {
+                const onMove = () => { out.low = Math.min(out.low, m.getZoom()); };
+                m.on('move', onMove);
+                const t0 = performance.now();
+                m.flyTo({center: [40, 0], zoom: 5, curve: 1.42, speed: 4});
+                await new Promise(res => m.once('moveend', res));
+                out.ms = performance.now() - t0;
+                m.off('move', onMove);
+                out.end = [+m.getCenter().lng.toFixed(4), m.getZoom()];
+                const t1 = performance.now();
+                m.flyTo({center: [-40, 0], maxDuration: 10});
+                await new Promise(res => m.once('moveend', res));
+                out.jumpMs = performance.now() - t1;
+                out.jump = +m.getCenter().lng.toFixed(4);
+            } finally { console.warn = warn; }
+            m.remove(); el.remove();
+            return out;
+        });
+        // (About 13 world widths of 400 pixels at zoom 5: S is about 5.3, so the flight takes about 1300 ms at speed 4.)
+        check(`maplibre-compat (${mode}): flyTo zooms out on the way, takes its duration from speed, and maxDuration jumps (#43)`,
+            r.low < 3 && r.end[0] === 40 && r.end[1] === 5 && r.ms > 900 && r.ms < 4000 && r.jump === -40 && r.jumpMs < 500 && r.warns === 0, JSON.stringify(r));
     }
     // #208: fitBounds warns once for speed, curve and linear; Marker takes offset as {x, y}; getImage gives RGBA pixels.
     if (mode === 'main') {

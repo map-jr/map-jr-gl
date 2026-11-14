@@ -2,7 +2,7 @@
 // These methods are here, and not in the core, because the main entry does not need them: other names for a camera
 // change, values that are fixed in this library, methods that only frameworks for MapLibre GL JS read, and query
 // results that are arrays and promises at the same time.
-import {Map as CoreMap, type CameraInput, type PointLike, type RenderedFeature, type RenderedQueryOptions, type PaddingInput, type ImageOptions} from './map.ts';
+import {Map as CoreMap, type CameraInput, type PointLike, type RenderedFeature, type RenderedQueryOptions, type PaddingInput, type ImageOptions, type FlyOptions} from './map.ts';
 import type {QueriedFeature} from './query.ts';
 import {GPUInitializationError} from './gpu-error.ts';
 import type {LngLatLike} from './geo.ts';
@@ -162,9 +162,8 @@ export class Map extends CoreMap {
     }
     private moveData?: EventData;
     private nested = 0;
-    flyTo(o: EaseToOptions & {speed?: number; curve?: number}, eventData?: EventData) {
-        this.unsupported('The options speed and curve of flyTo', o.speed === undefined && o.curve === undefined);
-        return this.easeTo({duration: 1200, ...o}, eventData);
+    flyTo(o: EaseToOptions & FlyOptions, eventData?: EventData) {
+        return this.camera(eventData, () => super.flyTo(o));
     }
     /** Space at the edges covered by other things (a side panel, a header). The map centre moves to the middle of what is left. */
     setPadding(padding: PaddingInput, eventData?: EventData) { return this.jumpTo({padding}, eventData); }
