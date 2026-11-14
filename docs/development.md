@@ -103,10 +103,11 @@ To use it, do this step one time: in the repository settings, open **Pages** and
 | `src/style.ts`, `src/expr.ts` | The style and the expressions |
 | `src/tile.ts`, `src/tiles.ts`, `src/mvt.ts` | Tile data: decode, build, load |
 | `src/text.ts`, `src/placement.ts` | Text and label placement |
-| `src/markers.ts`, `src/overlays.ts`, `src/controls.ts` | Marker layers (shorthand for a source and a symbol layer) and SVG templates, `Marker` and `Popup`, controls |
+| `src/markers.ts`, `src/marker-layers.ts`, `src/overlays.ts`, `src/controls.ts` | Marker layers (shorthand for a source and a symbol layer) and SVG templates, the additions of the main API to a style, `Marker` and `Popup`, controls |
 | `src/contour.ts`, `src/pmtiles.ts`, `src/geojson.ts` | Contour lines, PMTiles, GeoJSON |
 | `src/webp.ts` | PNG and WebP decoders for the server |
 | `src/loader.ts`, `src/worker.ts` | How the workers start |
+| `src/restart.ts` | A new engine after a lost WebGL context, and on the main thread when the engine worker has no WebGL2 (loaded on demand) |
 
 The build gives short names to private class members (`scripts/private-names.mjs`), because the minifier does not
 shorten property names. Declare a member `private` and use it as `this.name` to get a short name in the built files.

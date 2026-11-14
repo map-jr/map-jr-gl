@@ -10,7 +10,8 @@ import {Map, logError, type FeatureOptions, type FeaturePlace, type ImageOptions
 export type {FeatureOptions, FeaturePlace};
 import {createStore, type Readable} from './store.ts';
 import type {Marker, Popup, OverlayAnchor} from './overlays.ts';
-import {extended, markerFeatures, markerStyle, withMarkers, type MarkerLayerOptions} from './markers.ts';
+import type {MarkerLayerOptions} from './markers.ts';
+import {extended, markerFeatures, markerStyle, withMarkers} from './marker-layers.ts';
 import type {QueriedFeature} from './query.ts';
 import type {Control, ControlPosition} from './controls.ts';
 import type {Checked} from './mistakes.ts';

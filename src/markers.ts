@@ -2,8 +2,8 @@
  * Marker layers and SVG templates.
  *
  * A marker layer is shorthand: a GeoJSON source with one point for each marker, and a symbol layer that draws an image
- * at each point. `markerStyle` gives the source and the layer, and `markerFeatures` the data of the source. An image
- * can be an SVG template: a plain SVG string with `{{name}}` slots, which each feature fills (see `templateSlots`).
+ * at each point (see src/marker-layers.ts). An image can be an SVG template: a plain SVG string with `{{name}}` slots,
+ * which each feature fills (see `templateSlots`).
  */
 export type Anchor = 'center' | 'top' | 'bottom' | 'left' | 'right' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
 export interface MarkerInput { /** The position: `[lng, lat]`. */ lngLat: readonly number[]; /** The properties of the marker. A slot of a template image reads the property with its name. */ props?: Record<string, unknown> }
@@ -27,38 +27,6 @@ export interface MarkerLayerOptions {
     /** The id of a style layer: the markers are drawn below it. Without it, they are drawn above each layer of the style. */
     before?: string;
     data: MarkerInput[];
-}
-
-/** The source and the layer that a marker layer stands for. The source has no data: see `markerFeatures`. */
-export function markerStyle(m: MarkerLayerOptions) {
-    return {
-        source: {type: 'geojson', data: {type: 'FeatureCollection', features: []}},
-        layer: {
-            id: m.id, type: 'symbol', source: m.id, before: m.before, ...(m.minZoom === undefined ? {} : {minzoom: m.minZoom}), ...(m.maxZoom === undefined ? {} : {maxzoom: m.maxZoom}),
-            // (An icon that can be hidden must be known to the labels and to the other icons: it then also keeps labels away.)
-            layout: {'icon-image': m.image, 'icon-anchor': m.anchor ?? 'center', 'icon-allow-overlap': m.overlap !== 'hide', 'icon-ignore-placement': !m.collide && m.overlap !== 'hide'},
-        },
-    };
-}
-/**
- * A style with the source and the layer of each marker layer. A layer goes below the layer with the id `before`, or
- * on top. `data`: the sources have the data of the markers (for a renderer that gets the data with the style).
- */
-export function withMarkers(style: any, markers: MarkerLayerOptions[] | undefined, data?: boolean) {
-    if (!markers?.length) return style;
-    const layers = [...style.layers], sources = {...style.sources};
-    for (const m of markers) {
-        const {source, layer: {before, ...layer}} = markerStyle(m), at = before ? layers.findIndex(l => l.id === before) : -1;
-        sources[m.id] = data ? {...source, data: markerFeatures(m.data)} : source;
-        layers.splice(at < 0 ? layers.length : at, 0, layer);
-    }
-    return {...style, sources, layers};
-}
-/** The data of the source of a marker layer: a point for each marker. The id of a feature is the index of its marker in `data`. */
-export function markerFeatures(data: MarkerInput[]) {
-    // (A marker with no position is left out, and the other markers keep their index.)
-    return {type: 'FeatureCollection', features: data.map((m, id) => ({type: 'Feature', id, properties: m?.props ?? {}, geometry: {type: 'Point', coordinates: [+m?.lngLat?.[0], +m?.lngLat?.[1]]}}))
-        .filter(f => Number.isFinite(f.geometry.coordinates[0]) && Number.isFinite(f.geometry.coordinates[1]))};
 }
 
 export const escapeXML = (v: unknown) => String(v ?? '').replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
@@ -106,15 +74,4 @@ export function svgSize(svg: string): [number, number] {
 export function sizedSVG(svg: string, w: number, h: number): string {
     const {viewBox, inner} = parseSVG(svg);
     return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${w}" height="${h}" viewBox="${viewBox ?? '0 0 ' + svgSize(svg).join(' ')}">${inner}</svg>`;
-}
-
-/** A style with the additions of `extend`. */
-export function extended(style: any, extend?: {sources?: Record<string, object>; layers?: ({id: string; before?: string} & Record<string, unknown>)[]; terrain?: object | null}) {
-    if (!extend) return style;
-    const layers = [...style.layers];
-    for (const {before, ...layer} of extend.layers ?? []) {
-        const at = before ? layers.findIndex(l => l.id === before) : -1;
-        layers.splice(at < 0 ? layers.length : at, 0, layer);
-    }
-    return {...style, sources: {...style.sources, ...extend.sources}, layers, ...(extend.terrain === undefined ? {} : {terrain: extend.terrain ?? undefined})};
 }
