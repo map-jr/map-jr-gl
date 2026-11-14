@@ -875,6 +875,33 @@ for (const mode of ['main', 'worker']) {
         check(`[${mode}] setStyle two times, the first answer last: the last style is the style, in getStyle, the layers and the pixels`, ok(later), JSON.stringify({...later, shot: later.shot.equals(wanted)}));
         check(`[${mode}] setStyle before the style of the constructor has come: the new style takes its place`, ok(first), JSON.stringify({...first, shot: first.shot.equals(wanted)}));
     }
+    // #196: with `interactive: false`, the handlers are off, a drag does nothing, and `enable()` on a handler turns it on,
+    // as in MapLibre GL JS.
+    {
+        await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = window.niEl = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:300px;z-index:1000'}));
+            const m = window.niMap = new mod.Map({container: el, renderer: mode, attributionControl: false, interactive: false, center: [0, 0], zoom: 2, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]}});
+            await new Promise(r => m.once('load', r));
+        }, mode);
+        const pose = () => page.evaluate(() => { const c = window.niMap.getCenter(); return [c.lng, c.lat, window.niMap.getZoom()]; });
+        const drag = async () => { await page.mouse.move(200, 150); await page.mouse.down(); for (let i = 1; i <= 8; i++) await page.mouse.move(200 + i * 10, 150, {steps: 1}); await page.mouse.up(); await page.waitForTimeout(600); };
+        const off = await page.evaluate(() => ['dragPan', 'scrollZoom', 'doubleClickZoom', 'dragRotate', 'touchZoomRotate', 'touchPitch', 'keyboard', 'boxZoom'].filter(k => window.niMap[k].isEnabled()));
+        const p0 = await pose();
+        await drag(); await page.mouse.wheel(0, -400); await page.waitForTimeout(600);
+        const pOff = await pose();
+        await page.evaluate(() => { window.niMap.dragPan.enable(); window.niMap.scrollZoom.enable(); });
+        await drag();
+        await page.waitForFunction(x => window.niMap.getCenter().lng !== x, pOff[0], {timeout: 5000, polling: 50}).catch(() => {});
+        const pDrag = await pose();
+        await page.mouse.move(200, 150); await page.mouse.wheel(0, -400);
+        await page.waitForFunction(z => window.niMap.getZoom() > z, pDrag[2], {timeout: 5000, polling: 50}).catch(() => {});
+        await page.waitForTimeout(300);
+        const pWheel = await pose();
+        await page.evaluate(() => { window.niMap.remove(); window.niEl.remove(); });
+        check(`[${mode}] interactive: false turns the handlers off, and enable() on dragPan and scrollZoom turns them on (#196)`,
+            off.length === 0 && pOff.join() === p0.join() && pDrag[0] !== p0[0] && pWheel[2] > pDrag[2], JSON.stringify({off, p0, pOff, pDrag, pWheel}));
+    }
     // Two maps on one page with the same source name: each has its own feature state and its own global state.
     {
         const clip = id => page.evaluate(id => { const r = document.getElementById(id).getBoundingClientRect(); return {x: r.left + r.width / 2 - 2, y: r.top + r.height / 2 - 2, width: 4, height: 4}; }, id);
@@ -1275,6 +1302,51 @@ for (const mode of ['main', 'worker']) {
         });
         check('[main] maplibre-compat: the container, the canvas, the controls, their buttons, markers and popups have their maplibregl-* class names, and remove() takes the name from the container',
             names.missing.length === 0 && names.canvasInMap && !names.left, JSON.stringify(names));
+    }
+    // GeolocateControl is an event emitter, as react-map-gl 8 expects (#194), with a mocked navigator.geolocation.
+    if (mode === 'main') {
+        const geo = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const real = Object.getOwnPropertyDescriptor(Navigator.prototype, 'geolocation');
+            let answer;
+            Object.defineProperty(navigator, 'geolocation', {configurable: true, value: {getCurrentPosition: (ok, fail) => setTimeout(() => answer(ok, fail), 0)}});
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+            const m = new mod.Map({container: el, renderer: 'main', center: [0, 0], zoom: 2, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            const warnings = [], warn = console.warn;
+            console.warn = (...a) => warnings.push(String(a[0]));
+            const gc = new mod.GeolocateControl({trackUserLocation: true});
+            console.warn = warn;
+            const notAdded = gc.trigger();
+            m.addControl(gc);
+            await new Promise(r => m.once('load', r));
+            const events = [];
+            for (const t of ['geolocate', 'error', 'outofmaxbounds', 'trackuserlocationstart', 'trackuserlocationend']) gc.on(t, e => events.push(t + ':' + (e.target === gc)));
+            const onMap = [];
+            m.on('geolocate', () => onMap.push('geolocate'));
+            m.on('error', () => onMap.push('error'));
+            const step = f => new Promise(r => { answer = (ok, fail) => { f(ok, fail); setTimeout(r, 0); }; });
+            let s = step(ok => ok({coords: {longitude: 10, latitude: 20}, timestamp: 1}));
+            const triggered = gc.trigger();
+            await s;
+            s = step((ok, fail) => fail({code: 1, message: 'denied'}));
+            gc.trigger(); await s;
+            m.setMaxBounds([[-5, -5], [5, 5]]);
+            s = step(ok => ok({coords: {longitude: 50, latitude: 50}, timestamp: 2}));
+            gc.trigger(); await s;
+            const off = () => events.push('off');
+            gc.once('geolocate', off);
+            m.setMaxBounds(null);
+            s = step(ok => ok({coords: {longitude: 1, latitude: 1}, timestamp: 3}));
+            gc.trigger(); await s;
+            s = step(ok => ok({coords: {longitude: 1, latitude: 1}, timestamp: 4}));
+            gc.trigger(); await s;
+            m.remove(); el.remove();
+            if (real) delete navigator.geolocation;
+            return {notAdded, triggered, events, onMap, warnings};
+        });
+        check('[main] maplibre-compat: GeolocateControl has on/once/trigger() and fires geolocate, error and outofmaxbounds on itself, and warns once for trackUserLocation',
+            geo.notAdded === false && geo.triggered === true && geo.events.join() === 'geolocate:true,error:true,outofmaxbounds:true,geolocate:true,off,geolocate:true' && geo.onMap.join() === 'geolocate,error,geolocate,geolocate'
+            && geo.warnings.length === 1 && geo.warnings[0].startsWith('[map-jr-gl] GeolocateControl: the option trackUserLocation'), JSON.stringify(geo));
     }
     // Accessibility: the canvas says that it is a map and shows the keyboard focus, a marker with a popup works with the
     // keyboard, the fullscreen button says what it does, and a camera animation respects "reduce motion".
