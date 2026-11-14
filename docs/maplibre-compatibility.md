@@ -130,3 +130,13 @@ Other:
 
 **Not available:** `applyTerrainChange`, `applyTransformChange`, `applyUpdatedTransform`, `calculateAnchoredCameraOptions`, `calculateCameraOptionsFromCameraLngLatAltRotation`, `calculateCameraOptionsFromTo`, `captureRotationPivot`, `clampCenterToGround`, `coveringTiles`, `fitScreenCoordinates`, `getStyleUrl`, `getTransformForUpdate`, `holdElevation`, `isRolling`, `migrateProjection`, `moveCenterOntoTerrain`, `orbitRotationPivot`, `prepareNextFrame`, `putCenterBackOnTerrain`, `releaseElevation`
 <!-- api:end -->
+
+## Source methods
+
+`map.getSource(id)` in the entry `@map-jr/map-jr-gl/maplibre-compat` returns an object with the source's specification, its `id` and these methods. In the entry `@map-jr/map-jr-gl`, a vector, raster or raster-dem source is the plain specification without methods.
+
+| Source type | Available | Not available |
+|---|---|---|
+| `vector`, `raster`, `raster-dem` | `setTiles(tiles)`, `setUrl(url)`. Each one replaces the tiles of the source (the other of `tiles` and `url` is removed) and loads them again. A TileJSON that fails to load gives an `error` event, and the layers of the source are not drawn. An argument of the wrong type throws an error. | `reload`, `getTileJSON` and the other members of MapLibre's source classes |
+| `geojson` | `setData`, `getData`, `updateData`, `getClusterExpansionZoom`, `getClusterChildren`, `getClusterLeaves` | `setClusterOptions` |
+| `image` | `updateImage`, `setCoordinates` | `getImage` and the other members of MapLibre's `ImageSource` |
