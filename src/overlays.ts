@@ -277,15 +277,19 @@ export class Marker extends Overlay {
         if (!this.draggable || !this.map) return;
         e.stopPropagation();
         e.preventDefault();
-        const map = this.map, start = map.project(this.lngLat!), dx = e.clientX - start.x, dy = e.clientY - start.y;
+        // Pointer positions in CSS pixels of the map, also when the container is scaled by a CSS transform (#234).
+        const map = this.map, el = map.getContainer(), r = el.getBoundingClientRect(), sx = r.width / el.offsetWidth || 1, sy = r.height / el.offsetHeight || 1;
+        const at = (ev: PointerEvent) => ({x: (ev.clientX - r.left) / sx, y: (ev.clientY - r.top) / sy});
+        const start = map.project(this.lngLat!), p0 = at(e), dx = p0.x - start.x, dy = p0.y - start.y;
         this.el.setPointerCapture(e.pointerId);
         // As in MapLibre GL JS, the drag starts once the pointer has moved 3 px (its default `clickTolerance`): a click
         // fires no drag events, and the click that follows a drag does not reach the marker.
         let dragging = false;
         const move = (ev: PointerEvent) => {
-            if (!dragging && Math.hypot(ev.clientX - e.clientX, ev.clientY - e.clientY) < 3) return;
+            const p = at(ev);
+            if (!dragging && Math.hypot(p.x - p0.x, p.y - p0.y) < 3) return;
             if (!dragging) { dragging = true; this.fire('dragstart'); }
-            this.setLngLat(map.unproject({x: ev.clientX - dx, y: ev.clientY - dy})); this.fire('drag');
+            this.setLngLat(map.unproject({x: p.x - dx, y: p.y - dy})); this.fire('drag');
         };
         // (The three listeners end with the drag: `signal` removes them.)
         const stop = new AbortController(), signal = {signal: stop.signal}, end = () => {

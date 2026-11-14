@@ -1,4 +1,5 @@
-import {Transform, type LngLatLike} from './geo.ts';
+import type {LngLatBoundsInput} from './lnglat.ts';
+import {Transform, fitBox, sides, toLngLat, type LngLatLike, type PaddingInput} from './geo.ts';
 import {SSR_KEY, applySSROverrides, type SSROverrides, compileLayer, loadSprite, resolveStyle, tileURL, type CompiledLayer, type Sprite} from './style.ts';
 import {TileBuilder} from './tiles.ts';
 import type {TileImage, TileIR} from './tile.ts';
@@ -16,6 +17,9 @@ export interface RenderOptions {
     center: LngLatLike;
     zoom: number;
     bearing?: number;
+    /** A box [west, south, east, north] to fit into the view, in place of `center` and `zoom`, with `padding` in pixels. */
+    bounds?: LngLatBoundsInput;
+    padding?: PaddingInput;
     width: number;
     height: number;
     /** Marker layers, as in the description of a map: each one is a source and a symbol layer with the image `image`. */
@@ -170,7 +174,8 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
     const layers = style.layers.map(compileLayer).filter((l): l is CompiledLayer => !!l);
     const tr = new Transform();
     tr.width = o.width; tr.height = o.height;
-    tr.set(o.center, o.zoom, o.bearing ?? 0);
+    if (o.bounds) { const p = sides(o.padding), b = (o.bounds as {toArray?(): unknown[]}).toArray?.() ?? o.bounds as unknown[], fit = fitBox(b.length > 2 ? b as number[] : [...toLngLat(b[0] as LngLatLike), ...toLngLat(b[1] as LngLatLike)], o.width, o.height, p, p, 22); tr.set(fit.center, fit.zoom, o.bearing ?? 0); }
+    else tr.set(o.center, o.zoom, o.bearing ?? 0);
 
     const builder = new TileBuilder(fetchFn);
     builder.setStyle(style.layers, style.state);

@@ -7,7 +7,7 @@
  */
 import {computed, defineComponent, getCurrentInstance, h, inject, provide, isProxy, isReactive, onBeforeUnmount, onMounted, onServerPrefetch, shallowRef, Teleport, toRaw, toValue, watch, type AllowedComponentProps, type ComponentCustomProps, type SetupContext, type SlotsType, type VNode, type VNodeProps, type ComputedRef, type MaybeRefOrGetter, type PropType, type ShallowRef} from 'vue';
 declare const __DEV__: boolean;
-import type {ControlSpec, FeatureOptions, FeaturePlace, MapHost, MapOverlay as Overlay, OverlayOptions, MapEvents, MapPointer, MapSpec, MapState, View, ViewInput} from './host.ts';
+import type {ControlSpec, FeatureOptions, FeaturePlace, MapHost, MapOverlay as Overlay, OverlayOptions, MapEvents, MapPointer, MapSpec, MapState, View, ViewInput, InitialView} from './host.ts';
 import type {SSROverrides} from './style.ts';
 import type {RenderedFeature} from './map.ts';
 import type {QueriedFeature} from './query.ts';
@@ -231,7 +231,7 @@ const MapJrComponent = defineComponent({
         mapStyle: {type: [String, Object] as PropType<string | object>, required: true},
         /** The view, for `v-model:view`. Without it the map starts at `initialView` and the user moves it. */
         view: Object as PropType<ViewInput>,
-        initialView: Object as PropType<ViewInput>,
+        initialView: Object as PropType<InitialView>,
         /** Your own sources and layers on a style from a URL: `{sources, layers, terrain}`. */
         extend: Object as PropType<MapSpec['extend']>,
         /** Images for `icon-image` of style layers, by name. A value is an SVG document, the URL of an image, or `{image, width, height}`. */
@@ -343,14 +343,17 @@ const MapJrComponent = defineComponent({
         // when the page came from the server, they are read from the element that is there already: the component then
         // renders the same content, and Vue finds no difference. The map removes them when it has drawn its first frame.
         const first = shallowRef((getCurrentInstance()?.vnode.el as HTMLElement | null)?.firstElementChild?.innerHTML ?? '');
-        onServerPrefetch(async () => {
+        // (Vite writes `false` for `import.meta.env.SSR` in a client build, which then drops this code and does not emit
+        // the server renderer as a file. Without Vite, `import.meta.env` is undefined and the server render runs.)
+        // @ts-ignore: `import.meta.env` is Vite's, and it must stay written out in full for Vite to replace it
+        if (!import.meta.env || import.meta.env.SSR) onServerPrefetch(async () => {
             if (!props.ssr) return;
-            const view = {...props.initialView, ...props.view}, o = props.ssr === true ? {} : props.ssr;
+            const view = {...props.initialView, ...props.view}, fit = !props.view && props.initialView?.bounds, o = props.ssr === true ? {} : props.ssr;
             // (By the name of the package, so that this file does not contain the server renderer, and so that a tool that
             // collects the files of a server finds it.)
             // @ts-ignore: the package refers to itself, which the type check of this project does not resolve
             const server = await import('@map-jr/map-jr-gl/server') as typeof import('./server.ts');
-            first.value = await server.renderFirstView({style: toRaw(props.mapStyle), center: view.center ?? [0, 0], zoom: view.zoom ?? 0, bearing: view.bearing, width: o.width ?? 800, height: o.height ?? 500,
+            first.value = await server.renderFirstView({style: toRaw(props.mapStyle), center: view.center ?? [0, 0], zoom: view.zoom ?? 0, bearing: view.bearing, bounds: fit ? toRaw(fit) : undefined, padding: props.initialView?.padding, width: o.width ?? 800, height: o.height ?? 500,
                 markers: props.markers && plain(props.markers), images: props.images && toRaw(props.images) as Record<string, string>, overrides: o.overrides, extend: toRaw(props.extend), data: props.data && toRaw(props.data), timeout: o.timeout, requestTimeout: o.requestTimeout, maxBytes: o.maxBytes, allowHosts: o.allowHosts, attribution: props.attribution === false ? false : o.attribution});
         });
         return () => h('div', {class: 'map-jr-vue', style: 'position:relative;width:100%;height:100%'}, [

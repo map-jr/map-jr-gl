@@ -5,7 +5,7 @@
 import {Map as CoreMap, type CameraInput, type PointLike, type RenderedFeature, type RenderedQueryOptions, type PaddingInput, type ImageOptions} from './map.ts';
 import type {QueriedFeature} from './query.ts';
 import type {LngLatLike} from './geo.ts';
-import type {AddLayerObject, GeoJSONFeature, MapGeoJSONFeature, MapEventType, MapLayerEventType, Source, MapOptions, EaseToOptions, StyleSwapOptions} from './compat-types.ts';
+import type {AddLayerObject, GeoJSONFeature, MapGeoJSONFeature, MapEventType, MapLayerEventType, Source, MapOptions, EaseToOptions, StyleSwapOptions, FitBoundsOptions, QuerySourceFeatureOptions, FeatureIdentifier, StyleSpecification} from './compat-types.ts';
 
 /**
  * The types of `on`, `once`, `off` and `getSource` as in MapLibre GL JS: the event of a listener follows from the name
@@ -29,6 +29,8 @@ export interface Map {
     getSource<T extends Source = Source>(id: string): T | undefined;
     easeTo(o: EaseToOptions, eventData?: EventData): this;
     setStyle(style: unknown, options?: StyleSwapOptions): Promise<void>;
+    /** The style, as in MapLibre GL JS. It is `undefined` before the map has a style. */
+    getStyle(): StyleSpecification;
 }
 declare const __VERSION__: string; // the version of package.json, set by the build
 /** The fields that a camera method copies onto the events of its move, as `eventData` in MapLibre GL JS. */
@@ -146,7 +148,7 @@ export class Map extends CoreMap {
      */
     jumpTo(o: CameraInput, eventData?: EventData) { return this.camera(eventData, () => super.jumpTo(o)); }
     easeTo(o: EaseToOptions, eventData?: EventData) { return this.camera(eventData, () => super.easeTo(o)); }
-    fitBounds(bounds: Parameters<CoreMap['fitBounds']>[0], o?: Parameters<CoreMap['fitBounds']>[1], eventData?: EventData) { return this.camera(eventData, () => super.fitBounds(bounds, o)); }
+    fitBounds(bounds: Parameters<CoreMap['fitBounds']>[0], o?: FitBoundsOptions, eventData?: EventData) { return this.camera(eventData, () => super.fitBounds(bounds, o)); }
     private camera(eventData: EventData | undefined, f: () => this) {
         if (!this.nested) this.moveData = eventData;
         this.nested++;
@@ -233,6 +235,14 @@ export class Map extends CoreMap {
     getFontFaces() { return this.rawStyle?.['font-faces'] ?? {}; }
     setFontFaces(faces: Record<string, unknown> | null) { return this.editStyle(s => { if (faces) s['font-faces'] = faces; else delete s['font-faces']; }); }
     /** The image that addImage was given, with its options, or undefined. (MapLibre returns the decoded pixels.) */
+    /** As in MapLibre GL JS, the feature can come without an `id` (a feature of a query); then nothing changes and the map warns once. */
+    setFeatureState(feature: FeatureIdentifier, state: Record<string, unknown>) { return this.hasId(feature, 'setFeatureState') ? super.setFeatureState(feature, state) : this; }
+    getFeatureState(feature: FeatureIdentifier) { return this.hasId(feature, 'getFeatureState') ? super.getFeatureState(feature) : {}; }
+    private hasId(f: FeatureIdentifier, name: string): f is FeatureIdentifier & {id: string | number} {
+        if (f.id != null) return true;
+        if (!this.warned.has(name)) this.warned.add(name), console.warn(`[map-jr-gl] ${name}(): the feature has no "id". Give the source features an id, or set "promoteId" on the source.`);
+        return false;
+    }
     getImage(name: string) { const i = this.imageInputs.get(name); return i && {data: i[0], pixelRatio: i[1].pixelRatio ?? 1, sdf: false, ...i[1]}; }
     listImages() { return [...this.imageNames]; }
     /** Fetches and decodes an image, in the shape MapLibre returns it. */
@@ -266,7 +276,7 @@ export class Map extends CoreMap {
      * that can also be awaited: at once it has the features of a GeoJSON source whose data the page has (clusters too);
      * awaited, it has the features of each kind of source.
      */
-    querySourceFeatures(sourceId: string, options: {sourceLayer?: string; filter?: unknown} = {}): GeoJSONFeature[] & PromiseLike<GeoJSONFeature[]> {
+    querySourceFeatures(sourceId: string, options: QuerySourceFeatureOptions = {}): GeoJSONFeature[] & PromiseLike<GeoJSONFeature[]> {
         const sets = [{layer: '', source: sourceId, sourceLayer: options.sourceLayer, filter: options.filter, radius: Infinity}], box: [number, number, number, number] = [0, 0, this.tr.width, this.tr.height];
         // (A radius without end takes each feature of the tiles under the view, whatever the layers draw.)
         const features = (found: QueriedFeature[]): Omit<RenderedFeature, 'layer'>[] => found.map(f => ({type: 'Feature', id: f.id, geometry: f.geometry!, properties: f.properties, source: f.source, sourceLayer: f.sourceLayer || undefined,

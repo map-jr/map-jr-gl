@@ -118,7 +118,7 @@ The library compares each field with the field of the last description:
 |---|---|
 | `style` | A style object or the URL of a style (the MapLibre style specification). Required. A new object or URL is a new style. |
 | `extend` | Your own sources and layers on a style from a URL. See below. |
-| `initialView` | The view at the start: `center` (`[lng, lat]`), `zoom`, `bearing`, `pitch`. The user then moves the map. |
+| `initialView` | The view at the start: `center` (`[lng, lat]`), `zoom`, `bearing`, `pitch`. In place of `center` and `zoom`, give `bounds` (`[[west, south], [east, north]]` or `[west, south, east, north]`) and the map starts with that box fitted into the view, with `padding` in CSS pixels around it (a number or `{top, right, bottom, left}`, default 0). This is `bounds` with `fitBoundsOptions.padding` of MapLibre GL JS. When the description also has `view`, the map starts at `view` and `bounds` has no effect. The user then moves the map. |
 | `view`, `onViewChange` | A view that your application owns. See below. |
 | `data` | GeoJSON data for GeoJSON sources, by the id of the source. The source is in the style or in `extend.sources`. See below. |
 | `images` | Images for the style layers, by name: an SVG document, the URL of an image, or `{image, width, height}`. See [Images for style layers](#images-for-style-layers). |
@@ -127,7 +127,7 @@ The library compares each field with the field of the last description:
 | `interactiveLayers` | The ids of style layers. The features of these layers under the pointer are in `state.hover` and in `onClick`. |
 | `onClick` | A function that is called for a click, with `point`, `lngLat` and `features`. |
 | `onError` | A function that is called with each error of the map (an `Error`): a style or a source that does not load, a mistake in a style edit, a failure of the renderer. Use it to send errors to your error tracker. Without it, the map writes each error to the console with `console.error`. |
-| `minZoom`, `maxZoom`, `maxPitch`, `maxBounds` | The limits of the camera. |
+| `minZoom`, `maxZoom`, `maxPitch`, `maxBounds` | The limits of the camera. `maxBounds` keeps the whole view inside the bounds, as MapLibre GL JS does: the canvas less the padding, with no regard to bearing and pitch. When the bounds are smaller than that view, the zoom rises until they fill it. |
 | `cursor` | The mouse cursor over the map. Without it, the cursor is a pointer over a feature of `interactiveLayers`. |
 
 These fields are read only when the map is made:
@@ -394,7 +394,7 @@ stop(); // stops the first subscription
 | `loaded` | The style and the first tiles have loaded. |
 | `idle` | Nothing moves and nothing loads. |
 | `moving` | The camera moves. |
-| `view` | `{center, zoom, bearing, pitch}` |
+| `view` | `{center, zoom, bearing, pitch, bounds}`. `bounds` is `[[west, south], [east, north]]`: the smallest box that contains the visible map, also with bearing and pitch, as `getBounds()` gives it in MapLibre GL JS. It changes when the map moves and when the size of the map changes. |
 | `hover` | The features of `interactiveLayers` under the pointer, the top one first. |
 | `renderer` | `'worker'` or `'main'`, when the map has started. |
 | `error` | The last error only. An earlier error is not kept: use `onError` in the description to get each one. |
@@ -600,7 +600,7 @@ as ten. See [Markers](markers.md).
 | `project(lngLat)`, `unproject(point)` | Change between a position on the map and a point of the screen. |
 | `listen(type, fn)` | Calls `fn` for each event of that type. Returns a function that stops it. See [Events](#events). |
 | `container` | The element of the map. |
-| `map` | The map object behind this API, for a need that this API does not cover yet. It can change between versions. It is the core map of the library, not the `Map` of `@map-jr/map-jr-gl/maplibre-compat`: it has `jumpTo`, `easeTo`, `fitBounds`, `getCenter`, `getZoom`, `on`, `addLayer`, `setPaintProperty` and the gesture handlers, but not `setCenter`, `setZoom`, `setBearing`, `setPitch`, `flyTo`, `panTo`, `rotateTo` or `queryRenderedFeatures`. Its type is the core `Map`, not the compat `Map`. |
+| `map` | The map object behind this API, for a need that this API does not cover yet. It can change between versions. It is the core map of the library, not the `Map` of `@map-jr/map-jr-gl/maplibre-compat`: it has `jumpTo`, `easeTo`, `fitBounds`, `getCenter`, `getZoom`, `on`, `addLayer`, `setPaintProperty` and the gesture handlers, but not `setCenter`, `setZoom`, `setBearing`, `setPitch`, `flyTo`, `panTo`, `rotateTo` or `queryRenderedFeatures`. Its type is the core `Map`, not the compat `Map`. Plugins that need a MapLibre map (deck.gl `MapboxOverlay`, mapbox-gl-draw, terra-draw) do not work with it, because it lacks `getPadding`, `getRenderWorldCopies` and a synchronous `queryRenderedFeatures`: use the compat entry for them (see [Plugins that need a MapLibre map](vue.md#plugins-that-need-a-maplibre-map)). |
 
 ## Events
 
