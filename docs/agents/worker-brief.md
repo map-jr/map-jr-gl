@@ -19,6 +19,10 @@ requests. `CLAUDE.md` in the repository has the project rules (definition of don
 
 A fault you find outside your issue: do not fix it; name it in your report (one line each).
 
+Workers share one scratchpad folder. Start the name of every file that you write there with your branch name (for example `fix-201-measure.mjs`), so that another worker cannot overwrite it. On 2026-11-14 a worker applied a patch that another worker had overwritten, and a change of a third issue nearly went into its pull request.
+
+Before you call a run "load", compare it with the CI result: the `checks` and `browser` jobs of `main` are the reference. Several workers on 2026-11-14 saw unit and timing tests fail locally (`glyph-atlas.test.ts`, touch, `jumpTo` events) at a load average of 25 on 4 cores, while CI passed.
+
 ## Report (your final message; at most 13 lines, no preamble)
 
 - PR: <url>
