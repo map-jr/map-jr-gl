@@ -518,11 +518,11 @@ for (const mode of ['main', 'worker']) {
         const m = window.map, c = m.getCanvas(), r = {}, x = c.clientWidth / 2 - 70, y = c.clientHeight / 2 + 50;
         m.once('click', e => { r.ms = Math.round(performance.now() - r.t0); r.found = [...m.queryRenderedFeatures(e.point)].filter(f => f.sourceLayer).length; });
         await new Promise(f => setTimeout(f, 500)); r.t0 = performance.now(); window.touch('pointerdown', 11, x, y); await new Promise(f => setTimeout(f, 80)); window.touch('pointerup', 11, x, y);
-        await new Promise(f => setTimeout(f, 1000)); delete r.t0; return r;
+        await new Promise(f => setTimeout(f, 1000)); delete r.t0;
+        // The tap lands on a pin, so the demo opens a popup there that would cover the clicks of the tests below.
+        window.popup?.remove(); return r;
     });
     check(`[${mode}] a touch tap with no hover: a click listener reads the features of tiles at once`, tap.found > 0, JSON.stringify(tap));
-    // (Chromium drops the first mouse click after a synthetic touch: this one is not tested.)
-    await page.mouse.click(600, 300); await page.waitForTimeout(400); await settle(page);
     const stale = await page.evaluate(async () => {
         const m = window.map, idle = () => new Promise(r => m.once('idle', r)), at = [-74.0065, 40.7085];
         m.jumpTo({center: at, zoom: 14});
