@@ -27,9 +27,11 @@ export interface Map {
     off(type: string, listener: (e: any) => void): this;
     off(type: string, layerId: string | string[], listener: (e: any) => void): this;
     getSource<T extends Source = Source>(id: string): T | undefined;
-    easeTo(o: EaseToOptions): this;
+    easeTo(o: EaseToOptions, eventData?: EventData): this;
     setStyle(style: unknown, options?: StyleSwapOptions): Promise<void>;
 }
+/** The fields that a camera method copies onto the events of its move, as `eventData` in MapLibre GL JS. */
+type EventData = Record<string, unknown>;
 export class Map extends CoreMap {
     /** As in MapLibre GL JS: with no listener, `once` returns a promise for the event; a layer id makes it a layer event. */
     once(type: string, a?: any, b?: any): any {
@@ -131,26 +133,42 @@ export class Map extends CoreMap {
         return user ? this.refused(`removeSource: the layer "${user.id}" uses the source "${id}". Remove the layer first.`) : super.removeSource(id);
     }
 
-    flyTo(o: EaseToOptions & {speed?: number; curve?: number}) {
+    /**
+     * As in MapLibre GL JS, `eventData` goes onto the events of this move (`movestart` to `moveend`, and the zoom,
+     * rotate and pitch events). A later camera call or user input replaces it; a nested call (fitBounds calls easeTo) keeps it.
+     */
+    jumpTo(o: CameraInput, eventData?: EventData) { return this.camera(eventData, () => super.jumpTo(o)); }
+    easeTo(o: EaseToOptions, eventData?: EventData) { return this.camera(eventData, () => super.easeTo(o)); }
+    fitBounds(bounds: Parameters<CoreMap['fitBounds']>[0], o?: Parameters<CoreMap['fitBounds']>[1], eventData?: EventData) { return this.camera(eventData, () => super.fitBounds(bounds, o)); }
+    private camera(eventData: EventData | undefined, f: () => this) {
+        if (!this.nested) this.moveData = eventData;
+        this.nested++;
+        try { return f(); } finally { this.nested--; }
+    }
+    private moveData?: EventData;
+    private nested = 0;
+    flyTo(o: EaseToOptions & {speed?: number; curve?: number}, eventData?: EventData) {
         this.unsupported('The options speed and curve of flyTo', o.speed === undefined && o.curve === undefined);
-        return this.easeTo({duration: 1200, ...o});
+        return this.easeTo({duration: 1200, ...o}, eventData);
     }
     /** Space at the edges covered by other things (a side panel, a header). The map centre moves to the middle of what is left. */
-    setPadding(padding: PaddingInput) { return this.jumpTo({padding}); }
+    setPadding(padding: PaddingInput, eventData?: EventData) { return this.jumpTo({padding}, eventData); }
     getPadding() { const [top, right, bottom, left] = this.tr.padding; return {top, right, bottom, left}; }
-    setCenter(center: LngLatLike) { return this.jumpTo({center}); }
-    setZoom(zoom: number) { return this.jumpTo({zoom}); }
-    setBearing(bearing: number) { return this.jumpTo({bearing}); }
-    setPitch(pitch: number) { return this.jumpTo({pitch}); }
-    resetNorth(o: {duration?: number} = {}) { return this.easeTo({bearing: 0, ...o}); }
-    resetNorthPitch(o: {duration?: number} = {}) { return this.easeTo({bearing: 0, pitch: 0, ...o}); }
-    panTo(center: LngLatLike, o: {duration?: number} = {}) { return this.easeTo({center, ...o}); }
-    panBy(offset: [number, number], o: {duration?: number} = {}) {
-        return this.easeTo({center: this.unproject([this.tr.cx + offset[0], this.tr.cy + offset[1]]), ...o});
+    setCenter(center: LngLatLike, eventData?: EventData) { return this.jumpTo({center}, eventData); }
+    setZoom(zoom: number, eventData?: EventData) { return this.jumpTo({zoom}, eventData); }
+    setBearing(bearing: number, eventData?: EventData) { return this.jumpTo({bearing}, eventData); }
+    setPitch(pitch: number, eventData?: EventData) { return this.jumpTo({pitch}, eventData); }
+    resetNorth(o: {duration?: number} = {}, eventData?: EventData) { return this.easeTo({bearing: 0, ...o}, eventData); }
+    resetNorthPitch(o: {duration?: number} = {}, eventData?: EventData) { return this.easeTo({bearing: 0, pitch: 0, ...o}, eventData); }
+    panTo(center: LngLatLike, o: {duration?: number} = {}, eventData?: EventData) { return this.easeTo({center, ...o}, eventData); }
+    panBy(offset: [number, number], o: {duration?: number} = {}, eventData?: EventData) {
+        return this.easeTo({center: this.unproject([this.tr.cx + offset[0], this.tr.cy + offset[1]]), ...o}, eventData);
     }
-    zoomTo(zoom: number, o: {duration?: number} = {}) { return this.easeTo({zoom, ...o}); }
-    rotateTo(bearing: number, o: {duration?: number} = {}) { return this.easeTo({bearing, ...o}); }
-    snapToNorth(o: {duration?: number} = {}) { return Math.abs(this.tr.bearing) < 7 ? this.resetNorth(o) : this; }
+    zoomTo(zoom: number, o: {duration?: number} = {}, eventData?: EventData) { return this.easeTo({zoom, ...o}, eventData); }
+    zoomIn(o: {duration?: number} = {}, eventData?: EventData) { return this.easeTo({zoom: this.tr.zoom + 1, duration: 300, ...o}, eventData); }
+    zoomOut(o: {duration?: number} = {}, eventData?: EventData) { return this.easeTo({zoom: this.tr.zoom - 1, duration: 300, ...o}, eventData); }
+    rotateTo(bearing: number, o: {duration?: number} = {}, eventData?: EventData) { return this.easeTo({bearing, ...o}, eventData); }
+    snapToNorth(o: {duration?: number} = {}, eventData?: EventData) { return Math.abs(this.tr.bearing) < 7 ? this.resetNorth(o, eventData) : this; }
     getProjection() { return {type: 'mercator'}; }
     getRenderWorldCopies() { return true; }
     getRoll() { return 0; }
@@ -343,6 +361,13 @@ export class Map extends CoreMap {
         // (New data in the engine: an answer that was kept while the data loaded can be old. It is still given at once, and
         // it is asked again: if the new answer is another, `idle` fires one more time for that question.)
         if (type === 'sourcedata' || type === 'styledata') this.refired.clear();
+        // The `eventData` of the camera call that made this move (see `jumpTo`). The move's own fields win.
+        // User input starts a move of the user's: kept eventData (of a call that did not move the camera) is not on it.
+        if (/^(mousedown|touchstart|wheel|dragstart|dblclick)$/.test(type)) this.moveData = undefined;
+        if (this.moveData && /^(move|zoom|rotate|pitch)(start|end)?$/.test(type)) {
+            data = {...this.moveData, ...data};
+            if (type === 'moveend') this.moveData = undefined;
+        }
         const point = data.point as {x: number; y: number} | undefined;
         if (!point || !this.rawStyle || data.asked) return super.fire(type, data);
         const warm = () => {

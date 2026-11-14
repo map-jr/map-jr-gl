@@ -1596,6 +1596,37 @@ for (const mode of ['main', 'worker']) {
         check('[main] maplibre-compat: easeTo and fitBounds end inside maxBounds and the edge of the world, as jumpTo does (#246)',
             near(cam.eased[0], cam.jumped[0]) && near(cam.eased[1], cam.jumped[1]) && cam.eased[0] <= 10 && cam.eased[1] <= 50
             && near(cam.fitted[1], cam.fittedAtOnce[1]) && cam.fitted[1] < 55, JSON.stringify(cam));
+        // #261: the eventData argument of a camera method is on the events of that move, and not on the next move.
+        const tagged = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+            const m = new mod.Map({container: el, renderer: 'main', center: [5, 45], zoom: 4, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            await new Promise(r => m.once('load', r));
+            const seen = [];
+            for (const t of ['movestart', 'move', 'moveend', 'zoomstart', 'zoomend']) m.on(t, e => seen.push(t + ':' + e.automated));
+            const end = f => new Promise(r => { m.once('moveend', () => setTimeout(r, 50)); f(); });
+            const out = {};
+            for (const [name, f] of [
+                ['fitBounds', () => m.fitBounds([[0, 40], [10, 50]], {duration: 100}, {automated: true})],
+                ['flyTo', () => m.flyTo({zoom: 6, duration: 100}, {automated: true})],
+                ['jumpTo', () => m.jumpTo({zoom: 3}, {automated: true})],
+                ['setCenter', () => m.setCenter([1, 1], {automated: true})],
+                ['plain', () => m.easeTo({zoom: 5, duration: 100})],
+            ]) { seen.length = 0; await end(f); out[name] = [...seen]; }
+            // A jumpTo that does not move the camera, then a drag: the drag's events have no eventData fields.
+            m.jumpTo({center: m.getCenter()}, {automated: true});
+            await new Promise(r => setTimeout(r, 100));
+            seen.length = 0;
+            const c = m.getCanvas(), at = (type, x) => c.dispatchEvent(new PointerEvent(type, {bubbles: true, clientX: x, clientY: 100, pointerId: 1, pointerType: 'mouse', button: 0, buttons: 1, isPrimary: true}));
+            await end(() => { at('pointerdown', 150); for (let x = 160; x <= 220; x += 10) at('pointermove', x); at('pointerup', 220); });
+            out.drag = [...seen];
+            m.remove(); el.remove();
+            return out;
+        });
+        const tags = list => [...new Set(list.map(s => s.split(':')[1]))].join();
+        check('[main] maplibre-compat: the eventData of fitBounds, flyTo, jumpTo and setCenter is on the events of that move only, and not on a later drag (#261)',
+            ['fitBounds', 'flyTo', 'jumpTo', 'setCenter'].every(k => tagged[k].includes('moveend:true') && tags(tagged[k]) === 'true')
+            && tagged.fitBounds.includes('zoomend:true') && tags(tagged.plain) === 'undefined' && tagged.drag.includes('moveend:undefined') && tags(tagged.drag) === 'undefined', JSON.stringify(tagged));
     }
     // Accessibility: the canvas says that it is a map and shows the keyboard focus, a marker with a popup works with the
     // keyboard, the fullscreen button says what it does, and a camera animation respects "reduce motion".
