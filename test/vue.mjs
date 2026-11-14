@@ -232,6 +232,49 @@ try {
     });
     check('browser: the event error gets each error, and without a listener the error is written to the console',
         failing.got.length === 1 && /HTTP 404/.test(failing.got[0]) && failing.loggedWithListener === 0 && failing.logged.length === 1 && /HTTP 404/.test(failing.logged[0]), JSON.stringify(failing));
+    // Reactive data (Vue proxies, #242): structured clone refuses a proxy, and the map copies it instead, in both entries
+    // and with both renderers. The data must be drawn, getStyle() must work, and no error may be reported.
+    const proxied = await page.evaluate(() => { let step = 'start'; return Promise.race([new Promise(r => setTimeout(() => r({timeout: 'no answer in 60 s at the step: ' + step}), 60000)), (async () => {
+        const {reactive} = await import('vue'), {createMap} = await import('/dist/map-jr-gl.js'), {Map} = await import('/dist/map-jr-gl-maplibre-compat.js');
+        const wait = ms => new Promise(r => setTimeout(r, ms)), out = {};
+        const style = await (await fetch('/style.json')).json();
+        const points = () => reactive({type: 'FeatureCollection', features: [{type: 'Feature', properties: {n: 1}, geometry: {type: 'Point', coordinates: [-74.0065, 40.7085]}}]});
+        const box = () => document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+        for (const renderer of ['worker', 'main']) {
+            const errs = [], el = box();
+            const map = new Map({container: el, style: reactive(structuredClone(style)), center: [-74.0065, 40.7085], zoom: 14, renderer});
+            map.on('error', e => errs.push(String(e.error?.message ?? e.error)));
+            step = 'load of the compat map, ' + renderer;
+            await new Promise(r => map.once('load', r));
+            map.addSource('pts', {type: 'geojson', data: points()});
+            map.addLayer({id: 'pts', type: 'circle', source: 'pts'});
+            map.getSource('pts').setData(points());
+            map.jumpTo({center: reactive([-74.0065, 40.7085])});
+            let style2; try { style2 = !!map.getStyle().sources.pts; } catch (e) { style2 = e.message; }
+            await wait(1500);
+            const found = (await map.querySourceFeatures('pts')).length;
+            // (A value that JSON cannot copy either, here a cycle, is an error event with a message, not an uncaught error.)
+            const cycle = reactive({type: 'FeatureCollection', features: []}); cycle.self = cycle;
+            map.getSource('pts').setData(cycle);
+            await wait(500);
+            out['compat ' + renderer] = {found, style: style2, errs: errs.filter(m => !m.startsWith('[map-jr-gl] The map could not copy data')), cycle: errs.length === 1};
+            map.remove(); el.remove();
+            step = 'main API map, ' + renderer;
+            const herrs = [], hel = box();
+            const host = createMap(hel, {style: reactive(structuredClone(style)), renderer, view: {center: [-74.0065, 40.7085], zoom: 14}, attribution: false, onError: e => herrs.push(e.message),
+                extend: {sources: {pts: {type: 'geojson', data: points()}}, layers: [{id: 'pts', type: 'circle', source: 'pts'}]}});
+            await wait(2500);
+            host.update({style: reactive(structuredClone(style)), renderer, view: {center: [-74.0065, 40.7085], zoom: 14}, attribution: false, onError: e => herrs.push(e.message),
+                extend: {sources: {pts: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}}, layers: [{id: 'pts', type: 'circle', source: 'pts'}]}, data: {pts: points()}});
+            await wait(1500);
+            step = 'queryFeatures of the main API, ' + renderer;
+            out['main API ' + renderer] = {found: (await host.queryFeatures(undefined, {sources: ['pts']})).length, errs: herrs};
+            host.destroy(); hel.remove();
+        }
+        return out;
+    })()]); });
+    check('browser: reactive GeoJSON and a reactive style (Vue proxies) are drawn in both entries and with both renderers, without errors, and data that cannot be copied is an error event (#242)',
+        Object.values(proxied).every(r => r.found >= 1 && r.errs.length === 0 && (r.style ?? true) === true && (r.cycle ?? true)), JSON.stringify(proxied));
     check('browser: no page errors', errors.length === 0, errors.slice(0, 2).join(' | '));
     await page.close();
 } catch (e) { check('the test run was completed', false, String(e.message).split('\n')[0]); }

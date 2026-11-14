@@ -215,7 +215,10 @@ type Port = {postMessage(msg: any, transfer?: Transferable[]): void; onmessage: 
 export class PortBackend implements TileBackend {
     private pending = new Map<number, {resolve(t: any): void; reject(e: Error): void}>();
     private nextQuery = -1;
-    constructor(private port: Port) {
+    private port: Port;
+    constructor(port: Port) {
+        // (Structured clone refuses a Vue reactive proxy in the data of the page. Such a message goes as a JSON copy, #242.)
+        this.port = {postMessage: (m, t) => { try { port.postMessage(m, t); } catch (e) { if ((e as Error).name !== 'DataCloneError') throw e; port.postMessage(JSON.parse(JSON.stringify(m)), t); } }, onmessage: null};
         port.onmessage = e => {
             // The worker asks about a request: pass the question on, and the answer back.
             // (The answer can carry the number that the engine gave the question. The worker must get its own number back:
