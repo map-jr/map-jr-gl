@@ -7,6 +7,48 @@ number, and its entry starts with a section "Breaking changes". See
 `#12` is a link to pull request 12. A change without a number comes from before 2026-11-11, when the repository had
 no pull requests.
 
+## 0.3.0 (2026-11-14)
+
+This entry covers the changes after 0.2.0 (the tag `v0.2.0`).
+
+### Breaking changes
+
+- `@map-jr/map-jr-gl` and `@map-jr/map-jr-gl/maplibre-compat`: an SVG image without a `viewBox` takes its size from
+  its `width` and `height` attributes, in CSS pixels. Before, it was always 24×24, so a smaller drawing sat in the
+  top-left corner and a larger one was cropped. An SVG with neither a `viewBox` nor `width` and `height` is still
+  24×24. The size is read from the root `<svg>` element only. If an image now has another size than you want, give
+  it a `viewBox`, or give `width` and `height` in the options of the image ([#176]).
+- `@map-jr/map-jr-gl/vue`: `useMap` loads the map with `import()` when the component is mounted, so its `host` is
+  still `null` inside the caller's own `onMounted`. Use the event `load` of `MapJr`, or watch `host` ([#179]).
+- Both entries: a popup fires `close` when it starts to close, not after its fade of 110 ms. `isOpen()` is `false`
+  during the fade. Code that waited for `close` to know that the element is gone must wait for the fade too ([#181]).
+
+### New
+
+- `@map-jr/map-jr-gl/vue`: the static code of `vue.js` is 2.8 KB gzip instead of 32.1 KB. `MapOverlay`, `MapImage`
+  and `useMapHost` no longer load the map with the page, so `LazyMapJr` delays the map code as `docs/vue.md` says
+  ([#179]).
+- Several `setData` calls on one GeoJSON source in the same task send only the last data to the tile workers. Every
+  promise still resolves. 50 calls in a loop send 2 messages instead of 100 ([#180]).
+
+### Fixed
+
+- `@map-jr/map-jr-gl/maplibre-compat`: `click`, `dblclick` and `contextmenu` reached the listener only after a query of
+  all layers (469 to 857 ms in slow cases). The query now starts at `pointerdown` or `touchstart`, and the event comes
+  when the answer is there, at most 300 ms after the pointer is up. `queryRenderedFeatures` in a click listener still
+  has the features, also for a touch tap ([#174]).
+- A click on the close button of a Vue `MapOverlay` popup sometimes did not close it ([#181]).
+- The check of the size budgets measured the wrong engine file in some builds ([#183]).
+- The README said that the package is not on npm ([#185]).
+
+[#174]: https://github.com/map-jr/map-jr-gl/pull/174
+[#176]: https://github.com/map-jr/map-jr-gl/pull/176
+[#179]: https://github.com/map-jr/map-jr-gl/pull/179
+[#180]: https://github.com/map-jr/map-jr-gl/pull/180
+[#181]: https://github.com/map-jr/map-jr-gl/pull/181
+[#183]: https://github.com/map-jr/map-jr-gl/pull/183
+[#185]: https://github.com/map-jr/map-jr-gl/pull/185
+
 ## 0.2.0 (2026-11-14)
 
 This is the first entry and the first version on npm. It covers the repository from its first commit (2026-11-10) to
