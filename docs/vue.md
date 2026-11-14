@@ -262,6 +262,12 @@ cannot copy a proxy, so the map sends such data to its workers as a JSON copy. T
 and `shallowRef` or `toRaw()` avoids it. Data that JSON cannot copy either, such as an object that contains itself, is
 an `error` event with a `[map-jr-gl]` message. A map object kept in the data of a component is not made reactive.
 
+## Your own controls
+
+To put your own component into a control corner, give the map `custom({key, position, element})` from
+`@map-jr/map-jr-gl/controls` and render the component into `element` with `<Teleport>`. The example is in
+[A control of your own](api.md#a-control-of-your-own).
+
 ## The composable
 
 `useMap` makes a map in an element of your own. The description (`MapSpec`, see [the main API](api.md)) can be a
