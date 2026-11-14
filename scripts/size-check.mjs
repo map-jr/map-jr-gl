@@ -14,8 +14,10 @@ function withStaticImports(file, seen = new Set()) {
 const gz = files => [...files].reduce((sum, f) => sum + gzipSync(readFileSync('dist/' + f)).length, 0) / 1024;
 const page = withStaticImports('map-jr-gl.js'), compat = withStaticImports('map-jr-gl-maplibre-compat.js'), engines = readdirSync('dist').filter(f => f.startsWith('map-jr-gl-engine-entry') && f.endsWith('.js')).map(f => withStaticImports(f));
 // (The development build can have an engine file of its own, which imports the files of that build. The budget is for
-// the engine of the production build: the one that imports a file of the production page.)
-const engine = engines.find(files => [...files].some(f => compat.has(f))) ?? engines[0];
+// the engine of the production build: the one that shares the most files with the production page. Both engines can
+// share a small chunk with the page (the runtime of the bundler), so "shares a file" alone can pick the wrong one.)
+const shared = files => [...files].filter(f => compat.has(f)).length;
+const engine = engines.reduce((a, b) => shared(b) > shared(a) ? b : a);
 for (const f of compat) engine.delete(f); // the page has these already when it loads the engine
 
 // A budget is a ceiling that catches an accident (a dependency in the bundle, a table that is not on demand). It is
