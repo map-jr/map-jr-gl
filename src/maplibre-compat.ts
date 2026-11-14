@@ -43,6 +43,7 @@ import {Point} from './compat-map.ts';
 import {LogoControl as Empty} from './controls-more.ts';
 /** MapLibre changes between a flat map and a globe with this control. This library has no globe, so the control adds an empty element. */
 export class GlobeControl extends Empty { override getDefaultPosition() { return 'top-right' as const; } }
+export {GPUInitializationError} from './gpu-error.ts';
 export {configure, supported, type LoadOptions} from './loader.ts';
 export type * from './compat-types.ts';
 
@@ -84,7 +85,9 @@ import {addProtocol, removeProtocol} from './protocols.ts';
 import {AttributionControl} from './controls.ts';
 import {NavigationControl, ScaleControl, GeolocateControl, TerrainControl, LogoControl} from './controls-more.ts';
 import {Popup} from './overlays.ts';
+import {GPUInitializationError} from './gpu-error.ts';
 export default {
+    GPUInitializationError,
     Map, MapLibreMap: Map, Point, InteractionHandler, LngLat, LngLatBounds, addProtocol, removeProtocol, Marker, Popup, configure: set,
     AttributionControl, NavigationControl, ScaleControl, FullscreenControl, GeolocateControl, TerrainControl, LogoControl, GlobeControl,
     supported, getVersion, setWorkerUrl, getWorkerUrl, setWorkerCount, getWorkerCount, setMaxParallelImageRequests, getMaxParallelImageRequests, setRTLTextPlugin, getRTLTextPluginStatus,
