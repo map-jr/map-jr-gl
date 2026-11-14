@@ -59,6 +59,7 @@ export class ScaleControl implements Control {
     private el?: HTMLElement;
     private update = () => {};
     constructor(private options: {maxWidth?: number; unit?: 'metric' | 'imperial'} = {}) {}
+    getDefaultPosition(): ControlPosition { return 'bottom-left'; }
 
     onAdd(map: Map) {
         const el = this.el = document.createElement('div');

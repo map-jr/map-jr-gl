@@ -1363,6 +1363,28 @@ for (const mode of ['main', 'worker']) {
         check('[main] maplibre-compat: the container, the canvas, the controls, their buttons, markers and popups have their maplibregl-* class names, and remove() takes the name from the container',
             names.missing.length === 0 && names.canvasInMap && !names.left, JSON.stringify(names));
     }
+    // A control added without a position goes to the corner that MapLibre GL JS uses for it (#257).
+    if (mode === 'main') {
+        const corners = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+            const m = new mod.Map({container: el, renderer: 'main', center: [0, 0], zoom: 2, attributionControl: false, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            const controls = {NavigationControl: new mod.NavigationControl(), GeolocateControl: new mod.GeolocateControl(), FullscreenControl: new mod.FullscreenControl(), TerrainControl: new mod.TerrainControl({source: 'none'}),
+                GlobeControl: new mod.GlobeControl(), ScaleControl: new mod.ScaleControl(), AttributionControl: new mod.AttributionControl(), LogoControl: new mod.LogoControl()};
+            const found = {};
+            for (const [name, c] of Object.entries(controls)) {
+                const before = new Set(el.querySelectorAll('*'));
+                m.addControl(c);
+                const added = [...el.querySelectorAll('*')].find(n => !before.has(n));
+                const corner = added?.parentElement?.className.match(/ctrl-((top|bottom)-(left|right))/);
+                found[name] = corner ? corner[1] : 'none';
+            }
+            m.remove(); el.remove();
+            return found;
+        });
+        const want = {NavigationControl: 'top-right', GeolocateControl: 'top-right', FullscreenControl: 'top-right', TerrainControl: 'top-right', GlobeControl: 'top-right', ScaleControl: 'bottom-left', AttributionControl: 'bottom-right', LogoControl: 'bottom-left'};
+        check('[main] maplibre-compat: each control class added without a position goes to the corner that MapLibre GL JS uses', JSON.stringify(corners) === JSON.stringify(want), JSON.stringify(corners));
+    }
     // GeolocateControl is an event emitter, as react-map-gl 8 expects (#194), with a mocked navigator.geolocation.
     if (mode === 'main') {
         const geo = await page.evaluate(async () => {
