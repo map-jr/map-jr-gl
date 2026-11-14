@@ -120,6 +120,8 @@ Notes for Cloudflare Workers:
 | `highDensity` | When `true`, the render uses the high-density (@2x) sprite |
 | `ssrOverrides` | When `false`, the server changes in the style are ignored. See below. |
 | `overrides` | Server changes for style layers, by the id of the layer: `{building: {hidden: true}}`. For a style that you do not write yourself. See below. |
+| `extend` | Sources and layers to add to the style, as `extend` in `MapSpec`. A style from a URL is fetched first. |
+| `data` | GeoJSON for GeoJSON sources of the style, by the id of the source, as `data` in `MapSpec`. |
 | `decodeImage` | A function that decodes elevation tiles. Required only for formats other than PNG and lossless WebP. |
 | `fetch` | A replacement for `fetch`, for example to add a cache |
 | `timeout` | The time in milliseconds that all requests of one render can take together. The default is 30000. `0` sets no limit. See [Limits for requests](#limits-for-requests). |
