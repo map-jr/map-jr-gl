@@ -1,0 +1,377 @@
+{
+ "name": "darwin-chromium",
+ "os": "darwin 25.6.0 arm64",
+ "cpu": "Apple M1 (Virtual)",
+ "browser": "chromium",
+ "date": "2026-11-14T18:54:26.003Z",
+ "commit": "5fbfc0b7d549c8f8a22ecc7013e70cccfe6223ee",
+ "checks": [
+  {
+   "mode": "worker",
+   "loaded": true,
+   "renderer": "worker",
+   "zoom": 15.3,
+   "features": 8,
+   "terrain": true,
+   "elevation": 10,
+   "ms": 5599,
+   "screenshotBytes": 699974,
+   "errors": []
+  },
+  {
+   "mode": "main",
+   "loaded": true,
+   "renderer": "main",
+   "zoom": 15.3,
+   "features": 8,
+   "terrain": true,
+   "elevation": 10,
+   "ms": 5664,
+   "screenshotBytes": 699979,
+   "errors": []
+  }
+ ],
+ "bench": [
+  {
+   "name": "MapLibre GL JS",
+   "load": 1635.3999999999942,
+   "add": null,
+   "fps": 34.987917841321085,
+   "worstGap": 82.39999999999418,
+   "script": 3.3000000000174623,
+   "worstScript": 13.10000000000582,
+   "blocked": 0,
+   "engine": null,
+   "engineFps": null
+  },
+  {
+   "name": "This library, main thread",
+   "load": 871.6000000000058,
+   "add": null,
+   "fps": 34.3327992675669,
+   "worstGap": 79.10000000000582,
+   "script": 1.400000000023283,
+   "worstScript": 12.89999999999418,
+   "blocked": 0,
+   "engine": 2.175011715296728,
+   "engineFps": 41.042272963558034
+  },
+  {
+   "name": "This library, worker",
+   "load": 905.0999999999767,
+   "add": null,
+   "fps": 27.906275140788374,
+   "worstGap": 90.19999999998254,
+   "script": 0,
+   "worstScript": 0,
+   "blocked": 0,
+   "engine": 2.364876676984699,
+   "engineFps": 34.57214933472457
+  },
+  {
+   "name": "1,000 markers: MapLibre Marker (DOM)",
+   "load": 852.3999999999942,
+   "add": 64.79999999998836,
+   "fps": 25.42415546493495,
+   "worstGap": 107.19999999998254,
+   "script": 8,
+   "worstScript": 19.89999999999418,
+   "blocked": 295,
+   "engine": null,
+   "engineFps": null
+  },
+  {
+   "name": "1,000 markers: marker layer, main thread",
+   "load": 783.3999999999942,
+   "add": 3.8000000000174623,
+   "fps": 26.718237105269893,
+   "worstGap": 108.40000000002328,
+   "script": 2.2000000000116415,
+   "worstScript": 65.19999999998254,
+   "blocked": 118,
+   "engine": 4.282949603560767,
+   "engineFps": 35.880701102592866
+  },
+  {
+   "name": "1,000 markers: marker layer, worker",
+   "load": 889.1000000000058,
+   "add": 0.7000000000116415,
+   "fps": 27.45672297473994,
+   "worstGap": 89,
+   "script": 0,
+   "worstScript": 0,
+   "blocked": 0,
+   "engine": 2.7392592592589033,
+   "engineFps": 43.09909197788039
+  },
+  {
+   "name": "10,000 markers: MapLibre Marker (DOM)",
+   "load": 827.3999999999942,
+   "add": 617.6000000000058,
+   "fps": 1.6437005177656552,
+   "worstGap": 894.3999999999942,
+   "script": 110.30000000001746,
+   "worstScript": 175.5,
+   "blocked": 4430,
+   "engine": null,
+   "engineFps": null
+  },
+  {
+   "name": "10,000 markers: marker layer, main thread",
+   "load": 854.1000000000058,
+   "add": 2.8999999999941792,
+   "fps": 31.39362583820972,
+   "worstGap": 117.60000000000582,
+   "script": 1.8999999999941792,
+   "worstScript": 33.70000000001164,
+   "blocked": 0,
+   "engine": 3.243426144790696,
+   "engineFps": 39.70682719849678
+  },
+  {
+   "name": "10,000 markers: marker layer, worker",
+   "load": 997.3999999999942,
+   "add": 2.2999999999883585,
+   "fps": 39.6915115431958,
+   "worstGap": 80.60000000000582,
+   "script": 0,
+   "worstScript": 0,
+   "blocked": 0,
+   "engine": 2.849870287420203,
+   "engineFps": 55.13714853222448
+  },
+  {
+   "name": "100,000 markers: marker layer, worker",
+   "load": 905,
+   "add": 9.199999999982538,
+   "fps": 36.444624417898254,
+   "worstGap": 84.20000000001164,
+   "script": 0,
+   "worstScript": 0,
+   "blocked": 0,
+   "engine": 2.9447807017541616,
+   "engineFps": 51.12672349991257
+  },
+  {
+   "name": "3D terrain: MapLibre GL JS",
+   "load": 2213.399999999994,
+   "add": null,
+   "fps": 33.647206528562464,
+   "worstGap": 139.79999999998836,
+   "script": 3.7999999999883585,
+   "worstScript": 80.5,
+   "blocked": 82,
+   "engine": null,
+   "engineFps": null
+  },
+  {
+   "name": "3D terrain: this library, main thread",
+   "load": 1099.3999999999942,
+   "add": null,
+   "fps": 38.0505997379297,
+   "worstGap": 83.80000000001746,
+   "script": 1.3999999999941792,
+   "worstScript": 7.2999999999883585,
+   "blocked": 0,
+   "engine": 1.8371618476267249,
+   "engineFps": 39.45261462162459
+  },
+  {
+   "name": "3D terrain: this library, worker",
+   "load": 954.1000000000058,
+   "add": null,
+   "fps": 34.79050068068366,
+   "worstGap": 87.39999999999418,
+   "script": 0,
+   "worstScript": 0,
+   "blocked": 0,
+   "engine": 2.687950194966404,
+   "engineFps": 42.47153372632551
+  }
+ ],
+ "errors": [],
+ "version": "153.0.8010.12",
+ "env": "GPU: ANGLE (Apple, ANGLE Metal Renderer: Apple Paravirtual device, Unspecified Version) · screen pixel ratio 1 · AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36",
+ "table": [
+  [
+   "Scenario",
+   "Load to idle",
+   "Frames per second",
+   "Slowest frame gap",
+   "Main-thread script per frame (median / worst)",
+   "Main thread blocked",
+   "Engine: time per frame, and its own count of frames"
+  ],
+  [
+   "MapLibre GL JS",
+   "1635 ms",
+   "35.0",
+   "82 ms",
+   "3.3 / 13.1 ms",
+   "0 ms",
+   ""
+  ],
+  [
+   "This library, main thread",
+   "872 ms",
+   "34.3",
+   "79 ms",
+   "1.4 / 12.9 ms",
+   "0 ms",
+   "2.2 ms, 41 frames per second"
+  ],
+  [
+   "This library, worker",
+   "905 ms",
+   "27.9",
+   "90 ms",
+   "0.0 / 0.0 ms",
+   "0 ms",
+   "2.4 ms, 35 frames per second"
+  ],
+  [
+   "1,000 markers: MapLibre Marker (DOM) (added in 65 ms)",
+   "852 ms",
+   "25.4",
+   "107 ms",
+   "8.0 / 19.9 ms",
+   "295 ms",
+   ""
+  ],
+  [
+   "1,000 markers: marker layer, main thread (added in 4 ms)",
+   "783 ms",
+   "26.7",
+   "108 ms",
+   "2.2 / 65.2 ms",
+   "118 ms",
+   "4.3 ms, 36 frames per second"
+  ],
+  [
+   "1,000 markers: marker layer, worker (added in 1 ms)",
+   "889 ms",
+   "27.5",
+   "89 ms",
+   "0.0 / 0.0 ms",
+   "0 ms",
+   "2.7 ms, 43 frames per second"
+  ],
+  [
+   "10,000 markers: MapLibre Marker (DOM) (added in 618 ms)",
+   "827 ms",
+   "1.6",
+   "894 ms",
+   "110.3 / 175.5 ms",
+   "4430 ms",
+   ""
+  ],
+  [
+   "10,000 markers: marker layer, main thread (added in 3 ms)",
+   "854 ms",
+   "31.4",
+   "118 ms",
+   "1.9 / 33.7 ms",
+   "0 ms",
+   "3.2 ms, 40 frames per second"
+  ],
+  [
+   "10,000 markers: marker layer, worker (added in 2 ms)",
+   "997 ms",
+   "39.7",
+   "81 ms",
+   "0.0 / 0.0 ms",
+   "0 ms",
+   "2.8 ms, 55 frames per second"
+  ],
+  [
+   "100,000 markers: marker layer, worker (added in 9 ms)",
+   "905 ms",
+   "36.4",
+   "84 ms",
+   "0.0 / 0.0 ms",
+   "0 ms",
+   "2.9 ms, 51 frames per second"
+  ],
+  [
+   "3D terrain: MapLibre GL JS",
+   "2213 ms",
+   "33.6",
+   "140 ms",
+   "3.8 / 80.5 ms",
+   "82 ms",
+   ""
+  ],
+  [
+   "3D terrain: this library, main thread",
+   "1099 ms",
+   "38.1",
+   "84 ms",
+   "1.4 / 7.3 ms",
+   "0 ms",
+   "1.8 ms, 39 frames per second"
+  ],
+  [
+   "3D terrain: this library, worker",
+   "954 ms",
+   "34.8",
+   "87 ms",
+   "0.0 / 0.0 ms",
+   "0 ms",
+   "2.7 ms, 42 frames per second"
+  ],
+  [
+   "3D terrain: MapLibre GL JS (second measurement)",
+   "987 ms",
+   "32.6",
+   "81 ms",
+   "4.4 / 71.7 ms",
+   "139 ms",
+   ""
+  ],
+  [
+   "3D terrain: this library, main thread (second measurement)",
+   "1174 ms",
+   "40.2",
+   "78 ms",
+   "1.5 / 16.2 ms",
+   "0 ms",
+   "2.1 ms, 42 frames per second"
+  ],
+  [
+   "3D terrain: this library, worker (second measurement)",
+   "1020 ms",
+   "35.4",
+   "90 ms",
+   "0.0 / 0.0 ms",
+   "0 ms",
+   "2.2 ms, 43 frames per second"
+  ],
+  [
+   "3D terrain: MapLibre GL JS (third measurement)",
+   "1451 ms",
+   "32.5",
+   "82 ms",
+   "4.2 / 30.6 ms",
+   "0 ms",
+   ""
+  ],
+  [
+   "3D terrain: this library, main thread (third measurement)",
+   "843 ms",
+   "34.4",
+   "85 ms",
+   "1.8 / 24.2 ms",
+   "0 ms",
+   "2.7 ms, 43 frames per second"
+  ],
+  [
+   "3D terrain: this library, worker (third measurement)",
+   "939 ms",
+   "34.4",
+   "75 ms",
+   "0.0 / 0.0 ms",
+   "0 ms",
+   "2.1 ms, 43 frames per second"
+  ]
+ ]
+}
