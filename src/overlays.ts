@@ -80,8 +80,6 @@ export class Popup extends Overlay {
     private tip = document.createElement('div');
     private content = document.createElement('div');
     private closeOnMapClick = () => this.remove();
-    /** Set by `remove()` while the closing fade plays: the popup counts as closed, and `addTo()` clears it. */
-    private closing = false;
     /** The marker of this popup. The keyboard focus returns to it when the popup closes with the focus inside. */
     opener?: HTMLElement;
     constructor(readonly options: PopupOptions = {}) {
@@ -153,30 +151,34 @@ export class Popup extends Overlay {
         return [r.left - c.left - p.x, r.top - c.top - p.y, r.right - c.left - p.x, r.bottom - c.top - p.y];
     }
     addTo(map: Map) {
-        this.closing = false;
+        // (A popup that opens again during its closing animation closes now, so that the animation cannot remove it later.)
+        this.closing?.();
         this.attach(map);
         // Deferred so the click that opened the popup does not immediately close it.
-        if (this.options.closeOnClick !== false) setTimeout(() => this.map?.on('click', this.closeOnMapClick));
+        if (this.options.closeOnClick !== false) setTimeout(() => this.isOpen() && this.map === map && map.on('click', this.closeOnMapClick));
         this.transition(false);
         return this.fire('open');
     }
+    /** Ends the closing animation that runs, if one runs: the popup is removed (it fired `close` when the animation started). */
+    private closing?: () => void;
     remove() {
-        if (!this.map || this.closing) return this;
-        this.closing = true;
-        this.map.off('click', this.closeOnMapClick);
-        const fade = this.transition(true);
+        if (!this.isOpen()) return this;
+        const map = this.map!;
+        map.off('click', this.closeOnMapClick);
+        const animation = this.transition(true);
         const finish = () => {
+            if (this.closing !== finish) return;
+            this.closing = undefined;
             // (The closing animation keeps its last frame. Without this, the popup is transparent when it opens again.)
-            fade?.cancel();
-            // (A popup that opened again during the fade stays.)
-            if (!this.closing) return;
-            this.closing = false;
-            if (this.el.contains(document.activeElement)) this.opener?.focus();
+            animation?.cancel();
+            // (The focus returns to the marker, or to the map when the marker is no longer on the page.)
+            if (this.el.contains(document.activeElement)) (this.opener?.isConnected ? this.opener : map.getCanvas()).focus({preventScroll: true});
             this.detach();
         };
+        this.closing = finish;
         // The element stays on the map (and follows it) until the fade has played. The event `close` comes at once, as in
         // MapLibre GL JS: a page that is busy can play the fade late, and the application must not wait for it.
-        if (fade) fade.finished.then(finish, finish); else finish();
+        if (animation) animation.finished.then(finish, finish); else finish();
         return this.fire('close');
     }
 
@@ -221,7 +223,8 @@ export class Marker extends Overlay {
         // With the keyboard: Enter or the space bar opens and closes the popup of the marker. The focus moves to the first
         // element of the open popup that takes it (the close button, when the content has none).
         this.el.addEventListener('keydown', e => {
-            if (!this.popup || (e.key !== 'Enter' && e.key !== ' ')) return;
+            // (A key that bubbles from a child of the element, such as a button in it, belongs to that child.)
+            if (!this.popup || e.target !== this.el || (e.key !== 'Enter' && e.key !== ' ')) return;
             const opens = !this.popup.isOpen();
             e.preventDefault(); e.stopPropagation(); this.togglePopup();
             // (A candidate can refuse the focus: a disabled button, a hidden link. The close button is the last candidate.)

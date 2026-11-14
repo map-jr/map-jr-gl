@@ -319,6 +319,10 @@ With the module, a page uses the components without an import:
 - `LazyMapJr` puts the code of the map into a file of its own. With `hydrate-on-visible`, the browser loads that file
   and starts the map when the map comes into view. Together with `ssr`, the visitor sees the map from the server at
   once, and a page with a map far down loads no map code until it is necessary.
+- The other exports of `@map-jr/map-jr-gl/vue` do not load the map code. `MapJr` and `useMap` load it with `import()`
+  when the map is mounted, so a component that uses `MapOverlay`, `MapImage` or `useMapHost` next to a `LazyMapJr`
+  does not bring the map code into the page. The file `vue.js` and what it imports are about 3 KB (gzip). The `host`
+  of `useMap` is `null` until that code has loaded, also in `onMounted`.
 
 Without the module, import the components (`import {MapJr} from '@map-jr/map-jr-gl/vue'`). For lazy loading, use
 `defineAsyncComponent` of Vue:
