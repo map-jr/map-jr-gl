@@ -68,6 +68,28 @@ for (const mode of ['main', 'worker']) {
     check(`[${mode}] jumpTo is readable synchronously`, sync[0] === 14.3 && sync[1] === -74.0065);
     await page.waitForTimeout(800);
 
+    // A camera call with duration 0 is a jump (#193), and jumps fire zoom, rotate and pitch (#192), as in MapLibre GL JS.
+    const instant = await page.evaluate(async () => {
+        const m = window.map, seen = [], on = t => m.on(t, () => seen.push(t));
+        ['zoom', 'rotate', 'pitch'].forEach(on);
+        m.easeTo({center: [-74.0, 40.71], zoom: 13, duration: 0});
+        const now = m.getZoom();
+        m.jumpTo({padding: {left: 0}});
+        m.fitBounds([[-74.02, 40.70], [-74.0, 40.72]], {duration: 0});
+        const fit = m.getZoom();
+        await new Promise(r => setTimeout(r, 600));
+        const kept = m.getZoom();
+        seen.length = 0;
+        m.jumpTo({zoom: 14.3, bearing: 10, pitch: 10});
+        await new Promise(r => setTimeout(r, 600));
+        const events = [...new Set(seen)];
+        m.jumpTo({bearing: 0, pitch: 0});
+        await new Promise(r => setTimeout(r, 400));
+        return {now, fit, kept, events};
+    });
+    check(`[${mode}] easeTo and fitBounds with duration 0 apply at once and survive a following jumpTo`, instant.now === 13 && instant.fit > 13 && Math.abs(instant.kept - instant.fit) < 1e-9, JSON.stringify(instant));
+    check(`[${mode}] jumpTo fires zoom, rotate and pitch`, ['zoom', 'rotate', 'pitch'].every(t => instant.events.includes(t)), instant.events.join(' '));
+
     // Marker hit testing and events.
     const pt = await page.evaluate(() => window.map.project([-74.0060, 40.7127]));
     await page.mouse.move(pt.x, pt.y - 20);

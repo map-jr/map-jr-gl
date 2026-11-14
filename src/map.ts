@@ -505,11 +505,14 @@ export class Map {
         if (this.ready) this.send(c, transfer); else this.queue.push([c, transfer]);
     }
 
+    private seen?: {zoom: number; bearing: number; pitch: number};
     private onEngineEvent(e: EngineEvent) {
         if (__DEV__ && e.type !== 'camera' && e.type !== 'heights' && e.type !== 'result') this.note('engine: ' + e.type, e.type === 'pong' ? e.n : e.type === 'idle' ? {seq: e.seq, expected: this.seq} : e.type === 'frame' ? {first: !this.drew} : e.type === 'error' ? e.message : undefined);
         if (e.type === 'camera') {
-            const zoomed = e.zoom !== this.tr.zoom;
-            const turned = e.bearing !== this.tr.bearing, tilted = e.pitch !== this.tr.pitch;
+            // Compared with the last camera that the engine reported, not with `this.tr`: jumpTo writes `this.tr` in advance.
+            const was = this.seen ?? this.tr, zoomed = e.zoom !== was.zoom;
+            const turned = e.bearing !== was.bearing, tilted = e.pitch !== was.pitch;
+            this.seen = {zoom: e.zoom, bearing: e.bearing, pitch: e.pitch};
             Object.assign(this.tr, {lng: e.lng, lat: e.lat, zoom: e.zoom, bearing: e.bearing, pitch: e.pitch, elevation: e.elevation, padding: e.padding});
             // With 3D terrain, positions on this thread follow the ground too (clicks, project/unproject, DOM markers).
             const k = e.exaggeration;
@@ -704,7 +707,10 @@ export class Map {
         // A user who asked the system for less motion gets the new view at once (as in MapLibre GL JS, `essential: true`
         // keeps the animation).
         const still = !(o as {essential?: boolean}).essential && matchMedia('(prefers-reduced-motion: reduce)').matches;
-        this.post({type: 'ease', duration: still ? 0 : o.duration ?? 500, center: center && toLngLat(center), zoom, bearing, pitch, around, padding: o.padding === undefined ? undefined : paddingOf(o.padding)});
+        const duration = still ? 0 : o.duration ?? 500;
+        // As in MapLibre GL JS, no duration is a jump, so reads right after the call see the new view.
+        if (duration <= 0 && !around) return this.jumpTo(o);
+        this.post({type: 'ease', duration, center: center && toLngLat(center), zoom, bearing, pitch, around, padding: o.padding === undefined ? undefined : paddingOf(o.padding)});
         return this;
     }
     stop() { this.post({type: 'stop'}); return this; }
