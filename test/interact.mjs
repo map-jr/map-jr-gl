@@ -90,6 +90,15 @@ for (const mode of ['main', 'worker']) {
     check(`[${mode}] easeTo and fitBounds with duration 0 apply at once and survive a following jumpTo`, instant.now === 13 && instant.fit > 13 && Math.abs(instant.kept - instant.fit) < 1e-9, JSON.stringify(instant));
     check(`[${mode}] jumpTo fires zoom, rotate and pitch`, ['zoom', 'rotate', 'pitch'].every(t => instant.events.includes(t)), instant.events.join(' '));
 
+    // As in MapLibre's CSS, the controls take the font of the map's container, and an interactive map shows `grab` (#211).
+    const css = await page.evaluate(() => {
+        const c = window.map.getContainer(), ctrl = c.querySelector('.map-jr-ctrl'), before = c.style.fontFamily;
+        c.style.fontFamily = 'monospace';
+        const r = {ctrl: ctrl && getComputedStyle(ctrl).fontFamily, cursor: getComputedStyle(window.map.getCanvas()).cursor};
+        c.style.fontFamily = before;
+        return r;
+    });
+    check(`[${mode}] controls inherit the container's font; the canvas shows grab`, css.ctrl === 'monospace' && css.cursor === 'grab', JSON.stringify(css));
     // Marker hit testing and events.
     const pt = await page.evaluate(() => window.map.project([-74.0060, 40.7127]));
     await page.mouse.move(pt.x, pt.y - 20);
