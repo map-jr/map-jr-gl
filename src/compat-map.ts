@@ -33,6 +33,27 @@ export interface Map {
     /** The style, as in MapLibre GL JS. It is `undefined` before the map has a style. */
     getStyle(): StyleSpecification;
 }
+/**
+ * `map.cooperativeGestures`, as in MapLibre GL JS, with `enable()`, `disable()`, `isEnabled()` and `isActive()` (always
+ * false). Its code loads on demand at the first `enable()` (cooperative-gestures.ts), so that a map without it pays little.
+ */
+const cooperativeGestures = (map: CoreMap) => {
+    let on = false, stop: (() => void) | undefined, touchAction = '';
+    const style = map.getCanvas().style;
+    const disable = () => { if (on) { on = false; stop?.(); stop = map.gate = undefined; style.touchAction = touchAction; } };
+    map.on('remove', disable);
+    return {enable() {
+        if (on) return;
+        on = true;
+        // Until the file has loaded, the gestures are blocked without the hint: a wheel zooms only with Ctrl (⌘ on a
+        // Mac), and one finger scrolls the page.
+        touchAction = style.touchAction;
+        style.touchAction = 'pan-x pan-y';
+        map.gate = (type, e) => type === 'touch_pan' || !(e as WheelEvent)[navigator.userAgent.includes('Mac') ? 'metaKey' : 'ctrlKey'];
+        // (After the import, the handler may be off again or the map removed: `disable()` has then set `on` to false.)
+        import('./cooperative-gestures.ts').then(m => { if (on && !stop) stop = m.cooperate(map); });
+    }, disable, isEnabled: () => on, isActive: () => false};
+};
 declare const __VERSION__: string; // the version of package.json, set by the build
 declare const __DEV__: boolean;
 /** The fields that a camera method copies onto the events of its move, as `eventData` in MapLibre GL JS. */
@@ -55,6 +76,8 @@ export class Point {
     equals(p: {x: number; y: number}) { return this.x === p.x && this.y === p.y; }
 }
 export class Map extends CoreMap {
+    /** As in MapLibre GL JS: with it on, the wheel zooms only with Ctrl (⌘ on a Mac), and one finger scrolls the page. */
+    readonly cooperativeGestures = cooperativeGestures(this);
     /** As in MapLibre, a `Point` with methods (`dist`, `sub`, …), not a plain object. */
     override project(lngLat: LngLatLike) { return Point.convert(super.project(lngLat)); }
     /** As in MapLibre GL JS: with no listener, `once` returns a promise for the event; a layer id makes it a layer event. */
@@ -126,7 +149,7 @@ export class Map extends CoreMap {
         // (A canvas that replaces this one is a copy of it.)
         this.getCanvas().classList.add('maplibregl-canvas');
         if (o.maxBounds) this.setMaxBounds(o.maxBounds);
-        this.unsupported('The option cooperativeGestures', !o.cooperativeGestures);
+        if (o.cooperativeGestures) this.cooperativeGestures.enable();
         this.unsupported('The option locale', !o.locale);
         this.unsupported('The option projection', !o.projection || (o.projection.type ?? o.projection) === 'mercator');
         this.unsupported('The option renderWorldCopies: false', o.renderWorldCopies !== false);

@@ -143,6 +143,10 @@ These fields are read only when the map is made:
 | `attribution` | `false` to show the credits yourself, or options for the built-in credits. |
 | `hash` | Keeps the view in the fragment of the URL. |
 
+The main API has no field for cooperative gestures yet. With `interactive: false`, a touch on the map scrolls the
+page. The option `cooperativeGestures` (Ctrl + wheel to zoom, two fingers to move the map) is in the compat entry
+(`@map-jr/map-jr-gl/maplibre-compat`); see [MapLibre compatibility](maplibre-compatibility.md).
+
 ## Your own layers on a style from a URL
 
 ```js
