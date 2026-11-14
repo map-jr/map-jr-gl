@@ -95,7 +95,7 @@ function missing(event) {
 ### The slot
 
 The default slot is drawn over the map. It gets `state` (the state of the map) and `host` (the map, for
-`queryFeatures`, `moveTo` and `fitBounds`).
+`queryFeatures`, `clusterExpansionZoom`, `moveTo` and `fitBounds`).
 
 ```vue
 <MapJr :map-style="style" v-slot="{state}">
