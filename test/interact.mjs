@@ -2193,6 +2193,25 @@ for (const mode of ['main', 'worker']) {
         });
         check('[main] the four control corners exist at once, and the attribution is the lowest control of its corner', r.corners && r.first.includes('ctrl-attrib'), JSON.stringify(r));
     }
+    // #16, #42: dragging the compass rotates and pitches the map, as in MapLibre GL JS, and a click still resets the bearing.
+    if (mode === 'main') {
+        await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = window.compassEl = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:500px;height:300px;z-index:9'}));
+            const m = window.compassMap = new mod.Map({container: el, renderer: 'main', attributionControl: false, center: [0, 0], zoom: 2, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            m.addControl(new mod.NavigationControl(), 'top-right');
+            await new Promise(r => m.once('load', r));
+        });
+        const box = await page.evaluate(() => { const r = window.compassEl.querySelector('.maplibregl-ctrl-compass').getBoundingClientRect(); return {x: r.left + r.width / 2, y: r.top + r.height / 2}; });
+        await page.mouse.move(box.x, box.y); await page.mouse.down();
+        for (let i = 1; i <= 6; i++) await page.mouse.move(box.x + i * 8, box.y - i * 4);
+        await page.mouse.up();
+        const dragged = await page.evaluate(() => ({bearing: window.compassMap.getBearing(), pitch: window.compassMap.getPitch()}));
+        await page.waitForTimeout(100);
+        await page.mouse.click(box.x, box.y); await page.waitForTimeout(1200);
+        const clicked = await page.evaluate(() => { const m = window.compassMap, r = {bearing: m.getBearing(), pitch: m.getPitch()}; m.remove(); window.compassEl.remove(); return r; });
+        check('[main] dragging the compass rotates and pitches the map, and a click resets both', Math.abs(dragged.bearing) > 1 && dragged.pitch > 1 && Math.abs(clicked.bearing) < 0.01 && clicked.pitch < 0.01, JSON.stringify({dragged, clicked}));
+    }
     // 3D terrain off and on again: the elevation tiles that are loaded stay, so the relief does not go away for a
     // moment and no tile is asked for again.
     {

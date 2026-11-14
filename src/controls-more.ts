@@ -24,7 +24,36 @@ function group(extraClass = ''): HTMLElement {
     return el;
 }
 
-/** Zoom buttons and a compass that shows the map's rotation and tilt, and resets both when clicked. */
+/**
+ * Dragging the compass rotates the map with the sideways movement and pitches it with the vertical movement, as the
+ * MouseRotateWrapper of MapLibre GL JS does. A movement of 3 pixels or less is a click, which resets the bearing; a
+ * longer drag does not.
+ */
+function dragCompass(map: Map, b: HTMLButtonElement) {
+    let last: PointerEvent | null = null, dragged = false;
+    b.style.touchAction = 'none';
+    b.addEventListener('pointerdown', e => {
+        if (e.button) return;
+        last = e; dragged = false;
+        try { b.setPointerCapture(e.pointerId); } catch { /* a synthetic event has no pointer to capture */ }
+    });
+    b.addEventListener('pointermove', e => {
+        if (!last || e.pointerId !== last.pointerId) return;
+        const dx = e.clientX - last.clientX, dy = e.clientY - last.clientY;
+        if (!dragged && Math.hypot(dx, dy) <= 3) return;
+        dragged = true;
+        const r = b.getBoundingClientRect(), x = e.clientX - r.left - r.width / 2, y = e.clientY - r.top - r.height / 2, lx = last.clientX - r.left - r.width / 2;
+        // The angle between (last x, current y) and the current point, seen from the centre of the button.
+        map.jumpTo({bearing: map.getBearing() + Math.atan2(x * y - y * lx, x * lx + y * y) * 180 / Math.PI, pitch: map.getPitch() - dy / 2});
+        last = e;
+    });
+    const end = () => { last = null; setTimeout(() => { dragged = false; }); };
+    b.addEventListener('pointerup', end);
+    b.addEventListener('pointercancel', end);
+    b.addEventListener('click', e => { if (dragged) { dragged = false; e.stopImmediatePropagation(); } }, true);
+}
+
+/** Zoom buttons and a compass that shows the map's rotation and tilt, and resets both when clicked. Dragging the compass rotates and pitches the map. */
 export class NavigationControl implements Control {
     private el?: HTMLElement;
     private update = () => {};
@@ -43,6 +72,7 @@ export class NavigationControl implements Control {
             const b = button(el, 'compass', 'Reset bearing to north', svg('<path d="M9 2.500 12 9H6z" fill="currentColor" stroke="none"/><path d="M9 15.500 6 9h6z" fill="currentColor" stroke="none" opacity=".35"/>'),
                 () => map.easeTo({bearing: 0, pitch: 0}));
             needle = b.querySelector('svg');
+            dragCompass(map, b);
         }
         this.update = () => {
             if (zoomIn) zoomIn.disabled = map.getZoom() >= map.getMaxZoom();
