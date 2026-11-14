@@ -374,6 +374,19 @@ for (const mode of ['main', 'worker']) {
         } finally { protos.forEach((p, i) => { p.postMessage = real[i]; }); }
     });
     check(`[${mode}] GeoJSON source: 50 calls of setData in a loop send only the last data`, many.one > 0 && many.fifty === many.one && many.drawn.join() === 'n49', JSON.stringify(many));
+    // setData in the same task as addSource and addLayer is not lost: the data arrives before the engine knows the source (#244).
+    const early = await page.evaluate(async () => {
+        const m = window.map, point = name => ({type: 'Feature', properties: {name}, geometry: {type: 'Point', coordinates: [-74.008, 40.7085]}});
+        m.addSource('early', {type: 'geojson', data: {type: 'FeatureCollection', features: []}});
+        m.addLayer({id: 'early', type: 'circle', source: 'early'});
+        m.getSource('early').setData({type: 'FeatureCollection', features: [point('a')]});
+        m.getSource('early').setData({type: 'FeatureCollection', features: [point('b')]});
+        let names = [];
+        for (let i = 0; i < 30 && !names.length; i++) { await new Promise(r => setTimeout(r, 100)); names = (await m.querySourceFeatures('early')).map(f => f.properties.name); }
+        m.removeLayer('early'); m.removeSource('early');
+        return names;
+    });
+    check(`[${mode}] GeoJSON source: setData right after addSource and addLayer is kept`, early.join() === 'b', JSON.stringify(early));
     await page.evaluate(() => { window.map.removeLayer('zones-fill'); window.map.removeSource('zones'); });
 
     // DOM marker and popup with MapLibre's API.

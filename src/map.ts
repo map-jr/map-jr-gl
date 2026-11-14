@@ -845,9 +845,10 @@ export class Map {
             if (!(this.options.glyphs ?? !this.options.fonts)) style.glyphs = undefined;
             if (this.toggled.size) style.layers = style.layers.map(l => this.toggled.has(l.id) ? {...l, keep: true} : l);
             this.post({type: 'style', style, reload, versions});
+            this.sendGeo();
             this.styleEvents(this.newStyle);
             this.newStyle = false;
-        }, err => { this.fire('error', {error: err}); if (turn === this.restyles) { this.restyled = turn; this.post({type: 'repaint'}); } });
+        }, err => { this.fire('error', {error: err}); if (turn === this.restyles) { this.restyled = turn; this.sendGeo(); this.post({type: 'repaint'}); } });
     }
     /** Runs a change to the style JSON now, or as soon as the style has been fetched. */
     protected editStyle(fn: (style: any) => void) {
@@ -1031,11 +1032,14 @@ export class Map {
             keep(raw, url, data);
         }
         // (Calls in the same task send only the last data of each source: the tile workers index it once.)
-        if (!this.geoPending.size) queueMicrotask(() => {
-            for (const [source, d] of this.geoPending) if (this.rawStyle?.sources[source]) this.post({type: 'geojson', source, data: d});
-            this.geoPending.clear();
-        });
+        // (While a change of the style is on its way, the engine may not know the source yet, and that change carries
+        // older data: the data waits and is sent after that change.)
+        if (!this.geoPending.size) queueMicrotask(() => { if (this.restyled === this.restyles) this.sendGeo(); });
         this.geoPending.set(id, data);
+    }
+    private sendGeo() {
+        for (const [source, d] of this.geoPending) if (this.rawStyle?.sources[source]) this.post({type: 'geojson', source, data: d});
+        this.geoPending.clear();
     }
     /** The newest data of each GeoJSON source that waits to be sent to the engine at the end of the task. */
     private geoPending = new globalThis.Map<string, unknown>();
