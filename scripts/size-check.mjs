@@ -21,18 +21,19 @@ const engine = engines.reduce((a, b) => shared(b) > shared(a) ? b : a);
 for (const f of compat) engine.delete(f); // the page has these already when it loads the engine
 
 // A budget is a ceiling that catches an accident (a dependency in the bundle, a table that is not on demand). It is
-// not a target to fill and not a limit to fight for bytes against: each has about 2 KB of room since 2026-11-12, by
-// the owner, after a day in which several fixes each cost an hour to fit into the last 100 bytes. What keeps the
-// library small is the rule in CLAUDE.md ("Size"): every pull request says what it adds, and a pass before each
-// release looks for savings in one go.
+// not a target to fill and not a limit to fight for bytes against. On 2026-11-14 the owner raised the budgets of the
+// page scripts, the worker, the engine and the server renderer by about 4 to 8 KB each and set a new priority: a
+// fast time to idle (the map drawn and ready) comes before the size of the files that load up front. Do not move
+// code that a usual map needs to a file that loads on demand only to save bytes: each such file is one more request
+// before the map is ready. Every pull request still says what it adds (CLAUDE.md, "Size").
 const sizes = [
     // What a page downloads before the map can start. The worker file is downloaded at the same time.
-    ['page script, up front (' + [...page].length + ' files)', gz(page), 32], // (31 → 32 on 2026-11-14, #242: fallback for data that structured clone refuses; the page script was within 150 B of the ceiling)
+    ['page script, up front (' + [...page].length + ' files)', gz(page), 36],
     // The same for the entry that is a replacement for MapLibre GL JS (`@map-jr/map-jr-gl/maplibre-compat`).
-    ['page script of maplibre-compat, up front (' + [...compat].length + ' files)', gz(compat), 35], // (34 → 35 on 2026-11-14, #245: layer ids as an array in on/off; with #242 the compat page script reached the ceiling. A pass for savings, #112, is due)
-    ['map-jr-gl-worker.js', gz(['map-jr-gl-worker.js']), 64],
+    ['page script of maplibre-compat, up front (' + [...compat].length + ' files)', gz(compat), 39],
+    ['map-jr-gl-worker.js', gz(['map-jr-gl-worker.js']), 72],
     // Only when the engine runs on the main thread (no worker is possible).
-    ['engine on the main thread, on demand', gz(engine), 61],
+    ['engine on the main thread, on demand', gz(engine), 68],
     // The server renderer (`@map-jr/map-jr-gl/server`), with the files that it imports when it loads.
     // The control functions (`@map-jr/map-jr-gl/controls`). They load the control classes, and with them the map,
     // only when the map adds a control, so a page can import them before it makes the map (#160).
@@ -40,7 +41,7 @@ const sizes = [
     // The adapter for Vue (`@map-jr/map-jr-gl/vue`). `MapJr` loads the map when it is mounted, so a component that
     // imports only `MapOverlay`, `MapImage` or `useMapHost` does not load the map (#159).
     ['vue.js, up front (' + [...withStaticImports('vue.js')].length + ' files)', gz(withStaticImports('vue.js')), 5],
-    ['server.js (' + [...withStaticImports('server.js')].length + ' files)', gz(withStaticImports('server.js')), 40],
+    ['server.js (' + [...withStaticImports('server.js')].length + ' files)', gz(withStaticImports('server.js')), 44],
 ];
 let ok = true;
 for (const [name, kb, budget] of sizes) {
