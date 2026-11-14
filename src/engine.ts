@@ -7,7 +7,7 @@ import {compileLayer, isGeometrySource, loadSprite, tileURL, type CompiledLayer,
 import {AtlasSpace} from './atlas-space.ts';
 import {GLRenderer, SPRITE_ATLAS, type DemRef, type GLTile, type TerrainTile} from './gl.ts';
 import {CollisionGrid, placeLabels, renderItems, type Placed, type RenderItem} from './placement.ts';
-import {GlyphAtlas} from './text.ts';
+import {EM, GlyphAtlas} from './text.ts';
 import {fetchWith, withTimeout, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
 import {decodeElevation, sampleElevation, tilesUnderBox, type QueriedFeature, type QuerySet} from './query.ts';
 import type {FeatureStates, TileBackend, TileRequest} from './tiles.ts';
@@ -826,7 +826,7 @@ export class Engine {
     private async queryRendered(c: Extract<Command, {type: 'queryRendered'}>): Promise<QueriedFeature[]> {
         const jobs: Promise<QueriedFeature[]>[] = [];
         // (The symbol layers of the question whose features are tested with their icon, and the distance in pixels for their text.)
-        const radii = new Map<string, number>();
+        const radii = new Map<string, number>(), shown = new Map<string, {x: number; y: number; box: number[]}[]>();
         for (const [name, src] of Object.entries(this.style.sources)) {
             const mine = c.sets.filter(s => s.source === name);
             if (!mine.length || !isGeometrySource(src)) continue;
@@ -836,8 +836,15 @@ export class Engine {
             // comes back is then tested with its own icon (`underIcon`). Sets with the same rectangle are asked together.
             const boxes = new Map<string, {box: number[]; sets: typeof mine; exact: boolean}>();
             for (const s of mine) {
-                const L = this.layers.find(l => l.id === s.layer), reach = L?.type === 'symbol' ? this.iconReach(L) : null, r = s.radius;
-                if (reach) radii.set(s.layer, r);
+                const L = this.layers.find(l => l.id === s.layer), r = s.radius;
+                let reach: [number, number, number, number] | null = L?.type === 'symbol' ? this.iconReach(L) : null;
+                // (The text of a label can reach farther than its icon: the reach covers both.)
+                const texts = L?.type === 'symbol' ? this.textBoxes(L.id) : [];
+                for (const t of texts) {
+                    const d = [t.box[0] - t.x, t.box[1] - t.y, t.box[2] - t.x, t.box[3] - t.y];
+                    reach = reach ? [Math.min(reach[0], d[0]), Math.min(reach[1], d[1]), Math.max(reach[2], d[2]), Math.max(reach[3], d[3])] : [d[0], d[1], d[2], d[3]];
+                }
+                if (reach) radii.set(s.layer, r), shown.set(s.layer, texts);
                 const box = reach ? [c.box[0] - Math.max(reach[2], r), c.box[1] - Math.max(reach[3], r), c.box[2] - Math.min(reach[0], -r), c.box[3] - Math.min(reach[1], -r)] : c.box, key = box.join();
                 const group = boxes.get(key) ?? {box, sets: [], exact: !!reach};
                 group.sets.push(reach ? {...s, radius: 0} : s);
@@ -854,7 +861,7 @@ export class Engine {
         const seen = new Set<string>();
         return (await Promise.all(jobs)).flat().filter(f => {
             const L = radii.has(f.layer!) && this.layers.find(l => l.id === f.layer);
-            if (L && !this.underIcon(L, f, c.box, radii.get(f.layer!)!)) return false;
+            if (L && !this.underIcon(L, f, c.box, radii.get(f.layer!)!, shown.get(f.layer!)!)) return false;
             if (L && !c.geometry) delete f.geometry;
             if (f.id === undefined) return true;
             const key = `${f.layer}|${f.source}|${f.sourceLayer}|${f.id}`;
@@ -1406,12 +1413,29 @@ export class Engine {
     }
 
     /**
+     * The boxes of the text of the shown labels of a layer at a point (the collision boxes, with `text-padding`), in
+     * pixels of the screen, each with the point of its label on the screen now. (Text along a line is not among them.)
+     */
+    private textBoxes(layer: string) {
+        const out: {x: number; y: number; box: number[]}[] = [];
+        for (const [key, {placed: p, target}] of this.labels) {
+            if (!target || !p.shaped || p.curve || p.src.angle !== null || !key.startsWith(layer + '|')) continue;
+            const [x, y] = this.tr.projectTile(p.tile, p.src.x, p.src.y), s = p.size / EM, w = p.shaped.width * s, h = p.shaped.height * s;
+            const cos = Math.abs(Math.cos(p.angle)), sin = Math.abs(Math.sin(p.angle)), hw = (w * cos + h * sin) / 2 + p.src.padding, hh = (w * sin + h * cos) / 2 + p.src.padding;
+            const cx = p.x + x - p.ax, cy = p.y + y - p.ay;
+            out.push({x, y, box: [cx - hw, cy - hh, cx + hw, cy + hh]});
+        }
+        return out;
+    }
+
+    /**
      * Whether a feature of a symbol layer that a question found is drawn in the rectangle of the question (in pixels
-     * of the screen): its own icon, with its image, size, anchor, offset and turn, is in the rectangle, or its point is
-     * within `radius` pixels of it and the feature has text. (A feature with no point, and an icon whose image the map
+     * of the screen): its own icon, with its image, size, anchor, offset and turn, is in the rectangle, or the box of
+     * its shown text (see `textBoxes`) is in the rectangle, or, when no text of it is
+     * shown at the point, the feature has text and its point is within `radius` pixels of the rectangle. (A feature with no point, and an icon whose image the map
      * does not have, is found within `radius` pixels of its geometry as before.)
      */
-    private underIcon(L: CompiledLayer, q: QueriedFeature, box: number[], radius: number): boolean {
+    private underIcon(L: CompiledLayer, q: QueriedFeature, box: number[], radius: number, texts: {x: number; y: number; box: number[]}[]): boolean {
         const tr = this.tr, z = tr.zoom, g = q.geometry, f: Feature = {type: 1, id: q.id, properties: q.properties};
         const points = g?.type === 'Point' ? [g.coordinates as number[]] : g?.type === 'MultiPoint' ? g.coordinates as number[][] : null;
         const image = this.imageNamed(String(L.p.icon.eval(z, f) ?? '').split(VARIANT)[0].replace(/\{([^}]+)\}/g, (_, k) => f.properties[k] ?? '').trim());
@@ -1419,7 +1443,10 @@ export class Engine {
         const near = !image || !!String(L.p.field.eval(z, f) ?? ''), turn = L.p.iconRotate.eval(z, f) * Math.PI / 180;
         return points.some(([lng, lat]) => {
             const [x, y] = tr.project(lng, lat);
-            if (near && x >= box[0] - radius && x <= box[2] + radius && y >= box[1] - radius && y <= box[3] + radius) return true;
+            // A label that is shown at the point is found on the box of its text, and only there.
+            const mine = texts.filter(t => Math.abs(t.x - x) < 1 && Math.abs(t.y - y) < 1);
+            if (mine.some(t => t.box[0] <= box[2] && t.box[2] >= box[0] && t.box[1] <= box[3] && t.box[3] >= box[1])) return true;
+            if (near && !mine.length && x >= box[0] - radius && x <= box[2] + radius && y >= box[1] - radius && y <= box[3] + radius) return true;
             if (!image) return false;
             // (On a tilted map a near icon is larger and a far icon is smaller, as it is drawn.)
             const depth = tr.pitch ? tr.projectTile({z: 0, x: 0, y: 0, w: 0, key: ''}, mercX(lng) * EXTENT, mercY(lat) * EXTENT)[2] : 0;

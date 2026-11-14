@@ -564,6 +564,20 @@ for (const renderer of ['worker', 'main']) {
         check(`[${renderer}] a question for drawn features finds a feature of a symbol layer where its icon is drawn: for each anchor, for an icon from a buffer and a placed icon, and for a larger icon`,
             reach.bottom === '1010' && reach.top === '0100' && reach.placed === '1010' && reach.large === '110' && reach.own === '3,1|3,1|||2|', JSON.stringify(reach));
 
+        // A feature of a symbol layer with text only is found on the box of its text, as in MapLibre GL JS, and not near
+        // its point outside that box (#199). The text starts at the point (`text-anchor: left`) and is about 200 pixels long.
+        const onText = await page.evaluate(async () => {
+            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), c = t.host.unproject({x: 450, y: 300});
+            t.host.update(t.spec = {...t.spec, style: {...t.style, sources: {...t.style.sources, spot: {type: 'geojson', data: {type: 'Feature', id: 1, properties: {}, geometry: {type: 'Point', coordinates: c}}}},
+                layers: [...t.style.layers.filter(l => l.type !== 'symbol'), {id: 'spot-text', type: 'symbol', source: 'spot', layout: {'text-field': 'A long name for a crag', 'text-size': 20, 'text-anchor': 'left', 'text-max-width': 30, 'text-allow-overlap': true}}]}});
+            await wait(300); await t.settle();
+            const out = [];
+            // On the text near its start, in its middle; then before the point, above the text, and past its end.
+            for (const [dx, dy] of [[20, 0], [150, 5], [-8, 0], [60, -30], [400, 0]]) out.push((await t.host.queryFeatures({x: 450 + dx, y: 300 + dy}, {layers: ['spot-text']})).length);
+            return out.join('');
+        });
+        check(`[${renderer}] a question for drawn features finds a feature of a symbol layer with text only on the box of its text, and not outside it`, onText === '11000', onText);
+
         // A label of a layer below the layer of an icon from a buffer keeps away from the icon, unless the layer of the icon
         // has `icon-ignore-placement`. A label of a layer above it is placed first and shows, as with a placed icon. The
         // text is at the point of the icon. (While the map moves, the engine says how many labels it placed.)
