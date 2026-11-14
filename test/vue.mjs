@@ -54,10 +54,10 @@ const Dot = {render: () => h('circle', {cx: 4, cy: 4, r: radius.value})};
 const t = window.t = {view, markers, layers, images, tone, arrow, twin, full, radius, moves: [], asked: [], clicks: [], loads: 0, views: 0, map: ref(null), pin: ref([-74.0065, 40.7085]), tip: ref(true), closed: 0};
 const make = (create, ssr) => create({render: () => h('div', {id: 'frame', style: 'width:800px;height:500px'}, [h(MapJr, {ref: t.map, mapStyle: style, controls: [navigation(), scale({position: 'bottom-left'})], ...(ssr ? {initialView: view.value, ...(ssr === 'svg' ? {ssr: {width: 800, height: 500}} : {})} : {view: view.value, 'onUpdate:view': v => { t.views++; view.value = v; }, interactiveLayers: layers.value, onClick: e => t.clicks.push(e)}), markers: markers.value, images: images.value, attribution: false, onLoad: () => t.loads++, onMoveend: e => t.moves.push(e.type + ' ' + typeof e.target.getZoom()),
   // An image that the style asks for and the map does not have: the application adds it to the prop images.
-  onStyleimagemissing: e => { t.asked.push(e.id); if (!images.value[e.id]) images.value[e.id] = '<svg viewBox="0 0 4 4"><rect width="4" height="4"/></svg>'; }}, ssr ? undefined : {default: () => [h(MapOverlay, {lngLat: t.pin.value, anchor: 'bottom'}, () => h('b', {id: 'own-pin'}, 'here')), arrow.value ? h(MapImage, {name: 'arrow', params: ['color']}, {default: ({color}) => h('svg', {viewBox: '0 0 8 8'}, [h('path', {d: 'M4 0 8 8 0 8z', fill: color, stroke: tone.value})])}) : null, twin.value ? h(MapImage, {name: 'arrow'}, () => h('svg', {viewBox: '0 0 8 8'}, [h('path', {d: 'M4 0 8 8 0 8z'})])) : null,
+  onStyleimagemissing: e => { t.asked.push(e.id); if (!images.value[e.id]) images.value[e.id] = '<svg viewBox="0 0 4 4"><rect width="4" height="4"/></svg>'; }}, ssr ? undefined : {default: () => [h(MapOverlay, {lngLat: t.pin.value, anchor: 'bottom', 'data-own': '', class: 'own-class', style: 'color: rgb(255, 0, 0)'}, () => h('b', {id: 'own-pin'}, 'here')), arrow.value ? h(MapImage, {name: 'arrow', params: ['color']}, {default: ({color}) => h('svg', {viewBox: '0 0 8 8'}, [h('path', {d: 'M4 0 8 8 0 8z', fill: color, stroke: tone.value})])}) : null, twin.value ? h(MapImage, {name: 'arrow'}, () => h('svg', {viewBox: '0 0 8 8'}, [h('path', {d: 'M4 0 8 8 0 8z'})])) : null,
   h(MapImage, {name: 'maybe'}, () => full.value ? h('svg', {viewBox: '0 0 8 8'}, [h('style', 'p{color:rgb(1,2,3)}'), h('rect', {id: 'in-image', width: 8, height: 8})]) : null),
   h(MapImage, {name: 'nested'}, () => h('svg', {viewBox: '0 0 8 8'}, [h(Dot)])),
-  h(MapImage, {name: 'photo', src: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%224%22 height=%224%22/%3E', width: 4, height: 4}), t.tip.value ? h(MapOverlay, {lngLat: t.pin.value, popup: true, onClose: () => { t.closed++; t.tip.value = false; }}, () => h('span', {id: 'own-tip'}, 'A popup')) : null]})])});
+  h(MapImage, {name: 'photo', src: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%224%22 height=%224%22/%3E', width: 4, height: 4}), t.tip.value ? h(MapOverlay, {lngLat: t.pin.value, popup: true, 'pointer-events-none': '', onClose: () => { t.closed++; t.tip.value = false; }}, () => h('span', {id: 'own-tip'}, 'A popup')) : null]})])});
 if (location.search === '?ssr') make(createSSRApp, 'svg').mount('#app'); else if (location.search === '?bare') make(createSSRApp, 'bare').mount('#app'); else make(createApp, false).mount('#app');
 window.ready = true;`;
 const server = http.createServer((req, res) => {
@@ -184,11 +184,14 @@ try {
         const frame = document.getElementById('frame').getBoundingClientRect(), at = host.project([-74.0065, 40.7085]);
         const pin = where('own-pin'), tip = !!document.querySelector('.map-jr-popup #own-tip');
         t.pin.value = [-74.0, 40.71]; await wait(400);
+        // Attributes that are not props fall through to the element, and the content stays visible after a re-render (#161).
+        const box = document.getElementById('own-pin')?.parentElement, tipShown = !!document.getElementById('own-tip')?.getClientRects().length;
+        const attrsOk = !!box && box.hasAttribute('data-own') && box.classList.contains('own-class') && getComputedStyle(box).color === 'rgb(255, 0, 0)' && box.style.display !== 'none';
         const moved = where('own-pin'), expect = host.project([-74.0, 40.71]);
         document.querySelector('.map-jr-popup-close-button')?.click(); await wait(300);
-        return {pinOk: !!pin && Math.abs(pin[0] - (frame.x + at.x)) < 3 && Math.abs(pin[1] - (frame.y + at.y)) < 3, tip, movedOk: !!moved && Math.abs(moved[0] - (frame.x + expect.x)) < 3, closed: t.closed, tipGone: !document.getElementById('own-tip')};
+        return {pinOk: !!pin && Math.abs(pin[0] - (frame.x + at.x)) < 3 && Math.abs(pin[1] - (frame.y + at.y)) < 3, tip, movedOk: !!moved && Math.abs(moved[0] - (frame.x + expect.x)) < 3, closed: t.closed, tipGone: !document.getElementById('own-tip'), tipShown, attrsOk};
     });
-    check('browser: MapOverlay puts own content and a popup at a position, follows its prop, and closes', overlays.pinOk && overlays.tip && overlays.movedOk && overlays.closed === 1 && overlays.tipGone, JSON.stringify(overlays));
+    check('browser: MapOverlay puts own content and a popup at a position, follows its prop, and closes', overlays.pinOk && overlays.tip && overlays.movedOk && overlays.closed === 1 && overlays.tipGone && overlays.tipShown && overlays.attrsOk, JSON.stringify(overlays));
     await page.evaluate(() => { window.t.pin.value = [-73.5, 41]; }); // (the element of the pin must not be under the click)
     await page.waitForTimeout(400);
     await page.mouse.move(400, 250); await page.waitForTimeout(300); await page.mouse.click(400, 250); await page.waitForTimeout(600);

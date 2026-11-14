@@ -114,17 +114,18 @@ export const MapOverlay = defineComponent({
     },
     emits: ['close'],
     setup(props, {slots}) {
-        const host = useMapHost(), el = shallowRef<HTMLElement | null>(null);
+        const host = useMapHost(), el = shallowRef<HTMLElement | null>(null), shown = shallowRef(false);
         let overlay: Overlay | null = null;
         const options = (): OverlayOptions => ({lngLat: [props.lngLat[0], props.lngLat[1]], anchor: props.anchor, offset: props.offset && [props.offset[0], props.offset[1]], popup: props.popup, onClose: props.onClose});
         // The map starts after this component is there, so the element is put on the map when the two exist.
         watch([host, el, options], ([map, element, o]) => {
             if (!map || !element) return;
-            if (overlay) overlay.update(o); else { overlay = map.overlay(element, o); element.style.display = ''; }
+            if (overlay) overlay.update(o); else { overlay = map.overlay(element, o); shown.value = true; }
         }, {flush: 'post', immediate: true});
         onBeforeUnmount(() => { overlay?.remove(); overlay = null; });
         // (Not shown until it is on the map: on a server, and before the map has started, it has no position.)
-        return () => h('div', {ref: el, style: 'display:none'}, slots.default?.());
+        // The visibility is Vue state, so a re-render with fallthrough attributes does not hide the content again (#161).
+        return () => h('div', {ref: el, style: shown.value ? undefined : 'display:none'}, slots.default?.());
     },
 });
 
