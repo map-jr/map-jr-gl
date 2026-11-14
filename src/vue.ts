@@ -243,6 +243,8 @@ const MapJrComponent = defineComponent({
         minZoom: Number, maxZoom: Number, maxPitch: Number,
         maxBounds: [Array, Object] as PropType<LngLatBoundsInput | null>,
         cursor: String,
+        /** Space in CSS pixels at the sides of the map that the view keeps free: one number, or `{top, right, bottom, left}`. */
+        padding: [Number, Object] as PropType<MapSpec['padding']>,
         /** Controls from `@map-jr/map-jr-gl/controls`: `[navigation(), scale()]`. */
         controls: Array as PropType<ControlSpec[]>,
         renderer: String as PropType<'auto' | 'worker' | 'main'>,
@@ -315,7 +317,7 @@ const MapJrComponent = defineComponent({
         const spec = computed<MapSpec>(() => {
             const out: MapSpec = {
                 style: style.value, extend: extend.value, view: view.value, initialView: props.initialView && toRaw(props.initialView), images: images.value, markers: markers.value, data: data.value, interactiveLayers: layers.value, controls: controls.value,
-                minZoom: props.minZoom, maxZoom: props.maxZoom, maxPitch: props.maxPitch, maxBounds: props.maxBounds && toRaw(props.maxBounds), cursor: props.cursor,
+                minZoom: props.minZoom, maxZoom: props.maxZoom, maxPitch: props.maxPitch, maxBounds: props.maxBounds && toRaw(props.maxBounds), cursor: props.cursor, padding: props.padding && typeof props.padding === 'object' ? toRaw(props.padding) : props.padding,
                 renderer: props.renderer, fonts: props.fonts && toRaw(props.fonts), fontFamily: props.fontFamily, glyphs: props.glyphs, interactive: props.interactive, antialias: props.antialias,
                 attribution: (props.attribution as unknown) === true ? undefined : props.attribution && toRaw(props.attribution), hash: props.hash,
                 onViewChange: view => emit('update:view', view), onClick: event => emit('click', event),

@@ -24,7 +24,7 @@ export interface FeatureQuery { radius: number; zoom?: number; sources?: string[
 export type Command =
     | {type: 'resize'; width: number; height: number; dpr: number}
     | ({type: 'jump'} & CameraOptions)
-    | ({type: 'ease'; duration: number; around?: [number, number]} & CameraOptions)
+    | ({type: 'ease'; duration: number; around?: [number, number]; easing?: number[]} & CameraOptions)
     /** Moves the map by a screen distance. With `x`, `y` (where the pointer now is) the ground first grabbed stays under the pointer, tilt, terrain and all. */
     | {type: 'pan'; dx: number; dy: number; x?: number; y?: number}
     | {type: 'zoom'; delta: number; x: number; y: number}
@@ -35,7 +35,8 @@ export type Command =
     | {type: 'limits'; minZoom: number; maxZoom: number; maxPitch: number; minPitch?: number; maxBounds?: [number, number, number, number] | null}
     /** Throws away a source's tiles (all sources if none is named) and loads them again. */
     | {type: 'refresh'; source?: string}
-    | {type: 'style'; style: ResolvedStyle; reload: boolean; /** A number for each source that changes when the page changes what its tiles are built from. */ versions?: Record<string, number>}
+    | {type: 'style'; style: ResolvedStyle; reload: boolean; /** A number for each source that changes when the page changes what its tiles are built from. */ versions?: Record<string, number>;
+        /** The data of the GeoJSON sources that are new or changed since the last style (the sources in `style` carry no data). */ data?: Record<string, unknown>}
     /**
      * The images that are SVG templates: the slots of each one by name. `changed` has the names whose template is new,
      * other or gone: their variants are dropped and asked for again. `rebuild`: the slots are different, so tiles are built again.
@@ -91,10 +92,10 @@ export type EngineEvent =
  * whole layer are applied at draw time, so changing them needs no new tiles.
  */
 function sourceSignature(style: ResolvedStyle, name: string): [string, string] {
-    const src = style.sources[name] as any, data = src.data;
+    const src = style.sources[name] as any;
     // (3D terrain is not part of this: an elevation tile keeps its heights, so that terrain goes on and off with the
-    // tiles that are there. See `ground`.)
-    const source = JSON.stringify({...src, head: undefined, data: undefined, features: data?.features?.length, kind: data?.type});
+    // tiles that are there. See `ground`. New data of a GeoJSON source is not part of it either: see `newData`.)
+    const source = JSON.stringify({...src, head: undefined, data: undefined});
     if (!isGeometrySource(src)) return [source, '']; // image tiles do not depend on layers
     const layers = style.layers.filter(l => l.source === name).map(l => layerRules(l));
     // Layers that read global state are rebuilt when it changes.
@@ -114,6 +115,15 @@ const CONTOUR_WAIT = 250;
 const PLACE_INTERVAL = 250, FADE = 200;
 /** While the zoom is changing quickly labels crowd together (or thin out) fast, so decide and fade sooner. */
 const ZOOMING_PLACE_INTERVAL = 100, ZOOMING_FADE = 100;
+/**
+ * Says whether the labels are placed again in this frame. `now` and `last` are the times of this frame and of the last
+ * placement, and `cost` is how long the last placement took, all in milliseconds. While the camera moves, the time
+ * between two placements is at least three times the cost: with many labels a placement can take longer than the
+ * interval, and the map would place the labels again in every frame (#122). When the camera has stopped, the usual
+ * interval applies, so that the labels settle soon.
+ */
+export const placeDue = (now: number, last: number, cost: number, zooming: boolean, moving: boolean) =>
+    now - last >= Math.max(zooming ? ZOOMING_PLACE_INTERVAL : PLACE_INTERVAL, moving ? 3 * cost : 0);
 /** Camera feel, matching MapLibre's defaults so the map responds the way people expect. */
 const defaultEasing = bezier(0.25, 0.1, 0.25, 1), inertiaEasing = bezier(0, 0, 0.3, 1);
 const WHEEL_STEP = 4.000244140625, WHEEL_RATE = 1 / 450, TRACKPAD_RATE = 1 / 100;
@@ -147,7 +157,7 @@ export class Engine {
     private seq = 0;
     private moving = false;
 
-    private ease: {from: number[]; to: number[]; start: number; duration: number; around?: [number, number]; anchor?: [number, number]} | null = null;
+    private ease: {from: number[]; to: number[]; start: number; duration: number; around?: [number, number]; anchor?: [number, number]; easing?: number[]} | null = null;
     private wheel: {
         delta: number; kind: 'wheel' | 'trackpad'; x: number; y: number; lastEvent: number;
         target?: number; start?: number; easing?: (t: number) => number; doneAt?: number;
@@ -179,6 +189,8 @@ export class Engine {
     /** How many sprite and font downloads are in progress. */
     private spritePending = 0;
     private lastPlace = -Infinity;
+    /** How long the last placement took, in milliseconds. */
+    private placeCost = 0;
     private placeAngle = 0;
     private placeZoom = 0;
     private fade = FADE;
@@ -503,10 +515,19 @@ export class Engine {
     private sourceLoaded = new Map<string, number>();
     private versions: Record<string, number> = {};
     private sourceSigs = new Map<string, [string, string]>();
+    /** What the tile workers last got from `setStyle` and `setContours`: they get it again only when it changes. */
+    private sentRules?: string;
+    private sentContours?: string;
     /** The global state of this map (see `MapStates`). The tile builders have the feature state. */
     private states: MapStates = {g: {}, f: {}};
 
-    private setStyle(style: ResolvedStyle, reload: boolean) {
+    /**
+     * `data`: the data of the GeoJSON sources that are new or changed. Without it (at the start), the sources of `style`
+     * carry their data. The engine does not keep the data: the tile workers have it.
+     */
+    private setStyle(style: ResolvedStyle, reload: boolean, data?: Record<string, unknown>) {
+        data ??= Object.fromEntries(Object.entries(style.sources).filter(([, s]) => s.type === 'geojson').map(([name, s]) => [name, s.data]));
+        style = {...style, sources: Object.fromEntries(Object.entries(style.sources).map(([name, s]) => [name, s.type === 'geojson' ? {...s, data: undefined} : s]))};
         if (JSON.stringify(style.terrain) !== JSON.stringify(this.style?.terrain)) this.centreGiven = true;
         // Another source shapes the ground, or none: the elevation tiles that are loaded go in or out of the ground.
         const was = this.style?.terrain?.source, now = style.terrain?.source;
@@ -528,15 +549,19 @@ export class Engine {
         if (style.fonts?.length && faces !== this.styleFonts) { this.styleFonts = faces; this.loadFonts(style.fonts); }
         if (style.glyphs !== this.atlas.glyphsURL) { this.atlas.setGlyphs(style.glyphs); this.relabel(); }
         if (reload) {
-            for (const [name, src] of Object.entries(style.sources)) if (src.type === 'geojson') for (const b of this.backends) b.setGeoJSON(name, src.data, src.options, src.maxzoom);
+            // Only the GeoJSON sources whose data or options changed are indexed again (#8).
+            for (const name in data) { const src = style.sources[name]; if (src?.type === 'geojson') for (const b of this.backends) b.setGeoJSON(name, data[name], src.options, src.maxzoom); }
             // The page has read the first bytes of each PMTiles archive: the readers of the tiles do not fetch them again.
             for (const {head} of Object.values(style.sources)) if (head && !heads.has(head.url)) { heads.set(head.url, head.bytes); for (const b of this.backends) b.setHead(head.url, head.bytes); }
-            const contours = Object.fromEntries(Object.entries(style.sources).filter(([, s]) => s.contour).map(([name, s]) => [name, s.contour!]));
-            for (const b of this.backends) b.setContours(contours);
-            for (const b of this.backends) b.setStyle(style.layers, style.state);
+            const contours = Object.fromEntries(Object.entries(style.sources).filter(([, s]) => s.contour).map(([name, s]) => [name, s.contour!])), text = JSON.stringify(contours);
+            if (text !== this.sentContours) { this.sentContours = text; for (const b of this.backends) b.setContours(contours); }
             // Only tiles whose contents the change can affect are touched. A changed source starts over; changed
             // layers rebuild their source's tiles in place, so the old ones stay on screen until the new are ready.
             const sigs = new Map(Object.keys(style.sources).map(name => [name, sourceSignature(style, name)]));
+            // The tile workers build tiles with the rules of the layers. A change that no tile depends on (a paint value
+            // that is the same for the whole layer) does not go to them.
+            const rules = JSON.stringify([...sigs].map(([name, s]) => [name, s[1]]));
+            if (rules !== this.sentRules) { this.sentRules = rules; for (const b of this.backends) b.setStyle(style.layers, style.state); }
             for (const [key, t] of this.tiles) {
                 const name = key.slice(0, key.lastIndexOf('|')), was = this.sourceSigs.get(name), now = sigs.get(name);
                 if (!was || !now || was[0] !== now[0]) this.dropTile(key, t);
@@ -549,8 +574,19 @@ export class Engine {
                 }
             }
             this.sourceSigs = sigs;
+            for (const name in data) if (this.style.sources[name]) this.newData(name);
         }
         this.invalidate();
+    }
+
+    /** New data for one source: keep drawing its current tiles and rebuild them in place, so nothing blinks. */
+    private newData(source: string) {
+        for (const [key, t] of this.tiles) {
+            if (!key.startsWith(source + '|')) continue;
+            // Tiles on screen or still loading are rebuilt in place once they can be; cancelling loads here
+            // would starve a map that is being moved while its data updates.
+            if (t.state === 'loading' || t.used >= this.frameNo - 1) { t.stale = true; t.rev = ++this.tilesVersion; } else this.dropTile(key, t);
+        }
     }
 
     /**
@@ -639,7 +675,7 @@ export class Engine {
                 db = ((db + 180) % 360 + 360) % 360 - 180;
                 this.ease = {
                     from: [mercX(tr.lng), mercY(tr.lat), tr.zoom, tr.bearing, tr.pitch, ...tr.padding], to: [mercX(to.lng), mercY(to.lat), to.zoom, tr.bearing + db, to.pitch, ...(c.padding ?? tr.padding)],
-                    start: performance.now(), duration: Math.max(1, c.duration), around: c.around,
+                    start: performance.now(), duration: Math.max(1, c.duration), around: c.around, easing: c.easing,
                     anchor: c.around ? tr.unproject(c.around[0], c.around[1]) : undefined,
                 };
                 this.centreGiven = !c.around;
@@ -696,7 +732,7 @@ export class Engine {
                 break;
             case 'style':
                 this.versions = c.versions ?? {};
-                this.setStyle(c.style, c.reload);
+                this.setStyle(c.style, c.reload, c.data ?? {});
                 // The tiles that the changed style needs are asked for now, not in the next frame: a page can show a
                 // layer for a moment only (to load one layer after another), and a frame can come later than that.
                 if (!this.exaggeration && this.tr.width) for (const source in this.style.sources) {
@@ -728,15 +764,8 @@ export class Engine {
                 this.placeDirty = true; this.iconsRev++;
                 break;
             case 'geojson': {
-                // New data for one source: keep drawing its current tiles and rebuild them in place, so nothing blinks.
-                if (this.style.sources[c.source]) this.style.sources[c.source].data = c.data;
                 for (const b of this.backends) b.setGeoJSON(c.source, c.data, this.style.sources[c.source]?.options, this.style.sources[c.source]?.maxzoom);
-                for (const [key, t] of this.tiles) {
-                    if (!key.startsWith(c.source + '|')) continue;
-                    // Tiles on screen or still loading are rebuilt in place once they can be; cancelling loads here
-                    // would starve a map that is being moved while its data updates.
-                    if (t.state === 'loading' || t.used >= this.frameNo - 1) { t.stale = true; t.rev = ++this.tilesVersion; } else this.dropTile(key, t);
-                }
+                this.newData(c.source);
                 break;
             }
             case 'featureState':
@@ -926,7 +955,7 @@ export class Engine {
     private animate(now: number): boolean {
         const tr = this.tr;
         if (this.ease) {
-            const e = this.ease, t = Math.min(1, (now - e.start) / e.duration), k = defaultEasing(t);
+            const e = this.ease, t = Math.min(1, (now - e.start) / e.duration), q = e.easing, j = t * 64 | 0, k = q ? q[j] + ((q[j + 1] ?? q[j]) - q[j]) * (t * 64 - j) : defaultEasing(t);
             const v = e.from.map((f, i) => f + (e.to[i] - f) * k);
             tr.zoom = v[2];
             tr.padding = [v[5], v[6], v[7], v[8]];
@@ -1300,7 +1329,7 @@ export class Engine {
 
         // Decide which labels show only every so often; in between they ride along with the map and fade.
         const zooming = Math.abs(tr.zoom - this.placeZoom) > 0.12;
-        const place = this.placeDirty && now - this.lastPlace >= (zooming ? ZOOMING_PLACE_INTERVAL : PLACE_INTERVAL);
+        const place = this.placeDirty && placeDue(now, this.lastPlace, this.placeCost, zooming, cameraChanged);
         if (place) this.fade = zooming ? ZOOMING_FADE : FADE;
         const grid = place ? new CollisionGrid() : null;
         if (place) {
@@ -1308,7 +1337,7 @@ export class Engine {
             this.lastPlace = now;
             this.placeZoom = tr.zoom;
             this.placeAngle = -tr.bearing * Math.PI / 180;
-            const keep = new Set<string>(), resets = this.atlas.resets;
+            const keep = new Set<string>(), resets = this.atlas.resets, start = performance.now();
             let placed = placeLabels(tr, all, this.layers, this.atlas, grid!, this.icon, L => this.reserve(grid!, items, L));
             if (this.atlas.resets !== resets) {
                 // The glyph atlas filled up and was emptied part-way through: earlier labels now point at stale
@@ -1322,6 +1351,7 @@ export class Engine {
                 if (st) { st.placed = p; st.target = 1; } else this.labels.set(p.key, {placed: p, opacity: 0, target: 1});
             }
             for (const [key, st] of this.labels) if (!keep.has(key)) st.target = 0;
+            this.placeCost = performance.now() - start;
         }
         const labels: Placed[] = [];
         let fading = false;

@@ -493,6 +493,7 @@ export class Map {
 
     /** Sends again what an engine gets through commands, and not through the style. A new engine needs it. */
     private resend() {
+        this.geoSent = undefined;
         this.limits();
         if (this.rulesSent) this.sendRequestRules();
         if (this.wantsFrames) this.post({type: 'frames', on: true});
@@ -765,17 +766,33 @@ export class Map {
         this.post({type: 'jump', center: o.center && toLngLat(o.center), zoom: o.zoom, bearing: o.bearing, pitch: o.pitch, padding});
         return this;
     }
-    easeTo(o: CameraInput & {duration?: number; around?: [number, number]}) {
-        // Only plain camera values cross to the engine. Extra options written for MapLibre (such as an `easing`
-        // function, which cannot be sent to a worker) are ignored rather than breaking the call.
-        const {center, zoom, bearing, pitch, around} = o;
+    /**
+     * `offset` ([x, y] or {x, y}, CSS pixels) puts `center` at that distance from the centre of the view, as in
+     * MapLibre GL JS. `easing` maps the time (0 to 1) to the progress (0 to 1); it is sampled into a table of 65
+     * values, because a function cannot be sent to the engine's worker.
+     */
+    easeTo(o: CameraInput & {duration?: number; around?: [number, number]; offset?: PointLike; easing?: (t: number) => number}) {
+        const {zoom, bearing, pitch, around} = o;
+        let center = o.center;
+        const padding = o.padding === undefined ? undefined : paddingOf(o.padding);
+        if (o.offset) {
+            const [ox, oy] = Array.isArray(o.offset) ? o.offset : [o.offset.x, o.offset.y];
+            if (ox || oy) {
+                // The view at the end, with the given centre moved to the offset point (with bearing and pitch).
+                const to = Object.assign(new Transform(), this.tr, padding && {padding});
+                to.set(center, zoom, bearing, pitch);
+                to.setLocationAt(to.lng, to.lat, to.cx + ox, to.cy + oy);
+                center = [to.lng, to.lat];
+            }
+        }
         // A user who asked the system for less motion gets the new view at once (as in MapLibre GL JS, `essential: true`
         // keeps the animation).
         const still = !(o as {essential?: boolean}).essential && matchMedia('(prefers-reduced-motion: reduce)').matches;
         const duration = still ? 0 : o.duration ?? 500;
         // As in MapLibre GL JS, no duration is a jump, so reads right after the call see the new view.
-        if (duration <= 0 && !around) return this.jumpTo(o);
-        this.post({type: 'ease', duration, center: center && toLngLat(center), zoom, bearing, pitch, around, padding: o.padding === undefined ? undefined : paddingOf(o.padding)});
+        if (duration <= 0 && !around) return this.jumpTo({...o, center});
+        const easing = o.easing && Array.from({length: 65}, (_, i) => o.easing!(i / 64));
+        this.post({type: 'ease', duration, center: center && toLngLat(center), zoom, bearing, pitch, around, padding, easing});
         return this;
     }
     stop() { this.post({type: 'stop'}); return this; }
@@ -799,7 +816,9 @@ export class Map {
     setMinPitch(p = 0) { this.tr.minPitch = Math.max(0, Math.min(p, this.tr.maxPitch)); return this.limits(); }
     /** Keeps the map centre inside a box (`[[west, south], [east, north]]`), or lifts the restriction with `null`. */
     setMaxBounds(bounds?: LngLatBoundsInput | null) {
-        const flat = bounds && LngLatBounds.convert(bounds).toArray().flat();
+        // The corners are kept as given (as MapLibre keeps them): a west edge east of the east edge crosses the antimeridian.
+        const flat = bounds && (bounds instanceof LngLatBounds ? bounds.toArray().flat()
+            : bounds.length === 4 ? bounds : [...LngLat.convert(bounds[0]).toArray(), ...LngLat.convert(bounds[1]).toArray()]);
         this.tr.maxBounds = flat ? [flat[0], flat[1], flat[2], flat[3]] : null;
         // The engine clamps its own camera when it gets the limits. This clamps the copy here, so that `getCenter()` is right at once.
         this.tr.constrain();
@@ -853,10 +872,18 @@ export class Map {
         this.styleChanged();
         // Two changes to the style in quick succession are resolved at the same time, and the first can finish last.
         // Only the newest result is used. It reloads the sources if one of the changes that it replaces asked for that.
-        const turn = ++this.restyles;
+        ++this.restyles;
         this.reloadPending ||= reload;
         // (The engine does not have this change yet: its reports of what is loaded are old from now on. See `seq`.)
         this.tilesLoaded = false; this.seq++;
+        // The style is compared and resolved once for all the changes of one task (#8).
+        if (this.restyleQueued) return;
+        this.restyleQueued = true;
+        queueMicrotask(() => { this.restyleQueued = false; if (this.rawStyle && !this.removed) this.resolveRestyle(); });
+    }
+    private restyleQueued = false;
+    private resolveRestyle() {
+        const turn = this.restyles;
         // A source whose rules changed is not loaded until the engine says so. The other sources keep their state.
         const texts: Record<string, string> = {}, was = this.sourceRules, versions: Record<string, number> = {};
         for (const l of this.rawStyle.layers ?? []) if (l.source) texts[l.source] = (texts[l.source] ?? '') + JSON.stringify(layerRules(l, this.toggled.has(l.id)));
@@ -870,15 +897,28 @@ export class Map {
         const partial = this.newStyle || !this.resolved ? undefined : {late: () => { if (this.rawStyle) this.restyle(true); }, fail: this.sourceFailed};
         resolveStyle(this.rawStyle, this.fetchAs('Source'), this.styleBase, partial, this.sourceFailed).then(style => {
             if (turn !== this.restyles) return;
-            reload = this.reloadPending;
+            const reload = this.reloadPending;
             this.reloadPending = false;
             if (Object.keys(this.globalState).length) style.state = {...style.state, ...this.globalState};
+            // The data of a GeoJSON source goes to the engine only when it, or the options of the source, changed (#8).
+            const sent = this.geoSent ??= geoOf(this.resolved), data: Record<string, unknown> = {}, sources: typeof style.sources = {};
+            for (const name of [...sent.keys()]) if (style.sources[name]?.type !== 'geojson') sent.delete(name);
+            for (const [name, src] of Object.entries(style.sources)) {
+                if (src.type !== 'geojson') { sources[name] = src; continue; }
+                const old = sent.get(name), key = JSON.stringify([src.options, src.maxzoom]);
+                if (!old || old.data !== src.data || old.key !== key) {
+                    data[name] = src.data; sent.set(name, {data: src.data, key});
+                    // (This message carries the newest data of a `setData` that waits: it is not sent again.)
+                    if (this.geoPending.get(name) === src.data) this.geoPending.delete(name);
+                }
+                sources[name] = {...src, data: undefined};
+            }
             this.resolved = style;
             this.restyled = turn;
             this.checkProjection();
             if (!(this.options.glyphs ?? !this.options.fonts)) style.glyphs = undefined;
             if (this.toggled.size) style.layers = style.layers.map(l => this.toggled.has(l.id) ? {...l, keep: true} : l);
-            this.post({type: 'style', style, reload, versions});
+            this.post({type: 'style', style: {...style, sources}, reload, versions, data});
             this.sendGeo();
             this.styleEvents(this.newStyle);
             this.newStyle = false;
@@ -1080,9 +1120,21 @@ export class Map {
         this.geoPending.set(id, data);
     }
     private sendGeo() {
-        for (const [source, d] of this.geoPending) if (this.rawStyle?.sources[source]) this.post({type: 'geojson', source, data: d});
+        const sent = this.geoSent ??= geoOf(this.resolved);
+        // (Data from `setData` is always sent, also the same object again: it can have changed in place.)
+        for (const [source, d] of this.geoPending) {
+            if (!this.rawStyle?.sources[source]) continue;
+            this.post({type: 'geojson', source, data: d});
+            const old = sent.get(source);
+            if (old) old.data = d;
+        }
         this.geoPending.clear();
     }
+    /**
+     * The data of each GeoJSON source that the engine has, and its options as text. `undefined`: as in `resolved` (the
+     * style that a new engine starts with; `resend` sets it so).
+     */
+    private geoSent?: globalThis.Map<string, {data: unknown, key: string}>;
     /** The newest data of each GeoJSON source that waits to be sent to the engine at the end of the task. */
     private geoPending = new globalThis.Map<string, unknown>();
     // (A copy of the description: the map keeps the network result of a source by this object, and another map that is
@@ -1642,4 +1694,9 @@ function applyDiff(data: any, diff: GeoJSONDiff, key?: string) {
         for (const p of u.addOrUpdateProperties ?? []) f.properties[p.key] = p.value;
     }
     return {type: 'FeatureCollection', features};
+}
+
+/** The data and the options (as text) of each GeoJSON source of a resolved style: what an engine that starts with it has. */
+function geoOf(style?: ResolvedStyle) {
+    return new globalThis.Map(Object.entries(style?.sources ?? {}).filter(([, s]) => s.type === 'geojson').map(([name, s]) => [name, {data: s.data, key: JSON.stringify([s.options, s.maxzoom])}]));
 }

@@ -412,6 +412,67 @@ for (const mode of ['main', 'worker']) {
         return names;
     });
     check(`[${mode}] GeoJSON source: setData right after addSource and addLayer is kept`, early.join() === 'b', JSON.stringify(early));
+    // setData with the same object again, changed in place or not, sends the data again and the source loads (#8 review).
+    const sameObject = await page.evaluate(async () => {
+        const m = window.map, wait = ms => new Promise(r => setTimeout(r, ms)), x = {type: 'FeatureCollection', features: [{type: 'Feature', properties: {name: 'a'}, geometry: {type: 'Point', coordinates: [-74.008, 40.7085]}}]};
+        m.addSource('same', {type: 'geojson', data: {type: 'FeatureCollection', features: []}});
+        m.addLayer({id: 'same', type: 'circle', source: 'same'});
+        await wait(500);
+        const names = async () => (await m.queryFeatures([-74.008, 40.7085], {sources: ['same'], radius: 5})).map(f => f.properties.name).join();
+        const settled = async () => { for (let i = 0; i < 30 && !m.isSourceLoaded('same'); i++) await wait(100); return m.isSourceLoaded('same'); };
+        m.getSource('same').setData(x);
+        const first = [await settled(), await names()];
+        x.features[0].properties.name = 'b';
+        m.getSource('same').setData(x);
+        const changed = [await settled(), await names()];
+        m.getSource('same').setData(x);
+        const again = [await settled(), await names()];
+        m.removeLayer('same'); m.removeSource('same');
+        return {first, changed, again};
+    });
+    check(`[${mode}] GeoJSON source: setData with the same object again sends its data and the source loads`, sameObject.first.join() === 'true,a' && sameObject.changed.join() === 'true,b' && sameObject.again.join() === 'true,b', JSON.stringify(sameObject));
+    // A paint value that is the same for the whole layer sends no GeoJSON data, and nothing to the tile workers. A new
+    // filter sends the rules of the layers to the tile workers, but not the data (#8).
+    const edit = await page.evaluate(async () => {
+        const m = window.map, count = {geojson: 0, data: 0, rules: 0, contours: 0};
+        const protos = [Worker.prototype, MessagePort.prototype], real = protos.map(p => p.postMessage);
+        protos.forEach((p, i) => { p.postMessage = function (msg, ...rest) {
+            if (msg?.type === 'geojson') count.geojson++;
+            if (msg?.type === 'style' && msg.style) count.data += Object.keys(msg.data ?? {}).length + Object.values(msg.style.sources).filter(s => s.data !== undefined).length;
+            if (msg?.type === 'style' && msg.layers) count.rules++;
+            if (msg?.type === 'contours') count.contours++;
+            return real[i].call(this, msg, ...rest);
+        }; });
+        const settle = () => new Promise(r => setTimeout(r, 300));
+        try {
+            await settle();
+            for (const k in count) count[k] = 0;
+            m.setPaintProperty('zones-fill', 'fill-color', '#0a0');
+            await settle();
+            const paint = {...count};
+            for (const k in count) count[k] = 0;
+            m.setFilter('zones-fill', ['has', 'name']);
+            await settle();
+            const filter = {...count};
+            m.setFilter('zones-fill', null);
+            await settle();
+            // 100 edits in one task compare the rules of the layers once, as one edit does: count the calls of JSON.stringify.
+            const stringify = JSON.stringify;
+            let calls = 0;
+            JSON.stringify = function (...a) { calls++; return stringify.apply(this, a); };
+            try {
+                m.setPaintProperty('zones-fill', 'fill-opacity', 0.4);
+                await Promise.resolve(); await Promise.resolve();
+                const one = calls;
+                calls = 0;
+                for (let i = 0; i < 100; i++) m.setPaintProperty('zones-fill', 'fill-opacity', 0.3 + i / 1000);
+                await Promise.resolve(); await Promise.resolve();
+                return {paint, filter, stringify: {one, hundred: calls}};
+            } finally { JSON.stringify = stringify; await settle(); }
+        } finally { protos.forEach((p, i) => { p.postMessage = real[i]; }); }
+    });
+    check(`[${mode}] A style edit sends no GeoJSON data, and the tile workers get only rules that changed`, Object.values(edit.paint).every(n => n === 0) && edit.filter.geojson === 0 && edit.filter.data === 0 && (mode === 'worker' || edit.filter.rules > 0), JSON.stringify(edit));
+    check(`[${mode}] 100 style edits in one task compare the style once`, edit.stringify.one > 0 && edit.stringify.hundred < edit.stringify.one * 2, JSON.stringify(edit.stringify));
     await page.evaluate(() => { window.map.removeLayer('zones-fill'); window.map.removeSource('zones'); });
 
     // DOM marker and popup with MapLibre's API.
@@ -991,6 +1052,35 @@ for (const mode of ['main', 'worker']) {
         });
         check('maplibre-compat: logoPosition, validate, visualizePitch, the container of FullscreenControl and speed/curve of flyTo each warn once',
             Object.values(r).every(n => n === 1), JSON.stringify(r));
+    }
+    // #43: easeTo and flyTo of maplibre-compat use `offset` (also with bearing and pitch) and a custom `easing`, without a warning.
+    {
+        const r = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const warns = [], warn = console.warn;
+            console.warn = (...a) => { warns.push(String(a[0])); };
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:400px;height:300px'}));
+            const m = new mod.Map({container: el, center: [0, 0], zoom: 3, attributionControl: false, style: {version: 8, sources: {}, layers: []}});
+            await new Promise(res => m.once('load', res));
+            const out = {};
+            try {
+                m.easeTo({center: [10, 20], offset: [0, -100], bearing: 90, pitch: 30, duration: 0});
+                out.jump = m.project([10, 20]);
+                m.easeTo({center: [10, 20], bearing: 0, pitch: 0, duration: 0});
+                // A step: nothing moves in the first half of the time, then the map is at the end.
+                m.flyTo({center: [-30, 5], offset: {x: 50, y: 0}, easing: t => t < 0.5 ? 0 : 1, duration: 1600});
+                await new Promise(res => setTimeout(res, 400));
+                out.early = m.getCenter().lng;
+                await new Promise(res => m.once('moveend', res));
+                out.end = m.project([-30, 5]);
+            } finally { console.warn = warn; }
+            out.warns = warns.filter(w => w.startsWith('[map-jr-gl]') && /offset|easing/.test(w)).length;
+            m.remove(); el.remove();
+            return out;
+        });
+        const near = (p, x, y) => Math.abs(p.x - x) < 1 && Math.abs(p.y - y) < 1;
+        check(`maplibre-compat (${mode}): easeTo and flyTo put the center at the offset and use a custom easing (#43)`,
+            near(r.jump, 200, 50) && Math.abs(r.early - 10) < 1e-6 && near(r.end, 250, 150) && r.warns === 0, JSON.stringify(r));
     }
     // #208: fitBounds warns once for speed, curve and linear; Marker takes offset as {x, y}; getImage gives RGBA pixels.
     if (mode === 'main') {
@@ -1711,6 +1801,61 @@ for (const mode of ['main', 'worker']) {
         const ml = (a, b) => a.every((v, i) => Math.abs(v - b[i]) < 1e-3);
         check('[main] maplibre-compat: maxBounds keeps the edges of the view inside, raises the zoom when the view is larger, and counts the padding, as MapLibre does (#280)',
             ml(cam.jumped, [5, 47.8094]) && ml(cam.eased, [5, 47.8094, 4.3987]) && ml(cam.turned, [8.3521, 49.2886, 6]) && ml(cam.easedEdge, [1.6479, 40.8364, 6]) && ml(cam.padded, [8.9014, 49.4674, 6]), JSON.stringify(cam));
+        // #309: maxBounds whose west edge is east of the east edge cross the antimeridian. The same jumps and drags, in
+        // MapLibre GL JS (served at /ml/), in the compat entry and in the main API, end at the same centre.
+        const anti = await page.evaluate(async () => {
+            const ml = await import('/ml/maplibre-gl.mjs');
+            ml.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const compat = await import('/dist/map-jr-gl-maplibre-compat.js'), lib = await import('/dist/map-jr-gl.js');
+            const style = {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, maxBounds = [[150, -50], [-120, 10]];
+            const jumps = [[-170, -20], [100, 0], [-100, 0], [190, -60], [-200, 30]];
+            const run = async make => {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+                const m = await make(el);
+                const at = () => [m.getCenter().lng, m.getCenter().lat];
+                const out = [];
+                for (const c of jumps) { m.jumpTo({center: c, zoom: 3}); out.push(at()); }
+                // Narrower bounds (20 degrees, 455 pixels at zoom 4): a drag across the antimeridian stops at the edge in
+                // both libraries, whatever their drag does with the first and the last pixels.
+                m.setMaxBounds([[170, -50], [-170, 10]]);
+                const c = m.getCanvas(), r = c.getBoundingClientRect();
+                const ptr = (type, x) => c.dispatchEvent(new PointerEvent(type, {bubbles: true, clientX: r.left + x, clientY: r.top + 100, pointerId: 1, pointerType: 'mouse', button: 0, buttons: type === 'pointerup' ? 0 : 1, isPrimary: true}));
+                const mouse = (type, x) => c.dispatchEvent(new MouseEvent(type, {bubbles: true, clientX: r.left + x, clientY: r.top + 100, button: 0, buttons: type === 'mouseup' ? 0 : 1}));
+                for (const [lng, from, to] of [[177, 280, 20], [-177, 20, 280]]) {
+                    m.jumpTo({center: [lng, -20], zoom: 4});
+                    await new Promise(res => setTimeout(res, 50));
+                    ptr('pointerdown', from); mouse('mousedown', from);
+                    for (let i = 1; i <= 10; i++) { const x = from + (to - from) * i / 10; ptr('pointermove', x); mouse('mousemove', x); await new Promise(res => setTimeout(res, 40)); }
+                    ptr('pointerup', to); mouse('mouseup', to);
+                    await new Promise(res => setTimeout(res, 200));
+                    out.push(at());
+                }
+                m.remove(); el.remove();
+                return out;
+            };
+            const loaded = m => new Promise(r => m.loaded?.() ? r(m) : m.once('load', () => r(m)));
+            const opts = el => ({container: el, style, maxBounds, center: [170, -20], zoom: 3, fadeDuration: 0, dragPan: {inertia: false}});
+            const mlr = await run(el => loaded(new ml.Map(opts(el))));
+            const cr = await run(el => loaded(new compat.Map({...opts(el), renderer: 'main'})));
+            // The main API: the description carries the bounds, and the view moves by jumps (no drag here).
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+            const host = lib.createMap(el, {style, maxBounds, view: {center: [170, -20], zoom: 3}, renderer: 'main'});
+            await new Promise(r => host.state.subscribe(s => s.loaded, l => l && r()));
+            const hr = [];
+            for (const c of jumps) {
+                host.update({style, maxBounds, view: {center: c, zoom: 3}, renderer: 'main'});
+                // (Each expected centre differs from the one before: wait up to 2 s for the state to report it.)
+                const was = host.state.get().view.center[0];
+                for (let i = 0; i < 40 && host.state.get().view.center[0] === was; i++) await new Promise(r => setTimeout(r, 50));
+                hr.push(host.state.get().view.center);
+            }
+            host.destroy(); el.remove();
+            return {ml: mlr, compat: cr, main: hr};
+        });
+        const sameLng = (a, b) => Math.abs(((a - b) % 360 + 540) % 360 - 180) < 1e-3;
+        const same = (a, b) => a.length === b.length && a.every((p, i) => sameLng(p[0], b[i][0]) && Math.abs(p[1] - b[i][1]) < 1e-3);
+        check('[main] maplibre-compat and createMap: maxBounds that cross the antimeridian keep the view where MapLibre keeps it, after a jump and a drag (#309)',
+            same(anti.compat, anti.ml) && same(anti.main, anti.ml.slice(0, 5)), JSON.stringify(anti));
         // #261: the eventData argument of a camera method is on the events of that move, and not on the next move.
         const tagged = await page.evaluate(async () => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
