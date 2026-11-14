@@ -131,8 +131,8 @@ export interface MapSetup {
     /**
      * Which tiles the map requests before they are in view. `true` (the default): when the destination of a movement is
      * known (`easeTo`, `flyTo`, `fitBounds`, the inertia after a drag), the map requests up to 6 tiles of each source of
-     * the view at that destination when the movement starts. A newer movement cancels the requests of an older one.
-     * `'ahead'`: the same, and during a drag also the tiles one tile size (256 CSS pixels) ahead of the view, in the
+     * the view at that destination when the movement starts. A newer movement stops these requests; tiles on their way finish.
+     * `'ahead'`: the same, and during a drag also the tiles 512 CSS pixels (the size of a usual vector tile) ahead of the view, in the
      * direction of the drag. `false`: only the tiles of the view and its overview, for applications that must save data.
      * The default is `true`.
      */

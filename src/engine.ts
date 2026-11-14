@@ -193,6 +193,8 @@ export class Engine {
     private prefetch: number;
     /** The view at the end of the movement under way, or ahead of a drag: its tiles are requested early (#361). */
     private target: Transform | null = null;
+    /** Tiles requested for a target that are on their way: they finish when a newer movement replaces it (#361). */
+    private early = new Set<string>();
     /** Where and when the last drag step was, for the ring ahead of a drag. */
     private dragStep: {dx: number; dy: number; at: number} | null = null;
     /** When the engine started. A map that never becomes idle (a long animation, a style that keeps repainting) requests
@@ -751,7 +753,7 @@ export class Engine {
                 if (this.prefetch > 1 && d) {
                     const ahead = new Transform();
                     Object.assign(ahead, tr);
-                    ahead.set(tr.unprojectFlat(tr.cx - c.dx / d * 256, tr.cy - c.dy / d * 256));
+                    ahead.set(tr.unprojectFlat(tr.cx - c.dx / d * 512, tr.cy - c.dy / d * 512));
                     this.aim(ahead);
                     this.dragStep = {dx: c.dx, dy: c.dy, at: now};
                 }
@@ -1374,8 +1376,8 @@ export class Engine {
                 }
             }
             // The tiles of the view at the end of the movement under way, requested at its start (#361). A few at most per
-            // source, the nearest to the centre of that view first; a tile that is not on its way when a newer movement
-            // starts is not requested, and one on its way that no view needs then is cancelled (as any tile of the view).
+            // source, the nearest to the centre of that view first. When a newer movement starts, the tiles of the older one
+            // that were not requested yet are not requested, and those on their way finish and stay in the cache.
             const aim = this.target;
             if (aim) {
                 let n = 0;
@@ -1385,7 +1387,7 @@ export class Engine {
                     if (++n > PREFETCH_TILES) break;
                     wanted.add(key);
                     const t = this.tiles.get(key);
-                    if (!t) { this.request(source, id, key); const made = this.tiles.get(key); if (made) made.used = -1; } else if (t.state !== 'loading') t.used = frameNo;
+                    if (!t) { this.request(source, id, key); const made = this.tiles.get(key); if (made) { made.used = -1; this.early.add(key); } } else if (t.state !== 'loading') t.used = frameNo;
                 }
             }
             const list = renderItems(tr, ideal, k => {
@@ -1403,8 +1405,9 @@ export class Engine {
             items.set(source, list);
             all.push(...list);
         }
+        for (const key of this.early) if (this.tiles.get(key)?.state !== 'loading') this.early.delete(key);
         for (const [key, t] of this.tiles) {
-            if (t.state === 'loading' && !wanted.has(key)) this.dropTile(key, t);
+            if (t.state === 'loading' && !wanted.has(key) && !this.early.has(key)) this.dropTile(key, t);
         }
         // Tell the page when the tiles of a source are all there (the map can be busy with other sources still).
         for (const source in this.style.sources) {
