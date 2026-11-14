@@ -164,7 +164,8 @@ sources and layers that the application added through `host.map` stay. These cha
 so the style from a URL is requested again and the additions through `host.map` are lost:
 
 - a change of `terrain`;
-- a source that changes, or a new source with the id of a source of the style;
+- a source that changes, or a source of `extend` (new or removed) with the id of a source of the style;
+- a new layer while the description has `markers`;
 - a layer whose `type`, `source`, `source-layer`, `minzoom`, `maxzoom` or `before` changes;
 - layers that stay but change their order in `extend.layers`, or a new layer that is earlier in `extend.layers` than a layer that stays;
 - a change of `style` or of a marker layer in the same `update()`.

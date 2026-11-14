@@ -273,13 +273,18 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
     const check = (kind: number, a?: unknown, b?: unknown) => { if (__DEV__) checks().then(m => m.check(checked, kind, a, b), () => {}); };
     // The data that each source has from the description: the GeoJSON of `data`, and the markers of a marker layer.
     const sent = new globalThis.Map<string, unknown>();
+    // (The layers go to the style as copies: the map writes its edits into the style, and the description stays as the application gave it.)
+    const copy = <T>(v: T): T => JSON.parse(JSON.stringify(v));
+    // The sources of the base style: an extend source with one of these ids replaces it, and only a new style gives it back.
+    let baseSources: object = {};
     const restyle = (next: MapSpec) => { styled = false; map.setStyle(next.style, {transformStyle: (_, style) => {
         styled = true;
+        baseSources = style.sources ?? {};
         // (The sources of the new style have no data of the description yet: data that was given since `restyle` went to
         // the sources of the style before. It is given again when the new style is there: see `giveData`.)
         sent.clear();
         check(4, style, next.extend);
-        return withMarkers(extended(style, next.extend), next.markers);
+        return withMarkers(extended(style, next.extend && {...next.extend, layers: next.extend.layers && copy(next.extend.layers)}), next.markers);
     }}); };
     restyle(spec);
     // (The height of the container is read after a second, so that a container which gets its height a moment later gives no warning.)
@@ -372,6 +377,9 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
         const kept = is.filter(l => was.some(w => w.id === l.id)), keys = ['paint', 'layout', 'filter', 'id'];
         if (differ(next.terrain, before.terrain) || ids(is, was) !== ids(was, is) || is.some((l, i) => !kept.includes(l) && i < is.indexOf(kept[kept.length - 1]))) return false;
         for (const id in ns) if (id in os ? differ(ns[id], os[id]) : map.getSource(id)) return false;
+        for (const id in {...ns, ...os}) if (Object.hasOwn(baseSources, id)) return false;
+        // (A new layer would go above the layers of `markers`, which a new style puts on top.)
+        if (now.markers?.length && kept.length < is.length) return false;
         for (const l of kept) { const w = was.find(x => x.id === l.id)!; if (Object.keys({...l, ...w}).some(k => !keys.includes(k) && differ(l[k], w[k]))) return false; }
         for (const w of was) if (!kept.some(l => l.id === w.id)) map.removeLayer(w.id);
         for (const id in os) if (!(id in ns)) { sent.delete(id); map.removeSource(id); }
@@ -384,7 +392,7 @@ export function createMap(container: HTMLElement | string, spec: MapSpec): MapHo
             }
             if (differ(l.filter, w.filter)) map.setFilter(l.id, l.filter);
         }
-        for (const {before: at, ...l} of is) if (!kept.some(k => k.id === l.id)) map.addLayer(l as {id: string}, at && map.getLayer(at) ? at : undefined);
+        for (const {before: at, ...l} of is) if (!kept.some(k => k.id === l.id)) map.addLayer(copy(l) as {id: string}, at && map.getLayer(at) ? at : undefined);
         giveData();
         return true;
     };
