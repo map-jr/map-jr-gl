@@ -994,8 +994,15 @@ export class Map {
             // A later change of the style sends the data of the source again: it must be this data, not the first answer.
             keep(raw, url, data);
         }
-        this.post({type: 'geojson', source: id, data});
+        // (Calls in the same task send only the last data of each source: the tile workers index it once.)
+        if (!this.geoPending.size) queueMicrotask(() => {
+            for (const [source, d] of this.geoPending) if (this.rawStyle?.sources[source]) this.post({type: 'geojson', source, data: d});
+            this.geoPending.clear();
+        });
+        this.geoPending.set(id, data);
     }
+    /** The newest data of each GeoJSON source that waits to be sent to the engine at the end of the task. */
+    private geoPending = new globalThis.Map<string, unknown>();
     // (A copy of the description: the map keeps the network result of a source by this object, and another map that is
     // given the same object must have its own. The data of a GeoJSON source is not copied.)
     addSource(id: string, source: object) { return this.editStyle(s => { s.sources[id] = {...source}; }); }

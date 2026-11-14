@@ -331,6 +331,27 @@ for (const mode of ['main', 'worker']) {
         } finally { window.fetch = real; }
     });
     check(`[${mode}] GeoJSON source with a URL: a newer setData aborts the older request, and getData makes no request`, urlReq.aborted === true && urlReq.requests === 1 && urlReq.names === 'second,second', JSON.stringify(urlReq));
+    // 50 calls of setData in a loop send only the last data to the tile workers (as many messages as one call), and
+    // every promise resolves (#28).
+    const many = await page.evaluate(async () => {
+        const m = window.map, source = m.getSource('zones'), point = name => ({type: 'Feature', properties: {name}, geometry: {type: 'Point', coordinates: [-74.008, 40.7085]}});
+        let sent = 0;
+        const protos = [Worker.prototype, MessagePort.prototype], real = protos.map(p => p.postMessage);
+        protos.forEach((p, i) => { p.postMessage = function (msg, ...rest) { if (msg?.type === 'geojson' && msg.source === 'zones') sent++; return real[i].call(this, msg, ...rest); }; });
+        try {
+            await source.setData({type: 'FeatureCollection', features: [point('single')]});
+            await new Promise(r => setTimeout(r, 100));
+            const one = sent;
+            sent = 0;
+            const calls = [];
+            for (let i = 0; i < 50; i++) calls.push(source.setData({type: 'FeatureCollection', features: [point('n' + i)]}));
+            await Promise.all(calls);
+            await new Promise(r => setTimeout(r, 300));
+            const drawn = (await m.queryFeatures([-74.008, 40.7085], {sources: ['zones'], radius: 5})).map(f => f.properties.name);
+            return {one, fifty: sent, drawn};
+        } finally { protos.forEach((p, i) => { p.postMessage = real[i]; }); }
+    });
+    check(`[${mode}] GeoJSON source: 50 calls of setData in a loop send only the last data`, many.one > 0 && many.fifty === many.one && many.drawn.join() === 'n49', JSON.stringify(many));
     await page.evaluate(() => { window.map.removeLayer('zones-fill'); window.map.removeSource('zones'); });
 
     // DOM marker and popup with MapLibre's API.
