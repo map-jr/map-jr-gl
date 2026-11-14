@@ -151,14 +151,31 @@ export default defineConfig({
 ```
 
 If an alias maps `maplibre-gl` to the compat entry (see
-[Change from MapLibre GL JS](../README.md#change-from-maplibre-gl-js)), Vite caches the library under the name
-`maplibre-gl`. Then exclude that name too: `optimizeDeps: {exclude: ['@map-jr/map-jr-gl', 'maplibre-gl']}`.
+[Change from MapLibre GL JS](../README.md#change-from-maplibre-gl-js)) and a wrapper or plugin imports `maplibre-gl`,
+Vite caches the library under the name `maplibre-gl`. Excluding `@map-jr/map-jr-gl` is then not enough: the worker
+file returns 404, and the map draws on the main thread. Exclude both names:
+
+```js
+// vite.config.js
+import {defineConfig} from 'vite';
+
+export default defineConfig({
+  resolve: {alias: [{find: /^maplibre-gl$/, replacement: '@map-jr/map-jr-gl/maplibre-compat'}]},
+  optimizeDeps: {exclude: ['@map-jr/map-jr-gl', 'maplibre-gl']},
+});
+```
+
+The module for Nuxt excludes `@map-jr/map-jr-gl` by itself, but not `maplibre-gl`. With the alias in a Nuxt app, add
+`vite: {optimizeDeps: {exclude: ['maplibre-gl']}}` to `nuxt.config`.
+
+The field reports of #218 needed both names with a wrapper in Vite 5, rolldown-vite 7 and Vite 8. An app that
+imports the compat entry directly, with no wrapper, needed no exclude in Vite 8 (#220).
 
 | Vite | Needs `optimizeDeps.exclude` in development |
 |---|---|
 | 5.4.21 | Yes (ran: without it, the renderer is `'main'`; with it, `'worker'`) |
 | 6, 7 | Not checked. Add the setting if you see the warning. |
-| 8.3.8 | No (ran: the renderer is `'worker'` without it, also with the alias). The field test of #187 saw the same with 8.3.4 and 8.3.7. |
+| 8.3.8 | No for the library itself (ran: the renderer is `'worker'` without it, also with the alias and no wrapper). With a wrapper that imports `maplibre-gl` through the alias, yes (field report of #218). The field test of #187 saw the same with 8.3.4 and 8.3.7. |
 
 A production build (`vite build`) does not have this problem.
 
