@@ -91,7 +91,7 @@ function boxAround(x: number, y: number, w: number, h: number, angle: number, pa
 const rx_ = (anchor: string, r: number) => anchor.includes('-') ? r / Math.SQRT2 : r;
 
 export function placeLabels(
-    tr: Transform, items: RenderItem<{labels: Record<string, LabelSrc[]>}>[], layers: CompiledLayer[], shaper: Shaper, grid: CollisionGrid,
+    tr: Transform, items: RenderItem<{labels: Record<string, LabelSrc[]>; z?: number}>[], layers: CompiledLayer[], shaper: Shaper, grid: CollisionGrid,
     icons?: IconLookup,
     /** Called when the placement comes to a symbol layer, before its labels: for what takes space with that layer and is not placed here. */
     before?: (layer: CompiledLayer) => void,
@@ -119,7 +119,7 @@ export function placeLabels(
             runs = all.sort((a, b) => a.labels[0].key! - b.labels[0].key!); // (the sort keeps the order of equal keys)
         }
         for (const {it, labels, no: itemNo} of runs) {
-            const t = Math.min(1, Math.max(0, tr.zoom - it.id.z));
+            const t = Math.min(1, Math.max(0, tr.zoom - (it.tile.z ?? it.id.z)));
             for (const l of labels) {
                 if (l.x < it.clip[0] || l.y < it.clip[1] || l.x >= it.clip[2] || l.y >= it.clip[3]) continue;
                 const [ax, ay, depth] = tr.projectTile(it.id, l.x, l.y);

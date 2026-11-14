@@ -1503,7 +1503,7 @@ export class Engine {
             for (const it of items.get(L.source!) ?? []) {
                 const b = it.tile.icons?.[L.id]?.src;
                 if (!b?.avoid) continue;
-                const images = b.names.map(this.icon), t = clamp(zoom - it.id.z, 0, 1), pad = L.p.iconPadding.eval(zoom), fixed = L.p.iconSize.dd ? 1 : L.p.iconSize.eval(zoom), turn = L.p.iconRotate.dd ? 0 : L.p.iconRotate.eval(zoom) * Math.PI / 180;
+                const images = b.names.map(this.icon), t = clamp(zoom - (it.tile.z ?? it.id.z), 0, 1), pad = L.p.iconPadding.eval(zoom), fixed = L.p.iconSize.dd ? 1 : L.p.iconSize.eval(zoom), turn = L.p.iconRotate.dd ? 0 : L.p.iconRotate.eval(zoom) * Math.PI / 180;
                 for (let i = 0; i < b.name.length; i++) {
                     const m = images[b.name[i]], x = b.pos[i * 2], y = b.pos[i * 2 + 1];
                     if (!m || x < it.clip[0] || y < it.clip[1] || x >= it.clip[2] || y >= it.clip[3]) continue;

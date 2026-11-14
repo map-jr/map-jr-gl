@@ -90,14 +90,15 @@ export interface IconBatch {
     /** Labels keep away from these icons (`icon-ignore-placement` is not set): the map gives each one its space when it places the labels. */
     avoid?: boolean;
 }
-export interface TileIR { layers: Record<string, Batch>; labels: Record<string, LabelSrc[]>; icons?: Record<string, IconBatch> }
+/** `z`: the zoom that the sizes of the tile were found at, when it is not the zoom of the tile (see `buildTile`). */
+export interface TileIR { layers: Record<string, Batch>; labels: Record<string, LabelSrc[]>; icons?: Record<string, IconBatch>; z?: number }
 
 export type GLBatch =
     | {type: 'fill'; pos: Int16Array; idx: Uint32Array; color?: Uint8Array; /** Polygon edges as vertex index pairs, drawn as one-pixel antialiased lines. */ edges?: Uint32Array}
     | {type: 'extrusion'; v: Float32Array; idx: Uint32Array; color?: Uint8Array}
     | {type: 'line'; /** Packed vertices, LINE_VERTEX bytes each: see tessellateLine. */ v: Uint8Array; idx: Uint32Array; color?: Uint8Array; width?: Float32Array; width1?: Float32Array}
     | {type: 'circle'; /** x, y, cornerX, cornerY per vertex */ pos: Int16Array; idx: Uint32Array; color?: Uint8Array; radius?: Float32Array; radius1?: Float32Array};
-export interface TileGL { layers: Record<string, GLBatch>; labels: Record<string, LabelSrc[]>; icons?: Record<string, IconBatch> }
+export interface TileGL { layers: Record<string, GLBatch>; labels: Record<string, LabelSrc[]>; icons?: Record<string, IconBatch>; z?: number }
 /** A raster tile as the SVG backend sees it: just somewhere to load the image from. */
 export interface TileImage { href: string }
 
@@ -125,11 +126,13 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
         if (!g) { g = {coords: [], ringEnds: []}; f.geometry(EXTENT, g.coords, g.ringEnds); geomCache.set(f, g); }
         return g;
     };
-    const out: TileIR = {layers: {}, labels: {}};
-    const ctx = {zoom: z, f: null as Feature | null};
     // A size is found at this zoom and at the next, and the map mixes the two. A tile that is built for the zoom of the
-    // map (see `buildZoom` in the engine) has the correct size already.
-    const z1 = z % 1 ? z : z + 1;
+    // map (see `buildZoom` in the engine) has the correct size already. A tile of the deepest level that is shown at a
+    // higher zoom finds its sizes at that zoom (`zs`), because the zoom part of a size that also reads the feature
+    // continues past the level of the tile.
+    const zs = overscaled && overscaled > z ? overscaled : z, z1 = zs % 1 ? zs : zs + 1;
+    const out: TileIR = {layers: {}, labels: {}, z: zs};
+    const ctx = {zoom: z, f: null as Feature | null};
 
     for (const L of layers) {
         if (L.type === 'background' || !L.visible && !L.keep) continue;
@@ -175,7 +178,7 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
                 // (The flag is named for the usual case at a point: the symbol stays upright when the map turns.)
                 const turns = (alignment: unknown) => along ? alignment === 'viewport' : alignment !== 'map';
                 const base = {
-                    text, size0: p.size.eval(z, f), size1: p.size.eval(z1, f),
+                    text, size0: p.size.eval(zs, f), size1: p.size.eval(z1, f),
                     color: [color[0], color[1], color[2], color[3] * op] as RGBA,
                     halo: [haloColor[0], haloColor[1], haloColor[2], haloColor[3] * op] as RGBA, haloWidth: p.haloWidth.eval(z, f), haloBlur: p.haloBlur.eval(z, f), rotate: p.rotate.eval(z, f) * Math.PI / 180, justify: justification(p.justify.eval(z, f), p.anchor.eval(z, f)), font: fontStyle(p.font.eval(z, f)),
                     maxWidth: p.maxWidth.eval(z, f), spacing: p.spacing.eval(z, f), offset: p.offset.eval(z, f), anchor: p.anchor.eval(z, f),
@@ -183,7 +186,7 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
                     upright: turns(p.textAlign.eval(z, f)), textOptional: !!p.textOptional.eval(z, f), ignore: !!p.ignore.eval(z, f),
                     varAnchor: p.varAnchor.eval(z, f), radial: p.radial.eval(z, f), varOffset: p.varOffset.eval(z, f), maxAngle: p.maxAngle.eval(z, f), justifyAuto: p.justify.eval(z, f) === 'auto',
                     icon: iconName ? {
-                        name: iconName, size: p.iconSize.eval(z, f), size1: p.iconSize.eval(z1, f), opacity: p.iconOpacity.dd ? p.iconOpacity.eval(z, f) : 1, anchor: p.iconAnchor.eval(z, f), color: p.iconColor.eval(z, f), halo: p.iconHalo.eval(z, f), haloWidth: p.iconHaloWidth.eval(z, f), offset: p.iconOffset.eval(z, f), rotate: p.iconRotate.eval(z, f),
+                        name: iconName, size: p.iconSize.eval(zs, f), size1: p.iconSize.eval(z1, f), opacity: p.iconOpacity.dd ? p.iconOpacity.eval(z, f) : 1, anchor: p.iconAnchor.eval(z, f), color: p.iconColor.eval(z, f), halo: p.iconHalo.eval(z, f), haloWidth: p.iconHaloWidth.eval(z, f), offset: p.iconOffset.eval(z, f), rotate: p.iconRotate.eval(z, f),
                         fit: p.iconFit.eval(z, f), fitPad: p.iconFitPad.eval(z, f), overlap: overlaps(p.iconOverlapMode.eval(z, f), p.iconOverlap.eval(z, f)), ignore: !!p.iconIgnore.eval(z, f), padding: p.iconPadding.eval(z, f), translate: p.iconTranslate.eval(z, f),
                         optional: !!p.iconOptional.eval(z, f), upright: turns(p.iconAlign.eval(z, f)),
                     } : undefined,
@@ -292,7 +295,7 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
             featEnds.push(ringEnds.length);
             if (ddColor) pushColor(color, p.color.dd ? p.color.eval(z, f) : WHITE, p.opacity.dd ? p.opacity.eval(z, f) : 1);
             if (scalarProp?.dd) {
-                const now = scalarProp.eval(z, f), next = heat ? now : scalarProp.eval(z1, f);
+                const now = scalarProp.eval(zs, f), next = heat ? now : scalarProp.eval(z1, f);
                 scalar.push(now); scalar1.push(next);
                 if (next !== now) grows = true;
             }
@@ -635,7 +638,7 @@ function tessellateLine(b: Batch): GLBatch | null {
 }
 
 export function toGL(ir: TileIR): {tile: TileGL; transfer: ArrayBuffer[]} {
-    const tile: TileGL = {layers: {}, labels: ir.labels, icons: ir.icons}, transfer = new Set<ArrayBuffer>();
+    const tile: TileGL = {layers: {}, labels: ir.labels, icons: ir.icons, z: ir.z}, transfer = new Set<ArrayBuffer>();
     for (const b of Object.values(ir.icons ?? {})) for (const a of Object.values(b)) if (ArrayBuffer.isView(a)) transfer.add(a.buffer as ArrayBuffer);
     for (const id in ir.layers) {
         const b = ir.layers[id];
