@@ -194,40 +194,22 @@ export interface TileBackend {
 }
 
 /**
- * Gives the tile workers the jobs of one engine. A new job starts on the worker with the fewest jobs in progress (the
- * first of equals), and waits here while each worker has `limit` jobs, so that the worker that is free first takes
- * it (#324). Round robin gave the next tile to a worker that was still building a dense one while another sat idle.
- * The counts belong to the engine and end with it. A map does not see the jobs of another map on the same workers.
+ * Counts the jobs of one engine on each tile worker, so that a new job goes to the worker with the fewest jobs in
+ * progress (the first of equals) instead of the next one in turn (#324). No job waits here: every download starts at
+ * once. The counts belong to the engine and end with it. A map does not see the jobs of another map on the same workers.
  */
 export class Workload {
     private busy: number[];
-    private waiting: (() => void)[] = [];
-    constructor(workers: number, private limit = Infinity) { this.busy = Array(workers).fill(0); }
+    constructor(workers: number) { this.busy = Array(workers).fill(0); }
     /** The worker with the fewest jobs in progress. */
     pick() { let best = 0; for (let i = 1; i < this.busy.length; i++) if (this.busy[i] < this.busy[best]) best = i; return best; }
     /** Counts a job on worker `i` until it is answered or fails. */
     track<T>(i: number, job: Promise<T>) {
         this.busy[i]++;
-        const done = () => { this.busy[i]--; this.next(); };
+        const done = () => { this.busy[i]--; };
         job.then(done, done);
         return job;
     }
-    /**
-     * Starts `start` on a worker when one is free, or at once with `now` (a tile of a GeoJSON source needs no download,
-     * and the map shows it first). `cancel` drops a job that still waits; it then fails as aborted.
-     */
-    run<T>(start: (i: number) => Promise<T>, now?: boolean) {
-        let go!: () => void, fail!: (e: Error) => void;
-        const job = new Promise<T>((resolve, reject) => {
-            go = () => { const i = this.pick(); this.track(i, new Promise<T>(r => r(start(i)))).then(resolve, reject); };
-            fail = reject;
-        });
-        if (now) go(); else { this.waiting.push(go); this.next(); }
-        return {job, cancel: () => { const k = this.waiting.indexOf(go); if (k >= 0) { this.waiting.splice(k, 1); fail(new Error('aborted')); } }};
-    }
-    /** Drops every job that waits (the map is removed). */
-    stop() { this.waiting.length = 0; }
-    private next() { while (this.waiting.length && this.busy[this.pick()] < this.limit) this.waiting.shift()!(); }
 }
 
 export class LocalBackend implements TileBackend {
