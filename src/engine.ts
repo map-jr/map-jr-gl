@@ -4,6 +4,7 @@ import {compileFor, type Feature, type MapStates} from './expr.ts';
 import {VARIANT, variantName} from './markers.ts';
 import {layerRules} from './rules.ts';
 import {compileLayer, isGeometrySource, loadSprite, tileURL, type CompiledLayer, type FontSource, type ResolvedStyle, type Sprite, type SpriteIcon} from './style.ts';
+import {AtlasSpace} from './atlas-space.ts';
 import {GLRenderer, SPRITE_ATLAS, type DemRef, type GLTile, type TerrainTile} from './gl.ts';
 import {CollisionGrid, placeLabels, renderItems, type Placed, type RenderItem} from './placement.ts';
 import {GlyphAtlas} from './text.ts';
@@ -179,7 +180,6 @@ export class Engine {
     private placeZoom = 0;
     private fade = FADE;
 
-    private spritePen = [1, 1, 0];
     private sprite: Sprite | null = null;
     private spriteUrl = '';
     private styleFonts = '';
@@ -768,35 +768,28 @@ export class Engine {
         this.tr.setLocationAt(lng, lat, x, y);
     }
 
-    /** The places in the texture of images that the map has no more, by size ("24x31"): an image of the same size takes one. */
-    private freed = new Map<string, [number, number][]>();
+    /** The places in the texture of images: the place of an image that the map has no more goes to later images (#27). */
+    private space = new AtlasSpace(SPRITE_ATLAS);
     private atlasFull = false;
-    /** Takes an image from the map. Its place in the texture is free for an image of the same size (a template is drawn again with each change, in the same size). */
+    /** Takes an image from the map, and frees its place in the texture. */
     private dropImage(name: string) {
         const img = this.images.get(name);
         if (!img) return;
         this.iconsAll = true;
-        const key = img.width + 'x' + img.height;
-        this.freed.set(key, [...this.freed.get(key) ?? [], [img.x, img.y]]);
+        this.space.give(img.x, img.y, img.width, img.height);
         this.images.delete(name);
     }
     /** Copies an image into the dynamic atlas shared by markers and runtime-added icons. */
     private addSprite(w: number, h: number, data: Uint8Array): [number, number, number, number] | null {
-        const pen = this.spritePen, spare = this.freed.get(w + 'x' + h)?.pop();
-        // (The place of an image of this size that the map has no more: see `dropImage`.)
-        if (spare) { this.renderer.uploadSprite(spare[0], spare[1], w, h, data); return [spare[0], spare[1], w, h]; }
-        if (pen[0] + w + 1 > SPRITE_ATLAS) { pen[0] = 1; pen[1] += pen[2] + 1; pen[2] = 0; }
-        if (pen[1] + h + 1 > SPRITE_ATLAS) {
+        const at = this.space.take(w, h);
+        if (!at) {
             // (One message, not one for each image that follows.)
             if (!this.atlasFull) this.emit({type: 'error', message: '[map-jr-gl] The texture of the images is full, so this image and the images after it are not drawn. Use fewer or smaller images. (An SVG template is drawn one time for each different set of values.)'});
             this.atlasFull = true;
             return null;
         }
-        this.renderer.uploadSprite(pen[0], pen[1], w, h, data);
-        const rect: [number, number, number, number] = [pen[0], pen[1], w, h];
-        pen[0] += w + 1;
-        pen[2] = Math.max(pen[2], h);
-        return rect;
+        this.renderer.uploadSprite(at[0], at[1], w, h, data);
+        return [at[0], at[1], w, h];
     }
 
     // ---- queries: answered from tile data, independent of what is drawn ----
