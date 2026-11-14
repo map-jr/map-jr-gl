@@ -159,7 +159,7 @@ export class Popup extends Overlay {
         this.transition(false);
         return this.fire('open');
     }
-    /** Ends the closing animation that runs, if one runs: the popup is removed and fires `close`. */
+    /** Ends the closing animation that runs, if one runs: the popup is removed (it fired `close` when the animation started). */
     private closing?: () => void;
     remove() {
         if (!this.isOpen()) return this;
@@ -174,12 +174,12 @@ export class Popup extends Overlay {
             // (The focus returns to the marker, or to the map when the marker is no longer on the page.)
             if (this.el.contains(document.activeElement)) (this.opener?.isConnected ? this.opener : map.getCanvas()).focus({preventScroll: true});
             this.detach();
-            this.fire('close');
         };
         this.closing = finish;
-        // Stay attached (and tracking the map) until the fade has played.
+        // The element stays on the map (and follows it) until the fade has played. The event `close` comes at once, as in
+        // MapLibre GL JS: a page that is busy can play the fade late, and the application must not wait for it.
         if (animation) animation.finished.then(finish, finish); else finish();
-        return this;
+        return this.fire('close');
     }
 
     /** Fades in while easing a few pixels toward its resting place; the shape itself never changes. */
