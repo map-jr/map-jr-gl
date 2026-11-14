@@ -751,3 +751,19 @@ test('text-font defaults to the style specification default (#256)', () => {
     const l: any = compileLayer({id: 't', type: 'symbol', source: 's', 'source-layer': 'poi', layout: {'text-field': 'x'}})!;
     assert.deepEqual(l.p.font.eval(10, {properties: {}}), ['Open Sans Regular', 'Arial Unicode MS Regular']);
 });
+
+test('sizes: a size of zoom and feature is found at the zoom that an overzoomed tile is built for (#249)', async () => {
+    const {prepareGeoJSON, sliceGeoJSON} = await import('../../src/geojson.ts');
+    const n = 2 ** 14, lng = (TILE.x + 0.5) / n * 360 - 180, lat = Math.atan(Math.sinh(Math.PI * (1 - 2 * (TILE.y + 0.5) / n))) * 180 / Math.PI;
+    const data = {type: 'FeatureCollection', features: [{type: 'Feature', properties: {k: 2}, geometry: {type: 'Point', coordinates: [lng, lat]}}]};
+    const stops = (low: number) => ['interpolate', ['linear'], ['zoom'], 14, ['*', low, ['get', 'k']], 20, ['*', 20, ['get', 'k']]];
+    const symbol = compileLayer({id: 's', type: 'symbol', source: 'g', layout: {'icon-image': 'pin', 'text-field': 'A', 'icon-size': stops(2), 'text-size': stops(8)}})!;
+    const circle = compileLayer({id: 'c', type: 'circle', source: 'g', paint: {'circle-radius': stops(2)}})!;
+    // A tile of zoom 14, the deepest level of its source, built for the map at zoom 17. Each size is 2 * (low + (20 - low) * (zoom - 14) / 6).
+    const tile = buildTile(sliceGeoJSON(prepareGeoJSON(data), TILE.z, TILE.x, TILE.y), TILE.z, [symbol, circle], 17);
+    const l = tile.labels.s[0];
+    assert.equal(tile.z, 17);
+    assert.deepEqual([l.icon!.size, l.icon!.size1], [22, 28]);
+    assert.deepEqual([l.size0, l.size1], [28, 32]);
+    assert.equal(tile.layers.c.radius![0], 22);
+});

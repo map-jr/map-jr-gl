@@ -279,10 +279,23 @@ export class Marker extends Overlay {
         e.preventDefault();
         const map = this.map, start = map.project(this.lngLat!), dx = e.clientX - start.x, dy = e.clientY - start.y;
         this.el.setPointerCapture(e.pointerId);
-        this.fire('dragstart');
-        const move = (ev: PointerEvent) => { this.setLngLat(map.unproject({x: ev.clientX - dx, y: ev.clientY - dy})); this.fire('drag'); };
+        // As in MapLibre GL JS, the drag starts once the pointer has moved 3 px (its default `clickTolerance`): a click
+        // fires no drag events, and the click that follows a drag does not reach the marker.
+        let dragging = false;
+        const move = (ev: PointerEvent) => {
+            if (!dragging && Math.hypot(ev.clientX - e.clientX, ev.clientY - e.clientY) < 3) return;
+            if (!dragging) { dragging = true; this.fire('dragstart'); }
+            this.setLngLat(map.unproject({x: ev.clientX - dx, y: ev.clientY - dy})); this.fire('drag');
+        };
         // (The three listeners end with the drag: `signal` removes them.)
-        const stop = new AbortController(), signal = {signal: stop.signal}, end = () => { stop.abort(); this.fire('dragend'); };
+        const stop = new AbortController(), signal = {signal: stop.signal}, end = () => {
+            stop.abort();
+            if (!dragging) return;
+            const eat = (ev: Event) => ev.stopImmediatePropagation();
+            this.el.addEventListener('click', eat, {capture: true, once: true});
+            setTimeout(() => this.el.removeEventListener('click', eat, {capture: true}));
+            this.fire('dragend');
+        };
         this.el.addEventListener('pointermove', move, signal);
         this.el.addEventListener('pointerup', end, signal);
         this.el.addEventListener('pointercancel', end, signal);
