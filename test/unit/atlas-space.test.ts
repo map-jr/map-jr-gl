@@ -32,3 +32,35 @@ test('places do not overlap', () => {
         if (i % 3 === 0) { const r = got.splice((i * 13) % got.length, 1)[0]; space.give(r[0], r[1], r[2], r[3]); }
     }
 });
+
+test('50,000 replacements of images of mixed sizes do not report full while most of the texture is free (repack)', () => {
+    let space = new AtlasSpace(2048);
+    const live: [number, number, number, number][] = [];
+    let seed = 1, repacks = 0;
+    const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+    for (let i = 0; i < 50000; i++) {
+        if (live.length > 400) { const r = live.splice(Math.floor(rnd() * live.length), 1)[0]; space.give(r[0], r[1], r[2], r[3]); }
+        const w = 8 + Math.floor(rnd() * 120), h = 8 + Math.floor(rnd() * 120);
+        let at = space.take(w, h);
+        if (!at) {
+            repacks++; // (What the map does: place the live images again in an empty texture.)
+            const fresh = new AtlasSpace(2048), all = fresh.repack([...live.map(r => [r[2], r[3]] as [number, number]), [w, h]]);
+            assert.ok(all, `replacement ${i}: full with ${live.reduce((a, r) => a + (r[2] + 1) * (r[3] + 1), 0)} of ${2048 * 2048} pixels used`);
+            live.forEach((r, j) => { r[0] = all[j][0]; r[1] = all[j][1]; });
+            space = fresh; at = all[live.length];
+        }
+        live.push([at[0], at[1], w, h]);
+    }
+    // (Without a repack, the free list alone first reports full here while 55% of the texture is free.)
+    assert.ok(repacks > 0, 'the churn never needed a repack');
+});
+
+test('a repack places images without overlap', () => {
+    const sizes: [number, number][] = Array.from({length: 300}, (_, i) => [5 + (i * 7) % 60, 5 + (i * 11) % 50]);
+    const at = new AtlasSpace(1024).repack(sizes)!;
+    assert.ok(at);
+    for (let i = 0; i < at.length; i++) for (let j = 0; j < i; j++) {
+        const [a, b] = [at[i], at[j]], [aw, ah] = sizes[i], [bw, bh] = sizes[j];
+        assert.ok(a[0] + aw + 1 <= b[0] || b[0] + bw + 1 <= a[0] || a[1] + ah + 1 <= b[1] || b[1] + bh + 1 <= a[1], 'overlap');
+    }
+});
