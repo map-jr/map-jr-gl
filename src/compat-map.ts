@@ -13,19 +13,19 @@ import type {AddLayerObject, GeoJSONFeature, MapGeoJSONFeature, MapEventType, Ma
  * of the core map.)
  */
 export interface Map {
-    on<T extends keyof MapLayerEventType>(type: T, layerId: string, listener: (e: MapLayerEventType[T]) => void): this;
+    on<T extends keyof MapLayerEventType>(type: T, layerId: string | string[], listener: (e: MapLayerEventType[T]) => void): this;
     on<T extends keyof MapEventType>(type: T, listener: (e: MapEventType[T]) => void): this;
     on(type: string, listener: (e: any) => void): this;
-    on(type: string, layerId: string, listener: (e: any) => void): this;
+    on(type: string, layerId: string | string[], listener: (e: any) => void): this;
     once<T extends keyof MapEventType>(type: T, listener: (e: MapEventType[T]) => void): this;
     once(type: string, listener: (e: any) => void): this;
-    once<T extends keyof MapLayerEventType>(type: T, layerId: string, listener: (e: MapLayerEventType[T]) => void): this;
-    once<T extends keyof MapEventType>(type: T, layerId?: string): Promise<MapEventType[T]>;
-    once(type: string, layerId?: string): Promise<any>;
-    off<T extends keyof MapLayerEventType>(type: T, layerId: string, listener: (e: MapLayerEventType[T]) => void): this;
+    once<T extends keyof MapLayerEventType>(type: T, layerId: string | string[], listener: (e: MapLayerEventType[T]) => void): this;
+    once<T extends keyof MapEventType>(type: T, layerId?: string | string[]): Promise<MapEventType[T]>;
+    once(type: string, layerId?: string | string[]): Promise<any>;
+    off<T extends keyof MapLayerEventType>(type: T, layerId: string | string[], listener: (e: MapLayerEventType[T]) => void): this;
     off<T extends keyof MapEventType>(type: T, listener: (e: MapEventType[T]) => void): this;
     off(type: string, listener: (e: any) => void): this;
-    off(type: string, layerId: string, listener: (e: any) => void): this;
+    off(type: string, layerId: string | string[], listener: (e: any) => void): this;
     getSource<T extends Source = Source>(id: string): T | undefined;
     easeTo(o: EaseToOptions): this;
     setStyle(style: unknown, options?: StyleSwapOptions): Promise<void>;
@@ -33,7 +33,7 @@ export interface Map {
 export class Map extends CoreMap {
     /** As in MapLibre GL JS: with no listener, `once` returns a promise for the event; a layer id makes it a layer event. */
     once(type: string, a?: any, b?: any): any {
-        const layer = typeof a === 'string' ? a : undefined, fn = typeof a === 'function' ? a : b;
+        const layer = typeof a === 'string' || Array.isArray(a) ? a : undefined, fn = typeof a === 'function' ? a : b;
         if (!fn) return new Promise(resolve => layer ? this.once(type, layer, resolve) : this.once(type, resolve));
         if (!layer) return super.once(type, fn);
         const wrap = (e: any) => { this.off(type, layer, wrap); fn(e); };
