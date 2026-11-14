@@ -36,7 +36,7 @@ const texts: ((a: string, b: string) => string)[] = [
 export const mistake = (code: number, a = '', b = '') => '[map-jr-gl] ' + texts[code](a, b);
 
 /** The fields of `MapSetup`, and `initialView`: a change of one of them in `update` has no effect. */
-const setupOnly = ['renderer', 'fonts', 'fontFamily', 'glyphs', 'interactive', 'antialias', 'attribution', 'hash', 'initialView'] as const;
+const setupOnly = ['renderer', 'fonts', 'fontFamily', 'glyphs', 'interactive', 'antialias', 'prefetch', 'attribution', 'hash', 'initialView'] as const;
 const differ = (a: unknown, b: unknown) => a !== b && JSON.stringify(a) !== JSON.stringify(b);
 
 /**

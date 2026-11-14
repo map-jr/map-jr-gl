@@ -19,6 +19,8 @@ export type {FontSource} from './style.ts';
 export interface EngineOptions extends CameraOptions {
     style: ResolvedStyle; width: number; height: number; dpr: number; fontFamily: string; fonts?: FontSource[];
     minZoom?: number; maxZoom?: number; maxPitch?: number; antialias?: boolean;
+    /** Which tiles are requested before they are in view (see `prefetch` of `MapOptions`). The default is `true`. */
+    prefetch?: boolean | 'ahead';
     /** The page's rules for requests at the start, so that the first tiles follow them too (#355). */
     requests?: RequestRules;
 }
@@ -113,6 +115,8 @@ const raf: (cb: (t: number) => void) => unknown = globalThis.requestAnimationFra
 const MAX_TILES = 160;
 /** How long the zoom must be still before new contour tiles are made, in milliseconds. */
 const CONTOUR_WAIT = 250;
+/** At most this many tiles of each source are requested early for one movement (#361). */
+const PREFETCH_TILES = 6;
 /** How often labels are re-decided while the map moves, and how long they take to fade. Between decisions they stay pinned to the map. */
 const PLACE_INTERVAL = 250, FADE = 200;
 /** While the zoom is changing quickly labels crowd together (or thin out) fast, so decide and fade sooner. */
@@ -158,6 +162,12 @@ export class Engine {
     private wasIdle = false;
     /** The map has been idle once: the overview tiles wait for that (#326). */
     private wentIdle = false;
+    /** See `prefetch` of `MapOptions`: 0 off, 1 the destination of a movement, 2 also one ring ahead of a drag. */
+    private prefetch: number;
+    /** The view at the end of the movement under way, or ahead of a drag: its tiles are requested early (#361). */
+    private target: Transform | null = null;
+    /** Where and when the last drag step was, for the ring ahead of a drag. */
+    private dragStep: {dx: number; dy: number; at: number} | null = null;
     /** When the engine started. A map that never becomes idle (a long animation, a style that keeps repainting) requests
      * its overview this long after the start instead: 3 s is past the first idle of a usual map here, and short enough
      * that a fast pan still lands on blurry map (#326). */
@@ -222,6 +232,7 @@ export class Engine {
 
     constructor(canvas: HTMLCanvasElement | OffscreenCanvas, o: EngineOptions, private backends: TileBackend[], private emit: (e: EngineEvent) => void) {
         this.renderer = new GLRenderer(canvas, o.antialias);
+        this.prefetch = o.prefetch === false ? 0 : o.prefetch === 'ahead' ? 2 : 1;
         this.renderer.iconOf = this.icon;
         (canvas as EventTarget).addEventListener('webglcontextlost', () => { if (!this.lost) { this.lost = true; this.emit({type: 'contextlost'}); } }); // (not when the map itself freed the context)
         this.atlas = new GlyphAtlas(o.fontFamily);
@@ -687,11 +698,14 @@ export class Engine {
                     start: performance.now(), duration: Math.max(1, c.duration), around: c.around, easing: c.easing,
                     anchor: c.around ? tr.unproject(c.around[0], c.around[1]) : undefined,
                 };
+                // (With `around`, the end differs from `to` in its centre: the point under `around` stays there.)
+                if (c.around && this.ease.anchor) to.setLocationAt(this.ease.anchor[0], this.ease.anchor[1], c.around[0], c.around[1]);
+                this.aim(to);
                 this.centreGiven = !c.around;
                 break;
             }
             case 'pan': {
-                this.fling = null; this.ease = null;
+                this.fling = null; this.ease = null; this.target = null;
                 const now = performance.now();
                 if (c.x === undefined || c.y === undefined) { tr.set(tr.unprojectFlat(tr.cx - c.dx, tr.cy - c.dy)); break; }
                 this.centreGiven = false;
@@ -704,6 +718,15 @@ export class Engine {
                 }
                 tr.setLocationAt(this.grab!.lng, this.grab!.lat, c.x, c.y);
                 this.grab!.at = now;
+                // One ring of tiles ahead of the drag, in its direction (the option `prefetch: 'ahead'`).
+                const d = Math.hypot(c.dx, c.dy);
+                if (this.prefetch > 1 && d) {
+                    const ahead = new Transform();
+                    Object.assign(ahead, tr);
+                    ahead.set(tr.unprojectFlat(tr.cx - c.dx / d * 256, tr.cy - c.dy / d * 256));
+                    this.aim(ahead);
+                    this.dragStep = {dx: c.dx, dy: c.dy, at: now};
+                }
                 break;
             }
             case 'zoom':
@@ -713,7 +736,7 @@ export class Engine {
                 break;
             case 'wheel': {
                 this.centreGiven = false;
-                this.fling = null; this.ease = null;
+                this.fling = null; this.ease = null; this.target = null;
                 const now = performance.now(), w = this.wheel;
                 // A pause ends the gesture: later scrolling starts from the zoom actually on screen.
                 const fresh = !w || (w.doneAt !== undefined && now - w.doneAt > 200);
@@ -729,6 +752,10 @@ export class Engine {
                 const speed = Math.min(1400, dist * linearity / (Math.max(c.ms, 1) / 1000)), seconds = speed / (2500 * linearity), amount = speed * seconds / 2;
                 this.grab = null;
                 this.fling = {dx: c.dx / dist * amount, dy: c.dy / dist * amount, start: performance.now(), duration: seconds * 1000, done: 0};
+                const end = new Transform();
+                Object.assign(end, tr);
+                end.set(tr.unprojectFlat(tr.cx - this.fling.dx, tr.cy - this.fling.dy));
+                this.aim(end);
                 break;
             }
             case 'stop': this.stop(); break;
@@ -802,7 +829,10 @@ export class Engine {
         this.repaint();
     }
 
-    private stop() { this.ease = null; this.wheel = null; this.fling = null; this.grab = null; }
+    private stop() { this.ease = null; this.wheel = null; this.fling = null; this.grab = null; this.target = null; }
+
+    /** Sets the view whose tiles are requested early. A newer movement replaces the view of an older one. */
+    private aim(to: Transform) { if (this.prefetch) this.target = to; }
 
     private zoomAround(zoom: number, x: number, y: number) {
         const [lng, lat] = this.tr.unproject(x, y);
@@ -971,7 +1001,7 @@ export class Engine {
             tr.set(undefined, undefined, v[3], v[4]);
             if (e.around && e.anchor) tr.setLocationAt(e.anchor[0], e.anchor[1], e.around[0], e.around[1]);
             else { tr.lng = lngFromMerc(v[0]); tr.lat = latFromMerc(v[1]); tr.constrain(); }
-            if (t >= 1) this.ease = null;
+            if (t >= 1) this.ease = null, this.target = null;
         }
         const w = this.wheel;
         if (w && w.doneAt === undefined) {
@@ -1015,8 +1045,10 @@ export class Engine {
             const f = glide, t = Math.min(1, (now - f.start) / f.duration), k = inertiaEasing(t);
             tr.set(tr.unprojectFlat(tr.cx - f.dx * (k - f.done), tr.cy - f.dy * (k - f.done)));
             f.done = k;
-            if (t >= 1) this.fling = null;
+            if (t >= 1) this.fling = null, this.target = null;
         }
+        // (The ring ahead of a drag goes when the drag pauses.)
+        if (this.dragStep && now - this.dragStep.at > 300 && !this.ease && !this.fling) { this.dragStep = null; this.target = null; }
         return !!(this.ease || (this.wheel && this.wheel.doneAt === undefined) || glide);
     }
 
@@ -1303,6 +1335,21 @@ export class Engine {
                         // Keep the overview current too, or it would flash old data when it stands in for a missing tile.
                         this.refresh(source, oid, key, t);
                     }
+                }
+            }
+            // The tiles of the view at the end of the movement under way, requested at its start (#361). A few at most per
+            // source, the nearest to the centre of that view first; a tile that is not on its way when a newer movement
+            // starts is not requested, and one on its way that no view needs then is cancelled (as any tile of the view).
+            const aim = this.target;
+            if (aim) {
+                let n = 0;
+                for (const id of aim.coveringTiles(src.minzoom, src.maxzoom, ground ? src.tileSize * 2 : src.tileSize, !ground && (src.type === 'raster' || src.type === 'raster-dem'))) {
+                    const key = source + '|' + id.key;
+                    if (wanted.has(key)) continue;
+                    if (++n > PREFETCH_TILES) break;
+                    wanted.add(key);
+                    const t = this.tiles.get(key);
+                    if (!t) { this.request(source, id, key); const made = this.tiles.get(key); if (made) made.used = -1; } else if (t.state !== 'loading') t.used = frameNo;
                 }
             }
             const list = renderItems(tr, ideal, k => {

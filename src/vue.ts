@@ -254,6 +254,8 @@ const MapJrComponent = defineComponent({
         glyphs: {type: Boolean, default: undefined},
         interactive: {type: Boolean, default: undefined},
         antialias: {type: Boolean, default: undefined},
+        /** Which tiles are requested before they are in view: `true` (the default), `'ahead'` or `false`. See `prefetch` of `MapSpec`. */
+        prefetch: {type: [Boolean, String] as PropType<boolean | 'ahead'>, default: undefined},
         attribution: {type: [Boolean, Object] as PropType<false | {compact?: boolean; customAttribution?: string | string[]}>, default: undefined},
         hash: {type: [Boolean, String] as PropType<boolean | string>, default: undefined},
         /**
@@ -318,7 +320,7 @@ const MapJrComponent = defineComponent({
             const out: MapSpec = {
                 style: style.value, extend: extend.value, view: view.value, initialView: props.initialView && toRaw(props.initialView), images: images.value, markers: markers.value, data: data.value, interactiveLayers: layers.value, controls: controls.value,
                 minZoom: props.minZoom, maxZoom: props.maxZoom, maxPitch: props.maxPitch, maxBounds: props.maxBounds && toRaw(props.maxBounds), cursor: props.cursor, padding: props.padding && typeof props.padding === 'object' ? toRaw(props.padding) : props.padding,
-                renderer: props.renderer, fonts: props.fonts && toRaw(props.fonts), fontFamily: props.fontFamily, glyphs: props.glyphs, interactive: props.interactive, antialias: props.antialias,
+                renderer: props.renderer, fonts: props.fonts && toRaw(props.fonts), fontFamily: props.fontFamily, glyphs: props.glyphs, interactive: props.interactive, antialias: props.antialias, prefetch: props.prefetch,
                 attribution: (props.attribution as unknown) === true ? undefined : props.attribution && toRaw(props.attribution), hash: props.hash,
                 onViewChange: view => emit('update:view', view), onClick: event => emit('click', event),
                 // (Without a listener for `error`, the map writes each error to the console.)

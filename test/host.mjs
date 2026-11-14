@@ -1190,6 +1190,31 @@ for (const code of ['core', 'compat']) {
     } catch (e) { check(`gallery, query example (${code}): the test run was completed`, false, String(e.message).split('\n')[0]); }
     await page.close();
 }
+// The tiles of the destination of an `easeTo` are requested when it starts, and not with `prefetch: false` (#361).
+// The movement goes 0.3 degrees east at zoom 13 in 5 s: after 500 ms the view is still near the start, so a request
+// for a tile next to the destination is a request made early.
+for (const prefetch of [undefined, false]) {
+    const page = await browser.newPage({viewport: {width: 900, height: 600}});
+    try {
+        await page.goto(`${origin}/bench`);
+        const asked = [];
+        await page.route(/\/tiles\/\d+\/\d+\/\d+\.pbf/, route => { asked.push(new URL(route.request().url()).pathname); route.continue(); });
+        const to = -74.0065 + 0.3;
+        const n = await page.evaluate(async prefetch => {
+            const lib = await import('/dist/map-jr-gl.js'), style = await (await fetch('/style.json')).json(), wait = ms => new Promise(r => setTimeout(r, ms));
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99;background:#fff'}));
+            const host = window.host = lib.createMap(el, {style, initialView: {center: [-74.0065, 40.7085], zoom: 13}, renderer: 'main', attribution: false, prefetch});
+            await new Promise(r => host.state.subscribe(s => s.idle, idle => idle && r()));
+            await wait(500);
+        }, prefetch);
+        const before = asked.length;
+        await page.evaluate(to => window.host.moveTo({center: [to, 40.7085], duration: 5000}), to);
+        await page.waitForTimeout(500);
+        const early = asked.slice(before).map(p => p.split('/').slice(-3).map(v => parseInt(v))).filter(([z, x]) => Math.abs(x - Math.floor((to + 180) / 360 * 2 ** z)) <= 1);
+        check(`prefetch: ${prefetch}: the tiles at the destination of an easeTo are ${prefetch === false ? 'not ' : ''}requested at its start`, prefetch === false ? early.length === 0 : early.length > 0, JSON.stringify({early: early.length, after: asked.length - before}));
+    } catch (e) { check(`prefetch: ${prefetch}: the test run was completed`, false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
 // The cost of a frame does not grow with the number of icons from buffers (#127). The engine reports the script time
 // of its frames on the main thread (`stats`, `frameMs`). The check compares a symbol layer with 100,000 icons with
 // the same layer with 1,000 icons, as a ratio of the medians, so it does not depend on the speed of the machine. With
