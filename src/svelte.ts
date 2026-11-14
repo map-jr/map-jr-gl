@@ -13,12 +13,12 @@
  * `destroy` when the element goes. It does not need the Svelte package, so it works with each version of Svelte.
  * `mapState(map)` gives the state of the map as a Svelte store (`const live = mapState(map)`, then `$live.view.zoom`).
  */
-import {createMap, type MapHost, type MapSpec, type MapState} from './host.ts';
+import {makeMap, type MapHost, type MapSpec, type MapState} from './host.ts';
 
 export interface MapAction { description: MapSpec; /** Called with the map when it has been made. */ ready?: (map: MapHost) => void }
 
 export function mapJr(node: HTMLElement, options: MapAction) {
-    const map = createMap(node, options.description);
+    const map = makeMap(node, options.description, 'use:mapJr');
     options.ready?.(map);
     return {
         update(next: MapAction) { map.update(next.description); },
