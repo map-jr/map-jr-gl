@@ -1612,6 +1612,31 @@ for (const mode of ['main', 'worker']) {
         check('[main] the focus goes into a popup that the keyboard opens, and back to the marker when the popup closes', focus.focusIn && focus.focusBack && focus.focusClick && focus.focusLink && focus.focusSkips && focus.opacity === '1' && focus.scroll === 'true,0,0' && focus.closed, JSON.stringify(focus));
         check('[main] a camera animation jumps with "reduce motion", but for essential: true', moving < 3.9 && reduced === 4 && essential < 3.9, JSON.stringify({moving, reduced, essential}));
     }
+    // A click on a draggable marker fires no drag events, and a drag fires dragstart only after the pointer moves, with
+    // no click after it, as in MapLibre GL JS (#258).
+    if (mode === 'main') {
+        await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = window.dragEl = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:300px;z-index:1000'}));
+            const m = window.dragMap = new mod.Map({container: el, renderer: 'main', center: [0, 0], zoom: 2, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            const mk = new mod.Marker({draggable: true}).setLngLat(m.unproject({x: 200, y: 150})).addTo(m);
+            window.markerEvents = [];
+            for (const t of ['dragstart', 'drag', 'dragend']) mk.on(t, () => window.markerEvents.push(t));
+            mk.getElement().addEventListener('click', () => window.markerEvents.push('click'));
+            await new Promise(r => m.once('load', r));
+        });
+        const box = await page.evaluate(() => { const r = window.dragEl.querySelector('.map-jr-marker').getBoundingClientRect(); return {x: r.x + r.width / 2, y: r.y + r.height / 2}; });
+        await page.mouse.click(box.x, box.y);
+        await page.waitForTimeout(100);
+        const click = await page.evaluate(() => window.markerEvents.splice(0).join(' '));
+        await page.mouse.move(box.x, box.y); await page.mouse.down();
+        await page.mouse.move(box.x + 1, box.y);
+        const early = await page.evaluate(() => window.markerEvents.join(' '));
+        await page.mouse.move(box.x + 30, box.y + 20, {steps: 5}); await page.mouse.up();
+        await page.waitForTimeout(100);
+        const drag = await page.evaluate(() => { const ev = window.markerEvents.join(' '); window.dragMap.remove(); window.dragEl.remove(); return ev; });
+        check('[main] a click on a draggable marker fires no drag events, and a drag starts after a move and fires no click', click === 'click' && early === '' && /^dragstart( drag)+ dragend$/.test(drag), JSON.stringify({click, early, drag}));
+    }
     // The credits of a small map: they do not go under the controls of the other corner, markers are below them, and a
     // press on the map closes them.
     if (mode === 'main') {
