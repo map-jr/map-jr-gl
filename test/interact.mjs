@@ -1559,17 +1559,19 @@ for (const mode of ['main', 'worker']) {
             const seen = [], asked = [], warn = console.warn;
             console.warn = () => {}; // (the map says that it uses the main thread)
             const m = new mod.Map({container: el, style: '/style.json', center: [-74.0065, 40.7085], zoom: 14, attributionControl: false, createWorker: () => new Worker(url),
-                transformRequest: (u, kind) => { asked.push(kind); return {url: u}; }});
+                transformRequest: (u, kind) => { asked.push(kind === 'Tile' && /\/14\//.test(u) ? 'view' : kind); return {url: u}; }});
             for (const type of ['load', 'idle', 'error']) m.on(type, () => seen.push(type));
             // A change of the style at once: it goes to the worker that fails.
             m.once('style.load', () => m.addLayer({id: 'fall-back-test', type: 'background', paint: {'background-color': '#f0f', 'background-opacity': 0.01}}));
             await new Promise(r => { m.once('idle', r); setTimeout(r, 12000); });
             console.warn = warn;
-            const out = {renderer: m.renderer, seen: [...new Set(seen)], tiles: asked.filter(k => k === 'Tile').length, layer: (await Promise.race([m.queryRenderedFeatures({layers: ['building']}), new Promise(r => setTimeout(() => r([]), 4000))])).length};
+            const out = {renderer: m.renderer, seen: [...new Set(seen)], tiles: asked.filter(k => k === 'view').length, layer: (await Promise.race([m.queryRenderedFeatures({layers: ['building']}), new Promise(r => setTimeout(() => r([]), 4000))])).length};
             m.remove(); el.remove();
             return out;
         });
-        check('[worker] a worker without WebGL2: the map uses the main thread, load and idle fire, and transformRequest sees the tile requests',
+        // (Only the tiles of the view count: the coarse overview tiles come later and could hide a tile of the view that
+        // the new engine fetched before it had the rules for requests; #355.)
+        check('[worker] a worker without WebGL2: the map uses the main thread, load and idle fire, and transformRequest sees the tile requests of the view',
             fell.renderer === 'main' && fell.seen.includes('load') && fell.seen.includes('idle') && !fell.seen.includes('error') && fell.tiles > 0 && fell.layer > 0, JSON.stringify(fell));
     }
     // The same with the engine chunk delayed by 6 seconds, on a page of its own (the chunk is not in its module cache).
