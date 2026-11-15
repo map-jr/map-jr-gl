@@ -2331,6 +2331,18 @@ for (const mode of ['main', 'worker']) {
         });
         check('[main] Popup: addTo() during the closing animation keeps it open, remove() twice fires close once, the focus goes to the map when its marker is removed, and Enter on a child of the marker does not toggle it',
             faults.reopened && faults.closesReopen === 1 && faults.closesTwice === 1 && faults.gone && faults.inPopup && faults.focusMap && !faults.childToggles, JSON.stringify(faults));
+        // A closing animation that never ends (here: paused, as on a page that draws no frames) does not keep the popup on the page.
+        const stuck = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), m = window.a11yMap, wait = t => new Promise(r => setTimeout(r, t));
+            const p = new mod.Popup().setLngLat([0, 0]).setText('Stuck').addTo(m);
+            await wait(300);
+            const animate = Element.prototype.animate;
+            Element.prototype.animate = function (...a) { const an = animate.apply(this, a); an.pause(); return an; };
+            try { p.remove(); } finally { Element.prototype.animate = animate; }
+            await wait(1000);
+            return {connected: p.getElement().isConnected, open: p.isOpen()};
+        });
+        check('[main] Popup: remove() removes the element when the closing animation never ends', !stuck.connected && !stuck.open, JSON.stringify(stuck));
         // A camera animation of one second: with "reduce motion" the map is there at once; `essential: true` keeps the animation.
         const zoomSoon = async options => page.evaluate(async options => { const m = window.a11yMap; m.jumpTo({zoom: 2}); await new Promise(r => setTimeout(r, 200)); m.easeTo({zoom: 4, duration: 1000, ...options}); await new Promise(r => setTimeout(r, 250)); return m.getZoom(); }, options);
         const moving = await zoomSoon({});
