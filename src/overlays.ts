@@ -182,7 +182,9 @@ export class Popup extends Overlay {
         this.closing = finish;
         // The element stays on the map (and follows it) until the fade has played. The event `close` comes at once, as in
         // MapLibre GL JS: a page that is busy can play the fade late, and the application must not wait for it.
-        if (animation) animation.finished.then(finish, finish); else finish();
+        // A fade that never ends (a page that draws no frames, an animation that is paused) must not keep the element:
+        // a timer removes it after the duration and a margin, and a hidden page removes it at once.
+        if (animation && !document.hidden) { animation.finished.then(finish, finish); setTimeout(finish, 400); } else finish();
         return this.fire('close');
     }
 
