@@ -257,6 +257,26 @@ for (const renderer of ['worker', 'main']) {
         check(`[${renderer}] extend.sources gets features from data, and a partial owned view that the map reported is not applied again`,
             extendData.before === 0 && extendData.after === 1 && extendData.jumps === 0, JSON.stringify(extendData));
 
+        // 3d. An update() that changes only `extend` or `images` sets state.idle to false, and back to true when drawn (#411).
+        const idleAgain = await page.evaluate(async renderer => {
+            const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const next = host => new Promise(r => { const off = host.state.subscribe(s => s.idle, v => { if (v) { off(); r(true); } }); setTimeout(() => { off(); r(false); }, 8000); });
+            const spec = {style: t.style, initialView: {center: [-74.0065, 40.7085], zoom: 13}, renderer, attribution: false,
+                extend: {sources: {own: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}}, layers: [{id: 'own-fill', type: 'fill', source: 'own', paint: {'fill-color': '#f00'}}]}};
+            const host = t.lib.createMap(el, spec);
+            await next(host);
+            const s2 = {...spec, extend: {...spec.extend, layers: [{...spec.extend.layers[0], paint: {'fill-color': '#00f'}}]}};
+            host.update(s2);
+            const extendBusy = !host.state.get().idle, extendIdle = await next(host);
+            host.update({...s2, images: {dot: '<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"><rect width="4" height="4"/></svg>'}});
+            await new Promise(r => setTimeout(r, 500));
+            const imagesIdle = host.state.get().idle || await next(host);
+            host.destroy(); el.remove();
+            return {extendBusy, extendIdle, imagesIdle};
+        }, renderer);
+        check(`[${renderer}] update() that changes only extend or images sets state.idle to false and then to true again`,
+            idleAgain.extendBusy && idleAgain.extendIdle && idleAgain.imagesIdle, JSON.stringify(idleAgain));
+
         // 3d. A change of `extend` alone is applied as edits: the style URL is not requested again, and a layer that was added through `host.map` stays (#166).
         const extendEdit = await page.evaluate(async renderer => {
             const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
