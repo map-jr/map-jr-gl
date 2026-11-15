@@ -160,6 +160,7 @@ export class Map extends CoreMap {
         this.getCanvas().classList.add('maplibregl-canvas');
         if (o.maxBounds) this.setMaxBounds(o.maxBounds);
         if (o.cooperativeGestures) this.cooperativeGestures.enable();
+        if ((o as {glyphs?: unknown}).glyphs !== undefined) console.warn('[map-jr-gl] Map: the option glyphs was removed and has no effect; the map loads the glyph files of the style. Remove the option. To draw text with the fonts of the browser, remove "glyphs" from the style.');
         if (o.locale != null && typeof o.locale != 'object') console.warn('[map-jr-gl] Map: the option locale is not an object. Pass an object such as {"NavigationControl.ZoomIn": "Zoom avant"}.');
         else this.uiLocale = o.locale;
         this.unsupported('The option projection', !o.projection || (o.projection.type ?? o.projection) === 'mercator');
@@ -277,7 +278,7 @@ export class Map extends CoreMap {
     addSprite(id: string, url: string) { return this.setSprite([...this.getSprite().filter((s: {id: string}) => s.id !== id), {id, url}]); }
     removeSprite(id: string) { const rest = this.getSprite().filter((s: {id: string}) => s.id !== id); return this.setSprite(rest.length ? rest : null); }
     getGlyphs() { return this.rawStyle?.glyphs ?? null; }
-    /** Sets the URL of the glyph files of the style. The map loads them from this URL, unless the option `glyphs` is `false` or `fonts` is given. */
+    /** Sets the URL of the glyph files of the style. The map loads them from this URL. */
     setGlyphs(url: string | null) { return this.editStyle(s => { if (url) s.glyphs = url; else delete s.glyphs; }); }
     /**
      * As in MapLibre GL JS, a vector, raster or raster-dem source has `setTiles(tiles)` and `setUrl(url)` (a TileJSON
