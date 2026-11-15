@@ -11,6 +11,8 @@ BSD-3-Clause.
 - Map Jr. GL contains no files of MapLibre GL JS. All the code is new, except the CSS named below.
 - Some methods follow MapLibre GL JS, so that a map looks the same in the two libraries. Examples: the line breaks
   in labels, the light on buildings, the size of dashes, and the movement of the camera on 3D terrain.
+- The tile URL tokens `{prefix}` and `{ratio}` follow the rules of `CanonicalTileID.url` in `src/source/tile_id.ts`
+  of MapLibre GL JS (BSD-3-Clause). The code in `src/resolve.ts` is new.
 - The texts and the CSS of the hint of `cooperativeGestures` in the compat entry follow MapLibre GL JS
   (BSD-3-Clause): `src/ui/handler/cooperative_gestures.ts` and `maplibre-gl.css`.
 - The option `locale` of the compat entry reads the keys of `src/ui/default_locale.ts` of MapLibre GL JS 6.17.0
