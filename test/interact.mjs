@@ -2564,6 +2564,21 @@ for (const mode of ['main', 'worker']) {
         });
         check('[main] the four control corners exist at once, and the attribution is the lowest control of its corner', r.corners && r.first.includes('ctrl-attrib'), JSON.stringify(r));
     }
+    // #46: as in MapLibre GL JS, the element of getCanvasContainer() carries the state names of dragPan and touchZoomRotate.
+    if (mode === 'main') {
+        const r = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+            const m = new mod.Map({container: el, renderer: 'main', touchZoomRotate: false, style: {version: 8, sources: {}, layers: []}});
+            const c = m.getCanvasContainer(), has = n => c.classList.contains('maplibregl-' + n);
+            const out = [has('touch-drag-pan'), has('touch-zoom-rotate')];
+            m.dragPan.disable(); m.touchZoomRotate.enable();
+            out.push(has('touch-drag-pan'), has('touch-zoom-rotate'));
+            m.remove(); out.push(has('touch-zoom-rotate')); el.remove();
+            return out.join();
+        });
+        check('[main] maplibre-compat: the canvas container has maplibregl-touch-drag-pan and maplibregl-touch-zoom-rotate while those handlers are enabled (#46)', r === 'true,false,false,true,false', r);
+    }
     // #16, #42: dragging the compass rotates and pitches the map, as in MapLibre GL JS, and a click still resets the bearing.
     if (mode === 'main') {
         await page.evaluate(async () => {

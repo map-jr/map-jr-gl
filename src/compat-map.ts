@@ -188,6 +188,16 @@ export class Map extends CoreMap {
         this.strict = !!o.strict;
         // (A canvas that replaces this one is a copy of it.)
         this.getCanvas().classList.add('maplibregl-canvas');
+        // As in MapLibre GL JS, the element of getCanvasContainer() has `maplibregl-touch-drag-pan` while dragPan is
+        // enabled and `maplibregl-touch-zoom-rotate` while touchZoomRotate is enabled. Wrappers read them; the library does not.
+        for (const [handler, name] of [[this.dragPan, 'touch-drag-pan'], [this.touchZoomRotate, 'touch-zoom-rotate']] as const) {
+            const el = this.getCanvasContainer(), set = () => el.classList.toggle('maplibregl-' + name, handler.isEnabled());
+            const {enable, disable} = handler;
+            handler.enable = (opts?: unknown) => { enable.call(handler, opts); set(); };
+            handler.disable = () => { disable.call(handler); set(); };
+            set();
+            this.once('remove', () => el.classList.remove('maplibregl-' + name));
+        }
         if (o.maxBounds) this.setMaxBounds(o.maxBounds);
         if (o.cooperativeGestures) this.cooperativeGestures.enable();
         if ((o as {glyphs?: unknown}).glyphs !== undefined) console.warn('[map-jr-gl] Map: the option glyphs was removed and has no effect; the map loads the glyph files of the style. Remove the option. To draw text with the fonts of the browser, remove "glyphs" from the style.');
