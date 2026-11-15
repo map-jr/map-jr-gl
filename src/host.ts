@@ -140,6 +140,8 @@ export interface MapSetup {
     antialias?: boolean;
     attribution?: false | {compact?: boolean; customAttribution?: string | string[]};
     hash?: boolean | string;
+    /** The nonce of a Content Security Policy with `style-src 'nonce-…'`, for the style sheet of the map. */
+    nonce?: string;
 }
 
 export interface MapState {
@@ -319,7 +321,7 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
     const options: MapOptions = {
         container, style: spec.style, center: first.center, zoom: first.zoom, bearing: first.bearing, pitch: first.pitch,
         // (A `view` from the state has `bounds` too: it is a view, and only `initialView` gives a box to fit.)
-        bounds: spec.view ? undefined : bounds as LngLatBoundsInput, fitBoundsOptions: {padding}, renderer: spec.renderer, fonts: spec.fonts, fontFamily: spec.fontFamily, interactive: spec.interactive, antialias: spec.antialias, hash: spec.hash,
+        bounds: spec.view ? undefined : bounds as LngLatBoundsInput, fitBoundsOptions: {padding}, renderer: spec.renderer, fonts: spec.fonts, fontFamily: spec.fontFamily, interactive: spec.interactive, antialias: spec.antialias, hash: spec.hash, nonce: spec.nonce,
         attributionControl: spec.attribution, minZoom: spec.minZoom, maxZoom: spec.maxZoom, maxPitch: spec.maxPitch,
     };
     for (const k in options) if ((options as any)[k] === undefined) delete (options as any)[k];

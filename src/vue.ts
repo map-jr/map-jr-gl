@@ -260,6 +260,8 @@ const MapJrComponent = defineComponent({
         /** `false`: text uses the fonts of the device, not the glyph files of the style. */
         interactive: {type: Boolean, default: undefined},
         antialias: {type: Boolean, default: undefined},
+        /** The nonce of a Content Security Policy with `style-src 'nonce-…'`, for the style sheet of the map. */
+        nonce: String,
         attribution: {type: [Boolean, Object] as PropType<false | {compact?: boolean; customAttribution?: string | string[]}>, default: undefined},
         hash: {type: [Boolean, String] as PropType<boolean | string>, default: undefined},
         /**
@@ -325,7 +327,7 @@ const MapJrComponent = defineComponent({
                 style: style.value, extend: extend.value, view: view.value, initialView: props.initialView && toRaw(props.initialView), images: images.value, markers: markers.value, data: data.value, interactiveLayers: layers.value, controls: controls.value,
                 minZoom: props.minZoom, maxZoom: props.maxZoom, maxPitch: props.maxPitch, maxBounds: props.maxBounds && toRaw(props.maxBounds), cursor: props.cursor, transformRequest: props.transformRequest, cooperativeGestures: props.cooperativeGestures, padding: props.padding && typeof props.padding === 'object' ? toRaw(props.padding) : props.padding,
                 renderer: props.renderer, fonts: props.fonts && toRaw(props.fonts), fontFamily: props.fontFamily, interactive: props.interactive, antialias: props.antialias,
-                attribution: (props.attribution as unknown) === true ? undefined : props.attribution && toRaw(props.attribution), hash: props.hash,
+                attribution: (props.attribution as unknown) === true ? undefined : props.attribution && toRaw(props.attribution), hash: props.hash, nonce: props.nonce,
                 onViewChange: view => emit('update:view', view), onClick: event => emit('click', event),
                 // (Without a listener for `error`, the map writes each error to the console.)
                 onError: listensForError ? error => emit('error', error) : undefined,

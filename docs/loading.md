@@ -61,6 +61,30 @@ The map still starts, but it can fail later, because the messages between the tw
 from before this check reports no version, and the warning says "unknown". The standalone files contain their
 worker, so they cannot have this fault.
 
+## Content Security Policy
+
+The map runs under a strict Content Security Policy. It needs no `'unsafe-eval'` and no `'unsafe-inline'`. This
+table gives the directives that each part of the library needs, for both entries (`@map-jr/map-jr-gl` and
+`@map-jr/map-jr-gl/maplibre-compat`):
+
+| Directive | What the map needs |
+|---|---|
+| `script-src` | The origin of the library files. |
+| `worker-src` | The origin of the worker file, and `blob:`. The map starts its workers from a `blob:` URL; without `blob:` it starts them from the URL of the file and logs errors (see [The worker file and `blob:` URLs](#the-worker-file-and-blob-urls)). The standalone build and a library file from a CDN need `blob:`. |
+| `connect-src` | The origin of the worker file, and the hosts of the style, the TileJSON, the tiles, the glyphs, the sprite and the `fonts` option. The map fetches all of these. |
+| `img-src` | The URL of an image that `addImage` (or `images` in the description) is given as a URL, and `data:` for an image given as SVG text. |
+| `style-src` | Nothing in a browser that can adopt a constructed style sheet (Chrome and Edge 73, Firefox 101, Safari 16.4 and later). In an older browser the map adds a `<style>` element: give the map the option `nonce` with the nonce of your policy (`style-src 'nonce-…'`), or allow `'unsafe-inline'`. |
+
+The map adds its style sheet once to the root node of the container: the document, or the shadow root of a map
+inside a shadow root. It sets the styles of its own elements as style properties, which `style-src` does not block.
+
+These parts still need `style-src 'unsafe-inline'`:
+
+| Part | Why |
+|---|---|
+| The markup of the [server renderer](server-rendering.md) in the page | Its elements have `style` attributes, which the policy blocks. |
+| HTML that your app gives to `Popup.setHTML` or a marker | A `style` attribute in that HTML is blocked as in any other HTML. Use classes instead. |
+
 ## Other configurations
 
 The two entries take these settings in different places. In `@map-jr/map-jr-gl`, the description (`MapSpec`) has `renderer`
@@ -133,7 +157,8 @@ widget or a sandbox. It is larger, and the page must load all of it before the m
 A browser does not start a worker from a different origin. When `map-jr-gl.js` comes from a different origin, the
 library starts the worker through a small script on your origin. You do not need any settings.
 
-If your page has a strict Content Security Policy, add `worker-src blob:` to it.
+If your page has a strict Content Security Policy, add `worker-src blob:` to it (see
+[Content Security Policy](#content-security-policy)).
 
 ### The worker file and `blob:` URLs
 

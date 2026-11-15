@@ -55,7 +55,7 @@ production build has no such warning, and there the map stays empty without a me
 | `controls` | Controls from `@map-jr/map-jr-gl/controls`: `:controls="[navigation(), scale()]"`. See [the main API](api.md). |
 | `min-zoom`, `max-zoom`, `max-pitch`, `max-bounds`, `cursor`, `cooperative-gestures`, `padding` | As in [the main API](api.md). |
 | `transform-request` | A function that changes a request before the map makes it, as `transformRequest` of [the main API](api.md). The map calls the function of the last value of the prop. |
-| `renderer`, `fonts`, `font-family`, `interactive`, `antialias`, `attribution`, `hash` | Read only when the map is made. |
+| `renderer`, `fonts`, `font-family`, `interactive`, `antialias`, `attribution`, `hash`, `nonce` | Read only when the map is made. |
 | `ssr` | Render the first view on the server. See below. |
 
 ### Events

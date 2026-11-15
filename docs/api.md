@@ -70,7 +70,7 @@ map.update(description);
 - A field that the new description leaves out is removed from the map. This holds for `markers`, `controls`,
   `cursor`, `extend` and the limits of the camera. A source keeps the last data that `data` gave it.
 - The fields that are read when the map is made (`renderer`, `fonts`, `fontFamily`, `interactive`,
-  `antialias`, `attribution`, `hash`) and `initialView` have no effect in `update`. A change of one of them gives a
+  `antialias`, `attribution`, `hash`, `nonce`) and `initialView` have no effect in `update`. A change of one of them gives a
   warning.
 
 The map writes a warning to the console with `console.warn`, once for each map, for each of these mistakes:
@@ -143,6 +143,7 @@ These fields are read only when the map is made:
 | `antialias` | Multisample antialiasing for the canvas. |
 | `attribution` | `false` to show the credits yourself, or options for the built-in credits. |
 | `hash` | Keeps the view in the fragment of the URL. |
+| `nonce` | The nonce of a Content Security Policy with `style-src 'nonce-…'`. The map sets it on the `<style>` element of its style sheet, which it adds only in a browser that cannot adopt a constructed style sheet. See [Content Security Policy](loading.md#content-security-policy). |
 
 For a map in a page that scrolls, set `cooperativeGestures: true` (see the table of fields above), or
 `interactive: false` for a map that the user cannot move.
