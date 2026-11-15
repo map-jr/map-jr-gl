@@ -174,17 +174,23 @@ Every change goes through a pull request. The workflow `CI` (`.github/workflows/
 | Job | What it runs |
 |---|---|
 | `checks` | `pnpm build` (type check, build, type declarations), `pnpm test:package` (the tarball: `publint`, `arethetypeswrong`, each file that `package.json` names, the source maps, and an application that builds against it), and `pnpm test` (unit tests, expression and API floors, size budgets, examples, consistency of code and documentation) |
-| `browser` | In Chromium: `test/interact.mjs`, `test/host.mjs`, `test/vue.mjs`, `test/react.mjs`, `test/loading.mjs`. A suite that fails is run one more time, because the tiles come from the live network. |
+| `browser` | Passes when the two browser jobs below passed, or when both were skipped. This is the name of the required check. |
+| `browser-interact` | In Chromium: `test/interact.mjs`, `test/vue.mjs`, `test/react.mjs`, `test/loading.mjs` (about 9 minutes; timeout 25 minutes) |
+| `browser-host` | In Chromium: `test/host.mjs` (about 13 minutes; timeout 35 minutes) |
 | `render` | `pnpm test:render`: MapLibre's render tests against the floor in `package.json` |
+
+The two browser jobs run at the same time, and each starts its own demo server. A suite that fails is run one more
+time, because the tiles come from the live network. A test that fails two times fails the job.
 
 A pull request runs `browser` and `render` only when it needs them. The job `changes` reads the changed files:
 
-- `browser` is skipped when every changed file is a document (`docs/`, a `.md` file, a licence file, an issue template).
+- The browser jobs are skipped when every changed file is a document (`docs/`, a `.md` file, a licence file, an issue template).
 - `render` runs only when a file that the built files or the render tests are made from changed: `src/`, `build.mjs`,
   `package.json`, `pnpm-lock.yaml`, `tsconfig*.json`, `scripts/private-names.mjs`, `test/conformance/render*` or
   `.github/workflows/ci.yml`.
 
-A skipped job counts as passed for a required check. A push to `main` runs all three jobs.
+A skipped job counts as passed for a required check. The job `browser` runs always and passes when the browser jobs
+were skipped. A push to `main` runs all of the jobs.
 
 `pnpm test:consistency` (`scripts/check-consistency.mjs`) fails when a field of the description has no Vue prop or
 no documentation, when a member of the map is not in `docs/api.md`, when a gallery example lacks one of its four
