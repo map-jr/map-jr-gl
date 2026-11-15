@@ -48,7 +48,7 @@ export type Command =
      */
     | {type: 'templates'; slots: Record<string, string[]>; changed: string[]; rebuild: boolean}
     | {type: 'fonts'; fonts: FontSource[]}
-    | {type: 'image'; name: string; w: number; h: number; width: number; height: number; data: Uint8Array; stretchX?: [number, number][]; stretchY?: [number, number][]; content?: [number, number, number, number]; textFitWidth?: 'stretchOrShrink' | 'stretchOnly' | 'proportional'; textFitHeight?: 'stretchOrShrink' | 'stretchOnly' | 'proportional'}
+    | {type: 'image'; name: string; w: number; h: number; width: number; height: number; data: Uint8Array; stretchX?: [number, number][]; stretchY?: [number, number][]; content?: [number, number, number, number]; textFitWidth?: 'stretchOrShrink' | 'stretchOnly' | 'proportional'; textFitHeight?: 'stretchOrShrink' | 'stretchOnly' | 'proportional'; sdf?: boolean}
     | {type: 'removeImage'; name: string}
     | {type: 'geojson'; source: string; data: unknown}
     /** Replaces the feature state of one source ("sourceLayer|id" -> state); its tiles are rebuilt in place. */
@@ -827,7 +827,7 @@ export class Engine {
             case 'image': {
                 this.dropImage(c.name);
                 const rect = this.addSprite(c.w, c.h, c.data);
-                if (rect) this.images.set(c.name, {x: rect[0], y: rect[1], width: c.w, height: c.h, pixelRatio: c.w / c.width, custom: true, stretchX: c.stretchX, stretchY: c.stretchY, content: c.content, textFitWidth: c.textFitWidth, textFitHeight: c.textFitHeight});
+                if (rect) this.images.set(c.name, {x: rect[0], y: rect[1], width: c.w, height: c.h, pixelRatio: c.w / c.width, custom: true, stretchX: c.stretchX, stretchY: c.stretchY, content: c.content, textFitWidth: c.textFitWidth, textFitHeight: c.textFitHeight, sdf: c.sdf});
                 this.styleVersion++;
                 this.placeDirty = true; this.iconsRev++;
                 break;

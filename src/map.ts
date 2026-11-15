@@ -1316,7 +1316,7 @@ export class Map {
         const k = sourceWidth ? w / sourceWidth : 1, scale = (v?: number[]) => v?.map(n => n * k);
         if (!variant) { this.imageNames.add(name); this.imageInputs.set(name, [source, options]); }
         this.post({type: 'image', name, w, h, width, height, data, stretchX: options.stretchX?.map(r => scale(r) as [number, number]), stretchY: options.stretchY?.map(r => scale(r) as [number, number]),
-            content: scale(options.content) as [number, number, number, number] | undefined, textFitWidth: options.textFitWidth, textFitHeight: options.textFitHeight}, [data.buffer]);
+            content: scale(options.content) as [number, number, number, number] | undefined, textFitWidth: options.textFitWidth, textFitHeight: options.textFitHeight, sdf: options.sdf}, [data.buffer]);
         return this;
     }
     removeImage(name: string) {
@@ -1737,6 +1737,8 @@ export interface ImageOptions {
     /** For icons fitted around text: the ranges that may stretch and the box the text sits in, in image pixels. */
     stretchX?: [number, number][]; stretchY?: [number, number][]; content?: [number, number, number, number];
     textFitWidth?: 'stretchOrShrink' | 'stretchOnly' | 'proportional'; textFitHeight?: 'stretchOrShrink' | 'stretchOnly' | 'proportional';
+    /** The image is a signed distance field in its alpha channel: `icon-color` and `icon-halo-*` recolour it. Default false. */
+    sdf?: boolean;
 }
 
 function pixels(source: CanvasImageSource, w: number, h: number): Uint8Array {
