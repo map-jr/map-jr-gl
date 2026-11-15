@@ -85,8 +85,11 @@ async function run(s) {
     const events = {}, at = k => () => { events[k] ??= performance.now(); };
     map.once('render', at('frame')); map.once('load', at('load')); map.once('idle', at('idle'));
     // (Tiles are fetched in workers, which the resource timings of the page do not list: the tile steps come from the tile events.)
-    if (s.lib === 'maplibre') { map.on('dataloading', e => { if (e.tile) at('tileReq')(); }); map.on('data', e => { if (e.tile) at('tileAns')(); }); }
-    else map.on('tile', e => { if (e.kind === 'req') at('tileReq')(); else if (e.kind === 'ans') at('tileAns')(); });
+    // (The last tile answer, the number of tile answers and the last frame are counted until the first idle.)
+    const ans = () => { at('tileAns')(); if (events.idle === undefined) { events.tileLast = performance.now(); events.tiles = (events.tiles ?? 0) + 1; } };
+    map.on('render', () => { if (events.idle === undefined) events.lastFrame = performance.now(); });
+    if (s.lib === 'maplibre') { map.on('dataloading', e => { if (e.tile) at('tileReq')(); }); map.on('data', e => { if (e.tile) ans(); }); }
+    else map.on('tile', e => { if (e.kind === 'req') at('tileReq')(); else if (e.kind === 'ans') ans(); });
     const report = when => { if (s.lib !== 'maplibre') undrawn[when] = tiles.undrawn(); };
     // (A map that never settles must not stop the scenarios after it: it fails after a minute.)
     if (!await Promise.race([new Promise(r => map.once('idle', () => r(true))), sleep(60000).then(() => false)])) { map.remove(); throw new Error('the map was not idle after 60 seconds'); }
@@ -134,7 +137,7 @@ const results = [];
 /** The start timeline: one line for each of the first three scenarios (MapLibre GL JS and this library with both renderers), with the median of each step when a scenario ran more than once. */
 const timelineLines = () => scenarios.slice(0, 3).map(s => [s.name, results.filter(r => r.name === s.name).map(r => r.steps)]).filter(([, runs]) => runs.length)
     .map(([name, runs]) => timelineLine(name, runs));
-const TIMELINE = 'Start timeline, ms after the map was made (sprite, glyphs and worker file from resource timings, which do not list requests made in a worker; tiles from the tile events; the style is fetched by the page before the map is made):';
+const TIMELINE = 'Start timeline, ms after the map was made (sprite, glyphs and worker file from resource timings, which do not list requests made in a worker; tiles from the tile events, counted until idle; the style is fetched by the page before the map is made):';
 document.getElementById('run').onclick = async e => {
     e.target.disabled = true; tbody.replaceChildren(); document.getElementById('timeline').replaceChildren(); document.getElementById('undrawn').replaceChildren(); results.length = 0;
     const only = q.get('only'); // e.g. ?only=terrain
