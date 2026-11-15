@@ -1,13 +1,14 @@
 # Contributing
 
-Map Jr. GL is version 0.x and maintained by one person with an AI assistant. Issues and pull requests are welcome;
+Map Jr. GL is a project of Sam Margulies and whatismyelevation.com. It is version 0.x and maintained by one person
+with an AI assistant. Issues and pull requests are welcome;
 answers can take time.
 
 ## Report a fault or propose a change
 
 Open an issue with the template that fits. For a fault, the most useful thing is the smallest style and code that
 shows it, and a comparison with MapLibre GL JS if the result differs. For a security problem, do not open a public
-issue: use GitHub's "Report a vulnerability" on the repository.
+issue: use GitHub's "Report a vulnerability" on the repository. [SECURITY.md](SECURITY.md) has the details.
 
 ## Make a change
 
@@ -30,4 +31,5 @@ needs a strong reason.
 ## Licence
 
 MIT. By contributing you agree that your contribution has this licence. If your change follows a method from
-another project, name it in `ACKNOWLEDGEMENTS.md`.
+another project, name it in `ACKNOWLEDGEMENTS.md`. Before a release, the [similarity scan](docs/similarity-scan.md)
+checks that the source contains no code of another project without its notice.

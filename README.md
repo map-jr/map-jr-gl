@@ -1,6 +1,7 @@
 # Map Jr. GL
 
-A small, fast map library for the web. It reads MapLibre styles. It has two entries:
+A small, fast map library for the web. It reads MapLibre styles. Map Jr. GL is a project of Sam Margulies and
+whatismyelevation.com. It has two entries:
 
 - `@map-jr/map-jr-gl`: a map from one description, with state that your code can watch. The adapters for frameworks
   (`@map-jr/map-jr-gl/vue`, `@map-jr/map-jr-gl/react`) use this entry.
@@ -441,12 +442,15 @@ To measure on your device, open [the benchmark page](https://map-jr.github.io/ma
   library was run.
 - [Development](docs/development.md): how to build, test, measure and release the library.
 - [Changelog](CHANGELOG.md): what each version contains, and what is known not to work.
+- [Security](SECURITY.md): how to report a vulnerability privately, and what is in scope.
+- [Similarity scan](docs/similarity-scan.md): how the source was compared with MapLibre GL JS and other projects, and
+  the result.
 - [Contributing](CONTRIBUTING.md) and the [open issues](https://github.com/map-jr/map-jr-gl/issues): what is known to be wrong or missing, by priority.
 
 ## How this project is made
 
-An AI coding assistant wrote almost all the code of this project ("vibe coding"). A person gave the directions and
-reviewed the results. Nobody reviewed every line of the code. Read [Acknowledgements](ACKNOWLEDGEMENTS.md) for
+Map Jr. GL is a project of Sam Margulies and whatismyelevation.com. An AI coding assistant wrote almost all the code
+of this project ("vibe coding"). A person gave the directions and reviewed the results. Nobody reviewed every line of the code. Read [Acknowledgements](ACKNOWLEDGEMENTS.md) for
 more information, and run your own tests before you use the library for important work.
 
 ## Licence and acknowledgements
@@ -454,5 +458,6 @@ more information, and run your own tests before you use the library for importan
 The licence is MIT. See [LICENSE](LICENSE).
 
 The library follows [MapLibre GL JS](https://github.com/maplibre/maplibre-gl-js) (BSD-3-Clause) but contains none of
-its files. [Acknowledgements](ACKNOWLEDGEMENTS.md) lists the projects that this library uses or follows.
+its files. A [similarity scan](docs/similarity-scan.md) of the source against MapLibre GL JS 6.17.0 and the other
+projects found no copied block. [Acknowledgements](ACKNOWLEDGEMENTS.md) lists the projects that this library uses or follows.
 [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md) contains their licence texts.
