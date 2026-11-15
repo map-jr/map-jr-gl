@@ -1291,6 +1291,29 @@ for (const mode of ['main', 'worker']) {
         }, mode);
         check(`[${mode}] compat: toBlob and toDataURL in a render listener give the drawn map (#44)`, r.blob?.[1] > 200 && r.blob[0] < 50 && r.fromUrl?.[1] > 200 && r.fromUrl[0] < 50, JSON.stringify(r));
     }
+    // #46: an image added with `sdf: true` is a signed distance field, and `icon-color` recolours it, as in MapLibre GL JS.
+    {
+        const r = await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const m = new mod.Map({container: el, renderer: mode, attributionControl: false, center: [0, 0], zoom: 1, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]}});
+            await new Promise(res => m.once('load', res));
+            // A white disc whose alpha falls from 255 at the centre to 0 at the edge: 191 (0.75) is the outline.
+            const n = 32, data = new Uint8Array(n * n * 4);
+            for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) { const i = (y * n + x) * 4, d = Math.hypot(x + 0.5 - n / 2, y + 0.5 - n / 2); data.fill(255, i, i + 3); data[i + 3] = Math.max(0, Math.min(255, 255 - d * 8)); }
+            await m.addImage('dot', {width: n, height: n, data}, {sdf: true});
+            m.addSource('p', {type: 'geojson', data: {type: 'Point', coordinates: [0, 0]}});
+            m.addLayer({id: 'p', type: 'symbol', source: 'p', layout: {'icon-image': 'dot'}, paint: {'icon-color': '#f00'}});
+            await new Promise(res => { m.once('idle', res); setTimeout(res, 8000); });
+            const url = await new Promise(res => { m.once('render', () => res(m.getCanvas().toDataURL())); m.triggerRepaint(); setTimeout(() => res(null), 5000); });
+            let px = null;
+            if (url) { const bmp = await createImageBitmap(await (await fetch(url)).blob()), c = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}), g = c.getContext('2d'); g.drawImage(bmp, 0, 0); px = Array.from(g.getImageData(bmp.width >> 1, bmp.height >> 1, 1, 1).data); }
+            const meta = m.getImage('dot');
+            m.remove(); el.remove();
+            return {px, sdf: meta?.sdf};
+        }, mode);
+        check(`[${mode}] compat: addImage with sdf: true is recoloured by icon-color (#46)`, r.px?.[0] > 200 && r.px[1] < 60 && r.px[2] < 60 && r.sdf === true, JSON.stringify(r));
+    }
     // #196: with `interactive: false`, the handlers are off, a drag does nothing, and `enable()` on a handler turns it on,
     // as in MapLibre GL JS. #253: the map still fires `click`, `mousemove` and the events of a layer.
     {
