@@ -18,6 +18,7 @@ import type {Checked} from './mistakes.ts';
 import type {FontSource} from './engine.ts';
 import type {LngLatBounds, LngLatBoundsInput} from './lnglat.ts';
 import type {PaddingInput} from './geo.ts';
+import type {ProjectionSpecification} from './compat-types.ts';
 
 /**
  * Set by the build (`define` in build.mjs). True in the development build (`dist/*.dev.js`, which the `development`
@@ -104,6 +105,12 @@ export interface MapSpec extends MapSetup {
     markers?: MarkerLayerOptions[];
     /** Controls from `@map-jr/map-jr-gl/controls`: `[navigation(), scale()]`. */
     controls?: ControlSpec[];
+    /**
+     * The projection, in place of the property `projection` of the style: `{type: 'globe'}` or `{type: 'mercator'}`
+     * (the same name and shape as in the style). `null` or no field: the projection of the style. The globe is not
+     * drawn yet: the map draws Mercator and writes one warning.
+     */
+    projection?: ProjectionSpecification | null;
     /** Style layers whose features are found under the pointer: they are in `state.hover` and in `onClick`. */
     interactiveLayers?: string[];
     onClick?: (event: MapPointer) => void;
@@ -227,6 +234,11 @@ export interface MapEvents extends
     styleimagemissing: MapEventBase<'styleimagemissing'> & {id: string};
     /** The terrain of the style has changed. */
     terrain: MapEventBase<'terrain'> & {terrain: {source: string; exaggeration?: number} | null};
+    /**
+     * The projection has been put in place: by each new style, and by a change of its name (`projection` in the
+     * description, the control `globe()`). `newProjection` is `mercator`, `globe` or `vertical-perspective`.
+     */
+    projectiontransition: MapEventBase<'projectiontransition'> & {newProjection: string};
     /** The geolocate control of `@map-jr/map-jr-gl/controls` has a position. */
     geolocate: MapEventBase<'geolocate'> & {coords: GeolocationCoordinates};
     /** `error` is usually an `Error`. (`onError` and `state.error` always have an `Error`.) */
@@ -359,9 +371,14 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
     const copy = <T>(v: T): T => JSON.parse(JSON.stringify(v));
     // The sources of the base style: an extend source with one of these ids replaces it, and only a new style gives it back.
     let baseSources: object = {};
+    // The projection of the style itself, which applies when the description has none, and that of the last description.
+    let styleProjection: ProjectionSpecification | undefined, wantedProjection = spec.projection;
     const restyle = (next: MapSpec) => { styled = false; map.setStyle(next.style, {transformStyle: (_, style) => {
         styled = true;
         baseSources = style.sources ?? {};
+        styleProjection = style.projection;
+        // (The description of this moment: it can have changed while the style loaded.)
+        if (wantedProjection) style = {...style, projection: copy(wantedProjection)};
         // (The sources of the new style have no data of the description yet: data that was given since `restyle` went to
         // the sources of the style before. It is given again when the new style is there: see `giveData`.)
         sent.clear();
@@ -488,6 +505,7 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
         // (A description that is made again each time, as in a template of a framework, has new objects with the same
         // content. So where the identity is different, the content is compared before the map does work.)
         const differ = (a: unknown, b: unknown) => a !== b && JSON.stringify(a) !== JSON.stringify(b);
+        wantedProjection = next.projection;
         // (After a new style the data waits for the `styledata` event: the engine must have the new style first.)
         const restyled = !!before && (differ(next.style, before.style) || differ(next.extend, before.extend) && !(styled && edit(next.extend, before.extend, differ)) || differ(markerStyles(next.markers), markerStyles(before.markers)));
         if (restyled) { state.set({idle: false}); sent.clear(); restyle(next); }
@@ -497,6 +515,8 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
         if (next.maxPitch !== before?.maxPitch && before) map.setMaxPitch(next.maxPitch);
         if (differ(next.maxBounds, before?.maxBounds)) map.setMaxBounds(next.maxBounds);
         if (differ(next.padding, before?.padding)) map.jumpTo({padding: next.padding ?? 0});
+        // (Before the style is there, the style gets the projection of the description when it comes: see `restyle`.)
+        if (before && styled && !restyled && differ(next.projection, before.projection)) map.setProjection(next.projection ? copy(next.projection) : styleProjection);
         if (next.controls !== before?.controls) {
             const wanted = new Set((next.controls ?? []).map(c => c.key));
             for (const [key, c] of controls) if (!wanted.has(key)) { map.removeControl(c as any); controls.delete(key); }

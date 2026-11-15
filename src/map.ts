@@ -7,6 +7,7 @@ import {DEFAULT_FONT, keep, kept, resolveStyle, type ResolvedStyle} from './reso
 import {layerRules} from './rules.ts';
 import type {CameraOptions, Command, EngineEvent, FontSource} from './engine.ts';
 import type {QueriedFeature} from './query.ts';
+import type {ProjectionSpecification} from './compat-types.ts';
 import type {TileBackend} from './tiles.ts';
 import {acquireTileWorkers, defaults as loadDefaults, startWorker, type LoadOptions} from './loader.ts';
 import {fillTemplate, sizedSVG, svgSize, templateSlots, VARIANT} from './markers.ts';
@@ -945,6 +946,8 @@ export class Map {
     private newStyle = false;
     /** The events after the style changed. `style.load` is only for a whole new style (the first one, or `setStyle`). */
     private styleEvents(whole: boolean) {
+        // (As in MapLibre, a whole new style puts its projection in place first, and that fires `projectiontransition`.)
+        if (whole) this.fire('projectiontransition', {newProjection: projectionName(this.rawStyle?.projection?.type)});
         this.fire('styledata', {dataType: 'style'});
         this.fire('data', {dataType: 'style'});
         if (whole) this.fire('style.load');
@@ -1010,13 +1013,38 @@ export class Map {
         }, err => { this.fire('error', {error: err}); if (turn === this.restyles) { this.restyled = turn; this.sendGeo(); this.post({type: 'repaint'}); } });
     }
     private projectionWarned = false;
-    /** Warns once per map when the style names a projection other than `mercator`: only Mercator is drawn. */
+    /**
+     * Warns once per map when the projection is not `mercator`: the map draws Mercator. A globe (`globe`,
+     * `vertical-perspective`, or an expression of them) is accepted and is not drawn yet; another name is not supported.
+     */
     private checkProjection() {
-        const t = this.rawStyle?.projection?.type;
+        const t = this.rawStyle?.projection?.type, name = projectionName(t);
         if (t === undefined || t === 'mercator' || this.projectionWarned) return;
         this.projectionWarned = true;
-        console.warn(`[map-jr-gl] The style has the projection ${JSON.stringify(t)}, which is not supported, so the map uses "mercator".`);
+        console.warn(name === 'mercator'
+            ? `[map-jr-gl] The style has the projection ${JSON.stringify(t)}, which is not supported, so the map uses "mercator".`
+            : `[map-jr-gl] The projection ${JSON.stringify(typeof t === 'string' ? t : name)} is not drawn yet: this version of the library draws "mercator". setProjection() and getProjection() work, and a later version draws the globe.`);
     }
+    /**
+     * Sets the projection of the style, as MapLibre GL JS does: `{type: 'globe'}`, `{type: 'mercator'}`, or `null` for
+     * the default (Mercator). Fires `projectiontransition` when the name of the projection changes.
+     * The globe is not drawn yet: the map draws Mercator and warns once.
+     */
+    setProjection(projection?: ProjectionSpecification | null) {
+        const name = projectionName(projection?.type);
+        // (As in MapLibre, the same name gives no event and no new style; the object is kept for getProjection.)
+        if (this.rawStyle && name === projectionName(this.rawStyle.projection?.type)) {
+            if (projection) this.rawStyle.projection = projection; else delete this.rawStyle.projection;
+            return this;
+        }
+        return this.editStyle(s => {
+            const was = projectionName(s.projection?.type);
+            if (projection) s.projection = projection; else delete s.projection;
+            if (name !== was) this.fire('projectiontransition', {newProjection: name});
+        });
+    }
+    /** The projection of the style as it was given (`undefined` when the style has none), as in MapLibre GL JS. */
+    getProjection(): ProjectionSpecification | undefined { return this.rawStyle?.projection; }
     /** Runs a change to the style JSON now, or as soon as the style has been fetched. */
     protected editStyle(fn: (style: any) => void) {
         // As in MapLibre, a change that names a layer that does not exist gives an `error` event, not an exception.
@@ -1789,6 +1817,12 @@ function paddingOf(p: PaddingInput): [number, number, number, number] {
 const MAX_VARIANTS = 1000;
 /** The style sheet of the controls, constructed once for each document (see `styles`). */
 const sheets = new WeakMap<Document, CSSStyleSheet>();
+/**
+ * The name of a projection as MapLibre GL JS gives it in `projectiontransition`: `mercator`, `globe` or
+ * `vertical-perspective`, and `globe` for an expression (MapLibre makes a globe of each expression). A name that it
+ * does not know is `mercator`, which it draws then.
+ */
+export const projectionName = (type: unknown): string => Array.isArray(type) ? 'globe' : type === 'globe' || type === 'vertical-perspective' ? type : 'mercator';
 /** A deep copy. Structured clone refuses a proxy (a Vue reactive object, #242), and JSON reads through one. */
 function plain<T>(v: T): T { try { return structuredClone(v); } catch { return JSON.parse(JSON.stringify(v)); } }
 

@@ -104,9 +104,8 @@ export class FullscreenControl extends CoreFullscreen {
 }
 export {Point} from './compat-map.ts';
 import {Point} from './compat-map.ts';
-import {LogoControl as Empty} from './controls-more.ts';
-/** MapLibre changes between a flat map and a globe with this control. This library has no globe, so the control adds an empty element. */
-export class GlobeControl extends Empty { override getDefaultPosition() { return 'top-right' as const; } }
+import {LogoControl as Empty, GlobeControl} from './controls-more.ts';
+export {GlobeControl};
 export {GPUInitializationError} from './gpu-error.ts';
 // In the development build only, reading a member of MapLibre GL JS that a class here does not have warns once (see
 // `watchMembers` in src/mistakes.ts). The production build has none of this.

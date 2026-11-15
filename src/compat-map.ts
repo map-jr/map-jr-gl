@@ -123,7 +123,6 @@ export class Map extends CoreMap {
         this.warned.add(name);
         console.warn(`[map-jr-gl] ${name}: the result was used without \`await\` and was not complete (${had} of ${has} features). Tile data is in a worker. Change\n    const features = map.${name}(...);\nto\n    const features = await map.${name}(...);\n(this also works in MapLibre GL JS). See "Feature queries" in docs/maplibre-compatibility.md.`);
     }
-    setProjection(projection?: {type?: unknown} | null) { return this.unsupported('setProjection', !projection || projection.type === 'mercator'); }
     setSky(sky?: object | null) { return this.unsupported('setSky', !sky || !Object.keys(sky).length); }
     setRenderWorldCopies(copies?: boolean | null) { return this.unsupported('setRenderWorldCopies(false)', copies !== false); }
     setRoll(roll?: number) { return this.unsupported('setRoll', !roll); }
@@ -203,7 +202,8 @@ export class Map extends CoreMap {
         if ((o as {glyphs?: unknown}).glyphs !== undefined) console.warn('[map-jr-gl] Map: the option glyphs was removed and has no effect; the map loads the glyph files of the style. Remove the option. To draw text with the fonts of the browser, remove "glyphs" from the style.');
         if (o.locale != null && typeof o.locale != 'object') console.warn('[map-jr-gl] Map: the option locale is not an object. Pass an object such as {"NavigationControl.ZoomIn": "Zoom avant"}.');
         else this.uiLocale = o.locale;
-        this.unsupported('The option projection', !o.projection || (o.projection.type ?? o.projection) === 'mercator');
+        // (The option is not one of MapLibre GL JS 6.17, which takes the projection from the style or `setProjection`. It is applied as `setProjection`.)
+        if (o.projection) this.setProjection(typeof o.projection === 'string' ? {type: o.projection} : o.projection);
         this.unsupported('The option renderWorldCopies: false', o.renderWorldCopies !== false);
         this.unsupported('The option canvasContextAttributes (but for antialias)', !context || !Object.keys(context).some(k => k !== 'antialias' && k !== 'preserveDrawingBuffer'));
         if (context?.preserveDrawingBuffer) {
@@ -286,7 +286,6 @@ export class Map extends CoreMap {
     zoomOut(o: {duration?: number} = {}, eventData?: EventData) { return this.easeTo({zoom: this.tr.zoom - 1, duration: 300, ...o}, eventData); }
     rotateTo(bearing: number, o: {duration?: number} = {}, eventData?: EventData) { return this.easeTo({bearing, ...o}, eventData); }
     snapToNorth(o: {duration?: number} = {}, eventData?: EventData) { return Math.abs(this.tr.bearing) < 7 ? this.resetNorth(o, eventData) : this; }
-    getProjection() { return {type: 'mercator'}; }
     getRenderWorldCopies() { return true; }
     getRoll() { return 0; }
     /** With 3D terrain: the (exaggerated) height of the ground at the map centre in metres; otherwise 0. */

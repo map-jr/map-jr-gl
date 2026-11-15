@@ -45,6 +45,8 @@ export const fullscreen = spec('fullscreen', (m, _o: {}) => new m.FullscreenCont
 export const geolocate = spec('geolocate', (m, o: {zoom?: number; positionOptions?: PositionOptions; trackUserLocation?: boolean; showUserLocation?: boolean}) => new m.GeolocateControl(o));
 /** A button that turns 3D terrain on and off. `source` is the id of an elevation source of the style. */
 export const terrain = spec('terrain', (m, o: {source: string; exaggeration?: number}) => new m.TerrainControl(o));
+/** A button that switches the projection between the globe and Mercator. The globe is not drawn yet: the map draws Mercator and warns once. */
+export const globe = spec('globe', (m, _o: {}) => new m.GlobeControl());
 /**
  * A control of your own. Give `element` (the map puts it into the corner and takes it out again), or `onAdd` and
  * `onRemove` as MapLibre GL JS controls have them (`onAdd` receives the map of `map.map` and returns the element).

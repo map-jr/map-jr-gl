@@ -1952,8 +1952,10 @@ for (const mode of ['main', 'worker']) {
             for (const x of [m, plain, strict]) { const el = x.getContainer(); x.remove(); el.remove(); }
             return {...out, thrown, thrownCall};
         });
-        check('[main] maplibre-compat: each option with no effect gives one warning, the defaults give none, and maxBounds works',
-            quiet.options.length === 3 && ['The option projection', 'The option renderWorldCopies', 'new Map(): canvasContextAttributes.preserveDrawingBuffer has no effect. Read the canvas with map.toBlob()'].every(n => quiet.options.some(w => w.startsWith('[map-jr-gl] ' + n))) && quiet.plain.length === 0 && String(quiet.bounds) === '-10,-10,10,10' && quiet.clamped.every((v, i) => Math.abs(v - [1.2109, 3.4573][i]) < 1e-3) && quiet.later.every((v, i) => Math.abs(v - [1.2109, 3.4573][i]) < 1e-3) && quiet.custom.length === 1 && quiet.custom[0].includes('"custom"'), JSON.stringify({options: quiet.options, plain: quiet.plain, bounds: quiet.bounds, clamped: quiet.clamped, later: quiet.later, custom: quiet.custom}));
+        check('[main] maplibre-compat: each option with no effect gives one warning, the defaults give none, the option projection is applied, and maxBounds works',
+            quiet.options.length === 2 && ['The option renderWorldCopies', 'new Map(): canvasContextAttributes.preserveDrawingBuffer has no effect. Read the canvas with map.toBlob()'].every(n => quiet.options.some(w => w.startsWith('[map-jr-gl] ' + n))) && quiet.plain.length === 0 && String(quiet.bounds) === '-10,-10,10,10' && quiet.clamped.every((v, i) => Math.abs(v - [1.2109, 3.4573][i]) < 1e-3) && quiet.later.every((v, i) => Math.abs(v - [1.2109, 3.4573][i]) < 1e-3) && quiet.custom.filter(w => !w.includes('projection')).length === 1 && quiet.custom.some(w => w.includes('"custom"'))
+            // (The option projection is applied as setProjection (#463): a globe writes the warning of the style when the style is there.)
+            && quiet.custom.filter(w => w.startsWith('[map-jr-gl] The projection "globe" is not drawn yet')).length === 1, JSON.stringify({options: quiet.options, plain: quiet.plain, bounds: quiet.bounds, clamped: quiet.clamped, later: quiet.later, custom: quiet.custom}));
         check('[main] maplibre-compat: a layer or source id that exists, a source that is not there, and a source in use fire error and change nothing',
             quiet.errors.length === 4 && /addLayer: the style has a layer with the id "bg"/.test(quiet.errors[0]) && /names the source "nowhere"/.test(quiet.errors[1]) && /addSource: the style has a source with the id "g"/.test(quiet.errors[2]) && /removeSource: the layer "uses-g" uses the source "g"/.test(quiet.errors[3]) && quiet.layers === 'bg,uses-g' && quiet.source, JSON.stringify({errors: quiet.errors, layers: quiet.layers, source: quiet.source}));
         check('[main] maplibre-compat: strict: true throws for an option with no effect and for a refused style call',
@@ -2050,6 +2052,55 @@ for (const mode of ['main', 'worker']) {
         });
         const want = {NavigationControl: 'top-right', GeolocateControl: 'top-right', FullscreenControl: 'top-right', TerrainControl: 'top-right', GlobeControl: 'top-right', ScaleControl: 'bottom-left', AttributionControl: 'bottom-right', LogoControl: 'bottom-left'};
         check('[main] maplibre-compat: each control class added without a position goes to the corner that MapLibre GL JS uses', JSON.stringify(corners) === JSON.stringify(want), JSON.stringify(corners));
+    }
+    // The projection in the API of MapLibre GL JS (#463): getProjection() gives what the style has, setProjection()
+    // changes it and fires projectiontransition when the name changes, GlobeControl switches it, and a style with the
+    // globe, which is not drawn yet, writes one warning. (The first map changes back before its style is resolved
+    // again, so it has no globe to warn about.)
+    if (mode === 'main') {
+        const projection = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+            const warnings = [], warn = console.warn;
+            console.warn = (...a) => { warnings.push(String(a[0])); warn(...a); };
+            try {
+                const out = {};
+                const plain = new mod.Map({container: el, renderer: 'main', center: [0, 0], zoom: 2, attributionControl: false, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+                const first = [];
+                plain.on('projectiontransition', e => first.push(e.newProjection));
+                await new Promise(r => plain.once('load', r));
+                out.none = plain.getProjection() ?? 'undefined';
+                out.first = first.slice();
+                const events = [];
+                plain.on('projectiontransition', e => events.push(e.newProjection));
+                const spec = {type: 'globe'};
+                plain.setProjection(spec);
+                out.same = plain.getProjection() === spec;
+                plain.setProjection({type: 'globe'});
+                plain.setProjection({type: 'vertical-perspective'});
+                plain.setProjection(null);
+                out.after = plain.getProjection() ?? 'undefined';
+                out.events = events.slice();
+                const c = new mod.GlobeControl();
+                plain.addControl(c);
+                const b = el.querySelector('button.maplibregl-ctrl-globe');
+                out.button = [!!b, b?.title, b?.getAttribute('aria-pressed')];
+                b?.click();
+                out.clicked = [plain.getProjection()?.type, b?.classList.contains('maplibregl-ctrl-globe-enabled'), b?.classList.contains('map-jr-ctrl-globe-enabled'), b?.classList.contains('maplibregl-ctrl-globe'), b?.title, b?.getAttribute('aria-pressed')];
+                b?.click();
+                out.back = [plain.getProjection()?.type, b?.classList.contains('maplibregl-ctrl-globe')];
+                plain.remove();
+                const styled = new mod.Map({container: el, renderer: 'main', center: [0, 0], zoom: 2, attributionControl: false, style: {version: 8, projection: {type: 'globe'}, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+                await new Promise(r => styled.once('load', r));
+                out.style = styled.getProjection();
+                styled.remove();
+                out.warnings = warnings.filter(w => w.includes('projection')).length;
+                return out;
+            } finally { console.warn = warn; el.remove(); }
+        }).catch(e => ({error: String(e)}));
+        const want = {none: 'undefined', first: ['mercator'], same: true, after: 'undefined', events: ['globe', 'vertical-perspective', 'mercator'],
+            button: [true, 'Enable globe', 'false'], clicked: ['globe', true, true, false, 'Disable globe', 'true'], back: ['mercator', true], style: {type: 'globe'}, warnings: 1};
+        check('[main] maplibre-compat: getProjection, setProjection, projectiontransition and GlobeControl follow MapLibre GL JS, and a style with the globe writes one warning', JSON.stringify(projection) === JSON.stringify(want), JSON.stringify(projection));
     }
     // ScaleControl.setUnit() changes the unit, and 'nautical' shows nautical miles, as in MapLibre GL JS (#204).
     if (mode === 'main') {
