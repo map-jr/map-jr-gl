@@ -518,7 +518,7 @@ export class Map {
             if (typeof sheet !== 'string') continue;
             const url = new URL(sheet, this.styleBase).href + dense;
             for (const [ext, kind] of [['.json', 'SpriteJSON'], ['.png', 'SpriteImage']]) {
-                const answer = withTimeout(this.fetchAs(kind))(url + ext);
+                const answer = this.fetchAs(kind)(url + ext);
                 answer.catch(() => {}); // (the engine reports a failure when it takes the answer)
                 files.set(url + ext, answer);
             }
@@ -712,8 +712,8 @@ export class Map {
     }
     /** The controllers of the protocol requests that run: `remove()` aborts them. */
     private protocolAborts = new Set<AbortController>();
-    /** A `fetch` for requests that this thread makes itself (the style, its sources, GeoJSON data). */
-    protected fetchAs = (kind: string) => fetchWith(() => ({transform: !!this.transformRequest, protocols: [...protocols.keys()]}), (url, k, signal) => this.answer(url, k, signal), kind);
+    /** A `fetch` for requests that this thread makes itself (the style, its sources, GeoJSON data), with the timeout of `withTimeout`. */
+    protected fetchAs = (kind: string) => withTimeout(fetchWith(() => ({transform: !!this.transformRequest, protocols: [...protocols.keys()]}), (url, k, signal) => this.answer(url, k, signal), kind));
     private layerListeners: {type: string; layers: string[]; fn: Listener}[] = [];
     /** The `mouseenter` and `mouseleave` listeners whose layers are under the pointer. */
     private hovered = new WeakSet<object>();

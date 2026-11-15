@@ -3,7 +3,7 @@ import {compileFor, type MapStates} from './expr.ts';
 import {buildTile, packLabels, toGL, unpackLabels, type TileGL, type TileIR} from './tile.ts';
 import {decodeElevation, queryTile, type QueriedFeature, type TileQuery} from './query.ts';
 import {HEIGHT_GRID} from './geo.ts';
-import {fetchWith, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
+import {fetchWith, withTimeout, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
 import {fetchTile, heads} from './pmtiles.ts';
 import {GEOJSON_PREFIX, prepareSource, sliceGeoJSON, type GeoJSONOptions, type PreparedSource} from './geojson.ts';
 import {contourTile, decodeDEM, decodePixels, type ContourConfig, type DEM, type ImageDecoder} from './contour.ts';
@@ -84,9 +84,9 @@ export class TileBuilder {
         return sliceGeoJSON(this.geojson.get(m[1]) ?? [], +m[2], +m[3], +m[4], metrics);
     }
     private fetchFn: typeof fetch;
-    constructor(fetchFn: typeof fetch = fetch) { this.fetchFn = (...a) => fetchFn(...a); }
-    /** Replaces how this builder makes its requests (see requests.ts). */
-    setFetch(fetchFn: typeof fetch) { this.fetchFn = fetchFn; }
+    constructor(fetchFn: typeof fetch = fetch) { this.fetchFn = withTimeout((...a) => fetchFn(...a)); }
+    /** Replaces how this builder makes its requests (see requests.ts). Every request has the timeout of `withTimeout`. */
+    setFetch(fetchFn: typeof fetch) { this.fetchFn = withTimeout(fetchFn); }
 
     /** The global state and the feature state of the map of this builder. */
     private states: MapStates = {g: {}, f: {}};

@@ -994,7 +994,7 @@ export class Engine {
         let pixels = this.dem.get(url);
         if (!pixels) {
             pixels = (async () => {
-                const bytes = await fetchTile(url, this.fetchAs('Tile'));
+                const bytes = await fetchTile(url, withTimeout(this.fetchAs('Tile')));
                 if (!bytes) return null;
                 const image = await createImageBitmap(new Blob([bytes as BlobPart]), {premultiplyAlpha: 'none', colorSpaceConversion: 'none'});
                 const canvas = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(image.width, image.height)
@@ -1167,7 +1167,7 @@ export class Engine {
                 // Image tiles need no parsing, so the engine fetches and decodes them itself.
                 const ac = new AbortController();
                 t.cancel = () => ac.abort();
-                load = fetchTile(url, this.fetchAs('Tile'), ac.signal, t).then(async bytes => {
+                load = fetchTile(url, withTimeout(this.fetchAs('Tile')), ac.signal, t).then(async bytes => {
                     if (!bytes) return {labels: {}, batches: {}};
                     const image = await createImageBitmap(new Blob([bytes as BlobPart]));
                     if (this.tiles.get(key) !== t) { image.close(); return {labels: {}, batches: {}}; }
