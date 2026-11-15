@@ -94,6 +94,8 @@ export type CenterZoomBearing = Pick<CoreCameraOptions, 'center' | 'zoom' | 'bea
 /** Style JSON. The library reads the style as MapLibre does; these types do not check each property. */
 export type ExpressionSpecification = [string, ...unknown[]];
 export type FilterSpecification = ExpressionSpecification | boolean;
+/** A value of a style property: the value, an expression, or a function of the legacy form (`{type, stops}`). */
+export type PropertyValueSpecification<T> = T | ExpressionSpecification | {type?: string; property?: string; stops: unknown[]; [key: string]: unknown};
 /** A layer of the style. The names of `paint` and `layout` are not checked here; the types of one layer type below check their prefix. */
 export type LayerSpecification = {
     id: string; type: string; source?: string | SourceSpecification; 'source-layer'?: string; minzoom?: number; maxzoom?: number;
@@ -117,10 +119,10 @@ export type RasterLayerSpecification = LayerOf<'raster'>;
 export type HillshadeLayerSpecification = LayerOf<'hillshade'>;
 export type SymbolLayerSpecification = LayerOf<'symbol', 'text' | 'icon', 'text' | 'icon' | 'symbol'>;
 /** The projection of a style. Only `mercator` is drawn; another projection writes one warning. */
-export type ProjectionSpecification = {type?: string | ExpressionSpecification};
+export type ProjectionSpecification = {type?: PropertyValueSpecification<string>};
 export type SourceSpecification = {type: string; [key: string]: unknown};
 export type TerrainSpecification = {source: string; exaggeration?: number};
-export type LightSpecification = {anchor?: 'map' | 'viewport'; position?: [number, number, number] | ExpressionSpecification; color?: string | ExpressionSpecification; intensity?: number | ExpressionSpecification};
+export type LightSpecification = {anchor?: PropertyValueSpecification<'map' | 'viewport'>; position?: PropertyValueSpecification<[number, number, number]>; color?: PropertyValueSpecification<string>; intensity?: PropertyValueSpecification<number>};
 export type StyleSpecification = {
     version: 8; name?: string; sources: Record<string, SourceSpecification>; layers: LayerSpecification[];
     sprite?: string | {id: string; url: string}[]; glyphs?: string; terrain?: TerrainSpecification; light?: LightSpecification;
