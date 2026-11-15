@@ -1936,7 +1936,7 @@ for (const mode of ['main', 'worker']) {
             const m = new mod.Map({container: el, renderer: 'main', center: [0, 0], zoom: 2, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
             const warnings = [], warn = console.warn;
             console.warn = (...a) => warnings.push(String(a[0]));
-            const gc = new mod.GeolocateControl({trackUserLocation: true});
+            const gc = new mod.GeolocateControl({showAccuracyCircle: true});
             console.warn = warn;
             const notAdded = gc.trigger();
             m.addControl(gc);
@@ -1966,9 +1966,48 @@ for (const mode of ['main', 'worker']) {
             if (real) delete navigator.geolocation;
             return {notAdded, triggered, events, onMap, warnings};
         });
-        check('[main] maplibre-compat: GeolocateControl has on/once/trigger() and fires geolocate, error and outofmaxbounds on itself, and warns once for trackUserLocation',
+        check('[main] maplibre-compat: GeolocateControl has on/once/trigger() and fires geolocate, error and outofmaxbounds on itself, and warns once for showAccuracyCircle',
             geo.notAdded === false && geo.triggered === true && geo.events.join() === 'geolocate:true,error:true,outofmaxbounds:true,geolocate:true,off,geolocate:true' && geo.onMap.join() === 'geolocate,error,geolocate,geolocate'
-            && geo.warnings.length === 1 && geo.warnings[0].startsWith('[map-jr-gl] GeolocateControl: the option trackUserLocation'), JSON.stringify(geo));
+            && geo.warnings.length === 1 && geo.warnings[0].startsWith('[map-jr-gl] GeolocateControl: the option showAccuracyCircle'), JSON.stringify(geo));
+        // trackUserLocation (#42): the states and events of MapLibre GL JS 6.17, the dot, and clearWatch, with a mocked watchPosition.
+        const track = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const real = Object.getOwnPropertyDescriptor(Navigator.prototype, 'geolocation');
+            let ok, fail, cleared = 0;
+            Object.defineProperty(navigator, 'geolocation', {configurable: true, value: {getCurrentPosition() {}, watchPosition: (a, b) => { ok = a; fail = b; return 7; }, clearWatch: id => { cleared = id; }}});
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+            const m = new mod.Map({container: el, renderer: 'main', center: [0, 0], zoom: 2, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            const gc = new mod.GeolocateControl({trackUserLocation: true});
+            m.addControl(gc);
+            await new Promise(r => m.once('load', r));
+            const events = [], b = el.querySelector('button.maplibregl-ctrl-geolocate');
+            for (const t of ['geolocate', 'error', 'trackuserlocationstart', 'trackuserlocationend', 'userlocationfocus', 'userlocationlostfocus']) gc.on(t, () => events.push(t));
+            const cls = () => [...b.classList].filter(c => c.startsWith('maplibregl-ctrl-geolocate-')).join(' ') || 'off';
+            const idle = () => new Promise(r => { const t = () => m.isMoving() ? setTimeout(t, 50) : r(); setTimeout(t, 50); });
+            const states = [];
+            // The code of tracking loads at the first click (geolocate-track.ts), so each click acts after a task.
+            const press = async () => { b.click(); for (let i = 0; i < 100 && !ok; i++) await new Promise(r => setTimeout(r, 20)); await new Promise(r => setTimeout(r, 0)); };
+            await press(); states.push(cls());
+            ok({coords: {longitude: 10, latitude: 20, accuracy: 5}, timestamp: 1}); states.push(cls());
+            await idle();
+            const centred = Math.round(m.getCenter().lng) === 10;
+            const dot = !!el.querySelector('.maplibregl-user-location-dot');
+            m.jumpTo({center: [0, 0]}); await idle(); states.push(cls());
+            ok({coords: {longitude: 11, latitude: 20, accuracy: 5}, timestamp: 2}); await idle();
+            const stayed = Math.round(m.getCenter().lng) === 0;
+            await press(); states.push(cls());
+            for (let i = 0; i < 60 && Math.round(m.getCenter().lng) !== 11; i++) await new Promise(r => setTimeout(r, 50));
+            const back = Math.round(m.getCenter().lng) === 11;
+            await press(); states.push(cls());
+            const dotGone = !el.querySelector('.maplibregl-user-location-dot');
+            m.remove(); el.remove();
+            if (real) delete navigator.geolocation;
+            return {states, events, centred, dot, stayed, back, dotGone, cleared};
+        });
+        check('[main] maplibre-compat: GeolocateControl with trackUserLocation follows the position, goes to the background when the map moves, and turns off with the events of MapLibre GL JS',
+            track.states.join() === 'maplibregl-ctrl-geolocate-waiting,maplibregl-ctrl-geolocate-active,maplibregl-ctrl-geolocate-background,maplibregl-ctrl-geolocate-active,off'
+            && track.events.join() === 'trackuserlocationstart,geolocate,trackuserlocationend,userlocationlostfocus,geolocate,trackuserlocationstart,userlocationfocus,trackuserlocationend'
+            && track.centred && track.dot && track.stayed && track.back && track.dotGone && track.cleared === 7, JSON.stringify(track));
     }
     // #254: members and exports that Vue wrappers and apps read on the compat entry.
     if (mode === 'main') {

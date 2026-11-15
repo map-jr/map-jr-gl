@@ -372,7 +372,7 @@ it makes the map. A control appears a moment after `createMap` or `update` adds 
 | `navigation` | Zoom buttons and a compass | `showZoom`, `showCompass` |
 | `scale` | A scale bar | `maxWidth`, `unit` (`'metric'`, the default; `'imperial'`; or `'nautical'`) |
 | `fullscreen` | A button for the full screen. Where the browser has no Fullscreen API (Safari on iPhone), the container gets the class `map-jr-pseudo-fullscreen` and fills the window. | |
-| `geolocate` | A button that moves the map to the position of the user | `zoom`, `positionOptions` |
+| `geolocate` | A button that moves the map to the position of the user. With `trackUserLocation: true`, the button turns tracking on and off, the map follows the position until it is moved, and a dot shows the position (`showUserLocation: false` hides it). | `zoom`, `positionOptions`, `trackUserLocation`, `showUserLocation` |
 | `terrain` | A button that turns 3D terrain on and off | `source` (required), `exaggeration` |
 | `custom` | A control of your own (see below) | `key` (required), and `element` or `onAdd` with `onRemove` |
 
