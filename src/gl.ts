@@ -6,9 +6,54 @@ import type {Placed, RenderItem} from './placement.ts';
 import {lineMiddle, BASELINE, EM, SDF_BUFFER, SDF_RADIUS, type GlyphAtlas} from './text.ts';
 
 const HEAD = '#version 300 es\nprecision highp float;\n';
+/**
+ * The globe (#463): the variant of a map-space program that is compiled with `#define GLOBE` puts tile units on the
+ * unit sphere (u_tileMerc: the corner of the tile in Mercator units and the size of a tile unit), takes them to clip
+ * space with u_globe, and mixes that with the Mercator position of u_matrix by u_globeness (between zoom 11 and 12).
+ * z becomes the side of the plane of the horizon (u_horizon), so that the GPU clips away the far side of the globe.
+ * The y values -32768 and 32767 are the poles (see subdivide.ts). The method follows MapLibre GL JS (BSD-3-Clause).
+ * Without `GLOBE` the programs are exactly those of a Mercator map.
+ */
+const GLOBE_GLSL = `uniform mat4 u_globe; uniform vec4 u_horizon; uniform float u_globeness; uniform vec4 u_tileMerc; uniform float u_cosLat;
+const float GLOBE_PI = 3.141592653589793;
+bool isPole(vec2 t) { return t.y < -32767.5 || t.y > 32766.5; }
+vec3 toSphere(vec2 t) {
+  if (t.y < -32767.5) return vec3(0.0, 1.0, 0.0);
+  if (t.y > 32766.5) return vec3(0.0, -1.0, 0.0);
+  vec2 m = u_tileMerc.xy + u_tileMerc.zw * t;
+  // (exp and rational arithmetic, not atan and sin: as precise near the equator as MapLibre's formula.)
+  float e = exp(GLOBE_PI - m.y * 2.0 * GLOBE_PI), a = (m.x - 0.5) * 2.0 * GLOBE_PI, c = 2.0 * e / (e * e + 1.0);
+  return vec3(sin(a) * c, (e * e - 1.0) / (e * e + 1.0), cos(a) * c);
+}
+vec4 toClip3(vec2 t, float h) {
+  vec4 f = u_matrix * vec4(isPole(t) ? vec2(t.x, t.y < 0.0 ? 0.0 : ${EXTENT}.0) : t, h, 1.0);
+  vec3 s = toSphere(t) * (1.0 + h / 6371008.8);
+  vec4 g = u_globe * vec4(s, 1.0);
+  g.z = (1.0 - dot(s, u_horizon.xyz) - u_horizon.w) * g.w;
+  if (u_globeness >= 1.0) return g;
+  vec4 r = vec4(mix(f.xy, g.xy, u_globeness), mix(0.0, g.z, clamp((u_globeness - 0.2) / 0.8, 0.0, 1.0)), mix(f.w, g.w, u_globeness));
+  // The caps at the poles show only in the last 2 percent of the change to the globe.
+  if (isPole(t) && u_globeness < 0.98) r.z = 2.0 * r.w;
+  return r;
+}
+vec4 toClip(vec2 t) { return toClip3(t, 0.0); }
+// A tile unit is shorter toward the poles on the sphere: lines are made wider by as much (MapLibre's projectLineThickness).
+float lineScale(vec2 t) { float e = exp(GLOBE_PI - (u_tileMerc.y + u_tileMerc.w * t.y) * 2.0 * GLOBE_PI); return mix(1.0, (e * e + 1.0) / (2.0 * e) * u_cosLat, u_globeness); }
+// For the clip test, a pole vertex is on the border of its tile.
+vec2 unpole(vec2 t) { return vec2(t.x, t.y < -32767.5 ? 0.0 : t.y > 32766.5 ? ${EXTENT}.0 : t.y); }
+bool shown(vec4 c) { return c.z <= c.w; }
+`;
 /** Shared by the map-space programs: u_matrix takes tile units (and metres of height) to clip space. */
 const VS_COMMON = `uniform mat4 u_matrix; uniform vec2 u_view;
+#ifdef GLOBE
+${GLOBE_GLSL}
+#else
 vec4 toClip(vec2 t) { return u_matrix * vec4(t, 0.0, 1.0); }
+#define toClip3(t, h) (u_matrix * vec4(t, h, 1.0))
+#define lineScale(t) 1.0
+#define unpole(t) (t)
+#define shown(c) true
+#endif
 `;
 const FS_CLIP = 'if (v_tile.x < u_clip.x || v_tile.y < u_clip.y || v_tile.x > u_clip.z || v_tile.y > u_clip.w) discard;';
 
@@ -95,7 +140,7 @@ void main() { o = texture(u_drape, v_uv); }`],
 
     fill: [`${VS_COMMON}
 layout(location=0) in vec2 a_pos; layout(location=1) in vec4 a_color; out vec4 v_color; out vec2 v_tile;
-void main() { v_tile = a_pos; v_color = a_color; gl_Position = toClip(a_pos); }`, `
+void main() { v_tile = unpole(a_pos); v_color = a_color; gl_Position = toClip(a_pos); }`, `
 uniform vec4 u_color; uniform vec4 u_clip; in vec4 v_color; in vec2 v_tile; out vec4 o;
 void main() { ${FS_CLIP} vec4 c = v_color * u_color; o = vec4(c.rgb * c.a, c.a); }`],
 
@@ -103,7 +148,7 @@ void main() { ${FS_CLIP} vec4 c = v_color * u_color; o = vec4(c.rgb * c.a, c.a);
     // and grows with the map between levels, as in MapLibre.
     pattern: [`${VS_COMMON}
 layout(location=0) in vec2 a_pos; uniform mat3 u_pat; out vec2 v_p; out vec2 v_tile;
-void main() { v_tile = a_pos; v_p = (u_pat * vec3(a_pos, 1.0)).xy; gl_Position = toClip(a_pos); }`, `
+void main() { v_tile = unpole(a_pos); v_p = (u_pat * vec3(unpole(a_pos), 1.0)).xy; gl_Position = toClip(a_pos); }`, `
 uniform sampler2D u_img; uniform vec4 u_rect; uniform vec2 u_tex; uniform vec2 u_fade; uniform vec4 u_clip; in vec2 v_p; in vec2 v_tile; out vec4 o;
 vec4 tile(vec2 p) { return texture(u_img, (u_rect.xy + clamp(fract(p) * u_rect.zw, vec2(0.5), u_rect.zw - 0.5)) / u_tex); }
 void main() { ${FS_CLIP} o = mix(tile(v_p), tile(v_p * 2.0), u_fade.x) * u_fade.y; }`],
@@ -130,7 +175,7 @@ void main() {
   // (As in MapLibre, a line thinner than a pixel is not made fainter for its width: the soft edge does that. A line of no width is not drawn.)
   v_color = vec4(a_color.rgb, w > 0.0 ? a_color.a : 0.0);
   // line-offset moves the whole stroke sideways: along the same normal, whichever side of the line this vertex is on.
-  v_tile = a_v.xy + a_v.zw * (v_hw + sign(a_sd.x) * u_offset) / u_scale;
+  v_tile = a_v.xy + a_v.zw * (v_hw + sign(a_sd.x) * u_offset) / u_scale * lineScale(a_v.xy);
   gl_Position = toClip(v_tile);
   // Lines lie on the map, so a tilted view draws distant ones thinner; edge antialiasing must shrink to match.
   v_persp = gl_Position.w / u_cam;
@@ -245,10 +290,22 @@ layout(location=0) in vec2 a_pos; uniform vec2 u_corners[4]; uniform vec4 u_q; o
 // A tile fills its square; an image source's picture is stretched between four given corners instead. For a shape
 // that is not a parallelogram the picture must be foreshortened as if seen in perspective: each corner carries a
 // weight q, and dividing by the interpolated weight in the fragment shader gives the right texture position.
+// (On the globe a_pos is in tile units, on the grid of the globe with rows to the poles; see globeGrid.)
 void main() {
-  float q = mix(mix(u_q.x, u_q.y, a_pos.x), mix(u_q.w, u_q.z, a_pos.x), a_pos.y);
-  v_uvq = vec3(a_pos * q, q);
-  v_tile = mix(mix(u_corners[0], u_corners[1], a_pos.x), mix(u_corners[3], u_corners[2], a_pos.x), a_pos.y); gl_Position = toClip(v_tile); }`, `
+#ifdef GLOBE
+  vec2 ap = clamp(unpole(a_pos) / ${EXTENT}.0, 0.0, 1.0);
+#else
+#define ap a_pos
+#endif
+  float q = mix(mix(u_q.x, u_q.y, ap.x), mix(u_q.w, u_q.z, ap.x), ap.y);
+  v_uvq = vec3(ap * q, q);
+  v_tile = mix(mix(u_corners[0], u_corners[1], ap.x), mix(u_corners[3], u_corners[2], ap.x), ap.y);
+#ifdef GLOBE
+  gl_Position = toClip(isPole(a_pos) ? vec2(v_tile.x, a_pos.y) : v_tile);
+#else
+  gl_Position = toClip(v_tile);
+#endif
+}`, `
 uniform sampler2D u_image; uniform vec4 u_clip; uniform vec3 u_adjust; uniform vec2 u_bright; uniform vec3 u_spin; in vec3 v_uvq; in vec2 v_tile; out vec4 o;
 void main() {
   ${FS_CLIP}
@@ -285,7 +342,11 @@ void main() {
 
     hillshade: [`${VS_COMMON}
 layout(location=0) in vec2 a_pos; out vec2 v_uv; out vec2 v_tile;
-void main() { v_uv = a_pos; v_tile = a_pos * ${EXTENT}.0; gl_Position = toClip(v_tile); }`, `
+#ifdef GLOBE
+void main() { v_uv = clamp(unpole(a_pos) / ${EXTENT}.0, 0.0, 1.0); v_tile = v_uv * ${EXTENT}.0; gl_Position = toClip(isPole(a_pos) ? vec2(v_tile.x, a_pos.y) : v_tile); }
+#else
+void main() { v_uv = a_pos; v_tile = a_pos * ${EXTENT}.0; gl_Position = toClip(v_tile); }
+#endif`, `
 uniform sampler2D u_image; uniform vec4 u_clip; uniform vec2 u_latrange; uniform vec2 u_light;
 uniform vec4 u_shadow; uniform vec4 u_highlight; uniform vec4 u_accent; in vec2 v_uv; in vec2 v_tile; out vec4 o;
 const float PI = 3.141592653589793;
@@ -308,13 +369,13 @@ void main() {
     // The icons of a tile that need no place among the labels (see `IconBatch`). The GPU finds the place of each one
     // from its point in the tile, as for circles. `a_v`: the point, and the corner in the texture. `a_d`: the corner
     // from the centre of the icon in pixels at size 1, and 1 for a distance-field icon.
-    icon: [`uniform mat4 u_matrix; uniform vec2 u_view; ${TERRAIN_GLSL}
+    icon: [`${VS_COMMON}${TERRAIN_GLSL}
 layout(location=0) in vec4 a_v; layout(location=1) in vec3 a_d; layout(location=2) in float a_angle; layout(location=3) in vec2 a_size; layout(location=4) in float a_alpha;
 uniform float u_zt; uniform float u_size; uniform float u_north; uniform float u_persp; uniform float u_dpr; uniform float u_opacity;
 uniform vec2 u_offset; uniform vec2 u_anchor; uniform vec2 u_translate; uniform vec2 u_tex; uniform vec4 u_clip;
 out vec2 v_uv; out float v_alpha; out float v_sdf;
 void main() {
-  vec4 c = u_matrix * vec4(a_v.xy, ground(a_v.xy / ${EXTENT}.0), 1.0);
+  vec4 c = toClip3(a_v.xy, ground(a_v.xy / ${EXTENT}.0));
   float s = mix(a_size.x, a_size.y, u_zt) * u_size, a = u_north + a_angle;
   // On a tilted map, far icons are smaller and near icons are larger, by half of what the perspective does (as for labels).
   if (u_persp > 0.0) s *= min(4.0, 0.5 + 0.5 * u_persp / c.w);
@@ -324,7 +385,7 @@ void main() {
   vec2 q = a_d.xy * s, p = centre + vec2(q.x * cos(a) - q.y * sin(a), q.x * sin(a) + q.y * cos(a));
   v_uv = a_v.zw / u_tex; v_alpha = clamp(a_alpha * u_opacity, 0.0, 1.0); v_sdf = a_d.z;
   bool inside = a_v.x >= u_clip.x && a_v.y >= u_clip.y && a_v.x < u_clip.z && a_v.y < u_clip.w;
-  gl_Position = inside && c.w > 0.0 ? vec4((p / u_view * 2.0 - 1.0) * vec2(1.0, -1.0), 0.0, 1.0) : vec4(2.0, 2.0, 2.0, 1.0);
+  gl_Position = inside && c.w > 0.0 && shown(c) ? vec4((p / u_view * 2.0 - 1.0) * vec2(1.0, -1.0), 0.0, 1.0) : vec4(2.0, 2.0, 2.0, 1.0);
 }`, `
 uniform sampler2D u_img; uniform vec4 u_color; in vec2 v_uv; in float v_alpha; in float v_sdf; out vec4 o;
 void main() {
@@ -350,7 +411,9 @@ void main() {
 };
 
 /** `u` is empty until the program is first used: see `link`. */
-interface Program { prog: WebGLProgram; u: Record<string, WebGLUniformLocation>; shaders?: WebGLShader[] }
+interface Program { prog: WebGLProgram; u: Record<string, WebGLUniformLocation>; shaders?: WebGLShader[]; /** The globe variant: the frame whose globe it has. */ frame?: number }
+/** The programs that have a globe variant (see `GLOBE_GLSL`). */
+const GLOBE_PROGRAMS = new Set(['fill', 'pattern', 'edge', 'line', 'circle', 'heat', 'raster', 'hillshade', 'icon']);
 /** Floats for one corner of an icon: see `a_v` and `a_d` of the `icon` program. */
 const ICON_VERTEX = 7;
 interface IconBuffers {
@@ -415,6 +478,12 @@ export interface Scene {
     moving?: boolean;
     /** Looks up a sprite or runtime image by name, for patterns. */
     icon?: IconOf;
+    /**
+     * The globe (#463), when the projection draws one at this zoom: the matrix from the unit sphere to clip space, the
+     * plane of the horizon, how much of a globe (1) or of Mercator (0) is drawn, the cosine of the latitude of the
+     * centre, and the tiles of the background.
+     */
+    globe?: {m: Float32Array; horizon: number[]; t: number; cosLat: number; tiles: TileID[]};
 }
 
 export const SPRITE_ATLAS = 2048;
@@ -427,6 +496,12 @@ export class GLRenderer {
     gl: WebGL2RenderingContext;
     /** Empty until the first program is used: see `ready`. */
     private programs = {} as Record<keyof typeof SHADERS, Program>;
+    /** The globe variants of the programs, linked at their first use (a Mercator map never links them). */
+    private globePrograms: Partial<Record<keyof typeof SHADERS, Program>> = {};
+    /** The globe of the frame that is being drawn, if any (see `Scene.globe`). */
+    private globe?: Scene['globe'];
+    /** The grid that raster, hillshade and background tiles are drawn on with the globe, in tile units: see `globeGrid`. */
+    private globeMesh?: {vao: WebGLVertexArrayObject; main: number; pole: number};
     private quad: WebGLVertexArrayObject;
     private textVao: WebGLVertexArrayObject;
     private textBuf: WebGLBuffer;
@@ -498,11 +573,11 @@ export class GLRenderer {
     }
 
     /** Starts the compile and the link of a program. Nothing reads its state here, because that would wait for the compile: `ready` does that at the first use of the program. */
-    private link(vs: string, fs: string): Program {
+    private link(vs: string, fs: string, globe = false): Program {
         const gl = this.gl, prog = gl.createProgram()!;
         const shaders = [[gl.VERTEX_SHADER, vs], [gl.FRAGMENT_SHADER, fs]].map(([type, src]) => {
             const s = gl.createShader(type as number)!;
-            gl.shaderSource(s, HEAD + src);
+            gl.shaderSource(s, HEAD + (globe ? '#define GLOBE\n' : '') + src);
             gl.compileShader(s);
             gl.attachShader(prog, s);
             return s;
@@ -521,7 +596,9 @@ export class GLRenderer {
             gl.getExtension('KHR_parallel_shader_compile');
             for (const n in SHADERS) this.programs[n as keyof typeof SHADERS] = this.link(SHADERS[n as keyof typeof SHADERS][0], SHADERS[n as keyof typeof SHADERS][1]);
         }
-        const p = this.programs[name], {prog, shaders} = p;
+        let p = this.programs[name];
+        if (this.globe && GLOBE_PROGRAMS.has(name)) p = this.globePrograms[name] ??= this.link(SHADERS[name][0], SHADERS[name][1], true);
+        const {prog, shaders} = p;
         if (shaders) {
             p.shaders = undefined;
             // (A fault in a shader shows when the program is linked.)
@@ -697,7 +774,7 @@ export class GLRenderer {
                     gl.uniform1i(u.u_img, 0);
                 }
                 this.bindDem(u, s.terrain ? s.terrain.dem(it.id) : null, s.terrain?.exaggeration ?? 0, s.terrain ? s.tr.elevation : 0);
-                gl.uniformMatrix4fv(u.u_matrix, false, it.matrix4);
+                this.placeTile(u, it.id, it.matrix4);
                 gl.uniform4fv(u.u_clip, it.clip);
                 gl.uniform1f(u.u_zt, Math.min(1, Math.max(0, zoom - (it.tile.z ?? it.id.z))));
                 gl.bindVertexArray(b.vao);
@@ -852,6 +929,23 @@ export class GLRenderer {
                 }
             }
             if ((L.type === 'fill-extrusion') !== (pass === 'buildings') && pass !== 'all') continue;
+            // (Buildings on the globe come with a later pull request of #463; the engine warns once.)
+            if (L.type === 'fill-extrusion' && this.globe) continue;
+            if (L.type === 'background' && this.globe && pass === 'all') {
+                // On the globe the background covers the sphere, tile by tile, and not the whole canvas.
+                const name = L.p.pattern.eval(zoom), place = name ? pattern(name, L.p.opacity.eval(zoom)) : null;
+                if (name && !place) continue;
+                const u = place ? undefined : use('fill');
+                if (u) { gl.vertexAttrib4f(1, 1, 1, 1, 1); gl.uniform4fv(u.u_color, color(L)); }
+                gl.bindVertexArray(this.globeGrid().vao);
+                for (const id of this.globe.tiles) {
+                    const px = 512 * 2 ** (Z - id.z), uu = u ?? place!([px / EXTENT, 0, 0, 0, px / EXTENT, 0, id.x * px, id.y * px, 1]);
+                    this.placeTile(uu, id, tr.tileMatrix4(id));
+                    gl.uniform4f(uu.u_clip, 0, 0, EXTENT, EXTENT);
+                    this.drawGrid(id);
+                }
+                continue;
+            }
             if (L.type === 'background' && L.p.pattern.eval(zoom)) {
                 const place = pattern(L.p.pattern.eval(zoom), L.p.opacity.eval(zoom));
                 if (!place) continue;
@@ -881,7 +975,7 @@ export class GLRenderer {
                 const u = use(L.type), p = L.p;
                 gl.activeTexture(gl.TEXTURE0);
                 gl.uniform1i(u.u_image, 0);
-                gl.bindVertexArray(this.quad);
+                gl.bindVertexArray(this.globe ? this.globeGrid().vao : this.quad);
                 if (L.type === 'raster') {
                     const sat = p.saturation.eval(zoom), con = p.contrast.eval(zoom);
                     gl.uniform3f(u.u_adjust, p.opacity.eval(zoom), sat > 0 ? 1 - 1 / (1.001 - sat) : -sat, con > 0 ? 1 / (1 - con) : 1 + con);
@@ -903,18 +997,18 @@ export class GLRenderer {
                 for (const it of items) {
                     if (!it.tile.tex) continue;
                     let m = it.matrix4;
-                    if (pass === 'all' && L.type === 'raster' && !s.moving && !tr.pitch) {
+                    if (pass === 'all' && L.type === 'raster' && !s.moving && !tr.pitch && !this.globe) {
                         const a = -tr.bearing * Math.PI / 180, cos = Math.cos(a), sin = Math.sin(a), xs = tr.width % 2 / 2, ys = tr.height % 2 / 2;
                         snap ??= [mercX(tr.lng) * tr.worldSize + cos * xs + sin * ys, mercY(tr.lat) * tr.worldSize + cos * ys + sin * xs].map(v => (v -= Math.round(v)) > 0.5 ? v - 1 : v);
                         const x = snap[0] / it.scale, y = snap[1] / it.scale;
                         m = m.slice(); m[12] += m[0] * x + m[4] * y; m[13] += m[1] * x + m[5] * y;
                     }
-                    gl.uniformMatrix4fv(u.u_matrix, false, m);
+                    this.placeTile(u, it.id, m);
                     gl.uniform4fv(u.u_clip, it.clip);
                     if (it.tile.lat) gl.uniform2fv(u.u_latrange, it.tile.lat);
                     if (L.type === 'raster') { gl.uniform2fv(u.u_corners, it.corners ?? SQUARE); gl.uniform4fv(u.u_q, it.corners ? cornerWeights(it.corners) : ONES); }
                     gl.bindTexture(gl.TEXTURE_2D, it.tile.tex);
-                    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+                    if (this.globe) this.drawGrid(it.id); else gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
                 }
                 continue;
             }
@@ -924,7 +1018,7 @@ export class GLRenderer {
                     const b = it.tile.batches[L.id];
                     if (!b) continue;
                     const px = 512 * 2 ** (Z - it.id.z), u = place([px / EXTENT, 0, 0, 0, px / EXTENT, 0, it.id.x * px, it.id.y * px, 1]);
-                    gl.uniformMatrix4fv(u.u_matrix, false, it.matrix4);
+                    this.placeTile(u, it.id, it.matrix4);
                     gl.uniform4fv(u.u_clip, it.clip);
                     gl.bindVertexArray(b.vao);
                     gl.drawElements(gl.TRIANGLES, b.count, b.indexType, 0);
@@ -1015,7 +1109,7 @@ export class GLRenderer {
                         gl.uniform4f(u.u_stroke, sc[0] * a, sc[1] * a, sc[2] * a, a);
                     }
                 }
-                gl.uniformMatrix4fv(u.u_matrix, false, m);
+                this.placeTile(u, it.id, m);
                 gl.uniform4fv(u.u_clip, it.clip);
                 gl.bindVertexArray(b.vao);
                 // Attributes without a buffer read these constants, so shaders need no variants.
@@ -1054,7 +1148,7 @@ export class GLRenderer {
                     gl.uniform4fv(u.u_color, col);
                     gl.uniform2f(u.u_world, target[0], target[1]);
                     gl.uniform1f(u.u_attr, b.color && !explicit ? 1 : 0);
-                    gl.uniformMatrix4fv(u.u_matrix, false, moved(it));
+                    this.placeTile(u, it.id, moved(it));
                     gl.uniform4fv(u.u_clip, it.clip);
                     gl.bindVertexArray(b.edgeVao);
                     gl.drawElements(gl.LINES, b.edgeCount!, b.indexType, 0);
@@ -1087,7 +1181,54 @@ export class GLRenderer {
             this.gl.uniform2f(p.u.u_view, tr.width, tr.height);
             this.current = p;
         }
+        const g = this.globe, gl = this.gl;
+        if (g && p.u.u_globe && p.frame !== this.frame) {
+            p.frame = this.frame;
+            gl.uniformMatrix4fv(p.u.u_globe, false, g.m);
+            gl.uniform4fv(p.u.u_horizon, g.horizon);
+            gl.uniform1f(p.u.u_globeness, g.t);
+            if (p.u.u_cosLat) gl.uniform1f(p.u.u_cosLat, g.cosLat);
+        }
         return p.u;
+    }
+
+    /** The matrix of a tile, and with the globe the place of the tile on the sphere. */
+    private placeTile(u: Record<string, WebGLUniformLocation>, id: TileID, m: Float32Array | number[]) {
+        this.gl.uniformMatrix4fv(u.u_matrix, false, m);
+        if (this.globe && u.u_tileMerc) {
+            const n = 2 ** id.z;
+            this.gl.uniform4f(u.u_tileMerc, id.x / n, id.y / n, 1 / n / EXTENT, 1 / n / EXTENT);
+        }
+    }
+
+    /**
+     * The grid of the globe: 32 cells a side in tile units, and a row of triangles to each pole (y -32768 and 32767,
+     * see subdivide.ts). The indices of the grid come first, then those of the north row, then those of the south row.
+     */
+    private globeGrid() {
+        if (this.globeMesh) return this.globeMesh;
+        const gl = this.gl, N = 32, pos: number[] = [], idx: number[] = [];
+        for (let y = -1; y <= N + 1; y++) for (let x = 0; x <= N; x++) pos.push(x * EXTENT / N, y < 0 ? -32768 : y > N ? 32767 : y * EXTENT / N);
+        const quad = (y: number) => { for (let x = 0; x < N; x++) { const i = y * (N + 1) + x; idx.push(i, i + 1, i + N + 1, i + 1, i + N + 2, i + N + 1); } };
+        for (let y = 1; y <= N; y++) quad(y);
+        quad(0); quad(N + 1);
+        const vao = gl.createVertexArray()!;
+        gl.bindVertexArray(vao);
+        gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(pos), gl.STATIC_DRAW);
+        gl.enableVertexAttribArray(0);
+        gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gl.createBuffer());
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(idx), gl.STATIC_DRAW);
+        return this.globeMesh = {vao, main: N * N * 6, pole: N * 6};
+    }
+
+    /** Draws a tile on the grid of the globe, with the rows to the poles for a tile at the edge of the world. */
+    private drawGrid(id: TileID) {
+        const gl = this.gl, g = this.globeGrid(), n = 2 ** id.z;
+        gl.drawElements(gl.TRIANGLES, g.main, gl.UNSIGNED_SHORT, 0);
+        if (id.y === 0) gl.drawElements(gl.TRIANGLES, g.pole, gl.UNSIGNED_SHORT, g.main * 2);
+        if (id.y === n - 1) gl.drawElements(gl.TRIANGLES, g.pole, gl.UNSIGNED_SHORT, (g.main + g.pole) * 2);
     }
 
     private compositeLayer(s: Scene, tr: Transform, bySource: Map<string, RenderItem<GLTile>[]>, target: [number, number], pass: 'all' | 'ground' | 'buildings', L: CompiledLayer, opacity: number, blend: string) {
@@ -1178,7 +1319,7 @@ export class GLRenderer {
         for (const it of items) {
             const b = it.tile.batches[L.id];
             if (!b) continue;
-            gl.uniformMatrix4fv(u.u_matrix, false, it.matrix4);
+            this.placeTile(u, it.id, it.matrix4);
             gl.uniform4fv(u.u_clip, it.clip);
             gl.bindVertexArray(b.vao);
             if (!b.scalar) gl.vertexAttrib1f(3, 1);
@@ -1389,6 +1530,7 @@ export class GLRenderer {
         this.frame++;
         gl.enable(gl.BLEND);
         gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+        this.globe = s.globe;
         const behind = s.terrain ? this.updateDrapes(s) : false;
         gl.viewport(0, 0, this.canvas.width, this.canvas.height);
         gl.clearColor(0, 0, 0, 0);

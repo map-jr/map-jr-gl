@@ -27,7 +27,7 @@ uses the same renderer and has its own tests in a browser.
 
 - **It is small.** A page with a map transfers about 90 KB of script (gzip): about 29 KB for the page script of
   `@map-jr/map-jr-gl` and about 61 KB for the worker file. MapLibre GL JS 6.17 transfers about 444 KB (page script, worker
-  and CSS). The smaller size does not include a globe and other projections, sky, fog and the other items in
+  and CSS). The smaller size does not include other projections than Mercator and the globe, sky, fog and the other items in
   [What is not available](docs/maplibre-compatibility.md#what-is-not-available). Custom layers are in the entry
   `@map-jr/map-jr-gl/maplibre-compat` and need `renderer: 'main'`; their code loads with the first custom layer.
 - **It does not block your page.** The map draws in a worker. Your page stays responsive while the map moves.

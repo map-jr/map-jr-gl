@@ -225,8 +225,9 @@ export class Popup extends Overlay {
 }
 
 export interface MarkerOptions { element?: HTMLElement; color?: string; anchor?: OverlayAnchor; offset?: PointLike; draggable?: boolean; scale?: number; className?: string; rotation?: number; rotationAlignment?: string; pitchAlignment?: string;
-    /** Accepted for MapLibre GL JS, with no effect: the library has no globe or terrain that can hide a marker. */
-    opacityWhenCovered?: string;
+    /** The opacity of the marker (default `'1'`), and its opacity while the far side of the globe hides its position (default `'0.2'`), as in MapLibre GL JS. */
+    opacity?: string | number;
+    opacityWhenCovered?: string | number;
 }
 
 /**
@@ -268,6 +269,22 @@ export class Marker extends Overlay {
         }
         this.el.classList.add('map-jr-marker', 'maplibregl-marker', ...(options.className?.split(' ').filter(Boolean) ?? []));
         this.el.style.zIndex = '1';
+        this.setOpacity(options.opacity, options.opacityWhenCovered);
+        // On the globe, a marker whose position is on the far side takes `opacityWhenCovered` and the class
+        // `map-jr-marker-covered` (`maplibregl-marker-covered`), as in MapLibre GL JS. A Mercator map leaves the
+        // opacity alone. (3D terrain does not cover a marker in this library.)
+        const place = this.update;
+        this.update = () => {
+            place();
+            const map = this.map;
+            if (!map || !this.lngLat) return;
+            const covered = map.isLocationOccluded(this.lngLat);
+            if (!covered && !this.isCovered) { if (this.opacityGiven) this.el.style.opacity = this.opacityShown; return; }
+            this.isCovered = covered;
+            this.el.style.opacity = covered ? this.opacityCovered : this.opacityShown;
+            this.el.classList.toggle('map-jr-marker-covered', covered);
+            this.el.classList.toggle('maplibregl-marker-covered', covered);
+        };
         // As in MapLibre GL JS, a click on a marker is also a `click` of the map, so that a popup with `closeOnClick` closes
         // (#198). The map listens on its canvas only, so the marker fires the event. The click that ends a drag does not
         // get here (see `startDrag`).
@@ -321,6 +338,18 @@ export class Marker extends Overlay {
     setOffset(offset: PointLike) { this.offset = xy(offset); this.update(); return this; }
     getRotation() { return this.rotation; }
     setRotation(degrees = 0) { this.rotation = degrees; this.update(); return this; }
+    private opacityShown = '1';
+    private opacityCovered = '0.2';
+    private opacityGiven = false;
+    private isCovered = false;
+    /** Sets the opacity of the marker and its opacity on the far side of the globe; with no arguments, the defaults `'1'` and `'0.2'`, as in MapLibre GL JS. */
+    setOpacity(opacity?: string | number, opacityWhenCovered?: string | number) {
+        if (opacity === undefined && opacityWhenCovered === undefined) { this.opacityShown = '1'; this.opacityCovered = '0.2'; }
+        if (opacity !== undefined) { this.opacityShown = String(opacity); this.opacityGiven = true; }
+        if (opacityWhenCovered !== undefined) this.opacityCovered = String(opacityWhenCovered);
+        this.update();
+        return this;
+    }
     getRotationAlignment() { return this.rotationAlignment; }
     setRotationAlignment(alignment = 'auto') { this.rotationAlignment = alignment; this.update(); return this; }
     /** (The value is kept. A marker is always upright on the screen.) */

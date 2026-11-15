@@ -1,7 +1,7 @@
 import {fetchWith, withTimeout, type RequestAnswer} from './requests.ts';
 import {protocolListeners, protocols, toBytes} from './protocols.ts';
 import {LngLat, LngLatBounds, type LngLatBoundsInput} from './lnglat.ts';
-import {Transform, fitBox, groundHeight, heightsChanged, mercX, mercY, sides, toLngLat, type LngLatLike} from './geo.ts';
+import {Transform, fitBox, globeStops, groundHeight, heightsChanged, mercX, mercY, sides, toLngLat, type LngLatLike} from './geo.ts';
 import type {PreparedSource} from './geojson.ts';
 import {DEFAULT_FONT, keep, kept, resolveStyle, type ResolvedStyle} from './resolve.ts';
 import {layerRules} from './rules.ts';
@@ -315,7 +315,13 @@ export class Map {
         // the camera: with a zoom in the options and no centre, the centre is [0, 0], not that of the style.
         const sc = this.rawStyle;
         if (o.center === undefined && o.zoom === undefined && o.bearing === undefined && o.pitch === undefined && !o.bounds) this.tr.set(sc.center, sc.zoom, sc.bearing, sc.pitch);
-        const restyled = this.restyled, first = await resolveStyle(this.rawStyle, this.fetchAs('Source'), this.styleBase, undefined, this.sourceFailed);
+        const restyled = this.restyled, [first] = await Promise.all([resolveStyle(this.rawStyle, this.fetchAs('Source'), this.styleBase, undefined, this.sourceFailed), this.globeReady()]);
+        // A globe is not kept inside the height of the world as Mercator is: the camera of the options is set again now
+        // that the map knows its projection (as MapLibre waits for the style before it constrains the camera).
+        if (this.tr.globe && !this.restarting && !o.bounds) {
+            const c = o.center === undefined && o.zoom === undefined && o.bearing === undefined && o.pitch === undefined ? sc : o;
+            if (c.center !== undefined || c.zoom !== undefined) this.tr.set(c.center ?? [0, 0], c.zoom ?? 0, c.bearing ?? 0, c.pitch ?? 0);
+        }
         if (this.removed) { giveBack(); return; }
         // (A change of the style during that step has its own result, which is newer. The engine gets it after its start.)
         if (restyled === this.restyled) this.resolved = first;
@@ -829,7 +835,14 @@ export class Map {
         const [lng, lat] = this.tr.unproject(x, y);
         return new LngLat(lng, lat);
     }
+    /** Whether the far side of the globe hides a position from the camera; always false for Mercator. Markers read it. */
+    isLocationOccluded(lngLat: LngLatLike) {
+        const [lng, lat] = toLngLat(lngLat);
+        return !!this.tr.globeness && this.tr.globe!.hidden(this.tr, mercX(lng), mercY(lat));
+    }
     getBounds() {
+        // (On the globe: the edges of the screen and of the globe, and a pole in view; see `bounds` in globe.ts.)
+        if (this.tr.globeness) return new LngLatBounds(this.tr.globe!.bounds(this.tr));
         const {width: w, height: h} = this.tr, pts = [[0, 0], [w, 0], [0, h], [w, h]].map(([x, y]) => this.tr.unproject(x, y));
         return new LngLatBounds([Math.min(...pts.map(p => p[0])), Math.min(...pts.map(p => p[1])), Math.max(...pts.map(p => p[0])), Math.max(...pts.map(p => p[1]))]);
     }
@@ -984,7 +997,7 @@ export class Map {
         }
         // A change of a style that the map shows does not wait for a source that is new: the source comes later.
         const partial = this.newStyle || !this.resolved ? undefined : {late: () => { if (this.rawStyle) this.restyle(true); }, fail: this.sourceFailed};
-        resolveStyle(this.rawStyle, this.fetchAs('Source'), this.styleBase, partial, this.sourceFailed).then(style => {
+        Promise.all([resolveStyle(this.rawStyle, this.fetchAs('Source'), this.styleBase, partial, this.sourceFailed), this.globeReady()]).then(([style]) => {
             if (turn !== this.restyles) return;
             const reload = this.reloadPending;
             this.reloadPending = false;
@@ -1012,23 +1025,32 @@ export class Map {
             this.newStyle = false;
         }, err => { this.fire('error', {error: err}); if (turn === this.restyles) { this.restyled = turn; this.sendGeo(); this.post({type: 'repaint'}); } });
     }
-    private projectionWarned = false;
     /**
-     * Warns once per map when the projection is not `mercator`: the map draws Mercator. A globe (`globe`,
-     * `vertical-perspective`, or an expression of them) is accepted and is not drawn yet; another name is not supported.
+     * The globe (globe.ts) for `project`, `unproject` and the overlays on this thread, loaded with the first style that
+     * draws a globe (#463). A map without a globe never loads it. (The engine has the same code built in.)
+     */
+    private globeReady(): Promise<unknown> {
+        const stops = globeStops(this.rawStyle?.projection?.type);
+        this.tr.globeStops = stops;
+        if (!stops || this.tr.globe) return Promise.resolve();
+        return import('./globe.ts').then(m => { if (!this.removed) this.tr.globe = m; }, error => this.fire('error', {error}));
+    }
+    private projectionWarned = new Set<string>();
+    /**
+     * Warns once per map for a projection that the library does not draw (it draws Mercator), and for 3D terrain and
+     * buildings on the globe, which come with later pull requests of #463.
      */
     private checkProjection() {
-        const t = this.rawStyle?.projection?.type, name = projectionName(t);
-        if (t === undefined || t === 'mercator' || this.projectionWarned) return;
-        this.projectionWarned = true;
-        console.warn(name === 'mercator'
-            ? `[map-jr-gl] The style has the projection ${JSON.stringify(t)}, which is not supported, so the map uses "mercator".`
-            : `[map-jr-gl] The projection ${JSON.stringify(typeof t === 'string' ? t : name)} is not drawn yet: this version of the library draws "mercator". setProjection() and getProjection() work, and a later version draws the globe.`);
+        const t = this.rawStyle?.projection?.type, said = this.projectionWarned;
+        const warn = (key: string, text: string) => { if (!said.has(key)) { said.add(key); console.warn('[map-jr-gl] ' + text); } };
+        if (t === undefined || t === 'mercator') return;
+        if (!globeStops(t)) return warn('name', `The style has the projection ${JSON.stringify(t)}, which is not supported, so the map uses "mercator".`);
+        if (this.rawStyle.terrain) warn('terrain', 'The globe is drawn without 3D terrain in this version: the terrain shows when the map is zoomed past the globe, or with the projection "mercator".');
+        if (this.rawStyle.layers?.some((l: {type: string}) => l.type === 'fill-extrusion')) warn('extrusion', 'Layers of the type "fill-extrusion" are not drawn on the globe in this version: they show when the map is zoomed past the globe, or with the projection "mercator".');
     }
     /**
      * Sets the projection of the style, as MapLibre GL JS does: `{type: 'globe'}`, `{type: 'mercator'}`, or `null` for
      * the default (Mercator). Fires `projectiontransition` when the name of the projection changes.
-     * The globe is not drawn yet: the map draws Mercator and warns once.
      */
     setProjection(projection?: ProjectionSpecification | null) {
         const name = projectionName(projection?.type);

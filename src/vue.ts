@@ -252,7 +252,7 @@ const MapJrComponent = defineComponent({
         padding: [Number, Object] as PropType<MapSpec['padding']>,
         /** Controls from `@map-jr/map-jr-gl/controls`: `[navigation(), scale()]`. */
         controls: Array as PropType<ControlSpec[]>,
-        /** The projection in place of that of the style: `{type: 'globe'}` or `{type: 'mercator'}`. The globe is not drawn yet. */
+        /** The projection in place of that of the style: `{type: 'globe'}` or `{type: 'mercator'}`. */
         projection: Object as PropType<MapSpec['projection']>,
         /** Changes a request before the map makes it, as `transformRequest` of MapLibre GL JS. */
         transformRequest: Function as PropType<MapSpec['transformRequest']>,

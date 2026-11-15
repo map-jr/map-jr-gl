@@ -42,6 +42,12 @@ BSD-3-Clause.
   (`src/render/subdivision.ts`, BSD-3-Clause): the triangles of a polygon are clipped to the cells of a grid and share
   their vertices, and a tile at the north or south edge of the world gets triangles to the pole, with the y values
   -32768 and 32767 for the pole vertices. The code is new, and the size of the grid is not that of MapLibre.
+- The globe (`src/globe.ts` and the `GLOBE` variant of the programs in `src/gl.ts`) follows the globe of MapLibre GL JS
+  6.17 (`src/geo/projection/vertical_perspective_transform.ts`, `globe_utils.ts`, `_projection_globe.vertex.glsl`,
+  BSD-3-Clause): the radius that keeps the scale of Mercator at the centre, the matrix from the unit sphere to clip
+  space, the plane of the horizon as clip-space z, the mix with Mercator between zoom 11 and 12, the formula with
+  `exp` for the sphere, the width of lines toward the poles, and the change of zoom with the latitude during a drag.
+  The code is new.
 - The tests of MapLibre GL JS and of the MapLibre style specification measure the compatibility of this library.
   The tests are not part of this repository. The test commands download them.
 

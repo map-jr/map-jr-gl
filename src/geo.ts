@@ -77,6 +77,23 @@ export function toLngLat(v: LngLatLike): [number, number] {
 export const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
 
 /**
+ * How much of a globe the projection `type` of a style draws, as stops [zoom, globeness, ...] (1 is the globe, 0 is
+ * Mercator), or null for Mercator. `globe` turns into Mercator between zoom 11 and 12, as in MapLibre GL JS. An
+ * `interpolate` on `zoom` between the names gives its stops; another expression gives the stops of `globe`.
+ */
+export function globeStops(type: unknown): number[] | null {
+    if (type === 'globe') return [11, 1, 12, 0];
+    if (type === 'vertical-perspective') return [0, 1];
+    if (!Array.isArray(type)) return null;
+    if (type[0] === 'interpolate' && type[2]?.[0] === 'zoom') {
+        const stops: number[] = [];
+        for (let i = 3; i + 1 < type.length; i += 2) stops.push(+type[i], type[i + 1] === 'mercator' ? 0 : 1);
+        return stops.every(Number.isFinite) && stops.some((v, i) => i % 2 && v) ? stops : null;
+    }
+    return [11, 1, 12, 0];
+}
+
+/**
  * Camera state plus the pure maths that turns it into screen positions.
  * No DOM access: the same class runs in the browser, a worker and on the server.
  */
@@ -114,6 +131,12 @@ export class Transform {
     /** With 3D terrain: the lowest and highest ground in view, in the same metres. Tile selection covers both extremes. */
     groundRange?: [number, number];
 
+    /** The globe (globe.ts) once it has loaded, and the stops of the projection (see `globeStops`). */
+    globe?: typeof import('./globe.ts');
+    globeStops: number[] | null = null;
+    /** How much of a globe is drawn at this zoom: 1 is the globe, 0 is Mercator (and always 0 until globe.ts has loaded). */
+    get globeness() { return this.globe ? globenessAt(this.globeStops, this.zoom) : 0; }
+
     get worldSize() { return TILE_SIZE * 2 ** this.zoom; }
     private get angle() { return -this.bearing * Math.PI / 180; }
 
@@ -125,8 +148,8 @@ export class Transform {
         if (bearing !== undefined) this.bearing = ((bearing + 180) % 360 + 360) % 360 - 180;
     }
 
-    /** The lowest zoom: `minZoom`, or the zoom at which the world is as tall as the view. */
-    get zoomFloor() { return Math.max(this.minZoom, Math.log2(this.height / TILE_SIZE)); }
+    /** The lowest zoom: `minZoom`, or the zoom at which the world is as tall as the view (not on a globe, which can be smaller than the view). */
+    get zoomFloor() { return globenessAt(this.globeStops, this.minZoom) ? this.minZoom : Math.max(this.minZoom, Math.log2(this.height / TILE_SIZE)); }
 
     /** Keeps the view on the map, and inside `maxBounds` if there are any (as MapLibre GL JS does). */
     constrain() {
@@ -134,6 +157,10 @@ export class Transform {
         // (A latitude that needs no change is left exactly as it was given.)
         // The world is never less tall than the view: the zoom stops there (as in MapLibre).
         this.zoom = Math.max(this.zoom, this.zoomFloor);
+        // (On a globe the centre only stays between the latitudes that Mercator reaches. MapLibre does not keep a globe
+        // inside maxBounds either.)
+        // (The stops decide this, also before globe.ts has loaded, so that a camera at the start is not moved.)
+        if (globenessAt(this.globeStops, this.zoom)) { this.lat = clamp(this.lat, -MAX_LAT, MAX_LAT); return; }
         const half = Math.min(0.5, this.height / 2 / this.worldSize), y = mercY(this.lat = clamp(this.lat, -MAX_LAT, MAX_LAT)), inside = clamp(y, half, 1 - half);
         if (inside !== y) this.lat = latFromMerc(inside);
         const b = this.maxBounds;
@@ -186,12 +213,14 @@ export class Transform {
     /** Mercator [0..1] coordinates to screen pixels (on the ground surface, with 3D terrain). */
     mercToScreen(mx: number, my: number): [number, number] {
         const z = this.heightAt ? (this.heightAt(mx, my) - this.elevation) * this.pixelsPerMetre : 0;
-        const ws = this.worldSize, [x, y] = this.view((mx - mercX(this.lng)) * ws, (my - mercY(this.lat)) * ws, z);
-        return [x, y];
+        const ws = this.worldSize, flat = this.view((mx - mercX(this.lng)) * ws, (my - mercY(this.lat)) * ws, z);
+        if (this.globeness) { const [x, y] = this.globe!.toScreen(this, mx, my, 0, flat); return [x, y]; }
+        return [flat[0], flat[1]];
     }
 
     /** Screen pixels to the mercator position on the ground under them (`z` pixels above the height of the map centre). */
     screenToMerc(px: number, py: number, z = 0): [number, number] {
+        if (this.globeness) return this.globe!.toMerc(this, px, py);
         const ws = this.worldSize, a = this.angle, cos = Math.cos(a), sin = Math.sin(a), p = this.pitch * Math.PI / 180, d = this.cameraDistance;
         const sx = px - this.cx, sy = py - this.cy;
         // Invert the perspective for a point on that plane. Above the horizon there is no ground; clamp just below it.
@@ -243,6 +272,10 @@ export class Transform {
     projectTile(id: TileID, x: number, y: number, metres?: number): [number, number, number] {
         const ws = this.worldSize, n = 2 ** id.z, s = ws / n / EXTENT;
         metres ??= this.heightAt ? this.heightAt((id.x + x / EXTENT) / n, (id.y + y / EXTENT) / n) : this.elevation;
+        if (this.globeness) {
+            const flat = this.view((id.x + id.w * n) * ws / n - mercX(this.lng) * ws + x * s, id.y * ws / n - mercY(this.lat) * ws + y * s, (metres - this.elevation) * this.pixelsPerMetre);
+            return this.globe!.toScreen(this, (id.x + x / EXTENT) / n, (id.y + y / EXTENT) / n, metres, flat);
+        }
         return this.view((id.x + id.w * n) * ws / n - mercX(this.lng) * ws + x * s, id.y * ws / n - mercY(this.lat) * ws + y * s, (metres - this.elevation) * this.pixelsPerMetre);
     }
 
@@ -283,6 +316,18 @@ export class Transform {
         return [lngFromMerc(mx), latFromMerc(clamp(my, 0, 1))];
     }
 
+    /**
+     * The centre after the view moves by (sx, sy) screen pixels: a pan with the keys, a fling. On the globe the centre
+     * moves along the latitude and the meridian (as MapLibre's computeGlobePanCenter does), so that a horizontal fling
+     * does not drift north or south.
+     */
+    panned(sx: number, sy: number): [number, number] {
+        if (!this.globeness) return this.unprojectFlat(this.cx + sx, this.cy + sy);
+        const a = this.angle, east = Math.cos(a) * sx + Math.sin(a) * sy, south = -Math.sin(a) * sx + Math.cos(a) * sy;
+        const r = this.worldSize / (2 * Math.PI * Math.cos(this.lat * Math.PI / 180));
+        return [this.lng + east * 360 / this.worldSize, clamp(this.lat - south / r * 180 / Math.PI, -MAX_LAT, MAX_LAT)];
+    }
+
     /** Screen pixels to the position under them on the level plane through the map centre (ignoring 3D terrain). */
     unprojectFlat(px: number, py: number): [number, number] {
         const [mx, my] = this.screenToMerc(px, py);
@@ -318,6 +363,7 @@ export class Transform {
 
     /** Move the camera so that `lngLat` sits under screen point (px, py). Used for zoom-around-cursor. */
     setLocationAt(lng: number, lat: number, px: number, py: number, height?: number) {
+        if (this.globeness) { this.globe!.turnTo(this, lng, lat, px, py); this.constrain(); return; }
         height ??= this.heightAt ? this.heightAt(mercX(lng), mercY(lat)) : this.elevation;
         const z = (height - this.elevation) * this.pixelsPerMetre;
         const [mx, my] = this.screenToMerc(px, py, z);
@@ -348,6 +394,7 @@ export class Transform {
         const want = Math.max(0, (round ? Math.round : Math.floor)(this.zoom + Math.log2(TILE_SIZE / tileSize)));
         // Below a source's minimum zoom nothing is drawn (as in MapLibre); shrinking its coarsest tiles would mean
         // loading ever more of them the further out the map goes.
+        if (this.globeness) return this.globe!.covering(this, minzoom, maxzoom, tileSize, round);
         if (want < minzoom) return [];
         const z = Math.min(want, maxzoom), n = 2 ** z;
         // (With 3D terrain, ground that is nearer to the camera than the centre can take a deeper level, as in MapLibre.)
@@ -417,6 +464,14 @@ export class Transform {
         const dist = (t: TileID) => { const n = 2 ** t.z; return ((t.x + 0.5) / n + t.w - cx) ** 2 + ((t.y + 0.5) / n - cy) ** 2; };
         return out.sort((a, b) => dist(a) - dist(b));
     }
+}
+
+/** The globeness at a zoom from stops [zoom, value, ...]: linear between stops, and the nearest stop outside them. */
+export function globenessAt(stops: number[] | null, zoom: number): number {
+    if (!stops?.length) return 0;
+    if (zoom <= stops[0]) return stops[1];
+    for (let i = 2; i < stops.length; i += 2) if (zoom < stops[i]) return stops[i - 1] + (stops[i + 1] - stops[i - 1]) * (zoom - stops[i - 2]) / (stops[i] - stops[i - 2]);
+    return stops[stops.length - 1];
 }
 
 export function apply(m: Mat, x: number, y: number): [number, number] {

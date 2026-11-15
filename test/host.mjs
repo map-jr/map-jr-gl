@@ -432,7 +432,8 @@ for (const renderer of ['worker', 'main']) {
             warnings.correct.length === 0 && warnings.said.length === expected.length && expected.every(e => warnings.said.filter(w => w.startsWith('[map-jr-gl] ' + e)).length === 1)
             && warnings.place.startsWith('[map-jr-gl] queryFeatures(): {"lng":-74.0065,"lat":40.7085} is not a place.'), JSON.stringify(warnings));
 
-        // 3f. A style whose root names a projection other than mercator: one warning per map, also after setStyle; mercator gives none (#238). The globe is accepted and not drawn yet (#463).
+        // 3f. A style whose root names a projection that the library does not draw: one warning per map, also after setStyle;
+        // mercator gives none (#238). The globe gives none for itself (#463), and one for buildings, which it does not draw yet.
         const proj = await page.evaluate(async renderer => {
             const t = window.t, said = [], log = console.warn;
             console.warn = (...a) => { const m = a.join(' '); if (m.includes('projection')) said.push(m); };
@@ -442,16 +443,22 @@ for (const renderer of ['worker', 'main']) {
             const merc = t.lib.createMap(div(), {...base, style: {...t.style, projection: {type: 'mercator'}}});
             await idle(merc);
             const mercSaid = said.length;
+            const other = t.lib.createMap(div(), {...base, style: {...t.style, projection: {type: 'identity'}}});
+            await idle(other);
+            other.map.setStyle({...t.style, projection: {type: 'identity'}});
+            await idle(other);
+            const otherSaid = said.splice(0);
             const globe = t.lib.createMap(div(), {...base, style: {...t.style, projection: {type: 'globe'}}});
             await idle(globe);
             globe.map.setStyle({...t.style, projection: {type: 'globe'}});
             await idle(globe);
             console.warn = log;
-            merc.destroy(); globe.destroy();
-            return {mercSaid, said};
+            merc.destroy(); other.destroy(); globe.destroy();
+            return {mercSaid, otherSaid, globeSaid: said, buildings: t.style.layers.some(l => l.type === 'fill-extrusion')};
         }, renderer);
-        check(`[${renderer}] a style with the projection "globe" writes one warning, and "mercator" writes none`,
-            proj.mercSaid === 0 && proj.said.length === 1 && proj.said[0].startsWith('[map-jr-gl] The projection "globe" is not drawn yet: this version of the library draws "mercator".'), JSON.stringify(proj));
+        check(`[${renderer}] a style with the projection "identity" writes one warning, "mercator" none, and "globe" one for its buildings only`,
+            proj.mercSaid === 0 && proj.otherSaid.length === 1 && proj.otherSaid[0] === '[map-jr-gl] The style has the projection "identity", which is not supported, so the map uses "mercator".'
+            && proj.globeSaid.length === (proj.buildings ? 1 : 0) && proj.globeSaid.every(w => w.includes('"fill-extrusion" are not drawn on the globe')), JSON.stringify(proj));
 
         // 3b. A description with no style (only the changed fields) throws at once with a message, and the map is not harmed.
         const partial = await page.evaluate(async () => {

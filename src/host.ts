@@ -107,8 +107,8 @@ export interface MapSpec extends MapSetup {
     controls?: ControlSpec[];
     /**
      * The projection, in place of the property `projection` of the style: `{type: 'globe'}` or `{type: 'mercator'}`
-     * (the same name and shape as in the style). `null` or no field: the projection of the style. The globe is not
-     * drawn yet: the map draws Mercator and writes one warning.
+     * (the same name and shape as in the style). `null` or no field: the projection of the style. A globe turns into
+     * Mercator between zoom 11 and 12, as in MapLibre GL JS.
      */
     projection?: ProjectionSpecification | null;
     /** Style layers whose features are found under the pointer: they are in `state.hover` and in `onClick`. */

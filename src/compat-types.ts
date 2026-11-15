@@ -167,7 +167,7 @@ export type HillshadeLayerSpecification = LayerOf<'hillshade'>;
 export type SymbolLayerSpecification = LayerOf<'symbol', 'text' | 'icon', 'text' | 'icon' | 'symbol'>;
 /**
  * The projection of a style: `{type: 'mercator'}`, `{type: 'globe'}`, `{type: 'vertical-perspective'}`, or an expression
- * of these names. The globe is not drawn yet: the map draws Mercator and writes one warning.
+ * of these names (see `projection` in docs/api.md for what the globe draws).
  */
 export type ProjectionSpecification = {type?: PropertyValueSpecification<string>};
 export type SourceSpecification = {type: string; [key: string]: unknown};
