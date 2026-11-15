@@ -18,6 +18,19 @@ window.requestAnimationFrame = cb => raf(t => { const t0 = performance.now(); cb
 let blocked = 0;
 try { new PerformanceObserver(list => { for (const e of list.getEntries()) blocked += e.duration; }).observe({type: 'longtask'}); } catch { blocked = NaN; /* not every browser reports long tasks */ }
 
+// The tile workers fetch the tiles, and the resource timings of the page do not list their requests. To give the network
+// answer of a tile of this library (#371), each classic worker that the page starts runs a few lines first that send its
+// own resource timings to the page, in the page's clock. (All workers of this library are started by the page; the module
+// workers of MapLibre GL JS are left alone.)
+const workerNet = [];
+new BroadcastChannel('bench-net').onmessage = e => { for (const r of e.data) if (workerNet.length < 20000) workerNet.push(r); };
+const NET = `try{const c=new BroadcastChannel('bench-net'),o=performance.timeOrigin-${performance.timeOrigin};new PerformanceObserver(l=>c.postMessage(l.getEntries().map(e=>({name:e.name,startTime:e.startTime+o,responseEnd:e.responseEnd+o})))).observe({type:'resource',buffered:true})}catch{}`;
+const PageWorker = window.Worker;
+window.Worker = function (url, opts) {
+    if (opts?.type === 'module') return new PageWorker(url, opts);
+    return new PageWorker(URL.createObjectURL(new Blob([`${NET};importScripts(${JSON.stringify(new URL(url, location.href).href)});`], {type: 'text/javascript'})), opts);
+};
+
 const gl = document.createElement('canvas').getContext('webgl2'), info = gl?.getExtension('WEBGL_debug_renderer_info');
 document.getElementById('env').textContent = `GPU: ${info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : 'unknown'} · screen pixel ratio ${devicePixelRatio} · ${navigator.userAgent.replace(/^.*?\) /, '')}`;
 
@@ -51,6 +64,12 @@ function withTerrain(style) {
     style.terrain = {source: 'benchdem', exaggeration: 1.5};
     return style;
 }
+
+/** The network answer (page clock) of the tile "source|z/x/y" from the resource timings of the workers: the last answer of a URL with /z/x/y before it was built. */
+const tileNet = (entries, key, built) => {
+    const zxy = '/' + key.slice(key.lastIndexOf('|') + 1), v = entries.filter(e => e.name.includes(zxy) && e.responseEnd <= built).map(e => e.responseEnd);
+    return v.length ? Math.max(...v) : undefined;
+};
 
 async function run(s) {
     stage.replaceChildren();
@@ -86,15 +105,19 @@ async function run(s) {
     map.once('render', at('frame')); map.once('load', at('load')); map.once('idle', at('idle'));
     // (Tiles are fetched in workers, which the resource timings of the page do not list: the tile steps come from the tile events.)
     // (The last tile answer, the number of tile answers and the last frame are counted until the first idle.)
-    const ans = () => { at('tileAns')(); if (events.idle === undefined) { events.tileLast = performance.now(); events.tiles = (events.tiles ?? 0) + 1; } };
+    // (For this library: the key of the tile built last before idle, and the upload of each tile; the network answer comes from the worker timings.)
+    let lastKey; const ups = {};
+    const ans = key => { at('tileAns')(); if (events.idle === undefined) { events.tileLast = performance.now(); lastKey = key; events.tiles = (events.tiles ?? 0) + 1; } };
     map.on('render', () => { if (events.idle === undefined) events.lastFrame = performance.now(); });
     if (s.lib === 'maplibre') { map.on('dataloading', e => { if (e.tile) at('tileReq')(); }); map.on('data', e => { if (e.tile) ans(); }); }
-    else map.on('tile', e => { if (e.kind === 'req') at('tileReq')(); else if (e.kind === 'ans') ans(); });
+    else map.on('tile', e => { if (e.kind === 'req') at('tileReq')(); else if (e.kind === 'ans') ans(e.key); else if (e.kind === 'up' || e.kind === 'miss') ups[e.key] = performance.now(); });
+    workerNet.length = 0;
     const report = when => { if (s.lib !== 'maplibre') undrawn[when] = tiles.undrawn(); };
     // (A map that never settles must not stop the scenarios after it: it fails after a minute.)
     if (!await Promise.race([new Promise(r => map.once('idle', () => r(true))), sleep(60000).then(() => false)])) { map.remove(); throw new Error('the map was not idle after 60 seconds'); }
     const load = performance.now() - t0;
     report('after load idle');
+    if (lastKey) { events.tileUp = ups[lastKey]; events.tileNet = tileNet(workerNet, lastKey, events.tileLast); }
     const steps = startSteps(performance.getEntriesByType('resource'), t0, events, STYLE);
     let add = null;
     if (s.markers) {
@@ -137,7 +160,7 @@ const results = [];
 /** The start timeline: one line for each of the first three scenarios (MapLibre GL JS and this library with both renderers), with the median of each step when a scenario ran more than once. */
 const timelineLines = () => scenarios.slice(0, 3).map(s => [s.name, results.filter(r => r.name === s.name).map(r => r.steps)]).filter(([, runs]) => runs.length)
     .map(([name, runs]) => timelineLine(name, runs));
-const TIMELINE = 'Start timeline, ms after the map was made (sprite, glyphs and worker file from resource timings, which do not list requests made in a worker; tiles from the tile events, counted until idle; the style is fetched by the page before the map is made):';
+const TIMELINE = 'Start timeline, ms after the map was made (sprite, glyphs and worker file from resource timings, which do not list requests made in a worker; tiles from the tile events, counted until idle; for the last tile before idle, "net" is its network answer, "built" its tile event and "up" its upload to the GPU; the tile event of MapLibre GL JS (`data` with a tile) fires when the tile is built, before the upload; the style is fetched by the page before the map is made):';
 document.getElementById('run').onclick = async e => {
     e.target.disabled = true; tbody.replaceChildren(); document.getElementById('timeline').replaceChildren(); document.getElementById('undrawn').replaceChildren(); results.length = 0;
     const only = q.get('only'); // e.g. ?only=terrain
