@@ -18,6 +18,12 @@ test('components and composables are registered by package specifier', () => {
     assert.ok(calls.imports.some((i: any) => i.as === 'navigationControl' && i.from === '@map-jr/map-jr-gl/controls'));
 });
 
+test('the composable is auto-imported as useMapJr, not useMap (#389)', () => {
+    const names = calls.imports.filter((i: any) => i.from === '@map-jr/map-jr-gl/vue').map((i: any) => i.as ?? i.name);
+    assert.ok(names.includes('useMapJr'));
+    assert.ok(!names.includes('useMap'));
+});
+
 test('the package is excluded from the pre-bundling of Vite, and other entries are kept', () => {
     const ex = nuxt.options.vite.optimizeDeps.exclude;
     assert.ok(ex.includes('other') && ex.includes('@map-jr/map-jr-gl') && ex.includes('@map-jr/map-jr-gl/vue'));

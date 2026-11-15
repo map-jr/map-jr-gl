@@ -1,5 +1,5 @@
 /**
- * The adapter for Vue 3 (and Nuxt): `import {MapJr, useMap} from '@map-jr/map-jr-gl/vue'`.
+ * The adapter for Vue 3 (and Nuxt): `import {MapJr, useMapJr} from '@map-jr/map-jr-gl/vue'`.
  *
  * It is a thin layer over `createMap` (host.ts). The component gives its props to the map as one description, and
  * the map does the rest. On a server the component can render the first view as SVG; in the browser the map takes
@@ -49,9 +49,9 @@ function markerData(data: unknown[]): unknown[] {
  * `state` has the state of the map as a ref (`state.value.view`, `state.value.hover`), and `host` the map itself
  * when it is there (for `queryFeatures`, `moveTo`, `fitBounds`).
  */
-export function useMap(container: MaybeRefOrGetter<HTMLElement | null | undefined>, spec: MaybeRefOrGetter<MapSpec>): {host: ShallowRef<MapHost | null>; state: ShallowRef<MapState | null>} { return mapIn(container, spec, 'useMap()'); }
+export function useMapJr(container: MaybeRefOrGetter<HTMLElement | null | undefined>, spec: MaybeRefOrGetter<MapSpec>): {host: ShallowRef<MapHost | null>; state: ShallowRef<MapState | null>} { return mapIn(container, spec, 'useMapJr()'); }
 
-// `useMap` with the name that the warnings give the map: the name that the user wrote.
+// `useMapJr` with the name that the warnings give the map: the name that the user wrote.
 function mapIn(container: MaybeRefOrGetter<HTMLElement | null | undefined>, spec: MaybeRefOrGetter<MapSpec>, name: string): {host: ShallowRef<MapHost | null>; state: ShallowRef<MapState | null>} {
     const host = shallowRef<MapHost | null>(null), state = shallowRef<MapState | null>(null);
     let stop: (() => void) | undefined, gone = false;
