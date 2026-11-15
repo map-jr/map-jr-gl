@@ -44,8 +44,9 @@ to protect those qualities.
 - The same workflow can run Safari itself on a macOS runner, but only when it is started by hand (the inputs
   `safari`, `safari_only` and `simulator`; see `docs/development.md`). Start it when a change touches the choice of
   the renderer, the workers or the canvas, and read its results before you ask the owner to test in Safari. On that
-  runner the worker renderer does not load (the machine loses the WebGL context of a worker), and the frame rates
-  mean little: a failure of the worker scenarios there is not a fault of the change.
+  runner the worker renderer loads but takes several seconds to reach `idle` (5.8 s against 1.25 s on the main
+  thread on 2026-11-14), while an iPhone shows no such gap, and the frame rates mean little: a slow or failing worker
+  scenario there is not a fault of the change.
 
 ## Working with several workers
 
