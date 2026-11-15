@@ -295,10 +295,12 @@ for (const mode of ['main', 'worker']) {
         await window.twoFingers([[450, 400], [550, 400]], [[450, 320], [550, 320]]); // both fingers up together
         out.tilt = window.cam();
         window.map.jumpTo({pitch: 0, zoom: 14});
-        // Waits for an animation to end. A fixed time is not sufficient when software rendering is slow.
-        const still = async () => {
+        // Waits for an animation to end. A fixed time is not sufficient when software rendering is slow. With
+        // `expect`, it also waits until the zoom is near that value: under load the worker can report the start of
+        // an animation later than two quiet samples, and the zoom then still reads the old value.
+        const still = async (expect) => {
             await new Promise(r => setTimeout(r, 400));
-            for (let i = 0, quiet = 0, z = window.cam().zoom; i < 40 && quiet < 2; i++) {
+            for (let i = 0, quiet = 0, z = window.cam().zoom; i < 40 && (quiet < 2 || (expect !== undefined && Math.abs(z - expect) >= 0.02)); i++) {
                 await new Promise(r => setTimeout(r, 150));
                 const now = window.cam().zoom;
                 quiet = Math.abs(now - z) < 1e-6 && !window.map.isMoving() ? quiet + 1 : 0;
@@ -307,10 +309,10 @@ for (const mode of ['main', 'worker']) {
         };
         const tap = async (x, y) => { window.touch('pointerdown', 11, x, y); window.touch('pointerup', 11, x, y); await new Promise(r => setTimeout(r, 60)); };
         await tap(500, 350); await tap(500, 350);
-        await still();
+        await still(15);
         out.doubleTap = window.cam();
         window.touch('pointerdown', 11, 450, 350); window.touch('pointerdown', 12, 550, 350); window.touch('pointerup', 11, 450, 350); window.touch('pointerup', 12, 550, 350);
-        await still();
+        await still(14);
         out.twoFingerTap = window.cam();
         await tap(500, 350);
         window.touch('pointerdown', 11, 500, 350);
@@ -320,7 +322,7 @@ for (const mode of ['main', 'worker']) {
         out.tapDrag = window.cam();
         return out;
     });
-    check(`[${mode}] touch: pinch zooms without rotating on a slight twist`, Math.abs(t.pinch.zoom - 15) < 0.05 && t.pinch.bearing === 0 && t.smallTwist.bearing === 0, JSON.stringify([t.pinch, t.smallTwist]));
+    check(`[${mode}] touch: pinch zooms without rotating on a slight twist`, Math.abs(t.pinch.zoom - 15) < 0.05 && Math.abs(t.pinch.bearing) < 1e-6 && Math.abs(t.smallTwist.bearing) < 1e-6, JSON.stringify([t.pinch, t.smallTwist]));
     check(`[${mode}] touch: a deliberate twist rotates, two fingers moving up tilts`, Math.abs(t.turn.bearing) > 10 && t.tilt.pitch > 20 && Math.abs(t.tilt.bearing) < 0.01, JSON.stringify([t.turn, t.tilt]));
     check(`[${mode}] touch: double-tap zooms in, two-finger tap zooms out, tap-and-drag zooms`, Math.abs(t.doubleTap.zoom - 15) < 0.02 && Math.abs(t.twoFingerTap.zoom - 14) < 0.02 && t.tapDrag.zoom > 14.5, JSON.stringify([t.doubleTap.zoom, t.twoFingerTap.zoom, t.tapDrag.zoom]));
 
