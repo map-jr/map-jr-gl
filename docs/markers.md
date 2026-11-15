@@ -283,7 +283,9 @@ map is drawn by the engine. With the main-thread renderer, both change in the sa
 (the default where the browser supports it), the engine draws in a worker:
 
 - During a drag with one finger or the mouse, the element moves in the same frame as the map. The page moves its own
-  camera at each pointer move and places the element one frame later, when the worker draws that move.
+  camera at each pointer move and places the element one frame later, when the worker draws that move. The page needs
+  the ground point that the engine grabbed, which comes with the first camera of the drag, so in the first one or two
+  frames of a drag the element can still trail by a frame.
 - During a movement that the engine makes (`easeTo`, `flyTo`, `fitBounds`, the fling after a drag, a pinch), the element
   can trail the map by about one frame. The page learns the camera from the engine after the frame is drawn.
 
