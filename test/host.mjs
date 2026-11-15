@@ -199,7 +199,7 @@ for (const renderer of ['worker', 'main']) {
                 initialView: {center: [0, 0], zoom: 1}, renderer, attribution: false});
             const b = await Promise.race([host.toBlob(), new Promise(r => setTimeout(() => r(null), 10000))]);
             if (!b) { host.destroy(); el.remove(); return {timeout: true}; }
-            const bmp = await createImageBitmap(b), c = new OffscreenCanvas(bmp.width, bmp.height), g = c.getContext('2d');
+            const bmp = await createImageBitmap(b), c = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}), g = c.getContext('2d');
             g.drawImage(bmp, 0, 0);
             const px = (x, y) => Array.from(g.getImageData(Math.round(x * bmp.width), Math.round(y * bmp.height), 1, 1).data);
             const jpeg = await host.toBlob('image/jpeg', 0.8);
@@ -483,7 +483,7 @@ for (const renderer of ['worker', 'main']) {
         // Images: added, replaced and removed by the description. A symbol layer draws a square of 40 pixels at the centre.
         // (The colour of the square is read from a picture of the page, at two places inside the square.)
         const colourAt = async () => page.evaluate(async png => {
-            const bitmap = await createImageBitmap(await (await fetch('data:image/png;base64,' + png)).blob()), c = new OffscreenCanvas(bitmap.width, bitmap.height).getContext('2d');
+            const bitmap = await createImageBitmap(await (await fetch('data:image/png;base64,' + png)).blob()), c = Object.assign(document.createElement('canvas'), {width: bitmap.width, height: bitmap.height}).getContext('2d');
             c.drawImage(bitmap, 0, 0);
             return [[438, 288], [462, 312]].map(([x, y]) => '#' + [...c.getImageData(x, y, 1, 1).data.slice(0, 3)].map(v => (v >> 4).toString(16)).join(''));
         }, (await page.screenshot()).toString('base64'));
@@ -528,7 +528,7 @@ for (const renderer of ['worker', 'main']) {
         // An image that is an SVG template: each feature gives the slots their values. Two squares, the second 60 pixels to the right.
         // (Of each square, the colour of its upper half and of its lower half is read.)
         const halves = async () => page.evaluate(async png => {
-            const bitmap = await createImageBitmap(await (await fetch('data:image/png;base64,' + png)).blob()), c = new OffscreenCanvas(bitmap.width, bitmap.height).getContext('2d');
+            const bitmap = await createImageBitmap(await (await fetch('data:image/png;base64,' + png)).blob()), c = Object.assign(document.createElement('canvas'), {width: bitmap.width, height: bitmap.height}).getContext('2d');
             c.drawImage(bitmap, 0, 0);
             return [[450, 290], [450, 310], [510, 290], [510, 310]].map(([x, y]) => '#' + [...c.getImageData(x, y, 1, 1).data.slice(0, 3)].map(v => (v >> 4).toString(16)).join('')).join(' ');
         }, (await page.screenshot()).toString('base64'));
@@ -653,7 +653,7 @@ for (const renderer of ['worker', 'main']) {
         const flatPlaced = await shot();
         const placedWithLabels = await page.evaluate(() => window.t.placed.splice(0));
         const same = await page.evaluate(async pairs => {
-            const pixels = async png => { const bitmap = await createImageBitmap(await (await fetch('data:image/png;base64,' + png)).blob()), c = new OffscreenCanvas(bitmap.width, bitmap.height).getContext('2d'); c.drawImage(bitmap, 0, 0); return c.getImageData(0, 0, bitmap.width, bitmap.height).data; };
+            const pixels = async png => { const bitmap = await createImageBitmap(await (await fetch('data:image/png;base64,' + png)).blob()), c = Object.assign(document.createElement('canvas'), {width: bitmap.width, height: bitmap.height}).getContext('2d'); c.drawImage(bitmap, 0, 0); return c.getImageData(0, 0, bitmap.width, bitmap.height).data; };
             const out = [];
             for (const [a, b] of pairs) {
                 const A = await pixels(a), B = await pixels(b);
@@ -827,7 +827,7 @@ for (const renderer of ['worker', 'main']) {
         {
             const svg = (s, c) => `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}"><rect width="${s}" height="${s}" fill="${c}"/></svg>`;
             const box = async () => page.evaluate(async png => {
-                const bitmap = await createImageBitmap(await (await fetch('data:image/png;base64,' + png)).blob()), c = new OffscreenCanvas(bitmap.width, bitmap.height).getContext('2d');
+                const bitmap = await createImageBitmap(await (await fetch('data:image/png;base64,' + png)).blob()), c = Object.assign(document.createElement('canvas'), {width: bitmap.width, height: bitmap.height}).getContext('2d');
                 c.drawImage(bitmap, 0, 0);
                 const d = c.getImageData(0, 0, bitmap.width, bitmap.height).data;
                 let x0 = 1e9, x1 = -1, y0 = 1e9, y1 = -1;
