@@ -835,7 +835,14 @@ export class Map {
         const [lng, lat] = this.tr.unproject(x, y);
         return new LngLat(lng, lat);
     }
+    /** Whether the far side of the globe hides a position from the camera; always false for Mercator. Markers read it. */
+    isLocationOccluded(lngLat: LngLatLike) {
+        const [lng, lat] = toLngLat(lngLat);
+        return !!this.tr.globeness && this.tr.globe!.hidden(this.tr, mercX(lng), mercY(lat));
+    }
     getBounds() {
+        // (On the globe: the edges of the screen and of the globe, and a pole in view; see `bounds` in globe.ts.)
+        if (this.tr.globeness) return new LngLatBounds(this.tr.globe!.bounds(this.tr));
         const {width: w, height: h} = this.tr, pts = [[0, 0], [w, 0], [0, h], [w, h]].map(([x, y]) => this.tr.unproject(x, y));
         return new LngLatBounds([Math.min(...pts.map(p => p[0])), Math.min(...pts.map(p => p[1])), Math.max(...pts.map(p => p[0])), Math.max(...pts.map(p => p[1]))]);
     }

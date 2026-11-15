@@ -49,10 +49,18 @@ for (const mode of ['main', 'worker']) {
             await Promise.all([idle(g), idle(m)]);
             const pixels = async map => { const blob = await map.toBlob(); const bmp = await createImageBitmap(blob), c = new OffscreenCanvas(bmp.width, bmp.height).getContext('2d'); c.drawImage(bmp, 0, 0); const at = (x, y) => [...c.getImageData(x * bmp.width, y * bmp.height, 1, 1).data]; return {corner: at(0.02, 0.02), middle: at(0.5, 0.5)}; };
             const p = g.project([10, 45]), q = g.project([-60, 10]);
-            return {globe: await pixels(g), flat: await pixels(m), centre: [p.x, p.y].map(Math.round), q: [q.x, q.y], back: g.unproject([q.x, q.y]).toArray().map(v => +v.toFixed(3))};
+            // getBounds has the visible edge of the globe and a pole in view (MapLibre GL JS 6.17: -180, -46.81, 180, 90),
+            // and a Marker on the far side takes opacityWhenCovered and the covered class (MapLibre: 0.2).
+            g.jumpTo({center: [10, 30], zoom: 1.5});
+            const near = new mod.Marker().setLngLat([10, 30]).addTo(g), far = new mod.Marker().setLngLat([-140, 0]).addTo(g);
+            const markers = [near, far].map(k => [k.getElement().style.opacity || '1', k.getElement().classList.contains('maplibregl-marker-covered')]);
+            near.remove(); far.remove();
+            return {globe: await pixels(g), flat: await pixels(m), centre: [p.x, p.y].map(Math.round), q: [q.x, q.y], back: g.unproject([q.x, q.y]).toArray().map(v => +v.toFixed(3)),
+                bounds: g.getBounds().toArray().flat().map(v => +v.toFixed(2)), markers};
         }, mode);
-        check(`[${mode}] the globe: the corners stay empty on the globe and not on Mercator, and project and unproject agree`,
-            globe.globe.corner[3] === 0 && globe.globe.middle[3] === 255 && globe.flat.corner[3] === 255 && globe.centre.join() === '200,200' && Math.abs(globe.back[0] + 60) < 0.01 && Math.abs(globe.back[1] - 10) < 0.01, JSON.stringify(globe));
+        check(`[${mode}] the globe: the corners stay empty on the globe and not on Mercator, project and unproject agree, getBounds reaches the pole, and a marker on the far side is faint`,
+            globe.globe.corner[3] === 0 && globe.globe.middle[3] === 255 && globe.flat.corner[3] === 255 && globe.centre.join() === '200,200' && Math.abs(globe.back[0] + 60) < 0.01 && Math.abs(globe.back[1] - 10) < 0.01
+            && JSON.stringify(globe.markers) === '[["1",false],["0.2",true]]' && globe.bounds[0] === -180 && globe.bounds[2] === 180 && globe.bounds[3] === 90 && globe.bounds[1] < -20, JSON.stringify(globe));
         // A drag on the globe: the place under the pointer when the drag starts is under it at the end.
         await page.mouse.move(250, 230); await page.mouse.down(); await page.mouse.move(180, 160, {steps: 10}); await page.mouse.up();
         await page.waitForTimeout(400);

@@ -8,6 +8,7 @@ import {createHash} from 'node:crypto';
 import {compileLayer} from '../../src/style.ts';
 import {LINE_VERTEX, buildTile, tessellate, toGL, type Batch} from '../../src/tile.ts';
 import {NORTH_POLE, SOUTH_POLE, cutLine, globeBuild, globeGrid, type GlobeBuild} from '../../src/subdivide.ts';
+import {sphere} from '../../src/globe.ts';
 
 const bytes = new Uint8Array(readFileSync(new URL('../fixtures/14-4823-6160.pbf', import.meta.url)));
 const layers = [
@@ -35,7 +36,7 @@ test('globe: the grid has 40, 20, 10, 5, 3 and 1 cells at zoom 0 to 10, more for
     assert.equal(globeGrid(0, 11.9), 128); // (at most 128 cells a side)
     assert.deepEqual(globeBuild({z: 2, y: 0}), {grid: 20, north: true, south: false});
     assert.deepEqual(globeBuild({z: 10, y: 1023}), {grid: 1, north: false, south: true});
-    assert.equal(globeBuild({z: 10, y: 5}), undefined); // one cell and no pole: nothing to cut
+    assert.deepEqual(globeBuild({z: 10, y: 5}), {grid: 1, north: false, south: false}); // one cell: the border is still cut
     assert.equal(globeBuild({z: 12, y: 0}), undefined);
 });
 
@@ -54,9 +55,9 @@ test('globe: the fills and lines of a real tile get the vertices that were measu
     const flat = counts(tile()), g20 = counts(tile({grid: 20})), g40 = counts(tile({grid: 40}));
     // [vertices, triangles] (the vertices of a fill include those of its smoothing edges).
     assert.deepEqual(flat.water, [647, 565]);
-    assert.deepEqual(g20.water, [3068, 3284]);
-    assert.deepEqual(g40.water, [5551, 7461]);
-    assert.deepEqual(g40.land, [1689, 1273]);
+    assert.deepEqual(g20.water, [3739, 4058]);
+    assert.deepEqual(g40.water, [6290, 8390]);
+    assert.deepEqual(g40.land, [1720, 1316]);
     assert.deepEqual([flat.roads[1], g20.roads[1], g40.roads[1]], [34942, 42546, 49744]);
     assert.deepEqual(g40.buildings, flat.buildings); // fill-extrusion comes in a later pull request
 });
@@ -128,4 +129,29 @@ test('globe: lines get a point where they cross the grid, and fill outlines foll
     const coloured = tessellate({...square(0, 0, 4096, 4096), color: Uint8Array.from([255, 0, 0, 255])}, {grid: 8}) as any;
     assert.equal(coloured.color.length, coloured.pos.length * 2);
     assert.ok(Array.from(coloured.color as Uint8Array).every((v, i) => v === [255, 0, 0, 255][i % 4]));
+});
+
+test('globe: two tiles of different zooms meet without a gap on the sphere (no T-junctions along their border)', () => {
+    // A tile of zoom z above two tiles of zoom z + 1 (other grids): the vertices on the shared border, put on the
+    // sphere, and the gap between each vertex of one side and the edge of the other side, in pixels at zoom z + 1.
+    // (Zoom 5 at the equator: 7 cells against 5. Zoom 10 at 80° north: one cell each, the case of the reviewer's cracks.)
+    const full = square(0, 0, 4096, 4096);
+    const border = (z: number, x: number, y: number, edgeY: number) => {
+        const t = tessellate(full, globeBuild({z, y}, z)!) as any, n = 2 ** z, out: number[][] = [];
+        for (let i = 0; i < t.pos.length; i += 2) if (t.pos[i + 1] === edgeY) out.push([(x + t.pos[i] / 4096) / n, (y + edgeY / 4096) / n]);
+        return out.sort((a, b) => a[0] - b[0]);
+    };
+    const gap = (side: number[][], other: number[][], R: number) => Math.max(...side.map(([mx, my]) => {
+        const k = other.findIndex((p, i) => i + 1 < other.length && p[0] <= mx && other[i + 1][0] >= mx);
+        const [a, b] = [other[k], other[k + 1]], t = (mx - a[0]) / (b[0] - a[0] || 1);
+        const pa = sphere(a[0], a[1]), pb = sphere(b[0], b[1]), p = sphere(mx, my);
+        return Math.hypot(...p.map((v, i) => v - (pa[i] + (pb[i] - pa[i]) * t))) * R;
+    }));
+    for (const [z, x, y] of [[5, 3, 15], [10, 10, 162]]) {
+        // (The radius of the globe in pixels at zoom z + 1 at the latitude of the tile.)
+        const lat = Math.atan(Math.sinh(Math.PI * (1 - 2 * (y + 1) / 2 ** z))), R = 512 * 2 ** (z + 1) / (2 * Math.PI * Math.cos(lat));
+        const coarse = border(z, x, y, 4096), fine = [...border(z + 1, 2 * x, 2 * y + 2, 0), ...border(z + 1, 2 * x + 1, 2 * y + 2, 0)];
+        const worst = Math.max(gap(fine, coarse, R), gap(coarse, fine, R));
+        assert.ok(worst < 0.05, `zoom ${z}: ${worst} px`);
+    }
 });

@@ -30,7 +30,23 @@ export function globeGrid(tileZ: number, zoom = tileZ): number {
 /** The field `globe` of the request for a tile (`id`, built for `zoom`), or undefined when the tile needs no cut. */
 export function globeBuild(id: {z: number; y: number}, zoom = id.z): GlobeBuild | undefined {
     const grid = globeGrid(id.z, zoom), north = id.y === 0, south = id.y === 2 ** id.z - 1;
-    return grid > 1 || (grid && (north || south)) ? {grid, north, south} : undefined;
+    // (A tile with one cell is still cut at its border: see `BORDER`.)
+    return grid ? {grid, north, south} : undefined;
+}
+
+/**
+ * The border of a tile gets a vertex every BORDER tile units (128 a side), whatever its grid. A neighbouring tile of
+ * another zoom has another grid, so without this the vertices of the two sides of a shared border would not meet: a
+ * straight edge of one side lies under the curve that the vertices of the other side follow, and the background
+ * shows through (T-junctions). With these vertices, the gap between the two sides is below 0.03 pixel.
+ */
+const BORDER = EXTENT / 128;
+/** Points of the border of the tile between two points of a piece, when both are on the same side of the border. */
+function borderPoints(ax: number, ay: number, bx: number, by: number, out: number[]) {
+    const axis = ax === bx && (ax === 0 || ax === EXTENT) ? 1 : ay === by && (ay === 0 || ay === EXTENT) ? 0 : -1;
+    if (axis < 0) return;
+    const from = axis ? ay : ax, to = axis ? by : bx, dir = Math.sign(to - from);
+    for (let v = (dir > 0 ? Math.floor(from / BORDER) + 1 : Math.ceil(from / BORDER) - 1) * BORDER; dir > 0 ? v < to : v > to; v += dir * BORDER) out.push(axis ? ax : v, axis ? v : ay);
 }
 
 /** The lines of the grid, in whole tile units, so that both sides of a line get the same points. */
@@ -91,8 +107,22 @@ export function cutFill(features: {coords: ArrayLike<number>; holes: number[]}[]
                 if (x1 <= 0 || y1 <= 0 || x0 >= EXTENT || y0 >= EXTENT) continue;
                 for (let cx = cellOf(lines, Math.max(0, x0)); cx <= cellOf(lines, Math.min(EXTENT, x1)); cx++) {
                     for (let cy = cellOf(lines, Math.max(0, y0)); cy <= cellOf(lines, Math.min(EXTENT, y1)); cy++) {
-                        const piece = clipConvex(tri, lines[cx], lines[cy], lines[cx + 1], lines[cy + 1]), ids: number[] = [];
+                        const clipped = clipConvex(tri, lines[cx], lines[cy], lines[cx + 1], lines[cy + 1]), piece: number[] = [], ids: number[] = [];
+                        for (let k = 0; k < clipped.length; k += 2) {
+                            const j = (k + 2) % clipped.length;
+                            piece.push(clipped[k], clipped[k + 1]);
+                            borderPoints(clipped[k], clipped[k + 1], clipped[j], clipped[j + 1], piece);
+                        }
                         for (let k = 0; k < piece.length; k += 2) { const i = vertex(piece[k], piece[k + 1]); if (ids[ids.length - 1] !== i && ids[0] !== i) ids.push(i); }
+                        // A piece with points on the border is a fan around its middle, so that each of those points is a
+                        // corner of a triangle. (A fan from a corner would leave them in the middle of a long edge.)
+                        const fan = piece.length > clipped.length && ids.length > 2;
+                        if (fan) {
+                            let mx = 0, my = 0;
+                            for (const i of ids) { mx += pos[i * 2]; my += pos[i * 2 + 1]; }
+                            ids.unshift(vertex(Math.round(mx / ids.length), Math.round(my / ids.length)));
+                            ids.push(ids[1]);
+                        }
                         for (let k = 1; k + 1 < ids.length; k++) {
                             const a = ids[0], b = ids[k], c = ids[k + 1];
                             // (A piece that rounding made flat adds nothing.)

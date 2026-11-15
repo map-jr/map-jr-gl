@@ -316,6 +316,18 @@ export class Transform {
         return [lngFromMerc(mx), latFromMerc(clamp(my, 0, 1))];
     }
 
+    /**
+     * The centre after the view moves by (sx, sy) screen pixels: a pan with the keys, a fling. On the globe the centre
+     * moves along the latitude and the meridian (as MapLibre's computeGlobePanCenter does), so that a horizontal fling
+     * does not drift north or south.
+     */
+    panned(sx: number, sy: number): [number, number] {
+        if (!this.globeness) return this.unprojectFlat(this.cx + sx, this.cy + sy);
+        const a = this.angle, east = Math.cos(a) * sx + Math.sin(a) * sy, south = -Math.sin(a) * sx + Math.cos(a) * sy;
+        const r = this.worldSize / (2 * Math.PI * Math.cos(this.lat * Math.PI / 180));
+        return [this.lng + east * 360 / this.worldSize, clamp(this.lat - south / r * 180 / Math.PI, -MAX_LAT, MAX_LAT)];
+    }
+
     /** Screen pixels to the position under them on the level plane through the map centre (ignoring 3D terrain). */
     unprojectFlat(px: number, py: number): [number, number] {
         const [mx, my] = this.screenToMerc(px, py);

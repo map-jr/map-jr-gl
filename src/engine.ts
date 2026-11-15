@@ -772,7 +772,7 @@ export class Engine {
             case 'pan': {
                 this.fling = null; this.ease = null; this.target = null;
                 const now = performance.now();
-                if (c.x === undefined || c.y === undefined) { tr.set(tr.unprojectFlat(tr.cx - c.dx, tr.cy - c.dy)); break; }
+                if (c.x === undefined || c.y === undefined) { tr.set(tr.panned(-c.dx, -c.dy)); break; }
                 this.centreGiven = false;
                 // A drag holds on to the ground (and its height) where it began; each move puts that point under the pointer.
                 // (A new drag is recognised by a pause, or by the pointer not being where the held point is.)
@@ -810,7 +810,7 @@ export class Engine {
                 this.fling = {dx: c.dx / dist * amount, dy: c.dy / dist * amount, start: performance.now(), duration: seconds * 1000, done: 0};
                 const end = new Transform();
                 Object.assign(end, tr);
-                end.set(tr.unprojectFlat(tr.cx - this.fling.dx, tr.cy - this.fling.dy));
+                end.set(tr.panned(-this.fling.dx, -this.fling.dy));
                 this.aim(end);
                 break;
             }
@@ -1106,7 +1106,7 @@ export class Engine {
         const glide = this.fling;
         if (glide) {
             const f = glide, t = Math.min(1, (now - f.start) / f.duration), k = inertiaEasing(t);
-            tr.set(tr.unprojectFlat(tr.cx - f.dx * (k - f.done), tr.cy - f.dy * (k - f.done)));
+            tr.set(tr.panned(-f.dx * (k - f.done), -f.dy * (k - f.done)));
             f.done = k;
             if (t >= 1) this.fling = null, this.target = null;
         }

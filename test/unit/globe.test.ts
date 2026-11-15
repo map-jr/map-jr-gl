@@ -98,3 +98,22 @@ test('globe: between zoom 11 and 12 the position mixes the two projections, and 
     assert.ok(at(11.5) < at(10.5) && at(11.5) > 0);
     assert.equal(at(12), 0);
 });
+
+test('globe: the bounds have the edge of the globe and a pole in view, and unproject gives a longitude in -180..180', () => {
+    // The numbers of MapLibre GL JS 6.17 for this view: -180, -46.81, 180, 90 (the north pole is in view).
+    const tr = make([10, 30], 1.5, 0, 0, [11, 1, 12, 0]);
+    assert.deepEqual(globe.bounds(tr).map(v => +v.toFixed(2)), [-180, -46.81, 180, 90]);
+    const [lng, lat] = tr.unproject(400, 20);
+    assert.deepEqual([+lng.toFixed(2), +lat.toFixed(2)], [-170, 73.19]);
+    // Without a pole in view, the bounds are those of the edges, measured from the centre.
+    const close = make([10, 30], 4, 0, 0, [11, 1, 12, 0]), [w, s, e, n] = globe.bounds(close);
+    assert.ok(w > -20 && w < 10 && e > 10 && e < 40 && s > 10 && n < 45 && n > 30, `${[w, s, e, n]}`);
+});
+
+test('globe: a pan without a pointer (a fling) moves the centre along the latitude, and Mercator is as before', () => {
+    const tr = make([10, 45], 3, 0, 0, [11, 1, 12, 0]);
+    const [lng, lat] = tr.panned(300, 0);
+    assert.ok(lng > 10 && Math.abs(lat - 45) < 1e-9, `${lng},${lat}`);
+    const flat = make([10, 45], 13, 30, 0, [11, 1, 12, 0]);
+    assert.deepEqual(flat.panned(120, -40), flat.unprojectFlat(flat.cx + 120, flat.cy - 40));
+});

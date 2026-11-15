@@ -83,6 +83,29 @@ export function hidden(tr: Transform, mx: number, my: number, slack = 0): boolea
     return dot(sphere(mx, my), h) + h[3] < -slack;
 }
 
+/**
+ * The bounds of what the globe shows [west, south, east, north], as MapLibre GL JS gives them: points along the
+ * edges of the screen (a point off the globe gives the nearest point of the horizon, so the visible edge of the globe
+ * is in), measured from the centre; a pole in view makes the bounds reach it, with all longitudes.
+ */
+export function bounds(tr: Transform): [number, number, number, number] {
+    const f = frame(tr), w = tr.width, h = tr.height, N = 16;
+    let west = 0, east = 0, south = 90, north = -90;
+    for (let i = 0; i <= N; i++) for (const [px, py] of [[w * i / N, 0], [w * i / N, h], [0, h * i / N], [w, h * i / N]]) {
+        const [mx, my] = toMerc(tr, px, py), lat = latFromMerc(my), d = ((lngFromMerc(mx) - tr.lng) % 360 + 540) % 360 - 180;
+        west = Math.min(west, d); east = Math.max(east, d); south = Math.min(south, lat); north = Math.max(north, lat);
+    }
+    for (const pole of [1, -1]) {
+        const p = [0, pole, 0], c = clipOf(f, p);
+        if (dot(p, f.horizon) + f.horizon[3] < 0 || c[2] <= 0) continue;
+        const x = (c[0] / c[2] + 1) / 2 * w, y = (1 - c[1] / c[2]) / 2 * h;
+        if (x < 0 || x > w || y < 0 || y > h) continue;
+        if (pole > 0) north = 90; else south = -90;
+        west = -180 - tr.lng; east = 180 - tr.lng;
+    }
+    return [tr.lng + west, Math.max(-90, south), tr.lng + east, Math.min(90, north)];
+}
+
 /** The direction of the ray through a screen point, in the space of the sphere. */
 function ray(tr: Transform, px: number, py: number): V3 {
     const d = tr.cameraDistance;
@@ -105,9 +128,8 @@ export function toMerc(tr: Transform, px: number, py: number): [number, number] 
         p = u.map((v, i) => v * hd + side[i] / sl * r);
     }
     const lat = Math.asin(clamp(p[1], -1, 1)) / RAD, lng = Math.atan2(p[0], p[2]) / RAD;
-    // (The centre stays the reference for the world copy: a longitude is given near the longitude of the centre.)
-    const mx = mercX(lng), cx = mercX(tr.lng);
-    return [mx + Math.round(cx - mx), mercY(clamp(lat, -85.051129, 85.051129))];
+    // (A globe has one world: the longitude is between -180 and 180, as in MapLibre GL JS.)
+    return [mercX(lng), mercY(clamp(lat, -85.051129, 85.051129))];
 }
 
 /**
@@ -119,7 +141,7 @@ export function toMerc(tr: Transform, px: number, py: number): [number, number] 
 export function turnTo(tr: Transform, lng: number, lat: number, px: number, py: number, keepSize = true) {
     const lat0 = tr.lat, zoom0 = tr.zoom;
     for (let i = 0; i < 12; i++) {
-        const [mx, my] = toMerc(tr, px, py), dl = lng - lngFromMerc(mx), dp = lat - latFromMerc(my);
+        const [mx, my] = toMerc(tr, px, py), dl = ((lng - lngFromMerc(mx)) % 360 + 540) % 360 - 180, dp = lat - latFromMerc(my);
         if (Math.abs(dl) < 1e-9 && Math.abs(dp) < 1e-9) break;
         tr.lng = ((tr.lng + dl + 540) % 360 + 360) % 360 - 180;
         tr.lat = clamp(tr.lat + dp, -85.051129, 85.051129);

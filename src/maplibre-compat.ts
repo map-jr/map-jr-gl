@@ -88,7 +88,7 @@ import {FullscreenControl as CoreFullscreen} from './controls-more.ts';
 import {Evented} from './evented.ts';
 /** The marker of the core with the private members `_map` and `_lngLat` that wrappers for MapLibre GL JS read. */
 export class Marker extends CoreMarker {
-    constructor(options: MarkerOptions = {}) { super(options); accepted('Marker', options as any, ['opacityWhenCovered']); }
+    constructor(options: MarkerOptions = {}) { super(options); }
     get _map() { return this.map; }
     get _lngLat() { return this.getLngLat(); }
     /** The offset as a `Point`, as in MapLibre GL JS. */
