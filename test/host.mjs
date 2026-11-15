@@ -4,7 +4,13 @@ import {launch} from './launch.mjs';
 const browser = await launch();
 const origin = `http://localhost:${process.env.PORT || 8080}`; // (the demo server; PORT lets two runs use two servers)
 let failed = 0;
-const check = (name, ok, detail = '') => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${name} ${detail}`); if (!ok) failed++; };
+// TIMINGS=1 prints, before each check, the seconds since the previous check (to find the slow ones).
+let lastCheck = performance.now();
+const check = (name, ok, detail = '') => {
+    const s = process.env.TIMINGS ? `[${((performance.now() - lastCheck) / 1000).toFixed(1)} s] ` : '';
+    lastCheck = performance.now();
+    console.log(`${ok ? 'PASS' : 'FAIL'}  ${s}${name} ${detail}`); if (!ok) failed++;
+};
 
 for (const renderer of ['worker', 'main']) {
     const page = await browser.newPage({viewport: {width: 900, height: 600}});
@@ -35,7 +41,7 @@ for (const renderer of ['worker', 'main']) {
         const view = await page.evaluate(async () => {
             const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms));
             t.host.moveTo({zoom: 15, duration: 300});
-            for (let i = 0; i < 100 && !(t.host.state.get().view.zoom === 15 && !t.host.state.get().moving); i++) await wait(100); // (a slow machine)
+            for (let i = 0; i < 100 && !(Math.abs(t.host.state.get().view.zoom - 15) < 1e-6 && !t.host.state.get().moving); i++) await wait(100); // (a slow machine)
             await wait(300);
             const reported = t.views.length, last = t.views.at(-1), old = t.views[Math.max(0, t.views.length - 4)];
             t.host.update(t.spec = {...t.spec, view: old}); // an application that owns the view gives back an older report
@@ -89,7 +95,7 @@ for (const renderer of ['worker', 'main']) {
         // 3. A new style object: a layer is added and found by a query; with the old style again it is gone.
         const style = await page.evaluate(async () => {
             const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms));
-            const idle = () => new Promise(r => { const off = t.host.state.subscribe(s => s.idle, v => { if (v) { off(); r(); } }); setTimeout(r, 8000); });
+            const idle = () => new Promise(r => { let at = t.host.state.get().idle ? performance.now() : 0; const off = t.host.state.subscribe(s => s.idle, v => { at = v ? performance.now() : 0; }), done = () => { clearInterval(timer); off(); r(); }, timer = setInterval(() => at && performance.now() - at > 500 && done(), 50); setTimeout(done, 8000); });
             const at = [{x: 0, y: 0}, {x: 900, y: 600}];
             const added = {...t.style, layers: [...t.style.layers, {id: 'test-water', type: 'fill', source: 'omt', 'source-layer': 'water', paint: {'fill-color': '#f00'}}]};
             t.host.update(t.spec = {...t.spec, style: added});
@@ -157,7 +163,7 @@ for (const renderer of ['worker', 'main']) {
             const line = {type: 'Feature', properties: {name: 'line'}, geometry: {type: 'LineString', coordinates: [[-74.02, 40.7085], [-73.99, 40.7085]]}};
             const host = t.lib.createMap(el, {style: t.style, initialView: {center: [-74.0065, 40.7085], zoom: 14.3}, renderer, attribution: false,
                 extend: {sources: {own: {type: 'geojson', data: line}}, layers: [{id: 'own-line', type: 'line', source: 'own', paint: {'line-width': 2}}]}});
-            await new Promise(r => { host.state.subscribe(s => s.idle, v => v && r()); setTimeout(r, 8000); });
+            await new Promise(r => { let at = host.state.get().idle ? performance.now() : 0; const off = host.state.subscribe(s => s.idle, v => { at = v ? performance.now() : 0; }), done = () => { clearInterval(timer); off(); r(); }, timer = setInterval(() => at && performance.now() - at > 500 && done(), 50); setTimeout(done, 8000); });
             const at = {x: 100, y: 81}, below = host.unproject(at), count = async (place, o) => (await host.queryFeatures(place, o)).length;
             const out = {on: await count({x: 100, y: 75}, {layers: ['own-line']}), none: await count(at, {layers: ['own-line']}), small: await count(at, {layers: ['own-line'], radius: 2}), point: await count(at, {layers: ['own-line'], radius: 8}),
                 position: await count(below, {layers: ['own-line'], radius: 8}), data: await count(at, {sources: ['own'], radius: 8}), dataDefault: await count(at, {sources: ['own']}),
@@ -175,7 +181,7 @@ for (const renderer of ['worker', 'main']) {
             // The centre is at -170°, which is 190° of the line.
             const host = t.lib.createMap(el, {style: {version: 8, sources: {}, layers: []}, initialView: {center: [-170, 40], zoom: 3}, renderer, attribution: false,
                 extend: {sources: {own: {type: 'geojson', data: line}}, layers: [{id: 'own-line', type: 'line', source: 'own', paint: {'line-width': 4}}]}});
-            await new Promise(r => { host.state.subscribe(s => s.idle, v => v && r()); setTimeout(r, 8000); });
+            await new Promise(r => { let at = host.state.get().idle ? performance.now() : 0; const off = host.state.subscribe(s => s.idle, v => { at = v ? performance.now() : 0; }), done = () => { clearInterval(timer); off(); r(); }, timer = setInterval(() => at && performance.now() - at > 500 && done(), 50); setTimeout(done, 8000); });
             const hits = (await host.queryFeatures({x: 100, y: 75}, {layers: ['own-line'], radius: 3})).length;
             host.destroy(); el.remove();
             return hits;
@@ -230,7 +236,7 @@ for (const renderer of ['worker', 'main']) {
         // 3d. A source of `extend` gets its features from `data`; an owned view with only some fields that equals a reported view does not move the map (#33).
         const extendData = await page.evaluate(async renderer => {
             const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
-            const idle = host => new Promise(r => { host.state.subscribe(s => s.idle, v => v && r()); setTimeout(r, 8000); });
+            const idle = host => new Promise(r => { let at = host.state.get().idle ? performance.now() : 0; const off = host.state.subscribe(s => s.idle, v => { at = v ? performance.now() : 0; }), done = () => { clearInterval(timer); off(); r(); }, timer = setInterval(() => at && performance.now() - at > 500 && done(), 50); setTimeout(done, 8000); });
             const square = {type: 'Feature', properties: {name: 'square'}, geometry: {type: 'Polygon', coordinates: [[[-74.02, 40.70], [-73.99, 40.70], [-73.99, 40.72], [-74.02, 40.72], [-74.02, 40.70]]]}};
             const spec = {style: t.style, initialView: {center: [-74.0065, 40.7085], zoom: 13}, renderer, attribution: false,
                 extend: {sources: {own: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}}, layers: [{id: 'own-fill', type: 'fill', source: 'own'}]}};
@@ -254,7 +260,7 @@ for (const renderer of ['worker', 'main']) {
         // 3d. A change of `extend` alone is applied as edits: the style URL is not requested again, and a layer that was added through `host.map` stays (#166).
         const extendEdit = await page.evaluate(async renderer => {
             const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
-            const idle = host => new Promise(r => { host.state.subscribe(s => s.idle, v => v && r()); setTimeout(r, 8000); });
+            const idle = host => new Promise(r => { let at = host.state.get().idle ? performance.now() : 0; const off = host.state.subscribe(s => s.idle, v => { at = v ? performance.now() : 0; }), done = () => { clearInterval(timer); off(); r(); }, timer = setInterval(() => at && performance.now() - at > 500 && done(), 50); setTimeout(done, 8000); });
             const square = {type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[-74.02, 40.70], [-73.99, 40.70], [-73.99, 40.72], [-74.02, 40.72], [-74.02, 40.70]]]}};
             const fill = (color, visibility = 'visible') => ({id: 'own-fill', type: 'fill', source: 'own', paint: {'fill-color': color}, layout: {visibility}});
             const spec = {style: '/style.json', initialView: {center: [-74.0065, 40.7085], zoom: 13}, renderer, attribution: false};
@@ -286,7 +292,7 @@ for (const renderer of ['worker', 'main']) {
         // 3d. The edits of `extend` leave the description as it was, work for two maps with one `extend` object, keep the
         // layers of `markers` on top, and give back a source of the style that an extend source replaced (#184).
         const extendCases = await page.evaluate(async renderer => {
-            const t = window.t, idle = host => new Promise(r => { host.state.subscribe(s => s.idle, v => v && r()); setTimeout(r, 8000); });
+            const t = window.t, idle = host => new Promise(r => { let at = host.state.get().idle ? performance.now() : 0; const off = host.state.subscribe(s => s.idle, v => { at = v ? performance.now() : 0; }), done = () => { clearInterval(timer); off(); r(); }, timer = setInterval(() => at && performance.now() - at > 500 && done(), 50); setTimeout(done, 8000); });
             const div = () => document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
             const square = {type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[-74.02, 40.70], [-73.99, 40.70], [-73.99, 40.72], [-74.02, 40.72], [-74.02, 40.70]]]}};
             const spec = {style: '/style.json', initialView: {center: [-74.0065, 40.7085], zoom: 13}, renderer, attribution: false};
@@ -605,8 +611,9 @@ for (const renderer of ['worker', 'main']) {
             t.arrows = more => ({...t.style, sources: {...t.style.sources, arrows: {type: 'geojson', data: {type: 'FeatureCollection', features}}},
                 layers: [...t.style.layers.filter(l => l.type !== 'symbol'), {id: 'arrows', type: 'symbol', source: 'arrows', paint: {'icon-opacity': ['get', 'alpha'], 'icon-translate': [7, 3]},
                     layout: {'icon-image': 'arrow', 'icon-allow-overlap': true, 'icon-ignore-placement': true, 'icon-anchor': 'top-left', 'icon-offset': [6, -4], 'icon-size': ['get', 'size'], 'icon-rotate': ['get', 'turn'], ...more}}]});
-            // (The map is idle and stays idle for a second.)
-            t.settle = () => new Promise(done => { let at = 0; const off = t.host.state.subscribe(s => s.idle, idle => { at = idle ? performance.now() : 0; }), timer = setInterval(() => { if (at && performance.now() - at > 1000) { clearInterval(timer); off(); done(); } }, 100); setTimeout(done, 30000); });
+            // (The map is idle and stays idle for a second. The store calls back only on a change, so a map that is
+            // already idle counts from now: a change that the map makes without leaving idle would otherwise wait 30 s.)
+            t.settle = () => new Promise(done => { let at = t.host.state.get().idle ? performance.now() : 0; const off = t.host.state.subscribe(s => s.idle, idle => { at = idle ? performance.now() : 0; }), timer = setInterval(() => { if (at && performance.now() - at > 1000) { clearInterval(timer); off(); done(); } }, 100); setTimeout(done, 30000); });
             t.host.moveTo({bearing: 0, pitch: 0}); // (an earlier test turned the map)
             t.host.update(t.spec = {...t.spec, style: t.arrows({}), images: {arrow: '<svg viewBox="0 0 24 30"><path d="M12 1 23 29 12 22 1 29z" fill="#d6453d" stroke="#fff" stroke-width="1.5"/></svg>'}});
         });
@@ -712,7 +719,7 @@ for (const renderer of ['worker', 'main']) {
         // GeoJSON data apart from the style: it goes to its source alone, and stays over a new style.
         const data = await page.evaluate(async () => {
             const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), c = t.host.state.get().view.center;
-            const idle = () => new Promise(r => { const off = t.host.state.subscribe(s => s.idle, v => { if (v) { off(); r(); } }); setTimeout(r, 8000); });
+            const idle = () => new Promise(r => { let at = t.host.state.get().idle ? performance.now() : 0; const off = t.host.state.subscribe(s => s.idle, v => { at = v ? performance.now() : 0; }), done = () => { clearInterval(timer); off(); r(); }, timer = setInterval(() => at && performance.now() - at > 500 && done(), 50); setTimeout(done, 8000); });
             const points = n => ({type: 'FeatureCollection', features: Array.from({length: n}, (_, i) => ({type: 'Feature', properties: {i}, geometry: {type: 'Point', coordinates: [c[0] + (i - n / 2) * 0.002, c[1]]}}))});
             // (A point at the edge of a tile is in two tiles: the points are counted by their number. The data gets time to come.)
             const once = async () => new Set((await t.host.queryFeatures([{x: 0, y: 0}, {x: 900, y: 600}], {layers: ['test-points']})).map(f => f.properties.i)).size;
@@ -896,7 +903,7 @@ for (const renderer of ['worker', 'main']) {
         // 5d. The cluster methods of a GeoJSON source, as promises, and a message when the source has no clusters (#217).
         const clusters = await page.evaluate(async renderer => {
             const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:300px;height:200px'}));
-            const idle = host => new Promise(r => { host.state.subscribe(s => s.idle, v => v && r()); setTimeout(r, 8000); });
+            const idle = host => new Promise(r => { let at = host.state.get().idle ? performance.now() : 0; const off = host.state.subscribe(s => s.idle, v => { at = v ? performance.now() : 0; }), done = () => { clearInterval(timer); off(); r(); }, timer = setInterval(() => at && performance.now() - at > 500 && done(), 50); setTimeout(done, 8000); });
             const points = Array.from({length: 12}, (_, i) => ({type: 'Feature', properties: {i}, geometry: {type: 'Point', coordinates: [-74.0065 + (i % 4) * 0.0004, 40.7085 + Math.floor(i / 4) * 0.0004]}}));
             const spec = {style: t.style, initialView: {center: [-74.0065, 40.7085], zoom: 10}, renderer, attribution: false,
                 extend: {sources: {pts: {type: 'geojson', cluster: true, data: {type: 'FeatureCollection', features: points}}, plain: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}},
