@@ -129,6 +129,7 @@ export class FullscreenControl implements Control {
     private el?: HTMLElement;
     private pseudo: boolean;
     private full = false;
+    private restoreGestures = false;
     constructor(options: {container?: HTMLElement; pseudo?: boolean} = {}) {
         if (options.container) noEffect('FullscreenControl', 'container', ' The map\'s container goes fullscreen.');
         this.pseudo = !!options.pseudo;
@@ -142,6 +143,11 @@ export class FullscreenControl implements Control {
             if (on === this.full) return;
             this.full = on;
             name();
+            // As in MapLibre GL JS, `cooperativeGestures` (compat entry) is off while the map fills the screen.
+            const cg = (map as {cooperativeGestures?: {isEnabled(): boolean; enable(): void; disable(): void}}).cooperativeGestures;
+            if (cg) {
+                if (on) { this.restoreGestures = cg.isEnabled(); cg.disable(); } else if (this.restoreGestures) { this.restoreGestures = false; cg.enable(); }
+            }
             this.changed(on);
         };
         const b = button(el, 'fullscreen', '', svg('<path d="M3 7V3h4M11 3h4v4M15 11v4h-4M7 15H3v-4"/>'), () => {
@@ -161,7 +167,7 @@ export class FullscreenControl implements Control {
         name();
         this.change = () => set(document.fullscreenElement === c);
         document.addEventListener('fullscreenchange', this.change);
-        this.cleanup = () => { if (c.classList.contains('map-jr-pseudo-fullscreen')) { toggleClass(c, 'pseudo-fullscreen', false); map.resize(); } this.full = false; };
+        this.cleanup = () => { if (c.classList.contains('map-jr-pseudo-fullscreen')) { toggleClass(c, 'pseudo-fullscreen', false); map.resize(); } set(false); };
         return el;
     }
     private change = () => {};

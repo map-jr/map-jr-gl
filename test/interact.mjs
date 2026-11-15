@@ -2045,7 +2045,8 @@ for (const mode of ['main', 'worker']) {
             // (An own property hides the Fullscreen API of the prototype, as on an iPhone.)
             el.requestFullscreen = undefined;
             const locale = {'NavigationControl.ZoomIn': 'Zoom avant', 'FullscreenControl.Enter': 'Plein écran', 'FullscreenControl.Exit': 'Quitter le plein écran',
-                'ScaleControl.Kilometers': 'kilomètres', 'AttributionControl.ToggleAttribution': 'Attributions', 'CooperativeGesturesHandler.WindowsHelpText': 'Ctrl + molette', 'CooperativeGesturesHandler.MacHelpText': '⌘ + molette', 'CooperativeGesturesHandler.MobileHelpText': 'Deux doigts'};
+                'ScaleControl.Kilometers': 'kilomètres', 'AttributionControl.ToggleAttribution': 'Attributions', 'CooperativeGesturesHandler.WindowsHelpText': 'Ctrl + molette', 'CooperativeGesturesHandler.MacHelpText': '⌘ + molette', 'CooperativeGesturesHandler.MobileHelpText': 'Deux doigts',
+                'Popup.Close': 'Fermer', 'Marker.Title': 'Repère'};
             const m = new mod.Map({container: el, renderer: 'main', locale, cooperativeGestures: true, center: [0, 0], zoom: 2, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
             const nav = new mod.NavigationControl(), scale = new mod.ScaleControl(), fc = new mod.FullscreenControl(), events = [];
             m.addControl(nav); m.addControl(scale); m.addControl(fc);
@@ -2054,14 +2055,21 @@ for (const mode of ['main', 'worker']) {
             await wait(100);
             const q = s => el.querySelector(s), fb = q('.maplibregl-ctrl-fullscreen');
             const out = {zoomIn: q('.maplibregl-ctrl-zoom-in').title, zoomOut: q('.maplibregl-ctrl-zoom-out').title, compass: q('.maplibregl-ctrl-compass').title,
-                scale: q('.maplibregl-ctrl-scale').textContent, attrib: q('.maplibregl-ctrl-attrib-button')?.getAttribute('aria-label'), enter: fb.title, uiString: m._getUIString('Popup.Close')};
+                scale: q('.maplibregl-ctrl-scale').textContent, attrib: q('.maplibregl-ctrl-attrib-button')?.getAttribute('aria-label'), enter: fb.title, uiString: m._getUIString('Popup.Missing')};
+            // The close button of Popup and the name of Marker take the locale when they are added to the map.
+            const marker = new mod.Marker().setLngLat([0, 0]).addTo(m), popup = new mod.Popup().setLngLat([0, 0]).setText('x').addTo(m);
+            out.marker = marker.getElement().getAttribute('aria-label'); out.close = popup.getElement().querySelector('.maplibregl-popup-close-button')?.getAttribute('aria-label');
+            popup.remove(); marker.remove();
             m.getCanvas().dispatchEvent(new WheelEvent('wheel', {deltaY: -100, clientX: 150, clientY: 100, bubbles: true, cancelable: true}));
             out.hint = q('.maplibregl-cooperative-gesture-screen')?.textContent;
             fb.click();
             out.pseudo = el.classList.contains('maplibregl-pseudo-fullscreen') && el.classList.contains('map-jr-pseudo-fullscreen');
             out.position = getComputedStyle(el).position;
             out.exit = fb.title; out.pressed = fb.getAttribute('aria-pressed');
+            // As in MapLibre GL JS, cooperativeGestures is off while the map fills the screen, and on again after.
+            out.gesturesFull = m.cooperativeGestures.isEnabled();
             fb.click();
+            out.gesturesAfter = m.cooperativeGestures.isEnabled();
             out.after = el.className.includes('pseudo-fullscreen'); out.enterAgain = fb.title; out.events = events.join();
             out.warnings = warnings.filter(w => /locale/.test(w));
             console.warn = warn;
@@ -2076,9 +2084,9 @@ for (const mode of ['main', 'worker']) {
             m2.destroy(); el2.remove();
             return out;
         });
-        check('[main] maplibre-compat: locale names the controls and the hint of cooperativeGestures; FullscreenControl falls back to pseudo fullscreen without the Fullscreen API (#42)',
+        check('[main] maplibre-compat: locale names the controls and the hint of cooperativeGestures; Popup and Marker take it; FullscreenControl falls back to pseudo fullscreen without the Fullscreen API and turns off cooperativeGestures there (#42)',
             r.zoomIn === 'Zoom avant' && r.zoomOut === 'Zoom out' && r.compass === 'Reset bearing to north' && /kilomètres$/.test(r.scale) && r.attrib === 'Attributions'
-            && r.enter === 'Plein écran' && r.uiString === undefined && ['Ctrl + molette', '⌘ + molette', 'Deux doigts'].includes(r.hint)
+            && r.enter === 'Plein écran' && r.uiString === undefined && r.marker === 'Repère' && r.close === 'Fermer' && r.gesturesFull === false && r.gesturesAfter === true && ['Ctrl + molette', '⌘ + molette', 'Deux doigts'].includes(r.hint)
             && r.pseudo && r.position === 'fixed' && r.exit === 'Quitter le plein écran' && r.pressed === 'true' && !r.after && r.enterAgain === 'Plein écran' && r.events === 'start,end'
             && r.warnings.length === 0 && r.coreCompass === 'Reset bearing to north', JSON.stringify(r));
     }
