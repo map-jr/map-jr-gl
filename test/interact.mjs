@@ -1281,7 +1281,7 @@ for (const mode of ['main', 'worker']) {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
             const m = new mod.Map({container: el, renderer: mode, attributionControl: false, center: [0, 0], zoom: 1, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#0f0'}}]}});
-            const centre = async src => { const bmp = await createImageBitmap(src), c = new OffscreenCanvas(bmp.width, bmp.height), g = c.getContext('2d'); g.drawImage(bmp, 0, 0); return Array.from(g.getImageData(bmp.width >> 1, bmp.height >> 1, 1, 1).data); };
+            const centre = async src => { const bmp = await createImageBitmap(src), c = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}), g = c.getContext('2d'); g.drawImage(bmp, 0, 0); return Array.from(g.getImageData(bmp.width >> 1, bmp.height >> 1, 1, 1).data); };
             const b = await Promise.race([m.toBlob(), new Promise(res => setTimeout(() => res(null), 10000))]);
             const blob = b ? await centre(b) : null;
             const url = await new Promise(res => { m.once('render', () => res(m.getCanvas().toDataURL())); m.triggerRepaint(); setTimeout(() => res(null), 5000); });
@@ -1353,7 +1353,7 @@ for (const mode of ['main', 'worker']) {
         }, mode);
         const colour = async id => {
             const shot = await page.screenshot({clip: await clip(id)});
-            return page.evaluate(async b64 => { const img = await createImageBitmap(await (await fetch('data:image/png;base64,' + b64)).blob()); const c = new OffscreenCanvas(1, 1).getContext('2d'); c.drawImage(img, 1, 1, 1, 1, 0, 0, 1, 1); return [...c.getImageData(0, 0, 1, 1).data].slice(0, 3).join(); }, shot.toString('base64'));
+            return page.evaluate(async b64 => { const img = await createImageBitmap(await (await fetch('data:image/png;base64,' + b64)).blob()); const c = Object.assign(document.createElement('canvas'), {width: 1, height: 1}).getContext('2d'); c.drawImage(img, 1, 1, 1, 1, 0, 0, 1, 1); return [...c.getImageData(0, 0, 1, 1).data].slice(0, 3).join(); }, shot.toString('base64'));
         };
         const two = {a: await colour('pair-a'), b: await colour('pair-b'), stateA: await page.evaluate(() => JSON.stringify(window.pair[0].getFeatureState({source: 'g', id: 1})))};
         await page.evaluate(() => { for (const m of window.pair) { const el = m.getContainer(); m.remove(); el.remove(); } });
