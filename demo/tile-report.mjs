@@ -65,6 +65,10 @@ export class TileReport {
 
     frame(keys, ms) {
         if (this.marking) { this.since = ms; this.marking = false; }
+        // A slot that leaves the view before its tile is drawn counts again from when it comes back: with 3D terrain and a
+        // turning view, a slot at the edge can be out of view for a second or more, and that time is not lateness (#384).
+        const now = new Set(keys);
+        for (const key of this.view) { const t = this.tiles.get(key); if (!now.has(key) && t && t.drawn === undefined) t.view = t.bare = undefined; }
         this.view = keys;
         for (const key of keys) {
             const t = this.get(key);
