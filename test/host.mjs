@@ -1,5 +1,6 @@
 // Tests of the main API (`createMap`, see src/host.ts) in a real browser: node test/host.mjs (demo server running)
 import {launch} from './launch.mjs';
+import {watchdog} from './watchdog.mjs';
 
 const browser = await launch();
 const origin = `http://localhost:${process.env.PORT || 8080}`; // (the demo server; PORT lets two runs use two servers)
@@ -10,7 +11,9 @@ const check = (name, ok, detail = '') => {
     const s = process.env.TIMINGS ? `[${((performance.now() - lastCheck) / 1000).toFixed(1)} s] ` : '';
     lastCheck = performance.now();
     console.log(`${ok ? 'PASS' : 'FAIL'}  ${s}${name} ${detail}`); if (!ok) failed++;
+    finished(name);
 };
+const finished = watchdog(browser, message => { console.log(`FAIL  ${message}`); failed++; });
 
 for (const renderer of ['worker', 'main']) {
     const page = await browser.newPage({viewport: {width: 900, height: 600}});

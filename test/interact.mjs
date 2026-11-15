@@ -1,10 +1,12 @@
 // Drives the demo in Chromium and checks behaviour in both renderer modes: node test/interact.mjs [outDir] (default .cache/shots)
 import {launch, browserName} from './launch.mjs';
+import {watchdog} from './watchdog.mjs';
 const out = process.argv[2] || '.cache/shots'; // (the directory for the screenshots; Playwright creates it)
 const browser = await launch();
 const origin = `http://localhost:${process.env.PORT || 8080}`; // (the demo server; PORT lets two runs use two servers)
 let failed = 0, mainFrames = 0;
-const check = (name, ok, detail = '') => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${name} ${detail}`); if (!ok) failed++; };
+const check = (name, ok, detail = '') => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${name} ${detail}`); if (!ok) failed++; finished(name); };
+const finished = watchdog(browser, message => { console.log(`FAIL  ${message}`); failed++; });
 // The map is settled when it does not move and the camera has been the same for a quarter of a second. (A browser
 // can report that the mouse was released before the page has handled the events, so `isMoving()` alone can be
 // false before a drag and its inertia have started.)
