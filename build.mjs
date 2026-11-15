@@ -7,6 +7,31 @@ import {createRequire} from 'node:module';
 import MagicString from 'magic-string';
 import {shortenPrivateNames} from './scripts/private-names.mjs';
 
+// The public members of the classes of MapLibre GL JS, read from its type declarations. The development build of the
+// entry maplibre-compat warns when code reads one of them that the class of this library does not have (see
+// `watchMembers` in src/mistakes.ts). They go into src/maplibre-members.ts, a file in git that this build rewrites when
+// the version of maplibre-gl changes them, so that each name in the built file has a line of src/ in the source map.
+const maplibreMembers = (() => {
+    const text = readFileSync(createRequire(import.meta.url).resolve('maplibre-gl/dist/maplibre-gl.d.ts'), 'utf8');
+    const members = cls => {
+        const start = text.search(new RegExp(`^(export )?declare (abstract )?class ${cls.replace('$', '\\$')}\\b`, 'm'));
+        if (start < 0) throw new Error(`build.mjs: maplibre-gl.d.ts has no class ${cls}.`);
+        const body = text.slice(start, text.indexOf('\n}', start)), names = new Set();
+        for (const m of body.matchAll(/^ {2}(?:(private|protected|static) )?(?:readonly )?(?:get |set )?([a-zA-Z]\w*)\??(?:<[^(]*>)?[(:]/gm)) if (!m[1] && m[2] !== 'constructor') names.add(m[2]);
+        return [...names];
+    };
+    const evented = members('Evented'), out = {Map: [...new Set([...members('Map$1'), ...members('Camera'), ...evented])]};
+    for (const c of ['Marker', 'Popup', 'GeolocateControl', 'FullscreenControl']) out[c] = [...new Set([...members(c), ...evented])];
+    for (const c of ['NavigationControl', 'ScaleControl', 'AttributionControl', 'TerrainControl', 'LogoControl', 'GlobeControl']) out[c] = members(c);
+    return out;
+})();
+{
+    const text = '// Written by build.mjs from the type declarations of maplibre-gl: the public members of its classes. Do not edit.\n' +
+        '// (One string for each class, so that no string is the name of a member: scripts/private-names.mjs rejects that.)\n' +
+        'export const maplibreMembers: Record<string, string> = {\n' + Object.entries(maplibreMembers).map(([c, n]) => `    ${c}: '${n.join(' ')}',\n`).join('') + '};\n';
+    let old = ''; try { old = readFileSync('src/maplibre-members.ts', 'utf8'); } catch { /* the first build */ }
+    if (old !== text) writeFileSync('src/maplibre-members.ts', text);
+}
 const privates = shortenPrivateNames();
 const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
 /** The result of a plugin that changed `code` through `edited`, with the source map of the change. */
@@ -136,24 +161,7 @@ await run(esm(entries));
 // the same in both builds is one file, and dist/ grows only by the files that differ. The build stops if it would
 // change a file of the production build.
 const production = Object.fromEntries(readdirSync('dist').map(f => [f, readFileSync('dist/' + f, 'utf8')]));
-// The public members of the classes of MapLibre GL JS, read from its type declarations. The development build of the
-// entry maplibre-compat warns when code reads one of them that the class of this library does not have (see
-// `watchMembers` in src/mistakes.ts).
-const maplibreMembers = (() => {
-    const text = readFileSync(createRequire(import.meta.url).resolve('maplibre-gl/dist/maplibre-gl.d.ts'), 'utf8');
-    const members = cls => {
-        const start = text.search(new RegExp(`^(export )?declare (abstract )?class ${cls.replace('$', '\\$')}\\b`, 'm'));
-        if (start < 0) throw new Error(`build.mjs: maplibre-gl.d.ts has no class ${cls}.`);
-        const body = text.slice(start, text.indexOf('\n}', start)), names = new Set();
-        for (const m of body.matchAll(/^ {2}(?:(private|protected|static) )?(?:readonly )?(?:get |set )?([a-zA-Z]\w*)\??(?:<[^(]*>)?[(:]/gm)) if (!m[1] && m[2] !== 'constructor') names.add(m[2]);
-        return [...names];
-    };
-    const evented = members('Evented'), out = {Map: [...new Set([...members('Map$1'), ...members('Camera'), ...evented])]};
-    for (const c of ['Marker', 'Popup', 'GeolocateControl', 'FullscreenControl']) out[c] = [...new Set([...members(c), ...evented])];
-    for (const c of ['NavigationControl', 'ScaleControl', 'AttributionControl', 'TerrainControl', 'LogoControl', 'GlobeControl']) out[c] = members(c);
-    return JSON.stringify(out);
-})();
-await run(esm(entries, {entryFileNames: '[name].dev.js'}), {__WORKER_SRC__: '""', __DEV__: 'true', __MAPLIBRE_MEMBERS__: maplibreMembers});
+await run(esm(entries, {entryFileNames: '[name].dev.js'}), {__WORKER_SRC__: '""', __DEV__: 'true'});
 for (const f in production) if (readFileSync('dist/' + f, 'utf8') !== production[f]) throw new Error(`The development build changed dist/${f}, a file of the production build.`);
 
 // Standalone: one self-contained file with the worker embedded, for places where shipping several files is awkward.

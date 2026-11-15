@@ -5,6 +5,7 @@
 import type {Map} from './map.ts';
 import type {FeatureOptions, MapSpec, StyleExtension} from './host.ts';
 import {templateSlots} from './markers.ts';
+import {maplibreMembers} from './maplibre-members.ts';
 
 /** What a check reads of one map. `warned` has the warnings that the map gave: each mistake gives one warning for each map. */
 export interface Checked { map: Map; warned: Set<string>; spec(): MapSpec; /** The map exists and has loaded the style of the description. */ ready(): boolean }
@@ -115,7 +116,6 @@ export function check(c: Checked, kind: number, a?: any, b?: any) {
     }
 }
 
-declare const __MAPLIBRE_MEMBERS__: Record<string, string[]>; // set by build.mjs in the development build
 /** The members of the map that are private state of MapLibre GL JS, and what to use instead. (`painter` has its own
  * warning in src/compat-map.ts, and the map has a `style` for wrappers.) */
 const privateState: Record<string, string> = {
@@ -133,7 +133,7 @@ let watcher: object | undefined;
  * end of the prototype chain of each class, so it sees only the names that the instance, its classes and `Object` do
  * not have: a member that exists costs nothing, and the instances stay the same objects.
  */
-export function watchMembers(classes: Record<string, {prototype: object}>, members: Record<string, string[]> = __MAPLIBRE_MEMBERS__) {
+export function watchMembers(classes: Record<string, {prototype: object}>, members: Record<string, string[]> = Object.fromEntries(Object.entries(maplibreMembers).map(([c, n]) => [c, n.split(' ')]))) {
     watcher ??= new Proxy(Object.prototype, {get(target, key, receiver) {
         // (Symbols and names that start with `_`, `$` or `@` are what frameworks probe and what MapLibre has as private
         // members: Vue reads `__v_skip`, React `$$typeof`. `then` and `toJSON` are not members of MapLibre, so they do not warn.)
