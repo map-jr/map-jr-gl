@@ -23,7 +23,7 @@ for (const mode of ['main', 'worker']) {
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
     // (The browser's own line for a 404 that a test asks for on purpose, from `/no-such-…`, can come after that test.)
-    page.on('console', m => { if (m.type() === 'error' && !(m.text().startsWith('Failed to load resource') && m.location().url?.includes('/no-such-'))) errors.push(m.text()); });
+    page.on('console', m => { if (m.type() === 'error' && !(m.text().startsWith('Failed to load resource') && m.location().url?.includes('/no-such-'))) errors.push(m.text() + (m.location().url ? ' (' + m.location().url + ')' : '')); });
     await page.goto(`${origin}/?renderer=${mode}`);
     await page.waitForFunction(() => window.mapLoaded, null, {timeout: 30000});
     // Some browsers cannot make a WebGL context in a worker (WebKit on Linux and Windows, Safari before 16.4). The map
@@ -2882,10 +2882,13 @@ for (const mode of ['main', 'worker']) {
     await page.route(u => /^\/(elsewhere\/)?rel\//.test(u.pathname), async r => {
         const u = new URL(r.request().url());
         paths.push(u.pathname);
-        if (!u.pathname.startsWith('/elsewhere/')) return r.fulfill({status: 404, body: ''});
-        const response = await r.fetch({url: origin + u.pathname.replace('/elsewhere/rel/', '/tiles/')});
-        await new Promise(res => setTimeout(res, wait)); // after the restart the tiles are slow, so that the map is not idle at once
-        return r.fulfill({response});
+        if (!u.pathname.startsWith('/elsewhere/')) return r.fulfill({status: 404, body: ''}).catch(() => {});
+        // (The page can close while a slow tile waits here; the request is then gone, and that is not a fault.)
+        try {
+            const response = await r.fetch({url: origin + u.pathname.replace('/elsewhere/rel/', '/tiles/')});
+            await new Promise(res => setTimeout(res, wait)); // after the restart the tiles are slow, so that the map is not idle at once
+            await r.fulfill({response});
+        } catch {}
     });
     await page.goto(origin + '/?renderer=main&nomarkers&style=/elsewhere/style.json');
     await page.waitForFunction(() => window.mapLoaded, null, {timeout: 30000});
