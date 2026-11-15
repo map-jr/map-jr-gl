@@ -2408,6 +2408,18 @@ for (const mode of ['main', 'worker']) {
         });
         check('[main] Popup: while it fades out after remove(), a click goes to the map below it', fading.before && !fading.during, JSON.stringify(fading));
         // A camera animation of one second: with "reduce motion" the map is there at once; `essential: true` keeps the animation.
+        const keys = await page.evaluate(async () => {
+            const m = window.a11yMap, c = m.getCanvas(), out = {};
+            const press = async (key, shiftKey) => { c.dispatchEvent(new KeyboardEvent('keydown', {key, shiftKey, bubbles: true})); await new Promise(r => setTimeout(r, 450)); };
+            m.jumpTo({center: [0, 0], bearing: 0, pitch: 0});
+            await press('ArrowRight', true); out.bearing = Math.round(m.getBearing()); out.center = m.getCenter().lng;
+            await press('ArrowUp', true); out.pitch = Math.round(m.getPitch());
+            await press('ArrowLeft', true); out.back = Math.round(m.getBearing());
+            m.jumpTo({bearing: 0, pitch: 0}); await press('ArrowRight', false); out.panned = m.getCenter().lng > 1 && m.getBearing() === 0;
+            m.jumpTo({center: [0, 0]});
+            return out;
+        });
+        check('[main] Shift with an arrow key rotates and pitches the map; an arrow key alone pans it', keys.bearing === 15 && Math.abs(keys.center) < 1e-6 && keys.pitch === 10 && keys.back === 0 && keys.panned, JSON.stringify(keys));
         const zoomSoon = async options => page.evaluate(async options => { const m = window.a11yMap; m.jumpTo({zoom: 2}); await new Promise(r => setTimeout(r, 200)); m.easeTo({zoom: 4, duration: 1000, ...options}); await new Promise(r => setTimeout(r, 250)); return m.getZoom(); }, options);
         const moving = await zoomSoon({});
         await page.emulateMedia({reducedMotion: 'reduce'});

@@ -8,7 +8,8 @@ yet. It applies to the two entries (`@map-jr/map-jr-gl` and `@map-jr/map-jr-gl/m
 | Part | Behaviour |
 |---|---|
 | The map | The canvas has `tabindex="0"`, `role="region"` and `aria-label="Map"`. When it has the keyboard focus, the container of the map shows an outline of 2 pixels. The colour is the custom property `--map-control-focus` (the default is `#2f7fd1`). |
-| Keyboard | With the focus on the map, the arrow keys move the map and `+` and `-` change the zoom. `map.keyboard.disable()` in `@map-jr/map-jr-gl/maplibre-compat` turns this off. |
+| High contrast | With `forced-colors: active` (for example Windows high contrast mode), the controls, the attribution, the scale and popups get a border in the system text colour, and a focused button gets an outline in the system highlight colour. With `prefers-contrast: more`, the attribution has an opaque background and the groups of controls have a black outline. |
+| Keyboard | With the focus on the map, the arrow keys move the map, Shift with left or right rotates it by 15°, Shift with up or down changes the pitch by 10°, and `+` and `-` change the zoom, as in MapLibre GL JS. `map.keyboard.disable()` in `@map-jr/map-jr-gl/maplibre-compat` turns this off. |
 | Camera animations | When the user asked the system for less motion (`prefers-reduced-motion: reduce`), `easeTo`, `flyTo`, `fitBounds` and `moveTo` with a `duration` show the new view at once. In `@map-jr/map-jr-gl/maplibre-compat`, the option `essential: true` keeps the animation, as in MapLibre GL JS. The animation of a popup follows the same setting. |
 | Controls | Each button of a control has a name (`aria-label` and `title`) and shows the keyboard focus. The fullscreen button is named "Enter fullscreen" or "Exit fullscreen", and `aria-pressed` says whether the map fills the screen. In `@map-jr/map-jr-gl/maplibre-compat`, the option `locale` of the map changes these names (see `docs/maplibre-compatibility.md`). A click on the compass resets the bearing and the pitch. Dragging the compass with the mouse or a finger rotates the map with the sideways movement and pitches it with the vertical movement, as in MapLibre GL JS. |
 | `Marker` (`@map-jr/map-jr-gl/maplibre-compat`) | The default marker has `aria-label="Map marker"`. A marker with a popup has `role="button"` and `tabindex="0"`, and Enter or the space bar opens and closes the popup. An element of your own keeps a `role` or a `tabindex` that you gave it. |
@@ -21,12 +22,10 @@ yet. It applies to the two entries (`@map-jr/map-jr-gl` and `@map-jr/map-jr-gl/m
   information that a user needs, give the same information in the page, for example as a list next to the map
   that moves the map to a place. For a small number of places, use `map.overlay` (`@map-jr/map-jr-gl`) or `Marker`
   (`@map-jr/map-jr-gl/maplibre-compat`): these are elements of the page.
-- Shift with an arrow key moves the map. In MapLibre GL JS it rotates and tilts the map.
 - On a page with `dir="rtl"`, the scale control shows the unit to the left of the number (for example "km 100"),
   because the browser orders the label by the direction of the page. MapLibre GL JS 6.17.0 does the same: its
   scale control and its CSS have no rule for right-to-left pages. To show "100 km", set the direction of the control
   with the CSS rule `.map-jr-ctrl-scale { direction: ltr; }`.
-- The library has no styles for `forced-colors` and `prefers-contrast`.
 - A popup with `closeButton: false` and no link, button or form field in its content does not take the focus.
   The focus stays on the marker.
 - The labels of the SVG of the server renderer are not read as text, because the SVG is one image. Put the names

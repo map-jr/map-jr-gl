@@ -71,6 +71,8 @@ export const CONTROL_CSS = `
 :where(.map-jr-ctrl-scale){background:rgba(255,255,255,.75);border:1.5px solid var(--map-control-color,#333);border-top:0;padding:0 5px;font-size:10px;box-sizing:border-box;white-space:nowrap}
 /* Touch screens get finger-sized buttons. Kept last so it overrides the sizes above. */
 @media (pointer:coarse){:where(.map-jr-ctrl-group button){width:var(--map-control-size,44px);height:var(--map-control-size,44px)}}
+@media (forced-colors:active){:where(.map-jr-ctrl-group,.map-jr-ctrl-attrib,.map-jr-ctrl-scale,.map-jr-popup-content){border:1px solid CanvasText}:where(.map-jr-ctrl button:focus-visible){outline:2px solid Highlight}}
+@media (prefers-contrast:more){:where(.map-jr-ctrl-attrib){background:var(--map-attribution-background,#fff);color:var(--map-control-color,#000)}:where(.map-jr-ctrl-group,.map-jr-ctrl-attrib.map-jr-compact){box-shadow:0 0 0 2px #000}}
 `;
 
 
