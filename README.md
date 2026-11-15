@@ -218,8 +218,9 @@ The library has a default export for such plugins only, because some of them con
   alias and through its `mapLib` prop. Upgrade to version 8 first.
 - **Types.** The alias does not change the types that TypeScript reads. A project that uses react-map-gl keeps
   `maplibre-gl` installed and keeps its `import type … from 'maplibre-gl'`, because react-map-gl's types refer to
-  that package. The types of the compat entry reject some common MapLibre code (#208), so a change of the type
-  imports can give errors that stop `next build` or `tsc`.
+  that package. The types of `@map-jr/map-jr-gl/maplibre-compat` accept values that are typed with `maplibre-gl`
+  (a `StyleSpecification`, a layer or a source, for example). The reverse direction does not work: a value typed
+  with the compat entry is not always assignable to a type of `maplibre-gl` or of react-map-gl.
 
 ### Add markers
 
