@@ -308,7 +308,6 @@ export class Map {
         if (o.center === undefined && o.zoom === undefined && o.bearing === undefined && o.pitch === undefined && !o.bounds) this.tr.set(sc.center, sc.zoom, sc.bearing, sc.pitch);
         const restyled = this.restyled, first = await resolveStyle(this.rawStyle, this.fetchAs('Source'), this.styleBase, undefined, this.sourceFailed);
         if (this.removed) { giveBack(); return; }
-        if (o.fonts) first.glyphs = undefined;
         // (A change of the style during that step has its own result, which is newer. The engine gets it after its start.)
         if (restyled === this.restyled) this.resolved = first;
         if (this.resolved.unsupported.length) console.warn('[map-jr-gl] Skipping unsupported layer types: ' + this.resolved.unsupported.join(', '));
@@ -980,7 +979,6 @@ export class Map {
             this.resolved = style;
             this.restyled = turn;
             this.checkProjection();
-            if (this.options.fonts) style.glyphs = undefined;
             if (this.toggled.size) style.layers = style.layers.map(l => this.toggled.has(l.id) ? {...l, keep: true} : l);
             this.post({type: 'style', style: {...style, sources}, reload, versions, data});
             this.sendGeo();

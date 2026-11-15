@@ -137,7 +137,7 @@ These fields are read only when the map is made:
 | Field | Meaning |
 |---|---|
 | `renderer` | `'auto'` (the default), `'worker'` or `'main'`: the thread that draws. See [Loading](loading.md). |
-| `fonts`, `fontFamily` | Web fonts for the labels. |
+| `fonts`, `fontFamily` | Web fonts for the labels. When the style has `glyphs`, the labels use the glyph files, and these fonts draw only what the files do not have: a font stack or a range that the server does not have, a character missing from the files, and text that the browser must shape. A style without `glyphs` draws all text with these fonts. |
 | `interactive` | `false` for a map that the user cannot move. The default is `true`. With `false`, `onClick` and `state.hover` still work, and a touch on the map scrolls the page. |
 | `antialias` | Multisample antialiasing for the canvas. |
 | `attribution` | `false` to show the credits yourself, or options for the built-in credits. |
