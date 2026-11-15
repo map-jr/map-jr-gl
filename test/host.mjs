@@ -1305,6 +1305,35 @@ for (const other of [true, false]) {
     await page.close();
 }
 
+// #42: the compass of navigation() rotates the map when it is dragged and resets the bearing when it is clicked. Only
+// with visualizePitch: true does it also show, change and reset the pitch, as in MapLibre GL JS.
+for (const visualizePitch of [undefined, true]) {
+    const page = await browser.newPage({viewport: {width: 900, height: 600}}), name = `navigation(${visualizePitch ? '{visualizePitch: true}' : ''})`;
+    try {
+        await page.goto(`${origin}/style.json`);
+        await page.evaluate(async visualizePitch => {
+            const lib = await import('/dist/map-jr-gl.js'), {navigation} = await import('/dist/controls.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:500px;height:300px;z-index:99'}));
+            const host = window.compassHost = lib.createMap(el, {style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, initialView: {center: [0, 0], zoom: 2, pitch: 20}, controls: [navigation(visualizePitch ? {visualizePitch} : {})], attribution: false});
+            await new Promise(r => host.state.subscribe(s => s.loaded, v => v && r()));
+            for (let i = 0; i < 50 && !el.querySelector('.maplibregl-ctrl-compass'); i++) await new Promise(r => setTimeout(r, 100));
+        }, visualizePitch);
+        const box = await page.evaluate(() => { const r = document.querySelector('.maplibregl-ctrl-compass').getBoundingClientRect(); return {x: r.left + r.width / 2, y: r.top + r.height / 2}; });
+        await page.mouse.move(box.x, box.y); await page.mouse.down();
+        for (let i = 1; i <= 6; i++) await page.mouse.move(box.x + i * 8, box.y - i * 4);
+        await page.mouse.up(); await page.waitForTimeout(300);
+        const view = () => page.evaluate(() => { const v = window.compassHost.state.get().view; return {bearing: v.bearing, pitch: v.pitch, needle: document.querySelector('.maplibregl-ctrl-compass svg').style.transform}; });
+        const dragged = await view();
+        await page.mouse.click(box.x, box.y); await page.waitForTimeout(1200);
+        const clicked = await view();
+        const ok = Math.abs(dragged.bearing) > 1 && Math.abs(clicked.bearing) < 0.01 && (visualizePitch
+            ? dragged.pitch > 21 && clicked.pitch < 0.01
+            : Math.abs(dragged.pitch - 20) < 0.01 && dragged.needle.startsWith('rotateX(0deg)') && Math.abs(clicked.pitch - 20) < 0.01);
+        check(`${name}: dragging the compass rotates the map${visualizePitch ? ' and pitches it, and a click resets both' : ' without pitching it, and a click resets only the bearing'}`, ok, JSON.stringify({dragged, clicked}));
+    } catch (e) { check(`${name}: the test run was completed`, false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
+
 // The `queryFeatures` example of the gallery (site/examples/query.js and query.compat.js; the site must be built), with
 // the usual number of tile workers.
 for (const code of ['core', 'compat']) {

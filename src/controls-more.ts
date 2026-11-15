@@ -53,17 +53,13 @@ function dragCompass(map: Map, b: HTMLButtonElement, pitch: boolean) {
     b.addEventListener('click', e => { if (dragged) { dragged = false; e.stopImmediatePropagation(); } }, true);
 }
 
-/** Zoom buttons and a compass that shows the map's rotation and tilt, and resets both when clicked. Dragging the compass rotates and pitches the map. */
+/** Zoom buttons and a compass that shows the map's rotation and resets it when clicked. Dragging the compass rotates the map. */
 export class NavigationControl implements Control {
     private el?: HTMLElement;
     private update = () => {};
-    /** `pitch` is given by the compat entry, which follows `visualizePitch`; the main API always shows and changes the pitch. */
-    constructor(private options: {showZoom?: boolean; showCompass?: boolean; visualizePitch?: boolean} = {}, private pitch?: boolean) {
-        if (pitch === undefined) {
-            this.pitch = true;
-            if (options.visualizePitch !== undefined) noEffect('NavigationControl', 'visualizePitch', ' The compass always shows the pitch.');
-        }
-    }
+    private pitch: boolean;
+    /** With `visualizePitch: true`, the compass shows the pitch, dragging it also pitches the map, and a click resets the pitch, as in MapLibre GL JS (default false). */
+    constructor(private options: {showZoom?: boolean; showCompass?: boolean; visualizePitch?: boolean} = {}) { this.pitch = !!options.visualizePitch; }
 
     onAdd(map: Map) {
         const el = this.el = group();
@@ -76,7 +72,7 @@ export class NavigationControl implements Control {
             const b = button(el, 'compass', ui(map, 'NavigationControl.ResetBearing', 'Reset bearing to north'), svg('<path d="M9 2.500 12 9H6z" fill="currentColor" stroke="none"/><path d="M9 15.500 6 9h6z" fill="currentColor" stroke="none" opacity=".35"/>'),
                 () => map.easeTo({bearing: 0, ...this.pitch && {pitch: 0}}));
             needle = b.querySelector('svg');
-            dragCompass(map, b, !!this.pitch);
+            dragCompass(map, b, this.pitch);
         }
         this.update = () => {
             if (zoomIn) zoomIn.disabled = map.getZoom() >= map.getMaxZoom();
