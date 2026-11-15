@@ -1389,7 +1389,11 @@ export class Engine {
                     // overview tile would otherwise show no map at its leading edge until the tiles of the view arrive (#360).)
                     // (`used` below 0: a tile that no frame has needed yet. Its arrival changes nothing in the image, so it
                     // does not place the labels again, which would delay the first `idle`. It keeps that mark while it loads.)
-                    if (!t) { if (this.wentIdle || complete && performance.now() - this.born > 3000) { this.request(source, oid, key); const made = this.tiles.get(key); if (made) made.used = -1; } } else {
+                    // (A tile of the view whose request failed needs its overview now: it stands in for that tile, so it is
+                    // requested at once, its arrival changes the image, and `idle` waits for it (#379).)
+                    const v = this.tiles.get(source + '|' + id.key), failed = v?.state === 'error' && !v.missing;
+                    if (failed && t?.state === 'loading') { complete = false; if (t.used < 0) t.used = frameNo; }
+                    if (!t) { if (failed || this.wentIdle || complete && performance.now() - this.born > 3000) { this.request(source, oid, key); const made = this.tiles.get(key); if (made) made.used = failed ? frameNo : -1; if (failed) complete = false; } } else {
                         if (t.state !== 'loading') t.used = frameNo;
                         // Keep the overview current too, or it would flash old data when it stands in for a missing tile.
                         this.refresh(source, oid, key, t);
