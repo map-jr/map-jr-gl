@@ -14,6 +14,10 @@ export async function checkCustomLayers(page, check, label = '[main]') {
     check(`${label} maplibre-compat: onAdd runs once with the context, prerender comes before render, triggerRepaint draws again, and the state of the user does not reach the map`,
         r.calls.onAdd === 1 && r.sameGl && r.calls.firstTwo === 'prerender,render' && r.repainted && r.args.fov > 0.64 && r.args.fov < 0.65 && r.args.nearZ > 0 && r.args.farZ > r.args.nearZ
         && r.args.variant === 'mercator' && r.args.prelude && r.args.f64 && r.args.tile, JSON.stringify({calls: r.calls, sameGl: r.sameGl, repainted: r.repainted, args: r.args}));
+    check(`${label} maplibre-compat: after a lost WebGL context the custom layer keeps its place, gets onAdd with the new context, and draws again`,
+        r.lost.onAdd === 2 && r.lost.onRemove === 0 && r.lost.newGl && r.lost.implementation && r.lost.order === 'bg,red,top' && r.lost.colours === 'red,blue', JSON.stringify(r.lost));
+    check(`${label} maplibre-compat: setStyle keeps a custom layer in its place with diff (the default) and drops it with diff: false, without onRemove, as MapLibre GL JS`,
+        r.diff.onRemove === 0 && r.diff.order === 'bg,red,top' && r.diff.colours === 'red,blue' && r.noDiff.onRemove === 0 && r.noDiff.order === 'bg,top', JSON.stringify({diff: r.diff, noDiff: r.noDiff}));
     check(`${label} maplibre-compat: removeLayer() calls onRemove and the layer is gone from the picture, and remove() calls onRemove of the layers that are left`,
         r.removed.calls === 1 && r.removed.gl && r.removed.after === 'white' && r.removed.order === 'bg,top' && r.removedByMap === 1, JSON.stringify({removed: r.removed, removedByMap: r.removedByMap}));
     check(`${label} maplibre-compat: with the worker renderer, addLayer of a custom layer fires an error that says to pass renderer: 'main', and adds nothing`,
@@ -122,9 +126,27 @@ async function run() {
     out.close = Math.max(err(lastArgs.defaultProjectionData.mainMatrix, [-74.0058, 40.7129]), err(lastArgs.defaultProjectionData.mainMatrix, [-74.0063, 40.7126]));
     m.jumpTo({center: [0, 0], zoom: 1, bearing: 0, pitch: 0});
 
+    // A lost WebGL context: the map restores it, the layer keeps its place, gets onAdd with the new context, and draws again.
+    const oldGl = addGl, restored = new Promise(r => m.once('webglcontextrestored', r));
+    oldGl.getExtension('WEBGL_lose_context').loseContext();
+    await Promise.race([restored, wait(15000)]);
+    await wait(300);
+    out.lost = {onAdd: calls.onAdd, onRemove: calls.onRemove, newGl: addGl !== oldGl && addGl === m.getCanvas().getContext('webgl2'), implementation: m.getLayer('red')?.implementation === layer,
+        order: m.getLayersOrder().join(), colours: (await colours(m, [[-10, 0], [12, 0]])).join()};
+    // setStyle keeps the custom layer with diff (the default) and drops it with diff: false, without onRemove both times (as MapLibre GL JS 6.17).
+    await new Promise(r => { m.once('style.load', r); m.setStyle(JSON.parse(JSON.stringify(style))); });
+    await wait(300);
+    out.diff = {onRemove: calls.onRemove, order: m.getLayersOrder().join(), colours: (await colours(m, [[-10, 0], [12, 0]])).join()};
+
     m.removeLayer('red');
     await wait(100);
     out.removed = {calls: calls.onRemove, gl: removeGl === addGl, order: m.getLayersOrder().join(), after: (await colours(m, [[-10, 0]]))[0]};
+    let dropped = 0;
+    m.addLayer({id: 'dropped', type: 'custom', render() {}, onRemove() { dropped++; }});
+    await wait(300);
+    await new Promise(r => { m.once('style.load', r); m.setStyle(JSON.parse(JSON.stringify(style)), {diff: false}); });
+    await wait(300);
+    out.noDiff = {onRemove: dropped, order: m.getLayersOrder().join()};
     // remove() calls onRemove of the custom layers that the map still has.
     let removedByMap = 0;
     m.addLayer({id: 'other', type: 'custom', render() {}, onRemove() { removedByMap++; }});

@@ -92,8 +92,9 @@ export type ProjectionData = {
 /** The tile of `getProjectionData`. */
 export type CustomLayerProjectionDataParams = {tileID: {canonical: {x: number; y: number; z: number}; wrap?: number}; aligned?: boolean; applyTerrainMatrix?: boolean; applyGlobeMatrix?: boolean};
 /**
- * What `render` and `prerender` of a custom layer get, as in MapLibre GL JS 6. The matrices are `Float64Array`s.
- * `renderTerrainHeightMap` is never set.
+ * What `render` and `prerender` of a custom layer get: the fields of MapLibre GL JS 6, with values that put a point on
+ * the same pixel. The near and the far plane, and so the depth, differ (see docs/maplibre-compatibility.md). The
+ * matrices are `Float64Array`s. `renderTerrainHeightMap` is never set.
  */
 export type CustomRenderMethodInput = {
     farZ: number; nearZ: number; /** The vertical field of view in radians. */ fov: number;

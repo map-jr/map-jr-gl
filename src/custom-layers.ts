@@ -133,9 +133,17 @@ export function customLayers(map: Map, connect: (draw: (id: string, s: Scene) =>
             layer.render(gl, args);
         } catch (error) { report(error); } finally { base(gl, 1); }
     };
-    const start = () => connect(draw).then(context => { gl = context; sync(); }, () => {}); // (a map that is removed or loses its context rejects the question)
+    // (A map that is removed or loses its context rejects the question.) After a restored context, the layers get
+    // `onAdd` again with the new context: what they made in the old one is gone.
+    const start = (again?: unknown) => connect(draw).then(context => {
+        gl = context;
+        if (again) for (const layer of added.values()) try { layer.onAdd?.(map, context); } catch (error) { report(error); }
+        sync();
+    }, () => {});
     map.on('styledataloading', sync);
     map.on('remove', () => { removed = true; sync(); });
     map.on('webglcontextrestored', start);
     start();
+    /** `setStyle` with `diff: false`: the layers leave the map without `onRemove`, as in MapLibre GL JS. */
+    return {forget() { added = new globalThis.Map(); }};
 }

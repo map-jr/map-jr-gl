@@ -122,6 +122,9 @@ export class Map extends CoreMap {
     private mainThread = false;
     /** The custom layers of the map start when their file has loaded. */
     private custom?: Promise<unknown>;
+    private customLayers?: {forget(): void};
+    /** The custom layers by id. A copy of the style (made when the map restores a lost WebGL context) gets them back from here. */
+    private customs?: globalThis.Map<string, CustomLayerInterface>;
     /** One warning for code that used the array of a query without `await`, when the array was not complete. */
     private incomplete(name: string, had: number, has: number) {
         if (this.warned.has(name)) return;
@@ -245,13 +248,33 @@ export class Map extends CoreMap {
             // the order and the visibility work as for other layers; the object of the user is its `implementation`.
             if (!this.mainThread) return this.refused(`addLayer: the custom layer "${layer.id}" needs the map to draw on the main thread. Pass renderer: 'main' to new Map().`);
             if (typeof (layer as CustomLayerInterface).render != 'function') return this.refused(`addLayer: the custom layer "${layer.id}" has no method render. Add render(gl, args).`);
-            this.custom ??= import('./custom-layers.ts').then(m => m.customLayers(this, draw => this.ask(id => ({type: 'custom', id, draw}))), error => this.fire('error', {error}));
+            this.custom ??= import('./custom-layers.ts').then(m => { this.customLayers = m.customLayers(this, draw => this.ask(id => ({type: 'custom', id, draw}))); }, error => this.fire('error', {error}));
             one = Object.defineProperty({id: layer.id, type: 'custom'}, 'implementation', {value: layer});
         }
         const {id, source} = one;
         if (this.rawStyle && this.getLayer(id)) return this.refused(`addLayer: the style has a layer with the id "${id}" already. Remove that layer first, or use another id.`);
         if (this.rawStyle && typeof source === 'string' && !this.rawStyle.sources[source]) return this.refused(`addLayer: the layer "${id}" names the source "${source}", which the style does not have. Add the source first.`);
+        if (one !== layer) (this.customs ??= new globalThis.Map()).set(id, layer as CustomLayerInterface);
         return super.addLayer(one, beforeId);
+    }
+    removeLayer(id: string) { this.customs?.delete(id); return super.removeLayer(id); }
+    /**
+     * As in MapLibre GL JS 6.17: with `diff` (the default), the custom layers stay in the new style, each before the layer
+     * that came after it, and get no `onRemove`. With `diff: false` they leave the map, also without `onRemove`.
+     */
+    setStyle(style: unknown, options: StyleSwapOptions = {}) {
+        const own = options.transformStyle;
+        return super.setStyle(style, !this.customs?.size ? options : {transformStyle: (previous: any, next: any) => {
+            next = own ? own(previous, next) : next;
+            if (options.diff === false) { this.customs!.clear(); this.customLayers?.forget(); return next; }
+            const layers = [...next.layers], ids = new Set(layers.map((l: {id: string}) => l.id));
+            previous.layers.forEach((l: any, i: number) => {
+                if (!l.implementation || ids.has(l.id)) return;
+                const after = previous.layers.slice(i + 1).find((a: any) => !a.implementation && ids.has(a.id));
+                layers.splice(after ? layers.findIndex((a: {id: string}) => a.id === after.id) : layers.length, 0, l);
+            });
+            return {...next, layers};
+        }});
     }
     addSource(id: string, source: object) {
         return this.rawStyle?.sources[id] ? this.refused(`addSource: the style has a source with the id "${id}" already. Remove that source first, or use another id.`) : super.addSource(id, source);
@@ -436,6 +459,7 @@ export class Map extends CoreMap {
     }
 
     protected override styleChanged() {
+        if (this.customs) for (const l of this.rawStyle.layers ?? []) if (l.type === 'custom' && !l.implementation && this.customs.has(l.id)) Object.defineProperty(l, 'implementation', {value: this.customs.get(l.id)});
         if (!this.syncQuery && Object.values<any>(this.rawStyle.sources ?? {}).some(src => src.type === 'geojson' && src.data && typeof src.data === 'object')) import('./sync-query.ts').then(m => { this.syncQuery = m; });
     }
 
