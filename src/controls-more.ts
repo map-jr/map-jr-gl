@@ -192,7 +192,7 @@ export class TerrainControl implements Control {
 /**
  * A button that switches the projection between the globe and Mercator, as `GlobeControl` of MapLibre GL JS does
  * (`setProjection({type: 'globe'})` and back). The button has the class `ctrl-globe-enabled` while the projection is
- * `globe`. The globe is not drawn yet: the map draws Mercator and warns once.
+ * `globe`.
  */
 export class GlobeControl implements Control {
     private el?: HTMLElement;

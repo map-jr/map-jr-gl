@@ -1,5 +1,6 @@
 import {heightsChanged} from './geo.ts';
-import {EXTENT, HEIGHT_GRID, TILE_SIZE, Transform, bezier, groundHeight, clamp, latFromMerc, lngFromMerc, mercX, mercY, type LngLatLike, type TileID} from './geo.ts';
+import {EXTENT, HEIGHT_GRID, TILE_SIZE, Transform, bezier, globeStops, groundHeight, clamp, latFromMerc, lngFromMerc, mercX, mercY, type LngLatLike, type TileID} from './geo.ts';
+import {globeBuild} from './subdivide.ts';
 import {compileFor, type Feature, type MapStates} from './expr.ts';
 import {VARIANT, variantName} from './markers.ts';
 import {layerRules} from './rules.ts';
@@ -111,8 +112,9 @@ function sourceSignature(style: ResolvedStyle, name: string): [string, string] {
     const source = JSON.stringify({...src, head: undefined, data: undefined});
     if (!isGeometrySource(src)) return [source, '']; // image tiles do not depend on layers
     const layers = style.layers.filter(l => l.source === name).map(l => layerRules(l));
-    // Layers that read global state are rebuilt when it changes.
-    const json = JSON.stringify(layers);
+    // Layers that read global state are rebuilt when it changes. A tile for a globe is cut along a grid (subdivide.ts),
+    // so a change between the globe and Mercator builds the tiles again.
+    const json = JSON.stringify(layers) + (globeStops(style.projection?.type) ? 'globe' : '');
     return [source, json.includes('"global-state"') ? json + JSON.stringify(style.state ?? {}) : json];
 }
 
@@ -295,6 +297,8 @@ export class Engine {
         this.dpr = o.dpr;
         this.renderer.resize(o.width, o.height, o.dpr);
         Object.assign(this.tr, {minZoom: o.minZoom ?? -2, maxZoom: o.maxZoom ?? 22, maxPitch: o.maxPitch ?? 60});
+        // (The projection decides how the camera is kept on the map: a globe is not kept inside the height of the world.)
+        this.tr.globeStops = globeStops(o.style.projection?.type);
         this.tr.set(o.center, o.zoom, o.bearing, o.pitch);
         if (o.requests) { this.rules = o.requests; for (const b of backends) b.setRequests(o.requests, this.ask); }
         this.answered = o.early;
@@ -599,6 +603,11 @@ export class Engine {
      * carry their data. The engine does not keep the data: the tile workers have it.
      */
     private setStyle(style: ResolvedStyle, reload: boolean, data?: Record<string, unknown>) {
+        // The globe (#463): the stops say at which zooms the projection draws it. Its code loads with the first style
+        // that needs it (built into the worker file; a file of its own for the engine on the main thread), and frames
+        // wait for it (see `frame`).
+        this.tr.globeStops = globeStops(style.projection?.type);
+        if (this.tr.globeStops && !this.tr.globe) import('./globe.ts').then(m => { this.tr.globe = m; this.repaint(); });
         data ??= Object.fromEntries(Object.entries(style.sources).filter(([, s]) => s.type === 'geojson').map(([name, s]) => [name, s.data]));
         style = {...style, sources: Object.fromEntries(Object.entries(style.sources).map(([name, s]) => [name, s.type === 'geojson' ? {...s, data: undefined} : s]))};
         if (JSON.stringify(style.terrain) !== JSON.stringify(this.style?.terrain)) this.centreGiven = true;
@@ -1235,7 +1244,8 @@ export class Engine {
     private build(req: number, source: string, id: TileID, t: TileState): TileRequest {
         const src = this.style.sources[source], band = t.band = this.buildZoom(source, id);
         t.rules = this.sourceSigs.get(source)?.[1];
-        return {id: req, source, url: tileURL(src, id.z, id.x, id.y, this.dpr), z: this.zoomBuilt.has(source) ? band : id.z, overscaled: band >= src.maxzoom && band, direct: true};
+        // (A map that can show the globe cuts the fills and lines of a tile along a grid: see subdivide.ts.)
+        return {id: req, source, url: tileURL(src, id.z, id.x, id.y, this.dpr), z: this.zoomBuilt.has(source) ? band : id.z, overscaled: band >= src.maxzoom && band, direct: true, globe: this.tr?.globeStops ? globeBuild(id, Math.max(id.z, band)) : undefined};
     }
     private zoomBuilt = new Set<string | undefined>();
     /** Builds a tile again when its data is out of date, or when it was built for another zoom than it is now for. */
@@ -1268,7 +1278,7 @@ export class Engine {
     private frame(now: number) {
         const tr = this.tr, frameNo = ++this.frameNo, began = performance.now();
         compileFor(this.states); // (the light of the style is compiled when it is drawn)
-        if (!tr.width || !tr.height || this.lost) return;
+        if (!tr.width || !tr.height || this.lost || (tr.globeStops && !tr.globe)) return;
         // The fonts of the labels are looked up while the tiles load, and not in the first label placement (#326).
         if (this.warmed !== this.layers) {
             this.warmed = this.layers;
@@ -1289,6 +1299,10 @@ export class Engine {
         // relief then grows in over the first ten degrees of tilt rather than popping.
         const tilt = clamp(tr.pitch / 10, 0, 1);
         this.exaggeration = (this.style.terrain?.exaggeration ?? 0) * tilt * tilt * (3 - 2 * tilt);
+        // (3D terrain and buildings on the globe come with later pull requests of #463: the globe is drawn without them,
+        // and the page warns once; see `checkProjection` in map.ts.)
+        const globeness = tr.globeness;
+        if (globeness) this.exaggeration = 0;
         const terrain = this.exaggeration > 0 ? this.style.terrain : undefined;
         if (terrain) {
             tr.heightAt = this.heightAt;
@@ -1553,7 +1567,12 @@ export class Engine {
         // For a moment after the camera stops, a frame is drawn as for a map that moves. One more frame comes after it:
         // the frame for the map at rest (sharp images). The map is not idle before that frame.
         const settling = began - this.cameraMovedAt < 200;
-        const behind = hold || this.renderer.render({tr, layers: this.layers, items, labels, atlas: this.atlas, icon: this.pattern, light: this.style.light, moving: settling,
+        let globeScene;
+        if (globeness) {
+            const f = tr.globe!.frame(tr);
+            globeScene = {m: Float32Array.from(f.m), horizon: f.horizon, t: globeness, cosLat: Math.cos(tr.lat * Math.PI / 180), tiles: tr.coveringTiles(0, 5, TILE_SIZE)};
+        }
+        const behind = hold || this.renderer.render({tr, layers: this.layers, items, labels, atlas: this.atlas, icon: this.pattern, light: this.style.light, moving: settling, globe: globeScene,
             // (Past the time limit and still unplaced: draw flat rather than raise terrain around a camera in the wrong place.)
             terrain: ground && !unplaced ? {exaggeration: this.exaggeration, tiles: ground, dem: this.demRef} : undefined});
 

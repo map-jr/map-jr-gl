@@ -36,6 +36,52 @@ for (const mode of ['main', 'worker']) {
     if (!workerCan) console.log('INFO  [worker] this browser cannot render in a worker: the map must use the main thread');
     check(`[${mode}] loads with requested renderer`, await page.evaluate(() => window.map.renderer) === (workerCan ? mode : 'main'));
 
+    // The globe (#463): a map with the projection globe draws a sphere (the corners of the canvas stay empty), places
+    // a point where `project` says, keeps the place under the pointer during a drag, and turns into Mercator at zoom 12.
+    // A second map on the page with Mercator is not affected.
+    {
+        const globe = await page.evaluate(async renderer => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), style = await (await fetch('/style.json')).json();
+            const box = (left) => document.body.appendChild(Object.assign(document.createElement('div'), {style: `position:fixed;left:${left}px;top:0;width:400px;height:400px;z-index:50;background:#fff`}));
+            const a = box(0), b = box(450), idle = m => new Promise(r => { m.once('idle', r); setTimeout(r, 15000); });
+            const g = window.globeMap = new mod.Map({container: a, style: {...style, projection: {type: 'globe'}}, center: [10, 45], zoom: 1, renderer, attributionControl: false});
+            const m = window.flatMap = new mod.Map({container: b, style, center: [10, 45], zoom: 1, renderer, attributionControl: false});
+            await Promise.all([idle(g), idle(m)]);
+            const pixels = async map => { const blob = await map.toBlob(); const bmp = await createImageBitmap(blob), c = new OffscreenCanvas(bmp.width, bmp.height).getContext('2d'); c.drawImage(bmp, 0, 0); const at = (x, y) => [...c.getImageData(x * bmp.width, y * bmp.height, 1, 1).data]; return {corner: at(0.02, 0.02), middle: at(0.5, 0.5)}; };
+            const p = g.project([10, 45]), q = g.project([-60, 10]);
+            return {globe: await pixels(g), flat: await pixels(m), centre: [p.x, p.y].map(Math.round), q: [q.x, q.y], back: g.unproject([q.x, q.y]).toArray().map(v => +v.toFixed(3))};
+        }, mode);
+        check(`[${mode}] the globe: the corners stay empty on the globe and not on Mercator, and project and unproject agree`,
+            globe.globe.corner[3] === 0 && globe.globe.middle[3] === 255 && globe.flat.corner[3] === 255 && globe.centre.join() === '200,200' && Math.abs(globe.back[0] + 60) < 0.01 && Math.abs(globe.back[1] - 10) < 0.01, JSON.stringify(globe));
+        // A drag on the globe: the place under the pointer when the drag starts is under it at the end.
+        await page.mouse.move(250, 230); await page.mouse.down(); await page.mouse.move(180, 160, {steps: 10}); await page.mouse.up();
+        await page.waitForTimeout(400);
+        const dragged = await page.evaluate(async () => {
+            const g = window.globeMap;
+            return {centre: g.getCenter().toArray(), zoom: g.getZoom()};
+        });
+        const follow = await page.evaluate(async () => {
+            const g = window.globeMap;
+            g.jumpTo({center: [10, 45], zoom: 1});
+            const at = g.unproject([250, 230]);
+            return [at.lng, at.lat];
+        });
+        await page.mouse.move(250, 230); await page.mouse.down(); await page.mouse.move(180, 160, {steps: 10});
+        // (The worker reports the camera a frame later.)
+        await page.waitForTimeout(200);
+        const held = await page.evaluate(([lng, lat]) => { const p = window.globeMap.project([lng, lat]); return [p.x, p.y]; }, follow);
+        await page.mouse.up();
+        const zoomed = await page.evaluate(async () => {
+            const g = window.globeMap; g.jumpTo({center: [10, 45], zoom: 12.5}); await new Promise(r => { g.once('idle', r); setTimeout(r, 15000); });
+            const p = g.project([10.01, 45]), m = window.flatMap; m.jumpTo({center: [10, 45], zoom: 12.5});
+            const q = m.project([10.01, 45]);
+            for (const map of [g, m]) { const el = map.getContainer(); map.remove(); el.remove(); }
+            return Math.hypot(p.x - q.x, p.y - q.y);
+        });
+        check(`[${mode}] the globe: a drag keeps the place under the pointer, and at zoom 12.5 the globe is Mercator`,
+            Math.hypot(held[0] - 180, held[1] - 160) < 3 && dragged.centre[0] !== 10 && zoomed < 1e-6, JSON.stringify({held, dragged, zoomed}));
+    }
+
     // Drag pan: the point under the cursor should follow it.
     const before = await page.evaluate(() => { window.dragEvents = []; for (const t of ['dragstart', 'drag', 'dragend']) window.map.on(t, e => window.dragEvents.push(t + (e.originalEvent ? '' : '!'))); return window.map.getCenter(); });
     await page.mouse.move(500, 350); await page.mouse.down(); await page.mouse.move(400, 300, {steps: 8}); await page.mouse.up();
@@ -1925,7 +1971,7 @@ for (const mode of ['main', 'worker']) {
             const warnings = [], warn = console.warn;
             console.warn = (...a) => warnings.push(a.join(' '));
             const make = options => { const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'})); return new mod.Map({container: el, renderer: 'main', attributionControl: false, style: {version: 8, sources: {g: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}}, layers: [{id: 'bg', type: 'background'}]}, ...options}); };
-            const m = make({locale: {x: 'y'}, projection: {type: 'globe'}, renderWorldCopies: false, canvasContextAttributes: {antialias: true, preserveDrawingBuffer: true}, center: [50, 50], zoom: 3, maxBounds: [[-10, -10], [10, 10]]});
+            const m = make({locale: {x: 'y'}, renderWorldCopies: false, canvasContextAttributes: {antialias: true, preserveDrawingBuffer: true}, center: [50, 50], zoom: 3, maxBounds: [[-10, -10], [10, 10]]});
             // The view is inside maxBounds directly after the constructor, before the engine reports the camera (MapLibre GL JS 6.17 gives [1.2109, 3.4573]).
             const clamped = m.getCenter().toArray();
             const options = warnings.splice(0), errors = [];
@@ -1941,6 +1987,11 @@ for (const mode of ['main', 'worker']) {
             m.removeSource('g');
             await wait(300);
             const out = {options, custom, errors, layers: m.getStyle().layers.map(l => l.id).join(), source: !!m.getSource('g'), bounds: m.getMaxBounds()?.toArray(), clamped, later: m.getCenter().toArray()};
+            // The option projection has no effect, as in MapLibre GL JS 6.17 (#463): one warning, and Mercator.
+            const projected = make({projection: {type: 'globe'}});
+            await new Promise(r => projected.once('load', r));
+            out.projected = [projected.getProjection()?.type ?? 'none', warnings.splice(0).filter(w => w.includes('the option projection has no effect')).length];
+            projected.getContainer().remove(); projected.remove();
             // The defaults give no warning.
             const plain = make({projection: {type: 'mercator'}, renderWorldCopies: true, canvasContextAttributes: {antialias: false}});
             out.plain = warnings.splice(0);
@@ -1954,10 +2005,9 @@ for (const mode of ['main', 'worker']) {
             for (const x of [m, plain, strict]) { const el = x.getContainer(); x.remove(); el.remove(); }
             return {...out, thrown, thrownCall};
         });
-        check('[main] maplibre-compat: each option with no effect gives one warning, the defaults give none, the option projection is applied, and maxBounds works',
+        check('[main] maplibre-compat: each option with no effect gives one warning, the defaults give none, the option projection has no effect, and maxBounds works',
             quiet.options.length === 2 && ['The option renderWorldCopies', 'new Map(): canvasContextAttributes.preserveDrawingBuffer has no effect. Read the canvas with map.toBlob()'].every(n => quiet.options.some(w => w.startsWith('[map-jr-gl] ' + n))) && quiet.plain.length === 0 && String(quiet.bounds) === '-10,-10,10,10' && quiet.clamped.every((v, i) => Math.abs(v - [1.2109, 3.4573][i]) < 1e-3) && quiet.later.every((v, i) => Math.abs(v - [1.2109, 3.4573][i]) < 1e-3)
-            // (The option projection is applied as setProjection (#463): a globe writes the warning of the style when the style is there.)
-            && quiet.custom.length === 1 && quiet.custom[0].startsWith('[map-jr-gl] The projection "globe" is not drawn yet'), JSON.stringify({options: quiet.options, plain: quiet.plain, bounds: quiet.bounds, clamped: quiet.clamped, later: quiet.later, custom: quiet.custom}));
+            && quiet.custom.length === 0 && quiet.projected?.join() === 'none,1', JSON.stringify({options: quiet.options, plain: quiet.plain, bounds: quiet.bounds, clamped: quiet.clamped, later: quiet.later, custom: quiet.custom, projected: quiet.projected}));
         check('[main] maplibre-compat: a layer or source id that exists, a source that is not there, and a source in use fire error and change nothing',
             quiet.errors.length === 4 && /addLayer: the style has a layer with the id "bg"/.test(quiet.errors[0]) && /names the source "nowhere"/.test(quiet.errors[1]) && /addSource: the style has a source with the id "g"/.test(quiet.errors[2]) && /removeSource: the layer "uses-g" uses the source "g"/.test(quiet.errors[3]) && quiet.layers === 'bg,uses-g' && quiet.source, JSON.stringify({errors: quiet.errors, layers: quiet.layers, source: quiet.source}));
         check('[main] maplibre-compat: strict: true throws for an option with no effect and for a refused style call',
@@ -2058,9 +2108,8 @@ for (const mode of ['main', 'worker']) {
         check('[main] maplibre-compat: each control class added without a position goes to the corner that MapLibre GL JS uses', JSON.stringify(corners) === JSON.stringify(want), JSON.stringify(corners));
     }
     // The projection in the API of MapLibre GL JS (#463): getProjection() gives what the style has, setProjection()
-    // changes it and fires projectiontransition when the name changes, GlobeControl switches it, and a style with the
-    // globe, which is not drawn yet, writes one warning. (The first map changes back before its style is resolved
-    // again, so it has no globe to warn about.)
+    // changes it and fires projectiontransition when the name changes, and GlobeControl switches it. A globe writes no
+    // warning (#463).
     if (mode === 'main') {
         const projection = await page.evaluate(async () => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
@@ -2103,8 +2152,8 @@ for (const mode of ['main', 'worker']) {
             } finally { console.warn = warn; el.remove(); }
         }).catch(e => ({error: String(e)}));
         const want = {none: 'undefined', first: ['mercator'], same: true, after: 'undefined', events: ['globe', 'vertical-perspective', 'mercator'],
-            button: [true, 'Enable globe', 'false'], clicked: ['globe', true, true, false, 'Disable globe', 'true'], back: ['mercator', true], style: {type: 'globe'}, warnings: 1};
-        check('[main] maplibre-compat: getProjection, setProjection, projectiontransition and GlobeControl follow MapLibre GL JS, and a style with the globe writes one warning', JSON.stringify(projection) === JSON.stringify(want), JSON.stringify(projection));
+            button: [true, 'Enable globe', 'false'], clicked: ['globe', true, true, false, 'Disable globe', 'true'], back: ['mercator', true], style: {type: 'globe'}, warnings: 0};
+        check('[main] maplibre-compat: getProjection, setProjection, projectiontransition and GlobeControl follow MapLibre GL JS, and a globe writes no warning', JSON.stringify(projection) === JSON.stringify(want), JSON.stringify(projection));
     }
     // ScaleControl.setUnit() changes the unit, and 'nautical' shows nautical miles, as in MapLibre GL JS (#204).
     if (mode === 'main') {

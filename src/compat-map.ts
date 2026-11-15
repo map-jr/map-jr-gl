@@ -211,8 +211,13 @@ export class Map extends CoreMap {
         if ((o as {glyphs?: unknown}).glyphs !== undefined) console.warn('[map-jr-gl] Map: the option glyphs was removed and has no effect; the map loads the glyph files of the style. Remove the option. To draw text with the fonts of the browser, remove "glyphs" from the style.');
         if (o.locale != null && typeof o.locale != 'object') console.warn('[map-jr-gl] Map: the option locale is not an object. Pass an object such as {"NavigationControl.ZoomIn": "Zoom avant"}.');
         else this.uiLocale = o.locale;
-        // (The option is not one of MapLibre GL JS 6.17, which takes the projection from the style or `setProjection`. It is applied as `setProjection`.)
-        if (o.projection) this.setProjection(typeof o.projection === 'string' ? {type: o.projection} : o.projection);
+        // (MapLibre GL JS 6.17 has no option projection and draws Mercator for it: pages that pass it expect that.)
+        if (o.projection && ((o.projection as {type?: unknown}).type ?? o.projection) !== 'mercator' && !this.warned.has('projection')) {
+            this.warned.add('projection');
+            const message = '[map-jr-gl] new Map(): the option projection has no effect, as in MapLibre GL JS 6.17. Put "projection": {"type": "globe"} into the style, or call map.setProjection({type: "globe"}) after the style has loaded.';
+            if (this.strict) throw new Error(message);
+            console.warn(message);
+        }
         this.unsupported('The option renderWorldCopies: false', o.renderWorldCopies !== false);
         this.unsupported('The option canvasContextAttributes (but for antialias)', !context || !Object.keys(context).some(k => k !== 'antialias' && k !== 'preserveDrawingBuffer'));
         if (context?.preserveDrawingBuffer) {

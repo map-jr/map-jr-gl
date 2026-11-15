@@ -155,6 +155,8 @@ export function placeLabels(
                 if (l.x < it.clip[0] || l.y < it.clip[1] || l.x >= it.clip[2] || l.y >= it.clip[3]) continue;
                 const [ax, ay, depth] = tr.projectTile(it.id, l.x, l.y);
                 if (ax < -margin || ay < -margin || ax > tr.width + margin || ay > tr.height + margin) continue;
+                // On the globe, a label behind the horizon is not placed, also when it may overlap (as in MapLibre GL JS).
+                if (tr.globeness) { const n = 2 ** it.id.z; if (tr.globe!.hidden(tr, (it.id.x + l.x / EXTENT) / n, (it.id.y + l.y / EXTENT) / n)) continue; }
                 if (tr.heightAt) { const n = 2 ** it.id.z; if (tr.occluded((it.id.x + it.id.w * n + l.x / EXTENT) / n, (it.id.y + l.y / EXTENT) / n)) continue; }
                 // (A size that is the same for the layer is found at the zoom of the map. A size for each feature is known at
                 // two levels only, and is mixed between them.)
