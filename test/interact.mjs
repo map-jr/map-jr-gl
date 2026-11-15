@@ -48,14 +48,14 @@ for (const mode of ['main', 'worker']) {
             const m = window.flatMap = new mod.Map({container: b, style, center: [10, 45], zoom: 1, renderer, attributionControl: false});
             await Promise.all([idle(g), idle(m)]);
             const pixels = async map => { const blob = await map.toBlob(); const bmp = await createImageBitmap(blob), c = new OffscreenCanvas(bmp.width, bmp.height).getContext('2d'); c.drawImage(bmp, 0, 0); const at = (x, y) => [...c.getImageData(x * bmp.width, y * bmp.height, 1, 1).data]; return {corner: at(0.02, 0.02), middle: at(0.5, 0.5)}; };
-            const p = g.project([10, 45]), q = g.project([-60, 10]);
+            const p = g.project([10, 45]), q = g.project([-60, 10]), back = g.unproject([q.x, q.y]).toArray().map(v => +v.toFixed(3));
             // getBounds has the visible edge of the globe and a pole in view (MapLibre GL JS 6.17: -180, -46.81, 180, 90),
             // and a Marker on the far side takes opacityWhenCovered and the covered class (MapLibre: 0.2).
             g.jumpTo({center: [10, 30], zoom: 1.5});
             const near = new mod.Marker().setLngLat([10, 30]).addTo(g), far = new mod.Marker().setLngLat([-140, 0]).addTo(g);
             const markers = [near, far].map(k => [k.getElement().style.opacity || '1', k.getElement().classList.contains('maplibregl-marker-covered')]);
             near.remove(); far.remove();
-            return {globe: await pixels(g), flat: await pixels(m), centre: [p.x, p.y].map(Math.round), q: [q.x, q.y], back: g.unproject([q.x, q.y]).toArray().map(v => +v.toFixed(3)),
+            return {globe: await pixels(g), flat: await pixels(m), centre: [p.x, p.y].map(Math.round), q: [q.x, q.y], back,
                 bounds: g.getBounds().toArray().flat().map(v => +v.toFixed(2)), markers};
         }, mode);
         check(`[${mode}] the globe: the corners stay empty on the globe and not on Mercator, project and unproject agree, getBounds reaches the pole, and a marker on the far side is faint`,
@@ -1232,9 +1232,10 @@ for (const mode of ['main', 'worker']) {
             const names = ['logoPosition', 'validate', 'visualizePitch', 'container', 'fadeDuration', 'pitchWithRotate', 'locationOccludedOpacity', 'opacityWhenCovered'];
             return Object.fromEntries(names.map(n => [n, warns.filter(w => w.startsWith('[map-jr-gl]') && w.toLowerCase().includes('the option ' + n.toLowerCase())).length]));
         });
-        // visualizePitch of NavigationControl has an effect in this entry (#42), so it writes no warning.
-        check('maplibre-compat: options with no effect (logoPosition, validate, fadeDuration, pitchWithRotate, the container of FullscreenControl, and options of Popup and Marker) each warn once, and visualizePitch does not warn',
-            Object.entries(r).every(([k, n]) => n === (k === 'visualizePitch' ? 0 : 1)), JSON.stringify(r));
+        // visualizePitch of NavigationControl (#42) and opacityWhenCovered of Marker (the globe, #463) have an effect in
+        // this entry, so they write no warning.
+        check('maplibre-compat: options with no effect (logoPosition, validate, fadeDuration, pitchWithRotate, the container of FullscreenControl, and locationOccludedOpacity of Popup) each warn once, and visualizePitch and opacityWhenCovered do not warn',
+            Object.entries(r).every(([k, n]) => n === (k === 'visualizePitch' || k === 'opacityWhenCovered' ? 0 : 1)), JSON.stringify(r));
     }
     // #43: easeTo and flyTo of maplibre-compat use `offset` (also with bearing and pitch) and a custom `easing`, without a warning.
     {
