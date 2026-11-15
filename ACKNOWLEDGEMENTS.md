@@ -20,6 +20,9 @@ BSD-3-Clause.
 - A map at rest places labels in the next frame after a tile arrives and shows the labels of a newly loaded tile
   without a fade. This follows the method of `skipFade` in the placement of MapLibre GL JS (BSD-3-Clause); the code
   is new.
+- The development build of the compat entry contains the names of the public members of the classes of MapLibre GL
+  JS (BSD-3-Clause). `build.mjs` reads them from its type declarations (`dist/maplibre-gl.d.ts`), so that reading a
+  member that this library does not have can warn. No code is copied.
 - The "pseudo fullscreen" of `FullscreenControl` follows MapLibre GL JS 6.17.0 (`src/ui/control/fullscreen_control.ts`).
   The code is new. The rule for `.map-jr-pseudo-fullscreen` copies the CSS of `.maplibregl-pseudo-fullscreen` in
   `maplibre-gl.css`.

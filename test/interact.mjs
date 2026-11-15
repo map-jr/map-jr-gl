@@ -764,6 +764,29 @@ for (const mode of ['main', 'worker']) {
     const devP = painter['map-jr-gl-maplibre-compat.dev.js'], prodP = painter['map-jr-gl-maplibre-compat.js'];
     check(`[${mode}] map.painter is undefined; the development build warns once per map, the production build does not warn`,
         [...devP.values, ...prodP.values].every(Boolean) && devP.warns.length === 2 && devP.warns.every(w => w.startsWith('[map-jr-gl] map.painter') && w.includes('supported()')) && prodP.warns.length === 0, JSON.stringify(painter));
+    // A member of MapLibre GL JS that a class here does not have (#206): the development build warns once per name, and
+    // a map that is used as usual, with controls, a marker and a popup, gives no such warning.
+    const missing = await page.evaluate(async () => {
+        const mod = await import('/dist/map-jr-gl-maplibre-compat.dev.js'), warns = [], warn = console.warn;
+        console.warn = (...a) => { warns.push(String(a[0])); };
+        const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+        let m;
+        try {
+            m = new mod.Map({container: el, attributionControl: false, center: [0, 0], zoom: 1, style: {version: 8, sources: {}, layers: []}});
+            const attribution = new mod.AttributionControl(), scale = new mod.ScaleControl(), geo = new mod.GeolocateControl();
+            m.addControl(new mod.NavigationControl()); m.addControl(scale); m.addControl(geo); m.addControl(attribution); m.addControl(new mod.FullscreenControl());
+            const popup = new mod.Popup().setText('a'), marker = new mod.Marker().setLngLat([0, 0]).setPopup(popup).addTo(m);
+            await new Promise(r => m.once('load', r));
+            m.jumpTo({center: [1, 1], zoom: 2}); marker.togglePopup(); marker.togglePopup(); marker.setLngLat([1, 1]);
+            await new Promise(r => m.once('idle', r));
+            const usual = warns.filter(w => w.includes('not available') || w.includes('private state'));
+            for (let i = 0; i < 2; i++) { void attribution.styleOwner; void scale.setUnit; void m.transform; void m.coveringTiles; void m.then; void m.$$typeof; void m.__v_skip; void m.toJSON; }
+            return {usual, after: warns.filter(w => w.includes('not available') || w.includes('private state'))};
+        } finally { console.warn = warn; m?.remove(); el.remove(); }
+    });
+    check(`[${mode}] the development build warns once for each member of MapLibre GL JS that a class here does not have, and not in usual use`,
+        missing.usual.length === 0 && missing.after.length === 3 && missing.after.every(w => w.startsWith('[map-jr-gl] ')) &&
+        ['AttributionControl.styleOwner', 'map.transform', 'map.coveringTiles'].every(n => missing.after.some(w => w.includes(n))), JSON.stringify(missing));
     // The AbortController that a protocol gets is aborted when the request is no longer wanted: a newer setData, a newer
     // setData that drops the diffs of updateData, and the removal of the map (#92).
     const aborts = await page.evaluate(async mode => {

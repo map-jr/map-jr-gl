@@ -5,6 +5,7 @@
 import type {Map} from './map.ts';
 import type {FeatureOptions, MapSpec, StyleExtension} from './host.ts';
 import {templateSlots} from './markers.ts';
+import {maplibreMembers} from './maplibre-members.ts';
 
 /** What a check reads of one map. `warned` has the warnings that the map gave: each mistake gives one warning for each map. */
 export interface Checked { map: Map; warned: Set<string>; spec(): MapSpec; /** The map exists and has loaded the style of the description. */ ready(): boolean }
@@ -112,5 +113,49 @@ export function check(c: Checked, kind: number, a?: any, b?: any) {
             if (source && !sources[source as string]) warn(6, id, source as string);
             ids.add(id);
         }
+    }
+}
+
+/** The members of the map that are private state of MapLibre GL JS, and what to use instead. (`painter` has its own
+ * warning in src/compat-map.ts, and the map has a `style` for wrappers.) */
+const privateState: Record<string, string> = {
+    transform: 'Use getCenter(), getZoom(), getBearing(), getPitch() and project(). react-map-gl 8 does not read it.',
+};
+/** The names that have warned, on the page: each name warns once. */
+const reported = new Set<string>();
+/** For each prototype that has a list: the name of its class in MapLibre GL JS and the public members of that class. */
+const lists = new globalThis.Map<object, [string, Set<string>]>();
+let watcher: object | undefined;
+
+/**
+ * The development build of the entry maplibre-compat calls this with its classes by the names of MapLibre GL JS. Reading
+ * a public member of the MapLibre class that the class here does not have warns once for each name. A proxy goes at the
+ * end of the prototype chain of each class, so it sees only the names that the instance, its classes and `Object` do
+ * not have: a member that exists costs nothing, and the instances stay the same objects.
+ */
+export function watchMembers(classes: Record<string, {prototype: object}>, members: Record<string, string[]> = Object.fromEntries(Object.entries(maplibreMembers).map(([c, n]) => [c, n.split(' ')]))) {
+    watcher ??= new Proxy(Object.prototype, {get(target, key, receiver) {
+        // (Symbols and names that start with `_`, `$` or `@` are what frameworks probe and what MapLibre has as private
+        // members: Vue reads `__v_skip`, React `$$typeof`. `then` and `toJSON` are not members of MapLibre, so they do not warn.)
+        if (typeof key === 'string' && !/^[_$@]/.test(key)) for (let p = receiver; p && p !== Object.prototype; p = Object.getPrototypeOf(p)) {
+            const found = lists.get(p);
+            if (!found) continue;
+            const [cls, list] = found, name = (cls === 'Map' ? 'map.' : cls + '.') + key;
+            if (list.has(key) && !reported.has(name)) {
+                reported.add(name);
+                console.warn(cls === 'Map' && privateState[key]
+                    ? `[map-jr-gl] ${name} is private state of MapLibre GL JS and does not exist in @map-jr/map-jr-gl/maplibre-compat. ${privateState[key]}`
+                    : `[map-jr-gl] ${name} is not available in @map-jr/map-jr-gl/maplibre-compat. Remove the use, or see docs/maplibre-compatibility.md for what replaces it.`);
+            }
+            break;
+        }
+        return Reflect.get(target, key, receiver);
+    }});
+    for (const cls in classes) {
+        if (!members[cls]) continue;
+        let root = classes[cls].prototype;
+        lists.set(root, [cls, new Set(members[cls])]);
+        while (Object.getPrototypeOf(root) !== Object.prototype && Object.getPrototypeOf(root) !== watcher) root = Object.getPrototypeOf(root);
+        if (Object.getPrototypeOf(root) === Object.prototype) Object.setPrototypeOf(root, watcher);
     }
 }

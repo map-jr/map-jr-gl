@@ -46,6 +46,14 @@ import {LogoControl as Empty} from './controls-more.ts';
 /** MapLibre changes between a flat map and a globe with this control. This library has no globe, so the control adds an empty element. */
 export class GlobeControl extends Empty { override getDefaultPosition() { return 'top-right' as const; } }
 export {GPUInitializationError} from './gpu-error.ts';
+// In the development build only, reading a member of MapLibre GL JS that a class here does not have warns once (see
+// `watchMembers` in src/mistakes.ts). The production build has none of this.
+import {watchMembers} from './mistakes.ts';
+import {Map as CompatMap} from './compat-map.ts';
+import {AttributionControl as Attribution} from './controls.ts';
+import {NavigationControl as Navigation, ScaleControl as Scale, GeolocateControl as Geolocate, TerrainControl as Terrain} from './controls-more.ts';
+declare const __DEV__: boolean;
+if (__DEV__) watchMembers({Map: CompatMap, Marker, Popup, FullscreenControl, GlobeControl, NavigationControl: Navigation, ScaleControl: Scale, GeolocateControl: Geolocate, TerrainControl: Terrain, AttributionControl: Attribution, LogoControl: Empty});
 export {configure, supported, type LoadOptions} from './loader.ts';
 export type * from './compat-types.ts';
 
