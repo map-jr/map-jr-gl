@@ -7,6 +7,52 @@ number, and its entry starts with a section "Breaking changes". See
 `#12` is a link to pull request 12. A change without a number comes from before 2026-11-11, when the repository had
 no pull requests.
 
+## 0.5.0 (2026-11-15)
+
+This entry covers the changes after 0.4.0 (the tag `v0.4.0`).
+
+### Breaking changes
+
+- Both entries: the compass of `NavigationControl` changes and shows the pitch only with `visualizePitch: true`, as in
+  MapLibre GL JS. By default, dragging the compass only rotates the map, and a click resets only the bearing. Before,
+  the compass always changed and reset the pitch, and `visualizePitch` warned that it had no effect. Pass
+  `visualizePitch: true` (in the main API, `navigation({visualizePitch: true})`) to keep the old behaviour ([#452],
+  [#456]).
+- `@map-jr/map-jr-gl/maplibre-compat`: a `Popup` moves the keyboard focus into itself when it opens, also when a click
+  on its marker opens it, because `focusAfterOpen` is true by default as in MapLibre GL JS. Pass
+  `focusAfterOpen: false` to keep the focus where it was ([#454]).
+- Both entries: a fill, line, circle or other layer that comes after the last symbol layer with labels now draws above
+  those labels, as in MapLibre GL JS. Before, every such layer drew below all labels. Move the layer before the symbol
+  layer in the style to keep the old look ([#453]).
+- Both entries: Shift with the left or right arrow key rotates the map by 15°, and Shift with the up or down arrow key
+  changes the pitch by 10°, as in MapLibre GL JS. Before, Shift with an arrow key panned the map ([#443]).
+
+### New
+
+- Both entries: `addImage(name, image, {sdf: true})` adds an image as a signed distance field, which `icon-color` and
+  `icon-halo-*` recolour ([#444]).
+- Both entries: tile URLs replace `{prefix}` and `{ratio}` as MapLibre GL JS does. `{ratio}` is `@2x` on a screen
+  with a pixel ratio above 1, for every kind of source ([#449]).
+- `@map-jr/map-jr-gl/maplibre-compat`: `Popup` has the options `closeOnMove`, `trackPointer` (with `trackPointer()`)
+  and `subpixelPositioning` (with `setSubpixelPositioning()`). Before, they were accepted and did nothing ([#454]).
+- `@map-jr/map-jr-gl/maplibre-compat`: the development build warns once when code reads a member of MapLibre GL JS
+  that a class of this library does not have, and names what to use instead. The production build is unchanged
+  ([#451]).
+- `@map-jr/map-jr-gl/maplibre-compat`: the canvas container has the classes `maplibregl-touch-drag-pan` and
+  `maplibregl-touch-zoom-rotate` while those handlers are enabled ([#448]).
+- Both entries: the controls have styles for `forced-colors` and `prefers-contrast: more` ([#443]).
+- The `/bench` page prints, for the last tile before idle, its network answer, the built tile and its upload ([#440]).
+
+### Fixed
+
+- `@map-jr/map-jr-gl/maplibre-compat`: `setTransformCameraUpdate` no longer warns on every map. It warns once, and only
+  when its function changes the camera of a movement, which this library draws only when the movement ends. A
+  controlled react-map-gl 8 map is now tested ([#447]).
+- `@map-jr/map-jr-gl/maplibre-compat`: the close button of `Popup` and the label of the default `Marker` use the
+  map's `locale`, and `FullscreenControl` turns off `cooperativeGestures` while the map fills the screen ([#446]).
+- Both entries: before the first `idle`, labels show and hide without a fade, as in MapLibre GL JS, so a map reaches
+  `idle` sooner ([#441]).
+
 ## 0.4.0 (2026-11-15)
 
 This entry covers the changes after 0.3.0 (the tag `v0.3.0`).
@@ -388,3 +434,16 @@ These changes matter if you used a build of the repository from before 2026-11-1
 [#115]: https://github.com/map-jr/map-jr-gl/pull/115
 [#116]: https://github.com/map-jr/map-jr-gl/pull/116
 [#117]: https://github.com/map-jr/map-jr-gl/pull/117
+[#440]: https://github.com/map-jr/map-jr-gl/pull/440
+[#441]: https://github.com/map-jr/map-jr-gl/pull/441
+[#443]: https://github.com/map-jr/map-jr-gl/pull/443
+[#444]: https://github.com/map-jr/map-jr-gl/pull/444
+[#446]: https://github.com/map-jr/map-jr-gl/pull/446
+[#447]: https://github.com/map-jr/map-jr-gl/pull/447
+[#448]: https://github.com/map-jr/map-jr-gl/pull/448
+[#449]: https://github.com/map-jr/map-jr-gl/pull/449
+[#451]: https://github.com/map-jr/map-jr-gl/pull/451
+[#452]: https://github.com/map-jr/map-jr-gl/pull/452
+[#453]: https://github.com/map-jr/map-jr-gl/pull/453
+[#454]: https://github.com/map-jr/map-jr-gl/pull/454
+[#456]: https://github.com/map-jr/map-jr-gl/pull/456
