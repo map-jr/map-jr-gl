@@ -58,7 +58,7 @@ buffer on the GPU. The number of markers has almost no effect on the speed of a 
 | `collide` | `false` | When `true`, map labels keep away from the markers. |
 | `overlap` | `'show'` | When `'hide'`, a marker that would cover an earlier marker of `data` does not show, and map labels keep away from the markers. (The markers are above the labels of the style, so the markers stay and the labels go.) |
 | `minZoom`, `maxZoom` | None | The zoom range in which the layer shows. |
-| `before` | None | The id of a symbol layer of the style: the markers come before it in the order of the layers, so its labels and icons are placed first. Without it, the markers are the top layer. The library draws each symbol layer above the fill, line and other layers, so `before` with the id of such a layer does not put the markers below it. |
+| `before` | None | The id of a symbol layer of the style: the markers come before it in the order of the layers, so its labels and icons are placed first. Without it, the markers are the top layer. The labels of all symbol layers are drawn together, at the position of the last symbol layer that has labels, so `before` with the id of a symbol layer with labels does not put the markers below that layer's labels. |
 
 A marker with no `lngLat` is not drawn. In the development build it gives a warning, and so do a marker layer
 whose `id` is the id of a source or a layer of the style, and a `before` that names no layer.
