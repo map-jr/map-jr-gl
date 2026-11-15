@@ -233,10 +233,12 @@ export interface MarkerOptions { element?: HTMLElement; color?: string; anchor?:
  */
 export function defaultPin(options: {color?: string; scale?: number} = {}): HTMLElement {
     const s = +(options.scale ?? 1) || 1, el = document.createElement('div');
-    el.innerHTML = `<svg width="${27 * s}" height="${41 * s}" viewBox="0 0 27 41" style="display:block;filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))">` +
+    el.innerHTML = `<svg width="${27 * s}" height="${41 * s}" viewBox="0 0 27 41">` +
         `<path d="M13.5 0C6 0 0 6 0 13.5 0 23 13.5 41 13.5 41S27 23 27 13.5C27 6 21 0 13.5 0z"/><circle cx="13.5" cy="13.5" r="5.5" fill="#fff"/></svg>`;
     // (The colour can come from data: it is set as an attribute, never as HTML.)
     el.querySelector('path')!.setAttribute('fill', options.color ?? '#3fb1ce');
+    // (A style property, not a `style` attribute in the HTML, which a strict `style-src` blocks.)
+    el.querySelector('svg')!.style.cssText = 'display:block;filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))';
     return el;
 }
 

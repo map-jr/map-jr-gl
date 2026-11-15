@@ -34,7 +34,7 @@ The [status table](../README.md#status) gives the current test results.
 | `toBlob(type, quality)` | Gives the map as an image: it waits until the map is idle, draws one frame and resolves to a `Blob` of the canvas, with both renderers. Use it instead of `preserveDrawingBuffer`, which has no effect (see "Reading the canvas" in [What is different](#what-is-different)). |
 | Frame data | The `stats` event gives the frames per second and the work for each frame. |
 | `supported()` | A function of the module. It returns `false` in a browser without WebGL2. MapLibre GL JS has had no such function since version 2. A map that cannot start fires one `error` and shows a message in the container (the class is `map-jr-unavailable`). See [A browser without WebGL2](api.md#a-browser-without-webgl2). |
-| Controls without a CSS file | The library adds the styles for its controls. You change the colours with `--map-control-*` custom properties. |
+| Controls without a CSS file | The library adds the styles for its controls to the root node of the container, so a map inside a shadow root has styled controls. You change the colours with `--map-control-*` custom properties. The map option `nonce` sets the nonce of a strict `style-src` on the `<style>` element that a browser without constructed style sheets gets. See [Content Security Policy](loading.md#content-security-policy). |
 
 ## What is different
 
