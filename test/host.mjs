@@ -123,6 +123,33 @@ for (const renderer of ['worker', 'main']) {
         });
         check(`[${renderer}] a style URL that fails: state.error has the URL and the status, and no promise is left rejected`, /Style \/no-such-style\.json: HTTP 404/.test(badStyle ?? '') && !errors.length, JSON.stringify({badStyle, errors}));
 
+        // 3b. `projection` of the description (#463): it takes the place of the projection of the style, `null` gives the
+        // projection of the style back, the same content does nothing, and the control `globe()` switches it.
+        const projection = await page.evaluate(async renderer => {
+            const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+            const wait = ms => new Promise(r => setTimeout(r, ms));
+            const controls = await import('/dist/controls.dev.js');
+            const style = {version: 8, projection: {type: 'vertical-perspective'}, sources: {}, layers: [{id: 'bg', type: 'background'}]};
+            let spec = {style, projection: {type: 'globe'}, renderer, attribution: false, controls: [controls.globe()]};
+            const host = t.lib.createMap(el, spec), events = [], out = {};
+            host.listen('projectiontransition', e => events.push(e.newProjection));
+            await new Promise(r => host.state.subscribe(s => s.loaded, l => l && r()));
+            const type = () => host.map.getProjection()?.type ?? 'none';
+            out.start = type();
+            host.update(spec = {...spec, projection: null}); out.cleared = type();
+            host.update(spec = {...spec, projection: {type: 'mercator'}}); out.mercator = type();
+            host.update(spec = {...spec, projection: {type: 'mercator'}}); out.again = type();
+            let b;
+            for (let i = 0; i < 50 && !(b = el.querySelector('button.map-jr-ctrl-globe')); i++) await wait(50);
+            b?.click(); out.clicked = type();
+            host.update(spec = {...spec, cursor: 'crosshair'}); out.kept = type();
+            out.events = events;
+            host.destroy(); el.remove();
+            return out;
+        }, renderer).catch(e => ({error: String(e)}));
+        check(`[${renderer}] projection: the description replaces the projection of the style, null gives it back, and globe() switches it`,
+            JSON.stringify(projection) === JSON.stringify({start: 'globe', cleared: 'vertical-perspective', mercator: 'mercator', again: 'mercator', clicked: 'globe', kept: 'globe', events: ['globe', 'vertical-perspective', 'mercator', 'globe']}), JSON.stringify(projection));
+
         // 3c. Mistakes and errors: a container that is not there has a message; `onError`
         // gets each error; without it the error is written to the console.
         const mistakes = await page.evaluate(async () => {
@@ -405,7 +432,7 @@ for (const renderer of ['worker', 'main']) {
             warnings.correct.length === 0 && warnings.said.length === expected.length && expected.every(e => warnings.said.filter(w => w.startsWith('[map-jr-gl] ' + e)).length === 1)
             && warnings.place.startsWith('[map-jr-gl] queryFeatures(): {"lng":-74.0065,"lat":40.7085} is not a place.'), JSON.stringify(warnings));
 
-        // 3f. A style whose root names a projection other than mercator: one warning per map, also after setStyle; mercator gives none (#238).
+        // 3f. A style whose root names a projection other than mercator: one warning per map, also after setStyle; mercator gives none (#238). The globe is accepted and not drawn yet (#463).
         const proj = await page.evaluate(async renderer => {
             const t = window.t, said = [], log = console.warn;
             console.warn = (...a) => { const m = a.join(' '); if (m.includes('projection')) said.push(m); };
@@ -424,7 +451,7 @@ for (const renderer of ['worker', 'main']) {
             return {mercSaid, said};
         }, renderer);
         check(`[${renderer}] a style with the projection "globe" writes one warning, and "mercator" writes none`,
-            proj.mercSaid === 0 && proj.said.length === 1 && proj.said[0] === '[map-jr-gl] The style has the projection "globe", which is not supported, so the map uses "mercator".', JSON.stringify(proj));
+            proj.mercSaid === 0 && proj.said.length === 1 && proj.said[0].startsWith('[map-jr-gl] The projection "globe" is not drawn yet: this version of the library draws "mercator".'), JSON.stringify(proj));
 
         // 3b. A description with no style (only the changed fields) throws at once with a message, and the map is not harmed.
         const partial = await page.evaluate(async () => {

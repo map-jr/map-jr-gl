@@ -48,7 +48,9 @@ export type MapEventType =
     & Each<'data' | 'dataloading', MapDataEvent>
     & Each<'sourcedata' | 'sourcedataloading', MapSourceDataEvent>
     & Each<'styledata' | 'styledataloading', MapStyleDataEvent>
-    & {styleimagemissing: MapStyleImageMissingEvent; terrain: MapEvent & {terrain: TerrainSpecification | null}; error: ErrorEvent};
+    & {styleimagemissing: MapStyleImageMissingEvent; terrain: MapEvent & {terrain: TerrainSpecification | null}; projectiontransition: MapProjectionEvent; error: ErrorEvent};
+/** The event of `projectiontransition`: `newProjection` is `mercator`, `globe` or `vertical-perspective`, as in MapLibre GL JS. */
+export type MapProjectionEvent = MapEvent & {newProjection: string};
 /** The event that a listener of `map.on(type, layerId, listener)` gets. The library fires these four names for a layer. */
 export type MapLayerEventType = Each<'click' | 'mousemove' | 'mouseenter' | 'mouseleave', MapLayerMouseEvent>;
 
@@ -118,14 +120,17 @@ export type HeatmapLayerSpecification = LayerOf<'heatmap'>;
 export type RasterLayerSpecification = LayerOf<'raster'>;
 export type HillshadeLayerSpecification = LayerOf<'hillshade'>;
 export type SymbolLayerSpecification = LayerOf<'symbol', 'text' | 'icon', 'text' | 'icon' | 'symbol'>;
-/** The projection of a style. Only `mercator` is drawn; another projection writes one warning. */
+/**
+ * The projection of a style: `{type: 'mercator'}`, `{type: 'globe'}`, `{type: 'vertical-perspective'}`, or an expression
+ * of these names. The globe is not drawn yet: the map draws Mercator and writes one warning.
+ */
 export type ProjectionSpecification = {type?: PropertyValueSpecification<string>};
 export type SourceSpecification = {type: string; [key: string]: unknown};
 export type TerrainSpecification = {source: string; exaggeration?: number};
 export type LightSpecification = {anchor?: PropertyValueSpecification<'map' | 'viewport'>; position?: PropertyValueSpecification<[number, number, number]>; color?: PropertyValueSpecification<string>; intensity?: PropertyValueSpecification<number>};
 export type StyleSpecification = {
     version: 8; name?: string; sources: Record<string, SourceSpecification>; layers: LayerSpecification[];
-    sprite?: string | {id: string; url: string}[]; glyphs?: string; terrain?: TerrainSpecification; light?: LightSpecification;
+    sprite?: string | {id: string; url: string}[]; glyphs?: string; terrain?: TerrainSpecification; light?: LightSpecification; projection?: ProjectionSpecification;
     center?: [number, number]; zoom?: number; bearing?: number; pitch?: number; metadata?: unknown; [key: string]: unknown;
 };
 export type StyleSetterOptions = {validate?: boolean};

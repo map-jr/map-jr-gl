@@ -51,8 +51,8 @@ const view = ref(${JSON.stringify(view)}), markers = ref([${JSON.stringify(pins)
 const tone = ref('#fff'), arrow = ref(true), twin = ref(false), full = ref(true), radius = ref(2);
 // (A component inside the SVG of an image: its own change must reach the map.)
 const Dot = {render: () => h('circle', {cx: 4, cy: 4, r: radius.value})};
-const t = window.t = {view, markers, layers, images, tone, arrow, twin, full, radius, moves: [], asked: [], clicks: [], loads: 0, order: [], views: 0, map: ref(null), pin: ref([-74.0065, 40.7085]), tip: ref(true), closed: 0, home: ref([-74.01, 40.705]), dragged: []};
-const make = (create, ssr) => create({render: () => h('div', {id: 'frame', style: 'width:800px;height:500px'}, [h(MapJr, {ref: t.map, mapStyle: style, controls: [navigation(), scale({position: 'bottom-left'})], ...(ssr ? {initialView: view.value, ...(ssr === 'svg' ? {ssr: {width: 800, height: 500}} : {})} : {view: view.value, 'onUpdate:view': v => { t.views++; view.value = v; }, interactiveLayers: layers.value, onClick: e => t.clicks.push(e)}), markers: markers.value, images: images.value, attribution: false, onLoad: host => { t.loads++; t.loadHost = host; t.order.push('load:' + t.map.value.host.state.get().idle); }, onIdle: () => t.order.push('idle'), onMoveend: e => t.moves.push(e.type + ' ' + typeof e.target.getZoom()),
+const t = window.t = {view, markers, layers, images, tone, arrow, twin, full, radius, moves: [], asked: [], clicks: [], loads: 0, order: [], views: 0, map: ref(null), pin: ref([-74.0065, 40.7085]), tip: ref(true), closed: 0, home: ref([-74.01, 40.705]), dragged: [], projection: ref(null)};
+const make = (create, ssr) => create({render: () => h('div', {id: 'frame', style: 'width:800px;height:500px'}, [h(MapJr, {ref: t.map, mapStyle: style, controls: [navigation(), scale({position: 'bottom-left'})], ...(ssr ? {initialView: view.value, ...(ssr === 'svg' ? {ssr: {width: 800, height: 500}} : {})} : {view: view.value, 'onUpdate:view': v => { t.views++; view.value = v; }, interactiveLayers: layers.value, onClick: e => t.clicks.push(e)}), markers: markers.value, images: images.value, projection: t.projection.value, attribution: false, onLoad: host => { t.loads++; t.loadHost = host; t.order.push('load:' + t.map.value.host.state.get().idle); }, onIdle: () => t.order.push('idle'), onMoveend: e => t.moves.push(e.type + ' ' + typeof e.target.getZoom()),
   // An image that the style asks for and the map does not have: the application adds it to the prop images.
   onStyleimagemissing: e => { t.asked.push(e.id); if (!images.value[e.id]) images.value[e.id] = '<svg viewBox="0 0 4 4"><rect width="4" height="4"/></svg>'; }}, ssr ? undefined : {default: () => [h(MapOverlay, {lngLat: t.pin.value, anchor: 'bottom', 'data-own': '', class: 'own-class', style: 'color: rgb(255, 0, 0)'}, () => h('b', {id: 'own-pin'}, 'here')), arrow.value ? h(MapImage, {name: 'arrow', params: ['color']}, {default: ({color}) => h('svg', {viewBox: '0 0 8 8'}, [h('path', {d: 'M4 0 8 8 0 8z', fill: color, stroke: tone.value})])}) : null, twin.value ? h(MapImage, {name: 'arrow'}, () => h('svg', {viewBox: '0 0 8 8'}, [h('path', {d: 'M4 0 8 8 0 8z'})])) : null,
   h(MapImage, {name: 'maybe'}, () => full.value ? h('svg', {viewBox: '0 0 8 8'}, [h('style', 'p{color:rgb(1,2,3)}'), h('rect', {id: 'in-image', width: 8, height: 8})]) : null),
@@ -147,6 +147,19 @@ try {
         return {events: t.moves[0], asked: t.asked.length, added: t.asked.length > 0 && t.asked.every(id => host.map.hasImage(id)), image, imageAfter: host.map.hasImage('dot'), followed, moved, field, views: t.views, pushed, replaced: replaced.join(), before, after: host.map.getLayer('pins') ? 1 : 0};
     });
     check('browser: an event of the map is an event of the component (moveend), and an image that the style asks for (styleimagemissing) is on the map after the listener adds it to the prop images', model.events === 'moveend number' && model.asked > 0 && model.added, JSON.stringify({events: model.events, asked: model.asked, added: model.added}));
+    // The prop projection is the field `projection` of the description (#463).
+    const projected = await page.evaluate(async () => {
+        const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), host = t.map.value.host, events = [];
+        const stop = host.listen('projectiontransition', e => events.push(e.newProjection));
+        t.projection.value = {type: 'globe'};
+        await wait(300);
+        const on = host.map.getProjection()?.type;
+        t.projection.value = null;
+        await wait(300);
+        stop();
+        return {on, off: host.map.getProjection()?.type ?? 'none', events};
+    });
+    check('browser: the prop projection sets the projection of the map, and null gives back that of the style', JSON.stringify(projected) === JSON.stringify({on: 'globe', off: 'none', events: ['globe', 'mercator']}), JSON.stringify(projected));
     check('browser: v-model:view follows the map and moves it; markers and images follow their props, also when the data changes in place', model.image && !model.imageAfter && model.followed === 15 && model.moved === 13.5 && model.field === 14.2 && model.views > 2 && model.pushed === 1 && model.replaced === '0,1' && model.before === 1 && model.after === 0, JSON.stringify(model));
     // An image as a child component: the SVG of its slot is a template of the map, and it follows the component.
     const child = await page.evaluate(async () => {

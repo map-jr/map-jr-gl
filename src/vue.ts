@@ -152,7 +152,7 @@ type Forwarded = Exclude<keyof MapEvents, 'click' | 'load' | 'idle' | 'error'>;
 const FORWARDED = ['render', 'resize', 'remove', 'style.load', 'webglcontextlost', 'webglcontextrestored', 'movestart', 'move', 'moveend', 'zoomstart', 'zoom', 'zoomend',
     'rotatestart', 'rotate', 'rotateend', 'pitchstart', 'pitch', 'pitchend', 'dragstart', 'drag', 'dragend', 'dblclick', 'contextmenu', 'mousedown', 'mousemove', 'mouseup', 'mouseover', 'mouseout',
     'touchstart', 'touchmove', 'touchend', 'touchcancel', 'styledata', 'sourcedata', 'data', 'styledataloading', 'sourcedataloading', 'dataloading', 'wheel',
-    'boxzoomstart', 'boxzoomcancel', 'boxzoomend', 'stats', 'styleimagemissing', 'terrain', 'geolocate'] as const satisfies readonly Forwarded[];
+    'boxzoomstart', 'boxzoomcancel', 'boxzoomend', 'stats', 'styleimagemissing', 'terrain', 'projectiontransition', 'geolocate'] as const satisfies readonly Forwarded[];
 // (The type check fails here when the map gets an event that the list does not have.)
 true satisfies (Forwarded extends typeof FORWARDED[number] ? true : false);
 type Undotted<K extends string> = K extends `${infer A}.${infer B}` ? `${A}${B}` : K;
@@ -252,6 +252,8 @@ const MapJrComponent = defineComponent({
         padding: [Number, Object] as PropType<MapSpec['padding']>,
         /** Controls from `@map-jr/map-jr-gl/controls`: `[navigation(), scale()]`. */
         controls: Array as PropType<ControlSpec[]>,
+        /** The projection in place of that of the style: `{type: 'globe'}` or `{type: 'mercator'}`. The globe is not drawn yet. */
+        projection: Object as PropType<MapSpec['projection']>,
         /** Changes a request before the map makes it, as `transformRequest` of MapLibre GL JS. */
         transformRequest: Function as PropType<MapSpec['transformRequest']>,
         renderer: String as PropType<'auto' | 'worker' | 'main'>,
@@ -325,7 +327,7 @@ const MapJrComponent = defineComponent({
         const spec = computed<MapSpec>(() => {
             const out: MapSpec = {
                 style: style.value, extend: extend.value, view: view.value, initialView: props.initialView && toRaw(props.initialView), images: images.value, markers: markers.value, data: data.value, interactiveLayers: layers.value, controls: controls.value,
-                minZoom: props.minZoom, maxZoom: props.maxZoom, maxPitch: props.maxPitch, maxBounds: props.maxBounds && toRaw(props.maxBounds), cursor: props.cursor, transformRequest: props.transformRequest, cooperativeGestures: props.cooperativeGestures, padding: props.padding && typeof props.padding === 'object' ? toRaw(props.padding) : props.padding,
+                minZoom: props.minZoom, maxZoom: props.maxZoom, maxPitch: props.maxPitch, maxBounds: props.maxBounds && toRaw(props.maxBounds), cursor: props.cursor, transformRequest: props.transformRequest, cooperativeGestures: props.cooperativeGestures, padding: props.padding && typeof props.padding === 'object' ? toRaw(props.padding) : props.padding, projection: props.projection && toRaw(props.projection),
                 renderer: props.renderer, fonts: props.fonts && toRaw(props.fonts), fontFamily: props.fontFamily, interactive: props.interactive, antialias: props.antialias,
                 attribution: (props.attribution as unknown) === true ? undefined : props.attribution && toRaw(props.attribution), hash: props.hash, nonce: props.nonce,
                 onViewChange: view => emit('update:view', view), onClick: event => emit('click', event),

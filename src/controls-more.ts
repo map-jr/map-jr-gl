@@ -189,6 +189,45 @@ export class TerrainControl implements Control {
     onRemove() { this.el?.remove(); }
 }
 
+/**
+ * A button that switches the projection between the globe and Mercator, as `GlobeControl` of MapLibre GL JS does
+ * (`setProjection({type: 'globe'})` and back). The button has the class `ctrl-globe-enabled` while the projection is
+ * `globe`. The globe is not drawn yet: the map draws Mercator and warns once.
+ */
+export class GlobeControl implements Control {
+    private el?: HTMLElement;
+    private map?: Map;
+    private b?: HTMLButtonElement;
+    onAdd(map: Map) {
+        const el = this.el = group();
+        this.map = map;
+        this.b = button(el, 'globe', '', svg('<circle cx="9" cy="9" r="6.500"/><ellipse cx="9" cy="9" rx="2.750" ry="6.500"/><path d="M2.500 9h13"/>'),
+            () => { map.setProjection({type: map.getProjection()?.type === 'globe' ? 'mercator' : 'globe'}); this.show(); });
+        this.show();
+        map.on('styledata', this.show);
+        map.on('projectiontransition', this.show);
+        return el;
+    }
+    onRemove() {
+        this.map?.off('styledata', this.show);
+        this.map?.off('projectiontransition', this.show);
+        this.el?.remove();
+        this.map = undefined;
+    }
+    getDefaultPosition(): ControlPosition { return 'top-right'; }
+    private show = () => {
+        const b = this.b, map = this.map;
+        if (!b || !map) return;
+        const on = map.getProjection()?.type === 'globe';
+        // (MapLibre gives the button one of the two classes. The names of this library come with them: see `toggleClass`.)
+        toggleClass(b, 'ctrl-globe', !on);
+        toggleClass(b, 'ctrl-globe-enabled', on);
+        b.title = ui(map, on ? 'GlobeControl.Disable' : 'GlobeControl.Enable', on ? 'Disable globe' : 'Enable globe');
+        b.setAttribute('aria-label', b.title);
+        b.setAttribute('aria-pressed', String(on));
+    };
+}
+
 /** MapLibre shows its logo with this control. This library has no logo, so the control adds an empty element. */
 export class LogoControl implements Control {
     private el?: HTMLElement;
