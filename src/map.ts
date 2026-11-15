@@ -1296,6 +1296,7 @@ export class Map {
             sourceWidth = img.naturalWidth;
             drawable = img;
         } else if ('data' in source) {
+            if (!ArrayBuffer.isView(source.data)) throw new Error(`[map-jr-gl] addImage("${name}"): images that draw themselves with WebGL (renderWithWebGL) are not supported. Pass pixels, a canvas, an image or SVG text.`);
             // Raw pixels, as MapLibre accepts (ImageData or {width, height, data}). At the stored size they are premultiplied
             // directly below; at another size they go on a CPU-backed canvas to scale from, so reading back costs no GPU copy.
             sourceWidth = source.width;
