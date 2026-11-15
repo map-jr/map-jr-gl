@@ -27,10 +27,18 @@ export function fetchWith(rules: () => RequestRules | undefined, ask: Ask, kind 
 export function withTimeout(f: typeof fetch, ms = 30000): typeof fetch {
     return (input, init) => {
         const ac = new AbortController(), outer = init?.signal;
-        // (The timer is not cleared when the headers arrive: an abort also ends a body that never finishes.)
-        setTimeout(() => ac.abort(new Error(`[map-jr-gl] the request to ${input} did not finish within ${ms} ms.`)), ms);
+        const timer = setTimeout(() => ac.abort(new Error(`[map-jr-gl] the request to ${input} did not finish within ${ms} ms.`)), ms), done = () => clearTimeout(timer);
+        ac.signal.addEventListener('abort', done);
         // An abort by the caller (a tile that is no longer needed) still ends the request.
         if (outer) outer.aborted ? ac.abort(outer.reason) : outer.addEventListener('abort', () => ac.abort(outer.reason));
-        return Promise.race([f(input, {...init, signal: ac.signal}), new Promise<never>((_, fail) => ac.signal.addEventListener('abort', () => fail(ac.signal.reason)))]);
+        return Promise.race([f(input, {...init, signal: ac.signal}), new Promise<never>((_, fail) => ac.signal.addEventListener('abort', () => fail(ac.signal.reason)))]).then(res => {
+            // The timer runs on until the body has been read (an abort also ends a body that never finishes), and stops then (#415).
+            if (!res.body) return done(), res;
+            for (const m of ['arrayBuffer', 'json', 'text', 'blob'] as const) {
+                const read = res[m];
+                Object.defineProperty(res, m, {value: () => read.call(res).finally(done)});
+            }
+            return res;
+        }, e => { done(); throw e; });
     };
 }

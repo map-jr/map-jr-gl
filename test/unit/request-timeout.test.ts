@@ -67,3 +67,24 @@ test('request timeout: tile requests of the engine and the requests of the map (
     const map = await readFile(new URL('../../src/map.ts', import.meta.url), 'utf8');
     assert.match(map, /protected fetchAs = \(kind: string\) => withTimeout\(fetchWith\(/);
 });
+
+test('request timeout: the timer is cleared when the request settles (#415)', async () => {
+    const active = new Set<unknown>(), set = globalThis.setTimeout, clear = globalThis.clearTimeout;
+    globalThis.setTimeout = ((fn: () => void, ms?: number) => { const id = set(() => { active.delete(id); fn(); }, ms); active.add(id); return id; }) as typeof setTimeout;
+    globalThis.clearTimeout = ((id: ReturnType<typeof setTimeout>) => { active.delete(id); clear(id); }) as typeof clearTimeout;
+    try {
+        const res = await withTimeout((async () => Object.defineProperty(new Response('ok'), 'url', {value: 'https://glyphs.test/a'})) as typeof fetch)('https://glyphs.test/a');
+        assert.equal(res.url, 'https://glyphs.test/a');
+        assert.equal(await res.text(), 'ok');
+        assert.equal(await (await withTimeout((async () => new Response('{"a":1}')) as typeof fetch)('https://glyphs.test/j')).json().then(j => j.a), 1);
+        assert.equal((await withTimeout((async () => new Response(null, {status: 204})) as typeof fetch)('https://glyphs.test/b')).status, 204);
+        await assert.rejects(withTimeout((async () => { throw new Error('offline'); }) as typeof fetch)('https://glyphs.test/c'), /offline/);
+        const ac = new AbortController(), p = withTimeout((() => new Promise<Response>(() => {})) as typeof fetch)('https://glyphs.test/d', {signal: ac.signal});
+        ac.abort(new Error('cancelled'));
+        await assert.rejects(p, /cancelled/);
+        assert.equal(active.size, 0, `${active.size} timers of settled requests are still pending`);
+    } finally {
+        for (const id of active) clear(id as ReturnType<typeof setTimeout>);
+        globalThis.setTimeout = set; globalThis.clearTimeout = clear;
+    }
+});
