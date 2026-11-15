@@ -805,7 +805,8 @@ export class GLRenderer {
     private layerTarget?: {fb: WebGLFramebuffer; tex: WebGLTexture; w: number; h: number};
     private belowTex?: WebGLTexture;
 
-    private drawLayers(s: Scene, tr: Transform, bySource: Map<string, RenderItem<GLTile>[]>, target: [number, number], pass: 'all' | 'ground' | 'buildings', only?: CompiledLayer) {
+    /** Draws the layers other than symbol layers, or only `only`, or the layers `from` to `to` (not `to` itself). */
+    private drawLayers(s: Scene, tr: Transform, bySource: Map<string, RenderItem<GLTile>[]>, target: [number, number], pass: 'all' | 'ground' | 'buildings', only?: CompiledLayer, from = 0, to = s.layers.length) {
         const gl = this.gl, zoom = tr.zoom;
         this.current = null;
         const use = (name: keyof typeof SHADERS) => this.use(name, tr);
@@ -834,7 +835,7 @@ export class GLRenderer {
             };
         };
 
-        for (const L of only ? [only] : s.layers) {
+        for (const L of only ? [only] : s.layers.slice(from, to)) {
             if (!L.visible || zoom < L.minzoom || zoom >= L.maxzoom || L.type === 'symbol') continue;
             if (L.type === 'heatmap') { if (pass !== 'buildings') this.drawHeatmap(L, tr, bySource.get(L.source!) ?? [], target); continue; }
             if (!only && (L.type === 'fill' || L.type === 'line') && pass !== 'buildings') {
@@ -1390,14 +1391,16 @@ export class GLRenderer {
         gl.clear(gl.COLOR_BUFFER_BIT);
         this.current = null;
         const target: [number, number] = [this.canvas.width, this.canvas.height];
-        if (s.terrain) { this.drawTerrain(s); this.drawLayers(s, tr, s.items, target, 'buildings'); }
-        else this.drawLayers(s, tr, s.items, target, 'all');
         const use = (name: keyof typeof SHADERS) => this.use(name, tr);
 
-        // The icons that the tiles have in buffers. Those of a layer that is above each layer with labels are drawn
-        // over the labels, as that layer is in the style. The others are drawn below all labels.
+        // All labels are drawn at once, above the last symbol layer that has labels (`above` is the index after it).
+        // The layers that come after it in the style are drawn over the labels, as in MapLibre GL JS: their icons that
+        // the tiles have in buffers and, without 3D terrain, the layers of other types. The rest is drawn below all
+        // labels. (With 3D terrain, the layers on the ground are pictures on the terrain and stay below the labels.)
         let above = 0;
-        s.layers.forEach((L, i) => { if (L.type === 'symbol' && s.items.get(L.source!)?.some(it => it.tile.labels[L.id]?.length)) above = i + 1; });
+        s.layers.forEach((L, i) => { if (L.type === 'symbol' && L.visible && tr.zoom >= L.minzoom && tr.zoom < L.maxzoom && s.items.get(L.source!)?.some(it => it.tile.labels[L.id]?.length)) above = i + 1; });
+        if (s.terrain) { this.drawTerrain(s); this.drawLayers(s, tr, s.items, target, 'buildings'); }
+        else this.drawLayers(s, tr, s.items, target, 'all', undefined, 0, above);
         this.drawIcons(s, tr, 0, above);
 
         // Style-sheet icons and images added at runtime live in different textures.
@@ -1440,7 +1443,11 @@ export class GLRenderer {
             gl.drawArrays(gl.TRIANGLES, 0, n);
         }
 
-        this.drawIcons(s, tr, above, s.layers.length);
+        // The layers above the labels, each in its place: icons of symbol layers and, without terrain, other layers.
+        for (let i = above; i < s.layers.length; i++) {
+            if (s.layers[i].type === 'symbol') this.drawIcons(s, tr, i, i + 1);
+            else if (!s.terrain) this.drawLayers(s, tr, s.items, target, 'all', undefined, i, i + 1);
+        }
 
         gl.bindVertexArray(null);
         return behind;

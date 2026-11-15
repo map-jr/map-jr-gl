@@ -1055,6 +1055,29 @@ for (const mode of ['main', 'worker']) {
         check('[main] idle comes after changed data is drawn (setData, setFeatureState, setFilter, refreshTiles), and the source is not loaded before that',
             late.setData === '255,255,255' && late.back === '255,0,0' && late.featureState === '0,0,255' && late.setFilter === '255,255,255' && late.refreshTiles === '0,0,255' && !late.loadedAfterSetData && !late.loadedAfterRefresh, JSON.stringify(late));
 
+        // A layer that comes after a symbol layer in the style draws over that layer's labels, as in MapLibre GL JS. The
+        // label is a wide black halo in the middle; a red square after it covers it, and a square before it does not.
+        const order = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const point = {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [0, 0]}};
+            const square = {type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[-20, -20], [20, -20], [20, 20], [-20, 20], [-20, -20]]]}};
+            const label = {id: 'label', type: 'symbol', source: 'p', layout: {'text-field': 'MMM', 'text-size': 24}, paint: {'text-color': '#000', 'text-halo-color': '#000', 'text-halo-width': 8}};
+            const fill = {id: 'fill', type: 'fill', source: 's', paint: {'fill-color': '#f00'}};
+            const pad = Object.assign(document.createElement('canvas'), {width: 1, height: 1}).getContext('2d', {willReadFrequently: true});
+            const middle = async layers => {
+                const m = new mod.Map({container: el, renderer: 'main', center: [0, 0], zoom: 2, attributionControl: false, fadeDuration: 0, style: {version: 8,
+                    sources: {p: {type: 'geojson', data: point}, s: {type: 'geojson', data: square}}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}, ...layers]}});
+                const colour = await new Promise(r => { m.once('idle', () => { const c = m.getCanvas(); pad.drawImage(c, c.width / 2, c.height / 2, 1, 1, 0, 0, 1, 1); r([...pad.getImageData(0, 0, 1, 1).data].slice(0, 3).join()); }); setTimeout(() => r('no idle'), 8000); });
+                m.remove();
+                return colour;
+            };
+            const out = {fillAbove: await middle([label, fill]), fillBelow: await middle([fill, label])};
+            el.remove();
+            return out;
+        });
+        check('[main] a fill layer after a symbol layer draws over its labels, and a fill layer before it draws under them', order.fillAbove === '255,0,0' && order.fillBelow === '0,0,0', JSON.stringify(order));
+
         // refreshTiles with four tile workers: queries after it see the new tile, and each query goes to the worker
         // that loaded the tile, so the tile is requested one time before the refresh and one time after it.
         const fresh = await page.evaluate(async () => {
