@@ -252,6 +252,8 @@ const MapJrComponent = defineComponent({
         padding: [Number, Object] as PropType<MapSpec['padding']>,
         /** Controls from `@map-jr/map-jr-gl/controls`: `[navigation(), scale()]`. */
         controls: Array as PropType<ControlSpec[]>,
+        /** Changes a request before the map makes it, as `transformRequest` of MapLibre GL JS. */
+        transformRequest: Function as PropType<MapSpec['transformRequest']>,
         renderer: String as PropType<'auto' | 'worker' | 'main'>,
         fonts: Array as PropType<FontSource[]>,
         fontFamily: String,
@@ -321,7 +323,7 @@ const MapJrComponent = defineComponent({
         const spec = computed<MapSpec>(() => {
             const out: MapSpec = {
                 style: style.value, extend: extend.value, view: view.value, initialView: props.initialView && toRaw(props.initialView), images: images.value, markers: markers.value, data: data.value, interactiveLayers: layers.value, controls: controls.value,
-                minZoom: props.minZoom, maxZoom: props.maxZoom, maxPitch: props.maxPitch, maxBounds: props.maxBounds && toRaw(props.maxBounds), cursor: props.cursor, cooperativeGestures: props.cooperativeGestures, padding: props.padding && typeof props.padding === 'object' ? toRaw(props.padding) : props.padding,
+                minZoom: props.minZoom, maxZoom: props.maxZoom, maxPitch: props.maxPitch, maxBounds: props.maxBounds && toRaw(props.maxBounds), cursor: props.cursor, transformRequest: props.transformRequest, cooperativeGestures: props.cooperativeGestures, padding: props.padding && typeof props.padding === 'object' ? toRaw(props.padding) : props.padding,
                 renderer: props.renderer, fonts: props.fonts && toRaw(props.fonts), fontFamily: props.fontFamily, interactive: props.interactive, antialias: props.antialias,
                 attribution: (props.attribution as unknown) === true ? undefined : props.attribution && toRaw(props.attribution), hash: props.hash,
                 onViewChange: view => emit('update:view', view), onClick: event => emit('click', event),

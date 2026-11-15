@@ -1077,6 +1077,36 @@ for (const renderer of ['worker', 'main']) {
     } catch (e) { check('removed while loading: the test run was completed', false, String(e.message).split('\n')[0]); }
     await page.close();
 }
+// `transformRequest` of the description (#386): it changes the requests of the style, its sources and its tiles,
+// also those that a tile worker makes, and the map calls the function of the last description.
+{
+    const page = await browser.newPage({viewport: {width: 900, height: 600}});
+    try {
+        const keyed = [];
+        page.on('request', r => { const k = r.headers()['x-key']; if (k) keyed.push(k); });
+        await page.goto(`${origin}/style.json`);
+        const out = await page.evaluate(async () => {
+            const lib = await import('/dist/map-jr-gl.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99;background:#fff'}));
+            const kinds = new Set(), second = new Set();
+            const spec = {style: '/style.json', initialView: {center: [-74.0065, 40.7085], zoom: 14.3}, attribution: false,
+                transformRequest: (url, kind) => { kinds.add(kind); return {url, headers: {'x-key': 'one'}}; }};
+            const host = lib.createMap(el, spec);
+            const loaded = await Promise.race([new Promise(r => host.state.subscribe(s => s.loaded, v => v && r(true))), new Promise(r => setTimeout(() => r(false), 20000))]);
+            // (A new function in each update, as a framework makes in each render.)
+            const two = () => (url, kind) => { second.add(kind); return {url, headers: {'x-key': 'two'}}; };
+            host.update({...spec, transformRequest: two()});
+            host.update({...spec, transformRequest: two(), view: {center: [-73.99, 40.73], zoom: 14}});
+            await Promise.race([new Promise(r => host.state.subscribe(s => s.idle, v => v && r(true))), new Promise(r => setTimeout(r, 20000))]);
+            const renderer = host.state.get().renderer;
+            host.destroy(); el.remove();
+            return {loaded, kinds: [...kinds], second: [...second], renderer};
+        });
+        check('transformRequest of the description changes the requests of the style and of the tiles (made in a worker), and a new function in update() is used',
+            out.loaded && out.kinds.includes('Style') && out.kinds.includes('Tile') && out.second.includes('Tile') && keyed.includes('one') && keyed.includes('two'), JSON.stringify({...out, keyed: [...new Set(keyed)]}));
+    } catch (e) { check('transformRequest of the description: the test run was completed', false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
 // The glyph files of the style: asked for by default, with the font stack and the range in the URL; not for a style without `glyphs`.
 // The removed field `glyphs` of the description (#52) has no effect and gives a warning in the development build.
 // (The test server has no glyph files: the text then uses the fonts of the device, and the map still becomes idle.)
