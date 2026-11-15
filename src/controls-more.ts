@@ -193,47 +193,76 @@ export class LogoControl implements Control {
 
 /**
  * Moves the map to the user's position (after the browser's permission prompt). It fires `geolocate`, `error` or
- * `outofmaxbounds` on itself, as MapLibre GL JS does, and `geolocate` and `error` also on the map. Tracking
- * (`trackUserLocation`) and the position dot (`showUserLocation`) are not supported: the options warn once, and
- * `trackuserlocationstart` and `trackuserlocationend` never fire.
+ * `outofmaxbounds` on itself, as MapLibre GL JS does, and `geolocate` and `error` also on the map.
+ *
+ * With `trackUserLocation`, the button turns tracking on and off, as in MapLibre GL JS 6.17. The control follows the
+ * position (`watchPosition`) and keeps the map on it until the map moves for another reason, which fires
+ * `trackuserlocationend` and `userlocationlostfocus`. A click then returns to the position and fires
+ * `trackuserlocationstart` and `userlocationfocus`. `showUserLocation` (default true) shows a dot at the position while
+ * tracking is on. The accuracy circle (`showAccuracyCircle`) is not drawn. The code of tracking (geolocate-track.ts)
+ * loads on demand at the first click, so the first step of tracking happens once that file has loaded.
  */
 export class GeolocateControl extends Evented implements Control {
     private el?: HTMLElement;
     private map?: Map;
     private b?: HTMLButtonElement;
-    constructor(private options: {zoom?: number; positionOptions?: PositionOptions; trackUserLocation?: boolean; showUserLocation?: boolean} = {}) {
+    private t?: Promise<{click(): void; remove(): void}>;
+    constructor(private options: {zoom?: number; positionOptions?: PositionOptions; trackUserLocation?: boolean; showUserLocation?: boolean; showAccuracyCircle?: boolean} = {}) {
         super();
-        for (const k of ['trackUserLocation', 'showUserLocation'] as const) if (options[k]) noEffect('GeolocateControl', k, ' The control moves the map to the position once per click.');
+        if (options.showAccuracyCircle) noEffect('GeolocateControl', 'showAccuracyCircle', ' The control shows a dot at the position without the circle.');
     }
     onAdd(map: Map) {
         this.map = map;
         const el = this.el = group();
         const b = this.b = button(el, 'geolocate', ui(map, 'GeolocateControl.FindMyLocation', 'Find my location'), svg('<circle cx="9" cy="9" r="4"/><path d="M9 1.500v3M9 13.500v3M1.500 9h3M13.500 9h3"/>'), () => this.trigger());
         if (!('geolocation' in navigator)) { b.disabled = true; b.title = ui(map, 'GeolocateControl.LocationNotAvailable', 'Location not available'); b.setAttribute('aria-label', b.title); }
+        if (this.options.trackUserLocation) b.setAttribute('aria-pressed', 'false');
         return el;
     }
-    /** Asks for the position once. Returns `false` when the control is not on a map or the browser has no geolocation. */
+    /**
+     * Without `trackUserLocation`, asks for the position once. With it, turns tracking on or off as a click does.
+     * Returns `false` when the control is not on a map or the browser has no geolocation.
+     */
     trigger() {
-        const map = this.map, b = this.b;
+        const map = this.map, b = this.b, o = this.options;
         if (!map || !b || !('geolocation' in navigator)) return false;
+        if (o.trackUserLocation) {
+            const host = {
+                fire: (type: string) => this.fire(type),
+                found: (p: GeolocationPosition) => this.found(map, p, false),
+                failed: (e: {code: number; message: string}) => this.failed(map, e),
+                follow: (p: GeolocationPosition) => this.follow(map, p),
+            };
+            (this.t ??= import('./geolocate-track.ts').then(m => m.tracker(host, map, b, o.positionOptions, o.showUserLocation !== false)))
+                .then(t => { if (this.map === map) t.click(); }, e => console.error('[map-jr-gl] GeolocateControl: the code of trackUserLocation could not be loaded. Check that the files of the library are served.', e));
+            return true;
+        }
         b.disabled = true;
-        navigator.geolocation.getCurrentPosition(p => {
-            b.disabled = false;
-            if (this.map !== map) return;
-            const {longitude: x, latitude: y} = p.coords, m = map.getMaxBounds();
-            if (m && (x < m.getWest() || x > m.getEast() || y < m.getSouth() || y > m.getNorth())) { this.fire('outofmaxbounds', {coords: p.coords, timestamp: p.timestamp}); return; }
-            map.easeTo({duration: 1200, center: [x, y], zoom: Math.max(map.getZoom(), this.options.zoom ?? 14)});
-            this.fire('geolocate', {coords: p.coords, timestamp: p.timestamp});
-            map.fire('geolocate', {coords: p.coords});
-        }, err => {
-            b.disabled = false;
-            if (this.map !== map) return;
-            this.fire('error', {code: err.code, message: err.message});
-            map.fire('error', {error: new Error(err.message)});
-        }, this.options.positionOptions);
+        navigator.geolocation.getCurrentPosition(p => { b.disabled = false; this.found(map, p, true); }, e => { b.disabled = false; this.failed(map, e); }, o.positionOptions);
         return true;
     }
-    onRemove() { this.el?.remove(); this.map = undefined; }
+    private found(map: Map, p: GeolocationPosition, move: boolean) {
+        if (this.map !== map) return false;
+        const {longitude: x, latitude: y} = p.coords, m = map.getMaxBounds();
+        if (m && (x < m.getWest() || x > m.getEast() || y < m.getSouth() || y > m.getNorth())) { this.fire('outofmaxbounds', {coords: p.coords, timestamp: p.timestamp}); return false; }
+        if (move) this.follow(map, p);
+        this.fire('geolocate', {coords: p.coords, timestamp: p.timestamp});
+        map.fire('geolocate', {coords: p.coords});
+        return true;
+    }
+    private failed(map: Map, err: {code: number; message: string}) {
+        if (this.map !== map) return;
+        this.fire('error', {code: err.code, message: err.message});
+        map.fire('error', {error: new Error(err.message)});
+    }
+    private follow(map: Map, p: GeolocationPosition) {
+        map.easeTo({duration: 1200, center: [p.coords.longitude, p.coords.latitude], zoom: Math.max(map.getZoom(), this.options.zoom ?? 14)});
+    }
+    onRemove() {
+        this.t?.then(t => t.remove(), () => {});
+        this.t = undefined;
+        this.el?.remove(); this.map = undefined;
+    }
 }
 // (Warnings are once per page, as the other warnings for options with no effect.)
 const warned: Record<string, 1> = {};

@@ -41,8 +41,8 @@ export const navigation = spec('navigation', (m, o: {showZoom?: boolean; showCom
 export const scale = spec('scale', (m, o: {maxWidth?: number; unit?: 'metric' | 'imperial' | 'nautical'}) => new m.ScaleControl(o));
 /** A button that shows the map on the full screen. */
 export const fullscreen = spec('fullscreen', (m, _o: {}) => new m.FullscreenControl());
-/** A button that moves the map to the position of the user. */
-export const geolocate = spec('geolocate', (m, o: {zoom?: number; positionOptions?: PositionOptions}) => new m.GeolocateControl(o));
+/** A button that moves the map to the position of the user. With `trackUserLocation`, it turns tracking on and off and shows a dot at the position. */
+export const geolocate = spec('geolocate', (m, o: {zoom?: number; positionOptions?: PositionOptions; trackUserLocation?: boolean; showUserLocation?: boolean}) => new m.GeolocateControl(o));
 /** A button that turns 3D terrain on and off. `source` is the id of an elevation source of the style. */
 export const terrain = spec('terrain', (m, o: {source: string; exaggeration?: number}) => new m.TerrainControl(o));
 /**

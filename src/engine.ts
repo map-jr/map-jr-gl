@@ -13,6 +13,7 @@ import {decodeElevation, sampleElevation, tilesUnderBox, type QueriedFeature, ty
 import type {FeatureStates, TileBackend, TileRequest} from './tiles.ts';
 import type {TileGL} from './tile.ts';
 import {fetchTile, heads} from './pmtiles.ts';
+import {imagePixels} from './exact-pixels.ts';
 
 export interface CameraOptions { center?: LngLatLike; zoom?: number; bearing?: number; pitch?: number; /** Space at the edges covered by other things: top, right, bottom, left. */ padding?: [number, number, number, number] }
 export type {FontSource} from './style.ts';
@@ -197,6 +198,8 @@ export class Engine {
     private wasIdle = false;
     /** The map has been idle once: the overview tiles wait for that (#326). */
     private wentIdle = false;
+    /** When the previous frame began (performance.now()). */
+    private lastFrameAt = 0;
     /** The view at the end of the movement under way, its tiles are requested early (#361). */
     private target: Transform | null = null;
     /** Tiles requested for a target that are on their way: they finish when a newer movement replaces it (#361). */
@@ -1001,12 +1004,9 @@ export class Engine {
                 const bytes = await fetchTile(url, withTimeout(this.fetchAs('Tile')));
                 if (!bytes) return null;
                 const image = await createImageBitmap(new Blob([bytes as BlobPart]), {premultiplyAlpha: 'none', colorSpaceConversion: 'none'});
-                const canvas = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(image.width, image.height)
-                    : Object.assign((globalThis as any).document.createElement('canvas'), {width: image.width, height: image.height});
-                const ctx = canvas.getContext('2d', {willReadFrequently: true});
-                ctx.drawImage(image, 0, 0);
+                const {width, height} = image, data = imagePixels(image, width, height);
                 image.close();
-                return ctx.getImageData(0, 0, canvas.width, canvas.height) as ImageData;
+                return {width, height, data};
             })();
             this.dem.set(url, pixels);
             pixels.catch(() => this.dem.delete(url));
@@ -1565,6 +1565,10 @@ export class Engine {
         if (idle && !this.wasIdle) this.emit({type: 'idle', seq: this.seq});
         // (One more frame after the first `idle`: it requests the overview tiles.)
         if (idle && !this.wentIdle) { this.wentIdle = true; this.repaint(); }
+        // WebKit does not always show the one frame that a map draws after a pause (#429): the page keeps the old picture,
+        // with no error and no lost context. A frame that comes after a pause is therefore followed by one more frame.
+        if (began - this.lastFrameAt > 100) this.repaint();
+        this.lastFrameAt = began;
         this.wasIdle = idle;
         if (busy) this.repaint();
         const st = this.stats, end = performance.now();

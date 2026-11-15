@@ -199,7 +199,7 @@ for (const renderer of ['worker', 'main']) {
                 initialView: {center: [0, 0], zoom: 1}, renderer, attribution: false});
             const b = await Promise.race([host.toBlob(), new Promise(r => setTimeout(() => r(null), 10000))]);
             if (!b) { host.destroy(); el.remove(); return {timeout: true}; }
-            const bmp = await createImageBitmap(b), c = new OffscreenCanvas(bmp.width, bmp.height), g = c.getContext('2d');
+            const bmp = await createImageBitmap(b), c = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}), g = c.getContext('2d');
             g.drawImage(bmp, 0, 0);
             const px = (x, y) => Array.from(g.getImageData(Math.round(x * bmp.width), Math.round(y * bmp.height), 1, 1).data);
             const jpeg = await host.toBlob('image/jpeg', 0.8);
@@ -483,7 +483,7 @@ for (const renderer of ['worker', 'main']) {
         // Images: added, replaced and removed by the description. A symbol layer draws a square of 40 pixels at the centre.
         // (The colour of the square is read from a picture of the page, at two places inside the square.)
         const colourAt = async () => page.evaluate(async png => {
-            const bitmap = await createImageBitmap(await (await fetch('data:image/png;base64,' + png)).blob()), c = new OffscreenCanvas(bitmap.width, bitmap.height).getContext('2d');
+            const bitmap = await createImageBitmap(await (await fetch('data:image/png;base64,' + png)).blob()), c = Object.assign(document.createElement('canvas'), {width: bitmap.width, height: bitmap.height}).getContext('2d');
             c.drawImage(bitmap, 0, 0);
             return [[438, 288], [462, 312]].map(([x, y]) => '#' + [...c.getImageData(x, y, 1, 1).data.slice(0, 3)].map(v => (v >> 4).toString(16)).join(''));
         }, (await page.screenshot()).toString('base64'));
@@ -528,7 +528,7 @@ for (const renderer of ['worker', 'main']) {
         // An image that is an SVG template: each feature gives the slots their values. Two squares, the second 60 pixels to the right.
         // (Of each square, the colour of its upper half and of its lower half is read.)
         const halves = async () => page.evaluate(async png => {
-            const bitmap = await createImageBitmap(await (await fetch('data:image/png;base64,' + png)).blob()), c = new OffscreenCanvas(bitmap.width, bitmap.height).getContext('2d');
+            const bitmap = await createImageBitmap(await (await fetch('data:image/png;base64,' + png)).blob()), c = Object.assign(document.createElement('canvas'), {width: bitmap.width, height: bitmap.height}).getContext('2d');
             c.drawImage(bitmap, 0, 0);
             return [[450, 290], [450, 310], [510, 290], [510, 310]].map(([x, y]) => '#' + [...c.getImageData(x, y, 1, 1).data.slice(0, 3)].map(v => (v >> 4).toString(16)).join('')).join(' ');
         }, (await page.screenshot()).toString('base64'));
@@ -653,7 +653,7 @@ for (const renderer of ['worker', 'main']) {
         const flatPlaced = await shot();
         const placedWithLabels = await page.evaluate(() => window.t.placed.splice(0));
         const same = await page.evaluate(async pairs => {
-            const pixels = async png => { const bitmap = await createImageBitmap(await (await fetch('data:image/png;base64,' + png)).blob()), c = new OffscreenCanvas(bitmap.width, bitmap.height).getContext('2d'); c.drawImage(bitmap, 0, 0); return c.getImageData(0, 0, bitmap.width, bitmap.height).data; };
+            const pixels = async png => { const bitmap = await createImageBitmap(await (await fetch('data:image/png;base64,' + png)).blob()), c = Object.assign(document.createElement('canvas'), {width: bitmap.width, height: bitmap.height}).getContext('2d'); c.drawImage(bitmap, 0, 0); return c.getImageData(0, 0, bitmap.width, bitmap.height).data; };
             const out = [];
             for (const [a, b] of pairs) {
                 const A = await pixels(a), B = await pixels(b);
@@ -827,7 +827,7 @@ for (const renderer of ['worker', 'main']) {
         {
             const svg = (s, c) => `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}"><rect width="${s}" height="${s}" fill="${c}"/></svg>`;
             const box = async () => page.evaluate(async png => {
-                const bitmap = await createImageBitmap(await (await fetch('data:image/png;base64,' + png)).blob()), c = new OffscreenCanvas(bitmap.width, bitmap.height).getContext('2d');
+                const bitmap = await createImageBitmap(await (await fetch('data:image/png;base64,' + png)).blob()), c = Object.assign(document.createElement('canvas'), {width: bitmap.width, height: bitmap.height}).getContext('2d');
                 c.drawImage(bitmap, 0, 0);
                 const d = c.getImageData(0, 0, bitmap.width, bitmap.height).data;
                 let x0 = 1e9, x1 = -1, y0 = 1e9, y1 = -1;
@@ -1533,6 +1533,74 @@ for (const method of ['easeTo', 'flyTo']) {
         check('the main-thread renderer requests its first tiles before it compiles a shader', order.loadsBeforeCompile > 0, JSON.stringify(order));
     } catch (e) { check('the order of the first tile request and the shader compile was measured', false, String(e.message).split('\n')[0]); }
     await page.close();
+}
+// A canvas that adds noise to `getImageData` (Safari in private browsing, #427) must not change the heights: the
+// library detects it and reads elevation tiles through WebGL. The page's renderer is used, so that the patch reaches it.
+{
+    const heights = async noisy => {
+        const page = await browser.newPage({viewport: {width: 600, height: 400}});
+        try {
+            if (noisy) await page.addInitScript(() => {
+                for (const C of [globalThis.CanvasRenderingContext2D, globalThis.OffscreenCanvasRenderingContext2D]) {
+                    if (!C) continue;
+                    const read = C.prototype.getImageData;
+                    C.prototype.getImageData = function (...a) {
+                        const d = read.apply(this, a);
+                        for (let i = 0; i < d.data.length; i++) if (i % 4 !== 3) d.data[i] = Math.max(0, Math.min(255, d.data[i] + (Math.random() * 5 | 0) - 2));
+                        return d;
+                    };
+                }
+            });
+            await page.goto(`${origin}/bench`);
+            return await page.evaluate(async () => {
+                const lib = await import('/dist/map-jr-gl.js');
+                const style = {version: 8, sources: {dem: {type: 'raster-dem', tiles: ['https://tiles.mapterhorn.com/{z}/{x}/{y}.webp'], encoding: 'terrarium', tileSize: 512, maxzoom: 12}}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]};
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99'}));
+                const host = lib.createMap(el, {style, initialView: {center: [7.6586, 45.9763], zoom: 10}, renderer: 'main', attribution: false});
+                await new Promise(r => { const off = host.state.subscribe(s => s.loaded, v => { if (v) { off(); r(); } }); setTimeout(r, 30000); });
+                const out = [];
+                for (const at of [[7.6586, 45.9763], [7.70, 45.99], [7.62, 45.95]]) out.push(await host.queryElevation(at));
+                host.destroy();
+                return out;
+            });
+        } finally { await page.close(); }
+    };
+    try {
+        const clean = await heights(false), noisy = await heights(true);
+        check('a canvas that adds noise to getImageData does not change the heights of elevation tiles', clean.every(h => typeof h === 'number') && clean.join() === noisy.join(), JSON.stringify({clean, noisy}));
+    } catch (e) { check('the heights with a noisy canvas were compared', false, String(e.message).split('\n')[0]); }
+}
+// A change after a pause reaches the screen (#429). WebKit did not show the one frame that a map drew after a pause, so
+// the engine draws one more frame then. Two maps are on the page, as in the report. The count of renders checks this in
+// every browser, and the picture checks it in WebKit.
+for (const renderer of ['worker', 'main']) {
+    const page = await browser.newPage({viewport: {width: 400, height: 300}});
+    try {
+        await page.goto(`${origin}/bench`);
+        const renders = await page.evaluate(async renderer => {
+            const lib = await import('/dist/map-jr-gl.js'), wait = ms => new Promise(r => setTimeout(r, ms));
+            const style = color => ({version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': color}}]});
+            const idle = h => new Promise(r => { const off = h.state.subscribe(s => s.idle, v => { if (v) { off(); r(); } }); setTimeout(r, 15000); });
+            const box = left => document.body.appendChild(Object.assign(document.createElement('div'), {style: `position:fixed;left:${left}px;top:0;width:200px;height:150px;z-index:99`}));
+            const first = lib.createMap(box(0), {style: style('#ff0000'), renderer, attribution: false});
+            const second = lib.createMap(box(200), {style: style('#0000ff'), renderer, attribution: false});
+            await Promise.all([idle(first), idle(second)]);
+            await wait(1000);
+            let n = 0;
+            first.listen('render', () => n++);
+            first.update({style: style('#00ff00'), renderer, attribution: false});
+            await wait(1000);
+            return n;
+        }, renderer);
+        let px = [];
+        for (let i = 0; i < 20 && !(px[1] > 200 && px[0] < 50); i++) {
+            const b64 = (await page.screenshot({clip: {x: 100, y: 75, width: 1, height: 1}})).toString('base64');
+            px = await page.evaluate(async b64 => { const img = new Image(); img.src = 'data:image/png;base64,' + b64; await img.decode(); const c = new OffscreenCanvas(1, 1).getContext('2d'); c.drawImage(img, 0, 0); return [...c.getImageData(0, 0, 1, 1).data]; }, b64);
+            if (!(px[1] > 200 && px[0] < 50)) await new Promise(r => setTimeout(r, 250));
+        }
+        check(`[${renderer}] a change of the style after a pause reaches the screen, with two maps on the page (#429)`, renders >= 2 && px[1] > 200 && px[0] < 50, JSON.stringify({renders, px}));
+    } catch (e) { check(`[${renderer}] the change after a pause was checked`, false, String(e.message).split('\n')[0]); }
+    finally { await page.close(); }
 }
 await browser.close();
 process.exit(failed ? 1 : 0);

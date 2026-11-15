@@ -24,6 +24,9 @@ BSD-3-Clause.
 - The curve of `flyTo` (and of `moveTo` with `fly` in the main API) follows `flyTo` of MapLibre GL JS 6.17
   (`src/ui/camera.ts`), which implements the method of van Wijk and Nuij, "Smooth and efficient zooming and panning"
   (2003), with the same options and defaults.
+- The check for a canvas that adds noise to `getImageData` (`src/exact-pixels.ts`) follows `isOffscreenCanvasDistorted`
+  of MapLibre GL JS 6.17.0 (`src/util/offscreen_canvas_distorted.ts`, BSD-3-Clause), and so does reading elevation
+  tiles through WebGL when the canvas is distorted. The code is new.
 - The tests of MapLibre GL JS and of the MapLibre style specification measure the compatibility of this library.
   The tests are not part of this repository. The test commands download them.
 
