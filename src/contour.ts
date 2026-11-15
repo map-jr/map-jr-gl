@@ -1,3 +1,4 @@
+import {imagePixels} from './exact-pixels.ts';
 import {EXTENT} from './geo.ts';
 import {decodeElevation} from './query.ts';
 import type {TileLayers} from './tile.ts';
@@ -32,12 +33,10 @@ export async function decodePixels(bytes: Uint8Array, decode?: ImageDecoder): Pr
     if (typeof createImageBitmap === 'undefined' || typeof OffscreenCanvas === 'undefined') throw new Error('Elevation tiles need a browser or decodeImage');
     const image = await createImageBitmap(new Blob([bytes as BlobPart]), {premultiplyAlpha: 'none', colorSpaceConversion: 'none'});
     const {width, height} = image; // read before close(), which zeroes them
-    // Heights are in the colour channels, so pixels must never be blended: the image is drawn at its own size.
-    const ctx = new OffscreenCanvas(width, height).getContext('2d', {willReadFrequently: true})!;
-    ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(image, 0, 0);
+    // Heights are in the colour channels, so pixels must be exact: see `imagePixels`.
+    const data = imagePixels(image, width, height);
     image.close();
-    return {width, height, data: ctx.getImageData(0, 0, width, height).data};
+    return {width, height, data};
 }
 
 /**

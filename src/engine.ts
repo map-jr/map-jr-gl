@@ -13,6 +13,7 @@ import {decodeElevation, sampleElevation, tilesUnderBox, type QueriedFeature, ty
 import type {FeatureStates, TileBackend, TileRequest} from './tiles.ts';
 import type {TileGL} from './tile.ts';
 import {fetchTile, heads} from './pmtiles.ts';
+import {imagePixels} from './exact-pixels.ts';
 
 export interface CameraOptions { center?: LngLatLike; zoom?: number; bearing?: number; pitch?: number; /** Space at the edges covered by other things: top, right, bottom, left. */ padding?: [number, number, number, number] }
 export type {FontSource} from './style.ts';
@@ -997,12 +998,9 @@ export class Engine {
                 const bytes = await fetchTile(url, withTimeout(this.fetchAs('Tile')));
                 if (!bytes) return null;
                 const image = await createImageBitmap(new Blob([bytes as BlobPart]), {premultiplyAlpha: 'none', colorSpaceConversion: 'none'});
-                const canvas = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(image.width, image.height)
-                    : Object.assign((globalThis as any).document.createElement('canvas'), {width: image.width, height: image.height});
-                const ctx = canvas.getContext('2d', {willReadFrequently: true});
-                ctx.drawImage(image, 0, 0);
+                const {width, height} = image, data = imagePixels(image, width, height);
                 image.close();
-                return ctx.getImageData(0, 0, canvas.width, canvas.height) as ImageData;
+                return {width, height, data};
             })();
             this.dem.set(url, pixels);
             pixels.catch(() => this.dem.delete(url));

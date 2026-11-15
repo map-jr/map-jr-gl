@@ -1534,5 +1534,41 @@ for (const method of ['easeTo', 'flyTo']) {
     } catch (e) { check('the order of the first tile request and the shader compile was measured', false, String(e.message).split('\n')[0]); }
     await page.close();
 }
+// A canvas that adds noise to `getImageData` (Safari in private browsing, #427) must not change the heights: the
+// library detects it and reads elevation tiles through WebGL. The page's renderer is used, so that the patch reaches it.
+{
+    const heights = async noisy => {
+        const page = await browser.newPage({viewport: {width: 600, height: 400}});
+        try {
+            if (noisy) await page.addInitScript(() => {
+                for (const C of [globalThis.CanvasRenderingContext2D, globalThis.OffscreenCanvasRenderingContext2D]) {
+                    if (!C) continue;
+                    const read = C.prototype.getImageData;
+                    C.prototype.getImageData = function (...a) {
+                        const d = read.apply(this, a);
+                        for (let i = 0; i < d.data.length; i++) if (i % 4 !== 3) d.data[i] = Math.max(0, Math.min(255, d.data[i] + (Math.random() * 5 | 0) - 2));
+                        return d;
+                    };
+                }
+            });
+            await page.goto(`${origin}/bench`);
+            return await page.evaluate(async () => {
+                const lib = await import('/dist/map-jr-gl.js');
+                const style = {version: 8, sources: {dem: {type: 'raster-dem', tiles: ['https://tiles.mapterhorn.com/{z}/{x}/{y}.webp'], encoding: 'terrarium', tileSize: 512, maxzoom: 12}}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]};
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99'}));
+                const host = lib.createMap(el, {style, initialView: {center: [7.6586, 45.9763], zoom: 10}, renderer: 'main', attribution: false});
+                await new Promise(r => { const off = host.state.subscribe(s => s.loaded, v => { if (v) { off(); r(); } }); setTimeout(r, 30000); });
+                const out = [];
+                for (const at of [[7.6586, 45.9763], [7.70, 45.99], [7.62, 45.95]]) out.push(await host.queryElevation(at));
+                host.destroy();
+                return out;
+            });
+        } finally { await page.close(); }
+    };
+    try {
+        const clean = await heights(false), noisy = await heights(true);
+        check('a canvas that adds noise to getImageData does not change the heights of elevation tiles', clean.every(h => typeof h === 'number') && clean.join() === noisy.join(), JSON.stringify({clean, noisy}));
+    } catch (e) { check('the heights with a noisy canvas were compared', false, String(e.message).split('\n')[0]); }
+}
 await browser.close();
 process.exit(failed ? 1 : 0);
