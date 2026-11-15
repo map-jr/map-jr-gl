@@ -1633,5 +1633,47 @@ for (const renderer of ['worker', 'main']) {
     } catch (e) { check(`[${renderer}] the change after a pause was checked`, false, String(e.message).split('\n')[0]); }
     finally { await page.close(); }
 }
+// The style sheet goes into the root node of the container (#47): a map in a shadow root has styled controls, also when
+// its container is attached to the shadow root after the map is made. A page with `style-src 'nonce-x'` and the option
+// `nonce: 'x'` has styled controls, with a constructed style sheet and with a `<style>` element (no adoptedStyleSheets).
+{
+    const styled = async ({csp, adopt = true, shadow}) => {
+        const page = await browser.newPage({viewport: {width: 600, height: 400}});
+        try {
+            if (csp) await page.route(`${origin}/csp-page`, r => r.fulfill({contentType: 'text/html', headers: {'Content-Security-Policy': csp}, body: '<!doctype html><title>csp</title><body></body>'}));
+            if (!adopt) await page.addInitScript(() => { delete Document.prototype.adoptedStyleSheets; delete ShadowRoot.prototype.adoptedStyleSheets; });
+            await page.goto(csp ? `${origin}/csp-page` : `${origin}/bench`);
+            return await page.evaluate(async ({shadow}) => {
+                const lib = await import('/dist/map-jr-gl.js'), wait = ms => new Promise(r => setTimeout(r, ms));
+                const style = {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]};
+                const box = () => Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'});
+                const parent = () => { const h = document.body.appendChild(document.createElement('div')); return shadow ? h.attachShadow({mode: 'open'}) : h; };
+                const look = (el, pin) => ({container: getComputedStyle(el).position, corner: getComputedStyle(el.querySelector('.map-jr-ctrl-bottom-right')).position, pin: pin && getComputedStyle(pin.querySelector('svg')).display});
+                const el = parent().appendChild(box()), pin = el.appendChild(lib.defaultPin());
+                const host = lib.createMap(el, {style, renderer: 'main', nonce: 'x'});
+                const out = {first: look(el, pin)};
+                if (shadow) {
+                    // (A container that is not in a document when the map is made.)
+                    const later = box(), second = lib.createMap(later, {style, renderer: 'main', nonce: 'x'});
+                    parent().appendChild(later);
+                    await wait(300);
+                    out.later = look(later);
+                    second.destroy();
+                }
+                host.destroy();
+                return out;
+            }, {shadow});
+        } finally { await page.close(); }
+    };
+    const ok = l => l && l.container === 'relative' && l.corner === 'absolute' && (l.pin === undefined || l.pin === 'block');
+    try {
+        const r = await styled({shadow: true});
+        check('a map in a shadow root has styled controls, also when its container is attached later (#47)', ok(r.first) && ok(r.later), JSON.stringify(r));
+        const n = await styled({csp: "style-src 'nonce-x'"});
+        check("a page with style-src 'nonce-x' has styled controls and a styled pin (#47)", ok(n.first), JSON.stringify(n));
+        const e = await styled({csp: "style-src 'nonce-x'", adopt: false});
+        check("a page with style-src 'nonce-x' and no adoptedStyleSheets has styled controls with nonce: 'x' (#47)", ok(e.first), JSON.stringify(e));
+    } catch (e) { check('the style sheet in a shadow root and with a nonce was checked', false, String(e.message).split('\n')[0]); }
+}
 await browser.close();
 process.exit(failed ? 1 : 0);

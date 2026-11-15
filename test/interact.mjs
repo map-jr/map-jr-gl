@@ -161,6 +161,10 @@ for (const mode of ['main', 'worker']) {
     check(`[${mode}] attribution shows © and keeps links`, attribution.includes('©') && !attribution.includes('&copy') && await page.evaluate(() => document.querySelectorAll('.maplibregl-ctrl-attrib a').length) > 0, attribution);
     const img = await page.evaluate(() => window.map.addImage('star', '<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="gold"/></svg>').then(() => true, e => String(e)));
     check(`[${mode}] addImage accepts an SVG`, img === true, String(img));
+    const gl = await page.evaluate(() => Promise.resolve().then(() => window.map.addImage('gl', {width: 1, height: 1, data: {renderWithWebGL() {}}})).then(() => 'resolved', e => String(e.message)));
+    const arr = await page.evaluate(() => window.map.addImage('arr', {width: 1, height: 1, data: [255, 0, 0, 255]}).then(() => true, e => String(e)));
+    check(`[${mode}] addImage accepts a plain array of pixels (#442)`, arr === true, String(arr));
+    check(`[${mode}] addImage with an image that draws with WebGL rejects with a clear error (#442)`, gl.startsWith('[map-jr-gl] addImage("gl")') && gl.includes('WebGL'), gl);
     // Raw pixels at the stored size are premultiplied as they are: no canvas is read back (#26).
     const reads = await page.evaluate(async () => {
         const proto = CanvasRenderingContext2D.prototype, get = proto.getImageData, draw = proto.drawImage;

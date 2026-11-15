@@ -34,7 +34,7 @@ The [status table](../README.md#status) gives the current test results.
 | `toBlob(type, quality)` | Gives the map as an image: it waits until the map is idle, draws one frame and resolves to a `Blob` of the canvas, with both renderers. Use it instead of `preserveDrawingBuffer`, which has no effect (see "Reading the canvas" in [What is different](#what-is-different)). |
 | Frame data | The `stats` event gives the frames per second and the work for each frame. |
 | `supported()` | A function of the module. It returns `false` in a browser without WebGL2. MapLibre GL JS has had no such function since version 2. A map that cannot start fires one `error` and shows a message in the container (the class is `map-jr-unavailable`). See [A browser without WebGL2](api.md#a-browser-without-webgl2). |
-| Controls without a CSS file | The library adds the styles for its controls. You change the colours with `--map-control-*` custom properties. |
+| Controls without a CSS file | The library adds the styles for its controls to the root node of the container, so a map inside a shadow root has styled controls. You change the colours with `--map-control-*` custom properties. The map option `nonce` sets the nonce of a strict `style-src` on the `<style>` element that a browser without constructed style sheets gets. See [Content Security Policy](loading.md#content-security-policy). |
 
 ## What is different
 
@@ -71,6 +71,7 @@ The [status table](../README.md#status) gives the current test results.
 | `setWorkerUrl` | Sets the URL of the worker file of MapLibre GL JS. | Sets `workerUrl` of `configure`. The URL must point to `map-jr-gl-worker.js`. A URL whose file name contains `maplibre-gl` and `worker` (such as `maplibre-gl-worker.mjs`) is ignored with one warning, and `getWorkerUrl()` then still returns `''`. Remove the call: the library finds its worker file itself. |
 | Requests | The `transformRequest` option and `addProtocol`. | The same. The functions run on the page; the workers ask the page for each request that they apply to. A protocol named `pmtiles` is not used: the library reads `pmtiles://` URLs itself, and `addProtocol('pmtiles', …)` warns once in every build. Remove that call. |
 | `Marker`, `Popup` | Full API. | The usual parts of the API: position, popup, drag, anchor, offset. `offset` and `setOffset` take `[x, y]`, `{x, y}` or a `Point`. `getOffset()` returns a `Point`, as in MapLibre GL JS. |
+| `addImage` with an image that draws with WebGL | Accepts an image whose `data` has `renderWithWebGL` (`StyleImageWebGLData`). | Not supported. The promise rejects with an error that names the image, and the map keeps working. |
 | `getImage` | Returns the decoded RGBA pixels. | Returns `{width, height, data: Uint8Array}` RGBA pixels for an image added as pixels, a canvas, an image element or a bitmap. For an image added as a URL or as SVG text, `data` is the string that `addImage` was given, because decoding it again is asynchronous. |
 | Touch gestures | You can configure each gesture. | The same gestures. They are always on. |
 | Expressions | Checks the types. | Does not check the types. An expression that is not correct can give no error. |

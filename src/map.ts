@@ -54,6 +54,11 @@ export interface MapOptions extends CameraOptions, LoadOptions {
     attributionControl?: false | {compact?: boolean; customAttribution?: string | string[]};
     /** Multisample antialiasing for the whole canvas. Smoother polygon edges, at a real cost in fill rate. */
     antialias?: boolean;
+    /**
+     * The nonce of a Content Security Policy with `style-src 'nonce-…'`. The map sets it on the `<style>` element of
+     * its style sheet, which it uses where the browser cannot adopt a constructed style sheet.
+     */
+    nonce?: string;
 }
 
 /**
@@ -383,7 +388,7 @@ export class Map {
         this.watch(this.renderer === 'worker' ? 5 : this.restarting ? 15 : 0);
         this.styleEvents(true);
 
-        this.observer = new ResizeObserver(() => this.resize());
+        this.observer = new ResizeObserver(() => { this.styles(); this.resize(); });
         this.observer.observe(this.container);
         this.bindInput();
         if (o.attributionControl !== false && !this.restarted) {
@@ -1245,9 +1250,27 @@ export class Map {
     private toggled = new Set<string>();
     setFilter(layerId: string, filter: unknown) { return this.editStyle(s => { s.layers[this.layerIndex(s, layerId)].filter = filter; }); }
 
-    /** Adds the style sheet of the controls and of the message of `cannotShow` to the page, once. */
+    /**
+     * Adds the style sheet of the container, the controls and the message of `cannotShow` to the root node of the
+     * container, once for each root: the document, or the shadow root of a map inside one (#47). A container that is
+     * not in a document yet gets it in the page, and again in its root when it is attached (the resize observer).
+     */
     private styles() {
-        if (!document.getElementById('map-jr-control-css')) document.head.appendChild(Object.assign(document.createElement('style'), {id: 'map-jr-control-css', textContent: CONTROL_CSS}));
+        const node = this.container.getRootNode() as Document | ShadowRoot;
+        const root = node.nodeType === 9 || (node as ShadowRoot).host ? node : document;
+        const doc = root.ownerDocument ?? root as Document;
+        // A constructed style sheet is not subject to `style-src`. One sheet serves each root of its document.
+        if (root.adoptedStyleSheets) try {
+            let sheet = sheets.get(doc);
+            if (!sheet) { sheet = new doc.defaultView!.CSSStyleSheet(); sheet.replaceSync(CONTROL_CSS); sheets.set(doc, sheet); }
+            if (!root.adoptedStyleSheets.includes(sheet)) root.adoptedStyleSheets = [...root.adoptedStyleSheets, sheet];
+            return;
+        } catch { /* a browser without constructable style sheets uses a <style> element */ }
+        if (!root.getElementById('map-jr-control-css')) {
+            const el = Object.assign(doc.createElement('style'), {id: 'map-jr-control-css', textContent: CONTROL_CSS});
+            if (this.options.nonce) el.nonce = this.options.nonce;
+            ((root as Document).head ?? root).appendChild(el);
+        }
     }
 
     // ---- controls ----
@@ -1311,6 +1334,7 @@ export class Map {
             sourceWidth = img.naturalWidth;
             drawable = img;
         } else if ('data' in source) {
+            if (typeof (source.data as {length?: unknown})?.length !== 'number') throw new Error(`[map-jr-gl] addImage("${name}"): images that draw themselves with WebGL (renderWithWebGL) are not supported. Pass pixels, a canvas, an image or SVG text.`);
             // Raw pixels, as MapLibre accepts (ImageData or {width, height, data}). At the stored size they are premultiplied
             // directly below; at another size they go on a CPU-backed canvas to scale from, so reading back costs no GPU copy.
             sourceWidth = source.width;
@@ -1763,6 +1787,8 @@ function paddingOf(p: PaddingInput): [number, number, number, number] {
 
 /** The largest number of variants of one SVG template that a map draws. The values come from data, and the texture of the images has a fixed size. */
 const MAX_VARIANTS = 1000;
+/** The style sheet of the controls, constructed once for each document (see `styles`). */
+const sheets = new WeakMap<Document, CSSStyleSheet>();
 /** A deep copy. Structured clone refuses a proxy (a Vue reactive object, #242), and JSON reads through one. */
 function plain<T>(v: T): T { try { return structuredClone(v); } catch { return JSON.parse(JSON.stringify(v)); } }
 
