@@ -885,7 +885,9 @@ for (const renderer of ['worker', 'main']) {
             dClick === 'click' && dEarly === 0 && dragged.seq === 'start 2 drags' && dragged.endOk && !dragged.panned && dragged.keptOk && dragged.fill === 'rgb(200, 0, 0)', JSON.stringify({dClick, dEarly, dragged}));
         // `cooperativeGestures` (#41): a plain wheel does not zoom and shows the hint; Ctrl + wheel zooms; update() turns it off.
         const zoomNow = () => page.evaluate(() => window.t.host.state.get().view.zoom);
-        const wheel = async (ctrl) => { const z = await zoomNow(); await page.mouse.move(450, 300); if (ctrl) await page.keyboard.down('Control'); await page.mouse.wheel(0, -300); if (ctrl) await page.keyboard.up('Control'); await page.waitForTimeout(900); return Math.abs(await zoomNow() - z) > 0.01; };
+        // (The library asks for ⌘ instead of Ctrl when the user agent says Mac, as MapLibre GL JS does.)
+        const mod = await page.evaluate(() => navigator.userAgent.includes('Mac')) ? 'Meta' : 'Control';
+        const wheel = async (ctrl) => { const z = await zoomNow(); await page.mouse.move(450, 300); if (ctrl) await page.keyboard.down(mod); await page.mouse.wheel(0, -300); if (ctrl) await page.keyboard.up(mod); await page.waitForTimeout(900); return Math.abs(await zoomNow() - z) > 0.01; };
         const zoom0 = await zoomNow();
         await page.evaluate(() => { const t = window.t; t.host.update(t.spec = {...t.spec, cooperativeGestures: true}); });
         await page.waitForTimeout(500);
