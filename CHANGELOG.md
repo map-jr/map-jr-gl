@@ -7,11 +7,213 @@ number, and its entry starts with a section "Breaking changes". See
 `#12` is a link to pull request 12. A change without a number comes from before 2026-11-11, when the repository had
 no pull requests.
 
-## Unreleased
+## 0.4.0 (2026-11-15)
+
+This entry covers the changes after 0.3.0 (the tag `v0.3.0`).
 
 ### Breaking changes
 
-- `@map-jr/map-jr-gl/vue` and the Nuxt module: the composable `useMap` is renamed to `useMapJr` ([#389]).
+- `@map-jr/map-jr-gl/vue` and the Nuxt module: the composable `useMap` is renamed to `useMapJr`, and no alias is
+  left. `import {useMap} from '@map-jr/map-jr-gl/vue'` and the auto-imported `useMap()` of Nuxt fail. Write
+  `useMapJr` instead. The React hook `useMap` of `@map-jr/map-jr-gl/react` keeps its name ([#405]).
+- `@map-jr/map-jr-gl` and `@map-jr/map-jr-gl/maplibre-compat`: the option `glyphs: false` is removed. TypeScript code
+  that passes `glyphs` to `createMap`, to `update` or to `new Map()` no longer compiles, and at run time a map with
+  `glyphs: false` requests the glyph files of the style. Glyph files now load also when `fonts` is set, so labels use
+  the glyph files where the files have the characters. To draw all text with `fonts`, remove `glyphs` from the style
+  ([#402]).
+- `@map-jr/map-jr-gl/maplibre-compat`: a `ScaleControl` added without a position is at the bottom left, as in MapLibre
+  GL JS. Before, it was at the top right. Pass `'top-right'` to `addControl` to keep the old place ([#283]).
+
+### New
+
+- `@map-jr/map-jr-gl`: `transformRequest` in the description (`MapSpec`) changes the URL or the headers of each
+  request ([#420]).
+- `@map-jr/map-jr-gl`: overlays can be dragged, the Vue component `MapOverlay` supports this, and `defaultPin()` gives
+  the default marker element ([#409]).
+- Both entries: `toBlob()` exports the map as an image with both renderers ([#374]).
+- Both entries: `flyTo` flies along the curve of van Wijk and Nuij, with the options `curve`, `speed` and
+  `maxDuration`. In the compat entry, `flyTo` without `duration` takes the time that MapLibre GL JS takes instead of
+  1200 ms ([#363]).
+- `@map-jr/map-jr-gl/maplibre-compat`: `easeTo` and `flyTo` use `offset` and `easing`. A call with `offset` now ends
+  with the center at the offset ([#335]).
+- Both entries: `cooperativeGestures` is available in the description, in the Vue component and in the compat `Map`
+  ([#362], [#373]).
+- `@map-jr/map-jr-gl/maplibre-compat`: `GeolocateControl` with `trackUserLocation` tracks the user location as in
+  MapLibre GL JS. Before, the option was accepted and did nothing ([#426]).
+- `@map-jr/map-jr-gl/maplibre-compat`: `FullscreenControl` has the pseudo fullscreen, and the map has the option
+  `locale` ([#376]).
+- Both entries: the compass can be dragged to rotate and pitch the map ([#358]).
+- `@map-jr/map-jr-gl/maplibre-compat`: `GPUInitializationError` is exported, and a failed start reports it
+  ([#347]).
+- `@map-jr/map-jr-gl`: `fitBounds`, `moveTo` and the description take padding per side ([#323]).
+- `@map-jr/map-jr-gl`: the state has the bounds of the view in `state.view.bounds`, and `initialView` accepts bounds
+  ([#307]).
+- `@map-jr/map-jr-gl`: the control `custom()`, the cluster methods on `MapHost` and the style specification types are
+  available from the main entry ([#320], [#315], [#318]).
+- `@map-jr/map-jr-gl/maplibre-compat`: `on`, `once` and `off` accept an array of layer ids. A listener that is not a
+  function now throws ([#278]).
+- The map is ready sooner. The first tiles, the sprite and the first glyph file of each font are requested before
+  the shaders compile, the worker file is fetched once for all workers, and each chunk loads the chunks that it needs
+  in one round. A map at rest places labels at once and shows the labels of new tiles without a fade
+  ([#416], [#382], [#375], [#344], [#354], [#340], [#349], [#433]).
+- Labels are placed with less work, and a style edit resends no GeoJSON and recompiles only what changed
+  ([#348], [#339], [#336], [#331], [#329], [#322], [#327], [#304], [#298]).
+
+### Fixed
+
+Some of these corrections change a result so that it agrees with the documentation or with MapLibre GL JS. Code
+that relied on the old result can see a difference, and the item says which.
+
+- `@map-jr/map-jr-gl`: `update()` and `addImage()` set `state.idle` to `false` while the engine has work. Code that
+  read `state.idle === true` right after `update()` now sees `false` until the map is drawn ([#414]).
+- Tile, style, TileJSON and GeoJSON requests time out after 30 s, and the timer is cleared when a request settles
+  ([#413], [#422]).
+- A tile whose request failed is requested again after 0.5, 1 and 2 s, and it shows its overview tile at once
+  ([#378], [#419]). After the first idle, a pan requests a new overview tile at once ([#366]).
+- A tile that leaves the view while it waits for its upload is kept, and a tile dropped while it waits frees its GPU
+  tile ([#399], [#401]).
+- Elevation tiles are read exactly when the browser adds noise to a canvas, as Safari does in private browsing
+  ([#430]). After a pause, a second frame follows the first, because WebKit does not show the first ([#432]).
+- A popup that closes no longer catches clicks during its fade, and its element is removed when the closing animation
+  never ends ([#437], [#434]).
+- `maxBounds` keeps the edges of the view inside the bounds, and bounds across the antimeridian wrap, as in MapLibre
+  GL JS. A map with `maxBounds` can stop its center earlier and raise its zoom ([#308], [#333]).
+- `@map-jr/map-jr-gl/maplibre-compat`: `LngLatBounds` keeps its corners as given. Bounds given north-east first are no
+  longer sorted ([#337]).
+- `@map-jr/map-jr-gl/maplibre-compat`: `project()` and the `point` of events are a `Point`. `Marker` takes its
+  `offset` as a `PointLike`, and `getOffset()` returns a `Point` ([#350], [#357], [#317]).
+- `@map-jr/map-jr-gl/maplibre-compat`: `getImage(name).data` gives RGBA pixels instead of the object that was passed
+  to `addImage` ([#317]).
+- `@map-jr/map-jr-gl/maplibre-compat`: a click on a marker is a click of the map, and a click on a draggable marker
+  fires no drag events ([#345], [#288]).
+- A map with `interactive: false` fires mouse events, as in MapLibre GL JS ([#292]).
+- `@map-jr/map-jr-gl/maplibre-compat`: controls inherit the font of the map, so text in the container without its own
+  font shows `12px/1.3 system-ui`. An interactive map shows the grab cursor ([#352]).
+- `@map-jr/map-jr-gl/maplibre-compat`: `querySourceFeatures` reads all features of the tiles under the view, not
+  only those in the view ([#281]).
+- `getClusterLeaves` follows the `limit` and `offset` rules of supercluster, so `limit: 0` gives every leaf ([#284]).
+- GeoJSON sources support `generateId` and `promoteId` in the object form. With `generateId: true`, features get
+  index ids, as in MapLibre GL JS ([#291], [#342]).
+- `@map-jr/map-jr-gl/maplibre-compat`: vector, raster and raster-dem sources have `setTiles` and `setUrl`. The source
+  object is now a copy of the specification ([#296]).
+- The attribution credits only sources of visible layers, hides blank credits and folds only on a drag. Its button is
+  placed inside the compact control ([#302], [#313]).
+- `@map-jr/map-jr-gl/maplibre-compat`: `once('idle')` in a `load` listener waits for the sources that the listener
+  added ([#282]).
+- `@map-jr/map-jr-gl/maplibre-compat`: the class `maplibregl-map` and the position and overflow of the container are
+  set before the map measures it, also for a container attached later ([#286], [#346]).
+- `@map-jr/map-jr-gl/maplibre-compat`: `ScaleControl.setUnit()` works, also with the unit `nautical` ([#343]).
+- `@map-jr/map-jr-gl/maplibre-compat`: the members and exports that Vue wrappers and apps read are added. `Marker` and
+  `FullscreenControl` are subclasses of the classes of the main entry ([#300]).
+- `@map-jr/map-jr-gl/maplibre-compat`: the `eventData` of camera methods is on the events of the move ([#297]).
+- `@map-jr/map-jr-gl/maplibre-compat`: `addControl` with a value that is not a control fires `error` instead of
+  throwing a `TypeError` ([#287]).
+- Sizes that depend on zoom and feature are found at the zoom of an overzoomed tile ([#285]).
+- A Marker in a container scaled by CSS follows the pointer when it is dragged ([#310]).
+- A new engine gets the request rules when it starts, also after the fall back to the main thread ([#356]).
+- Options and methods that have no effect warn once. Among them are `fadeDuration`, `pitchWithRotate`,
+  `focusAfterOpen`, the `fitBounds` options `speed`, `curve` and `linear`, `addProtocol('pmtiles')`, reading
+  `map.painter` and a projection other than mercator. With `strict: true`, two map options throw
+  ([#293], [#372], [#316], [#359], [#303]).
+- Warnings name the Vite dependency cache and `toBlob()`, and the warning for a container of height 0 names the
+  component or action ([#424], [#306]).
+- Types: the per-layer style types check the prefix of `paint` and `layout` names. The compat types of `fitBounds`,
+  `CameraOptions`, `getStyle`, feature state and `querySourceFeatures` follow MapLibre GL JS, and the compat style
+  types accept values typed with `maplibre-gl`. Code with a wrong prefix, or with a `[top, right, bottom, left]`
+  tuple as `CameraOptions.padding`, no longer compiles ([#321], [#311], [#418]).
+- `@map-jr/map-jr-gl/vue`: the template ref of `MapJr` is typed, and `load` gives the map. A client build does not
+  emit the server renderer as a chunk ([#301], [#312]).
+- The build option `--sizes` imports the controls from the right file ([#398]).
+
+[#278]: https://github.com/map-jr/map-jr-gl/pull/278
+[#281]: https://github.com/map-jr/map-jr-gl/pull/281
+[#282]: https://github.com/map-jr/map-jr-gl/pull/282
+[#283]: https://github.com/map-jr/map-jr-gl/pull/283
+[#284]: https://github.com/map-jr/map-jr-gl/pull/284
+[#285]: https://github.com/map-jr/map-jr-gl/pull/285
+[#286]: https://github.com/map-jr/map-jr-gl/pull/286
+[#287]: https://github.com/map-jr/map-jr-gl/pull/287
+[#288]: https://github.com/map-jr/map-jr-gl/pull/288
+[#291]: https://github.com/map-jr/map-jr-gl/pull/291
+[#292]: https://github.com/map-jr/map-jr-gl/pull/292
+[#293]: https://github.com/map-jr/map-jr-gl/pull/293
+[#296]: https://github.com/map-jr/map-jr-gl/pull/296
+[#297]: https://github.com/map-jr/map-jr-gl/pull/297
+[#298]: https://github.com/map-jr/map-jr-gl/pull/298
+[#300]: https://github.com/map-jr/map-jr-gl/pull/300
+[#301]: https://github.com/map-jr/map-jr-gl/pull/301
+[#302]: https://github.com/map-jr/map-jr-gl/pull/302
+[#303]: https://github.com/map-jr/map-jr-gl/pull/303
+[#304]: https://github.com/map-jr/map-jr-gl/pull/304
+[#306]: https://github.com/map-jr/map-jr-gl/pull/306
+[#307]: https://github.com/map-jr/map-jr-gl/pull/307
+[#308]: https://github.com/map-jr/map-jr-gl/pull/308
+[#310]: https://github.com/map-jr/map-jr-gl/pull/310
+[#311]: https://github.com/map-jr/map-jr-gl/pull/311
+[#312]: https://github.com/map-jr/map-jr-gl/pull/312
+[#313]: https://github.com/map-jr/map-jr-gl/pull/313
+[#315]: https://github.com/map-jr/map-jr-gl/pull/315
+[#316]: https://github.com/map-jr/map-jr-gl/pull/316
+[#317]: https://github.com/map-jr/map-jr-gl/pull/317
+[#318]: https://github.com/map-jr/map-jr-gl/pull/318
+[#320]: https://github.com/map-jr/map-jr-gl/pull/320
+[#321]: https://github.com/map-jr/map-jr-gl/pull/321
+[#322]: https://github.com/map-jr/map-jr-gl/pull/322
+[#323]: https://github.com/map-jr/map-jr-gl/pull/323
+[#327]: https://github.com/map-jr/map-jr-gl/pull/327
+[#329]: https://github.com/map-jr/map-jr-gl/pull/329
+[#331]: https://github.com/map-jr/map-jr-gl/pull/331
+[#333]: https://github.com/map-jr/map-jr-gl/pull/333
+[#335]: https://github.com/map-jr/map-jr-gl/pull/335
+[#336]: https://github.com/map-jr/map-jr-gl/pull/336
+[#337]: https://github.com/map-jr/map-jr-gl/pull/337
+[#339]: https://github.com/map-jr/map-jr-gl/pull/339
+[#340]: https://github.com/map-jr/map-jr-gl/pull/340
+[#342]: https://github.com/map-jr/map-jr-gl/pull/342
+[#343]: https://github.com/map-jr/map-jr-gl/pull/343
+[#344]: https://github.com/map-jr/map-jr-gl/pull/344
+[#345]: https://github.com/map-jr/map-jr-gl/pull/345
+[#346]: https://github.com/map-jr/map-jr-gl/pull/346
+[#347]: https://github.com/map-jr/map-jr-gl/pull/347
+[#348]: https://github.com/map-jr/map-jr-gl/pull/348
+[#349]: https://github.com/map-jr/map-jr-gl/pull/349
+[#350]: https://github.com/map-jr/map-jr-gl/pull/350
+[#352]: https://github.com/map-jr/map-jr-gl/pull/352
+[#354]: https://github.com/map-jr/map-jr-gl/pull/354
+[#356]: https://github.com/map-jr/map-jr-gl/pull/356
+[#357]: https://github.com/map-jr/map-jr-gl/pull/357
+[#358]: https://github.com/map-jr/map-jr-gl/pull/358
+[#359]: https://github.com/map-jr/map-jr-gl/pull/359
+[#362]: https://github.com/map-jr/map-jr-gl/pull/362
+[#363]: https://github.com/map-jr/map-jr-gl/pull/363
+[#366]: https://github.com/map-jr/map-jr-gl/pull/366
+[#372]: https://github.com/map-jr/map-jr-gl/pull/372
+[#373]: https://github.com/map-jr/map-jr-gl/pull/373
+[#374]: https://github.com/map-jr/map-jr-gl/pull/374
+[#375]: https://github.com/map-jr/map-jr-gl/pull/375
+[#376]: https://github.com/map-jr/map-jr-gl/pull/376
+[#378]: https://github.com/map-jr/map-jr-gl/pull/378
+[#382]: https://github.com/map-jr/map-jr-gl/pull/382
+[#398]: https://github.com/map-jr/map-jr-gl/pull/398
+[#399]: https://github.com/map-jr/map-jr-gl/pull/399
+[#401]: https://github.com/map-jr/map-jr-gl/pull/401
+[#402]: https://github.com/map-jr/map-jr-gl/pull/402
+[#405]: https://github.com/map-jr/map-jr-gl/pull/405
+[#409]: https://github.com/map-jr/map-jr-gl/pull/409
+[#413]: https://github.com/map-jr/map-jr-gl/pull/413
+[#414]: https://github.com/map-jr/map-jr-gl/pull/414
+[#416]: https://github.com/map-jr/map-jr-gl/pull/416
+[#418]: https://github.com/map-jr/map-jr-gl/pull/418
+[#419]: https://github.com/map-jr/map-jr-gl/pull/419
+[#420]: https://github.com/map-jr/map-jr-gl/pull/420
+[#422]: https://github.com/map-jr/map-jr-gl/pull/422
+[#424]: https://github.com/map-jr/map-jr-gl/pull/424
+[#426]: https://github.com/map-jr/map-jr-gl/pull/426
+[#430]: https://github.com/map-jr/map-jr-gl/pull/430
+[#432]: https://github.com/map-jr/map-jr-gl/pull/432
+[#433]: https://github.com/map-jr/map-jr-gl/pull/433
+[#434]: https://github.com/map-jr/map-jr-gl/pull/434
+[#437]: https://github.com/map-jr/map-jr-gl/pull/437
 
 ## 0.3.0 (2026-11-14)
 
