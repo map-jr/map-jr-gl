@@ -1412,6 +1412,33 @@ for (const method of ['easeTo', 'flyTo']) {
     } catch (e) { check('the test of failed tile requests was completed', false, String(e.message).split('\n')[0]); }
     await page.close();
 }
+// A tile of the view whose requests all fail is covered by its overview tile three levels up before the first `idle`
+// (#379). Every request of the tile at the centre fails; the overview tile of that area must be requested and answered
+// before the map becomes idle.
+{
+    const page = await browser.newPage({viewport: {width: 900, height: 600}});
+    try {
+        const z = 13, x = tileOf(from[0], z), y = Math.floor((1 - Math.log(Math.tan(Math.PI / 4 + from[1] * Math.PI / 360)) / Math.PI) / 2 * 2 ** z);
+        const bad = `/${z}/${x}/${y}.pbf`, over = `/${z - 3}/${x >> 3}/${y >> 3}.pbf`;
+        let overAt = 0;
+        await page.goto(`${origin}/bench`);
+        await page.route(/\/tiles\/\d+\/\d+\/\d+\.pbf/, async route => {
+            const k = new URL(route.request().url()).pathname;
+            if (k.endsWith(bad)) return route.abort('connectionreset');
+            await route.continue().catch(() => {});
+            if (k.endsWith(over)) overAt = Date.now();
+        });
+        const idleAt = await page.evaluate(async from => {
+            const lib = await import('/dist/map-jr-gl.js'), style = await (await fetch('/style.json')).json();
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99;background:#fff'}));
+            window.host = lib.createMap(el, {style, initialView: {center: from, zoom: 13}, renderer: 'main', attribution: false});
+            await new Promise(r => window.host.state.subscribe(s => s.idle, idle => idle && r()));
+            return Date.now();
+        }, from);
+        check('a tile whose requests fail is covered by its overview tile before the first idle', overAt > 0 && overAt <= idleAt, JSON.stringify({over, overAt: overAt && overAt - idleAt}));
+    } catch (e) { check('the test of the overview of a failed tile was completed', false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
 // The cost of a frame does not grow with the number of icons from buffers (#127). The engine reports the script time
 // of its frames on the main thread (`stats`, `frameMs`). The check compares a symbol layer with 100,000 icons with
 // the same layer with 1,000 icons, as a ratio of the medians, so it does not depend on the speed of the machine. With
