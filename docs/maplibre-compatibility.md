@@ -140,7 +140,7 @@ The camera methods of the entry `@map-jr/map-jr-gl/maplibre-compat` (`jumpTo`, `
 
 **Accepted, with no effect** (12; a value that the library cannot do gives one warning): `setAnisotropicFilterPitch`, `setCenterClampedToGround`, `setCenterElevation`, `setProjection`, `setRenderWorldCopies`, `setRoll`, `setSky`, `setSourceTileLodParams`, `setTransformCameraUpdate`, `setTransformConstrain`, `setVerticalFieldOfView`, `setZoomSnap`
 
-**Only in this library:** `addFonts`, `fire`, `getAttributions`, `queryElevation`, `queryFeatures`, `setCursor`, `setEventedParent`
+**Only in this library:** `addFonts`, `fire`, `getAttributions`, `queryElevation`, `queryFeatures`, `setCursor`, `setEventedParent`, `toBlob`
 
 **Not available:** `applyTerrainChange`, `applyTransformChange`, `applyUpdatedTransform`, `calculateAnchoredCameraOptions`, `calculateCameraOptionsFromCameraLngLatAltRotation`, `calculateCameraOptionsFromTo`, `captureRotationPivot`, `clampCenterToGround`, `coveringTiles`, `fitScreenCoordinates`, `getStyleUrl`, `getTransformForUpdate`, `holdElevation`, `isRolling`, `migrateProjection`, `moveCenterOntoTerrain`, `orbitRotationPivot`, `prepareNextFrame`, `putCenterBackOnTerrain`, `releaseElevation`
 <!-- api:end -->
