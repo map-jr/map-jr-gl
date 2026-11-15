@@ -15,6 +15,9 @@ BSD-3-Clause.
   (BSD-3-Clause): `src/ui/handler/cooperative_gestures.ts` and `maplibre-gl.css`.
 - The option `locale` of the compat entry reads the keys of `src/ui/default_locale.ts` of MapLibre GL JS 6.17.0
   (BSD-3-Clause), so that a `locale` object for MapLibre GL JS works unchanged. The English texts are not copied.
+- A map at rest places labels in the next frame after a tile arrives and shows the labels of a newly loaded tile
+  without a fade. This follows the method of `skipFade` in the placement of MapLibre GL JS (BSD-3-Clause); the code
+  is new.
 - The "pseudo fullscreen" of `FullscreenControl` follows MapLibre GL JS 6.17.0 (`src/ui/control/fullscreen_control.ts`).
   The code is new. The rule for `.map-jr-pseudo-fullscreen` copies the CSS of `.maplibregl-pseudo-fullscreen` in
   `maplibre-gl.css`.

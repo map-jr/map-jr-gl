@@ -22,3 +22,12 @@ test('placement schedule: when the camera has stopped, the labels are placed aft
     assert.equal(placeDue(250, 0, 400, false, false), true);
     assert.equal(placeDue(200, 0, 400, false, false), false);
 });
+
+test('placement schedule: at rest, the labels of a tile that arrived are placed in the next frame (#371)', () => {
+    // The last placement was 16 ms ago and took 5 ms: a map at rest places again now instead of after 250 ms.
+    assert.equal(placeDue(16, 0, 5, false, false, true), true);
+    // (A slow placement still waits its cost.)
+    assert.equal(placeDue(16, 0, 400, false, false, true), false);
+    // A moving map keeps the interval.
+    assert.equal(placeDue(16, 0, 5, false, true, false), false);
+});
