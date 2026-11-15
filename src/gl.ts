@@ -804,6 +804,8 @@ export class GLRenderer {
      */
     private layerTarget?: {fb: WebGLFramebuffer; tex: WebGLTexture; w: number; h: number};
     private belowTex?: WebGLTexture;
+    /** Draws a layer of the type "custom" of the compat entry, and restores the GL state after it (custom-layers.ts sets it). */
+    custom?: (id: string, s: Scene) => void;
 
     /** Draws the layers other than symbol layers, or only `only`, or the layers `from` to `to` (not `to` itself). */
     private drawLayers(s: Scene, tr: Transform, bySource: Map<string, RenderItem<GLTile>[]>, target: [number, number], pass: 'all' | 'ground' | 'buildings', only?: CompiledLayer, from = 0, to = s.layers.length) {
@@ -837,6 +839,8 @@ export class GLRenderer {
 
         for (const L of only ? [only] : s.layers.slice(from, to)) {
             if (!L.visible || zoom < L.minzoom || zoom >= L.maxzoom || L.type === 'symbol') continue;
+            // (A custom layer draws on the screen, also with 3D terrain, and not on the pictures of the terrain tiles.)
+            if (L.type === 'custom') { if (pass !== 'ground') { this.custom?.(L.id, s); this.current = null; } continue; }
             if (L.type === 'heatmap') { if (pass !== 'buildings') this.drawHeatmap(L, tr, bySource.get(L.source!) ?? [], target); continue; }
             if (!only && (L.type === 'fill' || L.type === 'line') && pass !== 'buildings') {
                 // Layer-wide opacity and blending: the layer is drawn on its own first, so that overlapping features

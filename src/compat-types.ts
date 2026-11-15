@@ -76,8 +76,52 @@ export type RequestParameters = NonNullable<ReturnType<RequestTransform>>;
 export type QueryRenderedFeaturesOptions = RenderedQueryOptions;
 export type {GeoJSONDiff as GeoJSONSourceDiff} from './map.ts';
 export type QuerySourceFeatureOptions = {sourceLayer?: string; filter?: unknown; validate?: boolean};
-/** What `map.addLayer` accepts: a layer of the style. Its `source` can be the description of a source, as in MapLibre GL JS. */
-export type AddLayerObject = Omit<LayerSpecification, 'source'> & {source?: string | SourceSpecification};
+/**
+ * What `map.addLayer` accepts: a layer of the style, or a custom layer. The `source` of a style layer can be the
+ * description of a source, as in MapLibre GL JS.
+ */
+export type AddLayerObject = (Omit<LayerSpecification, 'source'> & {source?: string | SourceSpecification}) | CustomLayerInterface;
+/**
+ * The projection of a tile or of the world for a shader, as in MapLibre GL JS. In this library the projection is
+ * always Mercator: `clippingPlane` is `[0, 0, 0, 0]`, `projectionTransition` is 0, and `fallbackMatrix` is `mainMatrix`.
+ */
+export type ProjectionData = {
+    mainMatrix: Float32Array | Float64Array; tileMercatorCoords: [number, number, number, number]; clippingPlane: [number, number, number, number];
+    projectionTransition: number; fallbackMatrix: Float32Array | Float64Array; clipAntimeridian: boolean;
+};
+/** The tile of `getProjectionData`. */
+export type CustomLayerProjectionDataParams = {tileID: {canonical: {x: number; y: number; z: number}; wrap?: number}; aligned?: boolean; applyTerrainMatrix?: boolean; applyGlobeMatrix?: boolean};
+/**
+ * What `render` and `prerender` of a custom layer get, as in MapLibre GL JS 6. The matrices are `Float64Array`s.
+ * `renderTerrainHeightMap` is never set.
+ */
+export type CustomRenderMethodInput = {
+    farZ: number; nearZ: number; /** The vertical field of view in radians. */ fov: number;
+    /** From world pixels (x and y from 0 to the size of the world) and metres (z) to clip space. */
+    modelViewProjectionMatrix: Float64Array;
+    /** From view space to clip space. */
+    projectionMatrix: Float64Array;
+    shaderData: {variantName: string; vertexShaderPrelude: string; define: string};
+    /** `mainMatrix` maps a `MercatorCoordinate` (x, y and z) to clip space. */
+    defaultProjectionData: ProjectionData;
+    /** The projection of one tile: `mainMatrix` maps tile units (0 to 8192) to clip space. */
+    getProjectionData(params: CustomLayerProjectionDataParams): ProjectionData;
+    renderTerrainHeightMap?: undefined;
+};
+export type CustomRenderMethod = (gl: WebGL2RenderingContext, options: CustomRenderMethodInput) => void;
+/**
+ * A layer that draws with WebGL into the context of the map, as in MapLibre GL JS. It needs a map made with
+ * `renderer: 'main'`. See "Custom layers" in docs/maplibre-compatibility.md.
+ */
+export interface CustomLayerInterface {
+    id: string; type: 'custom';
+    /** `'3d'` draws with the depth test and shares the depth buffer; the default is `'2d'`. */
+    renderingMode?: '2d' | '3d';
+    render: CustomRenderMethod;
+    prerender?: CustomRenderMethod;
+    onAdd?(map: Map, gl: WebGL2RenderingContext): void;
+    onRemove?(map: Map, gl: WebGL2RenderingContext): void;
+}
 
 export type AnimationOptions = {duration?: number; around?: [number, number]};
 export type JumpToOptions = Parameters<Map['jumpTo']>[0];

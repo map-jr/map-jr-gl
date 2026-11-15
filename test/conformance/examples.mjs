@@ -2,6 +2,7 @@
 // this library in its place. For each page it records the errors and how much the two images differ.
 //   node test/conformance/examples.mjs [out-dir] [--filter=<regex>] [--write]      (--write puts the results in docs/ecosystem.md)
 //   --again uses the images and errors of the last run (to write the results again without a browser).
+//   --renderer=main gives each map of this library `renderer: 'main'` (custom layers need it); --write is then ignored.
 // The pages come from the checkout of maplibre/maplibre-gl-js at .cache/maplibre-gl-js (the render tests clone it).
 // Needs python3 with Pillow for the comparison.
 import {execFileSync} from 'node:child_process';
@@ -13,6 +14,7 @@ import {launch} from '../launch.mjs';
 const root = path.resolve(import.meta.dirname, '../..'), pages = path.join(root, '.cache/maplibre-gl-js/test/examples');
 const out = process.argv.slice(2).find(a => !a.startsWith('--')) ?? path.join(root, '.cache/examples');
 const filter = new RegExp(process.argv.find(a => a.startsWith('--filter='))?.slice(9) ?? '');
+const renderer = process.argv.find(a => a.startsWith('--renderer='))?.slice(11);
 if (!existsSync(pages)) { console.error('Run the render tests one time first: they clone maplibre-gl-js into .cache/.'); process.exit(1); }
 mkdirSync(out, {recursive: true});
 
@@ -31,9 +33,9 @@ const server = http.createServer((req, res) => {
             return send(html, 'text/html');
         }
         // (The map of the page is kept in `window.shownMap`, so that the runner can wait until it has loaded.)
-        const keep = lib => `import * as lib from '${lib}';\nexport * from '${lib}';\nexport class Map extends lib.Map { constructor(options) { super(options); window.shownMap = this; } }\n`;
+        const keep = (lib, options = 'options') => `import * as lib from '${lib}';\nexport * from '${lib}';\nexport class Map extends lib.Map { constructor(options) { super(${options}); window.shownMap = this; } }\n`;
         if (p === '/maplibre/dist/maplibre-gl-dev.mjs') return send(keep('/ml/maplibre-gl.mjs') + `lib.setWorkerUrl('/ml/maplibre-gl-worker.mjs');`, 'text/javascript');
-        if (p === '/mapjr/dist/maplibre-gl-dev.mjs') return send(keep('/dist/map-jr-gl-maplibre-compat.js') + `export {default} from '/dist/map-jr-gl-maplibre-compat.js';`, 'text/javascript');
+        if (p === '/mapjr/dist/maplibre-gl-dev.mjs') return send(keep('/dist/map-jr-gl-maplibre-compat.js', renderer ? `{renderer: '${renderer}', ...options}` : undefined) + `export {default} from '/dist/map-jr-gl-maplibre-compat.js';`, 'text/javascript');
         const file = p.startsWith('/ml/') ? path.join(root, 'node_modules/maplibre-gl/dist', p.slice(4)) : p.startsWith('/dist/') ? path.join(root, p)
             : /^\/(maplibre|mapjr)\/dist\/maplibre-gl\.css$/.test(p) ? path.join(root, 'node_modules/maplibre-gl/dist/maplibre-gl.css')
             : path.join(root, '.cache/maplibre-gl-js', p.replace(/^\/(maplibre|mapjr)\//, '')); // other files of the repository that a page uses
@@ -102,7 +104,7 @@ const count = s => rows.filter(r => r.state === s).length;
 console.log(`${rows.length} example pages: ${count('works')} work, ${count('differs')} draw a different image, ${count('error')} give an error, ${count('no image') + count('not run')} were not compared`);
 for (const r of rows.filter(r => r.state !== 'works')) console.log(`${r.state.padEnd(8)} ${r.name} ${r.diff ?? ''}${r.diff !== undefined ? '% ' : ''}${r.newErrors[0]?.slice(0, 140) ?? ''}`);
 
-if (process.argv.includes('--write') && !process.argv.some(a => a.startsWith('--filter='))) {
+if (process.argv.includes('--write') && !process.argv.some(a => a.startsWith('--filter=')) && !renderer) {
     const cell = s => String(s).replaceAll('|', '\\|').replace(/https?:\/\/localhost:\d+\/\S*/g, '').slice(0, 160);
     const lines = ['<!-- examples:start -->', '## The example pages of MapLibre GL JS', '',
         'The documentation of MapLibre GL JS has an example page for each common task. `node test/conformance/examples.mjs --write`',

@@ -32,6 +32,12 @@ BSD-3-Clause.
 - The check for a canvas that adds noise to `getImageData` (`src/exact-pixels.ts`) follows `isOffscreenCanvasDistorted`
   of MapLibre GL JS 6.17.0 (`src/util/offscreen_canvas_distorted.ts`, BSD-3-Clause), and so does reading elevation
   tiles through WebGL when the canvas is distorted. The code is new.
+- Custom layers of the compat entry (`src/custom-layers.ts`) follow `drawCustom`, `getProjectionDataForCustomLayer`
+  and `setCustomLayerDefaults` of MapLibre GL JS 6.17.0 (`src/webgl/draw/draw_custom.ts`,
+  `src/geo/projection/mercator_transform.ts`, `src/webgl/context.ts`, BSD-3-Clause): the values that `render` gets,
+  the GL state before the code of the layer, and the names of the functions of the shader prelude for the Mercator
+  projection. `MercatorCoordinate` follows `src/geo/mercator_coordinate.ts` and uses the same radius of the earth.
+  The code is new.
 - The tests of MapLibre GL JS and of the MapLibre style specification measure the compatibility of this library.
   The tests are not part of this repository. The test commands download them.
 

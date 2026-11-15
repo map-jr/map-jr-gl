@@ -5,8 +5,9 @@
 import {Map as CoreMap, type CameraInput, type PointLike, type RenderedFeature, type RenderedQueryOptions, type PaddingInput, type ImageOptions, type FlyOptions} from './map.ts';
 import type {QueriedFeature} from './query.ts';
 import {GPUInitializationError} from './gpu-error.ts';
+import {defaults as loadDefaults} from './loader.ts';
 import type {LngLatLike} from './geo.ts';
-import type {AddLayerObject, GeoJSONFeature, MapGeoJSONFeature, MapEventType, MapLayerEventType, Source, MapOptions, EaseToOptions, StyleSwapOptions, FitBoundsOptions, QuerySourceFeatureOptions, FeatureIdentifier, StyleSpecification} from './compat-types.ts';
+import type {AddLayerObject, CustomLayerInterface, GeoJSONFeature, MapGeoJSONFeature, MapEventType, MapLayerEventType, Source, MapOptions, EaseToOptions, StyleSwapOptions, FitBoundsOptions, QuerySourceFeatureOptions, FeatureIdentifier, StyleSpecification} from './compat-types.ts';
 
 /**
  * The types of `on`, `once`, `off` and `getSource` as in MapLibre GL JS: the event of a listener follows from the name
@@ -117,6 +118,10 @@ export class Map extends CoreMap {
     private warned = new Set<string>();
     /** `strict: true`: what gives a warning or an `error` event for code written for MapLibre GL JS throws an error. */
     private strict = false;
+    /** The map was made with `renderer: 'main'`, which custom layers need. */
+    private mainThread = false;
+    /** The custom layers of the map start when their file has loaded. */
+    private custom?: Promise<unknown>;
     /** One warning for code that used the array of a query without `await`, when the array was not complete. */
     private incomplete(name: string, had: number, has: number) {
         if (this.warned.has(name)) return;
@@ -185,6 +190,7 @@ export class Map extends CoreMap {
         // (MapLibre GL JS has `antialias` in `canvasContextAttributes`.)
         super(context?.antialias === undefined ? options : {...options, antialias: context.antialias});
         this.strict = !!o.strict;
+        this.mainThread = (o.renderer ?? loadDefaults.renderer) === 'main';
         // (A canvas that replaces this one is a copy of it.)
         this.getCanvas().classList.add('maplibregl-canvas');
         // As in MapLibre GL JS, the element of getCanvasContainer() has `maplibregl-touch-drag-pan` while dragPan is
@@ -232,11 +238,20 @@ export class Map extends CoreMap {
         return (control as {onAdd?: unknown} | undefined)?.onAdd ? ((this.added ??= []).push(control), super.addControl(control, position)) : this.refused('addControl(): the argument is not a control. Pass an object with onAdd and onRemove methods.');
     }
     addLayer(layer: AddLayerObject, beforeId?: string) {
-        // (A custom layer has functions: it cannot go to the worker, and it is not kept in the style.)
-        if (layer.type === 'custom') return this.unsupported('A layer of the type "custom"', false);
-        if (this.rawStyle && this.getLayer(layer.id)) return this.refused(`addLayer: the style has a layer with the id "${layer.id}" already. Remove that layer first, or use another id.`);
-        if (this.rawStyle && typeof layer.source === 'string' && !this.rawStyle.sources[layer.source]) return this.refused(`addLayer: the layer "${layer.id}" names the source "${layer.source}", which the style does not have. Add the source first.`);
-        return super.addLayer(layer, beforeId);
+        let one: {id: string; source?: unknown} = layer;
+        if (layer.type === 'custom') {
+            // A custom layer draws with the WebGL context of the map, which only the engine on this thread shares. Its
+            // code loads with the first one (custom-layers.ts). The style gets a layer with the id and the type, so that
+            // the order and the visibility work as for other layers; the object of the user is its `implementation`.
+            if (!this.mainThread) return this.refused(`addLayer: the custom layer "${layer.id}" needs the map to draw on the main thread. Pass renderer: 'main' to new Map().`);
+            if (typeof (layer as CustomLayerInterface).render != 'function') return this.refused(`addLayer: the custom layer "${layer.id}" has no method render. Add render(gl, args).`);
+            this.custom ??= import('./custom-layers.ts').then(m => m.customLayers(this, draw => this.ask(id => ({type: 'custom', id, draw}))), error => this.fire('error', {error}));
+            one = Object.defineProperty({id: layer.id, type: 'custom'}, 'implementation', {value: layer});
+        }
+        const {id, source} = one;
+        if (this.rawStyle && this.getLayer(id)) return this.refused(`addLayer: the style has a layer with the id "${id}" already. Remove that layer first, or use another id.`);
+        if (this.rawStyle && typeof source === 'string' && !this.rawStyle.sources[source]) return this.refused(`addLayer: the layer "${id}" names the source "${source}", which the style does not have. Add the source first.`);
+        return super.addLayer(one, beforeId);
     }
     addSource(id: string, source: object) {
         return this.rawStyle?.sources[id] ? this.refused(`addSource: the style has a source with the id "${id}" already. Remove that source first, or use another id.`) : super.addSource(id, source);
@@ -305,6 +320,8 @@ export class Map extends CoreMap {
     /** There is no sky in this library. (react-map-gl reads the value when a style has loaded.) */
     getSky() { return undefined; }
     getLight() { return {anchor: 'viewport', position: [1.15, 210, 30], color: '#ffffff', intensity: 0.5, ...this.rawStyle?.light}; }
+    /** The style, as in MapLibre GL JS: without its custom layers. */
+    getStyle() { const style = super.getStyle(); if (style) style.layers = style.layers.filter((l: {type: string}) => l.type !== 'custom'); return style; }
     getLayersOrder(): string[] { return this.rawStyle?.layers.map((l: any) => l.id) ?? []; }
     getPaintProperty(layerId: string, name: string) { return this.getLayer(layerId)?.paint?.[name]; }
     getLayoutProperty(layerId: string, name: string) { return this.getLayer(layerId)?.layout?.[name]; }

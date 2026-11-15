@@ -1,0 +1,148 @@
+// Custom layers of the compat entry (#45): test/interact.mjs runs these checks, and a script can run them in a browser
+// with a GPU (Chromium with a window). `page` is a page of the demo server.
+
+/** Runs the page part and reports each check with `check(name, ok, detail)`. */
+export async function checkCustomLayers(page, check, label = '[main]') {
+    const r = await page.evaluate(run);
+    // (The values of MercatorCoordinate are those of MapLibre GL JS 6.17 for the same calls.)
+    const near = (a, b, d = 1e-9) => Math.abs(a - b) <= d * Math.max(1, Math.abs(b));
+    check(`${label} maplibre-compat: a custom layer between two style layers draws in its place, with the matrix of MapLibre GL JS (flat, and with bearing and pitch)`,
+        r.flat.inside === 'red' && r.flat.covered === 'blue' && r.flat.outside === 'white' && r.flat.edgeIn === 'red' && r.flat.edgeOut === 'white' && r.flat.fillOnly === 'blue'
+        && r.tilted.inside.every(c => c === 'red') && r.tilted.outside.every(c => c === 'white') && r.tilted.covered === 'blue' && r.matrix < 0.05 && r.close < 0.05, JSON.stringify({flat: r.flat, tilted: r.tilted, matrix: r.matrix, close: r.close}));
+    check(`${label} maplibre-compat: the custom layer is in the order of the style, getStyle() leaves it out, and getLayer() gives its implementation`,
+        r.order === 'bg,red,top' && r.style === 'bg,top' && r.implementation, JSON.stringify({order: r.order, style: r.style, implementation: r.implementation}));
+    check(`${label} maplibre-compat: onAdd runs once with the context, prerender comes before render, triggerRepaint draws again, and the state of the user does not reach the map`,
+        r.calls.onAdd === 1 && r.sameGl && r.calls.firstTwo === 'prerender,render' && r.repainted && r.args.fov > 0.64 && r.args.fov < 0.65 && r.args.nearZ > 0 && r.args.farZ > r.args.nearZ
+        && r.args.variant === 'mercator' && r.args.prelude && r.args.f64 && r.args.tile, JSON.stringify({calls: r.calls, sameGl: r.sameGl, repainted: r.repainted, args: r.args}));
+    check(`${label} maplibre-compat: removeLayer() calls onRemove and the layer is gone from the picture, and remove() calls onRemove of the layers that are left`,
+        r.removed.calls === 1 && r.removed.gl && r.removed.after === 'white' && r.removed.order === 'bg,top' && r.removedByMap === 1, JSON.stringify({removed: r.removed, removedByMap: r.removedByMap}));
+    check(`${label} maplibre-compat: with the worker renderer, addLayer of a custom layer fires an error that says to pass renderer: 'main', and adds nothing`,
+        r.worker.errors.length === 2 && r.worker.errors.every(m => m.startsWith('[map-jr-gl] addLayer: the custom layer "red"') && m.includes("renderer: 'main'")) && r.worker.order === 'bg,top', JSON.stringify(r.worker));
+    const m = r.mercator;
+    check(`${label} maplibre-compat: MercatorCoordinate gives the values of MapLibre GL JS`,
+        near(m.origin[0], 0.5) && near(m.origin[1], 0.5) && m.origin[2] === 0 && near(m.ny[0], 0.29444444444444445) && near(m.ny[1], 0.3760277015186852) && near(m.ny[2], 3.295078460614361e-6)
+        && near(m.altitude, 100) && near(m.back[0], -74) && near(m.back[1], 40.7) && near(m.meter, 3.295078460614361e-8), JSON.stringify(m));
+}
+
+/** In the page. A white background, the custom layer with a red square, and a blue fill over the east part of the square. */
+async function run() {
+    const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    const square = [[-20, -20], [20, -20], [20, 20], [-20, 20], [-20, -20]];
+    const style = {version: 8, sources: {g: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[5, -60], [60, -60], [60, 60], [5, 60], [5, -60]]]}}}},
+        layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}, {id: 'top', type: 'fill', source: 'g', paint: {'fill-color': '#00f', 'fill-antialias': false}}]};
+    const make = renderer => {
+        const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:0;top:0;width:300px;height:200px'}));
+        return new mod.Map({container: el, ...(renderer && {renderer}), center: [0, 0], zoom: 1, attributionControl: false, fadeDuration: 0, style});
+    };
+    const pad = Object.assign(document.createElement('canvas'), {width: 1, height: 1}).getContext('2d', {willReadFrequently: true});
+    const name = ([r, g, b]) => r > 200 && g < 60 && b < 60 ? 'red' : r < 60 && g < 60 && b > 200 ? 'blue' : r > 200 && g > 200 && b > 200 ? 'white' : `${r},${g},${b}`;
+    // The colour at a position in the next `idle` event (the drawing buffer can be cleared after a frame).
+    const colours = (m, where) => new Promise(resolve => {
+        m.once('idle', () => {
+            const c = m.getCanvas(), k = c.width / m.getContainer().clientWidth;
+            resolve(where.map(p => { const q = Array.isArray(p) ? m.project(p) : p; pad.drawImage(c, Math.floor(q.x * k), Math.floor(q.y * k), 1, 1, 0, 0, 1, 1); return name(pad.getImageData(0, 0, 1, 1).data); }));
+        });
+        m.triggerRepaint();
+        setTimeout(() => resolve(['no idle']), 8000);
+    });
+
+    const calls = {onAdd: 0, onRemove: 0, log: []}, out = {};
+    let addGl, removeGl, lastArgs, renders = 0;
+    const layer = {
+        id: 'red', type: 'custom',
+        onAdd(map, gl) {
+            calls.onAdd++; addGl = gl;
+            const shader = (type, text) => { const s = gl.createShader(type); gl.shaderSource(s, text); gl.compileShader(s); return s; };
+            this.program = gl.createProgram();
+            gl.attachShader(this.program, shader(gl.VERTEX_SHADER, '#version 300 es\nuniform mat4 u_matrix; in vec2 a_pos; void main() { gl_Position = u_matrix * vec4(a_pos, 0.0, 1.0); }'));
+            gl.attachShader(this.program, shader(gl.FRAGMENT_SHADER, '#version 300 es\nprecision highp float; out vec4 colour; void main() { colour = vec4(1.0, 0.0, 0.0, 1.0); }'));
+            gl.linkProgram(this.program);
+            const [a, b] = [mod.MercatorCoordinate.fromLngLat([-20, -20]), mod.MercatorCoordinate.fromLngLat([20, 20])];
+            this.vao = gl.createVertexArray();
+            gl.bindVertexArray(this.vao);
+            this.buffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([a.x, a.y, b.x, a.y, a.x, b.y, b.x, b.y]), gl.STATIC_DRAW);
+            gl.enableVertexAttribArray(0);
+            gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+            gl.bindAttribLocation(this.program, 0, 'a_pos');
+            gl.linkProgram(this.program);
+        },
+        prerender() { calls.log.push('prerender'); },
+        render(gl, args) {
+            calls.log.push('render'); renders++; lastArgs = args;
+            gl.useProgram(this.program);
+            gl.uniformMatrix4fv(gl.getUniformLocation(this.program, 'u_matrix'), false, args.defaultProjectionData.mainMatrix);
+            gl.bindVertexArray(this.vao);
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+            // State that three.js and other libraries leave behind: the map must not draw with it.
+            gl.enable(gl.CULL_FACE); gl.cullFace(gl.FRONT_AND_BACK); gl.enable(gl.SCISSOR_TEST); gl.scissor(0, 0, 1, 1);
+            gl.blendFunc(gl.ZERO, gl.ZERO); gl.colorMask(true, false, true, false); gl.depthMask(false); gl.enable(gl.STENCIL_TEST); gl.stencilFunc(gl.NEVER, 1, 255);
+            gl.pixelStorei(gl.UNPACK_ALIGNMENT, 8); gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true); gl.activeTexture(gl.TEXTURE3); gl.viewport(0, 0, 2, 2);
+        },
+        onRemove(map, gl) { calls.onRemove++; removeGl = gl; },
+    };
+
+    const m = make('main');
+    await new Promise(r => m.once('load', r));
+    m.addLayer(layer, 'top');
+    out.order = m.getLayersOrder().join();
+    out.style = m.getStyle().layers.map(l => l.id).join();
+    out.implementation = m.getLayer('red').implementation === layer;
+    await wait(300);
+    let [inside, covered, outside, edgeIn, edgeOut, fillOnly] = await colours(m, [[-10, 0], [12, 0], [-40, 0], [-19, 0], [-21, 0], [12, 25]]);
+    out.flat = {inside, covered, outside, edgeIn, edgeOut, fillOnly};
+    // The matrix maps a position to the same pixel as project() (in pixels of the map).
+    const clip = (M, x, y) => { const v = [0, 1, 2, 3].map(i => M[i] * x + M[4 + i] * y + M[12 + i]); return {x: (v[0] / v[3] + 1) / 2 * 300, y: (1 - v[1] / v[3]) / 2 * 200}; };
+    const err = (M, lngLat) => { const c = mod.MercatorCoordinate.fromLngLat(lngLat), a = clip(M, c.x, c.y), b = m.project(lngLat); return Math.hypot(a.x - b.x, a.y - b.y); };
+    const mvp = (lngLat) => { const c = mod.MercatorCoordinate.fromLngLat(lngLat), ws = 512 * 2 ** m.getZoom(), a = clip(lastArgs.modelViewProjectionMatrix, c.x * ws, c.y * ws), b = m.project(lngLat); return Math.hypot(a.x - b.x, a.y - b.y); };
+    out.matrix = Math.max(err(lastArgs.defaultProjectionData.mainMatrix, [-20, 10]), err(lastArgs.defaultProjectionData.mainMatrix, [30, -15]), mvp([-20, 10]));
+    out.calls = {onAdd: calls.onAdd, firstTwo: calls.log.slice(0, 2).join()};
+    out.sameGl = addGl === m.getCanvas().getContext('webgl2');
+    const tile = lastArgs.getProjectionData({tileID: {canonical: {z: 1, x: 0, y: 1}}});
+    out.args = {fov: lastArgs.fov, nearZ: lastArgs.nearZ, farZ: lastArgs.farZ, variant: lastArgs.shaderData.variantName, prelude: lastArgs.shaderData.vertexShaderPrelude.includes('vec4 projectTile(vec2 p)'),
+        f64: lastArgs.defaultProjectionData.mainMatrix instanceof Float64Array && lastArgs.projectionMatrix instanceof Float64Array,
+        // (The south-west tile of zoom 1: its corner 8192, 0 in tile units is the position 0, 0.)
+        tile: tile.mainMatrix instanceof Float32Array && Math.abs(clip(tile.mainMatrix, 8192, 0).x - m.project([0, 0]).x) < 0.05 && String(tile.tileMercatorCoords) === String([0, 0.5, 1 / 2 / 8192, 1 / 2 / 8192])};
+    const before = renders;
+    m.triggerRepaint();
+    await wait(200);
+    out.repainted = renders > before;
+
+    // With bearing and pitch: the corners of the square, a little inside and a little outside.
+    m.jumpTo({bearing: 30, pitch: 40});
+    await wait(100);
+    const inner = [[-17, -17], [-17, 17], [3, 17], [3, -17]], outer = [[-23, -23], [-23, 23], [0, 23], [0, -23]];
+    const tilted = await colours(m, [...inner, ...outer, [12, 0]]);
+    out.tilted = {inside: tilted.slice(0, 4), outside: tilted.slice(4, 8), covered: tilted[8]};
+    // At zoom 18 the matrix is still exact to a small part of a pixel (MapLibre GL JS gives 64-bit matrices for this).
+    m.jumpTo({center: [-74.0060, 40.7128], zoom: 18, bearing: 20, pitch: 50});
+    await colours(m, [[0, 0]]);
+    out.close = Math.max(err(lastArgs.defaultProjectionData.mainMatrix, [-74.0058, 40.7129]), err(lastArgs.defaultProjectionData.mainMatrix, [-74.0063, 40.7126]));
+    m.jumpTo({center: [0, 0], zoom: 1, bearing: 0, pitch: 0});
+
+    m.removeLayer('red');
+    await wait(100);
+    out.removed = {calls: calls.onRemove, gl: removeGl === addGl, order: m.getLayersOrder().join(), after: (await colours(m, [[-10, 0]]))[0]};
+    // remove() calls onRemove of the custom layers that the map still has.
+    let removedByMap = 0;
+    m.addLayer({id: 'other', type: 'custom', render() {}, onRemove() { removedByMap++; }});
+    await wait(300);
+    const el = m.getContainer(); m.remove(); el.remove();
+    out.removedByMap = removedByMap;
+
+    // The worker renderer (asked for, and the default): an error, and no layer.
+    const errors = [];
+    for (const renderer of ['worker', undefined]) {
+        const w = make(renderer);
+        w.on('error', e => errors.push(e.error.message));
+        await new Promise(r => w.once('load', r));
+        w.addLayer({...layer}, 'top');
+        out.worker = {errors, order: w.getLayersOrder().join()};
+        const e = w.getContainer(); w.remove(); e.remove();
+    }
+    const c = mod.MercatorCoordinate.fromLngLat([-74, 40.7], 100);
+    out.mercator = {origin: Object.values(mod.MercatorCoordinate.fromLngLat({lng: 0, lat: 0})), ny: [c.x, c.y, c.z], altitude: c.toAltitude(), back: c.toLngLat().toArray(), meter: c.meterInMercatorCoordinateUnits()};
+    return out;
+}
