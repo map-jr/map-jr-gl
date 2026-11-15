@@ -1,6 +1,7 @@
 // Drives the demo in Chromium and checks behaviour in both renderer modes: node test/interact.mjs [outDir] (default .cache/shots)
 import {launch, browserName} from './launch.mjs';
 import {watchdog} from './watchdog.mjs';
+import {checkCustomLayers} from './custom-layers.mjs';
 const out = process.argv[2] || '.cache/shots'; // (the directory for the screenshots; Playwright creates it)
 const browser = await launch();
 const origin = `http://localhost:${process.env.PORT || 8080}`; // (the demo server; PORT lets two runs use two servers)
@@ -1930,6 +1931,7 @@ for (const mode of ['main', 'worker']) {
             const options = warnings.splice(0), errors = [];
             m.on('error', e => errors.push(e.error.message));
             await new Promise(r => m.once('load', r));
+            // (A custom layer works on this map, made with renderer: 'main': it gives no warning. See test/custom-layers.mjs.)
             m.addLayer({id: 'custom', type: 'custom', render() {}});
             const custom = warnings.splice(0);
             m.addLayer({id: 'bg', type: 'background'});
@@ -1953,14 +1955,16 @@ for (const mode of ['main', 'worker']) {
             return {...out, thrown, thrownCall};
         });
         check('[main] maplibre-compat: each option with no effect gives one warning, the defaults give none, the option projection is applied, and maxBounds works',
-            quiet.options.length === 2 && ['The option renderWorldCopies', 'new Map(): canvasContextAttributes.preserveDrawingBuffer has no effect. Read the canvas with map.toBlob()'].every(n => quiet.options.some(w => w.startsWith('[map-jr-gl] ' + n))) && quiet.plain.length === 0 && String(quiet.bounds) === '-10,-10,10,10' && quiet.clamped.every((v, i) => Math.abs(v - [1.2109, 3.4573][i]) < 1e-3) && quiet.later.every((v, i) => Math.abs(v - [1.2109, 3.4573][i]) < 1e-3) && quiet.custom.filter(w => !w.includes('projection')).length === 1 && quiet.custom.some(w => w.includes('"custom"'))
+            quiet.options.length === 2 && ['The option renderWorldCopies', 'new Map(): canvasContextAttributes.preserveDrawingBuffer has no effect. Read the canvas with map.toBlob()'].every(n => quiet.options.some(w => w.startsWith('[map-jr-gl] ' + n))) && quiet.plain.length === 0 && String(quiet.bounds) === '-10,-10,10,10' && quiet.clamped.every((v, i) => Math.abs(v - [1.2109, 3.4573][i]) < 1e-3) && quiet.later.every((v, i) => Math.abs(v - [1.2109, 3.4573][i]) < 1e-3)
             // (The option projection is applied as setProjection (#463): a globe writes the warning of the style when the style is there.)
-            && quiet.custom.filter(w => w.startsWith('[map-jr-gl] The projection "globe" is not drawn yet')).length === 1, JSON.stringify({options: quiet.options, plain: quiet.plain, bounds: quiet.bounds, clamped: quiet.clamped, later: quiet.later, custom: quiet.custom}));
+            && quiet.custom.length === 1 && quiet.custom[0].startsWith('[map-jr-gl] The projection "globe" is not drawn yet'), JSON.stringify({options: quiet.options, plain: quiet.plain, bounds: quiet.bounds, clamped: quiet.clamped, later: quiet.later, custom: quiet.custom}));
         check('[main] maplibre-compat: a layer or source id that exists, a source that is not there, and a source in use fire error and change nothing',
             quiet.errors.length === 4 && /addLayer: the style has a layer with the id "bg"/.test(quiet.errors[0]) && /names the source "nowhere"/.test(quiet.errors[1]) && /addSource: the style has a source with the id "g"/.test(quiet.errors[2]) && /removeSource: the layer "uses-g" uses the source "g"/.test(quiet.errors[3]) && quiet.layers === 'bg,uses-g' && quiet.source, JSON.stringify({errors: quiet.errors, layers: quiet.layers, source: quiet.source}));
         check('[main] maplibre-compat: strict: true throws for an option with no effect and for a refused style call',
             quiet.thrown.startsWith('[map-jr-gl] The option renderWorldCopies: false has no effect') && /addLayer: the style has a layer with the id "bg"/.test(quiet.thrownCall), JSON.stringify({thrown: quiet.thrown, thrownCall: quiet.thrownCall}));
     }
+    // Custom layers (#45): with renderer: 'main' they draw in their place; with the worker renderer they are an error.
+    if (mode === 'main') await checkCustomLayers(page, check);
     // cooperativeGestures, as in MapLibre GL JS 6.17: a plain wheel and one finger leave the map to the page and show the hint;
     // Ctrl + wheel (⌘ on a Mac) zooms; disable() gives the gestures back.
     if (mode === 'main') {

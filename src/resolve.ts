@@ -17,6 +17,8 @@ export interface LayerJSON {
     keep?: boolean;
     id: string; type: string; source?: string; 'source-layer'?: string; minzoom?: number; maxzoom?: number;
     filter?: any; paint?: Record<string, any>; layout?: Record<string, any>; metadata?: Record<string, any>;
+    /** A layer of the type "custom" of the compat entry: the object of the user (see `addLayer` in compat-map.ts). */
+    implementation?: object;
 }
 
 /** The light on buildings, as in the style specification. The position is a distance, an azimuth and a polar angle. */
@@ -170,8 +172,8 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
     }
     const unsupported = new Set<string>();
     const layers = (style.layers as LayerJSON[]).filter(l => {
-        const ok = LAYER_TYPES.has(l.type) && (l.type === 'background' || !!sources[l.source!]);
-        if (!LAYER_TYPES.has(l.type)) unsupported.add(l.type);
+        const ok = !!l.implementation || LAYER_TYPES.has(l.type) && (l.type === 'background' || !!sources[l.source!]);
+        if (!ok && !LAYER_TYPES.has(l.type)) unsupported.add(l.type);
         return ok;
     });
     // A style has one sprite (a URL) or a list of sprites with ids. A list goes to the engine as text (see loadIcons).
