@@ -133,10 +133,10 @@ const ZOOMING_PLACE_INTERVAL = 100, ZOOMING_FADE = 100;
  * interval, and the map would place the labels again in every frame (#122). When the camera has stopped, the usual
  * interval applies, so that the labels settle soon. With `rest` (the map is at rest, or has not been idle yet) the labels
  * are placed in the next frame, as in MapLibre GL JS, so that the labels of a tile that has just arrived do not hold
- * up `idle` (#371); the time between two placements is still at least three times the cost.
+ * up `idle` (#371); the time between two placements is still at least the cost of one.
  */
 export const placeDue = (now: number, last: number, cost: number, zooming: boolean, moving: boolean, rest = false) =>
-    now - last >= (rest ? 3 * cost : Math.max(zooming ? ZOOMING_PLACE_INTERVAL : PLACE_INTERVAL, moving ? 3 * cost : 0));
+    now - last >= (rest ? cost : Math.max(zooming ? ZOOMING_PLACE_INTERVAL : PLACE_INTERVAL, moving ? 3 * cost : 0));
 /** Camera feel, matching MapLibre's defaults so the map responds the way people expect. */
 /**
  * The curve of flyTo (van Wijk and Nuij, as `flyTo` of MapLibre GL JS 6.17) from `tr` to `to`. `o` is [curve, speed,
@@ -250,8 +250,8 @@ export class Engine {
     private placeAngle = 0;
     private placeZoom = 0;
     private fade = FADE;
-    /** The tiles (`TileID.key`) that arrived since the last placement: at rest, their new labels show without a fade. */
-    private freshTiles = new Set<string>();
+    /** The tiles (`TileID.key`) that arrived in the last half second, with the time: at rest, their new labels show without a fade. */
+    private freshTiles = new Map<string, number>();
 
     private sprite: Sprite | null = null;
     private spriteUrl = '';
@@ -1188,7 +1188,7 @@ export class Engine {
             t.gl = gl;
             t.state = 'ok';
             t.rev = ++this.tilesVersion;
-            this.freshTiles.add(id.key);
+            this.freshTiles.set(id.key, performance.now());
             // (A tile of the overview that no frame has drawn yet changes nothing in the image. From now on it ages like any other tile.)
             if (t.used >= 0) this.invalidate(); else t.used = this.frameNo;
         }, err => {
@@ -1488,7 +1488,8 @@ export class Engine {
                 this.labels.delete(p.key);
                 this.labels.set(p.key, st ? (st.placed = p, st.target = 1, st) : {placed: p, opacity: rest && this.freshTiles.has(p.tile.key) ? 1 : 0, target: 1});
             }
-            this.freshTiles.clear();
+            // (A label of a new tile can be placed only later, when its glyphs or images have come: the tile stays new for a while.)
+            for (const [key, at] of this.freshTiles) if (now - at > 500) this.freshTiles.delete(key);
             for (const [key, st] of this.labels) if (!keep.has(key)) st.target = 0;
             this.placeCost = performance.now() - start;
         }
