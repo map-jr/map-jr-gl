@@ -468,6 +468,8 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
         return true;
     };
 
+    // A change that gave the engine work makes the map not idle until the engine reports idle again (#411).
+    const busy = () => { if (alive && state.get().idle && !map.areTilesLoaded()) state.set({idle: false}); };
     const apply = (next: MapSpec, before?: MapSpec) => {
         // (A description that is made again each time, as in a template of a framework, has new objects with the same
         // content. So where the identity is different, the content is compared before the map does work.)
@@ -497,7 +499,7 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
                 images.set(name, key);
                 const spec = v && typeof v === 'object' && 'image' in v ? v : null;
                 // (An image that does not load is an error of the map, and the map goes on without it.)
-                map.addImage(name, spec ? spec.image : v as ImageSource, spec ?? {}).catch(() => {
+                map.addImage(name, spec ? spec.image : v as ImageSource, spec ?? {}).then(busy, () => {
                     if (alive && images.get(name) === key) map.fire('error', {error: new Error(`[map-jr-gl] images: the image "${name}" did not load. Give an SVG document or the URL of an image that the page can read.`)});
                 });
             }
@@ -507,6 +509,7 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
         check(2, next, before);
         now = next;
         if ((next.data !== before?.data || next.markers !== before?.markers) && !restyled) giveData();
+        busy();
     };
     apply(spec);
 
