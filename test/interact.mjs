@@ -22,7 +22,8 @@ for (const mode of ['main', 'worker']) {
     const page = await browser.newPage({viewport: {width: 1000, height: 700}});
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
-    page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
+    // (The browser's own line for a 404 that a test asks for on purpose, from `/no-such-…`, can come after that test.)
+    page.on('console', m => { if (m.type() === 'error' && !(m.text().startsWith('Failed to load resource') && m.location().url?.includes('/no-such-'))) errors.push(m.text()); });
     await page.goto(`${origin}/?renderer=${mode}`);
     await page.waitForFunction(() => window.mapLoaded, null, {timeout: 30000});
     // Some browsers cannot make a WebGL context in a worker (WebKit on Linux and Windows, Safari before 16.4). The map
