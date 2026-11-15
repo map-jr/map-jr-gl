@@ -107,7 +107,8 @@ export const MapJr = forwardRef<MapHost | null, MapJrProps>(function MapJr(props
 
 /**
  * An element of the page at a position of the map, for the inside of `MapJr`: a marker with your own content, or a
- * popup (`popup`; with `onClose` it has a button to close it). The content is React content.
+ * popup (`popup`; with `onClose` it has a button to close it). The content is React content. With `draggable`, the user
+ * can move it, and `onDragEnd` gets the new `[lng, lat]`.
  * For many markers, use the `markers` prop of `MapJr`: those are drawn on the canvas.
  */
 export function MapOverlay({children, ...options}: OverlayOptions & {children?: ReactNode}) {

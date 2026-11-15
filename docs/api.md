@@ -656,6 +656,31 @@ const popup = map.overlay(content, {lngLat, popup: true, onClose: () => popup.re
 | `offset` | A distance in pixels from the position, to the right and down. |
 | `popup` | `true` to show the element in a box with a pointer to the position. |
 | `onClose` | For a popup: the box gets a button to close it, and this function is called. |
+| `draggable` | `true` to let the user move the element with the mouse, a finger or a pen. The default is `false`. It has no effect on a popup. |
+| `onDragStart`, `onDrag`, `onDragEnd` | For a draggable element: called when a drag starts, at each move, and when it ends, with the position of the element as `[lng, lat]`. |
+
+A drag starts once the pointer has moved 3 pixels, as in MapLibre GL JS. A click without that move stays a click
+and calls no drag callback, and the click at the end of a drag does not reach the element. The map does not pan
+under a drag of the element. In other cases, the pointer events of an overlay reach the page as usual, but the map
+listens on its canvas only, so a press on an overlay does not pan the map.
+
+After a drag, the element stays where the user dropped it. `update` moves it only when `lngLat` differs from the
+`lngLat` of the last call, so pass the new position to `lngLat` in `onDragEnd` when your code keeps the position:
+
+```js
+import {defaultPin} from '@map-jr/map-jr-gl';
+
+let home = [-74.0065, 40.7085];
+const pin = map.overlay(defaultPin({color: '#c0392b'}), {
+  lngLat: home, anchor: 'bottom', draggable: true,
+  onDragEnd: lngLat => { home = lngLat; },
+});
+```
+
+`defaultPin({color, scale})` makes the default pin of `Marker` of `@map-jr/map-jr-gl/maplibre-compat`: a new `div`
+with an SVG drop of 27 by 41 pixels at `scale` 1 (the default), filled with `color` (the default is `'#3fb1ce'`). Its
+tip is at the bottom, so use it with `anchor: 'bottom'`. It needs `document`, so call it in the browser, not during a
+render on the server.
 
 Use an overlay for some elements with content of the page (a photo, a form, a popup). For many markers, use a
 marker layer (`markers` in the description): it is drawn on the canvas, and 100,000 markers cost about the same

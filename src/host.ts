@@ -159,6 +159,16 @@ export interface OverlayOptions {
     /** Show the element in a box with a pointer to the position (a popup). With `onClose`, the box has a button to close it. */
     popup?: boolean;
     onClose?: () => void;
+    /**
+     * The user can move the element with the mouse, a finger or a pen (default `false`; not for a `popup`). A drag
+     * starts once the pointer has moved 3 pixels, so a click stays a click, and the map does not pan under it. The
+     * callbacks get the position of the element as `[lng, lat]`. After a drag, the element stays where it was dropped
+     * until `lngLat` changes, so pass the new position to `lngLat` in `onDragEnd` to keep it in your state.
+     */
+    draggable?: boolean;
+    onDragStart?: (lngLat: Position) => void;
+    onDrag?: (lngLat: Position) => void;
+    onDragEnd?: (lngLat: Position) => void;
 }
 export interface MapOverlay { update(options: OverlayOptions): void; remove(): void }
 
@@ -556,7 +566,13 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
         overlay(element, o) {
             let now = o;
             const make = () => {
-                if (!now.popup) return new Marker({element, anchor: now.anchor, offset: now.offset}).setLngLat(now.lngLat).addTo(map);
+                if (!now.popup) {
+                    const m = new Marker({element, anchor: now.anchor, offset: now.offset, draggable: now.draggable}).setLngLat(now.lngLat).addTo(map);
+                    // (The callbacks of the latest options run, so that a framework can pass a new function each render.)
+                    const at = (): Position => { const p = m.getLngLat(); return [p.lng, p.lat]; };
+                    m.on('dragstart', () => now.onDragStart?.(at())); m.on('drag', () => now.onDrag?.(at())); m.on('dragend', () => now.onDragEnd?.(at()));
+                    return m;
+                }
                 const p = new Popup({anchor: now.anchor, offset: now.offset, closeButton: !!now.onClose, closeOnClick: false}).setLngLat(now.lngLat).setDOMContent(element).addTo(map);
                 p.on('close', () => { if (made === p) now.onClose?.(); });
                 return p;
@@ -565,9 +581,14 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
             return {
                 update(next) {
                     const again = !!next.popup !== !!now.popup || next.anchor !== now.anchor || String(next.offset) !== String(now.offset) || !!next.onClose !== !!now.onClose;
+                    // (Only a new position moves the element: a render during or after a drag that passes the same
+                    // `lngLat` again leaves it where the user put it.)
+                    const moved = String(next.lngLat) !== String(now.lngLat);
                     now = next;
                     if (!made) return;
-                    if (again) { const old = made; made = null; old.remove(); made = make(); } else made.setLngLat(next.lngLat);
+                    if (again) { const old = made; made = null; old.remove(); made = make(); return; }
+                    if (made instanceof Marker) made.setDraggable(!!next.draggable);
+                    if (moved) made.setLngLat(next.lngLat);
                 },
                 remove() { const old = made; made = null; old?.remove(); },
             };

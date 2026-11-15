@@ -62,13 +62,13 @@ import {createRoot, hydrateRoot} from 'react-dom/client';
 import {MapJr, MapOverlay, MapImage, useMapState} from '/dist/react.js';
 import {navigation, scale} from '/dist/controls.js';
 const style = await (await fetch('/style.json')).json();
-const pins = ${JSON.stringify(pins)}, images = {disc: ${JSON.stringify(disc)}}, t = window.t = {loads: 0, views: 0, clicks: [], closed: 0, renders: 0, moves: [], asked: []};
+const pins = ${JSON.stringify(pins)}, images = {disc: ${JSON.stringify(disc)}}, t = window.t = {dragged: [], loads: 0, views: 0, clicks: [], closed: 0, renders: 0, moves: [], asked: []};
 function Zoom() { const zoom = useMapState(s => s.view.zoom); return h('p', {id: 'zoom'}, zoom === undefined ? '' : zoom.toFixed(1)); }
 // (A component inside the SVG of an image: its own change must reach the map.)
 function Dot() { const [r, setR] = useState(2); t.setRadius = setR; return h('circle', {cx: 4, cy: 4, r}); }
 function App({ssr}) {
-    const [view, setView] = useState(${JSON.stringify(view)}), [markers, setMarkers] = useState([pins]), [pin, setPin] = useState([-74.0065, 40.7085]), [tip, setTip] = useState(true), [tone, setTone] = useState('#fff'), [arrow, setArrow] = useState(true), [twin, setTwin] = useState(false), [full, setFull] = useState(true), [more, setMore] = useState({}), map = useRef(null);
-    Object.assign(t, {setView, setMarkers, setPin, setTone, setArrow, setTwin, setFull, map, view});
+    const [view, setView] = useState(${JSON.stringify(view)}), [markers, setMarkers] = useState([pins]), [pin, setPin] = useState([-74.0065, 40.7085]), [tip, setTip] = useState(true), [tone, setTone] = useState('#fff'), [arrow, setArrow] = useState(true), [twin, setTwin] = useState(false), [full, setFull] = useState(true), [more, setMore] = useState({}), [home, setHome] = useState([-74.01, 40.705]), map = useRef(null);
+    Object.assign(t, {home, setView, setMarkers, setPin, setTone, setArrow, setTwin, setFull, map, view});
     t.renders++;
     // (The props are made again in each render, as React code does: the arrays of controls and layers, the functions.)
     return h('div', {id: 'frame', style: {width: 800, height: 500}}, ssr
@@ -80,6 +80,7 @@ function App({ssr}) {
             // An image that the style asks for and the map does not have: the application adds it to the prop images.
             onStyleimagemissing: e => { t.asked.push(e.id); setMore(more => ({...more, [e.id]: '<svg viewBox="0 0 4 4"><rect width="4" height="4"/></svg>'})); }},
             h(Zoom), h(MapOverlay, {lngLat: pin, anchor: 'bottom'}, h('b', {id: 'own-pin'}, 'here')),
+            h(MapOverlay, {lngLat: home, draggable: true, onDragStart: p => t.dragged.push('start ' + p.length), onDrag: () => setMore(m => m), onDragEnd: p => { t.dragged.push('end'); setHome(p); }}, h('u', {id: 'drag-pin', style: {display: 'block', width: 16, height: 16}, onClick: () => t.dragged.push('click')})),
             arrow && h(MapImage, {name: 'arrow', params: ['color']}, ({color}) => h('svg', {viewBox: '0 0 8 8'}, h('path', {d: 'M4 0 8 8 0 8z', fill: color, stroke: tone}))),
             twin && h(MapImage, {name: 'arrow'}, h('svg', {viewBox: '0 0 8 8'}, h('path', {d: 'M4 0 8 8 0 8z'}))),
             h(MapImage, {name: 'maybe'}, full && h('svg', {viewBox: '0 0 8 8'}, h('rect', {width: 8, height: 8}))),
@@ -149,6 +150,15 @@ try {
     check('browser: an event of the map is a prop of the component (onMoveend), and an image that the style asks for (onStyleimagemissing) is on the map after the listener adds it to the prop images', model.events === 'moveend number' && model.asked > 0 && model.added, JSON.stringify({events: model.events, asked: model.asked, added: model.added}));
     check('browser: the view follows the map and moves it; useMapState, controls, overlays and markers follow React', model.followed === 15 && model.shown === '15.0' && model.controls === 2 && model.moved === 14 && model.pinOk && model.tip && model.pinMoved
         && model.closed === 1 && model.tipGone && model.views > 1 && model.before === 1 && model.after === 0, JSON.stringify(model));
+    // A draggable MapOverlay (#167): a click is a click, onDragStart and onDragEnd get [lng, lat], and renders during the
+    // drag (onDrag sets state) do not move it back.
+    const dragBox = () => page.evaluate(() => { const r = document.getElementById('drag-pin').getBoundingClientRect(); return {x: r.x + r.width / 2, y: r.y + r.height / 2}; });
+    const db = await dragBox();
+    await page.mouse.click(db.x, db.y); await page.waitForTimeout(200);
+    const dragClick = await page.evaluate(() => window.t.dragged.splice(0).join(' '));
+    await page.mouse.move(db.x, db.y); await page.mouse.down(); await page.mouse.move(db.x + 50, db.y + 30, {steps: 5}); await page.mouse.up(); await page.waitForTimeout(400);
+    const db2 = await dragBox(), dragReact = await page.evaluate(() => ({ev: window.t.dragged.join(' '), home: [...window.t.home]}));
+    check('browser: a draggable MapOverlay keeps a click a click, calls onDragStart and onDragEnd with [lng, lat], and stays at the new position', dragClick === 'click' && dragReact.ev === 'start 2 end' && dragReact.home[0] > -74.01 && Math.abs(db2.x - db.x - 50) < 3 && Math.abs(db2.y - db.y - 30) < 3, JSON.stringify({dragClick, dragReact, db, db2}));
     await page.evaluate(() => window.t.setPin([-73.5, 41])); // (the element of the pin must not be under the click)
     await page.waitForTimeout(400);
     await page.mouse.move(400, 250); await page.waitForTimeout(300); await page.mouse.click(400, 250); await page.waitForTimeout(800);

@@ -54,6 +54,38 @@ The props are the fields of the description of a map (see [the main API](api.md)
 | `className`, `style` | For the element of the component. |
 | `children` | Content over the map, and `MapOverlay` elements. |
 
+### Elements of the page on the map
+
+`MapOverlay` puts its children at a position of the map. Use it inside `MapJr`. Its props are the options of
+`overlay` of [the main API](api.md#elements-of-the-page-on-the-map): `lngLat` (required), `anchor`, `offset`, `popup`,
+`onClose`, `draggable`, `onDragStart`, `onDrag` and `onDragEnd`.
+
+With `draggable`, the user can move the element. A drag starts once the pointer has moved 3 pixels, so a click on the
+children stays a click, and the map does not pan under the drag. The drag callbacks get the position as `[lng, lat]`.
+After a drag, the element stays where the user dropped it until `lngLat` changes, so a render during the drag does not
+move it back. To keep the position in state, set it in `onDragEnd`:
+
+```jsx
+import {useState} from 'react';
+import {MapJr, MapOverlay} from '@map-jr/map-jr-gl/react';
+
+export function HomePicker() {
+  const [home, setHome] = useState([-74.0065, 40.7085]);
+  return (
+    <div style={{height: 400}}>
+      <MapJr mapStyle="https://tiles.openfreemap.org/styles/liberty" initialView={{center: home, zoom: 14}}>
+        <MapOverlay lngLat={home} anchor="bottom" draggable onDragEnd={setHome}>
+          <img src="/pin.svg" alt="Home" width={27} height={41} />
+        </MapOverlay>
+      </MapJr>
+    </div>
+  );
+}
+```
+
+For the default pin of `Marker`, use `defaultPin()` of `@map-jr/map-jr-gl` in the browser: it returns an element for
+`overlay` of the map (see [Elements of the page on the map](api.md#elements-of-the-page-on-the-map)).
+
 A ref on the component gets the map (the `MapHost` of [the main API](api.md), for `queryFeatures`, `clusterExpansionZoom`, `moveTo`,
 `fitBounds`). The component creates the map in an effect, so the ref is `null` during the first render and in the
 effects of the parent that run at mount. Read the ref in an event handler or after `onLoad`, or put the code in a

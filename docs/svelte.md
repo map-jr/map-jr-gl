@@ -31,7 +31,9 @@ package, so they work with each version of Svelte.
 
 - `mapJr` is an action. It makes the map in the element, gives the map each new description, and removes the map
   with the element.
-- `ready` gets the map (for `queryFeatures`, `moveTo`, `overlay`).
+- `ready` gets the map (for `queryFeatures`, `moveTo`, `overlay`). For an element that the user moves, call
+  `host.overlay(element, {lngLat, draggable: true, onDragEnd})`; `defaultPin()` of `@map-jr/map-jr-gl` makes the default
+  pin of `Marker`. See [Elements of the page on the map](api.md#elements-of-the-page-on-the-map).
 - `mapState(map)` is a store with the state of the map.
 - `$live.view.bounds` is the visible box, `[[west, south], [east, north]]`, for loading data for the visible area.
   `initialView` can be a box too: `{bounds, padding}`. See [the main API](api.md).
