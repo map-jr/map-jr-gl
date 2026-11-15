@@ -1743,6 +1743,37 @@ for (const mode of ['main', 'worker']) {
         });
         check('[worker] compat: CSS on .maplibregl-map gives the container its height before the first measurement', sized.first > 0 && Math.abs(sized.zoom - 8) < 0.01, JSON.stringify(sized));
     }
+    // An HTML marker follows a drag in the frame after each pointer move, as the worker draws it, and does not wait for
+    // the camera that the engine reports, which came one frame after the picture (#38). The worker here sends its
+    // camera 300 ms late, so that the marker can only be in place in time when the page places it.
+    if (mode === 'worker') {
+        const followed = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+            const code = `const post = self.postMessage.bind(self); self.postMessage = (m, t) => m && m.type === 'camera' ? setTimeout(() => post(m, t), 300) : post(m, t); importScripts(${JSON.stringify(location.origin + '/dist/map-jr-gl-worker.js')});`;
+            const url = URL.createObjectURL(new Blob([code], {type: 'text/javascript'}));
+            const m = new mod.Map({container: el, renderer: 'worker', center: [0, 0], zoom: 3, attributionControl: false, dragPan: {inertia: false}, createWorker: () => new Worker(url),
+                style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            await new Promise(r => { m.once('load', r); setTimeout(r, 12000); });
+            const dot = Object.assign(document.createElement('div'), {style: 'width:4px;height:4px'});
+            new mod.Marker({element: dot}).setLngLat([0, 0]).addTo(m);
+            const x = () => +/translate\((-?\d+)px/.exec(dot.style.transform)[1];
+            const frame = () => new Promise(r => requestAnimationFrame(r));
+            const c = m.getCanvas(), r = c.getBoundingClientRect();
+            const ptr = (type, px) => c.dispatchEvent(new PointerEvent(type, {bubbles: true, clientX: r.left + px, clientY: r.top + 150, pointerId: 1, pointerType: 'mouse', button: 0, buttons: type === 'pointerup' ? 0 : 1, isPrimary: true}));
+            const start = x(), moved = [];
+            ptr('pointerdown', 250);
+            for (let i = 1; i <= 8; i++) { ptr('pointermove', 250 - i * 10); await frame(); await frame(); moved.push(start - x()); }
+            ptr('pointerup', 170);
+            // (The last camera of the engine comes 300 ms late.)
+            await new Promise(res => setTimeout(res, 500));
+            const out = {renderer: m.renderer, moved, end: start - x(), project: Math.round(m.project([0, 0]).x) - x()};
+            m.remove(); el.remove();
+            return out;
+        });
+        check('[worker] compat: an HTML marker follows a drag in the second frame after each pointer move, without waiting for the camera of the engine (#38)',
+            followed.renderer === 'worker' && followed.moved.every((d, i) => d === (i + 1) * 10) && followed.end === 80 && followed.project === 0, JSON.stringify(followed));
+    }
     // A worker that cannot make a WebGL2 context: the map goes to the main thread, `load` and `idle` fire, and what the
     // page sent before the fall back (the rules for requests, a change of the style) is not lost.
     if (mode === 'worker') {

@@ -276,6 +276,21 @@ marker.on('dragend', () => console.log(marker.getLngLat()));
 Each `Marker` is an HTML element. The browser becomes slow with thousands of them. Use a marker layer or a symbol
 layer for large numbers.
 
+### How closely an element of the page follows the map
+
+An element of the page (`Marker`, `Popup`, or `map.overlay` of `@map-jr/map-jr-gl`) is placed by the page, and the
+map is drawn by the engine. With the main-thread renderer, both change in the same frame. With the worker renderer
+(the default where the browser supports it), the engine draws in a worker:
+
+- During a drag with one finger or the mouse, the element moves in the same frame as the map. The page moves its own
+  camera at each pointer move and places the element one frame later, when the worker draws that move.
+- During a movement that the engine makes (`easeTo`, `flyTo`, `fitBounds`, the fling after a drag, a pinch), the element
+  can trail the map by about one frame. The page learns the camera from the engine after the frame is drawn.
+
+A marker layer is drawn with the map, so it never trails. Measured on 2026-11-15 in Chrome with a GPU: during a drag
+the element was 0 frames behind on an Apple M4 and 0.1 frames behind on a Galaxy S21. During `easeTo` it was about one
+frame behind on the Galaxy S21, and on the Apple M4 it was one frame behind in one run of three.
+
 ## 3D terrain
 
 With 3D terrain, the two types of marker stay on the ground surface. Ground in front of a marker on the canvas does

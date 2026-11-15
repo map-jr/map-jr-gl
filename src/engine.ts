@@ -30,8 +30,11 @@ export type Command =
     | {type: 'resize'; width: number; height: number; dpr: number}
     | ({type: 'jump'} & CameraOptions)
     | ({type: 'ease'; duration: number; around?: [number, number]; easing?: number[]; fly?: number[]} & CameraOptions)
-    /** Moves the map by a screen distance. With `x`, `y` (where the pointer now is) the ground first grabbed stays under the pointer, tilt, terrain and all. */
-    | {type: 'pan'; dx: number; dy: number; x?: number; y?: number}
+    /**
+     * Moves the map by a screen distance. With `x`, `y` (where the pointer now is) the ground first grabbed stays under the pointer, tilt, terrain and all.
+     * `at` is the ground that the page grabbed, so that the page can move its HTML markers by the same camera at once (#38).
+     */
+    | {type: 'pan'; dx: number; dy: number; x?: number; y?: number; at?: [number, number]}
     | {type: 'zoom'; delta: number; x: number; y: number}
     | {type: 'wheel'; delta: number; x: number; y: number; kind: 'wheel' | 'trackpad'}
     | {type: 'rotate'; delta: number; pitch?: number}
@@ -764,7 +767,8 @@ export class Engine {
                 // A drag holds on to the ground (and its height) where it began; each move puts that point under the pointer.
                 // (A new drag is recognised by a pause, or by the pointer not being where the held point is.)
                 const held = this.grab && now - this.grab.at < 300 ? tr.project(this.grab.lng, this.grab.lat) : null;
-                if (!held || Math.hypot(held[0] - (c.x - c.dx), held[1] - (c.y - c.dy)) > 24) {
+                if (c.at) this.grab = {lng: c.at[0], lat: c.at[1], at: now};
+                else if (!held || Math.hypot(held[0] - (c.x - c.dx), held[1] - (c.y - c.dy)) > 24) {
                     const [lng, lat] = tr.unproject(c.x - c.dx, c.y - c.dy);
                     this.grab = {lng, lat, at: now};
                 }
