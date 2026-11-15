@@ -41,6 +41,8 @@ package, so they work with each version of Svelte.
 - The description is the description of [the main API](api.md). A part that is made again with the same content
   does no work. Marker data and the values of `data` are compared by identity: `$derived` keeps them until their
   inputs change.
+- `transformRequest` in the description changes each request of the map, also those of the tile workers. The map
+  calls the function of the last description.
 
 There is no component for Svelte, and no server rendering in this entry yet. On a server, call `renderFirstView`
 from `@map-jr/map-jr-gl/server` and put the HTML into the element (`{@html firstView}`): the map takes it over. This is not

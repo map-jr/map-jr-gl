@@ -6,7 +6,7 @@
  * The adapters for the frameworks (`@map-jr/map-jr-gl/vue` and others) are thin layers over `createMap`.
  * (For the API of MapLibre GL JS, see `@map-jr/map-jr-gl/maplibre-compat`.)
  */
-import {Map, logError, type FeatureOptions, type FeaturePlace, type ImageOptions, type MapOptions, type FlyOptions, type RenderedFeature} from './map.ts';
+import {Map, logError, type FeatureOptions, type FeaturePlace, type ImageOptions, type MapOptions, type FlyOptions, type RenderedFeature, type RequestTransform} from './map.ts';
 export type {PaddingInput};
 export type {FeatureOptions, FeaturePlace};
 import {createStore, type Readable} from './store.ts';
@@ -123,6 +123,13 @@ export interface MapSpec extends MapSetup {
      * of the rest of the map. The default is 0.
      */
     padding?: PaddingInput;
+    /**
+     * Changes a request before the map makes it, as `transformRequest` of MapLibre GL JS: it gets the URL and the
+     * kind of resource (`Style`, `Source`, `Tile`, `Glyphs`, `SpriteJSON`, `SpriteImage` or `Image`) and returns
+     * `{url, headers, credentials}`, or `undefined` to leave the request as it is. It also applies to the requests of
+     * the tile workers. The map always calls the function of the last description.
+     */
+    transformRequest?: RequestTransform | null;
 }
 /** The fields that are read when the map is made only. */
 export interface MapSetup {
@@ -318,6 +325,11 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
     for (const k in options) if ((options as any)[k] === undefined) delete (options as any)[k];
     // (The style is given after the map is made, with a function that adds the additions of `extend` when it has loaded.)
     delete options.style;
+    // (The map calls the function of the last description, so a function that is made again in each render does not
+    // send the rules of requests to the engine again. Only a change between none and a function does.)
+    let transformLast = spec.transformRequest;
+    const transform: RequestTransform = (url, kind) => transformLast?.(url, kind);
+    if (spec.transformRequest) options.transformRequest = transform;
     const map = new Map(options);
     // The checks for mistakes of the user, and the texts of their warnings, are in a file that is loaded after the map
     // has started: `check` gives it the kind of the check (see `src/mistakes.ts`). A file that does not load gives no check.
@@ -488,6 +500,8 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
             for (const [key, c] of controls) if (!wanted.has(key)) { map.removeControl(c as any); controls.delete(key); }
             for (const c of next.controls ?? []) if (!controls.has(c.key)) { const made = c.create(); controls.set(c.key, made); map.addControl(made, c.position); }
         }
+        transformLast = next.transformRequest;
+        if (before && !next.transformRequest !== !before.transformRequest) map.setTransformRequest(next.transformRequest ? transform : null);
         if (next.cursor !== before?.cursor) map.setCursor(next.cursor ?? '');
         if (next.images !== before?.images) {
             const wanted = next.images ?? {};
