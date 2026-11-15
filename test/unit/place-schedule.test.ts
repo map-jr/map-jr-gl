@@ -1,7 +1,7 @@
 // When the engine places the labels again (#122): a placement that takes long must not run in every frame.
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {placeDue} from '../../src/engine.ts';
+import {placeDue, fadeStep} from '../../src/engine.ts';
 
 test('placement schedule: while the camera moves, a slow placement is not repeated in every frame', () => {
     // The last placement took 400 ms. Frames come 16 ms apart, so the frame after it comes 416 ms after its start.
@@ -30,4 +30,13 @@ test('placement schedule: at rest, the labels of a tile that arrived are placed 
     assert.equal(placeDue(16, 0, 400, false, false, true), false);
     // A moving map keeps the interval.
     assert.equal(placeDue(16, 0, 5, false, true, false), false);
+});
+
+test('label fade: before the first idle a label shows and hides at once; after it, it fades (#371)', () => {
+    // A label pushed out by the labels of a later tile hides in this frame, so that it does not hold idle back.
+    assert.equal(fadeStep(1, 0, 16, 300, true), 0);
+    assert.equal(fadeStep(0, 1, 16, 300, true), 1);
+    // After the first idle, the fade stays: 16 ms of a 320 ms fade.
+    assert.equal(fadeStep(1, 0, 16, 320, false), 0.95);
+    assert.equal(fadeStep(0, 1, 16, 320, false), 0.05);
 });

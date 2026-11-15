@@ -137,6 +137,13 @@ const ZOOMING_PLACE_INTERVAL = 100, ZOOMING_FADE = 100;
  */
 export const placeDue = (now: number, last: number, cost: number, zooming: boolean, moving: boolean, rest = false) =>
     now - last >= (rest ? cost : Math.max(zooming ? ZOOMING_PLACE_INTERVAL : PLACE_INTERVAL, moving ? 3 * cost : 0));
+/**
+ * The opacity of a label after `dt` ms of a fade of `fade` ms toward `target` (0 or 1). Before the first `idle` of the
+ * map (`instant`), a label shows or hides at once, as MapLibre GL JS 6.17 does with a fade duration of 0 until its first
+ * `idle` (#371): a label pushed out by the labels of a later tile must not hold `idle` back for a fade.
+ */
+export const fadeStep = (opacity: number, target: number, dt: number, fade: number, instant: boolean) =>
+    instant ? target : target ? Math.min(1, opacity + dt / fade) : Math.max(0, opacity - dt / fade);
 /** Camera feel, matching MapLibre's defaults so the map responds the way people expect. */
 /**
  * The curve of flyTo (van Wijk and Nuij, as `flyTo` of MapLibre GL JS 6.17) from `tr` to `to`. `o` is [curve, speed,
@@ -1498,7 +1505,7 @@ export class Engine {
         const turn = -tr.bearing * Math.PI / 180 - this.placeAngle, tc = Math.cos(turn), ts = Math.sin(turn);
         for (const [key, st] of this.labels) {
             if (st.opacity !== st.target) {
-                st.opacity = st.target ? Math.min(1, st.opacity + dt / this.fade) : Math.max(0, st.opacity - dt / this.fade);
+                st.opacity = fadeStep(st.opacity, st.target, dt, this.fade, !this.wentIdle);
                 fading ||= st.opacity !== st.target;
             }
             if (!st.opacity && !st.target) { this.labels.delete(key); continue; }
