@@ -1,5 +1,6 @@
 import earcut from 'earcut';
 import {EXTENT} from './geo.ts';
+import {cutFill, cutLine, type GlobeBuild} from './subdivide.ts';
 import {decodeVectorTile} from './mvt.ts';
 import {GEOJSON_LAYER} from './geojson.ts';
 import {parseFontName, type CompiledLayer} from './style.ts';
@@ -410,8 +411,12 @@ export function justification(justify: string, anchor: string): number {
     return side.includes('left') ? -1 : side.includes('right') ? 1 : 0;
 }
 
-/** Expands a neutral batch into vertex and index buffers for the GPU. */
-export function tessellate(b: Batch): GLBatch | null {
+/**
+ * Expands a neutral batch into vertex and index buffers for the GPU. With `globe` (a map that can show the globe),
+ * fills and lines are cut along a grid first (see subdivide.ts); without it the result is what it always was.
+ */
+export function tessellate(b: Batch, globe?: GlobeBuild): GLBatch | null {
+    if (globe && b.type !== 'circle' && !b.height) return b.type === 'fill' ? tessellateGlobeFill(b, globe) : tessellateLine({...b, geom: cutRings(b.geom, globe.grid, false)});
     const {coords, ringEnds, featEnds} = b.geom;
     if (b.type === 'circle') {
         // Four vertices per point (position plus which corner), drawn as ordinary indexed triangles. Instancing would
@@ -459,6 +464,53 @@ export function tessellate(b: Batch): GLBatch | null {
     }
 
     return tessellateLine(b);
+}
+
+/** The rings of a geometry with a point added where they cross a line of the grid. `closed`: each ring is a polygon ring. */
+function cutRings(g: Geom, grid: number, closed: boolean): Geom {
+    if (grid <= 1 && !closed) return g;
+    const out: number[] = [], ringEnds = new Uint32Array(g.ringEnds.length);
+    for (let r = 0; r < g.ringEnds.length; r++) {
+        cutLine(g.coords, r ? g.ringEnds[r - 1] : 0, g.ringEnds[r], Math.max(1, grid), out, closed);
+        ringEnds[r] = out.length / 2;
+    }
+    return {coords: Int16Array.from(out), ringEnds, featEnds: g.featEnds};
+}
+
+/**
+ * A fill for the globe: the triangles of the cut, and the edges for smoothing and outlines from the rings with the
+ * points of the grid added (they keep the edges of the polygon, not those of the cut).
+ */
+function tessellateGlobeFill(b: Batch, globe: GlobeBuild): GLBatch | null {
+    const g = b.geom, features: {coords: Int16Array; holes: number[]}[][] = [];
+    for (let f = 0; f < g.featEnds.length; f++) {
+        const polygons: {coords: Int16Array; holes: number[]}[] = [];
+        eachPolygon(g, f, (p0, p1, holes) => polygons.push({coords: g.coords.subarray(p0 * 2, p1 * 2), holes}));
+        features.push(polygons);
+    }
+    const cut = cutFill(features, globe);
+    if (!cut.idx.length) return null;
+    const rings = b.antialias !== false || b.outline ? cutRings(g, globe.grid, true) : undefined, base = cut.pos.length / 2;
+    const pos = new Int16Array(cut.pos.length + (rings?.coords.length ?? 0));
+    pos.set(cut.pos);
+    let edges: Uint32Array | undefined;
+    if (rings) {
+        pos.set(rings.coords, cut.pos.length);
+        // (As for a flat fill, an edge on the border of the tile is not drawn. Each ring ends with its first point.)
+        const list: number[] = [], c = rings.coords, out = (i: number, j: number, k: number) => (c[i * 2 + k] <= 0 && c[j * 2 + k] <= 0) || (c[i * 2 + k] >= EXTENT && c[j * 2 + k] >= EXTENT);
+        for (let r = 0; r < rings.ringEnds.length; r++) for (let i = (r ? rings.ringEnds[r - 1] : 0) + 1; i < rings.ringEnds[r]; i++) if (!out(i - 1, i, 0) && !out(i - 1, i, 1)) list.push(base + i - 1, base + i);
+        edges = Uint32Array.from(list);
+    }
+    let color: Uint8Array | undefined;
+    if (b.color) {
+        color = new Uint8Array(pos.length * 2);
+        for (let f = 0; f < g.featEnds.length; f++) {
+            const c = b.color.subarray(f * 4, f * 4 + 4);
+            for (let i = cut.featStarts[f], end = cut.featStarts[f + 1] ?? base; i < end; i++) color.set(c, i * 4);
+            if (rings) for (let r = f ? g.featEnds[f - 1] : 0; r < g.featEnds[f]; r++) for (let i = r ? rings.ringEnds[r - 1] : 0; i < rings.ringEnds[r]; i++) color.set(c, (base + i) * 4);
+        }
+    }
+    return {type: 'fill', pos, idx: Uint32Array.from(cut.idx), color, edges};
 }
 
 /**
@@ -641,12 +693,13 @@ function tessellateLine(b: Batch): GLBatch | null {
     return out;
 }
 
-export function toGL(ir: TileIR): {tile: TileGL; transfer: ArrayBuffer[]} {
+/** `globe`: the tile is built for a map that can show the globe (see `tessellate`). */
+export function toGL(ir: TileIR, globe?: GlobeBuild): {tile: TileGL; transfer: ArrayBuffer[]} {
     const tile: TileGL = {layers: {}, labels: ir.labels, icons: ir.icons, z: ir.z}, transfer = new Set<ArrayBuffer>();
     for (const b of Object.values(ir.icons ?? {})) for (const a of Object.values(b)) if (ArrayBuffer.isView(a)) transfer.add(a.buffer as ArrayBuffer);
     for (const id in ir.layers) {
         const b = ir.layers[id];
-        const g = tessellate(b);
+        const g = tessellate(b, globe);
         if (!g) continue;
         tile.layers[id] = g;
         for (const a of Object.values(g)) if (ArrayBuffer.isView(a)) transfer.add(a.buffer as ArrayBuffer);

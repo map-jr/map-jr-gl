@@ -1,6 +1,7 @@
 import {compileLayer, type CompiledLayer, type LayerJSON} from './style.ts';
 import {compileFor, type MapStates} from './expr.ts';
 import {buildTile, packLabels, toGL, unpackLabels, type TileGL, type TileIR} from './tile.ts';
+import type {GlobeBuild} from './subdivide.ts';
 import {decodeElevation, queryTile, type QueriedFeature, type TileQuery} from './query.ts';
 import {HEIGHT_GRID} from './geo.ts';
 import {fetchWith, withTimeout, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
@@ -12,7 +13,8 @@ import {contourTile, decodeDEM, decodePixels, type ContourConfig, type DEM, type
 export interface ElevationRequest { id: number; url: string; encoding: string }
 export interface ElevationTile { width: number; height: number; pixels: Uint8Array; grid: Float32Array; lo: number; hi: number }
 /** `overscaled`: for a tile of the deepest level of its source, the zoom of the map that the tile is built for. */
-export interface TileRequest { id: number; source: string; url: string; z: number; overscaled: number | false; /** Built again after a change of the style: the bytes that the builder has are good. */ again?: boolean; /** The map draws icons from buffers of the tile (see `IconBatch`). */ direct?: boolean }
+export interface TileRequest { id: number; source: string; url: string; z: number; overscaled: number | false; /** Built again after a change of the style: the bytes that the builder has are good. */ again?: boolean; /** The map draws icons from buffers of the tile (see `IconBatch`). */ direct?: boolean;
+    /** The map can show the globe: fills and lines are cut along a grid (see subdivide.ts). No map sends it yet (#463). */ globe?: GlobeBuild }
 
 /** Fetches and parses tiles. The same class backs tile workers, the main-thread fallback and server rendering. */
 export class TileBuilder {
@@ -203,7 +205,7 @@ export class LocalBackend implements TileBackend {
     setTemplates(templates: Record<string, string[]>) { this.builder.setTemplates(templates); }
     setContours(sources: Record<string, ContourConfig>) { this.builder.setContours(sources); }
     setHead(url: string, bytes: Uint8Array) { heads.set(url, bytes); }
-    async load(req: TileRequest) { return toGL(await this.builder.loadIR(req)).tile; }
+    async load(req: TileRequest) { return toGL(await this.builder.loadIR(req), req.globe).tile; }
     cancel(id: number) { this.builder.cancel(id); }
     forget(source?: string) { this.builder.forget(source); }
     query(url: string, q: TileQuery) { return this.builder.query(url, q); }
@@ -289,7 +291,7 @@ export function serveTiles(port: Port) {
                 err => port.postMessage({id: m.req.id, error: (err as Error).name === 'AbortError' ? 'aborted' : String((err as Error).message)}));
         } else if (m.type === 'load') {
             try {
-                const {tile, transfer} = toGL(await builder.loadIR(m.req));
+                const {tile, transfer} = toGL(await builder.loadIR(m.req), m.req.globe);
                 port.postMessage({id: m.req.id, tile: {layers: tile.layers, labels: packLabels(tile.labels), icons: tile.icons, z: tile.z}}, transfer);
             } catch (err) {
                 port.postMessage({id: m.req.id, error: (err as Error).name === 'AbortError' ? 'aborted' : String((err as Error).message)});
