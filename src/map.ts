@@ -577,6 +577,17 @@ export class Map {
     }
 
     private seen?: {zoom: number; bearing: number; pitch: number};
+    /**
+     * A drag with one pointer and the worker renderer (#38): the number of its first `pan`, the ground that the engine
+     * grabbed (known from its first report), and the pointer positions that the page has placed (`x`, `y`, at the time
+     * `t`), will place in the next frame (`next`) and has just received (`pend`). The page moves its own camera as the
+     * engine does and places the HTML markers from it in the frame in which the worker draws the move. Placed from the
+     * camera that the engine reports, they trailed the map by a frame. (The page does not grab the ground itself: its
+     * camera can be behind the engine's, for example when a drag stops an `easeTo`.)
+     */
+    private held: {from: number; at?: [number, number]; x?: number; y?: number; t: number; pend?: [number, number]; next?: [number, number]; loop?: boolean} | null = null;
+    /** @internal What places the HTML markers and popups of this map (see `held`). */
+    readonly overlays = new Set<() => void>();
     private onEngineEvent(e: EngineEvent) {
         if (__DEV__ && e.type !== 'camera' && e.type !== 'heights' && e.type !== 'result') this.note('engine: ' + e.type, e.type === 'pong' ? e.n : e.type === 'idle' ? {seq: e.seq, expected: this.seq} : e.type === 'frame' ? {first: !this.drew} : e.type === 'error' ? e.message : undefined);
         if (e.type === 'camera') {
@@ -589,6 +600,10 @@ export class Map {
             const k = e.exaggeration;
             this.tr.groundRange = e.groundRange;
             this.tr.heightAt = k > 0 ? (mx, my) => groundHeight(this.heights, mx, my, 15, 0, e.elevation / k) * k : undefined;
+            // (During a drag the engine's report can be older than the last pointer move that the page has already applied.)
+            const h = this.held;
+            if (h && e.grab && e.grab[2] >= h.from) h.at = [e.grab[0], e.grab[1]];
+            if (h?.at && h.x !== undefined && !this.tr.heightAt && performance.now() - h.t < 100) this.tr.setLocationAt(h.at[0], h.at[1], h.x, h.y!);
             this.tilesLoaded = false;
             if (!this.moving) this.fire('movestart');
             this.moving = true;
@@ -1527,7 +1542,7 @@ export class Map {
             lastPointerType = e.pointerType;
             pointers.set(e.pointerId, p);
             rotating = e.button === 2 || e.ctrlKey;
-            moved = 0; samples = []; pinch = null;
+            moved = 0; samples = []; pinch = null; this.held = null;
             if (pointerEvent('start', e)) inert = true;
             if (inert) return;
             // Shift and drag: a box to zoom to.
@@ -1603,13 +1618,33 @@ export class Map {
                 if (!this.dragging) this.fire('dragstart', {originalEvent: e});
                 this.dragging = true;
                 this.fire('drag', {originalEvent: e});
-                this.post({type: 'pan', dx, dy, x: p.x, y: p.y});
+                // (With 3D terrain the page does not know the ground well enough, and the engine moves the camera alone.)
+                const pan = {type: 'pan' as const, dx, dy, x: p.x, y: p.y};
+                this.post(pan);
+                const h = this.tr.heightAt || this.renderer !== 'worker' ? null : this.held ??= {from: (pan as {seq?: number}).seq!, t: 0};
+                if (h) {
+                    // The worker draws a move in the frame after the one in which the page receives it: the page places
+                    // the markers for each move one frame later too.
+                    h.pend = [p.x, p.y];
+                    const frame = () => {
+                        if (this.held !== h) return;
+                        if (h.next && h.at) {
+                            [h.x, h.y] = h.next; h.t = performance.now();
+                            this.tr.setLocationAt(h.at[0], h.at[1], h.x, h.y);
+                            for (const place of this.overlays) place();
+                        }
+                        h.next = h.pend; h.pend = undefined;
+                        if (h.next) requestAnimationFrame(frame); else h.loop = false;
+                    };
+                    if (!h.loop) { h.loop = true; requestAnimationFrame(frame); }
+                }
                 samples.push({t: performance.now(), x: p.x, y: p.y});
                 while (samples.length > 2 && samples[0].t < performance.now() - 160) samples.shift();
             }
         });
         const up = (e: PointerEvent) => {
             if (!pointers.has(e.pointerId)) return;
+            this.held = null;
             if (e.type !== 'blur') pointerEvent(e.type === 'pointerup' ? 'end' : 'cancel', e);
             pointers.delete(e.pointerId);
             if (inert) { if (!pointers.size) inert = false; return; }

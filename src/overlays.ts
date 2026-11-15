@@ -49,11 +49,13 @@ abstract class Overlay extends Evented {
         this.localize(map);
         map.on('move', this.update);
         map.on('resize', this.update);
+        map.overlays.add(this.update);
         this.update();
     }
     protected detach() {
         this.map?.off('move', this.update);
         this.map?.off('resize', this.update);
+        this.map?.overlays.delete(this.update);
         this.el.remove();
         this.map = undefined;
     }

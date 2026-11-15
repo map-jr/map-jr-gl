@@ -71,7 +71,9 @@ export type Command =
     /** For the benchmark page (#360): report the steps of each tile and the tiles of the view of each frame with `tile` events. */
     | {type: 'tileReport'; on: boolean};
 export type EngineEvent =
-    | {type: 'camera'; lng: number; lat: number; zoom: number; bearing: number; pitch: number; /** Ground height at the centre with 3D terrain, else 0. */ elevation: number; exaggeration: number; groundRange?: [number, number]; padding: [number, number, number, number]; moving: boolean}
+    | {type: 'camera'; lng: number; lat: number; zoom: number; bearing: number; pitch: number; /** Ground height at the centre with 3D terrain, else 0. */ elevation: number; exaggeration: number; groundRange?: [number, number]; padding: [number, number, number, number]; moving: boolean;
+        /** During a drag: the ground that it grabbed, and the number of the command that grabbed it (#38). */
+        grab?: [number, number, number]}
     | {type: 'idle'; seq: number}
     /** The tiles of a source for the view are all loaded, or are no longer all loaded. */
     | {type: 'source'; source: string; loaded: boolean; /** The version of the source that the page gave (see the `style` command). */ v: number}
@@ -322,7 +324,7 @@ export class Engine {
     /** `version` is the elevation data that the heights were made from; `checked` is the newest data that is known not to change them. */
     private meshHeights = new Map<string, {data: Float32Array; version: number; checked: number; used: number}>();
     private meshBehind = false;
-    private grab: {lng: number; lat: number; at: number} | null = null;
+    private grab: {lng: number; lat: number; at: number; seq: number} | null = null;
     /** 3D terrain: the centre was set by the API rather than reached by a gesture, so it keeps its position. */
     private centreGiven = true;
     private unplacedSince = 0;
@@ -766,7 +768,7 @@ export class Engine {
                 const held = this.grab && now - this.grab.at < 300 ? tr.project(this.grab.lng, this.grab.lat) : null;
                 if (!held || Math.hypot(held[0] - (c.x - c.dx), held[1] - (c.y - c.dy)) > 24) {
                     const [lng, lat] = tr.unproject(c.x - c.dx, c.y - c.dy);
-                    this.grab = {lng, lat, at: now};
+                    this.grab = {lng, lat, at: now, seq: this.seq};
                 }
                 tr.setLocationAt(this.grab!.lng, this.grab!.lat, c.x, c.y);
                 this.grab!.at = now;
@@ -1555,7 +1557,8 @@ export class Engine {
         if (cameraChanged || animating !== this.moving) {
             this.lastCamera = camera;
             this.moving = animating;
-            this.emit({type: 'camera', lng: tr.lng, lat: tr.lat, zoom: tr.zoom, bearing: tr.bearing, pitch: tr.pitch, elevation: tr.elevation, exaggeration: this.exaggeration, groundRange: tr.groundRange, padding: tr.padding, moving: animating});
+            this.emit({type: 'camera', lng: tr.lng, lat: tr.lat, zoom: tr.zoom, bearing: tr.bearing, pitch: tr.pitch, elevation: tr.elevation, exaggeration: this.exaggeration, groundRange: tr.groundRange, padding: tr.padding, moving: animating,
+                grab: this.grab ? [this.grab.lng, this.grab.lat, this.grab.seq] : undefined});
         }
         const busy = animating || fading || this.placeDirty || this.iconsRev !== this.iconsDone || behind || this.meshBehind;
         const idle = complete && !busy && !settling && !this.spritePending && !this.contourWait && !this.atlas.loading;
