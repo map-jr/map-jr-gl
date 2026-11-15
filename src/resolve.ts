@@ -196,13 +196,17 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
     return {layers, sources, unsupported: [...unsupported], sprite, glyphs, fonts, terrain, state, light: (style as any).light, waiting: partial && Object.keys(style.sources ?? {}).some(id => !sources[id] && fetched.get(style.sources[id]) && !fetched.get(style.sources[id])!.err)};
 }
 
-export function tileURL(src: SourceInfo, z: number, x: number, y: number) {
+export function tileURL(src: SourceInfo, z: number, x: number, y: number, ratio = 1) {
     // `{bbox-epsg-3857}` is for WMS servers: the edges of the tile in metres of Web Mercator (west, south, east, north).
     const edge = (v: number) => (v / 2 ** z - 0.5) * 40075016.68557849;
     // The scheme `tms` counts the rows from the south. `{quadkey}` is the tile as one number in base 4 (Bing Maps).
-    return src.tiles[(x + y) % src.tiles.length].replace('{z}', String(z)).replace('{x}', String(x)).replace('{y}', String(src.tms ? 2 ** z - 1 - y : y))
-        .replace('{bbox-epsg-3857}', () => [edge(x), -edge(y + 1), edge(x + 1), -edge(y)].join())
-        .replace('{quadkey}', () => { let key = ''; for (let i = z; i > 0; i--) key += (x >> i - 1 & 1) + (y >> i - 1 & 1) * 2; return key; });
+    // `{prefix}` is two hex digits from the column and the row, and `{ratio}` is `@2x` on a screen with a pixel ratio
+    // above 1, for every kind of source; both follow MapLibre GL JS (`CanonicalTileID.url`).
+    return src.tiles[(x + y) % src.tiles.length].replace(/{prefix}/g, (x % 16).toString(16) + (y % 16).toString(16))
+        .replace(/{z}/g, String(z)).replace(/{x}/g, String(x)).replace(/{y}/g, String(src.tms ? 2 ** z - 1 - y : y))
+        .replace(/{ratio}/g, ratio > 1 ? '@2x' : '')
+        .replace(/{bbox-epsg-3857}/g, () => [edge(x), -edge(y + 1), edge(x + 1), -edge(y)].join())
+        .replace(/{quadkey}/g, () => { let key = ''; for (let i = z; i > 0; i--) key += (x >> i - 1 & 1) + (y >> i - 1 & 1) * 2; return key; });
 }
 
 export interface SpriteIcon {

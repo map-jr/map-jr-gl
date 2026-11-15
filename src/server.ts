@@ -200,7 +200,7 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
         if (src.type === 'raster-dem') return; // hillshading is drawn by the client only
         const ideal = tr.coveringTiles(src.minzoom, src.maxzoom, src.tileSize, src.type === 'raster'), loaded = new Map<string, TileIR | TileImage>();
         await Promise.all(ideal.filter((id, i) => ideal.findIndex(o => o.key === id.key) === i).map(async id => {
-            const url = tileURL(src, id.z, id.x, id.y);
+            const url = tileURL(src, id.z, id.x, id.y, o.highDensity ? 2 : 1);
             if (src.type === 'raster') { loaded.set(id.key, {href: o.inlineImages ? await dataURI(url) : url}); return; }
             if (src.type === 'vector') urls.push(url);
             loaded.set(id.key, await builder.loadIR({id: req++, source: name, url, z: id.z, overscaled: id.z >= src.maxzoom && Math.floor(tr.zoom)}));

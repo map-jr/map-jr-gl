@@ -725,6 +725,14 @@ test('sources: a tile URL for a WMS server gets the edges of the tile in Web Mer
     assert.equal(tileURL({...src, tiles: ['q/{quadkey}']}, 3, 3, 5), 'q/213');
 });
 
+test('sources: a tile URL replaces {prefix} and {ratio} as MapLibre GL JS does', async () => {
+    const {tileURL} = await import('../../src/resolve.ts');
+    const src = {type: 'vector', tiles: ['https://{prefix}.example.org/{z}/{x}/{y}{ratio}.pbf?p={prefix}'], minzoom: 0, maxzoom: 22, tileSize: 512} as any;
+    assert.equal(tileURL(src, 5, 27, 10), 'https://ba.example.org/5/27/10.pbf?p=ba');
+    assert.equal(tileURL(src, 5, 27, 10, 2), 'https://ba.example.org/5/27/10@2x.pbf?p=ba');
+    assert.equal(tileURL(src, 5, 27, 10, 1), 'https://ba.example.org/5/27/10.pbf?p=ba');
+});
+
 test('vector tiles: zeros after the end of the tile are not read', async () => {
     const {decodeVectorTile} = await import('../../src/mvt.ts');
     // (A protocol can give a tile in a larger buffer.)

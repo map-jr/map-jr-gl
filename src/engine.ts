@@ -968,7 +968,7 @@ export class Engine {
                 boxes.set(key, group);
             }
             for (const {box, sets, exact} of boxes.values()) for (const t of tilesUnderBox(this.tr, box, src.minzoom, src.maxzoom)) {
-                jobs.push(this.queryBackend(name, t.z, t.x, t.y).query(tileURL(src, t.z, t.x, t.y), {
+                jobs.push(this.queryBackend(name, t.z, t.x, t.y).query(tileURL(src, t.z, t.x, t.y, this.dpr), {
                     source: name, z: t.z, x: t.x, y: t.y, px: 0, py: 0, radius: 0, box: t.box, geometry: c.geometry || exact,
                     sets: sets.map(s => ({layer: s.layer, sourceLayer: s.sourceLayer, filter: s.filter, also: s.also, radius: s.radius * t.scale})),
                 }));
@@ -992,7 +992,7 @@ export class Engine {
             const z = clamp(Math.floor(zoom), src.minzoom, src.maxzoom), t = this.tileAt(c.lng, c.lat, z);
             // The tolerance is given in screen pixels at the queried zoom.
             const radius = c.radius * EXTENT / (512 * 2 ** (zoom - z));
-            return this.queryBackend(name, z, t.x, t.y).query(tileURL(src, z, t.x, t.y), {
+            return this.queryBackend(name, z, t.x, t.y).query(tileURL(src, z, t.x, t.y, this.dpr), {
                 source: name, z, x: t.x, y: t.y, px: t.u * EXTENT, py: t.v * EXTENT, radius,
                 sourceLayers: c.sourceLayers, filter: c.filter, geometry: c.geometry,
             });
@@ -1004,7 +1004,7 @@ export class Engine {
         const entry = Object.entries(this.style.sources).find(([name, src]) => src.type === 'raster-dem' && (!c.source || c.source === name));
         if (!entry) throw new Error('No elevation (raster-dem) source in the style');
         const src = entry[1], z = clamp(Math.floor(c.zoom ?? src.maxzoom), src.minzoom, src.maxzoom), t = this.tileAt(c.lng, c.lat, z);
-        const url = tileURL(src, z, t.x, t.y);
+        const url = tileURL(src, z, t.x, t.y, this.dpr);
         let pixels = this.dem.get(url);
         if (!pixels) {
             pixels = (async () => {
@@ -1145,7 +1145,7 @@ export class Engine {
     }
 
     private request(source: string, id: TileID, key: string, tries = 0) {
-        const src = this.style.sources[source], url = tileURL(src, id.z, id.x, id.y);
+        const src = this.style.sources[source], url = tileURL(src, id.z, id.x, id.y, this.dpr);
         // Contour lines are made from elevation data, which is much work. While the zoom changes, each step would start
         // tiles that are out of date a moment later, and slow devices cannot keep up. The lines of the last zoom stay
         // on the map (they are scaled) until the zoom has been still for a moment.
@@ -1230,7 +1230,7 @@ export class Engine {
     private build(req: number, source: string, id: TileID, t: TileState): TileRequest {
         const src = this.style.sources[source], band = t.band = this.buildZoom(source, id);
         t.rules = this.sourceSigs.get(source)?.[1];
-        return {id: req, source, url: tileURL(src, id.z, id.x, id.y), z: this.zoomBuilt.has(source) ? band : id.z, overscaled: band >= src.maxzoom && band, direct: true};
+        return {id: req, source, url: tileURL(src, id.z, id.x, id.y, this.dpr), z: this.zoomBuilt.has(source) ? band : id.z, overscaled: band >= src.maxzoom && band, direct: true};
     }
     private zoomBuilt = new Set<string | undefined>();
     /** Builds a tile again when its data is out of date, or when it was built for another zoom than it is now for. */
