@@ -1,7 +1,7 @@
 import {toLngLat, type LngLatLike} from './geo.ts';
 import {LngLat} from './lnglat.ts';
 import type {Map, PointLike} from './map.ts';
-import {cls} from './controls.ts';
+import {cls, ui} from './controls.ts';
 import {Evented} from './evented.ts';
 
 /**
@@ -38,11 +38,14 @@ abstract class Overlay extends Evented {
     addClassName(name: string) { this.el.classList.add(name); }
     removeClassName(name: string) { this.el.classList.remove(name); }
     toggleClassName(name: string) { return this.el.classList.toggle(name); }
+    /** Applies the map's `locale` to the labels that the overlay made itself (the elements exist before the map does). */
+    protected localize(_map: Map) {}
     protected attach(map: Map) {
         this.detach();
         this.map = map;
         Object.assign(this.el.style, {position: 'absolute', left: '0', top: '0', willChange: 'transform'});
         map.getContainer().appendChild(this.el);
+        this.localize(map);
         map.on('move', this.update);
         map.on('resize', this.update);
         this.update();
@@ -83,6 +86,8 @@ export class Popup extends Overlay {
     private tip = document.createElement('div');
     private content = document.createElement('div');
     private closeOnMapClick = () => this.remove();
+    private closeButton?: HTMLButtonElement;
+    protected localize(map: Map) { this.closeButton?.setAttribute('aria-label', ui(map, 'Popup.Close', 'Close popup')); }
     /** The marker of this popup. The keyboard focus returns to it when the popup closes with the focus inside. */
     opener?: HTMLElement;
     constructor(readonly options: PopupOptions = {}) {
@@ -105,6 +110,7 @@ export class Popup extends Overlay {
             box.style.paddingRight = '30px';
             b.addEventListener('click', () => this.remove());
             box.appendChild(b);
+            this.closeButton = b;
         }
         this.el.appendChild(box);
         this.applyAnchor(this.anchor);
@@ -224,6 +230,8 @@ export class Marker extends Overlay {
     private popup?: Popup | null;
     private draggable = false;
     private pitchAlignment: string;
+    private ownPin = false;
+    protected localize(map: Map) { if (this.ownPin) this.el.setAttribute('aria-label', ui(map, 'Marker.Title', 'Map marker')); }
     constructor(options: MarkerOptions = {}) {
         super();
         this.rotation = options.rotation ?? 0;
@@ -236,6 +244,7 @@ export class Marker extends Overlay {
             this.el = defaultPin(options);
             // (As in MapLibre GL JS. An element of your own keeps the attributes that you gave it.)
             this.el.setAttribute('aria-label', 'Map marker');
+            this.ownPin = true;
         }
         this.el.classList.add('map-jr-marker', 'maplibregl-marker', ...(options.className?.split(' ').filter(Boolean) ?? []));
         this.el.style.zIndex = '1';
