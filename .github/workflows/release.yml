@@ -1,13 +1,23 @@
-# Publishes the package to npm when a tag of a version is pushed (v0.3.0). See "How a release is made" in
-# docs/development.md. The repository stores no token of npm: npm trusts this workflow by its file name (a trusted
-# publisher in the settings of the package on npmjs.com), and the job proves its identity with OpenID Connect.
-# npm then adds a provenance statement, which names the commit and the run of this workflow.
+# Releases the package when the version in package.json changes on main. See "How a release is made" in
+# docs/development.md. A release is a pull request that changes "version" in package.json and adds the section of
+# that version to CHANGELOG.md; its merge starts this workflow. For the version in package.json, the job decides:
+#
+# - The tag v<version> does not exist and npm does not have the version: it tests, publishes to npm, pushes the tag
+#   and makes the release on GitHub.
+# - The tag exists and the release on GitHub does not: it makes the release only.
+# - The tag and the release exist: it does nothing.
+#
+# The repository stores no token of npm: npm trusts this workflow by its file name (a trusted publisher in the
+# settings of the package on npmjs.com), and the job proves its identity with OpenID Connect. npm then adds a
+# provenance statement, which names the commit and the run of this workflow.
 #
 # If you rename this file, change the trusted publisher on npmjs.com: npm compares the file name.
 name: Release
 on:
   push:
-    tags: ['v*']
+    branches: [main]
+    paths: [package.json, CHANGELOG.md]
+  workflow_dispatch:
 permissions:
   contents: read
 concurrency:
@@ -19,11 +29,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
-      contents: read
+      # The job pushes the tag and makes the release on GitHub.
+      contents: write
       # The job may ask GitHub for the identity token that npm checks.
       id-token: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: pnpm/action-setup@v4
       # Trusted publishing needs Node.js 22.14.0 or later and npm 11.5.1 or later. Node.js 24 has such an npm. No
       # cache of the package manager is used for a release, as the documentation of npm advises.
@@ -31,31 +44,60 @@ jobs:
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
-      - name: The tag is the version of package.json
+      - name: What is to do for this version?
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          version=$(node -p "require('./package.json').version")
-          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
-            echo "::error::The tag is $GITHUB_REF_NAME, and package.json has the version $version. Push the tag v$version, or change the version in a pull request first."
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::A release is made from main only, and this run is on $GITHUB_REF."
             exit 1
           fi
+          version=$(node -p "require('./package.json').version")
+          name=$(node -p "require('./package.json').name")
           echo "version=$version" >> "$GITHUB_ENV"
-          echo "name=$(node -p "require('./package.json').name")" >> "$GITHUB_ENV"
+          echo "name=$name" >> "$GITHUB_ENV"
+          # Stops with a message when CHANGELOG.md has no section for the version.
+          node scripts/release-notes.mjs "$version" > "$RUNNER_TEMP/notes.md"
+          tag=no; if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then tag=yes; fi
+          npm=no; if [ "$(npm view "$name@$version" version 2>/dev/null)" = "$version" ]; then npm=yes; fi
+          release=no; if gh release view "v$version" >/dev/null 2>&1; then release=yes; fi
+          echo "Tag v$version: $tag. $name $version on npm: $npm. Release on GitHub: $release."
+          if [ "$tag" = no ] && [ "$npm" = no ]; then
+            echo "publish=yes" >> "$GITHUB_ENV"
+            echo "release=yes" >> "$GITHUB_ENV"
+          elif [ "$tag" = no ]; then
+            echo "::error::npm has $name $version, and the tag v$version does not exist. Push the tag on the commit that was published, then run this workflow again."
+            exit 1
+          elif [ "$release" = no ]; then
+            echo "::notice::The tag v$version exists, and the release on GitHub does not. Only the release is made."
+            echo "release=yes" >> "$GITHUB_ENV"
+          else
+            echo "::notice::The tag v$version and its release on GitHub exist. Nothing is done."
+          fi
       - name: npm is new enough for trusted publishing
+        if: env.publish == 'yes'
         run: |
           node -e "const [a, b, c] = process.argv[1].split('.').map(Number); if (a < 11 || (a === 11 && (b < 5 || (b === 5 && c < 1)))) { console.error('::error::npm ' + process.argv[1] + ' is older than 11.5.1, which trusted publishing needs.'); process.exit(1); }" "$(npm --version)"
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm build
-      - run: pnpm test
+      - if: env.publish == 'yes'
+        run: pnpm install --frozen-lockfile
+      - if: env.publish == 'yes'
+        run: pnpm build
+      - if: env.publish == 'yes'
+        run: pnpm test
       # The tarball as npm publishes it: publint, arethetypeswrong, the source maps, and an application that installs it.
-      - run: pnpm test:package
-      # The first version is published by hand, because npm has no settings for a package that does not exist yet.
-      # For such a version the tag only records the commit.
-      - name: Is this version on npm already?
-        run: |
-          if [ "$(npm view "$name@$version" version 2>/dev/null)" = "$version" ]; then
-            echo "::notice::$name $version is on npm already. Nothing is published."
-            echo "published=yes" >> "$GITHUB_ENV"
-          fi
+      - if: env.publish == 'yes'
+        run: pnpm test:package
       - name: Publish
-        if: env.published != 'yes'
+        if: env.publish == 'yes'
         run: npm publish --provenance --access public
+      # A tag pushed with the token of the workflow starts no other workflow.
+      - name: Tag the commit
+        if: env.publish == 'yes'
+        run: |
+          git tag "v$version" "$GITHUB_SHA"
+          git push origin "v$version"
+      - name: Make the release on GitHub
+        if: env.release == 'yes'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "v$version" --verify-tag --title "v$version" --notes-file "$RUNNER_TEMP/notes.md"

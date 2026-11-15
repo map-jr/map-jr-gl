@@ -31,6 +31,11 @@ to protect those qualities.
 - **Before version 1.0, a correction does not need the owner.** A change that makes the types stricter, or that
   corrects a result, so that an entry agrees with its documentation or with MapLibre GL JS can be merged on green CI,
   even when code that compiled or ran before can break. The pull request lists what can break.
+- **Releases.** After a batch with changes that users see, the coordinator may open and merge a release pull
+  request (see "How a release is made" in `docs/development.md`). The version follows the table in "The version
+  number" in `docs/development.md`: while the version is 0.x, a breaking change increases the second number, and
+  any other change increases the third. The workflow `Release` does the rest
+  when the pull request is merged. A release never goes out while `CI` is red on `main`.
 - **A pull request has one concern.** A fix and its test belong together. An unrelated cleanup goes into its own
   pull request.
 - After a merge, the `Browsers` workflow measures and tests in Chromium, Firefox and WebKit on three systems. Read

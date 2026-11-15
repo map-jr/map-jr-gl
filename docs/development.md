@@ -236,48 +236,56 @@ without a change of its own `package.json`.
 
 ### The steps
 
-1. **Check `main`.** The workflow `CI` is green for the commit to release. Read the results of the workflow
-   `Browsers` for the same commit (`git fetch origin bench-results && git show origin/bench-results:README.md`).
+A release is a pull request that changes `"version"` in `package.json` and adds the section of that version to
+[CHANGELOG.md](../CHANGELOG.md). Merging it releases the version: the workflow `Release` publishes it to npm, pushes
+the tag `v<version>`, and makes the release on GitHub. Nobody pushes a tag or makes a release by hand.
+
+1. **Check `main`.** The workflow `CI` is green for the commit to release. A release never goes out while `CI` is red
+   on `main`. Read the results of the workflow `Browsers` for the same commit
+   (`git fetch origin bench-results && git show origin/bench-results:README.md`).
 2. **Choose the version** with the table above, from the pull requests since the last tag
-   (`git log v0.2.0..origin/main --oneline`, with the last tag in place of `v0.2.0`).
-3. **Open a pull request for the release** (`docs/release-0.3.0`). It changes `"version"` in `package.json`, adds
-   the entry to [CHANGELOG.md](../CHANGELOG.md), and updates [Browser support](browser-support.md) when the
-   results of the browsers changed. The entry is written for a reader who decides whether to update: breaking
-   changes first, then what is new, then what was fixed, each with a link to its pull request.
+   (`git log v0.3.0..origin/main --oneline`, with the last tag in place of `v0.3.0`).
+3. **Open a pull request for the release** (`docs/release-0.4.0`). It changes `"version"` in `package.json`, adds
+   the section `## 0.4.0 (date)` to [CHANGELOG.md](../CHANGELOG.md), and updates [Browser support](browser-support.md)
+   when the results of the browsers changed. The entry is written for a reader who decides whether to update:
+   breaking changes first, then what is new, then what was fixed, each with a link to its pull request. The text of
+   the section, without its heading, becomes the text of the release on GitHub.
 4. **Check the package** on that branch:
 
    ```bash
-   pnpm build && pnpm test && pnpm test:package
+   pnpm build && pnpm test && pnpm test:package && node scripts/release-notes.mjs 0.4.0
    ```
 
-   `pnpm test:package` packs the tarball and checks it (see [Commands](#commands)). `package.json` has no script
-   that builds before a publish, so a tarball contains the `dist` folder as the last build left it.
-5. **Merge** the pull request when `CI` is green. The owner merges it.
-6. **Tag** the merge commit and push the tag:
-
-   ```bash
-   git fetch origin main && git tag v0.3.0 origin/main && git push origin v0.3.0
-   ```
-
-7. **Publish to npm.** The pushed tag starts the workflow `Release`, which publishes. Read its result. The first
-   version is different: see below.
-8. **Make the release on GitHub** from the tag, with the entry of the changelog as its text.
+   `pnpm test:package` packs the tarball and checks it (see [Commands](#commands)). The last command prints the text
+   of the release, and it fails when `CHANGELOG.md` has no section for the version.
+5. **Merge** the pull request with squash when `CI` is green. Who may merge it is in [CLAUDE.md](../CLAUDE.md).
+6. **Read the result** of the workflow `Release` for the merge commit. When it fails before `npm publish`, nothing
+   was published: fix the cause in a pull request, and the merge of that pull request runs the workflow again (or
+   start it by hand from the Actions tab with "Run workflow").
 
 ### Publishing to npm
 
-The workflow `Release` (`.github/workflows/release.yml`) publishes the package when a tag `v*` is pushed. The
+The workflow `Release` (`.github/workflows/release.yml`) runs when a push to `main` changes `package.json` or
+`CHANGELOG.md`, and when it is started by hand (`workflow_dispatch`). It never runs for a pull request. The
 repository stores no token of npm. npm trusts the workflow by its file name (a *trusted publisher* in the settings
 of the package), and the job proves its identity with OpenID Connect (the permission `id-token: write`). npm adds
 a provenance statement to a version that is published this way: the page of the package then shows the commit and
 the run of the workflow that built the tarball.
 
-For a pushed tag, the workflow does these steps:
+The workflow reads the version from `package.json` and takes its text from `CHANGELOG.md`
+(`scripts/release-notes.mjs`). It stops with an error when the changelog has no section for the version. Then it
+decides:
 
-1. It checks that the tag is `v` and the version in `package.json`. If not, it stops.
-2. It runs `pnpm install --frozen-lockfile`, `pnpm build`, `pnpm test` and `pnpm test:package`.
-3. It asks npm whether this version exists already. If it does, the workflow publishes nothing and says so.
-4. It runs `npm publish --provenance --access public`. A package with a scope is private by default, and
-   `--access public` makes it public.
+| Tag `v<version>` | Version on npm | Release on GitHub | What the workflow does |
+|---|---|---|---|
+| No | No | No | It runs `pnpm install --frozen-lockfile`, `pnpm build`, `pnpm test` and `pnpm test:package`, then `npm publish --provenance --access public`, pushes the tag on the commit, and makes the release |
+| Yes | Yes | No | It makes the release on GitHub only |
+| Yes | Yes | Yes | Nothing |
+| No | Yes | | It stops with an error: push the tag on the commit that was published, then run the workflow by hand |
+
+A package with a scope is private by default, and `--access public` makes it public. The workflow makes the tag and
+the release with the token of the workflow (`GITHUB_TOKEN`, the permission `contents: write`). A run waits for an
+earlier run to end, so two runs cannot publish at once.
 
 For the tag `v0.2.0`, the workflow ran on 2026-11-14, found 0.2.0 on npm already, and published nothing, as expected for
 the first version.
