@@ -17,6 +17,8 @@ import {launch} from '../test/launch.mjs';
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const port = +(process.env.PORT || 8080), base = `http://localhost:${port}`;
 const LATENCY = +(process.env.LATENCY ?? 100);
+// CPU=4 slows the page's CPU four times (Chromium's CPU throttling, as in its developer tools), as on a phone.
+const CPU = +(process.env.CPU ?? 1);
 const runs = +(process.argv.find(a => /^\d+$/.test(a)) ?? 10);
 const only = process.argv.find(a => a.startsWith('--only='))?.slice(7);
 const cacheDir = path.join(root, '.cache/timeline');
@@ -78,6 +80,7 @@ async function once(spec) {
     context.on('request', note('req'));
     context.on('requestfinished', note('done'));
     const p = await context.newPage();
+    if (CPU > 1) await (await context.newCDPSession(p)).send('Emulation.setCPUThrottlingRate', {rate: CPU});
     p.on('pageerror', e => console.error(lib, e.message));
     await p.goto(`${origin}/timeline?lib=${lib}`);
     await p.waitForFunction(() => window.ev?.idle, null, {timeout: 60000, polling: 50});
@@ -113,7 +116,7 @@ const results = Object.fromEntries(libs.map(l => [l, []]));
 for (let i = 0; i < runs; i++) for (const lib of libs) results[lib].push(await once(lib));
 await browser.close();
 
-console.log(`Chromium (software WebGL), ${LATENCY} ms per request, ${runs} runs; ms after the map was made: median (min–max)`);
+console.log(`Chromium (software WebGL), ${LATENCY} ms per request, CPU ×${CPU}, ${runs} runs; ms after the map was made: median (min–max)`);
 const keys = Object.keys(results[libs[0]][0]);
 const f = v => Number.isNaN(v) ? '–' : v.toFixed(0);
 console.log(`| Step | ${libs.join(' | ')} |\n|---|${libs.map(() => '---').join('|')}|`);

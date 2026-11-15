@@ -349,7 +349,8 @@ void main() {
 }`],
 };
 
-interface Program { prog: WebGLProgram; u: Record<string, WebGLUniformLocation> }
+/** `u` is empty until the program is first used: see `link`. */
+interface Program { prog: WebGLProgram; u: Record<string, WebGLUniformLocation>; shaders?: WebGLShader[] }
 /** Floats for one corner of an icon: see `a_v` and `a_d` of the `icon` program. */
 const ICON_VERTEX = 7;
 interface IconBuffers {
@@ -424,6 +425,7 @@ type IconOf = (name: string) => {x: number; y: number; width: number; height: nu
 
 export class GLRenderer {
     gl: WebGL2RenderingContext;
+    /** Empty until the first program is used: see `ready`. */
     private programs = {} as Record<keyof typeof SHADERS, Program>;
     private quad: WebGLVertexArrayObject;
     private textVao: WebGLVertexArrayObject;
@@ -446,10 +448,6 @@ export class GLRenderer {
         const gl = canvas.getContext('webgl2', {antialias, alpha: true, premultipliedAlpha: true, stencil: true, depth: true}) as WebGL2RenderingContext | null;
         if (!gl) throw new Error('WebGL2 is not available');
         this.gl = gl;
-        for (const name in SHADERS) {
-            const [vs, fs] = SHADERS[name as keyof typeof SHADERS];
-            this.programs[name as keyof typeof SHADERS] = this.link(vs, fs, name);
-        }
         const buf = (data: BufferSource | null, usage: number = gl.STATIC_DRAW) => {
             const b = gl.createBuffer()!;
             gl.bindBuffer(gl.ARRAY_BUFFER, b);
@@ -499,9 +497,9 @@ export class GLRenderer {
         gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
     }
 
-    private link(vs: string, fs: string, name: string): Program {
+    /** Starts the compile and the link of a program. Nothing reads its state here, because that would wait for the compile: `ready` does that at the first use of the program. */
+    private link(vs: string, fs: string): Program {
         const gl = this.gl, prog = gl.createProgram()!;
-        // (The state of each shader is not read: that would wait for its compilation. A fault shows when the program is linked.)
         const shaders = [[gl.VERTEX_SHADER, vs], [gl.FRAGMENT_SHADER, fs]].map(([type, src]) => {
             const s = gl.createShader(type as number)!;
             gl.shaderSource(s, HEAD + src);
@@ -510,13 +508,30 @@ export class GLRenderer {
             return s;
         });
         gl.linkProgram(prog);
-        if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(`Program "${name}": ${gl.getProgramInfoLog(prog)} ${shaders.map(s => gl.getShaderInfoLog(s))}`);
-        const u: Record<string, WebGLUniformLocation> = {};
-        for (let i = 0; i < gl.getProgramParameter(prog, gl.ACTIVE_UNIFORMS); i++) {
-            const info = gl.getActiveUniform(prog, i)!;
-            u[info.name.replace(/\[0\]$/, '')] = gl.getUniformLocation(prog, info.name)!; // arrays are reported as "name[0]"
+        return {prog, u: {}, shaders};
+    }
+
+    /** The program `name`, linked, with the locations of its uniforms. */
+    private ready(name: keyof typeof SHADERS): Program {
+        const gl = this.gl;
+        // The shaders compile at the first use of any program, in the first frame, after that frame has requested its
+        // tiles (#390): in some browsers (Safari) `compileShader` itself takes time on this thread. All of them start
+        // at once, so that the driver can compile them in parallel (KHR_parallel_shader_compile, where it exists).
+        if (!this.programs.fill) {
+            gl.getExtension('KHR_parallel_shader_compile');
+            for (const n in SHADERS) this.programs[n as keyof typeof SHADERS] = this.link(SHADERS[n as keyof typeof SHADERS][0], SHADERS[n as keyof typeof SHADERS][1]);
         }
-        return {prog, u};
+        const p = this.programs[name], {prog, shaders} = p;
+        if (shaders) {
+            p.shaders = undefined;
+            // (A fault in a shader shows when the program is linked.)
+            if (!gl.getProgramParameter(prog, gl.LINK_STATUS) && !gl.isContextLost()) throw new Error(`Program "${name}": ${gl.getProgramInfoLog(prog)} ${shaders.map(s => gl.getShaderInfoLog(s))}`);
+            for (let i = 0; i < gl.getProgramParameter(prog, gl.ACTIVE_UNIFORMS); i++) {
+                const info = gl.getActiveUniform(prog, i)!;
+                p.u[info.name.replace(/\[0\]$/, '')] = gl.getUniformLocation(prog, info.name)!; // arrays are reported as "name[0]"
+            }
+        }
+        return p;
     }
 
     resize(width: number, height: number, dpr: number) {
@@ -723,7 +738,7 @@ export class GLRenderer {
         gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
         const tile: GLTile = {uid: ++this.uids, labels: {}, batches: {}, tex};
         if (dem) {
-            const n = 2 ** id.z, slopes = this.newTexture(), u = this.programs.demPrepare;
+            const n = 2 ** id.z, slopes = this.newTexture(), u = this.ready('demPrepare');
             gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, image.width, image.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
             gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
             gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, slopes, 0);
@@ -1061,7 +1076,7 @@ export class GLRenderer {
     private current: Program | null = null;
     /** Selects a program, telling it the size of the view being drawn (the screen, or a terrain tile's texture). */
     private use(name: keyof typeof SHADERS, tr: Transform) {
-        const p = this.programs[name];
+        const p = this.ready(name);
         if (p !== this.current) {
             this.gl.useProgram(p.prog);
             this.gl.uniform2f(p.u.u_view, tr.width, tr.height);

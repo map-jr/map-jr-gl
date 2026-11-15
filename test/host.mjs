@@ -1451,5 +1451,28 @@ for (const method of ['easeTo', 'flyTo']) {
     } catch (e) { check('the comparison of the frame time with 100,000 and 1,000 icons was completed', false, String(e.message).split('\n')[0]); }
     await page.close();
 }
+// The main-thread renderer sends its first tile requests to the tile workers before it compiles a shader (#390): in
+// Safari, `compileShader` takes time on the page's thread, and the requests should not wait for it.
+{
+    const page = await browser.newPage({viewport: {width: 900, height: 600}});
+    try {
+        await page.goto(`${origin}/bench`);
+        const order = await page.evaluate(async () => {
+            const lib = await import('/dist/map-jr-gl.js'), style = await (await fetch('/style.json')).json();
+            const seen = {loadsBeforeCompile: -1, loads: 0};
+            const post = MessagePort.prototype.postMessage, compile = WebGL2RenderingContext.prototype.compileShader;
+            MessagePort.prototype.postMessage = function (m, ...rest) { if (m?.type === 'load') seen.loads++; return post.call(this, m, ...rest); };
+            WebGL2RenderingContext.prototype.compileShader = function (s) { if (seen.loadsBeforeCompile < 0) seen.loadsBeforeCompile = seen.loads; return compile.call(this, s); };
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99;background:#fff'}));
+            const host = lib.createMap(el, {style, initialView: {center: [-74.0065, 40.7085], zoom: 13}, renderer: 'main', attribution: false});
+            await new Promise(r => { const off = host.state.subscribe(s => s.idle, v => { if (v) { off(); r(); } }); setTimeout(r, 30000); });
+            host.destroy(); el.remove();
+            MessagePort.prototype.postMessage = post; WebGL2RenderingContext.prototype.compileShader = compile;
+            return seen;
+        });
+        check('the main-thread renderer requests its first tiles before it compiles a shader', order.loadsBeforeCompile > 0, JSON.stringify(order));
+    } catch (e) { check('the order of the first tile request and the shader compile was measured', false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
 await browser.close();
 process.exit(failed ? 1 : 0);
