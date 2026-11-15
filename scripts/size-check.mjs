@@ -32,6 +32,8 @@ for (const f of compat) engine.delete(f); // the page has these already when it 
 // MapLibre GL JS were merged into the compat entry (it had 1.3 KB of room, and the open pull requests needed most of it).
 // On 2026-11-15 the owner raised the worker from 72 to 78 KB for the globe (#463): its grid cut and globe code stay in
 // the worker so that a globe map needs no extra request, and the next globe pull requests need room.
+// The same day the owner raised the engine on the main thread from 68 to 74 KB, because it has the worker's code for
+// browsers with no worker renderer, and the globe adds to both.
 const sizes = [
     // What a page downloads before the map can start. The worker file is downloaded at the same time.
     ['page script, up front (' + [...page].length + ' files)', gz(page), 38],
@@ -39,7 +41,7 @@ const sizes = [
     ['page script of maplibre-compat, up front (' + [...compat].length + ' files)', gz(compat), 46],
     ['map-jr-gl-worker.js', gz(['map-jr-gl-worker.js']), 78],
     // Only when the engine runs on the main thread (no worker is possible).
-    ['engine on the main thread, on demand', gz(engine), 68],
+    ['engine on the main thread, on demand', gz(engine), 74],
     // The server renderer (`@map-jr/map-jr-gl/server`), with the files that it imports when it loads.
     // The control functions (`@map-jr/map-jr-gl/controls`). They load the control classes, and with them the map,
     // only when the map adds a control, so a page can import them before it makes the map (#160).
