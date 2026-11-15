@@ -26,10 +26,11 @@ export function fetchWith(rules: () => RequestRules | undefined, ask: Ask, kind 
  */
 export function withTimeout(f: typeof fetch, ms = 30000): typeof fetch {
     return (input, init) => {
-        const ac = new AbortController();
+        const ac = new AbortController(), outer = init?.signal;
         // (The timer is not cleared when the headers arrive: an abort also ends a body that never finishes.)
-        setTimeout(() => ac.abort(), ms);
-        return Promise.race([f(input, {...init, signal: ac.signal}), new Promise<never>((_, fail) => ac.signal.addEventListener('abort',
-            () => fail(new Error(`[map-jr-gl] the request to ${input} did not finish within ${ms} ms.`))))]);
+        setTimeout(() => ac.abort(new Error(`[map-jr-gl] the request to ${input} did not finish within ${ms} ms.`)), ms);
+        // An abort by the caller (a tile that is no longer needed) still ends the request.
+        if (outer) outer.aborted ? ac.abort(outer.reason) : outer.addEventListener('abort', () => ac.abort(outer.reason));
+        return Promise.race([f(input, {...init, signal: ac.signal}), new Promise<never>((_, fail) => ac.signal.addEventListener('abort', () => fail(ac.signal.reason)))]);
     };
 }
