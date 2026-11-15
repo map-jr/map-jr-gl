@@ -152,7 +152,8 @@ that is drawn on top is the first of `features`.
 For a small number of markers with HTML content, use `map.overlay(element, {lngLat, anchor, popup})`. With
 `draggable: true` and `onDragEnd`, the user can move the marker, and `onDragEnd` gets the new `[lng, lat]`.
 `defaultPin()` makes the default pin of `Marker`, for a marker with the same look. In Vue and React, `MapOverlay` has
-the same props. See [Elements of the page on the map](api.md#elements-of-the-page-on-the-map).
+the same props. See [Elements of the page on the map](api.md#elements-of-the-page-on-the-map). With the worker renderer, an element of the page can trail the map by about one frame during some movements;
+see [How closely an element of the page follows the map](#how-closely-an-element-of-the-page-follows-the-map).
 
 ## With the API of MapLibre GL JS
 
@@ -292,6 +293,14 @@ map is drawn by the engine. With the main-thread renderer, both change in the sa
 A marker layer is drawn with the map, so it never trails. Measured on 2026-11-15 in Chrome with a GPU: during a drag
 the element was 0 frames behind on an Apple M4 and 0.1 frames behind on a Galaxy S21. During `easeTo` it was about one
 frame behind on the Galaxy S21, and on the Apple M4 it was one frame behind in one run of three.
+
+To keep markers exactly on the map in every movement, choose one of these:
+
+- Draw the markers as a marker layer, or as an image in a symbol layer. This is the better choice for more than a few
+  markers, and it works with both renderers.
+- Keep elements of the page, and draw the map on the main thread: `renderer: 'main'` in the description (`MapSpec`)
+  of `@map-jr/map-jr-gl`, or in the options of `new Map()` of `@map-jr/map-jr-gl/maplibre-compat`. The page then does
+  more work in each frame, which matters on a slow phone.
 
 ## 3D terrain
 
