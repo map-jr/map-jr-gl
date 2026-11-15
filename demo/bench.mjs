@@ -4,6 +4,7 @@ import * as mapjr from '../dist/map-jr-gl-maplibre-compat.js';
 import * as maplibre from '../ml/maplibre-gl.mjs';
 import {manyMarkers, addImages, addMarkers} from './markers.mjs';
 import {TileReport} from './tile-report.mjs';
+import {startSteps, timelineLine} from './start-timeline.mjs';
 
 maplibre.setWorkerUrl(new URL('../ml/maplibre-gl-worker.mjs', import.meta.url).href);
 const q = new URLSearchParams(location.search);
@@ -53,6 +54,8 @@ function withTerrain(style) {
 
 async function run(s) {
     stage.replaceChildren();
+    // (The start timeline reads the resource timings of this scenario only.)
+    try { performance.setResourceTimingBufferSize(5000); performance.clearResourceTimings(); } catch {}
     const el = stage.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;inset:0'}));
     const style = await (await fetch(STYLE)).json();
     delete style.terrain; delete style.sky;
@@ -78,11 +81,18 @@ async function run(s) {
     // The tile slots of the view that have no tile of their own drawn, with the history of each tile (this library only).
     const undrawn = {};
     let late = null;
+    // The times of the start events, for the start timeline (#371).
+    const events = {}, at = k => () => { events[k] ??= performance.now(); };
+    map.once('render', at('frame')); map.once('load', at('load')); map.once('idle', at('idle'));
+    // (Tiles are fetched in workers, which the resource timings of the page do not list: the tile steps come from the tile events.)
+    if (s.lib === 'maplibre') { map.on('dataloading', e => { if (e.tile) at('tileReq')(); }); map.on('data', e => { if (e.tile) at('tileAns')(); }); }
+    else map.on('tile', e => { if (e.kind === 'req') at('tileReq')(); else if (e.kind === 'ans') at('tileAns')(); });
     const report = when => { if (s.lib !== 'maplibre') undrawn[when] = tiles.undrawn(); };
     // (A map that never settles must not stop the scenarios after it: it fails after a minute.)
     if (!await Promise.race([new Promise(r => map.once('idle', () => r(true))), sleep(60000).then(() => false)])) { map.remove(); throw new Error('the map was not idle after 60 seconds'); }
     const load = performance.now() - t0;
     report('after load idle');
+    const steps = startSteps(performance.getEntriesByType('resource'), t0, events, STYLE);
     let add = null;
     if (s.markers) {
         const layer = manyMarkers(s.markers, VIEW.center, 0.05), a0 = performance.now();
@@ -107,7 +117,7 @@ async function run(s) {
     const span = during.length > 1 ? (during[during.length - 1] - during[0]) / 1000 : 1;
     const result = {name: s.name, load, add, fps: Math.max(0, during.length - 1) / span, worstGap: gaps.length ? Math.max(...gaps) : 0, script: median(scripts), worstScript: scripts.length ? Math.max(...scripts) : 0, blocked, engine: engine.length ? engine.reduce((a, b) => a + b, 0) / engine.length : NaN,
         // The frame rate that the engine counted itself. If the page counts fewer frames, the reports from a worker arrived late.
-        engineFps: engineFps.length ? engineFps.reduce((a, b) => a + b, 0) / engineFps.length : NaN, undrawn, late};
+        engineFps: engineFps.length ? engineFps.reduce((a, b) => a + b, 0) / engineFps.length : NaN, undrawn, late, steps};
     map.remove();
     await sleep(300);
     return result;
@@ -121,8 +131,12 @@ const undrawnLines = r => [...Object.entries(r.undrawn ?? {}).map(([when, list])
     // ("answer": request to the answer of the tile worker, fetch and build; "upload": to the GPU; "draw": to the first frame).
     ...(r.late ? [`${r.name}, late tiles (drawn over 250 ms after coming into view during the pan): ${r.late.length}` + r.late.slice(0, 3).map(t => `; ${t.key} ${t.ms} ms${t.drawn ? '' : ' in view, never drawn'}: answer ${t.answer ?? '?'}, upload ${t.upload ?? '?'}, draw ${t.draw ?? '?'}, requested ${t.ahead ?? '?'} ms before in view, ${t.bare ? 'no fallback' : 'covered by a parent or children'}`).join('')] : [])];
 const results = [];
+/** The start timeline: one line for each of the first three scenarios (MapLibre GL JS and this library with both renderers), with the median of each step when a scenario ran more than once. */
+const timelineLines = () => scenarios.slice(0, 3).map(s => [s.name, results.filter(r => r.name === s.name).map(r => r.steps)]).filter(([, runs]) => runs.length)
+    .map(([name, runs]) => timelineLine(name, runs));
+const TIMELINE = 'Start timeline, ms after the map was made (sprite, glyphs and worker file from resource timings, which do not list requests made in a worker; tiles from the tile events; the style is fetched by the page before the map is made):';
 document.getElementById('run').onclick = async e => {
-    e.target.disabled = true; tbody.replaceChildren(); document.getElementById('undrawn').replaceChildren(); results.length = 0;
+    e.target.disabled = true; tbody.replaceChildren(); document.getElementById('timeline').replaceChildren(); document.getElementById('undrawn').replaceChildren(); results.length = 0;
     const only = q.get('only'); // e.g. ?only=terrain
     const list = (document.getElementById('markers').checked ? scenarios : scenarios.filter(s => !s.markers)).filter(s => !only || s.name.toLowerCase().includes(only.toLowerCase()));
     for (const [i, s] of list.entries()) {
@@ -135,6 +149,8 @@ document.getElementById('run').onclick = async e => {
             document.getElementById('undrawn').append(...undrawnLines(r).map(l => Object.assign(document.createElement('div'), {textContent: l})));
         } catch (err) { const tr = tbody.insertRow(); tr.insertCell().textContent = `${s.name}: failed (${err.message})`; tr.cells[0].colSpan = 7; }
     }
+    const lines = timelineLines();
+    if (lines.length) document.getElementById('timeline').replaceChildren(...[TIMELINE, ...lines].map(l => Object.assign(document.createElement('div'), {textContent: l})));
     stage.replaceChildren();
     status.textContent = 'Done.';
     window.benchResults = results;
@@ -142,7 +158,7 @@ document.getElementById('run').onclick = async e => {
 };
 document.getElementById('copy').onclick = () => {
     const head = [...document.querySelectorAll('#results th')].map(th => th.textContent);
-    const md = [document.getElementById('env').textContent, '', `| ${head.join(' | ')} |`, `|${head.map(() => '---').join('|')}|`, ...results.map(r => `| ${cells(r).join(' | ')} |`), '', ...results.flatMap(undrawnLines)].join('\n');
+    const md = [document.getElementById('env').textContent, '', `| ${head.join(' | ')} |`, `|${head.map(() => '---').join('|')}|`, ...results.map(r => `| ${cells(r).join(' | ')} |`), '', ...(timelineLines().length ? [TIMELINE, '', ...timelineLines().map(l => `- ${l}`), ''] : []), ...results.flatMap(undrawnLines)].join('\n');
     navigator.clipboard.writeText(md).then(() => { status.textContent = 'Copied.'; });
 };
 if (q.has('auto')) document.getElementById('run').click();

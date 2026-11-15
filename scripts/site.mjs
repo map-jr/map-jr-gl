@@ -30,7 +30,7 @@ const at = p => fileURLToPath(new URL(p, import.meta.url)), bench = at('../site-
 mkdirSync(bench + 'demo', {recursive: true});
 mkdirSync(bench + 'ml', {recursive: true});
 cpSync(at('../demo/bench.html'), bench + 'index.html');
-for (const f of ['bench.mjs', 'markers.mjs', 'tile-report.mjs']) cpSync(at('../demo/' + f), bench + 'demo/' + f);
+for (const f of ['bench.mjs', 'markers.mjs', 'tile-report.mjs', 'start-timeline.mjs']) cpSync(at('../demo/' + f), bench + 'demo/' + f);
 cpSync(at('../dist'), bench + 'dist', {recursive: true, filter: src => !/[\\/]types([\\/]|$)/.test(src)});
 for (const f of readdirSync(at('../node_modules/maplibre-gl/dist'))) if (/^maplibre-gl(-shared|-worker)?\.mjs$|\.css$/.test(f)) cpSync(at('../node_modules/maplibre-gl/dist/' + f), bench + 'ml/' + f);
 console.log('site built in site-dist/ (with the benchmark page in site-dist/bench/)');
