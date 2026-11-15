@@ -191,7 +191,6 @@ export class LogoControl implements Control {
     getDefaultPosition(): ControlPosition { return 'bottom-left'; }
 }
 
-type WatchState = 'OFF' | 'WAITING_ACTIVE' | 'ACTIVE_LOCK' | 'ACTIVE_ERROR' | 'BACKGROUND' | 'BACKGROUND_ERROR';
 /**
  * Moves the map to the user's position (after the browser's permission prompt). It fires `geolocate`, `error` or
  * `outofmaxbounds` on itself, as MapLibre GL JS does, and `geolocate` and `error` also on the map.
@@ -200,17 +199,14 @@ type WatchState = 'OFF' | 'WAITING_ACTIVE' | 'ACTIVE_LOCK' | 'ACTIVE_ERROR' | 'B
  * position (`watchPosition`) and keeps the map on it until the map moves for another reason, which fires
  * `trackuserlocationend` and `userlocationlostfocus`. A click then returns to the position and fires
  * `trackuserlocationstart` and `userlocationfocus`. `showUserLocation` (default true) shows a dot at the position while
- * tracking is on. The accuracy circle (`showAccuracyCircle`) is not drawn.
+ * tracking is on. The accuracy circle (`showAccuracyCircle`) is not drawn. The code of tracking (geolocate-track.ts)
+ * loads on demand at the first click, so the first step of tracking happens once that file has loaded.
  */
 export class GeolocateControl extends Evented implements Control {
     private el?: HTMLElement;
     private map?: Map;
     private b?: HTMLButtonElement;
-    private watch?: number;
-    private dot?: HTMLElement;
-    private last?: GeolocationPosition;
-    private own = false;
-    private state: WatchState = 'OFF';
+    private t?: Promise<{click(): void; remove(): void}>;
     constructor(private options: {zoom?: number; positionOptions?: PositionOptions; trackUserLocation?: boolean; showUserLocation?: boolean; showAccuracyCircle?: boolean} = {}) {
         super();
         if (options.showAccuracyCircle) noEffect('GeolocateControl', 'showAccuracyCircle', ' The control shows a dot at the position without the circle.');
@@ -220,7 +216,7 @@ export class GeolocateControl extends Evented implements Control {
         const el = this.el = group();
         const b = this.b = button(el, 'geolocate', ui(map, 'GeolocateControl.FindMyLocation', 'Find my location'), svg('<circle cx="9" cy="9" r="4"/><path d="M9 1.500v3M9 13.500v3M1.500 9h3M13.500 9h3"/>'), () => this.trigger());
         if (!('geolocation' in navigator)) { b.disabled = true; b.title = ui(map, 'GeolocateControl.LocationNotAvailable', 'Location not available'); b.setAttribute('aria-label', b.title); }
-        if (this.options.trackUserLocation) { b.setAttribute('aria-pressed', 'false'); map.on('movestart', this.onMoveStart); map.on('dragstart', this.onUserMove); map.on('moveend', this.onMoveEnd); map.on('move', this.place); }
+        if (this.options.trackUserLocation) b.setAttribute('aria-pressed', 'false');
         return el;
     }
     /**
@@ -228,95 +224,44 @@ export class GeolocateControl extends Evented implements Control {
      * Returns `false` when the control is not on a map or the browser has no geolocation.
      */
     trigger() {
-        const map = this.map, b = this.b;
+        const map = this.map, b = this.b, o = this.options;
         if (!map || !b || !('geolocation' in navigator)) return false;
-        if (this.options.trackUserLocation) {
-            switch (this.state) {
-                case 'OFF':
-                    this.set('WAITING_ACTIVE'); this.fire('trackuserlocationstart');
-                    this.watch = navigator.geolocation.watchPosition(p => this.found(map, p), e => this.failed(map, e), this.options.positionOptions);
-                    break;
-                case 'BACKGROUND': case 'BACKGROUND_ERROR':
-                    if (this.state === 'BACKGROUND' && this.last) { this.set('ACTIVE_LOCK'); this.follow(map, this.last); } else this.set('ACTIVE_ERROR');
-                    this.fire('trackuserlocationstart'); this.fire('userlocationfocus');
-                    break;
-                default:
-                    this.stop(); this.fire('trackuserlocationend');
-            }
+        if (o.trackUserLocation) {
+            const host = {
+                fire: (type: string) => this.fire(type),
+                found: (p: GeolocationPosition) => this.found(map, p, false),
+                failed: (e: {code: number; message: string}) => this.failed(map, e),
+                follow: (p: GeolocationPosition) => this.follow(map, p),
+            };
+            (this.t ??= import('./geolocate-track.ts').then(m => m.tracker(host, map, b, o.positionOptions, o.showUserLocation !== false)))
+                .then(t => { if (this.map === map) t.click(); }, e => console.error('[map-jr-gl] GeolocateControl: the code of trackUserLocation could not be loaded. Check that the files of the library are served.', e));
             return true;
         }
         b.disabled = true;
-        navigator.geolocation.getCurrentPosition(p => { b.disabled = false; this.found(map, p); }, e => { b.disabled = false; this.failed(map, e); }, this.options.positionOptions);
+        navigator.geolocation.getCurrentPosition(p => { b.disabled = false; this.found(map, p, true); }, e => { b.disabled = false; this.failed(map, e); }, o.positionOptions);
         return true;
     }
-    private found(map: Map, p: GeolocationPosition) {
-        if (this.map !== map) return;
-        const {longitude: x, latitude: y} = p.coords, m = map.getMaxBounds(), track = this.options.trackUserLocation;
-        if (m && (x < m.getWest() || x > m.getEast() || y < m.getSouth() || y > m.getNorth())) {
-            if (track && this.state !== 'OFF') { this.last = p; this.set(this.state.startsWith('BACKGROUND') ? 'BACKGROUND_ERROR' : 'ACTIVE_ERROR'); }
-            this.fire('outofmaxbounds', {coords: p.coords, timestamp: p.timestamp});
-            return;
-        }
-        if (track) {
-            if (this.state === 'OFF') return;
-            this.last = p;
-            if (this.state === 'BACKGROUND_ERROR') this.set('BACKGROUND');
-            else if (this.state === 'BACKGROUND') this.place();
-            else { this.set('ACTIVE_LOCK'); this.follow(map, p); }
-        } else this.follow(map, p);
+    private found(map: Map, p: GeolocationPosition, move: boolean) {
+        if (this.map !== map) return false;
+        const {longitude: x, latitude: y} = p.coords, m = map.getMaxBounds();
+        if (m && (x < m.getWest() || x > m.getEast() || y < m.getSouth() || y > m.getNorth())) { this.fire('outofmaxbounds', {coords: p.coords, timestamp: p.timestamp}); return false; }
+        if (move) this.follow(map, p);
         this.fire('geolocate', {coords: p.coords, timestamp: p.timestamp});
         map.fire('geolocate', {coords: p.coords});
+        return true;
     }
     private failed(map: Map, err: {code: number; message: string}) {
         if (this.map !== map) return;
-        if (this.options.trackUserLocation) {
-            // As in MapLibre GL JS, a refused permission turns tracking off and disables the button.
-            if (err.code === 1) { this.stop(); this.b!.disabled = true; }
-            else if (this.state !== 'OFF') this.set(this.state.startsWith('BACKGROUND') ? 'BACKGROUND_ERROR' : 'ACTIVE_ERROR');
-        }
         this.fire('error', {code: err.code, message: err.message});
         map.fire('error', {error: new Error(err.message)});
     }
     private follow(map: Map, p: GeolocationPosition) {
         map.easeTo({duration: 1200, center: [p.coords.longitude, p.coords.latitude], zoom: Math.max(map.getZoom(), this.options.zoom ?? 14)});
-        this.own = true; // (after easeTo, so that the end of an earlier move that easeTo stops does not clear it)
     }
-    // A move that this control did not start (a drag, the wheel, a call of the application) ends the lock, as in MapLibre GL JS.
-    private onMoveStart = () => { if (!this.own) this.onUserMove(); };
-    private onMoveEnd = () => { this.own = false; };
-    private onUserMove = () => {
-        this.own = false;
-        if (this.state !== 'ACTIVE_LOCK') return;
-        this.set('BACKGROUND'); this.fire('trackuserlocationend'); this.fire('userlocationlostfocus');
-    };
-    private stop() {
-        if (this.watch !== undefined) navigator.geolocation.clearWatch(this.watch);
-        this.watch = undefined;
-        this.set('OFF');
-    }
-    /** Sets the state and the class names of the button that MapLibre GL JS sets (`maplibregl-ctrl-geolocate-active` and others). */
-    private set(state: WatchState) {
-        this.state = state;
-        const b = this.b!;
-        for (const [name, on] of [['active', state === 'ACTIVE_LOCK'], ['active-error', state === 'ACTIVE_ERROR'], ['background', state === 'BACKGROUND'], ['background-error', state === 'BACKGROUND_ERROR'], ['waiting', state === 'WAITING_ACTIVE']] as const) toggleClass(b, 'ctrl-geolocate-' + name, on);
-        b.setAttribute('aria-pressed', String(state !== 'OFF'));
-        this.place();
-    }
-    // The dot is an element over the map that follows the position at every `move`. It shows while tracking is on.
-    private place = () => {
-        const map = this.map, p = this.last;
-        if (!map || !p || this.state === 'OFF' || this.options.showUserLocation === false) { this.dot?.remove(); return; }
-        const dot = this.dot ??= Object.assign(document.createElement('div'), {className: cls('user-location-dot')});
-        if (!dot.parentNode) map.getContainer().appendChild(dot);
-        toggleClass(dot, 'user-location-dot-stale', this.state.endsWith('ERROR'));
-        const {x, y} = map.project([p.coords.longitude, p.coords.latitude]);
-        dot.style.transform = `translate(${x}px,${y}px) translate(-50%,-50%)`;
-    };
     onRemove() {
-        if (this.watch !== undefined) navigator.geolocation.clearWatch(this.watch);
-        this.watch = undefined; this.state = 'OFF';
-        this.map?.off('movestart', this.onMoveStart).off('dragstart', this.onUserMove).off('moveend', this.onMoveEnd).off('move', this.place);
-        this.dot?.remove(); this.el?.remove(); this.map = undefined;
+        this.t?.then(t => t.remove(), () => {});
+        this.t = undefined;
+        this.el?.remove(); this.map = undefined;
     }
 }
 // (Warnings are once per page, as the other warnings for options with no effect.)

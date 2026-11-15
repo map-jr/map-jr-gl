@@ -1985,7 +1985,9 @@ for (const mode of ['main', 'worker']) {
             const cls = () => [...b.classList].filter(c => c.startsWith('maplibregl-ctrl-geolocate-')).join(' ') || 'off';
             const idle = () => new Promise(r => { const t = () => m.isMoving() ? setTimeout(t, 50) : r(); setTimeout(t, 50); });
             const states = [];
-            b.click(); states.push(cls());
+            // The code of tracking loads at the first click (geolocate-track.ts), so each click acts after a task.
+            const press = async () => { b.click(); for (let i = 0; i < 100 && !ok; i++) await new Promise(r => setTimeout(r, 20)); await new Promise(r => setTimeout(r, 0)); };
+            await press(); states.push(cls());
             ok({coords: {longitude: 10, latitude: 20, accuracy: 5}, timestamp: 1}); states.push(cls());
             await idle();
             const centred = Math.round(m.getCenter().lng) === 10;
@@ -1993,9 +1995,10 @@ for (const mode of ['main', 'worker']) {
             m.jumpTo({center: [0, 0]}); await idle(); states.push(cls());
             ok({coords: {longitude: 11, latitude: 20, accuracy: 5}, timestamp: 2}); await idle();
             const stayed = Math.round(m.getCenter().lng) === 0;
-            b.click(); states.push(cls()); await idle();
+            await press(); states.push(cls());
+            for (let i = 0; i < 60 && Math.round(m.getCenter().lng) !== 11; i++) await new Promise(r => setTimeout(r, 50));
             const back = Math.round(m.getCenter().lng) === 11;
-            b.click(); states.push(cls());
+            await press(); states.push(cls());
             const dotGone = !el.querySelector('.maplibregl-user-location-dot');
             m.remove(); el.remove();
             if (real) delete navigator.geolocation;
