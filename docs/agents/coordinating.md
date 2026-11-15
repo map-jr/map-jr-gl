@@ -128,6 +128,30 @@ About 30 workers and 3 reviewers, one coordinator, 21 pull requests merged.
   Ask the owner early when the open pull requests together come near a budget.
 - **Workers shared the scratchpad.** The brief now asks for file names that start with the branch name.
 
+## Notes from the batch of 2026-11-15 (on the owner's Mac)
+
+One coordinator on the owner's Mac (Apple M4, an iOS Simulator, an Android phone over USB), about 15 workers and 1
+reviewer, 17 pull requests merged and the release 0.5.0.
+
+- **A worker's worktree starts from the coordinator's checkout,** not from `origin/main`. Workers that started before
+  the coordinator moved its checkout read the old brief. Run `git fetch origin && git checkout --detach origin/main`
+  in your own checkout before you start workers, and again after a change of the brief.
+- **The Mac differs from the cloud VM** in ways that the brief now lists (`BROWSER=open`, `cp -i`, Playwright not in
+  the lockfile). The shell also has `noclobber`: `>` onto an existing file fails, and in a background command the old
+  file is then read as if it were new. Write `>|`, or use new file names.
+- **A device measurement needs the device to itself.** Give the phone to one worker at a time, and name it in the
+  prompt. The setup (`adb reverse`, `adb forward … chrome_devtools_remote`, `connectOverCDP`) is in the prompts of
+  #371 and #38 of this batch.
+- **GitHub can skip the `pull_request` event.** #452 had no run of `CI` at all. Closing and opening the pull request
+  again started it.
+- **`gh pr checks --watch` right after a push** can return at once with "no checks". Wait about a minute before it.
+- **Two pull requests that edit the same export lines** (`src/maplibre-compat.ts`: #452, #454, #456) conflict one
+  after the other. Merge them one at a time, and send each conflict to the worker that has the context.
+- **`git commit -am` in the coordinator's checkout** picks up files that a long run rewrote
+  (`test/conformance/render-result.json` went into a test-only pull request once). Commit named files.
+- **A triage worker reads; it does not run.** Two of its "open" items were already done on `main` (the compass drag,
+  #358). Ask each worker to check the item on `main` first, as the brief says.
+
 ## After a batch
 
 1. Run `pnpm status` once on `main` and open one pull request with the result.
