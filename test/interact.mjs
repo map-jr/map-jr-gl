@@ -2343,6 +2343,19 @@ for (const mode of ['main', 'worker']) {
             return {connected: p.getElement().isConnected, open: p.isOpen()};
         });
         check('[main] Popup: remove() removes the element when the closing animation never ends', !stuck.connected && !stuck.open, JSON.stringify(stuck));
+        // A popup that fades out after remove() does not catch a click: the click goes to the map below it.
+        const fading = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), m = window.a11yMap, wait = t => new Promise(r => setTimeout(r, t));
+            const p = new mod.Popup().setLngLat(m.getCenter()).setText('Fading').addTo(m);
+            await wait(300);
+            const r = p.getElement().querySelector('.maplibregl-popup-content').getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+            const before = p.getElement().contains(document.elementFromPoint(x, y));
+            p.remove();
+            const during = p.getElement().contains(document.elementFromPoint(x, y)), connected = p.getElement().isConnected;
+            await wait(500);
+            return {before, during, connected};
+        });
+        check('[main] Popup: while it fades out after remove(), a click goes to the map below it', fading.before && !fading.during, JSON.stringify(fading));
         // A camera animation of one second: with "reduce motion" the map is there at once; `essential: true` keeps the animation.
         const zoomSoon = async options => page.evaluate(async options => { const m = window.a11yMap; m.jumpTo({zoom: 2}); await new Promise(r => setTimeout(r, 200)); m.easeTo({zoom: 4, duration: 1000, ...options}); await new Promise(r => setTimeout(r, 250)); return m.getZoom(); }, options);
         const moving = await zoomSoon({});

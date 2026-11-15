@@ -175,11 +175,14 @@ export class Popup extends Overlay {
             this.closing = undefined;
             // (The closing animation keeps its last frame. Without this, the popup is transparent when it opens again.)
             animation?.cancel();
+            this.box.style.pointerEvents = 'auto';
             // (The focus returns to the marker, or to the map when the marker is no longer on the page.)
             if (this.el.contains(document.activeElement)) (this.opener?.isConnected ? this.opener : map.getCanvas()).focus({preventScroll: true});
             this.detach();
         };
         this.closing = finish;
+        // (A popup that fades out does not catch clicks: they go to the map below it.)
+        this.box.style.pointerEvents = 'none';
         // The element stays on the map (and follows it) until the fade has played. The event `close` comes at once, as in
         // MapLibre GL JS: a page that is busy can play the fade late, and the application must not wait for it.
         // A fade that never ends (a page that draws no frames, an animation that is paused) must not keep the element:
