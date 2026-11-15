@@ -196,6 +196,8 @@ export class Engine {
     private wasIdle = false;
     /** The map has been idle once: the overview tiles wait for that (#326). */
     private wentIdle = false;
+    /** When the previous frame began (performance.now()). */
+    private lastFrameAt = 0;
     /** The view at the end of the movement under way, its tiles are requested early (#361). */
     private target: Transform | null = null;
     /** Tiles requested for a target that are on their way: they finish when a newer movement replaces it (#361). */
@@ -1551,6 +1553,10 @@ export class Engine {
         if (idle && !this.wasIdle) this.emit({type: 'idle', seq: this.seq});
         // (One more frame after the first `idle`: it requests the overview tiles.)
         if (idle && !this.wentIdle) { this.wentIdle = true; this.repaint(); }
+        // WebKit does not always show the one frame that a map draws after a pause (#429): the page keeps the old picture,
+        // with no error and no lost context. A frame that comes after a pause is therefore followed by one more frame.
+        if (began - this.lastFrameAt > 100) this.repaint();
+        this.lastFrameAt = began;
         this.wasIdle = idle;
         if (busy) this.repaint();
         const st = this.stats, end = performance.now();

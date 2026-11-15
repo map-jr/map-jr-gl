@@ -1570,5 +1570,37 @@ for (const method of ['easeTo', 'flyTo']) {
         check('a canvas that adds noise to getImageData does not change the heights of elevation tiles', clean.every(h => typeof h === 'number') && clean.join() === noisy.join(), JSON.stringify({clean, noisy}));
     } catch (e) { check('the heights with a noisy canvas were compared', false, String(e.message).split('\n')[0]); }
 }
+// A change after a pause reaches the screen (#429). WebKit did not show the one frame that a map drew after a pause, so
+// the engine draws one more frame then. Two maps are on the page, as in the report. The count of renders checks this in
+// every browser, and the picture checks it in WebKit.
+for (const renderer of ['worker', 'main']) {
+    const page = await browser.newPage({viewport: {width: 400, height: 300}});
+    try {
+        await page.goto(`${origin}/bench`);
+        const renders = await page.evaluate(async renderer => {
+            const lib = await import('/dist/map-jr-gl.js'), wait = ms => new Promise(r => setTimeout(r, ms));
+            const style = color => ({version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': color}}]});
+            const idle = h => new Promise(r => { const off = h.state.subscribe(s => s.idle, v => { if (v) { off(); r(); } }); setTimeout(r, 15000); });
+            const box = left => document.body.appendChild(Object.assign(document.createElement('div'), {style: `position:fixed;left:${left}px;top:0;width:200px;height:150px;z-index:99`}));
+            const first = lib.createMap(box(0), {style: style('#ff0000'), renderer, attribution: false});
+            const second = lib.createMap(box(200), {style: style('#0000ff'), renderer, attribution: false});
+            await Promise.all([idle(first), idle(second)]);
+            await wait(1000);
+            let n = 0;
+            first.listen('render', () => n++);
+            first.update({style: style('#00ff00'), renderer, attribution: false});
+            await wait(1000);
+            return n;
+        }, renderer);
+        let px = [];
+        for (let i = 0; i < 20 && !(px[1] > 200 && px[0] < 50); i++) {
+            const b64 = (await page.screenshot({clip: {x: 100, y: 75, width: 1, height: 1}})).toString('base64');
+            px = await page.evaluate(async b64 => { const img = new Image(); img.src = 'data:image/png;base64,' + b64; await img.decode(); const c = new OffscreenCanvas(1, 1).getContext('2d'); c.drawImage(img, 0, 0); return [...c.getImageData(0, 0, 1, 1).data]; }, b64);
+            if (!(px[1] > 200 && px[0] < 50)) await new Promise(r => setTimeout(r, 250));
+        }
+        check(`[${renderer}] a change of the style after a pause reaches the screen, with two maps on the page (#429)`, renders >= 2 && px[1] > 200 && px[0] < 50, JSON.stringify({renders, px}));
+    } catch (e) { check(`[${renderer}] the change after a pause was checked`, false, String(e.message).split('\n')[0]); }
+    finally { await page.close(); }
+}
 await browser.close();
 process.exit(failed ? 1 : 0);
