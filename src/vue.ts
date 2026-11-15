@@ -103,6 +103,7 @@ export function useMapFeatures(at: MaybeRefOrGetter<FeaturePlace | undefined>, o
  * ```vue
  * <MapJr :map-style="style">
  *   <MapOverlay :lng-lat="[-74.0, 40.71]" anchor="bottom"><img src="/pin.svg" alt="Office"></MapOverlay>
+ *   <MapOverlay :lng-lat="home" draggable @dragend="home = $event"><img src="/pin.svg" alt="Home"></MapOverlay>
  *   <MapOverlay v-if="selected" :lng-lat="selected.lngLat" popup @close="selected = null">{{ selected.name }}</MapOverlay>
  * </MapJr>
  * ```
@@ -118,12 +119,15 @@ export const MapOverlay = defineComponent({
         popup: Boolean,
         /** With a listener for `close`, a popup has a button to close it. */
         onClose: Function as PropType<() => void>,
+        /** The user can move the content (not for a `popup`). The events `dragstart`, `drag` and `dragend` get `[lng, lat]`. */
+        draggable: Boolean,
     },
-    emits: ['close'],
-    setup(props, {slots}) {
+    emits: ['close', 'dragstart', 'drag', 'dragend'],
+    setup(props, {slots, emit}) {
         const host = useMapHost(), el = shallowRef<HTMLElement | null>(null), shown = shallowRef(false);
         let overlay: Overlay | null = null;
-        const options = (): OverlayOptions => ({lngLat: [props.lngLat[0], props.lngLat[1]], anchor: props.anchor, offset: props.offset && [props.offset[0], props.offset[1]], popup: props.popup, onClose: props.onClose});
+        const options = (): OverlayOptions => ({lngLat: [props.lngLat[0], props.lngLat[1]], anchor: props.anchor, offset: props.offset && [props.offset[0], props.offset[1]], popup: props.popup, onClose: props.onClose,
+            draggable: props.draggable, onDragStart: p => emit('dragstart', p), onDrag: p => emit('drag', p), onDragEnd: p => emit('dragend', p)});
         // The map starts after this component is there, so the element is put on the map when the two exist.
         watch([host, el, options], ([map, element, o]) => {
             if (!map || !element) return;

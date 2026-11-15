@@ -149,8 +149,10 @@ that is drawn on top is the first of `features`.
 
 ### Elements of the page
 
-For a small number of markers with HTML content, use `map.overlay(element, {lngLat, anchor, popup})`. See
-[Elements of the page on the map](api.md#elements-of-the-page-on-the-map).
+For a small number of markers with HTML content, use `map.overlay(element, {lngLat, anchor, popup})`. With
+`draggable: true` and `onDragEnd`, the user can move the marker, and `onDragEnd` gets the new `[lng, lat]`.
+`defaultPin()` makes the default pin of `Marker`, for a marker with the same look. In Vue and React, `MapOverlay` has
+the same props. See [Elements of the page on the map](api.md#elements-of-the-page-on-the-map).
 
 ## With the API of MapLibre GL JS
 

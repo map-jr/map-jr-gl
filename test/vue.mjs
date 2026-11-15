@@ -51,13 +51,13 @@ const view = ref(${JSON.stringify(view)}), markers = ref([${JSON.stringify(pins)
 const tone = ref('#fff'), arrow = ref(true), twin = ref(false), full = ref(true), radius = ref(2);
 // (A component inside the SVG of an image: its own change must reach the map.)
 const Dot = {render: () => h('circle', {cx: 4, cy: 4, r: radius.value})};
-const t = window.t = {view, markers, layers, images, tone, arrow, twin, full, radius, moves: [], asked: [], clicks: [], loads: 0, order: [], views: 0, map: ref(null), pin: ref([-74.0065, 40.7085]), tip: ref(true), closed: 0};
+const t = window.t = {view, markers, layers, images, tone, arrow, twin, full, radius, moves: [], asked: [], clicks: [], loads: 0, order: [], views: 0, map: ref(null), pin: ref([-74.0065, 40.7085]), tip: ref(true), closed: 0, home: ref([-74.01, 40.705]), dragged: []};
 const make = (create, ssr) => create({render: () => h('div', {id: 'frame', style: 'width:800px;height:500px'}, [h(MapJr, {ref: t.map, mapStyle: style, controls: [navigation(), scale({position: 'bottom-left'})], ...(ssr ? {initialView: view.value, ...(ssr === 'svg' ? {ssr: {width: 800, height: 500}} : {})} : {view: view.value, 'onUpdate:view': v => { t.views++; view.value = v; }, interactiveLayers: layers.value, onClick: e => t.clicks.push(e)}), markers: markers.value, images: images.value, attribution: false, onLoad: host => { t.loads++; t.loadHost = host; t.order.push('load:' + t.map.value.host.state.get().idle); }, onIdle: () => t.order.push('idle'), onMoveend: e => t.moves.push(e.type + ' ' + typeof e.target.getZoom()),
   // An image that the style asks for and the map does not have: the application adds it to the prop images.
   onStyleimagemissing: e => { t.asked.push(e.id); if (!images.value[e.id]) images.value[e.id] = '<svg viewBox="0 0 4 4"><rect width="4" height="4"/></svg>'; }}, ssr ? undefined : {default: () => [h(MapOverlay, {lngLat: t.pin.value, anchor: 'bottom', 'data-own': '', class: 'own-class', style: 'color: rgb(255, 0, 0)'}, () => h('b', {id: 'own-pin'}, 'here')), arrow.value ? h(MapImage, {name: 'arrow', params: ['color']}, {default: ({color}) => h('svg', {viewBox: '0 0 8 8'}, [h('path', {d: 'M4 0 8 8 0 8z', fill: color, stroke: tone.value})])}) : null, twin.value ? h(MapImage, {name: 'arrow'}, () => h('svg', {viewBox: '0 0 8 8'}, [h('path', {d: 'M4 0 8 8 0 8z'})])) : null,
   h(MapImage, {name: 'maybe'}, () => full.value ? h('svg', {viewBox: '0 0 8 8'}, [h('style', 'p{color:rgb(1,2,3)}'), h('rect', {id: 'in-image', width: 8, height: 8})]) : null),
   h(MapImage, {name: 'nested'}, () => h('svg', {viewBox: '0 0 8 8'}, [h(Dot)])),
-  h(MapImage, {name: 'photo', src: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%224%22 height=%224%22/%3E', width: 4, height: 4}), h(MapOverlay, {lngLat: t.pin.value}, () => h('i', {id: 'bare-pin'}, 'bare')), t.tip.value ? h(MapOverlay, {lngLat: t.pin.value, popup: true, 'pointer-events-none': '', onClose: () => { t.closed++; t.tip.value = false; }}, () => h('span', {id: 'own-tip'}, 'A popup')) : null]})])});
+  h(MapImage, {name: 'photo', src: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%224%22 height=%224%22/%3E', width: 4, height: 4}), h(MapOverlay, {lngLat: t.pin.value}, () => h('i', {id: 'bare-pin'}, 'bare')), h(MapOverlay, {lngLat: t.home.value, draggable: true, onDragstart: p => t.dragged.push('start ' + p.length), onDragend: p => { t.dragged.push('end'); t.home.value = p; }, onClick: () => t.dragged.push('click')}, () => h('u', {id: 'drag-pin', style: 'display:block;width:16px;height:16px'}, '')), t.tip.value ? h(MapOverlay, {lngLat: t.pin.value, popup: true, 'pointer-events-none': '', onClose: () => { t.closed++; t.tip.value = false; }}, () => h('span', {id: 'own-tip'}, 'A popup')) : null]})])});
 if (location.search === '?ssr') make(createSSRApp, 'svg').mount('#app'); else if (location.search === '?bare') make(createSSRApp, 'bare').mount('#app'); else make(createApp, false).mount('#app');
 window.ready = true;`;
 const server = http.createServer((req, res) => {
@@ -207,6 +207,15 @@ try {
         return {pinOk: !!pin && Math.abs(pin[0] - (frame.x + at.x)) < 3 && Math.abs(pin[1] - (frame.y + at.y)) < 3, tip, movedOk: !!moved && Math.abs(moved[0] - (frame.x + expect.x)) < 3, atOnce, closed: t.closed, tipGone: !document.getElementById('own-tip'), tipShown, attrsOk, keptOk, kept};
     });
     check('browser: MapOverlay puts own content and a popup at a position, follows its prop, and closes at the click', overlays.pinOk && overlays.tip && overlays.movedOk && overlays.atOnce === 1 && overlays.closed === 1 && overlays.tipGone && overlays.tipShown && overlays.attrsOk && overlays.keptOk, JSON.stringify(overlays));
+    // A draggable MapOverlay (#167): a click is a click, and a drag emits dragstart and dragend with [lng, lat].
+    const dragBox = async () => page.evaluate(() => { const r = document.getElementById('drag-pin').getBoundingClientRect(); return {x: r.x + r.width / 2, y: r.y + r.height / 2}; });
+    let db = await dragBox();
+    await page.mouse.click(db.x, db.y); await page.waitForTimeout(200);
+    const dragClick = await page.evaluate(() => window.t.dragged.splice(0).join(' '));
+    await page.mouse.move(db.x, db.y); await page.mouse.down(); await page.mouse.move(db.x + 50, db.y + 30, {steps: 5}); await page.mouse.up(); await page.waitForTimeout(400);
+    const dragVue = await page.evaluate(() => ({ev: window.t.dragged.join(' '), home: [...window.t.home.value]}));
+    db = await dragBox();
+    check('browser: a draggable MapOverlay keeps a click a click and emits dragstart and dragend with [lng, lat], and stays at the new position', dragClick === 'click' && dragVue.ev === 'start 2 end' && dragVue.home[0] > -74.01, JSON.stringify({dragClick, dragVue, db}));
     await page.evaluate(() => { window.t.pin.value = [-73.5, 41]; }); // (the element of the pin must not be under the click)
     await page.waitForTimeout(400);
     await page.mouse.move(400, 250); await page.waitForTimeout(300); await page.mouse.click(400, 250); await page.waitForTimeout(600);

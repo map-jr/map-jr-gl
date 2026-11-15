@@ -835,6 +835,24 @@ for (const renderer of ['worker', 'main']) {
         await page.mouse.click(ovBox.x, ovBox.y); await page.waitForTimeout(500);
         const overlayClicks = await page.evaluate(() => { const t = window.t, n = t.clicks.length; t.ov.remove(); return n; });
         check(`[${renderer}] a click on an overlay does not call onClick`, overlayClicks === 0, JSON.stringify({overlayClicks}));
+        // A draggable overlay (#167): a click is a click, a drag starts after a move, the map does not pan under it, and
+        // the callbacks get [lng, lat]. A render with the same lngLat leaves it where it was dropped.
+        await page.evaluate(() => { const t = window.t, el = t.dragPin = t.lib.defaultPin({color: 'rgb(200, 0, 0)'}); t.dragged = []; el.addEventListener('click', () => t.dragged.push('click'));
+            const opts = t.dragOpts = {lngLat: t.host.unproject({x: 200, y: 200}), anchor: 'bottom', draggable: true, onDragStart: p => t.dragged.push('start ' + p.length), onDrag: () => t.dragged.push('drag'), onDragEnd: p => t.dragged.push(p)};
+            t.ov = t.host.overlay(el, opts); t.center0 = t.host.state.get().view.center; });
+        const dBox = await page.evaluate(() => { const r = window.t.dragPin.getBoundingClientRect(); return {x: r.x + r.width / 2, y: r.y + r.height / 2}; });
+        await page.mouse.click(dBox.x, dBox.y); await page.waitForTimeout(200);
+        const dClick = await page.evaluate(() => window.t.dragged.splice(0).join(' '));
+        await page.mouse.move(dBox.x, dBox.y); await page.mouse.down(); await page.mouse.move(dBox.x + 1, dBox.y);
+        const dEarly = await page.evaluate(() => window.t.dragged.length);
+        await page.mouse.move(dBox.x + 60, dBox.y + 40, {steps: 6}); await page.mouse.up(); await page.waitForTimeout(300);
+        const dragged = await page.evaluate(() => { const t = window.t, ev = t.dragged.splice(0), end = ev.at(-1), want = t.host.unproject({x: 260, y: 240}), c = t.host.state.get().view.center;
+            t.ov.update({...t.dragOpts}); const r = t.dragPin.getBoundingClientRect(); const kept = t.host.unproject({x: r.x + r.width / 2 - document.querySelector('#host').getBoundingClientRect().x, y: r.bottom - document.querySelector('#host').getBoundingClientRect().y});
+            t.ov.remove();
+            return {seq: ev.slice(0, -1).map(String).join(' ').replace(/( drag)+/, ' drags'), end, endOk: Array.isArray(end) && Math.abs(end[0] - want[0]) < 1e-3 + Math.abs(want[0]) * 1e-4 && Math.abs(end[1] - want[1]) < 1e-3 + Math.abs(want[1]) * 1e-4,
+                panned: Math.abs(c[0] - t.center0[0]) + Math.abs(c[1] - t.center0[1]) > 1e-9, keptOk: Math.abs(kept[0] - end[0]) < 1e-3 && Math.abs(kept[1] - end[1]) < 1e-3, fill: t.dragPin.querySelector('path')?.getAttribute('fill')}; });
+        check(`[${renderer}] a draggable overlay: a click is a click, a drag after a move calls onDragStart, onDrag and onDragEnd with [lng, lat], the map does not pan, and the same lngLat keeps the dropped place; defaultPin() is the pin of Marker`,
+            dClick === 'click' && dEarly === 0 && dragged.seq === 'start 2 drags' && dragged.endOk && !dragged.panned && dragged.keptOk && dragged.fill === 'rgb(200, 0, 0)', JSON.stringify({dClick, dEarly, dragged}));
         // `cooperativeGestures` (#41): a plain wheel does not zoom and shows the hint; Ctrl + wheel zooms; update() turns it off.
         const zoomNow = () => page.evaluate(() => window.t.host.state.get().view.zoom);
         const wheel = async (ctrl) => { const z = await zoomNow(); await page.mouse.move(450, 300); if (ctrl) await page.keyboard.down('Control'); await page.mouse.wheel(0, -300); if (ctrl) await page.keyboard.up('Control'); await page.waitForTimeout(900); return Math.abs(await zoomNow() - z) > 0.01; };

@@ -200,6 +200,19 @@ export interface MarkerOptions { element?: HTMLElement; color?: string; anchor?:
     opacityWhenCovered?: string;
 }
 
+/**
+ * The default pin of `Marker`: a `div` with an SVG drop, 27 by 41 pixels at `scale` 1, filled with `color` (default
+ * `'#3fb1ce'`). Each call makes a new element. Its anchor is `'bottom'`.
+ */
+export function defaultPin(options: {color?: string; scale?: number} = {}): HTMLElement {
+    const s = +(options.scale ?? 1) || 1, el = document.createElement('div');
+    el.innerHTML = `<svg width="${27 * s}" height="${41 * s}" viewBox="0 0 27 41" style="display:block;filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))">` +
+        `<path d="M13.5 0C6 0 0 6 0 13.5 0 23 13.5 41 13.5 41S27 23 27 13.5C27 6 21 0 13.5 0z"/><circle cx="13.5" cy="13.5" r="5.5" fill="#fff"/></svg>`;
+    // (The colour can come from data: it is set as an attribute, never as HTML.)
+    el.querySelector('path')!.setAttribute('fill', options.color ?? '#3fb1ce');
+    return el;
+}
+
 export class Marker extends Overlay {
     protected el: HTMLElement;
     protected anchor: OverlayAnchor;
@@ -215,12 +228,7 @@ export class Marker extends Overlay {
         this.offset = xy(options.offset ?? [0, 0]);
         if (options.element) this.el = options.element;
         else {
-            const s = +(options.scale ?? 1) || 1;
-            this.el = document.createElement('div');
-            this.el.innerHTML = `<svg width="${27 * s}" height="${41 * s}" viewBox="0 0 27 41" style="display:block;filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))">` +
-                `<path d="M13.5 0C6 0 0 6 0 13.5 0 23 13.5 41 13.5 41S27 23 27 13.5C27 6 21 0 13.5 0z"/><circle cx="13.5" cy="13.5" r="5.5" fill="#fff"/></svg>`;
-            // (The colour can come from data: it is set as an attribute, never as HTML.)
-            this.el.querySelector('path')!.setAttribute('fill', options.color ?? '#3fb1ce');
+            this.el = defaultPin(options);
             // (As in MapLibre GL JS. An element of your own keeps the attributes that you gave it.)
             this.el.setAttribute('aria-label', 'Map marker');
         }
@@ -297,18 +305,20 @@ export class Marker extends Overlay {
         const map = this.map, el = map.getContainer(), r = el.getBoundingClientRect(), sx = r.width / el.offsetWidth || 1, sy = r.height / el.offsetHeight || 1;
         const at = (ev: PointerEvent) => ({x: (ev.clientX - r.left) / sx, y: (ev.clientY - r.top) / sy});
         const start = map.project(this.lngLat!), p0 = at(e), dx = p0.x - start.x, dy = p0.y - start.y;
-        this.el.setPointerCapture(e.pointerId);
         // As in MapLibre GL JS, the drag starts once the pointer has moved 3 px (its default `clickTolerance`): a click
         // fires no drag events, and the click that follows a drag does not reach the marker.
         let dragging = false;
         const move = (ev: PointerEvent) => {
             const p = at(ev);
             if (!dragging && Math.hypot(p.x - p0.x, p.y - p0.y) < 3) return;
-            if (!dragging) { dragging = true; this.fire('dragstart'); }
+            // (The pointer is captured only when the drag starts: a capture at `pointerdown` would make the marker element
+            // the target of the click, and a click listener on an element inside it would not run.)
+            if (!dragging) { dragging = true; this.el.setPointerCapture(ev.pointerId); this.fire('dragstart'); }
             this.setLngLat(map.unproject({x: p.x - dx, y: p.y - dy})); this.fire('drag');
         };
-        // (The three listeners end with the drag: `signal` removes them.)
-        const stop = new AbortController(), signal = {signal: stop.signal}, end = () => {
+        // (The three listeners end with the drag: `signal` removes them. They are on the window, so that a move off the
+        // element before the capture still counts.)
+        const stop = new AbortController(), signal = {signal: stop.signal, capture: true}, end = () => {
             stop.abort();
             if (!dragging) return;
             const eat = (ev: Event) => ev.stopImmediatePropagation();
@@ -316,8 +326,9 @@ export class Marker extends Overlay {
             setTimeout(() => this.el.removeEventListener('click', eat, {capture: true}));
             this.fire('dragend');
         };
-        this.el.addEventListener('pointermove', move, signal);
-        this.el.addEventListener('pointerup', end, signal);
-        this.el.addEventListener('pointercancel', end, signal);
+        const own = (f: (ev: PointerEvent) => void) => (ev: PointerEvent) => { if (ev.pointerId === e.pointerId) f(ev); };
+        addEventListener('pointermove', own(move), signal);
+        addEventListener('pointerup', own(end), signal);
+        addEventListener('pointercancel', own(end), signal);
     }
 }

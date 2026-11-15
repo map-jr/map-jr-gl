@@ -134,8 +134,34 @@ const selected = ref(null);
 | `anchor` | The part of the content that is at the position: `center` (the default), `bottom`, `top-left` and others. |
 | `offset` | A distance in pixels from the position, to the right and down. |
 | `popup` | Show the content in a box with a pointer to the position. |
+| `draggable` | The user can move the content with the mouse, a finger or a pen. The default is `false`. It has no effect with `popup`. |
 
 With a listener for `close`, a popup has a button to close it.
+
+A draggable `MapOverlay` emits `dragstart`, `drag` and `dragend` with the position as `[lng, lat]`. A drag starts
+once the pointer has moved 3 pixels, so a click on the content stays a click, and the map does not pan under the
+drag. After a drag, the content stays where the user dropped it until `lng-lat` changes. To keep the position in your
+state, set it in `@dragend`:
+
+```vue
+<script setup>
+import {ref} from 'vue';
+import {MapJr, MapOverlay} from '@map-jr/map-jr-gl/vue';
+
+const style = 'https://tiles.openfreemap.org/styles/liberty';
+const home = ref([-74.0065, 40.7085]);
+</script>
+
+<template>
+  <MapJr :map-style="style" :initial-view="{center: home, zoom: 14}">
+    <MapOverlay :lng-lat="home" anchor="bottom" draggable @dragend="home = $event"><img src="/pin.svg" alt="Home" width="27" height="41"></MapOverlay>
+  </MapJr>
+  <p>{{ home[0].toFixed(5) }}, {{ home[1].toFixed(5) }}</p>
+</template>
+```
+
+For the default pin of `Marker`, use `defaultPin()` of `@map-jr/map-jr-gl` in the browser (see
+[Elements of the page on the map](api.md#elements-of-the-page-on-the-map)).
 
 The content is Vue content: it can have components, events and reactive values. Use `MapOverlay` for some elements.
 For many markers, use the `markers` prop: those are drawn on the canvas.
