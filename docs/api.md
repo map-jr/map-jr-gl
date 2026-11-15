@@ -369,7 +369,7 @@ it makes the map. A control appears a moment after `createMap` or `update` adds 
 
 | Function | Control | Options (each also has `position`) |
 |---|---|---|
-| `navigation` | Zoom buttons and a compass | `showZoom`, `showCompass` |
+| `navigation` | Zoom buttons and a compass. A click on the compass resets the bearing, and dragging it rotates the map. With `visualizePitch: true`, the compass also shows the pitch, the drag also pitches the map, and a click resets the pitch (default false, as in MapLibre GL JS). | `showZoom`, `showCompass`, `visualizePitch` |
 | `scale` | A scale bar | `maxWidth`, `unit` (`'metric'`, the default; `'imperial'`; or `'nautical'`) |
 | `fullscreen` | A button for the full screen. Where the browser has no Fullscreen API (Safari on iPhone), the container gets the class `map-jr-pseudo-fullscreen` and fills the window. | |
 | `geolocate` | A button that moves the map to the position of the user. With `trackUserLocation: true`, the button turns tracking on and off, the map follows the position until it is moved, and a dot shows the position (`showUserLocation: false` hides it). | `zoom`, `positionOptions`, `trackUserLocation`, `showUserLocation` |

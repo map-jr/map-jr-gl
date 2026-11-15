@@ -35,8 +35,8 @@ const spec = <O extends object>(name: string, make: (m: typeof More, options: O)
     };
     return {key: name + JSON.stringify(options), position, create} as ControlSpec;
 };
-/** Buttons to zoom in and out, and a compass that turns the map to the north. */
-export const navigation = spec('navigation', (m, o: {showZoom?: boolean; showCompass?: boolean}) => new m.NavigationControl(o));
+/** Buttons to zoom in and out, and a compass that turns the map to the north. With `visualizePitch: true`, the compass also shows and resets the pitch. */
+export const navigation = spec('navigation', (m, o: {showZoom?: boolean; showCompass?: boolean; visualizePitch?: boolean}) => new m.NavigationControl(o));
 /** A scale bar. */
 export const scale = spec('scale', (m, o: {maxWidth?: number; unit?: 'metric' | 'imperial' | 'nautical'}) => new m.ScaleControl(o));
 /** A button that shows the map on the full screen. */
