@@ -1312,9 +1312,9 @@ for (const visualizePitch of [undefined, true]) {
     try {
         await page.goto(`${origin}/style.json`);
         await page.evaluate(async visualizePitch => {
-            const lib = await import('/dist/map-jr-gl.js');
+            const lib = await import('/dist/map-jr-gl.js'), {navigation} = await import('/dist/controls.js');
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:500px;height:300px;z-index:99'}));
-            const host = window.compassHost = lib.createMap(el, {style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, initialView: {center: [0, 0], zoom: 2, pitch: 20}, controls: [lib.navigation(visualizePitch ? {visualizePitch} : {})], attribution: false});
+            const host = window.compassHost = lib.createMap(el, {style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, initialView: {center: [0, 0], zoom: 2, pitch: 20}, controls: [navigation(visualizePitch ? {visualizePitch} : {})], attribution: false});
             await new Promise(r => host.state.subscribe(s => s.loaded, v => v && r()));
             for (let i = 0; i < 50 && !el.querySelector('.maplibregl-ctrl-compass'); i++) await new Promise(r => setTimeout(r, 100));
         }, visualizePitch);
