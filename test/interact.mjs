@@ -780,9 +780,10 @@ for (const mode of ['main', 'worker']) {
             await new Promise(r => m.once('load', r));
             m.jumpTo({center: [1, 1], zoom: 2}); marker.togglePopup(); marker.togglePopup(); marker.setLngLat([1, 1]);
             await new Promise(r => m.once('idle', r));
-            const usual = warns.filter(w => w.includes('not available') || w.includes('private state'));
+            // (Only the warnings about members, which name the entry: a browser with no WebGL2 adds a warning about the renderer.)
+            const member = w => w.includes('in @map-jr/map-jr-gl/maplibre-compat'), usual = warns.filter(member);
             for (let i = 0; i < 2; i++) { void attribution.styleOwner; void scale.setUnit; void m.transform; void m.coveringTiles; void m.then; void m.$$typeof; void m.__v_skip; void m.toJSON; }
-            return {usual, after: warns.filter(w => w.includes('not available') || w.includes('private state'))};
+            return {usual, after: warns.filter(member)};
         } finally { console.warn = warn; m?.remove(); el.remove(); }
     });
     check(`[${mode}] the development build warns once for each member of MapLibre GL JS that a class here does not have, and not in usual use`,
