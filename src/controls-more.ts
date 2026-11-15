@@ -29,7 +29,7 @@ function group(extraClass = ''): HTMLElement {
  * MouseRotateWrapper of MapLibre GL JS does. A movement of 3 pixels or less is a click, which resets the bearing; a
  * longer drag does not.
  */
-function dragCompass(map: Map, b: HTMLButtonElement) {
+function dragCompass(map: Map, b: HTMLButtonElement, pitch: boolean) {
     let last: PointerEvent | null = null, dragged = false;
     b.style.touchAction = 'none';
     b.addEventListener('pointerdown', e => {
@@ -44,7 +44,7 @@ function dragCompass(map: Map, b: HTMLButtonElement) {
         dragged = true;
         const r = b.getBoundingClientRect(), x = e.clientX - r.left - r.width / 2, y = e.clientY - r.top - r.height / 2, lx = last.clientX - r.left - r.width / 2;
         // The angle between (last x, current y) and the current point, seen from the centre of the button.
-        map.jumpTo({bearing: map.getBearing() + Math.atan2(x * y - y * lx, x * lx + y * y) * 180 / Math.PI, pitch: map.getPitch() - dy / 2});
+        map.jumpTo({bearing: map.getBearing() + Math.atan2(x * y - y * lx, x * lx + y * y) * 180 / Math.PI, ...pitch && {pitch: map.getPitch() - dy / 2}});
         last = e;
     });
     const end = () => { last = null; setTimeout(() => { dragged = false; }); };
@@ -57,8 +57,12 @@ function dragCompass(map: Map, b: HTMLButtonElement) {
 export class NavigationControl implements Control {
     private el?: HTMLElement;
     private update = () => {};
-    constructor(private options: {showZoom?: boolean; showCompass?: boolean; visualizePitch?: boolean} = {}) {
-        if (options.visualizePitch !== undefined) noEffect('NavigationControl', 'visualizePitch', ' The compass always shows the pitch.');
+    /** `pitch` is given by the compat entry, which follows `visualizePitch`; the main API always shows and changes the pitch. */
+    constructor(private options: {showZoom?: boolean; showCompass?: boolean; visualizePitch?: boolean} = {}, private pitch?: boolean) {
+        if (pitch === undefined) {
+            this.pitch = true;
+            if (options.visualizePitch !== undefined) noEffect('NavigationControl', 'visualizePitch', ' The compass always shows the pitch.');
+        }
     }
 
     onAdd(map: Map) {
@@ -70,14 +74,14 @@ export class NavigationControl implements Control {
         }
         if (this.options.showCompass !== false) {
             const b = button(el, 'compass', ui(map, 'NavigationControl.ResetBearing', 'Reset bearing to north'), svg('<path d="M9 2.500 12 9H6z" fill="currentColor" stroke="none"/><path d="M9 15.500 6 9h6z" fill="currentColor" stroke="none" opacity=".35"/>'),
-                () => map.easeTo({bearing: 0, pitch: 0}));
+                () => map.easeTo({bearing: 0, ...this.pitch && {pitch: 0}}));
             needle = b.querySelector('svg');
-            dragCompass(map, b);
+            dragCompass(map, b, !!this.pitch);
         }
         this.update = () => {
             if (zoomIn) zoomIn.disabled = map.getZoom() >= map.getMaxZoom();
             if (zoomOut) zoomOut.disabled = map.getZoom() <= map.getMinZoom();
-            if (needle) needle.style.transform = `rotateX(${map.getPitch()}deg) rotate(${-map.getBearing()}deg)`;
+            if (needle) needle.style.transform = `rotateX(${this.pitch ? map.getPitch() : 0}deg) rotate(${-map.getBearing()}deg)`;
         };
         map.on('move', this.update);
         this.update();
