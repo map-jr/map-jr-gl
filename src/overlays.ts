@@ -27,9 +27,10 @@ abstract class Overlay extends Evented {
         const p = this.map.project(this.lngLat);
         // (A marker can be turned. With the alignment `map`, the angle is from north on the map, so it turns with the map.)
         const turn = this.rotation - (this.rotationAlignment === 'map' ? this.map.getBearing() : 0);
-        this.el.style.transform = `translate(${Math.round(p.x + this.offset[0])}px,${Math.round(p.y + this.offset[1])}px) translate(-${part(this.anchor).join('%,-')}%)${turn ? ` rotate(${turn}deg)` : ''}`;
+        this.el.style.transform = `translate(${this.round(p.x + this.offset[0])}px,${this.round(p.y + this.offset[1])}px) translate(-${part(this.anchor).join('%,-')}%)${turn ? ` rotate(${turn}deg)` : ''}`;
     };
     protected rotation = 0;
+    protected round = Math.round;
     protected rotationAlignment = 'auto';
     setLngLat(lngLat: LngLatLike) { this.lngLat = toLngLat(lngLat); this.update(); return this; }
     /** The map position. Before `setLngLat`, it is `undefined`, although the type says `LngLat`, as in MapLibre GL JS. */
@@ -71,10 +72,16 @@ export interface PopupOptions {
     /** Set false to show and hide without the short fade. */
     animate?: boolean;
     /**
-     * Accepted for MapLibre GL JS, with no effect. The focus moves into a popup only when Enter or the space bar on its
-     * marker opens it (see docs/maplibre-compatibility.md).
+     * maplibre-compat only: moves the keyboard focus to the first element in the popup that can take it (a link, a field,
+     * a button, else the close button) when the popup opens and when its content changes while it is open (default `true`).
      */
     focusAfterOpen?: boolean;
+    /** maplibre-compat only: closes the popup when the map moves (default `false`). */
+    closeOnMove?: boolean;
+    /** maplibre-compat only: puts the popup at the mouse pointer instead of a map position (default `false`). See `trackPointer()`. */
+    trackPointer?: boolean;
+    /** maplibre-compat only: places the popup on fractions of a pixel instead of whole pixels (default `false`). */
+    subpixelPositioning?: boolean;
     /** Accepted for MapLibre GL JS, with no effect: the library has no globe or terrain that can hide the map position. */
     locationOccludedOpacity?: number | string;
 }
@@ -82,7 +89,9 @@ export interface PopupOptions {
 export class Popup extends Overlay {
     protected el = document.createElement('div');
     protected anchor: OverlayAnchor;
-    private box = document.createElement('div');
+    protected box = document.createElement('div');
+    /** The pointer-events of the box while it is open: `none` while a popup of maplibre-compat follows the pointer. */
+    protected clicks = 'auto';
     private tip = document.createElement('div');
     private content = document.createElement('div');
     private closeOnMapClick = () => this.remove();
@@ -144,6 +153,13 @@ export class Popup extends Overlay {
         return (vertical + horizontal) as OverlayAnchor;
     }
     getAnchor() { return this.anchor; }
+    /** Moves the focus to the first element that takes it. A candidate can refuse it (a disabled button, a hidden link). */
+    focusFirst() {
+        for (const c of this.el.querySelectorAll<HTMLElement>('[href],button,input,select,textarea,[tabindex]')) {
+            c.focus({preventScroll: true});
+            if (document.activeElement === c) break;
+        }
+    }
     setOffset(offset?: PopupOffset) { this.options.offset = offset; this.applyAnchor(this.anchor); this.update(); return this; }
     setMaxWidth(maxWidth: string) { this.options.maxWidth = this.box.style.maxWidth = maxWidth; return this; }
     getMaxWidth() { return this.options.maxWidth; }
@@ -181,7 +197,7 @@ export class Popup extends Overlay {
             this.closing = undefined;
             // (The closing animation keeps its last frame. Without this, the popup is transparent when it opens again.)
             animation?.cancel();
-            this.box.style.pointerEvents = 'auto';
+            this.box.style.pointerEvents = this.clicks;
             // (The focus returns to the marker, or to the map when the marker is no longer on the page.)
             if (this.el.contains(document.activeElement)) (this.opener?.isConnected ? this.opener : map.getCanvas()).focus({preventScroll: true});
             this.detach();
@@ -270,11 +286,8 @@ export class Marker extends Overlay {
             if (!this.popup || e.target !== this.el || (e.key !== 'Enter' && e.key !== ' ')) return;
             const opens = !this.popup.isOpen();
             e.preventDefault(); e.stopPropagation(); this.togglePopup();
-            // (A candidate can refuse the focus: a disabled button, a hidden link. The close button is the last candidate.)
-            if (opens) for (const c of this.popup.getElement().querySelectorAll<HTMLElement>('[href],button,input,select,textarea,[tabindex]')) {
-                c.focus({preventScroll: true});
-                if (document.activeElement === c) break;
-            }
+            // (The close button is the last candidate.)
+            if (opens) this.popup.focusFirst();
         });
         this.el.addEventListener('pointerdown', e => this.startDrag(e));
         this.setDraggable(!!options.draggable);

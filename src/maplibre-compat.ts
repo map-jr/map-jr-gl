@@ -18,9 +18,71 @@ const accepted = (type: string, options: Record<string, unknown>, names: string[
         console.warn(`[map-jr-gl] ${type}: the option ${n} has no effect. Remove it; see "What is different" in docs/maplibre-compatibility.md.`);
     }
 };
-/** The popup of the core. `focusAfterOpen` and `locationOccludedOpacity` of MapLibre GL JS warn once. */
+import {toLngLat, type LngLatLike as Where} from './geo.ts';
+import type {Map as CoreMap} from './map.ts';
+/**
+ * The popup of the core with the options `focusAfterOpen`, `closeOnMove`, `trackPointer` and `subpixelPositioning` of
+ * MapLibre GL JS. `locationOccludedOpacity` warns once.
+ */
 export class Popup extends CorePopup {
-    constructor(options: PopupOptions = {}) { super(options); accepted('Popup', options as any, ['focusAfterOpen', 'locationOccludedOpacity']); }
+    /** The pointer position while the popup follows the pointer, `null` before the first mouse move, `undefined` otherwise. */
+    private pointer?: [number, number] | null;
+    /** The camera when the popup opened. A move closes it only when the camera differs (the engine reports a jumpTo later). */
+    private camera = '';
+    private view = () => { const m = this.map!; return '' + [m.getCenter().toArray(), m.getZoom(), m.getBearing(), m.getPitch()]; };
+    private moved = () => { if (this.view() !== this.camera) this.remove(); };
+    private follow = (e: any) => { this.pointer = [e.point.x, e.point.y]; this.el.style.visibility = ''; this.update(); };
+    private hide = () => { this.el.style.visibility = 'hidden'; };
+    constructor(options: PopupOptions = {}) {
+        super(options);
+        accepted('Popup', options as any, ['locationOccludedOpacity']);
+        const position = this.update;
+        this.update = () => {
+            if (this.pointer === null) return;
+            if (this.map && this.pointer) this.lngLat = toLngLat(this.map.unproject(this.pointer));
+            position();
+        };
+        if (options.subpixelPositioning) this.setSubpixelPositioning(true);
+        if (options.trackPointer) this.trackPointer();
+    }
+    setSubpixelPositioning(value: boolean) { this.options.subpixelPositioning = value; this.round = value ? Number : Math.round; this.update(); }
+    /**
+     * Puts the popup at the mouse pointer and moves it with the pointer, until `setLngLat` is called. The popup is hidden
+     * until the first mouse move and while the pointer is outside the map. It does not catch clicks, and a touch does not move it.
+     */
+    trackPointer() { return this.track(null); }
+    setLngLat(lngLat: Where) {
+        if (this.pointer !== undefined) this.track();
+        return super.setLngLat(lngLat);
+    }
+    /** Starts (`null`) or ends (`undefined`) following the pointer. */
+    private track(pointer?: null) {
+        const on = (this.pointer = pointer) === null;
+        this.el.style.visibility = on ? 'hidden' : '';
+        this.box.style.pointerEvents = this.clicks = on ? 'none' : 'auto';
+        this.listen();
+        return this;
+    }
+    /** Listens to the pointer while the popup follows it. */
+    private listen(on = this.pointer !== undefined) {
+        const map = this.map;
+        if (!map) return;
+        for (const [type, fn] of [['mousemove', this.follow], ['mouseout', this.hide]] as const) { map.off(type, fn); if (on) map.on(type, fn); }
+    }
+    private focused() { if (this.isOpen() && this.options.focusAfterOpen !== false) this.focusFirst(); return this; }
+    setText(text: string) { super.setText(text); return this.focused(); }
+    setHTML(html: string) { super.setHTML(html); return this.focused(); }
+    setDOMContent(node: Node) { super.setDOMContent(node); return this.focused(); }
+    addTo(map: CoreMap) {
+        super.addTo(map);
+        this.listen();
+        if (this.options.closeOnMove) { this.camera = this.view(); map.on('move', this.moved); }
+        return this.focused();
+    }
+    remove() {
+        if (this.isOpen()) { this.map!.off('move', this.moved); this.listen(false); }
+        return super.remove();
+    }
 }
 import {FullscreenControl as CoreFullscreen} from './controls-more.ts';
 import {Evented} from './evented.ts';
