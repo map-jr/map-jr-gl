@@ -148,8 +148,8 @@ workers from the URL directly. Add `blob:` to `worker-src` to avoid the errors a
 ### Vite in development
 
 In development, Vite puts dependencies in a cache folder (`node_modules/.vite/deps/`). With Vite 5, the worker file
-is not in that folder, and the map draws on the main thread and writes the warning "Workers are unavailable". Add
-this to your Vite configuration:
+is not in that folder, and the map draws on the main thread and writes the warning "Workers are unavailable". The development build also writes the warning "Vite's dependency
+cache does not contain the worker file". Add this to your Vite configuration:
 
 ```js
 // vite.config.js

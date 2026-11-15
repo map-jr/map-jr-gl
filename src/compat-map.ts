@@ -165,7 +165,12 @@ export class Map extends CoreMap {
         else this.uiLocale = o.locale;
         this.unsupported('The option projection', !o.projection || (o.projection.type ?? o.projection) === 'mercator');
         this.unsupported('The option renderWorldCopies: false', o.renderWorldCopies !== false);
-        this.unsupported('The option canvasContextAttributes (but for antialias)', !context || !Object.keys(context).some(k => k !== 'antialias'));
+        this.unsupported('The option canvasContextAttributes (but for antialias)', !context || !Object.keys(context).some(k => k !== 'antialias' && k !== 'preserveDrawingBuffer'));
+        if (context?.preserveDrawingBuffer) {
+            const message = '[map-jr-gl] new Map(): canvasContextAttributes.preserveDrawingBuffer has no effect. Read the canvas with map.toBlob(), and remove the option.';
+            if (this.strict) throw new Error(message);
+            console.warn(message);
+        }
         this.unsupported('The option logoPosition', !o.logoPosition);
         this.unsupported('The option validate', o.validate === undefined);
         // (Labels here always fade for a fixed time, and a drag with the right button always turns and tilts the map.)
