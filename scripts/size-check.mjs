@@ -30,12 +30,14 @@ for (const f of compat) engine.delete(f); // the page has these already when it 
 // entry still adds (cooperativeGestures, flyTo, controls) left it less than 1 KB of room. On 2026-11-15 the owner
 // raised the page script from 36 to 38 KB and the compat page script from 42 to 46 KB, before more features of
 // MapLibre GL JS were merged into the compat entry (it had 1.3 KB of room, and the open pull requests needed most of it).
+// On 2026-11-15 the owner raised the worker from 72 to 78 KB for the globe (#463): its grid cut and globe code stay in
+// the worker so that a globe map needs no extra request, and the next globe pull requests need room.
 const sizes = [
     // What a page downloads before the map can start. The worker file is downloaded at the same time.
     ['page script, up front (' + [...page].length + ' files)', gz(page), 38],
     // The same for the entry that is a replacement for MapLibre GL JS (`@map-jr/map-jr-gl/maplibre-compat`).
     ['page script of maplibre-compat, up front (' + [...compat].length + ' files)', gz(compat), 46],
-    ['map-jr-gl-worker.js', gz(['map-jr-gl-worker.js']), 72],
+    ['map-jr-gl-worker.js', gz(['map-jr-gl-worker.js']), 78],
     // Only when the engine runs on the main thread (no worker is possible).
     ['engine on the main thread, on demand', gz(engine), 68],
     // The server renderer (`@map-jr/map-jr-gl/server`), with the files that it imports when it loads.
