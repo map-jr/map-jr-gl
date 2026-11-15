@@ -137,7 +137,37 @@ export class Map extends CoreMap {
     setAnisotropicFilterPitch(_pitch?: number | null) { return this; }
     getAnisotropicFilterPitch() { return 20; }
     setSourceTileLodParams(..._args: unknown[]) { return this; }
-    setTransformCameraUpdate(fn?: unknown) { return this.unsupported('setTransformCameraUpdate', !fn); }
+    /**
+     * MapLibre GL JS calls this function before each frame and draws the camera that it returns. This library does not:
+     * it calls the function after each `move` and warns once when the function changes the camera, because only then
+     * does the map draw something else than the function asks for. react-map-gl gives a function for each map; it
+     * changes the camera only when the `onMove` of a controlled map does not set `viewState` to the camera of the event.
+     */
+    setTransformCameraUpdate(fn?: ((tr: CameraLike) => CameraChanges | undefined) | null) {
+        this.cameraUpdate = typeof fn == 'function' ? fn : undefined;
+        if (this.cameraUpdate && !this.recent) {
+            this.recent = [];
+            this.on('move', () => this.checkCameraUpdate());
+        }
+        return this;
+    }
+    declare private cameraUpdate?: (tr: CameraLike) => CameraChanges | undefined;
+    /** The last cameras of the map: a controlled map's state can be a few `move` events behind, and that is no change. */
+    declare private recent?: {lng: number; lat: number; zoom: number; bearing: number; pitch: number}[];
+    private checkCameraUpdate() {
+        const fn = this.cameraUpdate, recent = this.recent!;
+        if (!fn) return;
+        const center = this.getCenter(), now = {lng: center.lng, lat: center.lat, zoom: this.getZoom(), bearing: this.getBearing(), pitch: this.getPitch()};
+        recent.unshift(now); recent.length = Math.min(recent.length, 8);
+        let r: CameraChanges | undefined;
+        try { r = fn({center, zoom: now.zoom, bearing: now.bearing, pitch: now.pitch, padding: this.getPadding(), elevation: 0}); } catch { return; }
+        if (!r || typeof r != 'object' || this.warned.has('setTransformCameraUpdate')) return;
+        const c = r.center as {lng?: number; lat?: number} | number[] | undefined, lng = Array.isArray(c) ? c[0] : c?.lng, lat = Array.isArray(c) ? c[1] : c?.lat;
+        const same = (a: number | undefined, b: number) => typeof a != 'number' || Math.abs(a - b) < 1e-9;
+        if (recent.some(k => same(lng, k.lng) && same(lat, k.lat) && same(r.zoom, k.zoom) && same(r.bearing, k.bearing) && same(r.pitch, k.pitch))) return;
+        this.warned.add('setTransformCameraUpdate');
+        console.warn('[map-jr-gl] setTransformCameraUpdate: the function changed the camera of a movement. This library draws that camera only when the movement ends (react-map-gl: onMove did not set viewState to e.viewState). To keep the map in a region, use the option maxBounds.');
+    }
     setTransformConstrain(fn?: unknown) { return this.unsupported('setTransformConstrain', !fn); }
     setEventedParent(..._args: unknown[]) { return this; }
 
@@ -515,3 +545,8 @@ export class Map extends CoreMap {
         }});
     }
 }
+
+/** What `setTransformCameraUpdate` gives its function, as in MapLibre GL JS (a part of the transform). */
+type CameraLike = {center: {lng: number; lat: number}; zoom: number; bearing: number; pitch: number; padding: unknown; elevation: number};
+/** What the function of `setTransformCameraUpdate` returns: the parts of the camera to change. */
+type CameraChanges = {center?: unknown; zoom?: number; bearing?: number; pitch?: number; elevation?: number};

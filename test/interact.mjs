@@ -1925,6 +1925,34 @@ for (const mode of ['main', 'worker']) {
         }).catch(e => [String(e)]);
         check('[main] maplibre-compat: ScaleControl takes the unit nautical and setUnit() changes the unit', JSON.stringify(texts) === JSON.stringify(['1000 nm', '1000 mi', '1000 km', '1000 nm']), JSON.stringify(texts));
     }
+    // react-map-gl 8 gives every map a function with setTransformCameraUpdate (#210). The map warns only when the
+    // function changes the camera, which is the one case that this library does not draw as MapLibre GL JS does.
+    if (mode === 'main') {
+        const hook = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+            const m = new mod.Map({container: el, renderer: 'main', center: [0, 0], zoom: 2, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            const warnings = [], warn = console.warn, out = {};
+            console.warn = (...a) => warnings.push(String(a[0]));
+            try {
+                await new Promise(r => m.once('load', r));
+                const moved = () => new Promise(r => m.once('moveend', () => setTimeout(r, 50)));
+                // A controlled map whose state is one move behind: the function returns the camera before.
+                let last = null, calls = 0;
+                m.setTransformCameraUpdate(tr => { calls++; const r = last ?? {}; last = {center: tr.center, zoom: tr.zoom}; return r; });
+                let done = moved(); m.jumpTo({center: [10, 5], zoom: 3}); await done;
+                done = moved(); m.jumpTo({center: [20, 5], zoom: 4}); await done;
+                out.lagging = {calls, warnings: warnings.length};
+                // A function that changes the zoom.
+                m.setTransformCameraUpdate(() => ({zoom: 1}));
+                done = moved(); m.jumpTo({zoom: 5}); await done;
+                done = moved(); m.jumpTo({zoom: 6}); await done;
+                out.changing = warnings.filter(w => w.startsWith('[map-jr-gl] setTransformCameraUpdate')).length;
+            } finally { console.warn = warn; m.remove(); el.remove(); }
+            return out;
+        }).catch(e => ({error: String(e)}));
+        check('[main] maplibre-compat: setTransformCameraUpdate warns once when its function changes the camera, and not when it returns an earlier camera', hook.lagging?.calls > 0 && hook.lagging.warnings === 0 && hook.changing === 1, JSON.stringify(hook));
+    }
     // GeolocateControl is an event emitter, as react-map-gl 8 expects (#194), with a mocked navigator.geolocation.
     if (mode === 'main') {
         const geo = await page.evaluate(async () => {
