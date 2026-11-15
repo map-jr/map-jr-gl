@@ -1148,8 +1148,9 @@ for (const mode of ['main', 'worker']) {
             const names = ['logoPosition', 'validate', 'visualizePitch', 'container', 'fadeDuration', 'pitchWithRotate', 'focusAfterOpen', 'locationOccludedOpacity', 'opacityWhenCovered'];
             return Object.fromEntries(names.map(n => [n, warns.filter(w => w.startsWith('[map-jr-gl]') && w.toLowerCase().includes('the option ' + n.toLowerCase())).length]));
         });
-        check('maplibre-compat: options with no effect (logoPosition, validate, fadeDuration, pitchWithRotate, visualizePitch, the container of FullscreenControl, and options of Popup and Marker) each warn once',
-            Object.values(r).every(n => n === 1), JSON.stringify(r));
+        // visualizePitch of NavigationControl has an effect in this entry (#42), so it writes no warning.
+        check('maplibre-compat: options with no effect (logoPosition, validate, fadeDuration, pitchWithRotate, the container of FullscreenControl, and options of Popup and Marker) each warn once, and visualizePitch does not warn',
+            Object.entries(r).every(([k, n]) => n === (k === 'visualizePitch' ? 0 : 1)), JSON.stringify(r));
     }
     // #43: easeTo and flyTo of maplibre-compat use `offset` (also with bearing and pitch) and a custom `easing`, without a warning.
     {
@@ -2622,24 +2623,46 @@ for (const mode of ['main', 'worker']) {
         });
         check('[main] maplibre-compat: the canvas container has maplibregl-touch-drag-pan and maplibregl-touch-zoom-rotate while those handlers are enabled (#46)', r === 'true,false,false,true,false', r);
     }
-    // #16, #42: dragging the compass rotates and pitches the map, as in MapLibre GL JS, and a click still resets the bearing.
+    // #16, #42: dragging the compass rotates the map, and a click resets the bearing, as in MapLibre GL JS. In the compat
+    // entry, the compass shows and changes the pitch only with visualizePitch: true (MapLibre's default is false). The
+    // drag is made with the mouse and, with visualizePitch, with touch events.
     if (mode === 'main') {
-        await page.evaluate(async () => {
-            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
-            const el = window.compassEl = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:500px;height:300px;z-index:9'}));
-            const m = window.compassMap = new mod.Map({container: el, renderer: 'main', attributionControl: false, center: [0, 0], zoom: 2, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
-            m.addControl(new mod.NavigationControl(), 'top-right');
-            await new Promise(r => m.once('load', r));
-        });
-        const box = await page.evaluate(() => { const r = window.compassEl.querySelector('.maplibregl-ctrl-compass').getBoundingClientRect(); return {x: r.left + r.width / 2, y: r.top + r.height / 2}; });
-        await page.mouse.move(box.x, box.y); await page.mouse.down();
-        for (let i = 1; i <= 6; i++) await page.mouse.move(box.x + i * 8, box.y - i * 4);
-        await page.mouse.up();
-        const dragged = await page.evaluate(() => ({bearing: window.compassMap.getBearing(), pitch: window.compassMap.getPitch()}));
-        await page.waitForTimeout(100);
-        await page.mouse.click(box.x, box.y); await page.waitForTimeout(1200);
-        const clicked = await page.evaluate(() => { const m = window.compassMap, r = {bearing: m.getBearing(), pitch: m.getPitch()}; m.remove(); window.compassEl.remove(); return r; });
-        check('[main] dragging the compass rotates and pitches the map, and a click resets both', Math.abs(dragged.bearing) > 1 && dragged.pitch > 1 && Math.abs(clicked.bearing) < 0.01 && clicked.pitch < 0.01, JSON.stringify({dragged, clicked}));
+        const compass = async (visualizePitch, touch) => {
+            await page.evaluate(async visualizePitch => {
+                const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+                const el = window.compassEl = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:500px;height:300px;z-index:9'}));
+                const m = window.compassMap = new mod.Map({container: el, renderer: 'main', attributionControl: false, center: [0, 0], zoom: 2, pitch: 20, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+                m.addControl(new mod.NavigationControl(visualizePitch === undefined ? {} : {visualizePitch}), 'top-right');
+                await new Promise(r => m.once('load', r));
+            }, visualizePitch);
+            const box = await page.evaluate(() => { const r = window.compassEl.querySelector('.maplibregl-ctrl-compass').getBoundingClientRect(); return {x: r.left + r.width / 2, y: r.top + r.height / 2}; });
+            const center = await page.evaluate(() => window.compassMap.getCenter().lng);
+            if (touch) {
+                const cdp = await page.context().newCDPSession(page);
+                const t = (type, x, y) => cdp.send('Input.dispatchTouchEvent', {type, touchPoints: type === 'touchEnd' ? [] : [{x, y}]});
+                await t('touchStart', box.x, box.y);
+                for (let i = 1; i <= 6; i++) await t('touchMove', box.x + i * 8, box.y - i * 4);
+                await t('touchEnd'); await cdp.detach();
+            } else {
+                await page.mouse.move(box.x, box.y); await page.mouse.down();
+                for (let i = 1; i <= 6; i++) await page.mouse.move(box.x + i * 8, box.y - i * 4);
+                await page.mouse.up();
+            }
+            const dragged = await page.evaluate(() => { const m = window.compassMap; return {bearing: m.getBearing(), pitch: m.getPitch(), lng: m.getCenter().lng, needle: m.getContainer().querySelector('.maplibregl-ctrl-compass svg').style.transform}; });
+            dragged.panned = Math.abs(dragged.lng - center) > 1e-6;
+            await page.waitForTimeout(100);
+            await page.mouse.click(box.x, box.y); await page.waitForTimeout(1200);
+            const clicked = await page.evaluate(() => { const m = window.compassMap, r = {bearing: m.getBearing(), pitch: m.getPitch()}; m.remove(); window.compassEl.remove(); return r; });
+            return {dragged, clicked};
+        };
+        let r = await compass(undefined, false);
+        check('[main] compat: without visualizePitch, dragging the compass only rotates, the needle shows no pitch, and a click resets only the bearing', Math.abs(r.dragged.bearing) > 1 && Math.abs(r.dragged.pitch - 20) < 0.01 && !r.dragged.panned && r.dragged.needle.startsWith('rotateX(0deg)') && Math.abs(r.clicked.bearing) < 0.01 && Math.abs(r.clicked.pitch - 20) < 0.01, JSON.stringify(r));
+        r = await compass(true, false);
+        check('[main] compat: with visualizePitch, dragging the compass rotates and pitches the map, and a click resets both', Math.abs(r.dragged.bearing) > 1 && r.dragged.pitch > 21 && !r.dragged.panned && Math.abs(r.clicked.bearing) < 0.01 && r.clicked.pitch < 0.01, JSON.stringify(r));
+        if (browserName === 'chromium') {
+            r = await compass(true, true);
+            check('[main] compat: a touch drag on the compass rotates and pitches the map without panning it', Math.abs(r.dragged.bearing) > 1 && r.dragged.pitch > 21 && !r.dragged.panned, JSON.stringify(r));
+        }
     }
     // 3D terrain off and on again: the elevation tiles that are loaded stay, so the relief does not go away for a
     // moment and no tile is asked for again.

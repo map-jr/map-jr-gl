@@ -7,7 +7,7 @@ export type {FeatureQuery, FontSource} from './engine.ts';
 export type {QueriedFeature} from './query.ts';
 export type {LngLatLike} from './geo.ts';
 export {AttributionControl, type Control, type ControlPosition} from './controls.ts';
-export {NavigationControl, ScaleControl, GeolocateControl, TerrainControl, LogoControl} from './controls-more.ts';
+export {ScaleControl, GeolocateControl, TerrainControl, LogoControl} from './controls-more.ts';
 export type {MarkerOptions, PopupOptions} from './overlays.ts';
 import {Marker as CoreMarker, Popup as CorePopup, type MarkerOptions, type PopupOptions} from './overlays.ts';
 /** Options of MapLibre GL JS that `Marker` and `Popup` accept with no effect: each warns once per page. */
@@ -93,8 +93,12 @@ import {InteractionHandler} from './map.ts';
 import {LngLat, LngLatBounds} from './lnglat.ts';
 import {addProtocol, removeProtocol} from './protocols.ts';
 import {AttributionControl} from './controls.ts';
-import {NavigationControl, ScaleControl, GeolocateControl, TerrainControl, LogoControl} from './controls-more.ts';
+import {NavigationControl as CoreNavigationControl, ScaleControl, GeolocateControl, TerrainControl, LogoControl} from './controls-more.ts';
 import {GPUInitializationError} from './gpu-error.ts';
+/** As in MapLibre GL JS, the compass shows and changes the pitch only with `visualizePitch: true` (default false). */
+export class NavigationControl extends CoreNavigationControl {
+    constructor(o: ConstructorParameters<typeof CoreNavigationControl>[0] = {}) { super(o, !!o.visualizePitch); }
+}
 export default {
     GPUInitializationError,
     Map, MapLibreMap: Map, Point, InteractionHandler, LngLat, LngLatBounds, addProtocol, removeProtocol, Marker, Popup, configure: set,
