@@ -27,6 +27,22 @@ await load('standalone: one file, nothing else requested', base + '&standalone',
 await load('served from another origin (as from a CDN): worker starts through a same-origin stub', base + `&from=http://127.0.0.1:${port}`, {expect: {renderer: 'worker', files: ['map-jr-gl-maplibre-compat.js', 'map-jr-gl-worker.js']}});
 await load('worker file missing: falls back to the main thread and explains', base, {block: '**/map-jr-gl-worker.js', expect: {renderer: 'main', files: ['map-jr-gl-maplibre-compat.js', 'map-jr-gl-engine-entry.js'], warns: 'Workers are unavailable'}});
 
+// Vite in development serves the development build from its dependency cache, which has no worker file (#387).
+{
+    const page = await browser.newPage(), warnings = [];
+    page.on('console', m => { if (m.type() === 'warning') warnings.push(m.text()); });
+    await page.route('**/node_modules/.vite/deps/**', r => /worker/.test(r.request().url()) ? r.abort() : r.continue({url: r.request().url().replace('/node_modules/.vite/deps/', '/dist/')}));
+    await page.goto(`http://localhost:${port}/style.json`);
+    await page.evaluate(async () => {
+        const {Map} = await import('/node_modules/.vite/deps/map-jr-gl-maplibre-compat.dev.js');
+        const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:200px;height:150px'}));
+        new Map({container: el, attributionControl: false, style: {version: 8, sources: {}, layers: []}});
+        await new Promise(r => setTimeout(r, 3000));
+    });
+    check('Vite dependency cache without the worker file: the warning names optimizeDeps', warnings.some(w => w.includes("Vite's dependency cache") && w.includes('optimizeDeps')), warnings.join(' | '));
+    await page.close();
+}
+
 // Start-up in parallel: the map asks for the worker file while the style is still on its way, not after its answer.
 // With the main renderer, the engine chunk is asked for at the same time too (#325).
 for (const [what, file, query] of [['the worker file', /map-jr-gl-worker\.js/, ''], ['renderer "main": the engine chunk', /map-jr-gl-engine-entry-[\w-]{8}\.js/, '&renderer=main']]) {

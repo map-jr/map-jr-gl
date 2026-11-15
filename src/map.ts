@@ -279,6 +279,9 @@ export class Map {
             preload();
             console.warn(`[map-jr-gl] Workers are unavailable (${err.message}); running on the main thread. ` +
                 'If the worker file is not next to the library, pass `workerUrl` or `createWorker`, or use the standalone build.');
+            // Vite in development serves the library from its dependency cache, which does not contain the worker file.
+            if (__DEV__ && !(o.workerUrl ?? loadDefaults.workerUrl ?? o.createWorker ?? loadDefaults.createWorker) && import.meta.url.includes('/node_modules/.vite/deps/'))
+                console.warn("[map-jr-gl] Vite's dependency cache does not contain the worker file. Add optimizeDeps: {exclude: ['@map-jr/map-jr-gl', 'maplibre-gl']} to vite.config and restart the dev server.");
         });
         const engine = want !== 'main' && 'transferControlToOffscreen' in this.canvas ? startWorker(o).catch(() => null) : null;
         if (engine) engine.then(w => w || preload()); else preload();
