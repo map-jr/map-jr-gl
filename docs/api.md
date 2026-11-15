@@ -660,6 +660,8 @@ const popup = map.overlay(content, {lngLat, popup: true, onClose: () => popup.re
 | `draggable` | `true` to let the user move the element with the mouse, a finger or a pen. The default is `false`. It has no effect on a popup. |
 | `onDragStart`, `onDrag`, `onDragEnd` | For a draggable element: called when a drag starts, at each move, and when it ends, with the position of the element as `[lng, lat]`. |
 
+A popup of `overlay()` does not take the keyboard focus when it opens, and it stays open when the map moves. The popup of `@map-jr/map-jr-gl/maplibre-compat` has the options `focusAfterOpen`, `closeOnMove` and `trackPointer` for that.
+
 A drag starts once the pointer has moved 3 pixels, as in MapLibre GL JS. A click without that move stays a click
 and calls no drag callback, and the click at the end of a drag does not reach the element. The map does not pan
 under a drag of the element. In other cases, the pointer events of an overlay reach the page as usual, but the map

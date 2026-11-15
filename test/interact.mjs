@@ -1162,14 +1162,14 @@ for (const mode of ['main', 'worker']) {
                 for (let i = 0; i < 2; i++) {
                     new mod.NavigationControl({visualizePitch: true});
                     new mod.FullscreenControl({container: document.body});
-                    new mod.Popup({focusAfterOpen: false, locationOccludedOpacity: 0.5});
+                    new mod.Popup({locationOccludedOpacity: 0.5});
                     new mod.Marker({opacityWhenCovered: '0.2'});
                 }
                 // (The default values write no warning.)
                 new mod.Map({container: el, attributionControl: false, fadeDuration: 300, pitchWithRotate: true, style: {version: 8, sources: {}, layers: []}}).remove();
             } finally { console.warn = warn; }
             m.remove(); el.remove();
-            const names = ['logoPosition', 'validate', 'visualizePitch', 'container', 'fadeDuration', 'pitchWithRotate', 'focusAfterOpen', 'locationOccludedOpacity', 'opacityWhenCovered'];
+            const names = ['logoPosition', 'validate', 'visualizePitch', 'container', 'fadeDuration', 'pitchWithRotate', 'locationOccludedOpacity', 'opacityWhenCovered'];
             return Object.fromEntries(names.map(n => [n, warns.filter(w => w.startsWith('[map-jr-gl]') && w.toLowerCase().includes('the option ' + n.toLowerCase())).length]));
         });
         // visualizePitch of NavigationControl has an effect in this entry (#42), so it writes no warning.
@@ -2366,7 +2366,7 @@ for (const mode of ['main', 'worker']) {
             el.dispatchEvent(new KeyboardEvent('keydown', {key: ' ', bubbles: true}));
             await new Promise(r => setTimeout(r, 400)); // (the popup closes with a short animation)
             // The focus: Enter moves it to the close button of the popup, and it is on the marker again after the close button.
-            // A click on the marker leaves it where it is. A link in the content comes before the close button.
+            // A click on the marker moves it into the popup too (focusAfterOpen, as in MapLibre GL JS). A link in the content comes before the close button.
             const popup = window.a11yMarker.getPopup(), close = popup.getElement().querySelector('button');
             el.focus();
             el.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
@@ -2376,7 +2376,7 @@ for (const mode of ['main', 'worker']) {
             const focusBack = document.activeElement === el && !popup.isOpen();
             window.a11yMap.getCanvas().focus();
             el.click();
-            const focusClick = document.activeElement === window.a11yMap.getCanvas() && popup.isOpen();
+            const focusClick = document.activeElement === close && popup.isOpen();
             el.click();
             await new Promise(r => setTimeout(r, 400));
             popup.setHTML('<a href="https://example.com/">A link</a>');
@@ -2463,6 +2463,62 @@ for (const mode of ['main', 'worker']) {
             return {before, during, connected};
         });
         check('[main] Popup: while it fades out after remove(), a click goes to the map below it', fading.before && !fading.during, JSON.stringify(fading));
+        // #42: the options focusAfterOpen, closeOnMove, trackPointer and subpixelPositioning work as in MapLibre GL JS.
+        const options = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), m = window.a11yMap, wait = t => new Promise(r => setTimeout(r, t));
+            const warns = [], warn = console.warn;
+            console.warn = (...a) => { warns.push(String(a[0])); };
+            const out = {};
+            try {
+                m.getCanvas().focus();
+                let p = new mod.Popup({closeOnClick: false}).setLngLat([0, 0]).setHTML('<a href="https://example.com/">Link</a>').addTo(m);
+                out.focus = document.activeElement?.tagName === 'A';
+                p.remove(); await wait(400);
+                m.getCanvas().focus();
+                p = new mod.Popup({focusAfterOpen: false}).setLngLat([0, 0]).setText('No focus').addTo(m);
+                out.noFocus = document.activeElement === m.getCanvas();
+                p.remove(); await wait(400);
+                // (A jumpTo just before addTo does not close it: the engine reports that move after addTo.)
+                m.jumpTo({center: [0.5, 0.5]});
+                p = new mod.Popup({closeOnMove: true}).setLngLat([0, 0]).setText('Move').addTo(m);
+                await wait(100);
+                const still = p.isOpen();
+                m.jumpTo({center: [1, 1]});
+                await wait(100);
+                out.closeOnMove = still && !p.isOpen();
+                m.jumpTo({center: [0, 0]}); await wait(400);
+                const c = m.getContainer().getBoundingClientRect();
+                p = new mod.Popup({trackPointer: true, closeOnClick: false, animate: false}).setText('Pointer').addTo(m);
+                out.hiddenFirst = p.getElement().style.visibility === 'hidden';
+                m.getCanvas().dispatchEvent(new PointerEvent('pointermove', {bubbles: true, pointerType: 'mouse', clientX: c.left + 100, clientY: c.top + 120}));
+                await wait(50);
+                const at = p.getLngLat() ? m.project(p.getLngLat()) : {x: NaN, y: NaN};
+                out.follows = p.getElement().style.visibility !== 'hidden' && Math.abs(at.x - 100) < 1 && Math.abs(at.y - 120) < 1;
+                out.noClicks = p.getElement().querySelector('.maplibregl-popup-content').style.pointerEvents === 'none';
+                p.setLngLat([0, 0]);
+                m.getCanvas().dispatchEvent(new PointerEvent('pointermove', {bubbles: true, pointerType: 'mouse', clientX: c.left + 30, clientY: c.top + 30}));
+                await wait(50);
+                const fixed = m.project(p.getLngLat()), mid = m.project([0, 0]);
+                out.setLngLatStops = Math.abs(fixed.x - mid.x) < 1e-6 && Math.abs(fixed.y - mid.y) < 1e-6;
+                p.trackPointer();
+                m.getCanvas().dispatchEvent(new PointerEvent('pointermove', {bubbles: true, pointerType: 'mouse', clientX: c.left + 60, clientY: c.top + 70}));
+                await wait(50);
+                const again = p.getLngLat() ? m.project(p.getLngLat()) : {x: NaN, y: NaN};
+                out.trackAgain = Math.abs(again.x - 60) < 1 && Math.abs(again.y - 70) < 1;
+                p.remove();
+                const frac = m.unproject([100.4, 80.3]);
+                const t = q => (q.getElement().style.transform.match(/translate\(([^p]+)px/) || [])[1];
+                const round = new mod.Popup({anchor: 'top-left', animate: false}).setLngLat(frac).setText('a').addTo(m);
+                const sub = new mod.Popup({anchor: 'top-left', animate: false, subpixelPositioning: true}).setLngLat(frac).setText('b').addTo(m);
+                out.round = t(round); out.sub = t(sub);
+                out.subpixel = round.getElement().style.transform.startsWith('translate(100px') && Math.abs(parseFloat(t(sub)) - 100.4) < 0.01;
+                round.remove(); sub.remove();
+            } finally { console.warn = warn; }
+            out.warns = warns.filter(w => w.includes('Popup'));
+            return out;
+        });
+        check('[main] maplibre-compat: Popup moves the focus into itself (unless focusAfterOpen is false), closes on a move with closeOnMove, follows the pointer with trackPointer until setLngLat, and places itself on fractions of a pixel with subpixelPositioning (#42)',
+            options.focus && options.noFocus && options.closeOnMove && options.hiddenFirst && options.follows && options.noClicks && options.setLngLatStops && options.trackAgain && options.subpixel && !options.warns.length, JSON.stringify(options));
         // A camera animation of one second: with "reduce motion" the map is there at once; `essential: true` keeps the animation.
         const keys = await page.evaluate(async () => {
             const m = window.a11yMap, c = m.getCanvas(), out = {};
