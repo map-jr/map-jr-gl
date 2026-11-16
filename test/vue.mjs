@@ -141,10 +141,10 @@ try {
         const before = await at([-74.0065, 40.7085]);
         t.markers.value = [];
         // An image of the prop `images`, and a change in place that removes it.
-        const image = host.map.hasImage('dot');
+        const image = host._map.hasImage('dot');
         delete t.images.value.dot;
         await wait(600);
-        return {events: t.moves[0], asked: t.asked.length, added: t.asked.length > 0 && t.asked.every(id => host.map.hasImage(id)), image, imageAfter: host.map.hasImage('dot'), followed, moved, field, views: t.views, pushed, replaced: replaced.join(), before, after: host.map.getLayer('pins') ? 1 : 0};
+        return {events: t.moves[0], asked: t.asked.length, added: t.asked.length > 0 && t.asked.every(id => host._map.hasImage(id)), image, imageAfter: host._map.hasImage('dot'), followed, moved, field, views: t.views, pushed, replaced: replaced.join(), before, after: host._map.getLayer('pins') ? 1 : 0};
     });
     check('browser: an event of the map is an event of the component (moveend), and an image that the style asks for (styleimagemissing) is on the map after the listener adds it to the prop images', model.events === 'moveend number' && model.asked > 0 && model.added, JSON.stringify({events: model.events, asked: model.asked, added: model.added}));
     // The prop projection is the field `projection` of the description (#463).
@@ -153,17 +153,17 @@ try {
         const stop = host.listen('projectiontransition', e => events.push(e.newProjection));
         t.projection.value = {type: 'globe'};
         await wait(300);
-        const on = host.map.getProjection()?.type;
+        const on = host._map.getProjection()?.type;
         t.projection.value = null;
         await wait(300);
         stop();
-        return {on, off: host.map.getProjection()?.type ?? 'none', events};
+        return {on, off: host._map.getProjection()?.type ?? 'none', events};
     });
     check('browser: the prop projection sets the projection of the map, and null gives back that of the style', JSON.stringify(projected) === JSON.stringify({on: 'globe', off: 'none', events: ['globe', 'mercator']}), JSON.stringify(projected));
     check('browser: v-model:view follows the map and moves it; markers and images follow their props, also when the data changes in place', model.image && !model.imageAfter && model.followed === 15 && model.moved === 13.5 && model.field === 14.2 && model.views > 2 && model.pushed === 1 && model.replaced === '0,1' && model.before === 1 && model.after === 0, JSON.stringify(model));
     // An image as a child component: the SVG of its slot is a template of the map, and it follows the component.
     const child = await page.evaluate(async () => {
-        const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), map = t.map.value.host.map, add = map.addImage, given = [];
+        const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), map = t.map.value.host._map, add = map.addImage, given = [];
         const first = ['arrow', 'photo', 'maybe', 'nested'].map(name => map.hasImage(name)).join();
         // (The SVG is not in the page: its <style> is no style of the page, and its id is no id of the page.)
         const p = document.body.appendChild(document.createElement('p')), apart = !document.querySelector('svg[viewBox="0 0 8 8"]') && !document.getElementById('in-image') && getComputedStyle(p).color !== 'rgb(1, 2, 3)';
