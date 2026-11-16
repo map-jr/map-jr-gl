@@ -65,10 +65,14 @@ export interface View { center: [number, number]; zoom: number; bearing: number;
 /** A view that the application gives: each field is optional. */
 export interface ViewInput { center?: Position; zoom?: number; bearing?: number; pitch?: number }
 /**
- * The view at the start. `bounds` ([west, south, east, north] or [[west, south], [east, north]]) is fitted into the
- * map, with `padding` in CSS pixels (default 0), and takes the place of `center` and `zoom`, as in MapLibre GL JS.
+ * A view to go to, for `initialView` and `moveTo`. `bounds` ([west, south, east, north] or [[west, south], [east, north]])
+ * is fitted into the map and takes the place of `center` and `zoom`, as in MapLibre GL JS. `padding` (CSS pixels, default
+ * 0) is space around `bounds` for this one fit, on top of the padding of the description, and `maxZoom` limits the zoom
+ * of the fit. Without `bounds`, `padding` and `maxZoom` have no effect.
  */
-export interface InitialView extends ViewInput { bounds?: Bounds; padding?: PaddingInput }
+export interface InitialView extends ViewInput { bounds?: Bounds; padding?: PaddingInput; maxZoom?: number }
+/** The argument of `moveTo`: a view or `bounds` (as in `initialView`), with `duration` in milliseconds and `fly`. */
+export interface MoveToOptions extends InitialView { duration?: number; fly?: boolean | FlyOptions }
 /** Where the pointer is over the map: `point` in CSS pixels from the top left corner of the map, `lngLat` as `[lng, lat]`. */
 export interface PointerPosition { point: {x: number; y: number}; lngLat: [number, number] }
 export interface MapPointer { point: {x: number; y: number}; lngLat: [number, number]; /** The features of `interactiveLayers` at the point, the top one first. */ features: RenderedFeature[] }
@@ -345,10 +349,12 @@ export interface MapHost {
     /**
      * Moves the camera now, with an animation when `duration` is not 0. With `fly` (`true` or the options `curve`,
      * `speed`, `screenSpeed`, `minZoom`, `maxDuration` of `flyTo` of MapLibre GL JS), the camera zooms out and back in
-     * on the way, and without `duration` the duration follows from the distance.
+     * on the way, and without `duration` the duration follows from the distance. With `bounds`, the camera goes to the
+     * box fitted with `padding` and `maxZoom`. `moveTo` does not change the padding of the map: that is `padding` of the description.
      */
-    moveTo(view: ViewInput & {duration?: number; padding?: PaddingInput; fly?: boolean | FlyOptions}): void;
-    fitBounds(bounds: Bounds, options?: {padding?: PaddingInput; duration?: number; maxZoom?: number}): void;
+    moveTo(view: MoveToOptions): void;
+    /** The short form of `moveTo({bounds, ...options})`, with `duration` 800 ms by default. */
+    fitBounds(bounds: Bounds, options?: Omit<MoveToOptions, 'bounds' | 'center' | 'zoom'>): void;
     project(lngLat: Position): {x: number; y: number};
     unproject(point: {x: number; y: number}): [number, number];
     /**
@@ -383,11 +389,11 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
     complete(spec, 'createMap', 'Pass the URL of a style or a style object as "style".');
     if (!container) throw new Error('[map-jr-gl] createMap(): the container is ' + container + '. In a framework, make the map after the element is mounted.');
     if (typeof container === 'string' && !document.getElementById(container)) throw new Error(`[map-jr-gl] createMap(): no element with the id "${container}".`);
-    const {bounds, padding, ...first} = {...spec.initialView, ...spec.view} as InitialView & {bounds?: unknown};
+    const {bounds, padding, maxZoom, ...first} = {...spec.initialView, ...spec.view} as InitialView & {bounds?: unknown};
     const options: MapOptions = {
         container, style: spec.style, center: first.center, zoom: first.zoom, bearing: first.bearing, pitch: first.pitch,
         // (A `view` from the state has `bounds` too: it is a view, and only `initialView` gives a box to fit.)
-        bounds: spec.view ? undefined : bounds as LngLatBoundsInput, fitBoundsOptions: {padding}, renderer: spec.renderer, fontFamily: spec.fontFamily, interactive: spec.interactive, antialias: spec.antialias, hash: spec.hash, nonce: spec.nonce,
+        bounds: spec.view ? undefined : bounds as LngLatBoundsInput, fitBoundsOptions: {padding, maxZoom}, renderer: spec.renderer, fontFamily: spec.fontFamily, interactive: spec.interactive, antialias: spec.antialias, hash: spec.hash, nonce: spec.nonce,
         attributionControl: spec.attribution, minZoom: spec.minZoom, maxZoom: spec.maxZoom, maxPitch: spec.maxPitch,
     };
     for (const k in options) if ((options as any)[k] === undefined) delete (options as any)[k];
@@ -641,6 +647,12 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
     };
     apply(spec);
 
+    const moveTo: MapHost['moveTo'] = ({duration, fly, bounds, padding, maxZoom, ...view}) => {
+        // (`padding` is space for this one fit; the padding of the map belongs to the description.)
+        if (bounds) { const fit = map.cameraForBounds(bounds as LngLatBoundsInput, {padding, maxZoom}); view = {bearing: fit.bearing, ...view, center: [fit.center.lng, fit.center.lat], zoom: fit.zoom}; }
+        else if (padding !== undefined || maxZoom !== undefined) check(7);
+        if (fly) map.flyTo({...view, duration, ...(fly === true ? {} : fly)}); else if (duration) map.easeTo({...view, duration}); else map.jumpTo(view);
+    };
     const isPosition = (at: FeaturePlace): at is [number, number] => typeof (at as number[])[0] === 'number';
     /** Rejects with the message of the mistake `code`, or with `short` when the checks do not load. */
     const reject = (code: number, a: string, short: string) => checks().then(m => m.mistake(code, a), () => '[map-jr-gl] ' + short).then(text => { throw new Error(text); });
@@ -726,8 +738,8 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
         watchSource: (id, at, o, listener) => watch(at, id, () => querySource(id, at, o), listener),
         queryElevation: at => map.queryElevation(at),
         toBlob: (type, quality) => map.toBlob(type, quality),
-        moveTo({duration, fly, ...view}) { if (fly) map.flyTo({...view, duration, ...(fly === true ? {} : fly)}); else if (duration) map.easeTo({...view, duration}); else map.jumpTo(view); },
-        fitBounds: (bounds, o) => { map.fitBounds(bounds as LngLatBoundsInput, o); },
+        moveTo,
+        fitBounds: (bounds, o = {}) => moveTo({duration: 800, ...o, bounds}),
         project: lngLat => map.project(lngLat),
         unproject: point => { const p = map.unproject(point); return [p.lng, p.lat]; },
         overlay(element, o) {
