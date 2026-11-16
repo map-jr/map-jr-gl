@@ -58,6 +58,12 @@ export interface RenderOptions {
     sources?: Record<string, object>;
     /** Layers to add to the layers of the style, as `layers` in the description of a map (`MapSpec`). */
     layers?: ({id: string; before?: string} & Record<string, unknown>)[];
+    /**
+     * Sprites to add to the sprite of the style, as `sprite` in the description of a map (`MapSpec`):
+     * `[{id: 'pins', url: 'https://example.com/sprites/pins'}]`. An `icon-image` names an image of such a sprite as `id:name`.
+     * A relative URL is relative to the URL of the style.
+     */
+    sprite?: {id: string; url: string}[];
     /** Terrain in place of that of the style, as `terrain` in the description of a map (`MapSpec`). */
     terrain?: object | null;
     /** GeoJSON data for GeoJSON sources of the style, by the id of the source, as `data` in the description of a map. */
@@ -163,7 +169,7 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
     const fetchFn = limitedFetch(o, o.fetch ?? ((...a) => fetch(...a)));
     // (`sources`, `layers` and `data` are added to the style. A style from a URL is fetched here, to add them to it and to read its images.)
     let given = o.style, base: string | undefined;
-    const adds = !!(o.sources || o.layers || o.terrain);
+    const adds = !!(o.sources || o.layers || o.terrain || o.sprite?.length);
     if (typeof given === 'string') {
         const res = await fetchFn(base = given);
         if (!res.ok) throw new Error(`Failed to load style ${given}: ${res.status}`);
@@ -215,8 +221,16 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
     });
     if (style.sprite && layers.some(l => l.type === 'symbol')) {
         jobs.push((async () => {
-            sprite = await loadSprite(style.sprite!, !!o.highDensity, fetchFn);
-            if (o.inlineImages) sprite.image = await dataURI(sprite.image);
+            // (A sprite of several sheets keeps each image: the icons of a sheet with an id other than `default` have the names `id:name`.)
+            const sheets: {id: string; url: string}[] = style.sprite![0] === '[' ? JSON.parse(style.sprite!) : [{id: 'default', url: style.sprite!}];
+            const loaded = await Promise.all(sheets.map(async ({id, url}) => {
+                const one = await loadSprite(url, !!o.highDensity, fetchFn);
+                if (o.inlineImages) one.image = await dataURI(one.image);
+                return {id, one};
+            }));
+            const icons: Sprite['icons'] = {};
+            loaded.forEach(({id, one}, sheet) => { for (const name in one.icons) icons[id === 'default' ? name : `${id}:${name}`] = {...one.icons[name], sheet}; });
+            sprite = {...loaded[0].one, icons, sheets: loaded.map(({one}) => one)};
         })());
     }
     await Promise.all(jobs);

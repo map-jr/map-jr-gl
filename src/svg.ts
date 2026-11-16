@@ -163,11 +163,13 @@ export function renderSVG(s: SVGScene): string {
     const icons = s.sprite ? s.labels.filter(l => l.icon && !l.icon.custom) : [];
     if (icons.length) {
         const sp = s.sprite!;
-        defs.push(`<image id="sprite" href="${escapeXML(sp.image)}" width="${sp.width}" height="${sp.height}"/>`);
+        // (One image for each sheet that an icon uses: `sprite`, and `sprite-1` and so on for the other sheets.)
+        const used = new Set<number>();
         for (const {icon} of icons) {
-            const i = icon!, [sx, sy, sw, sh] = i.rect;
+            const i = icon!, [sx, sy, sw, sh] = i.rect, n = sp.icons[i.name]?.sheet ?? 0, id = n ? 'sprite-' + n : 'sprite';
+            if (!used.has(n)) { used.add(n); const sheet = sp.sheets?.[n] ?? sp; defs.push(`<image id="${id}" href="${escapeXML(sheet.image)}" width="${sheet.width}" height="${sheet.height}"/>`); }
             const rot = i.angle ? ` transform="rotate(${num(i.angle * 180 / Math.PI)} ${num(i.x)} ${num(i.y)})"` : '';
-            body.push(`<svg x="${num(i.x - i.w / 2)}" y="${num(i.y - i.h / 2)}" width="${num(i.w)}" height="${num(i.h)}" viewBox="${sx} ${sy} ${sw} ${sh}" preserveAspectRatio="none"${rot}><use href="#sprite"/></svg>`);
+            body.push(`<svg x="${num(i.x - i.w / 2)}" y="${num(i.y - i.h / 2)}" width="${num(i.w)}" height="${num(i.h)}" viewBox="${sx} ${sy} ${sw} ${sh}" preserveAspectRatio="none"${rot}><use href="#${id}"/></svg>`);
         }
     }
 

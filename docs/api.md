@@ -132,6 +132,7 @@ The library compares each field with the field of the last description:
 | `view`, `onViewChange` | A view that your application owns. See below. |
 | `data` | GeoJSON data for GeoJSON sources, by the id of the source. A key with no source of that id makes a GeoJSON source with the default options. See below. |
 | `images` | Images for the style layers, by name: an SVG document, the URL of an image, or `{image, width, height}`. See [Images for style layers](#images-for-style-layers). |
+| `sprite` | Sprites to add to the sprite of the style: `[{id: 'pins', url: 'https://example.com/sprites/pins'}]`, the list form of `sprite` in the style specification. An `icon-image` names an image of such a sprite as `id:name`. See [A sprite of the description](#a-sprite-of-the-description). |
 | `controls` | A list of controls. See below. |
 | `projection` | The projection in place of the property `projection` of the style, with the same shape: `{type: 'globe'}`, `{type: 'vertical-perspective'}` or `{type: 'mercator'}`. Without the field, or with `null`, the map uses the projection of the style. A change in `update()` switches the projection without loading the style again, and a new style gets the projection of the description too. `globe` draws the map on a sphere and turns into Mercator between zoom 11 and 12, as in MapLibre GL JS; `vertical-perspective` keeps the sphere at every zoom. On the globe the map draws fills, lines, circles, heatmaps, raster and hillshade layers, symbols and the background (on the sphere only; the space around it stays transparent). 3D terrain, `fill-extrusion` layers and the atmosphere of `sky` are not drawn on the globe yet: the map writes one warning, and they show past zoom 12. `maxBounds` has no effect on the globe. A drag on the globe turns it as in MapLibre GL JS: each move turns the sphere from the place under the last position of the pointer to the place under the new one, and the bearing stays. Near the edge of the globe and near a pole, the place under the pointer drifts away from it, as in MapLibre GL JS, and the centre can pass 85° north or south while the area around the pole fits in the view. On the globe, a new centre without a zoom (`moveTo`, a drag, the fling after it) keeps the size of the globe on the screen, and the zoom changes with the latitude instead (from zoom 1.5 at the equator to -0.048 at 70°N), as in MapLibre GL JS. A `zoom` that is given is used as it is, and the arrow keys keep the zoom. A switch from Mercator to the globe shows the globe when the tiles of the view have been built again for it, or after 1 s at most; until then the map shows Mercator. A label whose anchor turns behind the globe is not drawn from that frame on, also between two placements of the labels. The page loads the code of the globe (about 2 KB gzip) only for a map with a globe. |
 | `globalState` | Values for the `global-state` expressions of the style, by name: `{season: 'winter'}`. A value here is used in place of the default of the same name in `state` of the style. A change in `update()` sets only the names whose values changed and repaints the layers that read them, without loading the style again. A name that the new description leaves out, or gives `null`, goes back to the default of the style. A new style gets the values of the description. A value is JSON (a string, number, boolean, array or plain object); the development build warns once for a value that is not, such as a function or `NaN`. The default is no values. |
@@ -180,6 +181,7 @@ work for a style from a URL as for a style object:
 | `sources` | Merged with the sources of the style by id. A source of the description replaces the source of the style with the same id. |
 | `layers` | Added to the layers of the style. A layer with `before` goes below the layer with that id, and a layer without it goes on top. |
 | `terrain` | Replaces the terrain of the style. `null` or no field means the terrain of the style. |
+| `sprite` | Added to the sprites of the style. A sprite with the id of a sprite of the style replaces it. |
 
 `images` and `globalState` are merged by key in the same way (see their rows in [The description](#the-description)),
 and `projection` replaces the projection of the style. A style object that your application writes itself needs
@@ -296,6 +298,37 @@ any key in `metadata`, so MapLibre GL JS reads the style and ignores the images.
 
 An image that does not load is an error of the map (`onError`, `state.error`) with the name of the image. The map
 draws the layer without that image.
+
+### A sprite of the description
+
+The field `sprite` adds sprites to the sprite of the style. It has the list form of `sprite` in the style
+specification: a list of `{id, url}`. An `icon-image` names an image of such a sprite as `id:name`, as MapLibre GL JS
+names an image of a sprite with an id other than `default`.
+
+```js
+import {createMap} from '@map-jr/map-jr-gl';
+
+const map = createMap(document.getElementById('map'), {
+  style: 'https://tiles.openfreemap.org/styles/liberty',
+  initialView: {center: [-74.006, 40.7128], zoom: 12},
+  sprite: [{id: 'maki', url: 'https://demotiles.maplibre.org/styles/osm-bright-gl-style/sprite'}],
+  sources: {places: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [-74.006, 40.7128]}}}},
+  layers: [{id: 'places', type: 'symbol', source: 'places', layout: {'icon-image': 'maki:circle_11'}}],
+});
+```
+
+- The URL has no extension. The map loads `url + '.json'` and `url + '.png'`, and `url + '@2x.json'` and
+  `url + '@2x.png'` on a screen with a pixel ratio above 1. Both requests go through `transformRequest` with the kinds
+  `SpriteJSON` and `SpriteImage`. A relative URL is relative to the page.
+- A sprite of a style is one URL (the id `default`) or a list. A sprite of the description replaces a sprite of the
+  style with the same id, so the id `default` replaces the sprite of a style whose `sprite` is one URL.
+- An image of `images` or of the style is used in place of an image of a sprite with the same name (`pins:hotel`).
+- A sprite that does not load is an error of the map (`onError`, `state.error`) with its URL. The map draws the images
+  of the other sprites.
+- A change of `sprite` in `update()` loads the style again. A new style gets the sprites of the description.
+- The server renderer (`renderToSVG`, `renderToImage`) has the option `sprite` with the same rule. There, a relative
+  URL is relative to the URL of the style, and a sprite that does not load rejects the render, as the sprite of the
+  style does.
 
 ### An image that the style asks for
 
