@@ -15,7 +15,7 @@ import {dataTypeError, extended, withData, type Anchor} from './markers.ts';
 import type {QueriedFeature} from './query.ts';
 import type {Control, ControlPosition} from './controls.ts';
 import type {Checked} from './mistakes.ts';
-import type {FontSource} from './engine.ts';
+import {fontFaces, type FontFaces} from './resolve.ts';
 import type {LngLatBoundsInput} from './lnglat.ts';
 import type {PaddingInput} from './geo.ts';
 import type {ProjectionSpecification} from './compat-types.ts';
@@ -84,6 +84,12 @@ export interface MapSpec extends MapSetup {
      * `null` or no field means the terrain of the style.
      */
     terrain?: {source: string; exaggeration?: number} | null;
+    /**
+     * Web fonts for labels, in the shape of `font-faces` of the style specification: by `text-font` name, a URL or a
+     * list of `{url, 'unicode-range'}`. A name here replaces the same name in the `font-faces` of the style. A relative
+     * URL is relative to the page. A new name loads its font and the labels are drawn again. See "Web fonts" in `docs/api.md`.
+     */
+    fonts?: FontFaces;
     /** The view at the start: a view, or `bounds` to fit with `padding`. The user then moves the map. */
     initialView?: InitialView;
     /**
@@ -154,7 +160,6 @@ export interface MapSpec extends MapSetup {
 /** The fields that are read when the map is made only. */
 export interface MapSetup {
     renderer?: 'auto' | 'worker' | 'main';
-    fonts?: FontSource[];
     fontFamily?: string;
     interactive?: boolean;
     antialias?: boolean;
@@ -362,7 +367,7 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
     const options: MapOptions = {
         container, style: spec.style, center: first.center, zoom: first.zoom, bearing: first.bearing, pitch: first.pitch,
         // (A `view` from the state has `bounds` too: it is a view, and only `initialView` gives a box to fit.)
-        bounds: spec.view ? undefined : bounds as LngLatBoundsInput, fitBoundsOptions: {padding}, renderer: spec.renderer, fonts: spec.fonts, fontFamily: spec.fontFamily, interactive: spec.interactive, antialias: spec.antialias, hash: spec.hash, nonce: spec.nonce,
+        bounds: spec.view ? undefined : bounds as LngLatBoundsInput, fitBoundsOptions: {padding}, renderer: spec.renderer, fontFamily: spec.fontFamily, interactive: spec.interactive, antialias: spec.antialias, hash: spec.hash, nonce: spec.nonce,
         attributionControl: spec.attribution, minZoom: spec.minZoom, maxZoom: spec.maxZoom, maxPitch: spec.maxPitch,
     };
     for (const k in options) if ((options as any)[k] === undefined) delete (options as any)[k];
@@ -406,6 +411,9 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
     const madeData = new Set<string>();
     // (The `data` of the last description: keys can change while the style loads.)
     let wantedData = spec.data;
+    // (The `fonts` of the last description, with URLs that are relative to the page made absolute: the style has its own base.)
+    let wantedFonts = spec.fonts;
+    const absolute = (faces: FontFaces | undefined) => { const out: FontFaces = {}; for (const f of fontFaces(faces, document.baseURI)) ((out[f.name!] ??= []) as {url: string; 'unicode-range'?: string[]}[]).push({url: f.src, ...(f.unicodeRange ? {'unicode-range': f.unicodeRange.split(', ')} : {})}); return out; };
     const typeError = (id: string, type: string) => setTimeout(() => { if (alive) map.fire('error', {error: dataTypeError(id, type)}); });
     const restyle = (next: MapSpec) => { styled = false; map.setStyle(next.style, {transformStyle: (_, style) => {
         styled = true;
@@ -413,6 +421,7 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
         styleProjection = style.projection;
         // (The description of this moment: it can have changed while the style loaded.)
         if (wantedProjection) style = {...style, projection: copy(wantedProjection)};
+        if (wantedFonts) style = {...style, 'font-faces': {...style['font-faces'], ...absolute(wantedFonts)}} as typeof style;
         // (The sources of the new style have no data of the description yet: data that was given since `restyle` went to
         // the sources of the style before. It is given again when the new style is there: see `giveData`.)
         sent.clear();
@@ -549,6 +558,7 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
         const differ = (a: unknown, b: unknown) => a !== b && JSON.stringify(a) !== JSON.stringify(b);
         wantedProjection = next.projection;
         wantedData = next.data;
+        wantedFonts = next.fonts;
         // (A new key of `data` makes its source before the edits of `sources` and `layers`, which can add a layer that names it.)
         if (styled && before) for (const id in next.data) {
             const s = map.getSource(id) as {type?: string} | undefined;
@@ -559,6 +569,13 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
         const restyled = !!before && (differ(next.style, before.style) || (['sources', 'layers', 'terrain'] as const).some(k => differ(next[k], before[k])) && !(styled && edit(parts(next), parts(before), differ)));
         if (restyled) { state.set({idle: false}); sent.clear(); restyle(next); }
         else for (const id of madeData) if (!Object.hasOwn(next.data ?? {}, id)) { madeData.delete(id); sent.delete(id); map.removeSource(id); }
+        // (A font of a name that is new or changed is loaded; the new style of a restyle has the fonts already. A font
+        // that is removed stays with the browser, and the labels keep it until the page is loaded again.)
+        if (styled && !restyled && differ(next.fonts, before?.fonts)) {
+            const changed: FontFaces = {};
+            for (const name in next.fonts) if (differ(next.fonts[name], before?.fonts?.[name])) changed[name] = next.fonts[name];
+            map.addFonts(fontFaces(absolute(changed)));
+        }
         if (next.view && !same(next.view, before?.view) && !reported.some(v => same(next.view, v)) && before) map.jumpTo(next.view);
         if (next.minZoom !== before?.minZoom && before) map.setMinZoom(next.minZoom);
         if (next.maxZoom !== before?.maxZoom && before) map.setMaxZoom(next.maxZoom);

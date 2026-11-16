@@ -37,7 +37,21 @@ export interface SourceInfo {
 }
 
 /** A style with everything network-dependent already resolved, so it can be posted to a worker as plain JSON. */
-export interface FontSource { family: string; src: string; weight?: string | number; style?: string; unicodeRange?: string }
+export interface FontSource { family: string; src: string; weight?: string | number; style?: string; unicodeRange?: string; /** The `text-font` name that the face is for, for messages. */ name?: string }
+/** The web fonts of `font-faces` of the style specification: a URL or a list of `{url, 'unicode-range'}`, by `text-font` name. */
+export type FontFaces = Record<string, string | {url: string; 'unicode-range'?: string[]}[]>;
+
+/** The font files of `font-faces`, one for each URL, with relative URLs joined to `base`. */
+export function fontFaces(faces: FontFaces | undefined, base?: string): FontSource[] {
+    const fonts: FontSource[] = [];
+    for (const [name, value] of Object.entries(faces ?? {})) {
+        const face = parseFontName(name);
+        for (const entry of typeof value === 'string' ? [{url: value} as {url: string; 'unicode-range'?: string[]}] : Array.isArray(value) ? value : []) {
+            if (typeof entry?.url === 'string') fonts.push({...face, name, src: base ? new URL(entry.url, base).href : entry.url, unicodeRange: entry['unicode-range']?.join(', ')});
+        }
+    }
+    return fonts;
+}
 export interface ResolvedStyle { layers: LayerJSON[]; sources: Record<string, SourceInfo>; unsupported: string[]; /** The URL of the glyph files of the style, with `{fontstack}` and `{range}`. */ glyphs?: string; /** A source is still on its way (see `Partial`): the map is not idle. */ waiting?: boolean; sprite?: string; fonts?: FontSource[];
     /** 3D terrain: the raster-dem source that shapes the ground, and how much to exaggerate it. */
     terrain?: {source: string; exaggeration: number};
@@ -182,14 +196,7 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
     const spriteURL = (u: string) => base ? new URL(u, base).href : u;
     const sprite = typeof style.sprite === 'string' ? spriteURL(style.sprite)
         : Array.isArray(style.sprite) && style.sprite.length ? JSON.stringify(style.sprite.map((s: {id: string; url: string}) => ({id: s.id, url: spriteURL(s.url)}))) : undefined;
-    // The style specification's `font-faces`: font files per `text-font` name, optionally limited to unicode ranges.
-    const fonts: FontSource[] = [];
-    for (const [name, value] of Object.entries<any>(style['font-faces'] ?? {})) {
-        const face = parseFontName(name);
-        for (const entry of typeof value === 'string' ? [{url: value}] : value) {
-            fonts.push({...face, src: base ? new URL(entry.url, base).href : entry.url, unicodeRange: entry['unicode-range']?.join(', ')});
-        }
-    }
+    const fonts = fontFaces(style['font-faces'], base);
     const rawTerrain = (style as any).terrain;
     const terrain = rawTerrain?.source && sources[rawTerrain.source]?.type === 'raster-dem' ? {source: rawTerrain.source as string, exaggeration: rawTerrain.exaggeration ?? 1} : undefined;
     // `state` in a style gives each property a default; values set at runtime arrive already resolved.

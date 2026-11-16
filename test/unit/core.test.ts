@@ -299,8 +299,8 @@ test('style: font-faces become web fonts keyed by family, weight and style', asy
         'Noto Sans Regular': [{url: 'https://fonts.test/khmer.ttf', 'unicode-range': ['U+1780-17FF', 'U+19E0-19FF']}],
     }}, undefined, 'https://example.test/styles/style.json');
     assert.deepEqual(style.fonts, [
-        {family: 'Open Sans', weight: 700, style: 'normal', src: 'https://example.test/styles/fonts/open-sans-bold.woff2', unicodeRange: undefined},
-        {family: 'Noto Sans', weight: 400, style: 'normal', src: 'https://fonts.test/khmer.ttf', unicodeRange: 'U+1780-17FF, U+19E0-19FF'},
+        {family: 'Open Sans', weight: 700, style: 'normal', name: 'Open Sans Bold', src: 'https://example.test/styles/fonts/open-sans-bold.woff2', unicodeRange: undefined},
+        {family: 'Noto Sans', weight: 400, style: 'normal', name: 'Noto Sans Regular', src: 'https://fonts.test/khmer.ttf', unicodeRange: 'U+1780-17FF, U+19E0-19FF'},
     ]);
 });
 
