@@ -55,7 +55,7 @@ production build has no such warning, and there the map stays empty without a me
 | `data` | GeoJSON data for GeoJSON sources, by the id of the source: `:data="{routes}"`. A key with no source of that id makes a GeoJSON source. See "GeoJSON data that changes" in [the main API](api.md). Use a `shallowRef` for each value, and give a new object to change it. |
 | `interactive-layers` | The ids of style layers whose features are found under the pointer. |
 | `controls` | Controls from `@map-jr/map-jr-gl/controls`: `:controls="[navigation(), scale()]"`. See [the main API](api.md). |
-| `min-zoom`, `max-zoom`, `max-pitch`, `max-bounds`, `cursor`, `cooperative-gestures`, `padding`, `projection` | As in [the main API](api.md). `:projection="{type: 'globe'}"` draws the map on a globe. |
+| `min-zoom`, `max-zoom`, `max-pitch`, `max-bounds`, `cursor`, `cooperative-gestures`, `color-scheme`, `padding`, `projection` | As in [the main API](api.md). `:projection="{type: 'globe'}"` draws the map on a globe. |
 | `global-state` | The field `globalState` of [the main API](api.md): values for the `global-state` expressions of the style, by name. `:global-state="{theme: dark ? 'dark' : 'light'}"` changes the paint without loading the style again. |
 | `transform-request` | A function that changes a request before the map makes it, as `transformRequest` of [the main API](api.md). The map calls the function of the last value of the prop. |
 | `renderer`, `fonts`, `font-family`, `interactive`, `antialias`, `attribution`, `hash`, `nonce` | Read only when the map is made. |

@@ -109,7 +109,7 @@ export class Popup extends Overlay {
         this.el.style.cssText = 'z-index:1;pointer-events:none';
         const box = this.box;
         box.className = cls('popup-content');
-        box.style.cssText = `pointer-events:auto;position:relative;background:var(--map-popup-background,#fff);color:var(--map-popup-color,#222);border-radius:8px;padding:10px 12px;font:13px/1.4 system-ui,sans-serif;box-shadow:0 2px 12px rgba(0,0,0,.22);max-width:${options.maxWidth ?? '240px'};margin:8px`;
+        box.style.cssText = `pointer-events:auto;position:relative;background:var(--map-popup-background,var(--map-jr-popup-bg,#fff));color:var(--map-popup-color,var(--map-jr-popup-fg,#222));border-radius:8px;padding:10px 12px;font:13px/1.4 system-ui,sans-serif;box-shadow:0 2px 12px rgba(0,0,0,.22);max-width:${options.maxWidth ?? '240px'};margin:8px`;
         box.appendChild(this.content);
         this.tip.className = cls('popup-tip');
         box.appendChild(this.tip);

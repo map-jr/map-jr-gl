@@ -34,6 +34,7 @@ const texts: ((a: string, b: string) => string)[] = [
     /* 20 */ () => 'The description has "glyphs". That field was removed and has no effect: the map loads the glyph files of the style. Remove "glyphs" from the description. To draw text with the fonts of the browser, remove "glyphs" from the style.',
     /* 21 */ a => `points(): the record ${a} has no position of two finite numbers, so it is left out. Make "lngLat" return [lng, lat] for each record.`,
     /* 22 */ a => `globalState: the value of "${a}" is not JSON (a function, a class instance, NaN or a cycle), so the style cannot read it as it is. Give a string, a number, a boolean, an array or a plain object.`,
+    /* 23 */ a => `colorScheme: ${a} is not a colour scheme, so the map follows the browser. Write 'auto', 'light' or 'dark'.`,
 ];
 
 /** The message with the number `code` for the names `a` and `b`. */
@@ -105,6 +106,7 @@ export function check(c: Checked, kind: number, a?: any, b?: any) {
         if (before && differ(next.images, before.images) && c.ready()) slots(map.getStyle()?.layers ?? [], [], next.images);
         if (!before && 'glyphs' in next) warn(20);
         for (const name in next.globalState) if (next.globalState[name] !== before?.globalState?.[name] && !isJson(next.globalState[name])) warn(22, name);
+        if (next.colorScheme != null && next.colorScheme !== before?.colorScheme && !['auto', 'light', 'dark'].includes(next.colorScheme)) warn(23, JSON.stringify(next.colorScheme));
         if (before) for (const k of setupOnly) if (differ(next[k], before[k])) warn(8, k);
     } else if (kind === 3) {
         const o = b as FeatureOptions, place = !!a && !(Array.isArray(a) && typeof a[0] !== 'number');

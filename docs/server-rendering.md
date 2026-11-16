@@ -260,7 +260,10 @@ A value in `overrides` comes before the value in the style.
 ## The first view for a framework
 
 `renderFirstView` takes the options of `renderToSVG` and returns HTML for the element of the map: the SVG, and the
-credits of the sources over it. The option `attribution` gives other credits; `false` shows none. The Vue component
+credits of the sources over it. The option `attribution` gives other credits; `false` shows none. The option `colorScheme` gives the colours of
+the credits: `'light'` (the default) or `'dark'`. The server cannot read the scheme of the browser, so `'auto'`
+writes both colours with the CSS function `light-dark()`, and a browser without that function shows the light
+colours. The Vue component passes its prop `color-scheme`, with `'auto'` when the prop is not set. The Vue component
 uses this function for its `ssr` prop. With React, call it on the server and give the result to the component. See
 [Vue and Nuxt](vue.md) and [React](react.md).
 

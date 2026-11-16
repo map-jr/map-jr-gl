@@ -1091,6 +1091,28 @@ for (const renderer of ['worker', 'main']) {
         await page.evaluate(z => window.t.host.moveTo({zoom: z}), zoom0); await page.waitForTimeout(300);
         check(`[${renderer}] cooperativeGestures: a plain wheel does not zoom and the hint is there, Ctrl + wheel zooms, and update() turns it off`,
             !plainOn && ctrlOn && plainOff && coop.hint === 1 && coop.touch === 'pan-x pan-y' && off === 0, JSON.stringify({plainOn, ctrlOn, plainOff, ...coop, off}));
+        // `colorScheme` (#490): the class map-jr-dark, state.colorScheme and the colour of a control, for 'auto', 'light' and 'dark'.
+        const scheme = async (media, value) => {
+            await page.emulateMedia({colorScheme: media});
+            return page.evaluate(async value => {
+                const t = window.t, {navigation} = await import('/dist/controls.js');
+                t.host.update({...t.spec, controls: [navigation()], ...value === undefined ? {} : {colorScheme: value}});
+                await new Promise(r => setTimeout(r, 50));
+                const el = document.querySelector('#host .map-jr-ctrl-group');
+                return [document.querySelector('#host').classList.contains('map-jr-dark') ? 'class' : '-', t.host.state.get().colorScheme, el && getComputedStyle(el).color].join(' ');
+            }, value);
+        };
+        const schemes = {autoDark: await scheme('dark'), autoLight: await scheme('light'), light: await scheme('dark', 'light'), dark: await scheme('light', 'dark'), autoBack: await scheme('dark', 'auto')};
+        await page.emulateMedia({colorScheme: 'light'});
+        // (The browser fires the event `change` of the media query in a later task.)
+        await page.waitForTimeout(200);
+        schemes.follows = await page.evaluate(() => window.t.host.state.get().colorScheme);
+        await page.emulateMedia({colorScheme: null});
+        await page.evaluate(() => { const t = window.t; t.host.update(t.spec); });
+        // (The text colour: the page /bench loads the CSS of MapLibre GL JS, whose background of a control wins over the rules of this library, as a rule of an application does.)
+        const D = 'class dark rgb(230, 230, 230)', L = '- light rgb(34, 34, 34)';
+        check(`[${renderer}] colorScheme: 'auto' follows prefers-color-scheme while the page is open, 'light' and 'dark' fix it, with the class map-jr-dark and the colour of a control`,
+            schemes.autoDark === D && schemes.autoLight === L && schemes.light === L && schemes.dark === D && schemes.autoBack === D && schemes.follows === 'light', JSON.stringify(schemes));
 
         // 5b. One method to find features, and the same question kept up to date.
         const found = await page.evaluate(async () => {
