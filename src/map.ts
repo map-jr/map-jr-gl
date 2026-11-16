@@ -1564,6 +1564,11 @@ export class Map {
     private awaitingInertia = false;
     /** @internal Set by `cooperativeGestures` of the compat entry: returns true when the gesture is blocked (the page scrolls). */
     gate?: (gestureType: 'wheel_zoom' | 'touch_pan', e: Event) => boolean;
+    /**
+     * @internal Set by the compat entry: the change of the bearing in degrees for one move of a rotate drag from `a` to
+     * `b` (pixels of the container). Without it, the drag turns the map by -0.4 degrees for each pixel to the right.
+     */
+    dragTurn?: (a: {x: number; y: number}, b: {x: number; y: number}) => number;
     private bindInput() {
         const el = this.canvas, pointers = new globalThis.Map<number, {x: number; y: number}>();
         const listen = <K extends keyof HTMLElementEventMap>(type: K, fn: (e: HTMLElementEventMap[K]) => void, opts?: AddEventListenerOptions) => {
@@ -1682,7 +1687,7 @@ export class Map {
             } else if (tapDrag && pointers.size === 1) {
                 // Second tap held and dragged: down zooms in, up zooms out, around where the taps landed.
                 if (moved > 6) { tapDrag.zoomed = true; this.post({type: 'zoom', delta: dy * 0.01, x: tapDrag.x, y: tapDrag.y}); }
-            } else if (rotating) { if (this.dragRotate.isEnabled()) this.post({type: 'rotate', delta: -dx * 0.4, pitch: -dy * 0.5}); } // right- or ctrl-drag: turn and tilt
+            } else if (rotating) { if (this.dragRotate.isEnabled()) this.post({type: 'rotate', delta: this.dragTurn ? this.dragTurn(prev, p) : -dx * 0.4, pitch: -dy * 0.5}); } // right- or ctrl-drag: turn and tilt
             else if (moved > 3 && pointers.size === 1 && this.dragPan.isEnabled() && !(e.pointerType === 'touch' && this.gate?.('touch_pan', e))) {
                 if (!this.dragging) this.fire('dragstart', {originalEvent: e});
                 this.dragging = true;
