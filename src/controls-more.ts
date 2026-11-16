@@ -4,10 +4,10 @@ import type {Map} from './map.ts';
 import {Evented} from './evented.ts';
 import {cls, ui, toggleClass, type Control, type ControlPosition} from './controls.ts';
 
-const svg = (path: string, extra = '') => `<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" ${extra}>${path}</svg>`;
+export const svg = (path: string, extra = '') => `<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" ${extra}>${path}</svg>`;
 
 /** `name` gives the button the class name that MapLibre GL JS gives it (`maplibregl-ctrl-zoom-in`), for stylesheets and tests written for that library. */
-function button(group: HTMLElement, name: string, label: string, icon: string, onClick: () => void): HTMLButtonElement {
+export function button(group: HTMLElement, name: string, label: string, icon: string, onClick: () => void): HTMLButtonElement {
     const b = document.createElement('button');
     b.className = cls('ctrl-' + name);
     b.type = 'button';
@@ -18,7 +18,7 @@ function button(group: HTMLElement, name: string, label: string, icon: string, o
     return group.appendChild(b);
 }
 
-function group(extraClass = ''): HTMLElement {
+export function group(extraClass = ''): HTMLElement {
     const el = document.createElement('div');
     el.className = `${cls('ctrl', 'ctrl-group')} ${extraClass}`.trim();
     return el;
@@ -69,7 +69,10 @@ export class NavigationControl implements Control {
             zoomOut = button(el, 'zoom-out', ui(map, 'NavigationControl.ZoomOut', 'Zoom out'), svg('<path d="M4 9h10"/>'), () => map.zoomOut());
         }
         if (this.options.showCompass !== false) {
-            const b = button(el, 'compass', ui(map, 'NavigationControl.ResetBearing', 'Reset bearing to north'), svg('<path d="M9 2.500 12 9H6z" fill="currentColor" stroke="none"/><path d="M9 15.500 6 9h6z" fill="currentColor" stroke="none" opacity=".35"/>'),
+            const b = button(el, 'compass', ui(map, 'NavigationControl.ResetBearing', 'Reset bearing to north'), map.getContainer().classList.contains('map-jr-glass')
+                // (The main API has a compass of its own: a red point to north and a grey one to south.)
+                ? svg('<path d="M9 1.500 12 9H6z" fill="#e5484d" stroke="none"/><path d="M9 16.500 6 9h6z" fill="currentColor" stroke="none" opacity=".4"/><circle cx="9" cy="9" r="1" fill="currentColor" stroke="none"/>')
+                : svg('<path d="M9 2.500 12 9H6z" fill="currentColor" stroke="none"/><path d="M9 15.500 6 9h6z" fill="currentColor" stroke="none" opacity=".35"/>'),
                 () => map.easeTo({bearing: 0, ...this.pitch && {pitch: 0}}));
             needle = b.querySelector('svg');
             dragCompass(map, b, this.pitch);

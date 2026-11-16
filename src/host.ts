@@ -27,7 +27,7 @@ import type {BackgroundLayerSpecification, CircleLayerSpecification, FillExtrusi
 declare const __DEV__: boolean;
 
 /** The description of a control: see `@map-jr/map-jr-gl/controls`. Controls with the same `key` are the same control. */
-export interface ControlSpec { key: string; position?: ControlPosition; create(): Control }
+export interface ControlSpec { key: string; position?: ControlPosition; create(host?: () => MapHost): Control }
 
 /**
  * A position that the application gives: `[lng, lat]`. It is `readonly number[]` and not a pair, because TypeScript
@@ -186,6 +186,11 @@ export interface MapSpec extends MapSetup {
      * state property `color-scheme` of the style (`['global-state', 'color-scheme']`), unless `globalState` gives it.
      */
     colorScheme?: 'auto' | 'light' | 'dark';
+    /**
+     * Called when the control `colorScheme()` changes `colorScheme`, with the new value. The control has changed the
+     * map already (with `patch`); an application that keeps the description in its state writes the value back.
+     */
+    onColorSchemeChange?: (colorScheme: 'auto' | 'light' | 'dark') => void;
     /**
      * Space in CSS pixels at the sides of the map that the view keeps free, for example under a side panel: one number
      * for all sides, or `{top, right, bottom, left}` (a side that is left out is 0). The centre of the view is the centre
@@ -426,6 +431,9 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
     const transform: RequestTransform = (url, kind) => transformLast?.(url, kind);
     if (spec.transformRequest) options.transformRequest = transform;
     const map = new Map(options);
+    // The look of the controls of the main API (the class map-jr-glass, see controls.ts). The compat entry does not set it.
+    const box = map.getContainer();
+    box.classList.add('map-jr-glass');
     // The checks for mistakes of the user, and the texts of their warnings, are in a file that is loaded after the map
     // has started: `check` gives it the kind of the check (see `src/mistakes.ts`). A file that does not load gives no check.
     // `styled`: the map has the style of the last description, so its layers and sources can be compared with the description.
@@ -693,7 +701,7 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
         if (next.controls !== before?.controls) {
             const wanted = new Set((next.controls ?? []).map(c => c.key));
             for (const [key, c] of controls) if (!wanted.has(key)) { map.removeControl(c as any); controls.delete(key); }
-            for (const c of next.controls ?? []) if (!controls.has(c.key)) { const made = c.create(); controls.set(c.key, made); map.addControl(made, c.position); }
+            for (const c of next.controls ?? []) if (!controls.has(c.key)) { const made = c.create(() => host); controls.set(c.key, made); map.addControl(made, c.position); }
         }
         transformLast = next.transformRequest;
         if (before && !next.transformRequest !== !before.transformRequest) map.setTransformRequest(next.transformRequest ? transform : null);
@@ -785,7 +793,7 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
             if (alive) apply(next, now);
         },
         get description() { return now; },
-        destroy() { if (!alive) return; alive = false; cooperate(false); dark?.removeEventListener('change', paint); map.remove(); for (const drop of waiting) drop(); waiting.clear(); },
+        destroy() { if (!alive) return; alive = false; cooperate(false); dark?.removeEventListener('change', paint); map.remove(); box.classList.remove('map-jr-glass', 'map-jr-dark'); for (const drop of waiting) drop(); waiting.clear(); },
         state,
         queryFeatures,
         setFeatureState(target, value) { if (alive) map.setFeatureState(target, value); },

@@ -1258,6 +1258,52 @@ for (const renderer of ['worker', 'main']) {
         const D = 'class dark rgb(230, 230, 230)', L = '- light rgb(34, 34, 34)';
         check(`[${renderer}] colorScheme: no value is light also when the browser asks for dark, 'auto' follows prefers-color-scheme while the page is open, 'light' and 'dark' fix it, with the class map-jr-dark and the colour of a control`,
             schemes.none === L && schemes.autoDark === D && schemes.autoLight === L && schemes.light === L && schemes.dark === D && schemes.autoBack === D && schemes.follows === 'light', JSON.stringify(schemes));
+        // The look of the main API (#541): the class map-jr-glass gives the controls a blur. A rule of the page still wins
+        // (the CSS of MapLibre GL JS on /bench sets the radius of a group to 4px), and a map of the compat entry has neither.
+        const glass = await page.evaluate(async () => {
+            const t = window.t, {navigation} = await import('/dist/controls.js'), mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            t.host.update({...t.spec, controls: [navigation()]});
+            await new Promise(r => requestAnimationFrame(r));
+            const s = getComputedStyle(document.querySelector('#host .map-jr-ctrl-group')), group = {backdropFilter: s.backdropFilter, borderTopLeftRadius: s.borderTopLeftRadius};
+            const el = Object.assign(document.createElement('div'), {style: 'width:100px;height:80px'});
+            document.body.appendChild(el);
+            const m = new mod.Map({container: el, attributionControl: false, center: [0, 0], zoom: 1, style: {version: 8, sources: {}, layers: []}});
+            m.addControl(new mod.NavigationControl());
+            const compat = getComputedStyle(el.querySelector('.map-jr-ctrl-group')).backdropFilter;
+            m.remove(); el.remove();
+            t.host.update(t.spec);
+            return {main: document.querySelector('#host').classList.contains('map-jr-glass'), blur: group.backdropFilter, radius: group.borderTopLeftRadius, compat, compatClass: el.classList.contains('map-jr-glass')};
+        });
+        check(`[${renderer}] the controls of the main API have the class map-jr-glass and a blur, a rule of the page still wins, and a map of the compat entry keeps the look of MapLibre GL JS`,
+            glass.main && glass.blur === 'blur(5px)' && glass.radius === '4px' && glass.compat === 'none' && !glass.compatClass, JSON.stringify(glass));
+        // The control colorScheme() (#541): for each start (no value, 'auto' with the system light and dark, a fixed value),
+        // what two clicks give: the value of the description, the scheme of the map, the calls of onColorSchemeChange and the label.
+        const toggles = {};
+        for (const [name, media, start] of [['none', 'dark', undefined], ['autoDark', 'dark', 'auto'], ['autoLight', 'light', 'auto'], ['fixedDark', 'light', 'dark']]) {
+            await page.emulateMedia({colorScheme: media});
+            toggles[name] = await page.evaluate(async start => {
+                const t = window.t, {colorScheme} = await import('/dist/controls.js'), calls = [];
+                t.host.update({...t.spec, controls: []});
+                t.host.update({...t.spec, controls: [colorScheme()], ...start && {colorScheme: start}, onColorSchemeChange: v => calls.push(v)});
+                const until = async f => { for (let i = 0; i < 100 && !f(); i++) await new Promise(r => setTimeout(r, 30)); };
+                await until(() => document.querySelector('#host .map-jr-ctrl-color-scheme'));
+                const b = document.querySelector('#host .map-jr-ctrl-color-scheme'), seen = () => `${t.host.description.colorScheme ?? '-'}/${t.host.state.get().colorScheme}/${b.getAttribute('aria-label')}`;
+                const out = [seen()];
+                for (let i = 0; i < 2; i++) { b.click(); await new Promise(r => requestAnimationFrame(r)); out.push(seen()); }
+                t.host.update(t.spec);
+                return out.join(' > ') + ' calls ' + calls.join(',');
+            }, start);
+        }
+        await page.emulateMedia({colorScheme: null});
+        const L2 = 'light/light/Use dark colours', D2 = 'dark/dark/Use light colours';
+        const wantToggles = {
+            none: `-/light/Use dark colours > ${D2} > ${L2} calls dark,light`,
+            autoDark: `auto/dark/Use light colours > ${L2} > auto/dark/Use light colours calls light,auto`,
+            autoLight: `auto/light/Use dark colours > ${D2} > auto/light/Use dark colours calls dark,auto`,
+            fixedDark: `${D2} > ${L2} > ${D2} calls light,dark`,
+        };
+        check(`[${renderer}] the control colorScheme() flips light and dark, and from 'auto' sets the opposite of the system and then 'auto' again, with onColorSchemeChange and a label that names the action`,
+            Object.keys(wantToggles).every(k => toggles[k] === wantToggles[k]), JSON.stringify(toggles));
 
         // `style: {light, dark}` (#491): the style of the resolved scheme, a change of the media query changes it, and a
         // layer of the description and its data stay. A pair with the same content in update() is the same style.

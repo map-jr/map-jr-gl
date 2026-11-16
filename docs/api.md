@@ -143,6 +143,7 @@ The library compares each field with the field of the last description:
 | `minZoom`, `maxZoom`, `maxPitch`, `maxBounds` | The limits of the camera. `maxBounds` keeps the whole view inside the bounds, as MapLibre GL JS does: the canvas less the padding, with no regard to bearing and pitch. When the bounds are smaller than that view, the zoom rises until they fill it. A west edge east of the east edge (for example `[[150, -50], [-120, 10]]`) gives bounds that cross the antimeridian. |
 | `cooperativeGestures` | `true`: the wheel zooms the map only with Ctrl (⌘ on a Mac), one finger scrolls the page and two fingers move the map. A blocked gesture shows a hint over the map. The default is `false`. `update()` can turn it on and off. |
 | `colorScheme` | The colours of the controls, the popup, the attribution and the message of a browser without WebGL 2: `'light'` (the default), `'dark'` or `'auto'`. `'auto'` follows the media query `prefers-color-scheme` and changes while the page is open. An application with its own theme switch passes `'light'` or `'dark'`. While the scheme is dark, the container has the class `map-jr-dark`. The dark colours have no specificity, so a rule of the application and the custom properties `--map-control-*`, `--map-attribution-background` and `--map-popup-*` still win. `update()` changes it. The map also sets the global state property `color-scheme` of the style to the resolved scheme, so that a style can follow it: see [Dark mode](#dark-mode). A value that is not one of the three gives the light colours, and the development build warns once. |
+| `onColorSchemeChange` | Called with the new value when the control `colorScheme()` changes `colorScheme`. The control has changed the map already with `patch`; an application that keeps the description in its state (Vue, React) writes the value back, or the next `update` with the old value changes the map back. |
 | `cursor` | The mouse cursor over the map. Without it, the cursor is a pointer over a feature of `interactiveLayers`. |
 | `transformRequest` | A function that changes a request before the map makes it, as `transformRequest` of MapLibre GL JS. It gets the URL and the kind of resource (`Style`, `Source`, `Tile`, `Glyphs`, `SpriteJSON`, `SpriteImage`, `Image` or `Font`) and returns `{url, headers, credentials}`, or `undefined` to leave the request as it is. It applies to the requests of the tile workers too. The map calls the function of the last description, so a function that is made again in each render works. Example: `transformRequest: url => url.startsWith('https://api.os.uk/') ? {url: url + '&key=' + KEY} : undefined`. |
 | `padding` | Space in CSS pixels at the sides of the map that the view keeps free, for example under a side panel: one number for all sides, or `{top, right, bottom, left}` (a side that is left out is 0). The centre of the view is the centre of the rest of the map. The default is 0. A change moves the camera at once (as `setPadding` of MapLibre GL JS). It is not the `padding` of `initialView` and `moveTo`, which is space around `bounds` for one fit. |
@@ -583,6 +584,23 @@ description does not have it. Importing the functions loads about 0.5 KB gzip. T
 for all of them) and of the map loads when the map adds its first control, so a page can import the functions before
 it makes the map. A control appears a moment after `createMap` or `update` adds it, when that file has loaded.
 
+The buttons of a map of `createMap` are round, with a translucent background and `backdrop-filter: blur(5px)`. The
+attribution has a fainter background and lighter text, and its links have a faint underline until the pointer is over
+them. The popup has a round close button. The container has the class `map-jr-glass` for this look; a map of
+`@map-jr/map-jr-gl/maplibre-compat` does not have it and keeps the look of MapLibre GL JS. A browser without
+`backdrop-filter` gets an opaque background. The rules have no specificity, so a rule of your page wins, and these
+custom properties change the look:
+
+| Custom property | What it sets | Default |
+|---|---|---|
+| `--map-control-background` | The background of a group of buttons and of the compact attribution | `rgba(255,255,255,.5)`, dark `rgba(30,30,34,.5)` |
+| `--map-control-color` | The colour of the icons and the text | `#222`, dark `#e6e6e6` |
+| `--map-control-radius` | The radius of a group of buttons | `999px` (fully round) |
+| `--map-control-size` | The width and the height of a button | `32px`, `44px` on a touch screen |
+| `--map-control-focus` | The colour of the focus outline | `#2f7fd1` |
+| `--map-attribution-background` | The background of the attribution | `rgba(255,255,255,.4)`, dark `rgba(30,30,34,.4)` |
+| `--map-popup-background`, `--map-popup-color` | The background and the text of a popup | `#fff` and `#222`, dark `#2b2b2b` and `#e6e6e6` |
+
 | Function | Control | Options (each also has `position`) |
 |---|---|---|
 | `navigation` | Zoom buttons and a compass. A click on the compass resets the bearing, and dragging it rotates the map. With `visualizePitch: true`, the compass also shows the pitch, the drag also pitches the map, and a click resets the pitch (default false, as in MapLibre GL JS). | `showZoom`, `showCompass`, `visualizePitch` |
@@ -591,6 +609,7 @@ it makes the map. A control appears a moment after `createMap` or `update` adds 
 | `geolocate` | A button that moves the map to the position of the user. With `trackUserLocation: true`, the button turns tracking on and off, the map follows the position until it is moved, and a dot shows the position (`showUserLocation: false` hides it). | `zoom`, `positionOptions`, `trackUserLocation`, `showUserLocation` |
 | `terrain` | A button that turns 3D terrain on and off | `source` (required), `exaggeration` |
 | `globe` | A button that switches the projection between `globe` and `mercator`. While the projection is `globe`, the button has the class `map-jr-ctrl-globe-enabled` and `aria-pressed="true"`. A click changes the map until a description with a different `projection` comes. See `projection` for what the globe draws. | |
+| `colorScheme` | A prototype. A button that switches the colour scheme between light and dark. It shows the scheme that the map has (a sun or a moon), and its label names the action ("Use dark colours"). A click changes `colorScheme` of the description with `patch` and calls `onColorSchemeChange`. When the description has `'auto'`, a click sets the opposite of the system, and the click after it, which lands on the scheme of the system, sets `'auto'` again. With no value, `'light'` or `'dark'`, a click flips between `'light'` and `'dark'`. The code loads in a file of its own when the map adds the control. | |
 | `custom` | A control of your own (see below) | `key` (required), and `element` or `onAdd` with `onRemove` |
 
 ### A control of your own

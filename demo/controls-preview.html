@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Controls preview (#541)</title>
+<style>
+  body { margin: 0; font: 14px/1.45 system-ui, sans-serif; color: #1d1d1f; background: #f6f5f2; }
+  #bar { position: sticky; top: 0; z-index: 10; display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: center; padding: 10px 16px; background: #fff; border-bottom: 1px solid #ddd; }
+  #bar label { display: flex; align-items: center; gap: 8px; }
+  #bar output { font-variant-numeric: tabular-nums; min-width: 3.5em; }
+  main { padding: 16px; display: grid; gap: 24px; max-width: 960px; }
+  h2 { font-size: 15px; margin: 0 0 6px; }
+  p { margin: 0 0 8px; color: #555; }
+  .map { width: 100%; height: 520px; }
+  .narrow { width: 420px; max-width: 100%; height: 420px; }
+</style>
+</head>
+<body>
+<div id="bar">
+  <label>Background opacity <input id="alpha" type="range" min="0" max="1" step="0.05" value="0.5"> <output id="alphaOut">0.50</output></label>
+  <label>Blur <input id="blur" type="range" min="0" max="20" step="1" value="5"> <output id="blurOut">5 px</output></label>
+  <label><input id="glass" type="checkbox" checked> New look (class <code>map-jr-glass</code>)</label>
+</div>
+<main>
+  <section><h2>Light: OpenFreeMap liberty</h2><div id="light" class="map"></div></section>
+  <section><h2>Dark: OpenFreeMap fiord, <code>colorScheme: 'dark'</code></h2><div id="dark" class="map"></div></section>
+  <section><h2>Narrow map with the compact attribution</h2><p>Click the "i" button to open and close the credits.</p><div id="narrow" class="narrow"></div></section>
+  <section><h2>Bearing of 40 degrees</h2><p>The red point of the compass shows north.</p><div id="turned" class="map"></div></section>
+  <section><h2>The compat entry (<code>@map-jr/map-jr-gl/maplibre-compat</code>)</h2><p>It keeps the look of MapLibre GL JS, and the bar above does not change it.</p><div id="compat" class="map"></div></section>
+</main>
+<script type="module">
+import {createMap} from '/dist/map-jr-gl.js';
+import {navigation, geolocate, fullscreen, scale, colorScheme} from '/dist/controls.js';
+import * as ml from '/dist/map-jr-gl-maplibre-compat.js';
+
+const LIGHT = 'https://tiles.openfreemap.org/styles/liberty', DARK = 'https://tiles.openfreemap.org/styles/fiord';
+const view = {center: [2.3488, 48.8534], zoom: 12.5};
+const controls = [navigation(), geolocate(), fullscreen(), colorScheme(), scale({position: 'bottom-left'})];
+const popup = map => {
+  const el = document.createElement('div');
+  el.innerHTML = '<strong>Musée du Louvre</strong><br>Open until 18:00';
+  map.overlay(el, {lngLat: [2.335, 48.861], popup: true, anchor: 'bottom', onClose() { el.remove(); }});
+};
+// The style follows the scheme, so that the colour scheme control also changes the map.
+const style = {light: LIGHT, dark: DARK};
+const maps = [
+  createMap(document.getElementById('light'), {style, view, controls}),
+  createMap(document.getElementById('dark'), {style, view, controls, colorScheme: 'dark'}),
+  createMap(document.getElementById('narrow'), {style, view, controls, attribution: {compact: true}}),
+  createMap(document.getElementById('turned'), {style, view: {...view, bearing: 40}, controls}),
+];
+maps.forEach(popup);
+
+const compat = new ml.Map({container: 'compat', style: LIGHT, center: view.center, zoom: view.zoom});
+compat.addControl(new ml.NavigationControl());
+compat.addControl(new ml.GeolocateControl({}));
+compat.addControl(new ml.FullscreenControl());
+compat.addControl(new ml.ScaleControl(), 'bottom-left');
+new ml.Popup({closeOnClick: false}).setLngLat([2.335, 48.861]).setHTML('<strong>Musée du Louvre</strong><br>Open until 18:00').addTo(compat);
+
+// The bar: the opacity sets the private variable of the background for the scheme that each map has; the blur is a
+// rule of this page; the switch removes and adds the class of the new look.
+const $ = id => document.getElementById(id);
+const blurRule = document.head.appendChild(document.createElement('style'));
+const paint = () => {
+  const a = +$('alpha').value, px = +$('blur').value;
+  $('alphaOut').value = a.toFixed(2);
+  $('blurOut').value = px + ' px';
+  for (const m of maps) m.container.style.setProperty('--map-jr-glass', m.state.get().colorScheme === 'dark' ? `rgba(30,30,34,${a})` : `rgba(255,255,255,${a})`);
+  blurRule.textContent = `.map-jr-glass .map-jr-ctrl-group,.map-jr-glass .map-jr-ctrl-attrib{-webkit-backdrop-filter:blur(${px}px);backdrop-filter:blur(${px}px)}`;
+  for (const m of maps) m.container.classList.toggle('map-jr-glass', $('glass').checked);
+};
+for (const id of ['alpha', 'blur', 'glass']) $(id).addEventListener('input', paint);
+for (const m of maps) m.state.subscribe(s => s.colorScheme, paint);
+paint();
+</script>
+</body>
+</html>

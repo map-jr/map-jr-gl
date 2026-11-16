@@ -279,6 +279,7 @@ const MapJrComponent = defineComponent({
     },
     emits: {
         'update:view': (_view: View) => true,
+        'update:colorScheme': (_scheme: 'auto' | 'light' | 'dark') => true,
         click: (_event: MapPointer) => true,
         hover: (_features: RenderedFeature[]) => true,
         /** The map. */
@@ -329,7 +330,7 @@ const MapJrComponent = defineComponent({
                 minZoom: props.minZoom, maxZoom: props.maxZoom, maxPitch: props.maxPitch, maxBounds: props.maxBounds && toRaw(props.maxBounds), cursor: props.cursor, transformRequest: props.transformRequest, cooperativeGestures: props.cooperativeGestures, colorScheme: props.colorScheme, padding: props.padding && typeof props.padding === 'object' ? toRaw(props.padding) : props.padding, projection: props.projection && toRaw(props.projection), globalState: props.globalState && toRaw(props.globalState),
                 fonts: props.fonts && toRaw(props.fonts), sprite: props.sprite && toRaw(props.sprite), renderer: props.renderer, fontFamily: props.fontFamily, interactive: props.interactive, antialias: props.antialias,
                 attribution: (props.attribution as unknown) === true ? undefined : props.attribution && toRaw(props.attribution), hash: props.hash, nonce: props.nonce,
-                onViewChange: view => emit('update:view', view), onClick: event => emit('click', event),
+                onViewChange: view => emit('update:view', view), onColorSchemeChange: scheme => emit('update:colorScheme', scheme), onClick: event => emit('click', event),
                 // (Without a listener for `error`, the map writes each error to the console.)
                 onError: listensForError ? error => emit('error', error) : undefined,
             };

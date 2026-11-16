@@ -106,6 +106,8 @@ http.createServer(async (req, res) => {
         // ?local labels places in their local script instead of English, to exercise non-Latin text.
         if (url.pathname === '/style.json') return send(200, 'application/json', JSON.stringify(style).replaceAll(url.searchParams.has('local') ? '["get","name:en"],' : '\u0000', ''));
         if (url.pathname === '/bench') return send(200, 'text/html', await readFile(path.join(root, 'demo/bench.html')));
+        // The look of the controls of the main API, to compare live (#541).
+        if (url.pathname === '/controls-preview.html') return send(200, 'text/html', await readFile(path.join(root, 'demo/controls-preview.html')));
         // MapLibre GL JS itself, for the side-by-side benchmark page.
         if (url.pathname.startsWith('/ml/')) {
             const file = path.join(root, 'node_modules/maplibre-gl/dist', path.basename(url.pathname));
