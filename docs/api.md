@@ -975,9 +975,23 @@ The entry `@map-jr/map-jr-gl` has TypeScript types for the description (`MapSpec
   `const NYC = [-74.0065, 40.7085]; createMap(el, {style, initialView: {center: NYC}})`. The map reads the first two
   numbers as `[lng, lat]`. A position that the map gives (`state.view.center`, the result of `unproject`, `lngLat`
   in `onClick` and in the events of `listen`) is `[number, number]`.
-- The types that the signatures use are exported: `LngLatBoundsInput` (`maxBounds`, `fitBounds`, `initialView.bounds`),
-  `LngLatBounds` (only the type, not the class; no member of the main API has it now), `LngLatInput`,
-  `MoveToOptions` and `FlyOptions` (`moveTo`) and `Anchor` (`OverlayOptions.anchor`).
+- A box that you give (`maxBounds`, `fitBounds`, `initialView.bounds`, `bounds` of `moveTo`) has the type `Bounds`:
+  `[[west, south], [east, north]]` or `[west, south, east, north]`, with `readonly` arrays as `Position` has them.
+  The map still reads `LngLat` and `LngLatBounds` objects and `{lng, lat}` corners at run time, but they do not
+  compile.
+- The types that the signatures use are exported: `Bounds`, `MoveToOptions` and `FlyOptions` (`moveTo`) and `Anchor`
+  (`OverlayOptions.anchor`). `LngLatBoundsInput`, `LngLatBounds` (only the type, not the class) and `LngLatInput` are
+  still exported, but no member of the main API uses them.
+- The description uses the style types of this entry. `style` is a URL or a `StyleSpecification`. `sources` is a
+  record of `SourceSpecification`. A layer of `layers` has the type `LayerInput`: a layer of one of the types that
+  the library draws (`FillLayerSpecification` and the others) with `before`, so a layer with an unknown `type`, or a
+  `paint` name of another layer type, does not compile. `data` takes `GeoJSON` (a feature collection, a feature or a
+  geometry; the types of `@types/geojson` fit) or a URL. `filter` of `FeatureOptions` and `SourceOptions` is a
+  `FilterSpecification`.
+- TypeScript widens the literals of a value that is declared apart from its use. A style read from a JSON file
+  (`version: number`), a layer in a variable without a type (`type: string`), a filter in a variable
+  (`string[]`) and a value of the type `object` do not compile. Give the variable its type
+  (`const layer: FillLayerSpecification = …`, `const style = json as StyleSpecification`).
 - A feature of `state.hover` and of `onClick` has `layer`, the style layer that draws it, with the type `StyleLayer`
   (`id`, `type`, `source`, `paint` and the other members of a layer of the style). `queryFeatures` returns
   `RenderedFeature[]`, and `querySource` returns `QueriedFeature[]`: a `QueriedFeature` has no style layer.
@@ -985,8 +999,9 @@ The entry `@map-jr/map-jr-gl` has TypeScript types for the description (`MapSpec
   `SourceSpecification`, `LayerSpecification`, one type for each kind of layer (`FillLayerSpecification`,
   `LineLayerSpecification`, `SymbolLayerSpecification` and the others, with the names of MapLibre GL JS),
   `ExpressionSpecification` and `FilterSpecification`. They need neither `maplibre-gl` nor
-  `@maplibre/maplibre-gl-style-spec`. They check the structure of the style and of each layer, but not the names
-  or the values of `paint` and `layout` properties.
+  `@maplibre/maplibre-gl-style-spec`. `LayerSpecification` checks the structure of a layer, but not its `type` or
+  the names and values of `paint` and `layout`. A type of one kind of layer checks `type` and the prefix of each
+  name in `paint` and `layout`, but not the rest of the name or the values.
 
 ## What is not in this entry yet
 
