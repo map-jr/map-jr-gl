@@ -53,6 +53,7 @@ production build has no such warning, and there the map stays empty without a me
 | `layers` | Layers to add to the layers of the style: they do not replace them. A layer with `before` goes below the layer with that id. |
 | `terrain` | 3D terrain in place of that of the style: `{source: 'dem', exaggeration: 1.5}`. `null` or no prop means the terrain of the style. |
 | `images` | Images for the style layers, by name: `:images="{pin: pinSvg}"`. See [Images for style layers](api.md#images-for-style-layers). The render on the server draws those that are SVG documents. |
+| `sprite` | Sprites to add to the sprite of the style: `:sprite="[{id: 'pins', url: pinsUrl}]"`. An `icon-image` names an image of one as `id:name`. See [A sprite of the description](api.md#a-sprite-of-the-description). The render on the server loads it too. |
 | `data` | GeoJSON data for GeoJSON sources, by the id of the source: `:data="{routes}"`. A key with no source of that id makes a GeoJSON source. See "GeoJSON data that changes" in [the main API](api.md). Use a `shallowRef` for each value, and give a new object to change it: a change inside the object has no effect. For points from records, see `points()` in [Markers](markers.md). |
 | `interactive-layers` | The ids of style layers whose features are found under the pointer. |
 | `hover-state` | `true`: the top feature of `interactive-layers` under the pointer has the feature state `hover`, as `hoverState` of [the main API](api.md). The default is `false`. |

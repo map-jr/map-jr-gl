@@ -134,6 +134,14 @@ export interface MapSpec extends MapSetup {
      * place of an image of the sprite that has the same name.
      */
     images?: Record<string, ImageInput>;
+    /**
+     * Sprites to add to the sprite of the style: `[{id: 'pins', url: 'https://example.com/sprites/pins'}]`, as the list
+     * form of `sprite` in the style specification. The URL has no extension: the map loads `url + '.json'` and
+     * `url + '.png'` (`@2x` on a screen with a pixel ratio above 1). An `icon-image` names an image of such a sprite as
+     * `id:name` (`pins:hotel`). A sprite here replaces a sprite of the style with the same id, and the id `default`
+     * replaces the sprite of a style whose `sprite` is one URL. A change of this field loads the style again.
+     */
+    sprite?: {id: string; url: string}[];
     /** Controls from `@map-jr/map-jr-gl/controls`: `[navigation(), scale()]`. */
     controls?: ControlSpec[];
     /**
@@ -464,7 +472,9 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
         // the sources of the style before. It is given again when the new style is there: see `giveData`.)
         sent.clear();
         check(4, style, parts(next));
-        const made = withData(extended(style, {...parts(next), layers: next.layers && copy(next.layers)}), wantedData, false, typeError);
+        // (A URL of `sprite` that is relative is relative to the page, and the style has its own base.)
+        const sprite = Array.isArray(next.sprite) ? next.sprite.map(({id, url}) => ({id, url: new URL(url, document.baseURI).href})) : undefined;
+        const made = withData(extended(style, {...parts(next), layers: next.layers && copy(next.layers), sprite}), wantedData, false, typeError);
         madeData.clear();
         for (const id in wantedData) if (!Object.hasOwn(style.sources ?? {}, id) && !Object.hasOwn(next.sources ?? {}, id)) madeData.add(id);
         return made;
@@ -620,7 +630,7 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
             else if (!(id in (before.data ?? {})) && s.type !== 'geojson') typeError(id, s.type!);
         }
         // (After a new style the data waits for the `styledata` event: the engine must have the new style first.)
-        const restyled = !!before && (differ(next.style, before.style) || (['sources', 'layers', 'terrain'] as const).some(k => differ(next[k], before[k])) && !(styled && edit(parts(next), parts(before), differ)));
+        const restyled = !!before && (differ(next.style, before.style) || (['sources', 'layers', 'terrain'] as const).some(k => differ(next[k], before[k])) && !(styled && edit(parts(next), parts(before), differ)) || differ(next.sprite, before.sprite));
         if (restyled) { state.set({idle: false}); sent.clear(); restyle(next); }
         else for (const id of madeData) if (!Object.hasOwn(next.data ?? {}, id)) { madeData.delete(id); sent.delete(id); map.removeSource(id); }
         // (A font of a name that is new or changed is loaded; the new style of a restyle has the fonts already. A font

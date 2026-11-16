@@ -38,6 +38,7 @@ const texts: ((a: string, b: string) => string)[] = [
 ];
 // (Numbers 23 to 29 are taken by other changes.)
 texts[30] = a => `hoverState: a feature of the layer "${a}" has no id, so it gets no feature state "hover". Give the features ids, or set "promoteId" of the source to a property that has one, or "generateId: true" for a GeoJSON source.`;
+texts[55] = a => `sprite: ${a} is not a list of sprites. Write a list of {id, url}, for example [{id: 'pins', url: 'https://example.com/sprites/pins'}], and name an image of it in "icon-image" as "pins:name".`;
 
 /** The message with the number `code` for the names `a` and `b`. */
 export const mistake = (code: number, a = '', b = '') => '[map-jr-gl] ' + texts[code](a, b);
@@ -102,6 +103,7 @@ export function check(c: Checked, kind: number, a?: any, b?: any) {
         // (A template that is replaced by one with other slots: the layers of the map give it the same parameters.)
         if (before && differ(next.images, before.images) && c.ready()) slots(map.getStyle()?.layers ?? [], [], next.images);
         if (!before && 'glyphs' in next) warn(20);
+        if (next.sprite !== before?.sprite && next.sprite != null && !(Array.isArray(next.sprite) && next.sprite.every(s => typeof s?.id === 'string' && typeof s.url === 'string'))) warn(55, JSON.stringify(next.sprite));
         for (const name in next.globalState) if (next.globalState[name] !== before?.globalState?.[name] && !isJson(next.globalState[name])) warn(22, name);
         if (before) for (const k of setupOnly) if (differ(next[k], before[k])) warn(8, k);
     } else if (kind === 3) {

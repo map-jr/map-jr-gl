@@ -230,8 +230,10 @@ export interface SpriteIcon {
     textFitWidth?: 'stretchOrShrink' | 'stretchOnly' | 'proportional'; textFitHeight?: 'stretchOrShrink' | 'stretchOnly' | 'proportional';
     /** A single-channel distance field rather than a picture: drawn in `icon-color`, and sharp at any size. */
     sdf?: boolean;
+    /** The sheet of the icon in `sheets` of the sprite, for a sprite of several sheets (the server renderer). */
+    sheet?: number;
 }
-export interface Sprite { icons: Record<string, SpriteIcon>; image: string; width: number; height: number }
+export interface Sprite { icons: Record<string, SpriteIcon>; image: string; width: number; height: number; sheets?: {image: string; width: number; height: number}[] }
 
 /** Loads a sprite sheet's index. `image` is the URL of its PNG; the caller decides how to load pixels. */
 export async function loadSprite(url: string, highDensity: boolean, fetchFn: typeof fetch = (...a) => fetch(...a)): Promise<Sprite> {
