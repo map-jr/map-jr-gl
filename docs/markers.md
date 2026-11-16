@@ -75,7 +75,7 @@ make small dots below zoom 12 and full pins from zoom 12.
 - The SVG can contain an `<image>` element with a photograph.
 - Keep the number of different value sets small. Each different set is drawn one time and uses space in a texture.
   [An image that is a template](api.md#an-image-that-is-a-template) has the limits.
-- A layer of `extend` can give a slot the value of an expression, for example the state of a feature
+- A layer of the field `layers` can give a slot the value of an expression, for example the state of a feature
   (`['image', 'pin', {params: {...}}]`).
 
 ### What a marker layer stands for
@@ -97,7 +97,7 @@ const layer = {
 - With `collide: true`, `icon-ignore-placement` is `false`. With `overlap: 'hide'`, `icon-allow-overlap` and
   `icon-ignore-placement` are `false`.
 - When you need more than the options give (a filter, text beside the icon, an expression for the image), write
-  the source and the layer yourself in `extend`, and give the data in the field `data`. See
+  the source and the layer yourself in the fields `sources` and `layers`, and give the data in the field `data`. See
   [Images for style layers](api.md#images-for-style-layers).
 
 ### Change the markers

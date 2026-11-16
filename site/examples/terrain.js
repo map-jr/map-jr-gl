@@ -30,7 +30,7 @@ export default function (container, {show, button}) {
   let unit = 'ft', terrain = true;
   const describe = () => ({
     style,
-    extend: elevation(unit, terrain),
+    ...elevation(unit, terrain),
     initialView: {center: MATTERHORN, zoom: 12.4, pitch: 60, bearing: 25},
     attribution: {compact: true},
     onClick: async e => {

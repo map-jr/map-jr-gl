@@ -30,7 +30,7 @@ const elevation = (unit, terrain) => ({
 
 const unit = ref('ft'), terrain = ref(true), height = ref(null);
 // Other additions when the unit or the terrain changes. The map finds what is different.
-const extend = computed(() => elevation(unit.value, terrain.value));
+const additions = computed(() => elevation(unit.value, terrain.value));
 const map = useTemplateRef('map');
 
 async function read(event) {
@@ -39,7 +39,7 @@ async function read(event) {
 </script>
 
 <template>
-  <MapJr ref="map" :map-style="style" :extend="extend" :initial-view="{center: MATTERHORN, zoom: 12.4, pitch: 60, bearing: 25}" @click="read" />
+  <MapJr ref="map" :map-style="style" v-bind="additions" :initial-view="{center: MATTERHORN, zoom: 12.4, pitch: 60, bearing: 25}" @click="read" />
   <p>{{ height === null ? 'Click the map to read the elevation' : `${height.toFixed(0)} m above sea level` }}</p>
   <button @click="unit = unit === 'ft' ? 'm' : 'ft'">Contours in {{ unit === 'ft' ? 'metres' : 'feet' }}</button>
   <button @click="terrain = !terrain">{{ terrain ? 'Flat map' : '3D terrain' }}</button>

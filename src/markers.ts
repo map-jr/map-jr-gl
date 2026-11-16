@@ -128,7 +128,7 @@ export function withData(style: any, data: Record<string, unknown> | undefined, 
 /** The error of a key of `data` that is the id of a source of another type. */
 export const dataTypeError = (id: string, type: string) => new Error(`[map-jr-gl] data: the source "${id}" has the type "${type}", and only a GeoJSON source takes data. Use another key in "data", or another id for the source.`);
 
-/** A style with the additions of `extend`. */
+/** A style with the `sources`, `layers` and `terrain` of the description. A `terrain` of `null` keeps that of the style. */
 export function extended(style: any, extend?: {sources?: Record<string, object>; layers?: ({id: string; before?: string} & Record<string, unknown>)[]; terrain?: object | null}) {
     if (!extend) return style;
     const layers = [...style.layers];
@@ -136,5 +136,5 @@ export function extended(style: any, extend?: {sources?: Record<string, object>;
         const at = before ? layers.findIndex(l => l.id === before) : -1;
         layers.splice(at < 0 ? layers.length : at, 0, layer);
     }
-    return {...style, sources: {...style.sources, ...extend.sources}, layers, ...(extend.terrain === undefined ? {} : {terrain: extend.terrain ?? undefined})};
+    return {...style, sources: {...style.sources, ...extend.sources}, layers, ...(extend.terrain == null ? {} : {terrain: extend.terrain})};
 }

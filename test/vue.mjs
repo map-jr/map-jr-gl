@@ -29,9 +29,9 @@ const plain = await renderToString(createSSRApp({render: () => h(MapJr, {mapStyl
 const square = c => ({type: 'FeatureCollection', features: [{type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[c[0] - 0.002, c[1] - 0.002], [c[0] + 0.002, c[1] - 0.002], [c[0] + 0.002, c[1] + 0.002], [c[0] - 0.002, c[1] + 0.002], [c[0] - 0.002, c[1] - 0.002]]]}}]});
 const empty = {type: 'geojson', data: {type: 'FeatureCollection', features: []}};
 const extended = await renderToString(createSSRApp({render: () => h(MapJr, {mapStyle: style, initialView: view, attribution: false, ssr: {timeout: 20000, allowHosts: [new URL(tiles).host]},
-    extend: {sources: {own: {type: 'geojson', data: square(view.center)}, live: empty}, layers: [{id: 'own', type: 'fill', source: 'own', paint: {'fill-color': '#123456'}}, {id: 'live', type: 'fill', source: 'live', paint: {'fill-color': '#654321'}}]},
+    sources: {own: {type: 'geojson', data: square(view.center)}, live: empty}, layers: [{id: 'own', type: 'fill', source: 'own', paint: {'fill-color': '#123456'}}, {id: 'live', type: 'fill', source: 'live', paint: {'fill-color': '#654321'}}],
     data: {live: square([view.center[0] + 0.004, view.center[1]])}})}));
-check('server: the SVG has the layers of extend and the GeoJSON of data', extended.includes('#123456') && extended.includes('#654321'), JSON.stringify({extend: extended.includes('#123456'), data: extended.includes('#654321')}));
+check('server: the SVG has the sources and layers of the description and the GeoJSON of data', extended.includes('#123456') && extended.includes('#654321'), JSON.stringify({layers: extended.includes('#123456'), data: extended.includes('#654321')}));
 let blocked = '';
 const guarded = createSSRApp({render: () => h(MapJr, {mapStyle: style, initialView: view, ssr: {allowHosts: ['other.example.com']}})});
 guarded.config.errorHandler = e => { blocked = e.message; };
@@ -52,7 +52,7 @@ const tone = ref('#fff'), arrow = ref(true), twin = ref(false), full = ref(true)
 // (A component inside the SVG of an image: its own change must reach the map.)
 const Dot = {render: () => h('circle', {cx: 4, cy: 4, r: radius.value})};
 const t = window.t = {view, markers, layers, images, tone, arrow, twin, full, radius, moves: [], asked: [], clicks: [], loads: 0, order: [], views: 0, map: ref(null), pin: ref([-74.0065, 40.7085]), tip: ref(true), closed: 0, home: ref([-74.01, 40.705]), dragged: [], projection: ref(null)};
-const make = (create, ssr) => create({render: () => h('div', {id: 'frame', style: 'width:800px;height:500px'}, [h(MapJr, {ref: t.map, mapStyle: style, controls: [navigation(), scale({position: 'bottom-left'})], ...(ssr ? {initialView: view.value, ...(ssr === 'svg' ? {ssr: {width: 800, height: 500}} : {})} : {view: view.value, 'onUpdate:view': v => { t.views++; view.value = v; }, interactiveLayers: layers.value, onClick: e => t.clicks.push(e)}), markers: markers.value, images: images.value, projection: t.projection.value, attribution: false, onLoad: host => { t.loads++; t.loadHost = host; t.order.push('load:' + t.map.value.host.state.get().idle); }, onIdle: () => t.order.push('idle'), onMoveend: e => t.moves.push(e.type + ' ' + typeof e.target.getZoom()),
+const make = (create, ssr) => create({render: () => h('div', {id: 'frame', style: 'width:800px;height:500px'}, [h(MapJr, {ref: t.map, mapStyle: style, controls: [navigation(), scale({position: 'bottom-left'})], ...(ssr ? {initialView: view.value, ...(ssr === 'svg' ? {ssr: {width: 800, height: 500}} : {})} : {view: view.value, 'onUpdate:view': v => { t.views++; view.value = v; }, interactiveLayers: layers.value, onClick: e => t.clicks.push(e)}), markers: markers.value, images: images.value, projection: t.projection.value, attribution: false, onLoad: host => { t.loads++; t.loadHost = host; t.order.push('load:' + t.map.value.host.state.get().idle); }, onIdle: () => t.order.push('idle'), onMoveend: e => t.moves.push(e.type + ' ' + typeof e.target.state.get().view.zoom),
   // An image that the style asks for and the map does not have: the application adds it to the prop images.
   onStyleimagemissing: e => { t.asked.push(e.id); if (!images.value[e.id]) images.value[e.id] = '<svg viewBox="0 0 4 4"><rect width="4" height="4"/></svg>'; }}, ssr ? undefined : {default: () => (t.renders = (t.renders ?? 0) + 1, [h(MapOverlay, {lngLat: t.pin.value, anchor: 'bottom', 'data-own': '', class: 'own-class', style: 'color: rgb(255, 0, 0)'}, () => h('b', {id: 'own-pin'}, 'here')), arrow.value ? h(MapImage, {name: 'arrow', params: ['color']}, {default: ({color}) => h('svg', {viewBox: '0 0 8 8'}, [h('path', {d: 'M4 0 8 8 0 8z', fill: color, stroke: tone.value})])}) : null, twin.value ? h(MapImage, {name: 'arrow'}, () => h('svg', {viewBox: '0 0 8 8'}, [h('path', {d: 'M4 0 8 8 0 8z'})])) : null,
   h(MapImage, {name: 'maybe'}, () => full.value ? h('svg', {viewBox: '0 0 8 8'}, [h('style', 'p{color:rgb(1,2,3)}'), h('rect', {id: 'in-image', width: 8, height: 8})]) : null),
@@ -310,10 +310,10 @@ try {
             step = 'main API map, ' + renderer;
             const herrs = [], hel = box();
             const host = createMap(hel, {style: reactive(structuredClone(style)), renderer, view: {center: [-74.0065, 40.7085], zoom: 14}, attribution: false, onError: e => herrs.push(e.message),
-                extend: {sources: {pts: {type: 'geojson', data: points()}}, layers: [{id: 'pts', type: 'circle', source: 'pts'}]}});
+                sources: {pts: {type: 'geojson', data: points()}}, layers: [{id: 'pts', type: 'circle', source: 'pts'}]});
             await wait(2500);
             host.update({style: reactive(structuredClone(style)), renderer, view: {center: [-74.0065, 40.7085], zoom: 14}, attribution: false, onError: e => herrs.push(e.message),
-                extend: {sources: {pts: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}}, layers: [{id: 'pts', type: 'circle', source: 'pts'}]}, data: {pts: points()}});
+                sources: {pts: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}}, layers: [{id: 'pts', type: 'circle', source: 'pts'}], data: {pts: points()}});
             await wait(1500);
             step = 'queryFeatures of the main API, ' + renderer;
             out['main API ' + renderer] = {found: (await host.queryFeatures(undefined, {sources: ['pts']})).length, errs: herrs};

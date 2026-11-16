@@ -10,7 +10,7 @@ One elevation source (`raster-dem`) gives you four features:
 The two entries of the library set these features up in different ways:
 
 - With `@map-jr/map-jr-gl` (and the adapters for Vue, React and Svelte), the elevation source, its layers and the terrain
-  are in the style or in the field `extend` of the description. See [With the main API](#with-the-main-api).
+  are in the style or in the fields `sources`, `layers` and `terrain` of the description. See [With the main API](#with-the-main-api).
 - With `@map-jr/map-jr-gl/maplibre-compat`, they are in the style or are added with methods (`map.addSource`,
   `map.addLayer`, `map.setTerrain`). The examples in the other sections use this entry, where `map` is a `Map`
   whose style has loaded.
@@ -19,8 +19,8 @@ The options of the sources and layers, and the behaviour of terrain, are the sam
 
 ## With the main API
 
-`extend` adds sources and layers to a style from a URL, and sets the terrain. A layer with `before` goes below the
-layer with that id.
+The fields `sources` and `layers` of the description add sources and layers to a style from a URL, and `terrain`
+sets the terrain in place of that of the style. A layer with `before` goes below the layer with that id.
 
 ```js
 import {createMap} from '@map-jr/map-jr-gl';
@@ -35,27 +35,27 @@ const elevation = on => ({
     {id: 'relief', type: 'hillshade', source: 'dem', before: 'water'},
     {id: 'contour-lines', type: 'line', source: 'contours', 'source-layer': 'contours', before: 'water'},
   ],
-  // 3D terrain. `null` makes the map flat.
+  // 3D terrain. `null` keeps the terrain of the style, and this style has none, so the map is flat.
   terrain: on ? {source: 'dem', exaggeration: 1.5} : null,
 });
 
 let description = {
   style: 'https://tiles.openfreemap.org/styles/liberty',
   initialView: {center: [7.6586, 45.9763], zoom: 12.4, pitch: 60},
-  extend: elevation(true),
+  ...elevation(true),
   controls: [navigation()],
 };
 const map = createMap(document.getElementById('map'), description);
 
 // Later: a flat map. Give the complete description again.
-description = {...description, extend: elevation(false)};
+description = {...description, ...elevation(false)};
 map.update(description);
 
 // The height of the ground in metres. This query does not need 3D terrain.
 const metres = await map.queryElevation([7.6586, 45.9763]);
 ```
 
-- When your own style object has the elevation source, the layers and `"terrain"`, you do not need `extend`.
+- When your own style object has the elevation source, the layers and `"terrain"`, you do not need these fields.
 - The control `terrain({source: 'dem', exaggeration: 1.5})` from `@map-jr/map-jr-gl/controls` is a button that turns 3D
   terrain on and off. Put it in `controls`.
 - `map.queryElevation(where)` takes a position (`[lng, lat]`) or a point of the screen (`{x, y}`). The result is a

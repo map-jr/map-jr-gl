@@ -13,7 +13,7 @@ export const plain = <MapImage name="dot"><svg viewBox="0 0 4 4"><circle cx="2" 
 export const photo = <MapImage name="photo" src="/photo.png" width={32} height={32}/>;
 
 // Each event of the map is a prop of the component, with the event of `listen` as its value.
-export const events = <MapJr mapStyle="https://demotiles.maplibre.org/style.json" onMoveend={e => e.target.getZoom()} onStyleimagemissing={e => e.id.length}
+export const events = <MapJr mapStyle="https://demotiles.maplibre.org/style.json" onMoveend={e => e.target.state.get().view.zoom} onStyleimagemissing={e => e.id.length}
     onStyleload={e => e.type} onWheel={e => e.originalEvent.deltaY} onClick={e => e.features.length}/>;
 // @ts-expect-error -- there is no event with this name
 export const noEvent = <MapJr mapStyle="https://demotiles.maplibre.org/style.json" onMovend={() => {}}/>;

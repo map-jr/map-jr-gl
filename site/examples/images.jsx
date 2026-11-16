@@ -11,7 +11,8 @@ const places = {type: 'FeatureCollection', features: [
   {type: 'Feature', properties: {name: 'Battery Park', kind: 'park'}, geometry: {type: 'Point', coordinates: [-74.0170, 40.7033]}},
   {type: 'Feature', properties: {name: 'Brooklyn Bridge', kind: 'civic'}, geometry: {type: 'Point', coordinates: [-73.9969, 40.7061]}},
 ]};
-const extend = {
+// Additions to the style: a GeoJSON source and a symbol layer.
+const additions = {
   sources: {places: {type: 'geojson', data: places}},
   // A symbol layer draws the image and a label beside it. A marker layer has no label.
   layers: [{
@@ -30,5 +31,5 @@ const extend = {
 };
 
 export default function Images() {
-  return <MapJr mapStyle={style} initialView={{center: [-74.006, 40.7175], zoom: 12.7}} attribution={{compact: true}} images={images} extend={extend} />;
+  return <MapJr mapStyle={style} initialView={{center: [-74.006, 40.7175], zoom: 12.7}} attribution={{compact: true}} images={images} {...additions} />;
 }

@@ -175,7 +175,7 @@ export interface MapImageProps<P extends string = never> {
  * An image for the style layers of the map, for the inside of `MapJr`. Write the SVG in the slot:
  *
  * ```vue
- * <MapJr :map-style="style" :extend="places">
+ * <MapJr :map-style="style" :sources="sources" :layers="layers">
  *   <MapImage name="pin" :params="['color']" v-slot="{color}">
  *     <svg viewBox="0 0 24 31"><path :fill="color" d="M12 30C12 30 2 17 2 11a10 10 0 0 1 20 0c0 6-10 19-10 19z"/></svg>
  *   </MapImage>
@@ -236,8 +236,12 @@ const MapJrComponent = defineComponent({
         /** The view, for `v-model:view`. Without it the map starts at `initialView` and the user moves it. */
         view: Object as PropType<ViewInput>,
         initialView: Object as PropType<InitialView>,
-        /** Your own sources and layers on a style from a URL: `{sources, layers, terrain}`. */
-        extend: Object as PropType<MapSpec['extend']>,
+        /** Sources to add to the sources of the style, by id. A source here replaces the source of the style with the same id. */
+        sources: Object as PropType<MapSpec['sources']>,
+        /** Layers to add to the layers of the style (they do not replace them). A layer with `before` goes below the layer with that id, and one without it goes on top. */
+        layers: Array as PropType<MapSpec['layers']>,
+        /** 3D terrain in place of that of the style: `{source: 'dem', exaggeration: 1.5}`. `null` or no prop means the terrain of the style. */
+        terrain: {type: Object as PropType<MapSpec['terrain']>, default: undefined},
         /** Images for `icon-image` of style layers, by name. A value is an SVG document, the URL of an image, or `{image, width, height}`. */
         images: Object as PropType<MapSpec['images']>,
         markers: Array as PropType<MarkerLayerOptions[]>,
@@ -273,7 +277,7 @@ const MapJrComponent = defineComponent({
          * has on most screens (800 by 500 without them), `overrides` (changes to style layers for the server render, by
          * the id of the layer: `{building: {hidden: true}}`), and `attribution` (the credits to show, when the server
          * must not take them from the sources of the style), and the limits for requests of the server renderer
-         * (`timeout`, `requestTimeout`, `maxBytes`, `allowHosts`). The server also renders `extend` and `data`.
+         * (`timeout`, `requestTimeout`, `maxBytes`, `allowHosts`). The server also renders `sources`, `layers`, `terrain` and `data`.
          */
         ssr: {type: [Boolean, Object] as PropType<boolean | {width?: number; height?: number; overrides?: Record<string, SSROverrides>; attribution?: string | string[]; timeout?: number; requestTimeout?: number; maxBytes?: number; allowHosts?: string[]}>, default: false},
     },
@@ -294,7 +298,9 @@ const MapJrComponent = defineComponent({
         // a reactive style. (Not the inside of one marker: replace the marker.)
         const style = computed(() => { const v = props.mapStyle; return typeof v === 'object' && isReactive(v) ? plain(v) : v; });
         const view = computed(() => props.view && plain(props.view));
-        const extend = computed(() => props.extend && plain(props.extend));
+        const sources = computed(() => props.sources && plain(props.sources));
+        const added = computed(() => props.layers && plain(props.layers));
+        const terrain = computed(() => props.terrain && plain(props.terrain));
         const markers = computed(() => props.markers?.map(m => {
             const out: any = {};
             for (const k in m) out[k] = k === 'data' ? markerData(m.data) : plain((m as any)[k]);
@@ -328,7 +334,7 @@ const MapJrComponent = defineComponent({
         const listensForError = !!getCurrentInstance()?.vnode.props?.onError;
         const spec = computed<MapSpec>(() => {
             const out: MapSpec = {
-                style: style.value, extend: extend.value, view: view.value, initialView: props.initialView && toRaw(props.initialView), images: images.value, markers: markers.value, data: data.value, interactiveLayers: layers.value, controls: controls.value,
+                style: style.value, sources: sources.value, layers: added.value, terrain: terrain.value, view: view.value, initialView: props.initialView && toRaw(props.initialView), images: images.value, markers: markers.value, data: data.value, interactiveLayers: layers.value, controls: controls.value,
                 minZoom: props.minZoom, maxZoom: props.maxZoom, maxPitch: props.maxPitch, maxBounds: props.maxBounds && toRaw(props.maxBounds), cursor: props.cursor, transformRequest: props.transformRequest, cooperativeGestures: props.cooperativeGestures, padding: props.padding && typeof props.padding === 'object' ? toRaw(props.padding) : props.padding, projection: props.projection && toRaw(props.projection), globalState: props.globalState && toRaw(props.globalState),
                 renderer: props.renderer, fonts: props.fonts && toRaw(props.fonts), fontFamily: props.fontFamily, interactive: props.interactive, antialias: props.antialias,
                 attribution: (props.attribution as unknown) === true ? undefined : props.attribution && toRaw(props.attribution), hash: props.hash, nonce: props.nonce,
@@ -368,7 +374,7 @@ const MapJrComponent = defineComponent({
             // @ts-ignore: the package refers to itself, which the type check of this project does not resolve
             const server = await import('@map-jr/map-jr-gl/server') as typeof import('./server.ts');
             first.value = await server.renderFirstView({style: toRaw(props.mapStyle), center: view.center ?? [0, 0], zoom: view.zoom ?? 0, bearing: view.bearing, bounds: fit ? toRaw(fit) : undefined, padding: props.initialView?.padding, width: o.width ?? 800, height: o.height ?? 500,
-                markers: props.markers && plain(props.markers), images: props.images && toRaw(props.images) as Record<string, string>, overrides: o.overrides, extend: toRaw(props.extend), data: props.data && toRaw(props.data), timeout: o.timeout, requestTimeout: o.requestTimeout, maxBytes: o.maxBytes, allowHosts: o.allowHosts, attribution: props.attribution === false ? false : o.attribution});
+                markers: props.markers && plain(props.markers), images: props.images && toRaw(props.images) as Record<string, string>, overrides: o.overrides, sources: toRaw(props.sources), layers: toRaw(props.layers), terrain: toRaw(props.terrain), data: props.data && toRaw(props.data), timeout: o.timeout, requestTimeout: o.requestTimeout, maxBytes: o.maxBytes, allowHosts: o.allowHosts, attribution: props.attribution === false ? false : o.attribution});
         });
         return () => h('div', {class: 'map-jr-vue', style: 'position:relative;width:100%;height:100%'}, [
             h('div', {ref: el, style: 'position:absolute;inset:0', innerHTML: first.value}),
