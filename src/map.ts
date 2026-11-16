@@ -1793,7 +1793,8 @@ export class Map {
                 // As in MapLibre GL JS: Shift with left or right rotates by 15°, with up or down pitches by 10°.
                 if (e.shiftKey) { this.easeTo(k === 'ArrowLeft' || k === 'ArrowRight' ? {bearing: this.getBearing() + (k === 'ArrowLeft' ? -15 : 15), duration: 300} : {pitch: this.getPitch() + (k === 'ArrowUp' ? 10 : -10), duration: 300}); return; }
                 const c = this.unproject({x: this.tr.cx + (k === 'ArrowLeft' ? -step : k === 'ArrowRight' ? step : 0), y: this.tr.cy + (k === 'ArrowUp' ? -step : k === 'ArrowDown' ? step : 0)});
-                this.easeTo({center: c, duration: 200});
+                // (With the zoom given, as MapLibre GL JS does: on the globe the arrows keep the zoom, and the size of the globe changes.)
+                this.easeTo({center: c, zoom: this.tr.zoom, duration: 200});
             }
         });
     }

@@ -156,3 +156,25 @@ test('globe: a fling far north turns the longitude at most as fast as at 60° wh
     const [lng] = tr.panned(100, 0), perPx = 360 * Math.cos(80 * Math.PI / 180) / tr.worldSize;
     assert.ok(Math.abs((lng - 10) - 100 * perPx / Math.cos(60 * Math.PI / 180)) < 1e-9, `${lng}`);
 });
+
+test('globe: a new centre without a zoom keeps the size of the globe, and the zoom changes (MapLibre GL JS 6.17: zoom -0.048 at 70°N)', () => {
+    const tr = make([10, 0], 1.5, 0, 0, [11, 1, 12, 0]), size = (t: Transform) => t.worldSize / Math.cos(Math.min(Math.abs(t.lat), 85.051129) * Math.PI / 180);
+    const before = size(tr);
+    tr.set([10, 70]);
+    assert.ok(Math.abs(tr.zoom - -0.048) < 0.001, `zoom ${tr.zoom}`);
+    assert.ok(Math.abs(size(tr) / before - 1) < 1e-9, 'the globe changed its size');
+    // With a zoom, the zoom is that zoom; on a Mercator map a new centre keeps the zoom.
+    tr.set([10, 0], 1.5);
+    assert.equal(tr.zoom, 1.5);
+    const flat = make([10, 0], 1.5, 0, 0, null);
+    flat.set([10, 70]);
+    assert.equal(flat.zoom, 1.5);
+});
+
+test('globe: a drag over the area around a pole turns the globe there, and a centre at the pole projects (MapLibre: 85.89° after this drag)', () => {
+    const tr = make([10, 64.42], 0.288, 0, 0, [11, 1, 12, 0]);
+    for (let i = 1; i <= 20; i++) { globe.drag(tr, 400, 200 + 4 * (i - 1), 400, 200 + 4 * i); tr.constrain(); }
+    assert.ok(Math.abs(tr.lat - 85.89) < 0.1, `lat ${tr.lat}`);
+    tr.set([10, 90], -2);
+    assert.ok(tr.project(10, 80).every(Number.isFinite), `${tr.project(10, 80)}`);
+});

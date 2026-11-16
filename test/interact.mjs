@@ -80,6 +80,67 @@ for (const mode of ['main', 'worker']) {
         await page.waitForTimeout(200);
         const held = await page.evaluate(([lng, lat]) => { const p = window.globeMap.project([lng, lat]); const c = window.globeMap.getCenter(); return [p.x, p.y, c.lng, c.lat, window.globeMap.getZoom()]; }, follow);
         await page.mouse.up();
+        // easeTo to the north without a zoom keeps the size of the globe on the screen in each frame, and the zoom
+        // changes instead (MapLibre GL JS 6.17 ends at zoom -0.048).
+        const kept = await page.evaluate(async () => {
+            const g = window.globeMap, size = () => { const c = g.getCenter(), a = g.project([c.lng, c.lat - 0.05]), b = g.project([c.lng, c.lat + 0.05]); return Math.hypot(a.x - b.x, a.y - b.y) / 0.1; };
+            // (After each jump, the map is idle first: with the worker renderer, the end of the jump comes later.)
+            g.jumpTo({center: [10, 0], zoom: 1.5});
+            await new Promise(r => { g.once('idle', r); setTimeout(r, 15000); });
+            const s0 = size(), seen = [];
+            const moved = () => seen.push(size());
+            g.on('move', moved);
+            await new Promise(r => { g.once('moveend', r); g.easeTo({center: [10, 70], duration: 400}); });
+            g.off('move', moved);
+            const zoom = g.getZoom(), lat = g.getCenter().lat;
+            // flyTo on the globe from New York to Tokyo at zoom 10 goes out to zoom 1.171 in MapLibre GL JS 6.17 in this view of
+            // 400 by 400 pixels (the curve does not depend on the speed).
+            g.jumpTo({center: [-74, 40.7], zoom: 10});
+            await new Promise(r => { g.once('idle', r); setTimeout(r, 15000); });
+            const zooms = [], zoomed = () => zooms.push(g.getZoom());
+            g.on('move', zoomed);
+            await new Promise(r => { g.once('moveend', r); g.flyTo({center: [139.7, 35.7], zoom: 10, speed: 6}); });
+            g.off('move', zoomed);
+            return {s0, min: Math.min(...seen), max: Math.max(...seen), frames: seen.length, zoom, lat, flyMin: Math.min(...zooms)};
+        });
+        check(`[${mode}] the globe: easeTo to the north without a zoom keeps the size of the globe, the zoom changes, and flyTo has the curve of MapLibre GL JS`,
+            kept.frames > 3 && kept.min > kept.s0 * 0.99 && kept.max < kept.s0 * 1.01 && Math.abs(kept.zoom - -0.048) < 0.002 && Math.abs(kept.lat - 70) < 1e-6 && Math.abs(kept.flyMin - 1.171) < 0.05, JSON.stringify(kept));
+        // A label that turns behind the globe is not drawn in the next frame (not only after the next placement and its
+        // fade, as before, when labels showed through the globe during a fast drag).
+        await page.evaluate(async renderer => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:400px;z-index:60;background:#fff'}));
+            const style = {version: 8, projection: {type: 'globe'}, sources: {p: {type: 'geojson', data: {type: 'Point', coordinates: [10, 0]}}},
+                layers: [{id: 'bg', type: 'background', paint: {'background-color': '#0000ff'}}, {id: 'l', type: 'symbol', source: 'p', layout: {'text-field': 'WWW', 'text-size': 28, 'text-allow-overlap': true}, paint: {'text-color': '#ff0000'}}]};
+            const map = window.farMap = new mod.Map({container: el, style, center: [10, 0], zoom: 1, renderer, attributionControl: false});
+            await new Promise(r => { map.once('idle', r); setTimeout(r, 15000); });
+        }, mode);
+        const redPixels = async () => page.evaluate(async b64 => {
+            const img = await createImageBitmap(await (await fetch('data:image/png;base64,' + b64)).blob()), c = new OffscreenCanvas(img.width, img.height).getContext('2d');
+            c.drawImage(img, 0, 0);
+            const d = c.getImageData(0, 0, img.width, img.height).data;
+            let n = 0; for (let i = 0; i < d.length; i += 4) if (d[i] > 60 && d[i + 1] < 60) n++;
+            return n;
+        }, (await page.screenshot({clip: {x: 0, y: 0, width: 400, height: 400}})).toString('base64'));
+        const front = await redPixels();
+        await page.evaluate(() => new Promise(r => { window.farMap.jumpTo({center: [170, 0]}); requestAnimationFrame(() => requestAnimationFrame(r)); }));
+        const back = await redPixels();
+        await page.evaluate(() => { const el = window.farMap.getContainer(); window.farMap.remove(); el.remove(); });
+        check(`[${mode}] the globe: a label that turns behind the globe is not drawn in the next frame`, front > 50 && back === 0, JSON.stringify({front, back}));
+        // A loaded Mercator map that switches to the globe waits for the cut tiles, and then draws the globe.
+        const switched = await page.evaluate(async () => {
+            const m = window.flatMap, t0 = performance.now();
+            await new Promise(r => { m.once('idle', r); setTimeout(r, 15000); });
+            m.setProjection({type: 'globe'});
+            await new Promise(r => setTimeout(r, 50));
+            await new Promise(r => { m.once('idle', r); setTimeout(r, 15000); });
+            const bmp = await createImageBitmap(await m.toBlob()), c = new OffscreenCanvas(bmp.width, bmp.height).getContext('2d');
+            c.drawImage(bmp, 0, 0);
+            const corner = c.getImageData(2, 2, 1, 1).data[3];
+            m.setProjection({type: 'mercator'});
+            await new Promise(r => { m.once('idle', r); setTimeout(r, 15000); });
+            return {corner, ms: Math.round(performance.now() - t0)};
+        });
+        check(`[${mode}] the globe: a loaded Mercator map switches to the globe once its tiles are cut, and draws the globe`, switched.corner === 0, JSON.stringify(switched));
         const zoomed = await page.evaluate(async () => {
             const g = window.globeMap; g.jumpTo({center: [10, 45], zoom: 12.5}); await new Promise(r => { g.once('idle', r); setTimeout(r, 15000); });
             const p = g.project([10.01, 45]), m = window.flatMap; m.jumpTo({center: [10, 45], zoom: 12.5});

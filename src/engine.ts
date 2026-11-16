@@ -1,5 +1,5 @@
 import {heightsChanged} from './geo.ts';
-import {EXTENT, HEIGHT_GRID, TILE_SIZE, Transform, bezier, globeStops, groundHeight, clamp, latFromMerc, lngFromMerc, mercX, mercY, type LngLatLike, type TileID} from './geo.ts';
+import {EXTENT, HEIGHT_GRID, TILE_SIZE, Transform, bezier, globeStops, groundHeight, clamp, keepSize, latFromMerc, lngFromMerc, mercX, mercY, type LngLatLike, type TileID} from './geo.ts';
 import {globeBuild} from './subdivide.ts';
 import {compileFor, type Feature, type MapStates} from './expr.ts';
 import {VARIANT, variantName} from './markers.ts';
@@ -157,11 +157,15 @@ export const fadeStep = (opacity: number, target: number, dt: number, fade: numb
  * u, the sign of an exponential zoom when the centre does not move (else 0), the duration in milliseconds]; S is 0 when
  * the camera eases instead (nothing to fly, or longer than maxDuration, which is then a jump).
  */
-function flight(tr: Transform, to: Transform, [rho, speed, screenSpeed, minZoom, maxDuration, auto]: number[], given: number) {
-    const [pt, pr, pb, pl] = to.padding, z0 = tr.zoom, world = tr.worldSize;
-    const u1 = Math.hypot((mercX(to.lng) - mercX(tr.lng)) * world, (mercY(to.lat) - mercY(tr.lat)) * world);
-    const w0 = Math.max(tr.width - pl - pr, tr.height - pt - pb), w1 = w0 / 2 ** (to.zoom - z0);
-    if (minZoom > -99) rho = Math.sqrt(w0 / 2 ** (Math.max(tr.minZoom, Math.min(minZoom, z0, to.zoom)) - z0) / u1 * 2);
+function flight(tr: Transform, to: Transform, [rho, speed, screenSpeed, minZoom, maxDuration, auto]: number[], given: number, globe = false) {
+    const [pt, pr, pb, pl] = to.padding, world = tr.worldSize;
+    // On the globe (as in MapLibre GL JS): the zooms are those of the same size of the globe at the equator (see
+    // `keepSize`), and the length of the way is that of the great circle on the globe at the start, in pixels.
+    const z = (t: Transform, zoom = t.zoom) => globe ? zoom + keepSize(t.lat, 0) : zoom, z0 = z(tr), z1 = z(to);
+    const cos = (lat: number) => Math.cos(lat * Math.PI / 180), arc = () => Math.acos(clamp(Math.sin(tr.lat * Math.PI / 180) * Math.sin(to.lat * Math.PI / 180) + cos(tr.lat) * cos(to.lat) * cos(to.lng - tr.lng), -1, 1));
+    const u1 = globe ? arc() * world / (2 * Math.PI * cos(Math.min(Math.abs(tr.lat), 85.051129))) : Math.hypot((mercX(to.lng) - mercX(tr.lng)) * world, (mercY(to.lat) - mercY(tr.lat)) * world);
+    const w0 = Math.max(tr.width - pl - pr, tr.height - pt - pb), w1 = w0 / 2 ** (z1 - z0);
+    if (minZoom > -99) rho = Math.sqrt(w0 / 2 ** (Math.max(z(to, tr.minZoom), Math.min(z(to, minZoom), z0, z1)) - z0) / u1 * 2);
     const rho2 = rho * rho, zr = (i: number) => {
         const b = (w1 * w1 - w0 * w0 + (i ? -1 : 1) * rho2 * rho2 * u1 * u1) / (2 * (i ? w1 : w0) * rho2 * u1);
         return Math.log(Math.sqrt(b * b + 1) - b);
@@ -177,6 +181,21 @@ function flight(tr: Transform, to: Transform, [rho, speed, screenSpeed, minZoom,
     // (Nothing to fly: the camera eases, in 500 ms as easeTo does when no duration is given.)
     const still = Math.abs(w0 - w1) < 1e-6 && sign;
     return [r0, rho, jump || still ? 0 : S, w0 / u1 / rho2, sign, jump ? 1 : !auto ? given : still ? 500 : duration];
+}
+/**
+ * The centre at the part `t` of a way on the globe, as MapLibre GL JS's `interpolateLngLatForGlobe`: the latitude
+ * changes evenly, and the longitude at a speed of 1 / cos(latitude), so that the globe seems to turn evenly.
+ */
+function globeWay([lng0, lat0, dLng, dLat]: number[], t: number): [number, number] {
+    const a = clamp(lat0, -85.051129, 85.051129), b = clamp(lat0 + dLat, -85.051129, 85.051129), lat = clamp(lat0 + dLat * t, -90, 90);
+    let part = t;
+    if (Math.abs(b - a) > 1) {
+        // (The integral of 1 / cos(x).)
+        const sec = (x: number) => { const s = Math.sin(x / 2), c = Math.cos(x / 2); return Math.log(s + c) - Math.log(c - s); };
+        const s0 = (Math.sign(a) !== Math.sign(b) ? -Math.abs(a) : Math.abs(a)) * Math.PI / 180, s1 = Math.abs(b) * Math.PI / 180;
+        part = (sec(s0 + t * (s1 - s0)) - sec(s0)) / (sec(s1) - sec(s0));
+    }
+    return [((lng0 + dLng * part) % 360 + 540) % 360 - 180, lat];
 }
 const defaultEasing = bezier(0.25, 0.1, 0.25, 1), inertiaEasing = bezier(0, 0, 0.3, 1);
 const WHEEL_STEP = 4.000244140625, WHEEL_RATE = 1 / 450, TRACKPAD_RATE = 1 / 100;
@@ -224,7 +243,7 @@ export class Engine {
     private seq = 0;
     private moving = false;
 
-    private ease: {from: number[]; to: number[]; start: number; duration: number; around?: [number, number]; anchor?: [number, number]; easing?: number[]; fly?: number[]} | null = null;
+    private ease: {from: number[]; to: number[]; start: number; duration: number; around?: [number, number]; anchor?: [number, number]; easing?: number[]; fly?: number[]; globe?: boolean; way?: number[]} | null = null;
     private wheel: {
         delta: number; kind: 'wheel' | 'trackpad'; x: number; y: number; lastEvent: number;
         target?: number; start?: number; easing?: (t: number) => number; doneAt?: number;
@@ -602,6 +621,12 @@ export class Engine {
     private sourceLoaded = new Map<string, number>();
     private versions: Record<string, number> = {};
     private sourceSigs = new Map<string, [string, string]>();
+    /**
+     * A switch from Mercator to the globe that waits for the cut tiles: until then the map is drawn in Mercator. (A
+     * tile without the cut has long triangles, which cut through the sphere near its edge, so that the background
+     * showed through in wedges until the cut tiles arrived: #463.)
+     */
+    private globeWait: {stops: number[]; since: number} | null = null;
     /** What the tile workers last got from `setStyle` and `setContours`: they get it again only when it changes. */
     private sentRules?: string;
     private sentContours?: string;
@@ -616,8 +641,14 @@ export class Engine {
         // The globe (#463): the stops say at which zooms the projection draws it. Its code loads with the first style
         // that needs it (built into the worker file; a file of its own for the engine on the main thread), and frames
         // wait for it (see `frame`).
-        this.tr.globeStops = globeStops(style.projection?.type);
-        if (this.tr.globeStops && !this.tr.globe) import('./globe.ts').then(m => { this.tr.globe = m; this.repaint(); });
+        // A switch from Mercator to the globe waits until the tiles that the globe draws are cut (see `holdGlobe`).
+        const stops = globeStops(style.projection?.type);
+        if (stops && !this.tr.globeStops && this.tiles.size) {
+            // (A frame comes at the end of the wait also when no tile arrives, so that the map switches then.)
+            if (!this.globeWait) setTimeout(() => this.invalidate(), 1010);
+            this.globeWait ??= {stops, since: performance.now()};
+        } else { this.globeWait = null; this.tr.globeStops = stops; }
+        if (stops && !this.tr.globe) import('./globe.ts').then(m => { this.tr.globe = m; this.repaint(); });
         data ??= Object.fromEntries(Object.entries(style.sources).filter(([, s]) => s.type === 'geojson').map(([name, s]) => [name, s.data]));
         style = {...style, sources: Object.fromEntries(Object.entries(style.sources).map(([name, s]) => [name, s.type === 'geojson' ? {...s, data: undefined} : s]))};
         if (JSON.stringify(style.terrain) !== JSON.stringify(this.style?.terrain)) this.centreGiven = true;
@@ -767,11 +798,15 @@ export class Engine {
                 to.set(c.center, c.zoom, c.bearing, c.pitch);
                 let db = to.bearing - tr.bearing;
                 db = ((db + 180) % 360 + 360) % 360 - 180;
-                const fly = c.fly && flight(tr, to, c.fly, c.duration);
+                // On the globe the zoom is animated as the zoom that the same size of the globe has at the equator, so
+                // that the globe keeps its size while the centre moves north or south (as in MapLibre GL JS).
+                const globe = !!tr.globeness && !c.around, z = (t: Transform) => globe ? t.zoom + keepSize(t.lat, 0) : t.zoom;
+                const fly = c.fly && flight(tr, to, c.fly, c.duration, globe);
                 this.ease = {
-                    from: [mercX(tr.lng), mercY(tr.lat), tr.zoom, tr.bearing, tr.pitch, ...tr.padding], to: [mercX(to.lng), mercY(to.lat), to.zoom, tr.bearing + db, to.pitch, ...(c.padding ?? tr.padding)],
+                    from: [mercX(tr.lng), mercY(tr.lat), z(tr), tr.bearing, tr.pitch, ...tr.padding], to: [mercX(to.lng), mercY(to.lat), z(to), tr.bearing + db, to.pitch, ...(c.padding ?? tr.padding)],
                     start: performance.now(), duration: Math.max(1, fly ? fly[5] : c.duration), around: c.around, easing: c.easing, fly: fly && fly[2] ? fly : undefined,
-                    anchor: c.around ? tr.unproject(c.around[0], c.around[1]) : undefined,
+                    anchor: c.around ? tr.unproject(c.around[0], c.around[1]) : undefined, globe,
+                    way: globe ? [tr.lng, tr.lat, ((to.lng - tr.lng) % 360 + 540) % 360 - 180, to.lat - tr.lat] : undefined,
                 };
                 // (With `around`, the end differs from `to` in its centre: the point under `around` stays there.)
                 if (c.around && this.ease.anchor) to.setLocationAt(this.ease.anchor[0], this.ease.anchor[1], c.around[0], c.around[1]);
@@ -1063,19 +1098,22 @@ export class Engine {
         if (this.ease) {
             const e = this.ease, t = Math.min(1, (now - e.start) / e.duration), q = e.easing, j = t * 64 | 0, k = q ? q[j] + ((q[j + 1] ?? q[j]) - q[j]) * (t * 64 - j) : defaultEasing(t);
             const v = e.from.map((f, i) => f + (e.to[i] - f) * k);
+            let part = k;
             if (e.fly) {
                 // flyTo (van Wijk and Nuij, as in MapLibre GL JS): w is the width of the view relative to the start, u the
                 // part of the way that the centre has gone.
                 const [r0, rho, S, c, sign] = e.fly, s = k * S;
                 const u = sign ? 0 : c * (Math.cosh(r0) * Math.tanh(r0 + rho * s) - Math.sinh(r0));
-                v[0] = e.from[0] + (e.to[0] - e.from[0]) * u; v[1] = e.from[1] + (e.to[1] - e.from[1]) * u;
+                v[0] = e.from[0] + (e.to[0] - e.from[0]) * u; v[1] = e.from[1] + (e.to[1] - e.from[1]) * u; part = u;
                 v[2] = k < 1 ? e.from[2] - Math.log2(sign ? Math.exp(sign * rho * s) : Math.cosh(r0) / Math.cosh(r0 + rho * s)) : e.to[2];
             }
             tr.zoom = v[2];
             tr.padding = [v[5], v[6], v[7], v[8]];
             tr.set(undefined, undefined, v[3], v[4]);
             if (e.around && e.anchor) tr.setLocationAt(e.anchor[0], e.anchor[1], e.around[0], e.around[1]);
+            else if (e.way) { [tr.lng, tr.lat] = globeWay(e.way, part); tr.constrain(); }
             else { tr.lng = lngFromMerc(v[0]); tr.lat = latFromMerc(v[1]); tr.constrain(); }
+            if (e.globe) { tr.zoom = clamp(v[2] + keepSize(0, tr.lat), tr.minZoom, tr.maxZoom); tr.constrain(); }
             if (t >= 1) this.ease = null, this.target = null;
         }
         const w = this.wheel;
@@ -1257,9 +1295,38 @@ export class Engine {
         const src = this.style.sources[source], band = t.band = this.buildZoom(source, id);
         t.rules = this.sourceSigs.get(source)?.[1];
         // (A map that can show the globe cuts the fills and lines of a tile along a grid: see subdivide.ts.)
-        return {id: req, source, url: tileURL(src, id.z, id.x, id.y, this.dpr), z: this.zoomBuilt.has(source) ? band : id.z, overscaled: band >= src.maxzoom && band, direct: true, globe: this.tr?.globeStops ? globeBuild(id, Math.max(id.z, band)) : undefined};
+        return {id: req, source, url: tileURL(src, id.z, id.x, id.y, this.dpr), z: this.zoomBuilt.has(source) ? band : id.z, overscaled: band >= src.maxzoom && band, direct: true, globe: this.globeWait || this.tr?.globeStops ? globeBuild(id, Math.max(id.z, band)) : undefined};
     }
     private zoomBuilt = new Set<string | undefined>();
+    /**
+     * While a switch to the globe waits: asks for the tiles that the globe will draw, with the cut, and switches when
+     * they are there (or after a second, so that a slow or failed tile does not keep the map flat). Returns whether the
+     * map has switched.
+     */
+    private holdGlobe(wanted: Set<string>, frameNo: number) {
+        const wait = this.globeWait!, tr = this.tr;
+        if (!tr.globe) return false;
+        const g = Object.assign(new Transform(), tr, {globeStops: wait.stops});
+        let ready = true;
+        for (const source in this.style.sources) {
+            const src = this.style.sources[source];
+            // (Only the tiles of geometry are cut; and only those of the layers that the globe draws at this zoom.)
+            if (!this.sourceSigs.get(source)?.[1] || !this.layers.some(l => l.source === source && l.visible && g.zoom >= l.minzoom && g.zoom < l.maxzoom)) continue;
+            for (const id of g.coveringTiles(src.minzoom, src.maxzoom, src.tileSize, false)) {
+                const key = source + '|' + id.key;
+                wanted.add(key);
+                const t = this.retried(source, id, key);
+                if (!t) { this.request(source, id, key); ready = false; continue; }
+                if (t.state === 'ok') { t.used = frameNo; this.refresh(source, id, key, t); }
+                if (t.state === 'loading' || t.rebuilding || t.stale && t.state === 'ok') ready = false;
+            }
+        }
+        if (!ready && performance.now() - wait.since < 1000) return false;
+        tr.globeStops = wait.stops;
+        this.globeWait = null;
+        this.invalidate();
+        return true;
+    }
     /** Builds a tile again when its data is out of date, or when it was built for another zoom than it is now for. */
     private refresh(source: string, id: TileID, key: string, t: TileState) {
         // (Only a tile of geometry has a zoom that it was built for. An image tile is never built again: its bytes are not geometry.)
@@ -1370,6 +1437,7 @@ export class Engine {
             } else this.rawElevation = 0;
         }
         const ground = terrain ? this.terrainTiles(wanted) : undefined;
+        if (this.globeWait && !this.holdGlobe(wanted, frameNo)) complete = false;
         const view: string[] = [];
         for (const source in this.style.sources) {
             // Skip sources nothing visible draws from at this zoom (e.g. low-zoom relief imagery when zoomed in). With 3D
@@ -1540,7 +1608,12 @@ export class Engine {
                 fading ||= st.opacity !== st.target;
             }
             if (!st.opacity && !st.target) { this.labels.delete(key); continue; }
-            const p = st.placed, [ax, ay] = tr.projectTile(p.tile, p.src.x, p.src.y), dx = ax - p.ax, dy = ay - p.ay;
+            const p = st.placed;
+            // On the globe a label whose anchor has turned behind the horizon is not drawn in this frame, as MapLibre GL
+            // JS does in its shaders. It keeps its state, so that it is there at once when it turns back. (Placement
+            // comes every 250 ms only, and the fade takes 200 ms more: until then the label showed through the globe.)
+            if (globeness && tr.globe!.hidden(tr, (p.tile.x + p.src.x / EXTENT) / 2 ** p.tile.z, (p.tile.y + p.src.y / EXTENT) / 2 ** p.tile.z)) continue;
+            const [ax, ay] = tr.projectTile(p.tile, p.src.x, p.src.y), dx = ax - p.ax, dy = ay - p.ay;
             if (turn && (!p.src.upright || (!p.shaped && p.icon && !p.src.icon!.upright))) {
                 // Text along a line (and a symbol at a point that is aligned with the map) turns with the map between placements; otherwise it would hold its old angle and
                 // then snap, which reads as rocking while the map rotates.
