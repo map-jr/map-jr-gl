@@ -143,7 +143,7 @@ The library compares each field with the field of the last description:
 | `onError` | A function that is called with each error of the map (an `Error`): a style or a source that does not load, a mistake in a style edit, a failure of the renderer. Use it to send errors to your error tracker. Without it, the map writes each error to the console with `console.error`. |
 | `minZoom`, `maxZoom`, `maxPitch`, `maxBounds` | The limits of the camera. `maxBounds` keeps the whole view inside the bounds, as MapLibre GL JS does: the canvas less the padding, with no regard to bearing and pitch. When the bounds are smaller than that view, the zoom rises until they fill it. A west edge east of the east edge (for example `[[150, -50], [-120, 10]]`) gives bounds that cross the antimeridian. |
 | `cooperativeGestures` | `true`: the wheel zooms the map only with Ctrl (⌘ on a Mac), one finger scrolls the page and two fingers move the map. A blocked gesture shows a hint over the map. The default is `false`. `update()` can turn it on and off. |
-| `colorScheme` | The colours of the controls, the popup, the attribution and the message of a browser without WebGL 2: `'auto'` (the default), `'light'` or `'dark'`. `'auto'` follows the media query `prefers-color-scheme` and changes while the page is open. An application with its own theme switch passes `'light'` or `'dark'`. While the scheme is dark, the container has the class `map-jr-dark`. The dark colours have no specificity, so a rule of the application and the custom properties `--map-control-*`, `--map-attribution-background` and `--map-popup-*` still win. `update()` changes it. It does not change what the canvas draws. A value that is not one of the three follows the browser, and the development build warns once. |
+| `colorScheme` | The colours of the controls, the popup, the attribution and the message of a browser without WebGL 2: `'auto'` (the default), `'light'` or `'dark'`. `'auto'` follows the media query `prefers-color-scheme` and changes while the page is open. An application with its own theme switch passes `'light'` or `'dark'`. While the scheme is dark, the container has the class `map-jr-dark`. The dark colours have no specificity, so a rule of the application and the custom properties `--map-control-*`, `--map-attribution-background` and `--map-popup-*` still win. `update()` changes it. The map also sets the global state property `color-scheme` of the style to the resolved scheme, so that a style can follow it: see [Dark mode](#dark-mode). A value that is not one of the three follows the browser, and the development build warns once. |
 | `cursor` | The mouse cursor over the map. Without it, the cursor is a pointer over a feature of `interactiveLayers`. |
 | `transformRequest` | A function that changes a request before the map makes it, as `transformRequest` of MapLibre GL JS. It gets the URL and the kind of resource (`Style`, `Source`, `Tile`, `Glyphs`, `SpriteJSON`, `SpriteImage`, `Image` or `Font`) and returns `{url, headers, credentials}`, or `undefined` to leave the request as it is. It applies to the requests of the tile workers too. The map calls the function of the last description, so a function that is made again in each render works. Example: `transformRequest: url => url.startsWith('https://api.os.uk/') ? {url: url + '&key=' + KEY} : undefined`. |
 | `padding` | Space in CSS pixels at the sides of the map that the view keeps free, for example under a side panel: one number for all sides, or `{top, right, bottom, left}` (a side that is left out is 0). The centre of the view is the centre of the rest of the map. The default is 0. A change moves the camera at once (as `setPadding` of MapLibre GL JS). It is not the `padding` of `initialView`, which is space around `bounds` for the fit at the start only. |
@@ -385,6 +385,70 @@ map.update({style, data: {places}});
 
 A record whose position is not two finite numbers (a string such as `'2.3'` included) is left out. The development
 build warns once on the page with the index of the first such record; the production build does not warn.
+
+## Dark mode
+
+`colorScheme` of the description (`'auto'`, `'light'` or `'dark'`) gives the colours of the controls and the popup.
+The canvas follows the scheme in one of two ways.
+
+| Way | What a change of scheme costs | Use it when |
+|---|---|---|
+| One style that reads the global state property `color-scheme` | No request. The map repaints the layers that read the property. | You write or can edit the style. |
+| `style: {light, dark}`, two styles | A request of the other style. The map draws from the start. | A provider publishes a light style and a dark style. |
+
+### One style for both schemes
+
+The map sets the global state property `color-scheme` of the style to `'light'` or `'dark'`, the resolved scheme
+(`state.colorScheme`), when the map is made and at each change of the scheme. An expression of the style reads it
+with `['global-state', 'color-scheme']`:
+
+```js
+import {createMap} from '@map-jr/map-jr-gl';
+
+const scheme = (dark, light) => ['match', ['global-state', 'color-scheme'], 'dark', dark, light];
+const pin = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="{{fill}}"/></svg>';
+const map = createMap(document.getElementById('map'), {
+  style: {
+    version: 8,
+    state: {'color-scheme': {default: 'light'}},
+    sources: {spot: {type: 'geojson', data: {type: 'Point', coordinates: [2.35, 48.85]}}},
+    layers: [
+      {id: 'background', type: 'background', paint: {'background-color': scheme('#1b1b1d', '#f2efe9')}},
+      {id: 'spot', type: 'symbol', source: 'spot', layout: {'icon-image': ['image', 'pin', {params: {fill: scheme('#ffd54a', '#d6453d')}}]}},
+    ],
+  },
+  images: {pin},
+  initialView: {center: [2.35, 48.85], zoom: 4},
+});
+```
+
+- A change of scheme requests neither the style nor tiles. A paint property that reads the property is applied
+  when the map draws. A layout property, a filter, a value that varies per feature and a parameter of a template
+  (see [An image that is a template](#an-image-that-is-a-template)) are part of the tiles: the map builds the tiles of
+  the sources of such layers again, from the data that it has.
+- A style that does not read the property draws as before. A change of scheme then rebuilds no tile.
+- A value of `globalState` of the description with the name `color-scheme` wins over the scheme, for example
+  `globalState: {'color-scheme': 'dark'}` for a map that is always dark while the controls follow the page. When the
+  description leaves that name out again, the property follows the scheme again.
+- Give the property a default in `state` of the style, as in the example. MapLibre GL JS and the compat entry
+  (`@map-jr/map-jr-gl/maplibre-compat`) do not set it, and they show the style with that default.
+- A style that already uses a state property `color-scheme` for something else gets the value of the map. Rename the
+  property of the style, or give the value in `globalState`.
+
+### Two styles
+
+`style` also accepts `{light, dark}`, where each value is a style object or the URL of a style. The map uses the
+style of the resolved scheme and changes it when the scheme changes. A change of scheme requests the other style and
+draws the map from the start. The sources and layers of the description, `data`, `images` and the view stay, as with
+each new `style`.
+
+```js
+import {createMap} from '@map-jr/map-jr-gl';
+
+createMap(document.getElementById('map'), {
+  style: {light: 'https://tiles.openfreemap.org/styles/positron', dark: 'https://tiles.openfreemap.org/styles/dark'},
+});
+```
 
 ## Controls
 
