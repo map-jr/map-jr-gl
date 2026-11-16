@@ -253,7 +253,9 @@ export class GlyphAtlas extends BaseShaper {
     /** Label fonts arrive as "style weight|family|font stack"; the family named by the style is tried before the map default. */
     private css(font: string) {
         const [variant, family] = font.split('|');
-        return `${variant} ${EM}px ${family ? `"${family}", ` : ''}${this.family}`;
+        // (After web fonts load, a family that is never found ends the string: Chromium keeps, in a worker, the font that it
+        // resolved for each font string, also for a new context, and a new string resolves the fonts again.)
+        return `${variant} ${EM}px ${family ? `"${family}", ` : ''}${this.family}${this.fontsRev ? `, "map-jr-${this.fontsRev}"` : ''}`;
     }
 
     /**
@@ -280,12 +282,14 @@ export class GlyphAtlas extends BaseShaper {
         setTimeout(next);
     }
     private warmed = new Set<string>();
+    /** The number of times that web fonts were loaded (see `css`). */
+    private fontsRev = 0;
 
     /** Forgets every glyph, e.g. after a web font finishes loading and text must be redrawn with it. */
     clear(fontsChanged = false) {
         // A canvas context remembers which font it resolved for a given font string, so after new fonts load it
         // would keep drawing with the old fallback. A fresh context resolves them again.
-        if (fontsChanged) { this.ctx = this.newContext(); this.warmed.clear(); }
+        if (fontsChanged) { this.ctx = this.newContext(); this.warmed.clear(); this.fontsRev++; }
         this.data.fill(0); this.glyphs.clear(); this.reset();
         this.penX = this.penY = 1; this.shelf = 0;
         this.version++; this.resets++; this.dirty = null;

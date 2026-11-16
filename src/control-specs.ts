@@ -49,7 +49,7 @@ export const terrain = spec('terrain', (m, o: {source: string; exaggeration?: nu
 export const globe = spec('globe', (m, _o: {}) => new m.GlobeControl());
 /**
  * A control of your own. Give `element` (the map puts it into the corner and takes it out again), or `onAdd` and
- * `onRemove` as MapLibre GL JS controls have them (`onAdd` receives the map of `map.map` and returns the element).
+ * `onRemove` as MapLibre GL JS controls have them (`onAdd` receives the core map and returns the element).
  * `key` names the control: a description with the same `key` keeps the control that the map has.
  */
 export const custom = (options: {key: string; position?: ControlPosition} & ({element: HTMLElement} | Control)): ControlSpec => {
