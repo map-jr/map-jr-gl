@@ -94,15 +94,20 @@ for (const mode of ['main', 'worker']) {
             g.off('move', moved);
             const zoom = g.getZoom(), lat = g.getCenter().lat;
             // flyTo on the globe from New York to Tokyo at zoom 10 goes out to zoom 1.171 in MapLibre GL JS 6.17 in this view of
-            // 400 by 400 pixels (the curve does not depend on the speed). The test reads the lowest zoom of the frames, so
-            // the flight is slow enough (about 6.4 s) that a gap of 100 ms between frames misses the lowest point by about
-            // 0.03, inside the tolerance. At speed 6 (1.6 s), frames 55 ms apart gave 1.3135 in CI (#517).
+            // 400 by 400 pixels (the curve does not depend on the speed or the easing). The lowest zoom of the drawn frames
+            // depends on which frames are drawn (1.3135 and 1.2297 in CI, #517), so the test reads the curve at fixed
+            // parts of the flight instead: an easing that is constant puts every frame, the last one included, at that part.
+            // The lowest point is at the middle of the way (part 0.5); the parts 0.4 to 0.6 in steps of 0.005 find it to
+            // within 0.001.
             g.jumpTo({center: [-74, 40.7], zoom: 10});
             await new Promise(r => { g.once('idle', r); setTimeout(r, 15000); });
-            const zooms = [], zoomed = () => zooms.push(g.getZoom());
-            g.on('move', zoomed);
-            await new Promise(r => { g.once('moveend', r); g.flyTo({center: [139.7, 35.7], zoom: 10, speed: 1.5}); });
-            g.off('move', zoomed);
+            const zooms = [];
+            for (let i = 80; i <= 120; i++) {
+                const part = i / 200;
+                g.jumpTo({center: [-74, 40.7], zoom: 10});
+                await new Promise(r => { g.once('moveend', r); setTimeout(r, 15000); g.flyTo({center: [139.7, 35.7], zoom: 10, duration: 1, easing: () => part}); });
+                zooms.push(g.getZoom());
+            }
             return {s0, min: Math.min(...seen), max: Math.max(...seen), frames: seen.length, zoom, lat, flyMin: Math.min(...zooms)};
         });
         check(`[${mode}] the globe: easeTo to the north without a zoom keeps the size of the globe, the zoom changes, and flyTo has the curve of MapLibre GL JS`,

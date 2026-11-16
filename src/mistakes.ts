@@ -10,7 +10,7 @@ import {maplibreMembers} from './maplibre-members.ts';
 /** What a check reads of one map. `warned` has the warnings that the map gave: each mistake gives one warning for each map. */
 export interface Checked { map: Map; warned: Set<string>; spec(): MapSpec; /** The map exists and has loaded the style of the description. */ ready(): boolean }
 
-const texts: (((a: string, b: string) => string) | undefined)[] = [
+const texts: ((a: string, b: string) => string)[] = [
     /* 0 */ a => a + ': the container has height 0, so the map shows nothing. Give the container a height in CSS.',
     /* 1 */ a => `interactiveLayers: the style has no layer "${a}". Write the id of a layer of the style or of "layers".`,
     /* 2 */ (a, b) => `the layer "${a}" uses the source "${b}", which the map does not have. A key of "data" makes a source only while it is in "data": keep "${b}" in "data", or remove the layer.`,
@@ -34,14 +34,14 @@ const texts: (((a: string, b: string) => string) | undefined)[] = [
     /* 20 */ () => 'The description has "glyphs". That field was removed and has no effect: the map loads the glyph files of the style. Remove "glyphs" from the description. To draw text with the fonts of the browser, remove "glyphs" from the style.',
     /* 21 */ a => `points(): the record ${a} has no position of two finite numbers, so it is left out. Make "lngLat" return [lng, lat] for each record.`,
     /* 22 */ a => `globalState: the value of "${a}" is not JSON (a function, a class instance, NaN or a cycle), so the style cannot read it as it is. Give a string, a number, a boolean, an array or a plain object.`,
-    /* 23-39: kept for the texts of other changes */ , , , , , , , , , , , , , , , , , 
-    /* 40 */ a => `colorScheme: ${a} is not a colour scheme, so the map follows the browser. Write 'auto', 'light' or 'dark'.`,
+    /* 23 */ () => 'moveTo(): "padding" and "maxZoom" have an effect only with "bounds", so this call ignores them. To set the padding of the map, give "padding" in the description.',
 ];
 // (Numbers 23 to 29 are taken by other changes.)
 texts[30] = a => `hoverState: a feature of the layer "${a}" has no id, so it gets no feature state "hover". Give the features ids, or set "promoteId" of the source to a property that has one, or "generateId: true" for a GeoJSON source.`;
+texts[40] = a => `colorScheme: ${a} is not a colour scheme, so the map uses the light colours. Write 'auto', 'light' or 'dark'.`;
 
 /** The message with the number `code` for the names `a` and `b`. */
-export const mistake = (code: number, a = '', b = '') => '[map-jr-gl] ' + texts[code]!(a, b);
+export const mistake = (code: number, a = '', b = '') => '[map-jr-gl] ' + texts[code](a, b);
 
 /** A value that JSON keeps as it is: no function, `undefined` in an array, number that is not finite, class instance or cycle. */
 const isJson = (v: unknown, seen: unknown[] = []): boolean => {
@@ -66,7 +66,7 @@ const differ = (a: unknown, b: unknown) => a !== b && JSON.stringify(a) !== JSON
  * One check of a map. The kinds: 0, the container (`a` is the name that the user wrote), a second after the map is made; 1, the ids of the description, when
  * the map is idle; 2, a description (`a`) after the description before it (`b`, none for the first); 3, a query for
  * features at `a` with the options `b`; 6, a query of `querySource` at `a` with the options and the `id` of the source in `b`; 4, the style `a` and the `sources` and `layers` of the description (`b`) to it; 9, a feature with no id under the pointer in the layer `a`
- * with `hoverState`.
+ * with `hoverState`; 7, `moveTo` with `padding` or `maxZoom` and no `bounds`.
  */
 export function check(c: Checked, kind: number, a?: any, b?: any) {
     const {map} = c;
@@ -117,6 +117,7 @@ export function check(c: Checked, kind: number, a?: any, b?: any) {
         for (const k of ['layers', 'sources']) if (k in o) warn(12, k, 's');
         if (!place(a)) { if (o.radius !== undefined) warn(13, 'querySource'); if (o.geometry === false) warn(11, 'geometry'); if (o.zoom !== undefined) warn(11, 'zoom'); }
     } else if (kind === 9) warn(30, a);
+    else if (kind === 7) warn(23);
     else {
         slots(a.layers, b?.layers);
         if (!b) return;
