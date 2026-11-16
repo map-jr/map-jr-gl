@@ -40,6 +40,9 @@ package, so they work with each version of Svelte.
 - For an event of the map, call `map.listen(type, fn)` on the map that `ready` gives. See [Events](api.md#events).
 - The description is the description of [the main API](api.md). A part that is made again with the same content
   does no work. The values of `data` are compared by identity: `$derived` keeps them until their inputs change.
+- The control `colorScheme()` of `@map-jr/map-jr-gl/controls` changes `colorScheme` of the map and calls
+  `onColorSchemeChange` of the description with the new value. Keep the value in your state and put it in the
+  description, or the next description sets the old value again.
 - `transformRequest` in the description changes each request of the map, also those of the tile workers. The map
   calls the function of the last description.
 

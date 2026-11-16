@@ -120,7 +120,7 @@ try {
     const early = await page.evaluate(() => !!document.querySelector('svg[data-map-jr-ssr]'));
     await page.waitForFunction(() => window.t.loads > 0, null, {timeout: 60000});
     await page.waitForTimeout(1000);
-    const late = await page.evaluate(() => ({svg: !!document.querySelector('[data-map-jr-ssr]'), canvas: !!document.querySelector('#frame canvas'), controls: document.querySelectorAll('#frame .map-jr-ctrl-group').length, recovered: window.recovered ?? []}));
+    const late = await page.evaluate(() => ({svg: !!document.querySelector('[data-map-jr-ssr]'), canvas: !!document.querySelector('#frame canvas'), controls: document.querySelectorAll('#frame .map-jr-ctrl-compass').length, recovered: window.recovered ?? []}));
     check('browser: React takes over the HTML of the server, the map takes over the SVG, and the controls show', early && !late.svg && late.canvas && late.controls === 1 && !late.recovered.length && !warnings.length && !errors.length, JSON.stringify({early, late, warnings: warnings.slice(0, 2), errors: errors.slice(0, 2)}));
     await page.close();
 
@@ -136,7 +136,7 @@ try {
         host.moveTo({zoom: 15, duration: 200});
         for (let i = 0; i < 80 && !(host.state.get().view.zoom === 15 && !host.state.get().moving); i++) await wait(100);
         await wait(300);
-        const followed = t.view.zoom, shown = document.getElementById('zoom').textContent, controls = document.querySelectorAll('#frame .map-jr-ctrl-group, #frame .map-jr-ctrl-scale').length;
+        const followed = t.view.zoom, shown = document.getElementById('zoom').textContent, controls = document.querySelectorAll('#frame .map-jr-ctrl-compass, #frame .map-jr-ctrl-scale').length;
         t.setView({center: [-74.0065, 40.7085], zoom: 14, bearing: 0, pitch: 0}); // the application moves the map
         for (let i = 0; i < 80 && host.state.get().view.zoom !== 14; i++) await wait(100);
         await wait(300);

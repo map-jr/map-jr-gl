@@ -37,11 +37,13 @@ for (const f of compat) engine.delete(f); // the page has these already when it 
 // On 2026-11-16 the owner raised the page script from 38 to 40 KB for the plan of the audit #480 (`patch`, `once`, feature
 // state, `globalState`, a source for a key of `data`, `state.pointer`, dark mode): it had 0.9 KB of room, and the open
 // pull requests of the first batch needed more than that.
+// On 2026-11-16 the owner raised the page script from 40 to 42 KB and the compat page script from 46 to 48 KB for the new
+// look of the controls (#541), which adds about 2.0 KB to the page script and 1.8 KB to the compat page script.
 const sizes = [
     // What a page downloads before the map can start. The worker file is downloaded at the same time.
-    ['page script, up front (' + [...page].length + ' files)', gz(page), 40],
+    ['page script, up front (' + [...page].length + ' files)', gz(page), 42],
     // The same for the entry that is a replacement for MapLibre GL JS (`@map-jr/map-jr-gl/maplibre-compat`).
-    ['page script of maplibre-compat, up front (' + [...compat].length + ' files)', gz(compat), 46],
+    ['page script of maplibre-compat, up front (' + [...compat].length + ' files)', gz(compat), 48],
     ['map-jr-gl-worker.js', gz(['map-jr-gl-worker.js']), 78],
     // Only when the engine runs on the main thread (no worker is possible).
     ['engine on the main thread, on demand', gz(engine), 74],

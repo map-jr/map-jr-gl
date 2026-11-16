@@ -60,8 +60,15 @@ MapLibre GL JS started from Mapbox GL JS (version 1.13 and earlier, BSD-3-Clause
 
 - [earcut](https://github.com/mapbox/earcut) (ISC, Mapbox) triangulates polygons. It is the only library
   that the built files contain.
+- [Material Symbols](https://github.com/google/material-design-icons) (Apache-2.0, Google): the button of the
+  compact attribution of the main API draws the icon "info i" (rounded). Its path is copied unchanged, in the form
+  on a grid of 24 by 24 units. The licence text is in `THIRD-PARTY-LICENSES.md`.
 
 ## Methods from other projects
+
+- The compass of the main API takes the idea of the compass of Apple Maps (maps.apple.com): a dial with ticks, a
+  mark of north on the rim and the letter of the direction in the centre. The drawing is new and copies no file or
+  code of Apple.
 
 - [supercluster](https://github.com/mapbox/supercluster) (ISC, Mapbox): the method that makes clusters of points.
   The code in this library is new.

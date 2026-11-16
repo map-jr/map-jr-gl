@@ -1084,7 +1084,7 @@ for (const renderer of renderers) {
 
         // Controls: added and removed by the description.
         const controls = await page.evaluate(async () => {
-            const t = window.t, {navigation, scale} = await import('/dist/controls.js'), count = () => document.querySelectorAll('#host .map-jr-ctrl-group, #host .map-jr-ctrl-scale').length;
+            const t = window.t, {navigation, scale} = await import('/dist/controls.js'), count = () => document.querySelectorAll('#host .map-jr-ctrl-compass, #host .map-jr-ctrl-scale').length;
             // The control classes load with import() when the map adds the first control (#160).
             const settle = () => new Promise(r => setTimeout(r, 50));
             t.host.update(t.spec = {...t.spec, controls: [navigation(), scale({position: 'bottom-left'})]});
@@ -1266,6 +1266,69 @@ for (const renderer of renderers) {
         const D = 'class dark rgb(230, 230, 230)', L = '- light rgb(34, 34, 34)';
         check(`[${renderer}] colorScheme: no value is light also when the browser asks for dark, 'auto' follows prefers-color-scheme while the page is open, 'light' and 'dark' fix it, with the class map-jr-dark and the colour of a control`,
             schemes.none === L && schemes.autoDark === D && schemes.autoLight === L && schemes.light === L && schemes.dark === D && schemes.autoBack === D && schemes.follows === 'light', JSON.stringify(schemes));
+        // The look of the main API (#541): the class map-jr-glass gives the controls a blur. A rule of the page still wins
+        // (the CSS of MapLibre GL JS on /bench sets the radius of a group to 4px), and a map of the compat entry has neither.
+        const glass = await page.evaluate(async () => {
+            const t = window.t, {navigation} = await import('/dist/controls.js'), mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            t.host.update({...t.spec, controls: [navigation()]});
+            await new Promise(r => requestAnimationFrame(r));
+            const s = getComputedStyle(document.querySelector('#host .map-jr-ctrl-group')), group = {backdropFilter: s.backdropFilter, borderTopLeftRadius: s.borderTopLeftRadius};
+            const el = Object.assign(document.createElement('div'), {style: 'width:100px;height:80px'});
+            document.body.appendChild(el);
+            const m = new mod.Map({container: el, attributionControl: false, center: [0, 0], zoom: 1, style: {version: 8, sources: {}, layers: []}});
+            m.addControl(new mod.NavigationControl());
+            const compat = getComputedStyle(el.querySelector('.map-jr-ctrl-group')).backdropFilter;
+            m.remove(); el.remove();
+            // The two custom properties of the look reach the popup (whose inline background and radius the CSS of MapLibre does not change).
+            const host = document.querySelector('#host'), content = document.createElement('div');
+            content.textContent = 'Popup';
+            const popup = t.host.overlay(content, {lngLat: t.host.state.get().view.center, popup: true, onClose() {}});
+            await new Promise(r => requestAnimationFrame(r));
+            const box = content.closest('.map-jr-popup-content'), look = () => { const p = getComputedStyle(box); return `${p.backgroundColor} ${p.borderTopLeftRadius}`; };
+            const popupDefault = look();
+            host.style.setProperty('--map-control-opacity', '.3'); host.style.setProperty('--map-control-radius', '8px');
+            const popupSet = look();
+            host.style.removeProperty('--map-control-opacity'); host.style.removeProperty('--map-control-radius');
+            popup.remove();
+            // The compass shows the direction that the map faces.
+            const letter = () => document.querySelector('#host .map-jr-ctrl-compass text')?.textContent;
+            const map = t.host._map, faces = [letter()];
+            // (The compass follows the event move, which can come a few frames later with the worker renderer.)
+            for (const [bearing, face] of [[90, 'E'], [-135, 'W'], [0, 'N']]) { map.jumpTo({bearing}); for (let i = 0; i < 40 && letter() !== face; i++) await new Promise(r => setTimeout(r, 25)); faces.push(letter() + (map.getBearing() === bearing ? '' : '@' + map.getBearing()) + document.querySelectorAll('#host .map-jr-ctrl-compass').length); }
+            t.host.update(t.spec);
+            return {main: host.classList.contains('map-jr-glass'), blur: group.backdropFilter, radius: group.borderTopLeftRadius, compat, compatClass: el.classList.contains('map-jr-glass'), popupDefault, popupSet, faces: faces.join(' ')};
+        });
+        check(`[${renderer}] the controls of the main API have a blur, a rule of the page still wins, --map-control-opacity and --map-control-radius reach the popup, the compass names the nearest of N, E, S and W, and a map of the compat entry keeps the look of MapLibre GL JS`,
+            glass.main && glass.blur === 'blur(5px)' && glass.radius === '4px' && glass.compat === 'none' && !glass.compatClass
+            && glass.popupDefault === 'rgba(255, 255, 255, 0.65) 12px' && glass.popupSet === 'rgba(255, 255, 255, 0.4) 6px' && glass.faces === 'N E1 W1 N1', JSON.stringify(glass));
+        // The control colorScheme() (#541): for each start (no value, 'auto' with the system light and dark, a fixed value),
+        // what two clicks give: the value of the description, the scheme of the map, the calls of onColorSchemeChange and the label.
+        const toggles = {};
+        for (const [name, media, start] of [['none', 'dark', undefined], ['autoDark', 'dark', 'auto'], ['autoLight', 'light', 'auto'], ['fixedDark', 'light', 'dark']]) {
+            await page.emulateMedia({colorScheme: media});
+            toggles[name] = await page.evaluate(async start => {
+                const t = window.t, {colorScheme} = await import('/dist/controls.js'), calls = [];
+                t.host.update({...t.spec, controls: []});
+                t.host.update({...t.spec, controls: [colorScheme()], ...start && {colorScheme: start}, onColorSchemeChange: v => calls.push(v)});
+                const until = async f => { for (let i = 0; i < 100 && !f(); i++) await new Promise(r => setTimeout(r, 30)); };
+                await until(() => document.querySelector('#host .map-jr-ctrl-color-scheme'));
+                const b = document.querySelector('#host .map-jr-ctrl-color-scheme'), seen = () => `${t.host.description.colorScheme ?? '-'}/${t.host.state.get().colorScheme}/${b.getAttribute('aria-label')}`;
+                const out = [seen()];
+                for (let i = 0; i < 2; i++) { b.click(); await new Promise(r => requestAnimationFrame(r)); out.push(seen()); }
+                t.host.update(t.spec);
+                return out.join(' > ') + ' calls ' + calls.join(',');
+            }, start);
+        }
+        await page.emulateMedia({colorScheme: null});
+        const L2 = 'light/light/Use dark colours', D2 = 'dark/dark/Use light colours';
+        const wantToggles = {
+            none: `-/light/Use dark colours > ${D2} > ${L2} calls dark,light`,
+            autoDark: `auto/dark/Use light colours > ${L2} > auto/dark/Use light colours calls light,auto`,
+            autoLight: `auto/light/Use dark colours > ${D2} > auto/light/Use dark colours calls dark,auto`,
+            fixedDark: `${D2} > ${L2} > ${D2} calls light,dark`,
+        };
+        check(`[${renderer}] the control colorScheme() flips light and dark, and from 'auto' sets the opposite of the system and then 'auto' again, with onColorSchemeChange and a label that names the action`,
+            Object.keys(wantToggles).every(k => toggles[k] === wantToggles[k]), JSON.stringify(toggles));
 
         // `style: {light, dark}` (#491): the style of the resolved scheme, a change of the media query changes it, and a
         // layer of the description and its data stay. A pair with the same content in update() is the same style.
@@ -1793,6 +1856,28 @@ for (const other of [true, false]) {
     await page.close();
 }
 
+// #541: a tap on a button of a control on a phone (Chromium with touch, as on Android) leaves the button as it was:
+// no tap highlight, no hover background that stays after the tap, and no focus outline (the outline is for the keyboard).
+{
+    const context = await browser.newContext({viewport: {width: 412, height: 600}, deviceScaleFactor: 2, isMobile: true, hasTouch: true});
+    const page = await context.newPage();
+    try {
+        await page.goto(`${origin}/style.json`);
+        await page.evaluate(async () => {
+            const lib = await import('/dist/map-jr-gl.js'), {navigation} = await import('/dist/controls.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:400px'}));
+            window.tapHost = lib.createMap(el, {style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, initialView: {center: [0, 0], zoom: 2}, controls: [navigation()], attribution: false});
+            for (let i = 0; i < 50 && !el.querySelector('.map-jr-ctrl-zoom-in'); i++) await new Promise(r => setTimeout(r, 100));
+        });
+        const look = () => page.evaluate(() => { const s = getComputedStyle(document.querySelector('.map-jr-ctrl-zoom-in')); return `${s.backgroundColor} ${s.outlineStyle} ${s.webkitTapHighlightColor}`; });
+        const before = await look();
+        await page.tap('.map-jr-ctrl-zoom-in'); await page.waitForTimeout(400);
+        const after = await look();
+        check('a tap on a button of a control on a phone leaves no highlight, hover background or focus outline', before === after && after === 'rgba(0, 0, 0, 0) none rgba(0, 0, 0, 0)', JSON.stringify({before, after}));
+    } catch (e) { check('the test of a tap on a phone was completed', false, String(e.message).split('\n')[0]); }
+    await context.close();
+}
+
 // #42: the compass of navigation() rotates the map when it is dragged and resets the bearing when it is clicked. Only
 // with visualizePitch: true does it also show, change and reset the pitch, as in MapLibre GL JS.
 for (const visualizePitch of [undefined, true]) {
@@ -1810,7 +1895,7 @@ for (const visualizePitch of [undefined, true]) {
         await page.mouse.move(box.x, box.y); await page.mouse.down();
         for (let i = 1; i <= 6; i++) await page.mouse.move(box.x + i * 8, box.y - i * 4);
         await page.mouse.up(); await page.waitForTimeout(300);
-        const view = () => page.evaluate(() => { const v = window.compassHost.state.get().view; return {bearing: v.bearing, pitch: v.pitch, needle: document.querySelector('.maplibregl-ctrl-compass svg').style.transform}; });
+        const view = () => page.evaluate(() => { const v = window.compassHost.state.get().view; return {bearing: v.bearing, pitch: v.pitch, needle: document.querySelector('.maplibregl-ctrl-compass svg g').style.transform}; });
         const dragged = await view();
         await page.mouse.click(box.x, box.y); await page.waitForTimeout(1200);
         const clicked = await view();

@@ -88,6 +88,8 @@ export interface PopupOptions {
     locationOccludedOpacity?: number | string;
 }
 
+export {part};
+
 export class Popup extends Overlay {
     protected el = document.createElement('div');
     protected anchor: Anchor;
@@ -98,6 +100,8 @@ export class Popup extends Overlay {
     private content = document.createElement('div');
     private closeOnMapClick = () => this.remove();
     private closeButton?: HTMLButtonElement;
+    /** The main API: the layer of the shadow behind the box, in the shape of the box and its tip (see `outline`). */
+    protected shade?: HTMLElement;
     protected localize(map: Map) { this.closeButton?.setAttribute('aria-label', ui(map, 'Popup.Close', 'Close popup')); }
     /** The marker of this popup. The keyboard focus returns to it when the popup closes with the focus inside. */
     opener?: HTMLElement;
@@ -109,7 +113,7 @@ export class Popup extends Overlay {
         this.el.style.cssText = 'z-index:1;pointer-events:none';
         const box = this.box;
         box.className = cls('popup-content');
-        box.style.cssText = `pointer-events:auto;position:relative;background:var(--map-popup-background,var(--map-jr-popup-bg,#fff));color:var(--map-popup-color,var(--map-jr-popup-fg,#222));border-radius:8px;padding:10px 12px;font:13px/1.4 system-ui,sans-serif;box-shadow:var(--map-jr-popup-ring,0 0 #0000),0 2px 12px rgba(0,0,0,.22);max-width:${options.maxWidth ?? '240px'};margin:8px`;
+        box.style.cssText = `pointer-events:auto;position:relative;background:var(--map-popup-background,var(--map-jr-popup-bg,#fff));color:var(--map-popup-color,var(--map-jr-popup-fg,#222));border-radius:var(--map-jr-popup-radius,8px);padding:10px 12px;font:13px/1.4 system-ui,sans-serif;box-shadow:var(--map-jr-popup-ring,0 0 #0000),0 2px 12px rgba(0,0,0,.22);max-width:${options.maxWidth ?? '240px'};margin:8px`;
         box.appendChild(this.content);
         this.tip.className = cls('popup-tip');
         box.appendChild(this.tip);
@@ -141,9 +145,11 @@ export class Popup extends Overlay {
         // (One number moves the popup away from the position: down and to the right for `top-left`.)
         this.offset = typeof o === 'number' ? [(1 - x / 50) * o, (1 - y / 50) * o] : Array.isArray(o) ? o : o[anchor] ?? [0, 0];
         // (Across the top or the bottom, the pointer is 14 pixels from the left edge, in the middle, or 14 pixels from the right edge.)
+        this.box.dataset.side = side; // (for the CSS of the main API, which draws the tip as a part of the box)
         this.tip.style.cssText = side === 'center' ? 'display:none' : `position:absolute;width:12px;height:12px;background:inherit;transform:rotate(45deg);${side}:-5px;` +
             (y === 50 ? 'top:calc(50% - 6px)' : `left:calc(${x}% + ${14 - x * .4}px)`);
-        this.box.style.transformOrigin = `${x}% ${y}%`;
+        this.el.style.transformOrigin = `${x}% ${y}%`;
+        this.outline();
     }
 
     /** Above the point when it fits, otherwise below; hugging the left or right edge when the point is near one. */
@@ -182,6 +188,7 @@ export class Popup extends Overlay {
         // (A popup that opens again during its closing animation closes now, so that the animation cannot remove it later.)
         this.closing?.();
         this.attach(map);
+        this.outline();
         // Deferred so the click that opened the popup does not immediately close it.
         if (this.options.closeOnClick !== false) setTimeout(() => this.isOpen() && this.map === map && map.on('click', this.closeOnMapClick));
         this.transition(false);
@@ -193,12 +200,16 @@ export class Popup extends Overlay {
         if (!this.isOpen()) return this;
         const map = this.map!;
         map.off('click', this.closeOnMapClick);
-        const animation = this.transition(true);
+        const animation = this.transition(true), content = this.content, ghost = content.cloneNode(true) as HTMLElement;
+        // (A copy of the content fades out: an application often takes its element out of the popup when it closes, and the
+        // box would then shrink to its close button during the fade.)
+        content.replaceWith(ghost);
         const finish = () => {
             if (this.closing !== finish) return;
             this.closing = undefined;
+            ghost.replaceWith(content);
             // (The closing animation keeps its last frame. Without this, the popup is transparent when it opens again.)
-            animation?.cancel();
+            for (const a of this.el.getAnimations({subtree: true})) a.cancel();
             this.box.style.pointerEvents = this.clicks;
             // (The focus returns to the marker, or to the map when the marker is no longer on the page.)
             if (this.el.contains(document.activeElement)) (this.opener?.isConnected ? this.opener : map.getCanvas()).focus({preventScroll: true});
@@ -215,13 +226,23 @@ export class Popup extends Overlay {
         return this.fire('close');
     }
 
-    /** Fades in while easing a few pixels toward its resting place; the shape itself never changes. */
+    /**
+     * Fades in and grows from 92% from its tip, and the reverse when it closes. The opacity is on the box and the shadow,
+     * and the scale on the outer element: an opacity on an element above the box would stop the blur of its background.
+     */
     private transition(reverse: boolean): Animation | null {
         if (this.options.animate === false || !this.box.animate || matchMedia('(prefers-reduced-motion: reduce)').matches) return null;
-        const [x, y] = part(this.anchor), dy = y * .12 - 6, dx = dy ? 0 : x * .12 - 6;
-        // (One keyframe: the box comes from it when the popup opens, and goes to it when the popup closes.)
-        return this.box.animate({transform: `translate(${dx}px, ${dy}px)`, opacity: 0, offset: +reverse}, {duration: reverse ? 110 : 180, easing: 'ease-out', fill: reverse ? 'forwards' : 'none'});
+        const timing: KeyframeAnimationOptions = {duration: reverse ? 120 : 180, easing: reverse ? 'ease-in' : 'ease-out', fill: reverse ? 'forwards' : 'none'};
+        // (One keyframe: the popup comes from it when it opens, and goes to it when it closes.)
+        // (The scale is added after the transform that positions the element, so that it grows from the tip: the property
+        // `scale` would come before that transform and move the popup towards the corner of the map.)
+        this.el.animate({transform: 'scale(.92)', offset: +reverse, composite: 'add'}, timing);
+        this.shade?.animate({opacity: 0, offset: +reverse}, timing);
+        return this.box.animate({opacity: 0, offset: +reverse}, timing);
     }
+
+    /** The main API draws the box and its tip as one shape (`GlassPopup` in host.ts). */
+    protected outline() {}
 }
 
 export interface MarkerOptions { element?: HTMLElement; color?: string; anchor?: Anchor; offset?: PointLike; draggable?: boolean; scale?: number; className?: string; rotation?: number; rotationAlignment?: string; pitchAlignment?: string;

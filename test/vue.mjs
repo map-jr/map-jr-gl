@@ -285,6 +285,25 @@ try {
         return warned;
     });
     check('browser: the warning for height 0 names <MapJr> and useMapJr()', flat.length === 2 && flat[0].startsWith('[map-jr-gl] <MapJr>: the container has height 0') && flat[1].startsWith('[map-jr-gl] useMapJr(): the container has height 0'), JSON.stringify(flat));
+    // v-model:color-scheme keeps the value that the control colorScheme() sets (#541).
+    const schemes = await page.evaluate(async () => {
+        const {createApp, h, ref} = await import('vue'), {MapJr} = await import('/dist/vue.js'), {colorScheme} = await import('/dist/controls.js');
+        const scheme = ref('light'), controls = [colorScheme()], seen = [];
+        const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+        const app = createApp({render: () => h(MapJr, {mapStyle: '/style.json', attribution: false, controls, colorScheme: scheme.value, 'onUpdate:colorScheme': v => { scheme.value = v; }, style: 'height:200px'})});
+        app.mount(el);
+        const wait = ms => new Promise(r => setTimeout(r, ms));
+        for (let i = 0; i < 80 && !el.querySelector('.map-jr-ctrl-color-scheme'); i++) await wait(100);
+        const box = () => el.querySelector('.map-jr-map');
+        for (let i = 0; i < 2; i++) {
+            el.querySelector('.map-jr-ctrl-color-scheme').click();
+            await wait(100);
+            seen.push(`${scheme.value}/${box().classList.contains('map-jr-dark') ? 'dark' : 'light'}`);
+        }
+        app.unmount(); el.remove();
+        return seen.join(' ');
+    });
+    check('browser: v-model:color-scheme follows the control colorScheme(), and the map keeps the value', schemes === 'dark/dark light/light', schemes);
     // useMapFeatures gives what the style layers draw, and useMapSource the tile data of one source (#502).
     const kept = await page.evaluate(async () => {
         const {createApp, h, ref} = await import('vue'), {MapJr, useMapFeatures, useMapSource} = await import('/dist/vue.js');

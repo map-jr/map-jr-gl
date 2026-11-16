@@ -53,6 +53,7 @@ The props are the fields of the description of a map (see [the main API](api.md)
 | `firstView` | The first view from a server. See below. |
 | `initialView` | The view at the start, as in the main API: a view, or `{bounds, padding}` to start with a box in view. To render the same box on the server, give `bounds` and `padding` to `renderFirstView`. |
 | `transformRequest` | A function that changes a request before the map makes it, as in the main API. The map calls the function of the last render, so an arrow function in the render works without `useCallback`. |
+| `colorScheme`, `onColorSchemeChange` | The colour scheme, as in the main API. The control `colorScheme()` of `@map-jr/map-jr-gl/controls` calls `onColorSchemeChange` with the new value: keep it in your state and pass it back as `colorScheme`, or the next render sets the old value again. |
 | `className`, `style` | For the element of the component. |
 | `children` | Content over the map, and `MapOverlay` elements. |
 

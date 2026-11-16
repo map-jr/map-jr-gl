@@ -10,7 +10,7 @@ import {Map, logError, type FeatureOptions, type FeaturePlace, type SourceOption
 export type {PaddingInput};
 export type {FeatureOptions, FeaturePlace, SourceOptions};
 import {createStore, type Readable} from './store.ts';
-import {Marker, Popup} from './overlays.ts';
+import {Marker, Popup, part} from './overlays.ts';
 import {dataTypeError, extended, isStylePair, styleFor, withData, type Anchor} from './markers.ts';
 import type {QueriedFeature} from './query.ts';
 import type {Control, ControlPosition} from './controls.ts';
@@ -27,7 +27,7 @@ import type {BackgroundLayerSpecification, CircleLayerSpecification, FillExtrusi
 declare const __DEV__: boolean;
 
 /** The description of a control: see `@map-jr/map-jr-gl/controls`. Controls with the same `key` are the same control. */
-export interface ControlSpec { key: string; position?: ControlPosition; create(): Control }
+export interface ControlSpec { key: string; position?: ControlPosition; create(instance?: () => MapInstance): Control }
 
 /**
  * A position that the application gives: `[lng, lat]`. It is `readonly number[]` and not a pair, because TypeScript
@@ -186,6 +186,11 @@ export interface MapDescription extends MapSetup {
      * state property `color-scheme` of the style (`['global-state', 'color-scheme']`), unless `globalState` gives it.
      */
     colorScheme?: 'auto' | 'light' | 'dark';
+    /**
+     * Called when the control `colorScheme()` changes `colorScheme`, with the new value. The control has changed the
+     * map already (with `patch`); an application that keeps the description in its state writes the value back.
+     */
+    onColorSchemeChange?: (colorScheme: 'auto' | 'light' | 'dark') => void;
     /**
      * Space in CSS pixels at the sides of the map that the view keeps free, for example under a side panel: one number
      * for all sides, or `{top, right, bottom, left}` (a side that is left out is 0). The centre of the view is the centre
@@ -403,6 +408,40 @@ function complete(spec: MapDescription, method: string, fix: string) {
     if (!spec?.style) throw new Error(`[map-jr-gl] ${method}(): the description has no "style". ${fix}`);
 }
 
+/**
+ * The popup of the main API. The box and its tip are one shape, so that one background with the blur and one shadow go
+ * around both. The box clips itself to the shape (its border on the side of the tip is the room of the tip), and a
+ * layer behind it draws the shadow of the same shape, cut out where the box is: a shadow under the translucent box would
+ * show through it, and a `filter` on an element above the box would stop the blur of its background.
+ */
+class GlassPopup extends Popup {
+    protected outline() {
+        const b = this.box;
+        if (!b.isConnected) return;
+        const s = this.shade ??= this.el.insertBefore(document.createElement('div'), b);
+        if (!s.firstChild) { s.className = 'map-jr-popup-shadow'; s.appendChild(document.createElement('div')); new ResizeObserver(() => this.outline()).observe(b); }
+        const side = b.dataset.side!, w = b.offsetWidth, h = b.offsetHeight, P = 24, T = side === 'center' ? 0 : 8;
+        const across = side === 'left' || side === 'right', L = across ? h : w, D = across ? w : h, B = D - T;
+        const r = Math.min(parseFloat(getComputedStyle(b).borderTopLeftRadius) || 0, B / 2, L / 2), x = part(this.anchor)[0];
+        const c = Math.min(Math.max(across ? L / 2 : x * L / 100 + 20 - x * .4, r + 8), L - r - 8);
+        // (The points are written for a tip at the bottom: u along the side of the tip, v towards it.)
+        const at = (o: number, ...uv: number[]) => {
+            let out = '';
+            for (let i = 0; i < uv.length; i += 2) {
+                const u = uv[i], v = uv[i + 1];
+                out += ' ' + (side === 'top' ? [u, D - v] : side === 'right' ? [v, u] : side === 'left' ? [D - v, u] : [u, v]).map(n => +(n + o).toFixed(2)).join(' ');
+            }
+            return out;
+        };
+        const shape = (o: number) => `M${at(o, r, 0)}L${at(o, L - r, 0)}Q${at(o, L, 0, L, r)}L${at(o, L, B - r)}Q${at(o, L, B, L - r, B)}` +
+            (T ? `L${at(o, c + 8, B)}L${at(o, c + 1.5, D - 1.3)}Q${at(o, c, D, c - 1.5, D - 1.3)}L${at(o, c - 8, B)}` : '') +
+            `L${at(o, r, B)}Q${at(o, 0, B, 0, B - r)}L${at(o, 0, r)}Q${at(o, 0, 0, r, 0)}Z`;
+        b.style.clipPath = `path('${shape(0)}')`;
+        Object.assign(s.style, {left: b.offsetLeft - P + 'px', top: b.offsetTop - P + 'px', width: w + 2 * P + 'px', height: h + 2 * P + 'px', clipPath: `path(evenodd,'M0 0H${w + 2 * P}V${h + 2 * P}H0Z${shape(P)}')`});
+        (s.firstChild as HTMLElement).style.clipPath = `path('${shape(P)}')`;
+    }
+}
+
 export function createMap(container: HTMLElement | string, spec: MapDescription): MapInstance { return makeMap(container, spec, 'createMap()'); }
 
 /** `createMap` for the adapters: `name` is what the user wrote (`<MapJr>`, `useMapJr()`), for the warnings that name it. */
@@ -426,6 +465,9 @@ export function makeMap(container: HTMLElement | string, spec: MapDescription, n
     const transform: RequestTransform = (url, kind) => transformLast?.(url, kind);
     if (spec.transformRequest) options.transformRequest = transform;
     const map = new Map(options);
+    // The look of the controls of the main API (the class map-jr-glass, see controls.ts). The compat entry does not set it.
+    const box = map.getContainer();
+    box.classList.add('map-jr-glass');
     // The checks for mistakes of the user, and the texts of their warnings, are in a file that is loaded after the map
     // has started: `check` gives it the kind of the check (see `src/mistakes.ts`). A file that does not load gives no check.
     // `styled`: the map has the style of the last description, so its layers and sources can be compared with the description.
@@ -693,7 +735,7 @@ export function makeMap(container: HTMLElement | string, spec: MapDescription, n
         if (next.controls !== before?.controls) {
             const wanted = new Set((next.controls ?? []).map(c => c.key));
             for (const [key, c] of controls) if (!wanted.has(key)) { map.removeControl(c as any); controls.delete(key); }
-            for (const c of next.controls ?? []) if (!controls.has(c.key)) { const made = c.create(); controls.set(c.key, made); map.addControl(made, c.position); }
+            for (const c of next.controls ?? []) if (!controls.has(c.key)) { const made = c.create(() => host); controls.set(c.key, made); map.addControl(made, c.position); }
         }
         transformLast = next.transformRequest;
         if (before && !next.transformRequest !== !before.transformRequest) map.setTransformRequest(next.transformRequest ? transform : null);
@@ -785,7 +827,7 @@ export function makeMap(container: HTMLElement | string, spec: MapDescription, n
             if (alive) apply(next, now);
         },
         get description() { return now; },
-        destroy() { if (!alive) return; alive = false; cooperate(false); dark?.removeEventListener('change', paint); map.remove(); for (const drop of waiting) drop(); waiting.clear(); },
+        destroy() { if (!alive) return; alive = false; cooperate(false); dark?.removeEventListener('change', paint); map.remove(); box.classList.remove('map-jr-glass', 'map-jr-dark'); for (const drop of waiting) drop(); waiting.clear(); },
         state,
         queryFeatures,
         setFeatureState(target, value) { if (alive) map.setFeatureState(target, value); },
@@ -815,7 +857,7 @@ export function makeMap(container: HTMLElement | string, spec: MapDescription, n
                     m.on('dragstart', () => now.onDragStart?.(at())); m.on('drag', () => now.onDrag?.(at())); m.on('dragend', () => now.onDragEnd?.(at()));
                     return m;
                 }
-                const p = new Popup({anchor: now.anchor, offset: now.offset, closeButton: !!now.onClose, closeOnClick: false}).setLngLat(now.lngLat).setDOMContent(element).addTo(map);
+                const p = new GlassPopup({anchor: now.anchor, offset: now.offset, closeButton: !!now.onClose, closeOnClick: false}).setLngLat(now.lngLat).setDOMContent(element).addTo(map);
                 p.on('close', () => { if (made === p) now.onClose?.(); });
                 return p;
             };
