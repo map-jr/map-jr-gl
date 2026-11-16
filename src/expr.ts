@@ -233,7 +233,7 @@ export function compileExpr(e: any, flags: Flags): Fn {
         case 'geometry-type': flags.dd = true; return c => GEOM[c.f?.type ?? 0];
         case 'zoom': flags.zoom = true; return c => c.zoom;
         case 'heatmap-density': case 'line-progress': return c => c.density ?? 0;
-        case 'feature-state': { const key = e[1]; flags.dd = true; return c => c.f?.state?.[key] ?? null; }
+        case 'feature-state': { const key = arg(1); flags.dd = true; return c => c.f?.state?.[key(c)] ?? null; }
         case 'global-state': {
             // Read when evaluated, so one compiled style follows later changes. Marked like a zoom dependency so the
             // value is never folded into a constant.
@@ -293,11 +293,17 @@ export function compileExpr(e: any, flags: Flags): Fn {
             return c => {
                 const v = a(c);
                 if (v === null || v === undefined) return '';
+                // The text of a `format` expression is its sections without their styles and images.
+                if (typeof v === 'string') return v.includes(STYLE_OPEN) || v.includes(IMAGE_OPEN) ? v.replace(/[^]*|[^]*/g, '') : v;
                 if (COLORS.has(v)) return `rgba(${Math.round(v[0] * 255)},${Math.round(v[1] * 255)},${Math.round(v[2] * 255)},${v[3]})`;
                 return typeof v === 'object' ? JSON.stringify(v) : String(v);
             };
         }
-        case 'to-rgba': { const a = arg(1); return c => { const v = colorize(a(c)); return Array.isArray(v) ? [v[0] * 255, v[1] * 255, v[2] * 255, v[3]] : null; }; }
+        case 'to-rgba': {
+            // An array that is not a colour is a colour written as [r, g, b] or [r, g, b, a], with r, g and b from 0 to 255.
+            const a = arg(1);
+            return c => { const v = colorize(a(c)); return !Array.isArray(v) ? null : COLORS.has(v) ? [v[0] * 255, v[1] * 255, v[2] * 255, v[3]] : [v[0], v[1], v[2], v[3] ?? 1]; };
+        }
         case 'join': { const a = arg(1), b = arg(2); return c => (a(c) ?? []).join(b(c) ?? ''); }
         case 'split': { const a = arg(1), b = arg(2); return c => String(a(c) ?? '').split(b(c) ?? ''); }
         case 'ln2': return () => Math.LN2;
@@ -325,14 +331,35 @@ export function compileExpr(e: any, flags: Flags): Fn {
                 return null;
             };
         }
-        case 'string': case 'boolean': case 'object': case 'array': {
-            const a = args(), t = op === 'array' ? 'object' : op;
+        case 'string': case 'boolean': case 'object': {
+            const a = args();
             return c => {
-                for (const f of a) { const v = f(c); if (typeof v === t && v !== null) return v; }
+                for (const f of a) { const v = f(c); if (typeof v === op && v !== null) return v; }
                 return null;
             };
         }
-        case 'typeof': { const a = arg(1); return c => { const v = a(c); return v === null ? 'null' : Array.isArray(v) ? 'array' : typeof v; }; }
+        case 'array': {
+            // ["array", value, ...], ["array", type, value, ...] or ["array", type, length, value, ...]: the first value
+            // that is an array of that type of item and of that length. A length of null permits every length.
+            const typed = e.length > 2, sized = e.length > 3, a = args(1 + +typed + +sized), t = typed ? e[1] : 'value', n = sized ? e[2] : null;
+            return c => {
+                for (const f of a) { const v = f(c); if (Array.isArray(v) && (n === null || v.length === n) && (t === 'value' || v.every(x => typeof x === t))) return v; }
+                return null;
+            };
+        }
+        case 'typeof': {
+            const a = arg(1);
+            return c => {
+                const v = a(c);
+                if (v === null || v === undefined) return 'null';
+                if (COLORS.has(v)) return 'color';
+                if (!Array.isArray(v)) return typeof v;
+                const t = typeof v[0];
+                return `array<${v.length && t !== 'object' && v.every(x => typeof x === t) ? t : 'value'}, ${v.length}>`;
+            };
+        }
+        // The browser draws every script without a plugin, so every text is supported.
+        case 'is-supported-script': return () => true;
         case 'concat': { const a = args(); return c => a.map(f => f(c) ?? '').join(''); }
         case 'upcase': { const a = arg(1); return c => String(a(c) ?? '').toUpperCase(); }
         case 'downcase': { const a = arg(1); return c => String(a(c) ?? '').toLowerCase(); }
@@ -403,11 +430,11 @@ export function compileExpr(e: any, flags: Flags): Fn {
         case 'number-format': {
             const a = arg(1), o = e[2] ?? {}, cache = new Map<string, Intl.NumberFormat>();
             const opt = (k: string) => o[k] === undefined ? null : compileExpr(o[k], flags);
-            const locale = opt('locale'), min = opt('min-fraction-digits'), max = opt('max-fraction-digits'), currency = opt('currency');
+            const locale = opt('locale'), min = opt('min-fraction-digits'), max = opt('max-fraction-digits'), currency = opt('currency'), unit = opt('unit');
             return c => {
-                const l = locale?.(c), mn = min?.(c), mx = max?.(c), cur = currency?.(c), key = `${l}|${mn}|${mx}|${cur}`;
+                const l = locale?.(c), mn = min?.(c), mx = max?.(c), cur = currency?.(c), u = unit?.(c), key = `${l}|${mn}|${mx}|${cur}|${u}`;
                 let f = cache.get(key);
-                if (!f) cache.set(key, f = new Intl.NumberFormat(l ?? undefined, {minimumFractionDigits: mn ?? undefined, maximumFractionDigits: mx ?? undefined, ...(cur ? {style: 'currency', currency: cur} : {})}));
+                if (!f) cache.set(key, f = new Intl.NumberFormat(l ?? undefined, {minimumFractionDigits: mn ?? undefined, maximumFractionDigits: mx ?? undefined, ...(cur ? {style: 'currency', currency: cur} : u ? {style: 'unit', unit: u} : {})}));
                 return f.format(a(c));
             };
         }

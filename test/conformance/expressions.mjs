@@ -23,6 +23,25 @@ const same = (a, b) => {
     if (a && b && typeof a === 'object' && typeof b === 'object') return JSON.stringify(a) === JSON.stringify(b);
     return a === b || (a == null && b == null);
 };
+// The library keeps the result of "format" and of "image" as one text, and the fixtures write it as an object. This
+// gives the text that the library has for the object of a fixture (see STYLE_OPEN and IMAGE_OPEN in src/expr.ts), so
+// that the two are compared in one form. Three things have no place in the text, and they differ as follows.
+// - "vertical-align" is not supported. A fixture that sets it gets a text that no result is equal to, so it fails.
+// - Of a font stack, the library keeps the first font. A fixture with a second font fails.
+// - The expression gives the name of an image and does not know whether the image is available, so `available` is
+//   not compared.
+const internal = want => {
+    if (!want || typeof want !== 'object' || Array.isArray(want)) return want;
+    if (typeof want.name === 'string' && 'available' in want) return want.name;
+    if (!Array.isArray(want.sections)) return want;
+    return want.sections.map(s => {
+        if (s.verticalAlign != null) return `vertical-align: ${s.verticalAlign}`;
+        if (s.image) return `${s.image.name}`;
+        if (s.scale == null && s.fontStack == null && s.textColor == null || s.text === '') return s.text;
+        const c = s.textColor;
+        return `${s.scale ?? ''}|${s.fontStack ?? ''}|${c ? [c.r, c.g, c.b, c.a].join(',') : ''}${s.text}`;
+    }).join('');
+};
 // Fixtures that do not pass by a decision. A fixture takes the first entry that matches it. `match` gets the id of
 // the fixture (its folder, for example "within/point-within-polygon"), its operator (the first part of the id) and
 // whether the fixture expects a compile error. The decision is 'later' (the work is planned) or 'wontfix' (the
@@ -61,6 +80,11 @@ const walk = dir => {
                 if (want && typeof want === 'object' && Array.isArray(want.values)) want = want.values.map(plain);
                 if (want && typeof want === 'object' && !Array.isArray(want) && 'error' in want) return; // runtime-error cases
                 let got = fn({zoom: globals?.zoom ?? 0, density: globals?.heatmapDensity, f: {type: TYPES[feature?.geometry?.type] ?? 0, id: feature?.id, properties: feature?.properties ?? {}, state: feature?.featureState}});
+                // A property that is a text ("string" or "formatted"): the tile builder makes the text of the value with
+                // String(value ?? ''), where MapLibre adds "to-string" to the expression.
+                const type = t.propertySpec?.type;
+                if (!legacy && (type === 'string' || type === 'formatted')) got = String(got ?? '');
+                want = internal(want);
                 if (isColor && typeof got === 'string') got = parseColor(got);
                 if (Array.isArray(got) && Array.isArray(want) && want.some(Array.isArray)) got = got.map(v => typeof v === 'string' ? parseColor(v) ?? v : v);
                 // Fixtures record colours with alpha premultiplied.
