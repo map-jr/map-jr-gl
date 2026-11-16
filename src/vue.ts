@@ -370,7 +370,9 @@ const MapJrComponent = defineComponent({
         });
         return () => h('div', {class: 'map-jr-vue', style: 'position:relative;width:100%;height:100%'}, [
             h('div', {ref: el, style: 'position:absolute;inset:0', innerHTML: first.value}),
-            slots.default?.({host: host.value, state: state.value}),
+            // (`state` is read when the slot reads it: a slot that does not read it does not render again at each move of the
+            // pointer, which changes `state.pointer`.)
+            slots.default?.({host: host.value, get state() { return state.value; }}),
         ]);
     },
 });

@@ -890,6 +890,17 @@ for (const renderer of ['worker', 'main']) {
             await page.mouse.move(x, y); await page.waitForTimeout(400);
             hover = Math.max(hover, await page.evaluate(() => window.t.host.state.get().hover.length));
         }
+        // `state.pointer` follows each move, also without `interactiveLayers`, and is null when the pointer leaves the map.
+        await page.evaluate(() => { const t = window.t; t.pointers = []; t.stopPointer = t.host.state.subscribe(s => s.pointer, p => t.pointers.push(p)); });
+        await page.mouse.move(600, 400); await page.mouse.move(610, 405);
+        const leave = await page.evaluate(() => {
+            const t = window.t, last = t.pointers.at(-1), moves = t.pointers.length, at = t.host.unproject({x: 610, y: 405});
+            document.querySelector('#host canvas').dispatchEvent(new PointerEvent('pointerleave', {pointerType: 'mouse', clientX: 950, clientY: 405}));
+            t.stopPointer();
+            return {moves, last, near: !!last && Math.abs(last.lngLat[0] - at[0]) < 1e-9 && Math.abs(last.lngLat[1] - at[1]) < 1e-9, after: t.host.state.get().pointer};
+        });
+        check(`[${renderer}] state.pointer has the point and the position at each move, and is null when the pointer leaves the map`, leave.moves === 2 && leave.last?.point.x === 610 && leave.last.point.y === 405 && leave.near && leave.after === null, JSON.stringify(leave));
+        await page.mouse.move(450, 300);
         await page.mouse.click(450, 300); await page.waitForTimeout(500);
         const pointer = await page.evaluate(() => { const t = window.t, c = t.clicks[0]; return {clicks: t.clicks.length, lngLat: c?.lngLat?.length, features: Array.isArray(c?.features), hoverEvents: t.seen.filter(x => x.startsWith('hover:')).length}; });
         check(`[${renderer}] the features under the pointer are in the state, and a click has them`, hover > 0 && pointer.clicks === 1 && pointer.lngLat === 2 && pointer.features && pointer.hoverEvents > 0, JSON.stringify({hover, ...pointer}));

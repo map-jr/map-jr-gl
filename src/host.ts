@@ -49,6 +49,8 @@ export interface ViewInput { center?: Position; zoom?: number; bearing?: number;
  * map, with `padding` in CSS pixels (default 0), and takes the place of `center` and `zoom`, as in MapLibre GL JS.
  */
 export interface InitialView extends ViewInput { bounds?: LngLatBoundsInput; padding?: PaddingInput }
+/** Where the pointer is over the map: `point` in CSS pixels from the top left corner of the map, `lngLat` as `[lng, lat]`. */
+export interface PointerPosition { point: {x: number; y: number}; lngLat: [number, number] }
 export interface MapPointer { point: {x: number; y: number}; lngLat: [number, number]; /** The features of `interactiveLayers` at the point, the top one first. */ features: RenderedFeature[] }
 
 /** Additions to a style: see `extend` in `MapSpec`. */
@@ -160,6 +162,8 @@ export interface MapState {
     view: View;
     /** The features of `interactiveLayers` under the pointer. */
     hover: RenderedFeature[];
+    /** Where the pointer is while it is over the map, or `null`. It changes at each move of the mouse: subscribe with a selector. */
+    pointer: PointerPosition | null;
     /** The thread that draws: known when the map has started. */
     renderer: 'worker' | 'main' | undefined;
     error: Error | undefined;
@@ -389,7 +393,7 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
     // (The height of the container is read after a second, so that a container which gets its height a moment later gives no warning.)
     setTimeout(() => check(0, name), 1000);
     const viewOf = (): View => { const c = map.getCenter(), b = map.getBounds().toArray() as View['bounds']; return {center: [c.lng, c.lat], zoom: map.getZoom(), bearing: map.getBearing(), pitch: map.getPitch(), bounds: b}; };
-    const state = createStore<MapState>({loaded: false, idle: false, moving: false, view: viewOf(), hover: [], renderer: undefined, error: undefined});
+    const state = createStore<MapState>({loaded: false, idle: false, moving: false, view: viewOf(), hover: [], pointer: null, renderer: undefined, error: undefined});
     const controls = new globalThis.Map<string, ReturnType<ControlSpec['create']>>();
     // The images of `images` that the map has, by name. The value says what the image was made from: the text of an
     // image that is given as text (so the same content in a new object is the same image), or else the object itself.
@@ -438,8 +442,8 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
         }
         asking = false;
     };
-    map.on('mousemove', e => { pointer = e.point ?? null; if (now.interactiveLayers?.length || state.get().hover.length) hover(); });
-    map.on('mouseout', () => { pointer = null; hover(); });
+    map.on('mousemove', e => { pointer = e.point ?? null; state.set({pointer: e.point && e.lngLat ? {point: {x: e.point.x, y: e.point.y}, lngLat: [e.lngLat.lng, e.lngLat.lat]} : null}); if (now.interactiveLayers?.length || state.get().hover.length) hover(); });
+    map.on('mouseout', () => { pointer = null; state.set({pointer: null}); hover(); });
     map.on('moveend', () => { if (pointer) hover(); });
     map.on('click', async e => {
         const click = now.onClick, layers = now.interactiveLayers;
