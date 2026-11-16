@@ -79,7 +79,7 @@ and not `patch`. The compat entry has neither member.
   `map.update({cursor: 'crosshair'})`.
 - A field that the new description leaves out is removed from the map. This holds for `markers`, `controls`,
   `cursor`, `sources`, `layers`, `terrain` and the limits of the camera. A source keeps the last data that `data` gave it.
-- The fields that are read when the map is made (`renderer`, `fonts`, `fontFamily`, `interactive`,
+- The fields that are read when the map is made (`renderer`, `fontFamily`, `interactive`,
   `antialias`, `attribution`, `hash`, `nonce`) and `initialView` have no effect in `update`. A change of one of them gives a
   warning.
 
@@ -153,7 +153,7 @@ These fields are read only when the map is made:
 | Field | Meaning |
 |---|---|
 | `renderer` | `'auto'` (the default), `'worker'` or `'main'`: the thread that draws. See [Loading](loading.md). |
-| `fonts`, `fontFamily` | Web fonts for the labels. When the style has `glyphs`, the labels use the glyph files, and these fonts draw only what the files do not have: a font stack or a range that the server does not have, a character missing from the files, and text that the browser must shape. A style without `glyphs` draws all text with these fonts. A style object can also carry font files in `font-faces` (an object that maps a `text-font` name to files, as in the style specification). A `text-font` name or a `font-faces` name becomes a CSS family, a weight and a style: words such as `Bold` (700), `Semibold` (600), `Medium` (500), `Light` (300), `Black` (900) and `Italic` are taken out of the name, and the rest is the family, so `Open Sans Semibold Italic` is the family `Open Sans` at weight 600 in italic. A name without such a word has weight 400. |
+| `fontFamily` | The CSS family for text that has no web font: the map tries it after the family of the `text-font` name. See [Web fonts](#web-fonts). |
 | `interactive` | `false` for a map that the user cannot move. The default is `true`. With `false`, `onClick` and `state.hover` still work, and a touch on the map scrolls the page. |
 | `antialias` | Multisample antialiasing for the canvas. |
 | `attribution` | `false` to show the credits yourself, or options for the built-in credits. |
@@ -197,6 +197,46 @@ so the style from a URL is requested again:
 - a layer whose `type`, `source`, `source-layer`, `minzoom`, `maxzoom` or `before` changes;
 - layers that stay but change their order in `layers`, or a new layer that is earlier in `layers` than a layer that stays;
 - a change of `style` or of a marker layer in the same `update()`.
+
+## Web fonts
+
+The field `fonts` of the description gives web fonts for the labels, in the shape of `font-faces` of the style
+specification: an object by `text-font` name, whose value is the URL of a font file or a list of
+`{url, 'unicode-range'}`. It works with a style object and with a style from a URL.
+
+```js
+import {createMap} from '@map-jr/map-jr-gl';
+
+createMap('map', {
+  style: 'https://tiles.openfreemap.org/styles/liberty',
+  fonts: {
+    'Noto Sans Regular': 'https://example.com/fonts/NotoSans-Regular.woff2',
+    'Noto Sans Bold': [{url: 'https://example.com/fonts/NotoSans-Bold-Latin.woff2', 'unicode-range': ['U+0000-00FF']}],
+  },
+});
+```
+
+- **Which text uses them.** When the style has `glyphs`, the labels use the glyph files, and the web fonts draw only
+  what the files do not have: a font stack or a range that the server does not have, a character missing from the
+  files, and text that the browser must shape. A style without `glyphs` draws all text with the web fonts and the
+  fonts of the browser.
+- **Names.** A `text-font` name or a name of `fonts` becomes a CSS family, a weight and a style. Words such as `Bold`
+  (700), `Semibold` (600), `Medium` (500), `Light` (300), `Black` (900) and `Italic` are taken out of the name, and the
+  rest is the family. So `Open Sans Semibold Italic` is the family `Open Sans` at weight 600 in italic. A name without
+  such a word has weight 400.
+- **The style.** The `font-faces` of the style are loaded too. A name of `fonts` replaces the same name of the style. A
+  relative URL in `fonts` is relative to the page, and one in the style is relative to the style.
+- **`update`.** A name that is new or has a new value loads its font, and the labels are drawn again. A name that
+  leaves `fonts` does not unload its font: the browser keeps a font that was added, so the labels keep it until the
+  page is loaded again. Give another font for that name to replace it.
+- **Failure.** A font file that does not load is an error of the map (`onError`) that names the font, for example
+  `[map-jr-gl] fonts: the font "Noto Sans Bold" did not load from …`. The labels then use the next font of their
+  `text-font`, then `fontFamily`, then the fonts of the browser.
+- **Workers.** The map fetches each file and gives it to the thread that draws, so web fonts also work when the map
+  draws in a worker, which does not see fonts that the CSS of the page loads.
+- **`fontFamily`** (read only when the map is made) is the CSS family that the map tries after the family of the
+  `text-font` name. The default is `"Noto Sans", "Helvetica Neue", Arial, sans-serif`. It has no equal in the style
+  specification.
 
 ## Images for style layers
 
