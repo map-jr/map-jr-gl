@@ -26,6 +26,6 @@ async function ask(event) {
 </script>
 
 <template>
-  <MapJr ref="map" :map-style="style" :extend="boundaries" :initial-view="{center: [-74.1, 40.75], zoom: 9.2}" @click="ask" />
+  <MapJr ref="map" :map-style="style" v-bind="boundaries" :initial-view="{center: [-74.1, 40.75], zoom: 9.2}" @click="ask" />
   <p>{{ names }}</p>
 </template>

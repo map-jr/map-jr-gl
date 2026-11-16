@@ -27,7 +27,7 @@ export default function Boundaries() {
   }
 
   return <>
-    <MapJr ref={map} mapStyle={style} extend={boundaries} initialView={{center: [-74.1, 40.75], zoom: 9.2}} onClick={ask} />
+    <MapJr ref={map} mapStyle={style} {...boundaries} initialView={{center: [-74.1, 40.75], zoom: 9.2}} onClick={ask} />
     <p>{names}</p>
   </>;
 }

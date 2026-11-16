@@ -78,7 +78,7 @@ and not `patch`. The compat entry has neither member.
   `map.patch({cursor: 'crosshair'})` or `map.update({...description, cursor: 'crosshair'})`, not
   `map.update({cursor: 'crosshair'})`.
 - A field that the new description leaves out is removed from the map. This holds for `markers`, `controls`,
-  `cursor`, `extend` and the limits of the camera. A source keeps the last data that `data` gave it.
+  `cursor`, `sources`, `layers`, `terrain` and the limits of the camera. A source keeps the last data that `data` gave it.
 - The fields that are read when the map is made (`renderer`, `fonts`, `fontFamily`, `interactive`,
   `antialias`, `attribution`, `hash`, `nonce`) and `initialView` have no effect in `update`. A change of one of them gives a
   warning.
@@ -88,7 +88,7 @@ The map writes a warning to the console with `console.warn`, once for each map, 
 - The container is in the page, is not hidden, and has height 0 one second after the map is made.
 - An id in `interactiveLayers`, in `layers` of `queryFeatures`, or the source of `querySource`, is not in the style.
 - A layer names a source that the map does not have, for example after its key left `data`.
-- A layer of `extend` names a `before` layer or a source that the style does not have.
+- A layer of `layers` names a `before` layer or a source that the style does not have.
 - Two marker layers have the same `id`.
 - A marker layer has no `image`, or it names an image that the map does not have.
 - A layer gives an image a parameter that is not a slot of the image.
@@ -127,7 +127,9 @@ The library compares each field with the field of the last description:
 | Field | Meaning |
 |---|---|
 | `style` | A style object or the URL of a style (the MapLibre style specification). Required. A new object or URL is a new style. |
-| `extend` | Your own sources and layers on a style from a URL. See below. |
+| `sources` | Sources to add to the sources of the style, by id. A source here replaces the source of the style with the same id. See [Your own layers on a style from a URL](#your-own-layers-on-a-style-from-a-url). |
+| `layers` | Layers to add to the layers of the style: they do not replace them. A layer with `before` goes below the layer of the style with that id, and a layer without it goes on top. See [Your own layers on a style from a URL](#your-own-layers-on-a-style-from-a-url). |
+| `terrain` | 3D terrain in place of the terrain of the style: `{source: 'dem', exaggeration: 1.5}`. `null` or no field means the terrain of the style. |
 | `initialView` | The view at the start: `center` (`[lng, lat]`), `zoom`, `bearing`, `pitch`. In place of `center` and `zoom`, give `bounds` (`[[west, south], [east, north]]` or `[west, south, east, north]`) and the map starts with that box fitted into the view, with `padding` in CSS pixels around it (a number or `{top, right, bottom, left}`, default 0). This is `bounds` with `fitBoundsOptions.padding` of MapLibre GL JS. When the description also has `view`, the map starts at `view` and `bounds` has no effect. The user then moves the map. |
 | `view`, `onViewChange` | A view that your application owns. See below. |
 | `data` | GeoJSON data for GeoJSON sources, by the id of the source. A key with no source of that id makes a GeoJSON source with the default options. See below. |
@@ -165,27 +167,35 @@ For a map in a page that scrolls, set `cooperativeGestures: true` (see the table
 ```js
 createMap(container, {
   style: 'https://tiles.openfreemap.org/styles/liberty',
-  extend: {
-    sources: {routes: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}},
-    layers: [{id: 'routes', type: 'line', source: 'routes', before: 'water_name', paint: {'line-color': '#d6453d', 'line-width': 3}}],
-    terrain: {source: 'dem', exaggeration: 1.5},   // if the style or `sources` has an elevation source
-  },
+  sources: {routes: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}},
+  layers: [{id: 'routes', type: 'line', source: 'routes', before: 'water_name', paint: {'line-color': '#d6453d', 'line-width': 3}}],
+  terrain: {source: 'dem', exaggeration: 1.5},   // if the style or `sources` has an elevation source
 });
 ```
 
-`extend` adds sources and layers to the style when the style has loaded. A layer with `before` goes below the layer
-with that id; without it, the layer goes on top. Give `extend` with other content to change the additions.
+The fields `sources`, `layers` and `terrain` of the description add to the style when the style has loaded. They
+work for a style from a URL as for a style object:
 
-When only `extend` changes, `update()` edits the map: it adds and removes sources and layers, and it sets the changed
+| Field | Rule |
+|---|---|
+| `sources` | Merged with the sources of the style by id. A source of the description replaces the source of the style with the same id. |
+| `layers` | Added to the layers of the style. A layer with `before` goes below the layer with that id, and a layer without it goes on top. |
+| `terrain` | Replaces the terrain of the style. `null` or no field means the terrain of the style. |
+
+`images` and `globalState` are merged by key in the same way (see their rows in [The description](#the-description)),
+and `projection` replaces the projection of the style. A style object that your application writes itself needs
+none of these fields. Up to version 0.5, these three fields were inside a field `extend`, which no longer exists.
+
+When only `sources`, `layers` and `terrain` change, `update()` edits the map: it adds and removes sources and layers, and it sets the changed
 paint properties, layout properties (such as `visibility`) and filters. The style is not requested again, and the
 sources and layers that the application added through `host.map` stay. These changes replace the whole style instead,
 so the style from a URL is requested again and the additions through `host.map` are lost:
 
 - a change of `terrain`;
-- a source that changes, or a source of `extend` (new or removed) with the id of a source of the style;
+- a source that changes, or a source of `sources` (new or removed) with the id of a source of the style;
 - a new layer while the description has `markers`;
 - a layer whose `type`, `source`, `source-layer`, `minzoom`, `maxzoom` or `before` changes;
-- layers that stay but change their order in `extend.layers`, or a new layer that is earlier in `extend.layers` than a layer that stays;
+- layers that stay but change their order in `layers`, or a new layer that is earlier in `layers` than a layer that stays;
 - a change of `style` or of a marker layer in the same `update()`.
 
 ## Images for style layers
@@ -200,10 +210,8 @@ const map = createMap(document.getElementById('map'), {
   style: 'https://tiles.openfreemap.org/styles/liberty',
   initialView: {center: [-74.006, 40.7128], zoom: 12},
   images: {pin},
-  extend: {
-    sources: {places: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [-74.006, 40.7128]}}}},
-    layers: [{id: 'places', type: 'symbol', source: 'places', layout: {'icon-image': 'pin', 'icon-anchor': 'bottom'}}],
-  },
+  sources: {places: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [-74.006, 40.7128]}}}},
+  layers: [{id: 'places', type: 'symbol', source: 'places', layout: {'icon-image': 'pin', 'icon-anchor': 'bottom'}}],
 });
 ```
 
@@ -277,19 +285,17 @@ const map = createMap(document.getElementById('map'), {
   style: 'https://tiles.openfreemap.org/styles/liberty',
   initialView: {center: [-73.996, 40.73], zoom: 11.5},
   images: {pin},
-  extend: {
-    sources: {places: {type: 'geojson', data: places}},
-    layers: [{
-      id: 'places', type: 'symbol', source: 'places',
-      layout: {
-        'icon-anchor': 'bottom',
-        'icon-image': ['image', 'pin', {params: {
-          color: ['match', ['get', 'kind'], 'cafe', '#d6453d', 'park', '#2e9d5b', '#2f7fd1'],
-          stroke: ['case', ['boolean', ['feature-state', 'hover'], false], '#222', '#fff'],
-        }}],
-      },
-    }],
-  },
+  sources: {places: {type: 'geojson', data: places}},
+  layers: [{
+    id: 'places', type: 'symbol', source: 'places',
+    layout: {
+      'icon-anchor': 'bottom',
+      'icon-image': ['image', 'pin', {params: {
+        color: ['match', ['get', 'kind'], 'cafe', '#d6453d', 'park', '#2e9d5b', '#2f7fd1'],
+        stroke: ['case', ['boolean', ['feature-state', 'hover'], false], '#222', '#fff'],
+      }}],
+    },
+  }],
 });
 ```
 
@@ -330,26 +336,26 @@ when the cost of a frame does not grow with the number of icons.
 ## GeoJSON data that changes
 
 Give the data in the field `data`, by the id of a source. A key that is not the id of a source of the style or of
-`extend.sources` makes a GeoJSON source with that id and the default options, so the layers can name it:
+`sources` makes a GeoJSON source with that id and the default options, so the layers can name it:
 
 ```js
 import {createMap} from '@map-jr/map-jr-gl';
 
 const container = document.getElementById('map');
 const routes = id => ({type: 'FeatureCollection', features: [{type: 'Feature', properties: {}, geometry: {type: 'LineString', coordinates: [[-74.01, 40.70], [-73.97, 40.75 + id / 100]]}}]});
-const extend = {layers: [{id: 'routes', type: 'line', source: 'routes', paint: {'line-color': '#d6453d', 'line-width': 3}}]};
+const layers = [{id: 'routes', type: 'line', source: 'routes', paint: {'line-color': '#d6453d', 'line-width': 3}}];
 const url = 'https://tiles.openfreemap.org/styles/liberty';
 
-const map = createMap(container, {style: url, extend, data: {routes: routes(0)}});
+const map = createMap(container, {style: url, layers, data: {routes: routes(0)}});
 
-// Later: other data. `extend` is the same object, so the style is not requested again.
-map.update({style: url, extend, data: {routes: routes(1)}});
+// Later: other data. `layers` is the same array, so the style is not requested again.
+map.update({style: url, layers, data: {routes: routes(1)}});
 ```
 
 - The data of each source is compared by identity. Give a new object to change it.
 - Only the data goes to the map. A style with the data inside it would be compared and sent as a whole.
 - The data stays when the style changes, and the sources that keys of `data` made are made again in the new style.
-- A source that needs options (`cluster`, `promoteId`, `attribution`) is declared in the style or in `extend.sources`,
+- A source that needs options (`cluster`, `promoteId`, `attribution`) is declared in the style or in `sources`,
   with no features, and `data` gives it the features.
 - A key that leaves `data` removes the source that the key made. A layer that still names it draws nothing, and the
   development build writes a warning.
@@ -666,10 +672,8 @@ import {createMap} from '@map-jr/map-jr-gl';
 
 const map = createMap(document.getElementById('map'), {
     style: 'https://demotiles.maplibre.org/style.json',
-    extend: {
-        sources: {points: {type: 'geojson', cluster: true, data: 'https://maplibre.org/maplibre-gl-js/docs/assets/earthquakes.geojson'}},
-        layers: [{id: 'clusters', type: 'circle', source: 'points', paint: {'circle-radius': 12}}],
-    },
+    sources: {points: {type: 'geojson', cluster: true, data: 'https://maplibre.org/maplibre-gl-js/docs/assets/earthquakes.geojson'}},
+    layers: [{id: 'clusters', type: 'circle', source: 'points', paint: {'circle-radius': 12}}],
     interactiveLayers: ['clusters'],
     onClick: async e => {
         const cluster = e.features[0];
@@ -705,11 +709,9 @@ import {createMap} from '@map-jr/map-jr-gl';
 let selected;
 const map = createMap(document.getElementById('map'), {
     style: 'https://demotiles.maplibre.org/style.json',
-    extend: {
-        sources: {points: {type: 'geojson', generateId: true, data: 'https://maplibre.org/maplibre-gl-js/docs/assets/earthquakes.geojson'}},
-        layers: [{id: 'points', type: 'circle', source: 'points',
-            paint: {'circle-color': ['case', ['boolean', ['feature-state', 'selected'], false], '#e00', '#28f']}}],
-    },
+    sources: {points: {type: 'geojson', generateId: true, data: 'https://maplibre.org/maplibre-gl-js/docs/assets/earthquakes.geojson'}},
+    layers: [{id: 'points', type: 'circle', source: 'points',
+        paint: {'circle-color': ['case', ['boolean', ['feature-state', 'selected'], false], '#e00', '#28f']}}],
     interactiveLayers: ['points'],
     onClick: e => {
         const feature = e.features[0];
@@ -722,7 +724,7 @@ const map = createMap(document.getElementById('map'), {
 
 The map keeps the state until it is removed, also when `update` gives a new `style`: a source of the new style with
 the same id draws the state that was set for the old one (`test/host.mjs` checks this with a GeoJSON source of
-`extend`). The state is not part
+`sources`). The state is not part
 of the description, so `update` does not change it.
 
 ## Elements of the page on the map
@@ -834,8 +836,10 @@ A listener that throws does not stop the other listeners of the event. The map r
 `error` event (`onError` of the description gets it, or the console when there is no `onError`). What a listener
 of `error` throws is written to the console.
 
-Each event has `type` (the name of the event) and `target` (the map object, the `map` member above). The table
-has the other members. In TypeScript, the type `MapEvents` has the event of each name, so the parameter of `fn`
+Each event has `type` (the name of the event) and `target` (the `MapHost` that `createMap` returned). The table
+has the other members. A position in an event is `[lng, lat]` and a box is `[[west, south], [east, north]]`, as in
+`onClick` and `state.view`. (The core map, the `map` member above, and `@map-jr/map-jr-gl/maplibre-compat` keep the
+objects of MapLibre GL JS.) In TypeScript, the type `MapEvents` has the event of each name, so the parameter of `fn`
 has the right type, and a name that is not in the table does not compile.
 
 | Type | When | Other members of the event |
@@ -850,10 +854,10 @@ has the right type, and a name that is not in the table does not compile.
 | `rotatestart`, `rotate`, `rotateend` | The bearing changes. | |
 | `pitchstart`, `pitch`, `pitchend` | The pitch changes. | |
 | `dragstart`, `drag`, `dragend` | The user starts to drag the map, drags it, and stops. | `originalEvent` (a `MouseEvent` or a `TouchEvent`). |
-| `click`, `dblclick`, `contextmenu`, `mousedown`, `mousemove`, `mouseup`, `mouseover`, `mouseout` | An event of the mouse on the map. | `point` (`{x, y}` in CSS pixels), `lngLat` (`{lng, lat}`), `originalEvent`, `preventDefault()`, `defaultPrevented`. |
+| `click`, `dblclick`, `contextmenu`, `mousedown`, `mousemove`, `mouseup`, `mouseover`, `mouseout` | An event of the mouse on the map. | `point` (`{x, y}` in CSS pixels), `lngLat` (`[lng, lat]`), `originalEvent`, `preventDefault()`, `defaultPrevented`. A listener that calls `preventDefault()` stops what the map does for the event (a drag, a zoom). |
 | `wheel` | The user turns the wheel over the map. | The same as for the mouse; `originalEvent` is a `WheelEvent`. |
-| `touchstart`, `touchmove`, `touchend`, `touchcancel` | An event of a touch on the map. | The same as for the mouse, and `points` and `lngLats`: one entry for each finger on the map. |
-| `boxzoomstart`, `boxzoomend`, `boxzoomcancel` | A zoom to a box (the Shift key and a drag). | `originalEvent`. `boxzoomend` also has `boxZoomBounds`. |
+| `touchstart`, `touchmove`, `touchend`, `touchcancel` | An event of a touch on the map. | The same as for the mouse, and `points` and `lngLats` (a list of `[lng, lat]`): one entry for each finger on the map. |
+| `boxzoomstart`, `boxzoomend`, `boxzoomcancel` | A zoom to a box (the Shift key and a drag). | `originalEvent`. `boxzoomend` also has `boxZoomBounds` (`[[west, south], [east, north]]`). |
 | `styledata`, `style.load` | The style has changed; a complete style has loaded. | `styledata` has `dataType: 'style'`. |
 | `sourcedata` | A source has new data. | `dataType: 'source'`, `sourceId`, `isSourceLoaded`, `source`. |
 | `data` | Each time that `styledata` or `sourcedata` fires. | The members of that event. |
@@ -865,8 +869,6 @@ has the right type, and a name that is not in the table does not compile.
 | `geolocate` | The geolocate control has a position. | `coords`. |
 | `webglcontextlost`, `webglcontextrestored` | The browser has taken the WebGL context away, or the map has it again. The map starts again on a new canvas with the same view and data. A map with the worker renderer starts again on the main thread and writes one warning when the worker loses the context before its first frame, loses it twice within 10 seconds, or does not draw in the 5 seconds after its start or a restart (it reports no first frame, or stops drawing after it). A worker that does not draw in that time also fires `webglcontextlost` first. When the main thread then loses the context again before its first frame, or does not draw in the 15 seconds after the restart, the map fires `error` and does not start again. The time that the page is hidden, or that the map has no size, does not count. | |
 | `error` | An error of the map. `onError` and `state.error` have the same errors as an `Error`. | `error`. |
-
-In a mouse event, `lngLat` is an object (`{lng, lat}`). In `onClick`, `lngLat` is an array (`[lng, lat]`).
 
 ## Custom protocols
 
@@ -904,9 +906,9 @@ The entry `@map-jr/map-jr-gl` has TypeScript types for the description (`MapSpec
   `readonly number[]`. So an array that is declared apart from the call compiles without `as const`:
   `const NYC = [-74.0065, 40.7085]; createMap(el, {style, initialView: {center: NYC}})`. The map reads the first two
   numbers as `[lng, lat]`. A position that the map gives (`state.view.center`, the result of `unproject`, `lngLat`
-  in `onClick`) is `[number, number]`.
+  in `onClick` and in the events of `listen`) is `[number, number]`.
 - The types that the signatures use are exported: `LngLatBoundsInput` (`maxBounds`, `fitBounds`, `initialView.bounds`),
-  `LngLatBounds` (the `boxZoomBounds` of the event `boxzoomend`; only the type, not the class), `LngLatInput`,
+  `LngLatBounds` (only the type, not the class; no member of the main API has it now), `LngLatInput`,
   `FlyOptions` (`moveTo`) and `Anchor` (`OverlayOptions.anchor` and the anchor of a marker layer).
 - A feature of `state.hover` and of `onClick` has `layer`, the style layer that draws it, with the type `StyleLayer`
   (`id`, `type`, `source`, `paint` and the other members of a layer of the style). `queryFeatures` returns

@@ -30,11 +30,11 @@ const elevation = (unit, terrain) => ({
 export default function Terrain() {
   const [unit, setUnit] = useState('ft'), [terrain, setTerrain] = useState(true), [height, setHeight] = useState(null);
   // Other additions when the unit or the terrain changes. The map finds what is different.
-  const extend = useMemo(() => elevation(unit, terrain), [unit, terrain]);
+  const additions = useMemo(() => elevation(unit, terrain), [unit, terrain]);
   const map = useRef(null);
 
   return <>
-    <MapJr ref={map} mapStyle={style} extend={extend} initialView={{center: MATTERHORN, zoom: 12.4, pitch: 60, bearing: 25}}
+    <MapJr ref={map} mapStyle={style} {...additions} initialView={{center: MATTERHORN, zoom: 12.4, pitch: 60, bearing: 25}}
       onClick={async e => setHeight(await map.current.queryElevation(e.lngLat))} />
     <p>{height === null ? 'Click the map to read the elevation' : `${height.toFixed(0)} m above sea level`}</p>
     <button onClick={() => setUnit(unit === 'ft' ? 'm' : 'ft')}>Contours in {unit === 'ft' ? 'metres' : 'feet'}</button>

@@ -16,7 +16,7 @@ import type {QueriedFeature} from './query.ts';
 import type {Control, ControlPosition} from './controls.ts';
 import type {Checked} from './mistakes.ts';
 import type {FontSource} from './engine.ts';
-import type {LngLatBounds, LngLatBoundsInput} from './lnglat.ts';
+import type {LngLatBoundsInput} from './lnglat.ts';
 import type {PaddingInput} from './geo.ts';
 import type {ProjectionSpecification} from './compat-types.ts';
 
@@ -53,15 +53,9 @@ export interface InitialView extends ViewInput { bounds?: LngLatBoundsInput; pad
 export interface PointerPosition { point: {x: number; y: number}; lngLat: [number, number] }
 export interface MapPointer { point: {x: number; y: number}; lngLat: [number, number]; /** The features of `interactiveLayers` at the point, the top one first. */ features: RenderedFeature[] }
 
-/** Additions to a style: see `extend` in `MapSpec`. */
-export interface StyleExtension {
-    /** Sources to add, by id. */
-    sources?: Record<string, object>;
-    /** Layers to add. A layer goes below the layer with the id `before`, or on top without it. */
-    layers?: ({id: string; before?: string} & Record<string, unknown>)[];
-    /** 3D terrain from an elevation source: `{source: 'dem', exaggeration: 1.5}`. */
-    terrain?: {source: string; exaggeration?: number} | null;
-}
+/** The fields of `MapSpec` that add to the parts of the style: `sources`, `layers` and `terrain`. */
+type StyleParts = Pick<MapSpec, 'sources' | 'layers' | 'terrain'>;
+const parts = (s: MapSpec): StyleParts => ({sources: s.sources, layers: s.layers, terrain: s.terrain});
 
 /** What an image is made from: an SVG document, the URL of an image, or an object that a canvas can draw (an `ImageBitmap`, a canvas, `ImageData`). */
 export type ImageSource = Parameters<Map['addImage']>[1];
@@ -76,10 +70,20 @@ export interface MapSpec extends MapSetup {
     /** A style object or the URL of a style (the MapLibre style specification). A new object or URL is a new style. */
     style: string | object;
     /**
-     * Your own sources and layers on a style that you do not write yourself (a style from a URL): they are added to
-     * the style when it has loaded. A new object with other content changes the map.
+     * Sources to add to the sources of the style, by id. A source here replaces the source of the style that has the
+     * same id. They are added when the style has loaded, so a style from a URL can have them too.
      */
-    extend?: StyleExtension;
+    sources?: Record<string, object>;
+    /**
+     * Layers to add to the layers of the style: they do not replace them. A layer with `before` goes below the layer
+     * of the style with that id, and a layer without it goes on top.
+     */
+    layers?: ({id: string; before?: string} & Record<string, unknown>)[];
+    /**
+     * 3D terrain from an elevation source, `{source: 'dem', exaggeration: 1.5}`, in place of the terrain of the style.
+     * `null` or no field means the terrain of the style.
+     */
+    terrain?: {source: string; exaggeration?: number} | null;
     /** The view at the start: a view, or `bounds` to fit with `padding`. The user then moves the map. */
     initialView?: InitialView;
     /**
@@ -198,8 +202,8 @@ export interface OverlayOptions {
 }
 export interface MapOverlay { update(options: OverlayOptions): void; remove(): void }
 
-/** What each event of `listen` has: its type, and the map object behind the host (see `map` in `MapHost`). */
-export interface MapEventBase<T extends string = string> { type: T; target: Map }
+/** What each event of `listen` has: its type, and the `MapHost` that fired it. */
+export interface MapEventBase<T extends string = string> { type: T; target: MapHost }
 /** An event of a drag of the map by the user (`dragstart`, `drag`, `dragend`). */
 export interface MapDragEvent extends MapEventBase<'dragstart' | 'drag' | 'dragend'> {
     /** The event of the mouse or the touch that moved the map. */
@@ -209,13 +213,14 @@ export interface MapDragEvent extends MapEventBase<'dragstart' | 'drag' | 'drage
 export interface MapPointerEvent<T extends string = string, E extends MouseEvent = MouseEvent> extends MapEventBase<T> {
     /** The place in CSS pixels from the top left corner of the map. */
     point: {x: number; y: number};
-    lngLat: {lng: number; lat: number};
+    /** The position under the pointer, `[lng, lat]`, as in `onClick`. */
+    lngLat: [number, number];
     originalEvent: E;
     preventDefault(): void;
     readonly defaultPrevented: boolean;
 }
 /** An event of a touch: `points` and `lngLats` have one entry for each finger on the map. */
-export interface MapTouchEvent<T extends string = string> extends MapPointerEvent<T, PointerEvent> { points: {x: number; y: number}[]; lngLats: {lng: number; lat: number}[] }
+export interface MapTouchEvent<T extends string = string> extends MapPointerEvent<T, PointerEvent> { points: {x: number; y: number}[]; lngLats: [number, number][] }
 /** An event of the data of the map: `dataType` says whether the style or one source (`sourceId`) is concerned. */
 export interface MapDataEvent<T extends string = string> extends MapEventBase<T> { dataType: 'source' | 'style'; sourceId?: string; isSourceLoaded?: boolean; source?: unknown }
 
@@ -223,7 +228,8 @@ type Plain<K extends string> = {[T in K]: MapEventBase<T>};
 type Pointed<K extends string> = {[T in K]: MapPointerEvent<T>};
 /**
  * The events of `listen`, by type. The state of the map (`state`) and the callbacks of the description (`onClick`,
- * `onViewChange`, `onError`) cover the common needs. These events are those of the map object behind the host.
+ * `onViewChange`, `onError`) cover the common needs. A position is `[lng, lat]` and a box is
+ * `[[west, south], [east, north]]`, as in the rest of this API.
  */
 export interface MapEvents extends
     Plain<'load' | 'idle' | 'render' | 'resize' | 'remove' | 'style.load' | 'webglcontextlost' | 'webglcontextrestored'>,
@@ -237,7 +243,7 @@ export interface MapEvents extends
     /** The box of a zoom with the Shift key and a drag. `boxzoomend` has the bounds of the box. */
     boxzoomstart: MapEventBase<'boxzoomstart'> & {originalEvent: PointerEvent};
     boxzoomcancel: MapEventBase<'boxzoomcancel'> & {originalEvent: Event};
-    boxzoomend: MapEventBase<'boxzoomend'> & {originalEvent: Event; boxZoomBounds: LngLatBounds};
+    boxzoomend: MapEventBase<'boxzoomend'> & {originalEvent: Event; boxZoomBounds: [[number, number], [number, number]]};
     /** About once a second while the map draws: frames per second, and the time of a frame on the CPU in milliseconds. */
     stats: MapEventBase<'stats'> & {fps: number; frameMs: number; labels: number};
     /** The style names an image (`id`) that the map does not have. */
@@ -364,7 +370,7 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
         attributionControl: spec.attribution, minZoom: spec.minZoom, maxZoom: spec.maxZoom, maxPitch: spec.maxPitch,
     };
     for (const k in options) if ((options as any)[k] === undefined) delete (options as any)[k];
-    // (The style is given after the map is made, with a function that adds the additions of `extend` when it has loaded.)
+    // (The style is given after the map is made, with a function that adds the `sources`, `layers` and `terrain` of the description when it has loaded.)
     delete options.style;
     // (The map calls the function of the last description, so a function that is made again in each render does not
     // send the rules of requests to the engine again. Only a change between none and a function does.)
@@ -396,11 +402,11 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
     };
     // (The layers go to the style as copies: the map writes its edits into the style, and the description stays as the application gave it.)
     const copy = <T>(v: T): T => JSON.parse(JSON.stringify(v));
-    // The sources of the base style: an extend source with one of these ids replaces it, and only a new style gives it back.
+    // The sources of the base style: a source of the description with one of these ids replaces it, and only a new style gives it back.
     let baseSources: object = {};
     // The projection of the style itself, which applies when the description has none, and that of the last description.
     let styleProjection: ProjectionSpecification | undefined, wantedProjection = spec.projection;
-    // The ids of the GeoJSON sources that keys of `data` made, because the style and `extend` have no source of that id (#487).
+    // The ids of the GeoJSON sources that keys of `data` made, because the style and `sources` have no source of that id (#487).
     const madeData = new Set<string>();
     // (The `data` of the last description: keys can change while the style loads.)
     let wantedData = spec.data;
@@ -414,10 +420,10 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
         // (The sources of the new style have no data of the description yet: data that was given since `restyle` went to
         // the sources of the style before. It is given again when the new style is there: see `giveData`.)
         sent.clear();
-        check(4, style, next.extend);
-        const made = withData(extended(style, next.extend && {...next.extend, layers: next.extend.layers && copy(next.extend.layers)}), wantedData, false, typeError);
+        check(4, style, parts(next));
+        const made = withData(extended(style, {...parts(next), layers: next.layers && copy(next.layers)}), wantedData, false, typeError);
         madeData.clear();
-        for (const id in wantedData) if (!Object.hasOwn(style.sources ?? {}, id) && !Object.hasOwn(next.extend?.sources ?? {}, id)) madeData.add(id);
+        for (const id in wantedData) if (!Object.hasOwn(style.sources ?? {}, id) && !Object.hasOwn(next.sources ?? {}, id)) madeData.add(id);
         return withMarkers(made, next.markers);
     }}); };
     restyle(spec);
@@ -504,12 +510,12 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
     // (At `idle`, and not when the style comes: an application can add a layer or a source itself in `load`.)
     map.on('idle', () => check(1));
 
-    // A change of `extend` alone goes to the map as edits, so that the style is not loaded again and the layers that the
+    // A change of only `sources`, `layers` and `terrain` goes to the map as edits, so that the style is not loaded again and the layers that the
     // application added through `host.map` stay. It returns false, with nothing changed, for a change that needs a new
     // style: a changed `terrain`, a changed source, a source id that the style has, a changed `type`, `source`,
     // `source-layer`, `minzoom`, `maxzoom` or `before` of a layer, a new order of the layers, or a new layer before
     // one that stays.
-    const edit = (next: StyleExtension = {}, before: StyleExtension = {}, differ: (a: unknown, b: unknown) => boolean) => {
+    const edit = (next: StyleParts, before: StyleParts, differ: (a: unknown, b: unknown) => boolean) => {
         const was = before.layers ?? [], is = next.layers ?? [], ns = next.sources ?? {}, os = before.sources ?? {};
         const ids = (a: typeof is, b: typeof is) => a.filter(l => b.some(x => x.id === l.id)).map(l => l.id).join('\n');
         const kept = is.filter(l => was.some(w => w.id === l.id)), keys = ['paint', 'layout', 'filter', 'id'];
@@ -543,14 +549,14 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
         const differ = (a: unknown, b: unknown) => a !== b && JSON.stringify(a) !== JSON.stringify(b);
         wantedProjection = next.projection;
         wantedData = next.data;
-        // (A new key of `data` makes its source before the edits of `extend`, which can add a layer that names it.)
+        // (A new key of `data` makes its source before the edits of `sources` and `layers`, which can add a layer that names it.)
         if (styled && before) for (const id in next.data) {
             const s = map.getSource(id) as {type?: string} | undefined;
             if (!s) { madeData.add(id); map.addSource(id, {type: 'geojson', data: {type: 'FeatureCollection', features: []}}); }
             else if (!(id in (before.data ?? {})) && s.type !== 'geojson') typeError(id, s.type!);
         }
         // (After a new style the data waits for the `styledata` event: the engine must have the new style first.)
-        const restyled = !!before && (differ(next.style, before.style) || differ(next.extend, before.extend) && !(styled && edit(next.extend, before.extend, differ)) || differ(markerStyles(next.markers), markerStyles(before.markers)));
+        const restyled = !!before && (differ(next.style, before.style) || (['sources', 'layers', 'terrain'] as const).some(k => differ(next[k], before[k])) && !(styled && edit(parts(next), parts(before), differ)) || differ(markerStyles(next.markers), markerStyles(before.markers)));
         if (restyled) { state.set({idle: false}); sent.clear(); restyle(next); }
         else for (const id of madeData) if (!Object.hasOwn(next.data ?? {}, id)) { madeData.delete(id); sent.delete(id); map.removeSource(id); }
         if (next.view && !same(next.view, before?.view) && !reported.some(v => same(next.view, v)) && before) map.jumpTo(next.view);
@@ -642,8 +648,19 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
         if (!source?.getClusterLeaves) throw new Error(`"${id}" is not a GeoJSON source of the style.`);
         return run(source);
     }).catch(e => { throw new Error(`[map-jr-gl] ${name}(): ${(e as Error)?.message?.replace(/^\[map-jr-gl\] /, '')}`); });
+    // An event of the core map as the host gives it: positions as `[lng, lat]`, and the host as `target`. The
+    // descriptors are copied, so that `preventDefault()` and the getter `defaultPrevented` still act on the event of the map.
+    const pair = (p: {lng: number; lat: number}): [number, number] => [p.lng, p.lat];
+    const hostEvent = (e: any) => {
+        const out = Object.defineProperties({} as any, Object.getOwnPropertyDescriptors(e));
+        out.target = host;
+        if (e.lngLat) out.lngLat = pair(e.lngLat);
+        if (e.lngLats) out.lngLats = e.lngLats.map(pair);
+        if (e.boxZoomBounds) out.boxZoomBounds = e.boxZoomBounds.toArray();
+        return out;
+    };
 
-    return {
+    const host: MapHost = {
         update(next) {
             complete(next, 'update', `update() takes the complete description, not only the changed fields. Write map.patch({${Object.keys(next ?? {})[0] ?? 'field'}: …}) to change only some fields.`);
             if (alive) apply(next, now);
@@ -702,13 +719,13 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
                 remove() { const old = made; made = null; old?.remove(); },
             };
         },
-        listen(type, fn: (event: any) => void) { map.on(type, fn); return () => { map.off(type, fn); }; },
+        listen(type, fn: (event: any) => void) { const w = (e: any) => fn(hostEvent(e)); map.on(type, w); return () => { map.off(type, w); }; },
         once(type) {
             return new Promise<any>((resolve, reject) => {
                 const removed = () => new Error(`[map-jr-gl] once("${type}"): the map was removed.`);
                 if (!alive) return reject(removed());
-                if (type === 'load' && state.get().loaded) return resolve({type, target: map});
-                const fn = (event: any) => { map.off(type, fn); waiting.delete(drop); resolve(event); };
+                if (type === 'load' && state.get().loaded) return resolve({type, target: host});
+                const fn = (event: any) => { map.off(type, fn); waiting.delete(drop); resolve(hostEvent(event)); };
                 const drop = () => { map.off(type, fn); reject(removed()); };
                 waiting.add(drop); map.on(type, fn);
             });
@@ -716,4 +733,5 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
         container: map.getContainer(),
         map,
     };
+    return host;
 }

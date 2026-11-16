@@ -59,11 +59,12 @@ console.log(given, view);
 
 // The event follows from the type of the event.
 map.listen('stats', e => console.log(e.fps.toFixed(0), e.frameMs));
-map.listen('click', e => { e.preventDefault(); console.log(e.point.x, e.lngLat.lng, e.originalEvent.button, e.target.getZoom()); });
+map.listen('click', e => { e.preventDefault(); console.log(e.point.x, e.lngLat[0], e.originalEvent.button, e.target.state.get().view.zoom); });
 map.listen('drag', e => console.log(e.type, e.originalEvent instanceof MouseEvent ? e.originalEvent.clientX : e.originalEvent.touches.length));
 map.listen('dragend', (e: MapDragEvent) => console.log(e.originalEvent.timeStamp));
 map.listen('wheel', e => console.log(e.originalEvent.deltaY));
-map.listen('touchmove', e => console.log(e.points.length, e.lngLats[0].lat));
+map.listen('touchmove', e => console.log(e.points.length, e.lngLats[0][1]));
+map.listen('boxzoomend', e => console.log(e.boxZoomBounds[0][0], e.boxZoomBounds[1][1]));
 map.listen('sourcedata', e => console.log(e.sourceId, e.dataType === 'source'));
 map.listen('error', e => console.log(e.error instanceof Error ? e.error.message : e.error));
 const stop: () => void = map.listen('moveend', e => console.log(e.type === 'moveend'));

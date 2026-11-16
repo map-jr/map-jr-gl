@@ -19,7 +19,7 @@ const boundaries = {
 export default function (container, {show, legend}) {
   const map = createMap(container, {
     style,
-    extend: boundaries,
+    ...boundaries,
     initialView: {center: [-74.1, 40.75], zoom: 9.2},
     attribution: {compact: true},
     onClick: async e => {
