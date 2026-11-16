@@ -287,6 +287,36 @@ for (const renderer of ['worker', 'main']) {
         check(`[${renderer}] extend.sources gets features from data, and a partial owned view that the map reported is not applied again`,
             extendData.before === 0 && extendData.after === 1 && extendData.jumps === 0, JSON.stringify(extendData));
 
+        // 3d. setFeatureState and removeFeatureState of the host: queryFeatures reads the state, the fill draws it, and a new style keeps it (#485).
+        const featureState = await page.evaluate(async renderer => {
+            const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const idle = host => new Promise(r => { let at = host.state.get().idle ? performance.now() : 0; const off = host.state.subscribe(s => s.idle, v => { at = v ? performance.now() : 0; }), done = () => { clearInterval(timer); off(); r(); }, timer = setInterval(() => at && performance.now() - at > 500 && done(), 50); setTimeout(done, 8000); });
+            const square = {type: 'Feature', id: 7, properties: {}, geometry: {type: 'Polygon', coordinates: [[[-1, -1], [1, -1], [1, 1], [-1, 1], [-1, -1]]]}};
+            const base = () => ({version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]});
+            const spec = {style: base(), initialView: {center: [0, 0], zoom: 5}, renderer, attribution: false,
+                extend: {sources: {own: {type: 'geojson', data: {type: 'FeatureCollection', features: [square]}}}, layers: [{id: 'own-fill', type: 'fill', source: 'own', paint: {'fill-color': ['case', ['boolean', ['feature-state', 'on'], false], '#f00', '#00f']}}]}};
+            const host = t.lib.createMap(el, spec);
+            const red = async () => { const b = await host.toBlob(), c = new OffscreenCanvas(1, 1).getContext('2d'), i = await createImageBitmap(b); c.drawImage(i, i.width / 2, i.height / 2, 1, 1, 0, 0, 1, 1); const [r, , bl] = c.getImageData(0, 0, 1, 1).data; return r > 200 && bl < 50 ? 'red' : bl > 200 && r < 50 ? 'blue' : `${r},${bl}`; };
+            const read = async () => (await host.queryFeatures({x: 100, y: 75}, {layers: ['own-fill']}))[0]?.state;
+            const settle = async () => { await new Promise(r => setTimeout(r, 300)); await idle(host); };
+            await idle(host);
+            host.setFeatureState({source: 'own', id: 7}, {on: true, n: 1});
+            await settle();
+            const set = {state: await read(), colour: await red()};
+            host.update({...spec, style: base()});
+            await settle();
+            const restyled = {state: await read(), colour: await red()};
+            host.removeFeatureState({source: 'own', id: 7}, 'on');
+            await settle();
+            const removed = {state: await read(), colour: await red()};
+            host.destroy(); el.remove();
+            let after = 'none'; try { host.setFeatureState({source: 'own', id: 7}, {on: true}); } catch (e) { after = e.message; }
+            return {set, restyled, removed, after};
+        }, renderer);
+        check(`[${renderer}] setFeatureState of the host: queryFeatures reads the state, the fill draws it, and a new style keeps it`,
+            featureState.set.state?.on === true && featureState.set.colour === 'red' && featureState.restyled.state?.on === true && featureState.restyled.colour === 'red'
+            && featureState.removed.state?.on === undefined && featureState.removed.state?.n === 1 && featureState.removed.colour === 'blue' && featureState.after === 'none', JSON.stringify(featureState));
+
         // 3d. An update() that changes only `extend` or `images` sets state.idle to false, and back to true when drawn (#411).
         const idleAgain = await page.evaluate(async renderer => {
             const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
