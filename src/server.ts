@@ -5,7 +5,7 @@ import {TileBuilder} from './tiles.ts';
 import type {TileImage, TileIR} from './tile.ts';
 import {CollisionGrid, placeLabels, renderItems, type RenderItem} from './placement.ts';
 import {DEFAULT_FONT, EstimateShaper} from './text.ts';
-import {dataTypeError, extended, fillTemplate, svgSize, templateSlots, withData, VARIANT} from './markers.ts';
+import {dataTypeError, extended, styleFor, fillTemplate, svgSize, templateSlots, withData, VARIANT} from './markers.ts';
 import {renderSVG} from './svg.ts';
 import {styleImages} from './style-images.ts';
 import type {ImageDecoder} from './contour.ts';
@@ -13,8 +13,14 @@ import {decodeImage, decodePNG, decodeWebPLossless} from './webp.ts';
 export {decodePNG, decodeWebPLossless, type ImageDecoder};
 
 export interface RenderOptions {
-    /** A style object or URL, exactly as passed to the client-side map. */
+    /**
+     * A style object or URL, exactly as passed to the client-side map. Of a pair `{light, dark}` the server uses the
+     * style of `colorScheme`: `'dark'` uses `dark`, and `'light'`, `'auto'` or no value use `light`, because the server
+     * cannot read the scheme of the browser.
+     */
     style: unknown;
+    /** The colour scheme for a pair `{light, dark}` in `style`, and for the credits of `renderFirstView`. */
+    colorScheme?: 'auto' | 'light' | 'dark';
     center: LngLatLike;
     zoom: number;
     bearing?: number;
@@ -168,7 +174,7 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
     // Wrapped, not passed by reference: Cloudflare Workers reject calls to a detached global `fetch`.
     const fetchFn = limitedFetch(o, o.fetch ?? ((...a) => fetch(...a)));
     // (`sources`, `layers` and `data` are added to the style. A style from a URL is fetched here, to add them to it and to read its images.)
-    let given = o.style, base: string | undefined;
+    let given = styleFor(o.style, o.colorScheme === 'dark'), base: string | undefined;
     const adds = !!(o.sources || o.layers || o.terrain || o.sprite?.length);
     if (typeof given === 'string') {
         const res = await fetchFn(base = given);

@@ -124,7 +124,7 @@ The library compares each field with the field of the last description:
 
 | Field | Meaning |
 |---|---|
-| `style` | A style object or the URL of a style (the MapLibre style specification). Required. A new object or URL is a new style. |
+| `style` | A style object or the URL of a style (the MapLibre style specification). Required. A new object or URL is a new style. A pair `{light, dark}` of two styles uses the style of the resolved `colorScheme`: see [A light and a dark style](#a-light-and-a-dark-style). |
 | `sources` | Sources to add to the sources of the style, by id. A source here replaces the source of the style with the same id. See [Your own layers on a style from a URL](#your-own-layers-on-a-style-from-a-url). |
 | `layers` | Layers to add to the layers of the style: they do not replace them. A layer with `before` goes below the layer of the style with that id, and a layer without it goes on top. See [Your own layers on a style from a URL](#your-own-layers-on-a-style-from-a-url). |
 | `terrain` | 3D terrain in place of the terrain of the style: `{source: 'dem', exaggeration: 1.5}`. `null` or no field means the terrain of the style. |
@@ -161,6 +161,32 @@ These fields are read only when the map is made:
 
 For a map in a page that scrolls, set `cooperativeGestures: true` (see the table of fields above), or
 `interactive: false` for a map that the user cannot move.
+
+## A light and a dark style
+
+`style` of the description (`@map-jr/map-jr-gl`) also takes a pair `{light, dark}`, where each value is a style object
+or the URL of a style. The map uses the style of the colour scheme that `colorScheme` resolves to, and changes to the
+other style when the scheme changes: when `prefers-color-scheme` changes while `colorScheme` is `'auto'`, or when
+`update()` gives another `colorScheme`. `colorScheme` is `'light'` by default, so write `colorScheme: 'auto'` to
+follow the browser.
+
+```js
+import {createMap} from '@map-jr/map-jr-gl';
+
+createMap('map', {
+  style: {light: 'https://tiles.openfreemap.org/styles/positron', dark: 'https://tiles.openfreemap.org/styles/dark'},
+  colorScheme: 'auto',
+});
+```
+
+A change of scheme is a new style: the map requests the other style (for a URL) and draws the map from the start.
+`sources`, `layers`, `terrain`, `data`, `images` and the view of the description stay, as with each new
+`style`. To change the colours without a request, use one style that reads the global state property `color-scheme`: see
+[One style for both schemes](#one-style-for-both-schemes). In `update()`, a pair with the same content is the same style. An object that has `layers` is a
+style, and not a pair. A pair with only one of the two values uses that style in both schemes, and the development
+build warns once; so does an object that is neither a style nor a pair. The server renderer
+(`@map-jr/map-jr-gl/server`) cannot read the scheme of the browser: it uses `dark` when its option `colorScheme` is
+`'dark'`, and `light` otherwise.
 
 ## Your own layers on a style from a URL
 
@@ -537,18 +563,9 @@ const map = createMap(document.getElementById('map'), {
 ### Two styles
 
 `style` also accepts `{light, dark}`, where each value is a style object or the URL of a style. The map uses the
-style of the resolved scheme and changes it when the scheme changes. A change of scheme requests the other style and
-draws the map from the start. The sources and layers of the description, `data`, `images` and the view stay, as with
-each new `style`.
-
-```js
-import {createMap} from '@map-jr/map-jr-gl';
-
-createMap(document.getElementById('map'), {
-  style: {light: 'https://tiles.openfreemap.org/styles/positron', dark: 'https://tiles.openfreemap.org/styles/dark'},
-  colorScheme: 'auto',
-});
-```
+style of the resolved scheme, and a change of scheme requests the other style and draws the map from the start.
+[A light and a dark style](#a-light-and-a-dark-style) has an example and the details: what stays, the comparison in
+`update()`, the messages of the development build and the server renderer.
 
 ## Controls
 

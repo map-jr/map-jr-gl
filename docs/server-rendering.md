@@ -263,7 +263,8 @@ credits of the sources over it. The option `attribution` gives other credits; `f
 the credits: `'light'` (the default) or `'dark'`. The server cannot read the scheme of the browser, so `'auto'`
 writes both colours with the CSS function `light-dark()`, and a browser without that function shows the light
 colours. The Vue component passes its prop `color-scheme`, with `'light'` when the prop is not set. The Vue component
-uses this function for its `ssr` prop. With React, call it on the server and give the result to the component. See
+uses this function for its `ssr` prop. For a pair `{light, dark}` in `style`, the option `colorScheme` also chooses the
+style: `'dark'` uses `dark`, and each other value uses `light`. With React, call it on the server and give the result to the component. See
 [Vue and Nuxt](vue.md) and [React](react.md).
 
 ## Credits

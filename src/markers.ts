@@ -69,6 +69,10 @@ export function withData(style: any, data: Record<string, unknown> | undefined, 
 }
 
 /** The error of a key of `data` that is the id of a source of another type. */
+/** A pair of styles `{light, dark}` in `style`: an object with `light` or `dark` and no `layers` (a style has `layers`). */
+export const isStylePair = (s: unknown): s is {light?: unknown; dark?: unknown} => !!s && typeof s === 'object' && !('layers' in s) && ('light' in s || 'dark' in s);
+/** The style for the colour scheme: of a pair the value of the scheme (or the other one when it is missing), else `style` itself. */
+export const styleFor = (s: unknown, dark: boolean): unknown => isStylePair(s) ? (dark ? s.dark ?? s.light : s.light ?? s.dark) : s;
 export const dataTypeError = (id: string, type: string) => new Error(`[map-jr-gl] data: the source "${id}" has the type "${type}", and only a GeoJSON source takes data. Use another key in "data", or another id for the source.`);
 
 /**

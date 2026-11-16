@@ -46,7 +46,7 @@ The props are the fields of the description of a map (see [the main API](api.md)
 
 | Prop | Meaning |
 |---|---|
-| `mapStyle` | The style: an object or a URL. Required. (`style` is the CSS style of the element.) |
+| `mapStyle` | The style: an object or a URL, or a pair `{light, dark}` that follows `colorScheme` (see [A light and a dark style](api.md#a-light-and-a-dark-style)). Required. (`style` is the CSS style of the element.) |
 | `view`, `onViewChange` | A view that your component owns: write each change back. Without `view`, the map starts at `initialView` and the user moves it. |
 | `onClick`, `onHover`, `onLoad`, `onIdle`, `onError` | Events of the map. `onError` gets each error (an `Error`). Without it, the map writes each error to the console. |
 | `onMoveend`, `onZoomend`, `onStyleimagemissing`, `onSourcedata` and the others | A prop for each other event of the map: `on`, and the name of the event with a capital first letter (`onStyleload` for `style.load`). The value is the event of `listen` of the main API. See [Events](api.md#events) for the list. For an image that the style asks for and the map does not have, add an image with the name `event.id` to the prop `images` in `onStyleimagemissing`: see [An image that the style asks for](api.md#an-image-that-the-style-asks-for). |

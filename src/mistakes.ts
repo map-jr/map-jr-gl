@@ -4,13 +4,13 @@
  */
 import type {Map} from './map.ts';
 import type {FeatureOptions, MapSpec, SourceOptions} from './host.ts';
-import {templateSlots} from './markers.ts';
+import {isStylePair, templateSlots} from './markers.ts';
 import {maplibreMembers} from './maplibre-members.ts';
 
 /** What a check reads of one map. `warned` has the warnings that the map gave: each mistake gives one warning for each map. */
 export interface Checked { map: Map; warned: Set<string>; spec(): MapSpec; /** The map exists and has loaded the style of the description. */ ready(): boolean }
 
-const texts: ((a: string, b: string) => string)[] = [
+const texts: (((a: string, b: string) => string) | undefined)[] = [
     /* 0 */ a => a + ': the container has height 0, so the map shows nothing. Give the container a height in CSS.',
     /* 1 */ a => `interactiveLayers: the style has no layer "${a}". Write the id of a layer of the style or of "layers".`,
     /* 2 */ (a, b) => `the layer "${a}" uses the source "${b}", which the map does not have. A key of "data" makes a source only while it is in "data": keep "${b}" in "data", or remove the layer.`,
@@ -39,10 +39,12 @@ const texts: ((a: string, b: string) => string)[] = [
 // (Numbers 23 to 29 are taken by other changes.)
 texts[30] = a => `hoverState: a feature of the layer "${a}" has no id, so it gets no feature state "hover". Give the features ids, or set "promoteId" of the source to a property that has one, or "generateId: true" for a GeoJSON source.`;
 texts[40] = a => `colorScheme: ${a} is not a colour scheme, so the map uses the light colours. Write 'auto', 'light' or 'dark'.`;
+texts[45] = () => 'style: the object is not a style, because it has no "version" and "layers", and it is not a pair {light, dark}. Give a style object, the URL of a style, or {light: style, dark: style}.';
+texts[46] = (a, b) => `style: the pair has no "${a}", so the map uses "${b}" in both colour schemes. Give both "light" and "dark".`;
 texts[55] = a => `sprite: ${a} is not a list of sprites. Write a list of {id, url}, for example [{id: 'pins', url: 'https://example.com/sprites/pins'}], and name an image of it in "icon-image" as "pins:name".`;
 
 /** The message with the number `code` for the names `a` and `b`. */
-export const mistake = (code: number, a = '', b = '') => '[map-jr-gl] ' + texts[code](a, b);
+export const mistake = (code: number, a = '', b = '') => '[map-jr-gl] ' + texts[code]!(a, b);
 
 /** A value that JSON keeps as it is: no function, `undefined` in an array, number that is not finite, class instance or cycle. */
 const isJson = (v: unknown, seen: unknown[] = []): boolean => {
@@ -107,6 +109,11 @@ export function check(c: Checked, kind: number, a?: any, b?: any) {
         if (next.sprite !== before?.sprite && next.sprite != null && !(Array.isArray(next.sprite) && next.sprite.every(s => typeof s?.id === 'string' && typeof s.url === 'string'))) warn(55, JSON.stringify(next.sprite));
         for (const name in next.globalState) if (next.globalState[name] !== before?.globalState?.[name] && !isJson(next.globalState[name])) warn(22, name);
         if (next.colorScheme != null && next.colorScheme !== before?.colorScheme && !['auto', 'light', 'dark'].includes(next.colorScheme)) warn(40, JSON.stringify(next.colorScheme));
+        const st = next.style as Record<string, unknown> | undefined;
+        if (st && typeof st === 'object' && differ(st, before?.style)) {
+            if (isStylePair(st)) { if (!st.light !== !st.dark) warn(46, st.light ? 'dark' : 'light', st.light ? 'light' : 'dark'); }
+            else if (!('version' in st && 'layers' in st)) warn(45);
+        }
         if (before) for (const k of setupOnly) if (differ(next[k], before[k])) warn(8, k);
     } else if (kind === 3) {
         const o = b as FeatureOptions;

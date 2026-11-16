@@ -1259,6 +1259,57 @@ for (const renderer of ['worker', 'main']) {
         check(`[${renderer}] colorScheme: no value is light also when the browser asks for dark, 'auto' follows prefers-color-scheme while the page is open, 'light' and 'dark' fix it, with the class map-jr-dark and the colour of a control`,
             schemes.none === L && schemes.autoDark === D && schemes.autoLight === L && schemes.light === L && schemes.dark === D && schemes.autoBack === D && schemes.follows === 'light', JSON.stringify(schemes));
 
+        // `style: {light, dark}` (#491): the style of the resolved scheme, a change of the media query changes it, and a
+        // layer of the description and its data stay. A pair with the same content in update() is the same style.
+        await page.emulateMedia({colorScheme: 'light'});
+        const paired = await page.evaluate(async renderer => {
+            const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:100px;height:80px'}));
+            const make = id => ({version: 8, sources: {}, layers: [{id, type: 'background'}]});
+            const pts = {type: 'FeatureCollection', features: [{type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [0, 0]}}]};
+            const wait = (f, end = Date.now() + 8000) => new Promise(r => { const h = () => { if (f() || Date.now() > end) r(); else setTimeout(h, 50); }; h(); });
+            const ids = () => (host._map.getStyle()?.layers ?? []).map(l => l.id).join(',');
+            let spec = {style: {light: make('L'), dark: make('D')}, colorScheme: 'auto', layers: [{id: 'dots', type: 'circle', source: 'pts'}], data: {pts}, renderer, attribution: false};
+            const host = t.lib.createMap(el, spec), out = {};
+            await wait(() => host.state.get().idle);
+            out.light = ids();
+            // (The development build warns for an object that is neither a style nor a pair, and for a pair with one value.)
+            const said = [], log = console.warn; console.warn = (...a) => { said.push(a.join(' ')); log(...a); };
+            host.update(spec = {...spec, style: {light: make('L')}});
+            // (An object with layers and no version: the engine draws it, so the test has no page error.)
+            host.update(spec = {...spec, style: {sources: {}, layers: [{id: 'L', type: 'background'}]}});
+            await new Promise(r => setTimeout(r, 300));
+            console.warn = log;
+            out.warned = [said.some(w => w.startsWith('[map-jr-gl] style: the pair has no "dark", so the map uses "light"')), said.some(w => w.startsWith('[map-jr-gl] style: the object is not a style'))].join();
+            host.update(spec = {...spec, style: {light: make('L'), dark: make('D')}});
+            await wait(() => ids() === 'L,dots' && host.state.get().idle);
+            window.pairHost = host;
+            return out;
+        }, renderer).catch(e => ({error: String(e)}));
+        await page.emulateMedia({colorScheme: 'dark'});
+        Object.assign(paired, await page.evaluate(async () => {
+            const host = window.pairHost, out = {};
+            const wait = (f, end = Date.now() + 8000) => new Promise(r => { const h = () => { if (f() || Date.now() > end) r(); else setTimeout(h, 50); }; h(); });
+            const ids = () => (host._map.getStyle()?.layers ?? []).map(l => l.id).join(',');
+            await wait(() => ids().startsWith('D') && host.state.get().idle);
+            out.dark = ids();
+            out.data = (await Promise.race([host.querySource('pts'), new Promise(r => setTimeout(() => r({length: 'timeout'}), 3000))])).length;
+            const loads = [];
+            host._map.on('styledataloading', () => loads.push(1));
+            host.update({...host.description, style: JSON.parse(JSON.stringify(host.description.style))});
+            await new Promise(r => setTimeout(r, 200));
+            out.sameReloads = loads.length;
+            // (With no colorScheme the scheme is light, also while the browser asks for dark.)
+            const {colorScheme, ...none} = host.description;
+            host.update(none);
+            await wait(() => ids().startsWith('L') && host.state.get().idle);
+            out.none = ids();
+            host.destroy(); delete window.pairHost;
+            return out;
+        }).catch(e => ({error: String(e)})));
+        await page.emulateMedia({colorScheme: null});
+        check(`[${renderer}] style: {light, dark} uses the style of the resolved scheme (light with no colorScheme), changes it with prefers-color-scheme under 'auto' and keeps a layer of the description and its data`,
+            JSON.stringify(paired) === JSON.stringify({light: 'L,dots', warned: 'true,true', dark: 'D,dots', data: 1, sameReloads: 0, none: 'L,dots'}), JSON.stringify(paired));
+
         // 5b. One method to find features, and the same question kept up to date.
         const found = await page.evaluate(async () => {
             const h = window.t.host, c = h.state.get().view.center, wait = ms => new Promise(r => setTimeout(r, ms));
