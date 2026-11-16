@@ -353,6 +353,29 @@ const map = createMap(container, {style: url, extend, data: {routes: firstRoutes
 map.update({style: url, extend, data: {routes: nextRoutes}});
 ```
 
+### Points from records
+
+`points(records, options)` from `@map-jr/map-jr-gl` makes a GeoJSON `FeatureCollection` with a point for each
+record. It needs no map, so a server can call it too.
+
+```js
+import {points} from '@map-jr/map-jr-gl';
+
+const records = [{id: 'louvre', name: 'Louvre', lng: 2.3376, lat: 48.8606}];
+const places = points(records, {lngLat: r => [r.lng, r.lat], id: r => r.id});
+// {type: 'FeatureCollection', features: [{type: 'Feature', id: 'louvre', properties: records[0], geometry: {type: 'Point', coordinates: [2.3376, 48.8606]}}]}
+map.update({style, data: {places}});
+```
+
+| Option | Meaning |
+|---|---|
+| `lngLat(record, index)` | Required. The position of the record as `[lng, lat]`. |
+| `id(record, index)` | The id of the feature. Without it, a feature has no id: the function does not use the index, because the index changes when a record is removed. |
+| `properties(record, index)` | The properties of the feature. Without it, the properties are the record itself. |
+
+A record whose position is not two finite numbers (a string such as `'2.3'` included) is left out. The development
+build warns once on the page with the index of the first such record; the production build does not warn.
+
 ## Controls
 
 ```js
@@ -784,6 +807,7 @@ const map = createMap('map', {style: 'local://style.json'});
 | Export of `@map-jr/map-jr-gl` | Meaning |
 |---|---|
 | `configure(options)` | Sets how the library loads its workers (`workerUrl`, `createWorker`, `tileWorkers` and the others) for the maps made after the call. See [Loading](loading.md). |
+| `points(records, options)` | Makes a GeoJSON `FeatureCollection` of points from records. See [Points from records](#points-from-records). |
 | `createStore(value)` | Makes a store of the kind that `map.state` is (see [The state](#the-state)), with `get()`, `subscribe()` and `set(part)`. `set` makes a new object and calls the subscribers only when a field changes (compared with `Object.is`). |
 
 ## Types
