@@ -2,7 +2,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {renderToSVG} from '../../src/server.ts';
-import {styleImages} from '../../src/markers.ts';
+import {styleImages} from '../../src/style-images.ts';
 
 const square = (fill: string) => `<svg viewBox="0 0 20 20"><rect width="20" height="20" fill="${fill}"/></svg>`;
 const style = (images: unknown) => ({

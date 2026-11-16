@@ -11,7 +11,7 @@ export type {PaddingInput};
 export type {FeatureOptions, FeaturePlace, SourceOptions};
 import {createStore, type Readable} from './store.ts';
 import {Marker, Popup} from './overlays.ts';
-import {dataTypeError, extended, styleImages, withData, type Anchor} from './markers.ts';
+import {dataTypeError, extended, withData, type Anchor} from './markers.ts';
 import type {QueriedFeature} from './query.ts';
 import type {Control, ControlPosition} from './controls.ts';
 import type {Checked} from './mistakes.ts';
@@ -414,15 +414,23 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
     // (The `fonts` of the last description, with URLs that are relative to the page made absolute: the style has its own base.)
     let wantedFonts = spec.fonts;
     // The images in `metadata['map-jr:images']` of the style (#495), and the `images` of the last description, which win by name.
-    let fromStyle: Record<string, ImageInput> = {}, wantedImages = spec.images;
+    let fromStyle: Record<string, ImageInput> = {}, wantedImages = spec.images, styleTurn = 0;
     const absolute = (faces: FontFaces | undefined) => { const out: FontFaces = {}; for (const f of fontFaces(faces, document.baseURI)) ((out[f.name!] ??= []) as {url: string; 'unicode-range'?: string[]}[]).push({url: f.src, ...(f.unicodeRange ? {'unicode-range': f.unicodeRange.split(', ')} : {})}); return out; };
     const typeError = (id: string, type: string) => setTimeout(() => { if (alive) map.fire('error', {error: dataTypeError(id, type)}); });
     const restyle = (next: MapSpec) => { styled = false; map.setStyle(next.style, {transformStyle: (_, style) => {
         styled = true;
         baseSources = style.sources ?? {};
         styleProjection = style.projection;
-        fromStyle = styleImages(style, message => setTimeout(() => { if (alive) map.fire('error', {error: new Error(message)}); }));
+        // (The code for the images of a style is loaded only for a style that has them. After it has loaded, the map must
+        // still exist and the style must not have been replaced.)
+        const turn = ++styleTurn, given = style.metadata?.['map-jr:images'];
+        fromStyle = {};
         putImages();
+        if (given != null) import('./style-images.ts').then(m => {
+            if (!alive || turn !== styleTurn) return;
+            fromStyle = m.styleImages(style, message => { if (alive) map.fire('error', {error: new Error(message)}); });
+            putImages();
+        });
         // (The description of this moment: it can have changed while the style loaded.)
         if (wantedProjection) style = {...style, projection: copy(wantedProjection)};
         if (wantedFonts) style = {...style, 'font-faces': {...style['font-faces'], ...absolute(wantedFonts)}} as typeof style;
