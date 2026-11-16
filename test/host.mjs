@@ -23,7 +23,12 @@ const check = (name, ok, detail = '') => {
 };
 const finished = watchdog(browser, message => { console.log(`FAIL  ${message}`); failed++; });
 
-for (const renderer of ['worker', 'main']) {
+// RENDERER=main or RENDERER=worker runs the checks of one renderer, and CI runs each in its own job (#519). The checks
+// after the first loop run with RENDERER=main. Without the variable the suite runs everything.
+const only = process.env.RENDERER;
+if (only && only !== 'main' && only !== 'worker') { console.log(`FAIL  RENDERER is "${only}". Write RENDERER=main or RENDERER=worker, or leave it out.`); process.exit(1); }
+const renderers = only ? [only] : ['worker', 'main'];
+for (const renderer of renderers) {
     const page = await browser.newPage({viewport: {width: 900, height: 600}});
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
@@ -1422,6 +1427,8 @@ for (const renderer of ['worker', 'main']) {
     } catch (e) { check(`[${renderer}] the test run was completed`, false, String(e.message).split('\n')[0]); }
     await page.close();
 }
+// (The checks below run with RENDERER=main, including the loop over both renderers near the end.)
+if (only === 'worker') { await browser.close(); process.exit(failed ? 1 : 0); }
 // With the main renderer, the sprite is requested as soon as the style is known, not once the engine file has loaded
 // (#371). The engine file is held back until both files of the sprite have been requested, for 5 s at most; the
 // engine then uses those answers and asks for no file a second time.
