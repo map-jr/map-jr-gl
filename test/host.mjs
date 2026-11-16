@@ -68,7 +68,10 @@ for (const renderer of ['worker', 'main']) {
         const shapes = await page.evaluate(async () => ({...window.t.shapes, click: await window.t.clickOnce}));
         check(`[${renderer}] listen and once: lngLat, lngLats and boxZoomBounds are arrays, and target is the host`,
             shapes.mousemove?.target && shapes.mousemove.lngLat && shapes.touchstart?.target && shapes.touchstart.lngLat && shapes.touchstart.lngLats && shapes.boxzoomend?.target && shapes.boxzoomend.box && shapes.click.target && shapes.click.lngLat && shapes.click.prevent === 'function', JSON.stringify(shapes));
-        await page.evaluate(async () => { const t = window.t; t.stops.forEach(f => f()); t.before = t.host.state.get().view.center;
+        // (The box zoom ends with an animated fit: wait until the map no longer moves, or a slow machine reads `before` mid-fit, #532.)
+        await page.evaluate(async () => { const t = window.t; t.stops.forEach(f => f());
+            for (let i = 0, last = ''; i < 100; i++) { const s = t.host.state.get(), now = s.view.center.join(); if (!s.moving && now === last) break; last = now; await new Promise(r => setTimeout(r, 100)); }
+            t.before = t.host.state.get().view.center;
             t.stops = [t.host.listen('mousedown', e => e.preventDefault())]; });
         await page.mouse.move(450, 300); await page.mouse.down(); await page.mouse.move(600, 400, {steps: 8}); await page.mouse.up(); await page.waitForTimeout(300);
         const held = await page.evaluate(() => { const t = window.t; t.stops.forEach(f => f()); const now = t.host.state.get().view.center; return {before: t.before, now}; });
@@ -96,7 +99,10 @@ for (const renderer of ['worker', 'main']) {
         // 2a. moveTo with `fly` (#43) zooms out and back in on the way, as flyTo of MapLibre GL JS. (For these 1650 pixels
         // at zoom 13.5 in a view of 900 pixels, the curve goes down by 1.07 zoom levels; the state sees some frames of it.)
         const fly = await page.evaluate(async () => {
-            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), start = t.host.state.get().view;
+            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms));
+            // (The new view of check 2 can still be moving on a slow machine, and its end would replace the flight, #532.)
+            for (let i = 0, last = ''; i < 100; i++) { const s = t.host.state.get(), now = s.view.center.join() + s.view.zoom; if (!s.moving && now === last) break; last = now; await wait(100); }
+            const start = t.host.state.get().view;
             let low = 99;
             const off = t.host.state.subscribe(s => s.view.zoom, z => { low = Math.min(low, z); });
             t.host.moveTo({center: [-73.9, 40.75], zoom: start.zoom, fly: {speed: 0.6}});
