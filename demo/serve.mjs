@@ -4,7 +4,7 @@ import {readFile, writeFile, mkdir} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
 import makeStyle from './style.mjs';
-import {markers, images, view} from './markers.mjs';
+import {markers, images, view, asSpec} from './markers.mjs';
 import {shield} from './shields.mjs';
 import {renderToSVG, renderToImage} from '../dist/server.js';
 import {Renderer} from '@takumi-rs/core';
@@ -124,14 +124,14 @@ http.createServer(async (req, res) => {
         if (url.pathname === '/map.jpg') {
             const q = url.searchParams, ratio = +(q.get('ratio') || 1);
             const {image, contentType} = await renderToImage({style, ...view, zoom: +(q.get('zoom') || view.zoom), bearing: +(q.get('bearing') || 0),
-                width: +(q.get('w') || 1000), height: +(q.get('h') || 700), resolveImage: shield, images, markers: q.has('nomarkers') ? [] : [markers], rasteriser, pixelRatio: ratio});
+                width: +(q.get('w') || 1000), height: +(q.get('h') || 700), resolveImage: shield, images, ...(q.has('nomarkers') ? {} : asSpec(markers)), rasteriser, pixelRatio: ratio});
             return send(200, contentType, image, {'cache-control': 'max-age=3600'});
         }
         if (url.pathname === '/ssr' || url.pathname === '/ssr.svg' || url.pathname === '/static') {
             const width = +(url.searchParams.get('w') || 1000), height = +(url.searchParams.get('h') || 700);
             const zoom = +(url.searchParams.get('zoom') || view.zoom), bearing = +(url.searchParams.get('bearing') || view.bearing);
             const t0 = performance.now();
-            const {svg, tiles} = await renderToSVG({style, ...view, zoom, bearing, width, height, resolveImage: shield, ssrOverrides: !url.searchParams.has('full'), images, markers: url.searchParams.has('nomarkers') ? [] : [markers]});
+            const {svg, tiles} = await renderToSVG({style, ...view, zoom, bearing, width, height, resolveImage: shield, ssrOverrides: !url.searchParams.has('full'), images, ...(url.searchParams.has('nomarkers') ? {} : asSpec(markers))});
             const ms = (performance.now() - t0).toFixed(0);
             if (url.pathname === '/ssr.svg') return send(200, 'image/svg+xml', svg, {'x-render-ms': ms});
             const preload = tiles.map(u => `<link rel="preload" as="fetch" crossorigin href="${u}">`).join('');

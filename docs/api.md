@@ -55,11 +55,11 @@ map draws on the main thread (see [Loading](loading.md)).
 ## Change the map
 
 ```js
-let description = {style, initialView, markers: [pins]};
+let description = {style, initialView, data: {pins}, layers: [pinLayer]};
 const map = createMap(container, description);
 
-// Later: other markers. Give the complete description again.
-description = {...description, markers: [{...pins, data: newData}]};
+// Later: other points. Give the complete description again.
+description = {...description, data: {pins: newPins}};
 map.update(description);
 
 // Or change only some fields: the other fields stay as they are.
@@ -77,9 +77,9 @@ and not `patch`. The compat entry has neither member.
 - A description with no `style` throws an error, in `update`, `patch` and `createMap`. Write
   `map.patch({cursor: 'crosshair'})` or `map.update({...description, cursor: 'crosshair'})`, not
   `map.update({cursor: 'crosshair'})`.
-- A field that the new description leaves out is removed from the map. This holds for `markers`, `controls`,
+- A field that the new description leaves out is removed from the map. This holds for `controls`,
   `cursor`, `sources`, `layers`, `terrain` and the limits of the camera. A source keeps the last data that `data` gave it.
-- The fields that are read when the map is made (`renderer`, `fonts`, `fontFamily`, `interactive`,
+- The fields that are read when the map is made (`renderer`, `fontFamily`, `interactive`,
   `antialias`, `attribution`, `hash`, `nonce`) and `initialView` have no effect in `update`. A change of one of them gives a
   warning.
 
@@ -89,8 +89,6 @@ The map writes a warning to the console with `console.warn`, once for each map, 
 - An id in `interactiveLayers`, in `layers` of `queryFeatures`, or the source of `querySource`, is not in the style.
 - A layer names a source that the map does not have, for example after its key left `data`.
 - A layer of `layers` names a `before` layer or a source that the style does not have.
-- Two marker layers have the same `id`.
-- A marker layer has no `image`, or it names an image that the map does not have.
 - A layer gives an image a parameter that is not a slot of the image.
 - An option of `queryFeatures` or `querySource` has no effect in that query, or belongs to the other method.
 
@@ -118,9 +116,9 @@ The library compares each field with the field of the last description:
   nothing changed.
 - A field that is a new object is compared by its content (the style, the limits, the lists of layers and
   controls). So a description that your code makes again each time does not make the map do work.
-- Marker data is compared by identity only, because it can be large. To change the markers of a layer, give a new
-  `data` array. Do not change the old array in place. (The Vue component does this for you: see
-  [Vue and Nuxt](vue.md).)
+- Each value of `data` is compared by identity only, because it can be large. To change the data of a source, give
+  a new object. Do not change the old object in place. This holds for the Vue component too: see
+  [Vue and Nuxt](vue.md).
 
 ## The description
 
@@ -134,11 +132,11 @@ The library compares each field with the field of the last description:
 | `view`, `onViewChange` | A view that your application owns. See below. |
 | `data` | GeoJSON data for GeoJSON sources, by the id of the source. A key with no source of that id makes a GeoJSON source with the default options. See below. |
 | `images` | Images for the style layers, by name: an SVG document, the URL of an image, or `{image, width, height}`. See [Images for style layers](#images-for-style-layers). |
-| `markers` | A list of marker layers, each with an `id` and an `image`. A marker layer is shorthand for a GeoJSON source and a symbol layer with that id. See [Markers](markers.md). A layer with a new `data` array gets the new data. |
 | `controls` | A list of controls. See below. |
 | `projection` | The projection in place of the property `projection` of the style, with the same shape: `{type: 'globe'}`, `{type: 'vertical-perspective'}` or `{type: 'mercator'}`. Without the field, or with `null`, the map uses the projection of the style. A change in `update()` switches the projection without loading the style again, and a new style gets the projection of the description too. `globe` draws the map on a sphere and turns into Mercator between zoom 11 and 12, as in MapLibre GL JS; `vertical-perspective` keeps the sphere at every zoom. On the globe the map draws fills, lines, circles, heatmaps, raster and hillshade layers, symbols and the background (on the sphere only; the space around it stays transparent). 3D terrain, `fill-extrusion` layers and the atmosphere of `sky` are not drawn on the globe yet: the map writes one warning, and they show past zoom 12. `maxBounds` has no effect on the globe. A drag on the globe turns it as in MapLibre GL JS: each move turns the sphere from the place under the last position of the pointer to the place under the new one, and the bearing stays. Near the edge of the globe and near a pole, the place under the pointer drifts away from it, as in MapLibre GL JS, and the centre can pass 85° north or south while the area around the pole fits in the view. On the globe, a new centre without a zoom (`moveTo`, a drag, the fling after it) keeps the size of the globe on the screen, and the zoom changes with the latitude instead (from zoom 1.5 at the equator to -0.048 at 70°N), as in MapLibre GL JS. A `zoom` that is given is used as it is, and the arrow keys keep the zoom. A switch from Mercator to the globe shows the globe when the tiles of the view have been built again for it, or after 1 s at most; until then the map shows Mercator. A label whose anchor turns behind the globe is not drawn from that frame on, also between two placements of the labels. The page loads the code of the globe (about 2 KB gzip) only for a map with a globe. |
 | `globalState` | Values for the `global-state` expressions of the style, by name: `{season: 'winter'}`. A value here is used in place of the default of the same name in `state` of the style. A change in `update()` sets only the names whose values changed and repaints the layers that read them, without loading the style again. A name that the new description leaves out, or gives `null`, goes back to the default of the style. A new style gets the values of the description. A value is JSON (a string, number, boolean, array or plain object); the development build warns once for a value that is not, such as a function or `NaN`. The default is no values. |
 | `interactiveLayers` | The ids of style layers. The features of these layers under the pointer are in `state.hover` and in `onClick`. |
+| `hoverState` | `true`: the map gives the top feature of `interactiveLayers` under the pointer the feature state `hover: true`, and removes it when the pointer leaves the feature or the map. A style highlights it with `['case', ['boolean', ['feature-state', 'hover'], false], 0.9, 0.5]`. A feature needs an id: a feature with no id gets no state, and the development build warns once for the layer (set `promoteId` of the source, or `generateId: true` for a GeoJSON source). A GeoJSON feature whose `id` is a string has no id for the map unless the source has `promoteId`. A layer that does not read `feature-state` costs nothing more. An `icon-image` with `params` that read `feature-state` builds the tiles of the source again at each change, which is slow for a hover. The default is `false`, so an application that sets `hover` itself with `setFeatureState` is not changed. |
 | `onClick` | A function that is called for a click, with `point`, `lngLat` and `features`. |
 | `onError` | A function that is called with each error of the map (an `Error`): a style or a source that does not load, a mistake in a style edit, a failure of the renderer. Use it to send errors to your error tracker. Without it, the map writes each error to the console with `console.error`. |
 | `minZoom`, `maxZoom`, `maxPitch`, `maxBounds` | The limits of the camera. `maxBounds` keeps the whole view inside the bounds, as MapLibre GL JS does: the canvas less the padding, with no regard to bearing and pitch. When the bounds are smaller than that view, the zoom rises until they fill it. A west edge east of the east edge (for example `[[150, -50], [-120, 10]]`) gives bounds that cross the antimeridian. |
@@ -152,7 +150,7 @@ These fields are read only when the map is made:
 | Field | Meaning |
 |---|---|
 | `renderer` | `'auto'` (the default), `'worker'` or `'main'`: the thread that draws. See [Loading](loading.md). |
-| `fonts`, `fontFamily` | Web fonts for the labels. When the style has `glyphs`, the labels use the glyph files, and these fonts draw only what the files do not have: a font stack or a range that the server does not have, a character missing from the files, and text that the browser must shape. A style without `glyphs` draws all text with these fonts. A style object can also carry font files in `font-faces` (an object that maps a `text-font` name to files, as in the style specification). A `text-font` name or a `font-faces` name becomes a CSS family, a weight and a style: words such as `Bold` (700), `Semibold` (600), `Medium` (500), `Light` (300), `Black` (900) and `Italic` are taken out of the name, and the rest is the family, so `Open Sans Semibold Italic` is the family `Open Sans` at weight 600 in italic. A name without such a word has weight 400. |
+| `fontFamily` | The CSS family for text that has no web font: the map tries it after the family of the `text-font` name. See [Web fonts](#web-fonts). |
 | `interactive` | `false` for a map that the user cannot move. The default is `true`. With `false`, `onClick` and `state.hover` still work, and a touch on the map scrolls the page. |
 | `antialias` | Multisample antialiasing for the canvas. |
 | `attribution` | `false` to show the credits yourself, or options for the built-in credits. |
@@ -192,10 +190,49 @@ so the style from a URL is requested again:
 
 - a change of `terrain`;
 - a source that changes, or a source of `sources` (new or removed) with the id of a source of the style;
-- a new layer while the description has `markers`;
 - a layer whose `type`, `source`, `source-layer`, `minzoom`, `maxzoom` or `before` changes;
 - layers that stay but change their order in `layers`, or a new layer that is earlier in `layers` than a layer that stays;
-- a change of `style` or of a marker layer in the same `update()`.
+- a change of `style` in the same `update()`.
+
+## Web fonts
+
+The field `fonts` of the description gives web fonts for the labels, in the shape of `font-faces` of the style
+specification: an object by `text-font` name, whose value is the URL of a font file or a list of
+`{url, 'unicode-range'}`. It works with a style object and with a style from a URL.
+
+```js
+import {createMap} from '@map-jr/map-jr-gl';
+
+createMap('map', {
+  style: 'https://tiles.openfreemap.org/styles/liberty',
+  fonts: {
+    'Noto Sans Regular': 'https://example.com/fonts/NotoSans-Regular.woff2',
+    'Noto Sans Bold': [{url: 'https://example.com/fonts/NotoSans-Bold-Latin.woff2', 'unicode-range': ['U+0000-00FF']}],
+  },
+});
+```
+
+- **Which text uses them.** When the style has `glyphs`, the labels use the glyph files, and the web fonts draw only
+  what the files do not have: a font stack or a range that the server does not have, a character missing from the
+  files, and text that the browser must shape. A style without `glyphs` draws all text with the web fonts and the
+  fonts of the browser.
+- **Names.** A `text-font` name or a name of `fonts` becomes a CSS family, a weight and a style. Words such as `Bold`
+  (700), `Semibold` (600), `Medium` (500), `Light` (300), `Black` (900) and `Italic` are taken out of the name, and the
+  rest is the family. So `Open Sans Semibold Italic` is the family `Open Sans` at weight 600 in italic. A name without
+  such a word has weight 400.
+- **The style.** The `font-faces` of the style are loaded too. A name of `fonts` replaces the same name of the style. A
+  relative URL in `fonts` is relative to the page, and one in the style is relative to the style.
+- **`update`.** A name that is new or has a new value loads its font, and the labels are drawn again. A name that
+  leaves `fonts` does not unload its font: the browser keeps a font that was added, so the labels keep it until the
+  page is loaded again. Give another font for that name to replace it.
+- **Failure.** A font file that does not load is an error of the map (`onError`) that names the font, for example
+  `[map-jr-gl] fonts: the font "Noto Sans Bold" did not load from …`. The labels then use the next font of their
+  `text-font`, then `fontFamily`, then the fonts of the browser.
+- **Workers.** The map fetches each file and gives it to the thread that draws, so web fonts also work when the map
+  draws in a worker, which does not see fonts that the CSS of the page loads.
+- **`fontFamily`** (read only when the map is made) is the CSS family that the map tries after the family of the
+  `text-font` name. The default is `"Noto Sans", "Helvetica Neue", Arial, sans-serif`. It has no equal in the style
+  specification.
 
 ## Images for style layers
 
@@ -328,8 +365,8 @@ What to know about a template:
   SVG icon. A style with `params` shows the icon in this library only.
 - The server renderer draws a template that is given to it in its option `images`. See [Server rendering](server-rendering.md).
 
-For points that only need a picture, a marker layer is shorter to write: it is shorthand for a GeoJSON source and a
-symbol layer with an image. See [Markers](markers.md). [Which icons are fast](markers.md#which-icons-are-fast) says
+For points that only need a picture, give the points in `data` (with `points()`) and a symbol layer with the image
+in `layers`. See [Markers](markers.md). [Which icons are fast](markers.md#which-icons-are-fast) says
 when the cost of a frame does not grow with the number of icons.
 
 ## GeoJSON data that changes
@@ -810,8 +847,8 @@ tip is at the bottom, so use it with `anchor: 'bottom'`. It needs `document`, so
 render on the server.
 
 Use an overlay for some elements with content of the page (a photo, a form, a popup). For many markers, use a
-marker layer (`markers` in the description): it is drawn on the canvas, and 100,000 markers cost about the same
-as ten. See [Markers](markers.md).
+symbol layer with an image: it is drawn on the canvas, and 100,000 markers cost about the same as ten. See
+[Markers](markers.md).
 
 ## Other members of the map
 
@@ -940,7 +977,7 @@ The entry `@map-jr/map-jr-gl` has TypeScript types for the description (`MapSpec
   in `onClick` and in the events of `listen`) is `[number, number]`.
 - The types that the signatures use are exported: `LngLatBoundsInput` (`maxBounds`, `fitBounds`, `initialView.bounds`),
   `LngLatBounds` (only the type, not the class; no member of the main API has it now), `LngLatInput`,
-  `MoveToOptions` and `FlyOptions` (`moveTo`) and `Anchor` (`OverlayOptions.anchor` and the anchor of a marker layer).
+  `MoveToOptions` and `FlyOptions` (`moveTo`) and `Anchor` (`OverlayOptions.anchor`).
 - A feature of `state.hover` and of `onClick` has `layer`, the style layer that draws it, with the type `StyleLayer`
   (`id`, `type`, `source`, `paint` and the other members of a layer of the style). `queryFeatures` returns
   `RenderedFeature[]`, and `querySource` returns `QueriedFeature[]`: a `QueriedFeature` has no style layer.

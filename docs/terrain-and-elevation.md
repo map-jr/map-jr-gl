@@ -91,7 +91,7 @@ How terrain behaves:
 
 - When you look vertically down, the library draws a flat map. A flat map is sharper and faster. The terrain
   appears gradually during the first 10 degrees of tilt.
-- Buildings, labels, marker layers, `Marker` and `Popup` stay on the ground surface.
+- Buildings, labels, symbol layers, `Marker` and `Popup` stay on the ground surface.
 - A label behind a mountain does not show.
 - `project`, `unproject` and the positions in pointer events use the ground surface.
 - When you drag the map, the ground below the pointer stays below the pointer.

@@ -288,6 +288,8 @@ export class Engine {
     private sprite: Sprite | null = null;
     private spriteUrl = '';
     private styleFonts = '';
+    /** The web fonts that were given to the browser, as text (see `loadFonts`). */
+    private fontsLoaded = new Set<string>();
     private images = new Map<string, SpriteIcon & {custom: true}>();
     private missing = new Set<string>();
     /** The images of the map changed (`iconsRev` counts the changes): the icons that the tiles have in buffers are made again. */
@@ -745,15 +747,22 @@ export class Engine {
     /** Loads web fonts into whichever thread the engine runs on, then redraws all text with them. */
     private loadFonts(fonts: FontSource[]) {
         const set = (globalThis as any).fonts ?? (globalThis as any).document?.fonts;
+        // (A face that was loaded before is not loaded again: a new style or description with the same faces costs no request.)
+        const todo = fonts.filter(f => { const key = JSON.stringify([f.family, f.src, f.weight, f.style, f.unicodeRange]); return !this.fontsLoaded.has(key) && this.fontsLoaded.add(key); });
+        if (!todo.length) return;
         this.spritePending++; // fonts are also part of the first complete picture
-        Promise.all(fonts.map(async f => {
-            // The font file is fetched here and given to the browser as bytes. WebKit (Safari) does not load a font from a
-            // URL inside a worker, and the labels then used a fallback font.
-            const bytes = await (await withTimeout(this.fetchAs('Font'))(f.src)).arrayBuffer();
-            const face = new FontFace(f.family, bytes, {weight: String(f.weight ?? '400'), style: f.style ?? 'normal', ...(f.unicodeRange ? {unicodeRange: f.unicodeRange} : {})});
-            set.add(await face.load());
-        })).then(() => { this.atlas.clear(true); this.relabel(); },
-            err => this.emit({type: 'error', message: `Could not load font: ${err.message}`})).finally(() => { this.spritePending--; this.invalidate(); });
+        // (Each font loads on its own: a file that does not load is an error with its name, and the other fonts are still used.)
+        Promise.all(todo.map(async f => {
+            try {
+                // The font file is fetched here and given to the browser as bytes. WebKit (Safari) does not load a font from a
+                // URL inside a worker, and the labels then used a fallback font.
+                const bytes = await (await withTimeout(this.fetchAs('Font'))(f.src)).arrayBuffer();
+                const face = new FontFace(f.family, bytes, {weight: String(f.weight ?? '400'), style: f.style ?? 'normal', ...(f.unicodeRange ? {unicodeRange: f.unicodeRange} : {})});
+                set.add(await face.load());
+            } catch (err) {
+                this.emit({type: 'error', message: `[map-jr-gl] fonts: the font "${f.name ?? f.family}" did not load from ${f.src} (${(err as Error).message}). The labels use the next font of their "text-font".`});
+            }
+        })).then(() => { this.atlas.clear(true); this.relabel(); }).finally(() => { this.spritePending--; this.invalidate(); });
     }
 
     /** The slots of each SVG template (see the command `templates`). */
