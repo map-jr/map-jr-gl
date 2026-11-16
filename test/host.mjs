@@ -2363,5 +2363,45 @@ for (const renderer of ['worker', 'main']) {
         check("a page with style-src 'nonce-x' and no adoptedStyleSheets has styled controls with nonce: 'x' (#47)", ok(e.first), JSON.stringify(e));
     } catch (e) { check('the style sheet in a shadow root and with a nonce was checked', false, String(e.message).split('\n')[0]); }
 }
+// circle-pitch-alignment and circle-pitch-scale (#567). One circle of radius 20 is behind the centre of a map with a
+// pitch of 60 degrees, where the map is drawn at about 0.8 of its size at the centre. The size of the dark box on the
+// screen says how the circle is drawn.
+if ((only ?? 'main') === 'main') {
+    const page = await browser.newPage({viewport: {width: 400, height: 300}});
+    try {
+        await page.goto(`${origin}/bench`);
+        await page.evaluate(async () => {
+            const lib = await import('/dist/map-jr-gl.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:300px;z-index:99'}));
+            const spec = paint => ({style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]},
+                data: {pts: {type: 'FeatureCollection', features: [{type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [0, 0.0824]}}]}},
+                layers: [{id: 'dot', type: 'circle', source: 'pts', paint: {'circle-radius': 20, 'circle-color': '#000', ...paint}}],
+                initialView: {center: [0, 0], zoom: 10, pitch: 60}, renderer: 'main', attribution: false});
+            const host = lib.createMap(el, spec({}));
+            window.circle = async paint => { host.update(spec(paint)); await new Promise(r => setTimeout(r, 600)); };
+            await new Promise(r => { const off = host.state.subscribe(s => s.idle, v => { if (v) { off(); r(); } }); setTimeout(r, 15000); });
+        });
+        const box = async paint => {
+            await page.evaluate(paint => window.circle(paint), paint);
+            const b64 = (await page.screenshot({clip: {x: 0, y: 0, width: 400, height: 300}})).toString('base64');
+            return page.evaluate(async b64 => {
+                const img = new Image(); img.src = 'data:image/png;base64,' + b64; await img.decode();
+                const c = new OffscreenCanvas(400, 300).getContext('2d'); c.drawImage(img, 0, 0, 400, 300);
+                const d = c.getImageData(0, 0, 400, 300).data;
+                let x0 = 400, x1 = -1, y0 = 300, y1 = -1;
+                for (let y = 0; y < 300; y++) for (let x = 0; x < 400; x++) if (d[(y * 400 + x) * 4] < 128) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+                return [x1 - x0 + 1, y1 - y0 + 1];
+            }, b64);
+        };
+        const near = (v, to) => Math.abs(v - to) <= 2.5;
+        const usual = await box({}), viewport = await box({'circle-pitch-scale': 'viewport'});
+        const flat = await box({'circle-pitch-alignment': 'map'}), flatViewport = await box({'circle-pitch-alignment': 'map', 'circle-pitch-scale': 'viewport'});
+        check('a circle behind the centre of a pitched map is smaller, and circle-pitch-scale: viewport keeps its size (#567)',
+            near(usual[0], 32.5) && near(usual[1], 32.5) && near(viewport[0], 40) && near(viewport[1], 40), JSON.stringify({usual, viewport}));
+        check('circle-pitch-alignment: map draws the circle on the map, with either circle-pitch-scale (#567)',
+            near(flat[0], 32.5) && flat[1] < flat[0] * 0.6 && flat[1] > 5 && near(flatViewport[0], 40) && flatViewport[1] < flatViewport[0] * 0.6 && flatViewport[1] > 5, JSON.stringify({flat, flatViewport}));
+    } catch (e) { check('circle-pitch-alignment and circle-pitch-scale were checked', false, String(e.message).split('\n')[0]); }
+    finally { await page.close(); }
+}
 await browser.close();
 process.exit(failed ? 1 : 0);

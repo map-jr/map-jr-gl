@@ -22,7 +22,7 @@ pnpm install
 | `pnpm test:render` | Runs the MapLibre render tests. This takes about 10 minutes. |
 | `pnpm test:size` | Fails if a built file is larger than its budget in `scripts/size-check.mjs`. Run `pnpm build` first. |
 | `pnpm test:package` | Packs the tarball with `pnpm pack` into `.cache/package` and runs `publint` and `arethetypeswrong` (profile `esm-only`) on it. Then it unpacks the tarball into `node_modules` of a copy of the application in `test/consumer`, which imports `@map-jr/map-jr-gl`, `@map-jr/map-jr-gl/controls` and `@map-jr/map-jr-gl/maplibre-compat`, and builds that application with Vite in production mode. This step needs no network. Fails if the build of the application fails, if a file that `package.json` names is not in the tarball, if a source map points at the wrong lines of `src/`, if an image is in the tarball, or if `README.md` shows an image by a relative path (npm shows the README without the images of the repository, so the README uses `https://raw.githubusercontent.com/map-jr/map-jr-gl/main/docs/images/...`). Run `pnpm build` first. |
-| `node test/conformance/ecosystem.mjs --write` | Reads popular plugins and frameworks from npm and writes which parts of the MapLibre API they use that the library does not have (`docs/ecosystem.md`). |
+| `node test/conformance/ecosystem.mjs --write` | Reads popular plugins and frameworks from npm and writes which parts of the MapLibre API they use that the entry `@map-jr/map-jr-gl/maplibre-compat` does not have, or accepts with no effect (`docs/ecosystem.md`). It reads that entry with `test/conformance/compat-surface.mjs`. |
 | `node test/conformance/plugins.mjs --write` | Runs popular plugins with the library in a browser, each in a short scenario. |
 | `node test/conformance/examples.mjs --write` | Runs each example page of the MapLibre documentation with MapLibre GL JS and with the library, and writes the pages that give an error or a different image into `docs/ecosystem.md`. It takes about 30 minutes. `--filter=<regex>` runs a part of the pages. |
 | `node test/conformance/styles.mjs --write` | Draws popular public styles with MapLibre GL JS and with the library, side by side, and writes how much each pair of images differs into `docs/ecosystem.md`. Start `pnpm demo` first. |
@@ -65,7 +65,10 @@ most 400 entries. `test/bench/webdriver.mjs` prints it for a renderer that did n
 Three tests compare the library with MapLibre GL JS:
 
 - **Expression tests.** `pnpm test:expressions` runs the expression tests of the MapLibre style specification.
-- **API check.** `pnpm test:api` compares the methods of `Map` with the type declarations of MapLibre GL JS.
+  The list `deliberate` in `test/conformance/expressions.mjs` labels the fixtures that do not pass by a decision
+  (`later` or `wontfix`), and the output counts each label. Only the owner adds a `wontfix` entry.
+- **API check.** `pnpm test:api` compares the methods of `Map` with the type declarations of MapLibre GL JS. It
+  does not count a method that the declarations tag `@internal`, or one that only the class `Camera` has.
 - **Render tests.** `pnpm test:render` draws each MapLibre render test and compares the result with the expected
   image. The first run downloads the MapLibre GL JS repository and two fonts into `.cache`.
 
@@ -79,6 +82,75 @@ After you change a feature, do these steps:
 3. Run `pnpm test:render` if you changed how the map is drawn.
 4. Run `pnpm status`.
 5. Update [MapLibre compatibility](maplibre-compatibility.md) if a difference changed.
+
+### Render tests
+
+`pnpm test:render` runs each MapLibre render test with the entry `@map-jr/map-jr-gl/maplibre-compat` and gives the
+test one status:
+
+| Status | Meaning |
+|---|---|
+| `match` | 1% of the pixels or less are different from the expected image. |
+| `near` | More than 1% and at most 5% of the pixels are different. |
+| `differ` | More than 5% of the pixels are different. |
+| `error` | The test did not end in 8 seconds plus the time of its own waits, or the test threw an error. A method of an operation that the map does not have is such an error. |
+| `skipped` | The run cannot do the test, and does not draw it. The test has the operation `addCustomLayer`, `updateFakeCanvas` or `pauseTiles`, or it compares a part of the canvas only (`reportWidth`), or its `setStyle` loads a style with tiles of the package `@mapbox/mvt-fixtures`, which this repository does not install. |
+
+A test can script the map: `metadata.test.operations` of its style is a list of operations, and each operation is
+the name of a method of the map with its arguments, or one of the words in the table below. The run applies them
+after the first `idle` event, in the order and with the arguments of the test harness of MapLibre GL JS
+(`applyOperations` in `test/integration/render/render.test.ts` of the checkout in `.cache/maplibre-gl-js`). It then
+lets the map draw two frames and takes the image.
+
+| Operation | What the run does |
+|---|---|
+| `wait` | Waits for a `render` event until `map.loaded()` is true. |
+| `wait` with a number | Waits that number of milliseconds, and then calls `map._render()`. |
+| `idle` | Waits for the next `idle` event. The wait also ends when the map fired `idle` after the last change, or when the map is loaded and does not move after two frames. |
+| `sleep` with a number | Waits that number of milliseconds. |
+| `addImage` | Loads the image from the assets of the tests and calls `map.addImage` with it. |
+| `setStyle` | Calls `map.setStyle` with the style and `{localIdeographFontFamily: false}`. A style that is an object gets the fonts of the run (`font-faces`). |
+| Another name | Calls the method of the map that has this name. |
+
+A test with `metadata.test.pixelRatio` runs in a page that has this device pixel ratio, and the map gets the option
+`pixelRatio`. The run compares at the size of the expected image, which is the size of the test times the pixel
+ratio.
+
+The run prints the count of the skipped tests for each reason in a line that starts with `Skipped, by reason:`.
+
+The first line that the run prints has the totals. Its count for "match or are near" includes the tests that match,
+so it is the number of tests where 5% of the pixels or less are different. Each of the two counts has its percent
+of the tests that ran, with one decimal place. The minimum in `package.json` (`--min`) is
+for the count of tests that match.
+
+A run without `--filter` and `--limit` writes two tracked files in `test/conformance/`. Commit both after a change
+that affects how the map is drawn.
+
+| File | Content |
+|---|---|
+| `render-result.json` | The totals. `near` includes `match`. `differWontfix` and `differLater` are the parts of `differ` that have a label with that decision. `pnpm status` reads this file. |
+| `render-tests.json` | The status of each test, sorted by id and without percentages. Its diff shows the tests that changed. |
+
+Each run also prints a line that starts with `CHANGED:` for a test whose status is not the status in
+`render-tests.json`. A test that is close to a limit can have another status on another machine, because the fonts
+and the software renderer are not the same on each system. The tracked file is from a run on macOS.
+
+`test/conformance/render-expectations.json` gives labels to tests that differ by a decision. An entry has these
+fields:
+
+| Field | Value |
+|---|---|
+| `test` or `pattern` | The id of one test (`sky/fog-color`), or a regular expression for ids (`^sky/`). Give one of the two. |
+| `label` | A short name. Entries with the same label are counted together. |
+| `decision` | `wontfix` for a difference that the owner decided to keep, or `later` for a feature that is not decided or not done yet. Only the owner decides that an entry is `wontfix`. |
+| `reason` | One sentence that says why. |
+| `issue` | Optional. The number of the issue that has the work. |
+
+The first entry that fits a test gives the test its label. The run prints, for each label, how many of its tests
+differ, and the first line says how many of the tests that differ are `wontfix` and how many are `later`. The run
+prints a line that starts with `STALE:` for a test that has a `wontfix` label and matches: remove that entry. It
+prints a line that starts with `UNUSED:` for an entry that fits no test. A label does not change the status of a
+test or the minimum.
 
 ## The gallery and GitHub Pages
 

@@ -10,7 +10,8 @@ BSD-3-Clause.
 - Map Jr. GL reads the MapLibre style specification and has an API that follows the API of MapLibre GL JS.
 - Map Jr. GL contains no files of MapLibre GL JS. All the code is new, except the CSS named below.
 - Some methods follow MapLibre GL JS, so that a map looks the same in the two libraries. Examples: the line breaks
-  in labels, the light on buildings, the size of dashes, and the movement of the camera on 3D terrain.
+  in labels, the light on buildings, the size of dashes, the size of circles on a map with pitch, and the movement of the camera
+  on 3D terrain.
 - The tile URL tokens `{prefix}` and `{ratio}` follow the rules of `CanonicalTileID.url` in `src/source/tile_id.ts`
   of MapLibre GL JS (BSD-3-Clause). The code in `src/resolve.ts` is new.
 - The texts and the CSS of the hint of `cooperativeGestures` in the compat entry follow MapLibre GL JS
@@ -55,7 +56,10 @@ BSD-3-Clause.
   the dial near a pole. The fling follows `computeGlobePanCenter` in the same file, and the latitude that the centre
   can reach follows `_getMaxLatitude` in `vertical_perspective_transform.ts`. The size of the globe during `jumpTo`, `easeTo` and `flyTo` follows `getZoomAdjustment` and `VerticalPerspectiveCameraHelper` (`vertical_perspective_camera_helper.ts`): the zoom of the same size at the equator, the length of a flight on the great circle, and the way of the centre (`interpolateLngLatForGlobe`). The code is new.
 - The tests of MapLibre GL JS and of the MapLibre style specification measure the compatibility of this library.
-  The tests are not part of this repository. The test commands download them.
+  The tests are not part of this repository. The test commands download them. `test/conformance/render.mjs` applies
+  the operations of a render test in the order and with the arguments of `applyOperations` in
+  `test/integration/render/render.test.ts` of MapLibre GL JS (BSD-3-Clause). The code is new, and it is not part of
+  the built files.
 
 MapLibre GL JS started from Mapbox GL JS (version 1.13 and earlier, BSD-3-Clause, Mapbox).
 
