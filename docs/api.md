@@ -61,12 +61,22 @@ const map = createMap(container, description);
 // Later: other markers. Give the complete description again.
 description = {...description, markers: [{...pins, data: newData}]};
 map.update(description);
+
+// Or change only some fields: the other fields stay as they are.
+map.patch({cursor: 'crosshair'});
 ```
+
+`patch(part)` changes only the fields of `part`. It is `map.update({...map.description, ...part})`: a field of
+`part` that is `undefined` is removed (`map.patch({cursor: undefined})`). `map.description` is the description of
+the last `createMap`, `update` or `patch`. It is read only. After `createMap` and `update` it is the object that you
+passed, so do not change that object in place. A framework adapter gives the complete description from its props, so with an adapter use the props
+and not `patch`. The compat entry has neither member.
 
 `update` takes the complete description, not only the changed fields:
 
-- A description with no `style` throws an error, in `update` and in `createMap`. Write
-  `map.update({...description, cursor: 'crosshair'})`, not `map.update({cursor: 'crosshair'})`.
+- A description with no `style` throws an error, in `update`, `patch` and `createMap`. Write
+  `map.patch({cursor: 'crosshair'})` or `map.update({...description, cursor: 'crosshair'})`, not
+  `map.update({cursor: 'crosshair'})`.
 - A field that the new description leaves out is removed from the map. This holds for `markers`, `controls`,
   `cursor`, `extend` and the limits of the camera. A source keeps the last data that `data` gave it.
 - The fields that are read when the map is made (`renderer`, `fonts`, `fontFamily`, `interactive`,
@@ -224,16 +234,15 @@ makes from the name, for example a badge for each value of a property.
 ```js
 import {createMap} from '@map-jr/map-jr-gl';
 
-let description = {
+const map = createMap(document.getElementById('map'), {
   style: 'https://tiles.openfreemap.org/styles/liberty',
   initialView: {center: [-74.006, 40.7128], zoom: 12},
   images: {},
-};
-const map = createMap(document.getElementById('map'), description);
+});
 map.listen('styleimagemissing', event => {
   if (!event.id.startsWith('badge-')) return;   // a name that this code does not make
   const badge = `<svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="9" fill="#d6453d"/></svg>`;
-  map.update(description = {...description, images: {...description.images, [event.id]: badge}});
+  map.patch({images: {...map.description.images, [event.id]: badge}});
 });
 ```
 
@@ -720,6 +729,8 @@ as ten. See [Markers](markers.md).
 | Member | Meaning |
 |---|---|
 | `update(description)` | Changes the map to a new description. Takes the complete description. See [Change the map](#change-the-map). |
+| `patch(part)` | Changes only the fields of `part`; a field that is `undefined` is removed. See [Change the map](#change-the-map). |
+| `description` | The description of the last `createMap`, `update` or `patch` (read only). |
 | `destroy()` | Removes the map and frees its memory. It can be called while the map loads. Call it before you make another map in the same element: a second map in an element that has a map leaves two canvases in the element, and the library warns in the console. |
 | `moveTo(view)` | Moves the camera now. With `duration` (milliseconds), with an animation. With `fly` (`true` or `{curve, speed, screenSpeed, minZoom, maxDuration}`), along the curve of `flyTo` of MapLibre GL JS. With `padding` (a number or `{top, right, bottom, left}`), it also sets the padding of the map, as `padding` of the description does. |
 | `fitBounds(bounds, options)` | Shows an area. The options are `padding` (CSS pixels: a number, or `{top, right, bottom, left}`; it adds to the `padding` of the description), `maxZoom` and `duration` (milliseconds). |
