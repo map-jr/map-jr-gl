@@ -2568,6 +2568,36 @@ for (const mode of renderers) {
         });
         check('[main] maplibre-compat: LngLatBounds keeps the corners as given, and contains, getCenter and fitBounds across the antimeridian agree with MapLibre (#334)',
             llb.ml.length === llb.compat.length && llb.ml.every((v, i) => Math.abs(v - llb.compat[i]) < 1e-3), JSON.stringify(llb));
+        // #564: listens, getStyleUrl and fitScreenCoordinates give the results of MapLibre GL JS (served at /ml/).
+        const m564 = await page.evaluate(async () => {
+            const ml = await import('/ml/maplibre-gl.mjs');
+            ml.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const compat = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const style = {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]};
+            const url = URL.createObjectURL(new Blob([JSON.stringify(style)], {type: 'application/json'}));
+            const run = async lib => {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+                const m = new lib.Map({container: el, renderer: 'main', style, center: [10, 45], zoom: 4, fadeDuration: 0});
+                await new Promise(r => m.loaded?.() ? r() : m.once('load', r));
+                const fn = () => {}, out = [m.listens('click'), m.getStyleUrl()];
+                m.on('click', fn); out.push(m.listens('click'), m.listens('dblclick')); m.off('click', fn); out.push(m.listens('click'));
+                m.on('mousemove', 'bg', fn); out.push(m.listens('mousemove')); m.off('mousemove', 'bg', fn); out.push(m.listens('mousemove'));
+                const camera = () => [m.getCenter().lng, m.getCenter().lat, m.getZoom(), m.getBearing()];
+                m.fitScreenCoordinates([40, 30], [200, 150], 0, {duration: 0}); out.push(...camera());
+                m.fitScreenCoordinates({x: 250, y: 20}, [120, 180], 30, {duration: 0, padding: {top: 10, bottom: 25, left: 40, right: 5}}); out.push(...camera());
+                m.fitScreenCoordinates([100, 50], [110, 60], -100, {duration: 0, maxZoom: 6, padding: 20}); out.push(...camera());
+                m.setStyle(url); out.push(m.getStyleUrl() === url);
+                m.setStyle(style); out.push(m.getStyleUrl());
+                m.remove();
+                const second = new lib.Map({container: el, renderer: 'main', style: url, fadeDuration: 0});
+                out.push(second.getStyleUrl() === url);
+                second.remove(); el.remove();
+                return out;
+            };
+            return {ml: await run(ml), compat: await run(compat)};
+        });
+        check('[main] maplibre-compat: listens, getStyleUrl and fitScreenCoordinates (with a bearing, padding and maxZoom) agree with MapLibre (#564)',
+            m564.ml.length === m564.compat.length && m564.ml.every((v, i) => typeof v === 'number' ? Math.abs(v - m564.compat[i]) < 1e-3 : v === m564.compat[i]), JSON.stringify(m564));
         // #261: the eventData argument of a camera method is on the events of that move, and not on the next move.
         const tagged = await page.evaluate(async () => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
