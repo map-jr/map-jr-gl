@@ -10,7 +10,7 @@ import type {ContourConfig} from './contour.ts';
 export const DEFAULT_FONT = '"Noto Sans", "Helvetica Neue", Arial, sans-serif';
 
 /** The layer types that the library draws. (style.ts has the properties of each.) */
-export const LAYER_TYPES = new Set(['background', 'fill', 'line', 'fill-extrusion', 'circle', 'heatmap', 'raster', 'hillshade', 'symbol']);
+export const LAYER_TYPES = new Set(['background', 'fill', 'line', 'fill-extrusion', 'circle', 'heatmap', 'raster', 'hillshade', 'color-relief', 'symbol']);
 
 export interface LayerJSON {
     /** The page changes the visibility of this layer: its tiles are built also while it is hidden (see `layerRules`). */

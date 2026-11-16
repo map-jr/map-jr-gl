@@ -42,6 +42,7 @@ const SPEC: Record<string, Record<string, [string, PropKind, any]>> = {
         exaggeration: ['hillshade-exaggeration', 'number', 0.5], direction: ['hillshade-illumination-direction', 'number', 335],
         anchor: ['hillshade-illumination-anchor', 'string', 'viewport'],
     },
+    'color-relief': {opacity: ['color-relief-opacity', 'number', 1]},
     symbol: {
         icon: ['icon-image', 'string', ''], iconSize: ['icon-size', 'number', 1], iconOffset: ['icon-offset', 'string', [0, 0]], iconRotate: ['icon-rotate', 'number', 0],
         rotate: ['text-rotate', 'number', 0],
@@ -104,6 +105,12 @@ export interface CompiledLayer {
     ssr?: SSROverrides;
     /** Heatmap layers: the colour for each density (see colorRamp). Line layers: the colours of `line-gradient` along the line. */
     ramp?: Uint8Array;
+    /**
+     * `color-relief` layers: the elevations in metres of the stops of `color-relief-color`, in rising order. `ramp` has
+     * the colour at each. As in MapLibre GL JS, only an `interpolate` expression gives stops, and the colour between two
+     * stops is a linear mix. Any other value gives one transparent stop, so that the layer draws nothing.
+     */
+    relief?: Float32Array;
     /** Symbol layers: the same for layers that have the same data and layout. As in MapLibre, such layers share their labels. */
     group?: string;
 }
@@ -117,11 +124,17 @@ export function compileLayer(l: LayerJSON): CompiledLayer | null {
         p[k] = compileProp(l.paint?.[name] ?? l.layout?.[name], kind, def);
     }
     // A server-only extra filter is compiled separately, so it can be an expression even when the layer's own filter is legacy syntax.
+    let relief: Float32Array | undefined, ramp: Uint8Array | undefined;
+    if (l.type === 'color-relief') {
+        const e = l.paint?.['color-relief-color'], stops = Array.isArray(e) && /^interpolate/.test(e[0]) ? e.slice(3).filter((v, i) => i % 2 < 1 && typeof v === 'number').slice(0, 2048) : []; // (a texture of 2048 pixels is the most that every browser has)
+        relief = Float32Array.from(stops.length > 1 ? stops : [stops[0] ?? 0, (stops[0] ?? 0) + 1]);
+        ramp = colorRamp(stops.length ? e : 'transparent', relief);
+    }
     const own = compileFilter(l.filter), extra = compileFilter(l.metadata?.['map-jr:and-filter']);
     return {
         ssr: l.metadata?.[SSR_KEY],
         group: l.type === 'symbol' ? JSON.stringify([l.source, l['source-layer'], l.minzoom, l.maxzoom, l.filter, l.layout]) : undefined,
-        ramp: l.type === 'heatmap' ? colorRamp(l.paint?.['heatmap-color'] ?? HEATMAP_COLORS) : l.type === 'line' && l.paint?.['line-gradient'] ? colorRamp(l.paint['line-gradient']) : undefined,
+        relief, ramp: ramp ?? (l.type === 'heatmap' ? colorRamp(l.paint?.['heatmap-color'] ?? HEATMAP_COLORS) : l.type === 'line' && l.paint?.['line-gradient'] ? colorRamp(l.paint['line-gradient']) : undefined),
         id: l.id, type: l.type, source: l.source, sourceLayer: l['source-layer'],
         minzoom: l.minzoom ?? -2, maxzoom: l.maxzoom ?? 24,
         // Pattern fills need sprite images, which are not supported yet; hiding them beats drawing solid black.

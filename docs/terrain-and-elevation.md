@@ -3,7 +3,7 @@
 One elevation source (`raster-dem`) gives you four features:
 
 - 3D terrain
-- relief shading (the `hillshade` layer)
+- relief shading (the `hillshade` layer) and colours by elevation (the `color-relief` layer)
 - contour lines
 - elevation queries
 
@@ -116,6 +116,28 @@ map.addLayer({
   paint: {'hillshade-exaggeration': 0.4, 'hillshade-shadow-color': '#5a4a3a'},
 });
 ```
+
+## Colours by elevation
+
+A `color-relief` layer gives each pixel a colour from its elevation in metres. `color-relief-color` is an
+`interpolate` expression of `["elevation"]`, and `color-relief-opacity` is a number from 0 to 1 (the default is 1).
+The colour between two stops is a linear mix. Below the first stop the layer has the colour of the first stop, and
+above the last stop it has the colour of the last stop. The example is for the entry
+`@map-jr/map-jr-gl/maplibre-compat`; with `@map-jr/map-jr-gl`, put the same layer into `layers` of the description.
+
+```js
+map.addLayer({
+  id: 'elevation-colours',
+  type: 'color-relief',
+  source: 'dem',
+  paint: {
+    'color-relief-opacity': 0.8,
+    'color-relief-color': ['interpolate', ['linear'], ['elevation'], 0, '#2e7d32', 1000, '#fdd835', 2500, '#8d6e63', 4000, '#ffffff'],
+  },
+});
+```
+
+The server renderer does not draw the layer.
 
 ## Contour lines
 
