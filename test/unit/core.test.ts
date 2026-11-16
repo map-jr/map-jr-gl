@@ -410,6 +410,11 @@ test('geojson: sources are cut into tiles, clipped, and render and query like ve
     const {svg, tiles} = await renderToSVG({style, center: [lng(TILE.x + 0.5), lat(TILE.y + 0.5)], zoom: 14, width: 300, height: 300, fetch: (async () => { throw new Error('no network expected'); }) as any});
     assert.match(svg, /fill="#ff0000"/); assert.match(svg, /stroke="#00ff00" stroke-width="4"/); assert.match(svg, />Here<\/text>/);
     assert.deepEqual(tiles, []);
+    // A key of `data` with no source of that id makes a GeoJSON source; a key of a source of another type is an error (#487).
+    const view = {center: [lng(TILE.x + 0.5), lat(TILE.y + 0.5)] as [number, number], zoom: 14, width: 300, height: 300, fetch: (async () => { throw new Error('no network expected'); }) as any};
+    const made = await renderToSVG({...view, style: {version: 8, sources: {}, layers: [style.layers[0]]}, data: {g: data}});
+    assert.match(made.svg, /fill="#ff0000"/);
+    await assert.rejects(renderToSVG({...view, style: {version: 8, sources: {g: {type: 'vector', tiles: []}}, layers: []}, data: {g: data}}), /\[map-jr-gl\] data: the source "g" has the type "vector"/);
 });
 
 test('contours: isolines join into rings and open lines, with levels and seamless tile edges', async () => {

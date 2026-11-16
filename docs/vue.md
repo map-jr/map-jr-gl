@@ -50,7 +50,7 @@ production build has no such warning, and there the map stays empty without a me
 | `extend` | Your own sources and layers on a style from a URL: `{sources, layers, terrain}`. See [the main API](api.md). |
 | `images` | Images for the style layers, by name: `:images="{pin: pinSvg}"`. See [Images for style layers](api.md#images-for-style-layers). The render on the server draws those that are SVG documents. |
 | `markers` | A list of marker layers, each with the name of an image of `images` (or of a `MapImage`). See [Markers](markers.md). |
-| `data` | GeoJSON data for sources of the style, by the id of the source: `:data="{routes}"`. See "GeoJSON data that changes" in [the main API](api.md). Use a `shallowRef` for each value, and give a new object to change it. |
+| `data` | GeoJSON data for GeoJSON sources, by the id of the source: `:data="{routes}"`. A key with no source of that id makes a GeoJSON source. See "GeoJSON data that changes" in [the main API](api.md). Use a `shallowRef` for each value, and give a new object to change it. |
 | `interactive-layers` | The ids of style layers whose features are found under the pointer. |
 | `controls` | Controls from `@map-jr/map-jr-gl/controls`: `:controls="[navigation(), scale()]"`. See [the main API](api.md). |
 | `min-zoom`, `max-zoom`, `max-pitch`, `max-bounds`, `cursor`, `cooperative-gestures`, `padding`, `projection` | As in [the main API](api.md). `:projection="{type: 'globe'}"` draws the map on a globe. |
