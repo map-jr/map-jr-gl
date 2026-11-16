@@ -6,6 +6,12 @@ import type {CameraOptions as CoreCameraOptions} from './engine.ts';
 import type {CameraInput} from './map.ts';
 import type {Control} from './controls.ts';
 import type {LngLat, LngLatBounds, LngLatBoundsInput} from './lnglat.ts';
+import type {AttributionControl} from './controls.ts';
+import type {NavigationControl, ScaleControl, FullscreenControl, GeolocateControl, ScaleUnit} from './controls-more.ts';
+import type {Anchor} from './markers.ts';
+import type {PopupOffset} from './overlays.ts';
+import type {ProtocolFunction} from './protocols.ts';
+import type {FullscreenControl as CompatFullscreenControl, Marker, Popup} from './maplibre-compat.ts';
 
 /** An event of the map. Its `target` is the map of this entry. */
 export type MapEvent = CoreMapEvent & {target: Map};
@@ -30,7 +36,9 @@ export type MapBoxZoomEvent = MapEvent & {originalEvent: MouseEvent; boxZoomBoun
 export type MapLibreZoomEvent = MapBoxZoomEvent;
 export type MapMovementEvent = MapLibreEvent<MouseEvent | TouchEvent | WheelEvent | undefined>;
 export type MapDataEvent = MapEvent & {dataType: 'source' | 'style'};
-export type MapSourceDataEvent = MapDataEvent & {dataType: 'source'; sourceId: string; isSourceLoaded: boolean; sourceDataType?: 'metadata' | 'content' | 'visibility' | 'idle'};
+export type MapSourceDataEvent = MapDataEvent & {dataType: 'source'; sourceId: string; isSourceLoaded: boolean; sourceDataType?: MapSourceDataType};
+/** What an event of the data of a source has in `sourceDataType`. */
+export type MapSourceDataType = 'metadata' | 'content' | 'visibility' | 'idle';
 export type MapStyleDataEvent = MapDataEvent & {dataType: 'style'};
 export type MapStyleImageMissingEvent = MapEvent & {id: string};
 export type MapContextEvent = MapEvent & {originalEvent?: WebGLContextEvent};
@@ -200,3 +208,139 @@ export type VectorTileSource = Source;
 export type RasterTileSource = Source;
 export type RasterDEMTileSource = Source;
 export type ImageSource = Source & {updateImage(options: {url?: string; coordinates?: unknown}): unknown; setCoordinates(coordinates: unknown): unknown};
+
+// ---- More names of MapLibre GL JS that applications and wrappers write (issue #561). Each type has what this
+// library accepts. A member that has no effect here says so in its comment.
+
+/** The first argument of a constructor. */
+type OptionsOf<C extends abstract new (...args: any) => unknown> = NonNullable<ConstructorParameters<C>[0]>;
+/** The options of `new NavigationControl(options)`: `showZoom`, `showCompass` and `visualizePitch`. The library has no roll, so there is no `visualizeRoll`. */
+export type NavigationControlOptions = OptionsOf<typeof NavigationControl>;
+/**
+ * The options of `new GeolocateControl(options)`. `showAccuracyCircle` has no effect: the control shows a dot without
+ * the circle. `zoom` is the lowest zoom that the map takes at the position (default 14). MapLibre GL JS has
+ * `fitBoundsOptions` for that, which this library does not accept.
+ */
+export type GeolocateControlOptions = OptionsOf<typeof GeolocateControl>;
+/** The options of `new FullscreenControl(options)`. `container` has no effect: the container of the map goes fullscreen. */
+export type FullscreenControlOptions = OptionsOf<typeof FullscreenControl>;
+/** The options of `new ScaleControl(options)`: `maxWidth` in pixels and `unit`. */
+export type ScaleControlOptions = OptionsOf<typeof ScaleControl>;
+/** The options of `new AttributionControl(options)`: `compact` and `customAttribution`. */
+export type AttributionControlOptions = OptionsOf<typeof AttributionControl>;
+/**
+ * The options of the `LogoControl` of MapLibre GL JS. `compact` has no effect: this library has no logo, the control
+ * adds an empty element, and its constructor takes no argument.
+ */
+export type LogoControlOptions = {compact?: boolean};
+/** The unit of the `ScaleControl`. */
+export type Unit = ScaleUnit;
+/** The part of a marker or popup that sits at the position. It is the same type as `Anchor`. */
+export type PositionAnchor = Anchor;
+/** The values of `rotationAlignment` and `pitchAlignment` of a marker. */
+export type Alignment = 'map' | 'viewport' | 'auto';
+/**
+ * The offset of a popup in pixels: one distance, `[x, y]`, or `[x, y]` for each anchor. MapLibre GL JS also accepts a
+ * `Point` in these places, and this library does not.
+ */
+export type Offset = PopupOffset;
+
+/** A listener of `on`, `once` and `off`. */
+export type Listener<E = MapLibreEvent> = (event: E) => any;
+/**
+ * What `map.on` returns in MapLibre GL JS. In this library `map.on` returns the map, so no method returns a
+ * `Subscription`: remove a listener with `map.off(type, listener)`.
+ */
+export interface Subscription { unsubscribe(): void }
+/** The events of one object by name, as the type parameter of `Evented` in MapLibre GL JS. */
+export type EventTypeMap = Record<string, {type: string; target?: unknown}>;
+export type ErrorEventType = {error: ErrorEvent};
+type Fired<T, D = {}> = {type: string; target: T} & D;
+/**
+ * The events that a `Marker` fires on itself. A click on a marker fires `click` on the map and not on the marker, so
+ * there is no `click` here.
+ */
+export type MarkerEventType = Each<'dragstart' | 'drag' | 'dragend', Fired<Marker>>;
+/** The events that a `Popup` fires on itself. */
+export type PopupEventType = Each<'open' | 'close', Fired<Popup>>;
+/** The events that a `FullscreenControl` of this entry fires on itself. */
+export type FullscreenControlEventType = Each<'fullscreenstart' | 'fullscreenend', Fired<CompatFullscreenControl>>;
+/** The events that a `GeolocateControl` fires on itself. The event of `error` has the `code` and the `message` of the `GeolocationPositionError`. */
+export type GeolocateControlEventType =
+    Each<'geolocate' | 'outofmaxbounds', Fired<GeolocateControl, {coords: GeolocationCoordinates; timestamp: number}>>
+    & Each<'trackuserlocationstart' | 'trackuserlocationend' | 'userlocationfocus' | 'userlocationlostfocus', Fired<GeolocateControl>>
+    & {error: Fired<GeolocateControl, {code: number; message: string}>};
+
+/** The value of `cooperativeGestures`. */
+export type GestureOptions = boolean;
+/**
+ * The options of `map.dragPan.enable(options)` in MapLibre GL JS. They have no effect: `enable()` turns the handler on
+ * and does not read its argument. The option `dragPan` of `new Map()` is a boolean.
+ */
+export type DragPanOptions = {linearity?: number; easing?: (t: number) => number; deceleration?: number; maxSpeed?: number};
+/** The options of the handlers of MapLibre GL JS that zoom around the center. They have no effect, as `DragPanOptions`. */
+export type AroundCenterOptions = {around: 'center'};
+/**
+ * The options of `map.dragRotate.enable(options)` in MapLibre GL JS. They have no effect: `enable()` turns the handler
+ * on and does not read its argument. The option `dragRotate` of `new Map()` is a boolean.
+ */
+export type DragRotateOptions = {around?: 'center'; movement?: 'circular' | 'linear'} | {around: 'pointer'};
+
+/** The `id` of a feature in the diff of `updateData`. */
+export type GeoJSONFeatureId = number | string;
+/** The change of one feature in the diff of `updateData`. */
+export type GeoJSONFeatureDiff = NonNullable<GeoJSONDiff['update']>[number];
+/**
+ * The cluster options that `setClusterOptions` of a GeoJSON source takes in MapLibre GL JS. The source of this
+ * library has no `setClusterOptions`, so no method takes this type: set `cluster`, `clusterMaxZoom` and
+ * `clusterRadius` in the description of the source.
+ */
+export type SetClusterOptions = {cluster?: boolean; clusterMaxZoom?: number; clusterRadius?: number};
+/** The cluster options of a GeoJSON source. No method of this library returns this type: `map.getSource(id)` has the three values. */
+export type GetClusterOptions = Required<SetClusterOptions>;
+/** The four corners of an image source: top left, top right, bottom right and bottom left, each `[lng, lat]`. */
+export type Coordinates = [[number, number], [number, number], [number, number], [number, number]];
+/**
+ * The options of `updateImage` of an image source: `url` and `coordinates`. MapLibre GL JS 6.17 also accepts `image`
+ * in place of `url`, which this type does not have.
+ */
+export type UpdateImageOptions = Parameters<ImageSource['updateImage']>[0];
+/**
+ * The description of a canvas source of MapLibre GL JS. This library does not draw canvas sources (see "What is not
+ * available" in docs/maplibre-compatibility.md).
+ */
+export type CanvasSourceSpecification = {type: 'canvas'; coordinates: Coordinates; animate?: boolean; canvas?: string | HTMLCanvasElement};
+
+/**
+ * An image for `map.addImage` as an object with pixels. The map reads `data` (RGBA, `width` × `height` × 4 bytes) once,
+ * when the image is added. `render`, `onAdd` and `onRemove` have no effect: the map does not call them, so an image
+ * cannot change itself. Call `map.updateImage` to change it. A `data` that is not pixels (the WebGL form of MapLibre GL
+ * JS) throws.
+ */
+export interface StyleImageInterface {
+    width: number; height: number; data: Uint8Array | Uint8ClampedArray;
+    render?: () => boolean; onAdd?: (map: Map, id: string) => void; onRemove?: () => void;
+}
+/**
+ * The `data` of what `map.getImage` returns. An image that was added as pixels, a canvas, an image element or a bitmap
+ * has `{width, height, data}` with RGBA pixels. An image that was added as a URL or as SVG text has that string.
+ */
+export type StyleImageData = {data: Parameters<CoreMap['addImage']>[1]};
+/** The function of `map.setMissingStyleImageResolver`: it gets the name of an image that the style asks for, and it can call `map.addImage`. */
+export type MissingStyleImageResolver = NonNullable<Parameters<CoreMap['setMissingStyleImageResolver']>[0]>;
+/** The function of `transformStyle`: it gets the style before (`undefined` for the first style) and the new style, and returns the style to use. */
+export type TransformStyleFunction = (previous: StyleSpecification | undefined, next: StyleSpecification) => StyleSpecification;
+/**
+ * The options of a style in MapLibre GL JS. They have no effect in `map.setStyle`, which reads only `transformStyle`
+ * of its options. Set the global state with `map.setGlobalStateProperty` or with `state` in the style.
+ */
+export type StyleOptions = {validate?: boolean; localIdeographFontFamily?: string | false; globalState?: Record<string, any>};
+/**
+ * The kind of a request, the second argument of `transformRequest`. MapLibre GL JS declares a `const enum` with these
+ * values. The library also passes `'Font'` for a font file, and it never passes `'Unknown'`.
+ */
+export type ResourceType = 'Glyphs' | 'Image' | 'Source' | 'SpriteImage' | 'SpriteJSON' | 'Style' | 'Tile' | 'Unknown' | 'Font';
+/** The function of `addProtocol`. It is the same type as `ProtocolFunction`. */
+export type AddProtocolAction = ProtocolFunction;
+/** What `getProjectionData` of a custom layer returns. It is the same type as `ProjectionData`. */
+export type CustomLayerProjectionData = ProjectionData;

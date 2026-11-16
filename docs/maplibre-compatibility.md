@@ -5,12 +5,14 @@ This document compares the library with [MapLibre GL JS](https://maplibre.org/ma
 The API of MapLibre GL JS is in the entry `@map-jr/map-jr-gl/maplibre-compat`. The main entry, `@map-jr/map-jr-gl`, has another
 API: see [The main API](api.md).
 
-It has four parts:
+It has six parts:
 
 1. [What this library adds](#what-this-library-adds)
 2. [What is different](#what-is-different)
 3. [What is not available](#what-is-not-available)
 4. [Map methods](#map-methods)
+5. [Source methods](#source-methods)
+6. [Types](#types)
 
 The [status table](../README.md#status) gives the current test results.
 
@@ -162,3 +164,45 @@ The camera methods of the entry `@map-jr/map-jr-gl/maplibre-compat` (`jumpTo`, `
 | `vector`, `raster`, `raster-dem` | `setTiles(tiles)`, `setUrl(url)`. Each one replaces the tiles of the source (the other of `tiles` and `url` is removed) and loads them again. A TileJSON that fails to load gives an `error` event, and the layers of the source are not drawn. An argument of the wrong type throws an error. | `reload`, `getTileJSON` and the other members of MapLibre's source classes |
 | `geojson` | `setData`, `getData`, `updateData`, `getClusterExpansionZoom`, `getClusterChildren`, `getClusterLeaves` | `setClusterOptions` |
 | `image` | `updateImage`, `setCoordinates` | `getImage` and the other members of MapLibre's `ImageSource` |
+
+## Types
+
+The entry `@map-jr/map-jr-gl/maplibre-compat` exports types under the names of MapLibre GL JS 6.17 (`src/compat-types.ts`). Each type describes what this library accepts, so a type can have fewer members than the type of MapLibre GL JS. The row "TypeScript types" in [What is different](#what-is-different) describes the event, source and style types.
+
+These types differ from MapLibre GL JS:
+
+| Type | In this library |
+|---|---|
+| `NavigationControlOptions` | It has no `visualizeRoll`. |
+| `GeolocateControlOptions` | It has `zoom` and no `fitBoundsOptions`. `showAccuracyCircle` has no effect. |
+| `FullscreenControlOptions` | `container` has no effect. |
+| `LogoControlOptions` | `compact` has no effect, and the constructor of `LogoControl` takes no argument. |
+| `Offset` | It is a number, `[x, y]`, or `[x, y]` for each anchor. It does not accept a `Point`. |
+| `Listener` | Its type parameter is the type of the event, and the default is `MapLibreEvent`. |
+| `Subscription` | No method returns it: `map.on` returns the map. Remove a listener with `map.off(type, listener)`. |
+| `MarkerEventType` | It has no `click`: a click on a marker fires `click` on the map. |
+| `FullscreenControlEventType`, `GeolocateControlEventType`, `PopupEventType`, `EventTypeMap` | An event is a plain object with `type` and `target`, and not an instance of the class `Event`. The event of `geolocate` has `coords` and `timestamp`, and the event of `error` has `code` and `message`. |
+| `DragPanOptions`, `DragRotateOptions`, `AroundCenterOptions` | They have no effect: `enable()` of a handler does not read its argument, and the options `dragPan` and `dragRotate` of `new Map()` are booleans. |
+| `SetClusterOptions`, `GetClusterOptions` | No method takes or returns them, because a GeoJSON source has no `setClusterOptions`. |
+| `UpdateImageOptions` | It has `url` and `coordinates`, and no `image`. |
+| `CanvasSourceSpecification` | The type exists, and the library does not draw canvas sources. |
+| `StyleImageInterface` | `data` is RGBA pixels. `render`, `onAdd` and `onRemove` have no effect: the map reads the pixels once. |
+| `StyleImageData` | It has only `data`, which is what `map.addImage` accepts. |
+| `StyleOptions` | `validate`, `localIdeographFontFamily` and `globalState` have no effect in `map.setStyle`. |
+| `ResourceType` | It is a union of strings and not a `const enum`. It also has `Font`. |
+| `AddProtocolAction` | It is the type `ProtocolFunction` of this library: the request has `url`, `type` and `headers`, and the result has `data`. |
+| `CustomLayerProjectionData`, `ProjectionData` | `ProjectionData` has no type parameters, and the matrices are `Float32Array` or `Float64Array`. |
+
+The entry does not export these names of MapLibre GL JS:
+
+| Names | Why |
+|---|---|
+| `Actor`, `ActorMessage`, `IActor`, `Dispatcher`, `GlobalDispatcher`, `GlobalDispatcherEventType`, `MessageHandler`, `CustomMessageHandler`, `MessageType`, `RequestResponseMessageMap`, `WorkerGlobalScopeInterface`, `WorkerTileResult`, `LoadTileResult`, `importScriptInWorkers` | They belong to the workers of MapLibre GL JS. The workers of this library have another protocol and do not load scripts of the page. |
+| `Painter`, `Bucket`, `Tile`, `TileMesh`, `CreateTileMeshOptions`, `IndicesType`, `FeatureIndex`, `CollisionBoxArray`, `StyleLayer`, `PaintPropertyEntry`, `ImageAtlas`, `AlphaImage`, `DashEntry`, `GlyphMap`, `GlyphPosition`, `GlyphPositions`, `StyleGlyph`, `TextFit`, `RendererProjectionData`, `ProjectionMatrix`, `Mat4f32`, `Mat4f64`, `WebGLContextAttributesWithType` | They are internals of the renderer of MapLibre GL JS, which this library does not have. |
+| `OverscaledTileID`, `UnwrappedTileIDLiteral`, `CanonicalTileRange`, `CoveringTilesOptions`, `CalculateTileZoomFunction`, `ProjectionDataParams`, `CRS`, `TileMatrixSet` | They describe the tiles and the tile grid inside MapLibre GL JS. |
+| `SourceClass`, `SourceEventType`, `EventedParentData`, `Event` | A source of this library is not a class and fires no events of its own, so there is no `addSourceType`. `Event` is a class in MapLibre GL JS, and the events of this library are plain objects. |
+| `Handler`, `HandlerResult`, `BoxZoomHandlerOptions`, `BoxZoomEndHandler` | The library has no custom handlers, and its handlers have only `enable`, `disable`, `isEnabled` and `isActive`. |
+| `AnchoredCameraOptions`, `CameraUpdateTransformFunction`, `TransformConstrainFunction` | The library has no `transformCameraUpdate` and no `transformConstrain`. |
+| `StyleImage`, `StyleImageSource`, `StyleImageWebGLData`, `StyleImageWebGLTarget`, `CustomTerrainRenderInput`, `TerrainHeightMapTarget`, `ImageSourceImage`, `ImageSourceWarp` | Images that draw themselves with WebGL, custom layers that draw into the height map of the terrain, and the `image` and `warp` of an image source are not available. |
+| `AddProtocolResponseData`, `GetResourceResponse`, `ExpiryData` | A protocol function returns `{data}`. Use `ProtocolFunction` or `AddProtocolAction`. |
+| `Complete`, `RequireAtLeastOne`, `DistributiveKeys`, `DistributiveOmit` | They are helper types for the declarations of MapLibre GL JS. |
