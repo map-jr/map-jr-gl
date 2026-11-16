@@ -24,7 +24,7 @@ const page = ([...upFront('map-jr-gl-maplibre-compat.js')].reduce((n, f) => n + 
 const ml = JSON.parse(readFileSync(root + 'node_modules/maplibre-gl/package.json', 'utf8')).version;
 const mlSize = (...files) => (files.reduce((n, f) => n + gzipSync(readFileSync(root + 'node_modules/maplibre-gl/dist/' + f), {level: 9}).length, 0) / 1024).toFixed(0);
 
-const exprPass = num(expr, /(\d+) pass/), exprFail = num(expr, /(\d+) fail/);
+const exprPass = num(expr, /(\d+) pass/), exprAll = num(expr, /of (\d+)/), exprLater = num(expr, /later (\d+)/), exprWontfix = num(expr, /wontfix (\d+)/), exprFail = num(expr, /no label: (\d+)/);
 // The results of the plugin tests are in docs/ecosystem.md (see test/conformance/plugins.mjs and ecosystem.mjs).
 const eco = existsSync(root + 'docs/ecosystem.md') ? readFileSync(root + 'docs/ecosystem.md', 'utf8') : '';
 const ran = /\*\*(\d+) of (\d+) scenarios pass/.exec(eco), audited = /\*\*(\d+) of (\d+) packages\*\*/.exec(eco), pages = /\*\*(\d+) of (\d+) pages work/.exec(eco);
@@ -40,8 +40,8 @@ const lines = [
     '| Measure | Result |',
     '|---|---|',
     `| Unit tests | ${num(unit, /# pass (\d+)/)} pass, ${num(unit, /# fail (\d+)/)} fail |`,
-    `| MapLibre expression tests | ${exprPass} of ${exprPass + exprFail} pass |`,
-    `| MapLibre \`Map\` methods | ${num(api, /coverage: (\d+)/)} of ${num(api, /of (\d+) methods/)} are available; ${num(api, /no effect: (\d+)/)} more are accepted and have no effect |`,
+    `| MapLibre expression tests | ${exprPass} of ${exprAll} pass (${Math.round(100 * exprPass / exprAll)}%), which is ${Math.round(100 * exprPass / (exprAll - exprWontfix))}% of the ${exprAll - exprWontfix} that are not left out on purpose. ${exprWontfix} are left out on purpose, ${exprLater} are planned for later, and ${exprFail} fail. |`,
+    `| MapLibre \`Map\` methods | ${num(api, /coverage: (\d+)/)} of ${num(api, /of (\d+) methods/)} are available; ${num(api, /no effect: (\d+)/)} more are accepted and have no effect. ${num(api, /not counted: (\d+)/)} that are internal to MapLibre GL JS are not counted. |`,
     ...plugins,
     ...(render ? [`| MapLibre render tests | ${render.match} of ${render.run} are the same (1% of pixels or less are different). ${render.close} more are near (5% or less). |`] : []),
     `| Page script (gzip) | ${page} KB. MapLibre GL JS: ${mlSize('maplibre-gl.mjs', 'maplibre-gl-shared.mjs', 'maplibre-gl.css')} KB. |`,

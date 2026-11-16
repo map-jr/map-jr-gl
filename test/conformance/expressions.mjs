@@ -1,5 +1,6 @@
 // Runs MapLibre's own expression test fixtures against our expression compiler and reports how many agree.
 //   node test/conformance/expressions.mjs [--list] [--min=<pass count>]
+// The list `deliberate` below labels the fixtures that do not pass by a decision, and the output counts each label.
 // The fixtures are cloned from maplibre/maplibre-style-spec into .cache/ on first use (they are not vendored).
 import {build} from 'esbuild';
 import {execSync} from 'node:child_process';
@@ -22,6 +23,17 @@ const same = (a, b) => {
     if (a && b && typeof a === 'object' && typeof b === 'object') return JSON.stringify(a) === JSON.stringify(b);
     return a === b || (a == null && b == null);
 };
+// Fixtures that do not pass by a decision. A fixture takes the first entry that matches it. `match` gets the id of
+// the fixture (its folder, for example "within/point-within-polygon"), its operator (the first part of the id) and
+// whether the fixture expects a compile error. The decision is 'later' (the work is planned) or 'wontfix' (the
+// library will not do it). Only the owner adds an entry with 'wontfix'.
+const deliberate = [
+    {label: 'compile-error', decision: 'wontfix', match: f => f.compileError,
+        reason: 'The fixture expects a compile error. By a decision of the owner of 2026-11-16, the production build does not check the types of an expression or validate a style. Checks in the development build are possible later.'},
+    {label: 'within-distance', decision: 'later', match: f => f.op === 'within' || f.op === 'distance',
+        reason: 'The operators "within" and "distance" are not implemented.'},
+];
+const labelled = Object.fromEntries(deliberate.map(d => [d.label, 0]));
 const results = {}, failures = [];
 let pass = 0, fail = 0, skipped = 0;
 const walk = dir => {
@@ -31,8 +43,9 @@ const walk = dir => {
         if (name !== 'test.json') continue;
         const t = JSON.parse(readFileSync(p, 'utf8')), id = path.relative(path.join(repo, 'test/integration/expression/tests'), dir), op = id.split(path.sep)[0];
         const r = results[op] ??= {pass: 0, fail: 0, skipped: 0};
-        // Fixtures that expect a compile-time type error test validation, which this library leaves to authoring tools.
-        if (t.expected?.compiled?.result !== 'success' || !t.inputs) { skipped++; r.skipped++; continue; }
+        // Fixtures that expect a compile-time type error test validation, which the library does not have. They do not run.
+        const compileError = t.expected?.compiled?.result !== 'success' || !t.inputs, label = deliberate.find(d => d.match({id, op, compileError}))?.label;
+        if (compileError) { skipped++; r.skipped++; if (label) labelled[label]++; continue; }
         let ok = true, why = '';
         try {
             compileFor({g: t.globalState ?? {}, f: {}});
@@ -55,14 +68,21 @@ const walk = dir => {
                 if (!same(got, want)) { ok = false; why ||= `input ${i}: got ${JSON.stringify(got)}, want ${JSON.stringify(want)}`; }
             });
         } catch (e) { ok = false; why = 'threw ' + e.message; }
-        if (ok) { pass++; r.pass++; } else { fail++; r.fail++; failures.push(`${id}: ${why}`.slice(0, 200)); }
+        if (ok) { pass++; r.pass++; } else { fail++; r.fail++; if (label) labelled[label]++; failures.push(`${label ? `[${label}] ` : ''}${id}: ${why}`.slice(0, 200)); }
     }
 };
 walk(path.join(repo, 'test/integration/expression/tests'));
 console.warn = warn;
+const pct = (n, of) => Math.round(100 * n / of);
 const failing = Object.entries(results).filter(([, r]) => r.fail).sort((a, b) => b[1].fail - a[1].fail);
-console.log(`Expression conformance: ${pass} pass, ${fail} fail, ${skipped} skipped (compile-error fixtures) of ${pass + fail + skipped}`);
+console.log(`Expression conformance: ${pass} pass, ${fail} fail, ${skipped} skipped (compile-error fixtures) of ${pass + fail + skipped} (${pct(pass, pass + fail + skipped)}%)`);
 console.log('Operators with failures: ' + failing.map(([op, r]) => `${op} ${r.fail}/${r.pass + r.fail}`).join(', '));
+// A fixture with a label that passes counts as a pass, so the counts below have only fixtures that do not pass.
+const total = decision => deliberate.reduce((n, d) => n + (d.decision === decision ? labelled[d.label] : 0), 0);
+const parts = decision => deliberate.filter(d => d.decision === decision).map(d => `${d.label} ${labelled[d.label]}`).join(', ');
+console.log(`Do not pass by a decision: later ${total('later')}${parts('later') && ` (${parts('later')})`}, wontfix ${total('wontfix')}${parts('wontfix') && ` (${parts('wontfix')})`}`);
+console.log(`Without the fixtures left out on purpose (wontfix): ${pass} of ${pass + fail + skipped - total('wontfix')} (${pct(pass, pass + fail + skipped - total('wontfix'))}%)`);
+console.log(`Fail with no label: ${fail + skipped - total('later') - total('wontfix')}`);
 if (process.argv.includes('--list')) console.log(failures.join('\n'));
 const min = +(process.argv.find(a => a.startsWith('--min='))?.slice(6) ?? 0);
 if (pass < min) { console.error(`FAIL: expected at least ${min} passing`); process.exit(1); }
