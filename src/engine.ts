@@ -291,7 +291,7 @@ export class Engine {
         this.atlas.images = name => this.icon(name);
         this.atlas.onReset = () => this.labels.clear();
         this.atlas.fetchGlyphs = withTimeout(this.fetchAs('Glyphs'));
-        this.atlas.onGlyphs = () => this.relabel();
+        this.atlas.onGlyphs = () => this.glyphsArrived();
         this.tr.width = o.width;
         this.tr.height = o.height;
         this.dpr = o.dpr;
@@ -307,6 +307,16 @@ export class Engine {
         if (o.fonts?.length) this.loadFonts(o.fonts);
     }
 
+    /**
+     * A glyph file has arrived: the labels that waited for it can be placed now. The labels on the map keep their
+     * state (they did not use the file: a label waits for all its glyphs), so they do not vanish and fade in again.
+     * (Clearing them here made all labels blink after a change of the view that needed a new glyph file, such as the
+     * switch from the globe to the flat map: #463.)
+     */
+    private glyphsArrived() {
+        this.lastPlace = -Infinity;
+        this.invalidate();
+    }
     /** Throws away placed labels (their shaped text is stale) and places again from scratch. */
     private relabel() {
         this.labels.clear();
@@ -774,6 +784,8 @@ export class Engine {
                 const now = performance.now();
                 if (c.x === undefined || c.y === undefined) { tr.set(tr.panned(-c.dx, -c.dy)); break; }
                 this.centreGiven = false;
+                // On the globe each move turns the globe from the last pointer to this one, as MapLibre GL JS does (globe.ts).
+                if (tr.globeness) { tr.globe!.drag(tr, c.x - c.dx, c.y - c.dy, c.x, c.y); tr.constrain(); this.grab = null; break; }
                 // A drag holds on to the ground (and its height) where it began; each move puts that point under the pointer.
                 // (A new drag is recognised by a pause, or by the pointer not being where the held point is.)
                 const held = this.grab && now - this.grab.at < 300 ? tr.project(this.grab.lng, this.grab.lat) : null;
@@ -1570,7 +1582,7 @@ export class Engine {
         let globeScene;
         if (globeness) {
             const f = tr.globe!.frame(tr);
-            globeScene = {m: Float32Array.from(f.m), horizon: f.horizon, t: globeness, cosLat: Math.cos(tr.lat * Math.PI / 180), tiles: tr.coveringTiles(0, 5, TILE_SIZE)};
+            globeScene = {m: Float32Array.from(f.m), horizon: f.horizon, t: globeness, cosLat: Math.cos(Math.min(Math.abs(tr.lat), 85.051129) * Math.PI / 180), tiles: tr.coveringTiles(0, 5, TILE_SIZE)};
         }
         const behind = hold || this.renderer.render({tr, layers: this.layers, items, labels, atlas: this.atlas, icon: this.pattern, light: this.style.light, moving: settling, globe: globeScene,
             // (Past the time limit and still unplaced: draw flat rather than raise terrain around a camera in the wrong place.)

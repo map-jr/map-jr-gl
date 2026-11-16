@@ -160,7 +160,14 @@ export class Transform {
         // (On a globe the centre only stays between the latitudes that Mercator reaches. MapLibre does not keep a globe
         // inside maxBounds either.)
         // (The stops decide this, also before globe.ts has loaded, so that a camera at the start is not moved.)
-        if (globenessAt(this.globeStops, this.zoom)) { this.lat = clamp(this.lat, -MAX_LAT, MAX_LAT); return; }
+        if (globenessAt(this.globeStops, this.zoom)) {
+            // The centre reaches the pole only while the area past the edge of Mercator fits in the view, and eases back
+            // to that edge as it outgrows it (MapLibre's _getMaxLatitude).
+            const area = (90 - MAX_LAT) * Math.PI / 180, areaPx = this.worldSize / (2 * Math.PI * Math.cos(MAX_LAT * Math.PI / 180)) * area, reach = Math.min(this.width, this.height) / 2;
+            const centrePx = Math.min(areaPx, reach) * clamp(1 - (areaPx - reach) / (reach * 3), 0, 1), max = MAX_LAT + area * centrePx / areaPx * 180 / Math.PI;
+            this.lat = clamp(this.lat, -max, max);
+            return;
+        }
         const half = Math.min(0.5, this.height / 2 / this.worldSize), y = mercY(this.lat = clamp(this.lat, -MAX_LAT, MAX_LAT)), inside = clamp(y, half, 1 - half);
         if (inside !== y) this.lat = latFromMerc(inside);
         const b = this.maxBounds;
@@ -324,8 +331,12 @@ export class Transform {
     panned(sx: number, sy: number): [number, number] {
         if (!this.globeness) return this.unprojectFlat(this.cx + sx, this.cy + sy);
         const a = this.angle, east = Math.cos(a) * sx + Math.sin(a) * sy, south = -Math.sin(a) * sx + Math.cos(a) * sy;
-        const r = this.worldSize / (2 * Math.PI * Math.cos(this.lat * Math.PI / 180));
-        return [this.lng + east * 360 / this.worldSize, clamp(this.lat - south / r * 180 / Math.PI, -MAX_LAT, MAX_LAT)];
+        // Degrees per pixel at the centre, and the speed of longitude: 1 / cos(latitude), or with the latitude capped at
+        // 60° while the globe is small (zoom 3 at the equator and less), as MapLibre's computeGlobePanCenter does.
+        const cos = (lat: number) => Math.cos(Math.min(Math.abs(lat), MAX_LAT) * Math.PI / 180), perPx = 360 * cos(this.lat) / this.worldSize;
+        const zoom0 = this.zoom + Math.log2(cos(this.lat)), t = clamp((7 - zoom0) / 4, 0, 1);
+        const lngSpeed = 1 / cos(this.lat) + (1 / cos(Math.min(Math.abs(this.lat), 60)) - 1 / cos(this.lat)) * t;
+        return [this.lng + east * perPx * lngSpeed, clamp(this.lat - south * perPx, -90, 90)];
     }
 
     /** Screen pixels to the position under them on the level plane through the map centre (ignoring 3D terrain). */

@@ -37,7 +37,7 @@ for (const mode of ['main', 'worker']) {
     check(`[${mode}] loads with requested renderer`, await page.evaluate(() => window.map.renderer) === (workerCan ? mode : 'main'));
 
     // The globe (#463): a map with the projection globe draws a sphere (the corners of the canvas stay empty), places
-    // a point where `project` says, keeps the place under the pointer during a drag, and turns into Mercator at zoom 12.
+    // a point where `project` says, turns under a drag as in MapLibre GL JS, and turns into Mercator at zoom 12.
     // A second map on the page with Mercator is not affected.
     {
         const globe = await page.evaluate(async renderer => {
@@ -61,7 +61,8 @@ for (const mode of ['main', 'worker']) {
         check(`[${mode}] the globe: the corners stay empty on the globe and not on Mercator, project and unproject agree, getBounds reaches the pole, and a marker on the far side is faint`,
             globe.globe.corner[3] === 0 && globe.globe.middle[3] === 255 && globe.flat.corner[3] === 255 && globe.centre.join() === '200,200' && Math.abs(globe.back[0] + 60) < 0.01 && Math.abs(globe.back[1] - 10) < 0.01
             && JSON.stringify(globe.markers) === '[["1",false],["0.2",true]]' && globe.bounds[0] === -180 && globe.bounds[2] === 180 && globe.bounds[3] === 90 && globe.bounds[1] < -20, JSON.stringify(globe));
-        // A drag on the globe: the place under the pointer when the drag starts is under it at the end.
+        // A drag on the globe turns it as MapLibre GL JS 6.17 does: the place under the pointer at the start ends
+        // at (180.39, 163.47), 3.5 px from the pointer, with the centre at (31.885, 27.12) and zoom 1.332 (measured with MapLibre).
         await page.mouse.move(250, 230); await page.mouse.down(); await page.mouse.move(180, 160, {steps: 10}); await page.mouse.up();
         await page.waitForTimeout(400);
         const dragged = await page.evaluate(async () => {
@@ -77,7 +78,7 @@ for (const mode of ['main', 'worker']) {
         await page.mouse.move(250, 230); await page.mouse.down(); await page.mouse.move(180, 160, {steps: 10});
         // (The worker reports the camera a frame later.)
         await page.waitForTimeout(200);
-        const held = await page.evaluate(([lng, lat]) => { const p = window.globeMap.project([lng, lat]); return [p.x, p.y]; }, follow);
+        const held = await page.evaluate(([lng, lat]) => { const p = window.globeMap.project([lng, lat]); const c = window.globeMap.getCenter(); return [p.x, p.y, c.lng, c.lat, window.globeMap.getZoom()]; }, follow);
         await page.mouse.up();
         const zoomed = await page.evaluate(async () => {
             const g = window.globeMap; g.jumpTo({center: [10, 45], zoom: 12.5}); await new Promise(r => { g.once('idle', r); setTimeout(r, 15000); });
@@ -86,8 +87,8 @@ for (const mode of ['main', 'worker']) {
             for (const map of [g, m]) { const el = map.getContainer(); map.remove(); el.remove(); }
             return Math.hypot(p.x - q.x, p.y - q.y);
         });
-        check(`[${mode}] the globe: a drag keeps the place under the pointer, and at zoom 12.5 the globe is Mercator`,
-            Math.hypot(held[0] - 180, held[1] - 160) < 3 && dragged.centre[0] !== 10 && zoomed < 1e-6, JSON.stringify({held, dragged, zoomed}));
+        check(`[${mode}] the globe: a drag turns the globe as in MapLibre GL JS, and at zoom 12.5 the globe is Mercator`,
+            Math.hypot(held[0] - 180.39, held[1] - 163.47) < 0.5 && Math.hypot(held[2] - 31.885, held[3] - 27.12) < 0.05 && Math.abs(held[4] - 1.332) < 0.005 && dragged.centre[0] !== 10 && zoomed < 1e-6, JSON.stringify({held, dragged, zoomed}));
     }
 
     // Drag pan: the point under the cursor should follow it.
