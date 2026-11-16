@@ -143,6 +143,7 @@ The library compares each field with the field of the last description:
 | `minZoom`, `maxZoom`, `maxPitch`, `maxBounds` | The limits of the camera. `maxBounds` keeps the whole view inside the bounds, as MapLibre GL JS does: the canvas less the padding, with no regard to bearing and pitch. When the bounds are smaller than that view, the zoom rises until they fill it. A west edge east of the east edge (for example `[[150, -50], [-120, 10]]`) gives bounds that cross the antimeridian. |
 | `cooperativeGestures` | `true`: the wheel zooms the map only with Ctrl (⌘ on a Mac), one finger scrolls the page and two fingers move the map. A blocked gesture shows a hint over the map. The default is `false`. `update()` can turn it on and off. |
 | `colorScheme` | The colours of the controls, the popup, the attribution and the message of a browser without WebGL 2: `'light'` (the default), `'dark'` or `'auto'`. `'auto'` follows the media query `prefers-color-scheme` and changes while the page is open. An application with its own theme switch passes `'light'` or `'dark'`. While the scheme is dark, the container has the class `map-jr-dark`. The dark colours have no specificity, so a rule of the application and the custom properties `--map-control-*`, `--map-attribution-background` and `--map-popup-*` still win. `update()` changes it. The map also sets the global state property `color-scheme` of the style to the resolved scheme, so that a style can follow it: see [Dark mode](#dark-mode). A value that is not one of the three gives the light colours, and the development build warns once. |
+| `onColorSchemeChange` | Called with the new value when the control `colorScheme()` changes `colorScheme`. The control has changed the map already with `patch`; an application that keeps the description in its state (Vue, React) writes the value back, or the next `update` with the old value changes the map back. |
 | `cursor` | The mouse cursor over the map. Without it, the cursor is a pointer over a feature of `interactiveLayers`. |
 | `transformRequest` | A function that changes a request before the map makes it, as `transformRequest` of MapLibre GL JS. It gets the URL and the kind of resource (`Style`, `Source`, `Tile`, `Glyphs`, `SpriteJSON`, `SpriteImage`, `Image` or `Font`) and returns `{url, headers, credentials}`, or `undefined` to leave the request as it is. It applies to the requests of the tile workers too. The map calls the function of the last description, so a function that is made again in each render works. Example: `transformRequest: url => url.startsWith('https://api.os.uk/') ? {url: url + '&key=' + KEY} : undefined`. |
 | `padding` | Space in CSS pixels at the sides of the map that the view keeps free, for example under a side panel: one number for all sides, or `{top, right, bottom, left}` (a side that is left out is 0). The centre of the view is the centre of the rest of the map. The default is 0. A change moves the camera at once (as `setPadding` of MapLibre GL JS). It is not the `padding` of `initialView` and `moveTo`, which is space around `bounds` for one fit. |
@@ -583,6 +584,31 @@ description does not have it. Importing the functions loads about 0.5 KB gzip. T
 for all of them) and of the map loads when the map adds its first control, so a page can import the functions before
 it makes the map. A control appears a moment after `createMap` or `update` adds it, when that file has loaded.
 
+The controls, the attribution, the scale and the popup of a map of `createMap` have a translucent background with
+`backdrop-filter: blur(5px)`. A button is a circle and a group of buttons is a pill: the radius is half the size of a
+button. The attribution and the scale have lighter text, the links of the attribution have a
+faint underline until the pointer is over them, and the popup has a round close button. A map of
+`@map-jr/map-jr-gl/maplibre-compat` keeps the look of MapLibre GL JS. The look needs Safari 18, Chrome 120 or Firefox
+121 (`backdrop-filter` without a prefix, and CSS nesting); an older browser shows opaque controls with corners of 6
+pixels. The rules have no specificity, so a rule of your page wins. Set these custom properties on the container of the
+map or on an element above it:
+
+| Custom property | What it sets | Default |
+|---|---|---|
+| `--map-control-opacity` | The opacity of the background of the controls, from 0 to 1. The popup has 0.1 more. | `.55`, dark `.45` |
+| `--map-control-radius` | The radius of the controls. The popup has three quarters of it, and the attribution and the scale have half. | half of `--map-control-size` (`16px`, `22px` on a touch screen) |
+| `--map-control-background` | The background of a group of buttons and of the compact attribution, in place of the colour that `--map-control-opacity` makes | white at `.55`, dark `rgb(30 30 34)` at `.45` |
+| `--map-control-color` | The colour of the icons and the text | `#222`, dark `#e6e6e6` |
+| `--map-control-size` | The width and the height of a button | `32px`, `44px` on a touch screen |
+| `--map-control-focus` | The colour of the focus outline | `#2f7fd1` |
+| `--map-attribution-background` | The background of the attribution and the scale | as the controls |
+| `--map-popup-background`, `--map-popup-color` | The background and the text of a popup | white at `.65` and `#222`, dark `rgb(30 30 34)` at `.55` and `#e6e6e6` |
+
+The compass is a round button below the zoom buttons. Its centre shows the nearest of `N`, `E`, `S` and `W` to the
+direction that the map faces (a bearing of 45 degrees shows `E`), and a mark of north on a dial turns with the map. A
+click turns the map to the north, and a drag sideways turns it by 0.8 degrees for each pixel. The scale sits at the
+bottom edge of the map beside the attribution; with the compact attribution it keeps a distance of 10 pixels.
+
 | Function | Control | Options (each also has `position`) |
 |---|---|---|
 | `navigation` | Zoom buttons and a compass. A click on the compass resets the bearing, and dragging it rotates the map. With `visualizePitch: true`, the compass also shows the pitch, the drag also pitches the map, and a click resets the pitch (default false, as in MapLibre GL JS). | `showZoom`, `showCompass`, `visualizePitch` |
@@ -591,6 +617,7 @@ it makes the map. A control appears a moment after `createMap` or `update` adds 
 | `geolocate` | A button that moves the map to the position of the user. With `trackUserLocation: true`, the button turns tracking on and off, the map follows the position until it is moved, and a dot shows the position (`showUserLocation: false` hides it). | `zoom`, `positionOptions`, `trackUserLocation`, `showUserLocation` |
 | `terrain` | A button that turns 3D terrain on and off | `source` (required), `exaggeration` |
 | `globe` | A button that switches the projection between `globe` and `mercator`. While the projection is `globe`, the button has the class `map-jr-ctrl-globe-enabled` and `aria-pressed="true"`. A click changes the map until a description with a different `projection` comes. See `projection` for what the globe draws. | |
+| `colorScheme` | A prototype. A button that switches the colour scheme between light and dark. It shows the scheme that the map has (a sun or a moon), and its label names the action ("Use dark colours"). A click changes `colorScheme` of the description with `patch` and calls `onColorSchemeChange`. When the description has `'auto'`, a click sets the opposite of the system, and the click after it, which lands on the scheme of the system, sets `'auto'` again. With no value, `'light'` or `'dark'`, a click flips between `'light'` and `'dark'`. The code loads in a file of its own when the map adds the control. | |
 | `custom` | A control of your own (see below) | `key` (required), and `element` or `onAdd` with `onRemove` |
 
 ### A control of your own

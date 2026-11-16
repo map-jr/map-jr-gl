@@ -4,10 +4,10 @@ import type {Map} from './map.ts';
 import {Evented} from './evented.ts';
 import {cls, ui, toggleClass, type Control, type ControlPosition} from './controls.ts';
 
-const svg = (path: string, extra = '') => `<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" ${extra}>${path}</svg>`;
+export const svg = (path: string, extra = '') => `<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" ${extra}>${path}</svg>`;
 
 /** `name` gives the button the class name that MapLibre GL JS gives it (`maplibregl-ctrl-zoom-in`), for stylesheets and tests written for that library. */
-function button(group: HTMLElement, name: string, label: string, icon: string, onClick: () => void): HTMLButtonElement {
+export function button(group: HTMLElement, name: string, label: string, icon: string, onClick: () => void): HTMLButtonElement {
     const b = document.createElement('button');
     b.className = cls('ctrl-' + name);
     b.type = 'button';
@@ -18,7 +18,7 @@ function button(group: HTMLElement, name: string, label: string, icon: string, o
     return group.appendChild(b);
 }
 
-function group(extraClass = ''): HTMLElement {
+export function group(extraClass = ''): HTMLElement {
     const el = document.createElement('div');
     el.className = `${cls('ctrl', 'ctrl-group')} ${extraClass}`.trim();
     return el;
@@ -71,22 +71,39 @@ export class NavigationControl implements Control {
     constructor(private options: {showZoom?: boolean; showCompass?: boolean; visualizePitch?: boolean} = {}) { this.pitch = !!options.visualizePitch; }
 
     onAdd(map: Map) {
-        const el = this.el = group();
+        // (In the main API, the compass is a round button of its own below the zoom buttons: the control is a column of two groups.)
+        const glass = map.getContainer().classList.contains('map-jr-glass'), el = this.el = glass ? document.createElement('div') : group();
+        if (glass) { el.className = cls('ctrl'); el.style.cssText = 'display:flex;flex-direction:column;gap:10px;align-items:center'; }
         let zoomIn: HTMLButtonElement | undefined, zoomOut: HTMLButtonElement | undefined, needle: SVGElement | null = null;
         if (this.options.showZoom !== false) {
-            zoomIn = button(el, 'zoom-in', ui(map, 'NavigationControl.ZoomIn', 'Zoom in'), svg('<path d="M9 4v10M4 9h10"/>'), () => map.zoomIn());
-            zoomOut = button(el, 'zoom-out', ui(map, 'NavigationControl.ZoomOut', 'Zoom out'), svg('<path d="M4 9h10"/>'), () => map.zoomOut());
+            const zoom = glass ? el.appendChild(group()) : el;
+            zoomIn = button(zoom, 'zoom-in', ui(map, 'NavigationControl.ZoomIn', 'Zoom in'), svg('<path d="M9 4v10M4 9h10"/>'), () => map.zoomIn());
+            zoomOut = button(zoom, 'zoom-out', ui(map, 'NavigationControl.ZoomOut', 'Zoom out'), svg('<path d="M4 9h10"/>'), () => map.zoomOut());
         }
+        let letter: SVGTextElement | null = null;
         if (this.options.showCompass !== false) {
-            const b = button(el, 'compass', ui(map, 'NavigationControl.ResetBearing', 'Reset bearing to north'), svg('<path d="M9 2.500 12 9H6z" fill="currentColor" stroke="none"/><path d="M9 15.500 6 9h6z" fill="currentColor" stroke="none" opacity=".35"/>'),
+            // The compass of the main API: a dial with heavy ticks at east, south and west, light ticks between them and
+            // a mark of north on the rim, which turn with the map, and in the centre the letter of the direction that the
+            // map faces (the nearest of N, E, S and W), which stays upright.
+            let ticks = '', light = '';
+            for (let a = 30; a < 360; a += 30) {
+                const s = Math.sin(a * Math.PI / 180), c = -Math.cos(a * Math.PI / 180), major = !(a % 90), r = major ? 6.6 : 8, at = (k: number) => `${+(12 + s * k).toFixed(2)} ${+(12 + c * k).toFixed(2)}`;
+                if (major) ticks += `M${at(r)}L${at(10.4)}`; else light += `M${at(r)}L${at(10.4)}`;
+            }
+            const b = button(glass ? el.appendChild(group()) : el, 'compass', ui(map, 'NavigationControl.ResetBearing', 'Reset bearing to north'), glass
+                ? `<svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-linecap="round" aria-hidden="true"><g><path d="${light}" stroke-width="1.1" opacity=".45"/><path d="${ticks}" stroke-width="1.2"/><path d="M12 .9l1.9 4.3h-3.8z" stroke="none"/></g><text x="12" y="12" text-anchor="middle" dominant-baseline="central" font-size="10" font-weight="600" font-family="system-ui,sans-serif" stroke="none"></text></svg>`
+                : svg('<path d="M9 2.500 12 9H6z" fill="currentColor" stroke="none"/><path d="M9 15.500 6 9h6z" fill="currentColor" stroke="none" opacity=".35"/>'),
                 () => map.easeTo({bearing: 0, ...this.pitch && {pitch: 0}}));
-            needle = b.querySelector('svg');
+            needle = b.querySelector(glass ? 'g' : 'svg');
+            letter = b.querySelector('text');
+            if (glass) needle!.style.transformOrigin = '12px 12px';
             dragCompass(map, b, this.pitch);
         }
         this.update = () => {
             if (zoomIn) zoomIn.disabled = map.getZoom() >= map.getMaxZoom();
             if (zoomOut) zoomOut.disabled = map.getZoom() <= map.getMinZoom();
             if (needle) needle.style.transform = `rotateX(${this.pitch ? map.getPitch() : 0}deg) rotate(${-map.getBearing()}deg)`;
+            if (letter) letter.textContent = 'NESW'[Math.round((map.getBearing() + 360) / 90) % 4];
         };
         map.on('move', this.update);
         this.update();
@@ -119,7 +136,9 @@ export class ScaleControl implements Control {
             let max = metresPerPixel * maxWidth, unit = 'Meters', perUnit = 1;
             if (this.unit === 'imperial') { max *= 3.28084; unit = 'Feet'; perUnit = 1 / 3.28084; if (max > 5280) { max /= 5280; unit = 'Miles'; perUnit = 1609.344; } } else if (this.unit === 'nautical') { max /= 1852; unit = 'NauticalMiles'; perUnit = 1852; } else if (max >= 1000) { max /= 1000; unit = 'Kilometers'; perUnit = 1000; }
             const pow = 10 ** Math.floor(Math.log10(max)), lead = max / pow, nice = (lead >= 5 ? 5 : lead >= 3 ? 3 : lead >= 2 ? 2 : 1) * pow;
-            el.style.width = nice * perUnit / metresPerPixel + 'px';
+            const width = nice * perUnit / metresPerPixel + 'px';
+            el.style.width = width;
+            el.style.setProperty('--map-jr-scale', width); // (the length of the bar of the main API, which draws it after the text)
             el.textContent = `${nice >= 1 ? nice : +nice.toPrecision(1)} ${ui(map, 'ScaleControl.' + unit, units[unit])}`;
         };
         map.on('move', this.update);
