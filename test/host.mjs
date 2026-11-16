@@ -40,6 +40,18 @@ for (const renderer of ['worker', 'main']) {
         }, renderer);
         check(`[${renderer}] createMap: the map loads, and the state says so`, !start.before && start.loaded && (start.renderer === renderer || (renderer === 'worker' && start.renderer === 'main' /* a browser that cannot draw in a worker */)) && start.zoom === 14.3 && start.seen.includes('loaded:true') && start.seen.indexOf('load:idle=false') >= 0 && start.seen.indexOf('load:idle=false') < start.seen.indexOf('idle') && start.canvas, JSON.stringify(start));
 
+        // 1b. once: a promise of the next event; `load` on a loaded map resolves at once.
+        const once = await page.evaluate(async () => {
+            const h = window.t.host, within = (p, ms) => Promise.race([p.then(e => e.type), new Promise(r => setTimeout(() => r('not settled'), ms))]);
+            const load = await within(h.once('load'), 200);
+            const moveend = h.once('moveend');
+            h.moveTo({zoom: 14.5});
+            const moved = await within(moveend, 3000), zoom = h.state.get().view.zoom;
+            h.moveTo({zoom: 14.3});
+            return {load, moved, zoom};
+        });
+        check(`[${renderer}] once: resolves with the next event, and once('load') on a loaded map resolves at once`, once.load === 'load' && once.moved === 'moveend' && once.zoom === 14.5, JSON.stringify(once));
+
         // 2. The view: the map reports each change; a view that it reported is not applied again; another view moves the map.
         const view = await page.evaluate(async () => {
             const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms));
@@ -1019,15 +1031,18 @@ for (const renderer of ['worker', 'main']) {
             h.update(t.spec = {...t.spec, interactiveLayers: t.spec.style.layers.filter(l => l.source).map(l => l.id), onClick: () => clicks++});
             h.map.fire('click', {point: {x: 450, y: 300}, lngLat: {lng: -74.0105, lat: 40.7045}});
             h.watchFeatures(undefined, {sources}, () => watched++);
+            const waits = said(h.once('dragend'));
             const pending = said(h.queryFeatures(undefined, {sources})), height = said(h.queryElevation([-74.0105, 40.7045]));
             h.destroy(); h.update(t.spec);
-            const later = said(h.queryFeatures(undefined, {sources}));
-            const out = {canvas: !!document.querySelector('#host canvas'), pending: await pending, height: await height, later: await later};
+            const later = said(h.queryFeatures(undefined, {sources})), onceLater = said(h.once('idle'));
+            const out = {canvas: !!document.querySelector('#host canvas'), waits: await waits, onceLater: await onceLater, pending: await pending, height: await height, later: await later};
             await new Promise(r => setTimeout(r, 300));
             return {...out, clicks, watched};
         });
         check(`[${renderer}] destroy removes the map`, !end.canvas);
         const gone = '[map-jr-gl] The query has no answer: the map was removed.';
+        check(`[${renderer}] destroy rejects a once() that waits and a once() after it`,
+            end.waits === '[map-jr-gl] once("dragend"): the map was removed.' && end.onceLater === '[map-jr-gl] once("idle"): the map was removed.', JSON.stringify(end));
         check(`[${renderer}] destroy rejects the queries that wait and a query after it, and onClick and a watchFeatures listener do not run after it`,
             end.pending === gone && end.height === gone && end.later === gone && end.clicks === 0 && end.watched === 0, JSON.stringify(end));
         const other = errors.filter(e => !e.includes('thrown by the test')); // (the browser reports what the listener of 5b threw)

@@ -305,6 +305,11 @@ export interface MapHost {
     overlay(element: HTMLElement, options: OverlayOptions): MapOverlay;
     /** Calls `fn` for each event of that type (the types are the names of `MapEvents`). Returns a function that stops it. */
     listen<K extends keyof MapEvents>(type: K, fn: (event: MapEvents[K]) => void): () => void;
+    /**
+     * A promise of the next event of that type. It rejects when the map is destroyed first. `once('load')` on a map
+     * that has loaded resolves at once, with an event of type `load`.
+     */
+    once<K extends keyof MapEvents>(type: K): Promise<MapEvents[K]>;
     readonly container: HTMLElement;
     /** The map object behind this host, for a need that this API does not cover yet. It can change between versions. */
     readonly map: Map;
@@ -398,6 +403,7 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
     // The views that the map reported a short time ago. An application that owns the view gives them back, often some
     // frames later; they are not applied again, or the map would go back while the user moves it.
     const reported: View[] = [];
+    const waiting = new Set<() => void>(); // the promises of `once` that wait for an event
     let now = spec, alive = true, pointer: {x: number; y: number} | null = null, asking = false;
 
     map.on('load', () => state.set({loaded: true, renderer: map.renderer as MapState['renderer']}));
@@ -568,7 +574,7 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
             complete(next, 'update', `update() takes the complete description, not only the changed fields. Write map.update({...description, ${Object.keys(next ?? {})[0] ?? 'field'}: …}).`);
             if (alive) apply(next, now);
         },
-        destroy() { if (!alive) return; alive = false; cooperate(false); map.remove(); },
+        destroy() { if (!alive) return; alive = false; cooperate(false); map.remove(); for (const drop of waiting) drop(); waiting.clear(); },
         state,
         queryFeatures,
         clusterExpansionZoom: (id, clusterId) => cluster('clusterExpansionZoom', id, s => s.getClusterExpansionZoom(clusterId)),
@@ -633,6 +639,16 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
             };
         },
         listen(type, fn: (event: any) => void) { map.on(type, fn); return () => { map.off(type, fn); }; },
+        once(type) {
+            return new Promise<any>((resolve, reject) => {
+                const removed = () => new Error(`[map-jr-gl] once("${type}"): the map was removed.`);
+                if (!alive) return reject(removed());
+                if (type === 'load' && state.get().loaded) return resolve({type, target: map});
+                const fn = (event: any) => { map.off(type, fn); waiting.delete(drop); resolve(event); };
+                const drop = () => { map.off(type, fn); reject(removed()); };
+                waiting.add(drop); map.on(type, fn);
+            });
+        },
         container: map.getContainer(),
         map,
     };
