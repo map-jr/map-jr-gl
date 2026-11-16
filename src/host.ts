@@ -111,6 +111,12 @@ export interface MapSpec extends MapSetup {
      * Mercator between zoom 11 and 12, as in MapLibre GL JS.
      */
     projection?: ProjectionSpecification | null;
+    /**
+     * Values for the `global-state` expressions of the style, by name: `{season: 'winter'}`. A value here is used in
+     * place of the default in `state` of the style with the same name. A name that `update` leaves out, or gives
+     * `null`, goes back to the default of the style. A new style gets these values too. Values are JSON.
+     */
+    globalState?: Record<string, unknown>;
     /** Style layers whose features are found under the pointer: they are in `state.hover` and in `onClick`. */
     interactiveLayers?: string[];
     onClick?: (event: MapPointer) => void;
@@ -516,6 +522,11 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
         if (differ(next.maxBounds, before?.maxBounds)) map.setMaxBounds(next.maxBounds);
         if (differ(next.padding, before?.padding)) map.jumpTo({padding: next.padding ?? 0});
         // (Before the style is there, the style gets the projection of the description when it comes: see `restyle`.)
+        // (The map keeps these values across a new style; only the names whose values changed are set.)
+        for (const name of new Set([...Object.keys(next.globalState ?? {}), ...Object.keys(before?.globalState ?? {})])) {
+            const value = next.globalState?.[name];
+            if (differ(value, before?.globalState?.[name])) map.setGlobalStateProperty(name, value == null ? null : copy(value));
+        }
         if (before && styled && !restyled && differ(next.projection, before.projection)) map.setProjection(next.projection ? copy(next.projection) : styleProjection);
         if (next.controls !== before?.controls) {
             const wanted = new Set((next.controls ?? []).map(c => c.key));

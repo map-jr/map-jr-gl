@@ -150,6 +150,36 @@ for (const renderer of ['worker', 'main']) {
         check(`[${renderer}] projection: the description replaces the projection of the style, null gives it back, and globe() switches it`,
             JSON.stringify(projection) === JSON.stringify({start: 'globe', cleared: 'vertical-perspective', mercator: 'mercator', again: 'mercator', clicked: 'globe', kept: 'globe', events: ['globe', 'vertical-perspective', 'mercator', 'globe']}), JSON.stringify(projection));
 
+        // 3b2. `globalState` of the description (#486): a value replaces the default in `state` of the style, a change in
+        // update() changes the paint without a new request of the style, a name left out gives the default back, and a
+        // new style gets the values.
+        const globalState = await page.evaluate(async renderer => {
+            const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:100px;height:80px'}));
+            const make = c => ({version: 8, state: {tone: {default: '#f00'}}, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': ['global-state', 'tone'], 'background-opacity': c}}]});
+            const colour = async () => {
+                await new Promise(r => setTimeout(r, 150));
+                const b = await host.toBlob(), bmp = await createImageBitmap(b), c = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}), g = c.getContext('2d');
+                g.drawImage(bmp, 0, 0);
+                return '#' + [...g.getImageData(bmp.width >> 1, bmp.height >> 1, 1, 1).data.slice(0, 3)].map(v => (v >> 4).toString(16)).join('');
+            };
+            const fetches = () => performance.getEntriesByType('resource').length;
+            let spec = {style: make(1), globalState: {tone: '#00f'}, renderer, attribution: false};
+            const host = t.lib.createMap(el, spec), out = {};
+            await new Promise(r => host.state.subscribe(s => s.loaded, l => l && r()));
+            out.start = await colour();
+            const before = fetches();
+            host.update(spec = {...spec, globalState: {tone: '#0f0'}}); out.changed = await colour();
+            out.requests = fetches() - before;
+            host.update(spec = {...spec, globalState: {}}); out.cleared = await colour();
+            host.update(spec = {...spec, globalState: {tone: '#0f0'}, style: make(0.999)});
+            await new Promise(r => host.state.subscribe(s => s.idle, i => i && r()));
+            out.restyled = await colour();
+            host.destroy(); el.remove();
+            return out;
+        }, renderer).catch(e => ({error: String(e)}));
+        check(`[${renderer}] globalState: the description replaces the default of the style, a change repaints without a style request, a name left out goes back to the default, a new style keeps the values`,
+            JSON.stringify(globalState) === JSON.stringify({start: '#00f', changed: '#0f0', requests: 0, cleared: '#f00', restyled: '#0f0'}), JSON.stringify(globalState));
+
         // 3c. Mistakes and errors: a container that is not there has a message; `onError`
         // gets each error; without it the error is written to the console.
         const mistakes = await page.evaluate(async () => {
