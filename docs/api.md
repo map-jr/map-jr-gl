@@ -733,6 +733,7 @@ as ten. See [Markers](markers.md).
 | `toBlob(type, quality)` | The map as an image, for a download or for printing. It waits until the map is idle, draws one frame and resolves to a `Blob` of the canvas. `type` defaults to `'image/png'`; `quality` (0 to 1) applies to `'image/jpeg'` and `'image/webp'`. It works with both renderers. The image has the size of the canvas in device pixels (CSS size times `devicePixelRatio`) and does not contain markers, popups, controls or the attribution, because those are elements of the page. The promise rejects when the map is destroyed first. Example: `const url = URL.createObjectURL(await map.toBlob())`. To print, put that URL in an `<img>`: the canvas itself may print blank. |
 | `project(lngLat)`, `unproject(point)` | Change between a position on the map and a point of the screen. |
 | `listen(type, fn)` | Calls `fn` for each event of that type. Returns a function that stops it. See [Events](#events). |
+| `once(type)` | A promise of the next event of that type. See [Events](#events). |
 | `container` | The element of the map. |
 | `map` | The map object behind this API, for a need that this API does not cover yet. It can change between versions. It is the core map of the library, not the `Map` of `@map-jr/map-jr-gl/maplibre-compat`: it has `jumpTo`, `easeTo`, `fitBounds`, `getCenter`, `getZoom`, `on`, `addLayer`, `setPaintProperty`, `flyTo` and the gesture handlers, but not `setCenter`, `setZoom`, `setBearing`, `setPitch`, `panTo`, `rotateTo` or `queryRenderedFeatures`. Its type is the core `Map`, not the compat `Map`. Plugins that need a MapLibre map (deck.gl `MapboxOverlay`, mapbox-gl-draw, terra-draw) do not work with it, because it lacks `getPadding`, `getRenderWorldCopies` and a synchronous `queryRenderedFeatures`: use the compat entry for them (see [Plugins that need a MapLibre map](vue.md#plugins-that-need-a-maplibre-map)). |
 
@@ -749,6 +750,21 @@ const map = createMap('map', {style: 'https://demotiles.maplibre.org/style.json'
 const stop = map.listen('moveend', event => console.log(map.state.get().view.zoom));
 stop();
 ```
+
+`map.once(type)` returns a promise that resolves with the next event of that type, and stops listening after it.
+In TypeScript, the result has the type of that event.
+
+```js
+import {createMap} from '@map-jr/map-jr-gl';
+
+const map = createMap('map', {style: 'https://demotiles.maplibre.org/style.json'});
+await map.once('idle');
+```
+
+- When the map is destroyed before the event comes, the promise rejects with
+  `[map-jr-gl] once("idle"): the map was removed.` A call after `destroy()` rejects in the same way.
+- `load` comes one time. `once('load')` on a map that has loaded resolves at once, with an event that has only
+  `type` and `target`, so code that waits for `load` does not need to read `state.loaded` first.
 
 A listener that throws does not stop the other listeners of the event. The map reports what it threw as an
 `error` event (`onError` of the description gets it, or the console when there is no `onError`). What a listener
