@@ -226,6 +226,7 @@ void main() {
     circle: [`${VS_COMMON}
 layout(location=0) in vec2 a_corner; layout(location=1) in vec4 a_color; layout(location=2) in vec2 a_pos; layout(location=3) in float a_radius; layout(location=5) in float a_radius1;
 uniform float u_zt; uniform float u_radius; uniform float u_strokeWidth; uniform vec4 u_clip; uniform vec2 u_translate;
+uniform float u_scale; uniform float u_cam; uniform vec2 u_pitch;
 out vec4 v_color; out vec2 v_off; out float v_r;
 void main() {
   v_r = mix(a_radius, a_radius1, u_zt) * u_radius; v_color = a_color;
@@ -233,8 +234,15 @@ void main() {
   v_off = a_corner * ext;
   bool inside = a_pos.x >= u_clip.x && a_pos.y >= u_clip.y && a_pos.x < u_clip.z && a_pos.y < u_clip.w;
   vec4 c = toClip(a_pos);
-  // Circles face the viewer: offset in screen pixels after projection.
-  c.xy += (v_off + u_translate) * vec2(2.0, -2.0) / u_view * c.w;
+  // u_pitch.x: circle-pitch-alignment is 'map', and the circle lies on the map: the offset is in tile units.
+  // Otherwise the circle faces the viewer, and the offset is in screen pixels after projection.
+  // u_pitch.y: circle-pitch-scale is 'map' (the default), and a distant circle is smaller, as the map under it is.
+  // With 'viewport' every circle has the size that it has at the centre of the view (as in MapLibre).
+  float w = c.w;
+  vec2 px = u_translate;
+  if (u_pitch.x > 0.0) c = toClip(a_pos + v_off * (u_pitch.y > 0.0 ? 1.0 : w / u_cam) / u_scale * lineScale(a_pos));
+  else px += v_off * (u_pitch.y > 0.0 ? u_cam / w : 1.0);
+  c.xy += px * vec2(2.0, -2.0) / u_view * c.w;
   gl_Position = inside ? c : vec4(2.0, 2.0, 2.0, 1.0);
 }`, `
 uniform vec4 u_color; uniform vec4 u_stroke; uniform float u_strokeWidth; uniform float u_blur; in vec4 v_color; in vec2 v_off; in float v_r; out vec4 o;
@@ -1107,6 +1115,7 @@ export class GLRenderer {
                         gl.uniform1f(u.u_radius, L.p.radius.dd ? 1 : L.p.radius.eval(zoom));
                         gl.uniform1f(u.u_strokeWidth, L.p.strokeWidth.eval(zoom));
                         gl.uniform4f(u.u_stroke, sc[0] * a, sc[1] * a, sc[2] * a, a);
+                        gl.uniform2f(u.u_pitch, +(L.p.pitchAlign.eval(zoom) === 'map'), +(L.p.pitchScale.eval(zoom) !== 'viewport'));
                     }
                 }
                 this.placeTile(u, it.id, m);
@@ -1116,9 +1125,11 @@ export class GLRenderer {
                 if (!b.color) gl.vertexAttrib4f(1, 1, 1, 1, 1);
                 if (!b.scalar) { gl.vertexAttrib1f(3, 1); gl.vertexAttrib1f(5, 1); }
                 if (b.type === 'line' || b.type === 'circle') gl.uniform1f(u.u_zt, Math.min(1, Math.max(0, zoom - (it.tile.z ?? it.id.z))));
-                if (b.type === 'line') {
+                if (b.type === 'line' || b.type === 'circle') {
                     gl.uniform1f(u.u_scale, it.scale);
                     gl.uniform1f(u.u_cam, tr.cameraDistance);
+                }
+                if (b.type === 'line') {
                     // Dashes are sized at whole zoom levels so they stretch, rather than crawl, while zooming.
                     gl.uniform1f(u.u_dashScale, it.scale / 2 ** (zoom - Math.floor(zoom)));
                 }
