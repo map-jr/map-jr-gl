@@ -289,6 +289,38 @@ for (const renderer of renderers) {
         }, renderer).catch(e => ({error: String(e)}));
         check(`[${renderer}] colorScheme sets the global state property color-scheme: a background and an icon template change with no request, and globalState of the same name wins`,
             JSON.stringify(colorState) === JSON.stringify({light: '#f00 #0f0', dark: '#00f #ff0', requests: 0, forced: '#f00 #0f0', back: '#00f #ff0'}), JSON.stringify(colorState));
+        // 3b2a. A new style drops the tiles that it makes stale and that are not on screen (#550): kept, they stood in
+        // for the tiles of a zoom out and showed the colours of the style before until they were built again. The
+        // steps of the report: zoom out and in, change the scheme of `style: {light, dark}`, zoom out again.
+        const staleScheme = await page.evaluate(async renderer => {
+            const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:100px;height:80px'}));
+            // (The vector tiles of the demo style, with a colour that the tiles carry: a paint value that is the same for the
+            // whole layer is a uniform, and a GeoJSON source is cut again for each style.)
+            const base = await (await fetch('/style.json')).json();
+            const make = fill => ({...base, layers: [{id: 'bg', type: 'background', paint: {'background-color': fill}}, ...base.layers.filter(l => l.type === 'fill').map(l => ({...l, paint: {'fill-color': ['coalesce', ['get', 'no-such-property'], fill]}}))]});
+            const colour = async () => {
+                const bmp = await createImageBitmap(await host.toBlob()), c = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}), g = c.getContext('2d');
+                g.drawImage(bmp, 0, 0);
+                return '#' + [...g.getImageData(bmp.width >> 1, bmp.height >> 1, 1, 1).data.slice(0, 3)].map(v => (v >> 4).toString(16)).join('');
+            };
+            const idle = async () => { await new Promise(r => setTimeout(r, 100)); for (let i = 0; i < 100 && !host.state.get().idle; i++) await new Promise(r => setTimeout(r, 50)); };
+            let spec = {style: {light: make('#f00'), dark: make('#00f')}, colorScheme: 'light', initialView: {center: [-74.0065, 40.7085], zoom: 12.5}, renderer, attribution: false};
+            const host = t.lib.createMap(el, spec), dropped = new Set();
+            host._map.on('tile', e => { if (e.kind === 'drop') for (const k of [e.key].flat()) dropped.add(k.split('|')[1].split('/')[0]); });
+            await idle();
+            host._map._tileReport(true);
+            host.moveTo({zoom: 10.5, duration: 0}); await idle();
+            host.moveTo({zoom: 12.5, duration: 0}); await idle();
+            dropped.clear();
+            host.update(spec = {...spec, colorScheme: 'dark'}); await idle();
+            const out = {dropped: dropped.has('10')};
+            host.moveTo({zoom: 10.5, duration: 0}); await idle();
+            out.colour = await colour();
+            host.destroy(); el.remove();
+            return out;
+        }, renderer).catch(e => ({error: String(e)}));
+        check(`[${renderer}] a new style drops the stale tiles that are not on screen, so that a zoom out after a change of the scheme of style: {light, dark} draws no tile of the style before (#550)`,
+            JSON.stringify(staleScheme) === JSON.stringify({dropped: true, colour: '#00f'}), JSON.stringify(staleScheme));
         // 3b2. `patch` (#483): it keeps the fields that `part` leaves out, `undefined` removes a field, and `description` is the last description.
         const patched = await page.evaluate(async renderer => {
             const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
