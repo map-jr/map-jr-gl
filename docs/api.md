@@ -139,7 +139,7 @@ These fields are read only when the map is made:
 | Field | Meaning |
 |---|---|
 | `renderer` | `'auto'` (the default), `'worker'` or `'main'`: the thread that draws. See [Loading](loading.md). |
-| `fonts`, `fontFamily` | Web fonts for the labels. When the style has `glyphs`, the labels use the glyph files, and these fonts draw only what the files do not have: a font stack or a range that the server does not have, a character missing from the files, and text that the browser must shape. A style without `glyphs` draws all text with these fonts. |
+| `fonts`, `fontFamily` | Web fonts for the labels. When the style has `glyphs`, the labels use the glyph files, and these fonts draw only what the files do not have: a font stack or a range that the server does not have, a character missing from the files, and text that the browser must shape. A style without `glyphs` draws all text with these fonts. A style object can also carry font files in `font-faces` (an object that maps a `text-font` name to files, as in the style specification). A `text-font` name or a `font-faces` name becomes a CSS family, a weight and a style: words such as `Bold` (700), `Semibold` (600), `Medium` (500), `Light` (300), `Black` (900) and `Italic` are taken out of the name, and the rest is the family, so `Open Sans Semibold Italic` is the family `Open Sans` at weight 600 in italic. A name without such a word has weight 400. |
 | `interactive` | `false` for a map that the user cannot move. The default is `true`. With `false`, `onClick` and `state.hover` still work, and a touch on the map scrolls the page. |
 | `antialias` | Multisample antialiasing for the canvas. |
 | `attribution` | `false` to show the credits yourself, or options for the built-in credits. |
@@ -718,7 +718,7 @@ use `listen` for the rest.
 import {createMap} from '@map-jr/map-jr-gl';
 
 const map = createMap('map', {style: 'https://demotiles.maplibre.org/style.json'});
-const stop = map.listen('moveend', event => console.log(event.target.getZoom()));
+const stop = map.listen('moveend', event => console.log(map.state.get().view.zoom));
 stop();
 ```
 
