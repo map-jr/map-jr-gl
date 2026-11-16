@@ -18,7 +18,7 @@ export default function (container, {show}) {
     images: {pin},
     // Additions to the style: a GeoJSON source and a symbol layer.
     sources: {places: {type: 'geojson', data: places}},
-    // A symbol layer draws the image and a label beside it. A marker layer has no label.
+    // A symbol layer draws the image and a label beside it.
     layers: [{
       id: 'places', type: 'symbol', source: 'places',
       layout: {

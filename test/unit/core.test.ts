@@ -8,7 +8,7 @@ import {applySSROverrides, compileLayer} from '../../src/style.ts';
 import {LINE_VERTEX, buildTile, tessellate, type Batch} from '../../src/tile.ts';
 import {queryTile, sampleElevation} from '../../src/query.ts';
 import {CollisionGrid, renderItems} from '../../src/placement.ts';
-import {fillTemplate, markerFeatures, markerStyle, sizedSVG, svgSize, templateSlots, withMarkers, VARIANT} from '../../src/markers.ts';
+import {fillTemplate, sizedSVG, svgSize, templateSlots, VARIANT} from '../../src/markers.ts';
 import {cleanCredits, renderToSVG} from '../../src/server.ts';
 import {decodePNG, decodeWebPLossless} from '../../src/webp.ts';
 import {deflateSync} from 'node:zlib';
@@ -253,25 +253,6 @@ test('markers: templates escape values and get explicit sizes', () => {
     assert.deepEqual(svgSize('<svg><svg viewBox="0 0 5 5"/></svg>'), [24, 24]);
     assert.match(sizedSVG('<svg width="9" height="9"><rect/></svg>', 18, 18), /width="18" height="18" viewBox="0 0 9 9">/);
     assert.match(sizedSVG('<svg viewBox="0 0 10 20"><rect/></svg>', 30, 60), /^<svg xmlns="http:\/\/www.w3.org\/2000\/svg"[^>]* width="30" height="60" viewBox="0 0 10 20"><rect\/><\/svg>$/);
-});
-
-test('markers: a marker layer is a GeoJSON source and a symbol layer, and its markers are points with the index as the id', () => {
-    const data = [{lngLat: [1, 2], props: {color: '#d00'}}, {lngLat: [3, 4]}];
-    assert.deepEqual(markerStyle({id: 'pins', image: 'pin', data}).layer, {id: 'pins', type: 'symbol', source: 'pins', before: undefined,
-        layout: {'icon-image': 'pin', 'icon-anchor': 'center', 'icon-allow-overlap': true, 'icon-ignore-placement': true}});
-    // Labels keep away with `collide`. With `overlap: 'hide'` a marker can be hidden, and labels keep away too.
-    assert.deepEqual(markerStyle({id: 'a', image: 'pin', anchor: 'bottom', collide: true, minZoom: 3, maxZoom: 9, data}).layer, {id: 'a', type: 'symbol', source: 'a', before: undefined, minzoom: 3, maxzoom: 9,
-        layout: {'icon-image': 'pin', 'icon-anchor': 'bottom', 'icon-allow-overlap': true, 'icon-ignore-placement': false}});
-    assert.deepEqual(markerStyle({id: 'a', image: 'pin', overlap: 'hide', data}).layer.layout, {'icon-image': 'pin', 'icon-anchor': 'center', 'icon-allow-overlap': false, 'icon-ignore-placement': false});
-    assert.deepEqual(markerFeatures(data), {type: 'FeatureCollection', features: [
-        {type: 'Feature', id: 0, properties: {color: '#d00'}, geometry: {type: 'Point', coordinates: [1, 2]}}, {type: 'Feature', id: 1, properties: {}, geometry: {type: 'Point', coordinates: [3, 4]}}]});
-    // In a style: on top, or below the layer of `before`. The style that was given is not changed.
-    const style = {version: 8, sources: {s: {type: 'vector'}}, layers: [{id: 'land'}, {id: 'labels'}]};
-    const made = withMarkers(style, [{id: 'pins', image: 'pin', data}, {id: 'under', image: 'pin', before: 'labels', data}], true);
-    assert.deepEqual(made.layers.map((l: {id: string}) => l.id), ['land', 'under', 'labels', 'pins']);
-    assert.ok(!('before' in made.layers[1]) && made.sources.pins.data.features.length === 2 && made.sources.s === style.sources.s && style.layers.length === 2);
-    assert.equal(withMarkers(style, [{id: 'pins', image: 'pin', data}]).sources.pins.data.features.length, 0);
-    assert.equal(withMarkers(style, undefined), style);
 });
 
 test('server: renders a tile to SVG offline, with generated icons and overrides', async () => {

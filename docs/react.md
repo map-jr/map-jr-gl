@@ -9,23 +9,24 @@ The entry `@map-jr/map-jr-gl/react` has a component and hooks for React 18 and 1
 import {useMemo, useState} from 'react';
 import {MapJr, MapOverlay} from '@map-jr/map-jr-gl/react';
 import {navigation, scale} from '@map-jr/map-jr-gl/controls';
+import {points} from '@map-jr/map-jr-gl';
+
+const dot = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="{{color}}"/></svg>';
 
 export function Places({places}) {
   const [view, setView] = useState({center: [-74.0065, 40.7085], zoom: 13.6});
   const [selected, setSelected] = useState(null);
-  const pins = useMemo(() => ({
-    id: 'places',
-    svg: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="{{color}}"/></svg>',
-    width: 24, height: 24,
-    data: places.map(p => ({lngLat: p.lngLat, props: {color: p.color}})),
-  }), [places]);
+  // A point for each place: its properties are the place, so the slot {{color}} of the image gets its colour.
+  const data = useMemo(() => ({places: points(places, {lngLat: p => p.lngLat})}), [places]);
 
   return (
     <div style={{height: 400}}>
       <MapJr
         mapStyle="https://tiles.openfreemap.org/styles/liberty"
         view={view} onViewChange={setView}
-        markers={[pins]}
+        images={{dot}}
+        data={data}
+        layers={[{id: 'places', type: 'symbol', source: 'places', layout: {'icon-image': 'dot', 'icon-allow-overlap': true}}]}
         controls={[navigation(), scale({position: 'bottom-left'})]}
         interactiveLayers={['poi_r1']}
         onClick={e => setSelected(e.features[0] ? {lngLat: e.lngLat, name: e.features[0].properties.name} : null)}
@@ -101,8 +102,8 @@ child component that calls `useMap()`.
 The map compares each prop with the last one. A prop that has a new object with the same content does no work:
 you can write `controls={[navigation()]}`, `interactiveLayers={['places']}` and a style object in the JSX.
 
-Two things are compared by identity only, because they can be large: the `data` of a marker layer, and each value of
-the `data` prop (GeoJSON for sources of the style). Keep them (`useMemo`, state) until they change, as in the example.
+Each value of the `data` prop (GeoJSON for sources) is compared by identity only, because it can be large. Keep it
+(`useMemo`, state) until it changes, as in the example.
 
 ## Your own controls
 
@@ -141,8 +142,8 @@ function ZoomIn() {
 ## Elements of the page on the map
 
 `MapOverlay` puts its children at a position of the map. The props are `lngLat`, `anchor`, `offset`, `popup` and
-`onClose`, as for `overlay` in [the main API](api.md). The children are React content. For many markers, use the
-`markers` prop.
+`onClose`, as for `overlay` in [the main API](api.md). The children are React content. For many markers, use a
+symbol layer in the `layers` prop with the points in `data`: see [Markers](markers.md).
 
 `MapImage` gives an image to the style layers of the map. Its content is an `<svg>` element, or a function that gets
 the parameters of the image and returns one. A layer uses the image by its name in `icon-image`.

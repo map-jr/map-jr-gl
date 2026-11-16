@@ -5,7 +5,7 @@
  * <script>
  *   import {mapJr, mapState} from '@map-jr/map-jr-gl/svelte';
  *   let map = $state(null);
- *   let description = $derived({style, initialView, markers: [pins]});
+ *   let description = $derived({style, initialView, data: {places}, layers: [placesLayer]});
  * </script>
  * <div use:mapJr={{description, ready: host => map = host}} style="height: 400px"></div>
  * ```

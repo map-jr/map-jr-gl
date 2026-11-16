@@ -1,5 +1,6 @@
 import {useMemo, useState} from 'react';
 import {MapJr, MapOverlay} from '@map-jr/map-jr-gl/react';
+import {points} from '@map-jr/map-jr-gl';
 
 const style = 'https://tiles.openfreemap.org/styles/liberty';
 const NYC = [-74.0065, 40.7085];
@@ -13,22 +14,29 @@ const places = Array.from({length: 50000}, (_, i) => {
   return {lngLat: [NYC[0] + r * Math.cos(a) * 1.3, NYC[1] + r * Math.sin(a)], props: {color: colors[i % 5]}};
 });
 const some = places.slice(0, 500);
+// A GeoJSON FeatureCollection with a point for each place. The properties of a point are the `props` of its place.
+const pointsOf = list => points(list, {lngLat: p => p.lngLat, properties: p => p.props});
+const always = {'icon-image': 'dot', 'icon-allow-overlap': true, 'icon-ignore-placement': true};
+// Symbol layers draw an image at each point of a source.
+const layers = [
+  // Icons that are always shown: the cost of a frame does not grow with their number.
+  {id: 'dots', type: 'symbol', source: 'rest', layout: always},
+  // 500 of the places are pins when the zoom is 12 or more, and dots below that.
+  {id: 'dots-below-pins', type: 'symbol', source: 'some', maxzoom: 12, layout: always},
+  // (Without `icon-allow-overlap`, the pins do not pile up, and map labels keep clear.)
+  {id: 'pins', type: 'symbol', source: 'some', minzoom: 12, layout: {'icon-image': 'pin', 'icon-anchor': 'bottom'}},
+];
 
 export default function Markers() {
-  // A marker layer is a layer of the style: a click finds its markers. The marker under the click, or null.
+  // A click finds the features of the layers in `interactiveLayers`. The feature under the click, or null.
   const [selected, setSelected] = useState(null);
-  // An image is an SVG template with {{slots}}. Each marker fills the slots from its `props`.
+  // An image is an SVG template with {{slots}}. Each feature fills the slots from its properties.
   const images = useMemo(() => ({dot, pin}), []);
-  // Marker data is compared by identity: these layers are made one time.
-  const layers = useMemo(() => [
-    {id: 'dots', image: 'dot', data: places.slice(500)},
-    // 500 of the places are pins when the zoom is 12 or more, and dots below that.
-    {id: 'dots-below-pins', image: 'dot', maxZoom: 12, data: some},
-    {id: 'pins', image: 'pin', anchor: 'bottom', minZoom: 12, overlap: 'hide', data: some},
-  ], []);
+  // The data of a source is compared by identity: these sources are made one time. Each key makes a GeoJSON source.
+  const data = useMemo(() => ({rest: pointsOf(places.slice(500)), some: pointsOf(some)}), []);
 
   return (
-    <MapJr mapStyle={style} initialView={{center: NYC, zoom: 11.4}} images={images} markers={layers}
+    <MapJr mapStyle={style} initialView={{center: NYC, zoom: 11.4}} images={images} data={data} layers={layers}
       interactiveLayers={['pins', 'dots-below-pins', 'dots']} onClick={e => setSelected(e.features[0] ?? null)}>
       {selected && (
         <MapOverlay lngLat={selected.geometry.coordinates} offset={[0, selected.layer.id === 'pins' ? -30 : -6]} popup onClose={() => setSelected(null)}>
