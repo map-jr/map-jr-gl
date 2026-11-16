@@ -2072,7 +2072,16 @@ for (const mode of renderers) {
             m.addLayer({id: 'uses-g', type: 'fill', source: 'g'});
             m.removeSource('g');
             await wait(300);
-            const out = {options, custom, errors, layers: m.getStyle().layers.map(l => l.id).join(), source: !!m.getSource('g'), bounds: m.getMaxBounds()?.toArray(), clamped, later: m.getCenter().toArray()};
+            const out = {options, custom, errors: errors.slice(), layers: m.getStyle().layers.map(l => l.id).join(), source: !!m.getSource('g'), bounds: m.getMaxBounds()?.toArray(), clamped, later: m.getCenter().toArray()};
+            // A source object in the layer becomes a source with the id of the layer, as in MapLibre GL JS (#469).
+            const line = {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'LineString', coordinates: [[-8, -8], [8, 8]]}}};
+            const given = {id: 'inline', type: 'line', source: line, paint: {'line-width': 10}};
+            m.addLayer(given);
+            m.addLayer({id: 'inline-2', type: 'circle', source: 'inline'});
+            m.addLayer({id: 'g', type: 'line', source: line});
+            await wait(600);
+            out.inline = {errors: errors.slice(4), layers: m.getStyle().layers.map(l => l.id).join(), source: m.getStyle().sources.inline?.type, of: m.getStyle().layers.find(l => l.id === 'inline')?.source,
+                drawn: m.queryRenderedFeatures({layers: ['inline']}).length, kept: given.source === line};
             // The option projection has no effect, as in MapLibre GL JS 6.17 (#463): one warning, and Mercator.
             const projected = make({projection: {type: 'globe'}});
             await new Promise(r => projected.once('load', r));
@@ -2096,6 +2105,9 @@ for (const mode of renderers) {
             && quiet.custom.length === 0 && quiet.projected?.join() === 'none,1', JSON.stringify({options: quiet.options, plain: quiet.plain, bounds: quiet.bounds, clamped: quiet.clamped, later: quiet.later, custom: quiet.custom, projected: quiet.projected}));
         check('[main] maplibre-compat: a layer or source id that exists, a source that is not there, and a source in use fire error and change nothing',
             quiet.errors.length === 4 && /addLayer: the style has a layer with the id "bg"/.test(quiet.errors[0]) && /names the source "nowhere"/.test(quiet.errors[1]) && /addSource: the style has a source with the id "g"/.test(quiet.errors[2]) && /removeSource: the layer "uses-g" uses the source "g"/.test(quiet.errors[3]) && quiet.layers === 'bg,uses-g' && quiet.source, JSON.stringify({errors: quiet.errors, layers: quiet.layers, source: quiet.source}));
+        check('[main] maplibre-compat: addLayer with a source object adds the source under the id of the layer, and fires error when that source exists',
+            quiet.inline.errors.length === 1 && /addLayer: the layer "g" has a source object, and the style has a source with the id "g" already/.test(quiet.inline.errors[0]) && quiet.inline.layers === 'bg,uses-g,inline,inline-2'
+            && quiet.inline.source === 'geojson' && quiet.inline.of === 'inline' && quiet.inline.drawn > 0 && quiet.inline.kept, JSON.stringify(quiet.inline));
         check('[main] maplibre-compat: strict: true throws for an option with no effect and for a refused style call',
             quiet.thrown.startsWith('[map-jr-gl] The option renderWorldCopies: false has no effect') && /addLayer: the style has a layer with the id "bg"/.test(quiet.thrownCall), JSON.stringify({thrown: quiet.thrown, thrownCall: quiet.thrownCall}));
     }
