@@ -11,7 +11,7 @@ export type {PaddingInput};
 export type {FeatureOptions, FeaturePlace};
 import {createStore, type Readable} from './store.ts';
 import {Marker, Popup} from './overlays.ts';
-import {extended, markerFeatures, markerStyle, withMarkers, type Anchor, type MarkerLayerOptions} from './markers.ts';
+import {dataTypeError, extended, markerFeatures, markerStyle, withData, withMarkers, type Anchor, type MarkerLayerOptions} from './markers.ts';
 import type {QueriedFeature} from './query.ts';
 import type {Control, ControlPosition} from './controls.ts';
 import type {Checked} from './mistakes.ts';
@@ -254,6 +254,10 @@ export interface MapEvents extends
 export interface MapHost {
     /** Changes the map to a new description. Give the complete description each time: a description with no `style` throws. */
     update(spec: MapSpec): void;
+    /** Changes only the fields of `part`: `map.update({...map.description, ...part})`. A field of `part` that is `undefined` is removed. */
+    patch(part: Partial<MapSpec>): void;
+    /** The description of the last `createMap`, `update` or `patch`. Read only: change the map with `update` or `patch`. */
+    readonly description: Readonly<MapSpec>;
     destroy(): void;
     readonly state: Readable<MapState>;
     /**
@@ -379,6 +383,11 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
     let baseSources: object = {};
     // The projection of the style itself, which applies when the description has none, and that of the last description.
     let styleProjection: ProjectionSpecification | undefined, wantedProjection = spec.projection;
+    // The ids of the GeoJSON sources that keys of `data` made, because the style and `extend` have no source of that id (#487).
+    const madeData = new Set<string>();
+    // (The `data` of the last description: keys can change while the style loads.)
+    let wantedData = spec.data;
+    const typeError = (id: string, type: string) => setTimeout(() => { if (alive) map.fire('error', {error: dataTypeError(id, type)}); });
     const restyle = (next: MapSpec) => { styled = false; map.setStyle(next.style, {transformStyle: (_, style) => {
         styled = true;
         baseSources = style.sources ?? {};
@@ -389,7 +398,10 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
         // the sources of the style before. It is given again when the new style is there: see `giveData`.)
         sent.clear();
         check(4, style, next.extend);
-        return withMarkers(extended(style, next.extend && {...next.extend, layers: next.extend.layers && copy(next.extend.layers)}), next.markers);
+        const made = withData(extended(style, next.extend && {...next.extend, layers: next.extend.layers && copy(next.extend.layers)}), wantedData, false, typeError);
+        madeData.clear();
+        for (const id in wantedData) if (!Object.hasOwn(style.sources ?? {}, id) && !Object.hasOwn(next.extend?.sources ?? {}, id)) madeData.add(id);
+        return withMarkers(made, next.markers);
     }}); };
     restyle(spec);
     // (The height of the container is read after a second, so that a container which gets its height a moment later gives no warning.)
@@ -512,9 +524,17 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
         // content. So where the identity is different, the content is compared before the map does work.)
         const differ = (a: unknown, b: unknown) => a !== b && JSON.stringify(a) !== JSON.stringify(b);
         wantedProjection = next.projection;
+        wantedData = next.data;
+        // (A new key of `data` makes its source before the edits of `extend`, which can add a layer that names it.)
+        if (styled && before) for (const id in next.data) {
+            const s = map.getSource(id) as {type?: string} | undefined;
+            if (!s) { madeData.add(id); map.addSource(id, {type: 'geojson', data: {type: 'FeatureCollection', features: []}}); }
+            else if (!(id in (before.data ?? {})) && s.type !== 'geojson') typeError(id, s.type!);
+        }
         // (After a new style the data waits for the `styledata` event: the engine must have the new style first.)
         const restyled = !!before && (differ(next.style, before.style) || differ(next.extend, before.extend) && !(styled && edit(next.extend, before.extend, differ)) || differ(markerStyles(next.markers), markerStyles(before.markers)));
         if (restyled) { state.set({idle: false}); sent.clear(); restyle(next); }
+        else for (const id of madeData) if (!Object.hasOwn(next.data ?? {}, id)) { madeData.delete(id); sent.delete(id); map.removeSource(id); }
         if (next.view && !same(next.view, before?.view) && !reported.some(v => same(next.view, v)) && before) map.jumpTo(next.view);
         if (next.minZoom !== before?.minZoom && before) map.setMinZoom(next.minZoom);
         if (next.maxZoom !== before?.maxZoom && before) map.setMaxZoom(next.maxZoom);
@@ -576,9 +596,16 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
 
     return {
         update(next) {
-            complete(next, 'update', `update() takes the complete description, not only the changed fields. Write map.update({...description, ${Object.keys(next ?? {})[0] ?? 'field'}: …}).`);
+            complete(next, 'update', `update() takes the complete description, not only the changed fields. Write map.patch({${Object.keys(next ?? {})[0] ?? 'field'}: …}) to change only some fields.`);
             if (alive) apply(next, now);
         },
+        patch(part) {
+            const next: any = {...now, ...part};
+            for (const k in part) if ((part as any)[k] === undefined) delete next[k];
+            complete(next, 'patch', 'Do not set "style" to undefined.');
+            if (alive) apply(next, now);
+        },
+        get description() { return now; },
         destroy() { if (!alive) return; alive = false; cooperate(false); map.remove(); },
         state,
         queryFeatures,
