@@ -796,6 +796,9 @@ The entry `@map-jr/map-jr-gl` has TypeScript types for the description (`MapSpec
   `const NYC = [-74.0065, 40.7085]; createMap(el, {style, initialView: {center: NYC}})`. The map reads the first two
   numbers as `[lng, lat]`. A position that the map gives (`state.view.center`, the result of `unproject`, `lngLat`
   in `onClick`) is `[number, number]`.
+- The types that the signatures use are exported: `LngLatBoundsInput` (`maxBounds`, `fitBounds`, `initialView.bounds`),
+  `LngLatBounds` (the `boxZoomBounds` of the event `boxzoomend`; only the type, not the class), `LngLatInput`,
+  `FlyOptions` (`moveTo`) and `Anchor` (`OverlayOptions.anchor` and the anchor of a marker layer).
 - A feature of `state.hover` and of `onClick` has `layer`, the style layer that draws it, with the type `StyleLayer`
   (`id`, `type`, `source`, `paint` and the other members of a layer of the style). `queryFeatures` returns
   `(RenderedFeature | QueriedFeature)[]`: a `QueriedFeature` (a query with `sources`) has no style layer.
