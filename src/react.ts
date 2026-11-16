@@ -23,7 +23,7 @@ const OWN = new Set(['onViewChange', 'onClick', 'onHover', 'onLoad', 'onIdle', '
 
 export interface MapJrProps extends Omit<MapSpec, 'style' | 'onViewChange'>, MapEventProps {
     /** A style object or the URL of a style. (`style` is the CSS style of the element.) */
-    mapStyle: string | object;
+    mapStyle: MapSpec['style'];
     /** Called with the view after each change. With `view`, write the value back to own the view. */
     onViewChange?: (view: View) => void;
     onHover?: (features: RenderedFeature[]) => void;
