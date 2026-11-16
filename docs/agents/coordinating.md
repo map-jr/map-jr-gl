@@ -152,6 +152,44 @@ reviewer, 17 pull requests merged and the release 0.5.0.
 - **A triage worker reads; it does not run.** Two of its "open" items were already done on `main` (the compass drag,
   #358). Ask each worker to check the item on `main` first, as the brief says.
 
+## Notes from the batch of 2026-11-16 (the plan of #480, on the owner's Mac)
+
+One coordinator, about 30 workers and no reviewer, 28 pull requests merged for the 26 issues of the plan: 24 for the
+issues (two pull requests covered two issues each, and one issue took two), one raised budget and three corrections
+of tests.
+
+- **Most pull requests changed `src/host.ts`, and each merge sent the others back.** Of the nine pull requests of
+  the first batch, six needed a merge of `main` by their worker, and some needed two. A merge by the worker cost
+  10,000 to 20,000 tokens and one more CI run. What helped: merge the pull request that has waited longest first, tell
+  the workers that are in the middle of a merge what else reached `main`, and say in each prompt which numbers of
+  `src/mistakes.ts` (texts and check kinds) a worker may take, because two workers took the same number three times.
+- **A merge can break another branch with no conflict.** After #526 made the member `map` private, a check that
+  another branch had added still read the old member; it merged cleanly and would have failed only at run time. After
+  a merge that renames or removes something, send each open branch to its worker to merge `main` and search for the
+  old name, and do not merge on a CI result that is older than that merge.
+- **A check that fails by timing blocks every pull request.** Three checks did on this day (#517, #532): each read a
+  value after a fixed wait or from the frames that happened to be drawn. Read which check failed before you take a red
+  job as a fault of the pull request, file the check at once, and give it to one worker with a narrow brief. Two
+  workers could not reproduce the failures on the Mac with the CPU throttled up to 40 times; the reading of the CI
+  logs was enough to fix them. Do not start a failed job again in the hope of a lucky run.
+- **A worker that reports the same number of steps in several notices is stuck** on a test run of its own. Give the
+  issue to a new worker with what is known, and tell the first one to stop its servers.
+- **`subscribe_pr_activity` needs the repository in the session.** Without it, a `Monitor` that lists the open pull
+  requests and prints each new head when its checks have finished does the same work. It ends after 30 minutes and
+  must be started again.
+- **A pull request on top of an open one** (#535 and #536 on #529) worked: after the squash merge of the lower one,
+  set the base to `main` (`gh api -X PATCH …/pulls/N -f base=main`) and let the worker merge `main`, taking the side
+  of `main` for the lines of the lower pull request.
+- **Ask the owner early for what blocks a chain.** The owner allowed the coordinator to merge the approved breaking
+  pull requests and to raise the budget of the page script; before that, three issues waited behind one open pull
+  request.
+- **For a change of the look, the owner wants a live page on a local port,** with controls for the values in
+  question, and not screenshots. `SendUserFile` does not work in a session that is not on a project thread. The
+  server of a worker ends with the worker, so the coordinator starts it in the worktree of the worker
+  (`PORT=… node demo/serve.mjs`, in the background).
+- **Starting the `Browsers` workflow by hand seconds after a merge** cancelled the run of that merge. Wait until the
+  run of the push has started its jobs, or start it again afterwards.
+
 ## After a batch
 
 1. Run `pnpm status` once on `main` and open one pull request with the result.
