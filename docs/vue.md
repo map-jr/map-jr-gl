@@ -452,10 +452,7 @@ tests in [ecosystem.md](ecosystem.md) and the Vue ports of #270 ran deck.gl in i
 mapbox-gl-draw and terra-draw polygon mode this way. [maplibre-compatibility.md](maplibre-compatibility.md) lists what
 differs from MapLibre GL JS.
 
-`MapJr` does not support these plugins yet (#267). `host.map` of `@map-jr/map-jr-gl` is the core map of the library, not a
-MapLibre map. It does not have `getPadding` and `getRenderWorldCopies`, which deck.gl calls, nor
-`queryRenderedFeatures`, which the draw plugins call on each pointer move. It also does not have `setCenter`, `setZoom`,
-`setBearing`, `setPitch`, `flyTo`, `panTo` or `rotateTo`, and its members can change between versions.
+`MapJr` does not support these plugins yet (#267), and the `MapHost` of `@map-jr/map-jr-gl` does not give a MapLibre map.
 
 ## Nuxt and server rendering
 
