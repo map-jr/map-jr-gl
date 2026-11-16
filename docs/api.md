@@ -86,13 +86,13 @@ and not `patch`. The compat entry has neither member.
 The map writes a warning to the console with `console.warn`, once for each map, for each of these mistakes:
 
 - The container is in the page, is not hidden, and has height 0 one second after the map is made.
-- An id in `interactiveLayers`, or in `layers` or `sources` of `queryFeatures`, is not in the style.
+- An id in `interactiveLayers`, in `layers` of `queryFeatures`, or the source of `querySource`, is not in the style.
 - A layer names a source that the map does not have, for example after its key left `data`.
 - A layer of `layers` names a `before` layer or a source that the style does not have.
 - Two marker layers have the same `id`.
 - A marker layer has no `image`, or it names an image that the map does not have.
 - A layer gives an image a parameter that is not a slot of the image.
-- An option of `queryFeatures` has no effect in that kind of query.
+- An option of `queryFeatures` or `querySource` has no effect in that query, or belongs to the other method.
 
 The ids of the description are compared each time that the map is idle, so a layer or a source that the application
 adds itself in `load` gives no warning.
@@ -583,16 +583,26 @@ default.
 
 ## Queries
 
-There is one method to find features: `queryFeatures(at, options)`.
+There are two methods to find features:
 
-- **Where (`at`):** a point of the screen (`{x, y}`), a position (`[lng, lat]`), a rectangle of the screen (two points), or
-  nothing for the whole map.
-- **What (`options`):** without `sources`, the features that the style layers draw, the top one first (`layers` selects layers).
-  With `sources`, the features of the tile data of those sources. These need no style layer, and at a position they
-  need not be on the screen: the map fetches the tile if necessary.
+| Method | Finds | Options | Result |
+|---|---|---|---|
+| `queryFeatures(at?, options?)` | The features that the style layers draw, the top one first. | `layers`, `filter`, `radius` | `RenderedFeature[]` |
+| `querySource(sourceId, at?, options?)` | The features of the tile data of one source. They need no style layer, and at a position they need not be on the screen: the map fetches the tile if necessary. | `sourceLayers`, `filter`, `radius`, `geometry`, `zoom` | `QueriedFeature[]` |
 
-A query for tile data needs the ids of its sources in `sources`. A query with no `sources` never reads data that the
-style does not draw: it returns an empty array where no style layer draws a feature.
+`at` is where the method looks:
+
+- for `queryFeatures`, a point of the screen (`{x, y}`), a position (`[lng, lat]`), a rectangle of the screen (two
+  points), or nothing for the whole map;
+- for `querySource`, a point of the screen or a position, or nothing for the tiles of the view. A rectangle of the
+  screen also works: it gives the features of the tiles of the view within the rectangle.
+
+The options can come in the place of `at`. `map.queryFeatures({layers: ['places']})` asks the whole map, and it is the
+same as `map.queryFeatures(undefined, {layers: ['places']})`. An object is a place when it has `x`, `y`, `lng`, `lat`
+or `lon`, and the options otherwise.
+
+`queryFeatures` never reads data that the style does not draw: it returns an empty array where no style layer draws a
+feature. `querySource` takes the id of one source. To ask two sources, call it twice.
 
 ```js
 // The features that style layers draw at a point of the screen:
@@ -603,53 +613,57 @@ const near = await map.queryFeatures({x: 200, y: 150}, {radius: 8});
 
 // In a rectangle of the screen, and on the whole map:
 const inBox = await map.queryFeatures([{x: 0, y: 0}, {x: 400, y: 300}], {layers: ['places']});
-const all = await map.queryFeatures(undefined, {layers: ['places']});
+const all = await map.queryFeatures({layers: ['places']});
 
 // The data of a source at a position. You do not need a style layer for this, and the position can be off screen:
-const data = await map.queryFeatures([-75.16, 39.92], {sources: ['rain']});
+const data = await map.querySource('rain', [-75.16, 39.92]);
 
 // All the features of a source in the tiles of the view:
-const inView = await map.queryFeatures(undefined, {sources: ['rain'], sourceLayers: ['rain']});
+const inView = await map.querySource('rain', {sourceLayers: ['rain']});
 ```
 
-The options (`FeatureOptions`) depend on the kind of query:
+The options of `queryFeatures` (`FeatureOptions`):
+
+| Option | Meaning |
+|---|---|
+| `layers` | The ids of the style layers to look in. The default is all style layers. |
+| `filter` | A filter expression of the MapLibre style specification, for example `['==', ['get', 'class'], 'park']`. The query returns only the features that pass it. |
+| `radius` | At a point or a position: the query asks a square of that many pixels of the screen to each side of the place. The default is 0. |
+
+The options of `querySource` (`SourceOptions`):
 
 | Option | Meaning | Has an effect |
 |---|---|---|
-| `layers` | The ids of the style layers to look in. The default is all style layers. | Without `sources`. |
-| `sources` | The ids of the sources to look in. With it, the query reads the tile data and not what the style layers draw. | |
-| `sourceLayers` | The names of the layers of a vector tile source to look in. The default is all of them. | With `sources`. |
-| `filter` | A filter expression of the MapLibre style specification, for example `['==', ['get', 'class'], 'park']`. The query returns only the features that pass it. | In each query. |
-| `radius` | The distance around the place, in pixels of the screen, within which a feature is found. Without `sources`, the query asks a square of that many pixels to each side of the place, and the default is 0. With `sources`, the default is 3. | At a point or a position. |
-| `geometry` | `true` to give each feature a `geometry` (GeoJSON, in longitude and latitude). The default is `false`, which keeps the answer small. | With `sources`, at a point or a position. In each other query, the features always have a `geometry`. |
-| `zoom` | The zoom level of the tiles to read. The default is the zoom of the map. The query rounds it down to a whole number and keeps it between the `minzoom` and the `maxzoom` of the source: above the `maxzoom`, it reads the tile at the `maxzoom`, which is the deepest tile of the source. | With `sources`, at a point or a position. |
+| `sourceLayers` | The names of the layers of a vector tile source to look in. The default is all of them. | In each query. |
+| `filter` | A filter expression, as for `queryFeatures`. | In each query. |
+| `radius` | The distance around the place, in pixels of the screen, within which a feature is found. The default is 3. | At a point or a position. |
+| `geometry` | `true` to give each feature a `geometry` (GeoJSON, in longitude and latitude). The default is `false`, which keeps the answer small. | At a point or a position. In a query of the view, the features always have a `geometry`. |
+| `zoom` | The zoom level of the tiles to read. The default is the zoom of the map. The query rounds it down to a whole number and keeps it between the `minzoom` and the `maxzoom` of the source: above the `maxzoom`, it reads the tile at the `maxzoom`, which is the deepest tile of the source. | At a point or a position. |
 
-An option that has no effect in a query is ignored, and the map writes one warning for it: `layers` with `sources`,
-`sourceLayers` without `sources`, `radius` in a query for a rectangle or the whole map, and `geometry: false` or
-`zoom` in a query that is not a query with `sources` at a point or a position. A place that is not one of the three forms (for example `{lng, lat}`) in a query without
-`sources` rejects the promise with an error that names the forms.
+An option that has no effect is ignored, and the map writes one warning for it: an option of `querySource` in
+`queryFeatures` (`sources`, `sourceLayers`, `geometry`, `zoom`), `layers` in `querySource`, `radius` in a query for a
+rectangle or the whole map, and `geometry: false` or `zoom` in a `querySource` of the view. A place that is not one of
+the forms (for example `{lng, lat}`) in `queryFeatures` rejects the promise with an error that names the forms. A
+first argument of `querySource` that is not a string rejects the promise.
 
-A feature of a query without `sources` has `id`, `properties`, `geometry`, `source`, `sourceLayer`, `layer` (the
-style layer) and `state`. A feature of a query with `sources` has `id`, `properties`, `source`, `sourceLayer`,
-`type` (`'Point'`, `'LineString'` or `'Polygon'`) and, as the table says, `geometry`.
+A feature of `queryFeatures` (`RenderedFeature`) has `id`, `properties`, `geometry`, `source`, `sourceLayer`, `layer`
+(the style layer) and `state`. A feature of `querySource` (`QueriedFeature`) has `id`, `properties`, `source`,
+`sourceLayer`, `type` (`'Point'`, `'LineString'` or `'Polygon'`) and, as the table says, `geometry`.
 
-In TypeScript, the type of the result follows the kind of query. A call that writes `sources` gives
-`QueriedFeature[]`, and a call with no `sources` gives `RenderedFeature[]`. When the options are a variable of the
-type `FeatureOptions`, the result is `RenderedFeature[] | QueriedFeature[]`. The same holds for the listener of
-`watchFeatures` and for `useMapFeatures` of `@map-jr/map-jr-gl/vue`.
-
-`watchFeatures(at, options, listener)` asks the same question and keeps the answer up to date. The listener gets
-the answer now, and again each time that it changes: new tiles, a change of the style, and (for a place on the
-screen) a movement of the map. It returns a function that stops it. Use it in place of listeners for `idle` and
-`sourcedata`:
+`watchFeatures(at, options, listener)` and `watchSource(sourceId, at, options, listener)` ask the question of
+`queryFeatures` and of `querySource` and keep the answer up to date. The listener gets the answer now, and again each
+time that it changes: new tiles, a change of the style, and (for a place on the screen) a movement of the map. Each
+returns a function that stops it. Use them in place of listeners for `idle` and `sourcedata`:
 
 ```js
 // The band of rain under a marker, also while the layers of the map change:
-const stop = map.watchFeatures([-75.16, 39.92], {sources: ['rain']}, features => show(features[0]?.properties));
+const stop = map.watchSource('rain', [-75.16, 39.92], {}, features => show(features[0]?.properties));
 ```
 
+`useMapFeatures` and `useMapSource` of `@map-jr/map-jr-gl/vue` are the same watches as refs (see [Vue](vue.md)).
+
 A query whose map goes away is rejected, so that code that awaits it does not wait for ever. This holds for
-`queryFeatures` and for `queryElevation`:
+`queryFeatures`, `querySource` and `queryElevation`:
 
 | When | The promise rejects with an `Error` whose message is |
 |---|---|
@@ -657,18 +671,17 @@ A query whose map goes away is rejected, so that code that awaits it does not wa
 | The browser takes the WebGL context away before the answer has come. | `[map-jr-gl] The query has no answer: the map lost its WebGL context. Ask again.` A query that is asked again waits for the new context and is answered then. |
 
 Catch the error where a query can be open while the map is removed, for example in a handler of a component that
-can unmount. `watchFeatures` needs no such code: it does not call its listener after `destroy()`, and after a lost
-context it asks again by itself. When its listener throws, the browser reports the error as an unhandled rejection,
-and the watch goes on. When the question itself is wrong (for example a place that is not `{x, y}` or `[lng, lat]`),
-the rejection is an `error` event of the map (`onError`, or the console when there is no `onError`), once until the
-answer changes.
+can unmount. `watchFeatures` and `watchSource` need no such code: they do not call their listener after `destroy()`,
+and after a lost context they ask again by themselves. When a listener throws, the browser reports the error as an
+unhandled rejection, and the watch goes on. When the question itself is wrong (for example a place that is not
+`{x, y}` or `[lng, lat]`), the rejection is an `error` event of the map (`onError`, or the console when there is no
+`onError`), once until the answer changes.
 
-For users of MapLibre GL JS: `queryRenderedFeatures` is `queryFeatures` without `sources`, and
-`querySourceFeatures` is close to `queryFeatures(undefined, {sources: [id]})`. The difference is that
-`querySourceFeatures` returns every feature of the tiles under the view, as MapLibre does, and `queryFeatures` returns
-only the features in the view. The two MapLibre methods are in the entry
+For users of MapLibre GL JS: `queryRenderedFeatures` is `queryFeatures`, and `querySourceFeatures(id)` is close to
+`querySource(id)`. The difference is that `querySourceFeatures` returns every feature of the tiles under the view, as
+MapLibre does, and `querySource` returns only the features in the view. The two MapLibre methods are in the entry
 `@map-jr/map-jr-gl/maplibre-compat`. The `Map` of that entry and `map` of the `MapHost` (the core map) have the same
-`queryFeatures` as the `MapHost`.
+`queryFeatures` and `querySource` as the `MapHost`, and they also accept a position as `{lng, lat}`.
 
 The tile data is in a worker, so each query returns a promise.
 
@@ -810,7 +823,8 @@ as ten. See [Markers](markers.md).
 | `destroy()` | Removes the map and frees its memory. It can be called while the map loads. Call it before you make another map in the same element: a second map in an element that has a map leaves two canvases in the element, and the library warns in the console. |
 | `moveTo(target)` | Moves the camera now to a view or to `bounds` (with `padding` and `maxZoom` for the fit), with `bearing`, `pitch`, `duration` (milliseconds) and `fly`. It does not change the padding of the map. See [The camera](#the-camera). |
 | `fitBounds(bounds, options)` | The short form of `moveTo({bounds, ...options})`: the options are those of `moveTo` other than `center` and `zoom`, and `duration` is 800 ms by default. |
-| `queryFeatures(at, options)`, `watchFeatures(at, options, listener)` | Find features, one time or kept up to date. See [Queries](#queries). |
+| `queryFeatures(at, options)`, `watchFeatures(at, options, listener)` | Find the features that the style layers draw, one time or kept up to date. See [Queries](#queries). |
+| `querySource(sourceId, at, options)`, `watchSource(sourceId, at, options, listener)` | Find the features of the tile data of one source, one time or kept up to date. See [Queries](#queries). |
 | `queryElevation(at)` | The height of the ground in metres at a position (`[lng, lat]`) or a point of the screen (`{x, y}`), from the elevation source of the style. A promise; `null` where there is no data. |
 | `toBlob(type, quality)` | The map as an image, for a download or for printing. It waits until the map is idle, draws one frame and resolves to a `Blob` of the canvas. `type` defaults to `'image/png'`; `quality` (0 to 1) applies to `'image/jpeg'` and `'image/webp'`. It works with both renderers. The image has the size of the canvas in device pixels (CSS size times `devicePixelRatio`) and does not contain markers, popups, controls or the attribution, because those are elements of the page. The promise rejects when the map is destroyed first. Example: `const url = URL.createObjectURL(await map.toBlob())`. To print, put that URL in an `<img>`: the canvas itself may print blank. |
 | `project(lngLat)`, `unproject(point)` | Change between a position on the map and a point of the screen. |
@@ -928,7 +942,7 @@ The entry `@map-jr/map-jr-gl` has TypeScript types for the description (`MapSpec
   `MoveToOptions` and `FlyOptions` (`moveTo`) and `Anchor` (`OverlayOptions.anchor` and the anchor of a marker layer).
 - A feature of `state.hover` and of `onClick` has `layer`, the style layer that draws it, with the type `StyleLayer`
   (`id`, `type`, `source`, `paint` and the other members of a layer of the style). `queryFeatures` returns
-  `(RenderedFeature | QueriedFeature)[]`: a `QueriedFeature` (a query with `sources`) has no style layer.
+  `RenderedFeature[]`, and `querySource` returns `QueriedFeature[]`: a `QueriedFeature` has no style layer.
 - A style that you build in code can use the style types of this entry: `StyleSpecification`,
   `SourceSpecification`, `LayerSpecification`, one type for each kind of layer (`FillLayerSpecification`,
   `LineLayerSpecification`, `SymbolLayerSpecification` and the others, with the names of MapLibre GL JS),

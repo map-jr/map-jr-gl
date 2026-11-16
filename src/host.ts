@@ -6,9 +6,9 @@
  * The adapters for the frameworks (`@map-jr/map-jr-gl/vue` and others) are thin layers over `createMap`.
  * (For the API of MapLibre GL JS, see `@map-jr/map-jr-gl/maplibre-compat`.)
  */
-import {Map, logError, type FeatureOptions, type FeaturePlace, type ImageOptions, type MapOptions, type FlyOptions, type RenderedFeature, type RequestTransform} from './map.ts';
+import {Map, logError, type FeatureOptions, type FeaturePlace, type SourceOptions, isOptions, type ImageOptions, type MapOptions, type FlyOptions, type RenderedFeature, type RequestTransform} from './map.ts';
 export type {PaddingInput};
-export type {FeatureOptions, FeaturePlace};
+export type {FeatureOptions, FeaturePlace, SourceOptions};
 import {createStore, type Readable} from './store.ts';
 import {Marker, Popup} from './overlays.ts';
 import {dataTypeError, extended, markerFeatures, markerStyle, withData, withMarkers, type Anchor, type MarkerLayerOptions} from './markers.ts';
@@ -275,25 +275,25 @@ export interface MapHost {
     destroy(): void;
     readonly state: Readable<MapState>;
     /**
-     * Finds features. There is one method for all cases:
-     *
-     * - Where: a point of the screen (`{x, y}`), a position (`[lng, lat]`), a rectangle of the screen (two points), or
-     *   nothing for the whole map.
-     * - What: with `sources`, the features of the tile data of those sources. They need no style layer, and at a
-     *   position they need not be on the screen (the tile is fetched if necessary). Without `sources`, the features
-     *   that the style layers draw (`layers` selects layers), the top one first.
+     * The features that the style layers draw, the top one first (`layers` selects layers). `at` is a point of the
+     * screen (`{x, y}`), a position (`[lng, lat]`), a rectangle of the screen (two points), or nothing for the whole map.
+     * The options can come in the place of `at`: `queryFeatures({layers: ['places']})` asks the whole map.
      */
-    queryFeatures(at: FeaturePlace | undefined, options: FeatureOptions & {sources: string[]}): Promise<QueriedFeature[]>;
-    queryFeatures(at?: FeaturePlace, options?: FeatureOptions & {sources?: undefined}): Promise<RenderedFeature[]>;
-    queryFeatures(at?: FeaturePlace, options?: FeatureOptions): Promise<RenderedFeature[] | QueriedFeature[]>;
+    queryFeatures(at?: FeaturePlace | FeatureOptions, options?: FeatureOptions): Promise<RenderedFeature[]>;
     /**
-     * The same question, kept up to date: `listener` gets the answer now, and again each time that the answer
-     * changes (new tiles, a change of the style, and for a place on the screen also a movement of the map).
+     * The features of the tile data of the source `sourceId`. They need no style layer, and at a position they need not
+     * be on the screen (the tile is fetched if necessary). `at` is a point of the screen or a position, or nothing for
+     * the tiles of the view. The options can come in the place of `at`.
+     */
+    querySource(sourceId: string, at?: FeaturePlace | SourceOptions, options?: SourceOptions): Promise<QueriedFeature[]>;
+    /**
+     * The question of `queryFeatures`, kept up to date: `listener` gets the answer now, and again each time that the
+     * answer changes (new tiles, a change of the style, and for a place on the screen also a movement of the map).
      * Returns a function that stops it.
      */
-    watchFeatures(at: FeaturePlace | undefined, options: FeatureOptions & {sources: string[]}, listener: (features: QueriedFeature[]) => void): () => void;
-    watchFeatures(at: FeaturePlace | undefined, options: FeatureOptions & {sources?: undefined}, listener: (features: RenderedFeature[]) => void): () => void;
-    watchFeatures(at: FeaturePlace | undefined, options: FeatureOptions, listener: (features: RenderedFeature[] | QueriedFeature[]) => void): () => void;
+    watchFeatures(at: FeaturePlace | undefined, options: FeatureOptions, listener: (features: RenderedFeature[]) => void): () => void;
+    /** The question of `querySource`, kept up to date in the same way as `watchFeatures`. Returns a function that stops it. */
+    watchSource(sourceId: string, at: FeaturePlace | undefined, options: SourceOptions, listener: (features: QueriedFeature[]) => void): () => void;
     /**
      * Merges `state` into the state of one feature, which `feature-state` expressions read (a highlight of a hovered or
      * selected feature). `target.id` is the `id` of the feature (`RenderedFeature.id`), and `sourceLayer` is required
@@ -617,12 +617,43 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
         if (fly) map.flyTo({...view, duration, ...(fly === true ? {} : fly)}); else if (duration) map.easeTo({...view, duration}); else map.jumpTo(view);
     };
     const isPosition = (at: FeaturePlace): at is [number, number] => typeof (at as number[])[0] === 'number';
-    const queryFeatures = ((at?: FeaturePlace, o: FeatureOptions = {}) => {
-        const box = Array.isArray(at) && !isPosition(at);
+    /** Rejects with the message of the mistake `code`, or with `short` when the checks do not load. */
+    const reject = (code: number, a: string, short: string) => checks().then(m => m.mistake(code, a), () => '[map-jr-gl] ' + short).then(text => { throw new Error(text); });
+    const queryFeatures = (at?: FeaturePlace | FeatureOptions, o: FeatureOptions = {}): Promise<RenderedFeature[]> => {
+        if (isOptions(at)) { o = at as FeatureOptions; at = undefined; }
         check(3, at, o);
-        if (at && !box && !o.sources && !isPosition(at) && typeof (at as {x: number}).x !== 'number') return checks().then(m => m.mistake(9, JSON.stringify(at)), () => '[map-jr-gl] queryFeatures(): the place is not {x, y} or [lng, lat].').then(text => { throw new Error(text); });
-        return map.queryFeatures(at, o);
-    }) as MapHost['queryFeatures'];
+        if (at && !Array.isArray(at) && typeof (at as {x: number}).x !== 'number') return reject(9, JSON.stringify(at), 'queryFeatures(): the place is not {x, y} or [lng, lat].');
+        return map.queryFeatures(at as FeaturePlace | undefined, o);
+    };
+    const querySource = (id: string, at?: FeaturePlace | SourceOptions, o: SourceOptions = {}): Promise<QueriedFeature[]> => {
+        if (typeof id !== 'string') return reject(10, JSON.stringify(id) ?? String(id), 'querySource(): the first argument is not the id of a source.');
+        if (isOptions(at)) { o = at as SourceOptions; at = undefined; }
+        check(6, at, {...o, id});
+        return map.querySource(id, at as FeaturePlace | undefined, o);
+    };
+    /** Runs `ask` now and after each change that can change its answer, and gives each new answer to `listener`. */
+    const watch = <T extends {layer?: unknown; source: string; id?: unknown; properties: unknown}>(at: FeaturePlace | undefined, source: string | undefined, ask: () => Promise<T[]>, listener: (features: T[]) => void) => {
+        // One question at a time. An event during a question asks again after it.
+        let last: string | undefined, busy = false, again = false, stopped = false;
+        const run = () => {
+            if (busy) { again = true; return; }
+            busy = true;
+            ask().then(found => {
+                const text = JSON.stringify(found.map(f => [(f.layer as {id?: string})?.id ?? f.layer, f.source, f.id, f.properties]));
+                if (alive && !stopped && text !== last) { last = text; listener(found); }
+            }, e => {
+                // (A query of a removed map or of a lost context has no answer and is asked again later. Any other
+                // rejection is a mistake of the caller: it is an error of the map, once until the answer changes.)
+                const text = 'e' + (e as Error)?.message;
+                if (alive && !stopped && text !== last && !text.includes('has no answer')) { last = text; map.fire('error', {error: e}); }
+            }).finally(() => { busy = false; if (again && !stopped) { again = false; run(); } });
+        };
+        const data = (e: any) => { if (!source || !e.sourceId || e.sourceId === source) run(); };
+        const moved = () => { if (!at || !isPosition(at)) run(); };
+        map.on('sourcedata', data); map.on('idle', run); map.on('moveend', moved);
+        run();
+        return () => { stopped = true; map.off('sourcedata', data); map.off('idle', run); map.off('moveend', moved); };
+    };
     // (The cluster methods of the core source, with a message that names the method of the host.)
     const cluster = (name: string, id: string, run: (source: any) => Promise<any>) => Promise.resolve().then(() => {
         const source = map.getSource(id) as any;
@@ -661,28 +692,9 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
         clusterExpansionZoom: (id, clusterId) => cluster('clusterExpansionZoom', id, s => s.getClusterExpansionZoom(clusterId)),
         clusterChildren: (id, clusterId) => cluster('clusterChildren', id, s => s.getClusterChildren(clusterId)),
         clusterLeaves: (id, clusterId, limit, offset) => cluster('clusterLeaves', id, s => s.getClusterLeaves(clusterId, limit, offset)),
-        watchFeatures(at: FeaturePlace | undefined, o: FeatureOptions, listener: (features: any) => void) {
-            // One question at a time. An event during a question asks again after it.
-            let last: string | undefined, busy = false, again = false, stopped = false;
-            const run = () => {
-                if (busy) { again = true; return; }
-                busy = true;
-                queryFeatures(at, o).then(found => {
-                    const text = JSON.stringify(found.map(f => [(f.layer as {id?: string})?.id ?? f.layer, f.source, f.id, f.properties]));
-                    if (alive && !stopped && text !== last) { last = text; listener(found); }
-                }, e => {
-                    // (A query of a removed map or of a lost context has no answer and is asked again later. Any other
-                    // rejection is a mistake of the caller: it is an error of the map, once until the answer changes.)
-                    const text = 'e' + (e as Error)?.message;
-                    if (alive && !stopped && text !== last && !text.includes('has no answer')) { last = text; map.fire('error', {error: e}); }
-                }).finally(() => { busy = false; if (again && !stopped) { again = false; run(); } });
-            };
-            const data = (e: any) => { if (!o.sources || !e.sourceId || o.sources.includes(e.sourceId)) run(); };
-            const moved = () => { if (!at || !isPosition(at)) run(); };
-            map.on('sourcedata', data); map.on('idle', run); map.on('moveend', moved);
-            run();
-            return () => { stopped = true; map.off('sourcedata', data); map.off('idle', run); map.off('moveend', moved); };
-        },
+        querySource,
+        watchFeatures: (at, o, listener) => watch(at, undefined, () => queryFeatures(at, o), listener),
+        watchSource: (id, at, o, listener) => watch(at, id, () => querySource(id, at, o), listener),
         queryElevation: at => map.queryElevation(at),
         toBlob: (type, quality) => map.toBlob(type, quality),
         moveTo,
