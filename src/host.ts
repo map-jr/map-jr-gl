@@ -436,7 +436,7 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
             if (!alive || turn !== styleTurn) return;
             fromStyle = m.styleImages(style, message => { if (alive) map.fire('error', {error: new Error(message)}); });
             putImages();
-        });
+        }, () => { if (alive && turn === styleTurn) map.fire('error', {error: new Error('[map-jr-gl] the style: the code for the images in metadata["map-jr:images"] did not load, and the map draws the style without them. Check that the files of the library are served next to it.')}); });
         // (The description of this moment: it can have changed while the style loaded.)
         if (wantedProjection) style = {...style, projection: copy(wantedProjection)};
         if (wantedFonts) style = {...style, 'font-faces': {...style['font-faces'], ...absolute(wantedFonts)}} as typeof style;

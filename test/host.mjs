@@ -1301,6 +1301,29 @@ for (const renderer of ['worker', 'main']) {
     } catch (e) { check('the early sprite test was completed', false, String(e.message).split('\n')[0]); }
     await page.close();
 }
+// The file for the images of a style does not load (#495): an error of the map, and no unhandled rejection.
+{
+    const page = await browser.newPage({viewport: {width: 900, height: 600}});
+    const rejections = [];
+    page.on('pageerror', e => rejections.push(e.message));
+    try {
+        await page.route(/map-jr-gl-style-images/, route => route.abort());
+        await page.goto(origin + '/bench');
+        const got = await page.evaluate(async () => {
+            const lib = await import('/dist/map-jr-gl.js'), style = await (await fetch('/style.json')).json(), errors = [];
+            window.addEventListener('unhandledrejection', e => errors.push('unhandled ' + e.reason));
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99;background:#fff'}));
+            const host = lib.createMap(el, {style: {...style, metadata: {'map-jr:images': {sq: '<svg viewBox="0 0 4 4"><rect width="4" height="4"/></svg>'}}}, attribution: false, onError: e => errors.push(e.message)});
+            for (let i = 0; i < 100 && !errors.length; i++) await new Promise(r => setTimeout(r, 100));
+            await new Promise(r => setTimeout(r, 300));
+            host.destroy(); el.remove();
+            return errors;
+        });
+        check('the file for the images of a style does not load: the map reports an error and the page has no unhandled rejection',
+            got.length === 1 && got[0].startsWith('[map-jr-gl] the style: the code for the images') && !rejections.length, JSON.stringify({got, rejections}));
+    } catch (e) { check('the test of a failed style-images file was completed', false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
 // A map that is destroyed while it loads (React StrictMode does this on each mount), and two maps in one element.
 {
     const page = await browser.newPage({viewport: {width: 900, height: 600}});
