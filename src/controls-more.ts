@@ -25,16 +25,16 @@ function group(extraClass = ''): HTMLElement {
 }
 
 /**
- * Dragging the compass rotates the map with the sideways movement and pitches it with the vertical movement, as the
- * MouseRotateWrapper of MapLibre GL JS does. A movement of 3 pixels or less is a click, which resets the bearing; a
+ * Dragging the compass rotates the map with the sideways movement and pitches it with the vertical movement, as a drag
+ * on the map with the right button does. A movement of 3 pixels or less is a click, which resets the bearing; a
  * longer drag does not.
  */
 function dragCompass(map: Map, b: HTMLButtonElement, pitch: boolean) {
-    let last: PointerEvent | null = null, dragged = false;
+    let last: PointerEvent | null = null, dragged = false, bearing = 0, tilt = 0;
     b.style.touchAction = 'none';
     b.addEventListener('pointerdown', e => {
         if (e.button) return;
-        last = e; dragged = false;
+        last = e; dragged = false; bearing = map.getBearing(); tilt = map.getPitch();
         try { b.setPointerCapture(e.pointerId); } catch { /* a synthetic event has no pointer to capture */ }
     });
     b.addEventListener('pointermove', e => {
@@ -45,10 +45,15 @@ function dragCompass(map: Map, b: HTMLButtonElement, pitch: boolean) {
         // the map does not shake between two angles.)
         if (dragged && Math.abs(dx) < 2 && (!pitch || Math.abs(dy) < 2)) return;
         dragged = true;
-        // 0.8 degrees of bearing for each pixel sideways, and 0.5 degrees of pitch for each pixel up, as MapLibre GL JS
-        // turns the map. (An angle around the centre of the button, as before #548, jumped by up to 180 degrees when
-        // the pointer passed near that centre, and the first move after the 3 pixels turned the map by up to 90 degrees.)
-        map.jumpTo({bearing: map.getBearing() + dx * .8, ...pitch && {pitch: map.getPitch() - dy / 2}});
+        // A drag on the compass turns the map as a drag on the map with the right button does (src/map.ts, 'rotate'):
+        // 0.4 degrees of bearing for each pixel sideways, in the same direction, and 0.5 degrees of pitch for each pixel
+        // up. (0.8 degrees turned the map by more than a full turn on a drag across a map of 600 pixels. An angle around the
+        // centre of the button, as before #548, jumped by up to 180 degrees when the pointer passed near that centre.)
+        // The drag keeps its own bearing and pitch, as the engine does for that drag: with the worker renderer,
+        // getBearing() returns the camera that the engine last reported, which a fast drag has already passed, and a turn
+        // added to it was lost or went backwards.
+        bearing -= dx * .4; tilt = Math.min(Math.max(tilt - dy / 2, map.getMinPitch()), map.getMaxPitch());
+        map.jumpTo({bearing, ...pitch && {pitch: tilt}});
         last = e;
     });
     const end = () => { last = null; setTimeout(() => { dragged = false; }); };
