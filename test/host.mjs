@@ -116,24 +116,49 @@ for (const renderer of ['worker', 'main']) {
         check(`[${renderer}] moveTo with fly zooms out on the way and ends at the view (#43)`,
             fly.low < fly.start - 0.5 && fly.end[0] === -73.9 && fly.end[1] === fly.start, JSON.stringify(fly));
 
-        // 2b. Padding per side (#212): fitBounds and moveTo take {top, right, bottom, left}, and the description has padding.
+        // 2b. Padding per side (#212): fitBounds and moveTo with bounds take {top, right, bottom, left} for the fit, and
+        // the description has the padding of the map. moveTo leaves the padding of the map as the description gave it (#501).
         const padding = await page.evaluate(async () => {
             const t = window.t, m = t.host._map, b = [[-74.02, 40.70], [-74.00, 40.72]], mid = [-74.01, 40.71];
+            const wait = ms => new Promise(r => setTimeout(r, ms));
             const at = () => { const p = m.project(mid); return [Math.round(p.x), Math.round(p.y)]; };
+            const warned = [], warn = console.warn;
+            console.warn = (...a) => warned.push(a.join(' '));
             t.host.fitBounds(b, {padding: {left: 400, top: 10, right: 10, bottom: 10}, duration: 0});
             const fit = at();
             t.host.moveTo({center: mid, padding: {left: 300}});
-            const moved = at();
+            const ignored = at();
+            await wait(300);
             t.host.update({...t.spec, padding: {right: 300}});
             const spec = at();
+            t.host.moveTo({bounds: b, padding: {left: 400, top: 10, right: 10, bottom: 10}, bearing: 20, pitch: 30});
+            await wait(300);
+            const v = t.host.state.get().view, bounds = {bearing: Math.round(v.bearing), pitch: Math.round(v.pitch)};
+            t.host.moveTo({center: mid, bearing: 0, pitch: 0});
+            const kept = at();
+            t.host.update({...t.spec, padding: {right: 300}});
+            const same = at();
+            t.host.moveTo({bounds: b, padding: 20, fly: true, duration: 300});
+            await wait(200);
+            for (let i = 0; i < 50 && t.host.state.get().moving; i++) await wait(100);
+            const flown = at();
+            const {fitBounds} = t.host;
+            let detached = 'ok';
+            try { fitBounds(b, {duration: 0}); } catch (e) { detached = e.message; }
             t.host.update({...t.spec, padding: 0});
             const cleared = at();
             t.host.moveTo({center: mid});
-            return {fit, moved, spec, cleared: at()};
+            console.warn = warn;
+            return {fit, ignored, spec, bounds, kept, same, flown, cleared: at(), detached, warned: warned.filter(w => w.includes('moveTo()')).length};
         });
-        // (The page is 900 × 600: the centre of the rest of the map is at x = 400 + 245 = 645, 300 + 300 = 600 and 300.)
-        check(`[${renderer}] padding per side: fitBounds and moveTo take {top, right, bottom, left}, and padding of the description moves the centre`,
-            Math.abs(padding.fit[0] - 645) <= 2 && padding.moved[0] === 600 && padding.spec[0] === 300 && padding.cleared[0] === 450 && padding.moved[1] === 300, JSON.stringify(padding));
+        // (The page is 900 × 600: the centre of the rest of the map is at x = 400 + 245 = 645, 450 with no padding, 300 with
+        // the padding {right: 300} of the description, and with both 400 + (900 - 400 - 300 - 10 - 10) / 2 ... = 300 for the fly.)
+        check(`[${renderer}] padding per side: fitBounds takes {top, right, bottom, left}, and padding of the description moves the centre`,
+            Math.abs(padding.fit[0] - 645) <= 2 && padding.spec[0] === 300 && padding.cleared[0] === 450, JSON.stringify(padding));
+        check(`[${renderer}] moveTo leaves the padding of the map as the description gave it, and padding without bounds warns once (#501)`,
+            padding.ignored[0] === 450 && padding.ignored[1] === 300 && padding.kept[0] === 300 && padding.same[0] === 300 && padding.warned === 1, JSON.stringify(padding));
+        check(`[${renderer}] moveTo with bounds fits the box with its padding, with bearing and pitch, and with fly, and a destructured fitBounds works (#501)`,
+            padding.bounds.bearing === 20 && padding.bounds.pitch === 30 && Math.abs(padding.flown[0] - 300) <= 2 && Math.abs(padding.flown[1] - 300) <= 2 && padding.detached === 'ok', JSON.stringify(padding));
 
         // 3. A new style object: a layer is added and found by a query; with the old style again it is gone.
         const style = await page.evaluate(async () => {
