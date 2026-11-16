@@ -23,7 +23,7 @@ export default function (container, {show, legend}) {
     initialView: {center: [-74.1, 40.75], zoom: 9.2},
     attribution: {compact: true},
     onClick: async e => {
-      const features = await map.queryFeatures(e.point, {sources: ['admin']});
+      const features = await map.querySource('admin', e.point);
       show(features.map(f => f.properties.NAMELSAD ?? f.properties.NAME ?? f.properties.GEOID20).filter(Boolean).join(' · ') || 'Nothing here');
     },
   });
