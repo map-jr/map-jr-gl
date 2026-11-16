@@ -52,16 +52,16 @@ These figures are written by `pnpm status`. They compare this library with MapLi
 
 | Measure | Result |
 |---|---|
-| Unit tests | 104 pass, 0 fail |
+| Unit tests | 135 pass, 0 fail |
 | MapLibre expression tests | 330 of 425 pass |
-| MapLibre `Map` methods | 118 of 150 are available; 12 more are accepted and have no effect |
+| MapLibre `Map` methods | 119 of 150 are available; 11 more are accepted and have no effect |
 | MapLibre plugins, run in a browser | 16 of 16 work (see [Plugins and frameworks](docs/ecosystem.md)) |
 | Plugins and frameworks, read from npm | 17 of 26 use only API that the library has |
-| Example pages of the MapLibre documentation, with this library in place of MapLibre | 110 of 142 work. Most of the others need a globe, another projection or a custom 3D layer. |
-| MapLibre render tests | 825 of 1429 are the same (1% of pixels or less are different). 274 more are near (5% or less). |
-| Page script (gzip) | 41 KB. MapLibre GL JS: 299 KB. |
-| Worker script (gzip) | 67 KB. MapLibre GL JS: 145 KB. |
-| Server renderer (gzip) | 40 KB |
+| Example pages of the MapLibre documentation, with this library in place of MapLibre | 111 of 142 work. Most of the others need a globe, another projection or a custom 3D layer. |
+| MapLibre render tests | 874 of 1429 are the same (1% of pixels or less are different). 280 more are near (5% or less). |
+| Page script (gzip) | 44 KB. MapLibre GL JS: 299 KB. |
+| Worker script (gzip) | 74 KB. MapLibre GL JS: 145 KB. |
+| Server renderer (gzip) | 41 KB |
 <!-- status:end -->
 
 The library is new. Read [MapLibre compatibility](docs/maplibre-compatibility.md) before you use it in production.
@@ -397,19 +397,19 @@ build and other configurations.
 ## Speed
 
 <!-- speed:start -->
-Measured by the workflow [Browsers](https://github.com/map-jr/map-jr-gl/tree/bench-results) on 2026-11-15 (commit 714276f). Each cell is MapLibre GL JS 6.17.0 / **this library** (worker renderer where the browser has it).
+Measured by the workflow [Browsers](https://github.com/map-jr/map-jr-gl/tree/bench-results) on 2026-11-16 (commit 5e282b9). Each cell is MapLibre GL JS 6.17.0 / **this library** (worker renderer where the browser has it).
 
 | System, browser | Load to idle, ms | Frames per second, map moving | Frames per second, 10,000 markers |
 |---|---|---|---|
-| macOS, Chromium | 1218 / **384** | 42 / **33** | 3 / **28** |
-| macOS, Firefox | 5608 / **2587** | 2 / **3** |  |
-| macOS, WebKit | 4525 / **1199** | 27 / **40** | 2 / **42** |
-| Linux, Chromium | 708 / **562** | 13 / **14** | 2 / **10** |
-| Linux, Firefox | 2286 / **750** | 17 / **39** | 5 / **32** |
-| Linux, WebKit | 1884 / **711** | 17 / **16** | 3 / **16** |
-| Windows, Chromium | 784 / **683** | 46 / **30** | 3 / **41** |
-| Windows, Firefox | 1197 / **820** | 37 / **28** | 5 / **25** |
-| Windows, WebKit | 1314 / **761** | 19 / **18** | 3 / **17** |
+| macOS, Chromium | 2039 / **629** | 26 / **36** | 1 / **36** |
+| macOS, Firefox | 3953 / **2455** | 3 / **13** | 5 / **4** |
+| macOS, WebKit | 2775 / **738** | 34 / **54** | 3 / **51** |
+| Linux, Chromium | 604 / **495** | 13 / **15** | 3 / **11** |
+| Linux, Firefox | 1732 / **729** | 19 / **42** | 6 / **41** |
+| Linux, WebKit | 1922 / **756** | 17 / **16** | 3 / **15** |
+| Windows, Chromium | 1296 / **857** | 43 / **28** | 2 / **38** |
+| Windows, Firefox | 1507 / **930** | 37 / **18** | 4 / **19** |
+| Windows, WebKit | 1725 / **967** | 14 / **15** | 2 / **13** |
 <!-- speed:end -->
 
 These computers are virtual machines, and those for Linux and Windows have no GPU: use the table to compare the
