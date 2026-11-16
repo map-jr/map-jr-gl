@@ -54,8 +54,8 @@ One session can act as the coordinator and give issues to workers (subagents). T
 worker, so it has only the rules. The brief that every worker reads is `docs/agents/worker-brief.md`, and the notes
 for the coordinator are `docs/agents/coordinating.md`. Read the notes before you start a batch.
 
-- **A worker gets one issue, one branch and one port.** Its prompt is the path of the brief and five lines: the
-  issue, the branch, the port, the scope, and the files and lines where the work starts.
+- **A worker gets one issue and one branch.** Its prompt is the path of the brief and four lines: the issue, the
+  branch, the scope, and the files and lines where the work starts.
 - **A worker opens the pull request and stops.** The coordinator watches CI, merges, and sends a failure back to the
   same worker, which still has its context.
 - **A worker reports in at most 12 lines** in the format of the brief. It files nothing and merges nothing. The

@@ -194,7 +194,20 @@ were skipped. A push to `main` runs all of the jobs.
 
 `pnpm test:consistency` (`scripts/check-consistency.mjs`) fails when a field of the description has no Vue prop or
 no documentation, when a member of the map is not in `docs/api.md`, when a gallery example lacks one of its four
-forms, when no document names an entry of the package, or when a link between documents is broken.
+forms, when no document names an entry of the package, when a link between documents is broken, or when a number of
+a text or of a kind of check in `src/mistakes.ts` is taken twice.
+
+## Helpers for agents
+
+The scripts in `scripts/agents/` serve the workflow of `docs/agents/` and run on macOS and Linux with no dependency
+beyond the repository's own. Each prints its use with no arguments (`suite.mjs --help`).
+
+| Command | What it does |
+|---|---|
+| `node scripts/agents/suite.mjs test/host.mjs` | Runs one browser suite: it builds `dist/` and the gallery when they are older than their sources, starts the demo server on a free port for a suite that reads `PORT`, sets `BROWSER=chromium` when `BROWSER` names no browser of Playwright, prints the PASS and FAIL counts and the FAIL lines, and stops the server also on failure or interruption. The output is in `.cache/agents/`. |
+| `node scripts/agents/without-fix.mjs -- <command>` | Runs a command in a temporary worktree in `.cache/agents/` that has the files of this checkout, with `src/` as at the point where the branch left `origin/main` (`--paths`, `--base` change that). It removes the worktree afterwards and does not change the checkout. |
+| `node scripts/agents/prs.mjs [--watch]` | Prints the state of the checks of each open pull request and of the last CI run on `main`. With `--watch` it prints one line each time the checks of a head finish, for a `Monitor`. Needs `gh`. |
+| `node scripts/agents/clean-worktrees.mjs [--apply]` | Lists the worktrees under `.claude/worktrees/` that it would remove, and keeps a worktree that is locked, has changed or untracked files, or has a commit that is neither in `origin/main` nor in a merged pull request. With `--apply` it removes the others and deletes their local branches. |
 
 The MapLibre tests are pinned to one commit (in `test/conformance/render.mjs` and `expressions.mjs`), so the counts
 change only when this library changes. To take newer tests, change the commit, delete the folder in `.cache`, and
