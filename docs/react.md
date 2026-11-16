@@ -93,9 +93,8 @@ A ref on the component gets the map (the `MapInstance` of [the main API](api.md)
 effects of the parent that run at mount. Read the ref in an event handler or after `onLoad`, or put the code in a
 child component that calls `useMap()`.
 
-`ref.current.map` (and `useMap().map`) is the core map of the library, not the `Map` of
-`@map-jr/map-jr-gl/maplibre-compat`: it has no `setBearing`, `setZoom` or `flyTo`. See `map` in
-[the main API](api.md). In place of `flyTo`, call `moveTo({...view, duration})`: it eases the camera to the view.
+`ref.current` and `useMap()` give the `MapInstance` of [the main API](api.md), not the `Map` of
+`@map-jr/map-jr-gl/maplibre-compat`: it has no `setBearing`, `setZoom` or `flyTo`. In place of `flyTo`, call `moveTo({...view, duration})`: it eases the camera to the view.
 
 ### What you can make again in each render
 
