@@ -1862,6 +1862,9 @@ for (const renderer of renderers) {
     try {
         await page.goto(`${origin}/style.json`);
         await page.evaluate(async renderer => {
+            // The camera that the engine draws: the worker reports it after each frame that it draws.
+            const drawn = window.drawn = [], W = window.Worker;
+            window.Worker = class extends W { constructor(...a) { super(...a); this.addEventListener('message', e => { if (e.data?.type === 'camera') drawn.push(e.data.bearing); }); } };
             const lib = await import('/dist/map-jr-gl.js'), {navigation} = await import('/dist/controls.js');
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:900px;height:600px;z-index:99'}));
             const host = window.fastHost = lib.createMap(el, {style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, renderer, controls: [navigation()], attribution: false});
@@ -1869,20 +1872,32 @@ for (const renderer of renderers) {
             for (let i = 0; i < 50 && !el.querySelector('.maplibregl-ctrl-compass'); i++) await new Promise(r => setTimeout(r, 100));
         }, renderer);
         const box = await page.evaluate(() => { const r = document.querySelector('.maplibregl-ctrl-compass').getBoundingClientRect(); return {x: r.left + r.width / 2, y: r.top + r.height / 2}; });
-        const cdp = await page.context().newCDPSession(page), ends = {};
+        const cdp = await page.context().newCDPSession(page), ends = {}, steps = {};
         const touch = (type, x, y) => cdp.send('Input.dispatchTouchEvent', {type, touchPoints: type === 'touchEnd' ? [] : [{x, y}]});
         for (const kind of ['mouse', 'touch']) for (const moves of [100, 25, 5]) {
             await page.evaluate(() => window.fastHost.moveTo({bearing: 0, duration: 0}));
             await page.waitForTimeout(200);
+            await page.evaluate(() => {
+                const f = window.seen = [], m = window.fastHost._map, needle = document.querySelector('.maplibregl-ctrl-compass svg');
+                window.drawn.length = 0; window.recording = true;
+                const tick = () => { f.push([m.getBearing(), -parseFloat(/rotate\((-?[\d.e-]+)deg\)\s*$/.exec(needle.style.transform)?.[1] ?? 'NaN')]); if (window.recording) requestAnimationFrame(tick); };
+                requestAnimationFrame(tick);
+            });
             if (kind === 'touch') await touch('touchStart', box.x, box.y); else { await page.mouse.move(box.x, box.y); await page.mouse.down(); }
             // 500 pixels to the left, downwards in a shallow arc, as a hand moves a mouse.
             for (let i = 1; i <= moves; i++) { const x = box.x - 500 * i / moves, y = box.y + 200 * (i / moves) ** 2; if (kind === 'touch') await touch('touchMove', x, y); else await page.mouse.move(x, y); }
             if (kind === 'touch') await touch('touchEnd'); else await page.mouse.up();
             await page.waitForTimeout(400);
             ends[`${kind} ${moves}`] = Math.round(await page.evaluate(() => window.fastHost._map.getBearing()) * 10) / 10;
+            // A step against the drag (a drag to the left turns the bearing up, modulo 360) in getBearing(), the needle or the
+            // drawn camera.
+            const r = await page.evaluate(() => { window.recording = false; return {seen: window.seen, drawn: window.drawn}; });
+            const back = list => list.slice(1).filter((b, i) => ((b - list[i] + 540) % 360) - 180 < -0.01).length;
+            steps[`${kind} ${moves}`] = [back(r.seen.map(f => f[0])), back(r.seen.map(f => f[1]).filter(b => !isNaN(b))), back(r.drawn)];
         }
         // (500 pixels to the left at 0.4 degrees: 200 degrees, which is -160.)
         check(`[${renderer}] a drag from the compass across the map ends at the same bearing at any speed (#548)`, Object.values(ends).every(b => Math.abs(b + 160) < 1), JSON.stringify(ends));
+        check(`[${renderer}] a fast drag from the compass never turns back: not in getBearing(), in the needle or in the drawn map (#548)`, Object.values(steps).every(s => s.every(n => n === 0)), JSON.stringify(steps));
     } catch (e) { check(`[${renderer}] a fast drag from the compass: the test run was completed`, false, String(e.message).split('\n')[0]); }
     await page.close();
 }
