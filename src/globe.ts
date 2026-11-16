@@ -45,7 +45,8 @@ export function frame(tr: Transform): GlobeFrame {
     const kept = frames.get(tr);
     if (kept?.key === key) return kept.f;
     // The radius in pixels: the scale at the centre of the view is that of Mercator at the same zoom (as in MapLibre).
-    const R = tr.worldSize / (2 * PI * Math.cos(tr.lat * RAD)), d = tr.cameraDistance, w = tr.width, h = tr.height;
+    // (Past the edge of Mercator the radius stays that of 85.05°, as MapLibre's planetScaleAtLatitude does.)
+    const R = tr.worldSize / (2 * PI * Math.cos(Math.min(Math.abs(tr.lat), 85.051129) * RAD)), d = tr.cameraDistance, w = tr.width, h = tr.height;
     // (z and w of clip space are the distance along the view; the shader replaces z by the side of the horizon.)
     const proj = [2 * d / w, 0, 0, 0, 0, 2 * d / h, 0, 0, -(tr.cx - w / 2) * 2 / w, (tr.cy - h / 2) * 2 / h, -1, -1, 0, 0, 0, 0];
     const view = [move(-d), rot(0, -tr.pitch * RAD), rot(2, tr.bearing * RAD), move(-R), rot(0, tr.lat * RAD), rot(1, -tr.lng * RAD), [R, 0, 0, 0, 0, R, 0, 0, 0, 0, R, 0, 0, 0, 0, 1]].reduce(mul);
@@ -149,6 +150,72 @@ export function turnTo(tr: Transform, lng: number, lat: number, px: number, py: 
     }
 }
 
+/**
+ * The point of the sphere that a drag aims at for a screen point (MapLibre's `panSurfaceLocation`): the point under
+ * it, except within the outer tenth of the angle to the horizon, where the curve eases off and stops short of the far
+ * side. (Exact tracking would race away there: the edge of the globe has degrees of the globe in each pixel.)
+ */
+function aim(tr: Transform, px: number, py: number): V3 {
+    const {cam} = frame(tr), dist = Math.hypot(...cam), dir = ray(tr, px, py);
+    const exact = (): V3 => { const [mx, my] = toMerc(tr, px, py); return sphere(mx, my); };
+    if (dist <= 1) return exact();
+    const u = cam.map(v => v / dist), c = -dot(dir, u), lateral = dir.map((v, i) => v + u[i] * c), s = Math.hypot(...lateral);
+    if (s < 1e-9) return exact();
+    const angle = Math.atan2(s, c), handover = Math.asin(1 / dist) * 0.9;
+    if (angle < handover) return exact();
+    const sinH = dist * Math.sin(handover), atHandover = Math.asin(clamp(sinH, -1, 1)) - handover;
+    const slope = dist * Math.cos(handover) / Math.sqrt(Math.max(1 - sinH * sinH, 1e-12)) - 1, room = PI * 0.98 - atHandover, excess = angle - handover;
+    const target = clamp(atHandover + room * (slope * excess) / (room + slope * excess), 0, PI * 0.98);
+    const p = u.map((v, i) => v * Math.cos(target) + lateral[i] / s * Math.sin(target)), l = Math.hypot(...p);
+    return p.map(v => v / l) as V3;
+}
+
+/** The unit vector of a place, in the frame of `sphere`. */
+const toVector = (lng: number, lat: number): V3 => [Math.sin(lng * RAD) * Math.cos(lat * RAD), Math.sin(lat * RAD), Math.cos(lng * RAD) * Math.cos(lat * RAD)];
+/** Turns a vector about a unit axis by an angle (Rodrigues). */
+const rotate = (v: V3, k: V3, a: number): V3 => {
+    const c = Math.cos(a), s = Math.sin(a), kv = dot(k, v);
+    return [0, 1, 2].map(i => v[i] * c + (k[(i + 1) % 3] * v[(i + 2) % 3] - k[(i + 2) % 3] * v[(i + 1) % 3]) * s + k[i] * kv * (1 - c)) as V3;
+};
+
+/**
+ * One step of a drag on the globe, from the pointer at (x0, y0) to (x1, y1), as MapLibre GL JS 6.17 does it
+ * (`versorSetLocationAtPoint`): the globe turns by the shortest rotation that takes the place aimed at under the old
+ * pointer to the new pointer, and the bearing stays. Near a pole the pointer turns the globe like a dial around the
+ * pole, so the drag stays smooth there. The zoom changes with the latitude, so that the planet keeps its size.
+ */
+export function drag(tr: Transform, x0: number, y0: number, x1: number, y1: number) {
+    // (A pointer off the globe turns it as a drag of the same length at the centre of the view does, as in MapLibre.)
+    const {cam} = frame(tr), dir = ray(tr, x1, y1), b = dot(cam, dir);
+    if (b * b - dot(cam, cam) + 1 < 0 || b > 0) { x0 = tr.cx - (x1 - x0); y0 = tr.cy - (y1 - y0); x1 = tr.cx; y1 = tr.cy; }
+    const from = aim(tr, x0, y0), to = aim(tr, x1, y1), axis = [from[1] * to[2] - from[2] * to[1], from[2] * to[0] - from[0] * to[2], from[0] * to[1] - from[1] * to[0]], l = Math.hypot(...axis);
+    if (l < 1e-12) return;
+    const k = axis.map(v => v / l) as V3, angle = Math.acos(clamp(dot(from, to), -1, 1));
+    // The camera moves the other way: the centre turns by the rotation from `to` back to `from`.
+    const oldLng = tr.lng, oldLat = tr.lat, oldZoom = tr.zoom, c = rotate(toVector(oldLng, oldLat), k, -angle);
+    let lat = Math.asin(clamp(c[1], -1, 1)) / RAD;
+    const swingLng = Math.atan2(c[0], c[2]) / RAD;
+    // A swing over a pole turns the north of the view around: with the bearing held, the centre stops at the pole.
+    const north = (lng: number, la: number): V3 => [-Math.sin(la * RAD) * Math.sin(lng * RAD), Math.cos(la * RAD), -Math.sin(la * RAD) * Math.cos(lng * RAD)];
+    if (dot(rotate(north(oldLng, oldLat), k, -angle), north(swingLng, lat)) < 0) lat = lat > 0 ? 90 : -90;
+    // Within 12 degrees of the edge of the Mercator world, the longitude comes more and more from the turn of the
+    // pointer around the pole on the screen (MapLibre's dial).
+    const t = clamp(1 - (85.051129 - Math.abs(oldLat)) / 12, 0, 1), dial = t * t * (3 - 2 * t), poleSign = oldLat >= 0 ? 1 : -1;
+    let dialLng = 0;
+    if (dial > 0) {
+        const f = frame(tr), p = clipOf(f, [0, poleSign, 0]), px = (p[0] / p[2] + 1) / 2 * tr.width, py = (1 - p[1] / p[2]) / 2 * tr.height;
+        const rx = x1 - px, ry = y1 - py;
+        dialLng = poleSign * (rx * (y1 - y0) - ry * (x1 - x0)) / Math.max(rx * rx + ry * ry, 400) / RAD;
+    }
+    const swing = ((swingLng - oldLng) % 360 + 540) % 360 - 180;
+    tr.lng = ((oldLng + (1 - dial) * swing + dial * dialLng) % 360 + 540) % 360 - 180;
+    // (The caller keeps the centre inside the latitudes that the zoom allows: see `constrain`.)
+    tr.lat = clamp(lat, -90, 90);
+    // (Past the edge of Mercator the radius stays that of 85.05°, so the zoom stays too.)
+    const edge = (la: number) => clamp(la, -85.051129, 85.051129);
+    tr.zoom = clamp(oldZoom + zoomAdjustment(edge(oldLat), edge(tr.lat)), tr.minZoom, tr.maxZoom);
+}
+
 /** The change of zoom that keeps the size of the globe when the centre moves from one latitude to another. */
 export const zoomAdjustment = (from: number, to: number) => Math.log2(Math.cos(to * RAD) / Math.cos(from * RAD));
 
@@ -184,7 +251,7 @@ export function covering(tr: Transform, minzoom: number, maxzoom: number, tileSi
         const near = Math.min(...[...pts, nearest].map(p => Math.hypot(p[0] - f.cam[0], p[1] - f.cam[1], p[2] - f.cam[2])));
         // A tile far from the latitude of the centre has other pixels on the sphere: Mercator tiles get smaller toward
         // the poles, by the cosine of the latitude (pts[12] is the middle of the tile).
-        const cos = Math.max(1e-3, Math.sqrt(1 - pts[12][1] ** 2)) / Math.cos(tr.lat * RAD);
+        const cos = Math.max(1e-3, Math.sqrt(1 - pts[12][1] ** 2)) / Math.cos(Math.min(Math.abs(tr.lat), 85.051129) * RAD);
         const wanted = Math.min(maxzoom, (round ? Math.round : Math.floor)(exact + Math.log2(unit / Math.max(near, 1e-9) * cos)));
         if (z >= maxzoom || z >= wanted) { if (z >= minzoom) out.push({z, x, y, w: 0, key: `${z}/${x}/${y}`, near}); return; }
         for (let i = 0; i < 4; i++) visit(z + 1, x * 2 + (i & 1), y * 2 + (i >> 1));

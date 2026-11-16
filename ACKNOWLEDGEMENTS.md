@@ -47,7 +47,10 @@ BSD-3-Clause.
   BSD-3-Clause): the radius that keeps the scale of Mercator at the centre, the matrix from the unit sphere to clip
   space, the plane of the horizon as clip-space z, the mix with Mercator between zoom 11 and 12, the formula with
   `exp` for the sphere, the width of lines toward the poles, and the change of zoom with the latitude during a drag.
-  The code is new.
+  A drag on the globe (`drag` in `src/globe.ts`) follows `versorSetLocationAtPoint` and `panSurfaceLocation` in
+  `globe_utils.ts`: the rotation from the last pointer to the new one, the eased curve near the edge of the globe, and
+  the dial near a pole. The fling follows `computeGlobePanCenter` in the same file, and the latitude that the centre
+  can reach follows `_getMaxLatitude` in `vertical_perspective_transform.ts`. The code is new.
 - The tests of MapLibre GL JS and of the MapLibre style specification measure the compatibility of this library.
   The tests are not part of this repository. The test commands download them.
 

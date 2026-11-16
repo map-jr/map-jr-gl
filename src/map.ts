@@ -610,7 +610,7 @@ export class Map {
             // (During a drag the engine's report can be older than the last pointer move that the page has already applied.)
             const h = this.held;
             if (h && e.grab && e.grab[2] >= h.from) h.at = [e.grab[0], e.grab[1]];
-            if (h?.at && h.x !== undefined && !this.tr.heightAt && performance.now() - h.t < 100) this.tr.setLocationAt(h.at[0], h.at[1], h.x, h.y!);
+            if (h?.at && h.x !== undefined && !this.tr.heightAt && !this.tr.globeness && performance.now() - h.t < 100) this.tr.setLocationAt(h.at[0], h.at[1], h.x, h.y!);
             this.tilesLoaded = false;
             if (!this.moving) this.fire('movestart');
             this.moving = true;
@@ -1671,7 +1671,8 @@ export class Map {
                 // (With 3D terrain the page does not know the ground well enough, and the engine moves the camera alone.)
                 const pan = {type: 'pan' as const, dx, dy, x: p.x, y: p.y};
                 this.post(pan);
-                const h = this.tr.heightAt || this.renderer !== 'worker' ? null : this.held ??= {from: (pan as {seq?: number}).seq!, t: 0};
+                // (Not on the globe: there each move turns the globe from the last pointer, and the page waits for the engine's camera.)
+                const h = this.tr.heightAt || this.tr.globeness || this.renderer !== 'worker' ? null : this.held ??= {from: (pan as {seq?: number}).seq!, t: 0};
                 if (h) {
                     // The worker draws a move in the frame after the one in which the page receives it: the page places
                     // the markers for each move one frame later too.

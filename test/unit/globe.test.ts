@@ -117,3 +117,42 @@ test('globe: a pan without a pointer (a fling) moves the centre along the latitu
     const flat = make([10, 45], 13, 30, 0, [11, 1, 12, 0]);
     assert.deepEqual(flat.panned(120, -40), flat.unprojectFlat(flat.cx + 120, flat.cy - 40));
 });
+
+test('globe: a drag turns the globe as MapLibre GL JS 6.17 does (numbers measured with MapLibre on the same views)', () => {
+    // 16 moves of the pointer, as a mouse sends them: the centre at the end, and MapLibre's centre for the same input.
+    // The start is the centre of the view, or (edge) the place 60° east of the centre, near the edge of the globe.
+    const run = (center: [number, number], bearing: number, edge: boolean, dx: number, dy: number) => {
+        const tr = make(center, 1.5, bearing, 0, [11, 1, 12, 0]);
+        const start = edge ? tr.project(center[0] + 60, center[1] > 70 ? 60 : center[1]).map(Math.round) : [400, 300];
+        for (let i = 1; i <= 16; i++) {
+            const x0 = start[0] + dx * (i - 1) / 16, y0 = start[1] + dy * (i - 1) / 16;
+            globe.drag(tr, x0, y0, start[0] + dx * i / 16, start[1] + dy * i / 16);
+            tr.constrain();
+        }
+        return [+tr.lng.toFixed(2), +tr.lat.toFixed(2), tr.zoom];
+    };
+    const cases: [[number, number], number, boolean, number, number, [number, number]][] = [
+        [[10, 0], 0, false, 160, 0, [-39.07, 0]],
+        [[10, 0], 45, false, 160, 0, [-27.29, 34.45]],
+        [[10, 60], 0, false, 160, 0, [-31.81, 59.58]],
+        [[10, 60], 45, false, 0, -160, [-14.47, 44.97]],
+        // From near the edge of the globe: the pointer leaves the globe, and the drag goes on as at the centre.
+        [[10, 0], 0, true, 160, 0, [-32.72, 0]],
+        [[10, 60], 0, true, 160, 0, [-48.29, 53.6]],
+        // Near the pole: the dial (MapLibre), and a centre that can pass 85° while the pole area fits in the view.
+        [[10, 80], 0, false, 110, 110, [-10.7, 84.71]],
+        [[10, 80], 45, false, 110, 110, [10, 86.8]],
+    ];
+    // Past 85.05° the zoom stays (MapLibre: 0.491 at the end of the last case).
+    assert.ok(Math.abs(run([10, 80], 45, false, 110, 110)[2] - 0.491) < 0.005, 'the zoom changes past 85.05°');
+    for (const [center, bearing, edge, dx, dy, want] of cases) {
+        const got = run(center, bearing, edge, dx, dy);
+        assert.ok(Math.abs(got[0] - want[0]) < 0.3 && Math.abs(got[1] - want[1]) < 0.3, `${center} b${bearing} ${edge ? 'edge' : 'centre'} by ${dx},${dy}: ${got} against ${want}`);
+    }
+});
+
+test('globe: a fling far north turns the longitude at most as fast as at 60° while the globe is small (MapLibre)', () => {
+    const tr = make([10, 80], 1.5, 0, 0, [11, 1, 12, 0]);
+    const [lng] = tr.panned(100, 0), perPx = 360 * Math.cos(80 * Math.PI / 180) / tr.worldSize;
+    assert.ok(Math.abs((lng - 10) - 100 * perPx / Math.cos(60 * Math.PI / 180)) < 1e-9, `${lng}`);
+});
