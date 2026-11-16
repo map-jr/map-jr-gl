@@ -69,6 +69,16 @@ export const CONTROL_CSS = `
 :where(.map-jr-user-location-dot-stale){background:#aaa}
 :where(.map-jr-ctrl-geolocate-active,.map-jr-ctrl-geolocate-background,.map-jr-ctrl-globe-enabled){color:#33b5e5}:where(.map-jr-ctrl-geolocate-active-error,.map-jr-ctrl-geolocate-background-error){color:#e54e33}
 :where(.map-jr-ctrl-scale){background:rgba(255,255,255,.75);border:1.5px solid var(--map-control-color,#333);border-top:0;padding:0 5px;font-size:10px;box-sizing:border-box;white-space:nowrap}
+/* colorScheme 'dark' (the class map-jr-dark on the container). The variables of the application still win. */
+:where(.map-jr-dark){--map-jr-popup-bg:#2b2b2b;--map-jr-popup-fg:#e6e6e6;--map-jr-popup-ring:0 0 0 1px rgba(255,255,255,.2)}
+:where(.map-jr-dark) :where(.map-jr-ctrl-compass path+path){opacity:.6}
+:where(.map-jr-dark) :where(.map-jr-ctrl){color:var(--map-control-color,#e6e6e6)}
+:where(.map-jr-dark) :where(.map-jr-ctrl-group,.map-jr-ctrl-attrib.map-jr-compact){background:var(--map-control-background,#2b2b2b);box-shadow:0 0 0 1.5px rgba(255,255,255,.15)}
+:where(.map-jr-dark) :where(.map-jr-ctrl-group button+button){border-color:rgba(255,255,255,.15)}
+:where(.map-jr-dark) :where(.map-jr-ctrl-group button:hover){background:rgba(255,255,255,.1)}
+:where(.map-jr-dark) :where(.map-jr-ctrl-attrib){background:var(--map-attribution-background,rgba(30,30,30,.75));color:var(--map-control-color,#ccc)}
+:where(.map-jr-dark) :where(.map-jr-ctrl-scale){background:rgba(30,30,30,.75);border-color:var(--map-control-color,#ccc)}
+:where(.map-jr-dark) :where(.map-jr-unavailable){color:#aaa;background:#1e1e1e}
 /* Touch screens get finger-sized buttons. Kept last so it overrides the sizes above. */
 @media (pointer:coarse){:where(.map-jr-ctrl-group button){width:var(--map-control-size,44px);height:var(--map-control-size,44px)}}
 @media (forced-colors:active){:where(.map-jr-ctrl-group,.map-jr-ctrl-attrib,.map-jr-ctrl-scale,.map-jr-popup-content){border:1px solid CanvasText}:where(.map-jr-ctrl button:focus-visible){outline:2px solid Highlight}}

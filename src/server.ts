@@ -267,6 +267,9 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
  * adapters for the frameworks use this.)
  *
  * `attribution` gives the credits to show, when they must not come from the sources; `false` shows none.
+ * `colorScheme` gives the colours of the credits: `'light'` (the default) or `'dark'`. The server cannot read the
+ * scheme of the browser, so `'auto'` writes both colours with the CSS function `light-dark()`, and a browser without
+ * it (before 2024) shows the light colours.
  * Only text and links to http(s) addresses are kept from the HTML of the credits.
  */
 /**
@@ -288,10 +291,12 @@ export function cleanCredits(html: string): string {
     return out + '</a>'.repeat(open);
 }
 
-export async function renderFirstView(o: RenderOptions & {attribution?: string | string[] | false}): Promise<string> {
+export async function renderFirstView(o: RenderOptions & {attribution?: string | string[] | false; colorScheme?: 'auto' | 'light' | 'dark'}): Promise<string> {
     const made = await renderToSVG(o);
     const credits = o.attribution === false ? [] : [o.attribution ?? made.attribution].flat().map(cleanCredits).filter(Boolean);
-    return made.svg + (credits.length ? `<div data-map-jr-ssr="" style="position:absolute;right:0;bottom:0;background:rgba(255,255,255,.75);color:#333;font:11px/1.4 sans-serif;padding:2px 6px">${credits.join(' ')}</div>` : '');
+    const light = 'background:rgba(255,255,255,.75);color:#333', dark = 'background:rgba(30,30,30,.75);color:#ccc';
+    const colors = o.colorScheme === 'dark' ? dark : o.colorScheme === 'auto' ? light + ';color-scheme:light dark;background:light-dark(rgba(255,255,255,.75),rgba(30,30,30,.75));color:light-dark(#333,#ccc)' : light;
+    return made.svg + (credits.length ? `<div data-map-jr-ssr="" style="position:absolute;right:0;bottom:0;${colors};font:11px/1.4 sans-serif;padding:2px 6px">${credits.join(' ')}</div>` : '');
 }
 
 /**
