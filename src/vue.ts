@@ -236,14 +236,14 @@ const MapJrComponent = defineComponent({
         /** Images for `icon-image` of style layers, by name. A value is an SVG document, the URL of an image, or `{image, width, height}`. */
         images: Object as PropType<MapSpec['images']>,
         /** GeoJSON data for sources of the style, by the id of the source. Each value is compared by identity: give a new object to change it. */
-        data: Object as PropType<Record<string, unknown>>,
+        data: Object as PropType<MapSpec['data']>,
         interactiveLayers: Array as PropType<string[]>,
         hoverState: {type: Boolean, default: undefined},
         minZoom: Number, maxZoom: Number, maxPitch: Number,
-        maxBounds: [Array, Object] as PropType<LngLatBoundsInput | null>,
+        maxBounds: [Array, Object] as unknown as PropType<MapSpec['maxBounds']>,
         cursor: String,
         cooperativeGestures: {type: Boolean, default: undefined},
-        /** The colours of the controls, the popup and the attribution: `'auto'` (the default, as the browser), `'light'` or `'dark'`. */
+        /** The colours of the controls, the popup and the attribution: `'light'` (the default), `'dark'`, or `'auto'` to follow the browser. */
         colorScheme: String as PropType<MapSpec['colorScheme']>,
         /** Space in CSS pixels at the sides of the map that the view keeps free: one number, or `{top, right, bottom, left}`. */
         padding: [Number, Object] as PropType<MapSpec['padding']>,
@@ -296,10 +296,10 @@ const MapJrComponent = defineComponent({
         const added = computed(() => props.layers && plain(props.layers));
         const terrain = computed(() => props.terrain && plain(props.terrain));
         // (The data of each source is the object behind Vue's object. The list itself can be made again in each render.)
-        let lastData: Record<string, unknown> | undefined;
+        let lastData: MapSpec['data'];
         const data = computed(() => {
             if (!props.data) return undefined;
-            const out: Record<string, unknown> = {};
+            const out: NonNullable<MapSpec['data']> = {};
             for (const id in props.data) out[id] = toRaw(props.data[id]);
             return lastData && Object.keys(out).length === Object.keys(lastData).length && Object.keys(out).every(id => out[id] === lastData![id]) ? lastData : lastData = out;
         });
@@ -362,8 +362,8 @@ const MapJrComponent = defineComponent({
             // collects the files of a server finds it.)
             // @ts-ignore: the package refers to itself, which the type check of this project does not resolve
             const server = await import('@map-jr/map-jr-gl/server') as typeof import('./server.ts');
-            first.value = await server.renderFirstView({style: toRaw(props.mapStyle), center: view.center ?? [0, 0], zoom: view.zoom ?? 0, bearing: view.bearing, bounds: fit ? toRaw(fit) : undefined, padding: props.initialView?.padding, width: o.width ?? 800, height: o.height ?? 500,
-                images: props.images && toRaw(props.images) as Record<string, string>, overrides: o.overrides, sources: toRaw(props.sources), layers: toRaw(props.layers), terrain: toRaw(props.terrain), data: props.data && toRaw(props.data), timeout: o.timeout, requestTimeout: o.requestTimeout, maxBytes: o.maxBytes, allowHosts: o.allowHosts, attribution: props.attribution === false ? false : o.attribution, colorScheme: props.colorScheme ?? 'auto'});
+            first.value = await server.renderFirstView({style: toRaw(props.mapStyle), center: view.center ?? [0, 0], zoom: view.zoom ?? 0, bearing: view.bearing, bounds: fit ? toRaw(fit) as LngLatBoundsInput : undefined, padding: props.initialView?.padding, width: o.width ?? 800, height: o.height ?? 500,
+                images: props.images && toRaw(props.images) as Record<string, string>, overrides: o.overrides, sources: toRaw(props.sources), layers: toRaw(props.layers), terrain: toRaw(props.terrain), data: props.data && toRaw(props.data), timeout: o.timeout, requestTimeout: o.requestTimeout, maxBytes: o.maxBytes, allowHosts: o.allowHosts, attribution: props.attribution === false ? false : o.attribution, colorScheme: props.colorScheme ?? 'light'});
         });
         return () => h('div', {class: 'map-jr-vue', style: 'position:relative;width:100%;height:100%'}, [
             h('div', {ref: el, style: 'position:absolute;inset:0', innerHTML: first.value}),

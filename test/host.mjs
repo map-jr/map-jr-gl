@@ -116,24 +116,49 @@ for (const renderer of ['worker', 'main']) {
         check(`[${renderer}] moveTo with fly zooms out on the way and ends at the view (#43)`,
             fly.low < fly.start - 0.5 && fly.end[0] === -73.9 && fly.end[1] === fly.start, JSON.stringify(fly));
 
-        // 2b. Padding per side (#212): fitBounds and moveTo take {top, right, bottom, left}, and the description has padding.
+        // 2b. Padding per side (#212): fitBounds and moveTo with bounds take {top, right, bottom, left} for the fit, and
+        // the description has the padding of the map. moveTo leaves the padding of the map as the description gave it (#501).
         const padding = await page.evaluate(async () => {
             const t = window.t, m = t.host._map, b = [[-74.02, 40.70], [-74.00, 40.72]], mid = [-74.01, 40.71];
+            const wait = ms => new Promise(r => setTimeout(r, ms));
             const at = () => { const p = m.project(mid); return [Math.round(p.x), Math.round(p.y)]; };
+            const warned = [], warn = console.warn;
+            console.warn = (...a) => warned.push(a.join(' '));
             t.host.fitBounds(b, {padding: {left: 400, top: 10, right: 10, bottom: 10}, duration: 0});
             const fit = at();
             t.host.moveTo({center: mid, padding: {left: 300}});
-            const moved = at();
+            const ignored = at();
+            await wait(300);
             t.host.update({...t.spec, padding: {right: 300}});
             const spec = at();
+            t.host.moveTo({bounds: b, padding: {left: 400, top: 10, right: 10, bottom: 10}, bearing: 20, pitch: 30});
+            await wait(300);
+            const v = t.host.state.get().view, bounds = {bearing: Math.round(v.bearing), pitch: Math.round(v.pitch)};
+            t.host.moveTo({center: mid, bearing: 0, pitch: 0});
+            const kept = at();
+            t.host.update({...t.spec, padding: {right: 300}});
+            const same = at();
+            t.host.moveTo({bounds: b, padding: 20, fly: true, duration: 300});
+            await wait(200);
+            for (let i = 0; i < 50 && t.host.state.get().moving; i++) await wait(100);
+            const flown = at();
+            const {fitBounds} = t.host;
+            let detached = 'ok';
+            try { fitBounds(b, {duration: 0}); } catch (e) { detached = e.message; }
             t.host.update({...t.spec, padding: 0});
             const cleared = at();
             t.host.moveTo({center: mid});
-            return {fit, moved, spec, cleared: at()};
+            console.warn = warn;
+            return {fit, ignored, spec, bounds, kept, same, flown, cleared: at(), detached, warned: warned.filter(w => w.includes('moveTo()')).length};
         });
-        // (The page is 900 × 600: the centre of the rest of the map is at x = 400 + 245 = 645, 300 + 300 = 600 and 300.)
-        check(`[${renderer}] padding per side: fitBounds and moveTo take {top, right, bottom, left}, and padding of the description moves the centre`,
-            Math.abs(padding.fit[0] - 645) <= 2 && padding.moved[0] === 600 && padding.spec[0] === 300 && padding.cleared[0] === 450 && padding.moved[1] === 300, JSON.stringify(padding));
+        // (The page is 900 × 600: the centre of the rest of the map is at x = 400 + 245 = 645, 450 with no padding, 300 with
+        // the padding {right: 300} of the description, and with both 400 + (900 - 400 - 300 - 10 - 10) / 2 ... = 300 for the fly.)
+        check(`[${renderer}] padding per side: fitBounds takes {top, right, bottom, left}, and padding of the description moves the centre`,
+            Math.abs(padding.fit[0] - 645) <= 2 && padding.spec[0] === 300 && padding.cleared[0] === 450, JSON.stringify(padding));
+        check(`[${renderer}] moveTo leaves the padding of the map as the description gave it, and padding without bounds warns once (#501)`,
+            padding.ignored[0] === 450 && padding.ignored[1] === 300 && padding.kept[0] === 300 && padding.same[0] === 300 && padding.warned === 1, JSON.stringify(padding));
+        check(`[${renderer}] moveTo with bounds fits the box with its padding, with bearing and pitch, and with fly, and a destructured fitBounds works (#501)`,
+            padding.bounds.bearing === 20 && padding.bounds.pitch === 30 && Math.abs(padding.flown[0] - 300) <= 2 && Math.abs(padding.flown[1] - 300) <= 2 && padding.detached === 'ok', JSON.stringify(padding));
 
         // 3. A new style object: a layer is added and found by a query; with the old style again it is gone.
         const style = await page.evaluate(async () => {
@@ -698,6 +723,34 @@ for (const renderer of ['worker', 'main']) {
             first === '#f0f' && again === 0 && replaced === '#0ff' && last === '#00f' && stays && !gone.has && !late && !after.includes('#00f') && gone.errors.length === 1 && gone.errors[0].startsWith('[map-jr-gl] images: the image "lost" did not load.'),
             JSON.stringify({first, again, replaced, last, stays, gone, late, after}));
 
+        // Images of the style in metadata["map-jr:images"] (#495): drawn, replaced by an image of `images` with the same
+        // name, kept by an update of `images`, removed with the style, and bounded. A URL goes through transformRequest.
+        await page.evaluate(() => {
+            const t = window.t, c = t.host.unproject({x: 450, y: 300});
+            t.imageErrors = []; t.kinds = [];
+            t.withImages = images => ({...t.style, metadata: {...t.style.metadata, 'map-jr:images': images}, sources: {...t.style.sources, spot: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: c}}}},
+                layers: [...t.style.layers, {id: 'spot', type: 'symbol', source: 'spot', layout: {'icon-image': 'square', 'icon-allow-overlap': true, 'icon-ignore-placement': true}}]});
+            t.host.update(t.spec = {...t.spec, style: t.withImages({square: t.square('#f80'), far: '/no-such-style-image.png', outside: '<svg viewBox="0 0 4 4"><image href="https://example.com/a.png"/></svg>'}),
+                transformRequest: (url, kind) => { if (url.includes('no-such-style-image')) t.kinds.push(kind); }, onError: e => t.imageErrors.push(e.message)});
+        });
+        const ofStyle = await shows('#f80');
+        await page.evaluate(() => { const t = window.t; t.host.update(t.spec = {...t.spec, images: {square: t.square('#0f0')}}); });
+        const overridden = await shows('#0f0');
+        await page.evaluate(() => { const t = window.t, {images: _, ...rest} = t.spec; t.host.update(t.spec = rest); });
+        const back = await shows('#f80');
+        const styleGone = await page.evaluate(async () => {
+            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), {transformRequest: _, onError: __, ...rest} = t.spec;
+            for (let i = 0; i < 30 && t.imageErrors.length < 2; i++) await wait(100);
+            const errors = [...t.imageErrors];
+            t.host.update(t.spec = {...rest, style: t.style});
+            for (let i = 0; i < 30 && t.host._map.hasImage('square'); i++) await wait(100);
+            return {errors, kinds: t.kinds, has: t.host._map.hasImage('square')};
+        });
+        check(`[${renderer}] images of the style in metadata["map-jr:images"]: drawn, replaced by images of the description, removed with the style, an SVG with a reference to another file is left out, and a URL goes through transformRequest as Image`,
+            ofStyle === '#f80' && overridden === '#0f0' && back === '#f80' && !styleGone.has && styleGone.kinds.includes('Image')
+            && styleGone.errors.some(e => e.startsWith('[map-jr-gl] the style: the image "outside"')) && styleGone.errors.some(e => e.startsWith('[map-jr-gl] the style: the image "far" did not load')),
+            JSON.stringify({ofStyle, overridden, back, styleGone}));
+
         // An image that is an SVG template: each feature gives the slots their values. Two squares, the second 60 pixels to the right.
         // (Of each square, the colour of its upper half and of its lower half is read.)
         const halves = async () => page.evaluate(async png => {
@@ -1108,7 +1161,7 @@ for (const renderer of ['worker', 'main']) {
         await page.evaluate(z => window.t.host.moveTo({zoom: z}), zoom0); await page.waitForTimeout(300);
         check(`[${renderer}] cooperativeGestures: a plain wheel does not zoom and the hint is there, Ctrl + wheel zooms, and update() turns it off`,
             !plainOn && ctrlOn && plainOff && coop.hint === 1 && coop.touch === 'pan-x pan-y' && off === 0, JSON.stringify({plainOn, ctrlOn, plainOff, ...coop, off}));
-        // `colorScheme` (#490): the class map-jr-dark, state.colorScheme and the colour of a control, for 'auto', 'light' and 'dark'.
+        // `colorScheme` (#490): the class map-jr-dark, state.colorScheme and the colour of a control, for no value (light), 'auto', 'light' and 'dark'.
         // (The browser fires the event `change` of the media query at its next rendering step, which can come late on a
         // loaded machine, so the check waits until the state has the expected scheme, for at most 3 s.)
         const until = expect => page.waitForFunction(e => window.t.host.state.get().colorScheme === e, expect, {timeout: 3000}).catch(() => {});
@@ -1123,7 +1176,8 @@ for (const renderer of ['worker', 'main']) {
                 return [document.querySelector('#host').classList.contains('map-jr-dark') ? 'class' : '-', t.host.state.get().colorScheme, el && getComputedStyle(el).color].join(' ');
             }, value);
         };
-        const schemes = {autoDark: await scheme('dark', undefined, 'dark'), autoLight: await scheme('light', undefined, 'light'), light: await scheme('dark', 'light'), dark: await scheme('light', 'dark'), autoBack: await scheme('dark', 'auto')};
+        const schemes = {none: await scheme('dark', undefined, 'light'), autoDark: await scheme('dark', 'auto', 'dark'), autoLight: await scheme('light', 'auto', 'light'), light: await scheme('dark', 'light'), dark: await scheme('light', 'dark'), autoBack: await scheme('dark', 'auto')};
+        // (The last description has 'auto': the map follows a change of the media query.)
         await page.emulateMedia({colorScheme: 'light'});
         await until('light');
         schemes.follows = await page.evaluate(() => window.t.host.state.get().colorScheme);
@@ -1131,8 +1185,8 @@ for (const renderer of ['worker', 'main']) {
         await page.evaluate(() => { const t = window.t; t.host.update(t.spec); });
         // (The text colour: the page /bench loads the CSS of MapLibre GL JS, whose background of a control wins over the rules of this library, as a rule of an application does.)
         const D = 'class dark rgb(230, 230, 230)', L = '- light rgb(34, 34, 34)';
-        check(`[${renderer}] colorScheme: 'auto' follows prefers-color-scheme while the page is open, 'light' and 'dark' fix it, with the class map-jr-dark and the colour of a control`,
-            schemes.autoDark === D && schemes.autoLight === L && schemes.light === L && schemes.dark === D && schemes.autoBack === D && schemes.follows === 'light', JSON.stringify(schemes));
+        check(`[${renderer}] colorScheme: no value is light also when the browser asks for dark, 'auto' follows prefers-color-scheme while the page is open, 'light' and 'dark' fix it, with the class map-jr-dark and the colour of a control`,
+            schemes.none === L && schemes.autoDark === D && schemes.autoLight === L && schemes.light === L && schemes.dark === D && schemes.autoBack === D && schemes.follows === 'light', JSON.stringify(schemes));
 
         // `style: {light, dark}` (#491): the style of the resolved scheme, a change of the media query changes it, and a
         // layer of the description and its data stay. A pair with the same content in update() is the same style.
@@ -1143,7 +1197,7 @@ for (const renderer of ['worker', 'main']) {
             const pts = {type: 'FeatureCollection', features: [{type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [0, 0]}}]};
             const wait = (f, end = Date.now() + 8000) => new Promise(r => { const h = () => { if (f() || Date.now() > end) r(); else setTimeout(h, 50); }; h(); });
             const ids = () => (host._map.getStyle()?.layers ?? []).map(l => l.id).join(',');
-            let spec = {style: {light: make('L'), dark: make('D')}, layers: [{id: 'dots', type: 'circle', source: 'pts'}], data: {pts}, renderer, attribution: false};
+            let spec = {style: {light: make('L'), dark: make('D')}, colorScheme: 'auto', layers: [{id: 'dots', type: 'circle', source: 'pts'}], data: {pts}, renderer, attribution: false};
             const host = t.lib.createMap(el, spec), out = {};
             await wait(() => host.state.get().idle);
             out.light = ids();
@@ -1173,12 +1227,17 @@ for (const renderer of ['worker', 'main']) {
             host.update({...host.description, style: JSON.parse(JSON.stringify(host.description.style))});
             await new Promise(r => setTimeout(r, 200));
             out.sameReloads = loads.length;
+            // (With no colorScheme the scheme is light, also while the browser asks for dark.)
+            const {colorScheme, ...none} = host.description;
+            host.update(none);
+            await wait(() => ids().startsWith('L') && host.state.get().idle);
+            out.none = ids();
             host.destroy(); delete window.pairHost;
             return out;
         }).catch(e => ({error: String(e)})));
         await page.emulateMedia({colorScheme: null});
-        check(`[${renderer}] style: {light, dark} uses the style of the resolved scheme, changes it with prefers-color-scheme and keeps a layer of the description and its data`,
-            JSON.stringify(paired) === JSON.stringify({light: 'L,dots', warned: 'true,true', dark: 'D,dots', data: 1, sameReloads: 0}), JSON.stringify(paired));
+        check(`[${renderer}] style: {light, dark} uses the style of the resolved scheme (light with no colorScheme), changes it with prefers-color-scheme under 'auto' and keeps a layer of the description and its data`,
+            JSON.stringify(paired) === JSON.stringify({light: 'L,dots', warned: 'true,true', dark: 'D,dots', data: 1, sameReloads: 0, none: 'L,dots'}), JSON.stringify(paired));
 
         // 5b. One method to find features, and the same question kept up to date.
         const found = await page.evaluate(async () => {
@@ -1317,6 +1376,29 @@ for (const renderer of ['worker', 'main']) {
         });
         check('[main] the sprite is requested before the engine file has loaded, and only once', seen && idle && asked.length === 2, JSON.stringify({seen, idle, asked}));
     } catch (e) { check('the early sprite test was completed', false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
+// The file for the images of a style does not load (#495): an error of the map, and no unhandled rejection.
+{
+    const page = await browser.newPage({viewport: {width: 900, height: 600}});
+    const rejections = [];
+    page.on('pageerror', e => rejections.push(e.message));
+    try {
+        await page.route(/map-jr-gl-style-images/, route => route.abort());
+        await page.goto(origin + '/bench');
+        const got = await page.evaluate(async () => {
+            const lib = await import('/dist/map-jr-gl.js'), style = await (await fetch('/style.json')).json(), errors = [];
+            window.addEventListener('unhandledrejection', e => errors.push('unhandled ' + e.reason));
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99;background:#fff'}));
+            const host = lib.createMap(el, {style: {...style, metadata: {'map-jr:images': {sq: '<svg viewBox="0 0 4 4"><rect width="4" height="4"/></svg>'}}}, attribution: false, onError: e => errors.push(e.message)});
+            for (let i = 0; i < 100 && !errors.length; i++) await new Promise(r => setTimeout(r, 100));
+            await new Promise(r => setTimeout(r, 300));
+            host.destroy(); el.remove();
+            return errors;
+        });
+        check('the file for the images of a style does not load: the map reports an error and the page has no unhandled rejection',
+            got.length === 1 && got[0].startsWith('[map-jr-gl] the style: the code for the images') && !rejections.length, JSON.stringify({got, rejections}));
+    } catch (e) { check('the test of a failed style-images file was completed', false, String(e.message).split('\n')[0]); }
     await page.close();
 }
 // A map that is destroyed while it loads (React StrictMode does this on each mount), and two maps in one element.

@@ -1,6 +1,7 @@
 import {fetchWith, withTimeout, type RequestAnswer} from './requests.ts';
 import {protocolListeners, protocols, toBytes} from './protocols.ts';
 import {LngLat, LngLatBounds, type LngLatBoundsInput} from './lnglat.ts';
+import type {FilterSpecification} from './compat-types.ts';
 import {Transform, fitBox, globeStops, groundHeight, heightsChanged, mercX, mercY, sides, toLngLat, type LngLatLike} from './geo.ts';
 import type {PreparedSource} from './geojson.ts';
 import {DEFAULT_FONT, keep, kept, resolveStyle, type ResolvedStyle} from './resolve.ts';
@@ -96,9 +97,9 @@ export type PointLike = {x: number; y: number} | [number, number];
 /** Where `queryFeatures` looks: a point of the screen, a position (`[lng, lat]`), or the two corners of a rectangle of the screen. */
 export type FeaturePlace = {x: number; y: number} | readonly number[] | readonly {x: number; y: number}[];
 /** The options of `queryFeatures`. See "Queries" in `docs/api.md`. */
-export interface FeatureOptions { layers?: string[]; filter?: unknown; radius?: number }
+export interface FeatureOptions { layers?: string[]; filter?: FilterSpecification; radius?: number }
 /** The options of `querySource`. See "Queries" in `docs/api.md`. */
-export interface SourceOptions { sourceLayers?: string[]; filter?: unknown; radius?: number; geometry?: boolean; zoom?: number }
+export interface SourceOptions { sourceLayers?: string[]; filter?: FilterSpecification; radius?: number; geometry?: boolean; zoom?: number }
 /** True for the options of a query given in the place of `at`: an object that is not a point, a position or a list. */
 export const isOptions = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v) && !['x', 'y', 'lng', 'lat', 'lon'].some(k => k in v);
 export interface RenderedQueryOptions { layers?: string[]; filter?: unknown; validate?: boolean }
@@ -1382,8 +1383,13 @@ export class Map {
                 const [w, h] = svgSize(source);
                 width ??= w; height ??= h;
                 img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(sizedSVG(source, width, height));
-            } else { img.crossOrigin = 'anonymous'; img.src = source; }
-            await img.decode();
+            } else {
+                // (The request goes through `transformRequest` and the protocols with the kind `Image`, as in MapLibre GL JS.)
+                const a = await this.answer(source, 'Image');
+                img.crossOrigin = a.credentials === 'include' ? 'use-credentials' : 'anonymous';
+                img.src = a.data ? URL.createObjectURL(new Blob([a.data as BlobPart])) : a.url!;
+            }
+            try { await img.decode(); } finally { if (img.src.startsWith('blob:')) URL.revokeObjectURL(img.src); }
             // (While the image loaded, the map was removed, or the name got another image or was removed.)
             if (this.removed || this.imageTurns.get(name) !== turn) return this;
             width ??= img.naturalWidth / (options.pixelRatio ?? 1); height ??= img.naturalHeight / (options.pixelRatio ?? 1);
