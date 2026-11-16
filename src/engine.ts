@@ -699,7 +699,10 @@ export class Engine {
                     // hidden and shown again has the rules of before: its tiles are good.) A tile that is on its way
                     // was built with the rules of some moment between: it is built again.
                     const stale = t.state === 'loading' || !!t.rebuilding ? was[1] !== now[1] || !!t.stale : t.rules !== undefined && t.rules !== now[1];
-                    if (stale !== !!t.stale) { t.stale = stale; t.rev = ++this.tilesVersion; }
+                    // A stale tile that is not on screen goes: kept, it would stand in for a tile of another zoom,
+                    // drawn with the rules before until its rebuild arrives (#550).
+                    if (stale && t.state === 'ok' && !t.rebuilding && t.used < this.frameNo - 1) this.dropTile(key, t);
+                    else if (stale !== !!t.stale) { t.stale = stale; t.rev = ++this.tilesVersion; }
                 }
             }
             this.sourceSigs = sigs;
