@@ -42,9 +42,10 @@ function dragCompass(map: Map, b: HTMLButtonElement, pitch: boolean) {
         const dx = e.clientX - last.clientX, dy = e.clientY - last.clientY;
         if (!dragged && Math.hypot(dx, dy) <= 3) return;
         dragged = true;
-        const r = b.getBoundingClientRect(), x = e.clientX - r.left - r.width / 2, y = e.clientY - r.top - r.height / 2, lx = last.clientX - r.left - r.width / 2;
-        // The angle between (last x, current y) and the current point, seen from the centre of the button.
-        map.jumpTo({bearing: map.getBearing() + Math.atan2(x * y - y * lx, x * lx + y * y) * 180 / Math.PI, ...pitch && {pitch: map.getPitch() - dy / 2}});
+        // 0.8 degrees of bearing for each pixel sideways, and 0.5 degrees of pitch for each pixel up, as MapLibre GL JS
+        // turns the map. (An angle around the centre of the button, as before #548, jumped by up to 180 degrees when
+        // the pointer passed near that centre, and the first move after the 3 pixels turned the map by up to 90 degrees.)
+        map.jumpTo({bearing: map.getBearing() + dx * .8, ...pitch && {pitch: map.getPitch() - dy / 2}});
         last = e;
     });
     const end = () => { last = null; setTimeout(() => { dragged = false; }); };

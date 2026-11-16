@@ -1870,6 +1870,26 @@ for (const visualizePitch of [undefined, true]) {
             ? dragged.pitch > 21 && clicked.pitch < 0.01
             : Math.abs(dragged.pitch - 20) < 0.01 && dragged.needle.startsWith('rotateX(0deg)') && Math.abs(clicked.pitch - 20) < 0.01);
         check(`${name}: dragging the compass rotates the map${visualizePitch ? ' and pitches it, and a click resets both' : ' without pitching it, and a click resets only the bearing'}`, ok, JSON.stringify({dragged, clicked}));
+        // #548: a drag sideways across the compass, with the mouse and with a finger, turns the map steadily: 0.8 degrees
+        // for each pixel, in one direction, with no jump where the pointer passes the centre of the button.
+        if (!visualizePitch) for (const kind of ['mouse', 'touch']) {
+            await page.evaluate(() => window.compassHost.moveTo({bearing: 0, duration: 0}));
+            await page.waitForTimeout(100);
+            const bearing = () => page.evaluate(() => window.compassHost._map.getBearing()); // (the state follows a frame later)
+            const steps = [], cdp = kind === 'touch' && await page.context().newCDPSession(page);
+            const touch = (type, x, y) => cdp.send('Input.dispatchTouchEvent', {type, touchPoints: type === 'touchEnd' ? [] : [{x, y}]});
+            if (cdp) await touch('touchStart', box.x - 12, box.y + 2); else { await page.mouse.move(box.x - 12, box.y + 2); await page.mouse.down(); }
+            for (let dx = -8; dx <= 36; dx += 4) {
+                if (cdp) await touch('touchMove', box.x + dx, box.y + 2); else await page.mouse.move(box.x + dx, box.y + 2);
+                await page.waitForTimeout(20);
+                steps.push(await bearing());
+            }
+            if (cdp) await touch('touchEnd'); else await page.mouse.up();
+            await page.waitForTimeout(300);
+            const turns = steps.slice(1).map((b, i) => b - steps[i]), end = await bearing();
+            check(`${name}: a drag sideways across the compass with the ${kind} turns the map by 0.8 degrees for each pixel, without a jump`,
+                turns.every(t => t > 0 && t < 4) && Math.abs(end - 48 * .8) < 3, JSON.stringify({steps: steps.map(b => Math.round(b)), end}));
+        }
     } catch (e) { check(`${name}: the test run was completed`, false, String(e.message).split('\n')[0]); }
     await page.close();
 }
