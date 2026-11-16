@@ -12,7 +12,6 @@ import type {SSROverrides} from './style.ts';
 import type {RenderedFeature} from './map.ts';
 import type {QueriedFeature} from './query.ts';
 import type {MarkerLayerOptions} from './markers.ts';
-import type {FontSource} from './engine.ts';
 import type {LngLatBoundsInput} from './lnglat.ts';
 
 /** A description whose fields are the objects behind Vue's reactive objects (a reactive object cannot go to a worker). */
@@ -256,6 +255,7 @@ const MapJrComponent = defineComponent({
         /** GeoJSON data for sources of the style, by the id of the source. Each value is compared by identity: give a new object to change it. */
         data: Object as PropType<Record<string, unknown>>,
         interactiveLayers: Array as PropType<string[]>,
+        hoverState: {type: Boolean, default: undefined},
         minZoom: Number, maxZoom: Number, maxPitch: Number,
         maxBounds: [Array, Object] as PropType<LngLatBoundsInput | null>,
         cursor: String,
@@ -273,7 +273,8 @@ const MapJrComponent = defineComponent({
         /** Changes a request before the map makes it, as `transformRequest` of MapLibre GL JS. */
         transformRequest: Function as PropType<MapSpec['transformRequest']>,
         renderer: String as PropType<'auto' | 'worker' | 'main'>,
-        fonts: Array as PropType<FontSource[]>,
+        /** Web fonts for labels in the shape of `font-faces` of the style specification: by `text-font` name, a URL or a list of `{url, 'unicode-range'}`. */
+        fonts: Object as PropType<MapSpec['fonts']>,
         fontFamily: String,
         /** `false`: the user cannot move the map. */
         interactive: {type: Boolean, default: undefined},
@@ -344,9 +345,9 @@ const MapJrComponent = defineComponent({
         const listensForError = !!getCurrentInstance()?.vnode.props?.onError;
         const spec = computed<MapSpec>(() => {
             const out: MapSpec = {
-                style: style.value, sources: sources.value, layers: added.value, terrain: terrain.value, view: view.value, initialView: props.initialView && toRaw(props.initialView), images: images.value, markers: markers.value, data: data.value, interactiveLayers: layers.value, controls: controls.value,
+                style: style.value, sources: sources.value, layers: added.value, terrain: terrain.value, view: view.value, initialView: props.initialView && toRaw(props.initialView), images: images.value, markers: markers.value, data: data.value, interactiveLayers: layers.value, hoverState: props.hoverState, controls: controls.value,
                 minZoom: props.minZoom, maxZoom: props.maxZoom, maxPitch: props.maxPitch, maxBounds: props.maxBounds && toRaw(props.maxBounds), cursor: props.cursor, transformRequest: props.transformRequest, cooperativeGestures: props.cooperativeGestures, colorScheme: props.colorScheme, padding: props.padding && typeof props.padding === 'object' ? toRaw(props.padding) : props.padding, projection: props.projection && toRaw(props.projection), globalState: props.globalState && toRaw(props.globalState),
-                renderer: props.renderer, fonts: props.fonts && toRaw(props.fonts), fontFamily: props.fontFamily, interactive: props.interactive, antialias: props.antialias,
+                fonts: props.fonts && toRaw(props.fonts), renderer: props.renderer, fontFamily: props.fontFamily, interactive: props.interactive, antialias: props.antialias,
                 attribution: (props.attribution as unknown) === true ? undefined : props.attribution && toRaw(props.attribution), hash: props.hash, nonce: props.nonce,
                 onViewChange: view => emit('update:view', view), onClick: event => emit('click', event),
                 // (Without a listener for `error`, the map writes each error to the console.)

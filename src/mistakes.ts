@@ -37,6 +37,8 @@ const texts: (((a: string, b: string) => string) | undefined)[] = [
     /* 23-39: kept for the texts of other changes */ , , , , , , , , , , , , , , , , , 
     /* 40 */ a => `colorScheme: ${a} is not a colour scheme, so the map follows the browser. Write 'auto', 'light' or 'dark'.`,
 ];
+// (Numbers 23 to 29 are taken by other changes.)
+texts[30] = a => `hoverState: a feature of the layer "${a}" has no id, so it gets no feature state "hover". Give the features ids, or set "promoteId" of the source to a property that has one, or "generateId: true" for a GeoJSON source.`;
 
 /** The message with the number `code` for the names `a` and `b`. */
 export const mistake = (code: number, a = '', b = '') => '[map-jr-gl] ' + texts[code]!(a, b);
@@ -55,7 +57,7 @@ const pageWarned = new Set<number>();
 export const warnOnce = (code: number, a = '') => { if (!pageWarned.has(code)) { pageWarned.add(code); console.warn(mistake(code, a)); } };
 
 /** The fields of `MapSetup`, and `initialView`: a change of one of them in `update` has no effect. */
-const setupOnly = ['renderer', 'fonts', 'fontFamily', 'interactive', 'antialias', 'attribution', 'hash', 'nonce', 'initialView'] as const;
+const setupOnly = ['renderer', 'fontFamily', 'interactive', 'antialias', 'attribution', 'hash', 'nonce', 'initialView'] as const;
 /** A query at a point or a position, and not in a rectangle or on the whole map. */
 const place = (at: unknown) => !!at && !(Array.isArray(at) && typeof at[0] !== 'number');
 const differ = (a: unknown, b: unknown) => a !== b && JSON.stringify(a) !== JSON.stringify(b);
@@ -64,7 +66,8 @@ const differ = (a: unknown, b: unknown) => a !== b && JSON.stringify(a) !== JSON
  * One check of a map. The kinds: 0, the container (`a` is the name that the user wrote), a second after the map is made; 1, the ids of the description, when
  * the map is idle; 2, a description (`a`) after the description before it (`b`, none for the first); 3, a query for
  * features at `a` with the options `b`; 6, a query of `querySource` at `a` with the options and the `id` of the source in `b`; 4, the style `a` and the `sources` and `layers` of the description (`b`) to it; 5, an image with
- * the name `a` that a marker layer has and the map does not have.
+ * the name `a` that a marker layer has and the map does not have; 9, a feature with no id under the pointer in the layer `a`
+ * with `hoverState`.
  */
 export function check(c: Checked, kind: number, a?: any, b?: any) {
     const {map} = c;
@@ -122,6 +125,7 @@ export function check(c: Checked, kind: number, a?: any, b?: any) {
         for (const k of ['layers', 'sources']) if (k in o) warn(12, k, 's');
         if (!place(a)) { if (o.radius !== undefined) warn(13, 'querySource'); if (o.geometry === false) warn(11, 'geometry'); if (o.zoom !== undefined) warn(11, 'zoom'); }
     } else if (kind === 5) warn(16, a);
+    else if (kind === 9) warn(30, a);
     else {
         slots(a.layers, b?.layers);
         // A marker layer is a source and a layer with its id: the id must be free, and `before` must name a layer.
