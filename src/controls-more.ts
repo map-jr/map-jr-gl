@@ -63,19 +63,27 @@ export class NavigationControl implements Control {
     constructor(private options: {showZoom?: boolean; showCompass?: boolean; visualizePitch?: boolean} = {}) { this.pitch = !!options.visualizePitch; }
 
     onAdd(map: Map) {
-        const el = this.el = group();
+        // (In the main API, the compass is a round button of its own below the zoom buttons: the control is a column of two groups.)
+        const glass = map.getContainer().classList.contains('map-jr-glass'), el = this.el = glass ? document.createElement('div') : group();
+        if (glass) { el.className = cls('ctrl'); el.style.cssText = 'display:flex;flex-direction:column;gap:10px;align-items:center'; }
         let zoomIn: HTMLButtonElement | undefined, zoomOut: HTMLButtonElement | undefined, needle: SVGElement | null = null;
         if (this.options.showZoom !== false) {
-            zoomIn = button(el, 'zoom-in', ui(map, 'NavigationControl.ZoomIn', 'Zoom in'), svg('<path d="M9 4v10M4 9h10"/>'), () => map.zoomIn());
-            zoomOut = button(el, 'zoom-out', ui(map, 'NavigationControl.ZoomOut', 'Zoom out'), svg('<path d="M4 9h10"/>'), () => map.zoomOut());
+            const zoom = glass ? el.appendChild(group()) : el;
+            zoomIn = button(zoom, 'zoom-in', ui(map, 'NavigationControl.ZoomIn', 'Zoom in'), svg('<path d="M9 4v10M4 9h10"/>'), () => map.zoomIn());
+            zoomOut = button(zoom, 'zoom-out', ui(map, 'NavigationControl.ZoomOut', 'Zoom out'), svg('<path d="M4 9h10"/>'), () => map.zoomOut());
         }
         let letter: SVGTextElement | null = null;
         if (this.options.showCompass !== false) {
-            const glass = map.getContainer().classList.contains('map-jr-glass');
-            const b = button(el, 'compass', ui(map, 'NavigationControl.ResetBearing', 'Reset bearing to north'), glass
-                // The compass of the main API: a dial with 12 ticks and a mark of north on the rim, which turn with the map,
-                // and the direction that the map faces in the centre (one of 8), which stays upright.
-                ? '<svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><g><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2.4" stroke-dasharray=".6 4.636" opacity=".5"/><path d="M12 .6l2.6 3.8H9.4z"/></g><text x="12" y="12.4" text-anchor="middle" dominant-baseline="middle" font-size="8.5" font-weight="600" font-family="system-ui,sans-serif"></text></svg>'
+            // The compass of the main API: a dial with heavy ticks at east, south and west, light ticks between them and
+            // a mark of north on the rim, which turn with the map, and in the centre the letter of the direction that the
+            // map faces (the nearest of N, E, S and W), which stays upright.
+            let ticks = '', light = '';
+            for (let a = 30; a < 360; a += 30) {
+                const s = Math.sin(a * Math.PI / 180), c = -Math.cos(a * Math.PI / 180), major = !(a % 90), r = major ? 6.6 : 8, at = (k: number) => `${+(12 + s * k).toFixed(2)} ${+(12 + c * k).toFixed(2)}`;
+                if (major) ticks += `M${at(r)}L${at(10.4)}`; else light += `M${at(r)}L${at(10.4)}`;
+            }
+            const b = button(glass ? el.appendChild(group()) : el, 'compass', ui(map, 'NavigationControl.ResetBearing', 'Reset bearing to north'), glass
+                ? `<svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-linecap="round" aria-hidden="true"><g><path d="${light}" stroke-width="1.1" opacity=".45"/><path d="${ticks}" stroke-width="1.6"/><path d="M12 .9l2.7 4.3H9.3z" stroke="none"/></g><text x="12" y="12" text-anchor="middle" dominant-baseline="central" font-size="10.5" font-weight="700" font-family="system-ui,sans-serif" stroke="none"></text></svg>`
                 : svg('<path d="M9 2.500 12 9H6z" fill="currentColor" stroke="none"/><path d="M9 15.500 6 9h6z" fill="currentColor" stroke="none" opacity=".35"/>'),
                 () => map.easeTo({bearing: 0, ...this.pitch && {pitch: 0}}));
             needle = b.querySelector(glass ? 'g' : 'svg');
@@ -87,7 +95,7 @@ export class NavigationControl implements Control {
             if (zoomIn) zoomIn.disabled = map.getZoom() >= map.getMaxZoom();
             if (zoomOut) zoomOut.disabled = map.getZoom() <= map.getMinZoom();
             if (needle) needle.style.transform = `rotateX(${this.pitch ? map.getPitch() : 0}deg) rotate(${-map.getBearing()}deg)`;
-            if (letter) letter.textContent = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round((map.getBearing() + 360) / 45) % 8];
+            if (letter) letter.textContent = 'NESW'[Math.round((map.getBearing() + 360) / 90) % 4];
         };
         map.on('move', this.update);
         this.update();

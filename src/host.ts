@@ -10,7 +10,7 @@ import {Map, logError, type FeatureOptions, type FeaturePlace, type SourceOption
 export type {PaddingInput};
 export type {FeatureOptions, FeaturePlace, SourceOptions};
 import {createStore, type Readable} from './store.ts';
-import {Marker, Popup} from './overlays.ts';
+import {Marker, Popup, part} from './overlays.ts';
 import {dataTypeError, extended, isStylePair, styleFor, withData, type Anchor} from './markers.ts';
 import type {QueriedFeature} from './query.ts';
 import type {Control, ControlPosition} from './controls.ts';
@@ -406,6 +406,40 @@ const same = (a: ViewInput | undefined, b: ViewInput | undefined) => !!a && !!b 
 /** Stops a description with no style, with a message that says what to write (a caller in JavaScript has no type check). */
 function complete(spec: MapDescription, method: string, fix: string) {
     if (!spec?.style) throw new Error(`[map-jr-gl] ${method}(): the description has no "style". ${fix}`);
+}
+
+/**
+ * The popup of the main API. The box and its tip are one shape, so that one background with the blur and one shadow go
+ * around both. The box clips itself to the shape (its border on the side of the tip is the room of the tip), and a
+ * layer behind it draws the shadow of the same shape, cut out where the box is: a shadow under the translucent box would
+ * show through it, and a `filter` on an element above the box would stop the blur of its background.
+ */
+class GlassPopup extends Popup {
+    protected outline() {
+        const b = this.box;
+        if (!b.isConnected) return;
+        const s = this.shade ??= this.el.insertBefore(document.createElement('div'), b);
+        if (!s.firstChild) { s.className = 'map-jr-popup-shadow'; s.appendChild(document.createElement('div')); new ResizeObserver(() => this.outline()).observe(b); }
+        const side = b.dataset.side!, w = b.offsetWidth, h = b.offsetHeight, P = 24, T = side === 'center' ? 0 : 8;
+        const across = side === 'left' || side === 'right', L = across ? h : w, D = across ? w : h, B = D - T;
+        const r = Math.min(parseFloat(getComputedStyle(b).borderTopLeftRadius) || 0, B / 2, L / 2), x = part(this.anchor)[0];
+        const c = Math.min(Math.max(across ? L / 2 : x * L / 100 + 20 - x * .4, r + 8), L - r - 8);
+        // (The points are written for a tip at the bottom: u along the side of the tip, v towards it.)
+        const at = (o: number, ...uv: number[]) => {
+            let out = '';
+            for (let i = 0; i < uv.length; i += 2) {
+                const u = uv[i], v = uv[i + 1];
+                out += ' ' + (side === 'top' ? [u, D - v] : side === 'right' ? [v, u] : side === 'left' ? [D - v, u] : [u, v]).map(n => +(n + o).toFixed(2)).join(' ');
+            }
+            return out;
+        };
+        const shape = (o: number) => `M${at(o, r, 0)}L${at(o, L - r, 0)}Q${at(o, L, 0, L, r)}L${at(o, L, B - r)}Q${at(o, L, B, L - r, B)}` +
+            (T ? `L${at(o, c + 8, B)}L${at(o, c + 1.5, D - 1.3)}Q${at(o, c, D, c - 1.5, D - 1.3)}L${at(o, c - 8, B)}` : '') +
+            `L${at(o, r, B)}Q${at(o, 0, B, 0, B - r)}L${at(o, 0, r)}Q${at(o, 0, 0, r, 0)}Z`;
+        b.style.clipPath = `path('${shape(0)}')`;
+        Object.assign(s.style, {left: b.offsetLeft - P + 'px', top: b.offsetTop - P + 'px', width: w + 2 * P + 'px', height: h + 2 * P + 'px', clipPath: `path(evenodd,'M0 0H${w + 2 * P}V${h + 2 * P}H0Z${shape(P)}')`});
+        (s.firstChild as HTMLElement).style.clipPath = `path('${shape(P)}')`;
+    }
 }
 
 export function createMap(container: HTMLElement | string, spec: MapDescription): MapInstance { return makeMap(container, spec, 'createMap()'); }
@@ -823,7 +857,7 @@ export function makeMap(container: HTMLElement | string, spec: MapDescription, n
                     m.on('dragstart', () => now.onDragStart?.(at())); m.on('drag', () => now.onDrag?.(at())); m.on('dragend', () => now.onDragEnd?.(at()));
                     return m;
                 }
-                const p = new Popup({anchor: now.anchor, offset: now.offset, closeButton: !!now.onClose, closeOnClick: false}).setLngLat(now.lngLat).setDOMContent(element).addTo(map);
+                const p = new GlassPopup({anchor: now.anchor, offset: now.offset, closeButton: !!now.onClose, closeOnClick: false}).setLngLat(now.lngLat).setDOMContent(element).addTo(map);
                 p.on('close', () => { if (made === p) now.onClose?.(); });
                 return p;
             };

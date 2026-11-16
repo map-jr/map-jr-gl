@@ -604,8 +604,10 @@ map or on an element above it:
 | `--map-attribution-background` | The background of the attribution and the scale | white at `.4`, dark `rgb(30 30 34)` at `.3` |
 | `--map-popup-background`, `--map-popup-color` | The background and the text of a popup | white at `.65` and `#222`, dark `rgb(30 30 34)` at `.55` and `#e6e6e6` |
 
-The compass shows the direction that the map faces in its centre (`N`, `NE`, `E` and so on) and a mark of north on a
-dial that turns with the map. A click turns the map to the north.
+The compass is a round button below the zoom buttons. Its centre shows the nearest of `N`, `E`, `S` and `W` to the
+direction that the map faces (a bearing of 45 degrees shows `E`), and a mark of north on a dial turns with the map. A
+click turns the map to the north, and a drag sideways turns it by 0.8 degrees for each pixel. The scale sits at the
+bottom edge of the map beside the attribution; with the compact attribution it keeps a distance of 10 pixels.
 
 | Function | Control | Options (each also has `position`) |
 |---|---|---|

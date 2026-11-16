@@ -1079,7 +1079,7 @@ for (const renderer of ['worker', 'main']) {
 
         // Controls: added and removed by the description.
         const controls = await page.evaluate(async () => {
-            const t = window.t, {navigation, scale} = await import('/dist/controls.js'), count = () => document.querySelectorAll('#host .map-jr-ctrl-group, #host .map-jr-ctrl-scale').length;
+            const t = window.t, {navigation, scale} = await import('/dist/controls.js'), count = () => document.querySelectorAll('#host .map-jr-ctrl-compass, #host .map-jr-ctrl-scale').length;
             // The control classes load with import() when the map adds the first control (#160).
             const settle = () => new Promise(r => setTimeout(r, 50));
             t.host.update(t.spec = {...t.spec, controls: [navigation(), scale({position: 'bottom-left'})]});
@@ -1285,13 +1285,13 @@ for (const renderer of ['worker', 'main']) {
             // The compass shows the direction that the map faces.
             const letter = () => document.querySelector('#host .map-jr-ctrl-compass text')?.textContent;
             const map = t.host._map, faces = [letter()];
-            for (const bearing of [90, -135, 0]) { map.jumpTo({bearing}); await new Promise(r => setTimeout(r, 100)); faces.push(letter()); }
+            for (const bearing of [90, -135, 0]) { map.jumpTo({bearing}); await new Promise(r => setTimeout(r, 100)); faces.push(letter() + (map.getBearing() === bearing ? '' : '@' + map.getBearing()) + document.querySelectorAll('#host .map-jr-ctrl-compass').length); }
             t.host.update(t.spec);
             return {main: host.classList.contains('map-jr-glass'), blur: group.backdropFilter, radius: group.borderTopLeftRadius, compat, compatClass: el.classList.contains('map-jr-glass'), popupDefault, popupSet, faces: faces.join(' ')};
         });
-        check(`[${renderer}] the controls of the main API have a blur, a rule of the page still wins, --map-control-opacity and --map-control-radius reach the popup, the compass names the direction, and a map of the compat entry keeps the look of MapLibre GL JS`,
+        check(`[${renderer}] the controls of the main API have a blur, a rule of the page still wins, --map-control-opacity and --map-control-radius reach the popup, the compass names the nearest of N, E, S and W, and a map of the compat entry keeps the look of MapLibre GL JS`,
             glass.main && glass.blur === 'blur(5px)' && glass.radius === '4px' && glass.compat === 'none' && !glass.compatClass
-            && glass.popupDefault === 'rgba(255, 255, 255, 0.65) 12px' && glass.popupSet === 'rgba(255, 255, 255, 0.4) 6px' && glass.faces === 'N E SW N', JSON.stringify(glass));
+            && glass.popupDefault === 'rgba(255, 255, 255, 0.65) 12px' && glass.popupSet === 'rgba(255, 255, 255, 0.4) 6px' && glass.faces === 'N E1 W1 N1', JSON.stringify(glass));
         // The control colorScheme() (#541): for each start (no value, 'auto' with the system light and dark, a fixed value),
         // what two clicks give: the value of the description, the scheme of the map, the calls of onColorSchemeChange and the label.
         const toggles = {};
@@ -1843,6 +1843,28 @@ for (const other of [true, false]) {
         check('standalone: the main API and a control from one file', !!one.renderer && one.control && files.join() === 'map-jr-gl-standalone.js', JSON.stringify({...one, files}));
     } catch (e) { check('standalone: the test run was completed', false, String(e.message).split('\n')[0]); }
     await page.close();
+}
+
+// #541: a tap on a button of a control on a phone (Chromium with touch, as on Android) leaves the button as it was:
+// no tap highlight, no hover background that stays after the tap, and no focus outline (the outline is for the keyboard).
+{
+    const context = await browser.newContext({viewport: {width: 412, height: 600}, deviceScaleFactor: 2, isMobile: true, hasTouch: true});
+    const page = await context.newPage();
+    try {
+        await page.goto(`${origin}/style.json`);
+        await page.evaluate(async () => {
+            const lib = await import('/dist/map-jr-gl.js'), {navigation} = await import('/dist/controls.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:400px'}));
+            window.tapHost = lib.createMap(el, {style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, initialView: {center: [0, 0], zoom: 2}, controls: [navigation()], attribution: false});
+            for (let i = 0; i < 50 && !el.querySelector('.map-jr-ctrl-zoom-in'); i++) await new Promise(r => setTimeout(r, 100));
+        });
+        const look = () => page.evaluate(() => { const s = getComputedStyle(document.querySelector('.map-jr-ctrl-zoom-in')); return `${s.backgroundColor} ${s.outlineStyle} ${s.webkitTapHighlightColor}`; });
+        const before = await look();
+        await page.tap('.map-jr-ctrl-zoom-in'); await page.waitForTimeout(400);
+        const after = await look();
+        check('a tap on a button of a control on a phone leaves no highlight, hover background or focus outline', before === after && after === 'rgba(0, 0, 0, 0) none rgba(0, 0, 0, 0)', JSON.stringify({before, after}));
+    } catch (e) { check('the test of a tap on a phone was completed', false, String(e.message).split('\n')[0]); }
+    await context.close();
 }
 
 // #42: the compass of navigation() rotates the map when it is dragged and resets the bearing when it is clicked. Only
