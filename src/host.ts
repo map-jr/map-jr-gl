@@ -280,6 +280,14 @@ export interface MapHost {
     watchFeatures(at: FeaturePlace | undefined, options: FeatureOptions & {sources: string[]}, listener: (features: QueriedFeature[]) => void): () => void;
     watchFeatures(at: FeaturePlace | undefined, options: FeatureOptions & {sources?: undefined}, listener: (features: RenderedFeature[]) => void): () => void;
     watchFeatures(at: FeaturePlace | undefined, options: FeatureOptions, listener: (features: RenderedFeature[] | QueriedFeature[]) => void): () => void;
+    /**
+     * Merges `state` into the state of one feature, which `feature-state` expressions read (a highlight of a hovered or
+     * selected feature). `target.id` is the `id` of the feature (`RenderedFeature.id`), and `sourceLayer` is required
+     * for a vector source. The state is kept by the map, also after a new `style` in `update`, until it is removed.
+     */
+    setFeatureState(target: {source: string; sourceLayer?: string; id: number | string}, state: Record<string, unknown>): void;
+    /** Removes one key of the state of a feature, its whole state (no `key`), or the state of all features of a source (no `id`). */
+    removeFeatureState(target: {source: string; sourceLayer?: string; id?: number | string}, key?: string): void;
     /** The height of the ground in metres at a position (`[lng, lat]`) or a point of the screen, from the elevation source of the style. `null` where there is no data. */
     queryElevation(at: Position | {x: number; y: number}): Promise<number | null>;
     /**
@@ -615,6 +623,8 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
         destroy() { if (!alive) return; alive = false; cooperate(false); map.remove(); for (const drop of waiting) drop(); waiting.clear(); },
         state,
         queryFeatures,
+        setFeatureState(target, value) { if (alive) map.setFeatureState(target, value); },
+        removeFeatureState(target, key) { if (alive) map.removeFeatureState(target, key); },
         clusterExpansionZoom: (id, clusterId) => cluster('clusterExpansionZoom', id, s => s.getClusterExpansionZoom(clusterId)),
         clusterChildren: (id, clusterId) => cluster('clusterChildren', id, s => s.getClusterChildren(clusterId)),
         clusterLeaves: (id, clusterId, limit, offset) => cluster('clusterLeaves', id, s => s.getClusterLeaves(clusterId, limit, offset)),

@@ -297,9 +297,9 @@ What to know about a template:
 
 - `icon-image` is a layout property. A parameter is evaluated when a tile is built, at a whole zoom level. For a
   value that changes without steps, use `icon-size`, `icon-opacity` or `icon-rotate`.
-- A parameter can read `feature-state`, as `stroke` does in the example. The description has no field for the
-  state of a feature: set it on the map object of the host, for example
-  `map.map.setFeatureState({source: 'places', id: 1}, {hover: true})`. The map then builds the tiles of the source
+- A parameter can read `feature-state`, as `stroke` does in the example. Set the state with `setFeatureState` of
+  the `MapHost` (see [The state of a feature](#the-state-of-a-feature)), for example
+  `map.setFeatureState({source: 'places', id: 1}, {hover: true})`. The map then builds the tiles of the source
   again. MapLibre GL JS does not permit `feature-state` in a layout property.
 - A map draws 1,000 variants of one template at most. More different sets of values give one error of the map with
   the name of the image, and the other variants are not drawn. Give the slots values from a small set.
@@ -662,6 +662,47 @@ const map = createMap(document.getElementById('map'), {
 The promise rejects with an `Error` whose message starts with `[map-jr-gl]` and the name of the method when the source
 is not a GeoJSON source of the style, when it has no clusters, or when no cluster has that id. These are the methods
 `getClusterExpansionZoom`, `getClusterChildren` and `getClusterLeaves` of the source in MapLibre GL JS.
+
+## The state of a feature
+
+The `MapHost` of `@map-jr/map-jr-gl` has two methods for the state of a feature, which `feature-state` expressions
+in the style read (for example the highlight of a selected feature):
+
+| Method | What it does |
+|---|---|
+| `setFeatureState(target, state)` | Merges the object `state` into the state of the feature. |
+| `removeFeatureState(target, key?)` | Removes the key `key` of the state of the feature, its whole state without `key`, or the state of all features of the source when `target` has no `id`. |
+
+`target` is `{source, sourceLayer, id}`. `id` is the `id` of the feature, as `queryFeatures` gives it, and
+`sourceLayer` is required for a vector source. A vector source needs the numeric id of the feature in the tile; a
+GeoJSON source takes the `id` of the feature or the property of `promoteId`. `queryFeatures` gives the state of each
+drawn feature in `state`. The methods have no effect after `destroy()`.
+
+```js
+import {createMap} from '@map-jr/map-jr-gl';
+
+let selected;
+const map = createMap(document.getElementById('map'), {
+    style: 'https://demotiles.maplibre.org/style.json',
+    extend: {
+        sources: {points: {type: 'geojson', generateId: true, data: 'https://maplibre.org/maplibre-gl-js/docs/assets/earthquakes.geojson'}},
+        layers: [{id: 'points', type: 'circle', source: 'points',
+            paint: {'circle-color': ['case', ['boolean', ['feature-state', 'selected'], false], '#e00', '#28f']}}],
+    },
+    interactiveLayers: ['points'],
+    onClick: e => {
+        const feature = e.features[0];
+        if (selected !== undefined) map.removeFeatureState({source: 'points', id: selected}, 'selected');
+        selected = feature?.id;
+        if (selected !== undefined) map.setFeatureState({source: 'points', id: selected}, {selected: true});
+    },
+});
+```
+
+The map keeps the state until it is removed, also when `update` gives a new `style`: a source of the new style with
+the same id draws the state that was set for the old one (`test/host.mjs` checks this with a GeoJSON source of
+`extend`). The state is not part
+of the description, so `update` does not change it.
 
 ## Elements of the page on the map
 
