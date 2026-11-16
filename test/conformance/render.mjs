@@ -1,4 +1,6 @@
 // Runs MapLibre GL JS's render tests (a style and an expected image each) against this renderer and reports how many match.
+// A full run writes the totals to render-result.json and the status of each test to render-tests.json. The labels for
+// tests that differ by a decision are in render-expectations.json (see "Render tests" in docs/development.md).
 //   node test/conformance/render.mjs [--filter=<regex>] [--limit=<n>] [--list] [--min=<pass count>] [--save=<dir>]
 // The tests come from a checkout of maplibre/maplibre-gl-js at .cache/maplibre-gl-js (cloned on first use, not vendored).
 import {createRequire} from 'node:module';
@@ -6,6 +8,7 @@ import {execSync} from 'node:child_process';
 import {existsSync, readFileSync, readdirSync, statSync, mkdirSync, writeFileSync} from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
+import {summarize, readExpectations, report, changes} from './render-summary.mjs';
 
 const root = path.resolve(import.meta.dirname, '../..'), repo = path.join(root, '.cache/maplibre-gl-js');
 // The tests of one commit, so that the counts change only with this library. To take newer tests, change the commit
@@ -102,7 +105,7 @@ async function worker(queue) {
                 }
                 return best;
             }, {actual: shot.toString('base64'), urls: expected.map(f => `${origin}/tests/${id.split("/").map(encodeURIComponent).join("/")}/${f}`), width, height});
-            results.push({id, status: diff <= 0.01 ? 'pass' : diff <= 0.05 ? 'close' : 'fail', diff, errors: outcome.errors});
+            results.push({id, status: diff <= 0.01 ? 'match' : diff <= 0.05 ? 'near' : 'differ', diff, errors: outcome.errors});
             if (saveDir) { mkdirSync(path.join(saveDir, id), {recursive: true}); writeFileSync(path.join(saveDir, id, 'actual.png'), shot); }
         } catch (err) {
             results.push({id, status: 'error', why: String(err.message).split('\n')[0].slice(0, 120)});
@@ -114,17 +117,25 @@ const queue = [...selected];
 await Promise.all(Array.from({length: 4}, () => worker(queue)));
 await browser.close();
 server.close();
-// A full run (no filter) records its totals, which the README's status block is written from.
-if (!filter && limit === Infinity) {
-    const n = st => results.filter(r => r.status === st).length;
-    writeFileSync(path.join(root, 'test/conformance/render-result.json'), JSON.stringify({match: n('pass'), close: n('close'), differ: n('fail'), errored: n('error'), skipped: n('skipped'), run: results.length - n('skipped')}, null, 2) + '\n');
-}
-
-const count = s => results.filter(r => r.status === s).length, ran = results.length - count('skipped');
-console.log(`MapLibre render tests: ${count('pass')} match (within 1% of pixels), ${count('close')} close (within 5%), ${count('fail')} differ, ${count('error')} errored, of ${ran} run; ${count('skipped')} skipped (scripted or high-density)`);
+// The ids have "/" between their parts on each system, so that the tracked files are the same everywhere.
+for (const r of results) r.id = r.id.split(path.sep).join('/');
+const dir = path.join(root, 'test/conformance'), allIds = tests.map(t => t.split(path.sep).join('/'));
+const summary = summarize(results, readExpectations(JSON.parse(readFileSync(path.join(dir, 'render-expectations.json'), 'utf8'))), allIds);
+const lines = report(summary);
+console.log(lines[0]);
 const groups = {};
-for (const r of results) { const g = groups[r.id.split(path.sep)[0]] ??= {pass: 0, close: 0, fail: 0, error: 0, skipped: 0}; g[r.status]++; }
-console.log('By group (match/run): ' + Object.entries(groups).filter(([, g]) => g.pass + g.close + g.fail + g.error).map(([name, g]) => `${name} ${g.pass}/${g.pass + g.close + g.fail + g.error}`).join(', '));
-if (process.argv.includes('--list')) for (const r of results.filter(r => r.status !== 'pass' && r.status !== 'skipped')) console.log(`${r.status.padEnd(6)} ${r.id} ${r.diff !== undefined ? (r.diff * 100).toFixed(1) + '%' : r.why}${r.errors?.length ? ' [' + r.errors[0].slice(0, 80) + ']' : ''}`);
+for (const r of results) { const g = groups[r.id.split('/')[0]] ??= {match: 0, near: 0, differ: 0, error: 0, skipped: 0}; g[r.status]++; }
+console.log('By group (match/run): ' + Object.entries(groups).filter(([, g]) => g.match + g.near + g.differ + g.error).map(([name, g]) => `${name} ${g.match}/${g.match + g.near + g.differ + g.error}`).join(', '));
+for (const line of lines.slice(1)) console.log(line);
+// The tests whose status is not the one in the tracked file. A test near a limit can change with the machine.
+const perTest = path.join(dir, 'render-tests.json');
+if (existsSync(perTest)) for (const line of changes(JSON.parse(readFileSync(perTest, 'utf8')), summary.tests)) console.log(line);
+// A full run (no filter) records its totals, which the status table of the README is written from, and the status
+// of each test. The second file has no percentages and is sorted by id, so that its diff shows the tests that changed.
+if (!filter && limit === Infinity) {
+    writeFileSync(path.join(dir, 'render-result.json'), JSON.stringify(summary.totals, null, 2) + '\n');
+    writeFileSync(perTest, '{\n' + Object.entries(summary.tests).map(([id, status]) => `${JSON.stringify(id)}: ${JSON.stringify(status)}`).join(',\n') + '\n}\n');
+}
+if (process.argv.includes('--list')) for (const r of results.filter(r => r.status !== 'match' && r.status !== 'skipped')) console.log(`${r.status.padEnd(6)} ${r.id} ${r.diff !== undefined ? (r.diff * 100).toFixed(1) + '%' : r.why}${r.errors?.length ? ' [' + r.errors[0].slice(0, 80) + ']' : ''}`);
 const min = +(arg('min') ?? 0);
-if (count('pass') < min) { console.error(`FAIL: expected at least ${min} matching`); process.exit(1); }
+if (summary.totals.match < min) { console.error(`FAIL: expected at least ${min} matching`); process.exit(1); }

@@ -10,7 +10,8 @@ BSD-3-Clause.
 - Map Jr. GL reads the MapLibre style specification and has an API that follows the API of MapLibre GL JS.
 - Map Jr. GL contains no files of MapLibre GL JS. All the code is new, except the CSS named below.
 - Some methods follow MapLibre GL JS, so that a map looks the same in the two libraries. Examples: the line breaks
-  in labels, the light on buildings, the size of dashes, and the movement of the camera on 3D terrain.
+  in labels, the light on buildings, the size of dashes, the size of circles on a map with pitch, and the movement of the camera
+  on 3D terrain.
 - The tile URL tokens `{prefix}` and `{ratio}` follow the rules of `CanonicalTileID.url` in `src/source/tile_id.ts`
   of MapLibre GL JS (BSD-3-Clause). The code in `src/resolve.ts` is new.
 - The texts and the CSS of the hint of `cooperativeGestures` in the compat entry follow MapLibre GL JS
