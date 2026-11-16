@@ -80,6 +80,52 @@ After you change a feature, do these steps:
 4. Run `pnpm status`.
 5. Update [MapLibre compatibility](maplibre-compatibility.md) if a difference changed.
 
+### Render tests
+
+`pnpm test:render` runs each MapLibre render test with the entry `@map-jr/map-jr-gl/maplibre-compat` and gives the
+test one status:
+
+| Status | Meaning |
+|---|---|
+| `match` | 1% of the pixels or less are different from the expected image. |
+| `near` | More than 1% and at most 5% of the pixels are different. |
+| `differ` | More than 5% of the pixels are different. |
+| `error` | The map did not become idle in 8 seconds, or the test threw an error. |
+| `skipped` | The test scripts the map (`operations`) or has a pixel ratio other than 1. The run does not draw it. |
+
+The first line that the run prints has the totals. Its count for "match or are near" includes the tests that match,
+so it is the number of tests where 5% of the pixels or less are different. The minimum in `package.json` (`--min`) is
+for the count of tests that match.
+
+A run without `--filter` and `--limit` writes two tracked files in `test/conformance/`. Commit both after a change
+that affects how the map is drawn.
+
+| File | Content |
+|---|---|
+| `render-result.json` | The totals. `near` includes `match`. `differWontfix` and `differLater` are the parts of `differ` that have a label with that decision. `pnpm status` reads this file. |
+| `render-tests.json` | The status of each test, sorted by id and without percentages. Its diff shows the tests that changed. |
+
+Each run also prints a line that starts with `CHANGED:` for a test whose status is not the status in
+`render-tests.json`. A test that is close to a limit can have another status on another machine, because the fonts
+and the software renderer are not the same on each system. The tracked file is from a run on macOS.
+
+`test/conformance/render-expectations.json` gives labels to tests that differ by a decision. An entry has these
+fields:
+
+| Field | Value |
+|---|---|
+| `test` or `pattern` | The id of one test (`sky/fog-color`), or a regular expression for ids (`^sky/`). Give one of the two. |
+| `label` | A short name. Entries with the same label are counted together. |
+| `decision` | `wontfix` for a difference that the owner decided to keep, or `later` for a feature that is not decided or not done yet. Only the owner decides that an entry is `wontfix`. |
+| `reason` | One sentence that says why. |
+| `issue` | Optional. The number of the issue that has the work. |
+
+The first entry that fits a test gives the test its label. The run prints, for each label, how many of its tests
+differ, and the first line says how many of the tests that differ are `wontfix` and how many are `later`. The run
+prints a line that starts with `STALE:` for a test that has a `wontfix` label and matches: remove that entry. It
+prints a line that starts with `UNUSED:` for an entry that fits no test. A label does not change the status of a
+test or the minimum.
+
 ## The gallery and GitHub Pages
 
 The gallery is in the `site` folder. It imports the library by its package name, as an application does.
