@@ -34,6 +34,7 @@ const texts: ((a: string, b: string) => string)[] = [
     /* 20 */ () => 'The description has "glyphs". That field was removed and has no effect: the map loads the glyph files of the style. Remove "glyphs" from the description. To draw text with the fonts of the browser, remove "glyphs" from the style.',
     /* 21 */ a => `points(): the record ${a} has no position of two finite numbers, so it is left out. Make "lngLat" return [lng, lat] for each record.`,
     /* 22 */ a => `globalState: the value of "${a}" is not JSON (a function, a class instance, NaN or a cycle), so the style cannot read it as it is. Give a string, a number, a boolean, an array or a plain object.`,
+    /* 23 */ () => 'moveTo(): "padding" and "maxZoom" have an effect only with "bounds", so this call ignores them. To set the padding of the map, give "padding" in the description.',
 ];
 
 /** The message with the number `code` for the names `a` and `b`. */
@@ -60,7 +61,7 @@ const differ = (a: unknown, b: unknown) => a !== b && JSON.stringify(a) !== JSON
  * One check of a map. The kinds: 0, the container (`a` is the name that the user wrote), a second after the map is made; 1, the ids of the description, when
  * the map is idle; 2, a description (`a`) after the description before it (`b`, none for the first); 3, a query for
  * features at `a` with the options `b`; 4, the style `a` and the additions of `extend` (`b`) to it; 5, an image with
- * the name `a` that a marker layer has and the map does not have.
+ * the name `a` that a marker layer has and the map does not have; 6, `moveTo` with `padding` or `maxZoom` and no `bounds`.
  */
 export function check(c: Checked, kind: number, a?: any, b?: any) {
     const {map} = c;
@@ -114,6 +115,7 @@ export function check(c: Checked, kind: number, a?: any, b?: any) {
         if (!place && o.radius !== undefined) warn(13);
         if (!o.sources || !place) { if (o.geometry === false) warn(11, 'geometry'); if (o.zoom !== undefined) warn(11, 'zoom'); }
     } else if (kind === 5) warn(16, a);
+    else if (kind === 6) warn(23);
     else {
         slots(a.layers, b?.layers);
         // A marker layer is a source and a layer with its id: the id must be free, and `before` must name a layer.
