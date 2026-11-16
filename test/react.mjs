@@ -161,7 +161,14 @@ try {
     check('browser: a draggable MapOverlay keeps a click a click, calls onDragStart and onDragEnd with [lng, lat], and stays at the new position', dragClick === 'click' && dragReact.ev === 'start 2 end' && dragReact.home[0] > -74.01 && Math.abs(db2.x - db.x - 50) < 3 && Math.abs(db2.y - db.y - 30) < 3, JSON.stringify({dragClick, dragReact, db, db2}));
     await page.evaluate(() => window.t.setPin([-73.5, 41])); // (the element of the pin must not be under the click)
     await page.waitForTimeout(400);
-    await page.mouse.move(400, 250); await page.waitForTimeout(300); await page.mouse.click(400, 250); await page.waitForTimeout(800);
+    // (The state has the pointer, which changes at each move: the application must not render at each move.)
+    await page.mouse.move(400, 250); await page.waitForTimeout(300);
+    const before = await page.evaluate(() => window.t.renders);
+    for (let i = 1; i <= 20; i++) await page.mouse.move(400 + i, 250);
+    await page.waitForTimeout(300);
+    const moved = await page.evaluate(b => ({renders: window.t.renders - b, pointer: window.t.map.current.state.get().pointer}), before);
+    check('browser: 20 moves of the pointer change state.pointer and do not render the application again', moved.renders === 0 && moved.pointer?.point.x === 420, JSON.stringify(moved));
+    await page.mouse.click(400, 250); await page.waitForTimeout(800);
     const click = await page.evaluate(() => ({clicks: window.t.clicks.length, features: Array.isArray(window.t.clicks[0]?.features)}));
     check('browser: a click calls onClick, with the features there', click.clicks === 1 && click.features, JSON.stringify(click));
     // An image as a child component: the SVG of its content is a template of the map, and it follows the component.

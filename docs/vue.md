@@ -105,6 +105,10 @@ The default slot is drawn over the map. It gets `state` (the state of the map) a
 </MapJr>
 ```
 
+The slot renders again at each change of the state only when it reads `state`. `state.pointer` changes at each move
+of the mouse, so a slot that reads `state` renders at each move. A component that needs only one part can read it
+from `host.state.subscribe` with a selector instead.
+
 A template ref on the component also has `host` (the map, `null` until it is made) and `state`. In TypeScript,
 type the ref as `InstanceType<typeof MapJr>`: `useTemplateRef<InstanceType<typeof MapJr>>('map')`. The type
 `MapJrExposed` of `@map-jr/map-jr-gl/vue` has only these two members. A template ref on `LazyMapJr` of Nuxt with a

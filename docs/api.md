@@ -497,11 +497,19 @@ stop(); // stops the first subscription
 | `moving` | The camera moves. |
 | `view` | `{center, zoom, bearing, pitch, bounds}`. `bounds` is `[[west, south], [east, north]]`: the smallest box that contains the visible map, also with bearing and pitch, as `getBounds()` gives it in MapLibre GL JS. It changes when the map moves and when the size of the map changes. |
 | `hover` | The features of `interactiveLayers` under the pointer, the top one first. |
+| `pointer` | Where the pointer is while it is over the map: `{point: {x, y}, lngLat: [lng, lat]}`, with `point` in CSS pixels from the top left corner of the map. It is `null` before the first move and after the pointer leaves the map. It changes at each move of the mouse, also without `interactiveLayers`, and a touch does not set it. |
 | `renderer` | `'worker'` or `'main'`, when the map has started. |
 | `error` | The last error only. An earlier error is not kept: use `onError` in the description to get each one. |
 
 `loaded` becomes `true` before `idle` does, in the same task. A listener of the `load` event and a subscriber of
 `loaded` see `idle: false`, so code there that waits for the first `idle` gets it.
+
+`pointer` changes at each move of the mouse, so a subscriber without a selector is called at each move. Subscribe
+with a selector to the part that you use, for example a tooltip that follows the pointer:
+
+```js
+map.state.subscribe(state => state.pointer, pointer => { if (pointer) moveTooltip(pointer.point.x, pointer.point.y); });
+```
 
 A state object never changes. Each change makes a new object, and a part that did not change is the same object as
 before. This is the contract that frameworks use: `useSyncExternalStore` in React, a `shallowRef` in Vue, a store
