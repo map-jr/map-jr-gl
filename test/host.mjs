@@ -1051,6 +1051,30 @@ for (const renderer of ['worker', 'main']) {
         await page.mouse.click(450, 300); await page.waitForTimeout(500);
         const pointer = await page.evaluate(() => { const t = window.t, c = t.clicks[0]; return {clicks: t.clicks.length, lngLat: c?.lngLat?.length, features: Array.isArray(c?.features), hoverEvents: t.seen.filter(x => x.startsWith('hover:')).length}; });
         check(`[${renderer}] the features under the pointer are in the state, and a click has them`, hover > 0 && pointer.clicks === 1 && pointer.lngLat === 2 && pointer.features && pointer.hoverEvents > 0, JSON.stringify({hover, ...pointer}));
+        // `hoverState` (#496): the top feature under the pointer has the feature state `hover`, and loses it when the pointer leaves it.
+        await page.evaluate(async renderer => {
+            const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {id: 'lit', style: 'position:fixed;left:0;top:0;width:200px;height:150px;z-index:99'}));
+            const square = (id, w) => ({type: 'Feature', id, properties: {}, geometry: {type: 'Polygon', coordinates: [[[w, -1], [w + 1, -1], [w + 1, 1], [w, 1], [w, -1]]]}});
+            const host = t.lib.createMap(el, {style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]}, renderer, attribution: false, onError: () => {},
+                initialView: {center: [0, 0], zoom: 5}, sources: {sq: {type: 'geojson', data: {type: 'FeatureCollection', features: [square(1, -1), square(2, 0), square(undefined, 1)]}}},
+                layers: [{id: 'sq', type: 'fill', source: 'sq', paint: {'fill-color': '#00f', 'fill-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 0.9, 0.5]}}], interactiveLayers: ['sq'], hoverState: true});
+            await new Promise(r => { host.state.subscribe(s => s.idle, v => v && r()); setTimeout(r, 8000); });
+            t.litHost = host; t.litSaid = []; t.litLog = console.warn; console.warn = (...a) => { t.litSaid.push(a.join(' ')); t.litLog(...a); };
+        }, renderer);
+        // (A query of the layer at a point has the feature state; a query of the source does not, as in MapLibre GL JS.)
+        const states = () => page.evaluate(async () => Object.fromEntries((await Promise.all([70, 130].map(x => window.t.litHost.queryFeatures({x, y: 75}, {layers: ['sq']})))).map(([f]) => [f?.id, !!f?.state?.hover])));
+        await page.mouse.move(70, 75); await page.waitForTimeout(400);
+        const onA = await states();
+        await page.mouse.move(130, 75); await page.waitForTimeout(400);
+        const onB = await states();
+        // (A feature with no id gets no state, and the development build warns once for the layer.)
+        for (const x of [170, 175, 130, 170]) { await page.mouse.move(x, 75); await page.waitForTimeout(300); }
+        const noId = await page.evaluate(() => { const t = window.t; console.warn = t.litLog; return t.litSaid.filter(w => w.startsWith('[map-jr-gl] hoverState: a feature of the layer "sq" has no id')).length; });
+        await page.mouse.move(450, 300); await page.waitForTimeout(400);
+        const litGone = await states();
+        await page.evaluate(() => { window.t.litHost.destroy(); document.getElementById('lit').remove(); });
+        check(`[${renderer}] hoverState gives the feature under the pointer the feature state hover, takes it away when the pointer leaves it, and warns once for a feature with no id`,
+            onA[1] === true && onA[2] === false && onB[1] === false && onB[2] === true && litGone[1] === false && litGone[2] === false && noId === 1, JSON.stringify({onA, onB, litGone, noId}));
         // A click on an overlay does not call onClick (#198).
         await page.evaluate(() => { const t = window.t, el = Object.assign(document.createElement('div'), {style: 'width:20px;height:20px;background:#c00'}); t.ov = t.host.overlay(el, {lngLat: t.host.unproject({x: 200, y: 200})}); t.clicks.length = 0; });
         const ovBox = await page.evaluate(() => { const r = document.querySelector('.map-jr-marker').getBoundingClientRect(); return {x: r.x + r.width / 2, y: r.y + r.height / 2}; });
@@ -1093,20 +1117,23 @@ for (const renderer of ['worker', 'main']) {
         check(`[${renderer}] cooperativeGestures: a plain wheel does not zoom and the hint is there, Ctrl + wheel zooms, and update() turns it off`,
             !plainOn && ctrlOn && plainOff && coop.hint === 1 && coop.touch === 'pan-x pan-y' && off === 0, JSON.stringify({plainOn, ctrlOn, plainOff, ...coop, off}));
         // `colorScheme` (#490): the class map-jr-dark, state.colorScheme and the colour of a control, for 'auto', 'light' and 'dark'.
-        const scheme = async (media, value) => {
+        // (The browser fires the event `change` of the media query at its next rendering step, which can come late on a
+        // loaded machine, so the check waits until the state has the expected scheme, for at most 3 s.)
+        const until = expect => page.waitForFunction(e => window.t.host.state.get().colorScheme === e, expect, {timeout: 3000}).catch(() => {});
+        const scheme = async (media, value, expect) => {
             await page.emulateMedia({colorScheme: media});
+            await until(expect);
             return page.evaluate(async value => {
                 const t = window.t, {navigation} = await import('/dist/controls.js');
                 t.host.update({...t.spec, controls: [navigation()], ...value === undefined ? {} : {colorScheme: value}});
-                await new Promise(r => setTimeout(r, 50));
+                await new Promise(r => requestAnimationFrame(r));
                 const el = document.querySelector('#host .map-jr-ctrl-group');
                 return [document.querySelector('#host').classList.contains('map-jr-dark') ? 'class' : '-', t.host.state.get().colorScheme, el && getComputedStyle(el).color].join(' ');
             }, value);
         };
-        const schemes = {autoDark: await scheme('dark'), autoLight: await scheme('light'), light: await scheme('dark', 'light'), dark: await scheme('light', 'dark'), autoBack: await scheme('dark', 'auto')};
+        const schemes = {autoDark: await scheme('dark', undefined, 'dark'), autoLight: await scheme('light', undefined, 'light'), light: await scheme('dark', 'light'), dark: await scheme('light', 'dark'), autoBack: await scheme('dark', 'auto')};
         await page.emulateMedia({colorScheme: 'light'});
-        // (The browser fires the event `change` of the media query in a later task.)
-        await page.waitForTimeout(200);
+        await until('light');
         schemes.follows = await page.evaluate(() => window.t.host.state.get().colorScheme);
         await page.emulateMedia({colorScheme: null});
         await page.evaluate(() => { const t = window.t; t.host.update(t.spec); });
@@ -1387,7 +1414,7 @@ for (const renderer of ['worker', 'main']) {
             const lib = await import(how === 'removed' ? '/dist/map-jr-gl.dev.js' : '/dist/map-jr-gl.js'), style = await (await fetch('/style.json')).json();
             if (how !== 'none') style.glyphs = '/test-glyphs/{fontstack}/{range}.pbf'; else delete style.glyphs;
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99;background:#fff'}));
-            const host = lib.createMap(el, {style, initialView: {center: [-74.0065, 40.7085], zoom: 14.3}, attribution: false, ...(how === 'removed' ? {glyphs: false} : how === 'fonts' ? {fonts: [{family: 'Test Sans', src: '/nofont.woff2'}]} : {})});
+            const host = lib.createMap(el, {style, initialView: {center: [-74.0065, 40.7085], zoom: 14.3}, attribution: false, ...(how === 'removed' ? {glyphs: false} : how === 'fonts' ? {fonts: {'Test Sans Regular': '/nofont.woff2'}} : {})});
             const loaded = await Promise.race([new Promise(r => host.state.subscribe(s => s.loaded, v => v && r(true))), new Promise(r => setTimeout(() => r(false), 20000))]);
             await new Promise(r => setTimeout(r, 300));
             host.destroy(); el.remove();
@@ -1405,6 +1432,44 @@ for (const renderer of ['worker', 'main']) {
         check('glyph files of the style: asked for by default, also with fonts, not for a style without glyphs; the removed field glyphs warns and has no effect; a map still loads without them or with bad ones',
             withFiles && without && none && fonts && withFonts && removed && stillAsked && warning && page200 && broken && count > 0 && asked.every(u => /^\/test-glyphs\/[^/]+\/\d+-\d+\.pbf$/.test(u)), JSON.stringify({withFiles, without, none, fonts, withFonts, removed, stillAsked, warned, page200, broken, count, first: asked[0]}));
     } catch (e) { check('glyph files: the test run was completed', false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
+// Web fonts of the description (#494): `fonts` in the shape of `font-faces` follows update(). A font that is added draws
+// the labels again with it, and a font file that does not load is an error that names the font.
+{
+    const page = await browser.newPage({viewport: {width: 600, height: 400}});
+    try {
+        const {squareFont} = await import('./fixtures/square-font.mjs');
+        const asked = [];
+        await page.route(/\/test-fonts\//, route => { asked.push(new URL(route.request().url()).pathname); route.request().url().includes('square') ? route.fulfill({status: 200, contentType: 'font/ttf', body: squareFont()}) : route.fulfill({status: 404, body: ''}); });
+        await page.goto(`${origin}/style.json`);
+        await page.evaluate(async () => {
+            const lib = await import('/dist/map-jr-gl.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99;background:#fff'}));
+            const style = {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]};
+            const point = {type: 'FeatureCollection', features: [{type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [0, 0]}}]};
+            window.errors = [];
+            window.spec = {style, attribution: false, initialView: {center: [0, 0], zoom: 2}, onError: e => window.errors.push(e.message),
+                sources: {p: {type: 'geojson', data: point}},
+                layers: [{id: 'label', type: 'symbol', source: 'p', layout: {'text-field': 'HELLO', 'text-font': ['Test Square Regular'], 'text-size': 40}, paint: {'text-color': '#000'}}]};
+            window.host = lib.createMap(el, window.spec);
+            window.settle = () => new Promise(r => { const t = setTimeout(r, 15000); const un = window.host.state.subscribe(s => s.idle, v => { if (v) { clearTimeout(t); setTimeout(r, 300); un?.(); } }); if (window.host.state.get().idle) setTimeout(r, 300); });
+            await window.settle();
+        });
+        const dark = async () => { const png = await page.screenshot(); return page.evaluate(async b64 => {
+            const img = new Image(); img.src = 'data:image/png;base64,' + b64; await img.decode();
+            const c = Object.assign(document.createElement('canvas'), {width: img.width, height: img.height}).getContext('2d'); c.drawImage(img, 0, 0);
+            const d = c.getImageData(0, 0, img.width, img.height).data; let n = 0; for (let i = 0; i < d.length; i += 4) if (d[i] < 100) n++; return n;
+        }, png.toString('base64')); };
+        const before = await dark();
+        await page.evaluate(async () => { window.host.update({...window.spec, fonts: {'Test Square Regular': '/test-fonts/square.ttf', 'Test Gone Regular': '/test-fonts/missing.ttf'}}); await new Promise(r => setTimeout(r, 200)); await window.settle(); });
+        const after = await dark(), errors = await page.evaluate(() => window.errors);
+        await page.evaluate(() => window.host.destroy());
+        const failed = errors.some(m => m.includes('"Test Gone Regular"') && m.startsWith('[map-jr-gl] fonts:'));
+        // (The squares of the font fill much more of the label than the letters of a font of the device.)
+        check('fonts of the description: a font added in update() is fetched and the labels are drawn again with it; a font that does not load is an error with its name',
+            asked.includes('/test-fonts/square.ttf') && after > before * 1.5 && failed, JSON.stringify({asked, before, after, errors}));
+    } catch (e) { check('fonts of the description: the test run was completed', false, String(e.message).split('\n')[0]); }
     await page.close();
 }
 // The action and the store for Svelte, called as Svelte calls them (they do not need the Svelte package).
