@@ -280,6 +280,26 @@ try {
         return warned;
     });
     check('browser: the warning for height 0 names <MapJr> and useMapJr()', flat.length === 2 && flat[0].startsWith('[map-jr-gl] <MapJr>: the container has height 0') && flat[1].startsWith('[map-jr-gl] useMapJr(): the container has height 0'), JSON.stringify(flat));
+    // useMapFeatures gives what the style layers draw, and useMapSource the tile data of one source (#502).
+    const kept = await page.evaluate(async () => {
+        const {createApp, h, ref} = await import('vue'), {MapJr, useMapFeatures, useMapSource} = await import('/dist/vue.js');
+        const c = [-74.0065, 40.7085], data = {type: 'FeatureCollection', features: [{type: 'Feature', properties: {n: 1}, geometry: {type: 'Point', coordinates: c}}]};
+        const out = {}, id = ref('pts');
+        const Child = {setup() { const drawn = useMapFeatures(c, {layers: ['pts']}), raw = useMapSource(id, c, {radius: 10}); out.read = () => ({drawn: drawn.value.length, layer: drawn.value[0]?.layer?.id, raw: raw.value.length, type: raw.value[0]?.type}); return () => null; }};
+        const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+        const app = createApp({render: () => h(MapJr, {mapStyle: '/style.json', initialView: {center: c, zoom: 14}, attribution: false, extend: {sources: {pts: {type: 'geojson', data}}, layers: [{id: 'pts', type: 'circle', source: 'pts'}]}, style: 'height:200px'}, () => h(Child))});
+        app.mount(el);
+        const wait = ms => new Promise(r => setTimeout(r, ms));
+        for (let i = 0; i < 80 && !(out.read?.().drawn && out.read().raw); i++) await wait(100);
+        const first = out.read();
+        id.value = 'no-such-source';
+        await wait(1500);
+        const other = out.read();
+        app.unmount(); el.remove();
+        return {first, other};
+    });
+    check('browser: useMapFeatures gives what the style layers draw, and useMapSource the data of the source that a ref names',
+        kept.first.drawn === 1 && kept.first.layer === 'pts' && kept.first.raw === 1 && kept.first.type === 'Point' && kept.other.raw === 0 && kept.other.drawn === 1, JSON.stringify(kept));
     // Reactive data (Vue proxies, #242): structured clone refuses a proxy, and the map copies it instead, in both entries
     // and with both renderers. The data must be drawn, getStyle() must work, and no error may be reported.
     const proxied = await page.evaluate(() => { let step = 'start'; return Promise.race([new Promise(r => setTimeout(() => r({timeout: 'no answer in 60 s at the step: ' + step}), 60000)), (async () => {
@@ -316,7 +336,7 @@ try {
                 extend: {sources: {pts: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}}, layers: [{id: 'pts', type: 'circle', source: 'pts'}]}, data: {pts: points()}});
             await wait(1500);
             step = 'queryFeatures of the main API, ' + renderer;
-            out['main API ' + renderer] = {found: (await host.queryFeatures(undefined, {sources: ['pts']})).length, errs: herrs};
+            out['main API ' + renderer] = {found: (await host.querySource('pts')).length, errs: herrs};
             host.destroy(); hel.remove();
         }
         return out;

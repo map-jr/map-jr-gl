@@ -15,7 +15,7 @@ export default function (container, {show}) {
   });
 
   map.on('click', async e => {
-    const features = await map.queryFeatures(e.lngLat, {sources: ['admin']});
+    const features = await map.querySource('admin', e.lngLat);
     show(features.map(f => f.properties.NAMELSAD ?? f.properties.NAME ?? f.properties.GEOID20).filter(Boolean).join(' · ') || 'Nothing here');
   });
   return map;

@@ -37,7 +37,7 @@ uses the same renderer and has its own tests in a browser.
   This works on Node.js and on Cloudflare Workers.
 - **It includes elevation tools.** 3D terrain, relief shading, contour lines and elevation queries use one
   elevation source. You do not need a plugin.
-- **It answers questions about the data.** `queryFeatures` with `sources` reads the tile data directly. You do not
+- **It answers questions about the data.** `querySource` reads the tile data of a source directly. You do not
   need a style layer.
 - **Fonts as the style gives them.** Text uses the glyph files of the style, as MapLibre GL JS does. A style without `glyphs` uses the fonts of the browser and makes no requests for fonts.
 - **It is easy to change to.** Most MapLibre GL JS code works after you change the import to
@@ -317,10 +317,9 @@ See [Terrain and elevation](docs/terrain-and-elevation.md).
 
 ### Find what is at a position
 
-With `@map-jr/map-jr-gl`, `queryFeatures` with `sources` reads the tile data of those sources. It finds data that the style
-does not draw, and it also works for a position that is not on the screen. Without `sources`, it gives the features
-that the style layers draw, and it never reads other data. `radius` is the distance around the place in pixels, in
-both kinds of query. See [Queries](docs/api.md#queries).
+With `@map-jr/map-jr-gl`, `querySource` reads the tile data of one source. It finds data that the style does not
+draw, and it also works for a position that is not on the screen. `queryFeatures` gives the features that the style
+layers draw, and it never reads other data. `radius` is the distance around the place in pixels, in both methods. See [Queries](docs/api.md#queries).
 
 ```js
 import {createMap} from '@map-jr/map-jr-gl';
@@ -330,13 +329,13 @@ const map = createMap(document.getElementById('map'), {
   initialView: {center: [-74.0065, 40.7085], zoom: 16},
   onClick: async event => {
     // "openmaptiles" is the id of the vector source in this style.
-    const features = await map.queryFeatures(event.lngLat, {sources: ['openmaptiles'], radius: 8});
+    const features = await map.querySource('openmaptiles', event.lngLat, {radius: 8});
     console.log(features.map(feature => feature.properties));
   },
 });
 ```
 
-With `@map-jr/map-jr-gl/maplibre-compat`, `map.queryFeatures` is the same method. `queryRenderedFeatures` and
+With `@map-jr/map-jr-gl/maplibre-compat`, `map.queryFeatures` and `map.querySource` are the same methods. `queryRenderedFeatures` and
 `querySourceFeatures` are also available:
 
 ```js
@@ -344,7 +343,7 @@ import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
 const map = new Map({container: 'map', style: 'https://tiles.openfreemap.org/styles/liberty', center: [-74.0065, 40.7085], zoom: 16});
 map.on('click', async event => {
-  const features = await map.queryFeatures(event.lngLat, {sources: ['openmaptiles'], radius: 8});
+  const features = await map.querySource('openmaptiles', event.lngLat, {radius: 8});
   console.log(features.map(feature => feature.properties));
 });
 ```

@@ -3,7 +3,7 @@
  * `src/host.ts` loads this file on demand after the map has started, so the page script does not carry it.
  */
 import type {Map} from './map.ts';
-import type {FeatureOptions, MapSpec, StyleExtension} from './host.ts';
+import type {FeatureOptions, MapSpec, SourceOptions, StyleExtension} from './host.ts';
 import {templateSlots} from './markers.ts';
 import {maplibreMembers} from './maplibre-members.ts';
 
@@ -15,16 +15,16 @@ const texts: ((a: string, b: string) => string)[] = [
     /* 1 */ a => `interactiveLayers: the style has no layer "${a}". Write the id of a layer of the style or of "extend".`,
     /* 2 */ (a, b) => `the layer "${a}" uses the source "${b}", which the map does not have. A key of "data" makes a source only while it is in "data": keep "${b}" in "data", or remove the layer.`,
     /* 3 */ a => `queryFeatures(): the style has no layer "${a}". In "layers", write the id of a layer of the style or of "extend".`,
-    /* 4 */ a => `queryFeatures(): the style has no source "${a}". In "sources", write the id of a source of the style or of "extend".`,
+    /* 4 */ a => `querySource(): the style has no source "${a}". Write the id of a source of the style or of "extend".`,
     /* 5 */ (a, b) => `extend: the layer "${a}" has before: "${b}", but the style has no layer "${b}", so the layer goes on top. Write the id of a layer of the style.`,
     /* 6 */ (a, b) => `extend: the layer "${a}" uses the source "${b}", which the style does not have. Add "${b}" to "sources" of "extend", or give its GeoJSON as "${b}" in "data".`,
     /* 7 */ a => `markers: two marker layers have the id "${a}". Give each marker layer its own id.`,
     /* 8 */ a => `update(): "${a}" changed, but it is read only when the map is made. ${a === 'initialView' ? 'To move the map, change "view" or call moveTo().' : 'To change it, destroy the map and make a new one.'}`,
     /* 9 */ a => `queryFeatures(): ${a} is not a place. Write a point of the screen {x, y}, a position [lng, lat], or a rectangle [{x, y}, {x, y}].`,
-    /* 10 */ a => `queryFeatures(): "${a}" has an effect only in a query with "sources". This query ignores it.`,
-    /* 11 */ a => `queryFeatures(): "${a}" has an effect only in a query with "sources" at a point or a position. This query ignores it.`,
-    /* 12 */ () => 'queryFeatures(): "layers" has no effect in a query with "sources". Remove "layers", or remove "sources" to ask for what the style layers draw.',
-    /* 13 */ () => 'queryFeatures(): "radius" has an effect only in a query at a point or a position. This query ignores it.',
+    /* 10 */ a => `querySource(): ${a} is not the id of a source. Write querySource("id", at, options) with the id of a source of the style.`,
+    /* 11 */ a => `querySource(): "${a}" has an effect only in a query at a point or a position. This query ignores it.`,
+    /* 12 */ (a, b) => b ? `querySource(): "${a}" is not an option of querySource, which reads the tile data of one source. To find what the style layers draw, call queryFeatures(at, {layers}).` : `queryFeatures(): "${a}" is not an option of queryFeatures, which finds what the style layers draw. To read the tile data of a source, call querySource(sourceId, at, options).`,
+    /* 13 */ a => `${a}(): "radius" has an effect only in a query at a point or a position. This query ignores it.`,
     /* 14 */ (a, b) => `images: a layer gives the parameter "${a}" to the image "${b}", but that image has no slot {{${a}}}, so the parameter has no effect. Write {{${a}}} in the SVG of "${b}" in "images", or remove the parameter.`,
     /* 15 */ a => `markers: the marker layer "${a}" has no "image". Give the SVG in "images" of the description, and its name as "image" of the marker layer. (The fields "svg", "width" and "height" of a marker layer are gone.)`,
     /* 16 */ a => `markers: a marker layer has the image "${a}", and the map has no image with that name. Add "${a}" to "images" of the description, or correct "image" of the marker layer.`,
@@ -54,12 +54,14 @@ export const warnOnce = (code: number, a = '') => { if (!pageWarned.has(code)) {
 
 /** The fields of `MapSetup`, and `initialView`: a change of one of them in `update` has no effect. */
 const setupOnly = ['renderer', 'fonts', 'fontFamily', 'interactive', 'antialias', 'attribution', 'hash', 'nonce', 'initialView'] as const;
+/** A query at a point or a position, and not in a rectangle or on the whole map. */
+const place = (at: unknown) => !!at && !(Array.isArray(at) && typeof at[0] !== 'number');
 const differ = (a: unknown, b: unknown) => a !== b && JSON.stringify(a) !== JSON.stringify(b);
 
 /**
  * One check of a map. The kinds: 0, the container (`a` is the name that the user wrote), a second after the map is made; 1, the ids of the description, when
  * the map is idle; 2, a description (`a`) after the description before it (`b`, none for the first); 3, a query for
- * features at `a` with the options `b`; 4, the style `a` and the additions of `extend` (`b`) to it; 5, an image with
+ * features at `a` with the options `b`; 6, a query of `querySource` at `a` with the options and the `id` of the source in `b`; 4, the style `a` and the additions of `extend` (`b`) to it; 5, an image with
  * the name `a` that a marker layer has and the map does not have.
  */
 export function check(c: Checked, kind: number, a?: any, b?: any) {
@@ -107,12 +109,15 @@ export function check(c: Checked, kind: number, a?: any, b?: any) {
         for (const name in next.globalState) if (next.globalState[name] !== before?.globalState?.[name] && !isJson(next.globalState[name])) warn(22, name);
         if (before) for (const k of setupOnly) if (differ(next[k], before[k])) warn(8, k);
     } else if (kind === 3) {
-        const o = b as FeatureOptions, place = !!a && !(Array.isArray(a) && typeof a[0] !== 'number');
-        if (c.ready()) { known(3, o.layers); known(4, o.sources, true); }
-        if (o.sources && o.layers) warn(12);
-        if (!o.sources && o.sourceLayers) warn(10, 'sourceLayers');
-        if (!place && o.radius !== undefined) warn(13);
-        if (!o.sources || !place) { if (o.geometry === false) warn(11, 'geometry'); if (o.zoom !== undefined) warn(11, 'zoom'); }
+        const o = b as FeatureOptions;
+        if (c.ready()) known(3, o.layers);
+        for (const k of ['sources', 'sourceLayers', 'geometry', 'zoom']) if (k in o) warn(12, k);
+        if (!place(a) && o.radius !== undefined) warn(13, 'queryFeatures');
+    } else if (kind === 6) {
+        const o = b as SourceOptions & {id: string};
+        if (c.ready()) known(4, [o.id], true);
+        for (const k of ['layers', 'sources']) if (k in o) warn(12, k, 's');
+        if (!place(a)) { if (o.radius !== undefined) warn(13, 'querySource'); if (o.geometry === false) warn(11, 'geometry'); if (o.zoom !== undefined) warn(11, 'zoom'); }
     } else if (kind === 5) warn(16, a);
     else {
         slots(a.layers, b?.layers);

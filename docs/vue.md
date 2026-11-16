@@ -225,10 +225,11 @@ draws it one time for each different set of values.
 
 A component of your own inside `MapJr` gets the map with `useMapHost()` (a ref).
 
-`useMapFeatures(at, options)` gives the features at a place as a ref that stays up to date (see `watchFeatures` in [the API](api.md#queries)). The place and the options can be refs or functions:
+`useMapFeatures(at, options)` gives the features that the style layers draw at a place, as a ref that stays up to date (see `watchFeatures` in [the API](api.md#queries)). `useMapSource(sourceId, at, options)` gives the features of the tile data of one source in the same way (see `watchSource`). The id, the place and the options can be refs or functions:
 
 ```js
-const rain = useMapFeatures(() => [props.lng, props.lat], {sources: ['rain']});
+const places = useMapFeatures(() => [props.lng, props.lat], {layers: ['places']});
+const rain = useMapSource('rain', () => [props.lng, props.lat]);
 ```
 
 ### How the component sees changes
@@ -362,7 +363,7 @@ With the module, a page uses the components without an import:
 </template>
 ```
 
-- `MapJr`, `MapOverlay` and `MapImage` are registered, and `useMapJr`, `useMapHost` and `useMapFeatures`.
+- `MapJr`, `MapOverlay` and `MapImage` are registered, and `useMapJr`, `useMapHost`, `useMapFeatures` and `useMapSource`.
 - The controls have longer names, because `scale` and `navigation` are common words: `navigationControl()`,
   `scaleControl()`, `fullscreenControl()`, `geolocateControl()`, `terrainControl()`.
 - `LazyMapJr` puts the code of the map into a file of its own. With `hydrate-on-visible`, the browser loads that file
