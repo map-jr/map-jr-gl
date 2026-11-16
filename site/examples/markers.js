@@ -1,4 +1,4 @@
-import {createMap} from '@map-jr/map-jr-gl';
+import {createMap, points} from '@map-jr/map-jr-gl';
 
 const style = 'https://tiles.openfreemap.org/styles/liberty';
 const NYC = [-74.0065, 40.7085];
@@ -12,6 +12,9 @@ const places = Array.from({length: 50000}, (_, i) => {
   return {lngLat: [NYC[0] + r * Math.cos(a) * 1.3, NYC[1] + r * Math.sin(a)], props: {color: colors[i % 5]}};
 });
 const some = places.slice(0, 500);
+// A GeoJSON FeatureCollection with a point for each place. The properties of a point are the `props` of its place.
+const pointsOf = list => points(list, {lngLat: p => p.lngLat, properties: p => p.props});
+const always = {'icon-image': 'dot', 'icon-allow-overlap': true, 'icon-ignore-placement': true};
 
 export default function (container, {show}) {
   let popup = null;
@@ -19,18 +22,20 @@ export default function (container, {show}) {
     style,
     initialView: {center: NYC, zoom: 11.4},
     attribution: {compact: true},
-    // An image is an SVG template with {{slots}}. Each marker fills the slots from its `props`.
+    // An image is an SVG template with {{slots}}. Each feature fills the slots from its properties.
     images: {dot, pin},
-    // A marker layer draws an image at a list of positions.
-    markers: [
-      {id: 'dots', image: 'dot', data: places.slice(500)},
+    // Each key of `data` makes a GeoJSON source with that id.
+    data: {rest: pointsOf(places.slice(500)), some: pointsOf(some)},
+    // Symbol layers draw an image at each point of a source.
+    layers: [
+      // Icons that are always shown: the cost of a frame does not grow with their number.
+      {id: 'dots', type: 'symbol', source: 'rest', layout: always},
       // 500 of the places are pins when the zoom is 12 or more, and dots below that.
-      {id: 'dots-below-pins', image: 'dot', maxZoom: 12, data: some},
-      {id: 'pins', image: 'pin', anchor: 'bottom', minZoom: 12,
-        overlap: 'hide',   // do not pile up; map labels keep clear
-        data: some},
+      {id: 'dots-below-pins', type: 'symbol', source: 'some', maxzoom: 12, layout: always},
+      // (Without `icon-allow-overlap`, the pins do not pile up, and map labels keep clear.)
+      {id: 'pins', type: 'symbol', source: 'some', minzoom: 12, layout: {'icon-image': 'pin', 'icon-anchor': 'bottom'}},
     ],
-    // A marker layer is a layer of the style: a click finds its markers.
+    // A click finds the features of these layers.
     interactiveLayers: ['pins', 'dots-below-pins', 'dots'],
     onClick: e => {
       popup?.remove();

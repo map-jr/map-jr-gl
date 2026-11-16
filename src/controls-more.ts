@@ -9,7 +9,7 @@ const svg = (path: string, extra = '') => `<svg width="18" height="18" viewBox="
 /** `name` gives the button the class name that MapLibre GL JS gives it (`maplibregl-ctrl-zoom-in`), for stylesheets and tests written for that library. */
 function button(group: HTMLElement, name: string, label: string, icon: string, onClick: () => void): HTMLButtonElement {
     const b = document.createElement('button');
-    b.className = 'maplibregl-ctrl-' + name;
+    b.className = cls('ctrl-' + name);
     b.type = 'button';
     b.title = label;
     b.setAttribute('aria-label', label);

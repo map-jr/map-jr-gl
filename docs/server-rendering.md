@@ -112,8 +112,7 @@ Notes for Cloudflare Workers:
 | `center`, `zoom`, `width`, `height` | The view. Required. |
 | `bearing` | The rotation of the map in degrees |
 | `bounds`, `padding` | A box (`[[west, south], [east, north]]` or `[west, south, east, north]`) to fit into the view, with `padding` in pixels around it (a number or `{top, right, bottom, left}`, default 0). With `bounds`, the renderer uses the box in place of `center` and `zoom` (give them all the same, because they are required). |
-| `markers` | A list of marker layers, as in the description of a map. See [Markers](markers.md). |
-| `images` | Images for the style layers and the marker layers, by name: SVG documents, or `{image, width, height}`. An SVG with slots (`{{name}}`) is a template, as in the description of a map. An image that is not an SVG document is not drawn. An image of `images` is used before `resolveImage`, which is asked only for a name that `images` does not have. |
+| `images` | Images for the style layers, by name: SVG documents, or `{image, width, height}`. An SVG with slots (`{{name}}`) is a template, as in the description of a map. An image that is not an SVG document is not drawn. An image of `images` is used before `resolveImage`, which is asked only for a name that `images` does not have. |
 | `label` | The name of the SVG for assistive technology. The SVG has `role="img"` and this text as its `aria-label`. The default is `"Map"`. `renderToImage` accepts the option, but an image cannot carry it. |
 | `resolveImage` | A function that supplies an icon as SVG when the sprite does not contain it |
 | `layerFilter` | A function that returns `false` for a layer to leave out |
@@ -263,7 +262,7 @@ A value in `overrides` comes before the value in the style.
 credits of the sources over it. The option `attribution` gives other credits; `false` shows none. The option `colorScheme` gives the colours of
 the credits: `'light'` (the default) or `'dark'`. The server cannot read the scheme of the browser, so `'auto'`
 writes both colours with the CSS function `light-dark()`, and a browser without that function shows the light
-colours. The Vue component passes its prop `color-scheme`, with `'auto'` when the prop is not set. The Vue component
+colours. The Vue component passes its prop `color-scheme`, with `'light'` when the prop is not set. The Vue component
 uses this function for its `ssr` prop. With React, call it on the server and give the result to the component. See
 [Vue and Nuxt](vue.md) and [React](react.md).
 

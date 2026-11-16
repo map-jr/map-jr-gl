@@ -3,7 +3,7 @@
  *
  * It is a thin layer over `createMap` (host.ts). The component gives its props to the map as one description after
  * each render, and the map finds what is different. Props that are made again with the same content do no work.
- * Marker data is compared by identity: keep the array (`useMemo`, state) until the markers change.
+ * The data of a source (`data`) is compared by identity: keep the object (`useMemo`, state) until the data changes.
  */
 import {createContext, createElement as h, forwardRef, useCallback, useContext, useEffect, useImperativeHandle, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode} from 'react';
 import {createPortal} from 'react-dom';
@@ -23,7 +23,7 @@ const OWN = new Set(['onViewChange', 'onClick', 'onHover', 'onLoad', 'onIdle', '
 
 export interface MapJrProps extends Omit<MapSpec, 'style' | 'onViewChange'>, MapEventProps {
     /** A style object or the URL of a style. (`style` is the CSS style of the element.) */
-    mapStyle: string | object;
+    mapStyle: MapSpec['style'];
     /** Called with the view after each change. With `view`, write the value back to own the view. */
     onViewChange?: (view: View) => void;
     onHover?: (features: RenderedFeature[]) => void;
@@ -109,7 +109,7 @@ export const MapJr = forwardRef<MapHost | null, MapJrProps>(function MapJr(props
  * An element of the page at a position of the map, for the inside of `MapJr`: a marker with your own content, or a
  * popup (`popup`; with `onClose` it has a button to close it). The content is React content. With `draggable`, the user
  * can move it, and `onDragEnd` gets the new `[lng, lat]`.
- * For many markers, use the `markers` prop of `MapJr`: those are drawn on the canvas.
+ * For many points, use a symbol layer in the `layers` prop of `MapJr`, with the points in `data`: those are drawn on the canvas.
  */
 export function MapOverlay({children, ...options}: OverlayOptions & {children?: ReactNode}) {
     const host = useContext(Host), [el] = useState(() => typeof document === 'undefined' ? null : document.createElement('div')), overlay = useRef<Overlay | null>(null);

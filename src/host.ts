@@ -11,14 +11,14 @@ export type {PaddingInput};
 export type {FeatureOptions, FeaturePlace, SourceOptions};
 import {createStore, type Readable} from './store.ts';
 import {Marker, Popup} from './overlays.ts';
-import {dataTypeError, extended, markerFeatures, markerStyle, withData, withMarkers, type Anchor, type MarkerLayerOptions} from './markers.ts';
+import {dataTypeError, extended, withData, type Anchor} from './markers.ts';
 import type {QueriedFeature} from './query.ts';
 import type {Control, ControlPosition} from './controls.ts';
 import type {Checked} from './mistakes.ts';
-import type {FontSource} from './engine.ts';
+import {fontFaces, type FontFaces} from './resolve.ts';
 import type {LngLatBoundsInput} from './lnglat.ts';
 import type {PaddingInput} from './geo.ts';
-import type {ProjectionSpecification} from './compat-types.ts';
+import type {BackgroundLayerSpecification, CircleLayerSpecification, FillExtrusionLayerSpecification, FillLayerSpecification, HeatmapLayerSpecification, HillshadeLayerSpecification, LineLayerSpecification, ProjectionSpecification, RasterLayerSpecification, SourceSpecification, StyleSpecification, SymbolLayerSpecification, TerrainSpecification} from './compat-types.ts';
 
 /**
  * Set by the build (`define` in build.mjs). True in the development build (`dist/*.dev.js`, which the `development`
@@ -35,6 +35,26 @@ export interface ControlSpec { key: string; position?: ControlPosition; create()
  * that the map gives (`state.view.center`, the result of `unproject`) is `[number, number]`.
  */
 export type Position = readonly number[];
+/**
+ * A box of the main API: `[[west, south], [east, north]]` or `[west, south, east, north]`, in degrees. (The map also
+ * reads `LngLat` and `LngLatBounds` objects at run time, but the types of the main API take arrays only.)
+ */
+export type Bounds = readonly [Position, Position] | readonly [number, number, number, number];
+/** A GeoJSON geometry (RFC 7946). */
+export type GeoJSONGeometry =
+    | {type: 'Point'; coordinates: Position} | {type: 'MultiPoint'; coordinates: readonly Position[]}
+    | {type: 'LineString'; coordinates: readonly Position[]} | {type: 'MultiLineString'; coordinates: readonly (readonly Position[])[]}
+    | {type: 'Polygon'; coordinates: readonly (readonly Position[])[]} | {type: 'MultiPolygon'; coordinates: readonly (readonly (readonly Position[])[])[]}
+    | {type: 'GeometryCollection'; geometries: readonly GeoJSONGeometry[]};
+/** A GeoJSON feature (RFC 7946). `properties` is any object, so an interface of the application fits. */
+export interface GeoJSONFeature { type: 'Feature'; id?: string | number; geometry: GeoJSONGeometry | null; properties: object | null }
+/** GeoJSON (RFC 7946): a feature collection, a feature or a geometry. */
+export type GeoJSON = {type: 'FeatureCollection'; features: readonly GeoJSONFeature[]} | GeoJSONFeature | GeoJSONGeometry;
+/**
+ * A layer of the field `layers` of `MapSpec`: a style layer of one of the types that the library draws, with
+ * `before`. TypeScript checks `type` and the prefix of each name in `paint` and `layout`.
+ */
+export type LayerInput = (BackgroundLayerSpecification | FillLayerSpecification | FillExtrusionLayerSpecification | LineLayerSpecification | CircleLayerSpecification | HeatmapLayerSpecification | RasterLayerSpecification | HillshadeLayerSpecification | SymbolLayerSpecification) & {before?: string};
 /** A cluster or a point that the cluster methods of `MapHost` return, as GeoJSON in longitude and latitude. */
 export interface ClusterFeature {type: 'Feature'; id?: string | number; properties: Record<string, unknown>; geometry: {type: 'Point'; coordinates: [number, number]}}
 /**
@@ -45,10 +65,14 @@ export interface View { center: [number, number]; zoom: number; bearing: number;
 /** A view that the application gives: each field is optional. */
 export interface ViewInput { center?: Position; zoom?: number; bearing?: number; pitch?: number }
 /**
- * The view at the start. `bounds` ([west, south, east, north] or [[west, south], [east, north]]) is fitted into the
- * map, with `padding` in CSS pixels (default 0), and takes the place of `center` and `zoom`, as in MapLibre GL JS.
+ * A view to go to, for `initialView` and `moveTo`. `bounds` ([west, south, east, north] or [[west, south], [east, north]])
+ * is fitted into the map and takes the place of `center` and `zoom`, as in MapLibre GL JS. `padding` (CSS pixels, default
+ * 0) is space around `bounds` for this one fit, on top of the padding of the description, and `maxZoom` limits the zoom
+ * of the fit. Without `bounds`, `padding` and `maxZoom` have no effect.
  */
-export interface InitialView extends ViewInput { bounds?: LngLatBoundsInput; padding?: PaddingInput }
+export interface InitialView extends ViewInput { bounds?: Bounds; padding?: PaddingInput; maxZoom?: number }
+/** The argument of `moveTo`: a view or `bounds` (as in `initialView`), with `duration` in milliseconds and `fly`. */
+export interface MoveToOptions extends InitialView { duration?: number; fly?: boolean | FlyOptions }
 /** Where the pointer is over the map: `point` in CSS pixels from the top left corner of the map, `lngLat` as `[lng, lat]`. */
 export interface PointerPosition { point: {x: number; y: number}; lngLat: [number, number] }
 export interface MapPointer { point: {x: number; y: number}; lngLat: [number, number]; /** The features of `interactiveLayers` at the point, the top one first. */ features: RenderedFeature[] }
@@ -68,22 +92,28 @@ export type ImageInput = ImageSource | ({image: ImageSource} & ImageOptions);
 /** The description of a map. Each field can change in `update`, but for those of `MapSetup`. */
 export interface MapSpec extends MapSetup {
     /** A style object or the URL of a style (the MapLibre style specification). A new object or URL is a new style. */
-    style: string | object;
+    style: string | StyleSpecification;
     /**
      * Sources to add to the sources of the style, by id. A source here replaces the source of the style that has the
      * same id. They are added when the style has loaded, so a style from a URL can have them too.
      */
-    sources?: Record<string, object>;
+    sources?: Record<string, SourceSpecification>;
     /**
      * Layers to add to the layers of the style: they do not replace them. A layer with `before` goes below the layer
      * of the style with that id, and a layer without it goes on top.
      */
-    layers?: ({id: string; before?: string} & Record<string, unknown>)[];
+    layers?: LayerInput[];
     /**
      * 3D terrain from an elevation source, `{source: 'dem', exaggeration: 1.5}`, in place of the terrain of the style.
      * `null` or no field means the terrain of the style.
      */
-    terrain?: {source: string; exaggeration?: number} | null;
+    terrain?: TerrainSpecification | null;
+    /**
+     * Web fonts for labels, in the shape of `font-faces` of the style specification: by `text-font` name, a URL or a
+     * list of `{url, 'unicode-range'}`. A name here replaces the same name in the `font-faces` of the style. A relative
+     * URL is relative to the page. A new name loads its font and the labels are drawn again. See "Web fonts" in `docs/api.md`.
+     */
+    fonts?: FontFaces;
     /** The view at the start: a view, or `bounds` to fit with `padding`. The user then moves the map. */
     initialView?: InitialView;
     /**
@@ -97,18 +127,13 @@ export interface MapSpec extends MapSetup {
      * the style as `{type: 'geojson', data: {type: 'FeatureCollection', features: []}}`. Data here is compared by
      * identity and goes to the map alone: use it for data that changes, so that the style stays as it is.
      */
-    data?: Record<string, unknown>;
+    data?: Record<string, GeoJSON | string>;
     /**
      * Images for `icon-image` of style layers, by name: `{pin: '<svg ...>...</svg>'}`. A
      * value is an SVG document, the URL of an image, or `{image, width, height}`. An image of this field is used in
      * place of an image of the sprite that has the same name.
      */
     images?: Record<string, ImageInput>;
-    /**
-     * Marker layers, each with an `id`. A marker layer is shorthand for a GeoJSON source and a symbol layer with that
-     * id, which draws the image `image` at each marker. A layer whose `data` is a new array gets the new data.
-     */
-    markers?: MarkerLayerOptions[];
     /** Controls from `@map-jr/map-jr-gl/controls`: `[navigation(), scale()]`. */
     controls?: ControlSpec[];
     /**
@@ -125,10 +150,16 @@ export interface MapSpec extends MapSetup {
     globalState?: Record<string, unknown>;
     /** Style layers whose features are found under the pointer: they are in `state.hover` and in `onClick`. */
     interactiveLayers?: string[];
+    /**
+     * `true`: the top feature of `interactiveLayers` under the pointer has the feature state `hover: true`, which
+     * `feature-state` expressions read, and loses it when the pointer leaves it. A feature with no id gets no state.
+     * The default is `false`.
+     */
+    hoverState?: boolean;
     onClick?: (event: MapPointer) => void;
     /** Called for each error of the map. Without it, the map writes each error to the console. (`state.error` has the last error in each case.) */
     onError?: (error: Error) => void;
-    minZoom?: number; maxZoom?: number; maxPitch?: number; maxBounds?: LngLatBoundsInput | null;
+    minZoom?: number; maxZoom?: number; maxPitch?: number; maxBounds?: Bounds | null;
     /** The mouse cursor over the map. Without it, the cursor is a pointer over a feature of `interactiveLayers`. */
     cursor?: string;
     /**
@@ -137,9 +168,10 @@ export interface MapSpec extends MapSetup {
      */
     cooperativeGestures?: boolean;
     /**
-     * The colours of the controls, the popup, the attribution and the message of a browser without WebGL 2: `'auto'`
-     * (the default) follows `prefers-color-scheme` of the browser and changes with it, `'light'` and `'dark'` fix it.
-     * The container has the class `map-jr-dark` while the scheme is dark. It does not change the style of the canvas.
+     * The colours of the controls, the popup, the attribution and the message of a browser without WebGL 2: `'light'`
+     * (the default), `'dark'`, or `'auto'`, which follows `prefers-color-scheme` of the browser and changes with it.
+     * The container has the class `map-jr-dark` while the scheme is dark. The resolved scheme is also the global
+     * state property `color-scheme` of the style (`['global-state', 'color-scheme']`), unless `globalState` gives it.
      */
     colorScheme?: 'auto' | 'light' | 'dark';
     /**
@@ -159,7 +191,6 @@ export interface MapSpec extends MapSetup {
 /** The fields that are read when the map is made only. */
 export interface MapSetup {
     renderer?: 'auto' | 'worker' | 'main';
-    fonts?: FontSource[];
     fontFamily?: string;
     interactive?: boolean;
     antialias?: boolean;
@@ -327,16 +358,18 @@ export interface MapHost {
     /**
      * Moves the camera now, with an animation when `duration` is not 0. With `fly` (`true` or the options `curve`,
      * `speed`, `screenSpeed`, `minZoom`, `maxDuration` of `flyTo` of MapLibre GL JS), the camera zooms out and back in
-     * on the way, and without `duration` the duration follows from the distance.
+     * on the way, and without `duration` the duration follows from the distance. With `bounds`, the camera goes to the
+     * box fitted with `padding` and `maxZoom`. `moveTo` does not change the padding of the map: that is `padding` of the description.
      */
-    moveTo(view: ViewInput & {duration?: number; padding?: PaddingInput; fly?: boolean | FlyOptions}): void;
-    fitBounds(bounds: LngLatBoundsInput, options?: {padding?: PaddingInput; duration?: number; maxZoom?: number}): void;
+    moveTo(view: MoveToOptions): void;
+    /** The short form of `moveTo({bounds, ...options})`, with `duration` 800 ms by default. */
+    fitBounds(bounds: Bounds, options?: Omit<MoveToOptions, 'bounds' | 'center' | 'zoom'>): void;
     project(lngLat: Position): {x: number; y: number};
     unproject(point: {x: number; y: number}): [number, number];
     /**
      * Puts an element of the page at a position of the map: a marker with your own content, a label, a popup. The
-     * element moves with the map. For many markers, use a marker layer (`markers` in the description): it is drawn
-     * on the canvas and is much faster.
+     * element moves with the map. For many points, use a symbol layer in `layers` with the points in `data`: it
+     * is drawn on the canvas and is much faster.
      */
     overlay(element: HTMLElement, options: OverlayOptions): MapOverlay;
     /** Calls `fn` for each event of that type (the types are the names of `MapEvents`). Returns a function that stops it. */
@@ -352,9 +385,6 @@ export interface MapHost {
 // (A field that `a` does not have is not compared: an owned view such as `{center, zoom}` equals a full view that the map reported.)
 const same = (a: ViewInput | undefined, b: ViewInput | undefined) => !!a && !!b && (['zoom', 'bearing', 'pitch'] as const).every(k => a[k] === undefined || a[k] === b[k]) && (!a.center || (a.center[0] === b.center?.[0] && a.center[1] === b.center?.[1]));
 
-/** What of the marker layers is a part of the style: the source and the layer of each one (not the data). */
-const markerStyles = (markers?: MarkerLayerOptions[]) => (markers ?? []).map(markerStyle);
-
 
 /** Stops a description with no style, with a message that says what to write (a caller in JavaScript has no type check). */
 function complete(spec: MapSpec, method: string, fix: string) {
@@ -368,11 +398,11 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
     complete(spec, 'createMap', 'Pass the URL of a style or a style object as "style".');
     if (!container) throw new Error('[map-jr-gl] createMap(): the container is ' + container + '. In a framework, make the map after the element is mounted.');
     if (typeof container === 'string' && !document.getElementById(container)) throw new Error(`[map-jr-gl] createMap(): no element with the id "${container}".`);
-    const {bounds, padding, ...first} = {...spec.initialView, ...spec.view} as InitialView & {bounds?: unknown};
+    const {bounds, padding, maxZoom, ...first} = {...spec.initialView, ...spec.view} as InitialView & {bounds?: unknown};
     const options: MapOptions = {
         container, style: spec.style, center: first.center, zoom: first.zoom, bearing: first.bearing, pitch: first.pitch,
         // (A `view` from the state has `bounds` too: it is a view, and only `initialView` gives a box to fit.)
-        bounds: spec.view ? undefined : bounds as LngLatBoundsInput, fitBoundsOptions: {padding}, renderer: spec.renderer, fonts: spec.fonts, fontFamily: spec.fontFamily, interactive: spec.interactive, antialias: spec.antialias, hash: spec.hash, nonce: spec.nonce,
+        bounds: spec.view ? undefined : bounds as LngLatBoundsInput, fitBoundsOptions: {padding, maxZoom}, renderer: spec.renderer, fontFamily: spec.fontFamily, interactive: spec.interactive, antialias: spec.antialias, hash: spec.hash, nonce: spec.nonce,
         attributionControl: spec.attribution, minZoom: spec.minZoom, maxZoom: spec.maxZoom, maxPitch: spec.maxPitch,
     };
     for (const k in options) if ((options as any)[k] === undefined) delete (options as any)[k];
@@ -392,7 +422,7 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
     const checks = (): Promise<typeof import('./mistakes.ts')> => __DEV__ ? import('./mistakes.ts') : Promise.reject();
     const checked: Checked = {map, warned: new Set(), spec: () => now, ready: () => alive && styled && state.get().loaded};
     const check = (kind: number, a?: unknown, b?: unknown) => { if (__DEV__) checks().then(m => m.check(checked, kind, a, b), () => {}); };
-    // The data that each source has from the description: the GeoJSON of `data`, and the markers of a marker layer.
+    // The data that each source has from the description: the GeoJSON of `data`.
     const sent = new globalThis.Map<string, unknown>();
     // `cooperativeGestures`: the handler of the compat entry (cooperative-gestures.ts) loads on demand. Until it has
     // loaded, the gestures are blocked without the hint. `stop` removes the hint; `cooperating` is the wanted state.
@@ -416,13 +446,29 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
     const madeData = new Set<string>();
     // (The `data` of the last description: keys can change while the style loads.)
     let wantedData = spec.data;
+    // (The `fonts` of the last description, with URLs that are relative to the page made absolute: the style has its own base.)
+    let wantedFonts = spec.fonts;
+    // The images in `metadata['map-jr:images']` of the style (#495), and the `images` of the last description, which win by name.
+    let fromStyle: Record<string, ImageInput> = {}, wantedImages = spec.images, styleTurn = 0;
+    const absolute = (faces: FontFaces | undefined) => { const out: FontFaces = {}; for (const f of fontFaces(faces, document.baseURI)) ((out[f.name!] ??= []) as {url: string; 'unicode-range'?: string[]}[]).push({url: f.src, ...(f.unicodeRange ? {'unicode-range': f.unicodeRange.split(', ')} : {})}); return out; };
     const typeError = (id: string, type: string) => setTimeout(() => { if (alive) map.fire('error', {error: dataTypeError(id, type)}); });
     const restyle = (next: MapSpec) => { styled = false; map.setStyle(next.style, {transformStyle: (_, style) => {
         styled = true;
         baseSources = style.sources ?? {};
         styleProjection = style.projection;
+        // (The code for the images of a style is loaded only for a style that has them. After it has loaded, the map must
+        // still exist and the style must not have been replaced.)
+        const turn = ++styleTurn, given = style.metadata?.['map-jr:images'];
+        fromStyle = {};
+        putImages();
+        if (given != null) import('./style-images.ts').then(m => {
+            if (!alive || turn !== styleTurn) return;
+            fromStyle = m.styleImages(style, message => { if (alive) map.fire('error', {error: new Error(message)}); });
+            putImages();
+        }, () => { if (alive && turn === styleTurn) map.fire('error', {error: new Error('[map-jr-gl] the style: the code for the images in metadata["map-jr:images"] did not load, and the map draws the style without them. Check that the files of the library are served next to it.')}); });
         // (The description of this moment: it can have changed while the style loaded.)
         if (wantedProjection) style = {...style, projection: copy(wantedProjection)};
+        if (wantedFonts) style = {...style, 'font-faces': {...style['font-faces'], ...absolute(wantedFonts)}} as typeof style;
         // (The sources of the new style have no data of the description yet: data that was given since `restyle` went to
         // the sources of the style before. It is given again when the new style is there: see `giveData`.)
         sent.clear();
@@ -430,7 +476,7 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
         const made = withData(extended(style, {...parts(next), layers: next.layers && copy(next.layers)}), wantedData, false, typeError);
         madeData.clear();
         for (const id in wantedData) if (!Object.hasOwn(style.sources ?? {}, id) && !Object.hasOwn(next.sources ?? {}, id)) madeData.add(id);
-        return withMarkers(made, next.markers);
+        return made;
     }}); };
     restyle(spec);
     // (The height of the container is read after a second, so that a container which gets its height a moment later gives no warning.)
@@ -443,7 +489,7 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
     // The resolved scheme is also the global state property `color-scheme` (#492), unless `globalState` gives that name.
     let forced = false, schemeSent: string | undefined;
     const paint = () => {
-        const on = wanted === 'dark' || wanted !== 'light' && !!dark?.matches;
+        const on = wanted === 'dark' || wanted === 'auto' && !!dark?.matches;
         map.getContainer().classList.toggle('map-jr-dark', on);
         state.set({colorScheme: on ? 'dark' : 'light'});
         if (!forced && schemeSent !== (schemeSent = on ? 'dark' : 'light')) map.setGlobalStateProperty('color-scheme', schemeSent);
@@ -452,7 +498,7 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
         wanted = to;
         dark ??= globalThis.matchMedia?.('(prefers-color-scheme: dark)');
         dark?.removeEventListener('change', paint);
-        if (to !== 'light' && to !== 'dark') dark?.addEventListener('change', paint);
+        if (to === 'auto') dark?.addEventListener('change', paint);
         paint();
     };
     // The images of `images` that the map has, by name. The value says what the image was made from: the text of an
@@ -464,6 +510,8 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
     const reported: View[] = [];
     const waiting = new Set<() => void>(); // the promises of `once` that wait for an event
     let now = spec, alive = true, pointer: {x: number; y: number} | null = null, asking = false;
+    // `hoverState`: the feature that has the state `hover` from the map.
+    let lit: {source: string; sourceLayer?: string; id: number | string} | undefined;
 
     map.on('load', () => state.set({loaded: true, renderer: map.renderer as MapState['renderer']}));
     map.on('idle', () => state.set({idle: true}));
@@ -499,6 +547,15 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
             const before = state.get().hover;
             if (found.length !== before.length || found.some((f, i) => f.id !== before[i].id || (f.layer as any)?.id !== (before[i].layer as any)?.id || f.source !== before[i].source)) state.set({hover: found});
             if (!now.cursor) map.setCursor(found.length ? 'pointer' : '');
+            const top = now.hoverState ? found[0] : undefined;
+            if (top && top.id == null) check(9, top.layer.id);
+            const next = top && top.id != null ? {source: top.source, sourceLayer: top.sourceLayer, id: top.id} : undefined;
+            if (next?.id !== lit?.id || next?.source !== lit?.source || next?.sourceLayer !== lit?.sourceLayer) {
+                // (A source that the style no longer has throws: its feature state is gone with it.)
+                if (lit) try { map.removeFeatureState(lit, 'hover'); } catch {}
+                lit = next;
+                if (next) map.setFeatureState(next, {hover: true});
+            }
             if (at === pointer) break;
         }
         asking = false;
@@ -517,19 +574,14 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
     // The GeoJSON data of `data`. A source gets its data when the style has it (a style from a URL comes later), and
     // again after a new style, which has the data of the style itself.
     const giveData = () => {
-        const give = (id: string, data: unknown, made?: (data: any) => unknown) => {
-            if (sent.get(id) === data) return;
+        for (const id in now.data) {
+            const data = now.data[id];
+            if (sent.get(id) === data) continue;
             const source = map.getSource(id) as {setData?: (data: unknown) => void} | undefined;
-            if (source?.setData) { sent.set(id, data); source.setData(made ? made(data) : data); }
-        };
-        for (const id in now.data) give(id, now.data[id]);
-        // (The markers of a marker layer are the data of its source: a point for each one.)
-        for (const m of now.markers ?? []) give(m.id, m.data, markerFeatures);
+            if (source?.setData) { sent.set(id, data); source.setData(data); }
+        }
     };
     map.on('styledata', giveData);
-    // An image that a marker layer names and that the map does not have. (A style can name other images that nothing
-    // has. An image from a URL, and an image of a later description, come a moment later: the check waits for them.)
-    map.on('styleimagemissing', e => setTimeout(() => { if (alive && !map.hasImage(e.id as string) && now.markers?.some(m => m.image === e.id)) check(5, e.id); }, 3000));
     // (At `idle`, and not when the style comes: an application can add a layer or a source itself in `load`.)
     map.on('idle', () => check(1));
 
@@ -545,9 +597,7 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
         if (differ(next.terrain, before.terrain) || ids(is, was) !== ids(was, is) || is.some((l, i) => !kept.includes(l) && i < is.indexOf(kept[kept.length - 1]))) return false;
         for (const id in ns) if (id in os ? differ(ns[id], os[id]) : map.getSource(id)) return false;
         for (const id in {...ns, ...os}) if (Object.hasOwn(baseSources, id)) return false;
-        // (A new layer would go above the layers of `markers`, which a new style puts on top.)
-        if (now.markers?.length && kept.length < is.length) return false;
-        for (const l of kept) { const w = was.find(x => x.id === l.id)!; if (Object.keys({...l, ...w}).some(k => !keys.includes(k) && differ(l[k], w[k]))) return false; }
+        for (const l of kept) { const w = was.find(x => x.id === l.id)!; if (Object.keys({...l, ...w}).some(k => !keys.includes(k) && differ((l as Record<string, unknown>)[k], (w as Record<string, unknown>)[k]))) return false; }
         for (const w of was) if (!kept.some(l => l.id === w.id)) map.removeLayer(w.id);
         for (const id in os) if (!(id in ns)) { sent.delete(id); map.removeSource(id); }
         for (const id in ns) if (!(id in os)) { sent.delete(id); map.addSource(id, ns[id]); }
@@ -564,6 +614,22 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
         return true;
     };
 
+    // Gives the map the images of the style and of the description, and removes those that neither has now.
+    const putImages = () => {
+        const wanted: Record<string, ImageInput> = {...fromStyle, ...wantedImages};
+        for (const name of images.keys()) if (!Object.hasOwn(wanted, name)) { images.delete(name); map.removeImage(name); }
+        for (const name in wanted) {
+            const v = wanted[name], key = imageKey(v);
+            if (images.has(name) && images.get(name) === key) continue;
+            if (images.has(name)) map.removeImage(name);
+            images.set(name, key);
+            const spec = v && typeof v === 'object' && 'image' in v ? v : null;
+            // (An image that does not load is an error of the map, and the map goes on without it.)
+            map.addImage(name, spec ? spec.image : v as ImageSource, spec ?? {}).then(busy, () => {
+                if (alive && images.get(name) === key) map.fire('error', {error: new Error(`[map-jr-gl] ${Object.hasOwn(wantedImages ?? {}, name) ? 'images' : 'the style'}: the image "${name}" did not load. Give an SVG document or the URL of an image that the page can read.`)});
+            });
+        }
+    };
     // A change that gave the engine work makes the map not idle until the engine reports idle again (#411).
     const busy = () => { if (alive && state.get().idle && !map.areTilesLoaded()) state.set({idle: false}); };
     const apply = (next: MapSpec, before?: MapSpec) => {
@@ -572,6 +638,7 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
         const differ = (a: unknown, b: unknown) => a !== b && JSON.stringify(a) !== JSON.stringify(b);
         wantedProjection = next.projection;
         wantedData = next.data;
+        wantedFonts = next.fonts;
         // (A new key of `data` makes its source before the edits of `sources` and `layers`, which can add a layer that names it.)
         if (styled && before) for (const id in next.data) {
             const s = map.getSource(id) as {type?: string} | undefined;
@@ -579,14 +646,21 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
             else if (!(id in (before.data ?? {})) && s.type !== 'geojson') typeError(id, s.type!);
         }
         // (After a new style the data waits for the `styledata` event: the engine must have the new style first.)
-        const restyled = !!before && (differ(next.style, before.style) || (['sources', 'layers', 'terrain'] as const).some(k => differ(next[k], before[k])) && !(styled && edit(parts(next), parts(before), differ)) || differ(markerStyles(next.markers), markerStyles(before.markers)));
+        const restyled = !!before && (differ(next.style, before.style) || (['sources', 'layers', 'terrain'] as const).some(k => differ(next[k], before[k])) && !(styled && edit(parts(next), parts(before), differ)));
         if (restyled) { state.set({idle: false}); sent.clear(); restyle(next); }
         else for (const id of madeData) if (!Object.hasOwn(next.data ?? {}, id)) { madeData.delete(id); sent.delete(id); map.removeSource(id); }
+        // (A font of a name that is new or changed is loaded; the new style of a restyle has the fonts already. A font
+        // that is removed stays with the browser, and the labels keep it until the page is loaded again.)
+        if (styled && !restyled && differ(next.fonts, before?.fonts)) {
+            const changed: FontFaces = {};
+            for (const name in next.fonts) if (differ(next.fonts[name], before?.fonts?.[name])) changed[name] = next.fonts[name];
+            map.addFonts(fontFaces(absolute(changed)));
+        }
         if (next.view && !same(next.view, before?.view) && !reported.some(v => same(next.view, v)) && before) map.jumpTo(next.view);
         if (next.minZoom !== before?.minZoom && before) map.setMinZoom(next.minZoom);
         if (next.maxZoom !== before?.maxZoom && before) map.setMaxZoom(next.maxZoom);
         if (next.maxPitch !== before?.maxPitch && before) map.setMaxPitch(next.maxPitch);
-        if (differ(next.maxBounds, before?.maxBounds)) map.setMaxBounds(next.maxBounds);
+        if (differ(next.maxBounds, before?.maxBounds)) map.setMaxBounds(next.maxBounds as LngLatBoundsInput | null | undefined);
         if (differ(next.padding, before?.padding)) map.jumpTo({padding: next.padding ?? 0});
         // (Before the style is there, the style gets the projection of the description when it comes: see `restyle`.)
         // (The map keeps these values across a new style; only the names whose values changed are set.)
@@ -605,31 +679,24 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
         transformLast = next.transformRequest;
         if (before && !next.transformRequest !== !before.transformRequest) map.setTransformRequest(next.transformRequest ? transform : null);
         if (next.cursor !== before?.cursor) map.setCursor(next.cursor ?? '');
-        if (next.images !== before?.images) {
-            const wanted = next.images ?? {};
-            for (const name of images.keys()) if (!Object.hasOwn(wanted, name)) { images.delete(name); map.removeImage(name); }
-            for (const name in wanted) {
-                const v = wanted[name], key = imageKey(v);
-                if (images.has(name) && images.get(name) === key) continue;
-                if (images.has(name)) map.removeImage(name);
-                images.set(name, key);
-                const spec = v && typeof v === 'object' && 'image' in v ? v : null;
-                // (An image that does not load is an error of the map, and the map goes on without it.)
-                map.addImage(name, spec ? spec.image : v as ImageSource, spec ?? {}).then(busy, () => {
-                    if (alive && images.get(name) === key) map.fire('error', {error: new Error(`[map-jr-gl] images: the image "${name}" did not load. Give an SVG document or the URL of an image that the page can read.`)});
-                });
-            }
-        }
+        wantedImages = next.images;
+        if (next.images !== before?.images) putImages();
         if (!next.cooperativeGestures !== !before?.cooperativeGestures) cooperate(!!next.cooperativeGestures);
         if (next.colorScheme !== before?.colorScheme || !before) scheme(next.colorScheme);
-        if (differ(next.interactiveLayers, before?.interactiveLayers)) hover();
+        if (differ(next.interactiveLayers, before?.interactiveLayers) || !next.hoverState !== !before?.hoverState) hover();
         check(2, next, before);
         now = next;
-        if ((next.data !== before?.data || next.markers !== before?.markers) && !restyled) giveData();
+        if (next.data !== before?.data && !restyled) giveData();
         busy();
     };
     apply(spec);
 
+    const moveTo: MapHost['moveTo'] = ({duration, fly, bounds, padding, maxZoom, ...view}) => {
+        // (`padding` is space for this one fit; the padding of the map belongs to the description.)
+        if (bounds) { const fit = map.cameraForBounds(bounds as LngLatBoundsInput, {padding, maxZoom}); view = {bearing: fit.bearing, ...view, center: [fit.center.lng, fit.center.lat], zoom: fit.zoom}; }
+        else if (padding !== undefined || maxZoom !== undefined) check(7);
+        if (fly) map.flyTo({...view, duration, ...(fly === true ? {} : fly)}); else if (duration) map.easeTo({...view, duration}); else map.jumpTo(view);
+    };
     const isPosition = (at: FeaturePlace): at is [number, number] => typeof (at as number[])[0] === 'number';
     /** Rejects with the message of the mistake `code`, or with `short` when the checks do not load. */
     const reject = (code: number, a: string, short: string) => checks().then(m => m.mistake(code, a), () => '[map-jr-gl] ' + short).then(text => { throw new Error(text); });
@@ -715,8 +782,8 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
         watchSource: (id, at, o, listener) => watch(at, id, () => querySource(id, at, o), listener),
         queryElevation: at => map.queryElevation(at),
         toBlob: (type, quality) => map.toBlob(type, quality),
-        moveTo({duration, fly, ...view}) { if (fly) map.flyTo({...view, duration, ...(fly === true ? {} : fly)}); else if (duration) map.easeTo({...view, duration}); else map.jumpTo(view); },
-        fitBounds: (bounds, o) => { map.fitBounds(bounds, o); },
+        moveTo,
+        fitBounds: (bounds, o = {}) => moveTo({duration: 800, ...o, bounds}),
         project: lngLat => map.project(lngLat),
         unproject: point => { const p = map.unproject(point); return [p.lng, p.lat]; },
         overlay(element, o) {
