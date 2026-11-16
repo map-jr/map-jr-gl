@@ -145,7 +145,7 @@ try {
         // (A marker is a feature of the layer of its marker layer.)
         const before = (await host.queryFeatures(host.project([-74.0065, 40.7085]), {layers: ['pins']})).length ? 1 : 0;
         t.setMarkers([]); await wait(600);
-        return {events: t.moves[0], asked: t.asked.length, added: t.asked.length > 0 && t.asked.every(id => host.map.hasImage(id)), followed, shown, controls, moved, pinOk, tip, pinMoved, closed: t.closed, tipGone: !document.getElementById('own-tip'), views: t.views, before, after: host.map.getLayer('pins') ? 1 : 0};
+        return {events: t.moves[0], asked: t.asked.length, added: t.asked.length > 0 && t.asked.every(id => host._map.hasImage(id)), followed, shown, controls, moved, pinOk, tip, pinMoved, closed: t.closed, tipGone: !document.getElementById('own-tip'), views: t.views, before, after: host._map.getLayer('pins') ? 1 : 0};
     });
     check('browser: an event of the map is a prop of the component (onMoveend), and an image that the style asks for (onStyleimagemissing) is on the map after the listener adds it to the prop images', model.events === 'moveend number' && model.asked > 0 && model.added, JSON.stringify({events: model.events, asked: model.asked, added: model.added}));
     check('browser: the view follows the map and moves it; useMapState, controls, overlays and markers follow React', model.followed === 15 && model.shown === '15.0' && model.controls === 2 && model.moved === 14 && model.pinOk && model.tip && model.pinMoved
@@ -173,7 +173,7 @@ try {
     check('browser: a click calls onClick, with the features there', click.clicks === 1 && click.features, JSON.stringify(click));
     // An image as a child component: the SVG of its content is a template of the map, and it follows the component.
     const child = await page.evaluate(async () => {
-        const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), map = t.map.current.map, add = map.addImage, given = [];
+        const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), map = t.map.current._map, add = map.addImage, given = [];
         const first = ['arrow', 'photo', 'maybe', 'nested'].map(name => map.hasImage(name)).join(), apart = !document.querySelector('svg[viewBox="0 0 8 8"]');
         map.addImage = function (name, source, ...rest) { given.push(name + ' ' + source); return add.call(this, name, source, ...rest); };
         t.setPin([-74.0064, 40.7085]); // (a render with the same image gives the image no second time)

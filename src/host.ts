@@ -310,12 +310,12 @@ export interface MapHost {
     /**
      * The cluster methods of a GeoJSON source with `cluster: true`. `clusterId` is `properties.cluster_id` of a cluster
      * feature, for example from `queryFeatures`. `clusterExpansionZoom` gives the zoom level at which the cluster divides,
-     * `clusterChildren` the clusters and points that it divides into, and `clusterLeaves` its points (`limit` defaults to
-     * 10, and `offset` to 0). The promise rejects when the source is not a GeoJSON source with clusters, or the cluster is not there.
+     * `clusterChildren` the clusters and points that it divides into, and `clusterLeaves` its points (the options `limit`, default
+     * 10, and `offset`, default 0). The promise rejects when the source is not a GeoJSON source with clusters, or the cluster is not there.
      */
     clusterExpansionZoom(sourceId: string, clusterId: number): Promise<number>;
     clusterChildren(sourceId: string, clusterId: number): Promise<ClusterFeature[]>;
-    clusterLeaves(sourceId: string, clusterId: number, limit?: number, offset?: number): Promise<ClusterFeature[]>;
+    clusterLeaves(sourceId: string, clusterId: number, options?: {limit?: number; offset?: number}): Promise<ClusterFeature[]>;
     /**
      * Moves the camera now, with an animation when `duration` is not 0. With `fly` (`true` or the options `curve`,
      * `speed`, `screenSpeed`, `minZoom`, `maxDuration` of `flyTo` of MapLibre GL JS), the camera zooms out and back in
@@ -339,8 +339,6 @@ export interface MapHost {
      */
     once<K extends keyof MapEvents>(type: K): Promise<MapEvents[K]>;
     readonly container: HTMLElement;
-    /** The map object behind this host, for a need that this API does not cover yet. It can change between versions. */
-    readonly map: Map;
 }
 
 // (A field that `a` does not have is not compared: an owned view such as `{center, zoom}` equals a full view that the map reported.)
@@ -511,7 +509,7 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
     map.on('idle', () => check(1));
 
     // A change of only `sources`, `layers` and `terrain` goes to the map as edits, so that the style is not loaded again and the layers that the
-    // application added through `host.map` stay. It returns false, with nothing changed, for a change that needs a new
+    // application added through the core map stay. It returns false, with nothing changed, for a change that needs a new
     // style: a changed `terrain`, a changed source, a source id that the style has, a changed `type`, `source`,
     // `source-layer`, `minzoom`, `maxzoom` or `before` of a layer, a new order of the layers, or a new layer before
     // one that stays.
@@ -660,7 +658,8 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
         return out;
     };
 
-    const host: MapHost = {
+    // (`_map`, the core map, is private: it is not in the type `MapHost`, and the tests and the library read it.)
+    const host: MapHost & {readonly _map: Map} = {
         update(next) {
             complete(next, 'update', `update() takes the complete description, not only the changed fields. Write map.patch({${Object.keys(next ?? {})[0] ?? 'field'}: …}) to change only some fields.`);
             if (alive) apply(next, now);
@@ -679,7 +678,10 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
         removeFeatureState(target, key) { if (alive) map.removeFeatureState(target, key); },
         clusterExpansionZoom: (id, clusterId) => cluster('clusterExpansionZoom', id, s => s.getClusterExpansionZoom(clusterId)),
         clusterChildren: (id, clusterId) => cluster('clusterChildren', id, s => s.getClusterChildren(clusterId)),
-        clusterLeaves: (id, clusterId, limit, offset) => cluster('clusterLeaves', id, s => s.getClusterLeaves(clusterId, limit, offset)),
+        clusterLeaves: (id, clusterId, options) => cluster('clusterLeaves', id, s => {
+            if (typeof options !== 'object' && options !== undefined) throw new Error(`the third argument is ${options}. Pass {limit, offset}, for example clusterLeaves(sourceId, clusterId, {limit: 50, offset: 100}).`);
+            return s.getClusterLeaves(clusterId, options?.limit, options?.offset);
+        }),
         querySource,
         watchFeatures: (at, o, listener) => watch(at, undefined, () => queryFeatures(at, o), listener),
         watchSource: (id, at, o, listener) => watch(at, id, () => querySource(id, at, o), listener),
@@ -731,7 +733,7 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
             });
         },
         container: map.getContainer(),
-        map,
+        _map: map,
     };
     return host;
 }
