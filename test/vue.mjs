@@ -29,9 +29,9 @@ const plain = await renderToString(createSSRApp({render: () => h(MapJr, {mapStyl
 const square = c => ({type: 'FeatureCollection', features: [{type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[c[0] - 0.002, c[1] - 0.002], [c[0] + 0.002, c[1] - 0.002], [c[0] + 0.002, c[1] + 0.002], [c[0] - 0.002, c[1] + 0.002], [c[0] - 0.002, c[1] - 0.002]]]}}]});
 const empty = {type: 'geojson', data: {type: 'FeatureCollection', features: []}};
 const extended = await renderToString(createSSRApp({render: () => h(MapJr, {mapStyle: style, initialView: view, attribution: false, ssr: {timeout: 20000, allowHosts: [new URL(tiles).host]},
-    extend: {sources: {own: {type: 'geojson', data: square(view.center)}, live: empty}, layers: [{id: 'own', type: 'fill', source: 'own', paint: {'fill-color': '#123456'}}, {id: 'live', type: 'fill', source: 'live', paint: {'fill-color': '#654321'}}]},
+    sources: {own: {type: 'geojson', data: square(view.center)}, live: empty}, layers: [{id: 'own', type: 'fill', source: 'own', paint: {'fill-color': '#123456'}}, {id: 'live', type: 'fill', source: 'live', paint: {'fill-color': '#654321'}}],
     data: {live: square([view.center[0] + 0.004, view.center[1]])}})}));
-check('server: the SVG has the layers of extend and the GeoJSON of data', extended.includes('#123456') && extended.includes('#654321'), JSON.stringify({extend: extended.includes('#123456'), data: extended.includes('#654321')}));
+check('server: the SVG has the sources and layers of the description and the GeoJSON of data', extended.includes('#123456') && extended.includes('#654321'), JSON.stringify({layers: extended.includes('#123456'), data: extended.includes('#654321')}));
 let blocked = '';
 const guarded = createSSRApp({render: () => h(MapJr, {mapStyle: style, initialView: view, ssr: {allowHosts: ['other.example.com']}})});
 guarded.config.errorHandler = e => { blocked = e.message; };
@@ -310,10 +310,10 @@ try {
             step = 'main API map, ' + renderer;
             const herrs = [], hel = box();
             const host = createMap(hel, {style: reactive(structuredClone(style)), renderer, view: {center: [-74.0065, 40.7085], zoom: 14}, attribution: false, onError: e => herrs.push(e.message),
-                extend: {sources: {pts: {type: 'geojson', data: points()}}, layers: [{id: 'pts', type: 'circle', source: 'pts'}]}});
+                sources: {pts: {type: 'geojson', data: points()}}, layers: [{id: 'pts', type: 'circle', source: 'pts'}]});
             await wait(2500);
             host.update({style: reactive(structuredClone(style)), renderer, view: {center: [-74.0065, 40.7085], zoom: 14}, attribution: false, onError: e => herrs.push(e.message),
-                extend: {sources: {pts: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}}, layers: [{id: 'pts', type: 'circle', source: 'pts'}]}, data: {pts: points()}});
+                sources: {pts: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}}, layers: [{id: 'pts', type: 'circle', source: 'pts'}], data: {pts: points()}});
             await wait(1500);
             step = 'queryFeatures of the main API, ' + renderer;
             out['main API ' + renderer] = {found: (await host.queryFeatures(undefined, {sources: ['pts']})).length, errs: herrs};

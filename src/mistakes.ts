@@ -3,7 +3,7 @@
  * `src/host.ts` loads this file on demand after the map has started, so the page script does not carry it.
  */
 import type {Map} from './map.ts';
-import type {FeatureOptions, MapSpec, StyleExtension} from './host.ts';
+import type {FeatureOptions, MapSpec} from './host.ts';
 import {templateSlots} from './markers.ts';
 import {maplibreMembers} from './maplibre-members.ts';
 
@@ -12,12 +12,12 @@ export interface Checked { map: Map; warned: Set<string>; spec(): MapSpec; /** T
 
 const texts: ((a: string, b: string) => string)[] = [
     /* 0 */ a => a + ': the container has height 0, so the map shows nothing. Give the container a height in CSS.',
-    /* 1 */ a => `interactiveLayers: the style has no layer "${a}". Write the id of a layer of the style or of "extend".`,
+    /* 1 */ a => `interactiveLayers: the style has no layer "${a}". Write the id of a layer of the style or of "layers".`,
     /* 2 */ (a, b) => `the layer "${a}" uses the source "${b}", which the map does not have. A key of "data" makes a source only while it is in "data": keep "${b}" in "data", or remove the layer.`,
     /* 3 */ a => `queryFeatures(): the style has no layer "${a}". In "layers", write the id of a layer of the style or of "extend".`,
     /* 4 */ a => `queryFeatures(): the style has no source "${a}". In "sources", write the id of a source of the style or of "extend".`,
-    /* 5 */ (a, b) => `extend: the layer "${a}" has before: "${b}", but the style has no layer "${b}", so the layer goes on top. Write the id of a layer of the style.`,
-    /* 6 */ (a, b) => `extend: the layer "${a}" uses the source "${b}", which the style does not have. Add "${b}" to "sources" of "extend", or give its GeoJSON as "${b}" in "data".`,
+    /* 5 */ (a, b) => `layers: the layer "${a}" has before: "${b}", but the style has no layer "${b}", so the layer goes on top. Write the id of a layer of the style.`,
+    /* 6 */ (a, b) => `layers: the layer "${a}" uses the source "${b}", which the style does not have. Add "${b}" to "sources", or give its GeoJSON as "${b}" in "data".`,
     /* 7 */ a => `markers: two marker layers have the id "${a}". Give each marker layer its own id.`,
     /* 8 */ a => `update(): "${a}" changed, but it is read only when the map is made. ${a === 'initialView' ? 'To move the map, change "view" or call moveTo().' : 'To change it, destroy the map and make a new one.'}`,
     /* 9 */ a => `queryFeatures(): ${a} is not a place. Write a point of the screen {x, y}, a position [lng, lat], or a rectangle [{x, y}, {x, y}].`,
@@ -28,7 +28,7 @@ const texts: ((a: string, b: string) => string)[] = [
     /* 14 */ (a, b) => `images: a layer gives the parameter "${a}" to the image "${b}", but that image has no slot {{${a}}}, so the parameter has no effect. Write {{${a}}} in the SVG of "${b}" in "images", or remove the parameter.`,
     /* 15 */ a => `markers: the marker layer "${a}" has no "image". Give the SVG in "images" of the description, and its name as "image" of the marker layer. (The fields "svg", "width" and "height" of a marker layer are gone.)`,
     /* 16 */ a => `markers: a marker layer has the image "${a}", and the map has no image with that name. Add "${a}" to "images" of the description, or correct "image" of the marker layer.`,
-    /* 17 */ (a, b) => `markers: the marker layer "${a}" has the id of a ${b} of the style, and takes its place. Give the marker layer an id that the style and "extend" do not have.`,
+    /* 17 */ (a, b) => `markers: the marker layer "${a}" has the id of a ${b} of the style, and takes its place. Give the marker layer an id that the style and "layers" do not have.`,
     /* 18 */ (a, b) => `markers: the marker layer "${a}" has before: "${b}", but the style has no layer "${b}", so the markers go on top. Write the id of a layer of the style.`,
     /* 19 */ (a, b) => `markers: the marker ${b} of the marker layer "${a}" has no position, so it is not drawn. Give each marker "lngLat" as [lng, lat].`,
     /* 20 */ () => 'The description has "glyphs". That field was removed and has no effect: the map loads the glyph files of the style. Remove "glyphs" from the description. To draw text with the fonts of the browser, remove "glyphs" from the style.',
@@ -59,7 +59,7 @@ const differ = (a: unknown, b: unknown) => a !== b && JSON.stringify(a) !== JSON
 /**
  * One check of a map. The kinds: 0, the container (`a` is the name that the user wrote), a second after the map is made; 1, the ids of the description, when
  * the map is idle; 2, a description (`a`) after the description before it (`b`, none for the first); 3, a query for
- * features at `a` with the options `b`; 4, the style `a` and the additions of `extend` (`b`) to it; 5, an image with
+ * features at `a` with the options `b`; 4, the style `a` and the `sources` and `layers` of the description (`b`) to it; 5, an image with
  * the name `a` that a marker layer has and the map does not have.
  */
 export function check(c: Checked, kind: number, a?: any, b?: any) {
@@ -123,7 +123,7 @@ export function check(c: Checked, kind: number, a?: any, b?: any) {
             if (m.before && !all.has(m.before)) warn(18, m.id, m.before);
         }
         if (!b) return;
-        const extend = b as StyleExtension, sources = {...a.sources, ...extend.sources}, ids = new Set<string>(a.layers.map((l: {id: string}) => l.id));
+        const extend = b as Pick<MapSpec, 'sources' | 'layers'>, sources = {...a.sources, ...extend.sources}, ids = new Set<string>(a.layers.map((l: {id: string}) => l.id));
         for (const {id, before, source} of extend.layers ?? []) {
             if (before && !ids.has(before)) warn(5, id, before);
             if (source && !sources[source as string] && !Object.hasOwn(c.spec().data ?? {}, source as string)) warn(6, id, source as string);

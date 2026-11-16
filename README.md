@@ -265,7 +265,7 @@ For a small number of markers with HTML content, use `map.overlay` (`@map-jr/map
 
 ### Show terrain, relief and contour lines
 
-With `@map-jr/map-jr-gl`, the elevation source, the layers and the terrain are additions to the style (`extend`):
+With `@map-jr/map-jr-gl`, the elevation source, the layers and the terrain are additions to the style (the fields `sources`, `layers` and `terrain`):
 
 ```js
 import {createMap} from '@map-jr/map-jr-gl';
@@ -273,17 +273,15 @@ import {createMap} from '@map-jr/map-jr-gl';
 const map = createMap(document.getElementById('map'), {
   style: 'https://tiles.openfreemap.org/styles/liberty',
   initialView: {center: [7.6586, 45.9763], zoom: 12.4, pitch: 60},
-  extend: {
-    sources: {
-      dem: {type: 'raster-dem', tiles: ['https://tiles.mapterhorn.com/{z}/{x}/{y}.webp'], encoding: 'terrarium', tileSize: 512, maxzoom: 12},
-      contours: {type: 'contour', source: 'dem', thresholds: {11: [100, 500], 12: [50, 200], 14: [20, 100]}},
-    },
-    layers: [
-      {id: 'relief', type: 'hillshade', source: 'dem'},
-      {id: 'contour-lines', type: 'line', source: 'contours', 'source-layer': 'contours'},
-    ],
-    terrain: {source: 'dem', exaggeration: 1.5},
+  sources: {
+    dem: {type: 'raster-dem', tiles: ['https://tiles.mapterhorn.com/{z}/{x}/{y}.webp'], encoding: 'terrarium', tileSize: 512, maxzoom: 12},
+    contours: {type: 'contour', source: 'dem', thresholds: {11: [100, 500], 12: [50, 200], 14: [20, 100]}},
   },
+  layers: [
+    {id: 'relief', type: 'hillshade', source: 'dem'},
+    {id: 'contour-lines', type: 'line', source: 'contours', 'source-layer': 'contours'},
+  ],
+  terrain: {source: 'dem', exaggeration: 1.5},
 });
 
 const metres = await map.queryElevation([7.6586, 45.9763]);
