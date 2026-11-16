@@ -267,6 +267,32 @@ A value of `images` is one of these:
   by identity: give a new object to replace the image.
 - An image of `images` is used in place of an image of the sprite of the style that has the same name.
 
+An image that is a URL is requested through `transformRequest` with the kind `Image`.
+
+### Images in the style
+
+A style can carry its own images in `metadata["map-jr:images"]`: an object by name with an SVG document or the URL
+of an image as text, or `{image, width, height, ...}` with such a text as `image`. The style specification permits
+any key in `metadata`, so MapLibre GL JS reads the style and ignores the images.
+
+```json
+{
+  "version": 8,
+  "metadata": {"map-jr:images": {"pin": "<svg viewBox=\"0 0 24 31\"><path fill=\"#d6453d\" d=\"M12 30C12 30 2 17 2 11a10 10 0 0 1 20 0c0 6-10 19-10 19z\"/></svg>"}},
+  "sources": {},
+  "layers": []
+}
+```
+
+- An image of `images` of the description is used in place of an image of the style with the same name, and an image
+  of the style in place of an image of the sprite.
+- The images belong to the style: a new style removes them, and an `update` that changes `images` keeps them.
+- A style comes from another party, so the map takes at most 200 images from it, each at most 200,000 characters of
+  text. An SVG of the style must not refer to another file (`href` or `url(...)` other than `#...` and `data:`). The
+  map leaves out an image that breaks one of these rules and reports an error (`onError`, `state.error`) with its name.
+- The server renderer (`renderToSVG`, `renderToImage`) draws the SVG images of the style, with the same rules.
+- The compat entry (`@map-jr/map-jr-gl/maplibre-compat`) does not read the key, as MapLibre GL JS does not.
+
 An image that does not load is an error of the map (`onError`, `state.error`) with the name of the image. The map
 draws the layer without that image.
 

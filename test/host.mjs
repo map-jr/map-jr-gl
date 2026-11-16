@@ -698,6 +698,34 @@ for (const renderer of ['worker', 'main']) {
             first === '#f0f' && again === 0 && replaced === '#0ff' && last === '#00f' && stays && !gone.has && !late && !after.includes('#00f') && gone.errors.length === 1 && gone.errors[0].startsWith('[map-jr-gl] images: the image "lost" did not load.'),
             JSON.stringify({first, again, replaced, last, stays, gone, late, after}));
 
+        // Images of the style in metadata["map-jr:images"] (#495): drawn, replaced by an image of `images` with the same
+        // name, kept by an update of `images`, removed with the style, and bounded. A URL goes through transformRequest.
+        await page.evaluate(() => {
+            const t = window.t, c = t.host.unproject({x: 450, y: 300});
+            t.imageErrors = []; t.kinds = [];
+            t.withImages = images => ({...t.style, metadata: {...t.style.metadata, 'map-jr:images': images}, sources: {...t.style.sources, spot: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: c}}}},
+                layers: [...t.style.layers, {id: 'spot', type: 'symbol', source: 'spot', layout: {'icon-image': 'square', 'icon-allow-overlap': true, 'icon-ignore-placement': true}}]});
+            t.host.update(t.spec = {...t.spec, style: t.withImages({square: t.square('#f80'), far: '/no-such-style-image.png', outside: '<svg viewBox="0 0 4 4"><image href="https://example.com/a.png"/></svg>'}),
+                transformRequest: (url, kind) => { if (url.includes('no-such-style-image')) t.kinds.push(kind); }, onError: e => t.imageErrors.push(e.message)});
+        });
+        const ofStyle = await shows('#f80');
+        await page.evaluate(() => { const t = window.t; t.host.update(t.spec = {...t.spec, images: {square: t.square('#0f0')}}); });
+        const overridden = await shows('#0f0');
+        await page.evaluate(() => { const t = window.t, {images: _, ...rest} = t.spec; t.host.update(t.spec = rest); });
+        const back = await shows('#f80');
+        const styleGone = await page.evaluate(async () => {
+            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), {transformRequest: _, onError: __, ...rest} = t.spec;
+            for (let i = 0; i < 30 && t.imageErrors.length < 2; i++) await wait(100);
+            const errors = [...t.imageErrors];
+            t.host.update(t.spec = {...rest, style: t.style});
+            for (let i = 0; i < 30 && t.host._map.hasImage('square'); i++) await wait(100);
+            return {errors, kinds: t.kinds, has: t.host._map.hasImage('square')};
+        });
+        check(`[${renderer}] images of the style in metadata["map-jr:images"]: drawn, replaced by images of the description, removed with the style, an SVG with a reference to another file is left out, and a URL goes through transformRequest as Image`,
+            ofStyle === '#f80' && overridden === '#0f0' && back === '#f80' && !styleGone.has && styleGone.kinds.includes('Image')
+            && styleGone.errors.some(e => e.startsWith('[map-jr-gl] the style: the image "outside"')) && styleGone.errors.some(e => e.startsWith('[map-jr-gl] the style: the image "far" did not load')),
+            JSON.stringify({ofStyle, overridden, back, styleGone}));
+
         // An image that is an SVG template: each feature gives the slots their values. Two squares, the second 60 pixels to the right.
         // (Of each square, the colour of its upper half and of its lower half is read.)
         const halves = async () => page.evaluate(async png => {
