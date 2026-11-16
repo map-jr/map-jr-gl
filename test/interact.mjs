@@ -94,12 +94,14 @@ for (const mode of ['main', 'worker']) {
             g.off('move', moved);
             const zoom = g.getZoom(), lat = g.getCenter().lat;
             // flyTo on the globe from New York to Tokyo at zoom 10 goes out to zoom 1.171 in MapLibre GL JS 6.17 in this view of
-            // 400 by 400 pixels (the curve does not depend on the speed).
+            // 400 by 400 pixels (the curve does not depend on the speed). The test reads the lowest zoom of the frames, so
+            // the flight is slow enough (about 6.4 s) that a gap of 100 ms between frames misses the lowest point by about
+            // 0.03, inside the tolerance. At speed 6 (1.6 s), frames 55 ms apart gave 1.3135 in CI (#517).
             g.jumpTo({center: [-74, 40.7], zoom: 10});
             await new Promise(r => { g.once('idle', r); setTimeout(r, 15000); });
             const zooms = [], zoomed = () => zooms.push(g.getZoom());
             g.on('move', zoomed);
-            await new Promise(r => { g.once('moveend', r); g.flyTo({center: [139.7, 35.7], zoom: 10, speed: 6}); });
+            await new Promise(r => { g.once('moveend', r); g.flyTo({center: [139.7, 35.7], zoom: 10, speed: 1.5}); });
             g.off('move', zoomed);
             return {s0, min: Math.min(...seen), max: Math.max(...seen), frames: seen.length, zoom, lat, flyMin: Math.min(...zooms)};
         });
@@ -1780,7 +1782,9 @@ for (const mode of ['main', 'worker']) {
             m.remove(); el.remove();
             return {a, b, c, same, url: spec.url, tiles: spec.tiles, message};
         }, mode);
-        await page.unroute('**/test-255.json'); await page.unroute(/\/t255[abc]\//);
+        // (The route of the tiles stays: a request that the map started before `remove()` can reach the server after
+        // an unroute, and its 404 is a page error, #517.)
+        await page.unroute('**/test-255.json');
         check(`[${mode}] raster source: setTiles and setUrl load tiles from the new URLs, and a wrong argument gives a message`,
             r.a && r.b && r.c && r.same && r.url === '/test-255.json' && !r.tiles && r.message.startsWith('[map-jr-gl] getSource("r").setTiles'), JSON.stringify(r));
     }
