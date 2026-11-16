@@ -18,7 +18,7 @@ const texts: ((a: string, b: string) => string)[] = [
     /* 4 */ a => `querySource(): the style has no source "${a}". Write the id of a source of the style or of "sources".`,
     /* 5 */ (a, b) => `layers: the layer "${a}" has before: "${b}", but the style has no layer "${b}", so the layer goes on top. Write the id of a layer of the style.`,
     /* 6 */ (a, b) => `layers: the layer "${a}" uses the source "${b}", which the style does not have. Add "${b}" to "sources", or give its GeoJSON as "${b}" in "data".`,
-    /* 7 */ a => `markers: two marker layers have the id "${a}". Give each marker layer its own id.`,
+    /* 7 */ () => '', // (a check of the removed marker layers, #499)
     /* 8 */ a => `update(): "${a}" changed, but it is read only when the map is made. ${a === 'initialView' ? 'To move the map, change "view" or call moveTo().' : 'To change it, destroy the map and make a new one.'}`,
     /* 9 */ a => `queryFeatures(): ${a} is not a place. Write a point of the screen {x, y}, a position [lng, lat], or a rectangle [{x, y}, {x, y}].`,
     /* 10 */ a => `querySource(): ${a} is not the id of a source. Write querySource("id", at, options) with the id of a source of the style.`,
@@ -26,11 +26,11 @@ const texts: ((a: string, b: string) => string)[] = [
     /* 12 */ (a, b) => b ? `querySource(): "${a}" is not an option of querySource, which reads the tile data of one source. To find what the style layers draw, call queryFeatures(at, {layers}).` : `queryFeatures(): "${a}" is not an option of queryFeatures, which finds what the style layers draw. To read the tile data of a source, call querySource(sourceId, at, options).`,
     /* 13 */ a => `${a}(): "radius" has an effect only in a query at a point or a position. This query ignores it.`,
     /* 14 */ (a, b) => `images: a layer gives the parameter "${a}" to the image "${b}", but that image has no slot {{${a}}}, so the parameter has no effect. Write {{${a}}} in the SVG of "${b}" in "images", or remove the parameter.`,
-    /* 15 */ a => `markers: the marker layer "${a}" has no "image". Give the SVG in "images" of the description, and its name as "image" of the marker layer. (The fields "svg", "width" and "height" of a marker layer are gone.)`,
-    /* 16 */ a => `markers: a marker layer has the image "${a}", and the map has no image with that name. Add "${a}" to "images" of the description, or correct "image" of the marker layer.`,
-    /* 17 */ (a, b) => `markers: the marker layer "${a}" has the id of a ${b} of the style, and takes its place. Give the marker layer an id that the style and "layers" do not have.`,
-    /* 18 */ (a, b) => `markers: the marker layer "${a}" has before: "${b}", but the style has no layer "${b}", so the markers go on top. Write the id of a layer of the style.`,
-    /* 19 */ (a, b) => `markers: the marker ${b} of the marker layer "${a}" has no position, so it is not drawn. Give each marker "lngLat" as [lng, lat].`,
+    /* 15 */ () => '', // (a check of the removed marker layers, #499)
+    /* 16 */ () => '', // (a check of the removed marker layers, #499)
+    /* 17 */ () => '', // (a check of the removed marker layers, #499)
+    /* 18 */ () => '', // (a check of the removed marker layers, #499)
+    /* 19 */ () => '', // (a check of the removed marker layers, #499)
     /* 20 */ () => 'The description has "glyphs". That field was removed and has no effect: the map loads the glyph files of the style. Remove "glyphs" from the description. To draw text with the fonts of the browser, remove "glyphs" from the style.',
     /* 21 */ a => `points(): the record ${a} has no position of two finite numbers, so it is left out. Make "lngLat" return [lng, lat] for each record.`,
     /* 22 */ a => `globalState: the value of "${a}" is not JSON (a function, a class instance, NaN or a cycle), so the style cannot read it as it is. Give a string, a number, a boolean, an array or a plain object.`,
@@ -63,8 +63,7 @@ const differ = (a: unknown, b: unknown) => a !== b && JSON.stringify(a) !== JSON
 /**
  * One check of a map. The kinds: 0, the container (`a` is the name that the user wrote), a second after the map is made; 1, the ids of the description, when
  * the map is idle; 2, a description (`a`) after the description before it (`b`, none for the first); 3, a query for
- * features at `a` with the options `b`; 6, a query of `querySource` at `a` with the options and the `id` of the source in `b`; 4, the style `a` and the `sources` and `layers` of the description (`b`) to it; 5, an image with
- * the name `a` that a marker layer has and the map does not have; 9, a feature with no id under the pointer in the layer `a`
+ * features at `a` with the options `b`; 6, a query of `querySource` at `a` with the options and the `id` of the source in `b`; 4, the style `a` and the `sources` and `layers` of the description (`b`) to it; 9, a feature with no id under the pointer in the layer `a`
  * with `hoverState`.
  */
 export function check(c: Checked, kind: number, a?: any, b?: any) {
@@ -98,14 +97,7 @@ export function check(c: Checked, kind: number, a?: any, b?: any) {
         known(1, spec.interactiveLayers);
         for (const l of map.getStyle()?.layers ?? []) { const src = (l as {source?: unknown}).source; if (typeof src === 'string' && !map.getSource(src) && !c.warned.has(`6 ${l.id} ${src}`)) warn(2, l.id, src); }
     } else if (kind === 2) {
-        const next = a as MapSpec, before = b as MapSpec | undefined, ids = new Set<string>();
-        for (const m of next.markers ?? []) {
-            if (ids.has(m.id)) warn(7, m.id);
-            ids.add(m.id);
-            if (!m.image) warn(15, m.id);
-            // (The first marker with no position. The data is read one time for each array.)
-            if (m.data !== before?.markers?.find(o => o.id === m.id)?.data) { const bad = m.data.findIndex(d => !Number.isFinite(+(d?.lngLat?.[0] as number)) || !Number.isFinite(+(d?.lngLat?.[1] as number))); if (bad >= 0) warn(19, m.id, String(bad)); }
-        }
+        const next = a as MapSpec, before = b as MapSpec | undefined;
         // (A template that is replaced by one with other slots: the layers of the map give it the same parameters.)
         if (before && differ(next.images, before.images) && c.ready()) slots(map.getStyle()?.layers ?? [], [], next.images);
         if (!before && 'glyphs' in next) warn(20);
@@ -121,16 +113,9 @@ export function check(c: Checked, kind: number, a?: any, b?: any) {
         if (c.ready()) known(4, [o.id], true);
         for (const k of ['layers', 'sources']) if (k in o) warn(12, k, 's');
         if (!place(a)) { if (o.radius !== undefined) warn(13, 'querySource'); if (o.geometry === false) warn(11, 'geometry'); if (o.zoom !== undefined) warn(11, 'zoom'); }
-    } else if (kind === 5) warn(16, a);
-    else if (kind === 9) warn(30, a);
+    } else if (kind === 9) warn(30, a);
     else {
         slots(a.layers, b?.layers);
-        // A marker layer is a source and a layer with its id: the id must be free, and `before` must name a layer.
-        const all = new Set<string>([...a.layers, ...b?.layers ?? []].map((l: {id: string}) => l.id)), named = {...a.sources, ...b?.sources};
-        for (const m of c.spec().markers ?? []) {
-            if (all.has(m.id)) warn(17, m.id, 'layer'); else if (named[m.id]) warn(17, m.id, 'source');
-            if (m.before && !all.has(m.before)) warn(18, m.id, m.before);
-        }
         if (!b) return;
         const extend = b as Pick<MapSpec, 'sources' | 'layers'>, sources = {...a.sources, ...extend.sources}, ids = new Set<string>(a.layers.map((l: {id: string}) => l.id));
         for (const {id, before, source} of extend.layers ?? []) {

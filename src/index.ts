@@ -8,7 +8,7 @@ export {addProtocol, removeProtocol, type ProtocolFunction} from './protocols.ts
 export {configure, supported, type LoadOptions} from './loader.ts';
 export type {FlyOptions, ImageOptions, RenderedFeature, RequestTransform, StyleLayer} from './map.ts';
 export type {LngLatBounds, LngLatBoundsInput, LngLatInput} from './lnglat.ts';
-export type {MarkerLayerOptions, MarkerInput, Anchor} from './markers.ts';
+export type {Anchor} from './markers.ts';
 export type {FontFaces} from './resolve.ts';
 export type {QueriedFeature} from './query.ts';
 export type {StyleSpecification, SourceSpecification, LayerSpecification, BackgroundLayerSpecification, FillLayerSpecification, FillExtrusionLayerSpecification, LineLayerSpecification, CircleLayerSpecification, HeatmapLayerSpecification, RasterLayerSpecification, HillshadeLayerSpecification, SymbolLayerSpecification, ExpressionSpecification, FilterSpecification, ProjectionSpecification, TerrainSpecification, LightSpecification} from './compat-types.ts';

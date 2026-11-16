@@ -11,7 +11,7 @@ export type {PaddingInput};
 export type {FeatureOptions, FeaturePlace, SourceOptions};
 import {createStore, type Readable} from './store.ts';
 import {Marker, Popup} from './overlays.ts';
-import {dataTypeError, extended, markerFeatures, markerStyle, withData, withMarkers, type Anchor, type MarkerLayerOptions} from './markers.ts';
+import {dataTypeError, extended, withData, type Anchor} from './markers.ts';
 import type {QueriedFeature} from './query.ts';
 import type {Control, ControlPosition} from './controls.ts';
 import type {Checked} from './mistakes.ts';
@@ -110,11 +110,6 @@ export interface MapSpec extends MapSetup {
      * place of an image of the sprite that has the same name.
      */
     images?: Record<string, ImageInput>;
-    /**
-     * Marker layers, each with an `id`. A marker layer is shorthand for a GeoJSON source and a symbol layer with that
-     * id, which draws the image `image` at each marker. A layer whose `data` is a new array gets the new data.
-     */
-    markers?: MarkerLayerOptions[];
     /** Controls from `@map-jr/map-jr-gl/controls`: `[navigation(), scale()]`. */
     controls?: ControlSpec[];
     /**
@@ -338,8 +333,8 @@ export interface MapHost {
     unproject(point: {x: number; y: number}): [number, number];
     /**
      * Puts an element of the page at a position of the map: a marker with your own content, a label, a popup. The
-     * element moves with the map. For many markers, use a marker layer (`markers` in the description): it is drawn
-     * on the canvas and is much faster.
+     * element moves with the map. For many points, use a symbol layer in `layers` with the points in `data`: it
+     * is drawn on the canvas and is much faster.
      */
     overlay(element: HTMLElement, options: OverlayOptions): MapOverlay;
     /** Calls `fn` for each event of that type (the types are the names of `MapEvents`). Returns a function that stops it. */
@@ -354,9 +349,6 @@ export interface MapHost {
 
 // (A field that `a` does not have is not compared: an owned view such as `{center, zoom}` equals a full view that the map reported.)
 const same = (a: ViewInput | undefined, b: ViewInput | undefined) => !!a && !!b && (['zoom', 'bearing', 'pitch'] as const).every(k => a[k] === undefined || a[k] === b[k]) && (!a.center || (a.center[0] === b.center?.[0] && a.center[1] === b.center?.[1]));
-
-/** What of the marker layers is a part of the style: the source and the layer of each one (not the data). */
-const markerStyles = (markers?: MarkerLayerOptions[]) => (markers ?? []).map(markerStyle);
 
 
 /** Stops a description with no style, with a message that says what to write (a caller in JavaScript has no type check). */
@@ -395,7 +387,7 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
     const checks = (): Promise<typeof import('./mistakes.ts')> => __DEV__ ? import('./mistakes.ts') : Promise.reject();
     const checked: Checked = {map, warned: new Set(), spec: () => now, ready: () => alive && styled && state.get().loaded};
     const check = (kind: number, a?: unknown, b?: unknown) => { if (__DEV__) checks().then(m => m.check(checked, kind, a, b), () => {}); };
-    // The data that each source has from the description: the GeoJSON of `data`, and the markers of a marker layer.
+    // The data that each source has from the description: the GeoJSON of `data`.
     const sent = new globalThis.Map<string, unknown>();
     // `cooperativeGestures`: the handler of the compat entry (cooperative-gestures.ts) loads on demand. Until it has
     // loaded, the gestures are blocked without the hint. `stop` removes the hint; `cooperating` is the wanted state.
@@ -437,7 +429,7 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
         const made = withData(extended(style, {...parts(next), layers: next.layers && copy(next.layers)}), wantedData, false, typeError);
         madeData.clear();
         for (const id in wantedData) if (!Object.hasOwn(style.sources ?? {}, id) && !Object.hasOwn(next.sources ?? {}, id)) madeData.add(id);
-        return withMarkers(made, next.markers);
+        return made;
     }}); };
     restyle(spec);
     // (The height of the container is read after a second, so that a container which gets its height a moment later gives no warning.)
@@ -518,19 +510,14 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
     // The GeoJSON data of `data`. A source gets its data when the style has it (a style from a URL comes later), and
     // again after a new style, which has the data of the style itself.
     const giveData = () => {
-        const give = (id: string, data: unknown, made?: (data: any) => unknown) => {
-            if (sent.get(id) === data) return;
+        for (const id in now.data) {
+            const data = now.data[id];
+            if (sent.get(id) === data) continue;
             const source = map.getSource(id) as {setData?: (data: unknown) => void} | undefined;
-            if (source?.setData) { sent.set(id, data); source.setData(made ? made(data) : data); }
-        };
-        for (const id in now.data) give(id, now.data[id]);
-        // (The markers of a marker layer are the data of its source: a point for each one.)
-        for (const m of now.markers ?? []) give(m.id, m.data, markerFeatures);
+            if (source?.setData) { sent.set(id, data); source.setData(data); }
+        }
     };
     map.on('styledata', giveData);
-    // An image that a marker layer names and that the map does not have. (A style can name other images that nothing
-    // has. An image from a URL, and an image of a later description, come a moment later: the check waits for them.)
-    map.on('styleimagemissing', e => setTimeout(() => { if (alive && !map.hasImage(e.id as string) && now.markers?.some(m => m.image === e.id)) check(5, e.id); }, 3000));
     // (At `idle`, and not when the style comes: an application can add a layer or a source itself in `load`.)
     map.on('idle', () => check(1));
 
@@ -546,8 +533,6 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
         if (differ(next.terrain, before.terrain) || ids(is, was) !== ids(was, is) || is.some((l, i) => !kept.includes(l) && i < is.indexOf(kept[kept.length - 1]))) return false;
         for (const id in ns) if (id in os ? differ(ns[id], os[id]) : map.getSource(id)) return false;
         for (const id in {...ns, ...os}) if (Object.hasOwn(baseSources, id)) return false;
-        // (A new layer would go above the layers of `markers`, which a new style puts on top.)
-        if (now.markers?.length && kept.length < is.length) return false;
         for (const l of kept) { const w = was.find(x => x.id === l.id)!; if (Object.keys({...l, ...w}).some(k => !keys.includes(k) && differ(l[k], w[k]))) return false; }
         for (const w of was) if (!kept.some(l => l.id === w.id)) map.removeLayer(w.id);
         for (const id in os) if (!(id in ns)) { sent.delete(id); map.removeSource(id); }
@@ -581,7 +566,7 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
             else if (!(id in (before.data ?? {})) && s.type !== 'geojson') typeError(id, s.type!);
         }
         // (After a new style the data waits for the `styledata` event: the engine must have the new style first.)
-        const restyled = !!before && (differ(next.style, before.style) || (['sources', 'layers', 'terrain'] as const).some(k => differ(next[k], before[k])) && !(styled && edit(parts(next), parts(before), differ)) || differ(markerStyles(next.markers), markerStyles(before.markers)));
+        const restyled = !!before && (differ(next.style, before.style) || (['sources', 'layers', 'terrain'] as const).some(k => differ(next[k], before[k])) && !(styled && edit(parts(next), parts(before), differ)));
         if (restyled) { state.set({idle: false}); sent.clear(); restyle(next); }
         else for (const id of madeData) if (!Object.hasOwn(next.data ?? {}, id)) { madeData.delete(id); sent.delete(id); map.removeSource(id); }
         // (A font of a name that is new or changed is loaded; the new style of a restyle has the fonts already. A font
@@ -631,7 +616,7 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
         if (differ(next.interactiveLayers, before?.interactiveLayers) || !next.hoverState !== !before?.hoverState) hover();
         check(2, next, before);
         now = next;
-        if ((next.data !== before?.data || next.markers !== before?.markers) && !restyled) giveData();
+        if (next.data !== before?.data && !restyled) giveData();
         busy();
     };
     apply(spec);
