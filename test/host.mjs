@@ -252,6 +252,38 @@ for (const renderer of ['worker', 'main']) {
         }, renderer).catch(e => ({error: String(e)}));
         check(`[${renderer}] globalState: the description replaces the default of the style, a change repaints without a style request, a name left out goes back to the default, a new style keeps the values`,
             JSON.stringify(globalState) === JSON.stringify({start: '#00f', changed: '#0f0', requests: 0, cleared: '#f00', restyled: '#0f0'}), JSON.stringify(globalState));
+        // 3b2. The global state property `color-scheme` (#492): the map sets it to the resolved scheme, a change of the
+        // scheme repaints a background and builds the tiles of an icon whose template parameter reads it, with no
+        // request, and a value of `globalState` with that name wins until the description leaves it out.
+        const colorState = await page.evaluate(async renderer => {
+            const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:100px;height:80px'}));
+            const pick = ['match', ['global-state', 'color-scheme'], 'dark', '#00f', '#f00'];
+            const style = {version: 8, state: {'color-scheme': {default: 'light'}}, sources: {p: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [0, 0]}}}}, layers: [
+                {id: 'bg', type: 'background', paint: {'background-color': pick}},
+                {id: 'icon', type: 'symbol', source: 'p', layout: {'icon-image': ['image', 'sq', {params: {fill: ['match', ['global-state', 'color-scheme'], 'dark', '#ff0', '#0f0']}}], 'icon-allow-overlap': true}},
+            ]};
+            const at = async (x, y) => {
+                await new Promise(r => setTimeout(r, 300));
+                const b = await host.toBlob(), bmp = await createImageBitmap(b), c = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}), g = c.getContext('2d');
+                g.drawImage(bmp, 0, 0);
+                return '#' + [...g.getImageData(bmp.width * x | 0, bmp.height * y | 0, 1, 1).data.slice(0, 3)].map(v => (v >> 4).toString(16)).join('');
+            };
+            const both = async () => (await at(0.1, 0.1)) + ' ' + (await at(0.5, 0.5));
+            const fetches = () => performance.getEntriesByType('resource').length;
+            let spec = {style, colorScheme: 'light', images: {sq: '<svg viewBox="0 0 30 30"><rect width="30" height="30" fill="{{fill}}"/></svg>'}, initialView: {center: [0, 0], zoom: 2}, renderer, attribution: false};
+            const host = t.lib.createMap(el, spec), out = {};
+            await new Promise(r => host.state.subscribe(s => s.idle, i => i && r()));
+            out.light = await both();
+            const before = fetches();
+            host.update(spec = {...spec, colorScheme: 'dark'}); out.dark = await both();
+            out.requests = fetches() - before;
+            host.update(spec = {...spec, globalState: {'color-scheme': 'light'}}); out.forced = await both();
+            host.update(spec = {...spec, globalState: {}}); out.back = await both();
+            host.destroy(); el.remove();
+            return out;
+        }, renderer).catch(e => ({error: String(e)}));
+        check(`[${renderer}] colorScheme sets the global state property color-scheme: a background and an icon template change with no request, and globalState of the same name wins`,
+            JSON.stringify(colorState) === JSON.stringify({light: '#f00 #0f0', dark: '#00f #ff0', requests: 0, forced: '#f00 #0f0', back: '#00f #ff0'}), JSON.stringify(colorState));
         // 3b2. `patch` (#483): it keeps the fields that `part` leaves out, `undefined` removes a field, and `description` is the last description.
         const patched = await page.evaluate(async renderer => {
             const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));

@@ -178,7 +178,8 @@ export interface MapSpec extends MapSetup {
     /**
      * The colours of the controls, the popup, the attribution and the message of a browser without WebGL 2: `'light'`
      * (the default), `'dark'`, or `'auto'`, which follows `prefers-color-scheme` of the browser and changes with it.
-     * The container has the class `map-jr-dark` while the scheme is dark. It does not change the style of the canvas.
+     * The container has the class `map-jr-dark` while the scheme is dark. The resolved scheme is also the global
+     * state property `color-scheme` of the style (`['global-state', 'color-scheme']`), unless `globalState` gives it.
      */
     colorScheme?: 'auto' | 'light' | 'dark';
     /**
@@ -495,10 +496,13 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
     const controls = new globalThis.Map<string, ReturnType<ControlSpec['create']>>();
     // `colorScheme`: the class `map-jr-dark` on the container. With `'auto'`, a listener of the media query, which `destroy()` removes.
     let wanted: MapSpec['colorScheme'], dark: MediaQueryList | undefined;
+    // The resolved scheme is also the global state property `color-scheme` (#492), unless `globalState` gives that name.
+    let forced = false, schemeSent: string | undefined;
     const paint = () => {
         const on = wanted === 'dark' || wanted === 'auto' && !!dark?.matches;
         map.getContainer().classList.toggle('map-jr-dark', on);
         state.set({colorScheme: on ? 'dark' : 'light'});
+        if (!forced && schemeSent !== (schemeSent = on ? 'dark' : 'light')) map.setGlobalStateProperty('color-scheme', schemeSent);
     };
     const scheme = (to: MapSpec['colorScheme']) => {
         wanted = to;
@@ -670,8 +674,10 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
         if (differ(next.padding, before?.padding)) map.jumpTo({padding: next.padding ?? 0});
         // (Before the style is there, the style gets the projection of the description when it comes: see `restyle`.)
         // (The map keeps these values across a new style; only the names whose values changed are set.)
+        forced = next.globalState?.['color-scheme'] != null;
+        if (forced) schemeSent = undefined;
         for (const name of new Set([...Object.keys(next.globalState ?? {}), ...Object.keys(before?.globalState ?? {})])) {
-            const value = next.globalState?.[name];
+            const value = next.globalState?.[name] ?? (name === 'color-scheme' ? (schemeSent = state.get().colorScheme) : undefined);
             if (differ(value, before?.globalState?.[name])) map.setGlobalStateProperty(name, value == null ? null : copy(value));
         }
         if (before && styled && !restyled && differ(next.projection, before.projection)) map.setProjection(next.projection ? copy(next.projection) : styleProjection);
