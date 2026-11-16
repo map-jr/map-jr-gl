@@ -261,7 +261,7 @@ const MapJrComponent = defineComponent({
         renderer: String as PropType<'auto' | 'worker' | 'main'>,
         fonts: Array as PropType<FontSource[]>,
         fontFamily: String,
-        /** `false`: text uses the fonts of the device, not the glyph files of the style. */
+        /** `false`: the user cannot move the map. */
         interactive: {type: Boolean, default: undefined},
         antialias: {type: Boolean, default: undefined},
         /** The nonce of a Content Security Policy with `style-src 'nonce-…'`, for the style sheet of the map. */

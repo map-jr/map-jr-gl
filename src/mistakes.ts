@@ -32,7 +32,8 @@ const texts: ((a: string, b: string) => string)[] = [
     /* 18 */ (a, b) => `markers: the marker layer "${a}" has before: "${b}", but the style has no layer "${b}", so the markers go on top. Write the id of a layer of the style.`,
     /* 19 */ (a, b) => `markers: the marker ${b} of the marker layer "${a}" has no position, so it is not drawn. Give each marker "lngLat" as [lng, lat].`,
     /* 20 */ () => 'The description has "glyphs". That field was removed and has no effect: the map loads the glyph files of the style. Remove "glyphs" from the description. To draw text with the fonts of the browser, remove "glyphs" from the style.',
-    /* 21 */ a => `globalState: the value of "${a}" is not JSON (a function, a class instance, NaN or a cycle), so the style cannot read it as it is. Give a string, a number, a boolean, an array or a plain object.`,
+    /* 21 */ a => `points(): the record ${a} has no position of two finite numbers, so it is left out. Make "lngLat" return [lng, lat] for each record.`,
+    /* 22 */ a => `globalState: the value of "${a}" is not JSON (a function, a class instance, NaN or a cycle), so the style cannot read it as it is. Give a string, a number, a boolean, an array or a plain object.`,
 ];
 
 /** The message with the number `code` for the names `a` and `b`. */
@@ -47,6 +48,10 @@ const isJson = (v: unknown, seen: unknown[] = []): boolean => {
     if (!Array.isArray(v) && proto !== Object.prototype && proto !== null) return false;
     return Object.values(v).every(x => isJson(x, [...seen, v]));
 };
+/** For `points()` (src/points.ts): the warning with the number `code` for `a`, once for each code on the page. */
+const pageWarned = new Set<number>();
+export const warnOnce = (code: number, a = '') => { if (!pageWarned.has(code)) { pageWarned.add(code); console.warn(mistake(code, a)); } };
+
 /** The fields of `MapSetup`, and `initialView`: a change of one of them in `update` has no effect. */
 const setupOnly = ['renderer', 'fonts', 'fontFamily', 'interactive', 'antialias', 'attribution', 'hash', 'nonce', 'initialView'] as const;
 const differ = (a: unknown, b: unknown) => a !== b && JSON.stringify(a) !== JSON.stringify(b);
@@ -99,7 +104,7 @@ export function check(c: Checked, kind: number, a?: any, b?: any) {
         // (A template that is replaced by one with other slots: the layers of the map give it the same parameters.)
         if (before && differ(next.images, before.images) && c.ready()) slots(map.getStyle()?.layers ?? [], [], next.images);
         if (!before && 'glyphs' in next) warn(20);
-        for (const name in next.globalState) if (next.globalState[name] !== before?.globalState?.[name] && !isJson(next.globalState[name])) warn(21, name);
+        for (const name in next.globalState) if (next.globalState[name] !== before?.globalState?.[name] && !isJson(next.globalState[name])) warn(22, name);
         if (before) for (const k of setupOnly) if (differ(next[k], before[k])) warn(8, k);
     } else if (kind === 3) {
         const o = b as FeatureOptions, place = !!a && !(Array.isArray(a) && typeof a[0] !== 'number');
