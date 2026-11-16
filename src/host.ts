@@ -132,7 +132,7 @@ export interface MapSpec extends MapSetup {
     padding?: PaddingInput;
     /**
      * Changes a request before the map makes it, as `transformRequest` of MapLibre GL JS: it gets the URL and the
-     * kind of resource (`Style`, `Source`, `Tile`, `Glyphs`, `SpriteJSON`, `SpriteImage` or `Image`) and returns
+     * kind of resource (`Style`, `Source`, `Tile`, `Glyphs`, `SpriteJSON`, `SpriteImage`, `Image` or `Font`) and returns
      * `{url, headers, credentials}`, or `undefined` to leave the request as it is. It also applies to the requests of
      * the tile workers. The map always calls the function of the last description.
      */
