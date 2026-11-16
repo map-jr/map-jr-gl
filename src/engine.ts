@@ -669,6 +669,10 @@ export class Engine {
             // The map is not idle while the sprite loads: its icons are part of the first complete picture.
             this.spritePending++;
             this.loadIcons(style.sprite).catch(err => this.emit({type: 'error', message: String(err.message)})).finally(() => { this.spritePending--; this.invalidate(); });
+        } else if (!style.sprite && this.spriteUrl) {
+            // (A style without a sprite: the icons of the sprite before are not drawn any more.)
+            this.spriteUrl = ''; this.sprite = null;
+            this.iconsRev++; this.iconsAll = true; this.styleVersion++;
         }
         const faces = JSON.stringify(style.fonts ?? []);
         if (style.fonts?.length && faces !== this.styleFonts) { this.styleFonts = faces; this.loadFonts(style.fonts); }
@@ -720,15 +724,16 @@ export class Engine {
      */
     private async loadIcons(spec: string) {
         const sheets: {id: string; url: string}[] = spec[0] === '[' ? JSON.parse(spec) : [{id: 'default', url: spec}];
-        const loaded = await Promise.all(sheets.map(async ({id, url}) => {
+        // (A sheet that does not load is an error, and the icons of the other sheets are drawn.)
+        const loaded = (await Promise.all(sheets.map(async ({id, url}) => {
             // (The two files of a sprite are asked for at the same time: the URL of the image does not depend on the JSON.)
             // (An answer that the page requested before the engine started is taken once; see `early` of the options.)
             const early = this.answered, got = (f: typeof fetch): typeof fetch => u => early?.get(String(u)) ?? f(u);
             const dense = this.dpr > 1, [sprite, res] = await Promise.all([loadSprite(url, dense, got(withTimeout(this.fetchAs('SpriteJSON')))), got(withTimeout(this.fetchAs('SpriteImage')))(url + (dense ? '@2x.png' : '.png'))]);
             if (!res.ok) throw new Error(`Failed to load sprite image ${sprite.image}: ${res.status}`);
             return {id, sprite, image: await createImageBitmap(await res.blob())};
-        }));
-        if (spec !== this.spriteUrl) return;
+        }).map(p => p.catch(err => { if (spec === this.spriteUrl) this.emit({type: 'error', message: String(err.message)}); })))).filter(l => !!l);
+        if (spec !== this.spriteUrl || !loaded.length) return;
         const icons: Sprite['icons'] = {}, width = Math.max(...loaded.map(l => l.image.width)), height = loaded.reduce((sum, l) => sum + l.image.height, 0);
         const all = loaded.length > 1 ? new OffscreenCanvas(width, height) : null, ctx = all?.getContext('2d');
         let top = 0;

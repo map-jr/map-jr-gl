@@ -75,13 +75,20 @@ export const isStylePair = (s: unknown): s is {light?: unknown; dark?: unknown} 
 export const styleFor = (s: unknown, dark: boolean): unknown => isStylePair(s) ? (dark ? s.dark ?? s.light : s.light ?? s.dark) : s;
 export const dataTypeError = (id: string, type: string) => new Error(`[map-jr-gl] data: the source "${id}" has the type "${type}", and only a GeoJSON source takes data. Use another key in "data", or another id for the source.`);
 
-/** A style with the `sources`, `layers` and `terrain` of the description. A `terrain` of `null` keeps that of the style. */
-export function extended(style: any, extend?: {sources?: Record<string, object>; layers?: ({id: string; before?: string} & Record<string, unknown>)[]; terrain?: object | null}) {
+/**
+ * A style with the `sources`, `layers`, `terrain` and `sprite` of the description. A `terrain` of `null` keeps that of
+ * the style. Each sprite of the description is added to the sprites of the style, in place of a sprite with the same id (#495).
+ */
+export function extended(style: any, extend?: {sources?: Record<string, object>; layers?: ({id: string; before?: string} & Record<string, unknown>)[]; terrain?: object | null; sprite?: {id: string; url: string}[] | null}) {
     if (!extend) return style;
     const layers = [...style.layers];
     for (const {before, ...layer} of extend.layers ?? []) {
         const at = before ? layers.findIndex(l => l.id === before) : -1;
         layers.splice(at < 0 ? layers.length : at, 0, layer);
     }
-    return {...style, sources: {...style.sources, ...extend.sources}, layers, ...(extend.terrain == null ? {} : {terrain: extend.terrain})};
+    const add = Array.isArray(extend.sprite) ? extend.sprite : [], own = typeof style.sprite === 'string' ? [{id: 'default', url: style.sprite}] : Array.isArray(style.sprite) ? style.sprite : [];
+    return {
+        ...style, sources: {...style.sources, ...extend.sources}, layers, ...(extend.terrain == null ? {} : {terrain: extend.terrain}),
+        ...(add.length ? {sprite: [...own.filter((s: {id: string}) => !add.some(a => a.id === s.id)), ...add.map(({id, url}) => ({id, url}))]} : {}),
+    };
 }

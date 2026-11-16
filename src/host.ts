@@ -138,6 +138,14 @@ export interface MapSpec extends MapSetup {
      * place of an image of the sprite that has the same name.
      */
     images?: Record<string, ImageInput>;
+    /**
+     * Sprites to add to the sprite of the style: `[{id: 'pins', url: 'https://example.com/sprites/pins'}]`, as the list
+     * form of `sprite` in the style specification. The URL has no extension: the map loads `url + '.json'` and
+     * `url + '.png'` (`@2x` on a screen with a pixel ratio above 1). An `icon-image` names an image of such a sprite as
+     * `id:name` (`pins:hotel`). A sprite here replaces a sprite of the style with the same id, and the id `default`
+     * replaces the sprite of a style whose `sprite` is one URL. A change of this field loads the style again.
+     */
+    sprite?: {id: string; url: string}[];
     /** Controls from `@map-jr/map-jr-gl/controls`: `[navigation(), scale()]`. */
     controls?: ControlSpec[];
     /**
@@ -174,7 +182,8 @@ export interface MapSpec extends MapSetup {
     /**
      * The colours of the controls, the popup, the attribution and the message of a browser without WebGL 2: `'light'`
      * (the default), `'dark'`, or `'auto'`, which follows `prefers-color-scheme` of the browser and changes with it.
-     * The container has the class `map-jr-dark` while the scheme is dark. It does not change the style of the canvas.
+     * The container has the class `map-jr-dark` while the scheme is dark. The resolved scheme is also the global
+     * state property `color-scheme` of the style (`['global-state', 'color-scheme']`), unless `globalState` gives it.
      */
     colorScheme?: 'auto' | 'light' | 'dark';
     /**
@@ -479,7 +488,9 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
         // the sources of the style before. It is given again when the new style is there: see `giveData`.)
         sent.clear();
         check(4, style, parts(next));
-        const made = withData(extended(style, {...parts(next), layers: next.layers && copy(next.layers)}), wantedData, false, typeError);
+        // (A URL of `sprite` that is relative is relative to the page, and the style has its own base.)
+        const sprite = Array.isArray(next.sprite) ? next.sprite.map(({id, url}) => ({id, url: new URL(url, document.baseURI).href})) : undefined;
+        const made = withData(extended(style, {...parts(next), layers: next.layers && copy(next.layers), sprite}), wantedData, false, typeError);
         madeData.clear();
         for (const id in wantedData) if (!Object.hasOwn(style.sources ?? {}, id) && !Object.hasOwn(next.sources ?? {}, id)) madeData.add(id);
         return made;
@@ -492,10 +503,13 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
     const controls = new globalThis.Map<string, ReturnType<ControlSpec['create']>>();
     // `colorScheme`: the class `map-jr-dark` on the container. With `'auto'`, a listener of the media query, which `destroy()` removes.
     let wanted: MapSpec['colorScheme'], dark: MediaQueryList | undefined;
+    // The resolved scheme is also the global state property `color-scheme` (#492), unless `globalState` gives that name.
+    let forced = false, schemeSent: string | undefined;
     const paint = () => {
         const on = wanted === 'dark' || wanted === 'auto' && !!dark?.matches;
         map.getContainer().classList.toggle('map-jr-dark', on);
         state.set({colorScheme: on ? 'dark' : 'light'});
+        if (!forced && schemeSent !== (schemeSent = on ? 'dark' : 'light')) map.setGlobalStateProperty('color-scheme', schemeSent);
         if (isStylePair(latest.style) && on !== styledDark && alive) { state.set({idle: false}); sent.clear(); restyle(latest); }
     };
     const scheme = (to: MapSpec['colorScheme']) => {
@@ -651,7 +665,7 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
             else if (!(id in (before.data ?? {})) && s.type !== 'geojson') typeError(id, s.type!);
         }
         // (After a new style the data waits for the `styledata` event: the engine must have the new style first.)
-        const restyled = !!before && (differ(next.style, before.style) || (['sources', 'layers', 'terrain'] as const).some(k => differ(next[k], before[k])) && !(styled && edit(parts(next), parts(before), differ)));
+        const restyled = !!before && (differ(next.style, before.style) || (['sources', 'layers', 'terrain'] as const).some(k => differ(next[k], before[k])) && !(styled && edit(parts(next), parts(before), differ)) || differ(next.sprite, before.sprite));
         if (restyled) { state.set({idle: false}); sent.clear(); restyle(next); }
         else for (const id of madeData) if (!Object.hasOwn(next.data ?? {}, id)) { madeData.delete(id); sent.delete(id); map.removeSource(id); }
         // (A font of a name that is new or changed is loaded; the new style of a restyle has the fonts already. A font
@@ -669,8 +683,10 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
         if (differ(next.padding, before?.padding)) map.jumpTo({padding: next.padding ?? 0});
         // (Before the style is there, the style gets the projection of the description when it comes: see `restyle`.)
         // (The map keeps these values across a new style; only the names whose values changed are set.)
+        forced = next.globalState?.['color-scheme'] != null;
+        if (forced) schemeSent = undefined;
         for (const name of new Set([...Object.keys(next.globalState ?? {}), ...Object.keys(before?.globalState ?? {})])) {
-            const value = next.globalState?.[name];
+            const value = next.globalState?.[name] ?? (name === 'color-scheme' ? (schemeSent = state.get().colorScheme) : undefined);
             if (differ(value, before?.globalState?.[name])) map.setGlobalStateProperty(name, value == null ? null : copy(value));
         }
         if (before && styled && !restyled && differ(next.projection, before.projection)) map.setProjection(next.projection ? copy(next.projection) : styleProjection);

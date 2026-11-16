@@ -132,6 +132,7 @@ The library compares each field with the field of the last description:
 | `view`, `onViewChange` | A view that your application owns. See below. |
 | `data` | GeoJSON data for GeoJSON sources, by the id of the source. A key with no source of that id makes a GeoJSON source with the default options. See below. |
 | `images` | Images for the style layers, by name: an SVG document, the URL of an image, or `{image, width, height}`. See [Images for style layers](#images-for-style-layers). |
+| `sprite` | Sprites to add to the sprite of the style: `[{id: 'pins', url: 'https://example.com/sprites/pins'}]`, the list form of `sprite` in the style specification. An `icon-image` names an image of such a sprite as `id:name`. See [A sprite of the description](#a-sprite-of-the-description). |
 | `controls` | A list of controls. See below. |
 | `projection` | The projection in place of the property `projection` of the style, with the same shape: `{type: 'globe'}`, `{type: 'vertical-perspective'}` or `{type: 'mercator'}`. Without the field, or with `null`, the map uses the projection of the style. A change in `update()` switches the projection without loading the style again, and a new style gets the projection of the description too. `globe` draws the map on a sphere and turns into Mercator between zoom 11 and 12, as in MapLibre GL JS; `vertical-perspective` keeps the sphere at every zoom. On the globe the map draws fills, lines, circles, heatmaps, raster and hillshade layers, symbols and the background (on the sphere only; the space around it stays transparent). 3D terrain, `fill-extrusion` layers and the atmosphere of `sky` are not drawn on the globe yet: the map writes one warning, and they show past zoom 12. `maxBounds` has no effect on the globe. A drag on the globe turns it as in MapLibre GL JS: each move turns the sphere from the place under the last position of the pointer to the place under the new one, and the bearing stays. Near the edge of the globe and near a pole, the place under the pointer drifts away from it, as in MapLibre GL JS, and the centre can pass 85° north or south while the area around the pole fits in the view. On the globe, a new centre without a zoom (`moveTo`, a drag, the fling after it) keeps the size of the globe on the screen, and the zoom changes with the latitude instead (from zoom 1.5 at the equator to -0.048 at 70°N), as in MapLibre GL JS. A `zoom` that is given is used as it is, and the arrow keys keep the zoom. A switch from Mercator to the globe shows the globe when the tiles of the view have been built again for it, or after 1 s at most; until then the map shows Mercator. A label whose anchor turns behind the globe is not drawn from that frame on, also between two placements of the labels. The page loads the code of the globe (about 2 KB gzip) only for a map with a globe. |
 | `globalState` | Values for the `global-state` expressions of the style, by name: `{season: 'winter'}`. A value here is used in place of the default of the same name in `state` of the style. A change in `update()` sets only the names whose values changed and repaints the layers that read them, without loading the style again. A name that the new description leaves out, or gives `null`, goes back to the default of the style. A new style gets the values of the description. A value is JSON (a string, number, boolean, array or plain object); the development build warns once for a value that is not, such as a function or `NaN`. The default is no values. |
@@ -141,7 +142,7 @@ The library compares each field with the field of the last description:
 | `onError` | A function that is called with each error of the map (an `Error`): a style or a source that does not load, a mistake in a style edit, a failure of the renderer. Use it to send errors to your error tracker. Without it, the map writes each error to the console with `console.error`. |
 | `minZoom`, `maxZoom`, `maxPitch`, `maxBounds` | The limits of the camera. `maxBounds` keeps the whole view inside the bounds, as MapLibre GL JS does: the canvas less the padding, with no regard to bearing and pitch. When the bounds are smaller than that view, the zoom rises until they fill it. A west edge east of the east edge (for example `[[150, -50], [-120, 10]]`) gives bounds that cross the antimeridian. |
 | `cooperativeGestures` | `true`: the wheel zooms the map only with Ctrl (⌘ on a Mac), one finger scrolls the page and two fingers move the map. A blocked gesture shows a hint over the map. The default is `false`. `update()` can turn it on and off. |
-| `colorScheme` | The colours of the controls, the popup, the attribution and the message of a browser without WebGL 2: `'light'` (the default), `'dark'` or `'auto'`. `'auto'` follows the media query `prefers-color-scheme` and changes while the page is open. An application with its own theme switch passes `'light'` or `'dark'`. While the scheme is dark, the container has the class `map-jr-dark`. The dark colours have no specificity, so a rule of the application and the custom properties `--map-control-*`, `--map-attribution-background` and `--map-popup-*` still win. `update()` changes it. It does not change what the canvas draws. A value that is not one of the three gives the light colours, and the development build warns once. |
+| `colorScheme` | The colours of the controls, the popup, the attribution and the message of a browser without WebGL 2: `'light'` (the default), `'dark'` or `'auto'`. `'auto'` follows the media query `prefers-color-scheme` and changes while the page is open. An application with its own theme switch passes `'light'` or `'dark'`. While the scheme is dark, the container has the class `map-jr-dark`. The dark colours have no specificity, so a rule of the application and the custom properties `--map-control-*`, `--map-attribution-background` and `--map-popup-*` still win. `update()` changes it. The map also sets the global state property `color-scheme` of the style to the resolved scheme, so that a style can follow it: see [Dark mode](#dark-mode). A value that is not one of the three gives the light colours, and the development build warns once. |
 | `cursor` | The mouse cursor over the map. Without it, the cursor is a pointer over a feature of `interactiveLayers`. |
 | `transformRequest` | A function that changes a request before the map makes it, as `transformRequest` of MapLibre GL JS. It gets the URL and the kind of resource (`Style`, `Source`, `Tile`, `Glyphs`, `SpriteJSON`, `SpriteImage`, `Image` or `Font`) and returns `{url, headers, credentials}`, or `undefined` to leave the request as it is. It applies to the requests of the tile workers too. The map calls the function of the last description, so a function that is made again in each render works. Example: `transformRequest: url => url.startsWith('https://api.os.uk/') ? {url: url + '&key=' + KEY} : undefined`. |
 | `padding` | Space in CSS pixels at the sides of the map that the view keeps free, for example under a side panel: one number for all sides, or `{top, right, bottom, left}` (a side that is left out is 0). The centre of the view is the centre of the rest of the map. The default is 0. A change moves the camera at once (as `setPadding` of MapLibre GL JS). It is not the `padding` of `initialView` and `moveTo`, which is space around `bounds` for one fit. |
@@ -180,8 +181,8 @@ createMap('map', {
 
 A change of scheme is a new style: the map requests the other style (for a URL) and draws the map from the start.
 `sources`, `layers`, `terrain`, `data`, `images` and the view of the description stay, as with each new
-`style`. To change the colours without a request, use one style that reads the global state, and set a property
-with `globalState`. In `update()`, a pair with the same content is the same style. An object that has `layers` is a
+`style`. To change the colours without a request, use one style that reads the global state property `color-scheme`: see
+[One style for both schemes](#one-style-for-both-schemes). In `update()`, a pair with the same content is the same style. An object that has `layers` is a
 style, and not a pair. A pair with only one of the two values uses that style in both schemes, and the development
 build warns once; so does an object that is neither a style nor a pair. The server renderer
 (`@map-jr/map-jr-gl/server`) cannot read the scheme of the browser: it uses `dark` when its option `colorScheme` is
@@ -206,6 +207,7 @@ work for a style from a URL as for a style object:
 | `sources` | Merged with the sources of the style by id. A source of the description replaces the source of the style with the same id. |
 | `layers` | Added to the layers of the style. A layer with `before` goes below the layer with that id, and a layer without it goes on top. |
 | `terrain` | Replaces the terrain of the style. `null` or no field means the terrain of the style. |
+| `sprite` | Added to the sprites of the style. A sprite with the id of a sprite of the style replaces it. |
 
 `images` and `globalState` are merged by key in the same way (see their rows in [The description](#the-description)),
 and `projection` replaces the projection of the style. A style object that your application writes itself needs
@@ -322,6 +324,37 @@ any key in `metadata`, so MapLibre GL JS reads the style and ignores the images.
 
 An image that does not load is an error of the map (`onError`, `state.error`) with the name of the image. The map
 draws the layer without that image.
+
+### A sprite of the description
+
+The field `sprite` adds sprites to the sprite of the style. It has the list form of `sprite` in the style
+specification: a list of `{id, url}`. An `icon-image` names an image of such a sprite as `id:name`, as MapLibre GL JS
+names an image of a sprite with an id other than `default`.
+
+```js
+import {createMap} from '@map-jr/map-jr-gl';
+
+const map = createMap(document.getElementById('map'), {
+  style: 'https://tiles.openfreemap.org/styles/liberty',
+  initialView: {center: [-74.006, 40.7128], zoom: 12},
+  sprite: [{id: 'maki', url: 'https://demotiles.maplibre.org/styles/osm-bright-gl-style/sprite'}],
+  sources: {places: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [-74.006, 40.7128]}}}},
+  layers: [{id: 'places', type: 'symbol', source: 'places', layout: {'icon-image': 'maki:circle_11'}}],
+});
+```
+
+- The URL has no extension. The map loads `url + '.json'` and `url + '.png'`, and `url + '@2x.json'` and
+  `url + '@2x.png'` on a screen with a pixel ratio above 1. Both requests go through `transformRequest` with the kinds
+  `SpriteJSON` and `SpriteImage`. A relative URL is relative to the page.
+- A sprite of a style is one URL (the id `default`) or a list. A sprite of the description replaces a sprite of the
+  style with the same id, so the id `default` replaces the sprite of a style whose `sprite` is one URL.
+- An image of `images` or of the style is used in place of an image of a sprite with the same name (`pins:hotel`).
+- A sprite that does not load is an error of the map (`onError`, `state.error`) with its URL. The map draws the images
+  of the other sprites.
+- A change of `sprite` in `update()` loads the style again. A new style gets the sprites of the description.
+- The server renderer (`renderToSVG`, `renderToImage`) has the option `sprite` with the same rule. There, a relative
+  URL is relative to the URL of the style, and a sprite that does not load rejects the render, as the sprite of the
+  style does.
 
 ### An image that the style asks for
 
@@ -474,6 +507,65 @@ map.update({style, data: {places}});
 
 A record whose position is not two finite numbers (a string such as `'2.3'` included) is left out. The development
 build warns once on the page with the index of the first such record; the production build does not warn.
+
+## Dark mode
+
+`colorScheme` of the description gives the colours of the controls and the popup: `'light'` (the default), `'dark'`,
+or `'auto'`, which follows the media query `prefers-color-scheme`. A map that follows the browser writes
+`colorScheme: 'auto'`. The canvas follows the scheme in one of two ways.
+
+| Way | What a change of scheme costs | Use it when |
+|---|---|---|
+| One style that reads the global state property `color-scheme` | No request. The map repaints the layers that read the property. | You write or can edit the style. |
+| `style: {light, dark}`, two styles | A request of the other style. The map draws from the start. | A provider publishes a light style and a dark style. |
+
+### One style for both schemes
+
+The map sets the global state property `color-scheme` of the style to `'light'` or `'dark'`, the resolved scheme
+(`state.colorScheme`), when the map is made and at each change of the scheme. Without `colorScheme` in the
+description, the property is `'light'`. An expression of the style reads it
+with `['global-state', 'color-scheme']`:
+
+```js
+import {createMap} from '@map-jr/map-jr-gl';
+
+const scheme = (dark, light) => ['match', ['global-state', 'color-scheme'], 'dark', dark, light];
+const pin = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="{{fill}}"/></svg>';
+const map = createMap(document.getElementById('map'), {
+  style: {
+    version: 8,
+    state: {'color-scheme': {default: 'light'}},
+    sources: {spot: {type: 'geojson', data: {type: 'Point', coordinates: [2.35, 48.85]}}},
+    layers: [
+      {id: 'background', type: 'background', paint: {'background-color': scheme('#1b1b1d', '#f2efe9')}},
+      {id: 'spot', type: 'symbol', source: 'spot', layout: {'icon-image': ['image', 'pin', {params: {fill: scheme('#ffd54a', '#d6453d')}}]}},
+    ],
+  },
+  images: {pin},
+  initialView: {center: [2.35, 48.85], zoom: 4},
+  colorScheme: 'auto',
+});
+```
+
+- A change of scheme requests neither the style nor tiles. A paint property that reads the property is applied
+  when the map draws. A layout property, a filter, a value that varies per feature and a parameter of a template
+  (see [An image that is a template](#an-image-that-is-a-template)) are part of the tiles: the map builds the tiles of
+  the sources of such layers again, from the data that it has.
+- A style that does not read the property draws as before. A change of scheme then rebuilds no tile.
+- A value of `globalState` of the description with the name `color-scheme` wins over the scheme, for example
+  `globalState: {'color-scheme': 'dark'}` for a map that is always dark while the controls follow the page. When the
+  description leaves that name out again, the property follows the scheme again.
+- Give the property a default in `state` of the style, as in the example. MapLibre GL JS and the compat entry
+  (`@map-jr/map-jr-gl/maplibre-compat`) do not set it, and they show the style with that default.
+- A style that already uses a state property `color-scheme` for something else gets the value of the map. Rename the
+  property of the style, or give the value in `globalState`.
+
+### Two styles
+
+`style` also accepts `{light, dark}`, where each value is a style object or the URL of a style. The map uses the
+style of the resolved scheme, and a change of scheme requests the other style and draws the map from the start.
+[A light and a dark style](#a-light-and-a-dark-style) has an example and the details: what stays, the comparison in
+`update()`, the messages of the development build and the server renderer.
 
 ## Controls
 

@@ -1,10 +1,18 @@
 // Tests of the main API (`createMap`, see src/host.ts) in a real browser: node test/host.mjs (demo server running)
 import {launch} from './launch.mjs';
 import {watchdog} from './watchdog.mjs';
+import {crc32, deflateSync} from 'node:zlib';
 
 const browser = await launch();
 const origin = `http://localhost:${process.env.PORT || 8080}`; // (the demo server; PORT lets two runs use two servers)
 let failed = 0;
+/** A PNG of `size` by `size` pixels in one colour ([r, g, b]). */
+const solidPNG = (size, [r, g, b]) => {
+    const chunk = (type, data) => { const len = Buffer.alloc(4), crc = Buffer.alloc(4), body = Buffer.concat([Buffer.from(type), data]); len.writeUInt32BE(data.length); crc.writeUInt32BE(crc32(body)); return Buffer.concat([len, body, crc]); };
+    const head = Buffer.alloc(13); head.writeUInt32BE(size, 0); head.writeUInt32BE(size, 4); head[8] = 8; head[9] = 2;
+    const row = Buffer.concat([Buffer.from([0]), Buffer.alloc(size * 3).map((_, i) => [r, g, b][i % 3])]);
+    return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', head), chunk('IDAT', deflateSync(Buffer.concat(Array(size).fill(row)))), chunk('IEND', Buffer.alloc(0))]);
+};
 // TIMINGS=1 prints, before each check, the seconds since the previous check (to find the slow ones).
 let lastCheck = performance.now();
 const check = (name, ok, detail = '') => {
@@ -244,6 +252,38 @@ for (const renderer of ['worker', 'main']) {
         }, renderer).catch(e => ({error: String(e)}));
         check(`[${renderer}] globalState: the description replaces the default of the style, a change repaints without a style request, a name left out goes back to the default, a new style keeps the values`,
             JSON.stringify(globalState) === JSON.stringify({start: '#00f', changed: '#0f0', requests: 0, cleared: '#f00', restyled: '#0f0'}), JSON.stringify(globalState));
+        // 3b2. The global state property `color-scheme` (#492): the map sets it to the resolved scheme, a change of the
+        // scheme repaints a background and builds the tiles of an icon whose template parameter reads it, with no
+        // request, and a value of `globalState` with that name wins until the description leaves it out.
+        const colorState = await page.evaluate(async renderer => {
+            const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:100px;height:80px'}));
+            const pick = ['match', ['global-state', 'color-scheme'], 'dark', '#00f', '#f00'];
+            const style = {version: 8, state: {'color-scheme': {default: 'light'}}, sources: {p: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [0, 0]}}}}, layers: [
+                {id: 'bg', type: 'background', paint: {'background-color': pick}},
+                {id: 'icon', type: 'symbol', source: 'p', layout: {'icon-image': ['image', 'sq', {params: {fill: ['match', ['global-state', 'color-scheme'], 'dark', '#ff0', '#0f0']}}], 'icon-allow-overlap': true}},
+            ]};
+            const at = async (x, y) => {
+                await new Promise(r => setTimeout(r, 300));
+                const b = await host.toBlob(), bmp = await createImageBitmap(b), c = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}), g = c.getContext('2d');
+                g.drawImage(bmp, 0, 0);
+                return '#' + [...g.getImageData(bmp.width * x | 0, bmp.height * y | 0, 1, 1).data.slice(0, 3)].map(v => (v >> 4).toString(16)).join('');
+            };
+            const both = async () => (await at(0.1, 0.1)) + ' ' + (await at(0.5, 0.5));
+            const fetches = () => performance.getEntriesByType('resource').length;
+            let spec = {style, colorScheme: 'light', images: {sq: '<svg viewBox="0 0 30 30"><rect width="30" height="30" fill="{{fill}}"/></svg>'}, initialView: {center: [0, 0], zoom: 2}, renderer, attribution: false};
+            const host = t.lib.createMap(el, spec), out = {};
+            await new Promise(r => host.state.subscribe(s => s.idle, i => i && r()));
+            out.light = await both();
+            const before = fetches();
+            host.update(spec = {...spec, colorScheme: 'dark'}); out.dark = await both();
+            out.requests = fetches() - before;
+            host.update(spec = {...spec, globalState: {'color-scheme': 'light'}}); out.forced = await both();
+            host.update(spec = {...spec, globalState: {}}); out.back = await both();
+            host.destroy(); el.remove();
+            return out;
+        }, renderer).catch(e => ({error: String(e)}));
+        check(`[${renderer}] colorScheme sets the global state property color-scheme: a background and an icon template change with no request, and globalState of the same name wins`,
+            JSON.stringify(colorState) === JSON.stringify({light: '#f00 #0f0', dark: '#00f #ff0', requests: 0, forced: '#f00 #0f0', back: '#00f #ff0'}), JSON.stringify(colorState));
         // 3b2. `patch` (#483): it keeps the fields that `part` leaves out, `undefined` removes a field, and `description` is the last description.
         const patched = await page.evaluate(async renderer => {
             const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
@@ -750,6 +790,37 @@ for (const renderer of ['worker', 'main']) {
             ofStyle === '#f80' && overridden === '#0f0' && back === '#f80' && !styleGone.has && styleGone.kinds.includes('Image')
             && styleGone.errors.some(e => e.startsWith('[map-jr-gl] the style: the image "outside"')) && styleGone.errors.some(e => e.startsWith('[map-jr-gl] the style: the image "far" did not load')),
             JSON.stringify({ofStyle, overridden, back, styleGone}));
+
+        // A sprite of the description (#495): added to the sprite of the style, its images named `id:name` in icon-image,
+        // a relative URL is relative to the page, a sprite that does not load is an error and the other sprite is drawn,
+        // and a description without it removes it.
+        await page.route(/\/test-sprite-495\//, route => {
+            const path = new URL(route.request().url()).pathname;
+            if (path.includes('missing')) return route.fulfill({status: 404, body: ''});
+            if (path.endsWith('.json')) return route.fulfill({contentType: 'application/json', body: JSON.stringify({box: {x: 0, y: 0, width: 40, height: 40, pixelRatio: 1}})});
+            route.fulfill({contentType: 'image/png', body: solidPNG(40, [0x88, 0x00, 0xff])});
+        });
+        await page.evaluate(() => {
+            const t = window.t, c = t.host.unproject({x: 450, y: 300});
+            t.imageErrors = [];
+            t.host.update(t.spec = {...t.spec, style: {...t.style, sources: {...t.style.sources, spot: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: c}}}},
+                layers: [...t.style.layers, {id: 'spot', type: 'symbol', source: 'spot', layout: {'icon-image': 'pins:box', 'icon-allow-overlap': true, 'icon-ignore-placement': true}}]},
+            sprite: [{id: 'pins', url: '/test-sprite-495/pins'}, {id: 'gone', url: '/test-sprite-495/missing'}], onError: e => t.imageErrors.push(e.message)});
+        });
+        const ofSprite = await shows('#80f');
+        const spriteGone = await page.evaluate(async () => {
+            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), {sprite: _, ...rest} = t.spec;
+            for (let i = 0; i < 30 && !t.imageErrors.length; i++) await wait(100);
+            const errors = [...t.imageErrors];
+            t.host.update(t.spec = rest);
+            return errors;
+        });
+        await page.waitForTimeout(1500);
+        const withoutSprite = (await colourAt()).join(' ');
+        await page.evaluate(() => { const t = window.t, {onError: _, ...rest} = t.spec; t.host.update(t.spec = {...rest, style: t.style}); });
+        check(`[${renderer}] a sprite of the description: added to the sprite of the style and named id:name, a sprite that does not load is an error, and the sprite goes with the field`,
+            ofSprite === '#80f' && spriteGone.some(e => e.includes('test-sprite-495/missing')) && !withoutSprite.includes('#80f'),
+            JSON.stringify({ofSprite, spriteGone, withoutSprite}));
 
         // An image that is an SVG template: each feature gives the slots their values. Two squares, the second 60 pixels to the right.
         // (Of each square, the colour of its upper half and of its lower half is read.)
