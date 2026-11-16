@@ -94,7 +94,7 @@ export const CONTROL_CSS = `
 & :where(.map-jr-ctrl-attrib:not(.map-jr-compact),.map-jr-ctrl-scale){background:var(--map-attribution-background,var(--map-jr-bg));color:var(--map-control-color,var(--map-jr-fg))}
 & :where(.map-jr-ctrl-attrib:not(.map-jr-compact)){border-top-left-radius:calc(var(--map-jr-rr)/2)}
 & :where(.map-jr-ctrl-attrib a){text-decoration-color:color-mix(in oklab,currentColor 35%,transparent);&:hover{text-decoration-color:currentColor}}
-& :where(.map-jr-compact .map-jr-ctrl-attrib-button){display:grid;place-items:center;top:50%!important;translate:0 -50%;font:600 15px/1 system-ui,sans-serif}
+& :where(.map-jr-compact .map-jr-ctrl-attrib-button){display:grid;place-items:center;top:50%!important;translate:0 -50%;font:600 12px/1 system-ui,sans-serif}
 & :where(.map-jr-ctrl-attrib.map-jr-compact){max-width:none!important}
 & :where(.map-jr-ctrl-scale){display:flex;align-items:center;gap:6px;width:auto!important;border:0;border-radius:calc(var(--map-jr-rr)/2) calc(var(--map-jr-rr)/2) 0 0;margin-bottom:-10px;padding:2px 6px;font-size:11px;line-height:1.4;&::after{content:"";width:var(--map-jr-scale);height:5px;margin-top:3px;border:1.5px solid;border-top:0;box-sizing:border-box}}
 &:has(.map-jr-compact) :where(.map-jr-ctrl-scale){margin-bottom:0;border-radius:calc(var(--map-jr-rr)/2)}
