@@ -93,8 +93,30 @@ test one status:
 | `match` | 1% of the pixels or less are different from the expected image. |
 | `near` | More than 1% and at most 5% of the pixels are different. |
 | `differ` | More than 5% of the pixels are different. |
-| `error` | The map did not become idle in 8 seconds, or the test threw an error. |
-| `skipped` | The test scripts the map (`operations`) or has a pixel ratio other than 1. The run does not draw it. |
+| `error` | The test did not end in 8 seconds plus the time of its own waits, or the test threw an error. A method of an operation that the map does not have is such an error. |
+| `skipped` | The run cannot do the test, and does not draw it. The test has the operation `addCustomLayer`, `updateFakeCanvas` or `pauseTiles`, or it compares a part of the canvas only (`reportWidth`), or its `setStyle` loads a style with tiles of the package `@mapbox/mvt-fixtures`, which this repository does not install. |
+
+A test can script the map: `metadata.test.operations` of its style is a list of operations, and each operation is
+the name of a method of the map with its arguments, or one of the words in the table below. The run applies them
+after the first `idle` event, in the order and with the arguments of the test harness of MapLibre GL JS
+(`applyOperations` in `test/integration/render/render.test.ts` of the checkout in `.cache/maplibre-gl-js`). It then
+lets the map draw two frames and takes the image.
+
+| Operation | What the run does |
+|---|---|
+| `wait` | Waits for a `render` event until `map.loaded()` is true. |
+| `wait` with a number | Waits that number of milliseconds, and then calls `map._render()`. |
+| `idle` | Waits for the next `idle` event. The wait also ends when the map fired `idle` after the last change, or when the map is loaded and does not move after two frames. |
+| `sleep` with a number | Waits that number of milliseconds. |
+| `addImage` | Loads the image from the assets of the tests and calls `map.addImage` with it. |
+| `setStyle` | Calls `map.setStyle` with the style and `{localIdeographFontFamily: false}`. A style that is an object gets the fonts of the run (`font-faces`). |
+| Another name | Calls the method of the map that has this name. |
+
+A test with `metadata.test.pixelRatio` runs in a page that has this device pixel ratio, and the map gets the option
+`pixelRatio`. The run compares at the size of the expected image, which is the size of the test times the pixel
+ratio.
+
+The run prints the count of the skipped tests for each reason in a line that starts with `Skipped, by reason:`.
 
 The first line that the run prints has the totals. Its count for "match or are near" includes the tests that match,
 so it is the number of tests where 5% of the pixels or less are different. Each of the two counts has its percent
