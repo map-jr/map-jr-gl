@@ -1056,7 +1056,7 @@ for (const renderer of ['worker', 'main']) {
             const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {id: 'lit', style: 'position:fixed;left:0;top:0;width:200px;height:150px;z-index:99'}));
             const square = (id, w) => ({type: 'Feature', id, properties: {}, geometry: {type: 'Polygon', coordinates: [[[w, -1], [w + 1, -1], [w + 1, 1], [w, 1], [w, -1]]]}});
             const host = t.lib.createMap(el, {style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]}, renderer, attribution: false, onError: () => {},
-                initialView: {center: [0, 0], zoom: 6}, sources: {sq: {type: 'geojson', data: {type: 'FeatureCollection', features: [square(1, -1), square(2, 0), square(undefined, 1)]}}},
+                initialView: {center: [0, 0], zoom: 5}, sources: {sq: {type: 'geojson', data: {type: 'FeatureCollection', features: [square(1, -1), square(2, 0), square(undefined, 1)]}}},
                 layers: [{id: 'sq', type: 'fill', source: 'sq', paint: {'fill-color': '#00f', 'fill-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 0.9, 0.5]}}], interactiveLayers: ['sq'], hoverState: true});
             await new Promise(r => { host.state.subscribe(s => s.idle, v => v && r()); setTimeout(r, 8000); });
             t.litHost = host; t.litSaid = []; t.litLog = console.warn; console.warn = (...a) => { t.litSaid.push(a.join(' ')); t.litLog(...a); };
