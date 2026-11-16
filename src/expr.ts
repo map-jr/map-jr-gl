@@ -503,12 +503,13 @@ export interface Prop { dd: boolean; zoom: boolean; eval(zoom: number, f?: Featu
 /** 'discrete' values (e.g. dash arrays) step between stops instead of interpolating. */
 export type PropKind = 'color' | 'number' | 'string' | 'discrete' | 'raw';
 
-function legacyFunction(v: any, flags: Flags, discrete = false): Fn {
+function legacyFunction(v: any, flags: Flags, kind: PropKind): Fn {
+    const discrete = kind === 'discrete';
     const stops: any[][] = v.stops ?? [];
     if (stops[0]?.[0] && typeof stops[0][0] === 'object') {
         // Zoom-and-property function: one property function per zoom level, blended across zoom.
         const zooms = [...new Set(stops.map(s => s[0].zoom as number))].sort((a, b) => a - b);
-        const per = zooms.map(z => legacyFunction({...v, stops: stops.filter(s => s[0].zoom === z).map(s => [s[0].value, s[1]])}, flags, discrete));
+        const per = zooms.map(z => legacyFunction({...v, stops: stops.filter(s => s[0].zoom === z).map(s => [s[0].value, s[1]])}, flags, kind));
         flags.zoom = true;
         return interpolator(1, zooms, per, c => c.zoom, discrete);
     }
@@ -520,7 +521,13 @@ function legacyFunction(v: any, flags: Flags, discrete = false): Fn {
     }
     flags.dd = true;
     const key = v.property, def = v.default ?? null;
-    if (v.type === 'identity') return c => c.f?.properties[key] ?? def;
+    // An identity function gives its `default` when the feature has no value of the type of the property. Where the
+    // kind does not say the type (a text, a boolean, an array), the type is the one of the `default`.
+    if (v.type === 'identity') return c => {
+        const x = c.f?.properties[key];
+        return (kind === 'number' ? typeof x === 'number' : kind === 'color' ? Array.isArray(colorize(x))
+            : def === null ? x != null : typeof x === typeof def && Array.isArray(x) === Array.isArray(def)) ? x : def;
+    };
     if (v.type === 'categorical' || typeof stops[0]?.[0] !== 'number') {
         const table = new Map(stops.map(s => [s[0], s[1]]));
         return c => colorize(table.get(c.f?.properties[key]) ?? def);
@@ -534,7 +541,7 @@ export function compileProp(v: any, kind: PropKind, def: any): Prop {
     let fn: Fn;
     if (v === undefined || v === null) v = def;
     if (kind !== 'raw' && Array.isArray(v) && typeof v[0] === 'string') fn = compileExpr(v, flags);
-    else if (kind !== 'raw' && v && typeof v === 'object' && !Array.isArray(v) && (v.stops || v.type === 'identity')) fn = legacyFunction(v, flags, kind === 'discrete');
+    else if (kind !== 'raw' && v && typeof v === 'object' && !Array.isArray(v) && (v.stops || v.type === 'identity')) fn = legacyFunction(v, flags, kind);
     else { const k = v; fn = () => k; }
     const defColor = kind === 'color' ? (typeof def === 'string' ? parseColor(def) : def) ?? [0, 0, 0, 1] : null;
     const finish = kind === 'color'
