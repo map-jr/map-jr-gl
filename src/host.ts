@@ -16,7 +16,7 @@ import type {QueriedFeature} from './query.ts';
 import type {Control, ControlPosition} from './controls.ts';
 import type {Checked} from './mistakes.ts';
 import type {FontSource} from './engine.ts';
-import type {LngLatBounds, LngLatBoundsInput} from './lnglat.ts';
+import type {LngLatBoundsInput} from './lnglat.ts';
 import type {PaddingInput} from './geo.ts';
 import type {ProjectionSpecification} from './compat-types.ts';
 
@@ -198,8 +198,8 @@ export interface OverlayOptions {
 }
 export interface MapOverlay { update(options: OverlayOptions): void; remove(): void }
 
-/** What each event of `listen` has: its type, and the map object behind the host (see `map` in `MapHost`). */
-export interface MapEventBase<T extends string = string> { type: T; target: Map }
+/** What each event of `listen` has: its type, and the `MapHost` that fired it. */
+export interface MapEventBase<T extends string = string> { type: T; target: MapHost }
 /** An event of a drag of the map by the user (`dragstart`, `drag`, `dragend`). */
 export interface MapDragEvent extends MapEventBase<'dragstart' | 'drag' | 'dragend'> {
     /** The event of the mouse or the touch that moved the map. */
@@ -209,13 +209,14 @@ export interface MapDragEvent extends MapEventBase<'dragstart' | 'drag' | 'drage
 export interface MapPointerEvent<T extends string = string, E extends MouseEvent = MouseEvent> extends MapEventBase<T> {
     /** The place in CSS pixels from the top left corner of the map. */
     point: {x: number; y: number};
-    lngLat: {lng: number; lat: number};
+    /** The position under the pointer, `[lng, lat]`, as in `onClick`. */
+    lngLat: [number, number];
     originalEvent: E;
     preventDefault(): void;
     readonly defaultPrevented: boolean;
 }
 /** An event of a touch: `points` and `lngLats` have one entry for each finger on the map. */
-export interface MapTouchEvent<T extends string = string> extends MapPointerEvent<T, PointerEvent> { points: {x: number; y: number}[]; lngLats: {lng: number; lat: number}[] }
+export interface MapTouchEvent<T extends string = string> extends MapPointerEvent<T, PointerEvent> { points: {x: number; y: number}[]; lngLats: [number, number][] }
 /** An event of the data of the map: `dataType` says whether the style or one source (`sourceId`) is concerned. */
 export interface MapDataEvent<T extends string = string> extends MapEventBase<T> { dataType: 'source' | 'style'; sourceId?: string; isSourceLoaded?: boolean; source?: unknown }
 
@@ -223,7 +224,8 @@ type Plain<K extends string> = {[T in K]: MapEventBase<T>};
 type Pointed<K extends string> = {[T in K]: MapPointerEvent<T>};
 /**
  * The events of `listen`, by type. The state of the map (`state`) and the callbacks of the description (`onClick`,
- * `onViewChange`, `onError`) cover the common needs. These events are those of the map object behind the host.
+ * `onViewChange`, `onError`) cover the common needs. A position is `[lng, lat]` and a box is
+ * `[[west, south], [east, north]]`, as in the rest of this API.
  */
 export interface MapEvents extends
     Plain<'load' | 'idle' | 'render' | 'resize' | 'remove' | 'style.load' | 'webglcontextlost' | 'webglcontextrestored'>,
@@ -237,7 +239,7 @@ export interface MapEvents extends
     /** The box of a zoom with the Shift key and a drag. `boxzoomend` has the bounds of the box. */
     boxzoomstart: MapEventBase<'boxzoomstart'> & {originalEvent: PointerEvent};
     boxzoomcancel: MapEventBase<'boxzoomcancel'> & {originalEvent: Event};
-    boxzoomend: MapEventBase<'boxzoomend'> & {originalEvent: Event; boxZoomBounds: LngLatBounds};
+    boxzoomend: MapEventBase<'boxzoomend'> & {originalEvent: Event; boxZoomBounds: [[number, number], [number, number]]};
     /** About once a second while the map draws: frames per second, and the time of a frame on the CPU in milliseconds. */
     stats: MapEventBase<'stats'> & {fps: number; frameMs: number; labels: number};
     /** The style names an image (`id`) that the map does not have. */
@@ -611,8 +613,19 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
         if (!source?.getClusterLeaves) throw new Error(`"${id}" is not a GeoJSON source of the style.`);
         return run(source);
     }).catch(e => { throw new Error(`[map-jr-gl] ${name}(): ${(e as Error)?.message?.replace(/^\[map-jr-gl\] /, '')}`); });
+    // An event of the core map as the host gives it: positions as `[lng, lat]`, and the host as `target`. The
+    // descriptors are copied, so that `preventDefault()` and the getter `defaultPrevented` still act on the event of the map.
+    const pair = (p: {lng: number; lat: number}): [number, number] => [p.lng, p.lat];
+    const hostEvent = (e: any) => {
+        const out = Object.defineProperties({} as any, Object.getOwnPropertyDescriptors(e));
+        out.target = host;
+        if (e.lngLat) out.lngLat = pair(e.lngLat);
+        if (e.lngLats) out.lngLats = e.lngLats.map(pair);
+        if (e.boxZoomBounds) out.boxZoomBounds = e.boxZoomBounds.toArray();
+        return out;
+    };
 
-    return {
+    const host: MapHost = {
         update(next) {
             complete(next, 'update', `update() takes the complete description, not only the changed fields. Write map.patch({${Object.keys(next ?? {})[0] ?? 'field'}: …}) to change only some fields.`);
             if (alive) apply(next, now);
@@ -690,13 +703,13 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
                 remove() { const old = made; made = null; old?.remove(); },
             };
         },
-        listen(type, fn: (event: any) => void) { map.on(type, fn); return () => { map.off(type, fn); }; },
+        listen(type, fn: (event: any) => void) { const w = (e: any) => fn(hostEvent(e)); map.on(type, w); return () => { map.off(type, w); }; },
         once(type) {
             return new Promise<any>((resolve, reject) => {
                 const removed = () => new Error(`[map-jr-gl] once("${type}"): the map was removed.`);
                 if (!alive) return reject(removed());
-                if (type === 'load' && state.get().loaded) return resolve({type, target: map});
-                const fn = (event: any) => { map.off(type, fn); waiting.delete(drop); resolve(event); };
+                if (type === 'load' && state.get().loaded) return resolve({type, target: host});
+                const fn = (event: any) => { map.off(type, fn); waiting.delete(drop); resolve(hostEvent(event)); };
                 const drop = () => { map.off(type, fn); reject(removed()); };
                 waiting.add(drop); map.on(type, fn);
             });
@@ -704,4 +717,5 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
         container: map.getContainer(),
         map,
     };
+    return host;
 }

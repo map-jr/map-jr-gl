@@ -820,8 +820,10 @@ A listener that throws does not stop the other listeners of the event. The map r
 `error` event (`onError` of the description gets it, or the console when there is no `onError`). What a listener
 of `error` throws is written to the console.
 
-Each event has `type` (the name of the event) and `target` (the map object, the `map` member above). The table
-has the other members. In TypeScript, the type `MapEvents` has the event of each name, so the parameter of `fn`
+Each event has `type` (the name of the event) and `target` (the `MapHost` that `createMap` returned). The table
+has the other members. A position in an event is `[lng, lat]` and a box is `[[west, south], [east, north]]`, as in
+`onClick` and `state.view`. (The core map, the `map` member above, and `@map-jr/map-jr-gl/maplibre-compat` keep the
+objects of MapLibre GL JS.) In TypeScript, the type `MapEvents` has the event of each name, so the parameter of `fn`
 has the right type, and a name that is not in the table does not compile.
 
 | Type | When | Other members of the event |
@@ -836,10 +838,10 @@ has the right type, and a name that is not in the table does not compile.
 | `rotatestart`, `rotate`, `rotateend` | The bearing changes. | |
 | `pitchstart`, `pitch`, `pitchend` | The pitch changes. | |
 | `dragstart`, `drag`, `dragend` | The user starts to drag the map, drags it, and stops. | `originalEvent` (a `MouseEvent` or a `TouchEvent`). |
-| `click`, `dblclick`, `contextmenu`, `mousedown`, `mousemove`, `mouseup`, `mouseover`, `mouseout` | An event of the mouse on the map. | `point` (`{x, y}` in CSS pixels), `lngLat` (`{lng, lat}`), `originalEvent`, `preventDefault()`, `defaultPrevented`. |
+| `click`, `dblclick`, `contextmenu`, `mousedown`, `mousemove`, `mouseup`, `mouseover`, `mouseout` | An event of the mouse on the map. | `point` (`{x, y}` in CSS pixels), `lngLat` (`[lng, lat]`), `originalEvent`, `preventDefault()`, `defaultPrevented`. A listener that calls `preventDefault()` stops what the map does for the event (a drag, a zoom). |
 | `wheel` | The user turns the wheel over the map. | The same as for the mouse; `originalEvent` is a `WheelEvent`. |
-| `touchstart`, `touchmove`, `touchend`, `touchcancel` | An event of a touch on the map. | The same as for the mouse, and `points` and `lngLats`: one entry for each finger on the map. |
-| `boxzoomstart`, `boxzoomend`, `boxzoomcancel` | A zoom to a box (the Shift key and a drag). | `originalEvent`. `boxzoomend` also has `boxZoomBounds`. |
+| `touchstart`, `touchmove`, `touchend`, `touchcancel` | An event of a touch on the map. | The same as for the mouse, and `points` and `lngLats` (a list of `[lng, lat]`): one entry for each finger on the map. |
+| `boxzoomstart`, `boxzoomend`, `boxzoomcancel` | A zoom to a box (the Shift key and a drag). | `originalEvent`. `boxzoomend` also has `boxZoomBounds` (`[[west, south], [east, north]]`). |
 | `styledata`, `style.load` | The style has changed; a complete style has loaded. | `styledata` has `dataType: 'style'`. |
 | `sourcedata` | A source has new data. | `dataType: 'source'`, `sourceId`, `isSourceLoaded`, `source`. |
 | `data` | Each time that `styledata` or `sourcedata` fires. | The members of that event. |
@@ -851,8 +853,6 @@ has the right type, and a name that is not in the table does not compile.
 | `geolocate` | The geolocate control has a position. | `coords`. |
 | `webglcontextlost`, `webglcontextrestored` | The browser has taken the WebGL context away, or the map has it again. The map starts again on a new canvas with the same view and data. A map with the worker renderer starts again on the main thread and writes one warning when the worker loses the context before its first frame, loses it twice within 10 seconds, or does not draw in the 5 seconds after its start or a restart (it reports no first frame, or stops drawing after it). A worker that does not draw in that time also fires `webglcontextlost` first. When the main thread then loses the context again before its first frame, or does not draw in the 15 seconds after the restart, the map fires `error` and does not start again. The time that the page is hidden, or that the map has no size, does not count. | |
 | `error` | An error of the map. `onError` and `state.error` have the same errors as an `Error`. | `error`. |
-
-In a mouse event, `lngLat` is an object (`{lng, lat}`). In `onClick`, `lngLat` is an array (`[lng, lat]`).
 
 ## Custom protocols
 
@@ -890,9 +890,9 @@ The entry `@map-jr/map-jr-gl` has TypeScript types for the description (`MapSpec
   `readonly number[]`. So an array that is declared apart from the call compiles without `as const`:
   `const NYC = [-74.0065, 40.7085]; createMap(el, {style, initialView: {center: NYC}})`. The map reads the first two
   numbers as `[lng, lat]`. A position that the map gives (`state.view.center`, the result of `unproject`, `lngLat`
-  in `onClick`) is `[number, number]`.
+  in `onClick` and in the events of `listen`) is `[number, number]`.
 - The types that the signatures use are exported: `LngLatBoundsInput` (`maxBounds`, `fitBounds`, `initialView.bounds`),
-  `LngLatBounds` (the `boxZoomBounds` of the event `boxzoomend`; only the type, not the class), `LngLatInput`,
+  `LngLatBounds` (only the type, not the class; no member of the main API has it now), `LngLatInput`,
   `FlyOptions` (`moveTo`) and `Anchor` (`OverlayOptions.anchor` and the anchor of a marker layer).
 - A feature of `state.hover` and of `onClick` has `layer`, the style layer that draws it, with the type `StyleLayer`
   (`id`, `type`, `source`, `paint` and the other members of a layer of the style). `queryFeatures` returns

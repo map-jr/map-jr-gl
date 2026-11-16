@@ -52,6 +52,28 @@ for (const renderer of ['worker', 'main']) {
         });
         check(`[${renderer}] once: resolves with the next event, and once('load') on a loaded map resolves at once`, once.load === 'load' && once.moved === 'moveend' && once.zoom === 14.5, JSON.stringify(once));
 
+        // 1c. The events of `listen` and `once` (#500): positions as `[lng, lat]`, a box as `[[west, south], [east, north]]`,
+        // the host as `target`, and `preventDefault()` still stops what the map does.
+        await page.evaluate(() => {
+            const t = window.t, h = t.host, pair = v => Array.isArray(v) && v.length === 2 && v.every(n => typeof n === 'number');
+            t.shapes = {};
+            t.stops = ['mousemove', 'touchstart', 'boxzoomend'].map(type => h.listen(type, e => { t.shapes[type] ??= {target: e.target === h, lngLat: pair(e.lngLat), lngLats: e.lngLats && e.lngLats.length > 0 && e.lngLats.every(pair), box: e.boxZoomBounds && e.boxZoomBounds.length === 2 && e.boxZoomBounds.every(pair) && e.boxZoomBounds[0][0] < e.boxZoomBounds[1][0]}; }));
+            t.clickOnce = h.once('click').then(e => ({target: e.target === h, lngLat: pair(e.lngLat), prevent: typeof e.preventDefault}));
+        });
+        await page.mouse.move(400, 300); await page.mouse.move(420, 310); await page.mouse.click(420, 310);
+        await page.evaluate(() => { const c = document.querySelector('#host canvas'), o = {pointerType: 'touch', pointerId: 7, clientX: 300, clientY: 300, bubbles: true, isPrimary: true};
+            c.dispatchEvent(new PointerEvent('pointerdown', o)); c.dispatchEvent(new PointerEvent('pointerup', o)); });
+        await page.keyboard.down('Shift'); await page.mouse.move(300, 200); await page.mouse.down(); await page.mouse.move(500, 400, {steps: 6}); await page.mouse.up(); await page.keyboard.up('Shift');
+        await page.waitForTimeout(800);
+        const shapes = await page.evaluate(async () => ({...window.t.shapes, click: await window.t.clickOnce}));
+        check(`[${renderer}] listen and once: lngLat, lngLats and boxZoomBounds are arrays, and target is the host`,
+            shapes.mousemove?.target && shapes.mousemove.lngLat && shapes.touchstart?.target && shapes.touchstart.lngLat && shapes.touchstart.lngLats && shapes.boxzoomend?.target && shapes.boxzoomend.box && shapes.click.target && shapes.click.lngLat && shapes.click.prevent === 'function', JSON.stringify(shapes));
+        await page.evaluate(async () => { const t = window.t; t.stops.forEach(f => f()); t.before = t.host.state.get().view.center;
+            t.stops = [t.host.listen('mousedown', e => e.preventDefault())]; });
+        await page.mouse.move(450, 300); await page.mouse.down(); await page.mouse.move(600, 400, {steps: 8}); await page.mouse.up(); await page.waitForTimeout(300);
+        const held = await page.evaluate(() => { const t = window.t; t.stops.forEach(f => f()); const now = t.host.state.get().view.center; return {before: t.before, now}; });
+        check(`[${renderer}] listen: preventDefault() of a mousedown stops the drag`, held.before[0] === held.now[0] && held.before[1] === held.now[1], JSON.stringify(held));
+
         // 2. The view: the map reports each change; a view that it reported is not applied again; another view moves the map.
         const view = await page.evaluate(async () => {
             const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms));

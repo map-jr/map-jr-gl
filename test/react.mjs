@@ -76,7 +76,7 @@ function App({ssr}) {
         ? h(MapJr, {ref: map, mapStyle: style, initialView: view, images, markers, controls: [navigation()], onLoad: () => t.loads++},
             h(MapImage, {name: 'hydrated', params: ['color']}, ({color}) => h('svg', {viewBox: '0 0 8 8'}, h('rect', {width: 8, height: 8, fill: color}))))
         : h(MapJr, {ref: map, mapStyle: style, view, onViewChange: v => { t.views++; setView(v); }, images: {...images, ...more}, markers, controls: [navigation(), scale({position: 'bottom-left'})], interactiveLayers: ['water', 'park', 'building'],
-            onClick: e => t.clicks.push(e), onLoad: () => t.loads++, attribution: false, onMoveend: e => t.moves.push(e.type + ' ' + typeof e.target.getZoom()),
+            onClick: e => t.clicks.push(e), onLoad: () => t.loads++, attribution: false, onMoveend: e => t.moves.push(e.type + ' ' + typeof e.target.state.get().view.zoom),
             // An image that the style asks for and the map does not have: the application adds it to the prop images.
             onStyleimagemissing: e => { t.asked.push(e.id); setMore(more => ({...more, [e.id]: '<svg viewBox="0 0 4 4"><rect width="4" height="4"/></svg>'})); }},
             h(Zoom), h(MapOverlay, {lngLat: pin, anchor: 'bottom'}, h('b', {id: 'own-pin'}, 'here')),
