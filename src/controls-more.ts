@@ -68,19 +68,25 @@ export class NavigationControl implements Control {
             zoomIn = button(el, 'zoom-in', ui(map, 'NavigationControl.ZoomIn', 'Zoom in'), svg('<path d="M9 4v10M4 9h10"/>'), () => map.zoomIn());
             zoomOut = button(el, 'zoom-out', ui(map, 'NavigationControl.ZoomOut', 'Zoom out'), svg('<path d="M4 9h10"/>'), () => map.zoomOut());
         }
+        let letter: SVGTextElement | null = null;
         if (this.options.showCompass !== false) {
-            const b = button(el, 'compass', ui(map, 'NavigationControl.ResetBearing', 'Reset bearing to north'), map.getContainer().classList.contains('map-jr-glass')
-                // (The main API has a compass of its own: a red point to north and a grey one to south.)
-                ? svg('<path d="M9 1.500 12 9H6z" fill="#e5484d" stroke="none"/><path d="M9 16.500 6 9h6z" fill="currentColor" stroke="none" opacity=".4"/><circle cx="9" cy="9" r="1" fill="currentColor" stroke="none"/>')
+            const glass = map.getContainer().classList.contains('map-jr-glass');
+            const b = button(el, 'compass', ui(map, 'NavigationControl.ResetBearing', 'Reset bearing to north'), glass
+                // The compass of the main API: a dial with 12 ticks and a mark of north on the rim, which turn with the map,
+                // and the direction that the map faces in the centre (one of 8), which stays upright.
+                ? '<svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><g><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2.4" stroke-dasharray=".6 4.636" opacity=".5"/><path d="M12 .6l2.6 3.8H9.4z"/></g><text x="12" y="12.4" text-anchor="middle" dominant-baseline="middle" font-size="8.5" font-weight="600" font-family="system-ui,sans-serif"></text></svg>'
                 : svg('<path d="M9 2.500 12 9H6z" fill="currentColor" stroke="none"/><path d="M9 15.500 6 9h6z" fill="currentColor" stroke="none" opacity=".35"/>'),
                 () => map.easeTo({bearing: 0, ...this.pitch && {pitch: 0}}));
-            needle = b.querySelector('svg');
+            needle = b.querySelector(glass ? 'g' : 'svg');
+            letter = b.querySelector('text');
+            if (glass) needle!.style.transformOrigin = '12px 12px';
             dragCompass(map, b, this.pitch);
         }
         this.update = () => {
             if (zoomIn) zoomIn.disabled = map.getZoom() >= map.getMaxZoom();
             if (zoomOut) zoomOut.disabled = map.getZoom() <= map.getMinZoom();
             if (needle) needle.style.transform = `rotateX(${this.pitch ? map.getPitch() : 0}deg) rotate(${-map.getBearing()}deg)`;
+            if (letter) letter.textContent = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round((map.getBearing() + 360) / 45) % 8];
         };
         map.on('move', this.update);
         this.update();
@@ -113,7 +119,9 @@ export class ScaleControl implements Control {
             let max = metresPerPixel * maxWidth, unit = 'Meters', perUnit = 1;
             if (this.unit === 'imperial') { max *= 3.28084; unit = 'Feet'; perUnit = 1 / 3.28084; if (max > 5280) { max /= 5280; unit = 'Miles'; perUnit = 1609.344; } } else if (this.unit === 'nautical') { max /= 1852; unit = 'NauticalMiles'; perUnit = 1852; } else if (max >= 1000) { max /= 1000; unit = 'Kilometers'; perUnit = 1000; }
             const pow = 10 ** Math.floor(Math.log10(max)), lead = max / pow, nice = (lead >= 5 ? 5 : lead >= 3 ? 3 : lead >= 2 ? 2 : 1) * pow;
-            el.style.width = nice * perUnit / metresPerPixel + 'px';
+            const width = nice * perUnit / metresPerPixel + 'px';
+            el.style.width = width;
+            el.style.setProperty('--map-jr-scale', width); // (the length of the bar of the main API, which draws it after the text)
             el.textContent = `${nice >= 1 ? nice : +nice.toPrecision(1)} ${ui(map, 'ScaleControl.' + unit, units[unit])}`;
         };
         map.on('move', this.update);

@@ -18,9 +18,9 @@
 </head>
 <body>
 <div id="bar">
-  <label>Background opacity <input id="alpha" type="range" min="0" max="1" step="0.05" value="0.5"> <output id="alphaOut">0.50</output></label>
+  <label><input id="useAlpha" type="checkbox"> <code>--map-control-opacity</code> <input id="alpha" type="range" min="0" max="1" step="0.05" value="0.55"> <output id="alphaOut">default</output></label>
+  <label><input id="useRadius" type="checkbox"> <code>--map-control-radius</code> <input id="radius" type="range" min="0" max="22" step="1" value="16"> <output id="radiusOut">default</output></label>
   <label>Blur <input id="blur" type="range" min="0" max="20" step="1" value="5"> <output id="blurOut">5 px</output></label>
-  <label><input id="glass" type="checkbox" checked> New look (class <code>map-jr-glass</code>)</label>
 </div>
 <main>
   <section><h2>Light: OpenFreeMap liberty</h2><div id="light" class="map"></div></section>
@@ -59,20 +59,23 @@ compat.addControl(new ml.FullscreenControl());
 compat.addControl(new ml.ScaleControl(), 'bottom-left');
 new ml.Popup({closeOnClick: false}).setLngLat([2.335, 48.861]).setHTML('<strong>Musée du Louvre</strong><br>Open until 18:00').addTo(compat);
 
-// The bar: the opacity sets the private variable of the background for the scheme that each map has; the blur is a
-// rule of this page; the switch removes and adds the class of the new look.
+// The bar: the two custom properties of the look, on the container of each map of the main API (unchecked: the
+// default of the library, .55 in light and .45 in dark, and a radius of half a button), and the blur as a rule of this page.
 const $ = id => document.getElementById(id);
 const blurRule = document.head.appendChild(document.createElement('style'));
 const paint = () => {
-  const a = +$('alpha').value, px = +$('blur').value;
-  $('alphaOut').value = a.toFixed(2);
+  const a = $('useAlpha').checked ? $('alpha').value : '', r = $('useRadius').checked ? $('radius').value + 'px' : '', px = +$('blur').value;
+  $('alphaOut').value = a || 'default';
+  $('radiusOut').value = r || 'default';
   $('blurOut').value = px + ' px';
-  for (const m of maps) m.container.style.setProperty('--map-jr-glass', m.state.get().colorScheme === 'dark' ? `rgba(30,30,34,${a})` : `rgba(255,255,255,${a})`);
-  blurRule.textContent = `.map-jr-glass .map-jr-ctrl-group,.map-jr-glass .map-jr-ctrl-attrib{-webkit-backdrop-filter:blur(${px}px);backdrop-filter:blur(${px}px)}`;
-  for (const m of maps) m.container.classList.toggle('map-jr-glass', $('glass').checked);
+  for (const m of maps) {
+    m.container.style.setProperty('--map-control-opacity', a);
+    m.container.style.setProperty('--map-control-radius', r);
+  }
+  blurRule.textContent = px === 5 ? '' : `:is(#light,#dark,#narrow,#turned) :is(.map-jr-ctrl-group,.map-jr-ctrl-attrib,.map-jr-ctrl-scale,.map-jr-popup-content){backdrop-filter:blur(${px}px)}`;
 };
-for (const id of ['alpha', 'blur', 'glass']) $(id).addEventListener('input', paint);
-for (const m of maps) m.state.subscribe(s => s.colorScheme, paint);
+for (const id of ['useAlpha', 'alpha', 'useRadius', 'radius', 'blur']) $(id).addEventListener('input', paint);
+for (const id of ['alpha', 'radius']) $(id).addEventListener('input', () => { $(id === 'alpha' ? 'useAlpha' : 'useRadius').checked = true; paint(); });
 paint();
 </script>
 </body>

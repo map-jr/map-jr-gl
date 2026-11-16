@@ -141,6 +141,7 @@ export class Popup extends Overlay {
         // (One number moves the popup away from the position: down and to the right for `top-left`.)
         this.offset = typeof o === 'number' ? [(1 - x / 50) * o, (1 - y / 50) * o] : Array.isArray(o) ? o : o[anchor] ?? [0, 0];
         // (Across the top or the bottom, the pointer is 14 pixels from the left edge, in the middle, or 14 pixels from the right edge.)
+        this.tip.dataset.side = side; // (for the CSS of the main API, which shows only the part of the tip outside the box)
         this.tip.style.cssText = side === 'center' ? 'display:none' : `position:absolute;width:12px;height:12px;background:inherit;transform:rotate(45deg);${side}:-5px;` +
             (y === 50 ? 'top:calc(50% - 6px)' : `left:calc(${x}% + ${14 - x * .4}px)`);
         this.box.style.transformOrigin = `${x}% ${y}%`;
