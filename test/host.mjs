@@ -287,6 +287,38 @@ for (const renderer of ['worker', 'main']) {
         check(`[${renderer}] extend.sources gets features from data, and a partial owned view that the map reported is not applied again`,
             extendData.before === 0 && extendData.after === 1 && extendData.jumps === 0, JSON.stringify(extendData));
 
+        // 3d. A key of `data` with no source of that id makes a GeoJSON source: in the first description, as a new key, after
+        // a new style, and a removed key removes it with a warning for the layer that still names it. A key that is the id of
+        // a source of another type gives an error of the map (#487).
+        const madeData = await page.evaluate(async renderer => {
+            const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const idle = host => new Promise(r => { let at = host.state.get().idle ? performance.now() : 0; const off = host.state.subscribe(s => s.idle, v => { at = v ? performance.now() : 0; }), done = () => { clearInterval(timer); off(); r(); }, timer = setInterval(() => at && performance.now() - at > 500 && done(), 50); setTimeout(done, 8000); });
+            const square = {type: 'FeatureCollection', features: [{type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[-74.02, 40.70], [-73.99, 40.70], [-73.99, 40.72], [-74.02, 40.72], [-74.02, 40.70]]]}}]};
+            const errors = [], said = [], warn = console.warn;
+            console.warn = (...a) => { said.push(String(a[0])); warn(...a); };
+            const count = async (host, layer) => (await host.queryFeatures({x: 100, y: 75}, {layers: [layer]}).catch(() => [])).length;
+            const spec = {style: t.style, initialView: {center: [-74.0065, 40.7085], zoom: 13}, renderer, attribution: false, onError: e => errors.push(e.message),
+                data: {a: square}, extend: {layers: [{id: 'a-fill', type: 'fill', source: 'a'}]}};
+            const host = t.lib.createMap(el, spec);
+            await idle(host);
+            const first = await count(host, 'a-fill');
+            const s2 = {...spec, data: {a: square, b: square}, extend: {layers: [...spec.extend.layers, {id: 'b-fill', type: 'fill', source: 'b'}]}};
+            host.update(s2); await new Promise(r => setTimeout(r, 300)); await idle(host);
+            const added = await count(host, 'b-fill');
+            host.update({...s2, style: {...t.style, layers: [...t.style.layers]}}); await new Promise(r => setTimeout(r, 300)); await idle(host);
+            const restyled = [await count(host, 'a-fill'), await count(host, 'b-fill')];
+            host.update({...s2, data: {a: square}}); await new Promise(r => setTimeout(r, 300)); await idle(host);
+            await new Promise(r => setTimeout(r, 500));
+            const removed = !host.map.getSource('b');
+            const wrong = Object.keys(t.style.sources).find(id => t.style.sources[id].type !== 'geojson');
+            host.update({...s2, data: {a: square, [wrong]: square}}); await new Promise(r => setTimeout(r, 300));
+            console.warn = warn; host.destroy(); el.remove();
+            return {first, added, restyled, removed, errors, said: said.filter(w => w.includes('"b-fill"'))};
+        }, renderer);
+        check(`[${renderer}] a key of data with no source makes a GeoJSON source, also as a new key and after a new style; a removed key removes it, and a key of a source of another type is an error`,
+            madeData.first === 1 && madeData.added === 1 && madeData.restyled + '' === '1,1' && madeData.removed && madeData.errors.length === 1 && madeData.errors[0].startsWith('[map-jr-gl] data: the source ')
+            && madeData.said.length === 1 && madeData.said[0].startsWith('[map-jr-gl] the layer "b-fill" uses the source "b"'), JSON.stringify(madeData));
+
         // 3d. An update() that changes only `extend` or `images` sets state.idle to false, and back to true when drawn (#411).
         const idleAgain = await page.evaluate(async renderer => {
             const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
@@ -424,7 +456,7 @@ for (const renderer of ['worker', 'main']) {
             return {correct, said, place};
         }, renderer);
         const styleLayer = await page.evaluate(() => window.t.style.layers[1].id);
-        const expected = ['createMap(): the container has height 0', 'interactiveLayers: the style has no layer "nope"', 'data: the style has no GeoJSON source "nosuch"', 'queryFeatures(): the style has no layer "nope"',
+        const expected = ['createMap(): the container has height 0', 'interactiveLayers: the style has no layer "nope"', 'queryFeatures(): the style has no layer "nope"',
             'queryFeatures(): the style has no source "nope"', 'extend: the layer "lost" has before: "nonexistent"', 'extend: the layer "lost" uses the source "missing"', 'markers: two marker layers have the id "a"', 'images: a layer gives the parameter "colour" to the image "dot"', 'images: a layer gives the parameter "size" to the image "dot"', 'images: a layer gives the parameter "fill" to the image "dot"', 'markers: the marker layer "old" has no "image"', 'markers: a marker layer has the image "nothing"', `markers: the marker layer "${styleLayer}" has the id of a layer of the style`, `markers: the marker layer "${styleLayer}" has before: "no-such-layer"`, `markers: the marker 1 of the marker layer "${styleLayer}" has no position`,
             'update(): "interactive" changed', 'update(): "initialView" changed', 'queryFeatures(): "sourceLayers" has an effect only', 'queryFeatures(): "radius" has an effect only in a query at a point or a position', 'queryFeatures(): "geometry" has an effect only', 'queryFeatures(): "zoom" has an effect only',
             'queryFeatures(): "layers" has no effect'];
