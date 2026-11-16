@@ -112,7 +112,7 @@ for (const renderer of ['worker', 'main']) {
 
         // 2b. Padding per side (#212): fitBounds and moveTo take {top, right, bottom, left}, and the description has padding.
         const padding = await page.evaluate(async () => {
-            const t = window.t, m = t.host.map, b = [[-74.02, 40.70], [-74.00, 40.72]], mid = [-74.01, 40.71];
+            const t = window.t, m = t.host._map, b = [[-74.02, 40.70], [-74.00, 40.72]], mid = [-74.01, 40.71];
             const at = () => { const p = m.project(mid); return [Math.round(p.x), Math.round(p.y)]; };
             t.host.fitBounds(b, {padding: {left: 400, top: 10, right: 10, bottom: 10}, duration: 0});
             const fit = at();
@@ -168,7 +168,7 @@ for (const renderer of ['worker', 'main']) {
             const host = t.lib.createMap(el, spec), events = [], out = {};
             host.listen('projectiontransition', e => events.push(e.newProjection));
             await new Promise(r => host.state.subscribe(s => s.loaded, l => l && r()));
-            const type = () => host.map.getProjection()?.type ?? 'none';
+            const type = () => host._map.getProjection()?.type ?? 'none';
             out.start = type();
             host.update(spec = {...spec, projection: null}); out.cleared = type();
             host.update(spec = {...spec, projection: {type: 'mercator'}}); out.mercator = type();
@@ -220,9 +220,9 @@ for (const renderer of ['worker', 'main']) {
             const host = t.lib.createMap(el, spec), out = {};
             out.first = host.description === spec;
             host.patch({minZoom: 2});
-            out.kept = [host.description.cursor, host.description.maxZoom, host.description.minZoom, host.map.getMaxZoom(), host.map.getMinZoom(), el.querySelector('canvas').style.cursor];
+            out.kept = [host.description.cursor, host.description.maxZoom, host.description.minZoom, host._map.getMaxZoom(), host._map.getMinZoom(), el.querySelector('canvas').style.cursor];
             host.patch({cursor: undefined, maxZoom: undefined});
-            out.removed = ['cursor' in host.description, 'maxZoom' in host.description, host.description.minZoom, host.map.getMaxZoom(), el.querySelector('canvas').style.cursor];
+            out.removed = ['cursor' in host.description, 'maxZoom' in host.description, host.description.minZoom, host._map.getMaxZoom(), el.querySelector('canvas').style.cursor];
             try { host.patch({style: undefined}); out.style = 'no error'; } catch (e) { out.style = e.message; }
             out.styleKept = host.description.style === t.style;
             host.destroy(); el.remove();
@@ -357,8 +357,8 @@ for (const renderer of ['worker', 'main']) {
             host.update({...spec, data: {own: {type: 'FeatureCollection', features: [square]}}});
             await new Promise(r => setTimeout(r, 300)); await idle(host);
             const after = (await host.queryFeatures({x: 100, y: 75}, {layers: ['own-fill']})).length;
-            let jumps = 0; const jump = host.map.jumpTo; host.map.jumpTo = (...a) => { jumps++; return jump.apply(host.map, a); };
-            host.map.jumpTo({center: [-74.0, 40.71], zoom: 13.5}); jumps = 0;
+            let jumps = 0; const jump = host._map.jumpTo; host._map.jumpTo = (...a) => { jumps++; return jump.apply(host._map, a); };
+            host._map.jumpTo({center: [-74.0, 40.71], zoom: 13.5}); jumps = 0;
             await new Promise(r => setTimeout(r, 200));
             const v = host.state.get().view;
             host.update({...spec, data: {own: {type: 'FeatureCollection', features: [square]}}, view: {center: v.center, zoom: v.zoom}});
@@ -420,7 +420,7 @@ for (const renderer of ['worker', 'main']) {
             const restyled = [await count(host, 'a-fill'), await count(host, 'b-fill')];
             host.update({...s2, data: {a: square}}); await new Promise(r => setTimeout(r, 300)); await idle(host);
             await new Promise(r => setTimeout(r, 500));
-            const removed = !host.map.getSource('b');
+            const removed = !host._map.getSource('b');
             const wrong = Object.keys(t.style.sources).find(id => t.style.sources[id].type !== 'geojson');
             host.update({...s2, data: {a: square, [wrong]: square}}); await new Promise(r => setTimeout(r, 300));
             console.warn = warn; host.destroy(); el.remove();
@@ -453,7 +453,7 @@ for (const renderer of ['worker', 'main']) {
         check(`[${renderer}] update() that changes only extend or images sets state.idle to false and then to true again`,
             idleAgain.extendBusy && idleAgain.extendIdle && idleAgain.imagesIdle && idleAgain.sameFree, JSON.stringify(idleAgain));
 
-        // 3d. A change of `extend` alone is applied as edits: the style URL is not requested again, and a layer that was added through `host.map` stays (#166).
+        // 3d. A change of `extend` alone is applied as edits: the style URL is not requested again, and a layer that was added through `host._map` stays (#166).
         const extendEdit = await page.evaluate(async renderer => {
             const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
             const idle = host => new Promise(r => { let at = host.state.get().idle ? performance.now() : 0; const off = host.state.subscribe(s => s.idle, v => { at = v ? performance.now() : 0; }), done = () => { clearInterval(timer); off(); r(); }, timer = setInterval(() => at && performance.now() - at > 500 && done(), 50); setTimeout(done, 8000); });
@@ -463,26 +463,26 @@ for (const renderer of ['worker', 'main']) {
             const ext = (...layers) => ({sources: {own: {type: 'geojson', data: square}}, layers});
             const host = t.lib.createMap(el, {...spec, ...ext(fill('#f00'))});
             await idle(host);
-            host.map.addLayer({id: 'app-layer', type: 'background', paint: {'background-color': '#00f'}});
+            host._map.addLayer({id: 'app-layer', type: 'background', paint: {'background-color': '#00f'}});
             const requests = () => performance.getEntriesByType('resource').filter(e => e.name.endsWith('/style.json')).length, first = requests();
-            let restyles = 0; const setStyle = host.map.setStyle; host.map.setStyle = (...a) => { restyles++; return setStyle.apply(host.map, a); };
+            let restyles = 0; const setStyle = host._map.setStyle; host._map.setStyle = (...a) => { restyles++; return setStyle.apply(host._map, a); };
             const at = {x: 100, y: 75}, hits = async () => (await host.queryFeatures(at, {layers: ['own-fill']})).length;
             const out = {};
             host.update({...spec, ...ext(fill('#0f0'))}); await idle(host);
-            out.paint = host.map.getLayer('own-fill')?.paint?.['fill-color'];
+            out.paint = host._map.getLayer('own-fill')?.paint?.['fill-color'];
             host.update({...spec, ...ext(fill('#0f0', 'none'))}); await idle(host);
-            out.hidden = host.map.getLayer('own-fill')?.layout?.visibility;
+            out.hidden = host._map.getLayer('own-fill')?.layout?.visibility;
             host.update({...spec, sources: {own: {type: 'geojson', data: square}, two: {type: 'geojson', data: square}}, layers: [fill('#0f0'), {id: 'two-line', type: 'line', source: 'two'}]}); await idle(host);
-            out.added = !!host.map.getSource('two') && !!host.map.getLayer('two-line');
+            out.added = !!host._map.getSource('two') && !!host._map.getLayer('two-line');
             out.hits = await hits();
             host.update({...spec, ...ext(fill('#0f0'))}); await idle(host);
-            out.removed = !host.map.getSource('two') && !host.map.getLayer('two-line');
-            out.app = !!host.map.getLayer('app-layer');
+            out.removed = !host._map.getSource('two') && !host._map.getLayer('two-line');
+            out.app = !!host._map.getLayer('app-layer');
             out.restyles = restyles; out.requests = requests() - first;
             host.destroy(); el.remove();
             return out;
         }, renderer);
-        check(`[${renderer}] a change of extend alone edits the map: no new style request, and a layer added through host.map stays`,
+        check(`[${renderer}] a change of extend alone edits the map: no new style request, and a layer added through host._map stays`,
             extendEdit.paint === '#0f0' && extendEdit.hidden === 'none' && extendEdit.added && extendEdit.hits === 1 && extendEdit.removed && extendEdit.app && extendEdit.restyles === 0 && extendEdit.requests === 0, JSON.stringify(extendEdit));
 
         // 3d. The edits of `extend` leave the description as it was, work for two maps with one `extend` object, keep the
@@ -493,7 +493,7 @@ for (const renderer of ['worker', 'main']) {
             const square = {type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[-74.02, 40.70], [-73.99, 40.70], [-73.99, 40.72], [-74.02, 40.72], [-74.02, 40.70]]]}};
             const spec = {style: '/style.json', initialView: {center: [-74.0065, 40.7085], zoom: 13}, renderer, attribution: false};
             const ext = (color, more = []) => ({sources: {own: {type: 'geojson', data: square}}, layers: [{id: 'own-fill', type: 'fill', source: 'own', paint: {'fill-color': color}}, ...more]});
-            const color = h => h.map.getLayer('own-fill')?.paint?.['fill-color'], out = {};
+            const color = h => h._map.getLayer('own-fill')?.paint?.['fill-color'], out = {};
             const red = ext('#f00'), green = ext('#0f0');
             const [a, b] = [div(), div()].map(el => t.lib.createMap(el, {...spec, ...red}));
             await Promise.all([idle(a), idle(b)]);
@@ -505,11 +505,11 @@ for (const renderer of ['worker', 'main']) {
             const pins = {id: 'pins', data: [{lngLat: [-74.0065, 40.7085]}]};
             const m = t.lib.createMap(div(), {...spec, ...red, markers: [pins]}); await idle(m);
             m.update({...spec, ...ext('#f00', [{id: 'two', type: 'line', source: 'own'}]), markers: [pins]}); await idle(m);
-            const ids = m.map.getStyle().layers.map(l => l.id);
+            const ids = m._map.getStyle().layers.map(l => l.id);
             out.markersOnTop = ids.indexOf('two') < ids.indexOf('pins');
             const o = t.lib.createMap(div(), {...spec, sources: {omt: {type: 'geojson', data: square}}}); await idle(o);
             o.update({...spec, sources: undefined, layers: undefined}); await idle(o);
-            out.styleSource = o.map.getSource('omt')?.type;
+            out.styleSource = o._map.getSource('omt')?.type;
             for (const h of [a, b, m, o]) h.destroy();
             return out;
         }, renderer);
@@ -534,7 +534,7 @@ for (const renderer of ['worker', 'main']) {
             await good.querySource('omt', {sourceLayers: ['water']});
             // An application that adds the layer and the source itself in `load`: the ids are compared after that.
             const ownEl = div('height:150px'), own = t.lib.createMap(ownEl, {...base, interactiveLayers: ['later'], data: {'later-source': empty}});
-            own.listen('load', () => { own.map.addSource('later-source', {type: 'geojson', data: empty}); own.map.addLayer({id: 'later', type: 'fill', source: 'later-source'}); });
+            own.listen('load', () => { own._map.addSource('later-source', {type: 'geojson', data: empty}); own._map.addLayer({id: 'later', type: 'fill', source: 'later-source'}); });
             await idle(own);
             // A container that is hidden, and one that is not in the page yet, when the map is made: no warning for the height.
             const hiddenEl = div('height:150px;display:none'), hidden = t.lib.createMap(hiddenEl, base);
@@ -592,12 +592,12 @@ for (const renderer of ['worker', 'main']) {
             const mercSaid = said.length;
             const other = t.lib.createMap(div(), {...base, style: {...t.style, projection: {type: 'identity'}}});
             await idle(other);
-            other.map.setStyle({...t.style, projection: {type: 'identity'}});
+            other._map.setStyle({...t.style, projection: {type: 'identity'}});
             await idle(other);
             const otherSaid = said.splice(0);
             const globe = t.lib.createMap(div(), {...base, style: {...t.style, projection: {type: 'globe'}}});
             await idle(globe);
-            globe.map.setStyle({...t.style, projection: {type: 'globe'}});
+            globe._map.setStyle({...t.style, projection: {type: 'globe'}});
             await idle(globe);
             console.warn = log;
             merc.destroy(); other.destroy(); globe.destroy();
@@ -621,7 +621,7 @@ for (const renderer of ['worker', 'main']) {
 
         // 4. Marker layers: each one is a source and a symbol layer of the style, and they follow the description.
         const markers = await page.evaluate(async () => {
-            const t = window.t, map = t.host.map, wait = ms => new Promise(r => setTimeout(r, ms)), at = () => t.host.queryFeatures({x: 450, y: 300}, {layers: ['pins']});
+            const t = window.t, map = t.host._map, wait = ms => new Promise(r => setTimeout(r, ms)), at = () => t.host.queryFeatures({x: 450, y: 300}, {layers: ['pins']});
             const centre = t.host.unproject({x: 450, y: 300});
             const layer = (data, more) => ({id: 'pins', image: 'disc', data, ...more});
             t.host.update(t.spec = {...t.spec, images: {disc: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="{{color}}"/></svg>'}, markers: [layer([{lngLat: centre, props: {color: '#d00'}}])]});
@@ -670,7 +670,7 @@ for (const renderer of ['worker', 'main']) {
         }, (await page.screenshot()).toString('base64'));
         const shows = async colour => { let got; for (let i = 0; i < 40 && !(got = await colourAt()).includes(colour); i++) await page.waitForTimeout(150); return got.includes(colour) ? colour : got.join(' '); };
         const images = await page.evaluate(async () => {
-            const t = window.t, map = t.host.map, c = t.host.unproject({x: 450, y: 300}), add = map.addImage;
+            const t = window.t, map = t.host._map, c = t.host.unproject({x: 450, y: 300}), add = map.addImage;
             t.square = colour => `<svg viewBox="0 0 40 40"><rect width="40" height="40" fill="${colour}"/></svg>`;
             t.added = []; t.imageErrors = [];
             map.addImage = function (name, ...rest) { t.added.push(name); return add.call(this, name, ...rest); };
@@ -697,11 +697,11 @@ for (const renderer of ['worker', 'main']) {
             t.host.update({...t.spec, images: {...t.spec.images, late: t.square('#f00')}});
             const {images: _, onError: __, ...rest} = t.spec;
             t.host.update(t.spec = rest);
-            return {errors: t.imageErrors, has: t.host.map.hasImage('square')};
+            return {errors: t.imageErrors, has: t.host._map.hasImage('square')};
         });
         await page.waitForTimeout(700);
-        const after = await colourAt(), late = await page.evaluate(() => window.t.host.map.hasImage('late'));
-        await page.evaluate(() => { const t = window.t; delete t.host.map.addImage; t.host.update(t.spec = {...t.spec, style: t.style}); });
+        const after = await colourAt(), late = await page.evaluate(() => window.t.host._map.hasImage('late'));
+        await page.evaluate(() => { const t = window.t; delete t.host._map.addImage; t.host.update(t.spec = {...t.spec, style: t.style}); });
         check(`[${renderer}] images follow the description: added, the same content is not added again, replaced, the last of two changes stays, removed, and an image that does not load is an error`,
             first === '#f0f' && again === 0 && replaced === '#0ff' && last === '#00f' && stays && !gone.has && !late && !after.includes('#00f') && gone.errors.length === 1 && gone.errors[0].startsWith('[map-jr-gl] images: the image "lost" did not load.'),
             JSON.stringify({first, again, replaced, last, stays, gone, late, after}));
@@ -733,13 +733,13 @@ for (const renderer of ['worker', 'main']) {
         // The state of a feature in a parameter: the tiles are built again when the state changes.
         await page.evaluate(() => { const t = window.t; t.host.update(t.spec = {...t.spec, style: t.tiles(['image', 'tile', {params: {colour: ['case', ['boolean', ['feature-state', 'on'], false], '#f00', '#0f0']}}])}); });
         const stateOff = await becomes('#000 #0f0 #000 #0f0');
-        await page.evaluate(() => window.t.host.map.setFeatureState({source: 'spot', id: 2}, {on: true}));
+        await page.evaluate(() => window.t.host._map.setFeatureState({source: 'spot', id: 2}, {on: true}));
         const stateOn = await becomes('#000 #0f0 #000 #f00');
         // `generateId: true`: each feature's id is its index in the data (0 and 1), replacing the ids 1 and 2 of the data.
         await page.evaluate(() => { const t = window.t, style = t.tiles(['image', 'tile', {params: {colour: ['case', ['boolean', ['feature-state', 'on'], false], '#f00', '#0f0']}}]);
-            style.sources.spot.generateId = true; t.host.map.removeFeatureState({source: 'spot'}); t.host.update(t.spec = {...t.spec, style}); });
+            style.sources.spot.generateId = true; t.host._map.removeFeatureState({source: 'spot'}); t.host.update(t.spec = {...t.spec, style}); });
         const generatedOff = await becomes('#000 #0f0 #000 #0f0');
-        await page.evaluate(() => window.t.host.map.setFeatureState({source: 'spot', id: 0}, {on: true}));
+        await page.evaluate(() => window.t.host._map.setFeatureState({source: 'spot', id: 0}, {on: true}));
         const generatedOn = await becomes('#000 #f00 #000 #0f0');
         check(`[${renderer}] generateId on a GeoJSON source gives each feature its index as its id, and feature state finds it`, generatedOff === '#000 #0f0 #000 #0f0' && generatedOn === '#000 #f00 #000 #0f0', JSON.stringify({generatedOff, generatedOn}));
         // A value with characters of XML is text in the SVG and not markup: the image is drawn, and the map has no error.
@@ -952,12 +952,12 @@ for (const renderer of ['worker', 'main']) {
             const count = async (id, want) => { let n = -1; for (let i = 0; i < 40 && ((n = (await t.host.queryFeatures(box, {layers: [id]})).length) > 0) !== want; i++) await wait(150); return n > 0; };
             const layer = id => ({sources: {extra: t.style.sources.omt}, layers: [{id, type: 'fill', source: 'extra', 'source-layer': 'water', before: 'road', paint: {'fill-color': '#f0f'}}]});
             t.host.update(t.spec = {...t.spec, style: location.origin + '/style.json', ...layer('ext-a')});
-            const a = await count('ext-a', true), order = t.host.map.getStyle().layers.map(l => l.id), below = order.indexOf('ext-a') === order.indexOf('road') - 1;
+            const a = await count('ext-a', true), order = t.host._map.getStyle().layers.map(l => l.id), below = order.indexOf('ext-a') === order.indexOf('road') - 1;
             t.host.update(t.spec = {...t.spec, ...layer('ext-b')});
             const b = await count('ext-b', true), aGone = !(await count('ext-a', false));
             t.host.update(t.spec = {...t.spec, style: t.style, sources: undefined, layers: undefined});
             await wait(500);
-            return {a, below, b, aGone, left: t.host.map.getStyle().layers.some(l => l.id.startsWith('ext-'))};
+            return {a, below, b, aGone, left: t.host._map.getStyle().layers.some(l => l.id.startsWith('ext-'))};
         });
         check(`[${renderer}] extend adds sources and layers to a style from a URL, and follows the description`, extend.a && extend.below && extend.b && extend.aGone && !extend.left, JSON.stringify(extend));
 
@@ -1131,7 +1131,7 @@ for (const renderer of ['worker', 'main']) {
             const offA = h.listen('test22', () => { throw new Error('thrown by a listener'); }), offB = h.listen('test22', () => second++);
             const log = console.error;
             console.error = () => {};
-            h.map.fire('test22');
+            h._map.fire('test22');
             console.error = log;
             offA(); offB();
             return {calls, second, error: h.state.get().error?.message};
@@ -1152,15 +1152,17 @@ for (const renderer of ['worker', 'main']) {
             const found = await host.queryFeatures(undefined, {layers: ['pts-circle']});
             const id = found.find(f => f.properties.cluster)?.properties.cluster_id;
             const zoom = await host.clusterExpansionZoom('pts', id), children = await host.clusterChildren('pts', id);
-            const all = await host.clusterLeaves('pts', id, Infinity), two = await host.clusterLeaves('pts', id, 2, 1);
+            const all = await host.clusterLeaves('pts', id, {limit: Infinity}), two = await host.clusterLeaves('pts', id, {limit: 2, offset: 1}), ten = await host.clusterLeaves('pts', id);
             const failed = p => p.then(() => 'answered', e => e.message);
-            const errors = [await failed(host.clusterExpansionZoom('plain', 1)), await failed(host.clusterLeaves('nothing', 1)), await failed(host.clusterChildren('pts', 999999))];
+            const errors = [await failed(host.clusterExpansionZoom('plain', 1)), await failed(host.clusterLeaves('nothing', 1)), await failed(host.clusterChildren('pts', 999999)), await failed(host.clusterLeaves('pts', id, 2, 1))];
+            const members = ['map' in host, '_map' in host];
             host.destroy(); el.remove();
-            return {id, zoom, children: children.length, all: all.length, two: two.length, point: all[0]?.geometry.type, errors};
+            return {id, zoom, children: children.length, all: all.length, two: two.length, point: all[0]?.geometry.type, ten: ten.length, errors, members};
         }, renderer);
-        check(`[${renderer}] clusterExpansionZoom, clusterChildren and clusterLeaves answer for a cluster, and reject with a message otherwise`,
+        check(`[${renderer}] clusterExpansionZoom, clusterChildren and clusterLeaves({limit, offset}) answer for a cluster, and reject with a message otherwise; the host has _map and no map (#503)`,
             typeof clusters.id === 'number' && clusters.zoom > 10 && clusters.children >= 1 && clusters.all === 12 && clusters.two === 2 && clusters.point === 'Point'
-            && clusters.errors[0].startsWith('[map-jr-gl] clusterExpansionZoom(): ') && clusters.errors[1].includes('"nothing" is not a GeoJSON source') && clusters.errors[2].startsWith('[map-jr-gl] clusterChildren(): '), JSON.stringify(clusters));
+            && clusters.errors[0].startsWith('[map-jr-gl] clusterExpansionZoom(): ') && clusters.errors[1].includes('"nothing" is not a GeoJSON source') && clusters.errors[2].startsWith('[map-jr-gl] clusterChildren(): ')
+            && clusters.ten === 10 && clusters.errors[3].startsWith('[map-jr-gl] clusterLeaves(): the third argument is 2. Pass {limit, offset}') && clusters.members.join() === 'false,true', JSON.stringify(clusters));
 
         // 5c. A rejection of the question of watchFeatures is an error of the map, and is not lost (#92).
         const rejected = await page.evaluate(async () => {
@@ -1179,7 +1181,7 @@ for (const renderer of ['worker', 'main']) {
             const sources = Object.keys(t.spec.style.sources).filter(id => t.spec.style.sources[id].type === 'vector');
             let clicks = 0, watched = 0;
             h.update(t.spec = {...t.spec, interactiveLayers: t.spec.style.layers.filter(l => l.source).map(l => l.id), onClick: () => clicks++});
-            h.map.fire('click', {point: {x: 450, y: 300}, lngLat: {lng: -74.0105, lat: 40.7045}});
+            h._map.fire('click', {point: {x: 450, y: 300}, lngLat: {lng: -74.0105, lat: 40.7045}});
             h.watchSource(sources[0], undefined, {}, () => watched++);
             const waits = said(h.once('dragend'));
             const pending = said(h.querySource(sources[0])), height = said(h.queryElevation([-74.0105, 40.7045]));
@@ -1650,7 +1652,7 @@ for (const method of ['easeTo', 'flyTo']) {
     try {
         const p = await prefetchPage(); page = p.page;
         const before = p.asked.length;
-        await page.evaluate(([method, east, lat]) => window.host.map[method]({center: [east, lat], duration: 5000}), [method, east, from[1]]);
+        await page.evaluate(([method, east, lat]) => window.host._map[method]({center: [east, lat], duration: 5000}), [method, east, from[1]]);
         await page.waitForTimeout(500);
         // (Only tiles of the level of the view: a flyTo zooms out, and its coarser tiles cover the destination early.)
         const zView = Math.max(...p.asked.slice(0, before).map(t => t[0]));
@@ -1664,10 +1666,10 @@ for (const method of ['easeTo', 'flyTo']) {
     try {
         const p = await prefetchPage(1500); page = p.page;
         const before = p.asked.length;
-        await page.evaluate(([east, lat]) => window.host.map.easeTo({center: [east, lat], duration: 5000}), [east, from[1]]);
+        await page.evaluate(([east, lat]) => window.host._map.easeTo({center: [east, lat], duration: 5000}), [east, from[1]]);
         await page.waitForTimeout(400);
         const early = p.asked.slice(before).filter(([z, x]) => Math.abs(x - tileOf(east, z)) <= 1).map(t => '/' + t.join('/') + '.pbf');
-        await page.evaluate(([lng, lat]) => window.host.map.easeTo({center: [lng, lat], duration: 5000}), [from[0] - 0.3, from[1]]);
+        await page.evaluate(([lng, lat]) => window.host._map.easeTo({center: [lng, lat], duration: 5000}), [from[0] - 0.3, from[1]]);
         await page.waitForTimeout(2500);
         const cancelled = p.failed.filter(u => early.some(e => u.endsWith(e)));
         check('prefetch: a newer movement lets the early requests of an older one finish', early.length > 0 && cancelled.length === 0, JSON.stringify({early: early.length, cancelled: cancelled.length}));
@@ -1681,7 +1683,7 @@ for (const method of ['easeTo', 'flyTo']) {
         await page.mouse.move(600, 300); await page.mouse.down();
         for (let i = 1; i <= 15; i++) { await page.mouse.move(600 - i * 20, 300); await page.waitForTimeout(40); }
         // (The button stays down: a release would start the inertia.)
-        const edge = await page.evaluate(() => window.host.map.getBounds().getEast());
+        const edge = await page.evaluate(() => window.host._map.getBounds().getEast());
         const z = Math.max(...p.asked.map(t => t[0]));
         const ahead = p.asked.filter(([tz, x]) => tz === z && x * 360 / 2 ** z - 180 > edge);
         await page.mouse.up();

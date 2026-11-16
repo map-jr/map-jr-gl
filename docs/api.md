@@ -187,9 +187,8 @@ and `projection` replaces the projection of the style. A style object that your 
 none of these fields. Up to version 0.5, these three fields were inside a field `extend`, which no longer exists.
 
 When only `sources`, `layers` and `terrain` change, `update()` edits the map: it adds and removes sources and layers, and it sets the changed
-paint properties, layout properties (such as `visibility`) and filters. The style is not requested again, and the
-sources and layers that the application added through `host.map` stay. These changes replace the whole style instead,
-so the style from a URL is requested again and the additions through `host.map` are lost:
+paint properties, layout properties (such as `visibility`) and filters. The style is not requested again. These changes replace the whole style instead,
+so the style from a URL is requested again:
 
 - a change of `terrain`;
 - a source that changes, or a source of `sources` (new or removed) with the id of a source of the style;
@@ -475,7 +474,8 @@ createMap(document.getElementById('map'), {
 
 A control written for MapLibre GL JS (an object with `onAdd(map)` and `onRemove(map)`) also fits:
 `custom({key: 'ruler', position: 'top-left', onAdd: map => ruler.onAdd(map), onRemove: map => ruler.onRemove(map)})`.
-`onAdd` receives the core map (`map.map` of the main API), not the object that `createMap` returns. The default
+`onAdd` receives the core map of the library, not the object that `createMap` returns. This is the one place where an
+application gets the core map. The default
 `position` is `'top-right'`.
 
 In React and Vue, make the element once and render your component into it. In React use a portal
@@ -690,8 +690,8 @@ unhandled rejection, and the watch goes on. When the question itself is wrong (f
 For users of MapLibre GL JS: `queryRenderedFeatures` is `queryFeatures`, and `querySourceFeatures(id)` is close to
 `querySource(id)`. The difference is that `querySourceFeatures` returns every feature of the tiles under the view, as
 MapLibre does, and `querySource` returns only the features in the view. The two MapLibre methods are in the entry
-`@map-jr/map-jr-gl/maplibre-compat`. The `Map` of that entry and `map` of the `MapHost` (the core map) have the same
-`queryFeatures` and `querySource` as the `MapHost`, and they also accept a position as `{lng, lat}`.
+`@map-jr/map-jr-gl/maplibre-compat`. The `Map` of that entry has the same
+`queryFeatures` and `querySource` as the `MapHost`, and it also accept a position as `{lng, lat}`.
 
 The tile data is in a worker, so each query returns a promise.
 
@@ -705,7 +705,7 @@ returns a promise:
 |---|---|
 | `clusterExpansionZoom(sourceId, clusterId)` | The zoom level at which the cluster divides. |
 | `clusterChildren(sourceId, clusterId)` | The clusters and points that the cluster divides into, as GeoJSON features (`ClusterFeature[]`). |
-| `clusterLeaves(sourceId, clusterId, limit, offset)` | The points of the cluster, as GeoJSON features. `limit` defaults to 10 and `offset` to 0. A `limit` of `Infinity` gives all of them. |
+| `clusterLeaves(sourceId, clusterId, {limit, offset})` | The points of the cluster, as GeoJSON features. `limit` defaults to 10 and `offset` to 0. A `limit` of `Infinity` gives all of them. |
 
 ```js
 import {createMap} from '@map-jr/map-jr-gl';
@@ -841,7 +841,8 @@ as ten. See [Markers](markers.md).
 | `listen(type, fn)` | Calls `fn` for each event of that type. Returns a function that stops it. See [Events](#events). |
 | `once(type)` | A promise of the next event of that type. See [Events](#events). |
 | `container` | The element of the map. |
-| `map` | The map object behind this API, for a need that this API does not cover yet. It can change between versions. It is the core map of the library, not the `Map` of `@map-jr/map-jr-gl/maplibre-compat`: it has `jumpTo`, `easeTo`, `fitBounds`, `getCenter`, `getZoom`, `on`, `addLayer`, `setPaintProperty`, `flyTo` and the gesture handlers, but not `setCenter`, `setZoom`, `setBearing`, `setPitch`, `panTo`, `rotateTo` or `queryRenderedFeatures`. Its type is the core `Map`, not the compat `Map`. Plugins that need a MapLibre map (deck.gl `MapboxOverlay`, mapbox-gl-draw, terra-draw) do not work with it, because it lacks `getPadding`, `getRenderWorldCopies` and a synchronous `queryRenderedFeatures`: use the compat entry for them (see [Plugins that need a MapLibre map](vue.md#plugins-that-need-a-maplibre-map)). |
+
+Members whose names start with `_` are private. They are not in the type `MapHost`, and they can change in each release.
 
 ## Events
 
