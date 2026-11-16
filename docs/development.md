@@ -65,7 +65,10 @@ most 400 entries. `test/bench/webdriver.mjs` prints it for a renderer that did n
 Three tests compare the library with MapLibre GL JS:
 
 - **Expression tests.** `pnpm test:expressions` runs the expression tests of the MapLibre style specification.
-- **API check.** `pnpm test:api` compares the methods of `Map` with the type declarations of MapLibre GL JS.
+  The list `deliberate` in `test/conformance/expressions.mjs` labels the fixtures that do not pass by a decision
+  (`later` or `wontfix`), and the output counts each label. Only the owner adds a `wontfix` entry.
+- **API check.** `pnpm test:api` compares the methods of `Map` with the type declarations of MapLibre GL JS. It
+  does not count a method that the declarations tag `@internal`, or one that only the class `Camera` has.
 - **Render tests.** `pnpm test:render` draws each MapLibre render test and compares the result with the expected
   image. The first run downloads the MapLibre GL JS repository and two fonts into `.cache`.
 
