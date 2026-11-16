@@ -41,6 +41,9 @@ function dragCompass(map: Map, b: HTMLButtonElement, pitch: boolean) {
         if (!last || e.pointerId !== last.pointerId) return;
         const dx = e.clientX - last.clientX, dy = e.clientY - last.clientY;
         if (!dragged && Math.hypot(dx, dy) <= 3) return;
+        // (A hand that holds still moves the pointer by a pixel back and forth: a movement under 2 pixels waits, so that
+        // the map does not shake between two angles.)
+        if (dragged && Math.abs(dx) < 2 && (!pitch || Math.abs(dy) < 2)) return;
         dragged = true;
         // 0.8 degrees of bearing for each pixel sideways, and 0.5 degrees of pitch for each pixel up, as MapLibre GL JS
         // turns the map. (An angle around the centre of the button, as before #548, jumped by up to 180 degrees when
@@ -83,7 +86,7 @@ export class NavigationControl implements Control {
                 if (major) ticks += `M${at(r)}L${at(10.4)}`; else light += `M${at(r)}L${at(10.4)}`;
             }
             const b = button(glass ? el.appendChild(group()) : el, 'compass', ui(map, 'NavigationControl.ResetBearing', 'Reset bearing to north'), glass
-                ? `<svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-linecap="round" aria-hidden="true"><g><path d="${light}" stroke-width="1.1" opacity=".45"/><path d="${ticks}" stroke-width="1.6"/><path d="M12 .9l2.7 4.3H9.3z" stroke="none"/></g><text x="12" y="12" text-anchor="middle" dominant-baseline="central" font-size="10.5" font-weight="700" font-family="system-ui,sans-serif" stroke="none"></text></svg>`
+                ? `<svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-linecap="round" aria-hidden="true"><g><path d="${light}" stroke-width="1.1" opacity=".45"/><path d="${ticks}" stroke-width="1.2"/><path d="M12 .9l1.9 4.3h-3.8z" stroke="none"/></g><text x="12" y="12" text-anchor="middle" dominant-baseline="central" font-size="10" font-weight="600" font-family="system-ui,sans-serif" stroke="none"></text></svg>`
                 : svg('<path d="M9 2.500 12 9H6z" fill="currentColor" stroke="none"/><path d="M9 15.500 6 9h6z" fill="currentColor" stroke="none" opacity=".35"/>'),
                 () => map.easeTo({bearing: 0, ...this.pitch && {pitch: 0}}));
             needle = b.querySelector(glass ? 'g' : 'svg');

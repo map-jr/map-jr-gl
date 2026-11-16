@@ -234,7 +234,9 @@ export class Popup extends Overlay {
         if (this.options.animate === false || !this.box.animate || matchMedia('(prefers-reduced-motion: reduce)').matches) return null;
         const timing: KeyframeAnimationOptions = {duration: reverse ? 120 : 180, easing: reverse ? 'ease-in' : 'ease-out', fill: reverse ? 'forwards' : 'none'};
         // (One keyframe: the popup comes from it when it opens, and goes to it when it closes.)
-        this.el.animate({scale: .92, offset: +reverse}, timing);
+        // (The scale is added after the transform that positions the element, so that it grows from the tip: the property
+        // `scale` would come before that transform and move the popup towards the corner of the map.)
+        this.el.animate({transform: 'scale(.92)', offset: +reverse, composite: 'add'}, timing);
         this.shade?.animate({opacity: 0, offset: +reverse}, timing);
         return this.box.animate({opacity: 0, offset: +reverse}, timing);
     }

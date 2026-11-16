@@ -586,7 +586,7 @@ it makes the map. A control appears a moment after `createMap` or `update` adds 
 
 The controls, the attribution, the scale and the popup of a map of `createMap` have a translucent background with
 `backdrop-filter: blur(5px)`. A button is a circle and a group of buttons is a pill: the radius is half the size of a
-button. The attribution and the scale have a fainter background and lighter text, the links of the attribution have a
+button. The attribution and the scale have lighter text, the links of the attribution have a
 faint underline until the pointer is over them, and the popup has a round close button. A map of
 `@map-jr/map-jr-gl/maplibre-compat` keeps the look of MapLibre GL JS. The look needs Safari 18, Chrome 120 or Firefox
 121 (`backdrop-filter` without a prefix, and CSS nesting); an older browser shows opaque controls with corners of 6
@@ -595,13 +595,13 @@ map or on an element above it:
 
 | Custom property | What it sets | Default |
 |---|---|---|
-| `--map-control-opacity` | The opacity of the background of the controls, from 0 to 1. The popup has 0.1 more, and the attribution and the scale have 0.15 less. | `.55`, dark `.45` |
+| `--map-control-opacity` | The opacity of the background of the controls, from 0 to 1. The popup has 0.1 more. | `.55`, dark `.45` |
 | `--map-control-radius` | The radius of the controls. The popup has three quarters of it, and the attribution and the scale have half. | half of `--map-control-size` (`16px`, `22px` on a touch screen) |
 | `--map-control-background` | The background of a group of buttons and of the compact attribution, in place of the colour that `--map-control-opacity` makes | white at `.55`, dark `rgb(30 30 34)` at `.45` |
 | `--map-control-color` | The colour of the icons and the text | `#222`, dark `#e6e6e6` |
 | `--map-control-size` | The width and the height of a button | `32px`, `44px` on a touch screen |
 | `--map-control-focus` | The colour of the focus outline | `#2f7fd1` |
-| `--map-attribution-background` | The background of the attribution and the scale | white at `.4`, dark `rgb(30 30 34)` at `.3` |
+| `--map-attribution-background` | The background of the attribution and the scale | as the controls |
 | `--map-popup-background`, `--map-popup-color` | The background and the text of a popup | white at `.65` and `#222`, dark `rgb(30 30 34)` at `.55` and `#e6e6e6` |
 
 The compass is a round button below the zoom buttons. Its centre shows the nearest of `N`, `E`, `S` and `W` to the

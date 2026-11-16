@@ -83,7 +83,7 @@ export const CONTROL_CSS = `
    A browser without backdrop-filter or CSS nesting keeps the look above. */
 @supports (backdrop-filter:blur(1px)){:where(.map-jr-glass){
 --map-jr-o:.55;--map-jr-rgb:255 255 255;--map-jr-prgb:255 255 255;--map-jr-r:calc(var(--map-control-size,32px)/2);--map-jr-fg:rgb(0 0 0/.62);--map-jr-shadow:0 0 0 1px rgb(0 0 0/.1),0 2px 6px rgb(0 0 0/.12),0 6px 18px rgb(0 0 0/.1);--map-jr-drop:drop-shadow(0 0 .5px rgb(0 0 0/.35));
---map-jr-a:var(--map-control-opacity,var(--map-jr-o));--map-jr-rr:var(--map-control-radius,var(--map-jr-r));--map-jr-bg:rgb(var(--map-jr-rgb)/var(--map-jr-a));--map-jr-quiet:rgb(var(--map-jr-rgb)/calc(var(--map-jr-a) - .15));
+--map-jr-a:var(--map-control-opacity,var(--map-jr-o));--map-jr-rr:var(--map-control-radius,var(--map-jr-r));--map-jr-bg:rgb(var(--map-jr-rgb)/var(--map-jr-a));
 --map-jr-popup-bg:rgb(var(--map-jr-prgb)/calc(var(--map-jr-a) + .1));--map-jr-popup-ring:0 0 #0000;--map-jr-popup-radius:calc(var(--map-jr-rr)*.75);
 @media (pointer:coarse){--map-jr-r:calc(var(--map-control-size,44px)/2)}
 &.map-jr-dark{--map-jr-o:.45;--map-jr-rgb:30 30 34;--map-jr-prgb:43 43 43;--map-jr-fg:rgb(255 255 255/.66);--map-jr-shadow:0 0 0 1px rgb(255 255 255/.14),0 2px 6px rgb(0 0 0/.3),0 6px 18px rgb(0 0 0/.25);--map-jr-drop:drop-shadow(0 0 .5px rgb(255 255 255/.6))}
@@ -91,10 +91,11 @@ export const CONTROL_CSS = `
 & :where(.map-jr-ctrl-group,.map-jr-compact){background:var(--map-control-background,var(--map-jr-bg));box-shadow:var(--map-jr-shadow);border-radius:var(--map-jr-rr)}
 & :where(.map-jr-ctrl-group button:first-child){border-radius:var(--map-jr-rr) var(--map-jr-rr) 0 0}
 & :where(.map-jr-ctrl-group button:last-child){border-bottom-left-radius:var(--map-jr-rr);border-bottom-right-radius:var(--map-jr-rr)}
-& :where(.map-jr-ctrl-attrib:not(.map-jr-compact),.map-jr-ctrl-scale){background:var(--map-attribution-background,var(--map-jr-quiet));color:var(--map-control-color,var(--map-jr-fg))}
+& :where(.map-jr-ctrl-attrib:not(.map-jr-compact),.map-jr-ctrl-scale){background:var(--map-attribution-background,var(--map-jr-bg));color:var(--map-control-color,var(--map-jr-fg))}
 & :where(.map-jr-ctrl-attrib:not(.map-jr-compact)){border-top-left-radius:calc(var(--map-jr-rr)/2)}
 & :where(.map-jr-ctrl-attrib a){text-decoration-color:color-mix(in oklab,currentColor 35%,transparent);&:hover{text-decoration-color:currentColor}}
-& :where(.map-jr-compact .map-jr-ctrl-attrib-button){display:grid;place-items:center;font:600 15px/1 system-ui,sans-serif}
+& :where(.map-jr-compact .map-jr-ctrl-attrib-button){display:grid;place-items:center;top:50%!important;translate:0 -50%;font:600 15px/1 system-ui,sans-serif}
+& :where(.map-jr-ctrl-attrib.map-jr-compact){max-width:none!important}
 & :where(.map-jr-ctrl-scale){display:flex;align-items:center;gap:6px;width:auto!important;border:0;border-radius:calc(var(--map-jr-rr)/2) calc(var(--map-jr-rr)/2) 0 0;margin-bottom:-10px;padding:2px 6px;font-size:11px;line-height:1.4;&::after{content:"";width:var(--map-jr-scale);height:5px;margin-top:3px;border:1.5px solid;border-top:0;box-sizing:border-box}}
 &:has(.map-jr-compact) :where(.map-jr-ctrl-scale){margin-bottom:0;border-radius:calc(var(--map-jr-rr)/2)}
 & :where(.map-jr-popup-content){box-shadow:none!important;border:0 solid #0000;&[data-side=top]{border-top-width:8px;margin-top:0!important}&[data-side=bottom]{border-bottom-width:8px;margin-bottom:0!important}&[data-side=left]{border-left-width:8px;margin-left:0!important}&[data-side=right]{border-right-width:8px;margin-right:0!important}}

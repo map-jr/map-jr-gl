@@ -1914,6 +1914,17 @@ for (const visualizePitch of [undefined, true]) {
             const turns = steps.slice(1).map((b, i) => b - steps[i]), end = await bearing();
             check(`${name}: a drag sideways across the compass with the ${kind} turns the map by 0.8 degrees for each pixel, without a jump`,
                 turns.every(t => t > 0 && t < 4) && Math.abs(end - 48 * .8) < 3, JSON.stringify({steps: steps.map(b => Math.round(b)), end}));
+            // A pointer that is held still during the drag, and moves by one pixel back and forth as a hand does, leaves one
+            // bearing in every frame: the map does not shake between two angles.
+            if (cdp) await touch('touchStart', box.x, box.y); else { await page.mouse.move(box.x, box.y); await page.mouse.down(); }
+            for (let dx = 4; dx <= 20; dx += 4) { if (cdp) await touch('touchMove', box.x + dx, box.y); else await page.mouse.move(box.x + dx, box.y); }
+            await page.waitForTimeout(100);
+            await page.evaluate(() => { const f = window.heldFrames = [], tick = () => { f.push(window.compassHost._map.getBearing()); if (f.length < 40) requestAnimationFrame(tick); }; requestAnimationFrame(tick); });
+            for (let i = 0; i < 8; i++) { const x = box.x + 20 + (i % 2); if (cdp) await touch('touchMove', x, box.y); else await page.mouse.move(x, box.y); await page.waitForTimeout(40); }
+            const held = await page.evaluate(async () => { while (window.heldFrames.length < 40) await new Promise(r => requestAnimationFrame(r)); return [...new Set(window.heldFrames.map(b => Math.round(b * 10) / 10))]; });
+            if (cdp) await touch('touchEnd'); else await page.mouse.up();
+            await page.waitForTimeout(200);
+            check(`${name}: a pointer held still on a drag of the compass with the ${kind} keeps one bearing`, held.length === 1, JSON.stringify({held}));
         }
     } catch (e) { check(`${name}: the test run was completed`, false, String(e.message).split('\n')[0]); }
     await page.close();
