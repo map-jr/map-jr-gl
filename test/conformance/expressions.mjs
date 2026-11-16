@@ -71,7 +71,9 @@ const walk = dir => {
             const isColor = t.propertySpec?.type === 'color' || t.expected.compiled.type === 'color';
             // Legacy "function" objects ({stops: ...}) go through the property compiler, as they do in a real style.
             const legacy = !Array.isArray(t.expression) && typeof t.expression === 'object' && t.expression !== null;
-            const prop = legacy ? compileProp(t.expression, isColor ? 'color' : t.propertySpec?.type === 'number' ? 'number' : 'string', t.propertySpec?.default ?? null) : null;
+            // The kind is the one that the table of properties in src/style.ts gives to such a property: 'discrete' is a
+            // property that the specification does not interpolate, whose function steps between its zoom levels.
+            const prop = legacy ? compileProp(t.expression, isColor ? 'color' : t.propertySpec?.expression?.interpolated === false ? 'discrete' : t.propertySpec?.type === 'number' ? 'number' : 'string', t.propertySpec?.default ?? null) : null;
             const fn = prop ? c => prop.eval(c.zoom, c.f) : compileExpr(t.expression, {dd: false, zoom: false});
             t.inputs.forEach(([globals, feature], i) => {
                 // Fixtures write arrays of numbers or colours as {values: [...]}, and a colour in an array as {r, g, b, a}.
@@ -84,6 +86,9 @@ const walk = dir => {
                 // String(value ?? ''), where MapLibre adds "to-string" to the expression.
                 const type = t.propertySpec?.type;
                 if (!legacy && (type === 'string' || type === 'formatted')) got = String(got ?? '');
+                // A property with tokens ("text-field", "icon-image"): the tile builder puts the properties of the feature
+                // in place of the tokens of the value (src/tile.ts). It also trims the text, which is left out here.
+                if (legacy && t.propertySpec?.tokens && typeof got === 'string') got = got.replace(/\{([^}]+)\}/g, (_, k) => feature?.properties?.[k] ?? '');
                 want = internal(want);
                 if (isColor && typeof got === 'string') got = parseColor(got);
                 if (Array.isArray(got) && Array.isArray(want) && want.some(Array.isArray)) got = got.map(v => typeof v === 'string' ? parseColor(v) ?? v : v);
