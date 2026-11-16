@@ -79,7 +79,7 @@ const walk = dir => {
                 let want = t.expected.outputs[i];
                 if (want && typeof want === 'object' && Array.isArray(want.values)) want = want.values.map(plain);
                 if (want && typeof want === 'object' && !Array.isArray(want) && 'error' in want) return; // runtime-error cases
-                let got = fn({zoom: globals?.zoom ?? 0, density: globals?.heatmapDensity, f: {type: TYPES[feature?.geometry?.type] ?? 0, id: feature?.id, properties: feature?.properties ?? {}, state: feature?.featureState}});
+                let got = fn({zoom: globals?.zoom ?? 0, density: globals?.heatmapDensity ?? globals?.elevation, f: {type: TYPES[feature?.geometry?.type] ?? 0, id: feature?.id, properties: feature?.properties ?? {}, state: feature?.featureState}});
                 // A property that is a text ("string" or "formatted"): the tile builder makes the text of the value with
                 // String(value ?? ''), where MapLibre adds "to-string" to the expression.
                 const type = t.propertySpec?.type;
