@@ -8,7 +8,7 @@
  * the horizon hides the far side, and between zoom 11 and 12 the position mixes with the Mercator position in clip
  * space. The code is new.
  */
-import {EXTENT, TILE_SIZE, clamp, latFromMerc, lngFromMerc, mercX, mercY, type TileID, type Transform} from './geo.ts';
+import {EXTENT, TILE_SIZE, clamp, keepSize as sizeZoom, latFromMerc, lngFromMerc, mercX, mercY, type TileID, type Transform} from './geo.ts';
 
 type V3 = [number, number, number];
 const PI = Math.PI, RAD = PI / 180;
@@ -119,6 +119,13 @@ function ray(tr: Transform, px: number, py: number): V3 {
 
 /** Screen pixels to the Mercator position of the globe there; off the globe, the nearest point of the horizon (as in MapLibre). */
 export function toMerc(tr: Transform, px: number, py: number): [number, number] {
+    const p = surface(tr, px, py), lat = Math.asin(clamp(p[1], -1, 1)) / RAD, lng = Math.atan2(p[0], p[2]) / RAD;
+    // (A globe has one world: the longitude is between -180 and 180, as in MapLibre GL JS.)
+    return [mercX(lng), mercY(clamp(lat, -85.051129, 85.051129))];
+}
+
+/** Screen pixels to the point of the unit sphere there, also past 85.05° (off the globe, the nearest point of the horizon). */
+function surface(tr: Transform, px: number, py: number): V3 {
     const {cam} = frame(tr), dir = ray(tr, px, py), b = dot(cam, dir), c = dot(cam, cam) - 1, disc = b * b - c;
     let p: number[];
     if (disc >= 0 && -b - Math.sqrt(disc) > 0) { const t = -b - Math.sqrt(disc); p = cam.map((v, i) => v + dir[i] * t); }
@@ -128,9 +135,7 @@ export function toMerc(tr: Transform, px: number, py: number): [number, number] 
         const side = q.map((v, i) => v - u[i] * along), sl = Math.hypot(...side) || 1, hd = 1 / cl, r = Math.sqrt(Math.max(0, 1 - hd * hd));
         p = u.map((v, i) => v * hd + side[i] / sl * r);
     }
-    const lat = Math.asin(clamp(p[1], -1, 1)) / RAD, lng = Math.atan2(p[0], p[2]) / RAD;
-    // (A globe has one world: the longitude is between -180 and 180, as in MapLibre GL JS.)
-    return [mercX(lng), mercY(clamp(lat, -85.051129, 85.051129))];
+    return p as V3;
 }
 
 /**
@@ -146,7 +151,7 @@ export function turnTo(tr: Transform, lng: number, lat: number, px: number, py: 
         if (Math.abs(dl) < 1e-9 && Math.abs(dp) < 1e-9) break;
         tr.lng = ((tr.lng + dl + 540) % 360 + 360) % 360 - 180;
         tr.lat = clamp(tr.lat + dp, -85.051129, 85.051129);
-        if (keepSize) tr.zoom = clamp(zoom0 + zoomAdjustment(lat0, tr.lat), tr.minZoom, tr.maxZoom);
+        if (keepSize) tr.zoom = clamp(zoom0 + sizeZoom(lat0, tr.lat), tr.minZoom, tr.maxZoom);
     }
 }
 
@@ -157,7 +162,8 @@ export function turnTo(tr: Transform, lng: number, lat: number, px: number, py: 
  */
 function aim(tr: Transform, px: number, py: number): V3 {
     const {cam} = frame(tr), dist = Math.hypot(...cam), dir = ray(tr, px, py);
-    const exact = (): V3 => { const [mx, my] = toMerc(tr, px, py); return sphere(mx, my); };
+    // (Not through Mercator, which ends at 85.05°: a pointer over the area around a pole aims at the place there.)
+    const exact = () => surface(tr, px, py);
     if (dist <= 1) return exact();
     const u = cam.map(v => v / dist), c = -dot(dir, u), lateral = dir.map((v, i) => v + u[i] * c), s = Math.hypot(...lateral);
     if (s < 1e-9) return exact();
@@ -211,13 +217,10 @@ export function drag(tr: Transform, x0: number, y0: number, x1: number, y1: numb
     tr.lng = ((oldLng + (1 - dial) * swing + dial * dialLng) % 360 + 540) % 360 - 180;
     // (The caller keeps the centre inside the latitudes that the zoom allows: see `constrain`.)
     tr.lat = clamp(lat, -90, 90);
-    // (Past the edge of Mercator the radius stays that of 85.05°, so the zoom stays too.)
-    const edge = (la: number) => clamp(la, -85.051129, 85.051129);
-    tr.zoom = clamp(oldZoom + zoomAdjustment(edge(oldLat), edge(tr.lat)), tr.minZoom, tr.maxZoom);
+    // (Past the edge of Mercator the radius stays that of 85.05°, so the zoom stays too: see `keepSize` in geo.ts.)
+    tr.zoom = clamp(oldZoom + sizeZoom(oldLat, tr.lat), tr.minZoom, tr.maxZoom);
 }
 
-/** The change of zoom that keeps the size of the globe when the centre moves from one latitude to another. */
-export const zoomAdjustment = (from: number, to: number) => Math.log2(Math.cos(to * RAD) / Math.cos(from * RAD));
 
 /**
  * The tiles that the globe shows, nearest first: a quadtree from zoom 0 in one world. A tile is left out when all its

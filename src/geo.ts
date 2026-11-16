@@ -1,6 +1,14 @@
 export const EXTENT = 4096;
 export const TILE_SIZE = 512;
 const MAX_LAT = 85.051129;
+/**
+ * The change of zoom that keeps the size of the globe on the screen when the centre moves from one latitude to
+ * another (MapLibre's `getZoomAdjustment`). Past 85.05° the size of the globe stays that of 85.05°.
+ */
+export const keepSize = (from: number, to: number) => {
+    const cos = (lat: number) => Math.cos(Math.min(Math.abs(lat), MAX_LAT) * Math.PI / 180);
+    return Math.log2(cos(to) / cos(from));
+};
 
 /** 2D affine matrix in CSS `matrix(a b c d e f)` order: x' = a*x + c*y + e, y' = b*x + d*y + f. */
 export type Mat = [number, number, number, number, number, number];
@@ -142,9 +150,18 @@ export class Transform {
 
     set(center: LngLatLike | undefined, zoom?: number, bearing?: number, pitch?: number) {
         if (pitch !== undefined) this.pitch = clamp(pitch, this.minPitch, this.maxPitch);
+        const lat0 = this.lat;
         if (center) [this.lng, this.lat] = toLngLat(center);
         if (zoom !== undefined) this.zoom = clamp(zoom, this.minZoom, this.maxZoom);
         this.constrain();
+        // On the globe a new centre without a zoom keeps the size of the globe on the screen, and the zoom changes
+        // with the latitude instead, as in MapLibre GL JS. (The zoom decides how near a pole the centre can be, so the
+        // centre is constrained again.)
+        if (center && zoom === undefined && globenessAt(this.globeStops, this.zoom)) {
+            this.zoom = clamp(this.zoom + keepSize(lat0, this.lat), this.minZoom, this.maxZoom);
+            [this.lng, this.lat] = toLngLat(center);
+            this.constrain();
+        }
         if (bearing !== undefined) this.bearing = ((bearing + 180) % 360 + 360) % 360 - 180;
     }
 
@@ -164,7 +181,9 @@ export class Transform {
             // The centre reaches the pole only while the area past the edge of Mercator fits in the view, and eases back
             // to that edge as it outgrows it (MapLibre's _getMaxLatitude).
             const area = (90 - MAX_LAT) * Math.PI / 180, areaPx = this.worldSize / (2 * Math.PI * Math.cos(MAX_LAT * Math.PI / 180)) * area, reach = Math.min(this.width, this.height) / 2;
-            const centrePx = Math.min(areaPx, reach) * clamp(1 - (areaPx - reach) / (reach * 3), 0, 1), max = MAX_LAT + area * centrePx / areaPx * 180 / Math.PI;
+            // (The centre stops a millionth of a degree short of the pole, where the Mercator y of the centre, which
+            // the view uses, is infinite.)
+            const centrePx = Math.min(areaPx, reach) * clamp(1 - (areaPx - reach) / (reach * 3), 0, 1), max = Math.min(MAX_LAT + area * centrePx / areaPx * 180 / Math.PI, 90 - 1e-6);
             this.lat = clamp(this.lat, -max, max);
             return;
         }
