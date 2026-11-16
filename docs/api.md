@@ -177,7 +177,7 @@ createMap('map', {
 ```
 
 A change of scheme is a new style: the map requests the other style (for a URL) and draws the map from the start.
-`sources`, `layers`, `terrain`, `data`, `images`, the markers and the view of the description stay, as with each new
+`sources`, `layers`, `terrain`, `data`, `images` and the view of the description stay, as with each new
 `style`. To change the colours without a request, use one style that reads the global state, and set a property
 with `globalState`. In `update()`, a pair with the same content is the same style. An object that has `layers` is a
 style, and not a pair. A pair with only one of the two values uses that style in both schemes, and the development
