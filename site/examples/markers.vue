@@ -1,6 +1,7 @@
 <script setup>
 import {shallowRef} from 'vue';
 import {MapJr, MapOverlay} from '@map-jr/map-jr-gl/vue';
+import {points} from '@map-jr/map-jr-gl';
 
 const style = 'https://tiles.openfreemap.org/styles/liberty';
 const NYC = [-74.0065, 40.7085];
@@ -15,24 +16,32 @@ const places = Array.from({length: 50000}, (_, i) => {
 });
 const some = places.slice(0, 500);
 
-// (The markers are plain arrays, not refs: Vue does not make 50,000 markers reactive.)
+// A GeoJSON FeatureCollection with a point for each place. The properties of a point are the `props` of its place.
+const pointsOf = list => points(list, {lngLat: p => p.lngLat, properties: p => p.props});
+// Each key of `data` makes a GeoJSON source with that id. (A plain object, not a ref: Vue does not make 50,000 points reactive.)
+const data = {rest: pointsOf(places.slice(500)), some: pointsOf(some)};
+const always = {'icon-image': 'dot', 'icon-allow-overlap': true, 'icon-ignore-placement': true};
+// Symbol layers draw an image at each point of a source.
 const layers = [
-  {id: 'dots', image: 'dot', data: places.slice(500)},
+  // Icons that are always shown: the cost of a frame does not grow with their number.
+  {id: 'dots', type: 'symbol', source: 'rest', layout: always},
   // 500 of the places are pins when the zoom is 12 or more, and dots below that.
-  {id: 'dots-below-pins', image: 'dot', maxZoom: 12, data: some},
-  {id: 'pins', image: 'pin', anchor: 'bottom', minZoom: 12, overlap: 'hide', data: some},
+  {id: 'dots-below-pins', type: 'symbol', source: 'some', maxzoom: 12, layout: always},
+  // (Without `icon-allow-overlap`, the pins do not pile up, and map labels keep clear.)
+  {id: 'pins', type: 'symbol', source: 'some', minzoom: 12, layout: {'icon-image': 'pin', 'icon-anchor': 'bottom'}},
 ];
-// A marker layer is a layer of the style: a click finds its markers. The marker under the click, or null.
+// A click finds the features of the layers in `interactive-layers`. The feature under the click, or null.
 const selected = shallowRef(null);
 </script>
 
 <template>
-  <!-- An image is an SVG template with {{slots}}. Each marker fills the slots from its `props`. -->
+  <!-- An image is an SVG template with {{slots}}. Each feature fills the slots from its properties. -->
   <MapJr
     :map-style="style"
     :initial-view="{center: NYC, zoom: 11.4}"
     :images="{dot, pin}"
-    :markers="layers"
+    :data="data"
+    :layers="layers"
     :interactive-layers="['pins', 'dots-below-pins', 'dots']"
     @click="e => selected = e.features[0] ?? null"
   >

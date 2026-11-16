@@ -1,19 +1,20 @@
 // TypeScript code for the main API (`@map-jr/map-jr-gl`), as the documentation and the gallery write it.
 // `node test/examples.mjs` checks that it compiles against the built types (dist/types). It is not run.
-import {createMap, type FeatureOptions, type MapDragEvent, type MapEvents, type MapSpec, type Position, type RenderedFeature, type View} from '@map-jr/map-jr-gl';
+import {createMap, points, type FeatureOptions, type MapDragEvent, type MapEvents, type MapSpec, type Position, type RenderedFeature, type View} from '@map-jr/map-jr-gl';
 import {navigation} from '@map-jr/map-jr-gl/controls';
 
 // A position that is declared apart from the call has the type number[].
 const NYC = [-74.0065, 40.7085];
 const FIXED = [-74.0065, 40.7085] as const;
 const places = [[-74.0134, 40.7033], [-74.009, 40.7061]];
-const pins = {id: 'pins', image: 'pin', data: places.map(lngLat => ({lngLat, props: {color: '#d6453d'}}))};
+const pins = points(places, {lngLat: p => p, properties: () => ({color: '#d6453d'})});
 
 const description: MapSpec = {
     style: 'https://demotiles.maplibre.org/style.json',
     initialView: {center: NYC, zoom: 13.6},
     view: {center: FIXED},
-    markers: [pins],
+    data: {pins},
+    layers: [{id: 'pins', type: 'symbol', source: 'pins', layout: {'icon-image': 'pin', 'icon-anchor': 'bottom'}}],
     images: {pin: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 4"/>', photo: {image: 'https://demotiles.maplibre.org/favicon.ico', width: 16, height: 16, pixelRatio: 2}},
     controls: [navigation(), {key: 'own', create: () => ({onAdd: map => { map.getZoom(); return document.createElement('div'); }, onRemove() {}})}],
     interactiveLayers: ['parks'],

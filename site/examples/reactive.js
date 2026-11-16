@@ -1,13 +1,13 @@
-import {createMap} from '@map-jr/map-jr-gl';
+import {createMap, points} from '@map-jr/map-jr-gl';
 
 const style = 'https://tiles.openfreemap.org/styles/liberty';
 const NYC = [-74.0065, 40.7085];
 
 const dot = '<svg viewBox="0 0 12 12"><circle cx="6" cy="6" r="4.5" fill="{{color}}" stroke="#fff" stroke-width="1.5"/></svg>';
-const pins = {
-  id: 'pins', image: 'dot',
-  data: [[-74.0134, 40.7033], [-74.009, 40.7061], [-74.006, 40.7127], [-73.9969, 40.7061]].map(lngLat => ({lngLat, props: {color: '#d6453d'}})),
-};
+const places = [[-74.0134, 40.7033], [-74.009, 40.7061], [-74.006, 40.7127], [-73.9969, 40.7061]];
+// The markers: a point for each place in `data`, and a symbol layer that draws the image at each point.
+const pins = points(places, {lngLat: p => p, properties: () => ({color: '#d6453d'})});
+const pinLayer = {id: 'pins', type: 'symbol', source: 'pins', layout: {'icon-image': 'dot', 'icon-allow-overlap': true, 'icon-ignore-placement': true}};
 
 export default function (container, {show, button}) {
   let description = {
@@ -31,7 +31,7 @@ export default function (container, {show, button}) {
   let shown = false;
   button('Add markers', b => {
     shown = !shown;
-    map.update(description = {...description, markers: shown ? [pins] : []});
+    map.update(description = {...description, data: shown ? {pins} : {}, layers: shown ? [pinLayer] : []});
     b.textContent = shown ? 'Remove markers' : 'Add markers';
   });
   button('Tilt', () => map.moveTo({pitch: map.state.get().view.pitch ? 0 : 50, duration: 600}));

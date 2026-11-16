@@ -5,7 +5,7 @@ import {TileBuilder} from './tiles.ts';
 import type {TileImage, TileIR} from './tile.ts';
 import {CollisionGrid, placeLabels, renderItems, type RenderItem} from './placement.ts';
 import {DEFAULT_FONT, EstimateShaper} from './text.ts';
-import {dataTypeError, extended, fillTemplate, svgSize, templateSlots, withData, withMarkers, VARIANT, type MarkerLayerOptions} from './markers.ts';
+import {dataTypeError, extended, fillTemplate, svgSize, templateSlots, withData, VARIANT} from './markers.ts';
 import {renderSVG} from './svg.ts';
 import type {ImageDecoder} from './contour.ts';
 import {decodeImage, decodePNG, decodeWebPLossless} from './webp.ts';
@@ -22,10 +22,8 @@ export interface RenderOptions {
     padding?: PaddingInput;
     width: number;
     height: number;
-    /** Marker layers, as in the description of a map: each one is a source and a symbol layer with the image `image`. */
-    markers?: MarkerLayerOptions[];
     /**
-     * Images for the style layers and the marker layers, by name: SVG documents. An SVG with slots (`{{name}}`) is a
+     * Images for the style layers, by name: SVG documents. An SVG with slots (`{{name}}`) is a
      * template, as in the description of a map. `{image, width, height}` gives a size in CSS pixels; without it the
      * size is the size of the `viewBox`, or else of the `width` and `height` attributes, or 24 by 24. An image that is not an SVG document is not drawn.
      */
@@ -162,15 +160,15 @@ function limitedFetch(o: RenderOptions, fetchFn: typeof fetch): typeof fetch {
 export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
     // Wrapped, not passed by reference: Cloudflare Workers reject calls to a detached global `fetch`.
     const fetchFn = limitedFetch(o, o.fetch ?? ((...a) => fetch(...a)));
-    // (A marker layer is a source and a layer of the style. A style from a URL is fetched here, to add them to it.)
+    // (`sources`, `layers` and `data` are added to the style. A style from a URL is fetched here, to add them to it.)
     let given = o.style, base: string | undefined;
     const adds = !!(o.sources || o.layers || o.terrain);
-    if ((o.markers?.length || adds || o.data) && typeof given === 'string') {
+    if ((adds || o.data) && typeof given === 'string') {
         const res = await fetchFn(base = given);
         if (!res.ok) throw new Error(`Failed to load style ${given}: ${res.status}`);
         given = await res.json();
     }
-    const full: any = withMarkers(withData(adds ? extended(given, o) : given, o.data, true, (id, type) => { throw dataTypeError(id, type); }), o.markers, true);
+    const full: any = withData(adds ? extended(given, o) : given, o.data, true, (id, type) => { throw dataTypeError(id, type); });
     const style = await resolveStyle(full, fetchFn, base);
     if (o.overrides) style.layers = style.layers.map(l => o.overrides![l.id] ? {...l, metadata: {...l.metadata, [SSR_KEY]: {...(l.metadata?.[SSR_KEY] as object), ...o.overrides![l.id]}}} : l);
     if (o.ssrOverrides !== false) style.layers = applySSROverrides(style.layers);
@@ -314,4 +312,3 @@ export async function renderToImage(o: ImageOptions): Promise<ImageResult> {
 }
 
 export {renderSVG} from './svg.ts';
-export type {MarkerLayerOptions} from './markers.ts';
