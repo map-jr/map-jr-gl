@@ -34,9 +34,12 @@ for (const f of compat) engine.delete(f); // the page has these already when it 
 // the worker so that a globe map needs no extra request, and the next globe pull requests need room.
 // The same day the owner raised the engine on the main thread from 68 to 74 KB, because it has the worker's code for
 // browsers with no worker renderer, and the globe adds to both.
+// On 2026-11-16 the owner raised the page script from 38 to 40 KB for the plan of the audit #480 (`patch`, `once`, feature
+// state, `globalState`, a source for a key of `data`, `state.pointer`, dark mode): it had 0.9 KB of room, and the open
+// pull requests of the first batch needed more than that.
 const sizes = [
     // What a page downloads before the map can start. The worker file is downloaded at the same time.
-    ['page script, up front (' + [...page].length + ' files)', gz(page), 38],
+    ['page script, up front (' + [...page].length + ' files)', gz(page), 40],
     // The same for the entry that is a replacement for MapLibre GL JS (`@map-jr/map-jr-gl/maplibre-compat`).
     ['page script of maplibre-compat, up front (' + [...compat].length + ' files)', gz(compat), 46],
     ['map-jr-gl-worker.js', gz(['map-jr-gl-worker.js']), 78],
