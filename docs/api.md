@@ -549,7 +549,7 @@ The camera takes the same fields in three places:
 
 The fields are `center` (`[lng, lat]`), `zoom`, `bearing` (degrees) and `pitch` (degrees). In place of `center` and
 `zoom`, `initialView` and `moveTo` take `bounds` (`[[west, south], [east, north]]` or `[west, south, east, north]`):
-the map fits that box into the view. Two fields belong to the fit:
+the map fits that box into the view, and turns to bearing 0 unless `bearing` is given. Two fields belong to the fit:
 
 - `padding` is the space around the box in CSS pixels, a number or `{top, right, bottom, left}` (default 0). It adds
   to the `padding` of the description for this one fit, and it does not change the padding of the map.

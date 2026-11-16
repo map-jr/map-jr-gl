@@ -604,6 +604,12 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
     };
     apply(spec);
 
+    const moveTo: MapHost['moveTo'] = ({duration, fly, bounds, padding, maxZoom, ...view}) => {
+        // (`padding` is space for this one fit; the padding of the map belongs to the description.)
+        if (bounds) { const fit = map.cameraForBounds(bounds, {padding, maxZoom}); view = {bearing: fit.bearing, ...view, center: [fit.center.lng, fit.center.lat], zoom: fit.zoom}; }
+        else if (padding !== undefined || maxZoom !== undefined) check(6);
+        if (fly) map.flyTo({...view, duration, ...(fly === true ? {} : fly)}); else if (duration) map.easeTo({...view, duration}); else map.jumpTo(view);
+    };
     const isPosition = (at: FeaturePlace): at is [number, number] => typeof (at as number[])[0] === 'number';
     const queryFeatures = ((at?: FeaturePlace, o: FeatureOptions = {}) => {
         const box = Array.isArray(at) && !isPosition(at);
@@ -662,13 +668,8 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
         },
         queryElevation: at => map.queryElevation(at),
         toBlob: (type, quality) => map.toBlob(type, quality),
-        moveTo({duration, fly, bounds, padding, maxZoom, ...view}) {
-            // (`padding` is space for this one fit; the padding of the map belongs to the description.)
-            if (bounds) { const fit = map.cameraForBounds(bounds, {padding, maxZoom}); view = {bearing: fit.bearing, ...view, center: [fit.center.lng, fit.center.lat], zoom: fit.zoom}; }
-            else if (padding !== undefined || maxZoom !== undefined) check(6);
-            if (fly) map.flyTo({...view, duration, ...(fly === true ? {} : fly)}); else if (duration) map.easeTo({...view, duration}); else map.jumpTo(view);
-        },
-        fitBounds(bounds, o = {}) { this.moveTo({duration: 800, ...o, bounds}); },
+        moveTo,
+        fitBounds: (bounds, o = {}) => moveTo({duration: 800, ...o, bounds}),
         project: lngLat => map.project(lngLat),
         unproject: point => { const p = map.unproject(point); return [p.lng, p.lat]; },
         overlay(element, o) {
