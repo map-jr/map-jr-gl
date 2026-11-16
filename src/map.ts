@@ -1383,8 +1383,13 @@ export class Map {
                 const [w, h] = svgSize(source);
                 width ??= w; height ??= h;
                 img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(sizedSVG(source, width, height));
-            } else { img.crossOrigin = 'anonymous'; img.src = source; }
-            await img.decode();
+            } else {
+                // (The request goes through `transformRequest` and the protocols with the kind `Image`, as in MapLibre GL JS.)
+                const a = await this.answer(source, 'Image');
+                img.crossOrigin = a.credentials === 'include' ? 'use-credentials' : 'anonymous';
+                img.src = a.data ? URL.createObjectURL(new Blob([a.data as BlobPart])) : a.url!;
+            }
+            try { await img.decode(); } finally { if (img.src.startsWith('blob:')) URL.revokeObjectURL(img.src); }
             // (While the image loaded, the map was removed, or the name got another image or was removed.)
             if (this.removed || this.imageTurns.get(name) !== turn) return this;
             width ??= img.naturalWidth / (options.pixelRatio ?? 1); height ??= img.naturalHeight / (options.pixelRatio ?? 1);

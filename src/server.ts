@@ -7,6 +7,7 @@ import {CollisionGrid, placeLabels, renderItems, type RenderItem} from './placem
 import {DEFAULT_FONT, EstimateShaper} from './text.ts';
 import {dataTypeError, extended, fillTemplate, svgSize, templateSlots, withData, VARIANT} from './markers.ts';
 import {renderSVG} from './svg.ts';
+import {styleImages} from './style-images.ts';
 import type {ImageDecoder} from './contour.ts';
 import {decodeImage, decodePNG, decodeWebPLossless} from './webp.ts';
 export {decodePNG, decodeWebPLossless, type ImageDecoder};
@@ -160,10 +161,10 @@ function limitedFetch(o: RenderOptions, fetchFn: typeof fetch): typeof fetch {
 export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
     // Wrapped, not passed by reference: Cloudflare Workers reject calls to a detached global `fetch`.
     const fetchFn = limitedFetch(o, o.fetch ?? ((...a) => fetch(...a)));
-    // (`sources`, `layers` and `data` are added to the style. A style from a URL is fetched here, to add them to it.)
+    // (`sources`, `layers` and `data` are added to the style. A style from a URL is fetched here, to add them to it and to read its images.)
     let given = o.style, base: string | undefined;
     const adds = !!(o.sources || o.layers || o.terrain);
-    if ((adds || o.data) && typeof given === 'string') {
+    if (typeof given === 'string') {
         const res = await fetchFn(base = given);
         if (!res.ok) throw new Error(`Failed to load style ${given}: ${res.status}`);
         given = await res.json();
@@ -182,7 +183,8 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
     const builder = new TileBuilder(fetchFn);
     builder.setStyle(style.layers, style.state);
     // The images of `images` that are SVG documents: the SVG and the size, and for a template its slots.
-    const documents = new Map(Object.entries(o.images ?? {}).map(([name, v]) => [name, typeof v === 'string' ? {image: v} : v] as const).filter(([, v]) => typeof v.image === 'string' && v.image.trimStart().startsWith('<')));
+    // (The images of the style come first, and an image of `images` with the same name takes the place of one (#495).)
+    const documents = new Map(Object.entries({...styleImages(given, message => console.warn(message)), ...o.images}).map(([name, v]) => [name, typeof v === 'string' ? {image: v} : v] as const).filter(([, v]) => typeof v.image === 'string' && v.image.trimStart().startsWith('<')));
     builder.setTemplates(Object.fromEntries([...documents].map(([name, v]) => [name, templateSlots(v.image)] as const).filter(([, slots]) => slots.length)));
     builder.decodeImage = o.decodeImage ?? decodeImage;
     builder.setContours(Object.fromEntries(Object.entries(style.sources).filter(([, s]) => s.contour).map(([name, s]) => [name, s.contour!])));
@@ -221,8 +223,9 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
 
     const grid = new CollisionGrid(), images = new Map<string, {svg: string; width: number; height: number}>();
     const labels = placeLabels(tr, all, layers, new EstimateShaper(), grid, name => {
+        // (An image of `images` or of the style takes the place of an image of the sprite with the same name.)
         const fromSprite = (sprite as Sprite | null)?.icons[name];
-        if (fromSprite) return fromSprite;
+        if (fromSprite && !documents.has(name)) return fromSprite;
         if (!images.has(name)) {
             // An image of `images`: for a template, the name has the value of each slot (see `buildTile`).
             const [image, ...values] = name.split(VARIANT), own = documents.get(image);

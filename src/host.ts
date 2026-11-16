@@ -439,12 +439,24 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
     let wantedData = spec.data;
     // (The `fonts` of the last description, with URLs that are relative to the page made absolute: the style has its own base.)
     let wantedFonts = spec.fonts;
+    // The images in `metadata['map-jr:images']` of the style (#495), and the `images` of the last description, which win by name.
+    let fromStyle: Record<string, ImageInput> = {}, wantedImages = spec.images, styleTurn = 0;
     const absolute = (faces: FontFaces | undefined) => { const out: FontFaces = {}; for (const f of fontFaces(faces, document.baseURI)) ((out[f.name!] ??= []) as {url: string; 'unicode-range'?: string[]}[]).push({url: f.src, ...(f.unicodeRange ? {'unicode-range': f.unicodeRange.split(', ')} : {})}); return out; };
     const typeError = (id: string, type: string) => setTimeout(() => { if (alive) map.fire('error', {error: dataTypeError(id, type)}); });
     const restyle = (next: MapSpec) => { styled = false; map.setStyle(next.style, {transformStyle: (_, style) => {
         styled = true;
         baseSources = style.sources ?? {};
         styleProjection = style.projection;
+        // (The code for the images of a style is loaded only for a style that has them. After it has loaded, the map must
+        // still exist and the style must not have been replaced.)
+        const turn = ++styleTurn, given = style.metadata?.['map-jr:images'];
+        fromStyle = {};
+        putImages();
+        if (given != null) import('./style-images.ts').then(m => {
+            if (!alive || turn !== styleTurn) return;
+            fromStyle = m.styleImages(style, message => { if (alive) map.fire('error', {error: new Error(message)}); });
+            putImages();
+        }, () => { if (alive && turn === styleTurn) map.fire('error', {error: new Error('[map-jr-gl] the style: the code for the images in metadata["map-jr:images"] did not load, and the map draws the style without them. Check that the files of the library are served next to it.')}); });
         // (The description of this moment: it can have changed while the style loaded.)
         if (wantedProjection) style = {...style, projection: copy(wantedProjection)};
         if (wantedFonts) style = {...style, 'font-faces': {...style['font-faces'], ...absolute(wantedFonts)}} as typeof style;
@@ -576,6 +588,22 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
         return true;
     };
 
+    // Gives the map the images of the style and of the description, and removes those that neither has now.
+    const putImages = () => {
+        const wanted: Record<string, ImageInput> = {...fromStyle, ...wantedImages};
+        for (const name of images.keys()) if (!Object.hasOwn(wanted, name)) { images.delete(name); map.removeImage(name); }
+        for (const name in wanted) {
+            const v = wanted[name], key = imageKey(v);
+            if (images.has(name) && images.get(name) === key) continue;
+            if (images.has(name)) map.removeImage(name);
+            images.set(name, key);
+            const spec = v && typeof v === 'object' && 'image' in v ? v : null;
+            // (An image that does not load is an error of the map, and the map goes on without it.)
+            map.addImage(name, spec ? spec.image : v as ImageSource, spec ?? {}).then(busy, () => {
+                if (alive && images.get(name) === key) map.fire('error', {error: new Error(`[map-jr-gl] ${Object.hasOwn(wantedImages ?? {}, name) ? 'images' : 'the style'}: the image "${name}" did not load. Give an SVG document or the URL of an image that the page can read.`)});
+            });
+        }
+    };
     // A change that gave the engine work makes the map not idle until the engine reports idle again (#411).
     const busy = () => { if (alive && state.get().idle && !map.areTilesLoaded()) state.set({idle: false}); };
     const apply = (next: MapSpec, before?: MapSpec) => {
@@ -623,21 +651,8 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
         transformLast = next.transformRequest;
         if (before && !next.transformRequest !== !before.transformRequest) map.setTransformRequest(next.transformRequest ? transform : null);
         if (next.cursor !== before?.cursor) map.setCursor(next.cursor ?? '');
-        if (next.images !== before?.images) {
-            const wanted = next.images ?? {};
-            for (const name of images.keys()) if (!Object.hasOwn(wanted, name)) { images.delete(name); map.removeImage(name); }
-            for (const name in wanted) {
-                const v = wanted[name], key = imageKey(v);
-                if (images.has(name) && images.get(name) === key) continue;
-                if (images.has(name)) map.removeImage(name);
-                images.set(name, key);
-                const spec = v && typeof v === 'object' && 'image' in v ? v : null;
-                // (An image that does not load is an error of the map, and the map goes on without it.)
-                map.addImage(name, spec ? spec.image : v as ImageSource, spec ?? {}).then(busy, () => {
-                    if (alive && images.get(name) === key) map.fire('error', {error: new Error(`[map-jr-gl] images: the image "${name}" did not load. Give an SVG document or the URL of an image that the page can read.`)});
-                });
-            }
-        }
+        wantedImages = next.images;
+        if (next.images !== before?.images) putImages();
         if (!next.cooperativeGestures !== !before?.cooperativeGestures) cooperate(!!next.cooperativeGestures);
         if (differ(next.interactiveLayers, before?.interactiveLayers) || !next.hoverState !== !before?.hoverState) hover();
         check(2, next, before);
