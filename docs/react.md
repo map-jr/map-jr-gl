@@ -88,7 +88,7 @@ export function HomePicker() {
 For the default pin of `Marker`, use `defaultPin()` of `@map-jr/map-jr-gl` in the browser: it returns an element for
 `overlay` of the map (see [Elements of the page on the map](api.md#elements-of-the-page-on-the-map)).
 
-A ref on the component gets the map (the `MapHost` of [the main API](api.md), for `queryFeatures`, `clusterExpansionZoom`, `moveTo`,
+A ref on the component gets the map (the `MapInstance` of [the main API](api.md), for `queryFeatures`, `clusterExpansionZoom`, `moveTo`,
 `fitBounds`). The component creates the map in an effect, so the ref is `null` during the first render and in the
 effects of the parent that run at mount. Read the ref in an event handler or after `onLoad`, or put the code in a
 child component that calls `useMap()`.
