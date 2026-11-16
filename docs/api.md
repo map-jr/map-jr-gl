@@ -87,7 +87,7 @@ The map writes a warning to the console with `console.warn`, once for each map, 
 
 - The container is in the page, is not hidden, and has height 0 one second after the map is made.
 - An id in `interactiveLayers`, or in `layers` or `sources` of `queryFeatures`, is not in the style.
-- A key of `data` is not the id of a GeoJSON source of the style.
+- A layer names a source that the map does not have, for example after its key left `data`.
 - A layer of `extend` names a `before` layer or a source that the style does not have.
 - Two marker layers have the same `id`.
 - A marker layer has no `image`, or it names an image that the map does not have.
@@ -130,7 +130,7 @@ The library compares each field with the field of the last description:
 | `extend` | Your own sources and layers on a style from a URL. See below. |
 | `initialView` | The view at the start: `center` (`[lng, lat]`), `zoom`, `bearing`, `pitch`. In place of `center` and `zoom`, give `bounds` (`[[west, south], [east, north]]` or `[west, south, east, north]`) and the map starts with that box fitted into the view, with `padding` in CSS pixels around it (a number or `{top, right, bottom, left}`, default 0). This is `bounds` with `fitBoundsOptions.padding` of MapLibre GL JS. When the description also has `view`, the map starts at `view` and `bounds` has no effect. The user then moves the map. |
 | `view`, `onViewChange` | A view that your application owns. See below. |
-| `data` | GeoJSON data for GeoJSON sources, by the id of the source. The source is in the style or in `extend.sources`. See below. |
+| `data` | GeoJSON data for GeoJSON sources, by the id of the source. A key with no source of that id makes a GeoJSON source with the default options. See below. |
 | `images` | Images for the style layers, by name: an SVG document, the URL of an image, or `{image, width, height}`. See [Images for style layers](#images-for-style-layers). |
 | `markers` | A list of marker layers, each with an `id` and an `image`. A marker layer is shorthand for a GeoJSON source and a symbol layer with that id. See [Markers](markers.md). A layer with a new `data` array gets the new data. |
 | `controls` | A list of controls. See below. |
@@ -328,39 +328,33 @@ when the cost of a frame does not grow with the number of icons.
 
 ## GeoJSON data that changes
 
-Put the source into the style with no features, and give the data in the field `data`:
+Give the data in the field `data`, by the id of a source. A key that is not the id of a source of the style or of
+`extend.sources` makes a GeoJSON source with that id and the default options, so the layers can name it:
 
 ```js
-const style = {
-  ...baseStyle,
-  sources: {...baseStyle.sources, routes: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}},
-  layers: [...baseStyle.layers, {id: 'routes', type: 'line', source: 'routes', paint: {'line-color': '#d6453d', 'line-width': 3}}],
-};
+import {createMap} from '@map-jr/map-jr-gl';
 
-const map = createMap(container, {style, data: {routes: firstRoutes}});
+const container = document.getElementById('map');
+const routes = id => ({type: 'FeatureCollection', features: [{type: 'Feature', properties: {}, geometry: {type: 'LineString', coordinates: [[-74.01, 40.70], [-73.97, 40.75 + id / 100]]}}]});
+const extend = {layers: [{id: 'routes', type: 'line', source: 'routes', paint: {'line-color': '#d6453d', 'line-width': 3}}]};
+const url = 'https://tiles.openfreemap.org/styles/liberty';
 
-// Later: other data. The style is the same object, so the map does not look at it again.
-map.update({style, data: {routes: nextRoutes}});
+const map = createMap(container, {style: url, extend, data: {routes: routes(0)}});
+
+// Later: other data. `extend` is the same object, so the style is not requested again.
+map.update({style: url, extend, data: {routes: routes(1)}});
 ```
 
 - The data of each source is compared by identity. Give a new object to change it.
 - Only the data goes to the map. A style with the data inside it would be compared and sent as a whole.
-- The data stays when the style changes.
-- The source can also be in `extend.sources`. Use this for a style from a URL: `extend` adds the source with no
-  features, and `data` gives it the features.
-
-```js
-const extend = {
-  sources: {routes: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}},
-  layers: [{id: 'routes', type: 'line', source: 'routes', paint: {'line-color': '#d6453d', 'line-width': 3}}],
-};
-const url = 'https://tiles.openfreemap.org/styles/liberty';
-
-const map = createMap(container, {style: url, extend, data: {routes: firstRoutes}});
-
-// Later: other data. `extend` is the same object, so the style is not requested again.
-map.update({style: url, extend, data: {routes: nextRoutes}});
-```
+- The data stays when the style changes, and the sources that keys of `data` made are made again in the new style.
+- A source that needs options (`cluster`, `promoteId`, `attribution`) is declared in the style or in `extend.sources`,
+  with no features, and `data` gives it the features.
+- A key that leaves `data` removes the source that the key made. A layer that still names it draws nothing, and the
+  development build writes a warning.
+- A key that is the id of a source of another type, such as a vector source, is an error of the map (`onError`), and
+  the data has no effect.
+- `renderToSVG` (`@map-jr/map-jr-gl/server`) follows the same rule, and throws for a key of a source of another type.
 
 ### Points from records
 

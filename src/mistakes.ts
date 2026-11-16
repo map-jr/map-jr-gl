@@ -13,11 +13,11 @@ export interface Checked { map: Map; warned: Set<string>; spec(): MapSpec; /** T
 const texts: ((a: string, b: string) => string)[] = [
     /* 0 */ a => a + ': the container has height 0, so the map shows nothing. Give the container a height in CSS.',
     /* 1 */ a => `interactiveLayers: the style has no layer "${a}". Write the id of a layer of the style or of "extend".`,
-    /* 2 */ a => `data: the style has no GeoJSON source "${a}". Add "${a}": {type: 'geojson', data: {type: 'FeatureCollection', features: []}} to the sources of the style or of "extend".`,
+    /* 2 */ (a, b) => `the layer "${a}" uses the source "${b}", which the map does not have. A key of "data" makes a source only while it is in "data": keep "${b}" in "data", or remove the layer.`,
     /* 3 */ a => `queryFeatures(): the style has no layer "${a}". In "layers", write the id of a layer of the style or of "extend".`,
     /* 4 */ a => `queryFeatures(): the style has no source "${a}". In "sources", write the id of a source of the style or of "extend".`,
     /* 5 */ (a, b) => `extend: the layer "${a}" has before: "${b}", but the style has no layer "${b}", so the layer goes on top. Write the id of a layer of the style.`,
-    /* 6 */ (a, b) => `extend: the layer "${a}" uses the source "${b}", which the style does not have. Add "${b}" to "sources" of "extend".`,
+    /* 6 */ (a, b) => `extend: the layer "${a}" uses the source "${b}", which the style does not have. Add "${b}" to "sources" of "extend", or give its GeoJSON as "${b}" in "data".`,
     /* 7 */ a => `markers: two marker layers have the id "${a}". Give each marker layer its own id.`,
     /* 8 */ a => `update(): "${a}" changed, but it is read only when the map is made. ${a === 'initialView' ? 'To move the map, change "view" or call moveTo().' : 'To change it, destroy the map and make a new one.'}`,
     /* 9 */ a => `queryFeatures(): ${a} is not a place. Write a point of the screen {x, y}, a position [lng, lat], or a rectangle [{x, y}, {x, y}].`,
@@ -81,7 +81,7 @@ export function check(c: Checked, kind: number, a?: any, b?: any) {
         if (!c.ready()) return;
         const spec = c.spec();
         known(1, spec.interactiveLayers);
-        for (const id in spec.data) if (!(map.getSource(id) as {setData?: unknown} | undefined)?.setData) warn(2, id);
+        for (const l of map.getStyle()?.layers ?? []) { const src = (l as {source?: unknown}).source; if (typeof src === 'string' && !map.getSource(src) && !c.warned.has(`6 ${l.id} ${src}`)) warn(2, l.id, src); }
     } else if (kind === 2) {
         const next = a as MapSpec, before = b as MapSpec | undefined, ids = new Set<string>();
         for (const m of next.markers ?? []) {
@@ -115,7 +115,7 @@ export function check(c: Checked, kind: number, a?: any, b?: any) {
         const extend = b as StyleExtension, sources = {...a.sources, ...extend.sources}, ids = new Set<string>(a.layers.map((l: {id: string}) => l.id));
         for (const {id, before, source} of extend.layers ?? []) {
             if (before && !ids.has(before)) warn(5, id, before);
-            if (source && !sources[source as string]) warn(6, id, source as string);
+            if (source && !sources[source as string] && !Object.hasOwn(c.spec().data ?? {}, source as string)) warn(6, id, source as string);
             ids.add(id);
         }
     }
