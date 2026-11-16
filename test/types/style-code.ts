@@ -11,7 +11,7 @@ const layers: LayerSpecification[] = [{id: 'background', type: 'background', pai
 const style: StyleSpecification = {version: 8, sources: {parks}, layers, glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf'};
 createMap(document.body, {style});
 
-// The description (`MapSpec`) uses these types (#504). A layer of `layers` has a layer type that the library draws,
+// The description (`MapDescription`) uses these types (#504). A layer of `layers` has a layer type that the library draws,
 // `data` takes GeoJSON or a URL, and bounds are arrays.
 const routes: GeoJSON.FeatureCollection = {type: 'FeatureCollection', features: [{type: 'Feature', properties: {}, geometry: {type: 'LineString', coordinates: [[-74, 40.7], [-73.9, 40.8]]}}]};
 interface Place { name: string }

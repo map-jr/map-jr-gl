@@ -1,6 +1,6 @@
 // TypeScript code for the main API (`@map-jr/map-jr-gl`), as the documentation and the gallery write it.
 // `node test/examples.mjs` checks that it compiles against the built types (dist/types). It is not run.
-import {createMap, points, type FeatureOptions, type MapDragEvent, type MapEvents, type MapSpec, type Position, type RenderedFeature, type View} from '@map-jr/map-jr-gl';
+import {createMap, points, type FeatureOptions, type MapDragEvent, type MapEvents, type MapDescription, type Position, type RenderedFeature, type View} from '@map-jr/map-jr-gl';
 import {navigation} from '@map-jr/map-jr-gl/controls';
 
 // A position that is declared apart from the call has the type number[].
@@ -9,7 +9,7 @@ const FIXED = [-74.0065, 40.7085] as const;
 const places = [[-74.0134, 40.7033], [-74.009, 40.7061]];
 const pins = points(places, {lngLat: p => p, properties: () => ({color: '#d6453d'})});
 
-const description: MapSpec = {
+const description: MapDescription = {
     style: 'https://demotiles.maplibre.org/style.json',
     initialView: {center: NYC, zoom: 13.6},
     view: {center: FIXED},
@@ -84,7 +84,7 @@ map.listen('move', e => e.point.x);
 map.moveTo({center: ['-74', '40.7']});
 
 // A control of `controls` is checked: `create()` returns a control (onAdd, onRemove, optional getDefaultPosition).
-const ownControl: MapSpec['controls'] = [
+const ownControl: MapDescription['controls'] = [
     {key: 'pos', position: 'bottom-left', create: () => ({onAdd: () => document.createElement('div'), onRemove() {}, getDefaultPosition: () => 'top-left' as const})},
     // @ts-expect-error onAdd must return an HTMLElement
     {key: 'bad', create: () => ({onAdd: () => 1, onRemove() {}})},

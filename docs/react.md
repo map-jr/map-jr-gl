@@ -88,14 +88,13 @@ export function HomePicker() {
 For the default pin of `Marker`, use `defaultPin()` of `@map-jr/map-jr-gl` in the browser: it returns an element for
 `overlay` of the map (see [Elements of the page on the map](api.md#elements-of-the-page-on-the-map)).
 
-A ref on the component gets the map (the `MapHost` of [the main API](api.md), for `queryFeatures`, `clusterExpansionZoom`, `moveTo`,
+A ref on the component gets the map (the `MapInstance` of [the main API](api.md), for `queryFeatures`, `clusterExpansionZoom`, `moveTo`,
 `fitBounds`). The component creates the map in an effect, so the ref is `null` during the first render and in the
 effects of the parent that run at mount. Read the ref in an event handler or after `onLoad`, or put the code in a
 child component that calls `useMap()`.
 
-`ref.current.map` (and `useMap().map`) is the core map of the library, not the `Map` of
-`@map-jr/map-jr-gl/maplibre-compat`: it has no `setBearing`, `setZoom` or `flyTo`. See `map` in
-[the main API](api.md). In place of `flyTo`, call `moveTo({...view, duration})`: it eases the camera to the view.
+`ref.current` and `useMap()` give the `MapInstance` of [the main API](api.md), not the `Map` of
+`@map-jr/map-jr-gl/maplibre-compat`: it has no `setBearing`, `setZoom` or `flyTo`. In place of `flyTo`, call `moveTo({...view, duration})`: it eases the camera to the view.
 
 ### What you can make again in each render
 

@@ -426,7 +426,7 @@ What to know about a template:
 - `icon-image` is a layout property. A parameter is evaluated when a tile is built, at a whole zoom level. For a
   value that changes without steps, use `icon-size`, `icon-opacity` or `icon-rotate`.
 - A parameter can read `feature-state`, as `stroke` does in the example. Set the state with `setFeatureState` of
-  the `MapHost` (see [The state of a feature](#the-state-of-a-feature)), for example
+  the `MapInstance` (see [The state of a feature](#the-state-of-a-feature)), for example
   `map.setFeatureState({source: 'places', id: 1}, {hover: true})`. The map then builds the tiles of the source
   again. MapLibre GL JS does not permit `feature-state` in a layout property.
 - A map draws 1,000 variants of one template at most. More different sets of values give one error of the map with
@@ -864,13 +864,13 @@ For users of MapLibre GL JS: `queryRenderedFeatures` is `queryFeatures`, and `qu
 `querySource(id)`. The difference is that `querySourceFeatures` returns every feature of the tiles under the view, as
 MapLibre does, and `querySource` returns only the features in the view. The two MapLibre methods are in the entry
 `@map-jr/map-jr-gl/maplibre-compat`. The `Map` of that entry has the same
-`queryFeatures` and `querySource` as the `MapHost`, and it also accept a position as `{lng, lat}`.
+`queryFeatures` and `querySource` as the `MapInstance`, and it also accept a position as `{lng, lat}`.
 
 The tile data is in a worker, so each query returns a promise.
 
 ## Clusters
 
-A GeoJSON source with `cluster: true` has three methods on the `MapHost` of `@map-jr/map-jr-gl`. Each takes the id of
+A GeoJSON source with `cluster: true` has three methods on the `MapInstance` of `@map-jr/map-jr-gl`. Each takes the id of
 the source and the id of a cluster (`properties.cluster_id` of a cluster feature, for example from `queryFeatures`), and
 returns a promise:
 
@@ -903,7 +903,7 @@ is not a GeoJSON source of the style, when it has no clusters, or when no cluste
 
 ## The state of a feature
 
-The `MapHost` of `@map-jr/map-jr-gl` has two methods for the state of a feature, which `feature-state` expressions
+The `MapInstance` of `@map-jr/map-jr-gl` has two methods for the state of a feature, which `feature-state` expressions
 in the style read (for example the highlight of a selected feature):
 
 | Method | What it does |
@@ -1015,7 +1015,7 @@ symbol layer with an image: it is drawn on the canvas, and 100,000 markers cost 
 | `once(type)` | A promise of the next event of that type. See [Events](#events). |
 | `container` | The element of the map. |
 
-Members whose names start with `_` are private. They are not in the type `MapHost`, and they can change in each release.
+Members whose names start with `_` are private. They are not in the type `MapInstance`, and they can change in each release.
 
 ## Events
 
@@ -1050,7 +1050,7 @@ A listener that throws does not stop the other listeners of the event. The map r
 `error` event (`onError` of the description gets it, or the console when there is no `onError`). What a listener
 of `error` throws is written to the console.
 
-Each event has `type` (the name of the event) and `target` (the `MapHost` that `createMap` returned). The table
+Each event has `type` (the name of the event) and `target` (the `MapInstance` that `createMap` returned). The table
 has the other members. A position in an event is `[lng, lat]` and a box is `[[west, south], [east, north]]`, as in
 `onClick` and `state.view`. (The core map, the `map` member above, and `@map-jr/map-jr-gl/maplibre-compat` keep the
 objects of MapLibre GL JS.) In TypeScript, the type `MapEvents` has the event of each name, so the parameter of `fn`
@@ -1113,7 +1113,7 @@ const map = createMap('map', {style: 'local://style.json'});
 
 ## Types
 
-The entry `@map-jr/map-jr-gl` has TypeScript types for the description (`MapSpec`), the map (`MapHost`), the state
+The entry `@map-jr/map-jr-gl` has TypeScript types for the description (`MapDescription`), the map (`MapInstance`), the state
 (`MapState`), the events (`MapEvents`) and the features (`RenderedFeature`, `QueriedFeature`).
 
 - A position that you give (`center`, `lngLat`, the argument of `project`) has the type `Position`, which is

@@ -88,7 +88,7 @@ These parts still need `style-src 'unsafe-inline'`:
 
 ## Other configurations
 
-The two entries take these settings in different places. In `@map-jr/map-jr-gl`, the description (`MapSpec`) has `renderer`
+The two entries take these settings in different places. In `@map-jr/map-jr-gl`, the description (`MapDescription`) has `renderer`
 only, and the other settings go to `configure()`. In `@map-jr/map-jr-gl/maplibre-compat`, each setting is an option of
 `new Map()`, and `configure()` sets the default for the maps that do not give the option.
 

@@ -72,14 +72,14 @@ production build has no such warning, and there the map stays empty without a me
 | `update:view` | The view, after each change. |
 | `click` | `{point, lngLat, features}` |
 | `hover` | The features of `interactive-layers` under the pointer. |
-| `load` | The map (the `MapHost`). `load` comes once, before the first `idle`. When `load` comes, `host.state.get().idle` is still `false`. |
+| `load` | The map (the `MapInstance`). `load` comes once, before the first `idle`. When `load` comes, `map.state.get().idle` is still `false`. |
 | `idle` | None. |
 | `error` | Each error of the map (an `Error`). Without a listener for this event, the map writes each error to the console. |
 | Each other event of the map | The event of `listen` of the main API: `@moveend`, `@zoomend`, `@styleimagemissing`, `@sourcedata` and the others. See [Events](api.md#events) for the list. The event `style.load` has the name `styleload` here. |
 
 The component listens to an event of the map only when it has a listener for it when it is made. The events
 `click`, `load`, `idle` and `error` of the component have the values of the table, not the events of the map with
-those names: use `host.listen` for those.
+those names: use `map.listen` for those.
 
 An image that the style asks for and the map does not have:
 
@@ -102,7 +102,7 @@ function missing(event) {
 
 ### The slot
 
-The default slot is drawn over the map. It gets `state` (the state of the map) and `host` (the map, for
+The default slot is drawn over the map. It gets `state` (the state of the map) and `map` (the map, for
 `queryFeatures`, `clusterExpansionZoom`, `moveTo` and `fitBounds`).
 
 ```vue
@@ -113,9 +113,9 @@ The default slot is drawn over the map. It gets `state` (the state of the map) a
 
 The slot renders again at each change of the state only when it reads `state`. `state.pointer` changes at each move
 of the mouse, so a slot that reads `state` renders at each move. A component that needs only one part can read it
-from `host.state.subscribe` with a selector instead.
+from `map.state.subscribe` with a selector instead.
 
-A template ref on the component also has `host` (the map, `null` until it is made) and `state`. In TypeScript,
+A template ref on the component also has `map` (the map, `null` until it is made) and `state`. In TypeScript,
 type the ref as `InstanceType<typeof MapJr>`: `useTemplateRef<InstanceType<typeof MapJr>>('map')`. The type
 `MapJrExposed` of `@map-jr/map-jr-gl/vue` has only these two members. A template ref on `LazyMapJr` of Nuxt with a
 `hydrate-*` prop does not reach them (see [The module for Nuxt](#the-module-for-nuxt)).
@@ -230,7 +230,7 @@ draws it one time for each different set of values.
 - With TypeScript, a prop of the slot that is not in `params` is a type error.
 - The server renderer does not draw the image.
 
-A component of your own inside `MapJr` gets the map with `useMapHost()` (a ref).
+A component of your own inside `MapJr` gets the map with `useMapInstance()` (a ref).
 
 `useMapFeatures(at, options)` gives the features that the style layers draw at a place, as a ref that stays up to date (see `watchFeatures` in [the API](api.md#queries)). `useMapSource(sourceId, at, options)` gives the features of the tile data of one source in the same way (see `watchSource`). The id, the place and the options can be refs or functions:
 
@@ -277,7 +277,7 @@ let stored = view.value;
     <MapJr ref="map" map-style="https://tiles.openfreemap.org/styles/liberty" v-model:view="view" />
   </div>
   <button @click="stored = view">Remember this view</button>
-  <button @click="map.host.moveTo({...stored, duration: 500})">Back to where I was</button>
+  <button @click="map.map.moveTo({...stored, duration: 500})">Back to where I was</button>
 </template>
 ```
 
@@ -307,7 +307,7 @@ To put your own component into a control corner, give the map `custom({key, posi
 
 ## The composable
 
-`useMapJr` makes a map in an element of your own. The description (`MapSpec`, see [the main API](api.md)) can be a
+`useMapJr` makes a map in an element of your own. The description (`MapDescription`, see [the main API](api.md)) can be a
 ref, a computed value or a function.
 
 ```vue
@@ -316,7 +316,7 @@ import {computed, ref, useTemplateRef} from 'vue';
 import {useMapJr} from '@map-jr/map-jr-gl/vue';
 
 const measuring = ref(false);
-const {host, state} = useMapJr(useTemplateRef('el'), computed(() => ({
+const {map, state} = useMapJr(useTemplateRef('el'), computed(() => ({
   style: 'https://tiles.openfreemap.org/styles/liberty',
   initialView: {center: [-74.0065, 40.7085], zoom: 13.6},
   cursor: measuring.value ? 'crosshair' : undefined,
@@ -327,11 +327,11 @@ const {host, state} = useMapJr(useTemplateRef('el'), computed(() => ({
   <div ref="el" style="height: 400px" />
   <p>Zoom {{ state?.view.zoom.toFixed(1) }}</p>
   <button @click="measuring = !measuring">Measure</button>
-  <button @click="host?.moveTo({zoom: 15, duration: 500})">Zoom to 15</button>
+  <button @click="map?.moveTo({zoom: 15, duration: 500})">Zoom to 15</button>
 </template>
 ```
 
-`state` is a ref with the state of the map. `host` is a ref with the map when it is there.
+`state` is a ref with the state of the map. `map` is a ref with the map when it is there.
 
 `useMapJr` calls `update` of the map each time that the description is a new object:
 
@@ -343,7 +343,7 @@ const {host, state} = useMapJr(useTemplateRef('el'), computed(() => ({
 - `initialView` can be a box: `{bounds: [[-74.03, 40.69], [-73.97, 40.73]], padding: 20}`. The `ssr` prop renders the
   same box on the server, at the `width` and `height` of the `ssr` prop.
 - `initialView` is read only when the map is made, so a ref inside `initialView` does not move the map. To move the
-  map, call `host.value.moveTo(view)`, or give `view` and `onViewChange` in the description. See "A view that the
+  map, call `map.value.moveTo(view)`, or give `view` and `onViewChange` in the description. See "A view that the
   application owns" in [the main API](api.md).
 
 ## The module for Nuxt
@@ -367,22 +367,22 @@ With the module, a page uses the components without an import:
 </template>
 ```
 
-- `MapJr`, `MapOverlay` and `MapImage` are registered, and `useMapJr`, `useMapHost`, `useMapFeatures` and `useMapSource`.
+- `MapJr`, `MapOverlay` and `MapImage` are registered, and `useMapJr`, `useMapInstance`, `useMapFeatures` and `useMapSource`.
 - The controls have longer names, because `scale` and `navigation` are common words: `navigationControl()`,
   `scaleControl()`, `fullscreenControl()`, `geolocateControl()`, `terrainControl()`.
 - `LazyMapJr` puts the code of the map into a file of its own. With `hydrate-on-visible`, the browser loads that file
   and starts the map when the map comes into view. Together with `ssr`, the visitor sees the map from the server at
   once, and a page with a map far down loads no map code until it is necessary.
 - The other exports of `@map-jr/map-jr-gl/vue` do not load the map code. `MapJr` and `useMapJr` load it with `import()`
-  when the map is mounted, so a component that uses `MapOverlay`, `MapImage` or `useMapHost` next to a `LazyMapJr`
-  does not bring the map code into the page. The file `vue.js` and what it imports are about 3 KB (gzip). The `host`
+  when the map is mounted, so a component that uses `MapOverlay`, `MapImage` or `useMapInstance` next to a `LazyMapJr`
+  does not bring the map code into the page. The file `vue.js` and what it imports are about 3 KB (gzip). The `map`
   of `useMapJr` is `null` until that code has loaded, also in `onMounted`.
 - A template ref on `LazyMapJr` with `hydrate-on-visible` (or another `hydrate-*` prop) is the lazy wrapper that
-  Nuxt puts around `MapJr`, and it has no `host` and no `state`, also after hydration. Without a `hydrate-*` prop,
+  Nuxt puts around `MapJr`, and it has no `map` and no `state`, also after hydration. Without a `hydrate-*` prop,
   the ref on `LazyMapJr` has them. To reach the map of a lazily hydrated map, use one of these:
-  - `@load`, which gets the map: `<LazyMapJr hydrate-on-visible @load="host => (map = host)" ... />`.
-  - The default slot, which gets `host` and `state`: `<LazyMapJr hydrate-on-visible v-slot="{host}">`.
-  - `useMapHost()` in a component of your own inside `LazyMapJr`.
+  - `@load`, which gets the map: `<LazyMapJr hydrate-on-visible @load="instance => (map = instance)" ... />`.
+  - The default slot, which gets `map` and `state`: `<LazyMapJr hydrate-on-visible v-slot="{map}">`.
+  - `useMapInstance()` in a component of your own inside `LazyMapJr`.
 
 Without the module, import the components (`import {MapJr} from '@map-jr/map-jr-gl/vue'`). For lazy loading, use
 `defineAsyncComponent` of Vue:
@@ -453,7 +453,7 @@ tests in [ecosystem.md](ecosystem.md) and the Vue ports of #270 ran deck.gl in i
 mapbox-gl-draw and terra-draw polygon mode this way. [maplibre-compatibility.md](maplibre-compatibility.md) lists what
 differs from MapLibre GL JS.
 
-`MapJr` does not support these plugins yet (#267), and the `MapHost` of `@map-jr/map-jr-gl` does not give a MapLibre map.
+`MapJr` does not support these plugins yet (#267), and the `MapInstance` of `@map-jr/map-jr-gl` does not give a MapLibre map.
 
 ## Nuxt and server rendering
 

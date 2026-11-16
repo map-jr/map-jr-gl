@@ -8,7 +8,7 @@
 import {createContext, createElement as h, forwardRef, useCallback, useContext, useEffect, useImperativeHandle, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode} from 'react';
 import {createPortal} from 'react-dom';
 declare const __DEV__: boolean;
-import {makeMap, type MapEvents, type MapHost, type MapOverlay as Overlay, type MapPointer, type MapSpec, type MapState, type OverlayOptions, type View} from './host.ts';
+import {makeMap, type MapEvents, type MapInstance, type MapOverlay as Overlay, type MapPointer, type MapDescription, type MapState, type OverlayOptions, type View} from './host.ts';
 import type {RenderedFeature} from './map.ts';
 
 type Undotted<K extends string> = K extends `${infer A}.${infer B}` ? `${A}${B}` : K;
@@ -21,9 +21,9 @@ export type MapEventProps = {[K in Exclude<keyof MapEvents, 'click' | 'load' | '
 /** The props that are not an event of the map itself. */
 const OWN = new Set(['onViewChange', 'onClick', 'onHover', 'onLoad', 'onIdle', 'onError']);
 
-export interface MapJrProps extends Omit<MapSpec, 'style' | 'onViewChange'>, MapEventProps {
+export interface MapJrProps extends Omit<MapDescription, 'style' | 'onViewChange'>, MapEventProps {
     /** A style object or the URL of a style. (`style` is the CSS style of the element.) */
-    mapStyle: MapSpec['style'];
+    mapStyle: MapDescription['style'];
     /** Called with the view after each change. With `view`, write the value back to own the view. */
     onViewChange?: (view: View) => void;
     onHover?: (features: RenderedFeature[]) => void;
@@ -42,7 +42,7 @@ export interface MapJrProps extends Omit<MapSpec, 'style' | 'onViewChange'>, Map
     children?: ReactNode;
 }
 
-const Host = createContext<MapHost | null>(null);
+const Host = createContext<MapInstance | null>(null);
 type GivenImage = [string, {image: string; width?: number; height?: number; pixelRatio?: number}];
 /** How a `MapImage` gives its image to the `MapJr` that it is in: its name and the image, or null when it has none. */
 const Images = createContext<((owner: object, image: GivenImage | null) => void) | null>(null);
@@ -53,15 +53,15 @@ export const useMap = () => useContext(Host);
  * `const zoom = useMapState(s => s.view.zoom)`. The component renders again when that part changes.
  * Return a part of the state as it is, not a new object.
  */
-export function useMapState<T>(select: (state: MapState) => T, map?: MapHost | null): T | undefined {
+export function useMapState<T>(select: (state: MapState) => T, map?: MapInstance | null): T | undefined {
     const host = useContext(Host), from = map === undefined ? host : map;
     return useSyncExternalStore(fn => from ? from.state.subscribe(fn) : () => {}, () => from ? select(from.state.get()) : undefined, () => undefined);
 }
 
-/** The map as a component. It fills its parent element, so give the parent a height. A ref gets the map (`MapHost`). */
-export const MapJr = forwardRef<MapHost | null, MapJrProps>(function MapJr(props, ref) {
+/** The map as a component. It fills its parent element, so give the parent a height. A ref gets the map (`MapInstance`). */
+export const MapJr = forwardRef<MapInstance | null, MapJrProps>(function MapJr(props, ref) {
     const {mapStyle, firstView, className, style, children, onHover, onLoad, onIdle, onError, ...rest} = props;
-    const el = useRef<HTMLDivElement>(null), made = useRef<MapHost | null>(null), [host, setHost] = useState<MapHost | null>(null);
+    const el = useRef<HTMLDivElement>(null), made = useRef<MapInstance | null>(null), [host, setHost] = useState<MapInstance | null>(null);
     // The functions of the last render are called, also from a map that an earlier render made.
     const last = useRef(props);
     last.current = props;
@@ -76,7 +76,7 @@ export const MapJr = forwardRef<MapHost | null, MapJrProps>(function MapJr(props
         if (image) owners.current.set(owner, image); else owners.current.delete(owner);
         again(n => n + 1);
     }, []);
-    const spec: MapSpec = {...rest, images: rest.images || owners.current.size ? {...rest.images, ...Object.fromEntries(owners.current.values())} : undefined, style: mapStyle, onViewChange: view => last.current.onViewChange?.(view), onClick: event => last.current.onClick?.(event),
+    const spec: MapDescription = {...rest, images: rest.images || owners.current.size ? {...rest.images, ...Object.fromEntries(owners.current.values())} : undefined, style: mapStyle, onViewChange: view => last.current.onViewChange?.(view), onClick: event => last.current.onClick?.(event),
         // (Without `onError`, the map writes each error to the console.)
         onError: onError && (error => last.current.onError?.(error))};
     // The props for the events of the map are no part of the description. Each one is a listener of its event.
@@ -98,7 +98,7 @@ export const MapJr = forwardRef<MapHost | null, MapJrProps>(function MapJr(props
         return () => { for (const stop of stops) stop(); made.current = null; map.destroy(); setHost(null); };
     }, []);
     useEffect(() => { made.current?.update(spec); });
-    useImperativeHandle(ref, () => host as MapHost, [host]);
+    useImperativeHandle(ref, () => host as MapInstance, [host]);
     return h('div', {className: 'map-jr-react' + (className ? ' ' + className : ''), style: {position: 'relative', width: '100%', height: '100%', ...style}},
         // (The HTML of the server stays in this element until the map removes it: React does not look at its content.)
         h('div', {ref: el, style: {position: 'absolute', inset: 0}, suppressHydrationWarning: true, dangerouslySetInnerHTML: html}),
@@ -177,4 +177,4 @@ export function MapImage<const P extends string = never>({name, params, src, wid
     // (Nothing in the first render, as on the server: the map is not there yet.)
     return el && host ? createPortal(typeof children === 'function' ? children(slots) : children, el) : null;
 }
-export type {MapHost, MapPointer, MapSpec, MapState, OverlayOptions, View};
+export type {MapInstance, MapPointer, MapDescription, MapState, OverlayOptions, View};
