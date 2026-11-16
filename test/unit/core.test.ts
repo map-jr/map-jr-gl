@@ -85,6 +85,32 @@ test('expressions: data, zoom and legacy forms evaluate', () => {
     assert.equal(compileExpr(['number-format', 1234.5, {'max-fraction-digits': 0, locale: 'en-US'}], {dd: false, zoom: false})({zoom: 0, f: null}), '1,235');
 });
 
+test('expressions: conversions, type checks and options give the results of the style specification (#562)', () => {
+    const run = (e: unknown, properties: Record<string, unknown> = {}, state?: Record<string, unknown>) => compileExpr(e, {dd: false, zoom: false})({zoom: 0, f: {type: 1, properties, state}});
+    // An array that is not a colour already has its channels from 0 to 255.
+    assert.deepEqual(run(['to-rgba', ['get', 'x']], {x: [0, 255, 0, 1]}), [0, 255, 0, 1]);
+    assert.deepEqual(run(['to-rgba', ['get', 'x']], {x: [0, 0, 255]}), [0, 0, 255, 1]);
+    assert.deepEqual(run(['to-rgba', ['get', 'x']], {x: 'red'}), [255, 0, 0, 1]);
+    assert.equal(run(['to-string', ['format', 'a', {}, 'b', {'font-scale': 2}, ['image', 'pin'], 'c', {'text-font': ['literal', ['a', 'b']]}]]), 'abc');
+    assert.equal(run(['typeof', ['get', 'x']], {x: [1, 2, 3]}), 'array<number, 3>');
+    assert.equal(run(['typeof', ['get', 'x']], {x: ['a', 'b']}), 'array<string, 2>');
+    assert.equal(run(['typeof', ['get', 'x']], {x: [1, false]}), 'array<value, 2>');
+    assert.equal(run(['typeof', ['get', 'x']], {x: []}), 'array<value, 0>');
+    assert.equal(run(['typeof', ['to-color', 'red']]), 'color');
+    assert.equal(run(['typeof', ['get', 'x']], {x: {}}), 'object');
+    // The type and the length of "array" are not values, and a value of another type of item is passed over.
+    const fallback = ['array', 'number', null, ['get', 'x'], ['literal', [0]]];
+    assert.deepEqual(run(fallback), [0]);
+    assert.deepEqual(run(fallback, {x: []}), []);
+    assert.deepEqual(run(fallback, {x: ['1']}), [0]);
+    assert.deepEqual(run(['array', 'number', 2, ['get', 'x'], ['literal', [0, 0]]], {x: [1, 2, 3]}), [0, 0]);
+    assert.deepEqual(run(['array', ['get', 'x']], {x: ['1', 2]}), ['1', 2]);
+    assert.equal(run(['array', ['get', 'x']], {x: {}}), null);
+    assert.equal(run(['number-format', 1234.567, {locale: 'en-US', unit: ['get', 'unit']}], {unit: 'meter'}), '1,234.567 m');
+    assert.equal(run(['feature-state', ['at', 1, ['literal', ['e', 'x', 'e']]]], {}, {x: 1}), 1);
+    assert.equal(run(['is-supported-script', ['get', 'x']], {x: 'שלום'}), true);
+});
+
 test('images: a template has its slots, and the image expression with params gives the name with the values', () => {
     assert.deepEqual(templateSlots('<svg><path fill="{{color}}" stroke="{{ stroke }}"/><text fill="{{color}}">{{label}}</text></svg>'), ['color', 'stroke', 'label']);
     assert.deepEqual(templateSlots('<svg viewBox="0 0 4 4"/>'), []);
