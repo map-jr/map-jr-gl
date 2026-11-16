@@ -38,6 +38,7 @@ const texts: ((a: string, b: string) => string)[] = [
 ];
 // (Numbers 23 to 29 are taken by other changes.)
 texts[30] = a => `hoverState: a feature of the layer "${a}" has no id, so it gets no feature state "hover". Give the features ids, or set "promoteId" of the source to a property that has one, or "generateId: true" for a GeoJSON source.`;
+texts[40] = a => `colorScheme: ${a} is not a colour scheme, so the map uses the light colours. Write 'auto', 'light' or 'dark'.`;
 
 /** The message with the number `code` for the names `a` and `b`. */
 export const mistake = (code: number, a = '', b = '') => '[map-jr-gl] ' + texts[code](a, b);
@@ -103,6 +104,7 @@ export function check(c: Checked, kind: number, a?: any, b?: any) {
         if (before && differ(next.images, before.images) && c.ready()) slots(map.getStyle()?.layers ?? [], [], next.images);
         if (!before && 'glyphs' in next) warn(20);
         for (const name in next.globalState) if (next.globalState[name] !== before?.globalState?.[name] && !isJson(next.globalState[name])) warn(22, name);
+        if (next.colorScheme != null && next.colorScheme !== before?.colorScheme && !['auto', 'light', 'dark'].includes(next.colorScheme)) warn(40, JSON.stringify(next.colorScheme));
         if (before) for (const k of setupOnly) if (differ(next[k], before[k])) warn(8, k);
     } else if (kind === 3) {
         const o = b as FeatureOptions;

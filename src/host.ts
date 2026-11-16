@@ -168,6 +168,12 @@ export interface MapSpec extends MapSetup {
      */
     cooperativeGestures?: boolean;
     /**
+     * The colours of the controls, the popup, the attribution and the message of a browser without WebGL 2: `'light'`
+     * (the default), `'dark'`, or `'auto'`, which follows `prefers-color-scheme` of the browser and changes with it.
+     * The container has the class `map-jr-dark` while the scheme is dark. It does not change the style of the canvas.
+     */
+    colorScheme?: 'auto' | 'light' | 'dark';
+    /**
      * Space in CSS pixels at the sides of the map that the view keeps free, for example under a side panel: one number
      * for all sides, or `{top, right, bottom, left}` (a side that is left out is 0). The centre of the view is the centre
      * of the rest of the map. The default is 0.
@@ -206,6 +212,8 @@ export interface MapState {
     pointer: PointerPosition | null;
     /** The thread that draws: known when the map has started. */
     renderer: 'worker' | 'main' | undefined;
+    /** The colour scheme of the controls: `colorScheme` of the description, with `'auto'` resolved. */
+    colorScheme: 'light' | 'dark';
     error: Error | undefined;
 }
 
@@ -473,8 +481,22 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
     // (The height of the container is read after a second, so that a container which gets its height a moment later gives no warning.)
     setTimeout(() => check(0, name), 1000);
     const viewOf = (): View => { const c = map.getCenter(), b = map.getBounds().toArray() as View['bounds']; return {center: [c.lng, c.lat], zoom: map.getZoom(), bearing: map.getBearing(), pitch: map.getPitch(), bounds: b}; };
-    const state = createStore<MapState>({loaded: false, idle: false, moving: false, view: viewOf(), hover: [], pointer: null, renderer: undefined, error: undefined});
+    const state = createStore<MapState>({loaded: false, idle: false, moving: false, view: viewOf(), hover: [], pointer: null, renderer: undefined, colorScheme: 'light', error: undefined});
     const controls = new globalThis.Map<string, ReturnType<ControlSpec['create']>>();
+    // `colorScheme`: the class `map-jr-dark` on the container. With `'auto'`, a listener of the media query, which `destroy()` removes.
+    let wanted: MapSpec['colorScheme'], dark: MediaQueryList | undefined;
+    const paint = () => {
+        const on = wanted === 'dark' || wanted === 'auto' && !!dark?.matches;
+        map.getContainer().classList.toggle('map-jr-dark', on);
+        state.set({colorScheme: on ? 'dark' : 'light'});
+    };
+    const scheme = (to: MapSpec['colorScheme']) => {
+        wanted = to;
+        dark ??= globalThis.matchMedia?.('(prefers-color-scheme: dark)');
+        dark?.removeEventListener('change', paint);
+        if (to === 'auto') dark?.addEventListener('change', paint);
+        paint();
+    };
     // The images of `images` that the map has, by name. The value says what the image was made from: the text of an
     // image that is given as text (so the same content in a new object is the same image), or else the object itself.
     const images = new globalThis.Map<string, unknown>();
@@ -654,6 +676,7 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
         wantedImages = next.images;
         if (next.images !== before?.images) putImages();
         if (!next.cooperativeGestures !== !before?.cooperativeGestures) cooperate(!!next.cooperativeGestures);
+        if (next.colorScheme !== before?.colorScheme || !before) scheme(next.colorScheme);
         if (differ(next.interactiveLayers, before?.interactiveLayers) || !next.hoverState !== !before?.hoverState) hover();
         check(2, next, before);
         now = next;
@@ -737,7 +760,7 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
             if (alive) apply(next, now);
         },
         get description() { return now; },
-        destroy() { if (!alive) return; alive = false; cooperate(false); map.remove(); for (const drop of waiting) drop(); waiting.clear(); },
+        destroy() { if (!alive) return; alive = false; cooperate(false); dark?.removeEventListener('change', paint); map.remove(); for (const drop of waiting) drop(); waiting.clear(); },
         state,
         queryFeatures,
         setFeatureState(target, value) { if (alive) map.setFeatureState(target, value); },

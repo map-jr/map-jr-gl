@@ -243,6 +243,8 @@ const MapJrComponent = defineComponent({
         maxBounds: [Array, Object] as unknown as PropType<MapSpec['maxBounds']>,
         cursor: String,
         cooperativeGestures: {type: Boolean, default: undefined},
+        /** The colours of the controls, the popup and the attribution: `'light'` (the default), `'dark'`, or `'auto'` to follow the browser. */
+        colorScheme: String as PropType<MapSpec['colorScheme']>,
         /** Space in CSS pixels at the sides of the map that the view keeps free: one number, or `{top, right, bottom, left}`. */
         padding: [Number, Object] as PropType<MapSpec['padding']>,
         /** Controls from `@map-jr/map-jr-gl/controls`: `[navigation(), scale()]`. */
@@ -322,7 +324,7 @@ const MapJrComponent = defineComponent({
         const spec = computed<MapSpec>(() => {
             const out: MapSpec = {
                 style: style.value, sources: sources.value, layers: added.value, terrain: terrain.value, view: view.value, initialView: props.initialView && toRaw(props.initialView), images: images.value, data: data.value, interactiveLayers: layers.value, hoverState: props.hoverState, controls: controls.value,
-                minZoom: props.minZoom, maxZoom: props.maxZoom, maxPitch: props.maxPitch, maxBounds: props.maxBounds && toRaw(props.maxBounds), cursor: props.cursor, transformRequest: props.transformRequest, cooperativeGestures: props.cooperativeGestures, padding: props.padding && typeof props.padding === 'object' ? toRaw(props.padding) : props.padding, projection: props.projection && toRaw(props.projection), globalState: props.globalState && toRaw(props.globalState),
+                minZoom: props.minZoom, maxZoom: props.maxZoom, maxPitch: props.maxPitch, maxBounds: props.maxBounds && toRaw(props.maxBounds), cursor: props.cursor, transformRequest: props.transformRequest, cooperativeGestures: props.cooperativeGestures, colorScheme: props.colorScheme, padding: props.padding && typeof props.padding === 'object' ? toRaw(props.padding) : props.padding, projection: props.projection && toRaw(props.projection), globalState: props.globalState && toRaw(props.globalState),
                 fonts: props.fonts && toRaw(props.fonts), renderer: props.renderer, fontFamily: props.fontFamily, interactive: props.interactive, antialias: props.antialias,
                 attribution: (props.attribution as unknown) === true ? undefined : props.attribution && toRaw(props.attribution), hash: props.hash, nonce: props.nonce,
                 onViewChange: view => emit('update:view', view), onClick: event => emit('click', event),
@@ -361,7 +363,7 @@ const MapJrComponent = defineComponent({
             // @ts-ignore: the package refers to itself, which the type check of this project does not resolve
             const server = await import('@map-jr/map-jr-gl/server') as typeof import('./server.ts');
             first.value = await server.renderFirstView({style: toRaw(props.mapStyle), center: view.center ?? [0, 0], zoom: view.zoom ?? 0, bearing: view.bearing, bounds: fit ? toRaw(fit) as LngLatBoundsInput : undefined, padding: props.initialView?.padding, width: o.width ?? 800, height: o.height ?? 500,
-                images: props.images && toRaw(props.images) as Record<string, string>, overrides: o.overrides, sources: toRaw(props.sources), layers: toRaw(props.layers), terrain: toRaw(props.terrain), data: props.data && toRaw(props.data), timeout: o.timeout, requestTimeout: o.requestTimeout, maxBytes: o.maxBytes, allowHosts: o.allowHosts, attribution: props.attribution === false ? false : o.attribution});
+                images: props.images && toRaw(props.images) as Record<string, string>, overrides: o.overrides, sources: toRaw(props.sources), layers: toRaw(props.layers), terrain: toRaw(props.terrain), data: props.data && toRaw(props.data), timeout: o.timeout, requestTimeout: o.requestTimeout, maxBytes: o.maxBytes, allowHosts: o.allowHosts, attribution: props.attribution === false ? false : o.attribution, colorScheme: props.colorScheme ?? 'light'});
         });
         return () => h('div', {class: 'map-jr-vue', style: 'position:relative;width:100%;height:100%'}, [
             h('div', {ref: el, style: 'position:absolute;inset:0', innerHTML: first.value}),
