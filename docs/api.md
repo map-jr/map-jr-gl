@@ -139,7 +139,7 @@ These fields are read only when the map is made:
 | Field | Meaning |
 |---|---|
 | `renderer` | `'auto'` (the default), `'worker'` or `'main'`: the thread that draws. See [Loading](loading.md). |
-| `fonts`, `fontFamily` | Web fonts for the labels. When the style has `glyphs`, the labels use the glyph files, and these fonts draw only what the files do not have: a font stack or a range that the server does not have, a character missing from the files, and text that the browser must shape. A style without `glyphs` draws all text with these fonts. |
+| `fonts`, `fontFamily` | Web fonts for the labels. When the style has `glyphs`, the labels use the glyph files, and these fonts draw only what the files do not have: a font stack or a range that the server does not have, a character missing from the files, and text that the browser must shape. A style without `glyphs` draws all text with these fonts. A style object can also carry font files in `font-faces` (an object that maps a `text-font` name to files, as in the style specification). A `text-font` name or a `font-faces` name becomes a CSS family, a weight and a style: words such as `Bold` (700), `Semibold` (600), `Medium` (500), `Light` (300), `Black` (900) and `Italic` are taken out of the name, and the rest is the family, so `Open Sans Semibold Italic` is the family `Open Sans` at weight 600 in italic. A name without such a word has weight 400. |
 | `interactive` | `false` for a map that the user cannot move. The default is `true`. With `false`, `onClick` and `state.hover` still work, and a touch on the map scrolls the page. |
 | `antialias` | Multisample antialiasing for the canvas. |
 | `attribution` | `false` to show the credits yourself, or options for the built-in credits. |
@@ -346,6 +346,29 @@ map.update({style: url, extend, data: {routes: routes(1)}});
 - A key that is the id of a source of another type, such as a vector source, is an error of the map (`onError`), and
   the data has no effect.
 - `renderToSVG` (`@map-jr/map-jr-gl/server`) follows the same rule, and throws for a key of a source of another type.
+
+### Points from records
+
+`points(records, options)` from `@map-jr/map-jr-gl` makes a GeoJSON `FeatureCollection` with a point for each
+record. It needs no map, so a server can call it too.
+
+```js
+import {points} from '@map-jr/map-jr-gl';
+
+const records = [{id: 'louvre', name: 'Louvre', lng: 2.3376, lat: 48.8606}];
+const places = points(records, {lngLat: r => [r.lng, r.lat], id: r => r.id});
+// {type: 'FeatureCollection', features: [{type: 'Feature', id: 'louvre', properties: records[0], geometry: {type: 'Point', coordinates: [2.3376, 48.8606]}}]}
+map.update({style, data: {places}});
+```
+
+| Option | Meaning |
+|---|---|
+| `lngLat(record, index)` | Required. The position of the record as `[lng, lat]`. |
+| `id(record, index)` | The id of the feature. Without it, a feature has no id: the function does not use the index, because the index changes when a record is removed. |
+| `properties(record, index)` | The properties of the feature. Without it, the properties are the record itself. |
+
+A record whose position is not two finite numbers (a string such as `'2.3'` included) is left out. The development
+build warns once on the page with the index of the first such record; the production build does not warn.
 
 ## Controls
 
@@ -712,7 +735,7 @@ use `listen` for the rest.
 import {createMap} from '@map-jr/map-jr-gl';
 
 const map = createMap('map', {style: 'https://demotiles.maplibre.org/style.json'});
-const stop = map.listen('moveend', event => console.log(event.target.getZoom()));
+const stop = map.listen('moveend', event => console.log(map.state.get().view.zoom));
 stop();
 ```
 
@@ -778,6 +801,7 @@ const map = createMap('map', {style: 'local://style.json'});
 | Export of `@map-jr/map-jr-gl` | Meaning |
 |---|---|
 | `configure(options)` | Sets how the library loads its workers (`workerUrl`, `createWorker`, `tileWorkers` and the others) for the maps made after the call. See [Loading](loading.md). |
+| `points(records, options)` | Makes a GeoJSON `FeatureCollection` of points from records. See [Points from records](#points-from-records). |
 | `createStore(value)` | Makes a store of the kind that `map.state` is (see [The state](#the-state)), with `get()`, `subscribe()` and `set(part)`. `set` makes a new object and calls the subscribers only when a field changes (compared with `Object.is`). |
 
 ## Types
@@ -790,6 +814,9 @@ The entry `@map-jr/map-jr-gl` has TypeScript types for the description (`MapSpec
   `const NYC = [-74.0065, 40.7085]; createMap(el, {style, initialView: {center: NYC}})`. The map reads the first two
   numbers as `[lng, lat]`. A position that the map gives (`state.view.center`, the result of `unproject`, `lngLat`
   in `onClick`) is `[number, number]`.
+- The types that the signatures use are exported: `LngLatBoundsInput` (`maxBounds`, `fitBounds`, `initialView.bounds`),
+  `LngLatBounds` (the `boxZoomBounds` of the event `boxzoomend`; only the type, not the class), `LngLatInput`,
+  `FlyOptions` (`moveTo`) and `Anchor` (`OverlayOptions.anchor` and the anchor of a marker layer).
 - A feature of `state.hover` and of `onClick` has `layer`, the style layer that draws it, with the type `StyleLayer`
   (`id`, `type`, `source`, `paint` and the other members of a layer of the style). `queryFeatures` returns
   `(RenderedFeature | QueriedFeature)[]`: a `QueriedFeature` (a query with `sources`) has no style layer.

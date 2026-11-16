@@ -32,10 +32,15 @@ const texts: ((a: string, b: string) => string)[] = [
     /* 18 */ (a, b) => `markers: the marker layer "${a}" has before: "${b}", but the style has no layer "${b}", so the markers go on top. Write the id of a layer of the style.`,
     /* 19 */ (a, b) => `markers: the marker ${b} of the marker layer "${a}" has no position, so it is not drawn. Give each marker "lngLat" as [lng, lat].`,
     /* 20 */ () => 'The description has "glyphs". That field was removed and has no effect: the map loads the glyph files of the style. Remove "glyphs" from the description. To draw text with the fonts of the browser, remove "glyphs" from the style.',
+    /* 21 */ a => `points(): the record ${a} has no position of two finite numbers, so it is left out. Make "lngLat" return [lng, lat] for each record.`,
 ];
 
 /** The message with the number `code` for the names `a` and `b`. */
 export const mistake = (code: number, a = '', b = '') => '[map-jr-gl] ' + texts[code](a, b);
+
+/** For `points()` (src/points.ts): the warning with the number `code` for `a`, once for each code on the page. */
+const pageWarned = new Set<number>();
+export const warnOnce = (code: number, a = '') => { if (!pageWarned.has(code)) { pageWarned.add(code); console.warn(mistake(code, a)); } };
 
 /** The fields of `MapSetup`, and `initialView`: a change of one of them in `update` has no effect. */
 const setupOnly = ['renderer', 'fonts', 'fontFamily', 'interactive', 'antialias', 'attribution', 'hash', 'nonce', 'initialView'] as const;

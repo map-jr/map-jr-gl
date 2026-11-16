@@ -3,13 +3,13 @@ import {LngLat} from './lnglat.ts';
 import type {Map, PointLike} from './map.ts';
 import {cls, ui} from './controls.ts';
 import {Evented} from './evented.ts';
+import type {Anchor} from './markers.ts';
 
 /**
  * DOM overlays with MapLibre's `Marker` and `Popup` API, for the cases where real HTML is wanted (rich content,
  * dragging, links). For many markers, a symbol layer with an image is far cheaper.
  */
 
-export type OverlayAnchor = 'center' | 'top' | 'bottom' | 'left' | 'right' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
 /** Where the named part of an element is, across and down, in percent: `[50, 100]` for `bottom`. */
 /** A `Point`, `{x, y}` or `[x, y]` as a tuple. */
 const xy = (p: PointLike): [number, number] => Array.isArray(p) ? [p[0], p[1]] : [p.x, p.y];
@@ -20,7 +20,7 @@ abstract class Overlay extends Evented {
     protected map?: Map;
     protected lngLat?: [number, number];
     protected abstract el: HTMLElement;
-    protected abstract anchor: OverlayAnchor;
+    protected abstract anchor: Anchor;
     protected offset: [number, number] = [0, 0];
     protected update: () => void = () => {
         if (!this.map || !this.lngLat) return;
@@ -61,14 +61,14 @@ abstract class Overlay extends Evented {
     }
 }
 
-export type PopupOffset = number | [number, number] | Partial<Record<OverlayAnchor, [number, number]>>;
+export type PopupOffset = number | [number, number] | Partial<Record<Anchor, [number, number]>>;
 export interface PopupOptions {
     closeButton?: boolean; closeOnClick?: boolean; maxWidth?: string; className?: string;
     /**
      * Which part of the popup sits at the map position. Leave it out and the popup picks for itself, as MapLibre's
      * does: above the point by default, below when there is no room above, shifted sideways near the left and right edges.
      */
-    anchor?: OverlayAnchor;
+    anchor?: Anchor;
     /** Distance from the map position: one number, an [x, y] pair, or a pair per anchor (so it can clear a marker on any side). */
     offset?: PopupOffset;
     /** Set false to show and hide without the short fade. */
@@ -90,7 +90,7 @@ export interface PopupOptions {
 
 export class Popup extends Overlay {
     protected el = document.createElement('div');
-    protected anchor: OverlayAnchor;
+    protected anchor: Anchor;
     protected box = document.createElement('div');
     /** The pointer-events of the box while it is open: `none` while a popup of maplibre-compat follows the pointer. */
     protected clicks = 'auto';
@@ -134,7 +134,7 @@ export class Popup extends Overlay {
     }
 
     /** The pointer goes on the side facing the map position, and the offset for that side takes effect. */
-    private applyAnchor(anchor: OverlayAnchor) {
+    private applyAnchor(anchor: Anchor) {
         this.anchor = anchor;
         const o = this.options.offset ?? 0;
         const [x, y] = part(anchor), side = anchor.split('-')[0];
@@ -147,12 +147,12 @@ export class Popup extends Overlay {
     }
 
     /** Above the point when it fits, otherwise below; hugging the left or right edge when the point is near one. */
-    private chooseAnchor(): OverlayAnchor {
+    private chooseAnchor(): Anchor {
         const map = this.map!, p = map.project(this.lngLat!), c = map.getContainer(), w = this.box.offsetWidth + 16, h = this.box.offsetHeight + 16;
         const o = this.options.offset, lift = typeof o === 'number' ? o : o && !Array.isArray(o) ? -(o.bottom?.[1] ?? 0) : 0;
         const vertical = p.y - lift - h < 0 && p.y + h < c.clientHeight + 40 ? 'top' : 'bottom';
         const horizontal = p.x - w / 2 < 0 ? '-left' : p.x + w / 2 > c.clientWidth ? '-right' : '';
-        return (vertical + horizontal) as OverlayAnchor;
+        return (vertical + horizontal) as Anchor;
     }
     getAnchor() { return this.anchor; }
     /** Moves the focus to the first element that takes it. A candidate can refuse it (a disabled button, a hidden link). */
@@ -224,7 +224,7 @@ export class Popup extends Overlay {
     }
 }
 
-export interface MarkerOptions { element?: HTMLElement; color?: string; anchor?: OverlayAnchor; offset?: PointLike; draggable?: boolean; scale?: number; className?: string; rotation?: number; rotationAlignment?: string; pitchAlignment?: string;
+export interface MarkerOptions { element?: HTMLElement; color?: string; anchor?: Anchor; offset?: PointLike; draggable?: boolean; scale?: number; className?: string; rotation?: number; rotationAlignment?: string; pitchAlignment?: string;
     /** The opacity of the marker (default `'1'`), and its opacity while the far side of the globe hides its position (default `'0.2'`), as in MapLibre GL JS. */
     opacity?: string | number;
     opacityWhenCovered?: string | number;
@@ -247,7 +247,7 @@ export function defaultPin(options: {color?: string; scale?: number} = {}): HTML
 
 export class Marker extends Overlay {
     protected el: HTMLElement;
-    protected anchor: OverlayAnchor;
+    protected anchor: Anchor;
     private popup?: Popup | null;
     private draggable = false;
     private pitchAlignment: string;
