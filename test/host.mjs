@@ -1957,13 +1957,13 @@ for (const renderer of renderers) {
             for (let i = 0; i < 50 && !el.querySelector('.maplibregl-ctrl-compass'); i++) await new Promise(r => setTimeout(r, 100));
         }, renderer);
         const box = await page.evaluate(() => { const r = document.querySelector('.maplibregl-ctrl-compass').getBoundingClientRect(); return {x: r.left + r.width / 2, y: r.top + r.height / 2}; });
-        const cdp = await page.context().newCDPSession(page), ends = {}, steps = {};
+        const cdp = await page.context().newCDPSession(page), ends = {}, steps = {}, letters = {};
         const touch = (type, x, y) => cdp.send('Input.dispatchTouchEvent', {type, touchPoints: type === 'touchEnd' ? [] : [{x, y}]});
         for (const kind of ['mouse', 'touch']) for (const moves of [100, 25, 5]) {
             await page.evaluate(() => window.fastHost.moveTo({bearing: 0, duration: 0}));
             await page.waitForTimeout(200);
             await page.evaluate(() => {
-                const f = window.seen = [], m = window.fastHost._map, needle = document.querySelector('.maplibregl-ctrl-compass svg');
+                const f = window.seen = [], m = window.fastHost._map, needle = document.querySelector('.maplibregl-ctrl-compass svg g');
                 window.drawn.length = 0; window.recording = true;
                 const tick = () => { f.push([m.getBearing(), -parseFloat(/rotate\((-?[\d.e-]+)deg\)\s*$/.exec(needle.style.transform)?.[1] ?? 'NaN')]); if (window.recording) requestAnimationFrame(tick); };
                 requestAnimationFrame(tick);
@@ -1974,6 +1974,7 @@ for (const renderer of renderers) {
             if (kind === 'touch') await touch('touchEnd'); else await page.mouse.up();
             await page.waitForTimeout(400);
             ends[`${kind} ${moves}`] = Math.round(await page.evaluate(() => window.fastHost._map.getBearing()) * 10) / 10;
+            letters[`${kind} ${moves}`] = await page.evaluate(() => document.querySelector('.maplibregl-ctrl-compass text')?.textContent);
             // A step against the drag (a drag to the left turns the bearing up, modulo 360) in getBearing(), the needle or the
             // drawn camera.
             const r = await page.evaluate(() => { window.recording = false; return {seen: window.seen, drawn: window.drawn}; });
@@ -1982,6 +1983,8 @@ for (const renderer of renderers) {
         }
         // (500 pixels to the left at 0.4 degrees: 200 degrees, which is -160.)
         check(`[${renderer}] a drag from the compass across the map ends at the same bearing at any speed (#548)`, Object.values(ends).every(b => Math.abs(b + 160) < 1), JSON.stringify(ends));
+        // (-160 degrees is nearest to south.)
+        check(`[${renderer}] after a drag from the compass, its letter follows the bearing (#548)`, Object.values(letters).every(l => l === 'S'), JSON.stringify(letters));
         check(`[${renderer}] a fast drag from the compass never turns back: not in getBearing(), in the needle or in the drawn map (#548)`, Object.values(steps).every(s => s.every(n => n === 0)), JSON.stringify(steps));
     } catch (e) { check(`[${renderer}] a fast drag from the compass: the test run was completed`, false, String(e.message).split('\n')[0]); }
     await page.close();
