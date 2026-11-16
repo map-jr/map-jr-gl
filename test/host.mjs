@@ -1235,13 +1235,16 @@ for (const renderer of ['worker', 'main']) {
         // `colorScheme` (#490): the class map-jr-dark, state.colorScheme and the colour of a control, for no value (light), 'auto', 'light' and 'dark'.
         // (The browser fires the event `change` of the media query at its next rendering step, which can come late on a
         // loaded machine, so the check waits until the state has the expected scheme, for at most 3 s.)
+        // (A control loads its code with import() when the map adds the first one, so the check waits for the element of
+        // the control, for at most 3 s: one frame was too short on a loaded machine, #532.)
         const until = expect => page.waitForFunction(e => window.t.host.state.get().colorScheme === e, expect, {timeout: 3000}).catch(() => {});
         const scheme = async (media, value, expect) => {
             await page.emulateMedia({colorScheme: media});
-            await until(expect);
+            if (expect) await until(expect);
             return page.evaluate(async value => {
                 const t = window.t, {navigation} = await import('/dist/controls.js');
                 t.host.update({...t.spec, controls: [navigation()], ...value === undefined ? {} : {colorScheme: value}});
+                for (const end = Date.now() + 3000; !document.querySelector('#host .map-jr-ctrl-group') && Date.now() < end;) await new Promise(r => setTimeout(r, 20));
                 await new Promise(r => requestAnimationFrame(r));
                 const el = document.querySelector('#host .map-jr-ctrl-group');
                 return [document.querySelector('#host').classList.contains('map-jr-dark') ? 'class' : '-', t.host.state.get().colorScheme, el && getComputedStyle(el).color].join(' ');

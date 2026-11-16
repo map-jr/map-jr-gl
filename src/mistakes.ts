@@ -36,7 +36,9 @@ const texts: (((a: string, b: string) => string) | undefined)[] = [
     /* 22 */ a => `globalState: the value of "${a}" is not JSON (a function, a class instance, NaN or a cycle), so the style cannot read it as it is. Give a string, a number, a boolean, an array or a plain object.`,
     /* 23 */ () => 'moveTo(): "padding" and "maxZoom" have an effect only with "bounds", so this call ignores them. To set the padding of the map, give "padding" in the description.',
 ];
-// (Numbers 23 to 29 are taken by other changes.)
+// A new text, and a new kind of check (below), takes the number of its issue, for example texts[544]; a second one for
+// the same issue takes that number plus 10000. Branches that run at the same time then cannot take the same number,
+// and `pnpm test:consistency` fails when a number is taken twice. The production build has none of these numbers.
 texts[30] = a => `hoverState: a feature of the layer "${a}" has no id, so it gets no feature state "hover". Give the features ids, or set "promoteId" of the source to a property that has one, or "generateId: true" for a GeoJSON source.`;
 texts[40] = a => `colorScheme: ${a} is not a colour scheme, so the map uses the light colours. Write 'auto', 'light' or 'dark'.`;
 texts[45] = () => 'style: the object is not a style, because it has no "version" and "layers", and it is not a pair {light, dark}. Give a style object, the URL of a style, or {light: style, dark: style}.';

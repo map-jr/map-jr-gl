@@ -79,5 +79,17 @@ for (const doc of [...docs, 'CLAUDE.md', 'CONTRIBUTING.md'].filter(f => existsSy
     }
 }
 
+// 7. Each number of a text and each kind of a check in src/mistakes.ts is taken once. Two branches that take the
+//    same number merge with no conflict when they add different lines, and the later text would replace the other.
+//    A new text or kind takes the number of its issue (see the comment in src/mistakes.ts), so branches do not meet.
+{
+    const m = read('src/mistakes.ts'), once = (what, numbers) => {
+        const seen = new Set();
+        for (const n of numbers) { if (seen.has(n)) fail('src/mistakes.ts', `the ${what} ${n} is taken twice. Give the newer one the number of its issue.`); seen.add(n); }
+    };
+    once('text', [...m.matchAll(/\/\* (\d+) \*\/ (?:\(|\w+ =>)|^texts\[(\d+)\] =/gm)].map(x => x[1] ?? x[2]));
+    once('check kind', [...m.matchAll(/kind === (\d+)\)/g)].map(x => x[1]));
+}
+
 if (failures.length) { console.error('FAIL  the parts of the project do not agree:\n' + failures.map(f => '  - ' + f).join('\n')); process.exit(1); }
 console.log(`ok    consistency: ${spec.length} fields of the description, ${fields(host, 'MapInstance').length} members of the map, ${docs.length} documents`);

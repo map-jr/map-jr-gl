@@ -1,44 +1,52 @@
 # Brief for a worker on one issue
 
-You are one of several workers running in parallel, each in its own git worktree. A coordinator merges the pull
-requests. `CLAUDE.md` in the repository has the project rules (definition of done, writing rules); it applies to you.
+You are one of several workers, each in its own git worktree. `CLAUDE.md` has the rules (definition of done,
+writing); this brief has the steps.
 
 ## Steps
 
-1. Read the issue with `mcp__github__issue_read` (load it with ToolSearch `select:mcp__github__issue_read,mcp__github__create_pull_request`). When those tools are not available, use `gh` (`gh api repos/map-jr/map-jr-gl/issues/N` and `…/issues/N/comments`). The issue usually names files and lines; start there and do not survey the repository. Then check that the fault is still on `main` (`git log --oneline -40 origin/main`, and read the named lines). If it is already fixed, change nothing, open no pull request, and report the commit and what remains.
-2. `git fetch origin main && git checkout -b <branch> origin/main && pnpm install --frozen-lockfile`. The browser suites need Playwright, which is not in the lockfile: `pnpm add -D playwright@1.63.0 && git checkout package.json pnpm-lock.yaml` (the version that CI uses).
-3. Make the smallest change that resolves the issue, with a test that fails without it. Run the new test once without the fix (`git stash push -- src`, rebuild, run the test, `git stash pop`) and give both results in the report. Reasoning that it would fail is not a run. Keep to one concern. If the issue lists several parts, do the parts that your brief names; if a part turns out to be large or to need the owner (see the merge rule in `CLAUDE.md`), leave it out and say so.
-4. Check: `pnpm build && pnpm test`. If the change can affect a browser test, run the one suite that covers it (`node test/host.mjs` or `node test/interact.mjs .cache/shots`) against your own demo server on the port that your brief gives you, because other workers run at the same time:
-   `node scripts/site.mjs && (PORT=<port> node demo/serve.mjs >/dev/null 2>&1 & p=$!; sleep 3; PORT=<port> <test command> 2>&1 | grep -E "FAIL|Error" ; kill $p)` and count the `PASS` lines separately if you report a number.
-   The cloud VM has 4 cores and software WebGL, so a timing failure that goes away on a second run is load: say so in the report and do not change the test for it. Do not run `pnpm test:render` or the conformance tools unless the brief says so; CI runs the render tests.
-5. Do not run `pnpm status` and do not touch the status table of the README: the coordinator does that once per batch, to avoid conflicts.
-6. Commit, `git push -u origin <branch>`, and open a pull request against `main` with `mcp__github__create_pull_request` (owner `map-jr`, repo `map-jr-gl`), or with `gh pr create --repo map-jr/map-jr-gl --base main` when the tool is not available. Follow `.github/pull_request_template.md`, write `Fixes #N` (or `Part of #N` when parts remain), and end the body with:
-   `🤖 Generated with [Claude Code](https://claude.com/claude-code)`
-   Use the attribution lines that your own session instructions give for commits and pull requests.
-7. Do not merge, and do not wait for CI. Stop after the pull request is open. The coordinator may message you later with a CI failure to fix on the same branch.
+1. Read the issue: `gh api repos/map-jr/map-jr-gl/issues/N` (and `…/N/comments`), or `mcp__github__issue_read`
+   where `gh` is missing. Start at the files and lines that your prompt names; do not survey the repository. Check
+   that the fault is still on `origin/main`. If it is fixed, change nothing and report the commit.
+2. `git fetch origin main && git checkout -b <branch> origin/main && pnpm install --frozen-lockfile`.
+3. Make the smallest change that resolves the issue, with a test that fails without it. Do the parts that your
+   prompt names, and leave out a part that is large or needs the owner.
+4. Run the new test against the code without the fix, and give both results in the report:
+   `node scripts/agents/without-fix.mjs -- <command>`. It runs the command in a temporary copy where `src/` is as on
+   `main` and removes the copy afterwards. Do not use `git stash`.
+5. Run `pnpm build && pnpm test`. When the change can affect a browser test, run the suite that covers it:
+   `node scripts/agents/suite.mjs test/host.mjs` (or `test/interact.mjs`, `test/vue.mjs`, `test/react.mjs`,
+   `test/loading.mjs`). It builds what is stale, starts its own demo server on a free port, prints the counts and
+   the `FAIL` lines, and stops the server. When Playwright is missing, it prints the command that installs it. Do
+   not run `pnpm test:render` or the conformance tools; CI runs them.
+6. Commit, `git push -u origin <branch>`, and open a pull request against `main`
+   (`gh pr create --repo map-jr/map-jr-gl --base main`) that follows `.github/pull_request_template.md`, says
+   `Fixes #N` (or `Part of #N`), and ends with the attribution line that your session instructions give. Then stop.
+   The coordinator may send you a CI failure to fix on the same branch.
 
-A fault you find outside your issue: do not fix it; name it in your report (one line each).
+## Rules
 
-Workers share one scratchpad folder. Start the name of every file that you write there with your branch name (for example `fix-201-measure.mjs`), so that another worker cannot overwrite it. On 2026-11-14 a worker applied a patch that another worker had overwritten, and a change of a third issue nearly went into its pull request.
+- A new text or check kind of `src/mistakes.ts` takes the number of its issue (the comment above `texts[30]` says
+  how). Do not take the next free number: another branch takes it too.
+- A test that fails locally but passes in the `checks` and `browser` jobs of `main` is load on this machine. Say so
+  in the report, and do not change the test for it. A test that fails in CI too is a fault.
+- Start the name of each file that you write to the shared scratchpad with your branch name.
+- Do not leave a process running when you stop. `suite.mjs` stops its server; stop any server that you start
+  yourself in the same command.
 
-Before you call a run "load", compare it with the CI result: the `checks` and `browser` jobs of `main` are the reference. Several workers on 2026-11-14 saw unit and timing tests fail locally (`glyph-atlas.test.ts`, touch, `jumpTo` events) at a load average of 25 on 4 cores, while CI passed.
+## On the owner's Mac (`uname` prints Darwin)
 
-## On the owner's Mac
+- The shell sets `BROWSER=open` (`suite.mjs` uses `chromium` then; other commands need `BROWSER=chromium`), aliases
+  `cp` to `cp -i` (write `command cp`), and sets `noclobber` (write `>|` to replace a file).
+- Headless Chromium draws WebGL in software. Playwright's WebKit draws on the GPU.
+- An iOS Simulator can open a page of your server: `xcrun simctl openurl booted http://localhost:<port>/…`.
 
-Some sessions run on the owner's Mac instead of the cloud VM. Check with `uname` (Darwin). The Mac differs in these ways:
-
-- It has 10 cores and an Apple M4 GPU. Headless Chromium still uses software WebGL (SwiftShader). Chromium launched with `headless: false` and Playwright's WebKit draw on the GPU.
-- The shell sets `BROWSER=open`, which `test/launch.mjs` rejects. Run the browser suites with `BROWSER=chromium`.
-- `cp` is an alias of `cp -i`. Use `command cp` in scripts.
-- An iOS Simulator can open your demo server: `xcrun simctl openurl booted http://localhost:<port>/…`.
-- An Android phone may be connected over USB. Use it only when your brief says so, because a measurement needs the phone to itself. The coordinator's brief then gives the setup (`adb reverse` and Chrome's DevTools protocol).
-
-## Report (your final message; at most 13 lines, no preamble)
+## Report (your final message; at most 12 lines, no preamble)
 
 - PR: <url>
 - Changed: <one or two sentences>
-- Ran: <commands and results, with numbers>
+- Ran: <commands and results with numbers, including the run without the fix>
 - Size: <bytes gzip of each built file that changed, before and after, from `pnpm test:size`>
 - Not checked: <what>
 - Needs owner: <no | yes, because …>
-- Left out / found: <parts of the issue not done; faults seen elsewhere>
+- Left out / found: <parts of the issue not done; faults seen elsewhere, one line each>
