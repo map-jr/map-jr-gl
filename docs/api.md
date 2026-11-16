@@ -61,12 +61,22 @@ const map = createMap(container, description);
 // Later: other markers. Give the complete description again.
 description = {...description, markers: [{...pins, data: newData}]};
 map.update(description);
+
+// Or change only some fields: the other fields stay as they are.
+map.patch({cursor: 'crosshair'});
 ```
+
+`patch(part)` changes only the fields of `part`. It is `map.update({...map.description, ...part})`: a field of
+`part` that is `undefined` is removed (`map.patch({cursor: undefined})`). `map.description` is the description of
+the last `createMap`, `update` or `patch`. It is read only. After `createMap` and `update` it is the object that you
+passed, so do not change that object in place. A framework adapter gives the complete description from its props, so with an adapter use the props
+and not `patch`. The compat entry has neither member.
 
 `update` takes the complete description, not only the changed fields:
 
-- A description with no `style` throws an error, in `update` and in `createMap`. Write
-  `map.update({...description, cursor: 'crosshair'})`, not `map.update({cursor: 'crosshair'})`.
+- A description with no `style` throws an error, in `update`, `patch` and `createMap`. Write
+  `map.patch({cursor: 'crosshair'})` or `map.update({...description, cursor: 'crosshair'})`, not
+  `map.update({cursor: 'crosshair'})`.
 - A field that the new description leaves out is removed from the map. This holds for `markers`, `controls`,
   `cursor`, `extend` and the limits of the camera. A source keeps the last data that `data` gave it.
 - The fields that are read when the map is made (`renderer`, `fonts`, `fontFamily`, `interactive`,
@@ -77,7 +87,7 @@ The map writes a warning to the console with `console.warn`, once for each map, 
 
 - The container is in the page, is not hidden, and has height 0 one second after the map is made.
 - An id in `interactiveLayers`, or in `layers` or `sources` of `queryFeatures`, is not in the style.
-- A key of `data` is not the id of a GeoJSON source of the style.
+- A layer names a source that the map does not have, for example after its key left `data`.
 - A layer of `extend` names a `before` layer or a source that the style does not have.
 - Two marker layers have the same `id`.
 - A marker layer has no `image`, or it names an image that the map does not have.
@@ -120,7 +130,7 @@ The library compares each field with the field of the last description:
 | `extend` | Your own sources and layers on a style from a URL. See below. |
 | `initialView` | The view at the start: `center` (`[lng, lat]`), `zoom`, `bearing`, `pitch`. In place of `center` and `zoom`, give `bounds` (`[[west, south], [east, north]]` or `[west, south, east, north]`) and the map starts with that box fitted into the view, with `padding` in CSS pixels around it (a number or `{top, right, bottom, left}`, default 0). This is `bounds` with `fitBoundsOptions.padding` of MapLibre GL JS. When the description also has `view`, the map starts at `view` and `bounds` has no effect. The user then moves the map. |
 | `view`, `onViewChange` | A view that your application owns. See below. |
-| `data` | GeoJSON data for GeoJSON sources, by the id of the source. The source is in the style or in `extend.sources`. See below. |
+| `data` | GeoJSON data for GeoJSON sources, by the id of the source. A key with no source of that id makes a GeoJSON source with the default options. See below. |
 | `images` | Images for the style layers, by name: an SVG document, the URL of an image, or `{image, width, height}`. See [Images for style layers](#images-for-style-layers). |
 | `markers` | A list of marker layers, each with an `id` and an `image`. A marker layer is shorthand for a GeoJSON source and a symbol layer with that id. See [Markers](markers.md). A layer with a new `data` array gets the new data. |
 | `controls` | A list of controls. See below. |
@@ -139,7 +149,7 @@ These fields are read only when the map is made:
 | Field | Meaning |
 |---|---|
 | `renderer` | `'auto'` (the default), `'worker'` or `'main'`: the thread that draws. See [Loading](loading.md). |
-| `fonts`, `fontFamily` | Web fonts for the labels. When the style has `glyphs`, the labels use the glyph files, and these fonts draw only what the files do not have: a font stack or a range that the server does not have, a character missing from the files, and text that the browser must shape. A style without `glyphs` draws all text with these fonts. |
+| `fonts`, `fontFamily` | Web fonts for the labels. When the style has `glyphs`, the labels use the glyph files, and these fonts draw only what the files do not have: a font stack or a range that the server does not have, a character missing from the files, and text that the browser must shape. A style without `glyphs` draws all text with these fonts. A style object can also carry font files in `font-faces` (an object that maps a `text-font` name to files, as in the style specification). A `text-font` name or a `font-faces` name becomes a CSS family, a weight and a style: words such as `Bold` (700), `Semibold` (600), `Medium` (500), `Light` (300), `Black` (900) and `Italic` are taken out of the name, and the rest is the family, so `Open Sans Semibold Italic` is the family `Open Sans` at weight 600 in italic. A name without such a word has weight 400. |
 | `interactive` | `false` for a map that the user cannot move. The default is `true`. With `false`, `onClick` and `state.hover` still work, and a touch on the map scrolls the page. |
 | `antialias` | Multisample antialiasing for the canvas. |
 | `attribution` | `false` to show the credits yourself, or options for the built-in credits. |
@@ -224,16 +234,15 @@ makes from the name, for example a badge for each value of a property.
 ```js
 import {createMap} from '@map-jr/map-jr-gl';
 
-let description = {
+const map = createMap(document.getElementById('map'), {
   style: 'https://tiles.openfreemap.org/styles/liberty',
   initialView: {center: [-74.006, 40.7128], zoom: 12},
   images: {},
-};
-const map = createMap(document.getElementById('map'), description);
+});
 map.listen('styleimagemissing', event => {
   if (!event.id.startsWith('badge-')) return;   // a name that this code does not make
   const badge = `<svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="9" fill="#d6453d"/></svg>`;
-  map.update(description = {...description, images: {...description.images, [event.id]: badge}});
+  map.patch({images: {...map.description.images, [event.id]: badge}});
 });
 ```
 
@@ -319,39 +328,56 @@ when the cost of a frame does not grow with the number of icons.
 
 ## GeoJSON data that changes
 
-Put the source into the style with no features, and give the data in the field `data`:
+Give the data in the field `data`, by the id of a source. A key that is not the id of a source of the style or of
+`extend.sources` makes a GeoJSON source with that id and the default options, so the layers can name it:
 
 ```js
-const style = {
-  ...baseStyle,
-  sources: {...baseStyle.sources, routes: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}},
-  layers: [...baseStyle.layers, {id: 'routes', type: 'line', source: 'routes', paint: {'line-color': '#d6453d', 'line-width': 3}}],
-};
+import {createMap} from '@map-jr/map-jr-gl';
 
-const map = createMap(container, {style, data: {routes: firstRoutes}});
+const container = document.getElementById('map');
+const routes = id => ({type: 'FeatureCollection', features: [{type: 'Feature', properties: {}, geometry: {type: 'LineString', coordinates: [[-74.01, 40.70], [-73.97, 40.75 + id / 100]]}}]});
+const extend = {layers: [{id: 'routes', type: 'line', source: 'routes', paint: {'line-color': '#d6453d', 'line-width': 3}}]};
+const url = 'https://tiles.openfreemap.org/styles/liberty';
 
-// Later: other data. The style is the same object, so the map does not look at it again.
-map.update({style, data: {routes: nextRoutes}});
+const map = createMap(container, {style: url, extend, data: {routes: routes(0)}});
+
+// Later: other data. `extend` is the same object, so the style is not requested again.
+map.update({style: url, extend, data: {routes: routes(1)}});
 ```
 
 - The data of each source is compared by identity. Give a new object to change it.
 - Only the data goes to the map. A style with the data inside it would be compared and sent as a whole.
-- The data stays when the style changes.
-- The source can also be in `extend.sources`. Use this for a style from a URL: `extend` adds the source with no
-  features, and `data` gives it the features.
+- The data stays when the style changes, and the sources that keys of `data` made are made again in the new style.
+- A source that needs options (`cluster`, `promoteId`, `attribution`) is declared in the style or in `extend.sources`,
+  with no features, and `data` gives it the features.
+- A key that leaves `data` removes the source that the key made. A layer that still names it draws nothing, and the
+  development build writes a warning.
+- A key that is the id of a source of another type, such as a vector source, is an error of the map (`onError`), and
+  the data has no effect.
+- `renderToSVG` (`@map-jr/map-jr-gl/server`) follows the same rule, and throws for a key of a source of another type.
+
+### Points from records
+
+`points(records, options)` from `@map-jr/map-jr-gl` makes a GeoJSON `FeatureCollection` with a point for each
+record. It needs no map, so a server can call it too.
 
 ```js
-const extend = {
-  sources: {routes: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}},
-  layers: [{id: 'routes', type: 'line', source: 'routes', paint: {'line-color': '#d6453d', 'line-width': 3}}],
-};
-const url = 'https://tiles.openfreemap.org/styles/liberty';
+import {points} from '@map-jr/map-jr-gl';
 
-const map = createMap(container, {style: url, extend, data: {routes: firstRoutes}});
-
-// Later: other data. `extend` is the same object, so the style is not requested again.
-map.update({style: url, extend, data: {routes: nextRoutes}});
+const records = [{id: 'louvre', name: 'Louvre', lng: 2.3376, lat: 48.8606}];
+const places = points(records, {lngLat: r => [r.lng, r.lat], id: r => r.id});
+// {type: 'FeatureCollection', features: [{type: 'Feature', id: 'louvre', properties: records[0], geometry: {type: 'Point', coordinates: [2.3376, 48.8606]}}]}
+map.update({style, data: {places}});
 ```
+
+| Option | Meaning |
+|---|---|
+| `lngLat(record, index)` | Required. The position of the record as `[lng, lat]`. |
+| `id(record, index)` | The id of the feature. Without it, a feature has no id: the function does not use the index, because the index changes when a record is removed. |
+| `properties(record, index)` | The properties of the feature. Without it, the properties are the record itself. |
+
+A record whose position is not two finite numbers (a string such as `'2.3'` included) is left out. The development
+build warns once on the page with the index of the first such record; the production build does not warn.
 
 ## Controls
 
@@ -705,6 +731,8 @@ as ten. See [Markers](markers.md).
 | Member | Meaning |
 |---|---|
 | `update(description)` | Changes the map to a new description. Takes the complete description. See [Change the map](#change-the-map). |
+| `patch(part)` | Changes only the fields of `part`; a field that is `undefined` is removed. See [Change the map](#change-the-map). |
+| `description` | The description of the last `createMap`, `update` or `patch` (read only). |
 | `destroy()` | Removes the map and frees its memory. It can be called while the map loads. Call it before you make another map in the same element: a second map in an element that has a map leaves two canvases in the element, and the library warns in the console. |
 | `moveTo(view)` | Moves the camera now. With `duration` (milliseconds), with an animation. With `fly` (`true` or `{curve, speed, screenSpeed, minZoom, maxDuration}`), along the curve of `flyTo` of MapLibre GL JS. With `padding` (a number or `{top, right, bottom, left}`), it also sets the padding of the map, as `padding` of the description does. |
 | `fitBounds(bounds, options)` | Shows an area. The options are `padding` (CSS pixels: a number, or `{top, right, bottom, left}`; it adds to the `padding` of the description), `maxZoom` and `duration` (milliseconds). |
@@ -726,7 +754,7 @@ use `listen` for the rest.
 import {createMap} from '@map-jr/map-jr-gl';
 
 const map = createMap('map', {style: 'https://demotiles.maplibre.org/style.json'});
-const stop = map.listen('moveend', event => console.log(event.target.getZoom()));
+const stop = map.listen('moveend', event => console.log(map.state.get().view.zoom));
 stop();
 ```
 
@@ -792,6 +820,7 @@ const map = createMap('map', {style: 'local://style.json'});
 | Export of `@map-jr/map-jr-gl` | Meaning |
 |---|---|
 | `configure(options)` | Sets how the library loads its workers (`workerUrl`, `createWorker`, `tileWorkers` and the others) for the maps made after the call. See [Loading](loading.md). |
+| `points(records, options)` | Makes a GeoJSON `FeatureCollection` of points from records. See [Points from records](#points-from-records). |
 | `createStore(value)` | Makes a store of the kind that `map.state` is (see [The state](#the-state)), with `get()`, `subscribe()` and `set(part)`. `set` makes a new object and calls the subscribers only when a field changes (compared with `Object.is`). |
 
 ## Types
@@ -804,6 +833,9 @@ The entry `@map-jr/map-jr-gl` has TypeScript types for the description (`MapSpec
   `const NYC = [-74.0065, 40.7085]; createMap(el, {style, initialView: {center: NYC}})`. The map reads the first two
   numbers as `[lng, lat]`. A position that the map gives (`state.view.center`, the result of `unproject`, `lngLat`
   in `onClick`) is `[number, number]`.
+- The types that the signatures use are exported: `LngLatBoundsInput` (`maxBounds`, `fitBounds`, `initialView.bounds`),
+  `LngLatBounds` (the `boxZoomBounds` of the event `boxzoomend`; only the type, not the class), `LngLatInput`,
+  `FlyOptions` (`moveTo`) and `Anchor` (`OverlayOptions.anchor` and the anchor of a marker layer).
 - A feature of `state.hover` and of `onClick` has `layer`, the style layer that draws it, with the type `StyleLayer`
   (`id`, `type`, `source`, `paint` and the other members of a layer of the style). `queryFeatures` returns
   `(RenderedFeature | QueriedFeature)[]`: a `QueriedFeature` (a query with `sources`) has no style layer.

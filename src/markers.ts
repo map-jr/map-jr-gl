@@ -108,6 +108,26 @@ export function sizedSVG(svg: string, w: number, h: number): string {
     return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${w}" height="${h}" viewBox="${viewBox ?? '0 0 ' + svgSize(svg).join(' ')}">${inner}</svg>`;
 }
 
+/**
+ * A style with a GeoJSON source for each key of `data` that is not the id of a source of the style (#487). The source has
+ * the default options, and no features unless `full` (for a renderer that gets the data with the style). `other` gets
+ * each key that is the id of a source of another type.
+ */
+export function withData(style: any, data: Record<string, unknown> | undefined, full?: boolean, other?: (id: string, type: string) => void) {
+    if (!data) return style;
+    let sources = style.sources ?? {};
+    for (const id in data) {
+        const s = sources[id];
+        if (!s) sources = {...sources, [id]: {type: 'geojson', data: full ? data[id] : {type: 'FeatureCollection', features: []}}};
+        else if (s.type !== 'geojson') other?.(id, s.type);
+        else if (full) sources = {...sources, [id]: {...s, data: data[id]}};
+    }
+    return sources === style.sources ? style : {...style, sources};
+}
+
+/** The error of a key of `data` that is the id of a source of another type. */
+export const dataTypeError = (id: string, type: string) => new Error(`[map-jr-gl] data: the source "${id}" has the type "${type}", and only a GeoJSON source takes data. Use another key in "data", or another id for the source.`);
+
 /** A style with the additions of `extend`. */
 export function extended(style: any, extend?: {sources?: Record<string, object>; layers?: ({id: string; before?: string} & Record<string, unknown>)[]; terrain?: object | null}) {
     if (!extend) return style;
