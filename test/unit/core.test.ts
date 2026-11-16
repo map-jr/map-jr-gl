@@ -415,6 +415,12 @@ test('geojson: sources are cut into tiles, clipped, and render and query like ve
     const made = await renderToSVG({...view, style: {version: 8, sources: {}, layers: [style.layers[0]]}, data: {g: data}});
     assert.match(made.svg, /fill="#ff0000"/);
     await assert.rejects(renderToSVG({...view, style: {version: 8, sources: {g: {type: 'vector', tiles: []}}, layers: []}, data: {g: data}}), /\[map-jr-gl\] data: the source "g" has the type "vector"/);
+    // A pair {light, dark} in `style`: 'dark' uses dark, 'light' and no value use light (#491).
+    const pair = {light: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#ffffff'}}]}, dark: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#000000'}}]}};
+    for (const [scheme, colour] of [['dark', '#000000'], ['light', '#ffffff'], [undefined, '#ffffff']] as const) {
+        const r = await renderToSVG({...view, style: pair, colorScheme: scheme});
+        assert.ok(r.svg.includes(colour) && !r.svg.includes(colour === '#000000' ? '#ffffff' : '#000000'), `colorScheme ${scheme}: ${r.svg.slice(0, 300)}`);
+    }
 });
 
 test('contours: isolines join into rings and open lines, with levels and seamless tile edges', async () => {

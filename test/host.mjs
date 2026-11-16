@@ -1155,6 +1155,16 @@ for (const renderer of ['worker', 'main']) {
             const host = t.lib.createMap(el, spec), out = {};
             await wait(() => host.state.get().idle);
             out.light = ids();
+            // (The development build warns for an object that is neither a style nor a pair, and for a pair with one value.)
+            const said = [], log = console.warn; console.warn = (...a) => { said.push(a.join(' ')); log(...a); };
+            host.update(spec = {...spec, style: {light: make('L')}});
+            // (An object with layers and no version: the engine draws it, so the test has no page error.)
+            host.update(spec = {...spec, style: {sources: {}, layers: [{id: 'L', type: 'background'}]}});
+            await new Promise(r => setTimeout(r, 300));
+            console.warn = log;
+            out.warned = [said.some(w => w.startsWith('[map-jr-gl] style: the pair has no "dark", so the map uses "light"')), said.some(w => w.startsWith('[map-jr-gl] style: the object is not a style'))].join();
+            host.update(spec = {...spec, style: {light: make('L'), dark: make('D')}});
+            await wait(() => ids() === 'L,dots' && host.state.get().idle);
             window.pairHost = host;
             return out;
         }, renderer).catch(e => ({error: String(e)}));
@@ -1176,7 +1186,7 @@ for (const renderer of ['worker', 'main']) {
         }).catch(e => ({error: String(e)})));
         await page.emulateMedia({colorScheme: null});
         check(`[${renderer}] style: {light, dark} uses the style of the resolved scheme, changes it with prefers-color-scheme and keeps a layer of the description and its data`,
-            JSON.stringify(paired) === JSON.stringify({light: 'L,dots', dark: 'D,dots', data: 1, sameReloads: 0}), JSON.stringify(paired));
+            JSON.stringify(paired) === JSON.stringify({light: 'L,dots', warned: 'true,true', dark: 'D,dots', data: 1, sameReloads: 0}), JSON.stringify(paired));
 
         // 5b. One method to find features, and the same question kept up to date.
         const found = await page.evaluate(async () => {
