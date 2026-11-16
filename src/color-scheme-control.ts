@@ -1,7 +1,7 @@
 // The control for the colour scheme (`colorScheme()` of `@map-jr/map-jr-gl/controls`). It is a file of its own, which
 // loads only when a map adds the control: the compat entry, which loads controls-more.ts up front, does not get it.
 import type {Map} from './map.ts';
-import type {MapHost} from './host.ts';
+import type {MapInstance} from './host.ts';
 import {ui, type Control} from './controls.ts';
 import {button, group, svg} from './controls-more.ts';
 
@@ -18,16 +18,16 @@ export class ColorSchemeControl implements Control {
     private stop?: () => void;
     /** The description has had `'auto'`: a click that lands on the scheme of the system goes back to `'auto'`. */
     private followed = false;
-    constructor(private host?: () => MapHost) {}
+    constructor(private instance?: () => MapInstance) {}
     onAdd(map: Map) {
-        const el = this.el = group(), host = this.host?.();
+        const el = this.el = group(), instance = this.instance?.();
         const b = button(el, 'color-scheme', '', '', () => {
-            if (!host) return;
-            if (host.description.colorScheme === 'auto') this.followed = true;
-            const toDark = host.state.get().colorScheme !== 'dark', system = !!globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches;
+            if (!instance) return;
+            if (instance.description.colorScheme === 'auto') this.followed = true;
+            const toDark = instance.state.get().colorScheme !== 'dark', system = !!globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches;
             const to = this.followed && toDark === system ? 'auto' : toDark ? 'dark' : 'light';
-            host.patch({colorScheme: to});
-            host.description.onColorSchemeChange?.(to);
+            instance.patch({colorScheme: to});
+            instance.description.onColorSchemeChange?.(to);
         });
         const show = (scheme: 'light' | 'dark') => {
             const label = scheme === 'dark' ? ui(map, 'ColorSchemeControl.Light', 'Use light colours') : ui(map, 'ColorSchemeControl.Dark', 'Use dark colours');
@@ -37,7 +37,7 @@ export class ColorSchemeControl implements Control {
                 ? svg('<path d="M15 10.800A6.300 6.300 0 1 1 7.200 3a5 5 0 0 0 7.800 7.800z"/>')
                 : svg('<circle cx="9" cy="9" r="3.200"/><path d="M9 1.800v1.200M9 15v1.200M1.800 9H3M15 9h1.200M3.900 3.900l.850.850M13.250 13.250l.850.850M3.900 14.100l.850-.850M13.250 4.750l.850-.850"/>');
         };
-        if (host) { show(host.state.get().colorScheme); this.stop = host.state.subscribe(s => s.colorScheme, show); }
+        if (instance) { show(instance.state.get().colorScheme); this.stop = instance.state.subscribe(s => s.colorScheme, show); }
         else console.warn('[map-jr-gl] colorScheme(): the control works only in the controls of a map of the main API (createMap).');
         return el;
     }

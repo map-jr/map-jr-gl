@@ -1271,11 +1271,27 @@ for (const renderer of ['worker', 'main']) {
             m.addControl(new mod.NavigationControl());
             const compat = getComputedStyle(el.querySelector('.map-jr-ctrl-group')).backdropFilter;
             m.remove(); el.remove();
+            // The two custom properties of the look reach the popup (whose inline background and radius the CSS of MapLibre does not change).
+            const host = document.querySelector('#host'), content = document.createElement('div');
+            content.textContent = 'Popup';
+            const popup = t.host.overlay(content, {lngLat: t.host.state.get().view.center, popup: true, onClose() {}});
+            await new Promise(r => requestAnimationFrame(r));
+            const box = content.closest('.map-jr-popup-content'), look = () => { const p = getComputedStyle(box); return `${p.backgroundColor} ${p.borderTopLeftRadius}`; };
+            const popupDefault = look();
+            host.style.setProperty('--map-control-opacity', '.3'); host.style.setProperty('--map-control-radius', '8px');
+            const popupSet = look();
+            host.style.removeProperty('--map-control-opacity'); host.style.removeProperty('--map-control-radius');
+            popup.remove();
+            // The compass shows the direction that the map faces.
+            const letter = () => document.querySelector('#host .map-jr-ctrl-compass text')?.textContent;
+            const map = t.host._map, faces = [letter()];
+            for (const bearing of [90, -135, 0]) { map.jumpTo({bearing}); await new Promise(r => setTimeout(r, 100)); faces.push(letter()); }
             t.host.update(t.spec);
-            return {main: document.querySelector('#host').classList.contains('map-jr-glass'), blur: group.backdropFilter, radius: group.borderTopLeftRadius, compat, compatClass: el.classList.contains('map-jr-glass')};
+            return {main: host.classList.contains('map-jr-glass'), blur: group.backdropFilter, radius: group.borderTopLeftRadius, compat, compatClass: el.classList.contains('map-jr-glass'), popupDefault, popupSet, faces: faces.join(' ')};
         });
-        check(`[${renderer}] the controls of the main API have the class map-jr-glass and a blur, a rule of the page still wins, and a map of the compat entry keeps the look of MapLibre GL JS`,
-            glass.main && glass.blur === 'blur(5px)' && glass.radius === '4px' && glass.compat === 'none' && !glass.compatClass, JSON.stringify(glass));
+        check(`[${renderer}] the controls of the main API have a blur, a rule of the page still wins, --map-control-opacity and --map-control-radius reach the popup, the compass names the direction, and a map of the compat entry keeps the look of MapLibre GL JS`,
+            glass.main && glass.blur === 'blur(5px)' && glass.radius === '4px' && glass.compat === 'none' && !glass.compatClass
+            && glass.popupDefault === 'rgba(255, 255, 255, 0.65) 12px' && glass.popupSet === 'rgba(255, 255, 255, 0.4) 6px' && glass.faces === 'N E SW N', JSON.stringify(glass));
         // The control colorScheme() (#541): for each start (no value, 'auto' with the system light and dark, a fixed value),
         // what two clicks give: the value of the description, the scheme of the map, the calls of onColorSchemeChange and the label.
         const toggles = {};
@@ -1846,7 +1862,7 @@ for (const visualizePitch of [undefined, true]) {
         await page.mouse.move(box.x, box.y); await page.mouse.down();
         for (let i = 1; i <= 6; i++) await page.mouse.move(box.x + i * 8, box.y - i * 4);
         await page.mouse.up(); await page.waitForTimeout(300);
-        const view = () => page.evaluate(() => { const v = window.compassHost.state.get().view; return {bearing: v.bearing, pitch: v.pitch, needle: document.querySelector('.maplibregl-ctrl-compass svg').style.transform}; });
+        const view = () => page.evaluate(() => { const v = window.compassHost.state.get().view; return {bearing: v.bearing, pitch: v.pitch, needle: document.querySelector('.maplibregl-ctrl-compass svg g').style.transform}; });
         const dragged = await view();
         await page.mouse.click(box.x, box.y); await page.waitForTimeout(1200);
         const clicked = await view();

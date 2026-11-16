@@ -584,22 +584,28 @@ description does not have it. Importing the functions loads about 0.5 KB gzip. T
 for all of them) and of the map loads when the map adds its first control, so a page can import the functions before
 it makes the map. A control appears a moment after `createMap` or `update` adds it, when that file has loaded.
 
-The buttons of a map of `createMap` are round, with a translucent background and `backdrop-filter: blur(5px)`. The
-attribution has a fainter background and lighter text, and its links have a faint underline until the pointer is over
-them. The popup has a round close button. The container has the class `map-jr-glass` for this look; a map of
-`@map-jr/map-jr-gl/maplibre-compat` does not have it and keeps the look of MapLibre GL JS. A browser without
-`backdrop-filter` gets an opaque background. The rules have no specificity, so a rule of your page wins, and these
-custom properties change the look:
+The controls, the attribution, the scale and the popup of a map of `createMap` have a translucent background with
+`backdrop-filter: blur(5px)`. A button is a circle and a group of buttons is a pill: the radius is half the size of a
+button. The attribution and the scale have a fainter background and lighter text, the links of the attribution have a
+faint underline until the pointer is over them, and the popup has a round close button. A map of
+`@map-jr/map-jr-gl/maplibre-compat` keeps the look of MapLibre GL JS. The look needs Safari 18, Chrome 120 or Firefox
+121 (`backdrop-filter` without a prefix, and CSS nesting); an older browser shows opaque controls with corners of 6
+pixels. The rules have no specificity, so a rule of your page wins. Set these custom properties on the container of the
+map or on an element above it:
 
 | Custom property | What it sets | Default |
 |---|---|---|
-| `--map-control-background` | The background of a group of buttons and of the compact attribution | `rgba(255,255,255,.5)`, dark `rgba(30,30,34,.5)` |
+| `--map-control-opacity` | The opacity of the background of the controls, from 0 to 1. The popup has 0.1 more, and the attribution and the scale have 0.15 less. | `.55`, dark `.45` |
+| `--map-control-radius` | The radius of the controls. The popup has three quarters of it, and the attribution and the scale have half. | half of `--map-control-size` (`16px`, `22px` on a touch screen) |
+| `--map-control-background` | The background of a group of buttons and of the compact attribution, in place of the colour that `--map-control-opacity` makes | white at `.55`, dark `rgb(30 30 34)` at `.45` |
 | `--map-control-color` | The colour of the icons and the text | `#222`, dark `#e6e6e6` |
-| `--map-control-radius` | The radius of a group of buttons | `999px` (fully round) |
 | `--map-control-size` | The width and the height of a button | `32px`, `44px` on a touch screen |
 | `--map-control-focus` | The colour of the focus outline | `#2f7fd1` |
-| `--map-attribution-background` | The background of the attribution | `rgba(255,255,255,.4)`, dark `rgba(30,30,34,.4)` |
-| `--map-popup-background`, `--map-popup-color` | The background and the text of a popup | `#fff` and `#222`, dark `#2b2b2b` and `#e6e6e6` |
+| `--map-attribution-background` | The background of the attribution and the scale | white at `.4`, dark `rgb(30 30 34)` at `.3` |
+| `--map-popup-background`, `--map-popup-color` | The background and the text of a popup | white at `.65` and `#222`, dark `rgb(30 30 34)` at `.55` and `#e6e6e6` |
+
+The compass shows the direction that the map faces in its centre (`N`, `NE`, `E` and so on) and a mark of north on a
+dial that turns with the map. A click turns the map to the north.
 
 | Function | Control | Options (each also has `position`) |
 |---|---|---|

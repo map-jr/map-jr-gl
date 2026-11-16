@@ -82,10 +82,10 @@ export const CONTROL_CSS = `
 /* The look of the main API (the internal class map-jr-glass, which createMap sets): round, translucent and blurred.
    A browser without backdrop-filter or CSS nesting keeps the look above. */
 @supports (backdrop-filter:blur(1px)){:where(.map-jr-glass){
---map-jr-o:.55;--map-jr-rgb:255 255 255;--map-jr-r:16px;--map-jr-fg:rgb(0 0 0/.62);--map-jr-shadow:0 0 0 1px rgb(0 0 0/.1),0 2px 6px rgb(0 0 0/.12),0 6px 18px rgb(0 0 0/.1);--map-jr-drop:drop-shadow(0 0 .5px rgb(0 0 0/.3));
+--map-jr-o:.55;--map-jr-rgb:255 255 255;--map-jr-r:calc(var(--map-control-size,32px)/2);--map-jr-fg:rgb(0 0 0/.62);--map-jr-shadow:0 0 0 1px rgb(0 0 0/.1),0 2px 6px rgb(0 0 0/.12),0 6px 18px rgb(0 0 0/.1);--map-jr-drop:drop-shadow(0 0 .5px rgb(0 0 0/.3));
 --map-jr-a:var(--map-control-opacity,var(--map-jr-o));--map-jr-rr:var(--map-control-radius,var(--map-jr-r));--map-jr-bg:rgb(var(--map-jr-rgb)/var(--map-jr-a));--map-jr-quiet:rgb(var(--map-jr-rgb)/calc(var(--map-jr-a) - .15));
 --map-jr-popup-bg:rgb(var(--map-jr-rgb)/calc(var(--map-jr-a) + .1));--map-jr-popup-ring:0 0 #0000;--map-jr-popup-radius:calc(var(--map-jr-rr)*.75);
-@media (pointer:coarse){--map-jr-r:22px}
+@media (pointer:coarse){--map-jr-r:calc(var(--map-control-size,44px)/2)}
 &.map-jr-dark{--map-jr-o:.45;--map-jr-rgb:30 30 34;--map-jr-fg:rgb(255 255 255/.66);--map-jr-shadow:0 0 0 1px rgb(255 255 255/.14),0 2px 6px rgb(0 0 0/.3),0 6px 18px rgb(0 0 0/.25);--map-jr-drop:drop-shadow(0 0 .5px rgb(255 255 255/.5))}
 & :where(.map-jr-ctrl-group,.map-jr-ctrl-attrib,.map-jr-ctrl-scale,.map-jr-popup-content){backdrop-filter:blur(5px)}
 & :where(.map-jr-ctrl-group,.map-jr-compact){background:var(--map-control-background,var(--map-jr-bg));box-shadow:var(--map-jr-shadow);border-radius:var(--map-jr-rr)}

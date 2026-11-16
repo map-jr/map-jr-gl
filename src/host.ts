@@ -27,7 +27,7 @@ import type {BackgroundLayerSpecification, CircleLayerSpecification, FillExtrusi
 declare const __DEV__: boolean;
 
 /** The description of a control: see `@map-jr/map-jr-gl/controls`. Controls with the same `key` are the same control. */
-export interface ControlSpec { key: string; position?: ControlPosition; create(host?: () => MapHost): Control }
+export interface ControlSpec { key: string; position?: ControlPosition; create(instance?: () => MapInstance): Control }
 
 /**
  * A position that the application gives: `[lng, lat]`. It is `readonly number[]` and not a pair, because TypeScript
