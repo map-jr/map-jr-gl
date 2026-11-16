@@ -120,6 +120,12 @@ export interface MapSpec extends MapSetup {
     globalState?: Record<string, unknown>;
     /** Style layers whose features are found under the pointer: they are in `state.hover` and in `onClick`. */
     interactiveLayers?: string[];
+    /**
+     * `true`: the top feature of `interactiveLayers` under the pointer has the feature state `hover: true`, which
+     * `feature-state` expressions read, and loses it when the pointer leaves it. A feature with no id gets no state.
+     * The default is `false`.
+     */
+    hoverState?: boolean;
     onClick?: (event: MapPointer) => void;
     /** Called for each error of the map. Without it, the map writes each error to the console. (`state.error` has the last error in each case.) */
     onError?: (error: Error) => void;
@@ -431,6 +437,8 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
     const reported: View[] = [];
     const waiting = new Set<() => void>(); // the promises of `once` that wait for an event
     let now = spec, alive = true, pointer: {x: number; y: number} | null = null, asking = false;
+    // `hoverState`: the feature that has the state `hover` from the map.
+    let lit: {source: string; sourceLayer?: string; id: number | string} | undefined;
 
     map.on('load', () => state.set({loaded: true, renderer: map.renderer as MapState['renderer']}));
     map.on('idle', () => state.set({idle: true}));
@@ -466,6 +474,15 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
             const before = state.get().hover;
             if (found.length !== before.length || found.some((f, i) => f.id !== before[i].id || (f.layer as any)?.id !== (before[i].layer as any)?.id || f.source !== before[i].source)) state.set({hover: found});
             if (!now.cursor) map.setCursor(found.length ? 'pointer' : '');
+            const top = now.hoverState ? found[0] : undefined;
+            if (top && top.id == null) check(9, top.layer.id);
+            const next = top && top.id != null ? {source: top.source, sourceLayer: top.sourceLayer, id: top.id} : undefined;
+            if (next?.id !== lit?.id || next?.source !== lit?.source || next?.sourceLayer !== lit?.sourceLayer) {
+                // (A source that the style no longer has throws: its feature state is gone with it.)
+                if (lit) try { map.removeFeatureState(lit, 'hover'); } catch {}
+                lit = next;
+                if (next) map.setFeatureState(next, {hover: true});
+            }
             if (at === pointer) break;
         }
         asking = false;
@@ -579,7 +596,7 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
             }
         }
         if (!next.cooperativeGestures !== !before?.cooperativeGestures) cooperate(!!next.cooperativeGestures);
-        if (differ(next.interactiveLayers, before?.interactiveLayers)) hover();
+        if (differ(next.interactiveLayers, before?.interactiveLayers) || !next.hoverState !== !before?.hoverState) hover();
         check(2, next, before);
         now = next;
         if (next.data !== before?.data && !restyled) giveData();

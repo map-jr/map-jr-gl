@@ -1037,6 +1037,30 @@ for (const renderer of ['worker', 'main']) {
         await page.mouse.click(450, 300); await page.waitForTimeout(500);
         const pointer = await page.evaluate(() => { const t = window.t, c = t.clicks[0]; return {clicks: t.clicks.length, lngLat: c?.lngLat?.length, features: Array.isArray(c?.features), hoverEvents: t.seen.filter(x => x.startsWith('hover:')).length}; });
         check(`[${renderer}] the features under the pointer are in the state, and a click has them`, hover > 0 && pointer.clicks === 1 && pointer.lngLat === 2 && pointer.features && pointer.hoverEvents > 0, JSON.stringify({hover, ...pointer}));
+        // `hoverState` (#496): the top feature under the pointer has the feature state `hover`, and loses it when the pointer leaves it.
+        await page.evaluate(async renderer => {
+            const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {id: 'lit', style: 'position:fixed;left:0;top:0;width:200px;height:150px;z-index:99'}));
+            const square = (id, w) => ({type: 'Feature', id, properties: {}, geometry: {type: 'Polygon', coordinates: [[[w, -1], [w + 1, -1], [w + 1, 1], [w, 1], [w, -1]]]}});
+            const host = t.lib.createMap(el, {style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]}, renderer, attribution: false, onError: () => {},
+                initialView: {center: [0, 0], zoom: 5}, sources: {sq: {type: 'geojson', data: {type: 'FeatureCollection', features: [square(1, -1), square(2, 0), square(undefined, 1)]}}},
+                layers: [{id: 'sq', type: 'fill', source: 'sq', paint: {'fill-color': '#00f', 'fill-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 0.9, 0.5]}}], interactiveLayers: ['sq'], hoverState: true});
+            await new Promise(r => { host.state.subscribe(s => s.idle, v => v && r()); setTimeout(r, 8000); });
+            t.litHost = host; t.litSaid = []; t.litLog = console.warn; console.warn = (...a) => { t.litSaid.push(a.join(' ')); t.litLog(...a); };
+        }, renderer);
+        // (A query of the layer at a point has the feature state; a query of the source does not, as in MapLibre GL JS.)
+        const states = () => page.evaluate(async () => Object.fromEntries((await Promise.all([70, 130].map(x => window.t.litHost.queryFeatures({x, y: 75}, {layers: ['sq']})))).map(([f]) => [f?.id, !!f?.state?.hover])));
+        await page.mouse.move(70, 75); await page.waitForTimeout(400);
+        const onA = await states();
+        await page.mouse.move(130, 75); await page.waitForTimeout(400);
+        const onB = await states();
+        // (A feature with no id gets no state, and the development build warns once for the layer.)
+        for (const x of [170, 175, 130, 170]) { await page.mouse.move(x, 75); await page.waitForTimeout(300); }
+        const noId = await page.evaluate(() => { const t = window.t; console.warn = t.litLog; return t.litSaid.filter(w => w.startsWith('[map-jr-gl] hoverState: a feature of the layer "sq" has no id')).length; });
+        await page.mouse.move(450, 300); await page.waitForTimeout(400);
+        const litGone = await states();
+        await page.evaluate(() => { window.t.litHost.destroy(); document.getElementById('lit').remove(); });
+        check(`[${renderer}] hoverState gives the feature under the pointer the feature state hover, takes it away when the pointer leaves it, and warns once for a feature with no id`,
+            onA[1] === true && onA[2] === false && onB[1] === false && onB[2] === true && litGone[1] === false && litGone[2] === false && noId === 1, JSON.stringify({onA, onB, litGone, noId}));
         // A click on an overlay does not call onClick (#198).
         await page.evaluate(() => { const t = window.t, el = Object.assign(document.createElement('div'), {style: 'width:20px;height:20px;background:#c00'}); t.ov = t.host.overlay(el, {lngLat: t.host.unproject({x: 200, y: 200})}); t.clicks.length = 0; });
         const ovBox = await page.evaluate(() => { const r = document.querySelector('.map-jr-marker').getBoundingClientRect(); return {x: r.x + r.width / 2, y: r.y + r.height / 2}; });
