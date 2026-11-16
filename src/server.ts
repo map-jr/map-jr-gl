@@ -5,7 +5,7 @@ import {TileBuilder} from './tiles.ts';
 import type {TileImage, TileIR} from './tile.ts';
 import {CollisionGrid, placeLabels, renderItems, type RenderItem} from './placement.ts';
 import {DEFAULT_FONT, EstimateShaper} from './text.ts';
-import {extended, fillTemplate, svgSize, templateSlots, withMarkers, VARIANT, type MarkerLayerOptions} from './markers.ts';
+import {dataTypeError, extended, fillTemplate, svgSize, templateSlots, withData, withMarkers, VARIANT, type MarkerLayerOptions} from './markers.ts';
 import {renderSVG} from './svg.ts';
 import type {ImageDecoder} from './contour.ts';
 import {decodeImage, decodePNG, decodeWebPLossless} from './webp.ts';
@@ -165,8 +165,7 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
         if (!res.ok) throw new Error(`Failed to load style ${given}: ${res.status}`);
         given = await res.json();
     }
-    const full: any = withMarkers(extended(given, o.extend), o.markers, true);
-    for (const [id, data] of Object.entries(o.data ?? {})) if (full.sources?.[id]?.type === 'geojson') full.sources = {...full.sources, [id]: {...full.sources[id], data}};
+    const full: any = withMarkers(withData(extended(given, o.extend), o.data, true, (id, type) => { throw dataTypeError(id, type); }), o.markers, true);
     const style = await resolveStyle(full, fetchFn, base);
     if (o.overrides) style.layers = style.layers.map(l => o.overrides![l.id] ? {...l, metadata: {...l.metadata, [SSR_KEY]: {...(l.metadata?.[SSR_KEY] as object), ...o.overrides![l.id]}}} : l);
     if (o.ssrOverrides !== false) style.layers = applySSROverrides(style.layers);
