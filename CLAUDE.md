@@ -54,8 +54,8 @@ One session can act as the coordinator and give issues to workers (subagents). T
 worker, so it has only the rules. The brief that every worker reads is `docs/agents/worker-brief.md`, and the notes
 for the coordinator are `docs/agents/coordinating.md`. Read the notes before you start a batch.
 
-- **A worker gets one issue, one branch and one port.** Its prompt is the path of the brief and five lines: the
-  issue, the branch, the port, the scope, and the files and lines where the work starts.
+- **A worker gets one issue and one branch.** Its prompt is the path of the brief and four lines: the issue, the
+  branch, the scope, and the files and lines where the work starts.
 - **A worker opens the pull request and stops.** The coordinator watches CI, merges, and sends a failure back to the
   same worker, which still has its context.
 - **A worker reports in at most 12 lines** in the format of the brief. It files nothing and merges nothing. The
@@ -72,7 +72,7 @@ A change is done when all of these that apply are true. The pull request templat
    the compat entry; `test/vue.mjs`, `test/react.mjs` for adapters).
 2. **Both entries.** A feature goes to the main API first (`src/host.ts`). Decide on purpose whether the compat
    entry gets it too. Things that exist only to be MapLibre-compatible go in `src/compat-map.ts`, not in the core.
-3. **Every adapter.** A new field of the description (`MapSpec`) is a prop of the Vue component and reaches React
+3. **Every adapter.** A new field of the description (`MapDescription`) is a prop of the Vue component and reaches React
    and Svelte. `pnpm test:consistency` fails if the Vue prop or the documentation is missing.
 4. **Documentation.** `docs/api.md` for the main API; `docs/vue.md` / `docs/react.md` / `docs/svelte.md` for
    adapters; `docs/maplibre-compatibility.md` when behaviour differs from MapLibre (including anything accepted
@@ -137,7 +137,7 @@ a hurry gets the right answer on the first read.
 - **Use one name for each thing, and use the standard name.** Write "attribution", "hillshade", "pitch", "hash",
   "popup", "image", "render", "URL", "GPU" and "required", because these are the words that developers search for.
   Do not replace a standard term with a plainer synonym, and do not use two words for one concept. "The
-  description" is `MapSpec`; say so once and keep to it.
+  description" is `MapDescription`; say so once and keep to it.
 - **Say which entry** an example or a statement belongs to (`@map-jr/map-jr-gl` or `@map-jr/map-jr-gl/maplibre-compat`).
 - **Be exact.** State the default, the unit, what happens on failure and what is not supported. If you did not
   verify a claim, do not write it as a fact.

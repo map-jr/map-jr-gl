@@ -1,10 +1,18 @@
 // Tests of the main API (`createMap`, see src/host.ts) in a real browser: node test/host.mjs (demo server running)
 import {launch} from './launch.mjs';
 import {watchdog} from './watchdog.mjs';
+import {crc32, deflateSync} from 'node:zlib';
 
 const browser = await launch();
 const origin = `http://localhost:${process.env.PORT || 8080}`; // (the demo server; PORT lets two runs use two servers)
 let failed = 0;
+/** A PNG of `size` by `size` pixels in one colour ([r, g, b]). */
+const solidPNG = (size, [r, g, b]) => {
+    const chunk = (type, data) => { const len = Buffer.alloc(4), crc = Buffer.alloc(4), body = Buffer.concat([Buffer.from(type), data]); len.writeUInt32BE(data.length); crc.writeUInt32BE(crc32(body)); return Buffer.concat([len, body, crc]); };
+    const head = Buffer.alloc(13); head.writeUInt32BE(size, 0); head.writeUInt32BE(size, 4); head[8] = 8; head[9] = 2;
+    const row = Buffer.concat([Buffer.from([0]), Buffer.alloc(size * 3).map((_, i) => [r, g, b][i % 3])]);
+    return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', head), chunk('IDAT', deflateSync(Buffer.concat(Array(size).fill(row)))), chunk('IEND', Buffer.alloc(0))]);
+};
 // TIMINGS=1 prints, before each check, the seconds since the previous check (to find the slow ones).
 let lastCheck = performance.now();
 const check = (name, ok, detail = '') => {
@@ -57,6 +65,31 @@ for (const renderer of renderers) {
         });
         check(`[${renderer}] once: resolves with the next event, and once('load') on a loaded map resolves at once`, once.load === 'load' && once.moved === 'moveend' && once.zoom === 14.5, JSON.stringify(once));
 
+        // 1c. The events of `listen` and `once` (#500): positions as `[lng, lat]`, a box as `[[west, south], [east, north]]`,
+        // the host as `target`, and `preventDefault()` still stops what the map does.
+        await page.evaluate(() => {
+            const t = window.t, h = t.host, pair = v => Array.isArray(v) && v.length === 2 && v.every(n => typeof n === 'number');
+            t.shapes = {};
+            t.stops = ['mousemove', 'touchstart', 'boxzoomend'].map(type => h.listen(type, e => { t.shapes[type] ??= {target: e.target === h, lngLat: pair(e.lngLat), lngLats: e.lngLats && e.lngLats.length > 0 && e.lngLats.every(pair), box: e.boxZoomBounds && e.boxZoomBounds.length === 2 && e.boxZoomBounds.every(pair) && e.boxZoomBounds[0][0] < e.boxZoomBounds[1][0]}; }));
+            t.clickOnce = h.once('click').then(e => ({target: e.target === h, lngLat: pair(e.lngLat), prevent: typeof e.preventDefault}));
+        });
+        await page.mouse.move(400, 300); await page.mouse.move(420, 310); await page.mouse.click(420, 310);
+        await page.evaluate(() => { const c = document.querySelector('#host canvas'), o = {pointerType: 'touch', pointerId: 7, clientX: 300, clientY: 300, bubbles: true, isPrimary: true};
+            c.dispatchEvent(new PointerEvent('pointerdown', o)); c.dispatchEvent(new PointerEvent('pointerup', o)); });
+        await page.keyboard.down('Shift'); await page.mouse.move(300, 200); await page.mouse.down(); await page.mouse.move(500, 400, {steps: 6}); await page.mouse.up(); await page.keyboard.up('Shift');
+        await page.waitForTimeout(800);
+        const shapes = await page.evaluate(async () => ({...window.t.shapes, click: await window.t.clickOnce}));
+        check(`[${renderer}] listen and once: lngLat, lngLats and boxZoomBounds are arrays, and target is the host`,
+            shapes.mousemove?.target && shapes.mousemove.lngLat && shapes.touchstart?.target && shapes.touchstart.lngLat && shapes.touchstart.lngLats && shapes.boxzoomend?.target && shapes.boxzoomend.box && shapes.click.target && shapes.click.lngLat && shapes.click.prevent === 'function', JSON.stringify(shapes));
+        // (The box zoom ends with an animated fit: wait until the map no longer moves, or a slow machine reads `before` mid-fit, #532.)
+        await page.evaluate(async () => { const t = window.t; t.stops.forEach(f => f());
+            for (let i = 0, last = ''; i < 100; i++) { const s = t.host.state.get(), now = s.view.center.join(); if (!s.moving && now === last) break; last = now; await new Promise(r => setTimeout(r, 100)); }
+            t.before = t.host.state.get().view.center;
+            t.stops = [t.host.listen('mousedown', e => e.preventDefault())]; });
+        await page.mouse.move(450, 300); await page.mouse.down(); await page.mouse.move(600, 400, {steps: 8}); await page.mouse.up(); await page.waitForTimeout(300);
+        const held = await page.evaluate(() => { const t = window.t; t.stops.forEach(f => f()); const now = t.host.state.get().view.center; return {before: t.before, now}; });
+        check(`[${renderer}] listen: preventDefault() of a mousedown stops the drag`, held.before[0] === held.now[0] && held.before[1] === held.now[1], JSON.stringify(held));
+
         // 2. The view: the map reports each change; a view that it reported is not applied again; another view moves the map.
         const view = await page.evaluate(async () => {
             const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms));
@@ -79,7 +112,10 @@ for (const renderer of renderers) {
         // 2a. moveTo with `fly` (#43) zooms out and back in on the way, as flyTo of MapLibre GL JS. (For these 1650 pixels
         // at zoom 13.5 in a view of 900 pixels, the curve goes down by 1.07 zoom levels; the state sees some frames of it.)
         const fly = await page.evaluate(async () => {
-            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), start = t.host.state.get().view;
+            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms));
+            // (The new view of check 2 can still be moving on a slow machine, and its end would replace the flight, #532.)
+            for (let i = 0, last = ''; i < 100; i++) { const s = t.host.state.get(), now = s.view.center.join() + s.view.zoom; if (!s.moving && now === last) break; last = now; await wait(100); }
+            const start = t.host.state.get().view;
             let low = 99;
             const off = t.host.state.subscribe(s => s.view.zoom, z => { low = Math.min(low, z); });
             t.host.moveTo({center: [-73.9, 40.75], zoom: start.zoom, fly: {speed: 0.6}});
@@ -93,24 +129,49 @@ for (const renderer of renderers) {
         check(`[${renderer}] moveTo with fly zooms out on the way and ends at the view (#43)`,
             fly.low < fly.start - 0.5 && fly.end[0] === -73.9 && fly.end[1] === fly.start, JSON.stringify(fly));
 
-        // 2b. Padding per side (#212): fitBounds and moveTo take {top, right, bottom, left}, and the description has padding.
+        // 2b. Padding per side (#212): fitBounds and moveTo with bounds take {top, right, bottom, left} for the fit, and
+        // the description has the padding of the map. moveTo leaves the padding of the map as the description gave it (#501).
         const padding = await page.evaluate(async () => {
-            const t = window.t, m = t.host.map, b = [[-74.02, 40.70], [-74.00, 40.72]], mid = [-74.01, 40.71];
+            const t = window.t, m = t.host._map, b = [[-74.02, 40.70], [-74.00, 40.72]], mid = [-74.01, 40.71];
+            const wait = ms => new Promise(r => setTimeout(r, ms));
             const at = () => { const p = m.project(mid); return [Math.round(p.x), Math.round(p.y)]; };
+            const warned = [], warn = console.warn;
+            console.warn = (...a) => warned.push(a.join(' '));
             t.host.fitBounds(b, {padding: {left: 400, top: 10, right: 10, bottom: 10}, duration: 0});
             const fit = at();
             t.host.moveTo({center: mid, padding: {left: 300}});
-            const moved = at();
+            const ignored = at();
+            await wait(300);
             t.host.update({...t.spec, padding: {right: 300}});
             const spec = at();
+            t.host.moveTo({bounds: b, padding: {left: 400, top: 10, right: 10, bottom: 10}, bearing: 20, pitch: 30});
+            await wait(300);
+            const v = t.host.state.get().view, bounds = {bearing: Math.round(v.bearing), pitch: Math.round(v.pitch)};
+            t.host.moveTo({center: mid, bearing: 0, pitch: 0});
+            const kept = at();
+            t.host.update({...t.spec, padding: {right: 300}});
+            const same = at();
+            t.host.moveTo({bounds: b, padding: 20, fly: true, duration: 300});
+            await wait(200);
+            for (let i = 0; i < 50 && t.host.state.get().moving; i++) await wait(100);
+            const flown = at();
+            const {fitBounds} = t.host;
+            let detached = 'ok';
+            try { fitBounds(b, {duration: 0}); } catch (e) { detached = e.message; }
             t.host.update({...t.spec, padding: 0});
             const cleared = at();
             t.host.moveTo({center: mid});
-            return {fit, moved, spec, cleared: at()};
+            console.warn = warn;
+            return {fit, ignored, spec, bounds, kept, same, flown, cleared: at(), detached, warned: warned.filter(w => w.includes('moveTo()')).length};
         });
-        // (The page is 900 × 600: the centre of the rest of the map is at x = 400 + 245 = 645, 300 + 300 = 600 and 300.)
-        check(`[${renderer}] padding per side: fitBounds and moveTo take {top, right, bottom, left}, and padding of the description moves the centre`,
-            Math.abs(padding.fit[0] - 645) <= 2 && padding.moved[0] === 600 && padding.spec[0] === 300 && padding.cleared[0] === 450 && padding.moved[1] === 300, JSON.stringify(padding));
+        // (The page is 900 × 600: the centre of the rest of the map is at x = 400 + 245 = 645, 450 with no padding, 300 with
+        // the padding {right: 300} of the description, and with both 400 + (900 - 400 - 300 - 10 - 10) / 2 ... = 300 for the fly.)
+        check(`[${renderer}] padding per side: fitBounds takes {top, right, bottom, left}, and padding of the description moves the centre`,
+            Math.abs(padding.fit[0] - 645) <= 2 && padding.spec[0] === 300 && padding.cleared[0] === 450, JSON.stringify(padding));
+        check(`[${renderer}] moveTo leaves the padding of the map as the description gave it, and padding without bounds warns once (#501)`,
+            padding.ignored[0] === 450 && padding.ignored[1] === 300 && padding.kept[0] === 300 && padding.same[0] === 300 && padding.warned === 1, JSON.stringify(padding));
+        check(`[${renderer}] moveTo with bounds fits the box with its padding, with bearing and pitch, and with fly, and a destructured fitBounds works (#501)`,
+            padding.bounds.bearing === 20 && padding.bounds.pitch === 30 && Math.abs(padding.flown[0] - 300) <= 2 && Math.abs(padding.flown[1] - 300) <= 2 && padding.detached === 'ok', JSON.stringify(padding));
 
         // 3. A new style object: a layer is added and found by a query; with the old style again it is gone.
         const style = await page.evaluate(async () => {
@@ -124,7 +185,7 @@ for (const renderer of renderers) {
             t.host.update(t.spec = {...t.spec, style: t.style});
             await wait(200); await idle();
             const without = (await t.host.queryFeatures(at, {layers: ['test-water']})).length;
-            const raw = (await t.host.queryFeatures({x: 450, y: 300}, {sources: ['omt'], radius: 30})).length;
+            const raw = (await t.host.querySource('omt', {x: 450, y: 300}, {radius: 30})).length;
             return {withLayer, without, raw};
         });
         check(`[${renderer}] update with a new style: a layer comes and goes, and queries find features`, style.withLayer > 0 && style.without === 0 && style.raw > 0, JSON.stringify(style));
@@ -132,7 +193,7 @@ for (const renderer of renderers) {
         // 3a. A style URL that fails, with `extend`: the error is in the state with the URL and the status, and no promise is left rejected.
         const badStyle = await page.evaluate(async () => {
             const t = window.t, el = document.body.appendChild(document.createElement('div'));
-            const host = t.lib.createMap(el, {style: '/no-such-style.json', extend: {layers: [{id: 'extra', type: 'background'}]}, attribution: false});
+            const host = t.lib.createMap(el, {style: '/no-such-style.json', layers: [{id: 'extra', type: 'background'}], attribution: false});
             await new Promise(r => { host.state.subscribe(s => s.error, e => e && r()); setTimeout(r, 4000); });
             const message = host.state.get().error?.message;
             host.destroy(); el.remove();
@@ -151,7 +212,7 @@ for (const renderer of renderers) {
             const host = t.lib.createMap(el, spec), events = [], out = {};
             host.listen('projectiontransition', e => events.push(e.newProjection));
             await new Promise(r => host.state.subscribe(s => s.loaded, l => l && r()));
-            const type = () => host.map.getProjection()?.type ?? 'none';
+            const type = () => host._map.getProjection()?.type ?? 'none';
             out.start = type();
             host.update(spec = {...spec, projection: null}); out.cleared = type();
             host.update(spec = {...spec, projection: {type: 'mercator'}}); out.mercator = type();
@@ -196,6 +257,38 @@ for (const renderer of renderers) {
         }, renderer).catch(e => ({error: String(e)}));
         check(`[${renderer}] globalState: the description replaces the default of the style, a change repaints without a style request, a name left out goes back to the default, a new style keeps the values`,
             JSON.stringify(globalState) === JSON.stringify({start: '#00f', changed: '#0f0', requests: 0, cleared: '#f00', restyled: '#0f0'}), JSON.stringify(globalState));
+        // 3b2. The global state property `color-scheme` (#492): the map sets it to the resolved scheme, a change of the
+        // scheme repaints a background and builds the tiles of an icon whose template parameter reads it, with no
+        // request, and a value of `globalState` with that name wins until the description leaves it out.
+        const colorState = await page.evaluate(async renderer => {
+            const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:100px;height:80px'}));
+            const pick = ['match', ['global-state', 'color-scheme'], 'dark', '#00f', '#f00'];
+            const style = {version: 8, state: {'color-scheme': {default: 'light'}}, sources: {p: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [0, 0]}}}}, layers: [
+                {id: 'bg', type: 'background', paint: {'background-color': pick}},
+                {id: 'icon', type: 'symbol', source: 'p', layout: {'icon-image': ['image', 'sq', {params: {fill: ['match', ['global-state', 'color-scheme'], 'dark', '#ff0', '#0f0']}}], 'icon-allow-overlap': true}},
+            ]};
+            const at = async (x, y) => {
+                await new Promise(r => setTimeout(r, 300));
+                const b = await host.toBlob(), bmp = await createImageBitmap(b), c = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}), g = c.getContext('2d');
+                g.drawImage(bmp, 0, 0);
+                return '#' + [...g.getImageData(bmp.width * x | 0, bmp.height * y | 0, 1, 1).data.slice(0, 3)].map(v => (v >> 4).toString(16)).join('');
+            };
+            const both = async () => (await at(0.1, 0.1)) + ' ' + (await at(0.5, 0.5));
+            const fetches = () => performance.getEntriesByType('resource').length;
+            let spec = {style, colorScheme: 'light', images: {sq: '<svg viewBox="0 0 30 30"><rect width="30" height="30" fill="{{fill}}"/></svg>'}, initialView: {center: [0, 0], zoom: 2}, renderer, attribution: false};
+            const host = t.lib.createMap(el, spec), out = {};
+            await new Promise(r => host.state.subscribe(s => s.idle, i => i && r()));
+            out.light = await both();
+            const before = fetches();
+            host.update(spec = {...spec, colorScheme: 'dark'}); out.dark = await both();
+            out.requests = fetches() - before;
+            host.update(spec = {...spec, globalState: {'color-scheme': 'light'}}); out.forced = await both();
+            host.update(spec = {...spec, globalState: {}}); out.back = await both();
+            host.destroy(); el.remove();
+            return out;
+        }, renderer).catch(e => ({error: String(e)}));
+        check(`[${renderer}] colorScheme sets the global state property color-scheme: a background and an icon template change with no request, and globalState of the same name wins`,
+            JSON.stringify(colorState) === JSON.stringify({light: '#f00 #0f0', dark: '#00f #ff0', requests: 0, forced: '#f00 #0f0', back: '#00f #ff0'}), JSON.stringify(colorState));
         // 3b2. `patch` (#483): it keeps the fields that `part` leaves out, `undefined` removes a field, and `description` is the last description.
         const patched = await page.evaluate(async renderer => {
             const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
@@ -203,9 +296,9 @@ for (const renderer of renderers) {
             const host = t.lib.createMap(el, spec), out = {};
             out.first = host.description === spec;
             host.patch({minZoom: 2});
-            out.kept = [host.description.cursor, host.description.maxZoom, host.description.minZoom, host.map.getMaxZoom(), host.map.getMinZoom(), el.querySelector('canvas').style.cursor];
+            out.kept = [host.description.cursor, host.description.maxZoom, host.description.minZoom, host._map.getMaxZoom(), host._map.getMinZoom(), el.querySelector('canvas').style.cursor];
             host.patch({cursor: undefined, maxZoom: undefined});
-            out.removed = ['cursor' in host.description, 'maxZoom' in host.description, host.description.minZoom, host.map.getMaxZoom(), el.querySelector('canvas').style.cursor];
+            out.removed = ['cursor' in host.description, 'maxZoom' in host.description, host.description.minZoom, host._map.getMaxZoom(), el.querySelector('canvas').style.cursor];
             try { host.patch({style: undefined}); out.style = 'no error'; } catch (e) { out.style = e.message; }
             out.styleKept = host.description.style === t.style;
             host.destroy(); el.remove();
@@ -242,7 +335,7 @@ for (const renderer of renderers) {
         const sharedExtend = await page.evaluate(async () => {
             const t = window.t, square = {type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[-74.02, 40.70], [-73.99, 40.70], [-73.99, 40.72], [-74.02, 40.72], [-74.02, 40.70]]]}};
             const extend = {sources: {own: {type: 'geojson', data: 'data:application/json,' + encodeURIComponent(JSON.stringify(square))}}, layers: [{id: 'own-fill', type: 'fill', source: 'own'}]};
-            const made = [0, 1].map(() => { const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'})); return {el, host: t.lib.createMap(el, {style: t.style, extend, initialView: {center: [-74.0065, 40.7085], zoom: 13}, attribution: false})}; });
+            const made = [0, 1].map(() => { const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'})); return {el, host: t.lib.createMap(el, {style: t.style, ...extend, initialView: {center: [-74.0065, 40.7085], zoom: 13}, attribution: false})}; });
             const idles = await Promise.all(made.map(({host}) => new Promise(r => { host.state.subscribe(s => s.idle, v => v && r(true)); setTimeout(() => r(false), 8000); })));
             const drawn = await Promise.all(made.map(({host}) => Promise.race([host.queryFeatures(undefined, {layers: ['own-fill']}).then(f => f.length), new Promise(r => setTimeout(() => r(-1), 4000))])));
             for (const {el, host} of made) { host.destroy(); el.remove(); }
@@ -250,22 +343,22 @@ for (const renderer of renderers) {
         });
         check(`[${renderer}] two maps with one extend object both load its source`, sharedExtend.idles.every(Boolean) && sharedExtend.drawn.every(n => n > 0), JSON.stringify(sharedExtend));
 
-        // 3d. `radius` widens a query for what the style layers draw, as it widens a query with `sources` (#12).
+        // 3d. `radius` widens a query for what the style layers draw, as it widens a query of `querySource` (#12).
         const radius = await page.evaluate(async renderer => {
             const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
             // A line of 2 pixels through the centre of the map, from west to east. The questions are 6 pixels below it.
             const line = {type: 'Feature', properties: {name: 'line'}, geometry: {type: 'LineString', coordinates: [[-74.02, 40.7085], [-73.99, 40.7085]]}};
             const host = t.lib.createMap(el, {style: t.style, initialView: {center: [-74.0065, 40.7085], zoom: 14.3}, renderer, attribution: false,
-                extend: {sources: {own: {type: 'geojson', data: line}}, layers: [{id: 'own-line', type: 'line', source: 'own', paint: {'line-width': 2}}]}});
+                sources: {own: {type: 'geojson', data: line}}, layers: [{id: 'own-line', type: 'line', source: 'own', paint: {'line-width': 2}}]});
             await new Promise(r => { let at = host.state.get().idle ? performance.now() : 0; const off = host.state.subscribe(s => s.idle, v => { at = v ? performance.now() : 0; }), done = () => { clearInterval(timer); off(); r(); }, timer = setInterval(() => at && performance.now() - at > 500 && done(), 50); setTimeout(done, 8000); });
             const at = {x: 100, y: 81}, below = host.unproject(at), count = async (place, o) => (await host.queryFeatures(place, o)).length;
             const out = {on: await count({x: 100, y: 75}, {layers: ['own-line']}), none: await count(at, {layers: ['own-line']}), small: await count(at, {layers: ['own-line'], radius: 2}), point: await count(at, {layers: ['own-line'], radius: 8}),
-                position: await count(below, {layers: ['own-line'], radius: 8}), data: await count(at, {sources: ['own'], radius: 8}), dataDefault: await count(at, {sources: ['own']}),
+                position: await count(below, {layers: ['own-line'], radius: 8}), data: (await host.querySource('own', at, {radius: 8})).length, dataDefault: (await host.querySource('own', at)).length,
                 layer: (await host.queryFeatures(at, {layers: ['own-line'], radius: 8}))[0]?.layer?.id};
             host.destroy(); el.remove();
             return out;
         }, renderer);
-        check(`[${renderer}] queryFeatures: radius widens a query for drawn features, and its default is 0 there and 3 with sources`,
+        check(`[${renderer}] queryFeatures: radius widens a query for drawn features, and its default is 0 there and 3 in querySource`,
             radius.on === 1 && radius.none === 0 && radius.small === 0 && radius.point === 1 && radius.position === 1 && radius.data === 1 && radius.dataDefault === 0 && radius.layer === 'own-line', JSON.stringify(radius));
 
         // 3d. A GeoJSON line with longitudes past 180° is drawn on the far side of the antimeridian too, as in MapLibre (#197).
@@ -274,7 +367,7 @@ for (const renderer of renderers) {
             const line = {type: 'Feature', properties: {}, geometry: {type: 'LineString', coordinates: [[150, 40], [210, 40]]}};
             // The centre is at -170°, which is 190° of the line.
             const host = t.lib.createMap(el, {style: {version: 8, sources: {}, layers: []}, initialView: {center: [-170, 40], zoom: 3}, renderer, attribution: false,
-                extend: {sources: {own: {type: 'geojson', data: line}}, layers: [{id: 'own-line', type: 'line', source: 'own', paint: {'line-width': 4}}]}});
+                sources: {own: {type: 'geojson', data: line}}, layers: [{id: 'own-line', type: 'line', source: 'own', paint: {'line-width': 4}}]});
             await new Promise(r => { let at = host.state.get().idle ? performance.now() : 0; const off = host.state.subscribe(s => s.idle, v => { at = v ? performance.now() : 0; }), done = () => { clearInterval(timer); off(); r(); }, timer = setInterval(() => at && performance.now() - at > 500 && done(), 50); setTimeout(done, 8000); });
             const hits = (await host.queryFeatures({x: 100, y: 75}, {layers: ['own-line'], radius: 3})).length;
             host.destroy(); el.remove();
@@ -333,15 +426,15 @@ for (const renderer of renderers) {
             const idle = host => new Promise(r => { let at = host.state.get().idle ? performance.now() : 0; const off = host.state.subscribe(s => s.idle, v => { at = v ? performance.now() : 0; }), done = () => { clearInterval(timer); off(); r(); }, timer = setInterval(() => at && performance.now() - at > 500 && done(), 50); setTimeout(done, 8000); });
             const square = {type: 'Feature', properties: {name: 'square'}, geometry: {type: 'Polygon', coordinates: [[[-74.02, 40.70], [-73.99, 40.70], [-73.99, 40.72], [-74.02, 40.72], [-74.02, 40.70]]]}};
             const spec = {style: t.style, initialView: {center: [-74.0065, 40.7085], zoom: 13}, renderer, attribution: false,
-                extend: {sources: {own: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}}, layers: [{id: 'own-fill', type: 'fill', source: 'own'}]}};
+                sources: {own: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}}, layers: [{id: 'own-fill', type: 'fill', source: 'own'}]};
             const host = t.lib.createMap(el, spec);
             await idle(host);
             const before = (await host.queryFeatures({x: 100, y: 75}, {layers: ['own-fill']})).length;
             host.update({...spec, data: {own: {type: 'FeatureCollection', features: [square]}}});
             await new Promise(r => setTimeout(r, 300)); await idle(host);
             const after = (await host.queryFeatures({x: 100, y: 75}, {layers: ['own-fill']})).length;
-            let jumps = 0; const jump = host.map.jumpTo; host.map.jumpTo = (...a) => { jumps++; return jump.apply(host.map, a); };
-            host.map.jumpTo({center: [-74.0, 40.71], zoom: 13.5}); jumps = 0;
+            let jumps = 0; const jump = host._map.jumpTo; host._map.jumpTo = (...a) => { jumps++; return jump.apply(host._map, a); };
+            host._map.jumpTo({center: [-74.0, 40.71], zoom: 13.5}); jumps = 0;
             await new Promise(r => setTimeout(r, 200));
             const v = host.state.get().view;
             host.update({...spec, data: {own: {type: 'FeatureCollection', features: [square]}}, view: {center: v.center, zoom: v.zoom}});
@@ -358,7 +451,7 @@ for (const renderer of renderers) {
             const square = {type: 'Feature', id: 7, properties: {}, geometry: {type: 'Polygon', coordinates: [[[-1, -1], [1, -1], [1, 1], [-1, 1], [-1, -1]]]}};
             const base = () => ({version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]});
             const spec = {style: base(), initialView: {center: [0, 0], zoom: 5}, renderer, attribution: false,
-                extend: {sources: {own: {type: 'geojson', data: {type: 'FeatureCollection', features: [square]}}}, layers: [{id: 'own-fill', type: 'fill', source: 'own', paint: {'fill-color': ['case', ['boolean', ['feature-state', 'on'], false], '#f00', '#00f']}}]}};
+                sources: {own: {type: 'geojson', data: {type: 'FeatureCollection', features: [square]}}}, layers: [{id: 'own-fill', type: 'fill', source: 'own', paint: {'fill-color': ['case', ['boolean', ['feature-state', 'on'], false], '#f00', '#00f']}}]};
             const host = t.lib.createMap(el, spec);
             const red = async () => { const b = await host.toBlob(), c = new OffscreenCanvas(1, 1).getContext('2d'), i = await createImageBitmap(b); c.drawImage(i, i.width / 2, i.height / 2, 1, 1, 0, 0, 1, 1); const [r, , bl] = c.getImageData(0, 0, 1, 1).data; return r > 200 && bl < 50 ? 'red' : bl > 200 && r < 50 ? 'blue' : `${r},${bl}`; };
             const read = async () => (await host.queryFeatures({x: 100, y: 75}, {layers: ['own-fill']}))[0]?.state;
@@ -392,18 +485,18 @@ for (const renderer of renderers) {
             console.warn = (...a) => { said.push(String(a[0])); warn(...a); };
             const count = async (host, layer) => (await host.queryFeatures({x: 100, y: 75}, {layers: [layer]}).catch(() => [])).length;
             const spec = {style: t.style, initialView: {center: [-74.0065, 40.7085], zoom: 13}, renderer, attribution: false, onError: e => errors.push(e.message),
-                data: {a: square}, extend: {layers: [{id: 'a-fill', type: 'fill', source: 'a'}]}};
+                data: {a: square}, layers: [{id: 'a-fill', type: 'fill', source: 'a'}]};
             const host = t.lib.createMap(el, spec);
             await idle(host);
             const first = await count(host, 'a-fill');
-            const s2 = {...spec, data: {a: square, b: square}, extend: {layers: [...spec.extend.layers, {id: 'b-fill', type: 'fill', source: 'b'}]}};
+            const s2 = {...spec, data: {a: square, b: square}, layers: [...spec.layers, {id: 'b-fill', type: 'fill', source: 'b'}]};
             host.update(s2); await new Promise(r => setTimeout(r, 300)); await idle(host);
             const added = await count(host, 'b-fill');
             host.update({...s2, style: {...t.style, layers: [...t.style.layers]}}); await new Promise(r => setTimeout(r, 300)); await idle(host);
             const restyled = [await count(host, 'a-fill'), await count(host, 'b-fill')];
             host.update({...s2, data: {a: square}}); await new Promise(r => setTimeout(r, 300)); await idle(host);
             await new Promise(r => setTimeout(r, 500));
-            const removed = !host.map.getSource('b');
+            const removed = !host._map.getSource('b');
             const wrong = Object.keys(t.style.sources).find(id => t.style.sources[id].type !== 'geojson');
             host.update({...s2, data: {a: square, [wrong]: square}}); await new Promise(r => setTimeout(r, 300));
             console.warn = warn; host.destroy(); el.remove();
@@ -418,22 +511,25 @@ for (const renderer of renderers) {
             const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
             const next = host => new Promise(r => { const off = host.state.subscribe(s => s.idle, v => { if (v) { off(); r(true); } }); setTimeout(() => { off(); r(false); }, 8000); });
             const spec = {style: t.style, initialView: {center: [-74.0065, 40.7085], zoom: 13}, renderer, attribution: false,
-                extend: {sources: {own: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}}, layers: [{id: 'own-fill', type: 'fill', source: 'own', paint: {'fill-color': '#f00'}}]}};
+                sources: {own: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}}, layers: [{id: 'own-fill', type: 'fill', source: 'own', paint: {'fill-color': '#f00'}}]};
             const host = t.lib.createMap(el, spec);
             await next(host);
-            const s2 = {...spec, extend: {...spec.extend, layers: [{...spec.extend.layers[0], paint: {'fill-color': '#00f'}}]}};
+            // (The same arrays and objects again are not serialized to compare them.)
+            let reads = 0; Object.defineProperty(spec.layers, 'toJSON', {value() { reads++; return [...this]; }});
+            host.update({...spec}); const sameFree = reads === 0;
+            const s2 = {...spec, layers: [{...spec.layers[0], paint: {'fill-color': '#00f'}}]};
             host.update(s2);
             const extendBusy = !host.state.get().idle, extendIdle = await next(host);
             host.update({...s2, images: {dot: '<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"><rect width="4" height="4"/></svg>'}});
             await new Promise(r => setTimeout(r, 500));
             const imagesIdle = host.state.get().idle || await next(host);
             host.destroy(); el.remove();
-            return {extendBusy, extendIdle, imagesIdle};
+            return {extendBusy, extendIdle, imagesIdle, sameFree};
         }, renderer);
         check(`[${renderer}] update() that changes only extend or images sets state.idle to false and then to true again`,
-            idleAgain.extendBusy && idleAgain.extendIdle && idleAgain.imagesIdle, JSON.stringify(idleAgain));
+            idleAgain.extendBusy && idleAgain.extendIdle && idleAgain.imagesIdle && idleAgain.sameFree, JSON.stringify(idleAgain));
 
-        // 3d. A change of `extend` alone is applied as edits: the style URL is not requested again, and a layer that was added through `host.map` stays (#166).
+        // 3d. A change of `extend` alone is applied as edits: the style URL is not requested again, and a layer that was added through `host._map` stays (#166).
         const extendEdit = await page.evaluate(async renderer => {
             const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
             const idle = host => new Promise(r => { let at = host.state.get().idle ? performance.now() : 0; const off = host.state.subscribe(s => s.idle, v => { at = v ? performance.now() : 0; }), done = () => { clearInterval(timer); off(); r(); }, timer = setInterval(() => at && performance.now() - at > 500 && done(), 50); setTimeout(done, 8000); });
@@ -441,60 +537,55 @@ for (const renderer of renderers) {
             const fill = (color, visibility = 'visible') => ({id: 'own-fill', type: 'fill', source: 'own', paint: {'fill-color': color}, layout: {visibility}});
             const spec = {style: '/style.json', initialView: {center: [-74.0065, 40.7085], zoom: 13}, renderer, attribution: false};
             const ext = (...layers) => ({sources: {own: {type: 'geojson', data: square}}, layers});
-            const host = t.lib.createMap(el, {...spec, extend: ext(fill('#f00'))});
+            const host = t.lib.createMap(el, {...spec, ...ext(fill('#f00'))});
             await idle(host);
-            host.map.addLayer({id: 'app-layer', type: 'background', paint: {'background-color': '#00f'}});
+            host._map.addLayer({id: 'app-layer', type: 'background', paint: {'background-color': '#00f'}});
             const requests = () => performance.getEntriesByType('resource').filter(e => e.name.endsWith('/style.json')).length, first = requests();
-            let restyles = 0; const setStyle = host.map.setStyle; host.map.setStyle = (...a) => { restyles++; return setStyle.apply(host.map, a); };
+            let restyles = 0; const setStyle = host._map.setStyle; host._map.setStyle = (...a) => { restyles++; return setStyle.apply(host._map, a); };
             const at = {x: 100, y: 75}, hits = async () => (await host.queryFeatures(at, {layers: ['own-fill']})).length;
             const out = {};
-            host.update({...spec, extend: ext(fill('#0f0'))}); await idle(host);
-            out.paint = host.map.getLayer('own-fill')?.paint?.['fill-color'];
-            host.update({...spec, extend: ext(fill('#0f0', 'none'))}); await idle(host);
-            out.hidden = host.map.getLayer('own-fill')?.layout?.visibility;
-            host.update({...spec, extend: {sources: {own: {type: 'geojson', data: square}, two: {type: 'geojson', data: square}}, layers: [fill('#0f0'), {id: 'two-line', type: 'line', source: 'two'}]}}); await idle(host);
-            out.added = !!host.map.getSource('two') && !!host.map.getLayer('two-line');
+            host.update({...spec, ...ext(fill('#0f0'))}); await idle(host);
+            out.paint = host._map.getLayer('own-fill')?.paint?.['fill-color'];
+            host.update({...spec, ...ext(fill('#0f0', 'none'))}); await idle(host);
+            out.hidden = host._map.getLayer('own-fill')?.layout?.visibility;
+            host.update({...spec, sources: {own: {type: 'geojson', data: square}, two: {type: 'geojson', data: square}}, layers: [fill('#0f0'), {id: 'two-line', type: 'line', source: 'two'}]}); await idle(host);
+            out.added = !!host._map.getSource('two') && !!host._map.getLayer('two-line');
             out.hits = await hits();
-            host.update({...spec, extend: ext(fill('#0f0'))}); await idle(host);
-            out.removed = !host.map.getSource('two') && !host.map.getLayer('two-line');
-            out.app = !!host.map.getLayer('app-layer');
+            host.update({...spec, ...ext(fill('#0f0'))}); await idle(host);
+            out.removed = !host._map.getSource('two') && !host._map.getLayer('two-line');
+            out.app = !!host._map.getLayer('app-layer');
             out.restyles = restyles; out.requests = requests() - first;
             host.destroy(); el.remove();
             return out;
         }, renderer);
-        check(`[${renderer}] a change of extend alone edits the map: no new style request, and a layer added through host.map stays`,
+        check(`[${renderer}] a change of extend alone edits the map: no new style request, and a layer added through host._map stays`,
             extendEdit.paint === '#0f0' && extendEdit.hidden === 'none' && extendEdit.added && extendEdit.hits === 1 && extendEdit.removed && extendEdit.app && extendEdit.restyles === 0 && extendEdit.requests === 0, JSON.stringify(extendEdit));
 
-        // 3d. The edits of `extend` leave the description as it was, work for two maps with one `extend` object, keep the
-        // layers of `markers` on top, and give back a source of the style that an extend source replaced (#184).
+        // 3d. The edits of `extend` leave the description as it was, work for two maps with one `extend` object, and give
+        // back a source of the style that an extend source replaced (#184).
         const extendCases = await page.evaluate(async renderer => {
             const t = window.t, idle = host => new Promise(r => { let at = host.state.get().idle ? performance.now() : 0; const off = host.state.subscribe(s => s.idle, v => { at = v ? performance.now() : 0; }), done = () => { clearInterval(timer); off(); r(); }, timer = setInterval(() => at && performance.now() - at > 500 && done(), 50); setTimeout(done, 8000); });
             const div = () => document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
             const square = {type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[-74.02, 40.70], [-73.99, 40.70], [-73.99, 40.72], [-74.02, 40.72], [-74.02, 40.70]]]}};
             const spec = {style: '/style.json', initialView: {center: [-74.0065, 40.7085], zoom: 13}, renderer, attribution: false};
             const ext = (color, more = []) => ({sources: {own: {type: 'geojson', data: square}}, layers: [{id: 'own-fill', type: 'fill', source: 'own', paint: {'fill-color': color}}, ...more]});
-            const color = h => h.map.getLayer('own-fill')?.paint?.['fill-color'], out = {};
+            const color = h => h._map.getLayer('own-fill')?.paint?.['fill-color'], out = {};
             const red = ext('#f00'), green = ext('#0f0');
-            const [a, b] = [div(), div()].map(el => t.lib.createMap(el, {...spec, extend: red}));
+            const [a, b] = [div(), div()].map(el => t.lib.createMap(el, {...spec, ...red}));
             await Promise.all([idle(a), idle(b)]);
-            a.update({...spec, extend: green}); await idle(a);
-            a.update({...spec, extend: red}); await idle(a);
+            a.update({...spec, ...green}); await idle(a);
+            a.update({...spec, ...red}); await idle(a);
             out.back = color(a); out.description = red.layers[0].paint['fill-color'];
-            b.update({...spec, extend: green}); await idle(b);
+            b.update({...spec, ...green}); await idle(b);
             out.second = color(b);
-            const pins = {id: 'pins', data: [{lngLat: [-74.0065, 40.7085]}]};
-            const m = t.lib.createMap(div(), {...spec, extend: red, markers: [pins]}); await idle(m);
-            m.update({...spec, extend: ext('#f00', [{id: 'two', type: 'line', source: 'own'}]), markers: [pins]}); await idle(m);
-            const ids = m.map.getStyle().layers.map(l => l.id);
-            out.markersOnTop = ids.indexOf('two') < ids.indexOf('pins');
-            const o = t.lib.createMap(div(), {...spec, extend: {sources: {omt: {type: 'geojson', data: square}}}}); await idle(o);
-            o.update({...spec, extend: {}}); await idle(o);
-            out.styleSource = o.map.getSource('omt')?.type;
-            for (const h of [a, b, m, o]) h.destroy();
+            const o = t.lib.createMap(div(), {...spec, sources: {omt: {type: 'geojson', data: square}}}); await idle(o);
+            o.update({...spec, sources: undefined, layers: undefined}); await idle(o);
+            out.styleSource = o._map.getSource('omt')?.type;
+            for (const h of [a, b, o]) h.destroy();
             return out;
         }, renderer);
-        check(`[${renderer}] extend edits keep the description, work for two maps with one extend object, keep markers on top and give back a style source`,
-            extendCases.back === '#f00' && extendCases.description === '#f00' && extendCases.second === '#0f0' && extendCases.markersOnTop && extendCases.styleSource === 'vector', JSON.stringify(extendCases));
+        check(`[${renderer}] extend edits keep the description, work for two maps with one extend object and give back a style source`,
+            extendCases.back === '#f00' && extendCases.description === '#f00' && extendCases.second === '#0f0' && extendCases.styleSource === 'vector', JSON.stringify(extendCases));
 
         // 3e. Common mistakes: each gives one warning that says what to write, and a correct description gives none.
         const warnings = await page.evaluate(async renderer => {
@@ -502,19 +593,19 @@ for (const renderer of renderers) {
             console.warn = (...a) => said.push(a.join(' '));
             const div = style => document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;' + style}));
             const idle = host => new Promise(r => { host.state.subscribe(s => s.idle, v => v && r(true)); setTimeout(() => r(false), 8000); });
-            const empty = {type: 'FeatureCollection', features: []}, dot = '<svg viewBox="0 0 8 8"><circle cx="4" cy="4" r="4"/></svg>', pin = id => ({id, image: 'dot', data: [{lngLat: [-74.0065, 40.7085]}]});
+            const empty = {type: 'FeatureCollection', features: []}, dot = '<svg viewBox="0 0 8 8"><circle cx="4" cy="4" r="4"/></svg>';
             const base = {style: t.style, initialView: {center: [-74.0065, 40.7085], zoom: 14.3}, renderer, attribution: false, onError: () => {}};
             // A correct description, with each of the fields that the checks read.
-            const goodEl = div('height:150px'), good = t.lib.createMap(goodEl, {...base, interactiveLayers: ['own-fill'], data: {own: empty}, images: {dot}, markers: [pin('a'), pin('b')],
-                extend: {sources: {own: {type: 'geojson', data: empty}}, layers: [{id: 'own-fill', type: 'fill', source: 'own', before: t.style.layers[1].id}]}});
+            const goodEl = div('height:150px'), good = t.lib.createMap(goodEl, {...base, interactiveLayers: ['own-fill'], data: {own: empty}, images: {dot},
+                sources: {own: {type: 'geojson', data: empty}}, layers: [{id: 'own-fill', type: 'fill', source: 'own', before: t.style.layers[1].id}]});
             await idle(good);
             await good.queryFeatures({x: 100, y: 75}, {layers: ['own-fill']});
-            await good.queryFeatures({x: 100, y: 75}, {sources: ['own'], radius: 5, geometry: false, zoom: 14});
+            await good.querySource('own', {x: 100, y: 75}, {radius: 5, geometry: false, zoom: 14});
             await good.queryFeatures([-74.0065, 40.7085], {layers: ['own-fill'], radius: 5});
-            await good.queryFeatures(undefined, {sources: ['omt'], sourceLayers: ['water']});
+            await good.querySource('omt', {sourceLayers: ['water']});
             // An application that adds the layer and the source itself in `load`: the ids are compared after that.
             const ownEl = div('height:150px'), own = t.lib.createMap(ownEl, {...base, interactiveLayers: ['later'], data: {'later-source': empty}});
-            own.listen('load', () => { own.map.addSource('later-source', {type: 'geojson', data: empty}); own.map.addLayer({id: 'later', type: 'fill', source: 'later-source'}); });
+            own.listen('load', () => { own._map.addSource('later-source', {type: 'geojson', data: empty}); own._map.addLayer({id: 'later', type: 'fill', source: 'later-source'}); });
             await idle(own);
             // A container that is hidden, and one that is not in the page yet, when the map is made: no warning for the height.
             const hiddenEl = div('height:150px;display:none'), hidden = t.lib.createMap(hiddenEl, base);
@@ -525,35 +616,33 @@ for (const renderer of renderers) {
             const correct = said.splice(0);
             for (const [el, host] of [[ownEl, own], [hiddenEl, hidden], [lateEl, late]]) { host.destroy(); el.remove(); }
             // The same map with mistakes.
-            const spec = {...base, interactiveLayers: ['nope'], data: {nosuch: empty}, markers: [pin('a'), pin('a'), {id: 'old', svg: dot, width: 8, height: 8, data: []}, {...pin('gone'), image: 'nothing'},
-                    {...pin(t.style.layers[1].id), before: 'no-such-layer', data: [{lngLat: [-74.0065, 40.7085]}, {props: {}}, null]}],
+            const spec = {...base, interactiveLayers: ['nope'], data: {nosuch: empty},
                 images: {dot: '<svg viewBox="0 0 4 4"><rect width="4" height="4" fill="{{fill}}"/></svg>'},
-                extend: {sources: {icons: {type: 'geojson', data: empty}}, layers: [{id: 'lost', type: 'fill', source: 'missing', before: 'nonexistent'}, {id: 'icons', type: 'symbol', source: 'icons', layout: {'icon-image': ['image', 'dot', {params: {fill: '#d00', colour: '#00d'}}]}},
-                    {id: 'labels', type: 'symbol', source: 'icons', layout: {'text-field': ['format', ['image', 'dot', {params: {fill: '#d00', size: '2'}}], {}]}}]}};
+                sources: {icons: {type: 'geojson', data: empty}}, layers: [{id: 'lost', type: 'fill', source: 'missing', before: 'nonexistent'}, {id: 'icons', type: 'symbol', source: 'icons', layout: {'icon-image': ['image', 'dot', {params: {fill: '#d00', colour: '#00d'}}]}},
+                    {id: 'labels', type: 'symbol', source: 'icons', layout: {'text-field': ['format', ['image', 'dot', {params: {fill: '#d00', size: '2'}}], {}]}}]};
             const badEl = div('height:150px'), bad = t.lib.createMap(badEl, spec);
             await idle(bad);
             for (let i = 0; i < 2; i++) { // (twice: a warning comes once)
                 // (The second time, the template is replaced by one without the slot {{fill}}.)
                 bad.update({...spec, interactive: false, initialView: {center: [0, 0], zoom: 2}, images: i ? {dot: '<svg viewBox="0 0 4 4"><rect width="4" height="4"/></svg>'} : spec.images});
                 await bad.queryFeatures({x: 100, y: 75}, {layers: ['nope']}).catch(() => {});
-                await bad.queryFeatures({x: 100, y: 75}, {sources: ['nope'], layers: ['lost']}).catch(() => {});
-                await bad.queryFeatures({x: 100, y: 75}, {sourceLayers: ['water'], radius: 5, geometry: false}).catch(() => {});
-                await bad.queryFeatures(undefined, {sources: ['omt'], radius: 5, geometry: false, zoom: 14}).catch(() => {});
+                await bad.querySource('nope', {x: 100, y: 75}, {layers: ['lost']}).catch(() => {});
+                await bad.queryFeatures({x: 100, y: 75}, {sourceLayers: ['water'], sources: ['omt'], radius: 5}).catch(() => {});
+                await bad.queryFeatures({layers: ['nope'], radius: 5}).catch(() => {});
+                await bad.querySource('omt', {radius: 5, geometry: false, zoom: 14}).catch(() => {});
                 await bad.queryFeatures([{x: 0, y: 0}, {x: 100, y: 75}], {radius: 5}).catch(() => {});
             }
             const place = await bad.queryFeatures({lng: -74.0065, lat: 40.7085}).then(() => '', e => e.message);
             const flatEl = div('height:0'), flat = t.lib.createMap(flatEl, base);
-            // (The warning for an image that the map does not have waits three seconds for the image.)
-            await wait(3500);
+            await wait(1500);
             for (const [el, host] of [[goodEl, good], [badEl, bad], [flatEl, flat]]) { host.destroy(); el.remove(); }
             console.warn = log;
             return {correct, said, place};
         }, renderer);
-        const styleLayer = await page.evaluate(() => window.t.style.layers[1].id);
         const expected = ['createMap(): the container has height 0', 'interactiveLayers: the style has no layer "nope"', 'queryFeatures(): the style has no layer "nope"',
-            'queryFeatures(): the style has no source "nope"', 'extend: the layer "lost" has before: "nonexistent"', 'extend: the layer "lost" uses the source "missing"', 'markers: two marker layers have the id "a"', 'images: a layer gives the parameter "colour" to the image "dot"', 'images: a layer gives the parameter "size" to the image "dot"', 'images: a layer gives the parameter "fill" to the image "dot"', 'markers: the marker layer "old" has no "image"', 'markers: a marker layer has the image "nothing"', `markers: the marker layer "${styleLayer}" has the id of a layer of the style`, `markers: the marker layer "${styleLayer}" has before: "no-such-layer"`, `markers: the marker 1 of the marker layer "${styleLayer}" has no position`,
-            'update(): "interactive" changed', 'update(): "initialView" changed', 'queryFeatures(): "sourceLayers" has an effect only', 'queryFeatures(): "radius" has an effect only in a query at a point or a position', 'queryFeatures(): "geometry" has an effect only', 'queryFeatures(): "zoom" has an effect only',
-            'queryFeatures(): "layers" has no effect'];
+            'querySource(): the style has no source "nope"', 'layers: the layer "lost" has before: "nonexistent"', 'layers: the layer "lost" uses the source "missing"', 'images: a layer gives the parameter "colour" to the image "dot"', 'images: a layer gives the parameter "size" to the image "dot"', 'images: a layer gives the parameter "fill" to the image "dot"',
+            'update(): "interactive" changed', 'update(): "initialView" changed', 'queryFeatures(): "sourceLayers" is not an option', 'queryFeatures(): "sources" is not an option', 'queryFeatures(): "radius" has an effect only in a query at a point or a position',
+            'querySource(): "radius" has an effect only', 'querySource(): "geometry" has an effect only', 'querySource(): "zoom" has an effect only', 'querySource(): "layers" is not an option'];
         check(`[${renderer}] common mistakes: each gives one warning, a wrong place of a query is refused with a message, and a correct description gives no warning`,
             warnings.correct.length === 0 && warnings.said.length === expected.length && expected.every(e => warnings.said.filter(w => w.startsWith('[map-jr-gl] ' + e)).length === 1)
             && warnings.place.startsWith('[map-jr-gl] queryFeatures(): {"lng":-74.0065,"lat":40.7085} is not a place.'), JSON.stringify(warnings));
@@ -571,12 +660,12 @@ for (const renderer of renderers) {
             const mercSaid = said.length;
             const other = t.lib.createMap(div(), {...base, style: {...t.style, projection: {type: 'identity'}}});
             await idle(other);
-            other.map.setStyle({...t.style, projection: {type: 'identity'}});
+            other._map.setStyle({...t.style, projection: {type: 'identity'}});
             await idle(other);
             const otherSaid = said.splice(0);
             const globe = t.lib.createMap(div(), {...base, style: {...t.style, projection: {type: 'globe'}}});
             await idle(globe);
-            globe.map.setStyle({...t.style, projection: {type: 'globe'}});
+            globe._map.setStyle({...t.style, projection: {type: 'globe'}});
             await idle(globe);
             console.warn = log;
             merc.destroy(); other.destroy(); globe.destroy();
@@ -598,46 +687,40 @@ for (const renderer of renderers) {
             partial.update.startsWith('[map-jr-gl] update(): the description has no "style".') && partial.update.includes('map.patch({cursor: ') && partial.none.startsWith('[map-jr-gl] update()')
             && partial.create.startsWith('[map-jr-gl] createMap(): the description has no "style".') && partial.drawn > 0 && !errors.length, JSON.stringify({...partial, errors}));
 
-        // 4. Marker layers: each one is a source and a symbol layer of the style, and they follow the description.
-        const markers = await page.evaluate(async () => {
-            const t = window.t, map = t.host.map, wait = ms => new Promise(r => setTimeout(r, ms)), at = () => t.host.queryFeatures({x: 450, y: 300}, {layers: ['pins']});
-            const centre = t.host.unproject({x: 450, y: 300});
-            const layer = (data, more) => ({id: 'pins', image: 'disc', data, ...more});
-            t.host.update(t.spec = {...t.spec, images: {disc: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="{{color}}"/></svg>'}, markers: [layer([{lngLat: centre, props: {color: '#d00'}}])]});
+        // 4. Points for a symbol layer (#499): a key of `data` with `points()` and a layer of `layers`. New data is no new
+        // style, and data that comes with a change of the layer is not lost.
+        const pins = await page.evaluate(async () => {
+            const t = window.t, map = t.host._map, wait = ms => new Promise(r => setTimeout(r, ms)), at = () => t.host.queryFeatures({x: 450, y: 300}, {layers: ['pins']});
+            const centre = t.host.unproject({x: 450, y: 300}), points = list => t.lib.points(list, {lngLat: p => p.lngLat, id: p => p.id, properties: p => ({color: p.color})});
+            const layer = layout => ({id: 'pins', type: 'symbol', source: 'pins', layout: {'icon-image': 'disc', 'icon-allow-overlap': true, 'icon-ignore-placement': true, ...layout}});
+            t.host.update(t.spec = {...t.spec, images: {disc: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="{{color}}"/></svg>'}, data: {...t.spec.data, pins: points([{id: 1, lngLat: centre, color: '#d00'}])}, layers: [...t.spec.layers ?? [], layer()]});
             await wait(900);
-            const one = await at(), made = map.getLayer('pins'), top = map.getStyle().layers.at(-1).id;
-            // Other data: the markers move, and the style is the same.
+            const one = await at(), top = map.getStyle().layers.at(-1).id;
+            // Other data: the points move, and the style is the same.
             let restyled = 0;
             const count = () => restyled++;
             map.on('style.load', count);
-            t.host.update(t.spec = {...t.spec, markers: [layer([{lngLat: [centre[0] + 1, centre[1]], props: {color: '#d00'}}])]});
+            t.host.update(t.spec = {...t.spec, data: {...t.spec.data, pins: points([{id: 1, lngLat: [centre[0] + 1, centre[1]], color: '#d00'}])}});
             await wait(700);
             const moved = (await at()).length;
-            t.host.update(t.spec = {...t.spec, markers: [layer([{lngLat: [0, 0], props: {}}, {lngLat: centre, props: {color: '#00d'}}])]});
+            t.host.update(t.spec = {...t.spec, data: {...t.spec.data, pins: points([{id: 1, lngLat: [0, 0]}, {id: 2, lngLat: centre, color: '#00d'}])}});
             await wait(700);
             const back = await at(), sameStyle = restyled === 0;
             map.off('style.load', count);
-            // Other options: the layer is another layer of the style (here: below the first layer, and labels keep away).
-            const first = map.getStyle().layers[0].id;
-            t.host.update(t.spec = {...t.spec, markers: [layer([{lngLat: centre, props: {color: '#00d'}}], {before: first, anchor: 'bottom', collide: true, minZoom: 3, overlap: 'hide'})]});
-            await wait(900);
-            const changed = map.getLayer('pins'), below = map.getStyle().layers.findIndex(l => l.id === 'pins') === 0;
-            // Another option, and other data at once: the new style comes a moment later, and its source gets the data.
-            // A marker with no position is left out, and the others keep their index.
-            t.host.update(t.spec = {...t.spec, markers: [layer([{lngLat: centre, props: {color: '#00d'}}], {anchor: 'top'})]});
-            t.host.update(t.spec = {...t.spec, markers: [layer([{props: {}}, {lngLat: centre, props: {color: '#0a0'}}], {anchor: 'top'})]});
+            // Another layout and other data at once: the source gets the data.
+            t.host.update(t.spec = {...t.spec, layers: [...t.spec.layers.filter(l => l.id !== 'pins'), layer({'icon-anchor': 'top'})]});
+            t.host.update(t.spec = {...t.spec, data: {...t.spec.data, pins: points([{id: 3, lngLat: centre, color: '#0a0'}])}});
             await wait(1200);
             const late = await t.host.queryFeatures({x: 450, y: 310}, {layers: ['pins']});
-            const {images: _, markers: __, ...rest} = t.spec;
-            t.host.update(t.spec = rest);
+            const {images: _, ...rest} = t.spec, {pins: __, ...data} = rest.data;
+            t.host.update(t.spec = {...rest, data, layers: rest.layers.filter(l => l.id !== 'pins')});
             await wait(700);
-            return {one: one.length, id: one[0]?.id, top, layout: made?.layout, moved, back: back.length, index: back[0]?.id, color: back[0]?.properties.color, sameStyle,
-                changed: changed && {...changed.layout, minzoom: changed.minzoom}, below, late: late.map(f => f.id + ' ' + f.properties.color).join(), none: !map.getLayer('pins') && !map.getSource('pins')};
+            return {one: one.length, id: one[0]?.id, top, moved, back: back.length, index: back[0]?.id, color: back[0]?.properties.color, sameStyle,
+                late: late.map(f => f.id + ' ' + f.properties.color).join(), none: !map.getLayer('pins') && !map.getSource('pins')};
         });
-        check(`[${renderer}] a marker layer is a source and a symbol layer: it follows the description, its markers are features with the index as the id, new data is no new style, and data that comes with another option is not lost`,
-            markers.one === 1 && markers.id === 0 && markers.top === 'pins' && JSON.stringify(markers.layout) === JSON.stringify({'icon-image': 'disc', 'icon-anchor': 'center', 'icon-allow-overlap': true, 'icon-ignore-placement': true})
-            && markers.moved === 0 && markers.back === 1 && markers.index === 1 && markers.color === '#00d' && markers.sameStyle
-            && JSON.stringify(markers.changed) === JSON.stringify({'icon-image': 'disc', 'icon-anchor': 'bottom', 'icon-allow-overlap': false, 'icon-ignore-placement': false, minzoom: 3}) && markers.below && markers.late === '1 #0a0' && markers.none, JSON.stringify(markers));
+        check(`[${renderer}] points() in data and a symbol layer in layers: the points are features with their ids, new data is no new style, and data that comes with a change of the layer is not lost`,
+            pins.one === 1 && pins.id === 1 && pins.top === 'pins' && pins.moved === 0 && pins.back === 1 && pins.index === 2 && pins.color === '#00d' && pins.sameStyle
+            && pins.late === '3 #0a0' && pins.none, JSON.stringify(pins));
 
         {
         // Images: added, replaced and removed by the description. A symbol layer draws a square of 40 pixels at the centre.
@@ -649,7 +732,7 @@ for (const renderer of renderers) {
         }, (await page.screenshot()).toString('base64'));
         const shows = async colour => { let got; for (let i = 0; i < 40 && !(got = await colourAt()).includes(colour); i++) await page.waitForTimeout(150); return got.includes(colour) ? colour : got.join(' '); };
         const images = await page.evaluate(async () => {
-            const t = window.t, map = t.host.map, c = t.host.unproject({x: 450, y: 300}), add = map.addImage;
+            const t = window.t, map = t.host._map, c = t.host.unproject({x: 450, y: 300}), add = map.addImage;
             t.square = colour => `<svg viewBox="0 0 40 40"><rect width="40" height="40" fill="${colour}"/></svg>`;
             t.added = []; t.imageErrors = [];
             map.addImage = function (name, ...rest) { t.added.push(name); return add.call(this, name, ...rest); };
@@ -676,14 +759,73 @@ for (const renderer of renderers) {
             t.host.update({...t.spec, images: {...t.spec.images, late: t.square('#f00')}});
             const {images: _, onError: __, ...rest} = t.spec;
             t.host.update(t.spec = rest);
-            return {errors: t.imageErrors, has: t.host.map.hasImage('square')};
+            return {errors: t.imageErrors, has: t.host._map.hasImage('square')};
         });
         await page.waitForTimeout(700);
-        const after = await colourAt(), late = await page.evaluate(() => window.t.host.map.hasImage('late'));
-        await page.evaluate(() => { const t = window.t; delete t.host.map.addImage; t.host.update(t.spec = {...t.spec, style: t.style}); });
+        const after = await colourAt(), late = await page.evaluate(() => window.t.host._map.hasImage('late'));
+        await page.evaluate(() => { const t = window.t; delete t.host._map.addImage; t.host.update(t.spec = {...t.spec, style: t.style}); });
         check(`[${renderer}] images follow the description: added, the same content is not added again, replaced, the last of two changes stays, removed, and an image that does not load is an error`,
             first === '#f0f' && again === 0 && replaced === '#0ff' && last === '#00f' && stays && !gone.has && !late && !after.includes('#00f') && gone.errors.length === 1 && gone.errors[0].startsWith('[map-jr-gl] images: the image "lost" did not load.'),
             JSON.stringify({first, again, replaced, last, stays, gone, late, after}));
+
+        // Images of the style in metadata["map-jr:images"] (#495): drawn, replaced by an image of `images` with the same
+        // name, kept by an update of `images`, removed with the style, and bounded. A URL goes through transformRequest.
+        await page.evaluate(() => {
+            const t = window.t, c = t.host.unproject({x: 450, y: 300});
+            t.imageErrors = []; t.kinds = [];
+            t.withImages = images => ({...t.style, metadata: {...t.style.metadata, 'map-jr:images': images}, sources: {...t.style.sources, spot: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: c}}}},
+                layers: [...t.style.layers, {id: 'spot', type: 'symbol', source: 'spot', layout: {'icon-image': 'square', 'icon-allow-overlap': true, 'icon-ignore-placement': true}}]});
+            t.host.update(t.spec = {...t.spec, style: t.withImages({square: t.square('#f80'), far: '/no-such-style-image.png', outside: '<svg viewBox="0 0 4 4"><image href="https://example.com/a.png"/></svg>'}),
+                transformRequest: (url, kind) => { if (url.includes('no-such-style-image')) t.kinds.push(kind); }, onError: e => t.imageErrors.push(e.message)});
+        });
+        const ofStyle = await shows('#f80');
+        await page.evaluate(() => { const t = window.t; t.host.update(t.spec = {...t.spec, images: {square: t.square('#0f0')}}); });
+        const overridden = await shows('#0f0');
+        await page.evaluate(() => { const t = window.t, {images: _, ...rest} = t.spec; t.host.update(t.spec = rest); });
+        const back = await shows('#f80');
+        const styleGone = await page.evaluate(async () => {
+            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), {transformRequest: _, onError: __, ...rest} = t.spec;
+            for (let i = 0; i < 30 && t.imageErrors.length < 2; i++) await wait(100);
+            const errors = [...t.imageErrors];
+            t.host.update(t.spec = {...rest, style: t.style});
+            for (let i = 0; i < 30 && t.host._map.hasImage('square'); i++) await wait(100);
+            return {errors, kinds: t.kinds, has: t.host._map.hasImage('square')};
+        });
+        check(`[${renderer}] images of the style in metadata["map-jr:images"]: drawn, replaced by images of the description, removed with the style, an SVG with a reference to another file is left out, and a URL goes through transformRequest as Image`,
+            ofStyle === '#f80' && overridden === '#0f0' && back === '#f80' && !styleGone.has && styleGone.kinds.includes('Image')
+            && styleGone.errors.some(e => e.startsWith('[map-jr-gl] the style: the image "outside"')) && styleGone.errors.some(e => e.startsWith('[map-jr-gl] the style: the image "far" did not load')),
+            JSON.stringify({ofStyle, overridden, back, styleGone}));
+
+        // A sprite of the description (#495): added to the sprite of the style, its images named `id:name` in icon-image,
+        // a relative URL is relative to the page, a sprite that does not load is an error and the other sprite is drawn,
+        // and a description without it removes it.
+        await page.route(/\/test-sprite-495\//, route => {
+            const path = new URL(route.request().url()).pathname;
+            if (path.includes('missing')) return route.fulfill({status: 404, body: ''});
+            if (path.endsWith('.json')) return route.fulfill({contentType: 'application/json', body: JSON.stringify({box: {x: 0, y: 0, width: 40, height: 40, pixelRatio: 1}})});
+            route.fulfill({contentType: 'image/png', body: solidPNG(40, [0x88, 0x00, 0xff])});
+        });
+        await page.evaluate(() => {
+            const t = window.t, c = t.host.unproject({x: 450, y: 300});
+            t.imageErrors = [];
+            t.host.update(t.spec = {...t.spec, style: {...t.style, sources: {...t.style.sources, spot: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: c}}}},
+                layers: [...t.style.layers, {id: 'spot', type: 'symbol', source: 'spot', layout: {'icon-image': 'pins:box', 'icon-allow-overlap': true, 'icon-ignore-placement': true}}]},
+            sprite: [{id: 'pins', url: '/test-sprite-495/pins'}, {id: 'gone', url: '/test-sprite-495/missing'}], onError: e => t.imageErrors.push(e.message)});
+        });
+        const ofSprite = await shows('#80f');
+        const spriteGone = await page.evaluate(async () => {
+            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), {sprite: _, ...rest} = t.spec;
+            for (let i = 0; i < 30 && !t.imageErrors.length; i++) await wait(100);
+            const errors = [...t.imageErrors];
+            t.host.update(t.spec = rest);
+            return errors;
+        });
+        await page.waitForTimeout(1500);
+        const withoutSprite = (await colourAt()).join(' ');
+        await page.evaluate(() => { const t = window.t, {onError: _, ...rest} = t.spec; t.host.update(t.spec = {...rest, style: t.style}); });
+        check(`[${renderer}] a sprite of the description: added to the sprite of the style and named id:name, a sprite that does not load is an error, and the sprite goes with the field`,
+            ofSprite === '#80f' && spriteGone.some(e => e.includes('test-sprite-495/missing')) && !withoutSprite.includes('#80f'),
+            JSON.stringify({ofSprite, spriteGone, withoutSprite}));
 
         // An image that is an SVG template: each feature gives the slots their values. Two squares, the second 60 pixels to the right.
         // (Of each square, the colour of its upper half and of its lower half is read.)
@@ -712,13 +854,13 @@ for (const renderer of renderers) {
         // The state of a feature in a parameter: the tiles are built again when the state changes.
         await page.evaluate(() => { const t = window.t; t.host.update(t.spec = {...t.spec, style: t.tiles(['image', 'tile', {params: {colour: ['case', ['boolean', ['feature-state', 'on'], false], '#f00', '#0f0']}}])}); });
         const stateOff = await becomes('#000 #0f0 #000 #0f0');
-        await page.evaluate(() => window.t.host.map.setFeatureState({source: 'spot', id: 2}, {on: true}));
+        await page.evaluate(() => window.t.host._map.setFeatureState({source: 'spot', id: 2}, {on: true}));
         const stateOn = await becomes('#000 #0f0 #000 #f00');
         // `generateId: true`: each feature's id is its index in the data (0 and 1), replacing the ids 1 and 2 of the data.
         await page.evaluate(() => { const t = window.t, style = t.tiles(['image', 'tile', {params: {colour: ['case', ['boolean', ['feature-state', 'on'], false], '#f00', '#0f0']}}]);
-            style.sources.spot.generateId = true; t.host.map.removeFeatureState({source: 'spot'}); t.host.update(t.spec = {...t.spec, style}); });
+            style.sources.spot.generateId = true; t.host._map.removeFeatureState({source: 'spot'}); t.host.update(t.spec = {...t.spec, style}); });
         const generatedOff = await becomes('#000 #0f0 #000 #0f0');
-        await page.evaluate(() => window.t.host.map.setFeatureState({source: 'spot', id: 0}, {on: true}));
+        await page.evaluate(() => window.t.host._map.setFeatureState({source: 'spot', id: 0}, {on: true}));
         const generatedOn = await becomes('#000 #f00 #000 #0f0');
         check(`[${renderer}] generateId on a GeoJSON source gives each feature its index as its id, and feature state finds it`, generatedOff === '#000 #0f0 #000 #0f0' && generatedOn === '#000 #f00 #000 #0f0', JSON.stringify({generatedOff, generatedOn}));
         // A value with characters of XML is text in the SVG and not markup: the image is drawn, and the map has no error.
@@ -930,13 +1072,13 @@ for (const renderer of renderers) {
             const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), box = [{x: 0, y: 0}, {x: 900, y: 600}];
             const count = async (id, want) => { let n = -1; for (let i = 0; i < 40 && ((n = (await t.host.queryFeatures(box, {layers: [id]})).length) > 0) !== want; i++) await wait(150); return n > 0; };
             const layer = id => ({sources: {extra: t.style.sources.omt}, layers: [{id, type: 'fill', source: 'extra', 'source-layer': 'water', before: 'road', paint: {'fill-color': '#f0f'}}]});
-            t.host.update(t.spec = {...t.spec, style: location.origin + '/style.json', extend: layer('ext-a')});
-            const a = await count('ext-a', true), order = t.host.map.getStyle().layers.map(l => l.id), below = order.indexOf('ext-a') === order.indexOf('road') - 1;
-            t.host.update(t.spec = {...t.spec, extend: layer('ext-b')});
+            t.host.update(t.spec = {...t.spec, style: location.origin + '/style.json', ...layer('ext-a')});
+            const a = await count('ext-a', true), order = t.host._map.getStyle().layers.map(l => l.id), below = order.indexOf('ext-a') === order.indexOf('road') - 1;
+            t.host.update(t.spec = {...t.spec, ...layer('ext-b')});
             const b = await count('ext-b', true), aGone = !(await count('ext-a', false));
-            t.host.update(t.spec = {...t.spec, style: t.style, extend: undefined});
+            t.host.update(t.spec = {...t.spec, style: t.style, sources: undefined, layers: undefined});
             await wait(500);
-            return {a, below, b, aGone, left: t.host.map.getStyle().layers.some(l => l.id.startsWith('ext-'))};
+            return {a, below, b, aGone, left: t.host._map.getStyle().layers.some(l => l.id.startsWith('ext-'))};
         });
         check(`[${renderer}] extend adds sources and layers to a style from a URL, and follows the description`, extend.a && extend.below && extend.b && extend.aGone && !extend.left, JSON.stringify(extend));
 
@@ -1030,6 +1172,30 @@ for (const renderer of renderers) {
         await page.mouse.click(450, 300); await page.waitForTimeout(500);
         const pointer = await page.evaluate(() => { const t = window.t, c = t.clicks[0]; return {clicks: t.clicks.length, lngLat: c?.lngLat?.length, features: Array.isArray(c?.features), hoverEvents: t.seen.filter(x => x.startsWith('hover:')).length}; });
         check(`[${renderer}] the features under the pointer are in the state, and a click has them`, hover > 0 && pointer.clicks === 1 && pointer.lngLat === 2 && pointer.features && pointer.hoverEvents > 0, JSON.stringify({hover, ...pointer}));
+        // `hoverState` (#496): the top feature under the pointer has the feature state `hover`, and loses it when the pointer leaves it.
+        await page.evaluate(async renderer => {
+            const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {id: 'lit', style: 'position:fixed;left:0;top:0;width:200px;height:150px;z-index:99'}));
+            const square = (id, w) => ({type: 'Feature', id, properties: {}, geometry: {type: 'Polygon', coordinates: [[[w, -1], [w + 1, -1], [w + 1, 1], [w, 1], [w, -1]]]}});
+            const host = t.lib.createMap(el, {style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]}, renderer, attribution: false, onError: () => {},
+                initialView: {center: [0, 0], zoom: 5}, sources: {sq: {type: 'geojson', data: {type: 'FeatureCollection', features: [square(1, -1), square(2, 0), square(undefined, 1)]}}},
+                layers: [{id: 'sq', type: 'fill', source: 'sq', paint: {'fill-color': '#00f', 'fill-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 0.9, 0.5]}}], interactiveLayers: ['sq'], hoverState: true});
+            await new Promise(r => { host.state.subscribe(s => s.idle, v => v && r()); setTimeout(r, 8000); });
+            t.litHost = host; t.litSaid = []; t.litLog = console.warn; console.warn = (...a) => { t.litSaid.push(a.join(' ')); t.litLog(...a); };
+        }, renderer);
+        // (A query of the layer at a point has the feature state; a query of the source does not, as in MapLibre GL JS.)
+        const states = () => page.evaluate(async () => Object.fromEntries((await Promise.all([70, 130].map(x => window.t.litHost.queryFeatures({x, y: 75}, {layers: ['sq']})))).map(([f]) => [f?.id, !!f?.state?.hover])));
+        await page.mouse.move(70, 75); await page.waitForTimeout(400);
+        const onA = await states();
+        await page.mouse.move(130, 75); await page.waitForTimeout(400);
+        const onB = await states();
+        // (A feature with no id gets no state, and the development build warns once for the layer.)
+        for (const x of [170, 175, 130, 170]) { await page.mouse.move(x, 75); await page.waitForTimeout(300); }
+        const noId = await page.evaluate(() => { const t = window.t; console.warn = t.litLog; return t.litSaid.filter(w => w.startsWith('[map-jr-gl] hoverState: a feature of the layer "sq" has no id')).length; });
+        await page.mouse.move(450, 300); await page.waitForTimeout(400);
+        const litGone = await states();
+        await page.evaluate(() => { window.t.litHost.destroy(); document.getElementById('lit').remove(); });
+        check(`[${renderer}] hoverState gives the feature under the pointer the feature state hover, takes it away when the pointer leaves it, and warns once for a feature with no id`,
+            onA[1] === true && onA[2] === false && onB[1] === false && onB[2] === true && litGone[1] === false && litGone[2] === false && noId === 1, JSON.stringify({onA, onB, litGone, noId}));
         // A click on an overlay does not call onClick (#198).
         await page.evaluate(() => { const t = window.t, el = Object.assign(document.createElement('div'), {style: 'width:20px;height:20px;background:#c00'}); t.ov = t.host.overlay(el, {lngLat: t.host.unproject({x: 200, y: 200})}); t.clicks.length = 0; });
         const ovBox = await page.evaluate(() => { const r = document.querySelector('.map-jr-marker').getBoundingClientRect(); return {x: r.x + r.width / 2, y: r.y + r.height / 2}; });
@@ -1071,27 +1237,111 @@ for (const renderer of renderers) {
         await page.evaluate(z => window.t.host.moveTo({zoom: z}), zoom0); await page.waitForTimeout(300);
         check(`[${renderer}] cooperativeGestures: a plain wheel does not zoom and the hint is there, Ctrl + wheel zooms, and update() turns it off`,
             !plainOn && ctrlOn && plainOff && coop.hint === 1 && coop.touch === 'pan-x pan-y' && off === 0, JSON.stringify({plainOn, ctrlOn, plainOff, ...coop, off}));
+        // `colorScheme` (#490): the class map-jr-dark, state.colorScheme and the colour of a control, for no value (light), 'auto', 'light' and 'dark'.
+        // (The browser fires the event `change` of the media query at its next rendering step, which can come late on a
+        // loaded machine, so the check waits until the state has the expected scheme, for at most 3 s.)
+        // (A control loads its code with import() when the map adds the first one, so the check waits for the element of
+        // the control, for at most 3 s: one frame was too short on a loaded machine, #532.)
+        const until = expect => page.waitForFunction(e => window.t.host.state.get().colorScheme === e, expect, {timeout: 3000}).catch(() => {});
+        const scheme = async (media, value, expect) => {
+            await page.emulateMedia({colorScheme: media});
+            if (expect) await until(expect);
+            return page.evaluate(async value => {
+                const t = window.t, {navigation} = await import('/dist/controls.js');
+                t.host.update({...t.spec, controls: [navigation()], ...value === undefined ? {} : {colorScheme: value}});
+                for (const end = Date.now() + 3000; !document.querySelector('#host .map-jr-ctrl-group') && Date.now() < end;) await new Promise(r => setTimeout(r, 20));
+                await new Promise(r => requestAnimationFrame(r));
+                const el = document.querySelector('#host .map-jr-ctrl-group');
+                return [document.querySelector('#host').classList.contains('map-jr-dark') ? 'class' : '-', t.host.state.get().colorScheme, el && getComputedStyle(el).color].join(' ');
+            }, value);
+        };
+        const schemes = {none: await scheme('dark', undefined, 'light'), autoDark: await scheme('dark', 'auto', 'dark'), autoLight: await scheme('light', 'auto', 'light'), light: await scheme('dark', 'light'), dark: await scheme('light', 'dark'), autoBack: await scheme('dark', 'auto')};
+        // (The last description has 'auto': the map follows a change of the media query.)
+        await page.emulateMedia({colorScheme: 'light'});
+        await until('light');
+        schemes.follows = await page.evaluate(() => window.t.host.state.get().colorScheme);
+        await page.emulateMedia({colorScheme: null});
+        await page.evaluate(() => { const t = window.t; t.host.update(t.spec); });
+        // (The text colour: the page /bench loads the CSS of MapLibre GL JS, whose background of a control wins over the rules of this library, as a rule of an application does.)
+        const D = 'class dark rgb(230, 230, 230)', L = '- light rgb(34, 34, 34)';
+        check(`[${renderer}] colorScheme: no value is light also when the browser asks for dark, 'auto' follows prefers-color-scheme while the page is open, 'light' and 'dark' fix it, with the class map-jr-dark and the colour of a control`,
+            schemes.none === L && schemes.autoDark === D && schemes.autoLight === L && schemes.light === L && schemes.dark === D && schemes.autoBack === D && schemes.follows === 'light', JSON.stringify(schemes));
+
+        // `style: {light, dark}` (#491): the style of the resolved scheme, a change of the media query changes it, and a
+        // layer of the description and its data stay. A pair with the same content in update() is the same style.
+        await page.emulateMedia({colorScheme: 'light'});
+        const paired = await page.evaluate(async renderer => {
+            const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:100px;height:80px'}));
+            const make = id => ({version: 8, sources: {}, layers: [{id, type: 'background'}]});
+            const pts = {type: 'FeatureCollection', features: [{type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [0, 0]}}]};
+            const wait = (f, end = Date.now() + 8000) => new Promise(r => { const h = () => { if (f() || Date.now() > end) r(); else setTimeout(h, 50); }; h(); });
+            const ids = () => (host._map.getStyle()?.layers ?? []).map(l => l.id).join(',');
+            let spec = {style: {light: make('L'), dark: make('D')}, colorScheme: 'auto', layers: [{id: 'dots', type: 'circle', source: 'pts'}], data: {pts}, renderer, attribution: false};
+            const host = t.lib.createMap(el, spec), out = {};
+            await wait(() => host.state.get().idle);
+            out.light = ids();
+            // (The development build warns for an object that is neither a style nor a pair, and for a pair with one value.)
+            const said = [], log = console.warn; console.warn = (...a) => { said.push(a.join(' ')); log(...a); };
+            host.update(spec = {...spec, style: {light: make('L')}});
+            // (An object with layers and no version: the engine draws it, so the test has no page error.)
+            host.update(spec = {...spec, style: {sources: {}, layers: [{id: 'L', type: 'background'}]}});
+            await new Promise(r => setTimeout(r, 300));
+            console.warn = log;
+            out.warned = [said.some(w => w.startsWith('[map-jr-gl] style: the pair has no "dark", so the map uses "light"')), said.some(w => w.startsWith('[map-jr-gl] style: the object is not a style'))].join();
+            host.update(spec = {...spec, style: {light: make('L'), dark: make('D')}});
+            await wait(() => ids() === 'L,dots' && host.state.get().idle);
+            window.pairHost = host;
+            return out;
+        }, renderer).catch(e => ({error: String(e)}));
+        await page.emulateMedia({colorScheme: 'dark'});
+        Object.assign(paired, await page.evaluate(async () => {
+            const host = window.pairHost, out = {};
+            const wait = (f, end = Date.now() + 8000) => new Promise(r => { const h = () => { if (f() || Date.now() > end) r(); else setTimeout(h, 50); }; h(); });
+            const ids = () => (host._map.getStyle()?.layers ?? []).map(l => l.id).join(',');
+            await wait(() => ids().startsWith('D') && host.state.get().idle);
+            out.dark = ids();
+            out.data = (await Promise.race([host.querySource('pts'), new Promise(r => setTimeout(() => r({length: 'timeout'}), 3000))])).length;
+            const loads = [];
+            host._map.on('styledataloading', () => loads.push(1));
+            host.update({...host.description, style: JSON.parse(JSON.stringify(host.description.style))});
+            await new Promise(r => setTimeout(r, 200));
+            out.sameReloads = loads.length;
+            // (With no colorScheme the scheme is light, also while the browser asks for dark.)
+            const {colorScheme, ...none} = host.description;
+            host.update(none);
+            await wait(() => ids().startsWith('L') && host.state.get().idle);
+            out.none = ids();
+            host.destroy(); delete window.pairHost;
+            return out;
+        }).catch(e => ({error: String(e)})));
+        await page.emulateMedia({colorScheme: null});
+        check(`[${renderer}] style: {light, dark} uses the style of the resolved scheme (light with no colorScheme), changes it with prefers-color-scheme under 'auto' and keeps a layer of the description and its data`,
+            JSON.stringify(paired) === JSON.stringify({light: 'L,dots', warned: 'true,true', dark: 'D,dots', data: 1, sameReloads: 0, none: 'L,dots'}), JSON.stringify(paired));
 
         // 5b. One method to find features, and the same question kept up to date.
         const found = await page.evaluate(async () => {
             const h = window.t.host, c = h.state.get().view.center, wait = ms => new Promise(r => setTimeout(r, ms));
             const sources = Object.keys(window.t.spec.style.sources).filter(id => window.t.spec.style.sources[id].type === 'vector');
             const drawnAtPoint = await h.queryFeatures({x: 450, y: 300}), drawnAtPosition = await h.queryFeatures(c), drawnAll = await h.queryFeatures();
-            const dataAtPosition = await h.queryFeatures(c, {sources, radius: 30}), dataInBox = await h.queryFeatures([{x: 300, y: 200}, {x: 600, y: 400}], {sources}), dataAll = await h.queryFeatures(undefined, {sources});
-            const calls = [];
-            const stop = h.watchFeatures({x: 450, y: 300}, {}, f => calls.push(f.length));
+            const layers = [...new Set(drawnAll.map(f => f.layer.id))].slice(0, 1), drawnInLayer = await h.queryFeatures({layers}), drawnInLayerToo = await h.queryFeatures(undefined, {layers});
+            const all = async (place, o) => (await Promise.all(sources.map(id => h.querySource(id, place, o)))).flat();
+            const dataAtPosition = await all(c, {radius: 30}), dataInBox = await all([{x: 300, y: 200}, {x: 600, y: 400}]), dataAll = await all();
+            const calls = [], sourceCalls = [];
+            const stop = h.watchFeatures({x: 450, y: 300}, {}, f => calls.push(f.length)), stopSource = h.watchSource(sources[0], {x: 450, y: 300}, {radius: 30}, f => sourceCalls.push(f.length));
             await wait(600);
             const first = calls.length;
             h.moveTo({center: [c[0] + 0.01, c[1] + 0.004]});
             await wait(2500);
             const moved = calls.length;
-            stop();
+            stop(); stopSource();
+            const sourceMoved = sourceCalls.length;
             h.moveTo({center: c});
             await wait(1500);
-            return {drawnAtPoint: drawnAtPoint.length, drawnAtPosition: drawnAtPosition.length, drawnAll: drawnAll.length, dataAtPosition: dataAtPosition.length, dataInBox: dataInBox.length, dataAll: dataAll.length, layer: typeof drawnAll[0]?.layer, first, moved, after: calls.length};
+            return {drawnInLayer: drawnInLayer.length, drawnInLayerToo: drawnInLayerToo.length, inLayer: drawnInLayer.every(f => f.layer.id === layers[0]), sourceFirst: sourceCalls[0], sourceMoved, sourceAfter: sourceCalls.length,
+                drawnAtPoint: drawnAtPoint.length, drawnAtPosition: drawnAtPosition.length, drawnAll: drawnAll.length, dataAtPosition: dataAtPosition.length, dataInBox: dataInBox.length, dataAll: dataAll.length, layer: typeof drawnAll[0]?.layer, first, moved, after: calls.length};
         });
-        check(`[${renderer}] queryFeatures: a point, a position, a rectangle or the whole map; drawn layers or the data of sources; watchFeatures follows the map`,
-            found.drawnAtPoint > 0 && found.drawnAtPosition > 0 && found.drawnAll > found.drawnAtPoint && found.dataAtPosition > 0 && found.dataInBox > 0 && found.dataAll >= found.dataInBox && found.layer === 'object'
+        check(`[${renderer}] queryFeatures and querySource: a point, a position, a rectangle or the whole map, options in the place of at; watchFeatures and watchSource follow the map`,
+            found.drawnInLayer > 0 && found.drawnInLayer === found.drawnInLayerToo && found.inLayer && found.sourceFirst > 0 && found.sourceMoved >= 2 && found.sourceAfter === found.sourceMoved && found.drawnAtPoint > 0 && found.drawnAtPosition > 0 && found.drawnAll > found.drawnAtPoint && found.dataAtPosition > 0 && found.dataInBox > 0 && found.dataAll >= found.dataInBox && found.layer === 'object'
             && found.first === 1 && found.moved >= 2 && found.after === found.moved, JSON.stringify(found));
 
         // 5b. A listener that throws stops neither the watch nor the other listeners of the event (#22).
@@ -1106,7 +1356,7 @@ for (const renderer of renderers) {
             const offA = h.listen('test22', () => { throw new Error('thrown by a listener'); }), offB = h.listen('test22', () => second++);
             const log = console.error;
             console.error = () => {};
-            h.map.fire('test22');
+            h._map.fire('test22');
             console.error = log;
             offA(); offB();
             return {calls, second, error: h.state.get().error?.message};
@@ -1120,22 +1370,24 @@ for (const renderer of renderers) {
             const idle = host => new Promise(r => { let at = host.state.get().idle ? performance.now() : 0; const off = host.state.subscribe(s => s.idle, v => { at = v ? performance.now() : 0; }), done = () => { clearInterval(timer); off(); r(); }, timer = setInterval(() => at && performance.now() - at > 500 && done(), 50); setTimeout(done, 8000); });
             const points = Array.from({length: 12}, (_, i) => ({type: 'Feature', properties: {i}, geometry: {type: 'Point', coordinates: [-74.0065 + (i % 4) * 0.0004, 40.7085 + Math.floor(i / 4) * 0.0004]}}));
             const spec = {style: t.style, initialView: {center: [-74.0065, 40.7085], zoom: 10}, renderer, attribution: false,
-                extend: {sources: {pts: {type: 'geojson', cluster: true, data: {type: 'FeatureCollection', features: points}}, plain: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}},
-                    layers: [{id: 'pts-circle', type: 'circle', source: 'pts', paint: {'circle-radius': 20}}]}};
+                sources: {pts: {type: 'geojson', cluster: true, data: {type: 'FeatureCollection', features: points}}, plain: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}},
+                    layers: [{id: 'pts-circle', type: 'circle', source: 'pts', paint: {'circle-radius': 20}}]};
             const host = t.lib.createMap(el, spec);
             await idle(host);
             const found = await host.queryFeatures(undefined, {layers: ['pts-circle']});
             const id = found.find(f => f.properties.cluster)?.properties.cluster_id;
             const zoom = await host.clusterExpansionZoom('pts', id), children = await host.clusterChildren('pts', id);
-            const all = await host.clusterLeaves('pts', id, Infinity), two = await host.clusterLeaves('pts', id, 2, 1);
+            const all = await host.clusterLeaves('pts', id, {limit: Infinity}), two = await host.clusterLeaves('pts', id, {limit: 2, offset: 1}), ten = await host.clusterLeaves('pts', id);
             const failed = p => p.then(() => 'answered', e => e.message);
-            const errors = [await failed(host.clusterExpansionZoom('plain', 1)), await failed(host.clusterLeaves('nothing', 1)), await failed(host.clusterChildren('pts', 999999))];
+            const errors = [await failed(host.clusterExpansionZoom('plain', 1)), await failed(host.clusterLeaves('nothing', 1)), await failed(host.clusterChildren('pts', 999999)), await failed(host.clusterLeaves('pts', id, 2, 1))];
+            const members = ['map' in host, '_map' in host];
             host.destroy(); el.remove();
-            return {id, zoom, children: children.length, all: all.length, two: two.length, point: all[0]?.geometry.type, errors};
+            return {id, zoom, children: children.length, all: all.length, two: two.length, point: all[0]?.geometry.type, ten: ten.length, errors, members};
         }, renderer);
-        check(`[${renderer}] clusterExpansionZoom, clusterChildren and clusterLeaves answer for a cluster, and reject with a message otherwise`,
+        check(`[${renderer}] clusterExpansionZoom, clusterChildren and clusterLeaves({limit, offset}) answer for a cluster, and reject with a message otherwise; the host has _map and no map (#503)`,
             typeof clusters.id === 'number' && clusters.zoom > 10 && clusters.children >= 1 && clusters.all === 12 && clusters.two === 2 && clusters.point === 'Point'
-            && clusters.errors[0].startsWith('[map-jr-gl] clusterExpansionZoom(): ') && clusters.errors[1].includes('"nothing" is not a GeoJSON source') && clusters.errors[2].startsWith('[map-jr-gl] clusterChildren(): '), JSON.stringify(clusters));
+            && clusters.errors[0].startsWith('[map-jr-gl] clusterExpansionZoom(): ') && clusters.errors[1].includes('"nothing" is not a GeoJSON source') && clusters.errors[2].startsWith('[map-jr-gl] clusterChildren(): ')
+            && clusters.ten === 10 && clusters.errors[3].startsWith('[map-jr-gl] clusterLeaves(): the third argument is 2. Pass {limit, offset}') && clusters.members.join() === 'false,true', JSON.stringify(clusters));
 
         // 5c. A rejection of the question of watchFeatures is an error of the map, and is not lost (#92).
         const rejected = await page.evaluate(async () => {
@@ -1154,12 +1406,12 @@ for (const renderer of renderers) {
             const sources = Object.keys(t.spec.style.sources).filter(id => t.spec.style.sources[id].type === 'vector');
             let clicks = 0, watched = 0;
             h.update(t.spec = {...t.spec, interactiveLayers: t.spec.style.layers.filter(l => l.source).map(l => l.id), onClick: () => clicks++});
-            h.map.fire('click', {point: {x: 450, y: 300}, lngLat: {lng: -74.0105, lat: 40.7045}});
-            h.watchFeatures(undefined, {sources}, () => watched++);
+            h._map.fire('click', {point: {x: 450, y: 300}, lngLat: {lng: -74.0105, lat: 40.7045}});
+            h.watchSource(sources[0], undefined, {}, () => watched++);
             const waits = said(h.once('dragend'));
-            const pending = said(h.queryFeatures(undefined, {sources})), height = said(h.queryElevation([-74.0105, 40.7045]));
+            const pending = said(h.querySource(sources[0])), height = said(h.queryElevation([-74.0105, 40.7045]));
             h.destroy(); h.update(t.spec);
-            const later = said(h.queryFeatures(undefined, {sources})), onceLater = said(h.once('idle'));
+            const later = said(h.querySource(sources[0])), onceLater = said(h.once('idle'));
             const out = {canvas: !!document.querySelector('#host canvas'), waits: await waits, onceLater: await onceLater, pending: await pending, height: await height, later: await later};
             await new Promise(r => setTimeout(r, 300));
             return {...out, clicks, watched};
@@ -1205,6 +1457,29 @@ if (only === 'worker') { await browser.close(); process.exit(failed ? 1 : 0); }
         });
         check('[main] the sprite is requested before the engine file has loaded, and only once', seen && idle && asked.length === 2, JSON.stringify({seen, idle, asked}));
     } catch (e) { check('the early sprite test was completed', false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
+// The file for the images of a style does not load (#495): an error of the map, and no unhandled rejection.
+{
+    const page = await browser.newPage({viewport: {width: 900, height: 600}});
+    const rejections = [];
+    page.on('pageerror', e => rejections.push(e.message));
+    try {
+        await page.route(/map-jr-gl-style-images/, route => route.abort());
+        await page.goto(origin + '/bench');
+        const got = await page.evaluate(async () => {
+            const lib = await import('/dist/map-jr-gl.js'), style = await (await fetch('/style.json')).json(), errors = [];
+            window.addEventListener('unhandledrejection', e => errors.push('unhandled ' + e.reason));
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99;background:#fff'}));
+            const host = lib.createMap(el, {style: {...style, metadata: {'map-jr:images': {sq: '<svg viewBox="0 0 4 4"><rect width="4" height="4"/></svg>'}}}, attribution: false, onError: e => errors.push(e.message)});
+            for (let i = 0; i < 100 && !errors.length; i++) await new Promise(r => setTimeout(r, 100));
+            await new Promise(r => setTimeout(r, 300));
+            host.destroy(); el.remove();
+            return errors;
+        });
+        check('the file for the images of a style does not load: the map reports an error and the page has no unhandled rejection',
+            got.length === 1 && got[0].startsWith('[map-jr-gl] the style: the code for the images') && !rejections.length, JSON.stringify({got, rejections}));
+    } catch (e) { check('the test of a failed style-images file was completed', false, String(e.message).split('\n')[0]); }
     await page.close();
 }
 // A map that is destroyed while it loads (React StrictMode does this on each mount), and two maps in one element.
@@ -1304,7 +1579,7 @@ if (only === 'worker') { await browser.close(); process.exit(failed ? 1 : 0); }
             const lib = await import(how === 'removed' ? '/dist/map-jr-gl.dev.js' : '/dist/map-jr-gl.js'), style = await (await fetch('/style.json')).json();
             if (how !== 'none') style.glyphs = '/test-glyphs/{fontstack}/{range}.pbf'; else delete style.glyphs;
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99;background:#fff'}));
-            const host = lib.createMap(el, {style, initialView: {center: [-74.0065, 40.7085], zoom: 14.3}, attribution: false, ...(how === 'removed' ? {glyphs: false} : how === 'fonts' ? {fonts: [{family: 'Test Sans', src: '/nofont.woff2'}]} : {})});
+            const host = lib.createMap(el, {style, initialView: {center: [-74.0065, 40.7085], zoom: 14.3}, attribution: false, ...(how === 'removed' ? {glyphs: false} : how === 'fonts' ? {fonts: {'Test Sans Regular': '/nofont.woff2'}} : {})});
             const loaded = await Promise.race([new Promise(r => host.state.subscribe(s => s.loaded, v => v && r(true))), new Promise(r => setTimeout(() => r(false), 20000))]);
             await new Promise(r => setTimeout(r, 300));
             host.destroy(); el.remove();
@@ -1322,6 +1597,44 @@ if (only === 'worker') { await browser.close(); process.exit(failed ? 1 : 0); }
         check('glyph files of the style: asked for by default, also with fonts, not for a style without glyphs; the removed field glyphs warns and has no effect; a map still loads without them or with bad ones',
             withFiles && without && none && fonts && withFonts && removed && stillAsked && warning && page200 && broken && count > 0 && asked.every(u => /^\/test-glyphs\/[^/]+\/\d+-\d+\.pbf$/.test(u)), JSON.stringify({withFiles, without, none, fonts, withFonts, removed, stillAsked, warned, page200, broken, count, first: asked[0]}));
     } catch (e) { check('glyph files: the test run was completed', false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
+// Web fonts of the description (#494): `fonts` in the shape of `font-faces` follows update(). A font that is added draws
+// the labels again with it, and a font file that does not load is an error that names the font.
+{
+    const page = await browser.newPage({viewport: {width: 600, height: 400}});
+    try {
+        const {squareFont} = await import('./fixtures/square-font.mjs');
+        const asked = [];
+        await page.route(/\/test-fonts\//, route => { asked.push(new URL(route.request().url()).pathname); route.request().url().includes('square') ? route.fulfill({status: 200, contentType: 'font/ttf', body: squareFont()}) : route.fulfill({status: 404, body: ''}); });
+        await page.goto(`${origin}/style.json`);
+        await page.evaluate(async () => {
+            const lib = await import('/dist/map-jr-gl.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99;background:#fff'}));
+            const style = {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]};
+            const point = {type: 'FeatureCollection', features: [{type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [0, 0]}}]};
+            window.errors = [];
+            window.spec = {style, attribution: false, initialView: {center: [0, 0], zoom: 2}, onError: e => window.errors.push(e.message),
+                sources: {p: {type: 'geojson', data: point}},
+                layers: [{id: 'label', type: 'symbol', source: 'p', layout: {'text-field': 'HELLO', 'text-font': ['Test Square Regular'], 'text-size': 40}, paint: {'text-color': '#000'}}]};
+            window.host = lib.createMap(el, window.spec);
+            window.settle = () => new Promise(r => { const t = setTimeout(r, 15000); const un = window.host.state.subscribe(s => s.idle, v => { if (v) { clearTimeout(t); setTimeout(r, 300); un?.(); } }); if (window.host.state.get().idle) setTimeout(r, 300); });
+            await window.settle();
+        });
+        const dark = async () => { const png = await page.screenshot(); return page.evaluate(async b64 => {
+            const img = new Image(); img.src = 'data:image/png;base64,' + b64; await img.decode();
+            const c = Object.assign(document.createElement('canvas'), {width: img.width, height: img.height}).getContext('2d'); c.drawImage(img, 0, 0);
+            const d = c.getImageData(0, 0, img.width, img.height).data; let n = 0; for (let i = 0; i < d.length; i += 4) if (d[i] < 100) n++; return n;
+        }, png.toString('base64')); };
+        const before = await dark();
+        await page.evaluate(async () => { window.host.update({...window.spec, fonts: {'Test Square Regular': '/test-fonts/square.ttf', 'Test Gone Regular': '/test-fonts/missing.ttf'}}); await new Promise(r => setTimeout(r, 200)); await window.settle(); });
+        const after = await dark(), errors = await page.evaluate(() => window.errors);
+        await page.evaluate(() => window.host.destroy());
+        const failed = errors.some(m => m.includes('"Test Gone Regular"') && m.startsWith('[map-jr-gl] fonts:'));
+        // (The squares of the font fill much more of the label than the letters of a font of the device.)
+        check('fonts of the description: a font added in update() is fetched and the labels are drawn again with it; a font that does not load is an error with its name',
+            asked.includes('/test-fonts/square.ttf') && after > before * 1.5 && failed, JSON.stringify({asked, before, after, errors}));
+    } catch (e) { check('fonts of the description: the test run was completed', false, String(e.message).split('\n')[0]); }
     await page.close();
 }
 // The action and the store for Svelte, called as Svelte calls them (they do not need the Svelte package).
@@ -1362,8 +1675,7 @@ for (const [build, file] of [['the development build, and the file of the checks
             console.warn = (...a) => said.push(a.join(' '));
             addEventListener('unhandledrejection', e => unhandled.push(String(e.reason)));
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99;background:#fff'}));
-            const pin = {id: 'a', image: 'dot', data: []};
-            const host = lib.createMap(el, {style, initialView: {center: [-74.0065, 40.7085], zoom: 14.3}, attribution: false, markers: [pin, pin]});
+            const host = lib.createMap(el, {style, initialView: {center: [-74.0065, 40.7085], zoom: 14.3}, attribution: false, interactiveLayers: ['nope']});
             const place = await host.queryFeatures({lng: -74.0065, lat: 40.7085}).then(() => '', e => e.message);
             await new Promise(r => host.state.subscribe(s => s.idle, v => v && r()));
             await new Promise(r => setTimeout(r, 1200));
@@ -1510,7 +1822,7 @@ for (const visualizePitch of [undefined, true]) {
     await page.close();
 }
 
-// The `queryFeatures` example of the gallery (site/examples/query.js and query.compat.js; the site must be built), with
+// The `querySource` example of the gallery (site/examples/query.js and query.compat.js; the site must be built), with
 // the usual number of tile workers.
 for (const code of ['core', 'compat']) {
     const page = await browser.newPage({viewport: {width: 1200, height: 800}});
@@ -1547,10 +1859,10 @@ for (const code of ['core', 'compat']) {
 
         // 2. The answer to an earlier click arrives after the answer to a later click: the example shows the later click.
         await page.evaluate(() => {
-            const map = window.maps.query, ask = map.queryFeatures, wait = ms => new Promise(r => setTimeout(r, ms));
+            const map = window.maps.query, ask = map.querySource, wait = ms => new Promise(r => setTimeout(r, ms));
             window.asked = 0;
             // The first question gets a marked answer 2 seconds late. The questions after it are not changed.
-            map.queryFeatures = function (...a) { const answer = ask.apply(this, a); return window.asked++ ? answer : answer.then(async () => { await wait(2000); return [{sourceLayer: 'first-click', properties: {}}]; }); };
+            map.querySource = function (...a) { const answer = ask.apply(this, a); return window.asked++ ? answer : answer.then(async () => { await wait(2000); return [{sourceLayer: 'first-click', properties: {}}]; }); };
         });
         await page.mouse.click(live.x + 80, top + 300);
         await page.waitForFunction(() => window.asked === 1, null, {timeout: 10000});
@@ -1589,7 +1901,7 @@ for (const method of ['easeTo', 'flyTo']) {
     try {
         const p = await prefetchPage(); page = p.page;
         const before = p.asked.length;
-        await page.evaluate(([method, east, lat]) => window.host.map[method]({center: [east, lat], duration: 5000}), [method, east, from[1]]);
+        await page.evaluate(([method, east, lat]) => window.host._map[method]({center: [east, lat], duration: 5000}), [method, east, from[1]]);
         await page.waitForTimeout(500);
         // (Only tiles of the level of the view: a flyTo zooms out, and its coarser tiles cover the destination early.)
         const zView = Math.max(...p.asked.slice(0, before).map(t => t[0]));
@@ -1603,10 +1915,10 @@ for (const method of ['easeTo', 'flyTo']) {
     try {
         const p = await prefetchPage(1500); page = p.page;
         const before = p.asked.length;
-        await page.evaluate(([east, lat]) => window.host.map.easeTo({center: [east, lat], duration: 5000}), [east, from[1]]);
+        await page.evaluate(([east, lat]) => window.host._map.easeTo({center: [east, lat], duration: 5000}), [east, from[1]]);
         await page.waitForTimeout(400);
         const early = p.asked.slice(before).filter(([z, x]) => Math.abs(x - tileOf(east, z)) <= 1).map(t => '/' + t.join('/') + '.pbf');
-        await page.evaluate(([lng, lat]) => window.host.map.easeTo({center: [lng, lat], duration: 5000}), [from[0] - 0.3, from[1]]);
+        await page.evaluate(([lng, lat]) => window.host._map.easeTo({center: [lng, lat], duration: 5000}), [from[0] - 0.3, from[1]]);
         await page.waitForTimeout(2500);
         const cancelled = p.failed.filter(u => early.some(e => u.endsWith(e)));
         check('prefetch: a newer movement lets the early requests of an older one finish', early.length > 0 && cancelled.length === 0, JSON.stringify({early: early.length, cancelled: cancelled.length}));
@@ -1620,7 +1932,7 @@ for (const method of ['easeTo', 'flyTo']) {
         await page.mouse.move(600, 300); await page.mouse.down();
         for (let i = 1; i <= 15; i++) { await page.mouse.move(600 - i * 20, 300); await page.waitForTimeout(40); }
         // (The button stays down: a release would start the inertia.)
-        const edge = await page.evaluate(() => window.host.map.getBounds().getEast());
+        const edge = await page.evaluate(() => window.host._map.getBounds().getEast());
         const z = Math.max(...p.asked.map(t => t[0]));
         const ahead = p.asked.filter(([tz, x]) => tz === z && x * 360 / 2 ** z - 180 > edge);
         await page.mouse.up();

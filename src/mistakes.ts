@@ -1,43 +1,52 @@
 /**
- * The checks for mistakes in a description (`MapSpec`) or in a query of the main API, and the texts of their warnings.
+ * The checks for mistakes in a description (`MapDescription`) or in a query of the main API, and the texts of their warnings.
  * `src/host.ts` loads this file on demand after the map has started, so the page script does not carry it.
  */
 import type {Map} from './map.ts';
-import type {FeatureOptions, MapSpec, StyleExtension} from './host.ts';
-import {templateSlots} from './markers.ts';
+import type {FeatureOptions, MapDescription, SourceOptions} from './host.ts';
+import {isStylePair, templateSlots} from './markers.ts';
 import {maplibreMembers} from './maplibre-members.ts';
 
 /** What a check reads of one map. `warned` has the warnings that the map gave: each mistake gives one warning for each map. */
-export interface Checked { map: Map; warned: Set<string>; spec(): MapSpec; /** The map exists and has loaded the style of the description. */ ready(): boolean }
+export interface Checked { map: Map; warned: Set<string>; spec(): MapDescription; /** The map exists and has loaded the style of the description. */ ready(): boolean }
 
-const texts: ((a: string, b: string) => string)[] = [
+const texts: (((a: string, b: string) => string) | undefined)[] = [
     /* 0 */ a => a + ': the container has height 0, so the map shows nothing. Give the container a height in CSS.',
-    /* 1 */ a => `interactiveLayers: the style has no layer "${a}". Write the id of a layer of the style or of "extend".`,
+    /* 1 */ a => `interactiveLayers: the style has no layer "${a}". Write the id of a layer of the style or of "layers".`,
     /* 2 */ (a, b) => `the layer "${a}" uses the source "${b}", which the map does not have. A key of "data" makes a source only while it is in "data": keep "${b}" in "data", or remove the layer.`,
-    /* 3 */ a => `queryFeatures(): the style has no layer "${a}". In "layers", write the id of a layer of the style or of "extend".`,
-    /* 4 */ a => `queryFeatures(): the style has no source "${a}". In "sources", write the id of a source of the style or of "extend".`,
-    /* 5 */ (a, b) => `extend: the layer "${a}" has before: "${b}", but the style has no layer "${b}", so the layer goes on top. Write the id of a layer of the style.`,
-    /* 6 */ (a, b) => `extend: the layer "${a}" uses the source "${b}", which the style does not have. Add "${b}" to "sources" of "extend", or give its GeoJSON as "${b}" in "data".`,
-    /* 7 */ a => `markers: two marker layers have the id "${a}". Give each marker layer its own id.`,
+    /* 3 */ a => `queryFeatures(): the style has no layer "${a}". In "layers" of the query, write the id of a layer of the style or of "layers" of the description.`,
+    /* 4 */ a => `querySource(): the style has no source "${a}". Write the id of a source of the style or of "sources".`,
+    /* 5 */ (a, b) => `layers: the layer "${a}" has before: "${b}", but the style has no layer "${b}", so the layer goes on top. Write the id of a layer of the style.`,
+    /* 6 */ (a, b) => `layers: the layer "${a}" uses the source "${b}", which the style does not have. Add "${b}" to "sources", or give its GeoJSON as "${b}" in "data".`,
+    /* 7 */ () => '', // (a check of the removed marker layers, #499)
     /* 8 */ a => `update(): "${a}" changed, but it is read only when the map is made. ${a === 'initialView' ? 'To move the map, change "view" or call moveTo().' : 'To change it, destroy the map and make a new one.'}`,
     /* 9 */ a => `queryFeatures(): ${a} is not a place. Write a point of the screen {x, y}, a position [lng, lat], or a rectangle [{x, y}, {x, y}].`,
-    /* 10 */ a => `queryFeatures(): "${a}" has an effect only in a query with "sources". This query ignores it.`,
-    /* 11 */ a => `queryFeatures(): "${a}" has an effect only in a query with "sources" at a point or a position. This query ignores it.`,
-    /* 12 */ () => 'queryFeatures(): "layers" has no effect in a query with "sources". Remove "layers", or remove "sources" to ask for what the style layers draw.',
-    /* 13 */ () => 'queryFeatures(): "radius" has an effect only in a query at a point or a position. This query ignores it.',
+    /* 10 */ a => `querySource(): ${a} is not the id of a source. Write querySource("id", at, options) with the id of a source of the style.`,
+    /* 11 */ a => `querySource(): "${a}" has an effect only in a query at a point or a position. This query ignores it.`,
+    /* 12 */ (a, b) => b ? `querySource(): "${a}" is not an option of querySource, which reads the tile data of one source. To find what the style layers draw, call queryFeatures(at, {layers}).` : `queryFeatures(): "${a}" is not an option of queryFeatures, which finds what the style layers draw. To read the tile data of a source, call querySource(sourceId, at, options).`,
+    /* 13 */ a => `${a}(): "radius" has an effect only in a query at a point or a position. This query ignores it.`,
     /* 14 */ (a, b) => `images: a layer gives the parameter "${a}" to the image "${b}", but that image has no slot {{${a}}}, so the parameter has no effect. Write {{${a}}} in the SVG of "${b}" in "images", or remove the parameter.`,
-    /* 15 */ a => `markers: the marker layer "${a}" has no "image". Give the SVG in "images" of the description, and its name as "image" of the marker layer. (The fields "svg", "width" and "height" of a marker layer are gone.)`,
-    /* 16 */ a => `markers: a marker layer has the image "${a}", and the map has no image with that name. Add "${a}" to "images" of the description, or correct "image" of the marker layer.`,
-    /* 17 */ (a, b) => `markers: the marker layer "${a}" has the id of a ${b} of the style, and takes its place. Give the marker layer an id that the style and "extend" do not have.`,
-    /* 18 */ (a, b) => `markers: the marker layer "${a}" has before: "${b}", but the style has no layer "${b}", so the markers go on top. Write the id of a layer of the style.`,
-    /* 19 */ (a, b) => `markers: the marker ${b} of the marker layer "${a}" has no position, so it is not drawn. Give each marker "lngLat" as [lng, lat].`,
+    /* 15 */ () => '', // (a check of the removed marker layers, #499)
+    /* 16 */ () => '', // (a check of the removed marker layers, #499)
+    /* 17 */ () => '', // (a check of the removed marker layers, #499)
+    /* 18 */ () => '', // (a check of the removed marker layers, #499)
+    /* 19 */ () => '', // (a check of the removed marker layers, #499)
     /* 20 */ () => 'The description has "glyphs". That field was removed and has no effect: the map loads the glyph files of the style. Remove "glyphs" from the description. To draw text with the fonts of the browser, remove "glyphs" from the style.',
     /* 21 */ a => `points(): the record ${a} has no position of two finite numbers, so it is left out. Make "lngLat" return [lng, lat] for each record.`,
     /* 22 */ a => `globalState: the value of "${a}" is not JSON (a function, a class instance, NaN or a cycle), so the style cannot read it as it is. Give a string, a number, a boolean, an array or a plain object.`,
+    /* 23 */ () => 'moveTo(): "padding" and "maxZoom" have an effect only with "bounds", so this call ignores them. To set the padding of the map, give "padding" in the description.',
 ];
+// A new text, and a new kind of check (below), takes the number of its issue, for example texts[544]; a second one for
+// the same issue takes that number plus 10000. Branches that run at the same time then cannot take the same number,
+// and `pnpm test:consistency` fails when a number is taken twice. The production build has none of these numbers.
+texts[30] = a => `hoverState: a feature of the layer "${a}" has no id, so it gets no feature state "hover". Give the features ids, or set "promoteId" of the source to a property that has one, or "generateId: true" for a GeoJSON source.`;
+texts[40] = a => `colorScheme: ${a} is not a colour scheme, so the map uses the light colours. Write 'auto', 'light' or 'dark'.`;
+texts[45] = () => 'style: the object is not a style, because it has no "version" and "layers", and it is not a pair {light, dark}. Give a style object, the URL of a style, or {light: style, dark: style}.';
+texts[46] = (a, b) => `style: the pair has no "${a}", so the map uses "${b}" in both colour schemes. Give both "light" and "dark".`;
+texts[55] = a => `sprite: ${a} is not a list of sprites. Write a list of {id, url}, for example [{id: 'pins', url: 'https://example.com/sprites/pins'}], and name an image of it in "icon-image" as "pins:name".`;
 
 /** The message with the number `code` for the names `a` and `b`. */
-export const mistake = (code: number, a = '', b = '') => '[map-jr-gl] ' + texts[code](a, b);
+export const mistake = (code: number, a = '', b = '') => '[map-jr-gl] ' + texts[code]!(a, b);
 
 /** A value that JSON keeps as it is: no function, `undefined` in an array, number that is not finite, class instance or cycle. */
 const isJson = (v: unknown, seen: unknown[] = []): boolean => {
@@ -53,14 +62,16 @@ const pageWarned = new Set<number>();
 export const warnOnce = (code: number, a = '') => { if (!pageWarned.has(code)) { pageWarned.add(code); console.warn(mistake(code, a)); } };
 
 /** The fields of `MapSetup`, and `initialView`: a change of one of them in `update` has no effect. */
-const setupOnly = ['renderer', 'fonts', 'fontFamily', 'interactive', 'antialias', 'attribution', 'hash', 'nonce', 'initialView'] as const;
+const setupOnly = ['renderer', 'fontFamily', 'interactive', 'antialias', 'attribution', 'hash', 'nonce', 'initialView'] as const;
+/** A query at a point or a position, and not in a rectangle or on the whole map. */
+const place = (at: unknown) => !!at && !(Array.isArray(at) && typeof at[0] !== 'number');
 const differ = (a: unknown, b: unknown) => a !== b && JSON.stringify(a) !== JSON.stringify(b);
 
 /**
  * One check of a map. The kinds: 0, the container (`a` is the name that the user wrote), a second after the map is made; 1, the ids of the description, when
  * the map is idle; 2, a description (`a`) after the description before it (`b`, none for the first); 3, a query for
- * features at `a` with the options `b`; 4, the style `a` and the additions of `extend` (`b`) to it; 5, an image with
- * the name `a` that a marker layer has and the map does not have.
+ * features at `a` with the options `b`; 6, a query of `querySource` at `a` with the options and the `id` of the source in `b`; 4, the style `a` and the `sources` and `layers` of the description (`b`) to it; 9, a feature with no id under the pointer in the layer `a`
+ * with `hoverState`; 7, `moveTo` with `padding` or `maxZoom` and no `bounds`.
  */
 export function check(c: Checked, kind: number, a?: any, b?: any) {
     const {map} = c;
@@ -93,37 +104,35 @@ export function check(c: Checked, kind: number, a?: any, b?: any) {
         known(1, spec.interactiveLayers);
         for (const l of map.getStyle()?.layers ?? []) { const src = (l as {source?: unknown}).source; if (typeof src === 'string' && !map.getSource(src) && !c.warned.has(`6 ${l.id} ${src}`)) warn(2, l.id, src); }
     } else if (kind === 2) {
-        const next = a as MapSpec, before = b as MapSpec | undefined, ids = new Set<string>();
-        for (const m of next.markers ?? []) {
-            if (ids.has(m.id)) warn(7, m.id);
-            ids.add(m.id);
-            if (!m.image) warn(15, m.id);
-            // (The first marker with no position. The data is read one time for each array.)
-            if (m.data !== before?.markers?.find(o => o.id === m.id)?.data) { const bad = m.data.findIndex(d => !Number.isFinite(+(d?.lngLat?.[0] as number)) || !Number.isFinite(+(d?.lngLat?.[1] as number))); if (bad >= 0) warn(19, m.id, String(bad)); }
-        }
+        const next = a as MapDescription, before = b as MapDescription | undefined;
         // (A template that is replaced by one with other slots: the layers of the map give it the same parameters.)
         if (before && differ(next.images, before.images) && c.ready()) slots(map.getStyle()?.layers ?? [], [], next.images);
         if (!before && 'glyphs' in next) warn(20);
+        if (next.sprite !== before?.sprite && next.sprite != null && !(Array.isArray(next.sprite) && next.sprite.every(s => typeof s?.id === 'string' && typeof s.url === 'string'))) warn(55, JSON.stringify(next.sprite));
         for (const name in next.globalState) if (next.globalState[name] !== before?.globalState?.[name] && !isJson(next.globalState[name])) warn(22, name);
+        if (next.colorScheme != null && next.colorScheme !== before?.colorScheme && !['auto', 'light', 'dark'].includes(next.colorScheme)) warn(40, JSON.stringify(next.colorScheme));
+        const st = next.style as Record<string, unknown> | undefined;
+        if (st && typeof st === 'object' && differ(st, before?.style)) {
+            if (isStylePair(st)) { if (!st.light !== !st.dark) warn(46, st.light ? 'dark' : 'light', st.light ? 'light' : 'dark'); }
+            else if (!('version' in st && 'layers' in st)) warn(45);
+        }
         if (before) for (const k of setupOnly) if (differ(next[k], before[k])) warn(8, k);
     } else if (kind === 3) {
-        const o = b as FeatureOptions, place = !!a && !(Array.isArray(a) && typeof a[0] !== 'number');
-        if (c.ready()) { known(3, o.layers); known(4, o.sources, true); }
-        if (o.sources && o.layers) warn(12);
-        if (!o.sources && o.sourceLayers) warn(10, 'sourceLayers');
-        if (!place && o.radius !== undefined) warn(13);
-        if (!o.sources || !place) { if (o.geometry === false) warn(11, 'geometry'); if (o.zoom !== undefined) warn(11, 'zoom'); }
-    } else if (kind === 5) warn(16, a);
+        const o = b as FeatureOptions;
+        if (c.ready()) known(3, o.layers);
+        for (const k of ['sources', 'sourceLayers', 'geometry', 'zoom']) if (k in o) warn(12, k);
+        if (!place(a) && o.radius !== undefined) warn(13, 'queryFeatures');
+    } else if (kind === 6) {
+        const o = b as SourceOptions & {id: string};
+        if (c.ready()) known(4, [o.id], true);
+        for (const k of ['layers', 'sources']) if (k in o) warn(12, k, 's');
+        if (!place(a)) { if (o.radius !== undefined) warn(13, 'querySource'); if (o.geometry === false) warn(11, 'geometry'); if (o.zoom !== undefined) warn(11, 'zoom'); }
+    } else if (kind === 9) warn(30, a);
+    else if (kind === 7) warn(23);
     else {
         slots(a.layers, b?.layers);
-        // A marker layer is a source and a layer with its id: the id must be free, and `before` must name a layer.
-        const all = new Set<string>([...a.layers, ...b?.layers ?? []].map((l: {id: string}) => l.id)), named = {...a.sources, ...b?.sources};
-        for (const m of c.spec().markers ?? []) {
-            if (all.has(m.id)) warn(17, m.id, 'layer'); else if (named[m.id]) warn(17, m.id, 'source');
-            if (m.before && !all.has(m.before)) warn(18, m.id, m.before);
-        }
         if (!b) return;
-        const extend = b as StyleExtension, sources = {...a.sources, ...extend.sources}, ids = new Set<string>(a.layers.map((l: {id: string}) => l.id));
+        const extend = b as Pick<MapDescription, 'sources' | 'layers'>, sources = {...a.sources, ...extend.sources}, ids = new Set<string>(a.layers.map((l: {id: string}) => l.id));
         for (const {id, before, source} of extend.layers ?? []) {
             if (before && !ids.has(before)) warn(5, id, before);
             if (source && !sources[source as string] && !Object.hasOwn(c.spec().data ?? {}, source as string)) warn(6, id, source as string);

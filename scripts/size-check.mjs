@@ -50,7 +50,7 @@ const sizes = [
     // only when the map adds a control, so a page can import them before it makes the map (#160).
     ['controls.js, up front (' + [...withStaticImports('controls.js')].length + ' files)', gz(withStaticImports('controls.js')), 2.5],
     // The adapter for Vue (`@map-jr/map-jr-gl/vue`). `MapJr` loads the map when it is mounted, so a component that
-    // imports only `MapOverlay`, `MapImage` or `useMapHost` does not load the map (#159).
+    // imports only `MapOverlay`, `MapImage` or `useMapInstance` does not load the map (#159).
     ['vue.js, up front (' + [...withStaticImports('vue.js')].length + ' files)', gz(withStaticImports('vue.js')), 5],
     ['server.js (' + [...withStaticImports('server.js')].length + ' files)', gz(withStaticImports('server.js')), 44],
 ];

@@ -31,13 +31,13 @@ uses the same renderer and has its own tests in a browser.
   [What is not available](docs/maplibre-compatibility.md#what-is-not-available). Custom layers are in the entry
   `@map-jr/map-jr-gl/maplibre-compat` and need `renderer: 'main'`; their code loads with the first custom layer.
 - **It does not block your page.** The map draws in a worker. Your page stays responsive while the map moves.
-- **It draws many markers.** A marker layer draws 100,000 SVG markers at 60 frames per second. A marker layer is a
-  symbol layer of the style with an SVG template as its image.
+- **It draws many markers.** A symbol layer with an SVG template as its image draws 100,000 SVG markers at 60 frames
+  per second.
 - **It draws on the server.** You can render the first view of a map as SVG or as an image, without a browser.
   This works on Node.js and on Cloudflare Workers.
 - **It includes elevation tools.** 3D terrain, relief shading, contour lines and elevation queries use one
   elevation source. You do not need a plugin.
-- **It answers questions about the data.** `queryFeatures` with `sources` reads the tile data directly. You do not
+- **It answers questions about the data.** `querySource` reads the tile data of a source directly. You do not
   need a style layer.
 - **Fonts as the style gives them.** Text uses the glyph files of the style, as MapLibre GL JS does. A style without `glyphs` uses the fonts of the browser and makes no requests for fonts.
 - **It is easy to change to.** Most MapLibre GL JS code works after you change the import to
@@ -52,16 +52,16 @@ These figures are written by `pnpm status`. They compare this library with MapLi
 
 | Measure | Result |
 |---|---|
-| Unit tests | 104 pass, 0 fail |
+| Unit tests | 135 pass, 0 fail |
 | MapLibre expression tests | 330 of 425 pass |
-| MapLibre `Map` methods | 118 of 150 are available; 12 more are accepted and have no effect |
+| MapLibre `Map` methods | 119 of 150 are available; 11 more are accepted and have no effect |
 | MapLibre plugins, run in a browser | 16 of 16 work (see [Plugins and frameworks](docs/ecosystem.md)) |
 | Plugins and frameworks, read from npm | 17 of 26 use only API that the library has |
-| Example pages of the MapLibre documentation, with this library in place of MapLibre | 110 of 142 work. Most of the others need a globe, another projection or a custom 3D layer. |
-| MapLibre render tests | 825 of 1429 are the same (1% of pixels or less are different). 274 more are near (5% or less). |
-| Page script (gzip) | 41 KB. MapLibre GL JS: 299 KB. |
-| Worker script (gzip) | 67 KB. MapLibre GL JS: 145 KB. |
-| Server renderer (gzip) | 40 KB |
+| Example pages of the MapLibre documentation, with this library in place of MapLibre | 111 of 142 work. Most of the others need a globe, another projection or a custom 3D layer. |
+| MapLibre render tests | 874 of 1429 are the same (1% of pixels or less are different). 280 more are near (5% or less). |
+| Page script (gzip) | 44 KB. MapLibre GL JS: 299 KB. |
+| Worker script (gzip) | 74 KB. MapLibre GL JS: 145 KB. |
+| Server renderer (gzip) | 41 KB |
 <!-- status:end -->
 
 The library is new. Read [MapLibre compatibility](docs/maplibre-compatibility.md) before you use it in production.
@@ -225,37 +225,33 @@ The library has a default export for such plugins only, because some of them con
 
 ### Add markers
 
-A marker layer draws many markers on the map canvas. It draws an image at each position, and the image can be an SVG
-template that each marker fills with its values.
+A symbol layer draws many markers on the map canvas. It draws an image at each point of a GeoJSON source, and the
+image can be an SVG template that each point fills with its properties.
 
-With `@map-jr/map-jr-gl`, an image is an entry of `images` in the description, and a marker layer is an entry of
-`markers`:
+With `@map-jr/map-jr-gl`, an image is an entry of `images` in the description, a key of `data` makes a GeoJSON
+source, `points()` makes the GeoJSON from your records, and the symbol layer is an entry of `layers`:
 
 ```js
-import {createMap} from '@map-jr/map-jr-gl';
+import {createMap, points} from '@map-jr/map-jr-gl';
 
-const places = {
-  id: 'places',
-  image: 'disc',
-  data: [
-    {lngLat: [-74.006, 40.7128], props: {color: '#d6453d', name: 'City Hall'}},
-    {lngLat: [-73.9857, 40.7484], props: {color: '#2f7fd1', name: 'Empire State Building'}},
-  ],
-};
+const records = [
+  {lng: -74.006, lat: 40.7128, color: '#d6453d', name: 'City Hall'},
+  {lng: -73.9857, lat: 40.7484, color: '#2f7fd1', name: 'Empire State Building'},
+];
 
 const map = createMap(document.getElementById('map'), {
   style: 'https://tiles.openfreemap.org/styles/liberty',
   initialView: {center: [-73.996, 40.73], zoom: 11.5},
   images: {disc: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="{{color}}"/></svg>'},
-  markers: [places],
+  data: {places: points(records, {lngLat: r => [r.lng, r.lat]})},
+  layers: [{id: 'places', type: 'symbol', source: 'places', layout: {'icon-image': 'disc', 'icon-allow-overlap': true, 'icon-ignore-placement': true}}],
   // A marker is a feature of its layer: a click has it in `features`.
   interactiveLayers: ['places'],
   onClick: event => console.log(event.features[0]?.properties.name),
 });
 ```
 
-A marker layer is shorthand for a GeoJSON source and a symbol layer of the style. With
-`@map-jr/map-jr-gl/maplibre-compat`, write those yourself, as with MapLibre GL JS (`map.addImage`, `map.addSource`,
+With `@map-jr/map-jr-gl/maplibre-compat`, write the source and the layer yourself, as with MapLibre GL JS (`map.addImage`, `map.addSource`,
 `map.addLayer`). [Markers](docs/markers.md) has the code.
 
 For a small number of markers with HTML content, use `map.overlay` (`@map-jr/map-jr-gl`) or `Marker` and `Popup`
@@ -265,7 +261,7 @@ For a small number of markers with HTML content, use `map.overlay` (`@map-jr/map
 
 ### Show terrain, relief and contour lines
 
-With `@map-jr/map-jr-gl`, the elevation source, the layers and the terrain are additions to the style (`extend`):
+With `@map-jr/map-jr-gl`, the elevation source, the layers and the terrain are additions to the style (the fields `sources`, `layers` and `terrain`):
 
 ```js
 import {createMap} from '@map-jr/map-jr-gl';
@@ -273,17 +269,15 @@ import {createMap} from '@map-jr/map-jr-gl';
 const map = createMap(document.getElementById('map'), {
   style: 'https://tiles.openfreemap.org/styles/liberty',
   initialView: {center: [7.6586, 45.9763], zoom: 12.4, pitch: 60},
-  extend: {
-    sources: {
-      dem: {type: 'raster-dem', tiles: ['https://tiles.mapterhorn.com/{z}/{x}/{y}.webp'], encoding: 'terrarium', tileSize: 512, maxzoom: 12},
-      contours: {type: 'contour', source: 'dem', thresholds: {11: [100, 500], 12: [50, 200], 14: [20, 100]}},
-    },
-    layers: [
-      {id: 'relief', type: 'hillshade', source: 'dem'},
-      {id: 'contour-lines', type: 'line', source: 'contours', 'source-layer': 'contours'},
-    ],
-    terrain: {source: 'dem', exaggeration: 1.5},
+  sources: {
+    dem: {type: 'raster-dem', tiles: ['https://tiles.mapterhorn.com/{z}/{x}/{y}.webp'], encoding: 'terrarium', tileSize: 512, maxzoom: 12},
+    contours: {type: 'contour', source: 'dem', thresholds: {11: [100, 500], 12: [50, 200], 14: [20, 100]}},
   },
+  layers: [
+    {id: 'relief', type: 'hillshade', source: 'dem'},
+    {id: 'contour-lines', type: 'line', source: 'contours', 'source-layer': 'contours'},
+  ],
+  terrain: {source: 'dem', exaggeration: 1.5},
 });
 
 const metres = await map.queryElevation([7.6586, 45.9763]);
@@ -317,10 +311,9 @@ See [Terrain and elevation](docs/terrain-and-elevation.md).
 
 ### Find what is at a position
 
-With `@map-jr/map-jr-gl`, `queryFeatures` with `sources` reads the tile data of those sources. It finds data that the style
-does not draw, and it also works for a position that is not on the screen. Without `sources`, it gives the features
-that the style layers draw, and it never reads other data. `radius` is the distance around the place in pixels, in
-both kinds of query. See [Queries](docs/api.md#queries).
+With `@map-jr/map-jr-gl`, `querySource` reads the tile data of one source. It finds data that the style does not
+draw, and it also works for a position that is not on the screen. `queryFeatures` gives the features that the style
+layers draw, and it never reads other data. `radius` is the distance around the place in pixels, in both methods. See [Queries](docs/api.md#queries).
 
 ```js
 import {createMap} from '@map-jr/map-jr-gl';
@@ -330,13 +323,13 @@ const map = createMap(document.getElementById('map'), {
   initialView: {center: [-74.0065, 40.7085], zoom: 16},
   onClick: async event => {
     // "openmaptiles" is the id of the vector source in this style.
-    const features = await map.queryFeatures(event.lngLat, {sources: ['openmaptiles'], radius: 8});
+    const features = await map.querySource('openmaptiles', event.lngLat, {radius: 8});
     console.log(features.map(feature => feature.properties));
   },
 });
 ```
 
-With `@map-jr/map-jr-gl/maplibre-compat`, `map.queryFeatures` is the same method. `queryRenderedFeatures` and
+With `@map-jr/map-jr-gl/maplibre-compat`, `map.queryFeatures` and `map.querySource` are the same methods. `queryRenderedFeatures` and
 `querySourceFeatures` are also available:
 
 ```js
@@ -344,7 +337,7 @@ import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
 const map = new Map({container: 'map', style: 'https://tiles.openfreemap.org/styles/liberty', center: [-74.0065, 40.7085], zoom: 16});
 map.on('click', async event => {
-  const features = await map.queryFeatures(event.lngLat, {sources: ['openmaptiles'], radius: 8});
+  const features = await map.querySource('openmaptiles', event.lngLat, {radius: 8});
   console.log(features.map(feature => feature.properties));
 });
 ```
@@ -404,19 +397,19 @@ build and other configurations.
 ## Speed
 
 <!-- speed:start -->
-Measured by the workflow [Browsers](https://github.com/map-jr/map-jr-gl/tree/bench-results) on 2026-11-15 (commit 714276f). Each cell is MapLibre GL JS 6.17.0 / **this library** (worker renderer where the browser has it).
+Measured by the workflow [Browsers](https://github.com/map-jr/map-jr-gl/tree/bench-results) on 2026-11-16 (commit 5e282b9). Each cell is MapLibre GL JS 6.17.0 / **this library** (worker renderer where the browser has it).
 
 | System, browser | Load to idle, ms | Frames per second, map moving | Frames per second, 10,000 markers |
 |---|---|---|---|
-| macOS, Chromium | 1218 / **384** | 42 / **33** | 3 / **28** |
-| macOS, Firefox | 5608 / **2587** | 2 / **3** |  |
-| macOS, WebKit | 4525 / **1199** | 27 / **40** | 2 / **42** |
-| Linux, Chromium | 708 / **562** | 13 / **14** | 2 / **10** |
-| Linux, Firefox | 2286 / **750** | 17 / **39** | 5 / **32** |
-| Linux, WebKit | 1884 / **711** | 17 / **16** | 3 / **16** |
-| Windows, Chromium | 784 / **683** | 46 / **30** | 3 / **41** |
-| Windows, Firefox | 1197 / **820** | 37 / **28** | 5 / **25** |
-| Windows, WebKit | 1314 / **761** | 19 / **18** | 3 / **17** |
+| macOS, Chromium | 2039 / **629** | 26 / **36** | 1 / **36** |
+| macOS, Firefox | 3953 / **2455** | 3 / **13** | 5 / **4** |
+| macOS, WebKit | 2775 / **738** | 34 / **54** | 3 / **51** |
+| Linux, Chromium | 604 / **495** | 13 / **15** | 3 / **11** |
+| Linux, Firefox | 1732 / **729** | 19 / **42** | 6 / **41** |
+| Linux, WebKit | 1922 / **756** | 17 / **16** | 3 / **15** |
+| Windows, Chromium | 1296 / **857** | 43 / **28** | 2 / **38** |
+| Windows, Firefox | 1507 / **930** | 37 / **18** | 4 / **19** |
+| Windows, WebKit | 1725 / **967** | 14 / **15** | 2 / **13** |
 <!-- speed:end -->
 
 These computers are virtual machines, and those for Linux and Windows have no GPU: use the table to compare the
@@ -432,7 +425,7 @@ To measure on your device, open [the benchmark page](https://map-jr.github.io/ma
 - [React](docs/react.md): the component, the hooks, server rendering.
 - [Svelte](docs/svelte.md): an action and a store.
 - [Loading](docs/loading.md): how the files load, and how to change that.
-- [Markers](docs/markers.md): marker layers, images that are SVG templates, and DOM markers.
+- [Markers](docs/markers.md): symbol layers with images that are SVG templates, and DOM markers.
 - [Terrain and elevation](docs/terrain-and-elevation.md): terrain, relief shading, contour lines, elevation queries.
 - [Server rendering](docs/server-rendering.md): SVG and images on Node.js and Cloudflare Workers.
 - [Accessibility](docs/accessibility.md): what the library does for keyboard users and assistive technology, and what it

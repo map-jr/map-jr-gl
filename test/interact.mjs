@@ -99,15 +99,20 @@ for (const mode of renderers) {
             g.off('move', moved);
             const zoom = g.getZoom(), lat = g.getCenter().lat;
             // flyTo on the globe from New York to Tokyo at zoom 10 goes out to zoom 1.171 in MapLibre GL JS 6.17 in this view of
-            // 400 by 400 pixels (the curve does not depend on the speed). The test reads the lowest zoom of the frames, so
-            // the flight is slow enough (about 6.4 s) that a gap of 100 ms between frames misses the lowest point by about
-            // 0.03, inside the tolerance. At speed 6 (1.6 s), frames 55 ms apart gave 1.3135 in CI (#517).
+            // 400 by 400 pixels (the curve does not depend on the speed or the easing). The lowest zoom of the drawn frames
+            // depends on which frames are drawn (1.3135 and 1.2297 in CI, #517), so the test reads the curve at fixed
+            // parts of the flight instead: an easing that is constant puts every frame, the last one included, at that part.
+            // The lowest point is at the middle of the way (part 0.5); the parts 0.4 to 0.6 in steps of 0.005 find it to
+            // within 0.001.
             g.jumpTo({center: [-74, 40.7], zoom: 10});
             await new Promise(r => { g.once('idle', r); setTimeout(r, 15000); });
-            const zooms = [], zoomed = () => zooms.push(g.getZoom());
-            g.on('move', zoomed);
-            await new Promise(r => { g.once('moveend', r); g.flyTo({center: [139.7, 35.7], zoom: 10, speed: 1.5}); });
-            g.off('move', zoomed);
+            const zooms = [];
+            for (let i = 80; i <= 120; i++) {
+                const part = i / 200;
+                g.jumpTo({center: [-74, 40.7], zoom: 10});
+                await new Promise(r => { g.once('moveend', r); setTimeout(r, 15000); g.flyTo({center: [139.7, 35.7], zoom: 10, duration: 1, easing: () => part}); });
+                zooms.push(g.getZoom());
+            }
             return {s0, min: Math.min(...seen), max: Math.max(...seen), frames: seen.length, zoom, lat, flyMin: Math.min(...zooms)};
         });
         check(`[${mode}] the globe: easeTo to the north without a zoom keeps the size of the globe, the zoom changes, and flyTo has the curve of MapLibre GL JS`,
@@ -264,10 +269,11 @@ for (const mode of renderers) {
     await settle(page);
     const q = await page.evaluate(async () => {
         const sources = Object.keys(window.map.getStyle().sources).filter(id => window.map.getStyle().sources[id].type === 'vector');
-        const here = await window.map.queryFeatures([-74.0060, 40.7127], {sources, sourceLayers: ['landcover', 'poi'], radius: 12});
-        const far = await window.map.queryFeatures([2.2945, 48.8584], {sources, zoom: 14, sourceLayers: ['poi', 'building'], radius: 30, geometry: true});
-        const filtered = await window.map.queryFeatures([2.2945, 48.8584], {sources, zoom: 14, radius: 30, filter: ['==', ['get', 'class'], 'no-such-class']});
-        // Without `sources`, the same method gives what the style layers draw (#12), as `queryRenderedFeatures` does.
+        const all = async (at, o) => (await Promise.all(sources.map(id => window.map.querySource(id, at, o)))).flat();
+        const here = await all([-74.0060, 40.7127], {sourceLayers: ['landcover', 'poi'], radius: 12});
+        const far = await all([2.2945, 48.8584], {zoom: 14, sourceLayers: ['poi', 'building'], radius: 30, geometry: true});
+        const filtered = await all([2.2945, 48.8584], {zoom: 14, radius: 30, filter: ['==', ['get', 'class'], 'no-such-class']});
+        // `queryFeatures` gives what the style layers draw (#12), as `queryRenderedFeatures` does.
         const c = window.map.getCenter(), at = window.map.project(c), key = f => f.layer.id + ' ' + f.id;
         const drawn = await window.map.queryFeatures(c), same = await window.map.queryRenderedFeatures([at.x, at.y]);
         const wide = await window.map.queryFeatures({x: at.x, y: at.y}, {radius: 40}), box = await window.map.queryRenderedFeatures([[at.x - 40, at.y - 40], [at.x + 40, at.y + 40]]);
@@ -276,10 +282,10 @@ for (const mode of renderers) {
         const summit = await window.map.queryElevation([7.6586, 45.9763]), sea = await window.map.queryElevation([-74.02, 40.69]);
         return {one, here: here.map(f => f.sourceLayer), far: far.length, geom: far[0]?.geometry?.type, filtered: filtered.length, summit, sea, moved: centre.lng !== window.map.getCenter().lng};
     });
-    check(`[${mode}] queryFeatures finds an undrawn-layer feature under a point`, q.here.includes('landcover') && q.here.includes('poi'), JSON.stringify(q.here));
-    check(`[${mode}] queryFeatures without sources gives what the style layers draw, and radius widens the place`,
+    check(`[${mode}] querySource finds an undrawn-layer feature under a point`, q.here.includes('landcover') && q.here.includes('poi'), JSON.stringify(q.here));
+    check(`[${mode}] queryFeatures gives what the style layers draw, and radius widens the place`,
         q.one.drawn > 0 && q.one.layer === 'string' && q.one.same && q.one.wide > q.one.drawn && q.one.box && q.one.all > q.one.wide, JSON.stringify(q.one));
-    check(`[${mode}] queryFeatures works off screen, with geometry and filters`, q.far > 0 && !!q.geom && q.filtered === 0 && !q.moved, `${q.far} features, first ${q.geom}`);
+    check(`[${mode}] querySource works off screen, with geometry and filters`, q.far > 0 && !!q.geom && q.filtered === 0 && !q.moved, `${q.far} features, first ${q.geom}`);
     check(`[${mode}] queryElevation reads the elevation source`, q.summit > 4300 && q.summit < 4500 && Math.abs(q.sea) < 15, `Matterhorn ${q.summit?.toFixed(0)} m, New York harbour ${q.sea?.toFixed(1)} m`);
     const attribution = await page.evaluate(() => document.querySelector('.maplibregl-ctrl-attrib')?.textContent);
     check(`[${mode}] attribution shows © and keeps links`, attribution.includes('©') && !attribution.includes('&copy') && await page.evaluate(() => document.querySelectorAll('.maplibregl-ctrl-attrib a').length) > 0, attribution);
@@ -473,7 +479,7 @@ for (const mode of renderers) {
         m.on('click', ['zones-fill'], gone); m.off('click', ['zones-fill'], gone);
         try { m.on('mouseenter', 42, () => {}); } catch (error) { window.arrayEvents.push(String(error.message).startsWith('[map-jr-gl] on("mouseenter")') ? 'message' : error.message); }
         await new Promise(r => m.once('idle', r));
-        const inside = m.project([-74.008, 40.7085]), found = await m.queryFeatures(inside, {sources: ['zones']});
+        const inside = m.project([-74.008, 40.7085]), found = await m.querySource('zones', inside);
         return {inside, found: found.map(f => f.properties.name)};
     });
     await page.screenshot({path: `${out}/geojson-${mode}.png`});
@@ -486,7 +492,7 @@ for (const mode of renderers) {
         const m = window.map;
         m.getSource('zones').setData({type: 'FeatureCollection', features: [{type: 'Feature', properties: {name: 'second'}, geometry: {type: 'Point', coordinates: [-74.008, 40.7085]}}]});
         await new Promise(r => setTimeout(r, 600));
-        return (await m.queryFeatures([-74.008, 40.7085], {sources: ['zones'], radius: 5})).map(f => f.type + ':' + f.properties.name);
+        return (await m.querySource('zones', [-74.008, 40.7085], {radius: 5})).map(f => f.type + ':' + f.properties.name);
     });
     check(`[${mode}] GeoJSON source, layer click event and setData`, gj.found[0] === 'first' && JSON.stringify(await page.evaluate(() => window.zoneClicks)) === '["first"]' && gj2[0] === 'Point:second', JSON.stringify({found: gj.found, clicks: await page.evaluate(() => window.zoneClicks), after: gj2}));
     await page.waitForFunction(() => window.arrayEvents.some(e => e.startsWith('click:')), null, {timeout: 5000}).catch(() => {});
@@ -499,7 +505,7 @@ for (const mode of renderers) {
         source.updateData({add: [point(3, 'three', -74.004)], remove: [2], update: [{id: 1, addOrUpdateProperties: [{key: 'name', value: 'changed'}], newGeometry: {type: 'Point', coordinates: [-74.007, 40.7085]}}]});
         const data = await m.getSource('zones').getData();
         await new Promise(r => setTimeout(r, 600));
-        const drawn = (await m.queryFeatures([-74.007, 40.7085], {sources: ['zones'], radius: 5})).map(f => f.properties.name);
+        const drawn = (await m.querySource('zones', [-74.007, 40.7085], {radius: 5})).map(f => f.properties.name);
         return {names: data.features.map(f => f.properties.name).join(), at: data.features[0].geometry.coordinates[0], drawn};
     });
     check(`[${mode}] GeoJSON source: updateData adds, changes and removes features by id`, diff.names === 'changed,three' && diff.at === -74.007 && diff.drawn[0] === 'changed', JSON.stringify(diff));
@@ -549,7 +555,7 @@ for (const mode of renderers) {
             for (let i = 0; i < 50; i++) calls.push(source.setData({type: 'FeatureCollection', features: [point('n' + i)]}));
             await Promise.all(calls);
             await new Promise(r => setTimeout(r, 300));
-            const drawn = (await m.queryFeatures([-74.008, 40.7085], {sources: ['zones'], radius: 5})).map(f => f.properties.name);
+            const drawn = (await m.querySource('zones', [-74.008, 40.7085], {radius: 5})).map(f => f.properties.name);
             return {one, fifty: sent, drawn};
         } finally { protos.forEach((p, i) => { p.postMessage = real[i]; }); }
     });
@@ -573,7 +579,7 @@ for (const mode of renderers) {
         m.addSource('same', {type: 'geojson', data: {type: 'FeatureCollection', features: []}});
         m.addLayer({id: 'same', type: 'circle', source: 'same'});
         await wait(500);
-        const names = async () => (await m.queryFeatures([-74.008, 40.7085], {sources: ['same'], radius: 5})).map(f => f.properties.name).join();
+        const names = async () => (await m.querySource('same', [-74.008, 40.7085], {radius: 5})).map(f => f.properties.name).join();
         const settled = async () => { for (let i = 0; i < 30 && !m.isSourceLoaded('same'); i++) await wait(100); return m.isSourceLoaded('same'); };
         m.getSource('same').setData(x);
         const first = [await settled(), await names()];
@@ -655,7 +661,7 @@ for (const mode of renderers) {
         m.addLayer({id: 'counties', type: 'line', source: 'admin', 'source-layer': 'county_features', paint: {'line-color': '#70c', 'line-width': 2}});
         // Adding the source first fetches the archive's header, so poll until the source answers queries.
         for (let i = 0; i < 40; i++) {
-            const found = await m.queryFeatures([-74.0065, 40.7085], {sources: ['admin'], sourceLayers: ['county_features']});
+            const found = await m.querySource('admin', [-74.0065, 40.7085], {sourceLayers: ['county_features']});
             if (found.length) return found.map(f => f.properties.NAME);
             await new Promise(r => setTimeout(r, 250));
         }
@@ -1076,7 +1082,7 @@ for (const mode of renderers) {
         m.addSource('grouped', {type: 'geojson', cluster: true, data: {type: 'FeatureCollection', features: [point(0, 1), point(0.00001, 2), point(0.00002, 3)]}});
         m.addLayer({id: 'grouped', type: 'circle', source: 'grouped', paint: {'circle-radius': 10}});
         let found = [];
-        for (let i = 0; i < 40 && !found.length; i++) { await new Promise(r => setTimeout(r, 100)); found = await m.queryFeatures(c, {sources: ['grouped'], radius: 10}); }
+        for (let i = 0; i < 40 && !found.length; i++) { await new Promise(r => setTimeout(r, 100)); found = await m.querySource('grouped', c, {radius: 10}); }
         const id = found[0]?.properties.cluster_id, source = m.getSource('grouped');
         const out = {count: found[0]?.properties.point_count, zoom: await source.getClusterExpansionZoom(id), leaves: (await source.getClusterLeaves(id)).length};
         m.removeLayer('grouped'); m.removeSource('grouped');
@@ -1221,7 +1227,7 @@ for (const mode of renderers) {
             const m = new mod.Map({container: el, renderer: 'main', tileWorkers: 4, workerUrl: '/dist/map-jr-gl-worker.js?fresh', center: [0, 0], zoom: 1, attributionControl: false,
                 style: {version: 8, sources: {v: {type: 'vector', tiles: ['fresh://{z}/{x}/{y}'], minzoom: 0, maxzoom: 0}}, layers: [{id: 'a', type: 'circle', source: 'v', 'source-layer': 'a'}]}});
             await new Promise(r => { m.once('idle', r); setTimeout(r, 2000); });
-            const counts = async () => { const out = []; for (let i = 0; i < 8; i++) out.push((await m.queryFeatures([0, 0], {sources: ['v'], radius: 5})).length, (await m.queryRenderedFeatures({layers: ['a']})).length); return out; };
+            const counts = async () => { const out = []; for (let i = 0; i < 8; i++) out.push((await m.querySource('v', [0, 0], {radius: 5})).length, (await m.queryRenderedFeatures({layers: ['a']})).length); return out; };
             const before = await counts(), requestsBefore = requests;
             points = 1;
             m.refreshTiles('v');

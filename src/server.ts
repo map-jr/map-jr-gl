@@ -5,15 +5,22 @@ import {TileBuilder} from './tiles.ts';
 import type {TileImage, TileIR} from './tile.ts';
 import {CollisionGrid, placeLabels, renderItems, type RenderItem} from './placement.ts';
 import {DEFAULT_FONT, EstimateShaper} from './text.ts';
-import {dataTypeError, extended, fillTemplate, svgSize, templateSlots, withData, withMarkers, VARIANT, type MarkerLayerOptions} from './markers.ts';
+import {dataTypeError, extended, styleFor, fillTemplate, svgSize, templateSlots, withData, VARIANT} from './markers.ts';
 import {renderSVG} from './svg.ts';
+import {styleImages} from './style-images.ts';
 import type {ImageDecoder} from './contour.ts';
 import {decodeImage, decodePNG, decodeWebPLossless} from './webp.ts';
 export {decodePNG, decodeWebPLossless, type ImageDecoder};
 
 export interface RenderOptions {
-    /** A style object or URL, exactly as passed to the client-side map. */
+    /**
+     * A style object or URL, exactly as passed to the client-side map. Of a pair `{light, dark}` the server uses the
+     * style of `colorScheme`: `'dark'` uses `dark`, and `'light'`, `'auto'` or no value use `light`, because the server
+     * cannot read the scheme of the browser.
+     */
     style: unknown;
+    /** The colour scheme for a pair `{light, dark}` in `style`, and for the credits of `renderFirstView`. */
+    colorScheme?: 'auto' | 'light' | 'dark';
     center: LngLatLike;
     zoom: number;
     bearing?: number;
@@ -22,10 +29,8 @@ export interface RenderOptions {
     padding?: PaddingInput;
     width: number;
     height: number;
-    /** Marker layers, as in the description of a map: each one is a source and a symbol layer with the image `image`. */
-    markers?: MarkerLayerOptions[];
     /**
-     * Images for the style layers and the marker layers, by name: SVG documents. An SVG with slots (`{{name}}`) is a
+     * Images for the style layers, by name: SVG documents. An SVG with slots (`{{name}}`) is a
      * template, as in the description of a map. `{image, width, height}` gives a size in CSS pixels; without it the
      * size is the size of the `viewBox`, or else of the `width` and `height` attributes, or 24 by 24. An image that is not an SVG document is not drawn.
      */
@@ -55,8 +60,18 @@ export interface RenderOptions {
      * `{building: {hidden: true}, 'road-minor': {minzoom: 15}}`. A value here comes before the value in the style.
      */
     overrides?: Record<string, SSROverrides>;
-    /** Sources and layers to add to the style, as `extend` in the description of a map (`MapSpec`). */
-    extend?: {sources?: Record<string, object>; layers?: ({id: string; before?: string} & Record<string, unknown>)[]; terrain?: object | null};
+    /** Sources to add to the style, by id, as `sources` in the description of a map (`MapDescription`). */
+    sources?: Record<string, object>;
+    /** Layers to add to the layers of the style, as `layers` in the description of a map (`MapDescription`). */
+    layers?: ({id: string; before?: string} & Record<string, unknown>)[];
+    /**
+     * Sprites to add to the sprite of the style, as `sprite` in the description of a map (`MapDescription`):
+     * `[{id: 'pins', url: 'https://example.com/sprites/pins'}]`. An `icon-image` names an image of such a sprite as `id:name`.
+     * A relative URL is relative to the URL of the style.
+     */
+    sprite?: {id: string; url: string}[];
+    /** Terrain in place of that of the style, as `terrain` in the description of a map (`MapDescription`). */
+    terrain?: object | null;
     /** GeoJSON data for GeoJSON sources of the style, by the id of the source, as `data` in the description of a map. */
     data?: Record<string, unknown>;
     fetch?: typeof fetch;
@@ -158,14 +173,15 @@ function limitedFetch(o: RenderOptions, fetchFn: typeof fetch): typeof fetch {
 export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
     // Wrapped, not passed by reference: Cloudflare Workers reject calls to a detached global `fetch`.
     const fetchFn = limitedFetch(o, o.fetch ?? ((...a) => fetch(...a)));
-    // (A marker layer is a source and a layer of the style. A style from a URL is fetched here, to add them to it.)
-    let given = o.style, base: string | undefined;
-    if ((o.markers?.length || o.extend || o.data) && typeof given === 'string') {
+    // (`sources`, `layers` and `data` are added to the style. A style from a URL is fetched here, to add them to it and to read its images.)
+    let given = styleFor(o.style, o.colorScheme === 'dark'), base: string | undefined;
+    const adds = !!(o.sources || o.layers || o.terrain || o.sprite?.length);
+    if (typeof given === 'string') {
         const res = await fetchFn(base = given);
         if (!res.ok) throw new Error(`Failed to load style ${given}: ${res.status}`);
         given = await res.json();
     }
-    const full: any = withMarkers(withData(extended(given, o.extend), o.data, true, (id, type) => { throw dataTypeError(id, type); }), o.markers, true);
+    const full: any = withData(adds ? extended(given, o) : given, o.data, true, (id, type) => { throw dataTypeError(id, type); });
     const style = await resolveStyle(full, fetchFn, base);
     if (o.overrides) style.layers = style.layers.map(l => o.overrides![l.id] ? {...l, metadata: {...l.metadata, [SSR_KEY]: {...(l.metadata?.[SSR_KEY] as object), ...o.overrides![l.id]}}} : l);
     if (o.ssrOverrides !== false) style.layers = applySSROverrides(style.layers);
@@ -179,7 +195,8 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
     const builder = new TileBuilder(fetchFn);
     builder.setStyle(style.layers, style.state);
     // The images of `images` that are SVG documents: the SVG and the size, and for a template its slots.
-    const documents = new Map(Object.entries(o.images ?? {}).map(([name, v]) => [name, typeof v === 'string' ? {image: v} : v] as const).filter(([, v]) => typeof v.image === 'string' && v.image.trimStart().startsWith('<')));
+    // (The images of the style come first, and an image of `images` with the same name takes the place of one (#495).)
+    const documents = new Map(Object.entries({...styleImages(given, message => console.warn(message)), ...o.images}).map(([name, v]) => [name, typeof v === 'string' ? {image: v} : v] as const).filter(([, v]) => typeof v.image === 'string' && v.image.trimStart().startsWith('<')));
     builder.setTemplates(Object.fromEntries([...documents].map(([name, v]) => [name, templateSlots(v.image)] as const).filter(([, slots]) => slots.length)));
     builder.decodeImage = o.decodeImage ?? decodeImage;
     builder.setContours(Object.fromEntries(Object.entries(style.sources).filter(([, s]) => s.contour).map(([name, s]) => [name, s.contour!])));
@@ -210,16 +227,25 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
     });
     if (style.sprite && layers.some(l => l.type === 'symbol')) {
         jobs.push((async () => {
-            sprite = await loadSprite(style.sprite!, !!o.highDensity, fetchFn);
-            if (o.inlineImages) sprite.image = await dataURI(sprite.image);
+            // (A sprite of several sheets keeps each image: the icons of a sheet with an id other than `default` have the names `id:name`.)
+            const sheets: {id: string; url: string}[] = style.sprite![0] === '[' ? JSON.parse(style.sprite!) : [{id: 'default', url: style.sprite!}];
+            const loaded = await Promise.all(sheets.map(async ({id, url}) => {
+                const one = await loadSprite(url, !!o.highDensity, fetchFn);
+                if (o.inlineImages) one.image = await dataURI(one.image);
+                return {id, one};
+            }));
+            const icons: Sprite['icons'] = {};
+            loaded.forEach(({id, one}, sheet) => { for (const name in one.icons) icons[id === 'default' ? name : `${id}:${name}`] = {...one.icons[name], sheet}; });
+            sprite = {...loaded[0].one, icons, sheets: loaded.map(({one}) => one)};
         })());
     }
     await Promise.all(jobs);
 
     const grid = new CollisionGrid(), images = new Map<string, {svg: string; width: number; height: number}>();
     const labels = placeLabels(tr, all, layers, new EstimateShaper(), grid, name => {
+        // (An image of `images` or of the style takes the place of an image of the sprite with the same name.)
         const fromSprite = (sprite as Sprite | null)?.icons[name];
-        if (fromSprite) return fromSprite;
+        if (fromSprite && !documents.has(name)) return fromSprite;
         if (!images.has(name)) {
             // An image of `images`: for a template, the name has the value of each slot (see `buildTile`).
             const [image, ...values] = name.split(VARIANT), own = documents.get(image);
@@ -247,6 +273,9 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
  * adapters for the frameworks use this.)
  *
  * `attribution` gives the credits to show, when they must not come from the sources; `false` shows none.
+ * `colorScheme` gives the colours of the credits: `'light'` (the default) or `'dark'`. The server cannot read the
+ * scheme of the browser, so `'auto'` writes both colours with the CSS function `light-dark()`, and a browser without
+ * it (before 2024) shows the light colours.
  * Only text and links to http(s) addresses are kept from the HTML of the credits.
  */
 /**
@@ -268,10 +297,12 @@ export function cleanCredits(html: string): string {
     return out + '</a>'.repeat(open);
 }
 
-export async function renderFirstView(o: RenderOptions & {attribution?: string | string[] | false}): Promise<string> {
+export async function renderFirstView(o: RenderOptions & {attribution?: string | string[] | false; colorScheme?: 'auto' | 'light' | 'dark'}): Promise<string> {
     const made = await renderToSVG(o);
     const credits = o.attribution === false ? [] : [o.attribution ?? made.attribution].flat().map(cleanCredits).filter(Boolean);
-    return made.svg + (credits.length ? `<div data-map-jr-ssr="" style="position:absolute;right:0;bottom:0;background:rgba(255,255,255,.75);color:#333;font:11px/1.4 sans-serif;padding:2px 6px">${credits.join(' ')}</div>` : '');
+    const light = 'background:rgba(255,255,255,.75);color:#333', dark = 'background:rgba(30,30,30,.75);color:#ccc';
+    const colors = o.colorScheme === 'dark' ? dark : o.colorScheme === 'auto' ? light + ';color-scheme:light dark;background:light-dark(rgba(255,255,255,.75),rgba(30,30,30,.75));color:light-dark(#333,#ccc)' : light;
+    return made.svg + (credits.length ? `<div data-map-jr-ssr="" style="position:absolute;right:0;bottom:0;${colors};font:11px/1.4 sans-serif;padding:2px 6px">${credits.join(' ')}</div>` : '');
 }
 
 /**
@@ -304,4 +335,3 @@ export async function renderToImage(o: ImageOptions): Promise<ImageResult> {
 }
 
 export {renderSVG} from './svg.ts';
-export type {MarkerLayerOptions} from './markers.ts';

@@ -9,23 +9,24 @@ The entry `@map-jr/map-jr-gl/react` has a component and hooks for React 18 and 1
 import {useMemo, useState} from 'react';
 import {MapJr, MapOverlay} from '@map-jr/map-jr-gl/react';
 import {navigation, scale} from '@map-jr/map-jr-gl/controls';
+import {points} from '@map-jr/map-jr-gl';
+
+const dot = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="{{color}}"/></svg>';
 
 export function Places({places}) {
   const [view, setView] = useState({center: [-74.0065, 40.7085], zoom: 13.6});
   const [selected, setSelected] = useState(null);
-  const pins = useMemo(() => ({
-    id: 'places',
-    svg: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="{{color}}"/></svg>',
-    width: 24, height: 24,
-    data: places.map(p => ({lngLat: p.lngLat, props: {color: p.color}})),
-  }), [places]);
+  // A point for each place: its properties are the place, so the slot {{color}} of the image gets its colour.
+  const data = useMemo(() => ({places: points(places, {lngLat: p => p.lngLat})}), [places]);
 
   return (
     <div style={{height: 400}}>
       <MapJr
         mapStyle="https://tiles.openfreemap.org/styles/liberty"
         view={view} onViewChange={setView}
-        markers={[pins]}
+        images={{dot}}
+        data={data}
+        layers={[{id: 'places', type: 'symbol', source: 'places', layout: {'icon-image': 'dot', 'icon-allow-overlap': true}}]}
         controls={[navigation(), scale({position: 'bottom-left'})]}
         interactiveLayers={['poi_r1']}
         onClick={e => setSelected(e.features[0] ? {lngLat: e.lngLat, name: e.features[0].properties.name} : null)}
@@ -45,7 +46,7 @@ The props are the fields of the description of a map (see [the main API](api.md)
 
 | Prop | Meaning |
 |---|---|
-| `mapStyle` | The style: an object or a URL. Required. (`style` is the CSS style of the element.) |
+| `mapStyle` | The style: an object or a URL, or a pair `{light, dark}` that follows `colorScheme` (see [A light and a dark style](api.md#a-light-and-a-dark-style)). Required. (`style` is the CSS style of the element.) |
 | `view`, `onViewChange` | A view that your component owns: write each change back. Without `view`, the map starts at `initialView` and the user moves it. |
 | `onClick`, `onHover`, `onLoad`, `onIdle`, `onError` | Events of the map. `onError` gets each error (an `Error`). Without it, the map writes each error to the console. |
 | `onMoveend`, `onZoomend`, `onStyleimagemissing`, `onSourcedata` and the others | A prop for each other event of the map: `on`, and the name of the event with a capital first letter (`onStyleload` for `style.load`). The value is the event of `listen` of the main API. See [Events](api.md#events) for the list. For an image that the style asks for and the map does not have, add an image with the name `event.id` to the prop `images` in `onStyleimagemissing`: see [An image that the style asks for](api.md#an-image-that-the-style-asks-for). |
@@ -87,22 +88,21 @@ export function HomePicker() {
 For the default pin of `Marker`, use `defaultPin()` of `@map-jr/map-jr-gl` in the browser: it returns an element for
 `overlay` of the map (see [Elements of the page on the map](api.md#elements-of-the-page-on-the-map)).
 
-A ref on the component gets the map (the `MapHost` of [the main API](api.md), for `queryFeatures`, `clusterExpansionZoom`, `moveTo`,
+A ref on the component gets the map (the `MapInstance` of [the main API](api.md), for `queryFeatures`, `clusterExpansionZoom`, `moveTo`,
 `fitBounds`). The component creates the map in an effect, so the ref is `null` during the first render and in the
 effects of the parent that run at mount. Read the ref in an event handler or after `onLoad`, or put the code in a
 child component that calls `useMap()`.
 
-`ref.current.map` (and `useMap().map`) is the core map of the library, not the `Map` of
-`@map-jr/map-jr-gl/maplibre-compat`: it has no `setBearing`, `setZoom` or `flyTo`. See `map` in
-[the main API](api.md). In place of `flyTo`, call `moveTo({...view, duration})`: it eases the camera to the view.
+`ref.current` and `useMap()` give the `MapInstance` of [the main API](api.md), not the `Map` of
+`@map-jr/map-jr-gl/maplibre-compat`: it has no `setBearing`, `setZoom` or `flyTo`. In place of `flyTo`, call `moveTo({...view, duration})`: it eases the camera to the view.
 
 ### What you can make again in each render
 
 The map compares each prop with the last one. A prop that has a new object with the same content does no work:
 you can write `controls={[navigation()]}`, `interactiveLayers={['places']}` and a style object in the JSX.
 
-Two things are compared by identity only, because they can be large: the `data` of a marker layer, and each value of
-the `data` prop (GeoJSON for sources of the style). Keep them (`useMemo`, state) until they change, as in the example.
+Each value of the `data` prop (GeoJSON for sources) is compared by identity only, because it can be large. Keep it
+(`useMemo`, state) until it changes, as in the example.
 
 ## Your own controls
 
@@ -141,8 +141,8 @@ function ZoomIn() {
 ## Elements of the page on the map
 
 `MapOverlay` puts its children at a position of the map. The props are `lngLat`, `anchor`, `offset`, `popup` and
-`onClose`, as for `overlay` in [the main API](api.md). The children are React content. For many markers, use the
-`markers` prop.
+`onClose`, as for `overlay` in [the main API](api.md). The children are React content. For many markers, use a
+symbol layer in the `layers` prop with the points in `data`: see [Markers](markers.md).
 
 `MapImage` gives an image to the style layers of the map. Its content is an `<svg>` element, or a function that gets
 the parameters of the image and returns one. A layer uses the image by its name in `icon-image`.
@@ -154,7 +154,7 @@ const places = {type: 'FeatureCollection', features: [
   {type: 'Feature', properties: {color: '#d6453d'}, geometry: {type: 'Point', coordinates: [-74.006, 40.7128]}},
   {type: 'Feature', properties: {color: '#2f7fd1'}, geometry: {type: 'Point', coordinates: [-73.9857, 40.7484]}},
 ]};
-const extend = {
+const additions = {
   sources: {places: {type: 'geojson', data: places}},
   layers: [{id: 'places', type: 'symbol', source: 'places', layout: {'icon-image': 'pin', 'icon-anchor': 'bottom', 'icon-allow-overlap': true}}],
 };
@@ -162,7 +162,7 @@ const extend = {
 export default function Places() {
   return (
     <div style={{height: 400}}>
-      <MapJr mapStyle="https://tiles.openfreemap.org/styles/liberty" initialView={{center: [-73.996, 40.73], zoom: 11.5}} extend={extend}>
+      <MapJr mapStyle="https://tiles.openfreemap.org/styles/liberty" initialView={{center: [-73.996, 40.73], zoom: 11.5}} {...additions}>
         <MapImage name="pin" params={['color']}>
           {({color}) => <svg viewBox="0 0 24 31"><path fill={color} stroke="#fff" d="M12 30C12 30 2 17 2 11a10 10 0 0 1 20 0c0 6-10 19-10 19z"/></svg>}
         </MapImage>

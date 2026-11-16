@@ -13,10 +13,10 @@ let clicks = 0;
 
 async function ask(event) {
   const click = ++clicks;
-  // With `sources`, the query reads the tile data of these sources within 8 pixels of the click. It also finds
+  // `querySource` reads the tile data of one source within 8 pixels of the click. It also finds
   // features that the style does not draw. "openmaptiles" is the id of the vector source in this style.
   // A query fails when its tile cannot be loaded: the answer is then `null` here.
-  const features = await map.value.host.queryFeatures(event.lngLat, {sources: ['openmaptiles'], radius: 8}).catch(() => null);
+  const features = await map.value.map.querySource('openmaptiles', event.lngLat, {radius: 8}).catch(() => null);
   // An earlier click can get its answer after a later click. Only the last click is shown.
   if (click === clicks) found.value = {features};
 }

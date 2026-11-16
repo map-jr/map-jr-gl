@@ -8,7 +8,7 @@ import {applySSROverrides, compileLayer} from '../../src/style.ts';
 import {LINE_VERTEX, buildTile, tessellate, type Batch} from '../../src/tile.ts';
 import {queryTile, sampleElevation} from '../../src/query.ts';
 import {CollisionGrid, renderItems} from '../../src/placement.ts';
-import {fillTemplate, markerFeatures, markerStyle, sizedSVG, svgSize, templateSlots, withMarkers, VARIANT} from '../../src/markers.ts';
+import {fillTemplate, sizedSVG, svgSize, templateSlots, VARIANT} from '../../src/markers.ts';
 import {cleanCredits, renderToSVG} from '../../src/server.ts';
 import {decodePNG, decodeWebPLossless} from '../../src/webp.ts';
 import {deflateSync} from 'node:zlib';
@@ -255,25 +255,6 @@ test('markers: templates escape values and get explicit sizes', () => {
     assert.match(sizedSVG('<svg viewBox="0 0 10 20"><rect/></svg>', 30, 60), /^<svg xmlns="http:\/\/www.w3.org\/2000\/svg"[^>]* width="30" height="60" viewBox="0 0 10 20"><rect\/><\/svg>$/);
 });
 
-test('markers: a marker layer is a GeoJSON source and a symbol layer, and its markers are points with the index as the id', () => {
-    const data = [{lngLat: [1, 2], props: {color: '#d00'}}, {lngLat: [3, 4]}];
-    assert.deepEqual(markerStyle({id: 'pins', image: 'pin', data}).layer, {id: 'pins', type: 'symbol', source: 'pins', before: undefined,
-        layout: {'icon-image': 'pin', 'icon-anchor': 'center', 'icon-allow-overlap': true, 'icon-ignore-placement': true}});
-    // Labels keep away with `collide`. With `overlap: 'hide'` a marker can be hidden, and labels keep away too.
-    assert.deepEqual(markerStyle({id: 'a', image: 'pin', anchor: 'bottom', collide: true, minZoom: 3, maxZoom: 9, data}).layer, {id: 'a', type: 'symbol', source: 'a', before: undefined, minzoom: 3, maxzoom: 9,
-        layout: {'icon-image': 'pin', 'icon-anchor': 'bottom', 'icon-allow-overlap': true, 'icon-ignore-placement': false}});
-    assert.deepEqual(markerStyle({id: 'a', image: 'pin', overlap: 'hide', data}).layer.layout, {'icon-image': 'pin', 'icon-anchor': 'center', 'icon-allow-overlap': false, 'icon-ignore-placement': false});
-    assert.deepEqual(markerFeatures(data), {type: 'FeatureCollection', features: [
-        {type: 'Feature', id: 0, properties: {color: '#d00'}, geometry: {type: 'Point', coordinates: [1, 2]}}, {type: 'Feature', id: 1, properties: {}, geometry: {type: 'Point', coordinates: [3, 4]}}]});
-    // In a style: on top, or below the layer of `before`. The style that was given is not changed.
-    const style = {version: 8, sources: {s: {type: 'vector'}}, layers: [{id: 'land'}, {id: 'labels'}]};
-    const made = withMarkers(style, [{id: 'pins', image: 'pin', data}, {id: 'under', image: 'pin', before: 'labels', data}], true);
-    assert.deepEqual(made.layers.map((l: {id: string}) => l.id), ['land', 'under', 'labels', 'pins']);
-    assert.ok(!('before' in made.layers[1]) && made.sources.pins.data.features.length === 2 && made.sources.s === style.sources.s && style.layers.length === 2);
-    assert.equal(withMarkers(style, [{id: 'pins', image: 'pin', data}]).sources.pins.data.features.length, 0);
-    assert.equal(withMarkers(style, undefined), style);
-});
-
 test('server: renders a tile to SVG offline, with generated icons and overrides', async () => {
     const style = {
         version: 8, sources: {s: {type: 'vector', tiles: ['https://tiles.test/{z}/{x}/{y}.pbf'], maxzoom: 14}},
@@ -318,8 +299,8 @@ test('style: font-faces become web fonts keyed by family, weight and style', asy
         'Noto Sans Regular': [{url: 'https://fonts.test/khmer.ttf', 'unicode-range': ['U+1780-17FF', 'U+19E0-19FF']}],
     }}, undefined, 'https://example.test/styles/style.json');
     assert.deepEqual(style.fonts, [
-        {family: 'Open Sans', weight: 700, style: 'normal', src: 'https://example.test/styles/fonts/open-sans-bold.woff2', unicodeRange: undefined},
-        {family: 'Noto Sans', weight: 400, style: 'normal', src: 'https://fonts.test/khmer.ttf', unicodeRange: 'U+1780-17FF, U+19E0-19FF'},
+        {family: 'Open Sans', weight: 700, style: 'normal', name: 'Open Sans Bold', src: 'https://example.test/styles/fonts/open-sans-bold.woff2', unicodeRange: undefined},
+        {family: 'Noto Sans', weight: 400, style: 'normal', name: 'Noto Sans Regular', src: 'https://fonts.test/khmer.ttf', unicodeRange: 'U+1780-17FF, U+19E0-19FF'},
     ]);
 });
 
@@ -415,6 +396,12 @@ test('geojson: sources are cut into tiles, clipped, and render and query like ve
     const made = await renderToSVG({...view, style: {version: 8, sources: {}, layers: [style.layers[0]]}, data: {g: data}});
     assert.match(made.svg, /fill="#ff0000"/);
     await assert.rejects(renderToSVG({...view, style: {version: 8, sources: {g: {type: 'vector', tiles: []}}, layers: []}, data: {g: data}}), /\[map-jr-gl\] data: the source "g" has the type "vector"/);
+    // A pair {light, dark} in `style`: 'dark' uses dark, 'light' and no value use light (#491).
+    const pair = {light: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#ffffff'}}]}, dark: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#000000'}}]}};
+    for (const [scheme, colour] of [['dark', '#000000'], ['light', '#ffffff'], [undefined, '#ffffff']] as const) {
+        const r = await renderToSVG({...view, style: pair, colorScheme: scheme});
+        assert.ok(r.svg.includes(colour) && !r.svg.includes(colour === '#000000' ? '#ffffff' : '#000000'), `colorScheme ${scheme}: ${r.svg.slice(0, 300)}`);
+    }
 });
 
 test('contours: isolines join into rings and open lines, with levels and seamless tile edges', async () => {

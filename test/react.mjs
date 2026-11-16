@@ -18,12 +18,14 @@ const check = (name, ok, detail = '') => { console.log(`${ok ? 'PASS' : 'FAIL'} 
 const tiles = (await (await fetch('https://tiles.openfreemap.org/planet')).json()).tiles[0];
 const style = makeStyle(tiles, '<a href="https://example.com/credits">Example tiles</a>'), view = {center: [-74.0065, 40.7085], zoom: 14.3};
 const disc = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="{{color}}"/></svg>';
-const pins = {id: 'pins', image: 'disc', data: [{lngLat: view.center, props: {color: '#d00'}}]};
+// A point with the colour for the template, in `data`, and the symbol layer that draws the image at the point.
+const pins = {data: {pins: {type: 'FeatureCollection', features: [{type: 'Feature', properties: {color: '#d00'}, geometry: {type: 'Point', coordinates: view.center}}]}},
+    layers: [{id: 'pins', type: 'symbol', source: 'pins', layout: {'icon-image': 'disc', 'icon-allow-overlap': true, 'icon-ignore-placement': true}}]};
 
 // 1. On the server: the first view from the server entry, given to the component.
-const firstView = await renderFirstView({style, ...view, width: 800, height: 500, images: {disc}, markers: [pins], overrides: {building: {hidden: true}}});
+const firstView = await renderFirstView({style, ...view, width: 800, height: 500, images: {disc}, ...pins, overrides: {building: {hidden: true}}});
 const frame = child => h('div', {id: 'frame', style: {width: 800, height: 500}}, child);
-const html = renderToString(frame(h(MapJr, {mapStyle: style, initialView: view, images: {disc}, markers: [pins], firstView})));
+const html = renderToString(frame(h(MapJr, {mapStyle: style, initialView: view, images: {disc}, ...pins, firstView})));
 check('server: the component renders the first view, with the marker from its image (a template with the colour of the marker)', /<svg[^>]*data-map-jr-ssr/.test(html) && html.includes('Example tiles') && html.includes('map-jr-react') && /<circle cx="12" cy="12" r="10" fill="#d00"/.test(html), `${(html.length / 1024).toFixed(0)} KB of HTML`);
 
 // 2. In a browser. React for the browser is made into module files one time (the package has no such files).
@@ -67,16 +69,16 @@ function Zoom() { const zoom = useMapState(s => s.view.zoom); return h('p', {id:
 // (A component inside the SVG of an image: its own change must reach the map.)
 function Dot() { const [r, setR] = useState(2); t.setRadius = setR; return h('circle', {cx: 4, cy: 4, r}); }
 function App({ssr}) {
-    const [view, setView] = useState(${JSON.stringify(view)}), [markers, setMarkers] = useState([pins]), [pin, setPin] = useState([-74.0065, 40.7085]), [tip, setTip] = useState(true), [tone, setTone] = useState('#fff'), [arrow, setArrow] = useState(true), [twin, setTwin] = useState(false), [full, setFull] = useState(true), [more, setMore] = useState({}), [home, setHome] = useState([-74.01, 40.705]), map = useRef(null);
+    const [view, setView] = useState(${JSON.stringify(view)}), [markers, setMarkers] = useState(pins), [pin, setPin] = useState([-74.0065, 40.7085]), [tip, setTip] = useState(true), [tone, setTone] = useState('#fff'), [arrow, setArrow] = useState(true), [twin, setTwin] = useState(false), [full, setFull] = useState(true), [more, setMore] = useState({}), [home, setHome] = useState([-74.01, 40.705]), map = useRef(null);
     Object.assign(t, {home, setView, setMarkers, setPin, setTone, setArrow, setTwin, setFull, map, view});
     t.renders++;
     // (The props are made again in each render, as React code does: the arrays of controls and layers, the functions.)
     return h('div', {id: 'frame', style: {width: 800, height: 500}}, ssr
         // (The tree that takes over the HTML of the server has an image too: it must not disturb the hydration.)
-        ? h(MapJr, {ref: map, mapStyle: style, initialView: view, images, markers, controls: [navigation()], onLoad: () => t.loads++},
+        ? h(MapJr, {ref: map, mapStyle: style, initialView: view, images, ...markers, controls: [navigation()], onLoad: () => t.loads++},
             h(MapImage, {name: 'hydrated', params: ['color']}, ({color}) => h('svg', {viewBox: '0 0 8 8'}, h('rect', {width: 8, height: 8, fill: color}))))
-        : h(MapJr, {ref: map, mapStyle: style, view, onViewChange: v => { t.views++; setView(v); }, images: {...images, ...more}, markers, controls: [navigation(), scale({position: 'bottom-left'})], interactiveLayers: ['water', 'park', 'building'],
-            onClick: e => t.clicks.push(e), onLoad: () => t.loads++, attribution: false, onMoveend: e => t.moves.push(e.type + ' ' + typeof e.target.getZoom()),
+        : h(MapJr, {ref: map, mapStyle: style, view, onViewChange: v => { t.views++; setView(v); }, images: {...images, ...more}, ...markers, controls: [navigation(), scale({position: 'bottom-left'})], interactiveLayers: ['water', 'park', 'building'],
+            onClick: e => t.clicks.push(e), onLoad: () => t.loads++, attribution: false, onMoveend: e => t.moves.push(e.type + ' ' + typeof e.target.state.get().view.zoom),
             // An image that the style asks for and the map does not have: the application adds it to the prop images.
             onStyleimagemissing: e => { t.asked.push(e.id); setMore(more => ({...more, [e.id]: '<svg viewBox="0 0 4 4"><rect width="4" height="4"/></svg>'})); }},
             h(Zoom), h(MapOverlay, {lngLat: pin, anchor: 'bottom'}, h('b', {id: 'own-pin'}, 'here')),
@@ -142,10 +144,10 @@ try {
         t.setPin([-74.0, 40.71]); await wait(400);
         const pinMoved = near(where('own-pin'), host.project([-74.0, 40.71]));
         document.querySelector('.map-jr-popup-close-button')?.click(); await wait(300);
-        // (A marker is a feature of the layer of its marker layer.)
+        // (A point is a feature of the symbol layer "pins".)
         const before = (await host.queryFeatures(host.project([-74.0065, 40.7085]), {layers: ['pins']})).length ? 1 : 0;
-        t.setMarkers([]); await wait(600);
-        return {events: t.moves[0], asked: t.asked.length, added: t.asked.length > 0 && t.asked.every(id => host.map.hasImage(id)), followed, shown, controls, moved, pinOk, tip, pinMoved, closed: t.closed, tipGone: !document.getElementById('own-tip'), views: t.views, before, after: host.map.getLayer('pins') ? 1 : 0};
+        t.setMarkers({}); await wait(600);
+        return {events: t.moves[0], asked: t.asked.length, added: t.asked.length > 0 && t.asked.every(id => host._map.hasImage(id)), followed, shown, controls, moved, pinOk, tip, pinMoved, closed: t.closed, tipGone: !document.getElementById('own-tip'), views: t.views, before, after: host._map.getLayer('pins') ? 1 : 0};
     });
     check('browser: an event of the map is a prop of the component (onMoveend), and an image that the style asks for (onStyleimagemissing) is on the map after the listener adds it to the prop images', model.events === 'moveend number' && model.asked > 0 && model.added, JSON.stringify({events: model.events, asked: model.asked, added: model.added}));
     check('browser: the view follows the map and moves it; useMapState, controls, overlays and markers follow React', model.followed === 15 && model.shown === '15.0' && model.controls === 2 && model.moved === 14 && model.pinOk && model.tip && model.pinMoved
@@ -173,7 +175,7 @@ try {
     check('browser: a click calls onClick, with the features there', click.clicks === 1 && click.features, JSON.stringify(click));
     // An image as a child component: the SVG of its content is a template of the map, and it follows the component.
     const child = await page.evaluate(async () => {
-        const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), map = t.map.current.map, add = map.addImage, given = [];
+        const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), map = t.map.current._map, add = map.addImage, given = [];
         const first = ['arrow', 'photo', 'maybe', 'nested'].map(name => map.hasImage(name)).join(), apart = !document.querySelector('svg[viewBox="0 0 8 8"]');
         map.addImage = function (name, source, ...rest) { given.push(name + ' ' + source); return add.call(this, name, source, ...rest); };
         t.setPin([-74.0064, 40.7085]); // (a render with the same image gives the image no second time)

@@ -288,6 +288,8 @@ export class Engine {
     private sprite: Sprite | null = null;
     private spriteUrl = '';
     private styleFonts = '';
+    /** The web fonts that were given to the browser, as text (see `loadFonts`). */
+    private fontsLoaded = new Set<string>();
     private images = new Map<string, SpriteIcon & {custom: true}>();
     private missing = new Set<string>();
     /** The images of the map changed (`iconsRev` counts the changes): the icons that the tiles have in buffers are made again. */
@@ -667,6 +669,10 @@ export class Engine {
             // The map is not idle while the sprite loads: its icons are part of the first complete picture.
             this.spritePending++;
             this.loadIcons(style.sprite).catch(err => this.emit({type: 'error', message: String(err.message)})).finally(() => { this.spritePending--; this.invalidate(); });
+        } else if (!style.sprite && this.spriteUrl) {
+            // (A style without a sprite: the icons of the sprite before are not drawn any more.)
+            this.spriteUrl = ''; this.sprite = null;
+            this.iconsRev++; this.iconsAll = true; this.styleVersion++;
         }
         const faces = JSON.stringify(style.fonts ?? []);
         if (style.fonts?.length && faces !== this.styleFonts) { this.styleFonts = faces; this.loadFonts(style.fonts); }
@@ -718,15 +724,16 @@ export class Engine {
      */
     private async loadIcons(spec: string) {
         const sheets: {id: string; url: string}[] = spec[0] === '[' ? JSON.parse(spec) : [{id: 'default', url: spec}];
-        const loaded = await Promise.all(sheets.map(async ({id, url}) => {
+        // (A sheet that does not load is an error, and the icons of the other sheets are drawn.)
+        const loaded = (await Promise.all(sheets.map(async ({id, url}) => {
             // (The two files of a sprite are asked for at the same time: the URL of the image does not depend on the JSON.)
             // (An answer that the page requested before the engine started is taken once; see `early` of the options.)
             const early = this.answered, got = (f: typeof fetch): typeof fetch => u => early?.get(String(u)) ?? f(u);
             const dense = this.dpr > 1, [sprite, res] = await Promise.all([loadSprite(url, dense, got(withTimeout(this.fetchAs('SpriteJSON')))), got(withTimeout(this.fetchAs('SpriteImage')))(url + (dense ? '@2x.png' : '.png'))]);
             if (!res.ok) throw new Error(`Failed to load sprite image ${sprite.image}: ${res.status}`);
             return {id, sprite, image: await createImageBitmap(await res.blob())};
-        }));
-        if (spec !== this.spriteUrl) return;
+        }).map(p => p.catch(err => { if (spec === this.spriteUrl) this.emit({type: 'error', message: String(err.message)}); })))).filter(l => !!l);
+        if (spec !== this.spriteUrl || !loaded.length) return;
         const icons: Sprite['icons'] = {}, width = Math.max(...loaded.map(l => l.image.width)), height = loaded.reduce((sum, l) => sum + l.image.height, 0);
         const all = loaded.length > 1 ? new OffscreenCanvas(width, height) : null, ctx = all?.getContext('2d');
         let top = 0;
@@ -745,15 +752,22 @@ export class Engine {
     /** Loads web fonts into whichever thread the engine runs on, then redraws all text with them. */
     private loadFonts(fonts: FontSource[]) {
         const set = (globalThis as any).fonts ?? (globalThis as any).document?.fonts;
+        // (A face that was loaded before is not loaded again: a new style or description with the same faces costs no request.)
+        const todo = fonts.filter(f => { const key = JSON.stringify([f.family, f.src, f.weight, f.style, f.unicodeRange]); return !this.fontsLoaded.has(key) && this.fontsLoaded.add(key); });
+        if (!todo.length) return;
         this.spritePending++; // fonts are also part of the first complete picture
-        Promise.all(fonts.map(async f => {
-            // The font file is fetched here and given to the browser as bytes. WebKit (Safari) does not load a font from a
-            // URL inside a worker, and the labels then used a fallback font.
-            const bytes = await (await withTimeout(this.fetchAs('Font'))(f.src)).arrayBuffer();
-            const face = new FontFace(f.family, bytes, {weight: String(f.weight ?? '400'), style: f.style ?? 'normal', ...(f.unicodeRange ? {unicodeRange: f.unicodeRange} : {})});
-            set.add(await face.load());
-        })).then(() => { this.atlas.clear(true); this.relabel(); },
-            err => this.emit({type: 'error', message: `Could not load font: ${err.message}`})).finally(() => { this.spritePending--; this.invalidate(); });
+        // (Each font loads on its own: a file that does not load is an error with its name, and the other fonts are still used.)
+        Promise.all(todo.map(async f => {
+            try {
+                // The font file is fetched here and given to the browser as bytes. WebKit (Safari) does not load a font from a
+                // URL inside a worker, and the labels then used a fallback font.
+                const bytes = await (await withTimeout(this.fetchAs('Font'))(f.src)).arrayBuffer();
+                const face = new FontFace(f.family, bytes, {weight: String(f.weight ?? '400'), style: f.style ?? 'normal', ...(f.unicodeRange ? {unicodeRange: f.unicodeRange} : {})});
+                set.add(await face.load());
+            } catch (err) {
+                this.emit({type: 'error', message: `[map-jr-gl] fonts: the font "${f.name ?? f.family}" did not load from ${f.src} (${(err as Error).message}). The labels use the next font of their "text-font".`});
+            }
+        })).then(() => { this.atlas.clear(true); this.relabel(); }).finally(() => { this.spritePending--; this.invalidate(); });
     }
 
     /** The slots of each SVG template (see the command `templates`). */

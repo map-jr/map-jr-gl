@@ -16,10 +16,12 @@ const check = (name, ok, detail = '') => { console.log(`${ok ? 'PASS' : 'FAIL'} 
 const tiles = (await (await fetch('https://tiles.openfreemap.org/planet')).json()).tiles[0];
 const style = makeStyle(tiles, '<a href="https://example.com/credits" onclick="x()">Example <b>tiles</b></a>'), view = {center: [-74.0065, 40.7085], zoom: 14.3};
 const disc = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="{{color}}"/></svg>';
-const pins = {id: 'pins', image: 'disc', data: [{lngLat: view.center, props: {color: '#d00'}}]};
+// A point for each position, with the colour for the template, and the symbol layer that draws the image at each point.
+const pinData = list => ({type: 'FeatureCollection', features: list.map(([lngLat, color]) => ({type: 'Feature', properties: {color}, geometry: {type: 'Point', coordinates: lngLat}}))});
+const pins = {data: {pins: pinData([[view.center, '#d00']])}, layers: [{id: 'pins', type: 'symbol', source: 'pins', layout: {'icon-image': 'disc', 'icon-allow-overlap': true, 'icon-ignore-placement': true}}]};
 
 // 1. On the server.
-const html = await renderToString(createSSRApp({render: () => h('div', {id: 'frame', style: 'width:800px;height:500px'}, [h(MapJr, {mapStyle: style, initialView: view, images: {disc}, markers: [pins], ssr: {width: 800, height: 500}, attribution: false})])}));
+const html = await renderToString(createSSRApp({render: () => h('div', {id: 'frame', style: 'width:800px;height:500px'}, [h(MapJr, {mapStyle: style, initialView: view, images: {disc}, ...pins, ssr: {width: 800, height: 500}, attribution: false})])}));
 check('server: the component renders the first view as SVG, with the marker from its image (a template with the colour of the marker)', /<svg[^>]*data-map-jr-ssr/.test(html) && html.length > 20000 && html.includes('map-jr-vue') && /<circle cx="12" cy="12" r="10" fill="#d00"/.test(html), `${(html.length / 1024).toFixed(0)} KB of HTML`);
 const credited = await renderToString(createSSRApp({render: () => h(MapJr, {mapStyle: style, initialView: view, ssr: true})}));
 check('server: the credits of the sources are in the page, as text and links only', !html.includes('example.com/credits') && /<div data-map-jr-ssr[^>]*><a href="https:\/\/example.com\/credits">Example tiles<\/a><\/div>/.test(credited), credited.match(/<div data-map-jr-ssr[^>]*>.{0,120}/)?.[0] ?? 'no credits');
@@ -29,9 +31,9 @@ const plain = await renderToString(createSSRApp({render: () => h(MapJr, {mapStyl
 const square = c => ({type: 'FeatureCollection', features: [{type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[c[0] - 0.002, c[1] - 0.002], [c[0] + 0.002, c[1] - 0.002], [c[0] + 0.002, c[1] + 0.002], [c[0] - 0.002, c[1] + 0.002], [c[0] - 0.002, c[1] - 0.002]]]}}]});
 const empty = {type: 'geojson', data: {type: 'FeatureCollection', features: []}};
 const extended = await renderToString(createSSRApp({render: () => h(MapJr, {mapStyle: style, initialView: view, attribution: false, ssr: {timeout: 20000, allowHosts: [new URL(tiles).host]},
-    extend: {sources: {own: {type: 'geojson', data: square(view.center)}, live: empty}, layers: [{id: 'own', type: 'fill', source: 'own', paint: {'fill-color': '#123456'}}, {id: 'live', type: 'fill', source: 'live', paint: {'fill-color': '#654321'}}]},
+    sources: {own: {type: 'geojson', data: square(view.center)}, live: empty}, layers: [{id: 'own', type: 'fill', source: 'own', paint: {'fill-color': '#123456'}}, {id: 'live', type: 'fill', source: 'live', paint: {'fill-color': '#654321'}}],
     data: {live: square([view.center[0] + 0.004, view.center[1]])}})}));
-check('server: the SVG has the layers of extend and the GeoJSON of data', extended.includes('#123456') && extended.includes('#654321'), JSON.stringify({extend: extended.includes('#123456'), data: extended.includes('#654321')}));
+check('server: the SVG has the sources and layers of the description and the GeoJSON of data', extended.includes('#123456') && extended.includes('#654321'), JSON.stringify({layers: extended.includes('#123456'), data: extended.includes('#654321')}));
 let blocked = '';
 const guarded = createSSRApp({render: () => h(MapJr, {mapStyle: style, initialView: view, ssr: {allowHosts: ['other.example.com']}})});
 guarded.config.errorHandler = e => { blocked = e.message; };
@@ -39,7 +41,7 @@ await renderToString(guarded);
 check('server: the ssr prop passes allowHosts to the server renderer', blocked.includes('allowHosts'), blocked.slice(0, 120));
 check('server: without the ssr prop the component renders an empty element', !plain.includes('<svg') && plain.includes('map-jr-vue'), plain.slice(0, 120));
 
-const bare = await renderToString(createSSRApp({render: () => h('div', {id: 'frame', style: 'width:800px;height:500px'}, [h(MapJr, {mapStyle: style, initialView: view, images: {disc}, markers: [pins], attribution: false})])}));
+const bare = await renderToString(createSSRApp({render: () => h('div', {id: 'frame', style: 'width:800px;height:500px'}, [h(MapJr, {mapStyle: style, initialView: view, images: {disc}, ...pins, attribution: false})])}));
 
 // 2. In a browser: the page from the server, then Vue and the map.
 const types = {'.js': 'text/javascript', '.json': 'application/json'};
@@ -47,12 +49,12 @@ const client = `import {createSSRApp, createApp, h, ref} from 'vue';
 import {MapJr, MapOverlay, MapImage} from '/dist/vue.js';
 import {navigation, scale} from '/dist/controls.js';
 const style = await (await fetch('/style.json')).json();
-const view = ref(${JSON.stringify(view)}), markers = ref([${JSON.stringify(pins)}]), layers = ref(['water', 'park', 'building']), images = ref({dot: '<svg viewBox="0 0 4 4"><rect width="4" height="4"/></svg>', disc: ${JSON.stringify(disc)}});
+const view = ref(${JSON.stringify(view)}), data = ref(${JSON.stringify(pins.data)}), pinLayers = ref(${JSON.stringify(pins.layers)}), layers = ref(['water', 'park', 'building']), images = ref({dot: '<svg viewBox="0 0 4 4"><rect width="4" height="4"/></svg>', disc: ${JSON.stringify(disc)}});
 const tone = ref('#fff'), arrow = ref(true), twin = ref(false), full = ref(true), radius = ref(2);
 // (A component inside the SVG of an image: its own change must reach the map.)
 const Dot = {render: () => h('circle', {cx: 4, cy: 4, r: radius.value})};
-const t = window.t = {view, markers, layers, images, tone, arrow, twin, full, radius, moves: [], asked: [], clicks: [], loads: 0, order: [], views: 0, map: ref(null), pin: ref([-74.0065, 40.7085]), tip: ref(true), closed: 0, home: ref([-74.01, 40.705]), dragged: [], projection: ref(null)};
-const make = (create, ssr) => create({render: () => h('div', {id: 'frame', style: 'width:800px;height:500px'}, [h(MapJr, {ref: t.map, mapStyle: style, controls: [navigation(), scale({position: 'bottom-left'})], ...(ssr ? {initialView: view.value, ...(ssr === 'svg' ? {ssr: {width: 800, height: 500}} : {})} : {view: view.value, 'onUpdate:view': v => { t.views++; view.value = v; }, interactiveLayers: layers.value, onClick: e => t.clicks.push(e)}), markers: markers.value, images: images.value, projection: t.projection.value, attribution: false, onLoad: host => { t.loads++; t.loadHost = host; t.order.push('load:' + t.map.value.host.state.get().idle); }, onIdle: () => t.order.push('idle'), onMoveend: e => t.moves.push(e.type + ' ' + typeof e.target.getZoom()),
+const t = window.t = {view, data, pinLayers, layers, images, tone, arrow, twin, full, radius, moves: [], asked: [], clicks: [], loads: 0, order: [], views: 0, map: ref(null), pin: ref([-74.0065, 40.7085]), tip: ref(true), closed: 0, home: ref([-74.01, 40.705]), dragged: [], projection: ref(null)};
+const make = (create, ssr) => create({render: () => h('div', {id: 'frame', style: 'width:800px;height:500px'}, [h(MapJr, {ref: t.map, mapStyle: style, controls: [navigation(), scale({position: 'bottom-left'})], ...(ssr ? {initialView: view.value, ...(ssr === 'svg' ? {ssr: {width: 800, height: 500}} : {})} : {view: view.value, 'onUpdate:view': v => { t.views++; view.value = v; }, interactiveLayers: layers.value, onClick: e => t.clicks.push(e)}), data: data.value, layers: pinLayers.value, images: images.value, projection: t.projection.value, attribution: false, onLoad: host => { t.loads++; t.loadHost = host; t.order.push('load:' + t.map.value.map.state.get().idle); }, onIdle: () => t.order.push('idle'), onMoveend: e => t.moves.push(e.type + ' ' + typeof e.target.state.get().view.zoom),
   // An image that the style asks for and the map does not have: the application adds it to the prop images.
   onStyleimagemissing: e => { t.asked.push(e.id); if (!images.value[e.id]) images.value[e.id] = '<svg viewBox="0 0 4 4"><rect width="4" height="4"/></svg>'; }}, ssr ? undefined : {default: () => (t.renders = (t.renders ?? 0) + 1, [h(MapOverlay, {lngLat: t.pin.value, anchor: 'bottom', 'data-own': '', class: 'own-class', style: 'color: rgb(255, 0, 0)'}, () => h('b', {id: 'own-pin'}, 'here')), arrow.value ? h(MapImage, {name: 'arrow', params: ['color']}, {default: ({color}) => h('svg', {viewBox: '0 0 8 8'}, [h('path', {d: 'M4 0 8 8 0 8z', fill: color, stroke: tone.value})])}) : null, twin.value ? h(MapImage, {name: 'arrow'}, () => h('svg', {viewBox: '0 0 8 8'}, [h('path', {d: 'M4 0 8 8 0 8z'})])) : null,
   h(MapImage, {name: 'maybe'}, () => full.value ? h('svg', {viewBox: '0 0 8 8'}, [h('style', 'p{color:rgb(1,2,3)}'), h('rect', {id: 'in-image', width: 8, height: 8})]) : null),
@@ -107,7 +109,7 @@ try {
     check('browser: controls show on a page from a server, with the ssr prop and without it', controlsWithSsr >= 2 && controlsBare >= 2 && !warnings.length && !errors.length, JSON.stringify({controlsWithSsr, controlsBare, warnings: warnings.slice(0, 2), errors: errors.slice(0, 2)}));
     await page.close();
 
-    // The component in the browser only: v-model:view, markers, the pointer, and the end.
+    // The component in the browser only: v-model:view, the points of data, the pointer, and the end.
     page = await browser.newPage({viewport: {width: 900, height: 600}});
     page.on('pageerror', e => errors.push(e.message));
     await page.goto(origin + '/');
@@ -115,9 +117,9 @@ try {
     await page.waitForFunction(() => window.t.order.includes('idle'), null, {timeout: 60000});
     const order = await page.evaluate(() => window.t.order.slice(0, 2));
     check('browser: the component emits load before the first idle, and the map is not idle yet at load', order[0] === 'load:false' && order[1] === 'idle', JSON.stringify(order));
-    check('browser: load gives the map, the same as the host of a template ref (#265)', await page.evaluate(() => !!window.t.loadHost && window.t.loadHost === window.t.map.value.host && typeof window.t.loadHost.moveTo === 'function'));
+    check('browser: load gives the map, the same as the map of a template ref (#265)', await page.evaluate(() => !!window.t.loadHost && window.t.loadHost === window.t.map.value.map && typeof window.t.loadHost.moveTo === 'function'));
     const model = await page.evaluate(async () => {
-        const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), host = t.map.value.host;
+        const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), host = t.map.value.map;
         host.moveTo({zoom: 15, duration: 200});
         for (let i = 0; i < 80 && !(t.view.value.zoom === 15 && !host.state.get().moving); i++) await wait(100);
         const followed = t.view.value.zoom;
@@ -127,43 +129,46 @@ try {
         t.view.value.zoom = 14.2; // a field of the view, in place
         await wait(800);
         const field = host.state.get().view.zoom;
-        // (A marker is a feature of the layer of its marker layer.)
+        // (A point is a feature of the symbol layer "pins".)
         const at = async lngLat => (await host.queryFeatures(host.project(lngLat), {layers: ['pins']})).length ? 1 : 0;
-        // Changes in place, as Vue code makes them: a marker more, a marker replaced.
-        t.markers.value[0].data.push({lngLat: [-74.0, 40.71], props: {color: '#00d'}});
+        const pinData = list => ({type: 'FeatureCollection', features: list.map(([lngLat, color]) => ({type: 'Feature', properties: {color}, geometry: {type: 'Point', coordinates: lngLat}}))});
+        // A change of the data of a source is a new object: a point more, a point replaced.
+        t.data.value = {pins: pinData([[[-74.0065, 40.7085], '#d00'], [[-74.0, 40.71], '#00d']])};
         await wait(600);
         const pushed = await at([-74.0, 40.71]);
-        t.markers.value[0].data[0] = {lngLat: [-73.99, 40.71], props: {color: '#0a0'}};
+        t.data.value = {pins: pinData([[[-73.99, 40.71], '#0a0'], [[-74.0, 40.71], '#00d']])};
         await wait(600);
         const replaced = [await at([-74.0065, 40.7085]), await at([-73.99, 40.71])];
-        t.markers.value[0].data[0] = {lngLat: [-74.0065, 40.7085], props: {color: '#d00'}};
+        // A key of `data` in place: the map gets the new object.
+        t.data.value.pins = pinData([[[-74.0065, 40.7085], '#d00']]);
         await wait(600);
         const before = await at([-74.0065, 40.7085]);
-        t.markers.value = [];
+        t.pinLayers.value = [];
+        t.data.value = {};
         // An image of the prop `images`, and a change in place that removes it.
-        const image = host.map.hasImage('dot');
+        const image = host._map.hasImage('dot');
         delete t.images.value.dot;
         await wait(600);
-        return {events: t.moves[0], asked: t.asked.length, added: t.asked.length > 0 && t.asked.every(id => host.map.hasImage(id)), image, imageAfter: host.map.hasImage('dot'), followed, moved, field, views: t.views, pushed, replaced: replaced.join(), before, after: host.map.getLayer('pins') ? 1 : 0};
+        return {events: t.moves[0], asked: t.asked.length, added: t.asked.length > 0 && t.asked.every(id => host._map.hasImage(id)), image, imageAfter: host._map.hasImage('dot'), followed, moved, field, views: t.views, pushed, replaced: replaced.join(), before, after: host._map.getLayer('pins') ? 1 : 0};
     });
     check('browser: an event of the map is an event of the component (moveend), and an image that the style asks for (styleimagemissing) is on the map after the listener adds it to the prop images', model.events === 'moveend number' && model.asked > 0 && model.added, JSON.stringify({events: model.events, asked: model.asked, added: model.added}));
     // The prop projection is the field `projection` of the description (#463).
     const projected = await page.evaluate(async () => {
-        const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), host = t.map.value.host, events = [];
+        const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), host = t.map.value.map, events = [];
         const stop = host.listen('projectiontransition', e => events.push(e.newProjection));
         t.projection.value = {type: 'globe'};
         await wait(300);
-        const on = host.map.getProjection()?.type;
+        const on = host._map.getProjection()?.type;
         t.projection.value = null;
         await wait(300);
         stop();
-        return {on, off: host.map.getProjection()?.type ?? 'none', events};
+        return {on, off: host._map.getProjection()?.type ?? 'none', events};
     });
     check('browser: the prop projection sets the projection of the map, and null gives back that of the style', JSON.stringify(projected) === JSON.stringify({on: 'globe', off: 'none', events: ['globe', 'mercator']}), JSON.stringify(projected));
-    check('browser: v-model:view follows the map and moves it; markers and images follow their props, also when the data changes in place', model.image && !model.imageAfter && model.followed === 15 && model.moved === 13.5 && model.field === 14.2 && model.views > 2 && model.pushed === 1 && model.replaced === '0,1' && model.before === 1 && model.after === 0, JSON.stringify(model));
+    check('browser: v-model:view follows the map and moves it; the points of data, the layers and the images follow their props', model.image && !model.imageAfter && model.followed === 15 && model.moved === 13.5 && model.field === 14.2 && model.views > 2 && model.pushed === 1 && model.replaced === '0,1' && model.before === 1 && model.after === 0, JSON.stringify(model));
     // An image as a child component: the SVG of its slot is a template of the map, and it follows the component.
     const child = await page.evaluate(async () => {
-        const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), map = t.map.value.host.map, add = map.addImage, given = [];
+        const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), map = t.map.value.map._map, add = map.addImage, given = [];
         const first = ['arrow', 'photo', 'maybe', 'nested'].map(name => map.hasImage(name)).join();
         // (The SVG is not in the page: its <style> is no style of the page, and its id is no id of the page.)
         const p = document.body.appendChild(document.createElement('p')), apart = !document.querySelector('svg[viewBox="0 0 8 8"]') && !document.getElementById('in-image') && getComputedStyle(p).color !== 'rgb(1, 2, 3)';
@@ -195,7 +200,7 @@ try {
         && /^nested <svg[^>]*><circle cx="4" cy="4" r="3"\/?>(<\/circle>)?<\/svg>$/.test(child.nested) && child.kept && child.gone && child.emptied, JSON.stringify(child));
     // Elements of the page on the map: a marker with own content and a popup, as child components.
     const overlays = await page.evaluate(async () => {
-        const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), host = t.map.value.host;
+        const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), host = t.map.value.map;
         const where = id => { const r = document.getElementById(id)?.getBoundingClientRect(); return r && r.width ? [Math.round(r.x + r.width / 2), Math.round(r.bottom)] : null; };
         host.moveTo({center: [-74.0065, 40.7085], zoom: 14}); await wait(600);
         const frame = document.getElementById('frame').getBoundingClientRect(), at = host.project([-74.0065, 40.7085]);
@@ -236,7 +241,7 @@ try {
     const before = await page.evaluate(() => window.t.renders);
     for (let i = 1; i <= 20; i++) await page.mouse.move(400 + i, 250);
     await page.waitForTimeout(300);
-    const moved = await page.evaluate(b => ({renders: window.t.renders - b, pointer: window.t.map.value.host.state.get().pointer}), before);
+    const moved = await page.evaluate(b => ({renders: window.t.renders - b, pointer: window.t.map.value.map.state.get().pointer}), before);
     check('browser: 20 moves of the pointer change state.pointer and do not render the content of the component again', moved.renders === 0 && moved.pointer?.point.x === 420, JSON.stringify(moved));
     await page.mouse.click(400, 250); await page.waitForTimeout(600);
     const click = await page.evaluate(() => ({clicks: window.t.clicks.length, features: Array.isArray(window.t.clicks[0]?.features)}));
@@ -280,6 +285,26 @@ try {
         return warned;
     });
     check('browser: the warning for height 0 names <MapJr> and useMapJr()', flat.length === 2 && flat[0].startsWith('[map-jr-gl] <MapJr>: the container has height 0') && flat[1].startsWith('[map-jr-gl] useMapJr(): the container has height 0'), JSON.stringify(flat));
+    // useMapFeatures gives what the style layers draw, and useMapSource the tile data of one source (#502).
+    const kept = await page.evaluate(async () => {
+        const {createApp, h, ref} = await import('vue'), {MapJr, useMapFeatures, useMapSource} = await import('/dist/vue.js');
+        const c = [-74.0065, 40.7085], data = {type: 'FeatureCollection', features: [{type: 'Feature', properties: {n: 1}, geometry: {type: 'Point', coordinates: c}}]};
+        const out = {}, id = ref('pts');
+        const Child = {setup() { const drawn = useMapFeatures(c, {layers: ['pts']}), raw = useMapSource(id, c, {radius: 10}); out.read = () => ({drawn: drawn.value.length, layer: drawn.value[0]?.layer?.id, raw: raw.value.length, type: raw.value[0]?.type}); return () => null; }};
+        const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+        const app = createApp({render: () => h(MapJr, {mapStyle: '/style.json', initialView: {center: c, zoom: 14}, attribution: false, sources: {pts: {type: 'geojson', data}}, layers: [{id: 'pts', type: 'circle', source: 'pts'}], style: 'height:200px'}, () => h(Child))});
+        app.mount(el);
+        const wait = ms => new Promise(r => setTimeout(r, ms));
+        for (let i = 0; i < 80 && !(out.read?.().drawn && out.read().raw); i++) await wait(100);
+        const first = out.read();
+        id.value = 'no-such-source';
+        await wait(1500);
+        const other = out.read();
+        app.unmount(); el.remove();
+        return {first, other};
+    });
+    check('browser: useMapFeatures gives what the style layers draw, and useMapSource the data of the source that a ref names',
+        kept.first.drawn === 1 && kept.first.layer === 'pts' && kept.first.raw === 1 && kept.first.type === 'Point' && kept.other.raw === 0 && kept.other.drawn === 1, JSON.stringify(kept));
     // Reactive data (Vue proxies, #242): structured clone refuses a proxy, and the map copies it instead, in both entries
     // and with both renderers. The data must be drawn, getStyle() must work, and no error may be reported.
     const proxied = await page.evaluate(() => { let step = 'start'; return Promise.race([new Promise(r => setTimeout(() => r({timeout: 'no answer in 60 s at the step: ' + step}), 60000)), (async () => {
@@ -310,13 +335,13 @@ try {
             step = 'main API map, ' + renderer;
             const herrs = [], hel = box();
             const host = createMap(hel, {style: reactive(structuredClone(style)), renderer, view: {center: [-74.0065, 40.7085], zoom: 14}, attribution: false, onError: e => herrs.push(e.message),
-                extend: {sources: {pts: {type: 'geojson', data: points()}}, layers: [{id: 'pts', type: 'circle', source: 'pts'}]}});
+                sources: {pts: {type: 'geojson', data: points()}}, layers: [{id: 'pts', type: 'circle', source: 'pts'}]});
             await wait(2500);
             host.update({style: reactive(structuredClone(style)), renderer, view: {center: [-74.0065, 40.7085], zoom: 14}, attribution: false, onError: e => herrs.push(e.message),
-                extend: {sources: {pts: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}}, layers: [{id: 'pts', type: 'circle', source: 'pts'}]}, data: {pts: points()}});
+                sources: {pts: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}}, layers: [{id: 'pts', type: 'circle', source: 'pts'}], data: {pts: points()}});
             await wait(1500);
             step = 'queryFeatures of the main API, ' + renderer;
-            out['main API ' + renderer] = {found: (await host.queryFeatures(undefined, {sources: ['pts']})).length, errs: herrs};
+            out['main API ' + renderer] = {found: (await host.querySource('pts')).length, errs: herrs};
             host.destroy(); hel.remove();
         }
         return out;

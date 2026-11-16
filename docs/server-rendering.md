@@ -112,8 +112,7 @@ Notes for Cloudflare Workers:
 | `center`, `zoom`, `width`, `height` | The view. Required. |
 | `bearing` | The rotation of the map in degrees |
 | `bounds`, `padding` | A box (`[[west, south], [east, north]]` or `[west, south, east, north]`) to fit into the view, with `padding` in pixels around it (a number or `{top, right, bottom, left}`, default 0). With `bounds`, the renderer uses the box in place of `center` and `zoom` (give them all the same, because they are required). |
-| `markers` | A list of marker layers, as in the description of a map. See [Markers](markers.md). |
-| `images` | Images for the style layers and the marker layers, by name: SVG documents, or `{image, width, height}`. An SVG with slots (`{{name}}`) is a template, as in the description of a map. An image that is not an SVG document is not drawn. An image of `images` is used before `resolveImage`, which is asked only for a name that `images` does not have. |
+| `images` | Images for the style layers, by name: SVG documents, or `{image, width, height}`. An SVG with slots (`{{name}}`) is a template, as in the description of a map. An image that is not an SVG document is not drawn. An image of `images` is used before `resolveImage`, which is asked only for a name that `images` does not have. |
 | `label` | The name of the SVG for assistive technology. The SVG has `role="img"` and this text as its `aria-label`. The default is `"Map"`. `renderToImage` accepts the option, but an image cannot carry it. |
 | `resolveImage` | A function that supplies an icon as SVG when the sprite does not contain it |
 | `layerFilter` | A function that returns `false` for a layer to leave out |
@@ -121,8 +120,8 @@ Notes for Cloudflare Workers:
 | `highDensity` | When `true`, the render uses the high-density (@2x) sprite |
 | `ssrOverrides` | When `false`, the server changes in the style are ignored. See below. |
 | `overrides` | Server changes for style layers, by the id of the layer: `{building: {hidden: true}}`. For a style that you do not write yourself. See below. |
-| `extend` | Sources and layers to add to the style, as `extend` in `MapSpec`. A style from a URL is fetched first. |
-| `data` | GeoJSON for GeoJSON sources, by the id of the source, as `data` in `MapSpec`. A key with no source of that id makes a GeoJSON source with the default options. A key that is the id of a source of another type makes `renderToSVG` reject with an error. |
+| `sources`, `layers`, `terrain` | Sources and layers to add to the style, and terrain in place of that of the style, as the fields of the same names in `MapDescription`. A style from a URL is fetched first. |
+| `data` | GeoJSON for GeoJSON sources, by the id of the source, as `data` in `MapDescription`. A key with no source of that id makes a GeoJSON source with the default options. A key that is the id of a source of another type makes `renderToSVG` reject with an error. |
 | `decodeImage` | A function that decodes elevation tiles. Required only for formats other than PNG and lossless WebP. |
 | `fetch` | A replacement for `fetch`, for example to add a cache |
 | `timeout` | The time in milliseconds that all requests of one render can take together. The default is 30000. `0` sets no limit. See [Limits for requests](#limits-for-requests). |
@@ -260,8 +259,12 @@ A value in `overrides` comes before the value in the style.
 ## The first view for a framework
 
 `renderFirstView` takes the options of `renderToSVG` and returns HTML for the element of the map: the SVG, and the
-credits of the sources over it. The option `attribution` gives other credits; `false` shows none. The Vue component
-uses this function for its `ssr` prop. With React, call it on the server and give the result to the component. See
+credits of the sources over it. The option `attribution` gives other credits; `false` shows none. The option `colorScheme` gives the colours of
+the credits: `'light'` (the default) or `'dark'`. The server cannot read the scheme of the browser, so `'auto'`
+writes both colours with the CSS function `light-dark()`, and a browser without that function shows the light
+colours. The Vue component passes its prop `color-scheme`, with `'light'` when the prop is not set. The Vue component
+uses this function for its `ssr` prop. For a pair `{light, dark}` in `style`, the option `colorScheme` also chooses the
+style: `'dark'` uses `dark`, and each other value uses `light`. With React, call it on the server and give the result to the component. See
 [Vue and Nuxt](vue.md) and [React](react.md).
 
 ## Credits

@@ -22,12 +22,12 @@ export default function Boundaries() {
   const [names, setNames] = useState('Click to list the county, state and ZIP code');
 
   async function ask(event) {
-    const features = await map.current.queryFeatures(event.point, {sources: ['admin']});
+    const features = await map.current.querySource('admin', event.point);
     setNames(features.map(f => f.properties.NAMELSAD ?? f.properties.NAME).filter(Boolean).join(' · ') || 'Nothing here');
   }
 
   return <>
-    <MapJr ref={map} mapStyle={style} extend={boundaries} initialView={{center: [-74.1, 40.75], zoom: 9.2}} onClick={ask} />
+    <MapJr ref={map} mapStyle={style} {...boundaries} initialView={{center: [-74.1, 40.75], zoom: 9.2}} onClick={ask} />
     <p>{names}</p>
   </>;
 }

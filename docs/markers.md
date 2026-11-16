@@ -1,129 +1,107 @@
 # Markers
 
-The library has two types of marker.
+A map can show markers in two ways.
 
-| Type | Use it for | How it is drawn |
+| Way | Use it for | How it is drawn |
 |---|---|---|
-| Marker layer | Many markers that look the same or almost the same | On the map canvas, by the GPU |
-| Element of the page (`map.overlay`, or `Marker` and `Popup`) | A small number of markers with HTML content, or markers that the user moves | As HTML elements above the map |
+| A symbol layer with an image | Many markers that look the same or almost the same | On the map canvas, by the GPU |
+| An element of the page (`map.overlay`, or `Marker` and `Popup` of the compat entry) | A small number of markers with HTML content, or markers that the user moves | As HTML elements above the map |
 
-A marker layer is shorthand. It stands for a GeoJSON source with one point for each marker, and a symbol layer of
-the style that draws an image at each point. What a symbol layer can do, a marker layer can do: a click finds its
-markers, and the layer has a place in the layer order.
+A symbol layer is a layer of the style. A click finds its features, the layer has a place in the layer order, and it
+can have a filter, text beside the icon and expressions.
 
-- With `@map-jr/map-jr-gl` (and the adapters for Vue, React and Svelte), marker layers are the field `markers` of
-  the description. See [With the main API](#with-the-main-api).
-- With `@map-jr/map-jr-gl/maplibre-compat`, write the source and the symbol layer yourself, as with MapLibre GL JS.
-  See [With the API of MapLibre GL JS](#with-the-api-of-maplibre-gl-js).
+## Many markers: a symbol layer
 
-## With the main API
+With `@map-jr/map-jr-gl` (and the adapters for Vue, React and Svelte), three fields of the description (`MapDescription`)
+draw many markers:
 
-A marker layer is an object in the list `markers` of the description (`MapSpec`). It names an image of the field
-`images`. The image can be an SVG template: write `{{name}}` where a value must go, and each marker fills the slot
-from its `props`.
+- `images` has the image, by name. The image can be an SVG template: write `{{name}}` where a value must go, and
+  each feature fills the slot from its property with that name.
+- `data` has the points. A key of `data` that is not the id of a source of the style makes a GeoJSON source with
+  that id. `points()` makes the GeoJSON from records of your application.
+- `layers` has a symbol layer that draws the image at each point of that source.
 
 ```js
-import {createMap} from '@map-jr/map-jr-gl';
+import {createMap, points} from '@map-jr/map-jr-gl';
 
 const pin = '<svg viewBox="0 0 24 31"><path fill="{{color}}" stroke="#fff" d="M12 30C12 30 2 17 2 11a10 10 0 0 1 20 0c0 6-10 19-10 19z"/></svg>';
-let places = {
-  id: 'places',
-  image: 'pin',
-  anchor: 'bottom',
-  data: [
-    {lngLat: [-74.006, 40.7128], props: {color: '#d6453d', name: 'City Hall'}},
-    {lngLat: [-73.9857, 40.7484], props: {color: '#2f7fd1', name: 'Empire State Building'}},
-  ],
-};
+const records = [
+  {id: 1, lng: -74.006, lat: 40.7128, color: '#d6453d', name: 'City Hall'},
+  {id: 2, lng: -73.9857, lat: 40.7484, color: '#2f7fd1', name: 'Empire State Building'},
+];
 let description = {
   style: 'https://tiles.openfreemap.org/styles/liberty',
   initialView: {center: [-73.996, 40.73], zoom: 11.5},
   images: {pin},
-  markers: [places],
+  data: {places: points(records, {lngLat: r => [r.lng, r.lat], id: r => r.id})},
+  layers: [{
+    id: 'places', type: 'symbol', source: 'places',
+    layout: {'icon-image': 'pin', 'icon-anchor': 'bottom', 'icon-allow-overlap': true, 'icon-ignore-placement': true},
+  }],
 };
 const map = createMap(document.getElementById('map'), description);
 ```
 
 The library draws the template one time for each different set of values. It then draws all the markers from a
-buffer on the GPU. The number of markers has almost no effect on the speed of a frame.
+buffer on the GPU. The number of markers has almost no effect on the speed of a frame (see
+[Which icons are fast](#which-icons-are-fast)).
 
-### Options
+`points(records, {lngLat, id, properties})` gives a `FeatureCollection` with a point for each record. `lngLat` is
+required and returns `[lng, lat]`. Without `id`, the features have no id. Without `properties`, the properties of a
+feature are the record itself. A record whose position is not two finite numbers is left out, and the development
+build warns once.
 
-| Option | Default | Effect |
-|---|---|---|
-| `id` | Required | The id of the layer and of its source. Use it in `interactiveLayers`, and as `before` of other layers. |
-| `image` | Required | The name of an image: of `images` in the description, or of the sprite of the style. See [Images for style layers](api.md#images-for-style-layers). |
-| `data` | Required | The markers: a list of `{lngLat, props}`. `lngLat` is `[lng, lat]`. `props` has the values for the slots of the image, and your own values. |
-| `anchor` | `'center'` | The part of the image that is on the position: `'bottom'`, `'top-left'` and the other values of `icon-anchor`. |
-| `collide` | `false` | When `true`, map labels keep away from the markers. |
-| `overlap` | `'show'` | When `'hide'`, a marker that would cover an earlier marker of `data` does not show, and map labels keep away from the markers. (The markers are above the labels of the style, so the markers stay and the labels go.) |
-| `minZoom`, `maxZoom` | None | The zoom range in which the layer shows. |
-| `before` | None | The id of a symbol layer of the style: the markers come before it in the order of the layers, so its labels and icons are placed first. Without it, the markers are the top layer. The labels of all symbol layers are drawn together, at the position of the last symbol layer that has labels, so `before` with the id of a symbol layer with labels does not put the markers below that layer's labels. |
+### The layout properties for markers
 
-A marker with no `lngLat` is not drawn. In the development build it gives a warning, and so do a marker layer
-whose `id` is the id of a source or a layer of the style, and a `before` that names no layer.
+| What you want | Layout property |
+|---|---|
+| The part of the image that is on the position | `icon-anchor`: `'bottom'`, `'top-left'` and the other values; the default is `'center'` |
+| Every marker shows, also where markers cover each other | `icon-allow-overlap: true` |
+| Map labels do not keep away from the markers | `icon-ignore-placement: true` |
+| A zoom range | `minzoom` and `maxzoom` of the layer |
+| A place in the layer order | `before` of the layer in `layers`: the id of a layer of the style |
+| Text beside the icon | `text-field`, as for any symbol layer |
 
 The size of a marker is the size of its image. Give the size with the image: `images: {pin: {image: pin, width: 36,
-height: 46}}`. Without a size, an SVG has the size of its `viewBox`, or else of its `width` and `height` attributes (see [Images for style layers](api.md#images-for-style-layers)).
+height: 46}}`. Without a size, an SVG has the size of its `viewBox`, or else of its `width` and `height` attributes
+(see [Images for style layers](api.md#images-for-style-layers)).
 
-To change how a marker looks with zoom, make two layers with the same data and different zoom ranges. For example,
+To change how a marker looks with zoom, make two layers with the same source and different zoom ranges. For example,
 make small dots below zoom 12 and full pins from zoom 12.
 
 ### The image of a marker
 
-- Write `{{name}}` in the SVG where a value of `props` must go. The library makes the value safe for XML.
+- Write `{{name}}` in the SVG where a property of the feature must go. The library makes the value safe for XML.
 - The SVG can contain an `<image>` element with a photograph.
 - Keep the number of different value sets small. Each different set is drawn one time and uses space in a texture.
   [An image that is a template](api.md#an-image-that-is-a-template) has the limits.
-- A layer of `extend` can give a slot the value of an expression, for example the state of a feature
+- `icon-image` can give a slot the value of an expression, for example the state of a feature
   (`['image', 'pin', {params: {...}}]`).
-
-### What a marker layer stands for
-
-The marker layer `places` above is the same as this source and this layer of the style:
-
-```js
-const source = {type: 'geojson', data: {type: 'FeatureCollection', features: [
-  {type: 'Feature', id: 0, properties: {color: '#d6453d', name: 'City Hall'}, geometry: {type: 'Point', coordinates: [-74.006, 40.7128]}},
-  {type: 'Feature', id: 1, properties: {color: '#2f7fd1', name: 'Empire State Building'}, geometry: {type: 'Point', coordinates: [-73.9857, 40.7484]}},
-]}};
-const layer = {
-  id: 'places', type: 'symbol', source: 'places',
-  layout: {'icon-image': 'pin', 'icon-anchor': 'bottom', 'icon-allow-overlap': true, 'icon-ignore-placement': true},
-};
-```
-
-- The `id` of a feature is the index of its marker in `data`, and its properties are the `props` of the marker.
-- With `collide: true`, `icon-ignore-placement` is `false`. With `overlap: 'hide'`, `icon-allow-overlap` and
-  `icon-ignore-placement` are `false`.
-- When you need more than the options give (a filter, text beside the icon, an expression for the image), write
-  the source and the layer yourself in `extend`, and give the data in the field `data`. See
-  [Images for style layers](api.md#images-for-style-layers).
 
 ### Change the markers
 
-Call `map.update` with the complete description and a new `data` array. The library compares marker data by
-identity, so a change inside the old array has no effect.
+Call `map.update` with the complete description and a new object for the key of `data`. The library compares the
+data of a source by identity, so a change inside the old object has no effect.
 
 ```js
-// Change one marker: a new array with a new object for that marker.
-places = {...places, data: places.data.map((marker, i) => i === 1 ? {...marker, props: {...marker.props, color: '#2e9d5b'}} : marker)};
-description = {...description, markers: [places]};
+// Change one marker: new GeoJSON from the changed records.
+records[1] = {...records[1], color: '#2e9d5b'};
+description = {...description, data: {places: points(records, {lngLat: r => [r.lng, r.lat], id: r => r.id})}};
 map.update(description);
 
-// Remove the layer: a description without it.
-description = {...description, markers: []};
+// Remove the markers: a description without the layer and without the key of `data`.
+description = {...description, data: {}, layers: []};
 map.update(description);
 ```
 
-When only `data` is different, the source gets the new data and the style stays as it is. When another option is
-different, the map gets the style again with the new layer. The Vue component accepts changes in place of a
-reactive array: see [Vue and Nuxt](vue.md).
+When only `data` is different, the source gets the new data and the style stays as it is. A change of `paint`,
+`layout` or `filter` of the layer is an edit of the map, and the style also stays. The Vue component, too, needs a
+new object for a change of the data: see [Vue and Nuxt](vue.md).
 
 ### A click on a marker, and a popup
 
-A marker is a feature of its layer. Put the id of the marker layer into `interactiveLayers`: a click then has the
-marker in `features`, and `state.hover` has the marker under the pointer.
+A marker is a feature of its layer. Put the id of the layer into `interactiveLayers`: a click then has the marker in
+`features`, and `state.hover` has the marker under the pointer.
 
 ```js
 let popup = null;
@@ -135,7 +113,7 @@ map.update(description = {
     popup = null;
     const marker = event.features[0];
     if (!marker) return;
-    // `marker.id` is the index in `data`, and `marker.properties` are the `props`.
+    // `marker.id` is the id that `points()` gave, and `marker.properties` is the record.
     const text = document.createElement('div');
     text.textContent = marker.properties.name;
     // A popup that points at the marker, 30 pixels above its position.
@@ -147,13 +125,33 @@ map.update(description = {
 A marker is found where its image is drawn, also with the anchor `bottom`. When markers cover each other, the one
 that is drawn on top is the first of `features`.
 
-### Elements of the page
+### Coming from the field `markers`
+
+Before version 0.6.0, the description had a field `markers` with marker layers. It was removed (#499). This table
+says what to write now.
+
+| Before | Now |
+|---|---|
+| `markers: [{id, image, data}]` | `data: {[id]: points(records, {lngLat})}` and `layers: [{id, type: 'symbol', source: id, layout: {'icon-image': image}}]` |
+| `{lngLat, props}` of a marker | A record of `points()`: `lngLat` returns the position, and `properties` the properties (the record itself by default) |
+| The index of a marker as the id of its feature | `id` of `points()`, or no id |
+| `anchor` | `layout['icon-anchor']` |
+| No `overlap`, or `overlap: 'show'` | `layout['icon-allow-overlap']: true` |
+| `overlap: 'hide'` | `icon-allow-overlap` and `icon-ignore-placement` are `false` (the defaults) |
+| `collide: true` | `layout['icon-ignore-placement']: false`; without it, `true` |
+| `minZoom`, `maxZoom` | `minzoom`, `maxzoom` of the layer |
+| `before` | `before` of the layer in `layers` |
+| The prop `markers` of the Vue component, React and Svelte | The props `data` and `layers` |
+| `markers` of `renderToSVG` and `renderToImage` | `data` and `layers` |
+
+## Elements of the page
 
 For a small number of markers with HTML content, use `map.overlay(element, {lngLat, anchor, popup})`. With
 `draggable: true` and `onDragEnd`, the user can move the marker, and `onDragEnd` gets the new `[lng, lat]`.
 `defaultPin()` makes the default pin of `Marker`, for a marker with the same look. In Vue and React, `MapOverlay` has
 the same props. See [Elements of the page on the map](api.md#elements-of-the-page-on-the-map). With the worker renderer, an element of the page can trail the map by about one frame during some movements;
 see [How closely an element of the page follows the map](#how-closely-an-element-of-the-page-follows-the-map).
+
 
 ## With the API of MapLibre GL JS
 
@@ -200,7 +198,7 @@ frame then does not grow with the number of icons. That is the case when all of 
   `icon-padding` have one value for the layer. `icon-size`, `icon-rotate` and `icon-opacity` can have a value for
   each feature.
 
-A marker layer without `overlap: 'hide'` is such a layer. The library places other icons with the labels, and their
+A symbol layer with `icon-allow-overlap: true` and no text, as in the examples above, is such a layer. The library places other icons with the labels, and their
 cost grows with their number.
 
 An icon from a buffer differs from a placed icon in these points:
@@ -213,9 +211,9 @@ An icon from a buffer differs from a placed icon in these points:
 - The map asks for the image of each icon of a tile (`styleimagemissing`), also for an icon outside the view.
 
 Labels of the layers below keep away from such an icon, unless the layer of the icon has
-`icon-ignore-placement: true` (a marker layer has it without `collide`). The map then gives each icon its space each
+`icon-ignore-placement: true`. The map then gives each icon its space each
 time it places the labels, which is some times a second while the map moves. That work grows with the number of
-icons in view. Use `icon-ignore-placement: true` (no `collide`) for very many icons.
+icons in view. Use `icon-ignore-placement: true` for very many icons.
 
 These are measurements with software WebGL (headless Chromium, the main-thread renderer, 500 different images),
 for the script time of one frame while the map moves. They were not made on a GPU.
@@ -225,38 +223,19 @@ for the script time of one frame while the map moves. They were not made on a GP
 | 10,000 | 6 ms | 6 ms |
 | 100,000 | 5 to 8 ms | 14 to 20 ms on average; the frames that place the labels took more than 100 ms each |
 
-The data of a marker layer is cut into tiles when it is given. With 100,000 markers the map was ready 2 to 3
-seconds after that in the same measurement, and with 200,000 markers after 7 seconds or more.
-
-## Coming from the earlier marker layer
-
-Before version 0.2.0 was released, a marker layer had its own SVG (`svg`, `width`, `height`), its own events and
-its own methods. This table says what to write now.
-
-| Before | Now |
-|---|---|
-| `svg`, `width`, `height` of a marker layer | The SVG in `images` of the description, and its name as `image`. The size is the size of the image. |
-| `markerclick`, and `marker` of the `click` event | The id of the marker layer in `interactiveLayers`; `onClick` has the marker in `features`. |
-| `markerenter`, `markerleave` | `state.hover` (or the event `hover` of the Vue component, `onHover` in React) has the marker under the pointer. |
-| `layer.openPopup(index, content)` | `map.overlay(element, {lngLat, popup: true, offset})`. Map labels do not move away from this popup. |
-| `layer.setProps(index, props)` | A new `data` array with other `props` for that marker. |
-| `layer.select(index)` | Not available: a marker does not grow. Give the marker other `props` (another colour or image) in a new `data` array. |
-| `map.queryMarkers(point)` | `map.queryFeatures(point, {layers: [id]})`, which returns a promise. |
-| `map.addMarkerLayer(...)` of `@map-jr/map-jr-gl/maplibre-compat` | `map.addImage`, `map.addSource` and `map.addLayer`: see [With the API of MapLibre GL JS](#with-the-api-of-maplibre-gl-js). |
-
-Two more things are different. A marker layer does not fade at the ends of its zoom range. The markers show later
-after they are given, because the data is cut into tiles: see the measurements above.
+The data of a GeoJSON source is cut into tiles when it is given. With 100,000 points the map was ready 2 to 3
+seconds after that in the same measurement, and with 200,000 points after 7 seconds or more.
 
 ## Groups of markers (clustering)
 
-A GeoJSON source can make the groups: write the source yourself with `cluster: true`, as in MapLibre GL JS. You can
-also calculate the groups in your application and give the result as the `data` of a marker layer. Do this again
-when the `moveend` event occurs (`map.listen('moveend', ...)`).
+A GeoJSON source can make the groups: write the source yourself in `sources` with `cluster: true`, as in MapLibre
+GL JS, and give the points in `data`. You can also calculate the groups in your application and give the result in
+`data`. Do this again when the `moveend` event occurs (`map.listen('moveend', ...)`).
 
 ## Markers on the server
 
-`renderToSVG` and `renderToImage` accept `markers` and `images` as the description does. An image must be an SVG
-document. See [Server rendering](server-rendering.md).
+`renderToSVG` and `renderToImage` accept `images`, `data`, `sources` and `layers` as the description does. An image
+must be an SVG document. See [Server rendering](server-rendering.md).
 
 ## `Marker` and `Popup`
 
@@ -274,8 +253,7 @@ const marker = new Marker({draggable: true})
 marker.on('dragend', () => console.log(marker.getLngLat()));
 ```
 
-Each `Marker` is an HTML element. The browser becomes slow with thousands of them. Use a marker layer or a symbol
-layer for large numbers.
+Each `Marker` is an HTML element. The browser becomes slow with thousands of them. Use a symbol layer for large numbers.
 
 ### How closely an element of the page follows the map
 
@@ -290,15 +268,15 @@ map is drawn by the engine. With the main-thread renderer, both change in the sa
 - During a movement that the engine makes (`easeTo`, `flyTo`, `fitBounds`, the fling after a drag, a pinch), the element
   can trail the map by about one frame. The page learns the camera from the engine after the frame is drawn.
 
-A marker layer is drawn with the map, so it never trails. Measured on 2026-11-15 in Chrome with a GPU: during a drag
+A symbol layer is drawn with the map, so it never trails. Measured on 2026-11-15 in Chrome with a GPU: during a drag
 the element was 0 frames behind on an Apple M4 and 0.1 frames behind on a Galaxy S21. During `easeTo` it was about one
 frame behind on the Galaxy S21, and on the Apple M4 it was one frame behind in one run of three.
 
 To keep markers exactly on the map in every movement, choose one of these:
 
-- Draw the markers as a marker layer, or as an image in a symbol layer. This is the better choice for more than a few
+- Draw the markers as an image in a symbol layer. This is the better choice for more than a few
   markers, and it works with both renderers.
-- Keep elements of the page, and draw the map on the main thread: `renderer: 'main'` in the description (`MapSpec`)
+- Keep elements of the page, and draw the map on the main thread: `renderer: 'main'` in the description (`MapDescription`)
   of `@map-jr/map-jr-gl`, or in the options of `new Map()` of `@map-jr/map-jr-gl/maplibre-compat`. The page then does
   more work in each frame, which matters on a slow phone.
 
