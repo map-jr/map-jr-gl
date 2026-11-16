@@ -29,6 +29,7 @@ const SPEC: Record<string, Record<string, [string, PropKind, any]>> = {
         color: ['circle-color', 'color', '#000'], opacity: ['circle-opacity', 'number', 1], radius: ['circle-radius', 'number', 5],
         strokeColor: ['circle-stroke-color', 'color', '#000'], strokeWidth: ['circle-stroke-width', 'number', 0],
         strokeOpacity: ['circle-stroke-opacity', 'number', 1], blur: ['circle-blur', 'number', 0], translate: ['circle-translate', 'string', [0, 0]], sortKey: ['circle-sort-key', 'number', 0],
+        pitchAlign: ['circle-pitch-alignment', 'string', 'viewport'], pitchScale: ['circle-pitch-scale', 'string', 'map'],
     },
     heatmap: {
         // (`color` and `opacity` are also read by the code shared with other layer types; a heatmap's colour is its ramp.)

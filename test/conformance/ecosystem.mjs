@@ -1,10 +1,11 @@
 // Reads popular MapLibre plugins and wrappers from npm and reports which parts of the MapLibre API they use that
-// this library does not have. The packages are only read as text; none of their code runs.
+// the entry `@map-jr/map-jr-gl/maplibre-compat` does not have. The packages are only read as text; none of their code runs.
 //   node test/conformance/ecosystem.mjs [--write]      (--write puts the report in docs/ecosystem.md)
 import {execFileSync} from 'node:child_process';
 import {createRequire} from 'node:module';
 import {existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
+import {compatSurface, methodsOf} from './compat-surface.mjs';
 
 const root = path.resolve(import.meta.dirname, '../..'), cache = path.join(root, '.cache/ecosystem');
 const PACKAGES = {
@@ -17,17 +18,9 @@ const PACKAGES = {
 
 // What MapLibre has: the methods of Map (as in api.mjs), and the names that the package exports.
 const dts = readFileSync(createRequire(import.meta.url).resolve('maplibre-gl/dist/maplibre-gl.d.ts'), 'utf8');
-const methodsOf = (text, classNames) => {
-    const names = new Set();
-    for (const cls of classNames) {
-        const start = text.search(new RegExp(`^(export )?(declare )?class ${cls.replace('$', '\\$')}\\b`, 'm'));
-        if (start < 0) continue;
-        for (const m of text.slice(start, text.indexOf('\n}', start)).matchAll(/^(?:\t|    |  )(?:(private|protected|static|readonly) )?(?:async )?([A-Za-z]\w*)(?:<[^>(]*>)?\(/gm)) if (!m[1] && m[2] !== 'constructor') names.add(m[2]);
-    }
-    return names;
-};
 const theirMethods = new Set([...methodsOf(dts, ['Map', 'Map$1']), ...methodsOf(dts, ['Camera']), ...methodsOf(dts, ['Evented'])]);
-const ourMethods = methodsOf(readFileSync(path.join(root, 'src/map.ts'), 'utf8'), ['Map']);
+// What this library has. Plugins and wrappers for MapLibre GL JS use the entry maplibre-compat, so the scan reads that entry.
+const {methods: ourMethods, inert, values: ourExports, types: ourTypes, events: ourEvents} = compatSurface(root);
 // Only values (classes, functions and constants) matter at run time: a type is not in a built file. The declaration
 // file exports most of them where it declares them, and renames some in a list at its end.
 const exportBlock = dts.slice(dts.lastIndexOf('export {'));
@@ -35,15 +28,6 @@ const valueExports = new Set([
     ...[...dts.matchAll(/^export declare (?:abstract )?(?:class|function|const|let|var) (\w+)/gm)].map(m => m[1]),
     ...[...exportBlock.matchAll(/[{,]\s*(?!type )(?:[\w$]+ as )?(\w+)(?=\s*[,}])/g)].map(m => m[1]),
 ]);
-const index = readFileSync(path.join(root, 'src/index.ts'), 'utf8');
-// The types that this library exports under MapLibre's names.
-const ourTypes = new Set([...readFileSync(path.join(root, 'src/compat-types.ts'), 'utf8').matchAll(/^export type (\w+)/gm)].map(m => m[1]));
-const ourExports = new Set([...index.matchAll(/export \{([^}]*)\}/g)].flatMap(m => m[1].split(',').map(s => s.trim()).filter(s => s && !s.startsWith('type ')).map(s => s.split(' as ').pop())));
-for (const m of index.matchAll(/^export (?:const|function|class) (\w+)/gm)) ourExports.add(m[1]);
-const ourSources = ['map.ts', 'overlays.ts', 'controls.ts'].map(f => readFileSync(path.join(root, 'src', f), 'utf8')).join('\n');
-// The events that this library fires: each name that is given to fire(), emit() or the pointer-event helper.
-// (An event counts if its name is in the source in quotes. The touch events are built from parts there, so they are listed.)
-const ourEvents = new Set([...[...ourSources.matchAll(/'([a-z]+)'/g)].map(m => m[1]), 'touchstart', 'touchmove', 'touchend', 'touchcancel']);
 const theirEvents = new Set([...dts.matchAll(/^\s+(\w+): (?:MapLibre\w*Event|Map\w*Event|ErrorEvent|MapDataEvent|MapStyle\w*Event|MapSource\w*Event|MapContextEvent|MapTerrainEvent|MapProjectionEvent)/gm)].map(m => m[1]));
 
 mkdirSync(cache, {recursive: true});
@@ -74,13 +58,15 @@ function codeOf(dir) {
     return text;
 }
 
-const rows = [], demand = {methods: {}, exports: {}, events: {}};
+const rows = [], demand = {methods: {}, exports: {}, events: {}, inert: {}};
 for (const [group, names] of Object.entries(PACKAGES)) for (const name of names) {
     const dir = fetchPackage(name);
     if (!dir) { rows.push({group, name, missing: true}); continue; }
     const pkg = JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8')), text = codeOf(dir);
     const used = [...theirMethods].filter(m => new RegExp(`\\.${m}\\(`).test(text));
     const noMethod = used.filter(m => !ourMethods.has(m)).sort();
+    // A method that is accepted with no effect does not stop the package: it warns once for a value that is not the default.
+    const noEffect = used.filter(m => inert.has(m)).sort();
     // (A name that is imported only as a type does not count: `import type {...}` and `type X` in a list.)
     const usedExports = [...valueExports].filter(e => e !== 'Map' && new RegExp(`(?:maplibregl|mapboxgl|maplibre|mapLib|maplibreGl)\\.${e}\\b|import\\s*\\{(?:[^}]*,)?\\s*${e}\\b[^}]*\\}\\s*from\\s*['"](?:maplibre-gl|mapbox-gl)['"]`).test(text));
     // A name that this library exports as a type is enough when the package does not use the name as a value
@@ -89,8 +75,8 @@ for (const [group, names] of Object.entries(PACKAGES)) for (const name of names)
     const noExport = usedExports.filter(e => !ourExports.has(e) && !(ourTypes.has(e) && !asValue(e))).sort();
     const usedEvents = [...theirEvents].filter(e => new RegExp(`\\.(?:on|once|off)\\(\\s*['"]${e}['"]`).test(text));
     const noEvent = usedEvents.filter(e => !ourEvents.has(e)).sort();
-    for (const [kind, list] of [['methods', noMethod], ['exports', noExport], ['events', noEvent]]) for (const n of list) (demand[kind][n] ??= []).push(name);
-    rows.push({group, name, version: pkg.version, methods: used.length, exports: usedExports.length, events: usedEvents.length, noMethod, noExport, noEvent});
+    for (const [kind, list] of [['methods', noMethod], ['exports', noExport], ['events', noEvent], ['inert', noEffect]]) for (const n of list) (demand[kind][n] ??= []).push(name);
+    rows.push({group, name, version: pkg.version, methods: used.length, exports: usedExports.length, events: usedEvents.length, noMethod, noEffect, noExport, noEvent});
 }
 
 const code = list => list.length ? list.map(n => '`' + n + '`').join(', ') : 'none';
@@ -99,27 +85,34 @@ const top = kind => Object.entries(demand[kind]).sort((a, b) => b[1].length - a[
 const lines = ['# Plugins and frameworks', '',
     'This report is written by `node test/conformance/ecosystem.mjs --write`. The script reads popular MapLibre plugins and',
     'framework wrappers from npm. It finds the methods of `Map`, the exports of `maplibre-gl` and the map events that each',
-    'package uses, and compares them with this library.', '',
+    'package uses, and compares them with the entry `@map-jr/map-jr-gl/maplibre-compat` of this library.', '',
     'The script reads the code as text. It does not run the packages. So a package with "none" in each column can still',
     'have a problem, and a method in the list is possibly used only in a part of the package that you do not use.', '',
     `**${ready} of ${read} packages** use only parts of the API that this library has.`, '',
+    'A missing method throws a `TypeError` when the package calls it. A method that is "accepted, with no effect" exists and',
+    'does nothing, so the package goes on, and it does not count as missing. Most of these methods warn once when they get a',
+    'value that the library cannot do (see "Accepted, with no effect" in `docs/maplibre-compatibility.md`).', '',
     'react-map-gl 7 does not work with this library, and the tables below read version 8 only. Version 7 reads the private',
     '`map.transform` of MapLibre GL JS and throws a `TypeError`. Version 8 works (the field test of #187).', '',
     '## What is missing most often', '',
     '| Missing | Kind | Packages that use it |', '|---|---|---|',
     ...['exports', 'methods', 'events'].flatMap(kind => top(kind).map(([n, who]) => `| \`${n}\` | ${kind === 'exports' ? 'export' : kind === 'methods' ? 'method of `Map`' : 'event'} | ${who.length}: ${who.join(', ')} |`)), '',
+    '## What is accepted with no effect', '',
+    '| Method of `Map` | Packages that use it |', '|---|---|',
+    ...top('inert').map(([n, who]) => `| \`${n}\` | ${who.length}: ${who.join(', ')} |`), '',
     '## Each package', ''];
 for (const group of Object.keys(PACKAGES)) {
-    lines.push(`### ${group}`, '', '| Package | Version | API in use | Missing methods | Missing exports | Missing events |', '|---|---|---|---|---|---|');
-    for (const r of rows.filter(r => r.group === group)) lines.push(r.missing ? `| ${r.name} | not found on npm | | | | |`
-        : `| ${r.name} | ${r.version} | ${r.methods} methods, ${r.exports} exports, ${r.events} events | ${code(r.noMethod)} | ${code(r.noExport)} | ${code(r.noEvent)} |`);
+    lines.push(`### ${group}`, '', '| Package | Version | API in use | Missing methods | Accepted, with no effect | Missing exports | Missing events |', '|---|---|---|---|---|---|---|');
+    for (const r of rows.filter(r => r.group === group)) lines.push(r.missing ? `| ${r.name} | not found on npm | | | | | |`
+        : `| ${r.name} | ${r.version} | ${r.methods} methods, ${r.exports} exports, ${r.events} events | ${code(r.noMethod)} | ${code(r.noEffect)} | ${code(r.noExport)} | ${code(r.noEvent)} |`);
     lines.push('');
 }
 console.log(`${ready} of ${read} packages use only API that this library has.`);
 for (const kind of ['exports', 'methods', 'events']) console.log(`Missing ${kind}: ${top(kind).map(([n, who]) => `${n} (${who.length})`).join(', ')}`);
+console.log(`Accepted with no effect: ${top('inert').map(([n, who]) => `${n} (${who.length})`).join(', ')}`);
 if (process.argv.includes('--write')) {
-    // The results of the plugins that were run (written by plugins.mjs) stay in the document.
-    const file = path.join(root, 'docs/ecosystem.md'), ran = existsSync(file) ? /<!-- plugins:start -->[\s\S]*<!-- (examples|styles|plugins):end -->/.exec(readFileSync(file, 'utf8'))?.[0] : undefined;
+    // What the other tools wrote (plugins.mjs, styles.mjs, examples.mjs) and the text after their tables stay in the document.
+    const file = path.join(root, 'docs/ecosystem.md'), ran = existsSync(file) ? /<!-- plugins:start -->[\s\S]*?(?=\n+## What is missing most often)/.exec(readFileSync(file, 'utf8'))?.[0] : undefined;
     const at = lines.indexOf('## What is missing most often');
     if (ran) lines.splice(at, 0, ran, '');
     writeFileSync(file, lines.join('\n'));

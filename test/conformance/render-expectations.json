@@ -1,0 +1,19 @@
+{
+  "about": "Labels for MapLibre render tests that differ by a decision. An entry names one test (\"test\", its id) or several (\"pattern\", a regular expression for ids), and has a \"label\", a \"decision\" and a \"reason\". The decision \"wontfix\" is a difference that the owner decided to keep, and only the owner adds one. The decision \"later\" is a feature that is not decided or not done yet. The first entry that fits a test gives the test its label. See \"Render tests\" in docs/development.md.",
+  "expectations": [
+    {"pattern": "^projection/globe/", "label": "globe", "decision": "later", "issue": 463, "reason": "The work on the globe is in issue #463."},
+    {"pattern": "^sky/|^terrain/fog", "label": "sky and fog", "decision": "later", "reason": "Sky and fog are not available."},
+    {"pattern": "^mlt/", "label": "MLT", "decision": "later", "reason": "MapLibre Tiles (MLT) are not available."},
+    {"pattern": "^(video|canvas)/", "label": "video and canvas sources", "decision": "later", "reason": "Video and canvas sources are not available."},
+    {"pattern": "^color-relief/", "label": "color-relief", "decision": "later", "reason": "The layer type color-relief is not available."},
+    {"pattern": "^fill-extrusion-pattern/", "label": "fill-extrusion-pattern", "decision": "later", "reason": "fill-extrusion-pattern is not available."},
+    {"pattern": "^line-gradient-dasharray/", "label": "line-gradient with line-dasharray", "decision": "later", "reason": "line-gradient together with line-dasharray is not available."},
+    {"pattern": "^line-(offset|blur)/property-function$", "label": "line-offset and line-blur for each feature", "decision": "later", "reason": "line-offset and line-blur that are different for each feature are not available."},
+    {"pattern": "^circle-pitch-(alignment|scale)/", "label": "circle-pitch-alignment and circle-pitch-scale", "decision": "later", "reason": "circle-pitch-alignment and circle-pitch-scale are not available."},
+    {"pattern": "^circle-(stroke-color|stroke-width|stroke-opacity|blur)/(zoom-and-)?property-function$", "label": "circle stroke and blur for each feature", "decision": "later", "reason": "Circle stroke and blur that are different for each feature are not available."},
+    {"pattern": "^icon-halo-blur/", "label": "icon-halo-blur", "decision": "later", "reason": "icon-halo-blur is not available."},
+    {"pattern": "^text-writing-mode/", "label": "text-writing-mode", "decision": "later", "reason": "text-writing-mode is not available."},
+    {"pattern": "^text-pitch-alignment/(map|viewport)-", "label": "text-pitch-alignment", "decision": "later", "reason": "text-pitch-alignment with a value other than auto is not available."},
+    {"pattern": "^symbol-z-order/", "label": "symbol-z-order", "decision": "later", "reason": "symbol-z-order is not available."}
+  ]
+}
