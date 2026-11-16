@@ -416,6 +416,9 @@ for (const renderer of ['worker', 'main']) {
                 sources: {own: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}}, layers: [{id: 'own-fill', type: 'fill', source: 'own', paint: {'fill-color': '#f00'}}]};
             const host = t.lib.createMap(el, spec);
             await next(host);
+            // (The same arrays and objects again are not serialized to compare them.)
+            let reads = 0; Object.defineProperty(spec.layers, 'toJSON', {value() { reads++; return [...this]; }});
+            host.update({...spec}); const sameFree = reads === 0;
             const s2 = {...spec, layers: [{...spec.layers[0], paint: {'fill-color': '#00f'}}]};
             host.update(s2);
             const extendBusy = !host.state.get().idle, extendIdle = await next(host);
@@ -423,10 +426,10 @@ for (const renderer of ['worker', 'main']) {
             await new Promise(r => setTimeout(r, 500));
             const imagesIdle = host.state.get().idle || await next(host);
             host.destroy(); el.remove();
-            return {extendBusy, extendIdle, imagesIdle};
+            return {extendBusy, extendIdle, imagesIdle, sameFree};
         }, renderer);
         check(`[${renderer}] update() that changes only extend or images sets state.idle to false and then to true again`,
-            idleAgain.extendBusy && idleAgain.extendIdle && idleAgain.imagesIdle, JSON.stringify(idleAgain));
+            idleAgain.extendBusy && idleAgain.extendIdle && idleAgain.imagesIdle && idleAgain.sameFree, JSON.stringify(idleAgain));
 
         // 3d. A change of `extend` alone is applied as edits: the style URL is not requested again, and a layer that was added through `host.map` stays (#166).
         const extendEdit = await page.evaluate(async renderer => {
