@@ -316,6 +316,8 @@ export class Map {
         const sc = this.rawStyle;
         if (o.center === undefined && o.zoom === undefined && o.bearing === undefined && o.pitch === undefined && !o.bounds) this.tr.set(sc.center, sc.zoom, sc.bearing, sc.pitch);
         const restyled = this.restyled, [first] = await Promise.all([resolveStyle(this.rawStyle, this.fetchAs('Source'), this.styleBase, undefined, this.sourceFailed), this.globeReady()]);
+        // (Values set before the style was there.)
+        if (Object.keys(this.globalState).length) first.state = {...first.state, ...this.globalState};
         // A globe is not kept inside the height of the world as Mercator is: the camera of the options is set again now
         // that the map knows its projection (as MapLibre waits for the style before it constrains the camera).
         if (this.tr.globe && !this.restarting && !o.bounds) {

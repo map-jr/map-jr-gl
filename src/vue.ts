@@ -254,6 +254,8 @@ const MapJrComponent = defineComponent({
         controls: Array as PropType<ControlSpec[]>,
         /** The projection in place of that of the style: `{type: 'globe'}` or `{type: 'mercator'}`. */
         projection: Object as PropType<MapSpec['projection']>,
+        /** Values for the `global-state` expressions of the style, by name: `{season: 'winter'}`. */
+        globalState: Object as PropType<MapSpec['globalState']>,
         /** Changes a request before the map makes it, as `transformRequest` of MapLibre GL JS. */
         transformRequest: Function as PropType<MapSpec['transformRequest']>,
         renderer: String as PropType<'auto' | 'worker' | 'main'>,
@@ -327,7 +329,7 @@ const MapJrComponent = defineComponent({
         const spec = computed<MapSpec>(() => {
             const out: MapSpec = {
                 style: style.value, extend: extend.value, view: view.value, initialView: props.initialView && toRaw(props.initialView), images: images.value, markers: markers.value, data: data.value, interactiveLayers: layers.value, controls: controls.value,
-                minZoom: props.minZoom, maxZoom: props.maxZoom, maxPitch: props.maxPitch, maxBounds: props.maxBounds && toRaw(props.maxBounds), cursor: props.cursor, transformRequest: props.transformRequest, cooperativeGestures: props.cooperativeGestures, padding: props.padding && typeof props.padding === 'object' ? toRaw(props.padding) : props.padding, projection: props.projection && toRaw(props.projection),
+                minZoom: props.minZoom, maxZoom: props.maxZoom, maxPitch: props.maxPitch, maxBounds: props.maxBounds && toRaw(props.maxBounds), cursor: props.cursor, transformRequest: props.transformRequest, cooperativeGestures: props.cooperativeGestures, padding: props.padding && typeof props.padding === 'object' ? toRaw(props.padding) : props.padding, projection: props.projection && toRaw(props.projection), globalState: props.globalState && toRaw(props.globalState),
                 renderer: props.renderer, fonts: props.fonts && toRaw(props.fonts), fontFamily: props.fontFamily, interactive: props.interactive, antialias: props.antialias,
                 attribution: (props.attribution as unknown) === true ? undefined : props.attribution && toRaw(props.attribution), hash: props.hash, nonce: props.nonce,
                 onViewChange: view => emit('update:view', view), onClick: event => emit('click', event),
