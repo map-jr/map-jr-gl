@@ -144,7 +144,7 @@ try {
         t.setPin([-74.0, 40.71]); await wait(400);
         const pinMoved = near(where('own-pin'), host.project([-74.0, 40.71]));
         document.querySelector('.map-jr-popup-close-button')?.click(); await wait(300);
-        // (A marker is a feature of the layer of its marker layer.)
+        // (A point is a feature of the symbol layer "pins".)
         const before = (await host.queryFeatures(host.project([-74.0065, 40.7085]), {layers: ['pins']})).length ? 1 : 0;
         t.setMarkers({}); await wait(600);
         return {events: t.moves[0], asked: t.asked.length, added: t.asked.length > 0 && t.asked.every(id => host.map.hasImage(id)), followed, shown, controls, moved, pinOk, tip, pinMoved, closed: t.closed, tipGone: !document.getElementById('own-tip'), views: t.views, before, after: host.map.getLayer('pins') ? 1 : 0};

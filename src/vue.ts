@@ -7,7 +7,7 @@
  */
 import {computed, defineComponent, getCurrentInstance, h, inject, provide, isProxy, isReactive, onBeforeUnmount, onMounted, onServerPrefetch, shallowRef, Teleport, toRaw, toValue, watch, type AllowedComponentProps, type ComponentCustomProps, type SetupContext, type SlotsType, type VNode, type VNodeProps, type MaybeRefOrGetter, type PropType, type ShallowRef} from 'vue';
 declare const __DEV__: boolean;
-import type {ControlSpec, FeatureOptions, FeaturePlace, MapHost, MapOverlay as Overlay, OverlayOptions, MapEvents, MapPointer, MapSpec, MapState, View, ViewInput, InitialView} from './host.ts';
+import type {ControlSpec, FeatureOptions, FeaturePlace, SourceOptions, MapHost, MapOverlay as Overlay, OverlayOptions, MapEvents, MapPointer, MapSpec, MapState, View, ViewInput, InitialView} from './host.ts';
 import type {SSROverrides} from './style.ts';
 import type {RenderedFeature} from './map.ts';
 import type {QueriedFeature} from './query.ts';
@@ -66,15 +66,23 @@ const IMAGES = Symbol('map-jr-images') as unknown as import('vue').InjectionKey<
  * The features at a place of the map, kept up to date (see `watchFeatures` of the map). For a component inside
  * `<MapJr>`. The place and the options can be refs or getters.
  */
-export function useMapFeatures(at: MaybeRefOrGetter<FeaturePlace | undefined>, options: MaybeRefOrGetter<FeatureOptions & {sources: string[]}>): ShallowRef<QueriedFeature[]>;
-export function useMapFeatures(at: MaybeRefOrGetter<FeaturePlace | undefined>, options?: MaybeRefOrGetter<FeatureOptions & {sources?: undefined}>): ShallowRef<RenderedFeature[]>;
-export function useMapFeatures(at: MaybeRefOrGetter<FeaturePlace | undefined>, options?: MaybeRefOrGetter<FeatureOptions>): ShallowRef<RenderedFeature[] | QueriedFeature[]>;
-export function useMapFeatures(at: MaybeRefOrGetter<FeaturePlace | undefined>, options: MaybeRefOrGetter<FeatureOptions> = {}): ShallowRef<RenderedFeature[] | QueriedFeature[]> {
-    const host = useMapHost(), found = shallowRef<RenderedFeature[] | QueriedFeature[]>([]);
+export function useMapFeatures(at: MaybeRefOrGetter<FeaturePlace | undefined>, options: MaybeRefOrGetter<FeatureOptions> = {}): ShallowRef<RenderedFeature[]> {
+    return kept<RenderedFeature>([() => toValue(at), () => toValue(options)], (h, [place, o], give) => h.watchFeatures(plain(place), plain(o), give));
+}
+/**
+ * The features of the tile data of the source `sourceId` at a place, kept up to date (see `watchSource` of the map).
+ * For a component inside `<MapJr>`. The id, the place and the options can be refs or getters.
+ */
+export function useMapSource(sourceId: MaybeRefOrGetter<string>, at?: MaybeRefOrGetter<FeaturePlace | undefined>, options: MaybeRefOrGetter<SourceOptions> = {}): ShallowRef<QueriedFeature[]> {
+    return kept<QueriedFeature>([() => toValue(sourceId), () => toValue(at), () => toValue(options)], (h, [id, place, o], give) => h.watchSource(id, plain(place), plain(o), give));
+}
+/** A ref with the answers of `start` for the map of the `MapJr` around, started again when the map or a source changes. */
+function kept<T, S extends unknown[] = any[]>(sources: {[K in keyof S]: () => S[K]}, start: (h: MapHost, values: S, give: (features: T[]) => void) => () => void): ShallowRef<T[]> {
+    const host = useMapHost(), found = shallowRef<T[]>([]);
     let stop: (() => void) | undefined;
-    watch([host, () => toValue(at), () => toValue(options)], ([h, place, o]) => {
+    watch([host, ...sources] as const, ([h, ...values]: unknown[]) => {
         stop?.();
-        stop = h?.watchFeatures(plain(place), plain(o), features => { found.value = features; });
+        stop = h ? start(h as MapHost, values as unknown as S, features => { found.value = features; }) : undefined;
     }, {immediate: true});
     onBeforeUnmount(() => stop?.());
     return found;

@@ -35,18 +35,21 @@ map.state.subscribe(state => {
 map.moveTo({center: NYC, zoom: 12, duration: 300});
 map.project(NYC).x.toFixed(0);
 map.queryElevation(NYC).then(metres => metres?.toFixed(0));
-// The kind of query gives the type of the features: with `sources` the tile data, otherwise what the style layers draw.
-map.queryFeatures(NYC, {sources: ['rain']}).then(found => console.log(found[0]?.type === 'Polygon', found[0]?.sourceLayer.length));
+// The method gives the type of the features: `querySource` the tile data, `queryFeatures` what the style layers draw.
+map.querySource('rain', NYC).then(found => console.log(found[0]?.type === 'Polygon', found[0]?.sourceLayer.length));
 map.queryFeatures([{x: 0, y: 0}, {x: 400, y: 300}], {layers: ['places']}).then(found => console.log(found[0]?.layer.id, found[0]?.state));
 map.queryFeatures({x: 10, y: 10}, {radius: 8}).then(found => console.log(found[0]?.layer.paint));
 map.queryFeatures().then(found => console.log(found[0]?.geometry.type));
-map.watchFeatures(FIXED, {sources: ['rain']}, features => console.log(features.length, features[0]?.type));
+map.watchSource('rain', FIXED, {zoom: 10}, features => console.log(features.length, features[0]?.type));
+map.queryFeatures({layers: ['places']}).then(found => console.log(found[0]?.layer.id));
 map.watchFeatures(undefined, {layers: ['places']}, features => console.log(features[0]?.layer.id));
-// Options that are not written in the call: the features are of one kind or of the other.
-const asked: FeatureOptions = Math.random() < 0.5 ? {sources: ['rain']} : {};
-map.queryFeatures(NYC, asked).then(found => console.log(found.length, found[0]?.properties, found[0] && 'state' in found[0]));
+// Options in a variable: the features are those that the style layers draw.
+const asked: FeatureOptions = Math.random() < 0.5 ? {layers: ['places']} : {};
+map.queryFeatures(NYC, asked).then(found => console.log(found.length, found[0]?.properties, found[0]?.state));
+// @ts-expect-error `sources` is not an option of queryFeatures: querySource reads the tile data of a source.
+map.queryFeatures(NYC, {sources: ['rain']});
 // @ts-expect-error A feature of the tile data has no style layer.
-map.queryFeatures(NYC, {sources: ['rain']}).then(found => found[0]?.layer.id);
+map.querySource('rain', NYC).then(found => found[0]?.layer.id);
 // @ts-expect-error A feature that a style layer draws has no `type` of the tile data.
 map.queryFeatures(NYC).then(found => found[0]?.type === 'Polygon');
 const overlay = map.overlay(document.createElement('div'), {lngLat: NYC, anchor: 'bottom'});
