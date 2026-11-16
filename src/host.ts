@@ -11,7 +11,7 @@ export type {PaddingInput};
 export type {FeatureOptions, FeaturePlace, SourceOptions};
 import {createStore, type Readable} from './store.ts';
 import {Marker, Popup} from './overlays.ts';
-import {dataTypeError, extended, markerFeatures, markerStyle, withData, withMarkers, type Anchor, type MarkerLayerOptions} from './markers.ts';
+import {dataTypeError, extended, isStylePair, styleFor, markerFeatures, markerStyle, withData, withMarkers, type Anchor, type MarkerLayerOptions} from './markers.ts';
 import type {QueriedFeature} from './query.ts';
 import type {Control, ControlPosition} from './controls.ts';
 import type {Checked} from './mistakes.ts';
@@ -67,8 +67,12 @@ export type ImageInput = ImageSource | ({image: ImageSource} & ImageOptions);
 
 /** The description of a map. Each field can change in `update`, but for those of `MapSetup`. */
 export interface MapSpec extends MapSetup {
-    /** A style object or the URL of a style (the MapLibre style specification). A new object or URL is a new style. */
-    style: string | object;
+    /**
+     * A style object or the URL of a style (the MapLibre style specification). A new object or URL is a new style.
+     * A pair `{light, dark}` of two styles (objects or URLs) uses the style of the resolved `colorScheme`, and changes
+     * to the other style when the scheme changes. Each change of scheme loads that style again, as a new style does.
+     */
+    style: string | object | {light: string | object; dark: string | object};
     /**
      * Sources to add to the sources of the style, by id. A source here replaces the source of the style that has the
      * same id. They are added when the style has loaded, so a style from a URL can have them too.
@@ -417,7 +421,10 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
     // (The `data` of the last description: keys can change while the style loads.)
     let wantedData = spec.data;
     const typeError = (id: string, type: string) => setTimeout(() => { if (alive) map.fire('error', {error: dataTypeError(id, type)}); });
-    const restyle = (next: MapSpec) => { styled = false; map.setStyle(next.style, {transformStyle: (_, style) => {
+    // `style: {light, dark}`: the scheme of the style that the map has (`colorScheme` resolved), and the last description.
+    let styledDark = false, latest = spec;
+    const darkOf = (to: MapSpec['colorScheme']) => to === 'dark' || to !== 'light' && !!globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches;
+    const restyle = (next: MapSpec) => { styled = false; styledDark = darkOf(next.colorScheme); map.setStyle(styleFor(next.style, styledDark) as MapOptions['style'], {transformStyle: (_, style) => {
         styled = true;
         baseSources = style.sources ?? {};
         styleProjection = style.projection;
@@ -444,6 +451,7 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
         const on = wanted === 'dark' || wanted !== 'light' && !!dark?.matches;
         map.getContainer().classList.toggle('map-jr-dark', on);
         state.set({colorScheme: on ? 'dark' : 'light'});
+        if (isStylePair(latest.style) && on !== styledDark && alive) { state.set({idle: false}); sent.clear(); restyle(latest); }
     };
     const scheme = (to: MapSpec['colorScheme']) => {
         wanted = to;
@@ -569,6 +577,7 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
         const differ = (a: unknown, b: unknown) => a !== b && JSON.stringify(a) !== JSON.stringify(b);
         wantedProjection = next.projection;
         wantedData = next.data;
+        latest = next;
         // (A new key of `data` makes its source before the edits of `sources` and `layers`, which can add a layer that names it.)
         if (styled && before) for (const id in next.data) {
             const s = map.getSource(id) as {type?: string} | undefined;

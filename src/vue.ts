@@ -240,7 +240,7 @@ const MapJrComponent = defineComponent({
     name: 'MapJr',
     props: {
         /** A style object or the URL of a style. */
-        mapStyle: {type: [String, Object] as PropType<string | object>, required: true},
+        mapStyle: {type: [String, Object] as PropType<MapSpec['style']>, required: true},
         /** The view, for `v-model:view`. Without it the map starts at `initialView` and the user moves it. */
         view: Object as PropType<ViewInput>,
         initialView: Object as PropType<InitialView>,

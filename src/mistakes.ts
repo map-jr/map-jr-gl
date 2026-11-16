@@ -4,7 +4,7 @@
  */
 import type {Map} from './map.ts';
 import type {FeatureOptions, MapSpec, SourceOptions} from './host.ts';
-import {templateSlots} from './markers.ts';
+import {isStylePair, templateSlots} from './markers.ts';
 import {maplibreMembers} from './maplibre-members.ts';
 
 /** What a check reads of one map. `warned` has the warnings that the map gave: each mistake gives one warning for each map. */
@@ -36,6 +36,9 @@ const texts: (((a: string, b: string) => string) | undefined)[] = [
     /* 22 */ a => `globalState: the value of "${a}" is not JSON (a function, a class instance, NaN or a cycle), so the style cannot read it as it is. Give a string, a number, a boolean, an array or a plain object.`,
     /* 23-39: kept for the texts of other changes */ , , , , , , , , , , , , , , , , , 
     /* 40 */ a => `colorScheme: ${a} is not a colour scheme, so the map follows the browser. Write 'auto', 'light' or 'dark'.`,
+    /* 41-44: kept for the texts of other changes */ , , , , 
+    /* 45 */ () => 'style: the object is not a style, because it has no "version" and "layers", and it is not a pair {light, dark}. Give a style object, the URL of a style, or {light: style, dark: style}.',
+    /* 46 */ (a, b) => `style: the pair has no "${a}", so the map uses "${b}" in both colour schemes. Give both "light" and "dark".`,
 ];
 
 /** The message with the number `code` for the names `a` and `b`. */
@@ -110,6 +113,11 @@ export function check(c: Checked, kind: number, a?: any, b?: any) {
         if (!before && 'glyphs' in next) warn(20);
         for (const name in next.globalState) if (next.globalState[name] !== before?.globalState?.[name] && !isJson(next.globalState[name])) warn(22, name);
         if (next.colorScheme != null && next.colorScheme !== before?.colorScheme && !['auto', 'light', 'dark'].includes(next.colorScheme)) warn(40, JSON.stringify(next.colorScheme));
+        const st = next.style as Record<string, unknown> | undefined;
+        if (st && typeof st === 'object' && differ(st, before?.style)) {
+            if (isStylePair(st)) { if (!st.light !== !st.dark) warn(46, st.light ? 'dark' : 'light', st.light ? 'light' : 'dark'); }
+            else if (!('version' in st && 'layers' in st)) warn(45);
+        }
         if (before) for (const k of setupOnly) if (differ(next[k], before[k])) warn(8, k);
     } else if (kind === 3) {
         const o = b as FeatureOptions;

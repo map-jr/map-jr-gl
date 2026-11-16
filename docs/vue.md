@@ -44,7 +44,7 @@ production build has no such warning, and there the map stays empty without a me
 
 | Prop | Meaning |
 |---|---|
-| `map-style` | A style object or the URL of a style. Required. (`style` is the CSS style of an element in Vue, so the prop has this name.) |
+| `map-style` | A style object or the URL of a style, or a pair `{light, dark}` that follows `color-scheme` (see [A light and a dark style](api.md#a-light-and-a-dark-style)). Required. (`style` is the CSS style of an element in Vue, so the prop has this name.) |
 | `view` | The view, for `v-model:view`. Without it, the map starts at `initial-view` and the user moves it. |
 | `initial-view` | The view at the start. |
 | `sources` | Sources to add to the sources of the style, by id. See [the main API](api.md#your-own-layers-on-a-style-from-a-url). |
