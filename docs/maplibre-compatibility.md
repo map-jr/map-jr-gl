@@ -118,7 +118,6 @@ Properties:
 
 - `line-gradient` together with `line-dasharray`
 - `line-offset` and `line-blur` that are different for each feature
-- `circle-pitch-alignment` and `circle-pitch-scale`
 - Circle stroke and blur that are different for each feature
 - `icon-halo-blur`. Icon halos are available for distance-field (SDF) icons.
 - `text-writing-mode`
