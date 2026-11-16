@@ -248,6 +248,10 @@ export interface MapEvents extends
 export interface MapHost {
     /** Changes the map to a new description. Give the complete description each time: a description with no `style` throws. */
     update(spec: MapSpec): void;
+    /** Changes only the fields of `part`: `map.update({...map.description, ...part})`. A field of `part` that is `undefined` is removed. */
+    patch(part: Partial<MapSpec>): void;
+    /** The description of the last `createMap`, `update` or `patch`. Read only: change the map with `update` or `patch`. */
+    readonly description: Readonly<MapSpec>;
     destroy(): void;
     readonly state: Readable<MapState>;
     /**
@@ -565,9 +569,16 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
 
     return {
         update(next) {
-            complete(next, 'update', `update() takes the complete description, not only the changed fields. Write map.update({...description, ${Object.keys(next ?? {})[0] ?? 'field'}: …}).`);
+            complete(next, 'update', `update() takes the complete description, not only the changed fields. Write map.patch({${Object.keys(next ?? {})[0] ?? 'field'}: …}) to change only some fields.`);
             if (alive) apply(next, now);
         },
+        patch(part) {
+            const next: any = {...now, ...part};
+            for (const k in part) if ((part as any)[k] === undefined) delete next[k];
+            complete(next, 'patch', 'Do not set "style" to undefined.');
+            if (alive) apply(next, now);
+        },
+        get description() { return now; },
         destroy() { if (!alive) return; alive = false; cooperate(false); map.remove(); },
         state,
         queryFeatures,

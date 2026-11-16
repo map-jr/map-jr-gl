@@ -150,6 +150,24 @@ for (const renderer of ['worker', 'main']) {
         check(`[${renderer}] projection: the description replaces the projection of the style, null gives it back, and globe() switches it`,
             JSON.stringify(projection) === JSON.stringify({start: 'globe', cleared: 'vertical-perspective', mercator: 'mercator', again: 'mercator', clicked: 'globe', kept: 'globe', events: ['globe', 'vertical-perspective', 'mercator', 'globe']}), JSON.stringify(projection));
 
+        // 3b2. `patch` (#483): it keeps the fields that `part` leaves out, `undefined` removes a field, and `description` is the last description.
+        const patched = await page.evaluate(async renderer => {
+            const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+            const spec = {style: t.style, renderer, attribution: false, cursor: 'crosshair', maxZoom: 10};
+            const host = t.lib.createMap(el, spec), out = {};
+            out.first = host.description === spec;
+            host.patch({minZoom: 2});
+            out.kept = [host.description.cursor, host.description.maxZoom, host.description.minZoom, host.map.getMaxZoom(), host.map.getMinZoom(), el.querySelector('canvas').style.cursor];
+            host.patch({cursor: undefined, maxZoom: undefined});
+            out.removed = ['cursor' in host.description, 'maxZoom' in host.description, host.description.minZoom, host.map.getMaxZoom(), el.querySelector('canvas').style.cursor];
+            try { host.patch({style: undefined}); out.style = 'no error'; } catch (e) { out.style = e.message; }
+            out.styleKept = host.description.style === t.style;
+            host.destroy(); el.remove();
+            return out;
+        }, renderer).catch(e => ({error: String(e)}));
+        check(`[${renderer}] patch keeps the other fields, undefined removes a field, and description is the last description`,
+            JSON.stringify(patched) === JSON.stringify({first: true, kept: ['crosshair', 10, 2, 10, 2, 'crosshair'], removed: [false, false, 2, 22, ''], style: '[map-jr-gl] patch(): the description has no "style". Do not set "style" to undefined.', styleKept: true}), JSON.stringify(patched));
+
         // 3c. Mistakes and errors: a container that is not there has a message; `onError`
         // gets each error; without it the error is written to the console.
         const mistakes = await page.evaluate(async () => {
@@ -469,7 +487,7 @@ for (const renderer of ['worker', 'main']) {
             return {update, none, create, drawn: (await t.host.queryFeatures([{x: 0, y: 0}, {x: 900, y: 600}])).length};
         });
         check(`[${renderer}] a description with no style: update and createMap throw and say what to write, and the map still draws`,
-            partial.update.startsWith('[map-jr-gl] update(): the description has no "style".') && partial.update.includes('map.update({...description, cursor: ') && partial.none.startsWith('[map-jr-gl] update()')
+            partial.update.startsWith('[map-jr-gl] update(): the description has no "style".') && partial.update.includes('map.patch({cursor: ') && partial.none.startsWith('[map-jr-gl] update()')
             && partial.create.startsWith('[map-jr-gl] createMap(): the description has no "style".') && partial.drawn > 0 && !errors.length, JSON.stringify({...partial, errors}));
 
         // 4. Marker layers: each one is a source and a symbol layer of the style, and they follow the description.
