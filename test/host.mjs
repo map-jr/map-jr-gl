@@ -141,7 +141,7 @@ for (const renderer of ['worker', 'main']) {
             t.host.update(t.spec = {...t.spec, style: t.style});
             await wait(200); await idle();
             const without = (await t.host.queryFeatures(at, {layers: ['test-water']})).length;
-            const raw = (await t.host.queryFeatures({x: 450, y: 300}, {sources: ['omt'], radius: 30})).length;
+            const raw = (await t.host.querySource('omt', {x: 450, y: 300}, {radius: 30})).length;
             return {withLayer, without, raw};
         });
         check(`[${renderer}] update with a new style: a layer comes and goes, and queries find features`, style.withLayer > 0 && style.without === 0 && style.raw > 0, JSON.stringify(style));
@@ -267,7 +267,7 @@ for (const renderer of ['worker', 'main']) {
         });
         check(`[${renderer}] two maps with one extend object both load its source`, sharedExtend.idles.every(Boolean) && sharedExtend.drawn.every(n => n > 0), JSON.stringify(sharedExtend));
 
-        // 3d. `radius` widens a query for what the style layers draw, as it widens a query with `sources` (#12).
+        // 3d. `radius` widens a query for what the style layers draw, as it widens a query of `querySource` (#12).
         const radius = await page.evaluate(async renderer => {
             const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
             // A line of 2 pixels through the centre of the map, from west to east. The questions are 6 pixels below it.
@@ -277,12 +277,12 @@ for (const renderer of ['worker', 'main']) {
             await new Promise(r => { let at = host.state.get().idle ? performance.now() : 0; const off = host.state.subscribe(s => s.idle, v => { at = v ? performance.now() : 0; }), done = () => { clearInterval(timer); off(); r(); }, timer = setInterval(() => at && performance.now() - at > 500 && done(), 50); setTimeout(done, 8000); });
             const at = {x: 100, y: 81}, below = host.unproject(at), count = async (place, o) => (await host.queryFeatures(place, o)).length;
             const out = {on: await count({x: 100, y: 75}, {layers: ['own-line']}), none: await count(at, {layers: ['own-line']}), small: await count(at, {layers: ['own-line'], radius: 2}), point: await count(at, {layers: ['own-line'], radius: 8}),
-                position: await count(below, {layers: ['own-line'], radius: 8}), data: await count(at, {sources: ['own'], radius: 8}), dataDefault: await count(at, {sources: ['own']}),
+                position: await count(below, {layers: ['own-line'], radius: 8}), data: (await host.querySource('own', at, {radius: 8})).length, dataDefault: (await host.querySource('own', at)).length,
                 layer: (await host.queryFeatures(at, {layers: ['own-line'], radius: 8}))[0]?.layer?.id};
             host.destroy(); el.remove();
             return out;
         }, renderer);
-        check(`[${renderer}] queryFeatures: radius widens a query for drawn features, and its default is 0 there and 3 with sources`,
+        check(`[${renderer}] queryFeatures: radius widens a query for drawn features, and its default is 0 there and 3 in querySource`,
             radius.on === 1 && radius.none === 0 && radius.small === 0 && radius.point === 1 && radius.position === 1 && radius.data === 1 && radius.dataDefault === 0 && radius.layer === 'own-line', JSON.stringify(radius));
 
         // 3d. A GeoJSON line with longitudes past 180° is drawn on the far side of the antimeridian too, as in MapLibre (#197).
@@ -529,9 +529,9 @@ for (const renderer of ['worker', 'main']) {
                 sources: {own: {type: 'geojson', data: empty}}, layers: [{id: 'own-fill', type: 'fill', source: 'own', before: t.style.layers[1].id}]});
             await idle(good);
             await good.queryFeatures({x: 100, y: 75}, {layers: ['own-fill']});
-            await good.queryFeatures({x: 100, y: 75}, {sources: ['own'], radius: 5, geometry: false, zoom: 14});
+            await good.querySource('own', {x: 100, y: 75}, {radius: 5, geometry: false, zoom: 14});
             await good.queryFeatures([-74.0065, 40.7085], {layers: ['own-fill'], radius: 5});
-            await good.queryFeatures(undefined, {sources: ['omt'], sourceLayers: ['water']});
+            await good.querySource('omt', {sourceLayers: ['water']});
             // An application that adds the layer and the source itself in `load`: the ids are compared after that.
             const ownEl = div('height:150px'), own = t.lib.createMap(ownEl, {...base, interactiveLayers: ['later'], data: {'later-source': empty}});
             own.listen('load', () => { own._map.addSource('later-source', {type: 'geojson', data: empty}); own._map.addLayer({id: 'later', type: 'fill', source: 'later-source'}); });
@@ -556,9 +556,10 @@ for (const renderer of ['worker', 'main']) {
                 // (The second time, the template is replaced by one without the slot {{fill}}.)
                 bad.update({...spec, interactive: false, initialView: {center: [0, 0], zoom: 2}, images: i ? {dot: '<svg viewBox="0 0 4 4"><rect width="4" height="4"/></svg>'} : spec.images});
                 await bad.queryFeatures({x: 100, y: 75}, {layers: ['nope']}).catch(() => {});
-                await bad.queryFeatures({x: 100, y: 75}, {sources: ['nope'], layers: ['lost']}).catch(() => {});
-                await bad.queryFeatures({x: 100, y: 75}, {sourceLayers: ['water'], radius: 5, geometry: false}).catch(() => {});
-                await bad.queryFeatures(undefined, {sources: ['omt'], radius: 5, geometry: false, zoom: 14}).catch(() => {});
+                await bad.querySource('nope', {x: 100, y: 75}, {layers: ['lost']}).catch(() => {});
+                await bad.queryFeatures({x: 100, y: 75}, {sourceLayers: ['water'], sources: ['omt'], radius: 5}).catch(() => {});
+                await bad.queryFeatures({layers: ['nope'], radius: 5}).catch(() => {});
+                await bad.querySource('omt', {radius: 5, geometry: false, zoom: 14}).catch(() => {});
                 await bad.queryFeatures([{x: 0, y: 0}, {x: 100, y: 75}], {radius: 5}).catch(() => {});
             }
             const place = await bad.queryFeatures({lng: -74.0065, lat: 40.7085}).then(() => '', e => e.message);
@@ -571,9 +572,9 @@ for (const renderer of ['worker', 'main']) {
         }, renderer);
         const styleLayer = await page.evaluate(() => window.t.style.layers[1].id);
         const expected = ['createMap(): the container has height 0', 'interactiveLayers: the style has no layer "nope"', 'queryFeatures(): the style has no layer "nope"',
-            'queryFeatures(): the style has no source "nope"', 'layers: the layer "lost" has before: "nonexistent"', 'layers: the layer "lost" uses the source "missing"', 'markers: two marker layers have the id "a"', 'images: a layer gives the parameter "colour" to the image "dot"', 'images: a layer gives the parameter "size" to the image "dot"', 'images: a layer gives the parameter "fill" to the image "dot"', 'markers: the marker layer "old" has no "image"', 'markers: a marker layer has the image "nothing"', `markers: the marker layer "${styleLayer}" has the id of a layer of the style`, `markers: the marker layer "${styleLayer}" has before: "no-such-layer"`, `markers: the marker 1 of the marker layer "${styleLayer}" has no position`,
-            'update(): "interactive" changed', 'update(): "initialView" changed', 'queryFeatures(): "sourceLayers" has an effect only', 'queryFeatures(): "radius" has an effect only in a query at a point or a position', 'queryFeatures(): "geometry" has an effect only', 'queryFeatures(): "zoom" has an effect only',
-            'queryFeatures(): "layers" has no effect'];
+            'querySource(): the style has no source "nope"', 'layers: the layer "lost" has before: "nonexistent"', 'layers: the layer "lost" uses the source "missing"', 'markers: two marker layers have the id "a"', 'images: a layer gives the parameter "colour" to the image "dot"', 'images: a layer gives the parameter "size" to the image "dot"', 'images: a layer gives the parameter "fill" to the image "dot"', 'markers: the marker layer "old" has no "image"', 'markers: a marker layer has the image "nothing"', `markers: the marker layer "${styleLayer}" has the id of a layer of the style`, `markers: the marker layer "${styleLayer}" has before: "no-such-layer"`, `markers: the marker 1 of the marker layer "${styleLayer}" has no position`,
+            'update(): "interactive" changed', 'update(): "initialView" changed', 'queryFeatures(): "sourceLayers" is not an option', 'queryFeatures(): "sources" is not an option', 'queryFeatures(): "radius" has an effect only in a query at a point or a position',
+            'querySource(): "radius" has an effect only', 'querySource(): "geometry" has an effect only', 'querySource(): "zoom" has an effect only', 'querySource(): "layers" is not an option'];
         check(`[${renderer}] common mistakes: each gives one warning, a wrong place of a query is refused with a message, and a correct description gives no warning`,
             warnings.correct.length === 0 && warnings.said.length === expected.length && expected.every(e => warnings.said.filter(w => w.startsWith('[map-jr-gl] ' + e)).length === 1)
             && warnings.place.startsWith('[map-jr-gl] queryFeatures(): {"lng":-74.0065,"lat":40.7085} is not a place.'), JSON.stringify(warnings));
@@ -1097,21 +1098,25 @@ for (const renderer of ['worker', 'main']) {
             const h = window.t.host, c = h.state.get().view.center, wait = ms => new Promise(r => setTimeout(r, ms));
             const sources = Object.keys(window.t.spec.style.sources).filter(id => window.t.spec.style.sources[id].type === 'vector');
             const drawnAtPoint = await h.queryFeatures({x: 450, y: 300}), drawnAtPosition = await h.queryFeatures(c), drawnAll = await h.queryFeatures();
-            const dataAtPosition = await h.queryFeatures(c, {sources, radius: 30}), dataInBox = await h.queryFeatures([{x: 300, y: 200}, {x: 600, y: 400}], {sources}), dataAll = await h.queryFeatures(undefined, {sources});
-            const calls = [];
-            const stop = h.watchFeatures({x: 450, y: 300}, {}, f => calls.push(f.length));
+            const layers = [...new Set(drawnAll.map(f => f.layer.id))].slice(0, 1), drawnInLayer = await h.queryFeatures({layers}), drawnInLayerToo = await h.queryFeatures(undefined, {layers});
+            const all = async (place, o) => (await Promise.all(sources.map(id => h.querySource(id, place, o)))).flat();
+            const dataAtPosition = await all(c, {radius: 30}), dataInBox = await all([{x: 300, y: 200}, {x: 600, y: 400}]), dataAll = await all();
+            const calls = [], sourceCalls = [];
+            const stop = h.watchFeatures({x: 450, y: 300}, {}, f => calls.push(f.length)), stopSource = h.watchSource(sources[0], {x: 450, y: 300}, {radius: 30}, f => sourceCalls.push(f.length));
             await wait(600);
             const first = calls.length;
             h.moveTo({center: [c[0] + 0.01, c[1] + 0.004]});
             await wait(2500);
             const moved = calls.length;
-            stop();
+            stop(); stopSource();
+            const sourceMoved = sourceCalls.length;
             h.moveTo({center: c});
             await wait(1500);
-            return {drawnAtPoint: drawnAtPoint.length, drawnAtPosition: drawnAtPosition.length, drawnAll: drawnAll.length, dataAtPosition: dataAtPosition.length, dataInBox: dataInBox.length, dataAll: dataAll.length, layer: typeof drawnAll[0]?.layer, first, moved, after: calls.length};
+            return {drawnInLayer: drawnInLayer.length, drawnInLayerToo: drawnInLayerToo.length, inLayer: drawnInLayer.every(f => f.layer.id === layers[0]), sourceFirst: sourceCalls[0], sourceMoved, sourceAfter: sourceCalls.length,
+                drawnAtPoint: drawnAtPoint.length, drawnAtPosition: drawnAtPosition.length, drawnAll: drawnAll.length, dataAtPosition: dataAtPosition.length, dataInBox: dataInBox.length, dataAll: dataAll.length, layer: typeof drawnAll[0]?.layer, first, moved, after: calls.length};
         });
-        check(`[${renderer}] queryFeatures: a point, a position, a rectangle or the whole map; drawn layers or the data of sources; watchFeatures follows the map`,
-            found.drawnAtPoint > 0 && found.drawnAtPosition > 0 && found.drawnAll > found.drawnAtPoint && found.dataAtPosition > 0 && found.dataInBox > 0 && found.dataAll >= found.dataInBox && found.layer === 'object'
+        check(`[${renderer}] queryFeatures and querySource: a point, a position, a rectangle or the whole map, options in the place of at; watchFeatures and watchSource follow the map`,
+            found.drawnInLayer > 0 && found.drawnInLayer === found.drawnInLayerToo && found.inLayer && found.sourceFirst > 0 && found.sourceMoved >= 2 && found.sourceAfter === found.sourceMoved && found.drawnAtPoint > 0 && found.drawnAtPosition > 0 && found.drawnAll > found.drawnAtPoint && found.dataAtPosition > 0 && found.dataInBox > 0 && found.dataAll >= found.dataInBox && found.layer === 'object'
             && found.first === 1 && found.moved >= 2 && found.after === found.moved, JSON.stringify(found));
 
         // 5b. A listener that throws stops neither the watch nor the other listeners of the event (#22).
@@ -1177,11 +1182,11 @@ for (const renderer of ['worker', 'main']) {
             let clicks = 0, watched = 0;
             h.update(t.spec = {...t.spec, interactiveLayers: t.spec.style.layers.filter(l => l.source).map(l => l.id), onClick: () => clicks++});
             h._map.fire('click', {point: {x: 450, y: 300}, lngLat: {lng: -74.0105, lat: 40.7045}});
-            h.watchFeatures(undefined, {sources}, () => watched++);
+            h.watchSource(sources[0], undefined, {}, () => watched++);
             const waits = said(h.once('dragend'));
-            const pending = said(h.queryFeatures(undefined, {sources})), height = said(h.queryElevation([-74.0105, 40.7045]));
+            const pending = said(h.querySource(sources[0])), height = said(h.queryElevation([-74.0105, 40.7045]));
             h.destroy(); h.update(t.spec);
-            const later = said(h.queryFeatures(undefined, {sources})), onceLater = said(h.once('idle'));
+            const later = said(h.querySource(sources[0])), onceLater = said(h.once('idle'));
             const out = {canvas: !!document.querySelector('#host canvas'), waits: await waits, onceLater: await onceLater, pending: await pending, height: await height, later: await later};
             await new Promise(r => setTimeout(r, 300));
             return {...out, clicks, watched};
@@ -1530,7 +1535,7 @@ for (const visualizePitch of [undefined, true]) {
     await page.close();
 }
 
-// The `queryFeatures` example of the gallery (site/examples/query.js and query.compat.js; the site must be built), with
+// The `querySource` example of the gallery (site/examples/query.js and query.compat.js; the site must be built), with
 // the usual number of tile workers.
 for (const code of ['core', 'compat']) {
     const page = await browser.newPage({viewport: {width: 1200, height: 800}});
@@ -1567,10 +1572,10 @@ for (const code of ['core', 'compat']) {
 
         // 2. The answer to an earlier click arrives after the answer to a later click: the example shows the later click.
         await page.evaluate(() => {
-            const map = window.maps.query, ask = map.queryFeatures, wait = ms => new Promise(r => setTimeout(r, ms));
+            const map = window.maps.query, ask = map.querySource, wait = ms => new Promise(r => setTimeout(r, ms));
             window.asked = 0;
             // The first question gets a marked answer 2 seconds late. The questions after it are not changed.
-            map.queryFeatures = function (...a) { const answer = ask.apply(this, a); return window.asked++ ? answer : answer.then(async () => { await wait(2000); return [{sourceLayer: 'first-click', properties: {}}]; }); };
+            map.querySource = function (...a) { const answer = ask.apply(this, a); return window.asked++ ? answer : answer.then(async () => { await wait(2000); return [{sourceLayer: 'first-click', properties: {}}]; }); };
         });
         await page.mouse.click(live.x + 80, top + 300);
         await page.waitForFunction(() => window.asked === 1, null, {timeout: 10000});
