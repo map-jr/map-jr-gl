@@ -1456,7 +1456,7 @@ export class Map {
     }
 
     /**
-     * The features that the style layers draw, the top one first. `MapHost.queryFeatures` of the main API is this method.
+     * The features that the style layers draw, the top one first. `MapInstance.queryFeatures` of the main API is this method.
      * `at` is a point of the screen (`{x, y}`), a position (`[lng, lat]`), a rectangle of the screen (two points), or
      * nothing for the whole map; the options can come in its place (`queryFeatures({layers})`).
      */
@@ -1471,7 +1471,7 @@ export class Map {
     /**
      * The features of the tile data of the source `sourceId`. They need no style layer, and at a position they need not
      * be on the screen (the tile is fetched if necessary). `at` is a point of the screen or a position, or nothing for the
-     * tiles of the view; the options can come in its place. `MapHost.querySource` of the main API is this method.
+     * tiles of the view; the options can come in its place. `MapInstance.querySource` of the main API is this method.
      */
     querySource(sourceId: string, at?: FeaturePlace | LngLatLike | SourceOptions, o: SourceOptions = {}): Promise<QueriedFeature[]> {
         if (isOptions(at)) { o = at as SourceOptions; at = undefined; }

@@ -60,17 +60,17 @@ export interface RenderOptions {
      * `{building: {hidden: true}, 'road-minor': {minzoom: 15}}`. A value here comes before the value in the style.
      */
     overrides?: Record<string, SSROverrides>;
-    /** Sources to add to the style, by id, as `sources` in the description of a map (`MapSpec`). */
+    /** Sources to add to the style, by id, as `sources` in the description of a map (`MapDescription`). */
     sources?: Record<string, object>;
-    /** Layers to add to the layers of the style, as `layers` in the description of a map (`MapSpec`). */
+    /** Layers to add to the layers of the style, as `layers` in the description of a map (`MapDescription`). */
     layers?: ({id: string; before?: string} & Record<string, unknown>)[];
     /**
-     * Sprites to add to the sprite of the style, as `sprite` in the description of a map (`MapSpec`):
+     * Sprites to add to the sprite of the style, as `sprite` in the description of a map (`MapDescription`):
      * `[{id: 'pins', url: 'https://example.com/sprites/pins'}]`. An `icon-image` names an image of such a sprite as `id:name`.
      * A relative URL is relative to the URL of the style.
      */
     sprite?: {id: string; url: string}[];
-    /** Terrain in place of that of the style, as `terrain` in the description of a map (`MapSpec`). */
+    /** Terrain in place of that of the style, as `terrain` in the description of a map (`MapDescription`). */
     terrain?: object | null;
     /** GeoJSON data for GeoJSON sources of the style, by the id of the source, as `data` in the description of a map. */
     data?: Record<string, unknown>;

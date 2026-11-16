@@ -1,5 +1,5 @@
 /**
- * The main API of the library: a map is made from one description (`MapSpec`), and is changed by giving a new
+ * The main API of the library: a map is made from one description (`MapDescription`), and is changed by giving a new
  * description. The library finds what is different. The state of the map (the view, loaded, idle, the features under
  * the pointer) is in a store that code can watch.
  *
@@ -51,11 +51,11 @@ export interface GeoJSONFeature { type: 'Feature'; id?: string | number; geometr
 /** GeoJSON (RFC 7946): a feature collection, a feature or a geometry. */
 export type GeoJSON = {type: 'FeatureCollection'; features: readonly GeoJSONFeature[]} | GeoJSONFeature | GeoJSONGeometry;
 /**
- * A layer of the field `layers` of `MapSpec`: a style layer of one of the types that the library draws, with
+ * A layer of the field `layers` of `MapDescription`: a style layer of one of the types that the library draws, with
  * `before`. TypeScript checks `type` and the prefix of each name in `paint` and `layout`.
  */
 export type LayerInput = (BackgroundLayerSpecification | FillLayerSpecification | FillExtrusionLayerSpecification | LineLayerSpecification | CircleLayerSpecification | HeatmapLayerSpecification | RasterLayerSpecification | HillshadeLayerSpecification | SymbolLayerSpecification) & {before?: string};
-/** A cluster or a point that the cluster methods of `MapHost` return, as GeoJSON in longitude and latitude. */
+/** A cluster or a point that the cluster methods of `MapInstance` return, as GeoJSON in longitude and latitude. */
 export interface ClusterFeature {type: 'Feature'; id?: string | number; properties: Record<string, unknown>; geometry: {type: 'Point'; coordinates: [number, number]}}
 /**
  * Where the camera is. `bounds` is `[[west, south], [east, north]]`: the smallest box that contains the visible map,
@@ -77,20 +77,20 @@ export interface MoveToOptions extends InitialView { duration?: number; fly?: bo
 export interface PointerPosition { point: {x: number; y: number}; lngLat: [number, number] }
 export interface MapPointer { point: {x: number; y: number}; lngLat: [number, number]; /** The features of `interactiveLayers` at the point, the top one first. */ features: RenderedFeature[] }
 
-/** The fields of `MapSpec` that add to the parts of the style: `sources`, `layers` and `terrain`. */
-type StyleParts = Pick<MapSpec, 'sources' | 'layers' | 'terrain'>;
-const parts = (s: MapSpec): StyleParts => ({sources: s.sources, layers: s.layers, terrain: s.terrain});
+/** The fields of `MapDescription` that add to the parts of the style: `sources`, `layers` and `terrain`. */
+type StyleParts = Pick<MapDescription, 'sources' | 'layers' | 'terrain'>;
+const parts = (s: MapDescription): StyleParts => ({sources: s.sources, layers: s.layers, terrain: s.terrain});
 
 /** What an image is made from: an SVG document, the URL of an image, or an object that a canvas can draw (an `ImageBitmap`, a canvas, `ImageData`). */
 export type ImageSource = Parameters<Map['addImage']>[1];
 /**
- * An image of the field `images` of `MapSpec`: an `ImageSource`, or an object with the source as `image` and the
+ * An image of the field `images` of `MapDescription`: an `ImageSource`, or an object with the source as `image` and the
  * options of the image (`width` and `height` in CSS pixels, `pixelRatio`, and the options for an icon that fits text).
  */
 export type ImageInput = ImageSource | ({image: ImageSource} & ImageOptions);
 
 /** The description of a map. Each field can change in `update`, but for those of `MapSetup`. */
-export interface MapSpec extends MapSetup {
+export interface MapDescription extends MapSetup {
     /**
      * A style object or the URL of a style (the MapLibre style specification). A new object or URL is a new style.
      * A pair `{light, dark}` of two styles (objects or URLs) uses the style of the resolved `colorScheme`, and changes
@@ -258,8 +258,8 @@ export interface OverlayOptions {
 }
 export interface MapOverlay { update(options: OverlayOptions): void; remove(): void }
 
-/** What each event of `listen` has: its type, and the `MapHost` that fired it. */
-export interface MapEventBase<T extends string = string> { type: T; target: MapHost }
+/** What each event of `listen` has: its type, and the `MapInstance` that fired it. */
+export interface MapEventBase<T extends string = string> { type: T; target: MapInstance }
 /** An event of a drag of the map by the user (`dragstart`, `drag`, `dragend`). */
 export interface MapDragEvent extends MapEventBase<'dragstart' | 'drag' | 'dragend'> {
     /** The event of the mouse or the touch that moved the map. */
@@ -317,13 +317,13 @@ export interface MapEvents extends
     error: MapEventBase<'error'> & {error: unknown};
 }
 
-export interface MapHost {
+export interface MapInstance {
     /** Changes the map to a new description. Give the complete description each time: a description with no `style` throws. */
-    update(spec: MapSpec): void;
+    update(spec: MapDescription): void;
     /** Changes only the fields of `part`: `map.update({...map.description, ...part})`. A field of `part` that is `undefined` is removed. */
-    patch(part: Partial<MapSpec>): void;
+    patch(part: Partial<MapDescription>): void;
     /** The description of the last `createMap`, `update` or `patch`. Read only: change the map with `update` or `patch`. */
-    readonly description: Readonly<MapSpec>;
+    readonly description: Readonly<MapDescription>;
     destroy(): void;
     readonly state: Readable<MapState>;
     /**
@@ -404,14 +404,14 @@ const same = (a: ViewInput | undefined, b: ViewInput | undefined) => !!a && !!b 
 
 
 /** Stops a description with no style, with a message that says what to write (a caller in JavaScript has no type check). */
-function complete(spec: MapSpec, method: string, fix: string) {
+function complete(spec: MapDescription, method: string, fix: string) {
     if (!spec?.style) throw new Error(`[map-jr-gl] ${method}(): the description has no "style". ${fix}`);
 }
 
-export function createMap(container: HTMLElement | string, spec: MapSpec): MapHost { return makeMap(container, spec, 'createMap()'); }
+export function createMap(container: HTMLElement | string, spec: MapDescription): MapInstance { return makeMap(container, spec, 'createMap()'); }
 
 /** `createMap` for the adapters: `name` is what the user wrote (`<MapJr>`, `useMapJr()`), for the warnings that name it. */
-export function makeMap(container: HTMLElement | string, spec: MapSpec, name: string): MapHost {
+export function makeMap(container: HTMLElement | string, spec: MapDescription, name: string): MapInstance {
     complete(spec, 'createMap', 'Pass the URL of a style or a style object as "style".');
     if (!container) throw new Error('[map-jr-gl] createMap(): the container is ' + container + '. In a framework, make the map after the element is mounted.');
     if (typeof container === 'string' && !document.getElementById(container)) throw new Error(`[map-jr-gl] createMap(): no element with the id "${container}".`);
@@ -474,8 +474,8 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
     const typeError = (id: string, type: string) => setTimeout(() => { if (alive) map.fire('error', {error: dataTypeError(id, type)}); });
     // `style: {light, dark}`: the scheme of the style that the map has (`colorScheme` resolved), and the last description.
     let styledDark = false, latest = spec;
-    const darkOf = (to: MapSpec['colorScheme']) => to === 'dark' || to === 'auto' && !!globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches;
-    const restyle = (next: MapSpec) => { styled = false; styledDark = darkOf(next.colorScheme); map.setStyle(styleFor(next.style, styledDark) as MapOptions['style'], {transformStyle: (_, style) => {
+    const darkOf = (to: MapDescription['colorScheme']) => to === 'dark' || to === 'auto' && !!globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches;
+    const restyle = (next: MapDescription) => { styled = false; styledDark = darkOf(next.colorScheme); map.setStyle(styleFor(next.style, styledDark) as MapOptions['style'], {transformStyle: (_, style) => {
         styled = true;
         baseSources = style.sources ?? {};
         styleProjection = style.projection;
@@ -510,7 +510,7 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
     const state = createStore<MapState>({loaded: false, idle: false, moving: false, view: viewOf(), hover: [], pointer: null, renderer: undefined, colorScheme: 'light', error: undefined});
     const controls = new globalThis.Map<string, ReturnType<ControlSpec['create']>>();
     // `colorScheme`: the class `map-jr-dark` on the container. With `'auto'`, a listener of the media query, which `destroy()` removes.
-    let wanted: MapSpec['colorScheme'], dark: MediaQueryList | undefined;
+    let wanted: MapDescription['colorScheme'], dark: MediaQueryList | undefined;
     // The resolved scheme is also the global state property `color-scheme` (#492), unless `globalState` gives that name.
     let forced = false, schemeSent: string | undefined;
     const paint = () => {
@@ -520,7 +520,7 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
         if (!forced && schemeSent !== (schemeSent = on ? 'dark' : 'light')) map.setGlobalStateProperty('color-scheme', schemeSent);
         if (isStylePair(latest.style) && on !== styledDark && alive) { state.set({idle: false}); sent.clear(); restyle(latest); }
     };
-    const scheme = (to: MapSpec['colorScheme']) => {
+    const scheme = (to: MapDescription['colorScheme']) => {
         wanted = to;
         dark ??= globalThis.matchMedia?.('(prefers-color-scheme: dark)');
         dark?.removeEventListener('change', paint);
@@ -658,7 +658,7 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
     };
     // A change that gave the engine work makes the map not idle until the engine reports idle again (#411).
     const busy = () => { if (alive && state.get().idle && !map.areTilesLoaded()) state.set({idle: false}); };
-    const apply = (next: MapSpec, before?: MapSpec) => {
+    const apply = (next: MapDescription, before?: MapDescription) => {
         // (A description that is made again each time, as in a template of a framework, has new objects with the same
         // content. So where the identity is different, the content is compared before the map does work.)
         const differ = (a: unknown, b: unknown) => a !== b && JSON.stringify(a) !== JSON.stringify(b);
@@ -718,7 +718,7 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
     };
     apply(spec);
 
-    const moveTo: MapHost['moveTo'] = ({duration, fly, bounds, padding, maxZoom, ...view}) => {
+    const moveTo: MapInstance['moveTo'] = ({duration, fly, bounds, padding, maxZoom, ...view}) => {
         // (`padding` is space for this one fit; the padding of the map belongs to the description.)
         if (bounds) { const fit = map.cameraForBounds(bounds as LngLatBoundsInput, {padding, maxZoom}); view = {bearing: fit.bearing, ...view, center: [fit.center.lng, fit.center.lat], zoom: fit.zoom}; }
         else if (padding !== undefined || maxZoom !== undefined) check(7);
@@ -762,13 +762,13 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
         run();
         return () => { stopped = true; map.off('sourcedata', data); map.off('idle', run); map.off('moveend', moved); };
     };
-    // (The cluster methods of the core source, with a message that names the method of the host.)
+    // (The cluster methods of the core source, with a message that names the method of the map (`MapInstance`).)
     const cluster = (name: string, id: string, run: (source: any) => Promise<any>) => Promise.resolve().then(() => {
         const source = map.getSource(id) as any;
         if (!source?.getClusterLeaves) throw new Error(`"${id}" is not a GeoJSON source of the style.`);
         return run(source);
     }).catch(e => { throw new Error(`[map-jr-gl] ${name}(): ${(e as Error)?.message?.replace(/^\[map-jr-gl\] /, '')}`); });
-    // An event of the core map as the host gives it: positions as `[lng, lat]`, and the host as `target`. The
+    // An event of the core map as the `MapInstance` gives it: positions as `[lng, lat]`, and the `MapInstance` as `target`. The
     // descriptors are copied, so that `preventDefault()` and the getter `defaultPrevented` still act on the event of the map.
     const pair = (p: {lng: number; lat: number}): [number, number] => [p.lng, p.lat];
     const hostEvent = (e: any) => {
@@ -780,8 +780,8 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
         return out;
     };
 
-    // (`_map`, the core map, is private: it is not in the type `MapHost`, and the tests and the library read it.)
-    const host: MapHost & {readonly _map: Map} = {
+    // (`_map`, the core map, is private: it is not in the type `MapInstance`, and the tests and the library read it.)
+    const host: MapInstance & {readonly _map: Map} = {
         update(next) {
             complete(next, 'update', `update() takes the complete description, not only the changed fields. Write map.patch({${Object.keys(next ?? {})[0] ?? 'field'}: …}) to change only some fields.`);
             if (alive) apply(next, now);

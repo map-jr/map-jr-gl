@@ -12,7 +12,7 @@ can have a filter, text beside the icon and expressions.
 
 ## Many markers: a symbol layer
 
-With `@map-jr/map-jr-gl` (and the adapters for Vue, React and Svelte), three fields of the description (`MapSpec`)
+With `@map-jr/map-jr-gl` (and the adapters for Vue, React and Svelte), three fields of the description (`MapDescription`)
 draw many markers:
 
 - `images` has the image, by name. The image can be an SVG template: write `{{name}}` where a value must go, and
@@ -276,7 +276,7 @@ To keep markers exactly on the map in every movement, choose one of these:
 
 - Draw the markers as an image in a symbol layer. This is the better choice for more than a few
   markers, and it works with both renderers.
-- Keep elements of the page, and draw the map on the main thread: `renderer: 'main'` in the description (`MapSpec`)
+- Keep elements of the page, and draw the map on the main thread: `renderer: 'main'` in the description (`MapDescription`)
   of `@map-jr/map-jr-gl`, or in the options of `new Map()` of `@map-jr/map-jr-gl/maplibre-compat`. The page then does
   more work in each frame, which matters on a slow phone.
 

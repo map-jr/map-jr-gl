@@ -25,19 +25,19 @@ package, so they work with each version of Svelte.
   const live = $derived(map && mapState(map));
 </script>
 
-<div use:mapJr={{description, ready: host => map = host}} style="height: 400px"></div>
+<div use:mapJr={{description, ready: instance => map = instance}} style="height: 400px"></div>
 {#if live}<p>Zoom {$live.view.zoom.toFixed(1)}</p>{/if}
 ```
 
 - `mapJr` is an action. It makes the map in the element, gives the map each new description, and removes the map
   with the element.
 - `ready` gets the map (for `queryFeatures`, `moveTo`, `overlay`). For an element that the user moves, call
-  `host.overlay(element, {lngLat, draggable: true, onDragEnd})`; `defaultPin()` of `@map-jr/map-jr-gl` makes the default
+  `map.overlay(element, {lngLat, draggable: true, onDragEnd})`; `defaultPin()` of `@map-jr/map-jr-gl` makes the default
   pin of `Marker`. See [Elements of the page on the map](api.md#elements-of-the-page-on-the-map).
 - `mapState(map)` is a store with the state of the map.
 - `$live.view.bounds` is the visible box, `[[west, south], [east, north]]`, for loading data for the visible area.
   `initialView` can be a box too: `{bounds, padding}`. See [the main API](api.md).
-- For an event of the map, call `host.listen(type, fn)` on the map that `ready` gives. See [Events](api.md#events).
+- For an event of the map, call `map.listen(type, fn)` on the map that `ready` gives. See [Events](api.md#events).
 - The description is the description of [the main API](api.md). A part that is made again with the same content
   does no work. The values of `data` are compared by identity: `$derived` keeps them until their inputs change.
 - `transformRequest` in the description changes each request of the map, also those of the tile workers. The map

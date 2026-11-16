@@ -7,14 +7,14 @@
  */
 import {computed, defineComponent, getCurrentInstance, h, inject, provide, isProxy, isReactive, onBeforeUnmount, onMounted, onServerPrefetch, shallowRef, Teleport, toRaw, toValue, watch, type AllowedComponentProps, type ComponentCustomProps, type SetupContext, type SlotsType, type VNode, type VNodeProps, type MaybeRefOrGetter, type PropType, type ShallowRef} from 'vue';
 declare const __DEV__: boolean;
-import type {ControlSpec, FeatureOptions, FeaturePlace, SourceOptions, MapHost, MapOverlay as Overlay, OverlayOptions, MapEvents, MapPointer, MapSpec, MapState, View, ViewInput, InitialView} from './host.ts';
+import type {ControlSpec, FeatureOptions, FeaturePlace, SourceOptions, MapInstance, MapOverlay as Overlay, OverlayOptions, MapEvents, MapPointer, MapDescription, MapState, View, ViewInput, InitialView} from './host.ts';
 import type {SSROverrides} from './style.ts';
 import type {RenderedFeature} from './map.ts';
 import type {QueriedFeature} from './query.ts';
 import type {LngLatBoundsInput} from './lnglat.ts';
 
 /** A description whose fields are the objects behind Vue's reactive objects (a reactive object cannot go to a worker). */
-function unwrapped(spec: MapSpec): MapSpec {
+function unwrapped(spec: MapDescription): MapDescription {
     const out: any = {};
     for (const k in spec) { const v = (spec as any)[k]; out[k] = isProxy(v) ? toRaw(v) : v; }
     return out;
@@ -29,17 +29,17 @@ function plain<T>(v: T): T {
 
 /**
  * A map in an element, from a description that can be a ref or a function: the map follows each change.
- * `state` has the state of the map as a ref (`state.value.view`, `state.value.hover`), and `host` the map itself
+ * `state` has the state of the map as a ref (`state.value.view`, `state.value.hover`), and `map` the map itself
  * when it is there (for `queryFeatures`, `moveTo`, `fitBounds`).
  */
-export function useMapJr(container: MaybeRefOrGetter<HTMLElement | null | undefined>, spec: MaybeRefOrGetter<MapSpec>): {host: ShallowRef<MapHost | null>; state: ShallowRef<MapState | null>} { return mapIn(container, spec, 'useMapJr()'); }
+export function useMapJr(container: MaybeRefOrGetter<HTMLElement | null | undefined>, spec: MaybeRefOrGetter<MapDescription>): {map: ShallowRef<MapInstance | null>; state: ShallowRef<MapState | null>} { return mapIn(container, spec, 'useMapJr()'); }
 
 // `useMapJr` with the name that the warnings give the map: the name that the user wrote.
-function mapIn(container: MaybeRefOrGetter<HTMLElement | null | undefined>, spec: MaybeRefOrGetter<MapSpec>, name: string): {host: ShallowRef<MapHost | null>; state: ShallowRef<MapState | null>} {
-    const host = shallowRef<MapHost | null>(null), state = shallowRef<MapState | null>(null);
+function mapIn(container: MaybeRefOrGetter<HTMLElement | null | undefined>, spec: MaybeRefOrGetter<MapDescription>, name: string): {map: ShallowRef<MapInstance | null>; state: ShallowRef<MapState | null>} {
+    const host = shallowRef<MapInstance | null>(null), state = shallowRef<MapState | null>(null);
     let stop: (() => void) | undefined, gone = false;
     // (The map code loads here, with `import()`, so that a component that imports only `MapOverlay`, `MapImage` or
-    // `useMapHost` from this file does not load the map (#159).)
+    // `useMapInstance` from this file does not load the map (#159).)
     onMounted(async () => {
         const el = toValue(container);
         if (!el) return;
@@ -52,13 +52,13 @@ function mapIn(container: MaybeRefOrGetter<HTMLElement | null | undefined>, spec
     // (A new description object is a change. The fields are compared by the map, not by Vue.)
     watch(() => toValue(spec), next => host.value?.update(unwrapped(next)), {flush: 'post'});
     onBeforeUnmount(() => { gone = true; stop?.(); host.value?.destroy(); host.value = null; });
-    return {host, state};
+    return {map: host, state};
 }
 
-const HOST = Symbol('map-jr') as unknown as import('vue').InjectionKey<ShallowRef<MapHost | null>>;
+const HOST = Symbol('map-jr') as unknown as import('vue').InjectionKey<ShallowRef<MapInstance | null>>;
 
 /** The map of the `MapJr` component that this component is in (a ref; it has the map when the map has started). */
-export const useMapHost = () => inject(HOST, shallowRef(null));
+export const useMapInstance = () => inject(HOST, shallowRef(null));
 /** How a `MapImage` gives its image to the `MapJr` that it is in: its name and the image, or null when it has none. */
 const IMAGES = Symbol('map-jr-images') as unknown as import('vue').InjectionKey<(owner: object, image: [string, {image: string; width?: number; height?: number; pixelRatio?: number}] | null) => void>;
 /**
@@ -76,12 +76,12 @@ export function useMapSource(sourceId: MaybeRefOrGetter<string>, at?: MaybeRefOr
     return kept<QueriedFeature>([() => toValue(sourceId), () => toValue(at), () => toValue(options)], (h, [id, place, o], give) => h.watchSource(id, plain(place), plain(o), give));
 }
 /** A ref with the answers of `start` for the map of the `MapJr` around, started again when the map or a source changes. */
-function kept<T, S extends unknown[] = any[]>(sources: {[K in keyof S]: () => S[K]}, start: (h: MapHost, values: S, give: (features: T[]) => void) => () => void): ShallowRef<T[]> {
-    const host = useMapHost(), found = shallowRef<T[]>([]);
+function kept<T, S extends unknown[] = any[]>(sources: {[K in keyof S]: () => S[K]}, start: (h: MapInstance, values: S, give: (features: T[]) => void) => () => void): ShallowRef<T[]> {
+    const host = useMapInstance(), found = shallowRef<T[]>([]);
     let stop: (() => void) | undefined;
     watch([host, ...sources] as const, ([h, ...values]: unknown[]) => {
         stop?.();
-        stop = h ? start(h as MapHost, values as unknown as S, features => { found.value = features; }) : undefined;
+        stop = h ? start(h as MapInstance, values as unknown as S, features => { found.value = features; }) : undefined;
     }, {immediate: true});
     onBeforeUnmount(() => stop?.());
     return found;
@@ -115,7 +115,7 @@ export const MapOverlay = defineComponent({
     },
     emits: ['close', 'dragstart', 'drag', 'dragend'],
     setup(props, {slots, emit}) {
-        const host = useMapHost(), el = shallowRef<HTMLElement | null>(null), shown = shallowRef(false);
+        const host = useMapInstance(), el = shallowRef<HTMLElement | null>(null), shown = shallowRef(false);
         let overlay: Overlay | null = null;
         const options = (): OverlayOptions => ({lngLat: [props.lngLat[0], props.lngLat[1]], anchor: props.anchor, offset: props.offset && [props.offset[0], props.offset[1]], popup: props.popup, onClose: props.onClose,
             draggable: props.draggable, onDragStart: p => emit('dragstart', p), onDrag: p => emit('drag', p), onDragEnd: p => emit('dragend', p)});
@@ -215,7 +215,7 @@ export const MapImage = defineComponent(<P extends string>(props: MapImageProps<
  */
 /** What a template ref on `MapJr` has: the map (`null` until it is made) and its state. */
 export interface MapJrExposed {
-    readonly host: MapHost | null;
+    readonly map: MapInstance | null;
     readonly state: MapState | null;
 }
 
@@ -223,43 +223,43 @@ const MapJrComponent = defineComponent({
     name: 'MapJr',
     props: {
         /** A style object or the URL of a style. */
-        mapStyle: {type: [String, Object] as PropType<MapSpec['style']>, required: true},
+        mapStyle: {type: [String, Object] as PropType<MapDescription['style']>, required: true},
         /** The view, for `v-model:view`. Without it the map starts at `initialView` and the user moves it. */
         view: Object as PropType<ViewInput>,
         initialView: Object as PropType<InitialView>,
         /** Sources to add to the sources of the style, by id. A source here replaces the source of the style with the same id. */
-        sources: Object as PropType<MapSpec['sources']>,
+        sources: Object as PropType<MapDescription['sources']>,
         /** Layers to add to the layers of the style (they do not replace them). A layer with `before` goes below the layer with that id, and one without it goes on top. */
-        layers: Array as PropType<MapSpec['layers']>,
+        layers: Array as PropType<MapDescription['layers']>,
         /** 3D terrain in place of that of the style: `{source: 'dem', exaggeration: 1.5}`. `null` or no prop means the terrain of the style. */
-        terrain: {type: Object as PropType<MapSpec['terrain']>, default: undefined},
+        terrain: {type: Object as PropType<MapDescription['terrain']>, default: undefined},
         /** Images for `icon-image` of style layers, by name. A value is an SVG document, the URL of an image, or `{image, width, height}`. */
-        images: Object as PropType<MapSpec['images']>,
+        images: Object as PropType<MapDescription['images']>,
         /** Sprites to add to the sprite of the style: `[{id: 'pins', url}]`. An `icon-image` names an image of one as `id:name`. */
-        sprite: Array as PropType<MapSpec['sprite']>,
+        sprite: Array as PropType<MapDescription['sprite']>,
         /** GeoJSON data for sources of the style, by the id of the source. Each value is compared by identity: give a new object to change it. */
-        data: Object as PropType<MapSpec['data']>,
+        data: Object as PropType<MapDescription['data']>,
         interactiveLayers: Array as PropType<string[]>,
         hoverState: {type: Boolean, default: undefined},
         minZoom: Number, maxZoom: Number, maxPitch: Number,
-        maxBounds: [Array, Object] as unknown as PropType<MapSpec['maxBounds']>,
+        maxBounds: [Array, Object] as unknown as PropType<MapDescription['maxBounds']>,
         cursor: String,
         cooperativeGestures: {type: Boolean, default: undefined},
         /** The colours of the controls, the popup and the attribution: `'light'` (the default), `'dark'`, or `'auto'` to follow the browser. */
-        colorScheme: String as PropType<MapSpec['colorScheme']>,
+        colorScheme: String as PropType<MapDescription['colorScheme']>,
         /** Space in CSS pixels at the sides of the map that the view keeps free: one number, or `{top, right, bottom, left}`. */
-        padding: [Number, Object] as PropType<MapSpec['padding']>,
+        padding: [Number, Object] as PropType<MapDescription['padding']>,
         /** Controls from `@map-jr/map-jr-gl/controls`: `[navigation(), scale()]`. */
         controls: Array as PropType<ControlSpec[]>,
         /** The projection in place of that of the style: `{type: 'globe'}` or `{type: 'mercator'}`. */
-        projection: Object as PropType<MapSpec['projection']>,
+        projection: Object as PropType<MapDescription['projection']>,
         /** Values for the `global-state` expressions of the style, by name: `{season: 'winter'}`. */
-        globalState: Object as PropType<MapSpec['globalState']>,
+        globalState: Object as PropType<MapDescription['globalState']>,
         /** Changes a request before the map makes it, as `transformRequest` of MapLibre GL JS. */
-        transformRequest: Function as PropType<MapSpec['transformRequest']>,
+        transformRequest: Function as PropType<MapDescription['transformRequest']>,
         renderer: String as PropType<'auto' | 'worker' | 'main'>,
         /** Web fonts for labels in the shape of `font-faces` of the style specification: by `text-font` name, a URL or a list of `{url, 'unicode-range'}`. */
-        fonts: Object as PropType<MapSpec['fonts']>,
+        fonts: Object as PropType<MapDescription['fonts']>,
         fontFamily: String,
         /** `false`: the user cannot move the map. */
         interactive: {type: Boolean, default: undefined},
@@ -283,7 +283,7 @@ const MapJrComponent = defineComponent({
         click: (_event: MapPointer) => true,
         hover: (_features: RenderedFeature[]) => true,
         /** The map. */
-        load: (_host: MapHost) => true,
+        load: (_map: MapInstance) => true,
         idle: () => true,
         error: (_error: Error) => true,
         ...forwarded,
@@ -299,24 +299,24 @@ const MapJrComponent = defineComponent({
         const added = computed(() => props.layers && plain(props.layers));
         const terrain = computed(() => props.terrain && plain(props.terrain));
         // (The data of each source is the object behind Vue's object. The list itself can be made again in each render.)
-        let lastData: MapSpec['data'];
+        let lastData: MapDescription['data'];
         const data = computed(() => {
             if (!props.data) return undefined;
-            const out: NonNullable<MapSpec['data']> = {};
+            const out: NonNullable<MapDescription['data']> = {};
             for (const id in props.data) out[id] = toRaw(props.data[id]);
             return lastData && Object.keys(out).length === Object.keys(lastData).length && Object.keys(out).every(id => out[id] === lastData![id]) ? lastData : lastData = out;
         });
         // (Each image is the object behind Vue's object: an image element or a bitmap cannot be copied.)
         // The images of the `MapImage` components in this map, by component. They come after the images of the prop:
         // with one name in both, the image of the component is used.
-        const owners = new Map<object, [string, NonNullable<MapSpec['images']>[string]]>(), fromChildren = shallowRef<NonNullable<MapSpec['images']>>({});
+        const owners = new Map<object, [string, NonNullable<MapDescription['images']>[string]]>(), fromChildren = shallowRef<NonNullable<MapDescription['images']>>({});
         provide(IMAGES, (owner, image) => {
             if (JSON.stringify(owners.get(owner) ?? null) === JSON.stringify(image)) return;
             if (image) owners.set(owner, image); else owners.delete(owner);
             fromChildren.value = Object.fromEntries(owners.values());
         });
         const images = computed(() => {
-            const out: NonNullable<MapSpec['images']> = {};
+            const out: NonNullable<MapDescription['images']> = {};
             for (const name in props.images) out[name] = toRaw(props.images[name]);
             Object.assign(out, fromChildren.value);
             return props.images || owners.size ? out : undefined;
@@ -324,8 +324,8 @@ const MapJrComponent = defineComponent({
         const layers = computed(() => props.interactiveLayers && [...props.interactiveLayers]);
         const controls = computed(() => props.controls && [...props.controls].map(c => toRaw(c)));
         const listensForError = !!getCurrentInstance()?.vnode.props?.onError;
-        const spec = computed<MapSpec>(() => {
-            const out: MapSpec = {
+        const spec = computed<MapDescription>(() => {
+            const out: MapDescription = {
                 style: style.value, sources: sources.value, layers: added.value, terrain: terrain.value, view: view.value, initialView: props.initialView && toRaw(props.initialView), images: images.value, data: data.value, interactiveLayers: layers.value, hoverState: props.hoverState, controls: controls.value,
                 minZoom: props.minZoom, maxZoom: props.maxZoom, maxPitch: props.maxPitch, maxBounds: props.maxBounds && toRaw(props.maxBounds), cursor: props.cursor, transformRequest: props.transformRequest, cooperativeGestures: props.cooperativeGestures, colorScheme: props.colorScheme, padding: props.padding && typeof props.padding === 'object' ? toRaw(props.padding) : props.padding, projection: props.projection && toRaw(props.projection), globalState: props.globalState && toRaw(props.globalState),
                 fonts: props.fonts && toRaw(props.fonts), sprite: props.sprite && toRaw(props.sprite), renderer: props.renderer, fontFamily: props.fontFamily, interactive: props.interactive, antialias: props.antialias,
@@ -337,7 +337,7 @@ const MapJrComponent = defineComponent({
             for (const k in out) if ((out as any)[k] === undefined) delete (out as any)[k];
             return out;
         });
-        const {host, state} = mapIn(el, spec, '<MapJr>');
+        const {map: host, state} = mapIn(el, spec, '<MapJr>');
         provide(HOST, host);
         // The other events of the map, each one only when the component has a listener for it.
         const listeners = getCurrentInstance()?.vnode.props ?? {};
@@ -349,7 +349,7 @@ const MapJrComponent = defineComponent({
             if (map) for (const name of FORWARDED) { const event = name.replace('.', '') as 'move'; if (listeners['on' + event[0].toUpperCase() + event.slice(1)]) map.listen(name as 'move', e => emit(event, e)); }
         }, {immediate: true});
         watch(() => state.value?.hover, hover => { if (hover) emit('hover', hover); });
-        expose({host, state});
+        expose({map: host, state});
 
         // The first view from the server: the SVG and the credits. On the server they are made here. In the browser,
         // when the page came from the server, they are read from the element that is there already: the component then
@@ -372,10 +372,10 @@ const MapJrComponent = defineComponent({
             h('div', {ref: el, style: 'position:absolute;inset:0', innerHTML: first.value}),
             // (`state` is read when the slot reads it: a slot that does not read it does not render again at each move of the
             // pointer, which changes `state.pointer`.)
-            slots.default?.({host: host.value, get state() { return state.value; }}),
+            slots.default?.({map: host.value, get state() { return state.value; }}),
         ]);
     },
 });
 // (Vue unwraps the exposed refs on the instance, but the type of `defineComponent` does not name them: the type adds
-// them, so that `InstanceType<typeof MapJr>['host']` is `MapHost | null`.)
+// them, so that `InstanceType<typeof MapJr>['map']` is `MapInstance | null`.)
 export const MapJr = MapJrComponent as typeof MapJrComponent & (new (...args: any[]) => InstanceType<typeof MapJrComponent> & MapJrExposed);

@@ -20,7 +20,7 @@ const boundaries = {
 const map = useTemplateRef('map'), names = ref('Click to list the county, state and ZIP code');
 
 async function ask(event) {
-  const features = await map.value.host.querySource('admin', event.point);
+  const features = await map.value.map.querySource('admin', event.point);
   names.value = features.map(f => f.properties.NAMELSAD ?? f.properties.NAME).filter(Boolean).join(' · ') || 'Nothing here';
 }
 </script>

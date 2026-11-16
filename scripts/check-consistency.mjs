@@ -24,7 +24,7 @@ function fields(source, name) {
 const kebab = s => s.replace(/[A-Z]/g, c => '-' + c.toLowerCase());
 
 // 1. Each field of the description is in the documents of the main API.
-const host = read('src/host.ts'), spec = [...new Set([...fields(host, 'MapSetup'), ...fields(host, 'MapSpec')])];
+const host = read('src/host.ts'), spec = [...new Set([...fields(host, 'MapSetup'), ...fields(host, 'MapDescription')])];
 const api = read('docs/api.md');
 for (const f of spec) if (!api.includes('`' + f + '`')) fail('docs/api.md', `the field \`${f}\` of the description (src/host.ts) is not mentioned`);
 
@@ -40,7 +40,7 @@ for (const f of spec) {
 }
 
 // 3. Each member of the map object of the main API is in its document.
-for (const m of fields(host, 'MapHost')) if (!api.includes(m)) fail('docs/api.md', `the member \`${m}\` of the map (MapHost in src/host.ts) is not mentioned`);
+for (const m of fields(host, 'MapInstance')) if (!api.includes(m)) fail('docs/api.md', `the member \`${m}\` of the map (MapInstance in src/host.ts) is not mentioned`);
 
 // 3b. Each value that the main entry exports (not the types) is in its document.
 for (const [, list] of read('src/index.ts').matchAll(/^export \{([^}]*)\}/gm)) {
@@ -80,4 +80,4 @@ for (const doc of [...docs, 'CLAUDE.md', 'CONTRIBUTING.md'].filter(f => existsSy
 }
 
 if (failures.length) { console.error('FAIL  the parts of the project do not agree:\n' + failures.map(f => '  - ' + f).join('\n')); process.exit(1); }
-console.log(`ok    consistency: ${spec.length} fields of the description, ${fields(host, 'MapHost').length} members of the map, ${docs.length} documents`);
+console.log(`ok    consistency: ${spec.length} fields of the description, ${fields(host, 'MapInstance').length} members of the map, ${docs.length} documents`);
