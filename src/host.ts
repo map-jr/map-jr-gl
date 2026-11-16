@@ -53,15 +53,9 @@ export interface InitialView extends ViewInput { bounds?: LngLatBoundsInput; pad
 export interface PointerPosition { point: {x: number; y: number}; lngLat: [number, number] }
 export interface MapPointer { point: {x: number; y: number}; lngLat: [number, number]; /** The features of `interactiveLayers` at the point, the top one first. */ features: RenderedFeature[] }
 
-/** Additions to a style: see `extend` in `MapSpec`. */
-export interface StyleExtension {
-    /** Sources to add, by id. */
-    sources?: Record<string, object>;
-    /** Layers to add. A layer goes below the layer with the id `before`, or on top without it. */
-    layers?: ({id: string; before?: string} & Record<string, unknown>)[];
-    /** 3D terrain from an elevation source: `{source: 'dem', exaggeration: 1.5}`. */
-    terrain?: {source: string; exaggeration?: number} | null;
-}
+/** The fields of `MapSpec` that add to the parts of the style: `sources`, `layers` and `terrain`. */
+type StyleParts = Pick<MapSpec, 'sources' | 'layers' | 'terrain'>;
+const parts = (s: MapSpec): StyleParts => ({sources: s.sources, layers: s.layers, terrain: s.terrain});
 
 /** What an image is made from: an SVG document, the URL of an image, or an object that a canvas can draw (an `ImageBitmap`, a canvas, `ImageData`). */
 export type ImageSource = Parameters<Map['addImage']>[1];
@@ -76,10 +70,20 @@ export interface MapSpec extends MapSetup {
     /** A style object or the URL of a style (the MapLibre style specification). A new object or URL is a new style. */
     style: string | object;
     /**
-     * Your own sources and layers on a style that you do not write yourself (a style from a URL): they are added to
-     * the style when it has loaded. A new object with other content changes the map.
+     * Sources to add to the sources of the style, by id. A source here replaces the source of the style that has the
+     * same id. They are added when the style has loaded, so a style from a URL can have them too.
      */
-    extend?: StyleExtension;
+    sources?: Record<string, object>;
+    /**
+     * Layers to add to the layers of the style: they do not replace them. A layer with `before` goes below the layer
+     * of the style with that id, and a layer without it goes on top.
+     */
+    layers?: ({id: string; before?: string} & Record<string, unknown>)[];
+    /**
+     * 3D terrain from an elevation source, `{source: 'dem', exaggeration: 1.5}`, in place of the terrain of the style.
+     * `null` or no field means the terrain of the style.
+     */
+    terrain?: {source: string; exaggeration?: number} | null;
     /** The view at the start: a view, or `bounds` to fit with `padding`. The user then moves the map. */
     initialView?: InitialView;
     /**
@@ -366,7 +370,7 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
         attributionControl: spec.attribution, minZoom: spec.minZoom, maxZoom: spec.maxZoom, maxPitch: spec.maxPitch,
     };
     for (const k in options) if ((options as any)[k] === undefined) delete (options as any)[k];
-    // (The style is given after the map is made, with a function that adds the additions of `extend` when it has loaded.)
+    // (The style is given after the map is made, with a function that adds the `sources`, `layers` and `terrain` of the description when it has loaded.)
     delete options.style;
     // (The map calls the function of the last description, so a function that is made again in each render does not
     // send the rules of requests to the engine again. Only a change between none and a function does.)
@@ -398,11 +402,11 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
     };
     // (The layers go to the style as copies: the map writes its edits into the style, and the description stays as the application gave it.)
     const copy = <T>(v: T): T => JSON.parse(JSON.stringify(v));
-    // The sources of the base style: an extend source with one of these ids replaces it, and only a new style gives it back.
+    // The sources of the base style: a source of the description with one of these ids replaces it, and only a new style gives it back.
     let baseSources: object = {};
     // The projection of the style itself, which applies when the description has none, and that of the last description.
     let styleProjection: ProjectionSpecification | undefined, wantedProjection = spec.projection;
-    // The ids of the GeoJSON sources that keys of `data` made, because the style and `extend` have no source of that id (#487).
+    // The ids of the GeoJSON sources that keys of `data` made, because the style and `sources` have no source of that id (#487).
     const madeData = new Set<string>();
     // (The `data` of the last description: keys can change while the style loads.)
     let wantedData = spec.data;
@@ -416,10 +420,10 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
         // (The sources of the new style have no data of the description yet: data that was given since `restyle` went to
         // the sources of the style before. It is given again when the new style is there: see `giveData`.)
         sent.clear();
-        check(4, style, next.extend);
-        const made = withData(extended(style, next.extend && {...next.extend, layers: next.extend.layers && copy(next.extend.layers)}), wantedData, false, typeError);
+        check(4, style, parts(next));
+        const made = withData(extended(style, {...parts(next), layers: next.layers && copy(next.layers)}), wantedData, false, typeError);
         madeData.clear();
-        for (const id in wantedData) if (!Object.hasOwn(style.sources ?? {}, id) && !Object.hasOwn(next.extend?.sources ?? {}, id)) madeData.add(id);
+        for (const id in wantedData) if (!Object.hasOwn(style.sources ?? {}, id) && !Object.hasOwn(next.sources ?? {}, id)) madeData.add(id);
         return withMarkers(made, next.markers);
     }}); };
     restyle(spec);
@@ -506,12 +510,12 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
     // (At `idle`, and not when the style comes: an application can add a layer or a source itself in `load`.)
     map.on('idle', () => check(1));
 
-    // A change of `extend` alone goes to the map as edits, so that the style is not loaded again and the layers that the
+    // A change of only `sources`, `layers` and `terrain` goes to the map as edits, so that the style is not loaded again and the layers that the
     // application added through `host.map` stay. It returns false, with nothing changed, for a change that needs a new
     // style: a changed `terrain`, a changed source, a source id that the style has, a changed `type`, `source`,
     // `source-layer`, `minzoom`, `maxzoom` or `before` of a layer, a new order of the layers, or a new layer before
     // one that stays.
-    const edit = (next: StyleExtension = {}, before: StyleExtension = {}, differ: (a: unknown, b: unknown) => boolean) => {
+    const edit = (next: StyleParts, before: StyleParts, differ: (a: unknown, b: unknown) => boolean) => {
         const was = before.layers ?? [], is = next.layers ?? [], ns = next.sources ?? {}, os = before.sources ?? {};
         const ids = (a: typeof is, b: typeof is) => a.filter(l => b.some(x => x.id === l.id)).map(l => l.id).join('\n');
         const kept = is.filter(l => was.some(w => w.id === l.id)), keys = ['paint', 'layout', 'filter', 'id'];
@@ -545,14 +549,14 @@ export function makeMap(container: HTMLElement | string, spec: MapSpec, name: st
         const differ = (a: unknown, b: unknown) => a !== b && JSON.stringify(a) !== JSON.stringify(b);
         wantedProjection = next.projection;
         wantedData = next.data;
-        // (A new key of `data` makes its source before the edits of `extend`, which can add a layer that names it.)
+        // (A new key of `data` makes its source before the edits of `sources` and `layers`, which can add a layer that names it.)
         if (styled && before) for (const id in next.data) {
             const s = map.getSource(id) as {type?: string} | undefined;
             if (!s) { madeData.add(id); map.addSource(id, {type: 'geojson', data: {type: 'FeatureCollection', features: []}}); }
             else if (!(id in (before.data ?? {})) && s.type !== 'geojson') typeError(id, s.type!);
         }
         // (After a new style the data waits for the `styledata` event: the engine must have the new style first.)
-        const restyled = !!before && (differ(next.style, before.style) || differ(next.extend, before.extend) && !(styled && edit(next.extend, before.extend, differ)) || differ(markerStyles(next.markers), markerStyles(before.markers)));
+        const restyled = !!before && (differ(next.style, before.style) || (['sources', 'layers', 'terrain'] as const).some(k => differ(next[k], before[k])) && !(styled && edit(parts(next), parts(before), differ)) || differ(markerStyles(next.markers), markerStyles(before.markers)));
         if (restyled) { state.set({idle: false}); sent.clear(); restyle(next); }
         else for (const id of madeData) if (!Object.hasOwn(next.data ?? {}, id)) { madeData.delete(id); sent.delete(id); map.removeSource(id); }
         if (next.view && !same(next.view, before?.view) && !reported.some(v => same(next.view, v)) && before) map.jumpTo(next.view);

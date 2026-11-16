@@ -154,7 +154,7 @@ const places = {type: 'FeatureCollection', features: [
   {type: 'Feature', properties: {color: '#d6453d'}, geometry: {type: 'Point', coordinates: [-74.006, 40.7128]}},
   {type: 'Feature', properties: {color: '#2f7fd1'}, geometry: {type: 'Point', coordinates: [-73.9857, 40.7484]}},
 ]};
-const extend = {
+const additions = {
   sources: {places: {type: 'geojson', data: places}},
   layers: [{id: 'places', type: 'symbol', source: 'places', layout: {'icon-image': 'pin', 'icon-anchor': 'bottom', 'icon-allow-overlap': true}}],
 };
@@ -162,7 +162,7 @@ const extend = {
 export default function Places() {
   return (
     <div style={{height: 400}}>
-      <MapJr mapStyle="https://tiles.openfreemap.org/styles/liberty" initialView={{center: [-73.996, 40.73], zoom: 11.5}} extend={extend}>
+      <MapJr mapStyle="https://tiles.openfreemap.org/styles/liberty" initialView={{center: [-73.996, 40.73], zoom: 11.5}} {...additions}>
         <MapImage name="pin" params={['color']}>
           {({color}) => <svg viewBox="0 0 24 31"><path fill={color} stroke="#fff" d="M12 30C12 30 2 17 2 11a10 10 0 0 1 20 0c0 6-10 19-10 19z"/></svg>}
         </MapImage>

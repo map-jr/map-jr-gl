@@ -47,7 +47,9 @@ production build has no such warning, and there the map stays empty without a me
 | `map-style` | A style object or the URL of a style. Required. (`style` is the CSS style of an element in Vue, so the prop has this name.) |
 | `view` | The view, for `v-model:view`. Without it, the map starts at `initial-view` and the user moves it. |
 | `initial-view` | The view at the start. |
-| `extend` | Your own sources and layers on a style from a URL: `{sources, layers, terrain}`. See [the main API](api.md). |
+| `sources` | Sources to add to the sources of the style, by id. See [the main API](api.md#your-own-layers-on-a-style-from-a-url). |
+| `layers` | Layers to add to the layers of the style: they do not replace them. A layer with `before` goes below the layer with that id. |
+| `terrain` | 3D terrain in place of that of the style: `{source: 'dem', exaggeration: 1.5}`. `null` or no prop means the terrain of the style. |
 | `images` | Images for the style layers, by name: `:images="{pin: pinSvg}"`. See [Images for style layers](api.md#images-for-style-layers). The render on the server draws those that are SVG documents. |
 | `markers` | A list of marker layers, each with the name of an image of `images` (or of a `MapImage`). See [Markers](markers.md). |
 | `data` | GeoJSON data for GeoJSON sources, by the id of the source: `:data="{routes}"`. A key with no source of that id makes a GeoJSON source. See "GeoJSON data that changes" in [the main API](api.md). Use a `shallowRef` for each value, and give a new object to change it. |
@@ -185,14 +187,14 @@ const places = {type: 'FeatureCollection', features: [
   {type: 'Feature', properties: {color: '#d6453d'}, geometry: {type: 'Point', coordinates: [-74.006, 40.7128]}},
   {type: 'Feature', properties: {color: '#2f7fd1'}, geometry: {type: 'Point', coordinates: [-73.9857, 40.7484]}},
 ]};
-const extend = {
+const additions = {
   sources: {places: {type: 'geojson', data: places}},
   layers: [{id: 'places', type: 'symbol', source: 'places', layout: {'icon-image': 'pin', 'icon-anchor': 'bottom', 'icon-allow-overlap': true}}],
 };
 </script>
 
 <template>
-  <MapJr map-style="https://tiles.openfreemap.org/styles/liberty" :initial-view="{center: [-73.996, 40.73], zoom: 11.5}" :extend="extend">
+  <MapJr map-style="https://tiles.openfreemap.org/styles/liberty" :initial-view="{center: [-73.996, 40.73], zoom: 11.5}" v-bind="additions">
     <MapImage name="pin" :params="['color']" v-slot="{color}">
       <svg viewBox="0 0 24 31"><path :fill="color" stroke="#fff" d="M12 30C12 30 2 17 2 11a10 10 0 0 1 20 0c0 6-10 19-10 19z"/></svg>
     </MapImage>
@@ -478,8 +480,8 @@ With the `ssr` prop, the server also renders the first view as SVG:
 - In the browser, Vue takes over the HTML, and the map removes the SVG when it has drawn its first frame. The
   controls show from that moment; they are not in the SVG.
 - The server needs the style as an object or as a URL that it can fetch.
-- The server renders `map-style`, the centre, the zoom and the bearing of the view, the sources and layers of
-  `extend`, the GeoJSON of `data`, and `markers` with the images of `images` that are SVG documents. It renders a
+- The server renders `map-style`, the centre, the zoom and the bearing of the view, the props `sources`,
+  `layers` and `terrain`, the GeoJSON of `data`, and `markers` with the images of `images` that are SVG documents. It renders a
   tilted view (`pitch`) from straight above.
 - The requests of the server have time limits: 10 seconds for one request and 30 seconds for all requests of one
   render. Change them with `timeout` and `requestTimeout` in the `ssr` prop, limit the size of a response with
