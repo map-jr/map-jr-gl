@@ -74,9 +74,10 @@ jobs:
           retention-days: 3
 
   # The behaviour of the map in a browser (Chromium): both entries, the adapters, and the ways to load the library.
-  # The suites run in two parallel jobs, balanced by their times on CI (issue #407): interact.mjs takes about 7.5
-  # minutes, host.mjs about 13.3, and the adapters and loading.mjs about 1.2. Each job starts its own demo server.
-  # The timeout leaves room for the setup (about 3 minutes) and one rerun of the slowest suite of the job.
+  # interact.mjs and host.mjs each run in two parallel jobs, one for each renderer (issue #519): RENDERER=worker runs
+  # the checks of the worker renderer, and RENDERER=main the checks of the main renderer and every check after the
+  # loop over the renderers. The adapters and loading.mjs (about 1.2 minutes) run in the shortest part. Each job
+  # starts its own demo server. The timeout leaves room for the setup and one rerun of the slowest suite of the job.
   browser-part:
     needs: changes
     if: needs.changes.outputs.browser == 'true'
@@ -87,12 +88,22 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - part: interact
-            suites: '"test/interact.mjs .cache/shots" test/vue.mjs test/react.mjs test/loading.mjs'
-            timeout: 25
-          - part: host
+          - part: interact-main
+            renderer: main
+            suites: '"test/interact.mjs .cache/shots"'
+            timeout: 20
+          - part: interact-worker
+            renderer: worker
+            suites: '"test/interact.mjs .cache/shots"'
+            timeout: 20
+          - part: host-main
+            renderer: main
             suites: 'test/host.mjs'
-            timeout: 35
+            timeout: 20
+          - part: host-worker
+            renderer: worker
+            suites: 'test/host.mjs test/vue.mjs test/react.mjs test/loading.mjs'
+            timeout: 20
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -108,6 +119,7 @@ jobs:
       - name: Behaviour tests
         env:
           SUITES: ${{ matrix.suites }}
+          RENDERER: ${{ matrix.renderer }}
         run: |
           PORT=8080 node demo/serve.mjs &
           for i in $(seq 1 30); do curl -s -o /dev/null http://localhost:8080/ && break; sleep 1; done

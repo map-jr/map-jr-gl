@@ -18,7 +18,12 @@ const settle = (page) => page.waitForFunction(() => {
 }, null, {polling: 50});
 const idle = (page) => page.waitForFunction(() => window.map.areTilesLoaded() && !window.map.isMoving(), null, {polling: 50, timeout: 30000});
 
-for (const mode of ['main', 'worker']) {
+// RENDERER=main or RENDERER=worker runs the checks of one renderer, and CI runs each in its own job (#519). The checks
+// after the loop run with RENDERER=main. Without the variable the suite runs everything.
+const only = process.env.RENDERER;
+if (only && only !== 'main' && only !== 'worker') { console.log(`FAIL  RENDERER is "${only}". Write RENDERER=main or RENDERER=worker, or leave it out.`); process.exit(1); }
+const renderers = only ? [only] : ['main', 'worker'];
+for (const mode of renderers) {
   try {
     const page = await browser.newPage({viewport: {width: 1000, height: 700}});
     const errors = [];
@@ -3117,6 +3122,8 @@ for (const mode of ['main', 'worker']) {
     check(`[${mode}] the test run was completed`, false, String(err.message).split('\n')[0]);
   }
 }
+// (The checks below run with RENDERER=main.)
+if (only === 'worker') { await browser.close(); process.exit(failed ? 1 : 0); }
 
 // A lost WebGL context when the style came from a URL in another folder. The relative URLs of the style still belong
 // to that folder after the restart, and a source that is loaded says so before the tiles of the other sources are there.

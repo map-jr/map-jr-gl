@@ -174,12 +174,18 @@ Every change goes through a pull request. The workflow `CI` (`.github/workflows/
 | Job | What it runs |
 |---|---|
 | `checks` | `pnpm build` (type check, build, type declarations), `pnpm test:package` (the tarball: `publint`, `arethetypeswrong`, each file that `package.json` names, the source maps, and an application that builds against it), and `pnpm test` (unit tests, expression and API floors, size budgets, examples, consistency of code and documentation) |
-| `browser` | Passes when the two browser jobs below passed, or when both were skipped. This is the name of the required check. |
-| `browser-interact` | In Chromium: `test/interact.mjs`, `test/vue.mjs`, `test/react.mjs`, `test/loading.mjs` (about 9 minutes; timeout 25 minutes) |
-| `browser-host` | In Chromium: `test/host.mjs` (about 13 minutes; timeout 35 minutes) |
+| `browser` | Passes when the four browser jobs below passed, or when all were skipped. This is the name of the required check. |
+| `browser-interact-main` | In Chromium: `test/interact.mjs` with `RENDERER=main` (timeout 20 minutes) |
+| `browser-interact-worker` | In Chromium: `test/interact.mjs` with `RENDERER=worker` (timeout 20 minutes) |
+| `browser-host-main` | In Chromium: `test/host.mjs` with `RENDERER=main` (timeout 20 minutes) |
+| `browser-host-worker` | In Chromium: `test/host.mjs` with `RENDERER=worker`, `test/vue.mjs`, `test/react.mjs`, `test/loading.mjs` (timeout 20 minutes) |
 | `render` | `pnpm test:render`: MapLibre's render tests against the floor in `package.json` |
 
-The two browser jobs run at the same time, and each starts its own demo server. A suite that fails is run one more
+The four browser jobs run at the same time, and each starts its own demo server. `test/interact.mjs` and
+`test/host.mjs` run the checks of both renderers in a loop. The variable `RENDERER` (`main` or `worker`) makes a suite
+run one of them: `RENDERER=worker` runs only the checks in that loop for the worker renderer, and `RENDERER=main` runs
+the loop for the main renderer and every check after it. Without the variable a suite runs everything, so
+`pnpm test:browser` is the same as before. Another value fails the suite with a message. A suite that fails is run one more
 time, because the tiles come from the live network. A test that fails two times fails the job.
 
 A pull request runs `browser` and `render` only when it needs them. The job `changes` reads the changed files:
