@@ -28,8 +28,8 @@ const same = (a, b) => {
 // whether the fixture expects a compile error. The decision is 'later' (the work is planned) or 'wontfix' (the
 // library will not do it). Only the owner adds an entry with 'wontfix'.
 const deliberate = [
-    {label: 'compile-error', decision: 'later', match: f => f.compileError,
-        reason: 'The fixture expects a compile error. The library does not validate a style; validation in the development build is planned.'},
+    {label: 'compile-error', decision: 'wontfix', match: f => f.compileError,
+        reason: 'The fixture expects a compile error. By a decision of the owner of 2026-11-16, the production build does not check the types of an expression or validate a style. Checks in the development build are possible later.'},
     {label: 'within-distance', decision: 'later', match: f => f.op === 'within' || f.op === 'distance',
         reason: 'The operators "within" and "distance" are not implemented.'},
 ];
@@ -73,13 +73,15 @@ const walk = dir => {
 };
 walk(path.join(repo, 'test/integration/expression/tests'));
 console.warn = warn;
+const pct = (n, of) => Math.round(100 * n / of);
 const failing = Object.entries(results).filter(([, r]) => r.fail).sort((a, b) => b[1].fail - a[1].fail);
-console.log(`Expression conformance: ${pass} pass, ${fail} fail, ${skipped} skipped (compile-error fixtures) of ${pass + fail + skipped}`);
+console.log(`Expression conformance: ${pass} pass, ${fail} fail, ${skipped} skipped (compile-error fixtures) of ${pass + fail + skipped} (${pct(pass, pass + fail + skipped)}%)`);
 console.log('Operators with failures: ' + failing.map(([op, r]) => `${op} ${r.fail}/${r.pass + r.fail}`).join(', '));
 // A fixture with a label that passes counts as a pass, so the counts below have only fixtures that do not pass.
 const total = decision => deliberate.reduce((n, d) => n + (d.decision === decision ? labelled[d.label] : 0), 0);
 const parts = decision => deliberate.filter(d => d.decision === decision).map(d => `${d.label} ${labelled[d.label]}`).join(', ');
-console.log(`Left out on purpose: later ${total('later')}${parts('later') && ` (${parts('later')})`}, wontfix ${total('wontfix')}${parts('wontfix') && ` (${parts('wontfix')})`}`);
+console.log(`Do not pass by a decision: later ${total('later')}${parts('later') && ` (${parts('later')})`}, wontfix ${total('wontfix')}${parts('wontfix') && ` (${parts('wontfix')})`}`);
+console.log(`Without the fixtures left out on purpose (wontfix): ${pass} of ${pass + fail + skipped - total('wontfix')} (${pct(pass, pass + fail + skipped - total('wontfix'))}%)`);
 console.log(`Fail with no label: ${fail + skipped - total('later') - total('wontfix')}`);
 if (process.argv.includes('--list')) console.log(failures.join('\n'));
 const min = +(process.argv.find(a => a.startsWith('--min='))?.slice(6) ?? 0);

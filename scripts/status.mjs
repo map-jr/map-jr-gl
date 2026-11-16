@@ -40,7 +40,7 @@ const lines = [
     '| Measure | Result |',
     '|---|---|',
     `| Unit tests | ${num(unit, /# pass (\d+)/)} pass, ${num(unit, /# fail (\d+)/)} fail |`,
-    `| MapLibre expression tests | ${exprPass} of ${exprAll} pass. ${exprLater} are planned for later, ${exprWontfix} are left out on purpose, and ${exprFail} fail. |`,
+    `| MapLibre expression tests | ${exprPass} of ${exprAll} pass (${Math.round(100 * exprPass / exprAll)}%), which is ${Math.round(100 * exprPass / (exprAll - exprWontfix))}% of the ${exprAll - exprWontfix} that are not left out on purpose. ${exprWontfix} are left out on purpose, ${exprLater} are planned for later, and ${exprFail} fail. |`,
     `| MapLibre \`Map\` methods | ${num(api, /coverage: (\d+)/)} of ${num(api, /of (\d+) methods/)} are available; ${num(api, /no effect: (\d+)/)} more are accepted and have no effect. ${num(api, /not counted: (\d+)/)} that are internal to MapLibre GL JS are not counted. |`,
     ...plugins,
     ...(render ? [`| MapLibre render tests | ${render.match} of ${render.run} are the same (1% of pixels or less are different). ${render.close} more are near (5% or less). |`] : []),
