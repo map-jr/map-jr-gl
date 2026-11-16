@@ -248,6 +248,7 @@ const MapJrComponent = defineComponent({
         /** GeoJSON data for sources of the style, by the id of the source. Each value is compared by identity: give a new object to change it. */
         data: Object as PropType<Record<string, unknown>>,
         interactiveLayers: Array as PropType<string[]>,
+        hoverState: {type: Boolean, default: undefined},
         minZoom: Number, maxZoom: Number, maxPitch: Number,
         maxBounds: [Array, Object] as PropType<LngLatBoundsInput | null>,
         cursor: String,
@@ -334,7 +335,7 @@ const MapJrComponent = defineComponent({
         const listensForError = !!getCurrentInstance()?.vnode.props?.onError;
         const spec = computed<MapSpec>(() => {
             const out: MapSpec = {
-                style: style.value, sources: sources.value, layers: added.value, terrain: terrain.value, view: view.value, initialView: props.initialView && toRaw(props.initialView), images: images.value, markers: markers.value, data: data.value, interactiveLayers: layers.value, controls: controls.value,
+                style: style.value, sources: sources.value, layers: added.value, terrain: terrain.value, view: view.value, initialView: props.initialView && toRaw(props.initialView), images: images.value, markers: markers.value, data: data.value, interactiveLayers: layers.value, hoverState: props.hoverState, controls: controls.value,
                 minZoom: props.minZoom, maxZoom: props.maxZoom, maxPitch: props.maxPitch, maxBounds: props.maxBounds && toRaw(props.maxBounds), cursor: props.cursor, transformRequest: props.transformRequest, cooperativeGestures: props.cooperativeGestures, padding: props.padding && typeof props.padding === 'object' ? toRaw(props.padding) : props.padding, projection: props.projection && toRaw(props.projection), globalState: props.globalState && toRaw(props.globalState),
                 renderer: props.renderer, fonts: props.fonts && toRaw(props.fonts), fontFamily: props.fontFamily, interactive: props.interactive, antialias: props.antialias,
                 attribution: (props.attribution as unknown) === true ? undefined : props.attribution && toRaw(props.attribution), hash: props.hash, nonce: props.nonce,
