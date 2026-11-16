@@ -10,8 +10,8 @@ import {Map, logError, type FeatureOptions, type FeaturePlace, type ImageOptions
 export type {PaddingInput};
 export type {FeatureOptions, FeaturePlace};
 import {createStore, type Readable} from './store.ts';
-import {Marker, Popup, type OverlayAnchor} from './overlays.ts';
-import {extended, markerFeatures, markerStyle, withMarkers, type MarkerLayerOptions} from './markers.ts';
+import {Marker, Popup} from './overlays.ts';
+import {extended, markerFeatures, markerStyle, withMarkers, type Anchor, type MarkerLayerOptions} from './markers.ts';
 import type {QueriedFeature} from './query.ts';
 import type {Control, ControlPosition} from './controls.ts';
 import type {Checked} from './mistakes.ts';
@@ -169,7 +169,7 @@ export interface MapState {
 export interface OverlayOptions {
     lngLat: Position;
     /** The part of the element that is at the position: `'center'` (the default), `'bottom'`, `'top-left'` and others. */
-    anchor?: OverlayAnchor;
+    anchor?: Anchor;
     /** A distance in pixels from the position, to the right and down. */
     offset?: [number, number];
     /** Show the element in a box with a pointer to the position (a popup). With `onClose`, the box has a button to close it. */
