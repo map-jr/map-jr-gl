@@ -260,6 +260,12 @@ export class Map extends CoreMap {
         if (this.rawStyle && this.getLayer(id)) return this.refused(`addLayer: the style has a layer with the id "${id}" already. Remove that layer first, or use another id.`);
         if (this.rawStyle && typeof source === 'string' && !this.rawStyle.sources[source]) return this.refused(`addLayer: the layer "${id}" names the source "${source}", which the style does not have. Add the source first.`);
         if (one !== layer) (this.customs ??= new globalThis.Map()).set(id, layer as CustomLayerInterface);
+        // As in MapLibre GL JS, a source object in the layer becomes a source with the id of the layer.
+        if (source && typeof source === 'object') {
+            if (this.rawStyle?.sources[id]) return this.refused(`addLayer: the layer "${id}" has a source object, and the style has a source with the id "${id}" already. Remove that source first, or pass source: "${id}".`);
+            super.addSource(id, source);
+            one = {...one, source: id};
+        }
         return super.addLayer(one, beforeId);
     }
     removeLayer(id: string) { this.customs?.delete(id); return super.removeLayer(id); }
