@@ -94,7 +94,7 @@ export const CONTROL_CSS = `
 & :where(.map-jr-ctrl-attrib:not(.map-jr-compact),.map-jr-ctrl-scale){background:var(--map-attribution-background,var(--map-jr-bg));color:var(--map-control-color,var(--map-jr-fg))}
 & :where(.map-jr-ctrl-attrib:not(.map-jr-compact)){border-top-left-radius:calc(var(--map-jr-rr)/2)}
 & :where(.map-jr-ctrl-attrib a){text-decoration-color:color-mix(in oklab,currentColor 35%,transparent);&:hover{text-decoration-color:currentColor}}
-& :where(.map-jr-compact .map-jr-ctrl-attrib-button){display:grid;place-items:center;top:50%!important;translate:0 -50%;font:600 12px/1 system-ui,sans-serif}
+& :where(.map-jr-compact .map-jr-ctrl-attrib-button){display:grid;place-content:center;top:50%!important;translate:0 -50%;font:0/0 a;&::before{content:"";width:13px;height:13px;background:currentColor;mask:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M10.588 6.413Q10 5.825 10 5t.588-1.412T12 3t1.413.588T14 5t-.587 1.413T12 7t-1.412-.587m.35 14.15q-.438-.438-.438-1.063v-9q0-.625.438-1.062T12 9t1.063.438t.437 1.062v9q0 .625-.437 1.063T12 21t-1.062-.437'/></svg>")}}
 & :where(.map-jr-ctrl-attrib.map-jr-compact){max-width:none!important}
 & :where(.map-jr-ctrl-scale){display:flex;align-items:center;gap:6px;width:auto!important;border:0;border-radius:calc(var(--map-jr-rr)/2) calc(var(--map-jr-rr)/2) 0 0;margin-bottom:-10px;padding:2px 6px;font-size:11px;line-height:1.4;&::after{content:"";width:var(--map-jr-scale);height:5px;margin-top:3px;border:1.5px solid;border-top:0;box-sizing:border-box}}
 &:has(.map-jr-compact) :where(.map-jr-ctrl-scale){margin-bottom:0;border-radius:calc(var(--map-jr-rr)/2)}

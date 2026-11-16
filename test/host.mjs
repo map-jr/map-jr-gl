@@ -1293,7 +1293,8 @@ for (const renderer of renderers) {
             // The compass shows the direction that the map faces.
             const letter = () => document.querySelector('#host .map-jr-ctrl-compass text')?.textContent;
             const map = t.host._map, faces = [letter()];
-            for (const bearing of [90, -135, 0]) { map.jumpTo({bearing}); await new Promise(r => setTimeout(r, 100)); faces.push(letter() + (map.getBearing() === bearing ? '' : '@' + map.getBearing()) + document.querySelectorAll('#host .map-jr-ctrl-compass').length); }
+            // (The compass follows the event move, which can come a few frames later with the worker renderer.)
+            for (const [bearing, face] of [[90, 'E'], [-135, 'W'], [0, 'N']]) { map.jumpTo({bearing}); for (let i = 0; i < 40 && letter() !== face; i++) await new Promise(r => setTimeout(r, 25)); faces.push(letter() + (map.getBearing() === bearing ? '' : '@' + map.getBearing()) + document.querySelectorAll('#host .map-jr-ctrl-compass').length); }
             t.host.update(t.spec);
             return {main: host.classList.contains('map-jr-glass'), blur: group.backdropFilter, radius: group.borderTopLeftRadius, compat, compatClass: el.classList.contains('map-jr-glass'), popupDefault, popupSet, faces: faces.join(' ')};
         });
