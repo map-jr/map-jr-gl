@@ -9,14 +9,14 @@ The entry `@map-jr/map-jr-gl/vue` has a component and a composable for Vue 3.5 o
 <script setup>
 import {ref, shallowRef} from 'vue';
 import {MapJr} from '@map-jr/map-jr-gl/vue';
+import {points} from '@map-jr/map-jr-gl';
 
 const view = ref({center: [-74.0065, 40.7085], zoom: 13.6});
-const pins = shallowRef({
-  id: 'places',
-  svg: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="{{color}}"/></svg>',
-  width: 24, height: 24,
-  data: [{lngLat: [-74.0065, 40.7085], props: {color: '#d6453d'}}],
-});
+const dot = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="{{color}}"/></svg>';
+// A point for each place, in a shallowRef: give a new object to change it.
+const places = shallowRef(points([{lngLat: [-74.0065, 40.7085], color: '#d6453d'}], {lngLat: p => p.lngLat}));
+// A symbol layer that draws the image at each point of the source "places".
+const pinLayer = {id: 'places', type: 'symbol', source: 'places', layout: {'icon-image': 'dot', 'icon-allow-overlap': true}};
 const hovered = ref([]);
 </script>
 
@@ -25,8 +25,10 @@ const hovered = ref([]);
     <MapJr
       map-style="https://tiles.openfreemap.org/styles/liberty"
       v-model:view="view"
-      :markers="[pins]"
-      :interactive-layers="['poi_r1', 'poi_r7']"
+      :images="{dot}"
+      :data="{places}"
+      :layers="[pinLayer]"
+      :interactive-layers="['places', 'poi_r1']"
       @hover="hovered = $event"
       @click="event => console.log(event.lngLat, event.features)"
     />
@@ -51,8 +53,7 @@ production build has no such warning, and there the map stays empty without a me
 | `layers` | Layers to add to the layers of the style: they do not replace them. A layer with `before` goes below the layer with that id. |
 | `terrain` | 3D terrain in place of that of the style: `{source: 'dem', exaggeration: 1.5}`. `null` or no prop means the terrain of the style. |
 | `images` | Images for the style layers, by name: `:images="{pin: pinSvg}"`. See [Images for style layers](api.md#images-for-style-layers). The render on the server draws those that are SVG documents. |
-| `markers` | A list of marker layers, each with the name of an image of `images` (or of a `MapImage`). See [Markers](markers.md). |
-| `data` | GeoJSON data for GeoJSON sources, by the id of the source: `:data="{routes}"`. A key with no source of that id makes a GeoJSON source. See "GeoJSON data that changes" in [the main API](api.md). Use a `shallowRef` for each value, and give a new object to change it. |
+| `data` | GeoJSON data for GeoJSON sources, by the id of the source: `:data="{routes}"`. A key with no source of that id makes a GeoJSON source. See "GeoJSON data that changes" in [the main API](api.md). Use a `shallowRef` for each value, and give a new object to change it: a change inside the object has no effect. For points from records, see `points()` in [Markers](markers.md). |
 | `interactive-layers` | The ids of style layers whose features are found under the pointer. |
 | `controls` | Controls from `@map-jr/map-jr-gl/controls`: `:controls="[navigation(), scale()]"`. See [the main API](api.md). |
 | `min-zoom`, `max-zoom`, `max-pitch`, `max-bounds`, `cursor`, `cooperative-gestures`, `padding`, `projection` | As in [the main API](api.md). `:projection="{type: 'globe'}"` draws the map on a globe. |
@@ -172,7 +173,8 @@ For the default pin of `Marker`, use `defaultPin()` of `@map-jr/map-jr-gl` in th
 [Elements of the page on the map](api.md#elements-of-the-page-on-the-map)).
 
 The content is Vue content: it can have components, events and reactive values. Use `MapOverlay` for some elements.
-For many markers, use the `markers` prop: those are drawn on the canvas.
+For many markers, use a symbol layer in the `layers` prop with the points in `data`: those are drawn on the canvas.
+See [Markers](markers.md).
 
 ### An image in the template
 
@@ -239,10 +241,10 @@ You can change the props as in other Vue code. The component sees these changes:
 
 | Change | Example |
 |---|---|
-| A new value for a prop | `view = {center, zoom}`, `markers = [...]` |
+| A new value for a prop | `view = {center, zoom}`, `places = points(records, {lngLat})` |
 | A field of the view | `view.zoom = 15` |
-| A marker layer added or removed | `markers.push(layer)`, `markers.splice(0, 1)` |
-| A marker added, removed or replaced | `layer.data.push(marker)`, `layer.data[3] = {...layer.data[3], props}` |
+| A layer added or removed | `layers.push(layer)`, `layers.splice(0, 1)` |
+| A new object for a key of `data` | `data.places = points(records, {lngLat})` |
 | A part of a reactive style object | `style.layers[4].paint['fill-color'] = '#f00'` |
 | An array or object that the template makes again each time | `:controls="[navigation()]"`, `:interactive-layers="['places']"` |
 
@@ -275,17 +277,14 @@ let stored = view.value;
 </template>
 ```
 
-### Changes inside a marker
+### Changes inside the data of a source
 
-The component does not see one change: a change inside one marker (`layer.data[3].props.color = '#f00'`). Replace
-the marker, as in the table.
-
-To see a change inside each marker, Vue would have to make each marker reactive and look at each one after each
-change. The component asks Vue about a data array as a whole. This costs the same for ten markers and for 100,000.
+The component does not see a change inside the GeoJSON of a key of `data` (`places.features.push(feature)`). Give
+a new object, as in the table. The map compares the data of a source by identity, because it can be large.
 
 For the best performance with large data:
 
-- Use `shallowRef` for marker data and for a style object, and give a new array or object to change them.
+- Use `shallowRef` for the data of a source and for a style object, and give a new object to change them.
   A `ref` also works; it only makes reactive what your code reads.
 - Give the style as a URL, or as an object that is made one time. An object that the template makes again each time
   is compared with the last one by its content.
@@ -466,7 +465,9 @@ With the `ssr` prop, the server also renders the first view as SVG:
 <MapJr
   map-style="https://tiles.openfreemap.org/styles/liberty"
   :initial-view="view"
-  :markers="[pins]"
+  :images="{dot}"
+  :data="{places}"
+  :layers="[pinLayer]"
   :controls="[navigation()]"
   :ssr="{
     width: 800, height: 500,
@@ -481,7 +482,7 @@ With the `ssr` prop, the server also renders the first view as SVG:
   controls show from that moment; they are not in the SVG.
 - The server needs the style as an object or as a URL that it can fetch.
 - The server renders `map-style`, the centre, the zoom and the bearing of the view, the props `sources`,
-  `layers` and `terrain`, the GeoJSON of `data`, and `markers` with the images of `images` that are SVG documents. It renders a
+  `layers` and `terrain`, the GeoJSON of `data`, and the images of `images` that are SVG documents. It renders a
   tilted view (`pitch`) from straight above.
 - The requests of the server have time limits: 10 seconds for one request and 30 seconds for all requests of one
   render. Change them with `timeout` and `requestTimeout` in the `ssr` prop, limit the size of a response with

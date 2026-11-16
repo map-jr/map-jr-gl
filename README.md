@@ -31,8 +31,8 @@ uses the same renderer and has its own tests in a browser.
   [What is not available](docs/maplibre-compatibility.md#what-is-not-available). Custom layers are in the entry
   `@map-jr/map-jr-gl/maplibre-compat` and need `renderer: 'main'`; their code loads with the first custom layer.
 - **It does not block your page.** The map draws in a worker. Your page stays responsive while the map moves.
-- **It draws many markers.** A marker layer draws 100,000 SVG markers at 60 frames per second. A marker layer is a
-  symbol layer of the style with an SVG template as its image.
+- **It draws many markers.** A symbol layer with an SVG template as its image draws 100,000 SVG markers at 60 frames
+  per second.
 - **It draws on the server.** You can render the first view of a map as SVG or as an image, without a browser.
   This works on Node.js and on Cloudflare Workers.
 - **It includes elevation tools.** 3D terrain, relief shading, contour lines and elevation queries use one
@@ -225,37 +225,33 @@ The library has a default export for such plugins only, because some of them con
 
 ### Add markers
 
-A marker layer draws many markers on the map canvas. It draws an image at each position, and the image can be an SVG
-template that each marker fills with its values.
+A symbol layer draws many markers on the map canvas. It draws an image at each point of a GeoJSON source, and the
+image can be an SVG template that each point fills with its properties.
 
-With `@map-jr/map-jr-gl`, an image is an entry of `images` in the description, and a marker layer is an entry of
-`markers`:
+With `@map-jr/map-jr-gl`, an image is an entry of `images` in the description, a key of `data` makes a GeoJSON
+source, `points()` makes the GeoJSON from your records, and the symbol layer is an entry of `layers`:
 
 ```js
-import {createMap} from '@map-jr/map-jr-gl';
+import {createMap, points} from '@map-jr/map-jr-gl';
 
-const places = {
-  id: 'places',
-  image: 'disc',
-  data: [
-    {lngLat: [-74.006, 40.7128], props: {color: '#d6453d', name: 'City Hall'}},
-    {lngLat: [-73.9857, 40.7484], props: {color: '#2f7fd1', name: 'Empire State Building'}},
-  ],
-};
+const records = [
+  {lng: -74.006, lat: 40.7128, color: '#d6453d', name: 'City Hall'},
+  {lng: -73.9857, lat: 40.7484, color: '#2f7fd1', name: 'Empire State Building'},
+];
 
 const map = createMap(document.getElementById('map'), {
   style: 'https://tiles.openfreemap.org/styles/liberty',
   initialView: {center: [-73.996, 40.73], zoom: 11.5},
   images: {disc: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="{{color}}"/></svg>'},
-  markers: [places],
+  data: {places: points(records, {lngLat: r => [r.lng, r.lat]})},
+  layers: [{id: 'places', type: 'symbol', source: 'places', layout: {'icon-image': 'disc', 'icon-allow-overlap': true, 'icon-ignore-placement': true}}],
   // A marker is a feature of its layer: a click has it in `features`.
   interactiveLayers: ['places'],
   onClick: event => console.log(event.features[0]?.properties.name),
 });
 ```
 
-A marker layer is shorthand for a GeoJSON source and a symbol layer of the style. With
-`@map-jr/map-jr-gl/maplibre-compat`, write those yourself, as with MapLibre GL JS (`map.addImage`, `map.addSource`,
+With `@map-jr/map-jr-gl/maplibre-compat`, write the source and the layer yourself, as with MapLibre GL JS (`map.addImage`, `map.addSource`,
 `map.addLayer`). [Markers](docs/markers.md) has the code.
 
 For a small number of markers with HTML content, use `map.overlay` (`@map-jr/map-jr-gl`) or `Marker` and `Popup`
@@ -430,7 +426,7 @@ To measure on your device, open [the benchmark page](https://map-jr.github.io/ma
 - [React](docs/react.md): the component, the hooks, server rendering.
 - [Svelte](docs/svelte.md): an action and a store.
 - [Loading](docs/loading.md): how the files load, and how to change that.
-- [Markers](docs/markers.md): marker layers, images that are SVG templates, and DOM markers.
+- [Markers](docs/markers.md): symbol layers with images that are SVG templates, and DOM markers.
 - [Terrain and elevation](docs/terrain-and-elevation.md): terrain, relief shading, contour lines, elevation queries.
 - [Server rendering](docs/server-rendering.md): SVG and images on Node.js and Cloudflare Workers.
 - [Accessibility](docs/accessibility.md): what the library does for keyboard users and assistive technology, and what it

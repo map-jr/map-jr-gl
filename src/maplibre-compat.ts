@@ -2,7 +2,7 @@ export {Map, Map as MapLibreMap} from './compat-map.ts';
 export {InteractionHandler, type RenderedFeature, type PointLike, type FeatureOptions, type FeaturePlace} from './map.ts';
 export {addProtocol, removeProtocol, type ProtocolFunction} from './protocols.ts';
 export {LngLat, LngLatBounds, type LngLatInput, type LngLatBoundsInput} from './lnglat.ts';
-export type {MarkerLayerOptions, MarkerInput, Anchor} from './markers.ts';
+export type {Anchor} from './markers.ts';
 export type {FeatureQuery, FontSource} from './engine.ts';
 export type {QueriedFeature} from './query.ts';
 export type {LngLatLike} from './geo.ts';

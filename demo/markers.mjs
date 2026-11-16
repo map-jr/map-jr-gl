@@ -1,5 +1,5 @@
 /**
- * The images and the marker layers of the demo. An image is an SVG template: each marker fills its {{slots}}.
+ * The images and the groups of points of the demo. An image is an SVG template: each marker fills its {{slots}}.
  * The shadow is a shape of its own. Safari draws a shape that has a filter at a low resolution, so a filter on the pin
  * itself makes the pin look blurred in an SVG that the page shows.
  */
@@ -64,7 +64,7 @@ export const bubble = `<svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="18" f
 
 /**
  * Minimal grid clustering, to show that clustering can live outside the library: group points by screen-sized
- * cells at the current zoom, and hand the map two marker layers' worth of data.
+ * cells at the current zoom, and hand the map the data of two symbol layers.
  */
 export function cluster(points, zoom, cellPx = 70) {
     const cells = new Map(), size = cellPx / (512 * 2 ** zoom);
@@ -88,11 +88,14 @@ export const images = {pin, 'pin-small': {image: pin, width: 24, height: 31}, ph
 export function addImages(map) {
     return Promise.all(Object.entries(images).map(([name, v]) => map.addImage(name, v.image ?? v, v.image ? {width: v.width, height: v.height} : {})));
 }
-/**
- * For `@map-jr/map-jr-gl/maplibre-compat`: a marker layer as the source and the symbol layer that it stands for
- * (`addSource`, `addLayer`). `layout` has more layout properties for the layer.
- */
+/** The points of a group of the demo (`markers`, `photos`, `manyMarkers()`): a GeoJSON FeatureCollection with the index as the id. */
+export const features = m => ({type: 'FeatureCollection', features: m.data.map((d, id) => ({type: 'Feature', id, properties: d.props ?? {}, geometry: {type: 'Point', coordinates: d.lngLat}}))});
+/** The symbol layer that draws a group of the demo. `layout` has more layout properties for the layer. */
+export const symbolLayer = (m, layout = {}) => ({id: m.id, type: 'symbol', source: m.id, layout: {'icon-image': m.image, 'icon-anchor': m.anchor ?? 'center', 'icon-allow-overlap': m.overlap !== 'hide', 'icon-ignore-placement': !m.collide && m.overlap !== 'hide', ...layout}});
+/** For `@map-jr/map-jr-gl` and the server renderer: groups of the demo as `data` and `layers` of the description. */
+export const asSpec = (...groups) => ({data: Object.fromEntries(groups.map(m => [m.id, features(m)])), layers: groups.map(m => symbolLayer(m))});
+/** For `@map-jr/map-jr-gl/maplibre-compat`: a group of the demo as a source and a symbol layer (`addSource`, `addLayer`). */
 export function addMarkers(map, m, layout = {}) {
-    map.addSource(m.id, {type: 'geojson', data: {type: 'FeatureCollection', features: m.data.map((d, id) => ({type: 'Feature', id, properties: d.props ?? {}, geometry: {type: 'Point', coordinates: d.lngLat}}))}});
-    map.addLayer({id: m.id, type: 'symbol', source: m.id, layout: {'icon-image': m.image, 'icon-anchor': m.anchor ?? 'center', 'icon-allow-overlap': m.overlap !== 'hide', 'icon-ignore-placement': !m.collide && m.overlap !== 'hide', ...layout}});
+    map.addSource(m.id, {type: 'geojson', data: features(m)});
+    map.addLayer(symbolLayer(m, layout));
 }

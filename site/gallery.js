@@ -36,9 +36,9 @@ const example = (id, title, points) => ({id, title, points,
 const rows = [
     example('basic', 'A MapLibre style, drawn off the main thread', ['Reads the MapLibre style specification: sources, layers, expressions.', 'Draws in a worker when the browser allows it, so a busy page does not make the map stutter.', 'Zoom, compass, scale and fullscreen controls are included.']),
     example('reactive', 'One description, and state to watch', ['The main API makes a map from one description. To change the map, give a new description: the library finds what is different.', 'The state of the map (the view, the features under the pointer) is a store. Frameworks read it directly.', 'The components for Vue and React are thin layers over this.']),
-    example('markers', 'Tens of thousands of markers, drawn on the canvas', ['An image is one SVG template with {{slots}}. A marker layer draws it at a list of positions, and each marker fills the slots.', 'Markers are drawn by the GPU. 50,000 cost about the same as 50.', 'A marker layer is a symbol layer of the style: a click finds its features, and a popup can point at one.']),
+    example('markers', 'Tens of thousands of markers, drawn on the canvas', ['An image is one SVG template with {{slots}}. A symbol layer draws it at each point of a GeoJSON source, and each point fills the slots from its properties.', 'Markers are drawn by the GPU. 50,000 cost about the same as 50.', 'The layer is a usual symbol layer of the style: a click finds its features, and a popup can point at one.']),
     example('draggable', 'A pin that the user moves', ['An overlay is an element of the page at a position of the map. With draggable, the user moves it with the mouse, a finger or a pen.', 'A drag starts after the pointer moves 3 pixels, so a click stays a click. The map does not pan under the drag.', 'The callbacks get the new position as [lng, lat]. defaultPin() makes the pin of Marker.']),
-    example('images', 'SVG images for symbol layers, with a label beside each', ['The field images of the description gives images to the style layers by name. An SVG document is drawn at the pixel density of the screen.', 'An image with {{slots}} is a template. The image expression of icon-image fills the slots from the properties of each feature.', 'A symbol layer can put a label beside its icon. A marker layer cannot.']),
+    example('images', 'SVG images for symbol layers, with a label beside each', ['The field images of the description gives images to the style layers by name. An SVG document is drawn at the pixel density of the screen.', 'An image with {{slots}} is a template. The image expression of icon-image fills the slots from the properties of each feature.', 'A symbol layer can put a label beside its icon.']),
     example('terrain', '3D terrain, relief shading and contour lines from one elevation source', ['Terrain raises the ground. Buildings, labels and markers stay on the surface.', 'A contour source makes labelled contour lines in the tile workers. You do not need another library.', 'queryElevation reads the height at a position. Click the map.']),
     example('globe', 'The world as a globe', ['projection: {type: \'globe\'} draws the map on a sphere, as MapLibre GL JS does. Zoomed in, between zoom 11 and 12, the globe turns into the flat map.', 'Drag to turn the globe. Labels and marker layers on the far side are hidden; a Marker there is drawn faintly (opacityWhenCovered).', 'The button of the globe control switches between the globe and the flat map. The code of the globe loads only for a map that shows one.']),
     example('query', 'Ask the map what is at a position', ['queryFeatures reads the tile data directly. You do not need a style layer, and hidden data is included.', 'The result is a promise, because the tile data is in a worker.', 'Click the map. The features at that position show in a box on the map.']),
@@ -46,12 +46,14 @@ const rows = [
     {id: 'server', title: 'The first view, rendered on the server', pair: true,
         points: ['renderToSVG and renderToImage render a map without a browser, on Node or in a Cloudflare Worker.', 'A page can show that render immediately. The live map replaces it when it is ready.', 'The map on top is live. The image below it was made when this site was built, with the same style, view and size. Select SVG or JPEG.', 'The server estimates the width of text, so in a crowded place it can show a different street name than the live map.'],
         code: `import {renderToSVG, renderToImage} from '@map-jr/map-jr-gl/server';
+import {points} from '@map-jr/map-jr-gl';
 
 const {svg} = await renderToSVG({
   style, center: [-74.0065, 40.7085], zoom: 14.3,
   width: 800, height: 500,
   images: {pin},
-  markers: [placesLayer],
+  data: {places: points(records, {lngLat: r => r.lngLat})},
+  layers: [{id: 'places', type: 'symbol', source: 'places', layout: {'icon-image': 'pin', 'icon-anchor': 'bottom'}}],
 });
 
 // A fixed-size image instead (JPEG). The rasteriser is supplied by you:

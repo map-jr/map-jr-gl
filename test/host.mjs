@@ -485,8 +485,8 @@ for (const renderer of ['worker', 'main']) {
         check(`[${renderer}] a change of extend alone edits the map: no new style request, and a layer added through host.map stays`,
             extendEdit.paint === '#0f0' && extendEdit.hidden === 'none' && extendEdit.added && extendEdit.hits === 1 && extendEdit.removed && extendEdit.app && extendEdit.restyles === 0 && extendEdit.requests === 0, JSON.stringify(extendEdit));
 
-        // 3d. The edits of `extend` leave the description as it was, work for two maps with one `extend` object, keep the
-        // layers of `markers` on top, and give back a source of the style that an extend source replaced (#184).
+        // 3d. The edits of `extend` leave the description as it was, work for two maps with one `extend` object, and give
+        // back a source of the style that an extend source replaced (#184).
         const extendCases = await page.evaluate(async renderer => {
             const t = window.t, idle = host => new Promise(r => { let at = host.state.get().idle ? performance.now() : 0; const off = host.state.subscribe(s => s.idle, v => { at = v ? performance.now() : 0; }), done = () => { clearInterval(timer); off(); r(); }, timer = setInterval(() => at && performance.now() - at > 500 && done(), 50); setTimeout(done, 8000); });
             const div = () => document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
@@ -502,19 +502,14 @@ for (const renderer of ['worker', 'main']) {
             out.back = color(a); out.description = red.layers[0].paint['fill-color'];
             b.update({...spec, ...green}); await idle(b);
             out.second = color(b);
-            const pins = {id: 'pins', data: [{lngLat: [-74.0065, 40.7085]}]};
-            const m = t.lib.createMap(div(), {...spec, ...red, markers: [pins]}); await idle(m);
-            m.update({...spec, ...ext('#f00', [{id: 'two', type: 'line', source: 'own'}]), markers: [pins]}); await idle(m);
-            const ids = m.map.getStyle().layers.map(l => l.id);
-            out.markersOnTop = ids.indexOf('two') < ids.indexOf('pins');
             const o = t.lib.createMap(div(), {...spec, sources: {omt: {type: 'geojson', data: square}}}); await idle(o);
             o.update({...spec, sources: undefined, layers: undefined}); await idle(o);
             out.styleSource = o.map.getSource('omt')?.type;
-            for (const h of [a, b, m, o]) h.destroy();
+            for (const h of [a, b, o]) h.destroy();
             return out;
         }, renderer);
-        check(`[${renderer}] extend edits keep the description, work for two maps with one extend object, keep markers on top and give back a style source`,
-            extendCases.back === '#f00' && extendCases.description === '#f00' && extendCases.second === '#0f0' && extendCases.markersOnTop && extendCases.styleSource === 'vector', JSON.stringify(extendCases));
+        check(`[${renderer}] extend edits keep the description, work for two maps with one extend object and give back a style source`,
+            extendCases.back === '#f00' && extendCases.description === '#f00' && extendCases.second === '#0f0' && extendCases.styleSource === 'vector', JSON.stringify(extendCases));
 
         // 3e. Common mistakes: each gives one warning that says what to write, and a correct description gives none.
         const warnings = await page.evaluate(async renderer => {
@@ -522,10 +517,10 @@ for (const renderer of ['worker', 'main']) {
             console.warn = (...a) => said.push(a.join(' '));
             const div = style => document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;' + style}));
             const idle = host => new Promise(r => { host.state.subscribe(s => s.idle, v => v && r(true)); setTimeout(() => r(false), 8000); });
-            const empty = {type: 'FeatureCollection', features: []}, dot = '<svg viewBox="0 0 8 8"><circle cx="4" cy="4" r="4"/></svg>', pin = id => ({id, image: 'dot', data: [{lngLat: [-74.0065, 40.7085]}]});
+            const empty = {type: 'FeatureCollection', features: []}, dot = '<svg viewBox="0 0 8 8"><circle cx="4" cy="4" r="4"/></svg>';
             const base = {style: t.style, initialView: {center: [-74.0065, 40.7085], zoom: 14.3}, renderer, attribution: false, onError: () => {}};
             // A correct description, with each of the fields that the checks read.
-            const goodEl = div('height:150px'), good = t.lib.createMap(goodEl, {...base, interactiveLayers: ['own-fill'], data: {own: empty}, images: {dot}, markers: [pin('a'), pin('b')],
+            const goodEl = div('height:150px'), good = t.lib.createMap(goodEl, {...base, interactiveLayers: ['own-fill'], data: {own: empty}, images: {dot},
                 sources: {own: {type: 'geojson', data: empty}}, layers: [{id: 'own-fill', type: 'fill', source: 'own', before: t.style.layers[1].id}]});
             await idle(good);
             await good.queryFeatures({x: 100, y: 75}, {layers: ['own-fill']});
@@ -545,8 +540,7 @@ for (const renderer of ['worker', 'main']) {
             const correct = said.splice(0);
             for (const [el, host] of [[ownEl, own], [hiddenEl, hidden], [lateEl, late]]) { host.destroy(); el.remove(); }
             // The same map with mistakes.
-            const spec = {...base, interactiveLayers: ['nope'], data: {nosuch: empty}, markers: [pin('a'), pin('a'), {id: 'old', svg: dot, width: 8, height: 8, data: []}, {...pin('gone'), image: 'nothing'},
-                    {...pin(t.style.layers[1].id), before: 'no-such-layer', data: [{lngLat: [-74.0065, 40.7085]}, {props: {}}, null]}],
+            const spec = {...base, interactiveLayers: ['nope'], data: {nosuch: empty},
                 images: {dot: '<svg viewBox="0 0 4 4"><rect width="4" height="4" fill="{{fill}}"/></svg>'},
                 sources: {icons: {type: 'geojson', data: empty}}, layers: [{id: 'lost', type: 'fill', source: 'missing', before: 'nonexistent'}, {id: 'icons', type: 'symbol', source: 'icons', layout: {'icon-image': ['image', 'dot', {params: {fill: '#d00', colour: '#00d'}}]}},
                     {id: 'labels', type: 'symbol', source: 'icons', layout: {'text-field': ['format', ['image', 'dot', {params: {fill: '#d00', size: '2'}}], {}]}}]};
@@ -563,15 +557,13 @@ for (const renderer of ['worker', 'main']) {
             }
             const place = await bad.queryFeatures({lng: -74.0065, lat: 40.7085}).then(() => '', e => e.message);
             const flatEl = div('height:0'), flat = t.lib.createMap(flatEl, base);
-            // (The warning for an image that the map does not have waits three seconds for the image.)
-            await wait(3500);
+            await wait(1500);
             for (const [el, host] of [[goodEl, good], [badEl, bad], [flatEl, flat]]) { host.destroy(); el.remove(); }
             console.warn = log;
             return {correct, said, place};
         }, renderer);
-        const styleLayer = await page.evaluate(() => window.t.style.layers[1].id);
         const expected = ['createMap(): the container has height 0', 'interactiveLayers: the style has no layer "nope"', 'queryFeatures(): the style has no layer "nope"',
-            'queryFeatures(): the style has no source "nope"', 'layers: the layer "lost" has before: "nonexistent"', 'layers: the layer "lost" uses the source "missing"', 'markers: two marker layers have the id "a"', 'images: a layer gives the parameter "colour" to the image "dot"', 'images: a layer gives the parameter "size" to the image "dot"', 'images: a layer gives the parameter "fill" to the image "dot"', 'markers: the marker layer "old" has no "image"', 'markers: a marker layer has the image "nothing"', `markers: the marker layer "${styleLayer}" has the id of a layer of the style`, `markers: the marker layer "${styleLayer}" has before: "no-such-layer"`, `markers: the marker 1 of the marker layer "${styleLayer}" has no position`,
+            'queryFeatures(): the style has no source "nope"', 'layers: the layer "lost" has before: "nonexistent"', 'layers: the layer "lost" uses the source "missing"', 'images: a layer gives the parameter "colour" to the image "dot"', 'images: a layer gives the parameter "size" to the image "dot"', 'images: a layer gives the parameter "fill" to the image "dot"',
             'update(): "interactive" changed', 'update(): "initialView" changed', 'queryFeatures(): "sourceLayers" has an effect only', 'queryFeatures(): "radius" has an effect only in a query at a point or a position', 'queryFeatures(): "geometry" has an effect only', 'queryFeatures(): "zoom" has an effect only',
             'queryFeatures(): "layers" has no effect'];
         check(`[${renderer}] common mistakes: each gives one warning, a wrong place of a query is refused with a message, and a correct description gives no warning`,
@@ -618,46 +610,40 @@ for (const renderer of ['worker', 'main']) {
             partial.update.startsWith('[map-jr-gl] update(): the description has no "style".') && partial.update.includes('map.patch({cursor: ') && partial.none.startsWith('[map-jr-gl] update()')
             && partial.create.startsWith('[map-jr-gl] createMap(): the description has no "style".') && partial.drawn > 0 && !errors.length, JSON.stringify({...partial, errors}));
 
-        // 4. Marker layers: each one is a source and a symbol layer of the style, and they follow the description.
-        const markers = await page.evaluate(async () => {
+        // 4. Points for a symbol layer (#499): a key of `data` with `points()` and a layer of `layers`. New data is no new
+        // style, and data that comes with a change of the layer is not lost.
+        const pins = await page.evaluate(async () => {
             const t = window.t, map = t.host.map, wait = ms => new Promise(r => setTimeout(r, ms)), at = () => t.host.queryFeatures({x: 450, y: 300}, {layers: ['pins']});
-            const centre = t.host.unproject({x: 450, y: 300});
-            const layer = (data, more) => ({id: 'pins', image: 'disc', data, ...more});
-            t.host.update(t.spec = {...t.spec, images: {disc: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="{{color}}"/></svg>'}, markers: [layer([{lngLat: centre, props: {color: '#d00'}}])]});
+            const centre = t.host.unproject({x: 450, y: 300}), points = list => t.lib.points(list, {lngLat: p => p.lngLat, id: p => p.id, properties: p => ({color: p.color})});
+            const layer = layout => ({id: 'pins', type: 'symbol', source: 'pins', layout: {'icon-image': 'disc', 'icon-allow-overlap': true, 'icon-ignore-placement': true, ...layout}});
+            t.host.update(t.spec = {...t.spec, images: {disc: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="{{color}}"/></svg>'}, data: {...t.spec.data, pins: points([{id: 1, lngLat: centre, color: '#d00'}])}, layers: [...t.spec.layers ?? [], layer()]});
             await wait(900);
-            const one = await at(), made = map.getLayer('pins'), top = map.getStyle().layers.at(-1).id;
-            // Other data: the markers move, and the style is the same.
+            const one = await at(), top = map.getStyle().layers.at(-1).id;
+            // Other data: the points move, and the style is the same.
             let restyled = 0;
             const count = () => restyled++;
             map.on('style.load', count);
-            t.host.update(t.spec = {...t.spec, markers: [layer([{lngLat: [centre[0] + 1, centre[1]], props: {color: '#d00'}}])]});
+            t.host.update(t.spec = {...t.spec, data: {...t.spec.data, pins: points([{id: 1, lngLat: [centre[0] + 1, centre[1]], color: '#d00'}])}});
             await wait(700);
             const moved = (await at()).length;
-            t.host.update(t.spec = {...t.spec, markers: [layer([{lngLat: [0, 0], props: {}}, {lngLat: centre, props: {color: '#00d'}}])]});
+            t.host.update(t.spec = {...t.spec, data: {...t.spec.data, pins: points([{id: 1, lngLat: [0, 0]}, {id: 2, lngLat: centre, color: '#00d'}])}});
             await wait(700);
             const back = await at(), sameStyle = restyled === 0;
             map.off('style.load', count);
-            // Other options: the layer is another layer of the style (here: below the first layer, and labels keep away).
-            const first = map.getStyle().layers[0].id;
-            t.host.update(t.spec = {...t.spec, markers: [layer([{lngLat: centre, props: {color: '#00d'}}], {before: first, anchor: 'bottom', collide: true, minZoom: 3, overlap: 'hide'})]});
-            await wait(900);
-            const changed = map.getLayer('pins'), below = map.getStyle().layers.findIndex(l => l.id === 'pins') === 0;
-            // Another option, and other data at once: the new style comes a moment later, and its source gets the data.
-            // A marker with no position is left out, and the others keep their index.
-            t.host.update(t.spec = {...t.spec, markers: [layer([{lngLat: centre, props: {color: '#00d'}}], {anchor: 'top'})]});
-            t.host.update(t.spec = {...t.spec, markers: [layer([{props: {}}, {lngLat: centre, props: {color: '#0a0'}}], {anchor: 'top'})]});
+            // Another layout and other data at once: the source gets the data.
+            t.host.update(t.spec = {...t.spec, layers: [...t.spec.layers.filter(l => l.id !== 'pins'), layer({'icon-anchor': 'top'})]});
+            t.host.update(t.spec = {...t.spec, data: {...t.spec.data, pins: points([{id: 3, lngLat: centre, color: '#0a0'}])}});
             await wait(1200);
             const late = await t.host.queryFeatures({x: 450, y: 310}, {layers: ['pins']});
-            const {images: _, markers: __, ...rest} = t.spec;
-            t.host.update(t.spec = rest);
+            const {images: _, ...rest} = t.spec, {pins: __, ...data} = rest.data;
+            t.host.update(t.spec = {...rest, data, layers: rest.layers.filter(l => l.id !== 'pins')});
             await wait(700);
-            return {one: one.length, id: one[0]?.id, top, layout: made?.layout, moved, back: back.length, index: back[0]?.id, color: back[0]?.properties.color, sameStyle,
-                changed: changed && {...changed.layout, minzoom: changed.minzoom}, below, late: late.map(f => f.id + ' ' + f.properties.color).join(), none: !map.getLayer('pins') && !map.getSource('pins')};
+            return {one: one.length, id: one[0]?.id, top, moved, back: back.length, index: back[0]?.id, color: back[0]?.properties.color, sameStyle,
+                late: late.map(f => f.id + ' ' + f.properties.color).join(), none: !map.getLayer('pins') && !map.getSource('pins')};
         });
-        check(`[${renderer}] a marker layer is a source and a symbol layer: it follows the description, its markers are features with the index as the id, new data is no new style, and data that comes with another option is not lost`,
-            markers.one === 1 && markers.id === 0 && markers.top === 'pins' && JSON.stringify(markers.layout) === JSON.stringify({'icon-image': 'disc', 'icon-anchor': 'center', 'icon-allow-overlap': true, 'icon-ignore-placement': true})
-            && markers.moved === 0 && markers.back === 1 && markers.index === 1 && markers.color === '#00d' && markers.sameStyle
-            && JSON.stringify(markers.changed) === JSON.stringify({'icon-image': 'disc', 'icon-anchor': 'bottom', 'icon-allow-overlap': false, 'icon-ignore-placement': false, minzoom: 3}) && markers.below && markers.late === '1 #0a0' && markers.none, JSON.stringify(markers));
+        check(`[${renderer}] points() in data and a symbol layer in layers: the points are features with their ids, new data is no new style, and data that comes with a change of the layer is not lost`,
+            pins.one === 1 && pins.id === 1 && pins.top === 'pins' && pins.moved === 0 && pins.back === 1 && pins.index === 2 && pins.color === '#00d' && pins.sameStyle
+            && pins.late === '3 #0a0' && pins.none, JSON.stringify(pins));
 
         {
         // Images: added, replaced and removed by the description. A symbol layer draws a square of 40 pixels at the centre.
@@ -1380,8 +1366,7 @@ for (const [build, file] of [['the development build, and the file of the checks
             console.warn = (...a) => said.push(a.join(' '));
             addEventListener('unhandledrejection', e => unhandled.push(String(e.reason)));
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99;background:#fff'}));
-            const pin = {id: 'a', image: 'dot', data: []};
-            const host = lib.createMap(el, {style, initialView: {center: [-74.0065, 40.7085], zoom: 14.3}, attribution: false, markers: [pin, pin]});
+            const host = lib.createMap(el, {style, initialView: {center: [-74.0065, 40.7085], zoom: 14.3}, attribution: false, interactiveLayers: ['nope']});
             const place = await host.queryFeatures({lng: -74.0065, lat: 40.7085}).then(() => '', e => e.message);
             await new Promise(r => host.state.subscribe(s => s.idle, v => v && r()));
             await new Promise(r => setTimeout(r, 1200));

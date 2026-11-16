@@ -5,13 +5,12 @@
  * the map does the rest. On a server the component can render the first view as SVG; in the browser the map takes
  * over that SVG, so a page from Nuxt shows a map before any script has run.
  */
-import {computed, defineComponent, getCurrentInstance, h, inject, provide, isProxy, isReactive, onBeforeUnmount, onMounted, onServerPrefetch, shallowRef, Teleport, toRaw, toValue, watch, type AllowedComponentProps, type ComponentCustomProps, type SetupContext, type SlotsType, type VNode, type VNodeProps, type ComputedRef, type MaybeRefOrGetter, type PropType, type ShallowRef} from 'vue';
+import {computed, defineComponent, getCurrentInstance, h, inject, provide, isProxy, isReactive, onBeforeUnmount, onMounted, onServerPrefetch, shallowRef, Teleport, toRaw, toValue, watch, type AllowedComponentProps, type ComponentCustomProps, type SetupContext, type SlotsType, type VNode, type VNodeProps, type MaybeRefOrGetter, type PropType, type ShallowRef} from 'vue';
 declare const __DEV__: boolean;
 import type {ControlSpec, FeatureOptions, FeaturePlace, MapHost, MapOverlay as Overlay, OverlayOptions, MapEvents, MapPointer, MapSpec, MapState, View, ViewInput, InitialView} from './host.ts';
 import type {SSROverrides} from './style.ts';
 import type {RenderedFeature} from './map.ts';
 import type {QueriedFeature} from './query.ts';
-import type {MarkerLayerOptions} from './markers.ts';
 import type {FontSource} from './engine.ts';
 import type {LngLatBoundsInput} from './lnglat.ts';
 
@@ -27,21 +26,6 @@ function plain<T>(v: T): T {
     if (Array.isArray(v)) return v.map(plain) as T;
     if (v && typeof v === 'object') { const o: any = {}; for (const k in v) o[k] = plain(v[k]); return o; }
     return v;
-}
-
-/**
- * The data of a marker layer for the map. A reactive array can be changed in place (`data.push(marker)`,
- * `data[3] = marker`, `data.splice(...)`): Vue is asked about the array as a whole, which costs the same for ten
- * markers and for 100,000, and the map gets a copy after a change. An array that is not reactive is used as it is.
- */
-const copies = new WeakMap<object, ComputedRef<unknown[]>>();
-function markerData(data: unknown[]): unknown[] {
-    if (!isReactive(data)) return data;
-    const raw = toRaw(data);
-    let copy = copies.get(raw);
-    // (To ask for the iterator of a reactive array is to depend on each change of its items, without a look at each item.)
-    if (!copy) copies.set(raw, copy = computed(() => { data[Symbol.iterator](); return raw.slice(); }));
-    return copy.value;
 }
 
 /**
@@ -107,7 +91,7 @@ export function useMapFeatures(at: MaybeRefOrGetter<FeaturePlace | undefined>, o
  *   <MapOverlay v-if="selected" :lng-lat="selected.lngLat" popup @close="selected = null">{{ selected.name }}</MapOverlay>
  * </MapJr>
  * ```
- * For many markers, use the `markers` prop of `MapJr`: those are drawn on the canvas.
+ * For many points, use a symbol layer in the `layers` prop of `MapJr`, with the points in `data`: those are drawn on the canvas.
  */
 export const MapOverlay = defineComponent({
     name: 'MapOverlay',
@@ -218,7 +202,7 @@ export const MapImage = defineComponent(<P extends string>(props: MapImageProps<
  * The map as a component. It fills its parent element, so give the parent a height.
  *
  * ```vue
- * <MapJr :map-style="style" v-model:view="view" :markers="[pins]" :interactive-layers="['places']" @click="onClick" />
+ * <MapJr :map-style="style" v-model:view="view" :data="{places}" :layers="[placesLayer]" :interactive-layers="['places']" @click="onClick" />
  * ```
  * The style is the prop `map-style` (`style` is the CSS style of an element in Vue).
  */
@@ -244,7 +228,6 @@ const MapJrComponent = defineComponent({
         terrain: {type: Object as PropType<MapSpec['terrain']>, default: undefined},
         /** Images for `icon-image` of style layers, by name. A value is an SVG document, the URL of an image, or `{image, width, height}`. */
         images: Object as PropType<MapSpec['images']>,
-        markers: Array as PropType<MarkerLayerOptions[]>,
         /** GeoJSON data for sources of the style, by the id of the source. Each value is compared by identity: give a new object to change it. */
         data: Object as PropType<Record<string, unknown>>,
         interactiveLayers: Array as PropType<string[]>,
@@ -294,18 +277,13 @@ const MapJrComponent = defineComponent({
     setup(props, {emit, slots, expose}) {
         const el = shallowRef<HTMLElement | null>(null);
         // Each part of the description is found on its own, so that a change of one prop does not make the other parts
-        // again. Objects from Vue can be changed in place: the view, the list of marker layers, the data of a layer,
-        // a reactive style. (Not the inside of one marker: replace the marker.)
+        // again. Objects from Vue can be changed in place: the view, the layers, a reactive style. (Not the data of a
+        // source: give a new object.)
         const style = computed(() => { const v = props.mapStyle; return typeof v === 'object' && isReactive(v) ? plain(v) : v; });
         const view = computed(() => props.view && plain(props.view));
         const sources = computed(() => props.sources && plain(props.sources));
         const added = computed(() => props.layers && plain(props.layers));
         const terrain = computed(() => props.terrain && plain(props.terrain));
-        const markers = computed(() => props.markers?.map(m => {
-            const out: any = {};
-            for (const k in m) out[k] = k === 'data' ? markerData(m.data) : plain((m as any)[k]);
-            return out as MarkerLayerOptions;
-        }));
         // (The data of each source is the object behind Vue's object. The list itself can be made again in each render.)
         let lastData: Record<string, unknown> | undefined;
         const data = computed(() => {
@@ -334,7 +312,7 @@ const MapJrComponent = defineComponent({
         const listensForError = !!getCurrentInstance()?.vnode.props?.onError;
         const spec = computed<MapSpec>(() => {
             const out: MapSpec = {
-                style: style.value, sources: sources.value, layers: added.value, terrain: terrain.value, view: view.value, initialView: props.initialView && toRaw(props.initialView), images: images.value, markers: markers.value, data: data.value, interactiveLayers: layers.value, controls: controls.value,
+                style: style.value, sources: sources.value, layers: added.value, terrain: terrain.value, view: view.value, initialView: props.initialView && toRaw(props.initialView), images: images.value, data: data.value, interactiveLayers: layers.value, controls: controls.value,
                 minZoom: props.minZoom, maxZoom: props.maxZoom, maxPitch: props.maxPitch, maxBounds: props.maxBounds && toRaw(props.maxBounds), cursor: props.cursor, transformRequest: props.transformRequest, cooperativeGestures: props.cooperativeGestures, padding: props.padding && typeof props.padding === 'object' ? toRaw(props.padding) : props.padding, projection: props.projection && toRaw(props.projection), globalState: props.globalState && toRaw(props.globalState),
                 renderer: props.renderer, fonts: props.fonts && toRaw(props.fonts), fontFamily: props.fontFamily, interactive: props.interactive, antialias: props.antialias,
                 attribution: (props.attribution as unknown) === true ? undefined : props.attribution && toRaw(props.attribution), hash: props.hash, nonce: props.nonce,
@@ -374,7 +352,7 @@ const MapJrComponent = defineComponent({
             // @ts-ignore: the package refers to itself, which the type check of this project does not resolve
             const server = await import('@map-jr/map-jr-gl/server') as typeof import('./server.ts');
             first.value = await server.renderFirstView({style: toRaw(props.mapStyle), center: view.center ?? [0, 0], zoom: view.zoom ?? 0, bearing: view.bearing, bounds: fit ? toRaw(fit) : undefined, padding: props.initialView?.padding, width: o.width ?? 800, height: o.height ?? 500,
-                markers: props.markers && plain(props.markers), images: props.images && toRaw(props.images) as Record<string, string>, overrides: o.overrides, sources: toRaw(props.sources), layers: toRaw(props.layers), terrain: toRaw(props.terrain), data: props.data && toRaw(props.data), timeout: o.timeout, requestTimeout: o.requestTimeout, maxBytes: o.maxBytes, allowHosts: o.allowHosts, attribution: props.attribution === false ? false : o.attribution});
+                images: props.images && toRaw(props.images) as Record<string, string>, overrides: o.overrides, sources: toRaw(props.sources), layers: toRaw(props.layers), terrain: toRaw(props.terrain), data: props.data && toRaw(props.data), timeout: o.timeout, requestTimeout: o.requestTimeout, maxBytes: o.maxBytes, allowHosts: o.allowHosts, attribution: props.attribution === false ? false : o.attribution});
         });
         return () => h('div', {class: 'map-jr-vue', style: 'position:relative;width:100%;height:100%'}, [
             h('div', {ref: el, style: 'position:absolute;inset:0', innerHTML: first.value}),
