@@ -76,7 +76,9 @@ export type Command =
 export type EngineEvent =
     | {type: 'camera'; lng: number; lat: number; zoom: number; bearing: number; pitch: number; /** Ground height at the centre with 3D terrain, else 0. */ elevation: number; exaggeration: number; groundRange?: [number, number]; padding: [number, number, number, number]; moving: boolean;
         /** During a drag: the ground that it grabbed, and the number of the command that grabbed it (#38). */
-        grab?: [number, number, number]}
+        grab?: [number, number, number];
+        /** The number of the last command that the engine has applied (see `seq` in map.ts). */
+        seq?: number}
     | {type: 'idle'; seq: number}
     /** The tiles of a source for the view are all loaded, or are no longer all loaded. */
     | {type: 'source'; source: string; loaded: boolean; /** The version of the source that the page gave (see the `style` command). */ v: number}
@@ -1681,7 +1683,7 @@ export class Engine {
         if (cameraChanged || animating !== this.moving) {
             this.lastCamera = camera;
             this.moving = animating;
-            this.emit({type: 'camera', lng: tr.lng, lat: tr.lat, zoom: tr.zoom, bearing: tr.bearing, pitch: tr.pitch, elevation: tr.elevation, exaggeration: this.exaggeration, groundRange: tr.groundRange, padding: tr.padding, moving: animating,
+            this.emit({type: 'camera', lng: tr.lng, lat: tr.lat, zoom: tr.zoom, bearing: tr.bearing, pitch: tr.pitch, elevation: tr.elevation, exaggeration: this.exaggeration, groundRange: tr.groundRange, padding: tr.padding, moving: animating, seq: this.seq,
                 grab: this.grab ? [this.grab.lng, this.grab.lat, this.grab.seq] : undefined});
         }
         const busy = animating || fading || this.placeDirty || this.iconsRev !== this.iconsDone || behind || this.meshBehind;

@@ -171,6 +171,8 @@ export class Map {
     private tilesLoaded = false;
     /** The number of the last command to the engine that can change what is loaded. */
     private seq = 0;
+    /** The `seq` of the last jumpTo, which wrote `this.tr` in advance: an older camera report does not overwrite it (#548). */
+    private jumped = 0;
     /** The sources whose tiles for the view are all loaded, as the engine tells it. */
     private loadedSources = new Set<string>();
     private sourceRules = new globalThis.Map<string, {text: string; data: unknown; v: number}>();
@@ -438,7 +440,7 @@ export class Map {
             for (const w of this.workers.splice(0)) w.terminate();
             this.tilePool?.release();
             this.tilePool = undefined; // (a `remove` during the start below must not give the same workers back again)
-            this.ready = false; this.queue = []; this.tilesLoaded = false; this.seq = 0;
+            this.ready = false; this.queue = []; this.tilesLoaded = false; this.seq = 0; this.jumped = 0;
             this.loadedSources.clear(); // (the new engine has no tiles)
             const fresh = this.canvas.cloneNode() as HTMLCanvasElement, tr = this.tr;
             this.canvas.replaceWith(fresh);
@@ -609,7 +611,9 @@ export class Map {
             const was = this.seen ?? this.tr, zoomed = e.zoom !== was.zoom;
             const turned = e.bearing !== was.bearing, tilted = e.pitch !== was.pitch;
             this.seen = {zoom: e.zoom, bearing: e.bearing, pitch: e.pitch};
-            Object.assign(this.tr, {lng: e.lng, lat: e.lat, zoom: e.zoom, bearing: e.bearing, pitch: e.pitch, elevation: e.elevation, padding: e.padding});
+            // (A report from before the last jumpTo would move the camera back for a frame: the needle of the compass and
+            // getBearing() stepped back during a fast drag of the compass with the worker renderer, #548.)
+            if ((e.seq ?? this.jumped) >= this.jumped) Object.assign(this.tr, {lng: e.lng, lat: e.lat, zoom: e.zoom, bearing: e.bearing, pitch: e.pitch, elevation: e.elevation, padding: e.padding});
             // With 3D terrain, positions on this thread follow the ground too (clicks, project/unproject, DOM markers).
             const k = e.exaggeration;
             this.tr.groundRange = e.groundRange;
@@ -859,6 +863,7 @@ export class Map {
         if (padding) this.tr.padding = padding;
         this.tr.set(o.center, o.zoom, o.bearing, o.pitch);
         this.post({type: 'jump', center: o.center && toLngLat(o.center), zoom: o.zoom, bearing: o.bearing, pitch: o.pitch, padding});
+        this.jumped = this.seq;
         return this;
     }
     /**
