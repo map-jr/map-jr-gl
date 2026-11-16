@@ -4,7 +4,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 // @ts-expect-error (a plain module of the conformance tools, without types)
-import {summarize, readExpectations, report, changes} from '../../test/conformance/render-summary.mjs';
+import {summarize, readExpectations, report, changes, percent} from '../../test/conformance/render-summary.mjs';
 
 const dir = new URL('../conformance/', import.meta.url);
 const results = [
@@ -22,7 +22,14 @@ test('render summary: the count for near includes the matches, and the tests tha
     const s = summarize(results, expectations);
     assert.deepEqual(s.totals, {match: 2, near: 3, differ: 3, differWontfix: 1, differLater: 1, errored: 1, skipped: 1, run: 7});
     assert.deepEqual(s.labels.globe, {decision: 'later', tests: 2, match: 0, near: 1, differ: 1, error: 0, skipped: 0});
-    assert.equal(report(s)[0], 'MapLibre render tests: 2 of 7 match (1% of pixels or less are different), 3 match or are near (5% or less), 3 differ (1 of them wontfix, 1 later), 1 errored; 1 skipped (scripted or high-density)');
+    assert.equal(report(s)[0], 'MapLibre render tests: 2 of 7 match (28.6%; 1% of pixels or less are different), 3 match or are near (42.9%; 5% or less), 3 differ (1 of them wontfix, 1 later), 1 errored; 1 skipped (scripted or high-density)');
+});
+
+test('render summary: a percent has one decimal place, so that a change of two tests of 1429 shows', () => {
+    assert.equal(percent(874, 1429), '61.2%');
+    assert.equal(percent(1154, 1429), '80.8%');
+    assert.notEqual(percent(876, 1429), percent(874, 1429));
+    assert.equal(percent(0, 0), '0.0%');
 });
 
 test('render summary: the status of each test is sorted by id, so that the tracked file has a stable order', () => {

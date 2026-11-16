@@ -55,9 +55,15 @@ export function summarize(results, expectations = [], allIds = results.map(r => 
     };
 }
 
+/**
+ * The part of the tests that ran, as a percent with one decimal place ("61.2%"). One percent of the 1429 tests is 14
+ * tests, so a whole number hides a change of a few tests.
+ */
+export const percent = (n, run) => run ? (n / run * 100).toFixed(1) + '%' : '0.0%';
+
 /** The lines that the run prints. The first line has the totals, and the workflow `CI` copies it into its summary. */
 export function report({totals: t, labels, stale, unused}) {
-    const lines = [`MapLibre render tests: ${t.match} of ${t.run} match (1% of pixels or less are different), ${t.near} match or are near (5% or less), ${t.differ} differ (${t.differWontfix} of them wontfix, ${t.differLater} later), ${t.errored} errored; ${t.skipped} skipped (scripted or high-density)`];
+    const lines = [`MapLibre render tests: ${t.match} of ${t.run} match (${percent(t.match, t.run)}; 1% of pixels or less are different), ${t.near} match or are near (${percent(t.near, t.run)}; 5% or less), ${t.differ} differ (${t.differWontfix} of them wontfix, ${t.differLater} later), ${t.errored} errored; ${t.skipped} skipped (scripted or high-density)`];
     for (const d of decisions) {
         const of = Object.entries(labels).filter(([, l]) => l.decision === d);
         if (of.length) lines.push(`Labels with the decision ${d} (differ/tests): ` + of.map(([name, l]) => `${name} ${l.differ}/${l.tests}`).join(', '));

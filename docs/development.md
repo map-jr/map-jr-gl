@@ -94,7 +94,8 @@ test one status:
 | `skipped` | The test scripts the map (`operations`) or has a pixel ratio other than 1. The run does not draw it. |
 
 The first line that the run prints has the totals. Its count for "match or are near" includes the tests that match,
-so it is the number of tests where 5% of the pixels or less are different. The minimum in `package.json` (`--min`) is
+so it is the number of tests where 5% of the pixels or less are different. Each of the two counts has its percent
+of the tests that ran, with one decimal place. The minimum in `package.json` (`--min`) is
 for the count of tests that match.
 
 A run without `--filter` and `--limit` writes two tracked files in `test/conformance/`. Commit both after a change

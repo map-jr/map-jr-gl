@@ -3,6 +3,7 @@
 import {execSync} from 'node:child_process';
 import {existsSync, readFileSync, readdirSync, writeFileSync} from 'node:fs';
 import {gzipSync} from 'node:zlib';
+import {percent} from '../test/conformance/render-summary.mjs';
 
 const root = new URL('..', import.meta.url).pathname;
 const run = cmd => { try { return execSync(cmd, {cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe']}); } catch (e) { return String(e.stdout ?? '') + String(e.stderr ?? ''); } };
@@ -44,7 +45,7 @@ const lines = [
     `| MapLibre \`Map\` methods | ${num(api, /coverage: (\d+)/)} of ${num(api, /of (\d+) methods/)} are available; ${num(api, /no effect: (\d+)/)} more are accepted and have no effect |`,
     ...plugins,
     // "near" includes the tests that are the same (see test/conformance/render-summary.mjs).
-    ...(render ? [`| MapLibre render tests | ${render.match} of ${render.run} are the same (1% of pixels or less are different). ${render.near} of ${render.run} are the same or near (5% or less).${render.differWontfix ? ` ${render.differWontfix} of the ${render.differ} that differ are differences that the library keeps (see [Development](docs/development.md#render-tests)).` : ''} |`] : []),
+    ...(render ? [`| MapLibre render tests | ${render.match} of ${render.run} are the same (${percent(render.match, render.run)}; 1% of pixels or less are different). ${render.near} of ${render.run} are the same or near (${percent(render.near, render.run)}; 5% or less).${render.differWontfix ? ` ${render.differWontfix} of the ${render.differ} that differ are differences that the library keeps (see [Development](docs/development.md#render-tests)).` : ''} |`] : []),
     `| Page script (gzip) | ${page} KB. MapLibre GL JS: ${mlSize('maplibre-gl.mjs', 'maplibre-gl-shared.mjs', 'maplibre-gl.css')} KB. |`,
     `| Worker script (gzip) | ${gz('map-jr-gl-worker.js')} KB. MapLibre GL JS: ${mlSize('maplibre-gl-worker.mjs', 'maplibre-gl-shared.mjs')} KB. |`,
     `| Server renderer (gzip) | ${gz('server.js')} KB |`,
