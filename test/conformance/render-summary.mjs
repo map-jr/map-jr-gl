@@ -7,6 +7,28 @@ export const statuses = ['match', 'near', 'differ', 'error', 'skipped'];
 export const decisions = ['wontfix', 'later'];
 
 /**
+ * The operations of a test (`metadata.test.operations` of its style) that the run cannot do. A custom layer and the
+ * canvas of a canvas source are code of MapLibre's harness, and `pauseTiles` uses a private member of MapLibre's map.
+ */
+export const operationsNotDone = ['addCustomLayer', 'updateFakeCanvas', 'pauseTiles'];
+
+/**
+ * Why the run skips a test, or null when the run draws it. The reason is the name of the first operation that the run
+ * cannot do, `reportWidth` for a test that compares a part of the canvas only, or `@mapbox/mvt-fixtures` for a test
+ * whose `setStyle` loads a style with tiles of that package, which MapLibre's harness serves on port 2901.
+ * @param meta `metadata.test` of the style of the test.
+ * @param readAsset gives the text of a file of the assets of the tests (`styles/nepal.json`), or '' when there is none.
+ */
+export function skipReason(meta = {}, readAsset = () => '') {
+    const ops = meta.operations ?? [], op = ops.find(o => operationsNotDone.includes(o[0]));
+    if (op) return op[0];
+    if (meta.reportWidth !== undefined || meta.reportHeight !== undefined) return 'reportWidth';
+    // (The run gives the URL of an asset its own server in place of "local://", so the name is the path of the URL.)
+    const asset = url => { try { return new URL(url.replace('local://', 'http://localhost/')).pathname.slice(1); } catch { return ''; } };
+    return ops.some(o => o[0] === 'setStyle' && typeof o[1] === 'string' && readAsset(asset(o[1])).includes('localhost:2901')) ? '@mapbox/mvt-fixtures' : null;
+}
+
+/**
  * Checks the entries of render-expectations.json and returns them. It throws an error that names the entry when
  * one is wrong, because a label that is misspelled would otherwise count nothing.
  */
@@ -56,14 +78,14 @@ export function summarize(results, expectations = [], allIds = results.map(r => 
 }
 
 /**
- * The part of the tests that ran, as a percent with one decimal place ("61.2%"). One percent of the 1429 tests is 14
+ * The part of the tests that ran, as a percent with one decimal place ("61.2%"). One percent of the tests that run is about 17
  * tests, so a whole number hides a change of a few tests.
  */
 export const percent = (n, run) => run ? (n / run * 100).toFixed(1) + '%' : '0.0%';
 
 /** The lines that the run prints. The first line has the totals, and the workflow `CI` copies it into its summary. */
 export function report({totals: t, labels, stale, unused}) {
-    const lines = [`MapLibre render tests: ${t.match} of ${t.run} match (${percent(t.match, t.run)}; 1% of pixels or less are different), ${t.near} match or are near (${percent(t.near, t.run)}; 5% or less), ${t.differ} differ (${t.differWontfix} of them wontfix, ${t.differLater} later), ${t.errored} errored; ${t.skipped} skipped (scripted or high-density)`];
+    const lines = [`MapLibre render tests: ${t.match} of ${t.run} match (${percent(t.match, t.run)}; 1% of pixels or less are different), ${t.near} match or are near (${percent(t.near, t.run)}; 5% or less), ${t.differ} differ (${t.differWontfix} of them wontfix, ${t.differLater} later), ${t.errored} errored; ${t.skipped} skipped (tests that the run cannot do)`];
     for (const d of decisions) {
         const of = Object.entries(labels).filter(([, l]) => l.decision === d);
         if (of.length) lines.push(`Labels with the decision ${d} (differ/tests): ` + of.map(([name, l]) => `${name} ${l.differ}/${l.tests}`).join(', '));

@@ -2,7 +2,7 @@
   "about": "Labels for MapLibre render tests that differ by a decision. An entry names one test (\"test\", its id) or several (\"pattern\", a regular expression for ids), and has a \"label\", a \"decision\" and a \"reason\". The decision \"wontfix\" is a difference that the owner decided to keep, and only the owner adds one. The decision \"later\" is a feature that is not decided or not done yet. The first entry that fits a test gives the test its label. See \"Render tests\" in docs/development.md.",
   "expectations": [
     {"pattern": "^projection/globe/", "label": "globe", "decision": "later", "issue": 463, "reason": "The work on the globe is in issue #463."},
-    {"pattern": "^sky/|^terrain/fog", "label": "sky and fog", "decision": "later", "reason": "Sky and fog are not available."},
+    {"pattern": "^sky/|^terrain/fog|^high-pitch/pitch95", "label": "sky and fog", "decision": "later", "reason": "Sky and fog are not available."},
     {"pattern": "^mlt/", "label": "MLT", "decision": "later", "reason": "MapLibre Tiles (MLT) are not available."},
     {"pattern": "^(video|canvas)/", "label": "video and canvas sources", "decision": "later", "reason": "Video and canvas sources are not available."},
     {"pattern": "^color-relief/", "label": "color-relief", "decision": "later", "reason": "The layer type color-relief is not available."},
