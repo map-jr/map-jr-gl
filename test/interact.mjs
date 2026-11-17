@@ -2260,6 +2260,10 @@ for (const mode of renderers) {
             const projected = make({projection: {type: 'globe'}});
             await new Promise(r => projected.once('load', r));
             out.projected = [projected.getProjection()?.type ?? 'none', warnings.splice(0).filter(w => w.includes('the option projection has no effect')).length];
+            // The debug drawing is not available (#752): showCollisionBoxes = true warns once, false does not warn.
+            projected.showTileBoundaries = false;
+            projected.showCollisionBoxes = true; projected.showCollisionBoxes = true;
+            out.debugDraw = [projected.showCollisionBoxes, warnings.splice(0).filter(w => w.startsWith('[map-jr-gl] showCollisionBoxes has no effect')).length, warnings.length];
             projected.getContainer().remove(); projected.remove();
             // The defaults give no warning.
             const plain = make({projection: {type: 'mercator'}, renderWorldCopies: true, canvasContextAttributes: {antialias: false}});
@@ -2274,6 +2278,8 @@ for (const mode of renderers) {
             for (const x of [m, plain, strict]) { const el = x.getContainer(); x.remove(); el.remove(); }
             return {...out, thrown, thrownCall};
         });
+        check('[main] maplibre-compat: showCollisionBoxes = true gives one warning, and showTileBoundaries = false none (#752)',
+            JSON.stringify(quiet.debugDraw) === '[true,1,0]', JSON.stringify(quiet.debugDraw));
         check('[main] maplibre-compat: each option with no effect gives one warning, the defaults give none, the option projection has no effect, and maxBounds works',
             quiet.options.length === 2 && ['The option renderWorldCopies', 'new Map(): canvasContextAttributes.preserveDrawingBuffer has no effect. Read the canvas with map.toBlob()'].every(n => quiet.options.some(w => w.startsWith('[map-jr-gl] ' + n))) && quiet.plain.length === 0 && String(quiet.bounds) === '-10,-10,10,10' && quiet.clamped.every((v, i) => Math.abs(v - [1.2109, 3.4573][i]) < 1e-3) && quiet.later.every((v, i) => Math.abs(v - [1.2109, 3.4573][i]) < 1e-3)
             && quiet.custom.length === 0 && quiet.projected?.join() === 'none,1', JSON.stringify({options: quiet.options, plain: quiet.plain, bounds: quiet.bounds, clamped: quiet.clamped, later: quiet.later, custom: quiet.custom, projected: quiet.projected}));
