@@ -418,8 +418,14 @@ export class Map extends CoreMap {
     remove() { super.remove(); this.getContainer().classList.remove('maplibregl-map'); }
     redraw() { this.triggerRepaint(); return this; }
     // react-map-gl and other wrappers read these private members of the MapLibre map. They are here only so that
-    // those wrappers work: `style._loaded` tells them that sources and layers can be added.
-    get style() { return this.resolved ? {_loaded: this.ready} : undefined; }
+    // those wrappers work: `style._loaded` tells them that sources and layers can be added, and Maputnik reads the
+    // source layers of each vector source in `tileManagers[id]._source.vectorLayerIds` (`sourceCaches` in MapLibre 5).
+    get style() {
+        if (!this.resolved) return undefined;
+        const tileManagers: Record<string, {_source: {id: string; type: string; vectorLayerIds?: string[]}}> = {};
+        for (const [id, s] of Object.entries(this.resolved.sources)) tileManagers[id] = {_source: {id, type: s.type, vectorLayerIds: s.layerIds}};
+        return {_loaded: this.ready, tileManagers, sourceCaches: tileManagers};
+    }
     _render() { this.triggerRepaint(); }
     _update() { this.triggerRepaint(); }
     /** There is no sky in this library. (react-map-gl reads the value when a style has loaded.) */
