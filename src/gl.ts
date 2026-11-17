@@ -978,8 +978,8 @@ export class GLRenderer {
             if (L.type === 'fill-extrusion' && this.globe) continue;
             if (L.type === 'background' && this.globe && pass === 'all') {
                 // On the globe the background covers the sphere, tile by tile, and not the whole canvas.
-                const name = L.p.pattern.eval(zoom), place = name ? pattern(name, L.p.opacity.eval(zoom)) : null;
-                if (name && !place) continue;
+                const name = L.p.pattern.eval(zoom), place = name != null ? pattern(name, L.p.opacity.eval(zoom)) : null;
+                if (name != null && !place) continue;
                 const u = place ? undefined : use('fill');
                 if (u) { gl.vertexAttrib4f(1, 1, 1, 1, 1); gl.uniform4fv(u.u_color, color(L)); }
                 gl.bindVertexArray(this.globeGrid().vao);
@@ -991,7 +991,8 @@ export class GLRenderer {
                 }
                 continue;
             }
-            if (L.type === 'background' && L.p.pattern.eval(zoom)) {
+            // A background-pattern that is set but names no image (also "") draws nothing; only an unset one draws the color.
+            if (L.type === 'background' && L.p.pattern.eval(zoom) != null) {
                 const place = pattern(L.p.pattern.eval(zoom), L.p.opacity.eval(zoom));
                 if (!place) continue;
                 // Screen position -> world pixels at zoom Z, about the map centre (pitch is ignored for backgrounds).
