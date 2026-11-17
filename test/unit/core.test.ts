@@ -338,6 +338,14 @@ test('queries: features are found from raw tile data, with filters and geometry'
     assert.equal(queryTile(bytes, {...q, filter: ['==', ['get', 'class'], 'no-such-class']}).length, 0);
 });
 
+test('queries: a feature without an id in the buffer of a tile is left out, so that the tile that holds it gives it one time (#615)', () => {
+    const point = (x: number, y: number) => ({type: 1, id: undefined, properties: {x}, geometry: (_e: number, c: number[], ends: number[]) => { c.push(x, y); ends.push(1); }});
+    const line = {type: 2, id: undefined, properties: {x: 'line'}, geometry: (_e: number, c: number[], ends: number[]) => { c.push(-100, 10, 100, 10); ends.push(2); }};
+    const layers = {l: {features: [point(-50, 10), point(50, 10), line, {...point(-60, 10), id: 7}]}} as never;
+    const found = queryTile(layers, {source: 's', z: 0, x: 0, y: 0, px: 0, py: 0, radius: 0, box: [-200, -200, 200, 200]});
+    assert.deepEqual(found.map(f => f.id ?? f.properties.x), [50, 'line', 7]);
+});
+
 test('elevation: Terrarium and Mapbox encodings decode, with interpolation between pixels', () => {
     // 2x1 image: 100 m and 200 m, Terrarium encoded (R * 256 + G + B / 256 - 32768).
     const px = (m: number) => { const v = m + 32768; return [Math.floor(v / 256), Math.floor(v % 256), 0, 255]; };
