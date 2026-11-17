@@ -271,11 +271,11 @@ const MapJrComponent = defineComponent({
         /**
          * On a server: render the first view as SVG into the page. `true`, or options: the size in pixels that the map
          * has on most screens (800 by 500 without them), `overrides` (changes to style layers for the server render, by
-         * the id of the layer: `{building: {hidden: true}}`), and `attribution` (the credits to show, when the server
+         * the id of the layer: `{building: {hidden: true}}`, or `false` to ignore `map-jr:ssr` in the style), and `attribution` (the credits to show, when the server
          * must not take them from the sources of the style), and the limits for requests of the server renderer
          * (`timeout`, `requestTimeout`, `maxBytes`, `allowHosts`). The server also renders `sources`, `layers`, `terrain` and `data`.
          */
-        ssr: {type: [Boolean, Object] as PropType<boolean | {width?: number; height?: number; overrides?: Record<string, SSROverrides>; attribution?: string | string[]; timeout?: number; requestTimeout?: number; maxBytes?: number; allowHosts?: string[]}>, default: false},
+        ssr: {type: [Boolean, Object] as PropType<boolean | {width?: number; height?: number; overrides?: false | Record<string, SSROverrides>; attribution?: string | string[]; timeout?: number; requestTimeout?: number; maxBytes?: number; allowHosts?: string[]}>, default: false},
     },
     emits: {
         'update:view': (_view: View) => true,

@@ -416,8 +416,14 @@ test('server: renders a tile to SVG offline, with generated icons and overrides'
     const changed = await renderToSVG({...opts, style: credited, overrides: {water: {hidden: true}, roads: {paint: {'line-color': '#abcdef'}}}});
     assert.ok(!changed.svg.includes('#00aaff') && changed.svg.includes('#abcdef'), 'overrides by layer id are used');
     assert.deepEqual(changed.attribution, ['<a href="https://example.com">Example</a>']);
-    const full = await renderToSVG({...opts, ssrOverrides: false});
+    // `overrides: false` renders the style with no override (#699): the hidden layer is drawn.
+    const full = await renderToSVG({...opts, overrides: false});
     assert.ok(full.svg.includes('#123456') && full.svg.length > svg.length);
+    // It also ignores `simplify` and `minSize` of `map-jr:ssr` (#723): the geometry is that of the style without the metadata.
+    const coarse = {...style, layers: style.layers.map(l => l.id === 'roads' || l.id === 'water' ? {...l, metadata: {'map-jr:ssr': {simplify: 40, minSize: 40}}} : l)};
+    const simplified = await renderToSVG({...opts, style: coarse});
+    assert.ok(simplified.svg.length < svg.length, '`simplify` and `minSize` of the style apply without the option');
+    assert.equal((await renderToSVG({...opts, style: coarse, overrides: false})).svg, full.svg);
 });
 
 test('style: font-faces become web fonts keyed by family, weight and style', async () => {
