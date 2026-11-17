@@ -229,6 +229,8 @@ export class Engine {
     private nextReq = 1;
     private nextBackend = 0;
     private lastCamera = '';
+    /** `lastCamera` without the height of the ground and the exaggeration of the terrain. */
+    private lastView = '';
     private wasIdle = false;
     /** The map has been idle once: the overview tiles wait for that (#326). */
     private wentIdle = false;
@@ -1612,7 +1614,11 @@ export class Engine {
         const camera = `${tr.padding},${tr.lng},${tr.lat},${tr.zoom},${tr.bearing},${tr.pitch},${Math.round(tr.elevation)},${this.exaggeration}`, cameraChanged = camera !== this.lastCamera;
         // (The first camera of the map is not a movement: a map that starts is at rest, and the wait for a camera that
         // has just stopped would hold up the first `idle` by a fifth of a second, #436.)
-        if (cameraChanged) { this.placeDirty = true; if (this.lastCamera) this.cameraMovedAt = began; }
+        // (Nor is a new height of the ground under the camera, which comes with the elevation data of 3D terrain and not
+        // from a movement: the camera string without it is `flat`.)
+        const flat = camera.replace(/,[^,]*,[^,]*$/, '');
+        if (cameraChanged) { this.placeDirty = true; if (this.lastCamera && flat !== this.lastView) this.cameraMovedAt = began; }
+        this.lastView = flat;
 
         // Decide which labels show only every so often; in between they ride along with the map and fade.
         const zooming = Math.abs(tr.zoom - this.placeZoom) > 0.12;
@@ -1720,7 +1726,8 @@ export class Engine {
         }
         const busy = animating || fading || this.placeDirty || this.iconsRev !== this.iconsDone || behind || this.meshBehind;
         const idle = complete && !busy && !settling && !this.spritePending && !this.contourWait && !this.atlas.loading;
-        if (settling && !busy) setTimeout(() => this.repaint(), 200);
+        // (The frame for the map at rest comes when the 200 ms are over, not 200 ms after this frame.)
+        if (settling && !busy) setTimeout(() => this.repaint(), 200 - (began - this.cameraMovedAt));
         if (this.contourWait) { this.contourWait = false; setTimeout(() => this.repaint(), CONTOUR_WAIT + 20); }
         // (A context can be lost with no event. Nothing was drawn then, and the page must not take this for a frame.)
         // The page always gets a `frame` event for the first frame that an engine has drawn to its end: a new engine that

@@ -218,6 +218,29 @@ for (const renderer of renderers) {
         }, renderer);
         check(`[${renderer}] the first idle of a map does not wait a fifth of a second for a camera that has just stopped (#436)`, Math.min(...firstIdle) < 200, JSON.stringify(firstIdle));
 
+        // After a movement the map is idle 200 ms after the camera stopped, also when a frame comes late in those 200 ms
+        // (#436): the wait for the frame at rest is the rest of the 200 ms, not 200 ms more. A change of a paint
+        // property 150 ms after a jump gives such a frame. The shortest of three tries is read.
+        const restIdle = await page.evaluate(async renderer => {
+            const t = window.t, times = [], wait = ms => new Promise(r => setTimeout(r, ms));
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+            const host = t.lib.createMap(el, {style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#abc'}}]}, renderer, attribution: false});
+            await new Promise(r => { if (host.state.get().idle) r(); else host.state.subscribe(s => s.idle, v => v && r()); });
+            for (let i = 0; i < 3; i++) {
+                await wait(300);
+                const began = performance.now();
+                host._map.jumpTo({center: [i + 1, i + 1]});
+                await wait(150);
+                // (The `idle` event of the map after the last of the two changes.)
+                const done = new Promise(r => host._map.once('idle', () => r(performance.now())));
+                host._map.setPaintProperty('bg', 'background-color', i % 2 ? '#abc' : '#cba');
+                times.push(Math.round(await done - began));
+            }
+            host.destroy(); el.remove();
+            return times;
+        }, renderer);
+        check(`[${renderer}] a frame late in the 200 ms after a movement does not start 200 ms more before idle (#436)`, Math.min(...restIdle) < 300, JSON.stringify(restIdle));
+
         // 3b. `projection` of the description (#463): it takes the place of the projection of the style, `null` gives the
         // projection of the style back, the same content does nothing, and the control `globe()` switches it.
         const projection = await page.evaluate(async renderer => {
