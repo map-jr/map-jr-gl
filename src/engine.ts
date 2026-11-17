@@ -377,7 +377,7 @@ export class Engine {
     /** 3D terrain: height of the ground at the map centre in real (unexaggerated) metres. */
     private rawElevation = 0;
     private lastPose = '';
-    private movedAt = 0;
+    private movedAt = -1e9;
     /** 3D terrain: the exaggeration in force this frame (zero when looking straight down, or with no terrain). */
     private exaggeration = 0;
     /** Counts changes to the style and its images, so cached terrain pictures know when they are out of date. */
@@ -1455,7 +1455,9 @@ export class Engine {
             // bobbing over every ridge. At rest the centre is put back on the ground the camera is looking at, with
             // the camera left exactly where it is, so nothing on screen moves when a gesture ends or heights arrive.
             const pose = `${tr.lng},${tr.lat},${tr.zoom}`;
-            if (pose !== this.lastPose) { this.lastPose = pose; this.movedAt = now; }
+            // (The first pose is not a movement: a map that starts is at rest, so the centre takes the height of the
+            // ground as soon as it is known, and `idle` does not come with the centre still at sea level, #793.)
+            if (pose !== this.lastPose) { if (this.lastPose) this.movedAt = now; this.lastPose = pose; }
             const moving = cameraAnimating || now - this.movedAt < 150;
             const known = (mx: number, my: number) => !!this.demTile(mx - Math.floor(mx), my, 30);
             const e = this.ease;
