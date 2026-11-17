@@ -1135,6 +1135,13 @@ MapLibre GL JS. `fn` gets `{url, type, headers}` and an `AbortController`, and r
 `url` is the URL as the style or the TileJSON has it, also when it has another URL inside
 (`cog://https://example.com/a.tif`). The map calls `abort()` of that controller when the map is removed, and when a newer `setData` of a GeoJSON source replaces the request (also the request of `updateData` whose diffs that `setData` drops). A tile request that is no longer needed is not aborted. After an abort, the map ignores the answer of `fn`. The
 data can be an `ArrayBuffer`, a typed array, a string or an object (which the map turns into JSON).
+
+| Request | `type` | `data` that `fn` can return |
+|---|---|---|
+| A tile of a `raster` or `raster-dem` source | `image`, and `headers.accept` is `image/webp,*/*` | The bytes of an image file (an `ArrayBuffer` or a typed array), an `ImageBitmap` or an `HTMLImageElement`. The map copies the image, so `fn` can keep it. |
+| A tile of a `vector` source, an image of `addImage`, the image of a sprite | `arrayBuffer` | The bytes of the file. |
+| Every other request (a style, a TileJSON, GeoJSON data, the JSON of a sprite, glyphs) | `json` | An object, a string or bytes. |
+
 `removeProtocol(name)` removes it. The protocols are the same for every map of the page, and a map that exists
 already uses a protocol added later.
 

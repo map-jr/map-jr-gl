@@ -880,6 +880,49 @@ for (const mode of renderers) {
     });
     check(`[${mode}] addProtocol('pmtiles') warns once that the library reads pmtiles:// itself`,
         pmWarns.length === 1 && pmWarns[0].startsWith('[map-jr-gl]') && pmWarns[0].includes('pmtiles://'), JSON.stringify(pmWarns));
+    // #603: a protocol gets the request of a raster or raster-dem tile with the type `image` and an `accept` header, as in
+    // MapLibre GL JS, and it can answer with an ImageBitmap, an HTMLImageElement or the bytes of an image file.
+    const drawn = await page.evaluate(async () => {
+        const m = window.map, mod = await import('/dist/map-jr-gl-maplibre-compat.js'), asked = {}, kept = [], urls = [];
+        const colours = {bitmap: '#ff0000', element: '#00ff00', bytes: '#0000ff', dem: '#018000'};
+        mod.addProtocol('drawn', async request => {
+            const how = request.url.split('/')[2], c = Object.assign(document.createElement('canvas'), {width: 64, height: 64}), g = c.getContext('2d');
+            if (how === 'https:') { urls.push(request.url); return {data: {type: 'FeatureCollection', features: []}}; }
+            asked[how] = request.type + ' ' + request.headers?.accept;
+            g.fillStyle = colours[how]; g.fillRect(0, 0, 64, 64);
+            if (how === 'element') { const img = new Image(); img.src = c.toDataURL(); await img.decode(); return {data: img}; }
+            if (how === 'bytes') return {data: await (await new Promise(r => c.toBlob(r))).arrayBuffer()};
+            const data = await createImageBitmap(c);
+            kept.push(data); // (the protocol keeps its image, as a protocol with a cache does)
+            return {data};
+        });
+        const middle = async () => { const bmp = await createImageBitmap(await m.toBlob()), g = new OffscreenCanvas(bmp.width, bmp.height).getContext('2d'); g.drawImage(bmp, 0, 0); return [...g.getImageData(bmp.width >> 1, bmp.height >> 1, 1, 1).data].slice(0, 3).join(); };
+        const seen = {};
+        try {
+            for (const how of ['bitmap', 'element', 'bytes']) {
+                m.addSource('drawn', {type: 'raster', tiles: [`drawn://${how}/{z}/{x}/{y}`], tileSize: 256});
+                m.addLayer({id: 'drawn', type: 'raster', source: 'drawn', paint: {'raster-fade-duration': 0}});
+                for (let i = 0; i < 80 && !(asked[how] && m.areTilesLoaded()); i++) await new Promise(r => setTimeout(r, 100));
+                await new Promise(r => { m.once('idle', r); m.triggerRepaint(); setTimeout(r, 5000); });
+                seen[how] = await middle();
+                m.removeLayer('drawn'); m.removeSource('drawn');
+            }
+            m.addSource('drawn', {type: 'raster-dem', tiles: ['drawn://dem/{z}/{x}/{y}'], tileSize: 256});
+            m.addLayer({id: 'drawn', type: 'hillshade', source: 'drawn'});
+            for (let i = 0; i < 80 && !(asked.dem && m.areTilesLoaded()); i++) await new Promise(r => setTimeout(r, 100));
+            seen.demLoaded = m.areTilesLoaded();
+            m.removeLayer('drawn'); m.removeSource('drawn');
+            // The compat entry fetches the data of a GeoJSON source for querySourceFeatures: the URL of a protocol that has
+            // another URL inside reaches the protocol as it is written.
+            m.addSource('drawn', {type: 'geojson', data: 'drawn://https://example.com/points.json'});
+            m.querySourceFeatures('drawn');
+            for (let i = 0; i < 30 && urls.length < 2; i++) await new Promise(r => setTimeout(r, 100));
+            m.removeSource('drawn');
+        } finally { mod.removeProtocol('drawn'); }
+        return {asked, seen, urls, keptWhole: kept.length > 0 && kept.every(b => b.width === 64)};
+    });
+    check(`[${mode}] addProtocol: a raster and a raster-dem tile have the request type image, and an ImageBitmap, an HTMLImageElement and bytes are drawn; querySourceFeatures asks for the URL of a GeoJSON source as written (#603)`,
+        Object.values(drawn.asked).length === 4 && Object.values(drawn.asked).every(a => a === 'image image/webp,*/*') && drawn.seen.bitmap === '255,0,0' && drawn.seen.element === '0,255,0' && drawn.seen.bytes === '0,0,255' && drawn.seen.demLoaded && drawn.keptWhole && drawn.urls.length === 2 && drawn.urls.every(u => u === 'drawn://https://example.com/points.json'), JSON.stringify(drawn));
     // map.painter (#205): the development build warns once per map, and the value is undefined; the production build does not warn.
     const painter = await page.evaluate(async () => {
         const out = {}, warn = console.warn;
@@ -2692,6 +2735,67 @@ for (const mode of renderers) {
         });
         check('[main] maplibre-compat: listens, getStyleUrl and fitScreenCoordinates (with a bearing, padding and maxZoom) agree with MapLibre (#564)',
             m564.ml.length === m564.compat.length && m564.ml.every((v, i) => typeof v === 'number' ? Math.abs(v - m564.compat[i]) < 1e-3 : v === m564.compat[i]), JSON.stringify(m564));
+        // #565: isSourceLoaded(id) answers for one source and fires `error` for an id that the style does not have, and
+        // isActive() of a handler is true during its gesture, as in MapLibre GL JS (served at /ml/).
+        const m565 = {};
+        for (const name of ['ml', 'compat']) {
+            const sources = await page.evaluate(async name => {
+                const lib = await import(name === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+                if (name === 'ml') lib.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px;z-index:99999'}));
+                const point = lng => ({type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [lng, 45]}});
+                const style = {version: 8, sources: {a: {type: 'geojson', data: point(10)}, b: {type: 'geojson', data: point(11)}},
+                    layers: [{id: 'bg', type: 'background'}, {id: 'a', type: 'circle', source: 'a'}, {id: 'b', type: 'circle', source: 'b'}]};
+                const m = window.m565 = new lib.Map({container: el, renderer: 'main', style, center: [10, 45], zoom: 4, fadeDuration: 0});
+                await new Promise(r => m.once('idle', r));
+                const errors = [];
+                m.on('error', e => errors.push(e.error));
+                let missing;
+                try { missing = m.isSourceLoaded('nope'); } catch { missing = 'threw'; }
+                const out = [String(missing), errors.length, errors[0] instanceof Error, m.isSourceLoaded('a'), m.isSourceLoaded('b')];
+                m.getSource('a').setData(point(12));
+                out.push(m.isSourceLoaded('a'), m.isSourceLoaded('b'), m.getSource('a').loaded(), m.getSource('b').loaded());
+                await new Promise(r => m.once('idle', r));
+                out.push(m.isSourceLoaded('a'), errors.length);
+                return out.join();
+            }, name);
+            const active = () => page.evaluate(() => ['dragPan', 'dragRotate', 'boxZoom', 'touchZoomRotate', 'touchPitch', 'scrollZoom'].map(h => +window.m565[h].isActive()).join(''));
+            const gesture = async (button, key) => {
+                await page.mouse.move(150, 100);
+                if (key) await page.keyboard.down(key);
+                await page.mouse.down({button});
+                const before = await active();
+                await page.mouse.move(180, 120, {steps: 5});
+                const during = await active();
+                await page.mouse.up({button});
+                if (key) await page.keyboard.up(key);
+                const after = await active();
+                await page.waitForTimeout(500);
+                return [before, during, after].join('>');
+            };
+            m565[name] = [sources, await gesture('left'), await gesture('right'), await gesture('left', 'Shift')].join(' ');
+            // (Chromium has no touch input here: the two-finger gestures are checked for the compat entry alone.)
+            if (name === 'compat') m565.touch = await page.evaluate(() => {
+                const m = window.m565, c = m.getCanvas(), out = [];
+                const send = (type, id, x, y) => c.dispatchEvent(new PointerEvent(type, {pointerId: id, pointerType: 'touch', clientX: x, clientY: y, bubbles: true, cancelable: true}));
+                const read = () => out.push(['touchZoomRotate', 'touchPitch', 'dragPan'].map(h => +m[h].isActive()).join(''));
+                send('pointerdown', 11, 100, 100); send('pointerdown', 12, 200, 100);
+                for (let i = 1; i <= 3; i++) { send('pointermove', 11, 100 - i * 15, 100); send('pointermove', 12, 200 + i * 15, 100); }
+                read();
+                send('pointerup', 11, 55, 100); read(); send('pointerup', 12, 245, 100);
+                send('pointerdown', 13, 120, 60); send('pointerdown', 14, 180, 60);
+                for (let i = 1; i <= 3; i++) { send('pointermove', 13, 120, 60 + i * 10); send('pointermove', 14, 180, 60 + i * 10); }
+                read();
+                m.touchPitch.disable(); read(); m.touchPitch.enable();
+                send('pointerup', 13, 120, 90); send('pointerup', 14, 180, 90); read();
+                return out.join();
+            });
+            await page.evaluate(() => { const el = window.m565.getContainer(); window.m565.remove(); el.remove(); delete window.m565; });
+        }
+        check('[main] maplibre-compat: isSourceLoaded answers for one source and fires error for an unknown id, and isActive of dragPan, dragRotate and boxZoom is true during the gesture, as in MapLibre (#565)',
+            m565.ml === m565.compat && m565.compat.startsWith('undefined,1,true,true,true,false,true,false,true,true,1 100000>100000>000000 000000>010000>000000 001000>001000>000000'), JSON.stringify(m565));
+        check('[main] maplibre-compat: isActive of touchZoomRotate is true during a pinch and of touchPitch during a tilt, and false after a finger lifts or after disable() (#565)',
+            m565.touch === '100,000,010,000,000', JSON.stringify(m565));
         // #606: a GeoJSON feature without an id that several tiles hold is given one time. [0, 0] is the corner of four
         // tiles at zoom 2, and each of them has the three points in its buffer. MapLibre GL JS (served at /ml/) gives the
         // points one time too. It gives the square once for each tile, and this library gives it one time.
