@@ -95,14 +95,17 @@ const SKIP = Symbol();
  * The network data of a source, fetched one time for the source object and its URL. A change of the style then
  * resolves without a request. With `partial`, a source that is still on its way gives SKIP.
  */
-function once(raw: object, url: string, load: () => Promise<any>, partial?: Partial): any {
+function once(raw: object, url: string, load: () => Promise<any>, partial?: Partial, fail?: (error: unknown) => void): any {
     let m = fetched.get(raw);
     if (m?.url !== url) {
         const made: NonNullable<typeof m> = m = {url, p: load()};
         fetched.set(raw, m);
         m.p.then(v => { made.v = v; made.late?.(); }, e => { made.err = e ?? 1; made.late?.(); });
     }
-    if (!partial) return m.p.catch(e => { fetched.delete(raw); throw e; });
+    // (With `fail`, a failure is reported once for the source object, as with `partial`: a later change of the style, or
+    // a new engine after a fall back to the main thread, does not fetch it and report it again; #777.)
+    const memo = m;
+    if (!partial) return memo.told ? Promise.resolve(SKIP) : memo.p.catch(e => { if (!fail) { fetched.delete(raw); throw e; } memo.told = true; fail(e); return SKIP; });
     if (m.err) { if (!m.told) { m.told = true; partial.fail(m.err); } return SKIP; }
     if (m.v === undefined) { m.late = partial.late; return SKIP; }
     return m.v;
@@ -115,7 +118,7 @@ function once(raw: object, url: string, load: () => Promise<any>, partial?: Part
 export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) => fetch(...a), base?: string, partial?: Partial, fail = partial?.fail): Promise<ResolvedStyle> {
     const bad = (error: unknown): typeof SKIP => { if (!fail) throw error; fail(error); return SKIP; };
     // (With `partial`, `once` reports a failure itself.)
-    const get = (raw: object, url: string, load: () => Promise<any>) => partial ? once(raw, url, load, partial) : once(raw, url, load).catch(bad);
+    const get = (raw: object, url: string, load: () => Promise<any>) => partial ? once(raw, url, load, partial) : once(raw, url, load, undefined, fail);
     if (typeof style === 'string') {
         const url = absolute(style, base);
         const res = await fetchFn(url);

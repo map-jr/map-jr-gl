@@ -42,16 +42,17 @@ export interface Map {
  */
 const cooperativeGestures = (map: CoreMap) => {
     let on = false, stop: (() => void) | undefined, touchAction = '';
-    const style = map.getCanvas().style;
-    const disable = () => { if (on) { on = false; stop?.(); stop = map.gate = undefined; style.touchAction = touchAction; } };
+    // (The canvas is read each time: a fall back from the worker to the main thread replaces it; #777.)
+    const style = () => map.getCanvas().style;
+    const disable = () => { if (on) { on = false; stop?.(); stop = map.gate = undefined; style().touchAction = touchAction; } };
     map.on('remove', disable);
     return {enable() {
         if (on) return;
         on = true;
         // Until the file has loaded, the gestures are blocked without the hint: a wheel zooms only with Ctrl (⌘ on a
         // Mac), and one finger scrolls the page.
-        touchAction = style.touchAction;
-        style.touchAction = 'pan-x pan-y';
+        touchAction = style().touchAction;
+        style().touchAction = 'pan-x pan-y';
         map.gate = (type, e) => type === 'touch_pan' || !(e as WheelEvent)[navigator.userAgent.includes('Mac') ? 'metaKey' : 'ctrlKey'];
         // (After the import, the handler may be off again or the map removed: `disable()` has then set `on` to false.)
         import('./cooperative-gestures.ts').then(m => { if (on && !stop) stop = m.cooperate(map); });

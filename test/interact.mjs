@@ -2266,6 +2266,40 @@ for (const mode of renderers) {
         check('[worker] a worker without WebGL2 and renderer \'auto\': the map uses the main thread without a warning, load and idle fire, and transformRequest sees the tile requests of the view',
             fell.renderer === 'main' && fell.warnings === 0 && fell.seen.includes('load') && fell.seen.includes('idle') && !fell.seen.includes('error') && fell.tiles > 0 && fell.layer > 0, JSON.stringify(fell));
     }
+    // A map whose worker cannot make a WebGL2 context behaves as a map that started on the main thread (#777): a source
+    // that fails gives one error, an easeTo of 60 s that started before the fall back still runs, and cooperativeGestures
+    // turned on after the fall back sets touch-action on the canvas that the map shows and blocks a plain wheel.
+    if (mode === 'worker') {
+        const same = {};
+        for (const kind of ['main', 'fallback']) same[kind] = await page.evaluate(async kind => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const code = `const get = OffscreenCanvas.prototype.getContext; OffscreenCanvas.prototype.getContext = function (kind, ...rest) { return /webgl/.test(kind) ? null : get.call(this, kind, ...rest); }; importScripts(${JSON.stringify(location.origin + '/dist/map-jr-gl-worker.js')});`;
+            const url = URL.createObjectURL(new Blob([code], {type: 'text/javascript'}));
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:600px;height:400px;z-index:1000'}));
+            const wait = ms => new Promise(r => setTimeout(r, ms)), errors = [], idles = [];
+            const m = new mod.Map({container: el, attributionControl: false, center: [0, 0], zoom: 2, pitch: 20, ...(kind === 'main' ? {renderer: 'main'} : {createWorker: () => new Worker(url)}),
+                style: {version: 8, sources: {gone: {type: 'vector', url: '/no-such-tilejson.json'}, bad: {type: 'geojson', data: '/no-such-file.geojson'}}, layers: [{id: 'b', type: 'background', paint: {'background-color': '#ccc'}}]}});
+            m.on('error', e => errors.push(String(e.error?.message).replace(location.origin, '')));
+            m.on('idle', () => idles.push(m.isMoving()));
+            m.easeTo({zoom: 5, duration: 60000, easing: t => t});
+            await wait(3000);
+            const easing = {moving: m.isMoving(), idles: idles.length, zoomed: m.getZoom() > 2.02, pitch: m.getPitch()};
+            m.stop();
+            await new Promise(r => { m.once('idle', r); setTimeout(r, 5000); });
+            m.cooperativeGestures.enable();
+            await wait(500);
+            const z = m.getZoom(), r = m.getCanvas().getBoundingClientRect();
+            m.getCanvas().dispatchEvent(new WheelEvent('wheel', {deltaY: -300, clientX: r.left + 300, clientY: r.top + 200, bubbles: true, cancelable: true}));
+            await wait(800);
+            const out = {renderer: m.renderer, errors: errors.sort(), ...easing, touch: m.getCanvas().style.touchAction, wheel: Math.abs(m.getZoom() - z) > 0.01, canvases: el.querySelectorAll('canvas').length};
+            m.remove(); el.remove();
+            return out;
+        }, kind);
+        const {renderer, ...main} = same.main, {renderer: fellTo, ...fell} = same.fallback;
+        check('[worker] a map that fell back to the main thread behaves as one that started there: one error for each failed source, an easeTo of 60 s keeps running, and cooperativeGestures blocks the wheel on the canvas it shows (#777)',
+            renderer === 'main' && fellTo === 'main' && JSON.stringify(main) === JSON.stringify(fell) && main.errors.length === 2 && main.moving && main.idles === 0 && main.touch === 'pan-x pan-y' && !main.wheel,
+            JSON.stringify(same));
+    }
     // The same with the engine chunk delayed by 6 seconds, on a page of its own (the chunk is not in its module cache).
     // The watch of the worker must not count while the chunk loads: one warning, no `webglcontextlost`, one canvas.
     if (mode === 'worker') {
