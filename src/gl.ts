@@ -1333,10 +1333,12 @@ export class GLRenderer {
     }
 
     private heatTarget?: {fb: WebGLFramebuffer; tex: WebGLTexture; w: number; h: number};
-    private ramps = new WeakMap<Uint8Array | Float32Array, WebGLTexture>();
+    private ramps = new Map<Uint8Array | Float32Array, WebGLTexture>();
+    private rampLayers?: CompiledLayer[];
     /**
      * The texture of a colour ramp (heatmap colours, line gradients, the colours of a `color-relief` layer), made on
      * first use. A `Float32Array` gives a texture of one number for each pixel (the elevations of a `color-relief` layer).
+     * When the list of layers changes, `dropRamps` deletes the textures of ramps that no layer has any more (#591).
      */
     private rampTexture(pixels: Uint8Array | Float32Array): WebGLTexture {
         const gl = this.gl;
@@ -1353,6 +1355,12 @@ export class GLRenderer {
             this.ramps.set(pixels, ramp);
         }
         return ramp;
+    }
+    private dropRamps(layers: CompiledLayer[]) {
+        if (layers === this.rampLayers) return;
+        this.rampLayers = layers;
+        const keep = new Set(layers.flatMap(L => [L.ramp, L.relief]));
+        for (const [pixels, tex] of this.ramps) if (!keep.has(pixels)) { this.gl.deleteTexture(tex); this.ramps.delete(pixels); }
     }
     private floatTargets?: boolean;
 
@@ -1592,6 +1600,7 @@ export class GLRenderer {
     render(s: Scene): boolean {
         const gl = this.gl, tr = s.tr;
         this.frame++;
+        this.dropRamps(s.layers);
         gl.enable(gl.BLEND);
         gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
         this.globe = s.globe;
