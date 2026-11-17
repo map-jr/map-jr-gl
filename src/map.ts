@@ -1205,17 +1205,19 @@ export class Map {
             getClusterLeaves: async (clusterId: number, limit?: number, offset?: number) => (await clusters()).leaves(clusterId, limit, offset),
         };
     }
-    private clusterIndexes = new globalThis.Map<string, {data: unknown; index: Promise<PreparedSource>}>();
+    private clusterIndexes = new globalThis.Map<string, {data: unknown; key: string; index: Promise<PreparedSource>}>();
     private clusterIndex(id: string): Promise<PreparedSource> {
         const spec = this.rawStyle.sources[id], known = this.clusterIndexes.get(id);
-        if (known && known.data === spec.data) return known.index;
+        // (The cluster options are part of the key: the compat entry can change them with `setClusterOptions`.)
+        const key = '' + [spec.cluster, spec.clusterRadius, spec.clusterMaxZoom];
+        if (known && known.data === spec.data && known.key === key) return known.index;
         const index = (async () => {
             const data = typeof spec.data === 'string' ? await (await this.fetchAs('Source')(new URL(spec.data, this.styleBase))).json() : spec.data;
             // Loaded only when a page asks about clusters, so that the page script stays small.
             const {prepareSource} = await import('./geojson.ts');
             return prepareSource(data, spec, spec.maxzoom ?? 18);
         })();
-        this.clusterIndexes.set(id, {data: spec.data, index});
+        this.clusterIndexes.set(id, {data: spec.data, key, index});
         return index;
     }
     /**
