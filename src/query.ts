@@ -28,6 +28,17 @@ export interface TileQuery {
     /** Several questions in one pass: for each, a style layer's name, source layer, filters and tolerance in tile units. */
     sets?: QuerySet[];
 }
+/** A feature of a GeoJSON source as a tile gives it for a rectangle: `index` is its place in the data of the source. The engine removes it. */
+export type FoundFeature = QueriedFeature & {index?: number};
+/**
+ * A key for a feature that several tiles hold, so that a query gives the feature one time: its id, or for a GeoJSON
+ * feature without an id its place in the data. It is empty for a feature that has neither. It removes `index`.
+ */
+export function featureKey(f: FoundFeature): string {
+    const i = f.index;
+    delete f.index;
+    return f.id === undefined && i === undefined ? '' : `${f.id === undefined ? i : ''}|${f.layer}|${f.source}|${f.sourceLayer}|${f.id}`;
+}
 export interface QuerySet { layer: string; sourceLayer?: string; filter?: unknown; also?: unknown; radius: number }
 
 const TYPES = ['Point', 'Point', 'LineString', 'Polygon'] as const;
@@ -71,8 +82,8 @@ function touches(type: number, c: number[], ends: number[], px: number, py: numb
 }
 
 /** Finds every feature in a vector tile at (or within `radius` of) a position, or in a box. */
-export function queryTile(data: Uint8Array | TileLayers, q: TileQuery): QueriedFeature[] {
-    const out: QueriedFeature[] = [], layers: TileLayers = data instanceof Uint8Array ? decodeVectorTile(data) : data;
+export function queryTile(data: Uint8Array | TileLayers, q: TileQuery): FoundFeature[] {
+    const out: FoundFeature[] = [], layers: TileLayers = data instanceof Uint8Array ? decodeVectorTile(data) : data;
     const n = 2 ** q.z, toLngLat = (x: number, y: number) => [lngFromMerc((q.x + x / EXTENT) / n), latFromMerc((q.y + y / EXTENT) / n)];
     // Without sets there is one question for all the data. With sets (the style layers of a rendered-features query)
     // each feature is read one time and tested for each set.
@@ -89,8 +100,9 @@ export function queryTile(data: Uint8Array | TileLayers, q: TileQuery): QueriedF
                 if ((set.test && !set.test({zoom: q.z, f})) || (set.test2 && !set.test2({zoom: q.z, f}))) continue;
                 if (!c) f.geometry(EXTENT, c = [], ends);
                 if (!touches(f.type, c, ends, q.px, q.py, set.radius, q.box)) continue;
-                const feature: QueriedFeature = {source: q.source, sourceLayer: name === GEOJSON_LAYER ? '' : name, id: f.id, type: TYPES[f.type], properties: f.properties};
+                const feature: FoundFeature = {source: q.source, sourceLayer: name === GEOJSON_LAYER ? '' : name, id: f.id, type: TYPES[f.type], properties: f.properties};
                 if (set.layer !== undefined) feature.layer = set.layer;
+                if (q.box && f.id === undefined && f.index !== undefined) feature.index = f.index;
                 if (q.geometry) {
                     if (!geometry) {
                         const rings: number[][][] = [];

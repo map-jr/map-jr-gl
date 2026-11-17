@@ -1988,9 +1988,12 @@ for (const mode of renderers) {
             const i0 = log.findIndex(s => s.t >= t0), perDegree = 512 * 8 / 360;
             return {renderer: m.renderer, steps: log.slice(Math.max(0, i0 - 1), i0 + 6).map((s, i, a) => i ? Math.round((s.lng - a[i - 1].lng) * perDegree) : null).slice(1)};
         });
-        // (Each move goes 10 px west, and the centre goes east. A jump back is a step west or a first step that is short.)
+        // (Each move goes 10 px west, and the centre goes east. A jump back is a step west: the page's camera is 50 ms and
+        // more than 57 px behind the engine's. The first step is 10 px or more: it is one move when the worker draws a
+        // frame between the first move and the second, which happens in CI (#616), two moves when the second move
+        // arrives before that frame, or a frame of the `easeTo`, about 19 px.)
         check('[worker] compat: a drag that starts during an easeTo does not jump back (#38)',
-            steps.renderer === 'worker' && steps.steps.length >= 4 && steps.steps[0] >= 15 && steps.steps.every(d => d >= 0), JSON.stringify(steps));
+            steps.renderer === 'worker' && steps.steps.length >= 4 && steps.steps[0] >= 10 && steps.steps.every(d => d >= 0), JSON.stringify(steps));
     }
     // A worker that cannot make a WebGL2 context: the map goes to the main thread, `load` and `idle` fire, and what the
     // page sent before the fall back (the rules for requests, a change of the style) is not lost.
@@ -2657,6 +2660,39 @@ for (const mode of renderers) {
         });
         check('[main] maplibre-compat: listens, getStyleUrl and fitScreenCoordinates (with a bearing, padding and maxZoom) agree with MapLibre (#564)',
             m564.ml.length === m564.compat.length && m564.ml.every((v, i) => typeof v === 'number' ? Math.abs(v - m564.compat[i]) < 1e-3 : v === m564.compat[i]), JSON.stringify(m564));
+        // #606: a GeoJSON feature without an id that several tiles hold is given one time. [0, 0] is the corner of four
+        // tiles at zoom 2, and each of them has the three points in its buffer. MapLibre GL JS (served at /ml/) gives the
+        // points one time too. It gives the square once for each tile, and this library gives it one time.
+        const m606 = await page.evaluate(async () => {
+            const ml = await import('/ml/maplibre-gl.mjs');
+            ml.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const compat = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const point = {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [0, 0]}};
+            const square = {type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[-20, -20], [20, -20], [20, 20], [-20, 20], [-20, -20]]]}};
+            const style = {version: 8, sources: {points: {type: 'geojson', data: {type: 'FeatureCollection', features: [point, point, point]}}, square: {type: 'geojson', data: square}},
+                layers: [{id: 'square', type: 'fill', source: 'square'}, {id: 'points', type: 'circle', source: 'points'}]};
+            const run = async lib => {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+                const m = new lib.Map({container: el, renderer: 'main', style, center: [0, 0], zoom: 2});
+                await new Promise(r => m.loaded?.() ? r() : m.once('load', r));
+                await new Promise(r => { m.once('idle', r); setTimeout(r, 3000); });
+                const box = [[140, 90], [160, 110]], out = {};
+                for (const layer of ['points', 'square']) {
+                    const found = [await m.queryRenderedFeatures([150, 100], {layers: [layer]}), await m.queryRenderedFeatures(box, {layers: [layer]}), await m.queryRenderedFeatures({layers: [layer]})];
+                    out[layer] = found.map(f => f.length);
+                    out.keys = out.keys !== false && found.flat().every(f => !('index' in f));
+                }
+                // (The array is read at once. The promise is awaited so that the map is not removed while the question is open.)
+                const atOnce = m.queryRenderedFeatures(box, {layers: ['points']});
+                out.atOnce = [...atOnce].length;
+                await atOnce;
+                m.remove(); el.remove();
+                return out;
+            };
+            return {ml: await run(ml), compat: await run(compat)};
+        });
+        check('[main] maplibre-compat: queryRenderedFeatures gives a GeoJSON feature without an id one time when several tiles hold it, as MapLibre gives three points at the corner of four tiles (#606)',
+            m606.ml.points.join() === '3,3,3' && m606.compat.points.join() === '3,3,3' && m606.compat.atOnce === 3 && m606.ml.atOnce === 3 && m606.compat.square.join() === '1,1,1' && m606.compat.keys, JSON.stringify(m606));
         // #261: the eventData argument of a camera method is on the events of that move, and not on the next move.
         const tagged = await page.evaluate(async () => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js');

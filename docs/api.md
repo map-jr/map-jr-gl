@@ -819,6 +819,10 @@ There are two methods to find features:
 - for `querySource`, a point of the screen or a position, or nothing for the tiles of the view. A rectangle of the
   screen also works: it gives the features of the tiles of the view within the rectangle.
 
+A feature that several tiles hold is in the result one time when it has an id or comes from a GeoJSON source. Its
+geometry is the part of the feature in one of the tiles. A feature of a vector tile source that has no id is in the
+result once for each tile that holds it.
+
 The options can come in the place of `at`. `map.queryFeatures({layers: ['places']})` asks the whole map, and it is the
 same as `map.queryFeatures(undefined, {layers: ['places']})`. An object is a place when it has `x`, `y`, `lng`, `lat`
 or `lon`, and the options otherwise.
