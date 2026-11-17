@@ -147,6 +147,8 @@ export class Map {
     private observer?: ResizeObserver;
     private cleanup: (() => void)[] = [];
     private inputCleanup: (() => void)[] = [];
+    /** The last `easeTo` (or `flyTo`) and when it was sent, for a fall back from the worker before it drew (#777). */
+    private eased?: {c: Command; at: number};
     private tilePool?: {connect(): MessagePort[]; release(): void};
     private removed = false;
     private beforeStyle: (() => void)[] = [];
@@ -379,15 +381,20 @@ export class Map {
                 this.ready = false;
                 this.watchTurn++; // (the watch of the worker must not count while the engine chunk loads; #146)
                 w.terminate();
-                this.startMainEngine(fresh, {...engineOptions, style: this.resolved, center: [this.tr.lng, this.tr.lat], zoom: this.tr.zoom, bearing: this.tr.bearing}, []).then(() => {
+                this.startMainEngine(fresh, {...engineOptions, style: this.resolved, center: [this.tr.lng, this.tr.lat], zoom: this.tr.zoom, bearing: this.tr.bearing, pitch: this.tr.pitch}, []).then(() => {
                     if (this.removed) return;
                     this.ready = true;
                     for (const [c, t] of this.queue.splice(0)) this.deliver(c, t);
                     this.resend();
                     // (The data of GeoJSON sources and changes of the style since the start. It is also a numbered command:
-                    // the new engine reports `idle` with the number that the page waits for.)
-                    this.restyle(true);
+                    // the new engine reports `idle` with the number that the page waits for. It sends the style that the
+                    // map has resolved, so a source that failed is not fetched and reported again; #777.)
+                    this.restyle(true, true);
                     for (const [name, [source, options]] of this.imageInputs) this.addImage(name, source, options);
+                    // (The worker drew nothing, so an animation that the page started went nowhere: the new engine runs
+                    // it for the time that is left; #777.)
+                    const ease = this.eased, left = ease ? (ease.c as {duration: number}).duration - (performance.now() - ease.at) : 0;
+                    if (left > 0) this.post({...ease!.c, duration: left} as Command);
                     this.bindInput();
                 }, error => this.fire('error', {error}));
             };
@@ -901,6 +908,7 @@ export class Map {
         const padding = o.padding === undefined ? undefined : paddingOf(o.padding);
         if (padding) this.tr.padding = padding;
         this.tr.set(o.center, o.zoom, o.bearing, o.pitch);
+        this.eased = undefined;
         this.post({type: 'jump', center: o.center && toLngLat(o.center), zoom: o.zoom, bearing: o.bearing, pitch: o.pitch, padding});
         this.jumped = this.seq;
         return this;
@@ -932,7 +940,9 @@ export class Map {
         // As in MapLibre GL JS, no duration is a jump, so reads right after the call see the new view.
         if (duration <= 0 && !around) return this.jumpTo({...o, center});
         const easing = o.easing && Array.from({length: 65}, (_, i) => o.easing!(i / 64));
-        this.post({type: 'ease', duration, center: center && toLngLat(center), zoom, bearing, pitch, around, padding, easing, fly});
+        const c: Command = {type: 'ease', duration, center: center && toLngLat(center), zoom, bearing, pitch, around, padding, easing, fly};
+        this.post(c);
+        this.eased = {c, at: performance.now()};
         return this;
     }
     /**
@@ -946,7 +956,7 @@ export class Map {
         return this.easeTo({...o, duration: o.duration ?? 1});
     }
     private flight?: number[];
-    stop() { this.post({type: 'stop'}); return this; }
+    stop() { this.eased = undefined; this.post({type: 'stop'}); return this; }
 
     /** The centre and zoom that fit `bounds` ([west, south, east, north] or [[west, south], [east, north]]) in view. */
     cameraForBounds(bounds: LngLatBoundsInput, o: {padding?: PaddingInput; maxZoom?: number} = {}) {
@@ -1027,7 +1037,14 @@ export class Map {
     /** Called when the style has changed, before it is resolved (for a class that extends this one). */
     protected styleChanged() {}
     private reloadPending = false;
-    private restyle(reload: boolean) {
+    /** The next resolve of the style uses `resolved` as it is, without requests (see `restyle`). */
+    private reuse = false;
+    /**
+     * `reuse`: the style has not changed, and the engine needs it again (a new engine after a fall back). It is used only
+     * when no other change waits or is being resolved.
+     */
+    private restyle(reload: boolean, reuse = false) {
+        this.reuse = reuse && this.restyled === this.restyles && (this.reuse || !this.restyleQueued);
         // As in MapLibre, the loading events come before the data events.
         for (const type of ['styledataloading', 'dataloading']) this.fire(type, {dataType: 'style'});
         this.styleChanged();
@@ -1056,7 +1073,9 @@ export class Map {
         }
         // A change of a style that the map shows does not wait for a source that is new: the source comes later.
         const partial = this.newStyle || !this.resolved ? undefined : {late: () => { if (this.rawStyle) this.restyle(true); }, fail: this.sourceFailed};
-        Promise.all([resolveStyle(this.rawStyle, this.fetchAs('Source'), this.styleBase, partial, this.sourceFailed), this.globeReady()]).then(([style]) => {
+        const reuse = this.reuse && this.resolved;
+        this.reuse = false;
+        Promise.all([reuse || resolveStyle(this.rawStyle, this.fetchAs('Source'), this.styleBase, partial, this.sourceFailed), this.globeReady()]).then(([style]) => {
             if (turn !== this.restyles) return;
             const reload = this.reloadPending;
             this.reloadPending = false;
