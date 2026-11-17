@@ -150,7 +150,7 @@ abstract class BaseShaper implements Shaper {
             if (part[0] === '\uE002') {
                 const [scale, font, color] = part.slice(1, -1).split('|');
                 if (!scale && !font && !color) { mark = ''; continue; }
-                const f = font ? parseFontName(font) : null;
+                const f = font ? parseFontName(font.split(',')[0]) : null; // (a list of fonts: as `fontStyle` of the tile builder)
                 this.styles.push({scale: +scale || 1, font: f ? (f.style === 'italic' ? 'italic ' : '') + f.weight + '|' + f.family + '|' + font : undefined, color: color ? color.split(',').map(Number) : undefined});
                 mark = String.fromCharCode(STYLE_CHAR + this.styles.length - 1);
             } else out += mark ? graphemes(part).map(g => g === '\n' ? g : mark + g).join('') : part;

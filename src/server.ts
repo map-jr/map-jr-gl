@@ -7,6 +7,7 @@ import {CollisionGrid, placeLabels, renderItems, type RenderItem} from './placem
 import {DEFAULT_FONT, EstimateShaper} from './text.ts';
 import {dataTypeError, extended, styleFor, fillTemplate, svgSize, templateSlots, withData, VARIANT} from './markers.ts';
 import {renderSVG} from './svg.ts';
+import {pickImage} from './expr.ts';
 import {styleImages} from './style-images.ts';
 import type {ImageDecoder} from './contour.ts';
 import {decodeImage, decodePNG, decodeWebPLossless} from './webp.ts';
@@ -242,7 +243,7 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
     await Promise.all(jobs);
 
     const grid = new CollisionGrid(), images = new Map<string, {svg: string; width: number; height: number}>();
-    const labels = placeLabels(tr, all, layers, new EstimateShaper(), grid, name => {
+    const find = (name: string) => {
         // (An image of `images` or of the style takes the place of an image of the sprite with the same name.)
         const fromSprite = (sprite as Sprite | null)?.icons[name];
         if (fromSprite && !documents.has(name)) return fromSprite;
@@ -259,7 +260,15 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
         }
         const img = images.get(name)!;
         return {x: 0, y: 0, width: img.width, height: img.height, pixelRatio: 1, custom: true};
+    };
+    // `coalesce` with images gives several names (see `pickImage`). The SVG gets the name of the image that is drawn.
+    const picked = new Map<string, string>();
+    const labels = placeLabels(tr, all, layers, new EstimateShaper(), grid, name => {
+        const one = pickImage(name, find);
+        if (one !== name) picked.set(name, one);
+        return find(one);
     });
+    for (const l of labels) if (l.icon) l.icon.name = picked.get(l.icon.name) ?? l.icon.name;
     const svg = renderSVG({
         tr, layers, items, labels, sprite, images, fontFamily: o.fontFamily ?? DEFAULT_FONT, label: o.label,
         rootAttrs: 'data-map-jr-ssr="" style="position:absolute;inset:0;width:100%;height:100%"',
