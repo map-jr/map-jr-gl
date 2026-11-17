@@ -117,7 +117,7 @@ const WHITE: RGBA = [1, 1, 1, 1];
 
 /** A decoded tile: named layers of features. Vector tiles and sliced GeoJSON both take this shape. */
 export type TileLayers = Record<string, {features: TileFeature[]}>;
-export interface TileFeature extends Feature { geometry(extent: number, coords: number[], ringEnds: number[]): number }
+export interface TileFeature extends Feature { /** See `SlicedFeature`. */ index?: number; geometry(extent: number, coords: number[], ringEnds: number[]): number }
 
 export function buildTile(data: Uint8Array | TileLayers, z: number, layers: CompiledLayer[], overscaled: number | false, states?: MapStates['f'], templates?: Record<string, string[]>, /** Icons that need no place among the labels go to `icons` (see `IconBatch`). */ direct?: boolean): TileIR {
     const vt: TileLayers = data instanceof Uint8Array ? decodeVectorTile(data) : data;

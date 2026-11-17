@@ -3,7 +3,7 @@
 // such a source, because it needs the expression compiler (for the filters of layers).
 import type {Transform} from './geo.ts';
 import {prepareSource, sliceGeoJSON, type GeoJSONOptions, type PreparedSource} from './geojson.ts';
-import {queryTile, tilesUnderBox, type QueriedFeature, type QuerySet} from './query.ts';
+import {featureKey, queryTile, tilesUnderBox, type QueriedFeature, type QuerySet} from './query.ts';
 
 const prepared = new WeakMap<object, PreparedSource>();
 
@@ -14,7 +14,7 @@ export function queryGeoJSON(source: string, spec: GeoJSONOptions & {data: objec
     const out: QueriedFeature[] = [], seen = new Set<string>();
     for (const t of tilesUnderBox(tr, box, 0, spec.maxzoom ?? 18)) {
         for (const f of queryTile(sliceGeoJSON(data, t.z, t.x, t.y), {source, z: t.z, x: t.x, y: t.y, px: 0, py: 0, radius: 0, box: t.box, geometry: true, sets: sets.map(s => ({...s, radius: s.radius * t.scale}))})) {
-            const key = f.id === undefined ? '' : `${f.layer}|${f.id}`;
+            const key = featureKey(f);
             if (key && seen.has(key)) continue;
             seen.add(key);
             out.push(f);
