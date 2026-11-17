@@ -5,15 +5,25 @@
     {"pattern": "^sky/|^terrain/fog|^high-pitch/pitch95", "label": "sky and fog", "decision": "later", "reason": "Sky and fog are not available."},
     {"pattern": "^mlt/", "label": "MLT", "decision": "later", "reason": "MapLibre Tiles (MLT) are not available."},
     {"pattern": "^(video|canvas)/", "label": "video and canvas sources", "decision": "later", "reason": "Video and canvas sources are not available."},
-    {"pattern": "^color-relief/", "label": "color-relief", "decision": "later", "reason": "The layer type color-relief is not available."},
+    {"test": "color-relief/custom-encoding-all-zero-factors", "label": "custom encoding of a raster-dem source", "decision": "later", "issue": 590, "reason": "encoding: 'custom' of a raster-dem source is read as mapbox."},
     {"pattern": "^fill-extrusion-pattern/", "label": "fill-extrusion-pattern", "decision": "later", "reason": "fill-extrusion-pattern is not available."},
     {"pattern": "^line-gradient-dasharray/", "label": "line-gradient with line-dasharray", "decision": "later", "reason": "line-gradient together with line-dasharray is not available."},
     {"pattern": "^line-(offset|blur)/property-function$", "label": "line-offset and line-blur for each feature", "decision": "later", "reason": "line-offset and line-blur that are different for each feature are not available."},
-    {"pattern": "^circle-pitch-(alignment|scale)/", "label": "circle-pitch-alignment and circle-pitch-scale", "decision": "later", "reason": "circle-pitch-alignment and circle-pitch-scale are not available."},
     {"pattern": "^circle-(stroke-color|stroke-width|stroke-opacity|blur)/(zoom-and-)?property-function$", "label": "circle stroke and blur for each feature", "decision": "later", "reason": "Circle stroke and blur that are different for each feature are not available."},
     {"pattern": "^icon-halo-blur/", "label": "icon-halo-blur", "decision": "later", "reason": "icon-halo-blur is not available."},
     {"pattern": "^text-writing-mode/", "label": "text-writing-mode", "decision": "later", "reason": "text-writing-mode is not available."},
     {"pattern": "^text-pitch-alignment/(map|viewport)-", "label": "text-pitch-alignment", "decision": "later", "reason": "text-pitch-alignment with a value other than auto is not available."},
-    {"pattern": "^symbol-z-order/", "label": "symbol-z-order", "decision": "later", "reason": "symbol-z-order is not available."}
+    {"pattern": "^symbol-z-order/", "label": "symbol-z-order", "decision": "later", "reason": "symbol-z-order is not available."},
+    {"pattern": "^projection/identity/", "label": "projections other than mercator and globe", "decision": "later", "issue": 570, "reason": "Projections other than mercator, globe and vertical-perspective are not available."},
+    {"pattern": "^field-of-view/|^high-pitch/terrain-pitch95$|^terrain/dem-cell-centre-hillshade-peak$", "label": "field of view and centre elevation", "decision": "later", "issue": 570, "reason": "The field of view is fixed, and setVerticalFieldOfView, setCenterElevation and setCenterClampedToGround have no effect."},
+    {"pattern": "^fill-pattern/(case-data-expression|invalid-feature-expression)$|^line-pattern/(property-function|step-curve)$|^regressions/maplibre-gl-js#7704-pattern$", "label": "patterns for each feature", "decision": "later", "issue": 570, "reason": "Patterns that are different for each feature are not available."},
+    {"pattern": "^icon-text-fit/textFit-grid-(long|short)-vertical$|^text-field/formatted-images-vertical$", "label": "text-writing-mode", "decision": "later", "issue": 570, "reason": "text-writing-mode is not available."},
+    {"test": "text-field/formatted-vertical-align", "label": "vertical-align in format text", "decision": "later", "issue": 570, "reason": "vertical-align in format text is not available."},
+    {"test": "regressions/mapbox-gl-js#7302", "label": "video and canvas sources", "decision": "later", "issue": 570, "reason": "Video and canvas sources are not available."},
+    {"test": "terrain/fill-extrusion-vertical-gradient-pattern", "label": "fill-extrusion-pattern", "decision": "later", "issue": 570, "reason": "fill-extrusion-pattern is not available."},
+    {"test": "line-dasharray/zero-length-gap", "label": "line-offset and line-blur for each feature", "decision": "later", "issue": 570, "reason": "line-offset that is different for each feature is not available. Three of the five layers of the test have it."},
+    {"test": "circle-blur/blending", "label": "circle stroke and blur for each feature", "decision": "later", "issue": 570, "reason": "circle-blur that is different for each feature is not available."},
+    {"pattern": "^text-variable-anchor(-offset)?/pitched-with-map$", "label": "text-pitch-alignment", "decision": "later", "issue": 570, "reason": "text-pitch-alignment with a value other than auto is not available."},
+    {"pattern": "^fill-extrusion-height/steep-pitch-near-horizon$|^raster-npot-mipmap/pitch-60$|^terrain/rtt-mipmap-minification/pitch-70$|^terrain/symbol-height-(anchor-(absolute|ground)|offset-occluded-ground)$", "label": "pitch above 60 degrees", "decision": "later", "issue": 570, "reason": "The map tilts to 60 degrees. The test has a pitch of 65 to 80 degrees."}
   ]
 }
