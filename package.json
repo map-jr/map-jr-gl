@@ -164,6 +164,40 @@
   },
   "module": "./dist/map-jr-gl.js",
   "types": "./dist/types/index.d.ts",
+  "typesVersions": {
+    "*": {
+      "maplibre-compat": [
+        "dist/types/maplibre-compat.d.ts"
+      ],
+      "controls": [
+        "dist/types/control-specs.d.ts"
+      ],
+      "react": [
+        "dist/types/react.d.ts"
+      ],
+      "svelte": [
+        "dist/types/svelte.d.ts"
+      ],
+      "nuxt": [
+        "dist/types/nuxt.d.ts"
+      ],
+      "vue": [
+        "dist/types/vue.d.ts"
+      ],
+      "standalone": [
+        "dist/types/standalone.d.ts"
+      ],
+      "maplibre-compat/standalone": [
+        "dist/types/maplibre-compat.d.ts"
+      ],
+      "server": [
+        "dist/types/server.d.ts"
+      ],
+      "worker": [
+        "dist/types/worker.d.ts"
+      ]
+    }
+  },
   "files": [
     "dist",
     "CHANGELOG.md",
