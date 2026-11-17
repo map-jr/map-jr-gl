@@ -8,7 +8,7 @@ export const isGeometrySource = (s: {type: string}) => s.type === 'vector' || s.
 /** Supported properties per layer type: [style-spec name, kind, default]. Anything else in a style is ignored. */
 const SPEC: Record<string, Record<string, [string, PropKind, any]>> = {
     custom: {},
-    background: {color: ['background-color', 'color', '#000'], opacity: ['background-opacity', 'number', 1], pattern: ['background-pattern', 'string', '']},
+    background: {color: ['background-color', 'color', '#000'], opacity: ['background-opacity', 'number', 1], pattern: ['background-pattern', 'string', null]}, // null when unset: an empty name draws nothing, as in MapLibre GL JS
     fill: {color: ['fill-color', 'color', '#000'], opacity: ['fill-opacity', 'number', 1], outline: ['fill-outline-color', 'color', 'rgba(0,0,0,0)'], antialias: ['fill-antialias', 'raw', true], pattern: ['fill-pattern', 'string', ''],
         translate: ['fill-translate', 'string', [0, 0]], translateAnchor: ['fill-translate-anchor', 'string', 'map'], sortKey: ['fill-sort-key', 'number', 0],
         layerOpacity: ['fill-layer-opacity', 'number', 1], layerBlend: ['fill-layer-blend', 'string', 'normal']},
