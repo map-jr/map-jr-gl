@@ -367,6 +367,37 @@ for (const renderer of renderers) {
         }, renderer).catch(e => ({error: String(e)}));
         check(`[${renderer}] a new style drops the stale tiles that are not on screen, so that a zoom out after a change of the scheme of style: {light, dark} draws no tile of the style before (#550)`,
             JSON.stringify(staleScheme) === JSON.stringify({dropped: true, colour: '#00f'}), JSON.stringify(staleScheme));
+        // 3b2b. `state.idle` after a new style comes once the page shows the frame of the new style (#555). The worker
+        // renderer sent `idle` with the frame, and the page could still show the frame before. (The canvas of the main
+        // renderer cannot be read 1 s later: its drawing buffer is cleared once it is shown.)
+        if (renderer === 'worker') {
+            const shownAtIdle = await page.evaluate(async renderer => {
+                const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:450px;height:300px;z-index:100'}));
+                const other = JSON.parse(JSON.stringify(t.style), (k, v) => typeof v === 'string' && /^(#|rgb|hsl)/i.test(v) ? '#2050c0' : v);
+                const spec = {style: t.style, initialView: {center: [-74.0065, 40.7085], zoom: 14.3}, renderer, attribution: false};
+                const host = t.lib.createMap(el, spec);
+                let wake = null;
+                host.state.subscribe(s => s.idle, v => { if (v && wake) { const f = wake; wake = null; f(); } });
+                if (!host.state.get().idle) await new Promise(r => { wake = r; });
+                const c = el.querySelector('canvas');
+                const grab = () => { const o = new OffscreenCanvas(c.width, c.height), g = o.getContext('2d'); g.drawImage(c, 0, 0); return g.getImageData(0, 0, c.width, c.height).data; };
+                const differ = (a, b) => { let n = 0; for (let i = 0; i < a.length; i += 4) if (Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) + Math.abs(a[i + 2] - b[i + 2]) > 24) n++; return n; };
+                const out = [];
+                for (let i = 0; i < 6; i++) {
+                    let at;
+                    const shown = new Promise(r => { wake = () => { at = grab(); r(); }; });
+                    host.update({...spec, style: i % 2 ? t.style : other});
+                    await Promise.race([shown, new Promise(r => setTimeout(r, 10000))]);
+                    await new Promise(r => setTimeout(r, 1000));
+                    out.push(at ? differ(at, grab()) : 'no idle');
+                }
+                const used = host.state.get().renderer;
+                host.destroy(); el.remove();
+                return {used, out};
+            }, renderer).catch(e => ({error: String(e)}));
+            check(`[worker] after a new style, the canvas at state.idle shows the new style: no pixel differs from the canvas 1 s later (#555)`,
+                shownAtIdle.out?.every(n => n === 0), JSON.stringify(shownAtIdle));
+        }
         // 3b2. `patch` (#483): it keeps the fields that `part` leaves out, `undefined` removes a field, and `description` is the last description.
         const patched = await page.evaluate(async renderer => {
             const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));

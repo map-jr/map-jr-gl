@@ -611,6 +611,8 @@ export class Map {
     private held: {from: number; at?: [number, number]; x?: number; y?: number; t: number; pend?: [number, number]; next?: [number, number]; loop?: boolean} | null = null;
     /** @internal What places the HTML markers and popups of this map (see `held`). */
     readonly overlays = new Set<() => void>();
+    /** The `idle` report of the worker that waited for the page to show its frame (see `onEngineEvent`). */
+    private shown?: EngineEvent;
     private onEngineEvent(e: EngineEvent) {
         if (__DEV__ && e.type !== 'camera' && e.type !== 'heights' && e.type !== 'result') this.note('engine: ' + e.type, e.type === 'pong' ? e.n : e.type === 'idle' ? {seq: e.seq, expected: this.seq} : e.type === 'frame' ? {first: !this.drew} : e.type === 'error' ? e.message : undefined);
         if (e.type === 'camera') {
@@ -664,6 +666,15 @@ export class Map {
         } else if (e.type === 'idle') {
             // (A report from before the last command: the engine sends another after that command.)
             if (e.seq !== this.seq || this.restyled !== this.restyles || this.resolved?.waiting) return;
+            // An engine in a worker sends `idle` in the task in which it draws, and the page can get the report before it
+            // shows that frame of the `OffscreenCanvas` (#555). Wait for the page's next frame; a hidden page runs none,
+            // so a timer ends the wait too.
+            if (this.renderer === 'worker' && this.shown !== e) {
+                let done = false;
+                const go = () => { if (!done && !this.removed) { done = true; this.shown = e; this.onEngineEvent(e); } };
+                requestAnimationFrame(go); setTimeout(go, 100);
+                return;
+            }
             this.tilesLoaded = true;
             if (!this.isLoaded) {
                 this.isLoaded = true;
