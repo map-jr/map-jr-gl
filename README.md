@@ -361,6 +361,7 @@ const {svg} = await renderToSVG({
 ```
 
 Put the SVG in the map container of your HTML page. The live map replaces it when the map is ready.
+The same function runs in a browser, so a page can export a map as a vector SVG with no server.
 See [Server rendering](docs/server-rendering.md).
 
 ![A map that was drawn on the server](https://raw.githubusercontent.com/map-jr/map-jr-gl/main/docs/images/server.jpg)
@@ -427,7 +428,7 @@ To measure on your device, open [the benchmark page](https://map-jr.github.io/ma
 - [Loading](docs/loading.md): how the files load, and how to change that.
 - [Markers](docs/markers.md): symbol layers with images that are SVG templates, and DOM markers.
 - [Terrain and elevation](docs/terrain-and-elevation.md): terrain, relief shading, contour lines, elevation queries.
-- [Server rendering](docs/server-rendering.md): SVG and images on Node.js and Cloudflare Workers.
+- [Server rendering](docs/server-rendering.md): SVG and images on Node.js, on Cloudflare Workers and in a browser.
 - [Accessibility](docs/accessibility.md): what the library does for keyboard users and assistive technology, and what it
   does not do yet.
 - [MapLibre compatibility](docs/maplibre-compatibility.md): what is the same, what is different, what is not
