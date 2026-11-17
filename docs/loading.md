@@ -284,3 +284,14 @@ To show a map before the script runs, see [Server rendering](server-rendering.md
 ### TypeScript
 
 The package contains type declarations. You do not need other packages.
+
+TypeScript finds the types of every entry (`@map-jr/map-jr-gl`, `@map-jr/map-jr-gl/maplibre-compat`,
+`@map-jr/map-jr-gl/vue` and the other subpaths) with each of these values of `"moduleResolution"` in `tsconfig.json`:
+
+| `moduleResolution` | How TypeScript finds the types of a subpath |
+|---|---|
+| `"bundler"`, `"node16"`, `"nodenext"` | from `exports` of `package.json` |
+| `"node"` (also written `"node10"`; older Next.js and Create React App templates) | from `typesVersions` of `package.json` |
+
+Under `"node"` you do not need `paths` entries for the subpaths. TypeScript 7 removed `"node"`, so this applies to
+TypeScript 5 and 6. `pnpm test:package` checks all four resolutions with `@arethetypeswrong/cli`.
