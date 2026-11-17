@@ -41,6 +41,12 @@ export function featureKey(f: FoundFeature): string {
 }
 export interface QuerySet { layer: string; sourceLayer?: string; filter?: unknown; also?: unknown; radius: number }
 
+function outside(c: number[]) {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (let i = 0; i < c.length; i += 2) x0 = Math.min(x0, c[i]), x1 = Math.max(x1, c[i]), y0 = Math.min(y0, c[i + 1]), y1 = Math.max(y1, c[i + 1]);
+    return x1 < 0 || y1 < 0 || x0 > EXTENT || y0 > EXTENT;
+}
+
 const TYPES = ['Point', 'Point', 'LineString', 'Polygon'] as const;
 
 function segmentDistSq(px: number, py: number, ax: number, ay: number, bx: number, by: number) {
@@ -98,7 +104,12 @@ export function queryTile(data: Uint8Array | TileLayers, q: TileQuery): FoundFea
             const ends: number[] = [];
             for (const set of mine) {
                 if ((set.test && !set.test({zoom: q.z, f})) || (set.test2 && !set.test2({zoom: q.z, f}))) continue;
-                if (!c) f.geometry(EXTENT, c = [], ends);
+                if (!c) {
+                    f.geometry(EXTENT, c = [], ends);
+                    // A feature that has no id is in the buffer of a neighbour tile too. As in MapLibre GL JS, the
+                    // tile gives it only when its bounding box touches the tile, so that a query gives it one time.
+                    if (f.id === undefined && f.index === undefined && outside(c)) break;
+                }
                 if (!touches(f.type, c, ends, q.px, q.py, set.radius, q.box)) continue;
                 const feature: FoundFeature = {source: q.source, sourceLayer: name === GEOJSON_LAYER ? '' : name, id: f.id, type: TYPES[f.type], properties: f.properties};
                 if (set.layer !== undefined) feature.layer = set.layer;
