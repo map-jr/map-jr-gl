@@ -666,8 +666,8 @@ export class Map {
         } else if (e.type === 'idle') {
             // (A report from before the last command: the engine sends another after that command.)
             if (e.seq !== this.seq || this.restyled !== this.restyles || this.resolved?.waiting) return;
-            // An engine in a worker sends `idle` in the task in which it draws, and the page can get the report before it
-            // shows that frame of the `OffscreenCanvas` (#555). Wait for the page's next frame; a hidden page runs none,
+            // An engine in a worker sends `idle` once its frame has gone to the page (see `frame` in engine.ts), and the
+            // page shows that frame when it next paints (#555). Wait for the page's next frame; a hidden page runs none,
             // so a timer ends the wait too.
             if (this.renderer === 'worker' && this.shown !== e) {
                 let done = false;
