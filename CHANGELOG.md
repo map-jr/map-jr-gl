@@ -7,6 +7,113 @@ number, and its entry starts with a section "Breaking changes". See
 `#12` is a link to pull request 12. A change without a number comes from before 2026-11-11, when the repository had
 no pull requests.
 
+## 0.7.0 (2026-11-17)
+
+This entry covers the changes after 0.6.0 (the tag `v0.6.0`).
+
+### Breaking changes
+
+- `@map-jr/map-jr-gl`: the state has no field `error`. `map.state.get().error` is `undefined`, and TypeScript rejects
+  it. Write `onError` in the description or `map.listen('error', fn)` to get each error. In the adapters, use the
+  `onError` prop of React and Svelte, and `@error` in Vue ([#734]).
+- `@map-jr/map-jr-gl/server`: `renderToSVG` and `renderToImage` have one option `overrides` in place of
+  `ssrOverrides`. Write `overrides: false` in place of `ssrOverrides: false`. In JavaScript the old option has no
+  effect and gives no warning. `overrides: false` now also ignores `simplify` and `minSize` of
+  `metadata["map-jr:ssr"]`, so its SVG can be larger. The `ssr` prop of the Vue component takes `overrides: false`
+  too ([#731]).
+- Both entries: a GeoJSON feature with a string `id` and no `promoteId` keeps that id in queries and for feature
+  state, where it had `id: undefined`. A string of decimal digits that is a safe integer becomes the number (`'12'` is
+  `12`), so `setFeatureState` for such a feature takes the number ([#633]).
+- Both entries: a `background-pattern` that names no image, `""` included, draws nothing, as in MapLibre GL JS. Before,
+  it drew `background-color`. Leave `background-pattern` unset to draw the colour ([#741]).
+- `@map-jr/map-jr-gl/maplibre-compat`: `setStyle` with a style equal to the current one (apart from the camera) fires
+  no `style.load` and no `styledata`, as in MapLibre GL JS 6.17. A style that differs fires `style.load` once. Code
+  that waited for the event after setting an equal style must not wait for it ([#801]).
+- Both entries: Escape closes a popup that has a close button while the focus is inside it, and the popup stops the
+  `keydown` event. A listener for Escape on an ancestor of such a popup no longer gets the event. Give the popup
+  `closeButton: false` (in `@map-jr/map-jr-gl`, leave out `onClose`) to keep the old behaviour ([#728]).
+- `@map-jr/map-jr-gl/vue`: when the server render of the `ssr` prop fails, the component sends the page without the
+  first view, and the map draws in the browser. The render no longer rejects, so an `errorHandler` or
+  `onErrorCaptured` of the application does not get the error. Listen to the `error` event of the component
+  ([#725]).
+- Both entries: the map draws an image of `metadata["map-jr:images"]` only when a layer asks for it. `hasImage` of the
+  core map is `false` for an image that no layer of the view names, an image URL is requested only then, and
+  `styleimagemissing` is reported again after a new style for a name that is still missing ([#638]).
+
+### New
+
+- `@map-jr/map-jr-gl`: the description has `locale`, an object with the keys of MapLibre GL JS for the texts of the
+  controls, the attribution, the popup and the hint of `cooperativeGestures`. The Vue component has the prop
+  `locale` ([#746]). An open popup takes the texts of a new locale ([#815]).
+- `@map-jr/map-jr-gl`: the development build warns once for each field that the description does not have, such as
+  a misspelled `intialView` ([#742]).
+- `@map-jr/map-jr-gl/maplibre-compat`: the map draws the images in `metadata["map-jr:images"]` of the style, as the
+  main entry does ([#764]).
+- `@map-jr/map-jr-gl/maplibre-compat`: `data` and `sourcedata` events carry `e.tile` for each tile that loads
+  ([#771]), and `map.style` has `tileManagers` (and `sourceCaches`) with the `vectorLayerIds` of each source ([#803]).
+  Maputnik reads both.
+- Both entries: a style takes 500 images in `metadata["map-jr:images"]`, up from 200 ([#627]).
+
+### Fixed
+
+- Both entries: a map is idle sooner. The first `idle` does not wait 200 ms after the first camera ([#726]), a map
+  with 3D terrain is idle when its tiles are drawn ([#736]), and a map with 3D terrain puts the centre on the ground
+  before its first `idle` ([#802]). A style with many images is idle as soon as one with a sprite ([#638]).
+- Both entries: with the worker renderer, `idle` comes after the page shows the frame ([#745], [#756]).
+- Both entries: a map that falls back from the worker renderer to the main thread warns only with
+  `renderer: 'worker'`. With `'auto'` the development build writes the text with `console.info` ([#798]).
+- Both entries: a map that fell back to the main thread fires `error` for a failed source once, finishes an `easeTo`
+  that had started, and sets `touch-action` on the new canvas ([#806]).
+- Both entries: in Firefox, a worker no longer fails with "Failed to load worker script at blob:" when the URL was
+  revoked before it loaded ([#797]).
+- Both entries: a vector feature with no id comes once in query results, not once for each tile ([#755]).
+- Both entries: an empty `sprite` is no sprite, so the map does not request the page's URL ([#761]).
+- Both entries: the textures of colour ramps are deleted when their layers go ([#749]).
+- Both entries: the warnings of expressions keep at most 100 messages ([#737]).
+- Both entries: touch screens get buttons of 44px again ([#727]), and a page rule for links does not colour the
+  attribution links ([#763]).
+- `@map-jr/map-jr-gl/maplibre-compat`: the buttons of `NavigationControl` have a `maplibregl-ctrl-icon` span, so a
+  page can restyle the icons ([#769]).
+- `@map-jr/map-jr-gl/maplibre-compat`: `showTileBoundaries`, `showPadding`, `showCollisionBoxes` and
+  `showOverdrawInspector` warn once when set to `true`, because they have no effect ([#754]).
+- `@map-jr/map-jr-gl/maplibre-compat`: `querySourceFeatures` without `await` returns the last answer for the same
+  source and options, where it was empty for a vector source ([#816]).
+- The package: the subpath entries have types under `"moduleResolution": "node"` ([#740]).
+
+[#627]: https://github.com/map-jr/map-jr-gl/pull/627
+[#633]: https://github.com/map-jr/map-jr-gl/pull/633
+[#638]: https://github.com/map-jr/map-jr-gl/pull/638
+[#725]: https://github.com/map-jr/map-jr-gl/pull/725
+[#726]: https://github.com/map-jr/map-jr-gl/pull/726
+[#727]: https://github.com/map-jr/map-jr-gl/pull/727
+[#728]: https://github.com/map-jr/map-jr-gl/pull/728
+[#731]: https://github.com/map-jr/map-jr-gl/pull/731
+[#734]: https://github.com/map-jr/map-jr-gl/pull/734
+[#736]: https://github.com/map-jr/map-jr-gl/pull/736
+[#737]: https://github.com/map-jr/map-jr-gl/pull/737
+[#740]: https://github.com/map-jr/map-jr-gl/pull/740
+[#741]: https://github.com/map-jr/map-jr-gl/pull/741
+[#742]: https://github.com/map-jr/map-jr-gl/pull/742
+[#745]: https://github.com/map-jr/map-jr-gl/pull/745
+[#746]: https://github.com/map-jr/map-jr-gl/pull/746
+[#749]: https://github.com/map-jr/map-jr-gl/pull/749
+[#754]: https://github.com/map-jr/map-jr-gl/pull/754
+[#755]: https://github.com/map-jr/map-jr-gl/pull/755
+[#756]: https://github.com/map-jr/map-jr-gl/pull/756
+[#761]: https://github.com/map-jr/map-jr-gl/pull/761
+[#763]: https://github.com/map-jr/map-jr-gl/pull/763
+[#764]: https://github.com/map-jr/map-jr-gl/pull/764
+[#769]: https://github.com/map-jr/map-jr-gl/pull/769
+[#771]: https://github.com/map-jr/map-jr-gl/pull/771
+[#797]: https://github.com/map-jr/map-jr-gl/pull/797
+[#798]: https://github.com/map-jr/map-jr-gl/pull/798
+[#801]: https://github.com/map-jr/map-jr-gl/pull/801
+[#802]: https://github.com/map-jr/map-jr-gl/pull/802
+[#803]: https://github.com/map-jr/map-jr-gl/pull/803
+[#806]: https://github.com/map-jr/map-jr-gl/pull/806
+[#815]: https://github.com/map-jr/map-jr-gl/pull/815
+[#816]: https://github.com/map-jr/map-jr-gl/pull/816
+
 ## 0.6.0 (2026-11-17)
 
 This entry covers the changes after 0.5.0 (the tag `v0.5.0`).
