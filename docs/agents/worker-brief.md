@@ -21,7 +21,8 @@ writing); this brief has the steps.
    not run `pnpm test:render` or the conformance tools; CI runs them.
 6. Commit, `git push -u origin <branch>`, and open a pull request against `main`
    (`gh pr create --repo map-jr/map-jr-gl --base main`) that follows `.github/pull_request_template.md`, says
-   `Fixes #N` (or `Part of #N`), and ends with the attribution line that your session instructions give. Then stop.
+   `Fixes #N`, and ends with the attribution line that your session instructions give. Write `Part of #N` only when
+   your prompt says that the issue is a tracking issue. Then stop.
    The coordinator may send you a CI failure to fix on the same branch.
 
 ## Rules
@@ -49,4 +50,5 @@ writing); this brief has the steps.
 - Size: <bytes gzip of each built file that changed, before and after, from `pnpm test:size`>
 - Not checked: <what>
 - Needs owner: <no | yes, because …>
-- Left out / found: <parts of the issue not done; faults seen elsewhere, one line each>
+- Left of the issue: <the text that the body of the issue should have after the merge, or "nothing">
+- Found: <faults seen elsewhere, one line each: a title of about 80 characters | `file:line` | "ran" or "read">

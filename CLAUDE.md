@@ -14,6 +14,29 @@ to protect those qualities.
   answer it and do what it asks before other work.
 - Every few tool calls, give the user a one-line update on where things stand.
 
+## Issues
+
+- **An issue has one fault or one decision,** so that one pull request closes it. Two faults that were found
+  together are two issues, unless one fix of a line or two covers both.
+- **Search before you file** (`gh issue list --search`). A fault that has an issue gets no second one.
+- **The title names the thing and the fault in about 80 characters.** It does not list, and it does not say who
+  found it.
+- **The body has these fields and nothing else:**
+  - **Fault:** what happens and what should happen, in one or two sentences, with the entry. A proposal has
+    **Proposal** in its place.
+  - **Where:** `file:line`, or the command that shows it.
+  - **Evidence:** "ran", "measured" (with the number) or "read". An issue that was only read has the label
+    `unverified`.
+  - **Done when:** the check that closes it.
+  - **From:** the issue or pull request where it was found.
+- **The body is the current state.** When the state changes, edit the body. A comment is for a decision of the
+  owner or for new evidence, with the date, in one paragraph.
+- **A table of measurements or a design goes into the pull request or a file of `docs/`.** The issue has the result
+  in one line and the link.
+- **A check that fails in some runs has one issue.** A new sighting adds one line (date, job) to the body.
+- **A tracking issue is a list of links to issues.** It has no fault of its own, and it is the only kind of issue
+  that a pull request names with `Part of`.
+
 ## Branches, pull requests and merging
 
 - **Every change goes through a pull request.** Branch from `main` (`fix/…`, `feat/…`, `docs/…`), push, open a pull
