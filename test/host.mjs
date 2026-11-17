@@ -1598,6 +1598,51 @@ if (only === 'worker') { await browser.close(); process.exit(failed ? 1 : 0); }
     } catch (e) { check('the test of a failed style-images file was completed', false, String(e.message).split('\n')[0]); }
     await page.close();
 }
+// A style that is not a style (#539): an error of the map (`onError`, `state.error`) that says what is missing, no error
+// of the page, and the map draws the next style. Each style is given as an object and as the answer of a URL.
+for (const renderer of ['main', 'worker']) {
+    const page = await browser.newPage({viewport: {width: 900, height: 600}});
+    const thrown = [];
+    page.on('pageerror', e => thrown.push(e.message));
+    try {
+        await page.goto(origin + '/bench');
+        const out = await page.evaluate(async renderer => {
+            const lib = await import('/dist/map-jr-gl.js'), wait = ms => new Promise(r => setTimeout(r, ms)), results = {}, unhandled = [];
+            window.addEventListener('unhandledrejection', e => unhandled.push(String(e.reason?.message ?? e.reason)));
+            const good = {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]};
+            const bad = {noLayers: {version: 8, sources: {}}, layersNotAList: {version: 8, sources: {}, layers: {bg: {type: 'background'}}}, notAnObject: 42};
+            const url = style => 'data:application/json,' + encodeURIComponent(JSON.stringify(style));
+            const run = async (name, style) => {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'})), errors = [];
+                const spec = {style, renderer, attribution: false, onError: e => errors.push(e.message)};
+                let host;
+                try { host = lib.createMap(el, spec); } catch (e) { results[name] = {made: String(e.message)}; el.remove(); return; }
+                await wait(700);
+                const first = errors.join(' | '), state = host.state.get().error?.message;
+                // The next style is drawn, and a later style that is not a style gives an error again.
+                host.update({...spec, style: good});
+                const idle = await Promise.race([new Promise(r => host.state.subscribe(s => s.idle, i => i && r(true))), wait(5000).then(() => false)]);
+                const cleared = !host.state.get().error, before = errors.length;
+                host.update(spec);
+                await wait(700);
+                results[name] = {first, state, idle, cleared, second: errors.slice(before).join(' | ')};
+                host.destroy(); el.remove();
+            };
+            for (const [name, style] of Object.entries(bad)) { await run(name, style); await run(name + 'URL', url(style)); }
+            // (A style with no "sources" has no source: its layers without a source are drawn.)
+            await run('noSources', {version: 8, layers: good.layers});
+            return {results, unhandled};
+        }, renderer);
+        const said = /^\[map-jr-gl\] The style has no list "layers"/;
+        for (const [name, r] of Object.entries(out.results)) {
+            if (name === 'noSources') check(`[${renderer}] a style with no "sources" is drawn without an error`, r.first === '' && r.idle && r.second === '', JSON.stringify(r));
+            else check(`[${renderer}] a style that is not a style (${name}): one error of the map that names "layers", and update() with a good style draws`,
+                said.test(r.first) && !r.first.includes(' | ') && said.test(r.state ?? '') && r.idle && said.test(r.second) && !r.second.includes(' | '), JSON.stringify(r));
+        }
+        check(`[${renderer}] a style that is not a style gives no error of the page`, !thrown.length && !out.unhandled.length, JSON.stringify({thrown, unhandled: out.unhandled}));
+    } catch (e) { check(`[${renderer}] the test of a style that is not a style was completed`, false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
 // A map that is destroyed while it loads (React StrictMode does this on each mount), and two maps in one element.
 {
     const page = await browser.newPage({viewport: {width: 900, height: 600}});
