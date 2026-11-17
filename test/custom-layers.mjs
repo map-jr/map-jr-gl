@@ -134,7 +134,7 @@ async function run() {
     out.lost = {onAdd: calls.onAdd, onRemove: calls.onRemove, newGl: addGl !== oldGl && addGl === m.getCanvas().getContext('webgl2'), implementation: m.getLayer('red')?.implementation === layer,
         order: m.getLayersOrder().join(), colours: (await colours(m, [[-10, 0], [12, 0]])).join()};
     // setStyle keeps the custom layer with diff (the default) and drops it with diff: false, without onRemove both times (as MapLibre GL JS 6.17).
-    await new Promise(r => { m.once('style.load', r); m.setStyle(JSON.parse(JSON.stringify(style))); });
+    await new Promise(r => { m.once('style.load', r); m.setStyle({...JSON.parse(JSON.stringify(style)), metadata: {changed: 1}}); });
     await wait(300);
     out.diff = {onRemove: calls.onRemove, order: m.getLayersOrder().join(), colours: (await colours(m, [[-10, 0], [12, 0]])).join()};
 
