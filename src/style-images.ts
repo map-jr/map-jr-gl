@@ -1,8 +1,12 @@
 // The images of a style in metadata['map-jr:images'] (#495). The page loads this file only for a style that has the key.
 /** The key of the metadata of a style that carries images (see "Images for style layers" in docs/api.md). */
 export const STYLE_IMAGES = 'map-jr:images';
-/** The bounds for the images of a style, which comes from another party: the number of images, and the length of the text of one. */
-const MAX_STYLE_IMAGES = 200, MAX_STYLE_IMAGE = 200_000;
+/**
+ * The bounds for the images of a style, which comes from another party: the number of images, and the length of the text of one.
+ * The page draws every image when the style arrives, so the number bounds that time. 800 icons of 21 CSS pixels fill 77%
+ * of the texture of the images at a pixel ratio of 3, and the texture is full after 961 of them (measured for #610).
+ */
+const MAX_STYLE_IMAGES = 800, MAX_STYLE_IMAGE = 200_000;
 /**
  * The images in `metadata['map-jr:images']` of a style: an SVG document or the URL of an image, as text, or an object
  * with such a text as `image`. An image that breaks a bound, or an SVG that refers to another file, is left out, and
