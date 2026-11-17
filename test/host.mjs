@@ -201,6 +201,23 @@ for (const renderer of renderers) {
         });
         check(`[${renderer}] a style URL that fails: state.error has the URL and the status, and no promise is left rejected`, /Style \/no-such-style\.json: HTTP 404/.test(badStyle ?? '') && !errors.length, JSON.stringify({badStyle, errors}));
 
+        // The first `idle` does not wait for a camera that has just stopped (#436): the first camera of a map is not a
+        // movement. A map with a background only is idle less than a fifth of a second after `createMap`. The
+        // shortest of three starts is read, so that a slow moment of the machine does not decide the result.
+        const firstIdle = await page.evaluate(async renderer => {
+            const t = window.t, times = [];
+            for (let i = 0; i < 3; i++) {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+                const began = performance.now();
+                const host = t.lib.createMap(el, {style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#abc'}}]}, renderer, attribution: false});
+                const idle = await new Promise(r => { if (host.state.get().idle) r(performance.now()); else host.state.subscribe(s => s.idle, v => v && r(performance.now())); });
+                times.push(Math.round(idle - began));
+                host.destroy(); el.remove();
+            }
+            return times;
+        }, renderer);
+        check(`[${renderer}] the first idle of a map does not wait a fifth of a second for a camera that has just stopped (#436)`, Math.min(...firstIdle) < 200, JSON.stringify(firstIdle));
+
         // 3b. `projection` of the description (#463): it takes the place of the projection of the style, `null` gives the
         // projection of the style back, the same content does nothing, and the control `globe()` switches it.
         const projection = await page.evaluate(async renderer => {

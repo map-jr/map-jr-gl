@@ -1610,7 +1610,9 @@ export class Engine {
         }
 
         const camera = `${tr.padding},${tr.lng},${tr.lat},${tr.zoom},${tr.bearing},${tr.pitch},${Math.round(tr.elevation)},${this.exaggeration}`, cameraChanged = camera !== this.lastCamera;
-        if (cameraChanged) { this.placeDirty = true; this.cameraMovedAt = began; }
+        // (The first camera of the map is not a movement: a map that starts is at rest, and the wait for a camera that
+        // has just stopped would hold up the first `idle` by a fifth of a second, #436.)
+        if (cameraChanged) { this.placeDirty = true; if (this.lastCamera) this.cameraMovedAt = began; }
 
         // Decide which labels show only every so often; in between they ride along with the map and fade.
         const zooming = Math.abs(tr.zoom - this.placeZoom) > 0.12;
