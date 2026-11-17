@@ -30,6 +30,8 @@ if (only && only !== 'main' && only !== 'worker') { console.log(`FAIL  RENDERER 
 const renderers = only ? [only] : ['worker', 'main'];
 for (const renderer of renderers) {
     const page = await browser.newPage({viewport: {width: 900, height: 600}});
+    // CPU_THROTTLE=4 slows the CPU of the page four times (Chromium only), as a loaded CI runner does (#532).
+    if (process.env.CPU_THROTTLE) await (await page.context().newCDPSession(page)).send('Emulation.setCPUThrottlingRate', {rate: Number(process.env.CPU_THROTTLE)});
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
     try {
@@ -1374,20 +1376,25 @@ for (const renderer of renderers) {
         const glass = await page.evaluate(async () => {
             const t = window.t, {navigation} = await import('/dist/controls.js'), mod = await import('/dist/map-jr-gl-maplibre-compat.js');
             t.host.update({...t.spec, controls: [navigation()]});
+            // (The control puts its element in place when its code has loaded with import(), so the check waits for it,
+            // for at most 3 s, as the check of colorScheme does: one frame was too short on a loaded machine, #532.
+            // A missing element gives the value null and fails this check, and the run goes on.)
+            for (const end = Date.now() + 3000; !document.querySelector('#host .map-jr-ctrl-group') && Date.now() < end;) await new Promise(r => setTimeout(r, 20));
             await new Promise(r => requestAnimationFrame(r));
-            const s = getComputedStyle(document.querySelector('#host .map-jr-ctrl-group')), group = {backdropFilter: s.backdropFilter, borderTopLeftRadius: s.borderTopLeftRadius};
+            const css = e => e ? getComputedStyle(e) : {};
+            const s = css(document.querySelector('#host .map-jr-ctrl-group')), group = {backdropFilter: s.backdropFilter ?? null, borderTopLeftRadius: s.borderTopLeftRadius ?? null};
             const el = Object.assign(document.createElement('div'), {style: 'width:100px;height:80px'});
             document.body.appendChild(el);
             const m = new mod.Map({container: el, attributionControl: false, center: [0, 0], zoom: 1, style: {version: 8, sources: {}, layers: []}});
             m.addControl(new mod.NavigationControl());
-            const compat = getComputedStyle(el.querySelector('.map-jr-ctrl-group')).backdropFilter;
+            const compat = css(el.querySelector('.map-jr-ctrl-group')).backdropFilter ?? null;
             m.remove(); el.remove();
             // The two custom properties of the look reach the popup (whose inline background and radius the CSS of MapLibre does not change).
             const host = document.querySelector('#host'), content = document.createElement('div');
             content.textContent = 'Popup';
             const popup = t.host.overlay(content, {lngLat: t.host.state.get().view.center, popup: true, onClose() {}});
             await new Promise(r => requestAnimationFrame(r));
-            const box = content.closest('.map-jr-popup-content'), look = () => { const p = getComputedStyle(box); return `${p.backgroundColor} ${p.borderTopLeftRadius}`; };
+            const box = content.closest('.map-jr-popup-content'), look = () => { const p = css(box); return `${p.backgroundColor} ${p.borderTopLeftRadius}`; };
             const popupDefault = look();
             host.style.setProperty('--map-control-opacity', '.3'); host.style.setProperty('--map-control-radius', '8px');
             const popupSet = look();
@@ -2063,7 +2070,7 @@ for (const other of [true, false]) {
             window.tapHost = lib.createMap(el, {style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, initialView: {center: [0, 0], zoom: 2}, controls: [navigation()], attribution: false});
             for (let i = 0; i < 50 && !el.querySelector('.map-jr-ctrl-zoom-in'); i++) await new Promise(r => setTimeout(r, 100));
         });
-        const look = () => page.evaluate(() => { const s = getComputedStyle(document.querySelector('.map-jr-ctrl-zoom-in')); return `${s.backgroundColor} ${s.outlineStyle} ${s.webkitTapHighlightColor}`; });
+        const look = () => page.evaluate(() => { const e = document.querySelector('.map-jr-ctrl-zoom-in'); if (!e) return 'no button'; const s = getComputedStyle(e); return `${s.backgroundColor} ${s.outlineStyle} ${s.webkitTapHighlightColor}`; });
         const before = await look();
         await page.tap('.map-jr-ctrl-zoom-in'); await page.waitForTimeout(400);
         const after = await look();
