@@ -46,3 +46,10 @@ test('style images: values that break a bound are left out with a message', () =
     styleImages(style([square('#000')]), m => faults.push(m));
     assert.match(faults.at(-1)!, /is not an object of images by name/);
 });
+
+test('style images: the names of the SVG templates are given apart, because the map must know them before the tiles are built (#628)', () => {
+    const now = new Set<string>();
+    const out = styleImages(style({plain: square('#000'), pin: '<svg viewBox="0 0 20 20"><rect width="20" height="20" fill="{{color}}"/></svg>', sized: {image: square('{{fill}}'), width: 10, height: 10}, url: '/icon.png'}), () => {}, now);
+    assert.deepEqual(Object.keys(out), ['plain', 'pin', 'sized', 'url']);
+    assert.deepEqual([...now], ['pin', 'sized']);
+});

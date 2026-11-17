@@ -645,6 +645,8 @@ export class Engine {
     private toldEncoding = new Set<string>();
 
     private setStyle(style: ResolvedStyle, reload: boolean, data?: Record<string, unknown>) {
+        // (A new style can have an image that the style before did not have: the engine asks the page again, #628.)
+        if (reload) this.missing.clear();
         // `encoding: 'custom'` of a `raster-dem` source (#590): the factors and the shift come from the style or from a
         // TileJSON as they are. When one is not a finite number, the source and its contours are read as `mapbox`.
         for (const [name, src] of Object.entries(style.sources)) {
@@ -1671,7 +1673,9 @@ export class Engine {
             // Images often come one after another (the variants of a template, the answers to missing images). The
             // buffers are made again when no image came for a tenth of a second, and after a second at the latest.
             if (this.iconsRev !== this.iconsSeen) { this.iconsSeen = this.iconsRev; this.iconsLast = now; this.iconsSince ||= now; }
-            if (now - this.iconsLast >= 100 || now - this.iconsSince >= 1000) {
+            // (Before the first `idle` the buffers do not wait: an image that a layer asked for is on the way to the first
+            // complete picture, and a wait of a tenth of a second would hold up `idle` (#628).)
+            if (!this.wentIdle || now - this.iconsLast >= 100 || now - this.iconsSince >= 1000) {
                 this.iconsDone = this.iconsRev; this.iconsSince = 0;
                 for (const t of this.tiles.values()) if (t.gl?.icons) this.renderer.refreshIcons(t.gl, this.iconsAll);
                 this.iconsAll = false;

@@ -503,7 +503,10 @@ export function makeMap(container: HTMLElement | string, spec: MapDescription, n
     // (The `fonts` of the last description, with URLs that are relative to the page made absolute: the style has its own base.)
     let wantedFonts = spec.fonts;
     // The images in `metadata['map-jr:images']` of the style (#495), and the `images` of the last description, which win by name.
-    let fromStyle: Record<string, ImageInput> = {}, wantedImages = spec.images, styleTurn = 0;
+    // An image of the style is drawn when a layer asks for it (`asked` has the names), so that a style with many images
+    // does not keep the page busy before the first tiles are requested (#628). `styleCode` is the load of the code.
+    let fromStyle: Record<string, ImageInput> = {}, wantedImages = spec.images, styleTurn = 0, asked = new Set<string>(), styleCode: Promise<unknown> | undefined;
+    const adding = new globalThis.Map<string, Promise<unknown>>();
     const absolute = (faces: FontFaces | undefined) => { const out: FontFaces = {}; for (const f of fontFaces(faces, document.baseURI)) ((out[f.name!] ??= []) as {url: string; 'unicode-range'?: string[]}[]).push({url: f.src, ...(f.unicodeRange ? {'unicode-range': f.unicodeRange.split(', ')} : {})}); return out; };
     const typeError = (id: string, type: string) => setTimeout(() => { if (alive) map.fire('error', {error: dataTypeError(id, type)}); });
     // `style: {light, dark}`: the scheme of the style that the map has (`colorScheme` resolved), and the last description.
@@ -517,10 +520,12 @@ export function makeMap(container: HTMLElement | string, spec: MapDescription, n
         // still exist and the style must not have been replaced.)
         const turn = ++styleTurn, given = style.metadata?.['map-jr:images'];
         fromStyle = {};
+        asked = new Set();
+        adding.clear();
         putImages();
-        if (given != null) import('./style-images.ts').then(m => {
+        styleCode = given == null ? undefined : import('./style-images.ts').then(m => {
             if (!alive || turn !== styleTurn) return;
-            fromStyle = m.styleImages(style, message => { if (alive) map.fire('error', {error: new Error(message)}); });
+            fromStyle = m.styleImages(style, message => { if (alive) map.fire('error', {error: new Error(message)}); }, asked);
             putImages();
         }, () => { if (alive && turn === styleTurn) map.fire('error', {error: new Error('[map-jr-gl] the style: the code for the images in metadata["map-jr:images"] did not load, and the map draws the style without them. Check that the files of the library are served next to it.')}); });
         // (The description of this moment: it can have changed while the style loaded.)
@@ -675,8 +680,10 @@ export function makeMap(container: HTMLElement | string, spec: MapDescription, n
     };
 
     // Gives the map the images of the style and of the description, and removes those that neither has now.
-    const putImages = () => {
-        const wanted: Record<string, ImageInput> = {...fromStyle, ...wantedImages};
+    const putImages = (only?: string) => {
+        const wanted: Record<string, ImageInput> = {};
+        for (const name of asked) if (Object.hasOwn(fromStyle, name)) wanted[name] = fromStyle[name];
+        Object.assign(wanted, wantedImages);
         for (const name of images.keys()) if (!Object.hasOwn(wanted, name)) { images.delete(name); map.removeImage(name); }
         for (const name in wanted) {
             const v = wanted[name], key = imageKey(v);
@@ -685,11 +692,15 @@ export function makeMap(container: HTMLElement | string, spec: MapDescription, n
             images.set(name, key);
             const spec = v && typeof v === 'object' && 'image' in v ? v : null;
             // (An image that does not load is an error of the map, and the map goes on without it.)
-            map.addImage(name, spec ? spec.image : v as ImageSource, spec ?? {}).then(busy, () => {
+            const p = map.addImage(name, spec ? spec.image : v as ImageSource, spec ?? {}).then(busy, () => {
                 if (alive && images.get(name) === key) map.fire('error', {error: new Error(`[map-jr-gl] ${Object.hasOwn(wantedImages ?? {}, name) ? 'images' : 'the style'}: the image "${name}" did not load. Give an SVG document or the URL of an image that the page can read.`)});
             });
+            adding.set(name, p);
         }
+        return only && adding.get(only);
     };
+    // (The map asks for an image that a layer names and that it does not have. The answer waits for the code of the images.)
+    map.setMissingStyleImageResolver(name => { asked.add(name); return Promise.resolve(styleCode).then(() => putImages(name)) as Promise<void>; });
     // A change that gave the engine work makes the map not idle until the engine reports idle again (#411).
     const busy = () => { if (alive && state.get().idle && !map.areTilesLoaded()) state.set({idle: false}); };
     const apply = (next: MapDescription, before?: MapDescription) => {

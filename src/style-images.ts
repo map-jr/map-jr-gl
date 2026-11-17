@@ -6,9 +6,10 @@ const MAX_STYLE_IMAGES = 200, MAX_STYLE_IMAGE = 200_000;
 /**
  * The images in `metadata['map-jr:images']` of a style: an SVG document or the URL of an image, as text, or an object
  * with such a text as `image`. An image that breaks a bound, or an SVG that refers to another file, is left out, and
- * `fault` gets a message for it.
+ * `fault` gets a message for it. The page draws an image when a layer asks for it. `now` gets the names of the images
+ * that the map must have at once: the SVG templates (an SVG with a `{{slot}}`).
  */
-export function styleImages(style: any, fault: (message: string) => void): Record<string, string | {image: string; width?: number; height?: number}> {
+export function styleImages(style: any, fault: (message: string) => void, now?: Set<string>): Record<string, string | {image: string; width?: number; height?: number}> {
     const given = style?.metadata?.[STYLE_IMAGES], out: Record<string, any> = {};
     if (given == null) return out;
     if (typeof given !== 'object' || Array.isArray(given)) { fault(`[map-jr-gl] the style: metadata["${STYLE_IMAGES}"] is not an object of images by name, and the map uses none of them. Write {"name": "<svg ...>"}.`); return out; }
@@ -20,7 +21,11 @@ export function styleImages(style: any, fault: (message: string) => void): Recor
             : text.length > MAX_STYLE_IMAGE ? `the text is longer than ${MAX_STYLE_IMAGE} characters`
             : text.trimStart().startsWith('<') && /(\bhref\s*=|\burl\()(?![\s"']*(#|data:))/i.test(text) ? 'the SVG refers to another file' : '';
         if (why) fault(`[map-jr-gl] the style: the image "${name}" of metadata["${STYLE_IMAGES}"] is left out, because ${why}. Give an SVG document without references to other files, or the URL of an image.`);
-        else out[name] = typeof v === 'string' ? v : {...v};
+        else {
+            out[name] = typeof v === 'string' ? v : {...v};
+            // (A template must be known before the tiles are built, because a tile names the variants that it needs. It is not drawn here.)
+            if (text.includes('{{')) now?.add(name);
+        }
     }
     return out;
 }

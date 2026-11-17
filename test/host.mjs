@@ -827,11 +827,15 @@ for (const renderer of renderers) {
             const t = window.t, c = t.host.unproject({x: 450, y: 300});
             t.imageErrors = []; t.kinds = [];
             t.withImages = images => ({...t.style, metadata: {...t.style.metadata, 'map-jr:images': images}, sources: {...t.style.sources, spot: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: c}}}},
-                layers: [...t.style.layers, {id: 'spot', type: 'symbol', source: 'spot', layout: {'icon-image': 'square', 'icon-allow-overlap': true, 'icon-ignore-placement': true}}]});
-            t.host.update(t.spec = {...t.spec, style: t.withImages({square: t.square('#f80'), far: '/no-such-style-image.png', outside: '<svg viewBox="0 0 4 4"><image href="https://example.com/a.png"/></svg>'}),
+                // (An image of the style is requested when a layer asks for it (#628): the layer `far` asks for the URL.)
+                layers: [...t.style.layers, {id: 'spot', type: 'symbol', source: 'spot', layout: {'icon-image': 'square', 'icon-allow-overlap': true, 'icon-ignore-placement': true}},
+                    {id: 'far', type: 'symbol', source: 'spot', layout: {'icon-image': 'far', 'icon-allow-overlap': true, 'icon-ignore-placement': true}}]});
+            t.host.update(t.spec = {...t.spec, style: t.withImages({square: t.square('#f80'), unused: t.square('#123'), far: '/no-such-style-image.png', outside: '<svg viewBox="0 0 4 4"><image href="https://example.com/a.png"/></svg>'}),
                 transformRequest: (url, kind) => { if (url.includes('no-such-style-image')) t.kinds.push(kind); }, onError: e => t.imageErrors.push(e.message)});
         });
         const ofStyle = await shows('#f80');
+        // (#628: the map draws an image of the style when a layer asks for it, and not an image that no layer names.)
+        const onDemand = await page.evaluate(() => [window.t.host._map.hasImage('square'), window.t.host._map.hasImage('unused')]);
         await page.evaluate(() => { const t = window.t; t.host.update(t.spec = {...t.spec, images: {square: t.square('#0f0')}}); });
         const overridden = await shows('#0f0');
         await page.evaluate(() => { const t = window.t, {images: _, ...rest} = t.spec; t.host.update(t.spec = rest); });
@@ -845,9 +849,9 @@ for (const renderer of renderers) {
             return {errors, kinds: t.kinds, has: t.host._map.hasImage('square')};
         });
         check(`[${renderer}] images of the style in metadata["map-jr:images"]: drawn, replaced by images of the description, removed with the style, an SVG with a reference to another file is left out, and a URL goes through transformRequest as Image`,
-            ofStyle === '#f80' && overridden === '#0f0' && back === '#f80' && !styleGone.has && styleGone.kinds.includes('Image')
+            ofStyle === '#f80' && onDemand[0] && !onDemand[1] && overridden === '#0f0' && back === '#f80' && !styleGone.has && styleGone.kinds.includes('Image')
             && styleGone.errors.some(e => e.startsWith('[map-jr-gl] the style: the image "outside"')) && styleGone.errors.some(e => e.startsWith('[map-jr-gl] the style: the image "far" did not load')),
-            JSON.stringify({ofStyle, overridden, back, styleGone}));
+            JSON.stringify({ofStyle, onDemand, overridden, back, styleGone}));
 
         // A sprite of the description (#495): added to the sprite of the style, its images named `id:name` in icon-image,
         // a relative URL is relative to the page, a sprite that does not load is an error and the other sprite is drawn,
