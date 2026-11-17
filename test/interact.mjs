@@ -1518,6 +1518,44 @@ for (const mode of renderers) {
         }, mode);
         check(`[${mode}] compat: toBlob and toDataURL in a render listener give the drawn map (#44)`, r.blob?.[1] > 200 && r.blob[0] < 50 && r.fromUrl?.[1] > 200 && r.fromUrl[0] < 50, JSON.stringify(r));
     }
+    // #591: the textures of colour ramps (heatmap, line-gradient, color-relief) are deleted when their layer goes. The
+    // probe counts live textures whose image is one pixel high (only ramps are), in the page or in the drawing worker.
+    {
+        const r = await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const probe = `(() => { const P = WebGL2RenderingContext.prototype, live = new Set(), bound = new WeakMap(), ch = new BroadcastChannel('ramps-591-${mode}');
+                const bind = P.bindTexture, img = P.texImage2D, del = P.deleteTexture;
+                P.bindTexture = function (t, x) { bound.set(this, x); return bind.call(this, t, x); };
+                P.texImage2D = function (...a) { const x = bound.get(this); if (x && a.length >= 9) { if (a[4] === 1) live.add(x); else live.delete(x); } return img.apply(this, a); };
+                P.deleteTexture = function (x) { live.delete(x); return del.call(this, x); };
+                ch.onmessage = e => { if (e.data === 'ask') ch.postMessage(live.size); }; })();`;
+            if (mode === 'main') (0, eval)(probe);
+            const url = URL.createObjectURL(new Blob([`${probe} importScripts(${JSON.stringify(location.origin + '/dist/map-jr-gl-worker.js')});`], {type: 'text/javascript'}));
+            const ch = new BroadcastChannel(`ramps-591-${mode}`);
+            // (The tile workers load the same file and answer too, with 0: the largest answer is the one of the drawing context.)
+            const ask = () => new Promise(res => { let n = null; ch.onmessage = e => { n = Math.max(n ?? 0, e.data); }; ch.postMessage('ask'); setTimeout(() => res(n), 300); });
+            // (The worker draws a new style some frames after `idle` can fire, so the count is read until it is as expected.)
+            const count = async want => { let n; for (let i = 0; i < 25 && (n = await ask()) !== want; i++) { m.triggerRepaint(); await new Promise(f => setTimeout(f, 200)); } return n; };
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const pts = {type: 'FeatureCollection', features: [[0, 0], [5, 5]].map(c => ({type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: c}}))};
+            const line = {type: 'Feature', properties: {}, geometry: {type: 'LineString', coordinates: [[-20, 0], [20, 0]]}};
+            const style = () => ({version: 8, sources: {p: {type: 'geojson', data: pts}, l: {type: 'geojson', data: line, lineMetrics: true}}, layers: [
+                {id: 'heat', type: 'heatmap', source: 'p'},
+                {id: 'grad', type: 'line', source: 'l', paint: {'line-width': 8, 'line-gradient': ['interpolate', ['linear'], ['line-progress'], 0, '#f00', 1, '#00f']}}]});
+            const m = new mod.Map({container: el, renderer: mode, attributionControl: false, center: [0, 0], zoom: 2, style: style(), ...(mode === 'worker' ? {createWorker: () => new Worker(url)} : {})});
+            const idle = () => new Promise(res => { m.once('idle', res); m.triggerRepaint(); setTimeout(res, 10000); });
+            await idle();
+            const out = {renderer: m.renderer, start: await count(2)};
+            m.removeLayer('heat'); m.removeLayer('grad'); await idle(); out.removed = await count(0);
+            for (let i = 0; i < 3; i++) { m.setStyle(style()); await idle(); }
+            out.restyled = await count(2);
+            m.setStyle({version: 8, sources: {}, layers: []}); await idle(); out.empty = await count(0);
+            m.remove(); el.remove(); ch.close();
+            return out;
+        }, mode);
+        check(`[${mode}] the textures of colour ramps are deleted when their layers are removed or the style changes (#591)`,
+            r.renderer === mode && r.start === 2 && r.removed === 0 && r.restyled === 2 && r.empty === 0, JSON.stringify(r));
+    }
     // #46: an image added with `sdf: true` is a signed distance field, and `icon-color` recolours it, as in MapLibre GL JS.
     {
         const r = await page.evaluate(async mode => {
