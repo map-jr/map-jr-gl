@@ -117,18 +117,30 @@ Layers:
 - Custom layers with the worker renderer (see "Custom layers" in [What is different](#what-is-different))
 - `fill-extrusion-pattern`
 - Patterns that are different for each feature
+- Distance-field (SDF) images as `fill-pattern`. The image is drawn as it is stored, without the colour of the layer.
 
 Properties:
 
 - `line-gradient` together with `line-dasharray`
 - `line-offset` and `line-blur` that are different for each feature
 - Circle stroke and blur that are different for each feature
+- `line-gap-width` that is different for each feature. The line is drawn without a gap, and nothing warns.
+- `heatmap-radius` that is different for each feature. The layer uses the default radius of 30 pixels, and nothing warns.
 - `icon-halo-blur`. Icon halos are available for distance-field (SDF) icons.
 - `text-writing-mode`
-- `text-pitch-alignment` with a value other than `auto`. On a tilted map, text along a line lies on the ground and other text is upright, which is what `auto` gives in MapLibre GL JS.
-- `symbol-z-order` and `symbol-avoid-edges`
+- `text-pitch-alignment` with a value other than `auto`. The property is not read, and nothing warns. On a tilted map, text along a line lies on the ground and other text is upright, which is what `auto` gives in MapLibre GL JS.
+- `symbol-z-order`. The property is not read, and nothing warns. Without a `symbol-sort-key`, the symbols of a layer keep the order of the source, which is what the value `source` gives in MapLibre GL JS. The values `auto` and `viewport-y` do not sort symbols that overlap by their position on the screen.
+- `symbol-avoid-edges`. The property is not read, and nothing warns.
+- `symbol-height-offset`. The property is not read, and nothing warns.
+- `fill-extrusion-rounded-corner-distance`. The property is not read, and nothing warns: the corners of an extrusion are sharp.
+- `raster-fade-duration`. The property is not read, and nothing warns: a raster tile shows at once when it has loaded.
+- Paint transitions: the root property `transition` of a style and the `*-transition` properties of a layer (for example `background-color-transition`). A new value of a paint property shows at once, and nothing warns.
 - An icon together with text that follows a curved line. The text is drawn without the icon.
 - `vertical-align` in `format` text. Sizes, fonts, colours and images in `format` text are available. The SVG output of the server draws each line in one size.
+
+Expressions:
+
+- `within` and `distance`. Each writes one warning (`[map-jr-gl] Unsupported expression "within"`) and gives `null`, so a property takes its default value, and a filter that is `["within", ...]` alone lets no feature through.
 
 Layers that the server renderer does not draw:
 
@@ -137,6 +149,7 @@ Layers that the server renderer does not draw:
 Other:
 
 - Sky and fog, the atmosphere around the globe, and projections other than `mercator`, `globe` and `vertical-perspective` (`addProjection`)
+- The map option `crossSourceCollisions: false` of `@map-jr/map-jr-gl/maplibre-compat`. The option is not read, and nothing warns: labels of different sources always collide with each other, as with the default (`true`) of MapLibre GL JS.
 - The right-to-left text plugin. The browser draws right-to-left text correctly without it.
 
 ## Map methods
