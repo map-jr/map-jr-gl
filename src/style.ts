@@ -1,6 +1,6 @@
 export * from './resolve.ts';
 import type {LayerJSON} from './resolve.ts';
-import {colorRamp, compileFilter, compileProp, type Fn, type Prop, type PropKind} from './expr.ts';
+import {colorRamp, compileFilter, compileProp, parseColor, warnOnce, type Fn, type Prop, type PropKind} from './expr.ts';
 
 /** Sources whose tiles are built into geometry by the tile workers (as opposed to images the engine draws directly). */
 export const isGeometrySource = (s: {type: string}) => s.type === 'vector' || s.type === 'geojson' || s.type === 'contour';
@@ -41,7 +41,7 @@ const SPEC: Record<string, Record<string, [string, PropKind, any]>> = {
     hillshade: {
         shadow: ['hillshade-shadow-color', 'color', '#000'], highlight: ['hillshade-highlight-color', 'color', '#fff'], accent: ['hillshade-accent-color', 'color', '#000'],
         exaggeration: ['hillshade-exaggeration', 'number', 0.5], direction: ['hillshade-illumination-direction', 'number', 335],
-        anchor: ['hillshade-illumination-anchor', 'string', 'viewport'],
+        anchor: ['hillshade-illumination-anchor', 'string', 'viewport'], method: ['hillshade-method', 'string', 'standard'], altitude: ['hillshade-illumination-altitude', 'number', 45],
     },
     'color-relief': {opacity: ['color-relief-opacity', 'number', 1]},
     symbol: {
@@ -116,13 +116,46 @@ export interface CompiledLayer {
     group?: string;
 }
 
+/** The most lights that a `hillshade` layer with the method `multidirectional` draws. */
+export const LIGHTS = 8;
+const LIGHT_PROPS = ['direction', 'altitude', 'shadow', 'highlight'], HILLSHADE_METHODS = ['standard', 'combined', 'igor', 'multidirectional', 'basic'];
+
+/**
+ * The lights of a `hillshade` layer at a zoom, as the `hillshade` program takes them. `method` is 0 for `standard`,
+ * 1 for `combined`, 2 for `igor` and 3 for `basic` and `multidirectional`. `sun` has the direction (with `bearing`
+ * added) and the altitude of each light in radians, and `shadow` and `highlight` have a premultiplied colour for each.
+ * As in MapLibre GL JS, only `multidirectional` has more than one light, and a list that is shorter than the longest
+ * list repeats its last value.
+ */
+export function hillshadeLights(p: Record<string, Prop>, zoom: number, bearing: number): {method: number; n: number; sun: number[]; shadow: number[]; highlight: number[]} {
+    const name = p.method.eval(zoom), spec = SPEC.hillshade;
+    let method = HILLSHADE_METHODS.indexOf(name);
+    if (method < 0) { warnOnce(`hillshade-method: ${JSON.stringify(name)} is not a method, and the layer uses "standard". Write "standard", "basic", "combined", "igor" or "multidirectional".`); method = 0; }
+    const [direction, altitude, shadow, highlight]: any[][] = LIGHT_PROPS.map((k, i) => {
+        const v = p[k].eval(zoom), def = spec[k][2], list: any[] = Array.isArray(v) && (i < 2 || typeof v[0] !== 'number') ? v : [v];
+        return (list.length ? list : [def]).map(x => i < 2 ? (typeof x === 'number' && !isNaN(x) ? x : def) * Math.PI / 180
+            : Array.isArray(x) && x.length === 4 && typeof x[0] === 'number' ? x : (typeof x === 'string' && parseColor(x)) || parseColor(def));
+    });
+    let n = method === 3 ? Math.max(direction.length, altitude.length, shadow.length, highlight.length) : 1;
+    if (n > LIGHTS) { warnOnce(`hillshade: a layer has ${n} lights, and the layer draws the first ${LIGHTS}. Give lists of at most ${LIGHTS} values.`); n = LIGHTS; }
+    const out = {method: Math.min(method, 3), n, sun: [] as number[], shadow: [] as number[], highlight: [] as number[]};
+    for (let i = 0; i < n; i++) {
+        const at = (a: any[]) => a[Math.min(i, a.length - 1)];
+        out.sun.push(at(direction) + bearing, at(altitude));
+        for (const [to, c] of [[out.shadow, at(shadow)], [out.highlight, at(highlight)]] as [number[], number[]][]) to.push(c[0] * c[3], c[1] * c[3], c[2] * c[3], c[3]);
+    }
+    return out;
+}
+
 export function compileLayer(l: LayerJSON): CompiledLayer | null {
     const spec = SPEC[l.type];
     if (!spec) return null;
     const p: Record<string, Prop> = {};
     for (const k in spec) {
         const [name, kind, def] = spec[k];
-        p[k] = compileProp(l.paint?.[name] ?? l.layout?.[name], kind, def);
+        const v = l.paint?.[name] ?? l.layout?.[name];
+        // These properties of a hillshade layer take one value or a list of values, one for each light. A list is kept as it is.
+        p[k] = l.type === 'hillshade' && LIGHT_PROPS.includes(k) && Array.isArray(v) ? compileProp(typeof v[0] !== 'string' || parseColor(v[0]) ? ['literal', v] : v, 'string', def) : compileProp(v, kind, def);
     }
     // A server-only extra filter is compiled separately, so it can be an expression even when the layer's own filter is legacy syntax.
     let relief: Float32Array | undefined, ramp: Uint8Array | undefined;

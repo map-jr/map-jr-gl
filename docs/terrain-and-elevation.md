@@ -117,6 +117,41 @@ map.addLayer({
 });
 ```
 
+`hillshade-method` chooses how the layer shades the ground. The default is `standard`. The methods are those of
+MapLibre GL JS:
+
+| `hillshade-method` | What it draws |
+|---|---|
+| `standard` | The shading of earlier versions. It is the only method that uses `hillshade-accent-color`. |
+| `basic` | The brightness follows the angle between the light and the ground. Ground that faces the light gets `hillshade-highlight-color`, ground that faces away gets `hillshade-shadow-color`, and the ground between them is transparent. |
+| `combined` | The shading of `basic`, multiplied by the steepness of the ground. Level ground is transparent. |
+| `igor` | Steep ground is shaded by its direction only, which gives a soft relief. |
+| `multidirectional` | The shading of `basic` for several lights, averaged. |
+
+`hillshade-illumination-altitude` is the height of the light above the horizon in degrees, from 0 to 90 (the default is
+45). The methods `basic`, `combined` and `multidirectional` use it. With `multidirectional`,
+`hillshade-illumination-direction`, `hillshade-illumination-altitude`, `hillshade-highlight-color` and
+`hillshade-shadow-color` each take one value or a list with a value for each light. A list that is shorter than the
+longest list repeats its last value. The layer draws at most 8 lights. The other methods use the first value of a
+list.
+
+```js
+map.addLayer({
+  id: 'relief',
+  type: 'hillshade',
+  source: 'dem',
+  paint: {
+    'hillshade-method': 'multidirectional',
+    'hillshade-illumination-direction': [270, 315, 0, 45],
+    'hillshade-illumination-altitude': [30, 30, 30, 30],
+    'hillshade-highlight-color': '#ffffff',
+    'hillshade-shadow-color': '#000000',
+  },
+});
+```
+
+A `hillshade-method` that is not one of the five writes one warning, and the layer uses `standard`.
+
 ## Colours by elevation
 
 A `color-relief` layer gives each pixel a colour from its elevation in metres. `color-relief-color` is an
