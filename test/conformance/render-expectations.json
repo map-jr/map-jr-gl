@@ -5,7 +5,6 @@
     {"pattern": "^sky/|^terrain/fog|^high-pitch/pitch95", "label": "sky and fog", "decision": "later", "reason": "Sky and fog are not available."},
     {"pattern": "^mlt/", "label": "MLT", "decision": "later", "reason": "MapLibre Tiles (MLT) are not available."},
     {"pattern": "^(video|canvas)/", "label": "video and canvas sources", "decision": "later", "reason": "Video and canvas sources are not available."},
-    {"test": "color-relief/custom-encoding-all-zero-factors", "label": "custom encoding of a raster-dem source", "decision": "later", "issue": 590, "reason": "encoding: 'custom' of a raster-dem source is read as mapbox."},
     {"pattern": "^fill-extrusion-pattern/", "label": "fill-extrusion-pattern", "decision": "later", "reason": "fill-extrusion-pattern is not available."},
     {"pattern": "^line-gradient-dasharray/", "label": "line-gradient with line-dasharray", "decision": "later", "reason": "line-gradient together with line-dasharray is not available."},
     {"pattern": "^line-(offset|blur)/property-function$", "label": "line-offset and line-blur for each feature", "decision": "later", "reason": "line-offset and line-blur that are different for each feature are not available."},
