@@ -1088,9 +1088,9 @@ export class Engine {
         let pixels = this.dem.get(url);
         if (!pixels) {
             pixels = (async () => {
-                const bytes = await fetchTile(url, withTimeout(this.fetchAs('Tile')));
+                const bytes = await fetchTile(url, withTimeout(this.fetchAs('Tile')), undefined, undefined, true);
                 if (!bytes) return null;
-                const image = await createImageBitmap(new Blob([bytes as BlobPart]), {premultiplyAlpha: 'none', colorSpaceConversion: 'none'});
+                const image = 'length' in bytes ? await createImageBitmap(new Blob([bytes as BlobPart]), {premultiplyAlpha: 'none', colorSpaceConversion: 'none'}) : bytes;
                 const {width, height} = image, data = imagePixels(image, width, height);
                 image.close();
                 return {width, height, data};
@@ -1261,9 +1261,10 @@ export class Engine {
                 // Image tiles need no parsing, so the engine fetches and decodes them itself.
                 const ac = new AbortController();
                 t.cancel = () => ac.abort();
-                load = fetchTile(url, withTimeout(this.fetchAs('Tile')), ac.signal, t).then(async bytes => {
+                load = fetchTile(url, withTimeout(this.fetchAs('Tile')), ac.signal, t, true).then(async bytes => {
                     if (!bytes) return {labels: {}, batches: {}};
-                    const image = await createImageBitmap(new Blob([bytes as BlobPart]));
+                    // (A custom protocol can return the image decoded.)
+                    const image = 'length' in bytes ? await createImageBitmap(new Blob([bytes as BlobPart])) : bytes;
                     if (this.tiles.get(key) !== t) { image.close(); return {labels: {}, batches: {}}; }
                     const tile = this.renderer.createImageTile(image, undefined, id);
                     image.close();

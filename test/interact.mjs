@@ -880,6 +880,49 @@ for (const mode of renderers) {
     });
     check(`[${mode}] addProtocol('pmtiles') warns once that the library reads pmtiles:// itself`,
         pmWarns.length === 1 && pmWarns[0].startsWith('[map-jr-gl]') && pmWarns[0].includes('pmtiles://'), JSON.stringify(pmWarns));
+    // #603: a protocol gets the request of a raster or raster-dem tile with the type `image` and an `accept` header, as in
+    // MapLibre GL JS, and it can answer with an ImageBitmap, an HTMLImageElement or the bytes of an image file.
+    const drawn = await page.evaluate(async () => {
+        const m = window.map, mod = await import('/dist/map-jr-gl-maplibre-compat.js'), asked = {}, kept = [], urls = [];
+        const colours = {bitmap: '#ff0000', element: '#00ff00', bytes: '#0000ff', dem: '#018000'};
+        mod.addProtocol('drawn', async request => {
+            const how = request.url.split('/')[2], c = Object.assign(document.createElement('canvas'), {width: 64, height: 64}), g = c.getContext('2d');
+            if (how === 'https:') { urls.push(request.url); return {data: {type: 'FeatureCollection', features: []}}; }
+            asked[how] = request.type + ' ' + request.headers?.accept;
+            g.fillStyle = colours[how]; g.fillRect(0, 0, 64, 64);
+            if (how === 'element') { const img = new Image(); img.src = c.toDataURL(); await img.decode(); return {data: img}; }
+            if (how === 'bytes') return {data: await (await new Promise(r => c.toBlob(r))).arrayBuffer()};
+            const data = await createImageBitmap(c);
+            kept.push(data); // (the protocol keeps its image, as a protocol with a cache does)
+            return {data};
+        });
+        const middle = async () => { const bmp = await createImageBitmap(await m.toBlob()), g = new OffscreenCanvas(bmp.width, bmp.height).getContext('2d'); g.drawImage(bmp, 0, 0); return [...g.getImageData(bmp.width >> 1, bmp.height >> 1, 1, 1).data].slice(0, 3).join(); };
+        const seen = {};
+        try {
+            for (const how of ['bitmap', 'element', 'bytes']) {
+                m.addSource('drawn', {type: 'raster', tiles: [`drawn://${how}/{z}/{x}/{y}`], tileSize: 256});
+                m.addLayer({id: 'drawn', type: 'raster', source: 'drawn', paint: {'raster-fade-duration': 0}});
+                for (let i = 0; i < 80 && !(asked[how] && m.areTilesLoaded()); i++) await new Promise(r => setTimeout(r, 100));
+                await new Promise(r => { m.once('idle', r); m.triggerRepaint(); setTimeout(r, 5000); });
+                seen[how] = await middle();
+                m.removeLayer('drawn'); m.removeSource('drawn');
+            }
+            m.addSource('drawn', {type: 'raster-dem', tiles: ['drawn://dem/{z}/{x}/{y}'], tileSize: 256});
+            m.addLayer({id: 'drawn', type: 'hillshade', source: 'drawn'});
+            for (let i = 0; i < 80 && !(asked.dem && m.areTilesLoaded()); i++) await new Promise(r => setTimeout(r, 100));
+            seen.demLoaded = m.areTilesLoaded();
+            m.removeLayer('drawn'); m.removeSource('drawn');
+            // The compat entry fetches the data of a GeoJSON source for querySourceFeatures: the URL of a protocol that has
+            // another URL inside reaches the protocol as it is written.
+            m.addSource('drawn', {type: 'geojson', data: 'drawn://https://example.com/points.json'});
+            m.querySourceFeatures('drawn');
+            for (let i = 0; i < 30 && urls.length < 2; i++) await new Promise(r => setTimeout(r, 100));
+            m.removeSource('drawn');
+        } finally { mod.removeProtocol('drawn'); }
+        return {asked, seen, urls, keptWhole: kept.length > 0 && kept.every(b => b.width === 64)};
+    });
+    check(`[${mode}] addProtocol: a raster and a raster-dem tile have the request type image, and an ImageBitmap, an HTMLImageElement and bytes are drawn; querySourceFeatures asks for the URL of a GeoJSON source as written (#603)`,
+        Object.values(drawn.asked).length === 4 && Object.values(drawn.asked).every(a => a === 'image image/webp,*/*') && drawn.seen.bitmap === '255,0,0' && drawn.seen.element === '0,255,0' && drawn.seen.bytes === '0,0,255' && drawn.seen.demLoaded && drawn.keptWhole && drawn.urls.length === 2 && drawn.urls.every(u => u === 'drawn://https://example.com/points.json'), JSON.stringify(drawn));
     // map.painter (#205): the development build warns once per map, and the value is undefined; the production build does not warn.
     const painter = await page.evaluate(async () => {
         const out = {}, warn = console.warn;
