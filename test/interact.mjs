@@ -756,6 +756,20 @@ for (const mode of renderers) {
     });
     check(`[${mode}] setFeatureState with a text id on a vector source warns once`, fs.warned.length === 1 && /setFeatureState\(\): the source "omt"/.test(fs.warned[0]), JSON.stringify(fs.warned));
     check(`[${mode}] feature state is set, merged and removed, and the map is idle after a state that no layer reads`, fs.both.hover === true && fs.both.picked === 1 && !('hover' in fs.one) && fs.one.picked === 1 && Object.keys(fs.none).length === 0 && fs.idle, JSON.stringify(fs));
+    // A GeoJSON feature with the id '12' has the id 12 (#528). The string and the number name the same feature state, as
+    // in MapLibre GL JS 6.17.0, and '012' is another id there and here (#753).
+    const digitId = await page.evaluate(async () => {
+        const m = window.map, s = 'fs-digits', point = id => ({type: 'Feature', id, properties: {}, geometry: {type: 'Point', coordinates: [0, 0]}});
+        m.addSource(s, {type: 'geojson', data: {type: 'FeatureCollection', features: [point('12')]}});
+        m.setFeatureState({source: s, id: '12'}, {on: true});
+        const r = {number: m.getFeatureState({source: s, id: 12}), string: m.getFeatureState({source: s, id: '12'}), padded: m.getFeatureState({source: s, id: '012'})};
+        m.removeFeatureState({source: s, id: '12'}, 'on');
+        r.removed = m.getFeatureState({source: s, id: 12});
+        m.removeSource(s);
+        return r;
+    });
+    check(`[${mode}] setFeatureState and removeFeatureState with the id '12' reach the GeoJSON feature whose id became 12 (#753)`,
+        digitId.number.on === true && digitId.string.on === true && Object.keys(digitId.padded).length === 0 && Object.keys(digitId.removed).length === 0, JSON.stringify(digitId));
     if (mode === 'main') check('[main] setFeatureState builds tiles again only when a layer of the source reads feature state', fs.unread === 0 && fs.read > 0, JSON.stringify({unread: fs.unread, read: fs.read, readMs: fs.readMs}));
     if (mode === 'main') check('[main] setFeatureState sends the tile workers only the state that changed', fs.sent.length > 0 && fs.sent[0] < 200, JSON.stringify(fs.sent));
 

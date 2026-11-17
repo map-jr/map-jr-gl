@@ -514,11 +514,18 @@ for (const renderer of renderers) {
             const [r, , bl] = c.getImageData(0, 0, 1, 1).data;
             out.colour = r > 200 && bl < 50 ? 'red' : `${r},${bl}`;
             out.state = (await host.queryFeatures(at, {layers: ['square']}))[0]?.state;
+            // The record '12' has the id 12, and setFeatureState and removeFeatureState with '12' reach it (#753).
+            const pick = async () => (await host.queryFeatures(at, {layers: ['places']})).filter(f => f.id === 12).map(f => f.state?.pick ?? 'none').join();
+            host.setFeatureState({source: 'places', id: '12'}, {pick: true});
+            out.digits = await pick();
+            host.removeFeatureState({source: 'places', id: '12'}, 'pick');
+            out.digitsRemoved = await pick();
             host.destroy(); el.remove();
             return out;
         }, renderer);
         check(`[${renderer}] queryFeatures and querySource give the string id of a GeoJSON feature and the number for a string of digits, and setFeatureState takes a string id (#528)`,
-            textId.square.join('|') === '"square-a"|"square-a"|"square-a"|"square-a"' && textId.places.join('|') === '"louvre",12|"louvre",12' && textId.colour === 'red' && textId.state?.on === true, JSON.stringify(textId));
+            textId.square.join('|') === '"square-a"|"square-a"|"square-a"|"square-a"' && textId.places.join('|') === '"louvre",12|"louvre",12' && textId.colour === 'red' && textId.state?.on === true
+            && textId.digits === 'true' && textId.digitsRemoved === 'none', JSON.stringify(textId));
         check(`[${renderer}] queryFeatures: radius widens a query for drawn features, and its default is 0 there and 3 in querySource`,
             radius.on === 1 && radius.none === 0 && radius.small === 0 && radius.point === 1 && radius.position === 1 && radius.data === 1 && radius.dataDefault === 0 && radius.layer === 'own-line', JSON.stringify(radius));
 
