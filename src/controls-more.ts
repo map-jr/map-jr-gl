@@ -6,14 +6,21 @@ import {cls, ui, toggleClass, type Control, type ControlPosition} from './contro
 
 export const svg = (path: string, extra = '') => `<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" ${extra}>${path}</svg>`;
 
-/** `name` gives the button the class name that MapLibre GL JS gives it (`maplibregl-ctrl-zoom-in`), for stylesheets and tests written for that library. */
+/**
+ * `name` gives the button the class name that MapLibre GL JS gives it (`maplibregl-ctrl-zoom-in`), for stylesheets and tests written for that library.
+ * The icon is in a span `maplibregl-ctrl-icon`, as in that library. A page that sets a `background-image` on that span sees its image in
+ * place of the library's icon.
+ */
 export function button(group: HTMLElement, name: string, label: string, icon: string, onClick: () => void): HTMLButtonElement {
     const b = document.createElement('button');
     b.className = cls('ctrl-' + name);
     b.type = 'button';
     b.title = label;
     b.setAttribute('aria-label', label);
-    b.innerHTML = icon;
+    const s = b.appendChild(document.createElement('span'));
+    s.className = cls('ctrl-icon');
+    s.innerHTML = icon;
+    requestAnimationFrame(() => { if (getComputedStyle(s).backgroundImage != 'none') s.style.color = 'transparent'; });
     b.addEventListener('click', onClick);
     return group.appendChild(b);
 }

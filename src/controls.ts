@@ -63,7 +63,7 @@ export const CONTROL_CSS = `
 :where(.map-jr-ctrl-group button){-webkit-tap-highlight-color:transparent;display:flex;align-items:center;justify-content:center;width:var(--map-control-size,32px);height:var(--map-control-size,32px);padding:0;border:0;background:none;color:inherit;cursor:pointer}
 :where(.map-jr-ctrl-group button+button){border-top:1px solid rgba(0,0,0,.1)}
 @media (hover:hover){:where(.map-jr-ctrl-group button:hover){background:rgba(0,0,0,.06)}}
-:where(.map-jr-ctrl-group button:disabled){opacity:.35;cursor:default}
+:where(.map-jr-ctrl-icon){display:flex;align-items:center;justify-content:center;width:100%;height:100%;background:center no-repeat}:where(.map-jr-ctrl-group button:disabled){opacity:.35;cursor:default}
 :where(.map-jr-ctrl-group button:focus-visible){outline:2px solid var(--map-control-focus,#2f7fd1);outline-offset:-2px}
 :where(.map-jr-user-location-dot){position:absolute;left:0;top:0;width:15px;height:15px;border-radius:50%;background:#1da1f2;box-shadow:0 0 0 2px #fff,0 0 3px 2px rgba(0,0,0,.35);pointer-events:none;z-index:1}
 :where(.map-jr-user-location-dot-stale){background:#aaa}

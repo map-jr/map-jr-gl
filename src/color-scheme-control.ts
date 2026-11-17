@@ -33,7 +33,7 @@ export class ColorSchemeControl implements Control {
             const label = scheme === 'dark' ? ui(map, 'ColorSchemeControl.Light', 'Use light colours') : ui(map, 'ColorSchemeControl.Dark', 'Use dark colours');
             b.title = label;
             b.setAttribute('aria-label', label);
-            b.innerHTML = scheme === 'dark'
+            b.firstElementChild!.innerHTML = scheme === 'dark'
                 ? svg('<path d="M15 10.800A6.300 6.300 0 1 1 7.200 3a5 5 0 0 0 7.800 7.800z"/>')
                 : svg('<circle cx="9" cy="9" r="3.200"/><path d="M9 1.800v1.200M9 15v1.200M1.800 9H3M15 9h1.200M3.900 3.900l.850.850M13.250 13.250l.850.850M3.900 14.100l.850-.850M13.250 4.750l.850-.850"/>');
         };
