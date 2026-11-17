@@ -1115,7 +1115,9 @@ has the right type, and a name that is not in the table does not compile.
 
 `addProtocol(name, fn)` of `@map-jr/map-jr-gl` makes every map of the page load each URL that starts with `name://`
 through `fn`. It has the arguments of `addProtocol` of
-MapLibre GL JS. `fn` gets `{url, type, headers}` and an `AbortController`, and returns a promise of `{data}`. The map calls `abort()` of that controller when the map is removed, and when a newer `setData` of a GeoJSON source replaces the request (also the request of `updateData` whose diffs that `setData` drops). A tile request that is no longer needed is not aborted. After an abort, the map ignores the answer of `fn`. The
+MapLibre GL JS. `fn` gets `{url, type, headers}` and an `AbortController`, and returns a promise of `{data}`. The
+`url` is the URL as the style or the TileJSON has it, also when it has another URL inside
+(`cog://https://example.com/a.tif`). The map calls `abort()` of that controller when the map is removed, and when a newer `setData` of a GeoJSON source replaces the request (also the request of `updateData` whose diffs that `setData` drops). A tile request that is no longer needed is not aborted. After an abort, the map ignores the answer of `fn`. The
 data can be an `ArrayBuffer`, a typed array, a string or an object (which the map turns into JSON).
 `removeProtocol(name)` removes it. The protocols are the same for every map of the page, and a map that exists
 already uses a protocol added later.

@@ -4,6 +4,13 @@
 import type {GeoJSONOptions} from './geojson.ts';
 // (The reader for PMTiles archives is loaded only for a style that has one: the page script stays small.)
 const PM_PREFIX = 'pmtiles://';
+/** A URL of a custom protocol (`addProtocol`), which can have another URL inside: `cog://https://example.com/a.tif`. */
+const CUSTOM = /^(?!https?:\/\/)[a-z][a-z0-9+.-]*:\/\//i;
+/**
+ * `url` as a complete URL: a relative URL is joined to `base`. A URL of a custom protocol stays as it is written,
+ * because the URL parser removes the colon of the URL inside it (`cog://https//example.com/a.tif`).
+ */
+export const absolute = (url: string, base?: string) => !base || CUSTOM.test(url) ? url : new URL(url, base).href;
 import type {ContourConfig} from './contour.ts';
 
 /** The fonts for labels when the style and the page name none that is available. */
@@ -110,7 +117,7 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
     // (With `partial`, `once` reports a failure itself.)
     const get = (raw: object, url: string, load: () => Promise<any>) => partial ? once(raw, url, load, partial) : once(raw, url, load).catch(bad);
     if (typeof style === 'string') {
-        const url = base ? new URL(style, base).href : style;
+        const url = absolute(style, base);
         const res = await fetchFn(url);
         if (!res.ok) throw new Error(`Failed to load style ${url}: ${res.status}`);
         base = url;
@@ -122,7 +129,7 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
         if (raw.type === 'geojson') {
             let data = raw.data;
             if (typeof data === 'string') {
-                const url = base ? new URL(data, base).href : data;
+                const url = absolute(data, base);
                 data = await get(raw, url, async () => {
                     const res = await fetchFn(url);
                     if (!res.ok) throw new Error(`Failed to load GeoJSON ${url}: ${res.status}`);
@@ -133,7 +140,7 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
             return {type: 'geojson', data, options: raw.cluster || raw.promoteId || raw.filter || raw.generateId ? {filter: raw.filter, cluster: raw.cluster, clusterRadius: raw.clusterRadius, clusterMaxZoom: raw.clusterMaxZoom, clusterMinPoints: raw.clusterMinPoints, clusterProperties: raw.clusterProperties, promoteId: raw.promoteId, generateId: raw.generateId} : undefined, tiles: [`geojson://${name}/{z}/{x}/{y}`], minzoom: 0, maxzoom: raw.maxzoom ?? 18, tileSize: 512, attribution: raw.attribution};
         }
         if (raw.type === 'image' && raw.url && raw.coordinates?.length === 4) {
-            return {type: 'image', url: base ? new URL(raw.url, base).href : raw.url, coordinates: raw.coordinates, tiles: [], minzoom: 0, maxzoom: 22, tileSize: 512};
+            return {type: 'image', url: absolute(raw.url, base), coordinates: raw.coordinates, tiles: [], minzoom: 0, maxzoom: 22, tileSize: 512};
         }
         if (raw.type !== 'vector' && raw.type !== 'raster' && raw.type !== 'raster-dem') return;
         if (!raw.tiles && !raw.url) {
@@ -151,7 +158,7 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
             if (info === SKIP) return;
             src = {minzoom: info.minzoom, maxzoom: info.maxzoom, attribution: info.attribution, ...raw, tiles: [`${PM_PREFIX}${file}/{z}/{x}/{y}`], head: info.head && {url: file, bytes: info.head}};
         } else if (!src.tiles && src.url) {
-            const url = base ? new URL(src.url, base).href : src.url;
+            const url = absolute(src.url, base);
             const json = await get(raw, url, async () => {
                 const res = await fetchFn(url);
                 if (!res.ok) throw new Error(`Failed to load source ${url}: ${res.status}`);
@@ -159,9 +166,9 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
             });
             if (json === SKIP) return;
             src = {...json, ...Object.fromEntries(Object.entries(raw).filter(([k]) => k !== 'url'))};
-            src.tiles = src.tiles.map((t: string) => decodeURI(new URL(t, url).href));
+            src.tiles = src.tiles.map((t: string) => CUSTOM.test(t) ? t : decodeURI(new URL(t, url).href));
         } else if (base) {
-            src = {...src, tiles: src.tiles.map((t: string) => t.startsWith(PM_PREFIX) ? t : decodeURI(new URL(t, base).href))};
+            src = {...src, tiles: src.tiles.map((t: string) => CUSTOM.test(t) ? t : decodeURI(new URL(t, base).href))};
         }
         return {
             type: raw.type, tiles: src.tiles, minzoom: src.minzoom ?? 0, maxzoom: src.maxzoom ?? (raw.type === 'vector' ? 14 : 22),
@@ -193,7 +200,7 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
         return ok;
     });
     // A style has one sprite (a URL) or a list of sprites with ids. A list goes to the engine as text (see loadIcons).
-    const spriteURL = (u: string) => base ? new URL(u, base).href : u;
+    const spriteURL = (u: string) => absolute(u, base);
     const sprite = typeof style.sprite === 'string' ? spriteURL(style.sprite)
         : Array.isArray(style.sprite) && style.sprite.length ? JSON.stringify(style.sprite.map((s: {id: string; url: string}) => ({id: s.id, url: spriteURL(s.url)}))) : undefined;
     const fonts = fontFaces(style['font-faces'], base);

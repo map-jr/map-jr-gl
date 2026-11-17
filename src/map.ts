@@ -4,7 +4,7 @@ import {LngLat, LngLatBounds, type LngLatBoundsInput} from './lnglat.ts';
 import type {FilterSpecification} from './compat-types.ts';
 import {Transform, fitBox, globeStops, groundHeight, heightsChanged, mercX, mercY, sides, toLngLat, type LngLatLike} from './geo.ts';
 import type {PreparedSource} from './geojson.ts';
-import {DEFAULT_FONT, keep, kept, resolveStyle, type ResolvedStyle} from './resolve.ts';
+import {DEFAULT_FONT, absolute, keep, kept, resolveStyle, type ResolvedStyle} from './resolve.ts';
 import {layerRules} from './rules.ts';
 import type {CameraOptions, Command, EngineEvent, FontSource} from './engine.ts';
 import type {QueriedFeature} from './query.ts';
@@ -1195,7 +1195,7 @@ export class Map {
             // (A URL: the answer that the map keeps for the source, and a request only when it has none for this URL.)
             getData: async () => {
                 if (typeof spec.data !== 'string') return spec.data;
-                const url = new URL(spec.data, this.styleBase).href;
+                const url = absolute(spec.data, this.styleBase);
                 return kept(spec, url) ?? (await this.fetchAs('Source')(url)).json();
             },
             updateData: (diff: GeoJSONDiff) => this.updateGeoJSON(id, diff),
@@ -1210,7 +1210,7 @@ export class Map {
         const spec = this.rawStyle.sources[id], known = this.clusterIndexes.get(id);
         if (known && known.data === spec.data) return known.index;
         const index = (async () => {
-            const data = typeof spec.data === 'string' ? await (await this.fetchAs('Source')(new URL(spec.data, this.styleBase))).json() : spec.data;
+            const data = typeof spec.data === 'string' ? await (await this.fetchAs('Source')(absolute(spec.data, this.styleBase))).json() : spec.data;
             // Loaded only when a page asks about clusters, so that the page script stays small.
             const {prepareSource} = await import('./geojson.ts');
             return prepareSource(data, spec, spec.maxzoom ?? 18);
@@ -1230,7 +1230,7 @@ export class Map {
         const queued = this.diffQueues.get(id);
         if (queued?.call === call && queued.raw === raw) { queued.diffs.push(diff); return queued.p; }
         const q = {call, raw, diffs: [diff], p: undefined as unknown as Promise<void>, ac: new AbortController()};
-        q.p = this.fetchAs('Source')(new URL(data, this.styleBase), {signal: q.ac.signal}).then(r => r.json()).then(d => {
+        q.p = this.fetchAs('Source')(absolute(data, this.styleBase), {signal: q.ac.signal}).then(r => r.json()).then(d => {
             if (this.diffQueues.get(id) === q) this.diffQueues.delete(id);
             if (this.rawStyle?.sources[id] !== raw || this.dataCalls.get(id) !== call) return;
             return this.setGeoJSON(id, q.diffs.reduce((d, f) => applyDiff(d, f, raw.promoteId), d));
@@ -1257,7 +1257,7 @@ export class Map {
         const queued = this.diffQueues.get(id);
         if (queued && queued.call < call) { queued.ac.abort(); this.diffQueues.delete(id); }
         if (typeof data === 'string') {
-            const raw = this.rawStyle.sources[id], url = new URL(data, this.styleBase).href, ac = new AbortController();
+            const raw = this.rawStyle.sources[id], url = absolute(data, this.styleBase), ac = new AbortController();
             this.dataAborts.set(id, ac);
             try { data = await (await this.fetchAs('Source')(url, {signal: ac.signal})).json(); } catch (e) { if (ac.signal.aborted || this.removed) return; throw e; }
             if (this.dataAborts.get(id) === ac) this.dataAborts.delete(id);

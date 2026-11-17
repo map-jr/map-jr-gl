@@ -935,3 +935,25 @@ test('geojson: generateId gives each feature its index in the data as its id, re
     assert.deepEqual(prepareSource(data).features.map(f => f.id), [7, undefined]);
     assert.deepEqual(prepareSource(data, {generateId: true}).features.map(f => f.id), [0, 2], 'a feature without geometry still counts');
 });
+
+test('a URL of a custom protocol that has another URL inside stays as it is written (#571)', async () => {
+    const {resolveStyle} = await import('../../src/style.ts');
+    const inner = 'cog://https://example.com/a.tif', asked: string[] = [];
+    const fetchFn = (async (url: string) => {
+        asked.push(String(url));
+        return new Response(JSON.stringify(String(url).endsWith('.geojson') ? {type: 'FeatureCollection', features: []} : {tiles: [inner + '/{z}/{x}/{y}']}));
+    }) as typeof fetch;
+    const style = {version: 8, sprite: 'made://https://example.com/sprite', sources: {
+        a: {type: 'raster', url: inner},
+        b: {type: 'raster', tiles: ['made://https://example.com/{z}/{x}/{y}.png']},
+        c: {type: 'geojson', data: 'made://https://example.com/c.geojson'},
+        d: {type: 'raster', tiles: ['tiles/{z}/{x}/{y}.png']},
+    }, layers: []};
+    const resolved = await resolveStyle(style, fetchFn, 'https://example.org/styles/style.json');
+    assert.deepEqual(asked.sort(), [inner, 'made://https://example.com/c.geojson']);
+    assert.deepEqual(resolved.sources.a.tiles, [inner + '/{z}/{x}/{y}']);
+    assert.deepEqual(resolved.sources.b.tiles, ['made://https://example.com/{z}/{x}/{y}.png']);
+    assert.equal(resolved.sprite, 'made://https://example.com/sprite');
+    // (A relative URL is still joined to the URL of the style.)
+    assert.deepEqual(resolved.sources.d.tiles, ['https://example.org/styles/tiles/{z}/{x}/{y}.png']);
+});
