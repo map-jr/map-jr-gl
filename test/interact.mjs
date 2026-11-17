@@ -1075,6 +1075,30 @@ for (const mode of renderers) {
         check(`[${mode}] a lost WebGL context: the map starts again on a new canvas with the same view`, lost.events.join() === 'lost,restored' && lost.newCanvas && lost.same && lost.features > 100, JSON.stringify(lost));
     }
 
+    // A lost WebGL context during an `easeTo`: the new engine runs the animation for the time that is left, so the camera
+    // reaches the target and `moveend` fires once (#807). On the worker, the workers of the first start lose their context
+    // 600 ms after they get the `ease` (only the engine worker has one).
+    const easeLost = await page.evaluate(async mode => {
+        const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+        const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:300px;height:200px'}));
+        let armed = true;
+        const loser = URL.createObjectURL(new Blob([`let lose; const get = OffscreenCanvas.prototype.getContext; OffscreenCanvas.prototype.getContext = function (kind, ...rest) { const gl = get.call(this, kind, ...rest); if (gl && /webgl/.test(kind)) lose = () => gl.getExtension('WEBGL_lose_context').loseContext(); return gl; }; self.addEventListener('message', e => { let text = ''; try { text = JSON.stringify(e.data); } catch {} if (text.includes('"type":"ease"')) setTimeout(() => lose && lose(), 600); }); importScripts(${JSON.stringify(location.origin + '/dist/map-jr-gl-worker.js')});`], {type: 'text/javascript'}));
+        const m = new mod.Map({container: el, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#abc'}}]}, center: [0, 0], zoom: 2, attributionControl: false, renderer: mode,
+            ...(mode === 'worker' && {createWorker: () => new Worker(armed ? loser : location.origin + '/dist/map-jr-gl-worker.js')})});
+        await new Promise(r => m.once('load', r));
+        m.once('webglcontextlost', () => armed = false);
+        const events = [];
+        for (const type of ['webglcontextlost', 'webglcontextrestored', 'moveend']) m.on(type, () => events.push(type));
+        m.easeTo({center: [20, 10], zoom: 4, duration: 3000});
+        if (mode === 'main') setTimeout(() => m.getCanvas().getContext('webgl2').getExtension('WEBGL_lose_context').loseContext(), 600);
+        await new Promise(r => setTimeout(r, 6000));
+        const c = m.getCenter(), out = {events, lng: c.lng, lat: c.lat, zoom: m.getZoom(), renderer: m.renderer};
+        m.remove(); el.remove();
+        return out;
+    }, mode);
+    check(`[${mode}] a lost WebGL context during an easeTo: the camera reaches the target and moveend fires once`,
+        easeLost.events.includes('webglcontextrestored') && easeLost.events.filter(e => e === 'moveend').length === 1 && Math.abs(easeLost.lng - 20) < 1e-6 && Math.abs(easeLost.lat - 10) < 1e-6 && Math.abs(easeLost.zoom - 4) < 1e-6, JSON.stringify(easeLost));
+
     // queryRenderedFeatures, as in MapLibre but with a promise: at a point, in a box, and with a list of layers.
     const rendered = await page.evaluate(async () => {
         const m = window.map, c = m.getCenter(), p = m.project(c);
