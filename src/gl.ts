@@ -1,8 +1,9 @@
 import {EXTENT, latFromMerc, mercX, mercY, type TileID, type Transform} from './geo.ts';
-import {hillshadeLights, LIGHTS, type CompiledLayer, type Light} from './style.ts';
+import {hillshadeLights, LIGHTS, screenTranslate, type CompiledLayer, type Light} from './style.ts';
 import {compileProp} from './expr.ts';
 import {LINE_VERTEX, WALL_OTHER, WALL_TOP, type GLBatch, type IconBatch, type LabelSrc, type TileGL} from './tile.ts';
 import type {Placed, RenderItem} from './placement.ts';
+import {demUnpack, type DemEncoding} from './query.ts';
 import {lineMiddle, BASELINE, EM, SDF_BUFFER, SDF_RADIUS, type GlyphAtlas} from './text.ts';
 
 const HEAD = '#version 300 es\nprecision highp float;\n';
@@ -396,7 +397,8 @@ void main() {
     // A `color-relief` layer: the colour of each pixel comes from its elevation. `u_stops` has the elevations of the
     // stops of `color-relief-color` and `u_ramp` has the colour at each stop. The colour between two stops is a linear
     // mix, as in MapLibre GL JS. (The filter of the elevation texture is linear, and so is the encoding: the texture
-    // gives the elevation between its pixels.)
+    // gives the elevation between its pixels.) Two stops of the same elevation have one colour in `u_ramp`,
+    // and the shader does not divide by their distance of zero. (A ramp of one stop arrives here as two stops.)
     'color-relief': [VS_DEM, `
 uniform sampler2D u_image; uniform sampler2D u_ramp; uniform highp sampler2D u_stops; uniform vec4 u_clip; uniform vec4 u_unpack; uniform float u_opacity;
 in vec2 v_uv; in vec2 v_tile; out vec4 o;
@@ -406,7 +408,8 @@ void main() {
   float e = dot(texture(u_image, v_uv).rgb * 255.0, u_unpack.rgb) - u_unpack.a;
   int l = 0, r = textureSize(u_stops, 0).x - 1;
   while (r - l > 1) { int m = (l + r) / 2; if (e < stop(m)) r = m; else l = m; }
-  o = mix(texelFetch(u_ramp, ivec2(l, 0), 0), texelFetch(u_ramp, ivec2(r, 0), 0), clamp((e - stop(l)) / (stop(r) - stop(l)), 0.0, 1.0)) * u_opacity;
+  float d = stop(r) - stop(l);
+  o = mix(texelFetch(u_ramp, ivec2(l, 0), 0), texelFetch(u_ramp, ivec2(r, 0), 0), d > 0.0 ? clamp((e - stop(l)) / d, 0.0, 1.0) : 0.0) * u_opacity;
 }`],
 
     // The icons of a tile that need no place among the labels (see `IconBatch`). The GPU finds the place of each one
@@ -803,7 +806,7 @@ export class GLRenderer {
                 const p = L.p;
                 if (!u) {
                     u = this.use('icon', tr);
-                    const anchor = p.iconAnchor.eval(zoom) as string, offset = p.iconOffset.eval(zoom) as number[], translate = p.iconTranslate.eval(zoom) as number[], color = p.iconColor.eval(zoom) as number[];
+                    const anchor = p.iconAnchor.eval(zoom) as string, offset = p.iconOffset.eval(zoom) as number[], translate = screenTranslate(p.iconTranslate.eval(zoom), p.iconTranslateAnchor.eval(zoom), tr.bearing), color = p.iconColor.eval(zoom) as number[];
                     gl.uniform1f(u.u_size, p.iconSize.dd ? 1 : p.iconSize.eval(zoom));
                     gl.uniform1f(u.u_opacity, p.iconOpacity.dd ? 1 : p.iconOpacity.eval(zoom));
                     // (`icon-rotation-alignment`: an icon that is aligned with the map turns with the map.)
@@ -812,7 +815,7 @@ export class GLRenderer {
                     gl.uniform1f(u.u_dpr, this.dpr);
                     gl.uniform2f(u.u_offset, offset[0], offset[1]);
                     gl.uniform2f(u.u_anchor, anchor.includes('left') ? 0.5 : anchor.includes('right') ? -0.5 : 0, anchor.includes('top') ? 0.5 : anchor.includes('bottom') ? -0.5 : 0);
-                    gl.uniform2f(u.u_translate, translate?.[0] ?? 0, translate?.[1] ?? 0);
+                    gl.uniform2f(u.u_translate, translate[0], translate[1]);
                     gl.uniform4f(u.u_color, color[0], color[1], color[2], color[3]);
                     gl.uniform1i(u.u_img, 0);
                 }
@@ -848,7 +851,7 @@ export class GLRenderer {
     }
 
     /** Wraps a decoded raster or elevation tile image as a drawable tile. */
-    createImageTile(image: ImageBitmap | {width: number; height: number; data: Uint8Array}, encoding: string | undefined, id: TileID): GLTile {
+    createImageTile(image: ImageBitmap | {width: number; height: number; data: Uint8Array}, encoding: DemEncoding | undefined, id: TileID): GLTile {
         const dem = !!encoding;
         const gl = this.gl, tex = this.newTexture();
         gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, !dem);
@@ -869,12 +872,11 @@ export class GLRenderer {
             gl.bindTexture(gl.TEXTURE_2D, tex);
             gl.uniform1i(u.u.u_dem, 0);
             gl.uniform1f(u.u.u_zoom, id.z);
-            gl.uniform4fv(u.u.u_unpack, encoding === 'terrarium' ? [256, 1, 1 / 256, 32768] : [6553.6, 25.6, 0.1, 10000]);
+            gl.uniform4fv(u.u.u_unpack, tile.unpack = demUnpack(encoding!));
             gl.bindVertexArray(this.quad);
             gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
             gl.bindFramebuffer(gl.FRAMEBUFFER, null);
             tile.raw = tex; tile.rawSize = image.width;
-            tile.unpack = encoding === 'terrarium' ? [256, 1, 1 / 256, 32768] : [6553.6, 25.6, 0.1, 10000];
             tile.tex = slopes;
             tile.lat = [latFromMerc(id.y / n), latFromMerc((id.y + 1) / n)];
         }
@@ -1151,9 +1153,9 @@ export class GLRenderer {
                     }
                     if (b.type === 'circle') {
                         const sc = L.p.strokeColor.eval(zoom), a = sc[3] * (L.p.strokeOpacity.dd ? 1 : L.p.strokeOpacity.eval(zoom));
-                        const tl = L.p.translate.eval(zoom) as number[];
+                        const tl = screenTranslate(L.p.translate.eval(zoom), L.p.translateAnchor.eval(zoom), tr.bearing);
                         gl.uniform1f(u.u_blur, L.p.blur.dd ? 0 : L.p.blur.eval(zoom));
-                        gl.uniform2f(u.u_translate, tl?.[0] ?? 0, tl?.[1] ?? 0);
+                        gl.uniform2f(u.u_translate, tl[0], tl[1]);
                         gl.uniform1f(u.u_radius, L.p.radius.dd ? 1 : L.p.radius.eval(zoom));
                         gl.uniform1f(u.u_strokeWidth, L.p.strokeWidth.eval(zoom));
                         gl.uniform4f(u.u_stroke, sc[0] * a, sc[1] * a, sc[2] * a, a);

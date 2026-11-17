@@ -17,6 +17,8 @@ interface Prepared {
 }
 export interface SlicedFeature {
     type: number; id?: number | string; properties: Record<string, any>;
+    /** The place of the feature in the data of the source at this zoom level. It is the same in every tile, so a query can tell that two tiles hold one feature. */
+    index?: number;
     geometry(extent: number, coords: number[], ringEnds: number[]): number;
 }
 
@@ -229,11 +231,12 @@ export function sliceGeoJSON(source: Prepared[] | PreparedSource, z: number, x: 
     const n = 2 ** z, pad = BUFFER / EXTENT / n, x0 = x / n - pad, y0 = y / n - pad, x1 = (x + 1) / n + pad, y1 = (y + 1) / n + pad;
     const out: SlicedFeature[] = [];
     // A feature past ±180° of longitude is also sliced shifted by one world, as the wrap step of geojson-vt does.
-    for (const w of [0, -1, 1]) for (const f of features) {
+    for (const w of [0, -1, 1]) for (let index = 0; index < features.length; index++) {
+        const f = features[index];
         if (f.bbox[2] + w < x0 || f.bbox[0] + w > x1 || f.bbox[3] < y0 || f.bbox[1] > y1) continue;
         const rings: number[][] = [];
         const feature = (rings: number[][], properties: Record<string, unknown>) => out.push({
-            type: f.type, id: f.id, properties,
+            type: f.type, id: f.id, index, properties,
             geometry(extent, coords, ringEnds) {
                 const k = extent / EXTENT;
                 for (const r of rings) { for (const v of r) coords.push(v * k); ringEnds.push(coords.length / 2); }

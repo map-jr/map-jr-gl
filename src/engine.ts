@@ -1,16 +1,16 @@
 import {heightsChanged} from './geo.ts';
 import {EXTENT, HEIGHT_GRID, TILE_SIZE, Transform, bezier, globeStops, groundHeight, clamp, keepSize, latFromMerc, lngFromMerc, mercX, mercY, type LngLatLike, type TileID} from './geo.ts';
 import {globeBuild} from './subdivide.ts';
-import {compileFor, type Feature, type MapStates} from './expr.ts';
+import {compileFor, IMAGE_OR, pickImage, type Feature, type MapStates} from './expr.ts';
 import {VARIANT, variantName} from './markers.ts';
 import {layerRules} from './rules.ts';
-import {compileLayer, isGeometrySource, loadSprite, tileURL, type CompiledLayer, type FontSource, type ResolvedStyle, type Sprite, type SpriteIcon} from './style.ts';
+import {compileLayer, isGeometrySource, screenTranslate, loadSprite, tileURL, type CompiledLayer, type FontSource, type ResolvedStyle, type Sprite, type SpriteIcon} from './style.ts';
 import {AtlasSpace} from './atlas-space.ts';
 import {GLRenderer, SPRITE_ATLAS, type DemRef, type GLTile, type TerrainTile} from './gl.ts';
 import {CollisionGrid, placeLabels, renderItems, type Placed, type RenderItem} from './placement.ts';
 import {EM, GlyphAtlas} from './text.ts';
 import {fetchWith, withTimeout, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
-import {decodeElevation, sampleElevation, tilesUnderBox, type QueriedFeature, type QuerySet} from './query.ts';
+import {decodeElevation, sampleElevation, featureKey, tilesUnderBox, type QueriedFeature, type QuerySet} from './query.ts';
 import type {FeatureStates, TileBackend, TileRequest} from './tiles.ts';
 import type {TileGL} from './tile.ts';
 import {fetchTile, heads} from './pmtiles.ts';
@@ -641,7 +641,19 @@ export class Engine {
      * `data`: the data of the GeoJSON sources that are new or changed. Without it (at the start), the sources of `style`
      * carry their data. The engine does not keep the data: the tile workers have it.
      */
+    /** The sources with `encoding: 'custom'` whose factors got the message of `setStyle`. */
+    private toldEncoding = new Set<string>();
+
     private setStyle(style: ResolvedStyle, reload: boolean, data?: Record<string, unknown>) {
+        // `encoding: 'custom'` of a `raster-dem` source (#590): the factors and the shift come from the style or from a
+        // TileJSON as they are. When one is not a finite number, the source and its contours are read as `mapbox`.
+        for (const [name, src] of Object.entries(style.sources)) {
+            const bad = (e?: string | number[]) => typeof e == 'object' && !e.every(Number.isFinite);
+            if (src.contour && bad(src.contour.encoding)) src.contour.encoding = 'mapbox';
+            if (!bad(src.encoding)) continue;
+            src.encoding = 'mapbox';
+            if (!this.toldEncoding.has(name)) { this.toldEncoding.add(name); console.warn(`[map-jr-gl] The source "${name}": "redFactor", "greenFactor", "blueFactor" and "baseShift" of the encoding "custom" must be finite numbers. The source is read with the encoding "mapbox". Write a number for each one, or leave it out for its default (1, 1, 1 and 0).`); }
+        }
         // The globe (#463): the stops say at which zooms the projection draws it. Its code loads with the first style
         // that needs it (built into the worker file; a file of its own for the engine on the main thread), and frames
         // wait for it (see `frame`).
@@ -778,9 +790,12 @@ export class Engine {
     /** The slots of each SVG template (see the command `templates`). */
     private slots: Record<string, string[]> = {};
     /** An image for a pattern: the name of a template with `params` names one of its variants (see `variantName`). */
-    private pattern = (name: string) => this.icon(name.includes(VARIANT) ? variantName(name, this.slots) : name);
+    private pattern = (name: string) => this.icon(name.includes(VARIANT) ? name.split(IMAGE_OR).map(n => variantName(n, this.slots)).join(IMAGE_OR) : name);
 
     private icon = (name: string) => {
+        // `coalesce` with images: the first image that the map has, or a variant of a template (it is made when it is
+        // asked for). With none, the first name is the image that is missing, as in MapLibre GL JS.
+        name = pickImage(name, n => this.images.has(n) || this.sprite && Object.hasOwn(this.sprite.icons, n) || Object.hasOwn(this.slots, n.split(VARIANT)[0]));
         // (The name can come from data: `toString` is no icon of the sprite.)
         const found = this.images.get(name) ?? (this.sprite && Object.hasOwn(this.sprite.icons, name) ? this.sprite.icons[name] : undefined);
         // Ask the page for images the style names but nothing provides (once each, and only after the sprite has had its chance).
@@ -1054,15 +1069,14 @@ export class Engine {
                 }));
             }
         }
-        // A feature with an id that is in two tiles is given one time.
+        // A feature that is in two tiles is given one time, when it has an id or comes from a GeoJSON source.
         const seen = new Set<string>();
         return (await Promise.all(jobs)).flat().filter(f => {
             const L = radii.has(f.layer!) && this.layers.find(l => l.id === f.layer);
             if (L && !this.underIcon(L, f, c.box, radii.get(f.layer!)!, shown.get(f.layer!)!)) return false;
             if (L && !c.geometry) delete f.geometry;
-            if (f.id === undefined) return true;
-            const key = `${f.layer}|${f.source}|${f.sourceLayer}|${f.id}`;
-            return seen.has(key) ? false : (seen.add(key), true);
+            const key = featureKey(f);
+            return !key || (seen.has(key) ? false : (seen.add(key), true));
         });
     }
 
@@ -1088,9 +1102,9 @@ export class Engine {
         let pixels = this.dem.get(url);
         if (!pixels) {
             pixels = (async () => {
-                const bytes = await fetchTile(url, withTimeout(this.fetchAs('Tile')));
+                const bytes = await fetchTile(url, withTimeout(this.fetchAs('Tile')), undefined, undefined, true);
                 if (!bytes) return null;
-                const image = await createImageBitmap(new Blob([bytes as BlobPart]), {premultiplyAlpha: 'none', colorSpaceConversion: 'none'});
+                const image = 'length' in bytes ? await createImageBitmap(new Blob([bytes as BlobPart]), {premultiplyAlpha: 'none', colorSpaceConversion: 'none'}) : bytes;
                 const {width, height} = image, data = imagePixels(image, width, height);
                 image.close();
                 return {width, height, data};
@@ -1261,9 +1275,10 @@ export class Engine {
                 // Image tiles need no parsing, so the engine fetches and decodes them itself.
                 const ac = new AbortController();
                 t.cancel = () => ac.abort();
-                load = fetchTile(url, withTimeout(this.fetchAs('Tile')), ac.signal, t).then(async bytes => {
+                load = fetchTile(url, withTimeout(this.fetchAs('Tile')), ac.signal, t, true).then(async bytes => {
                     if (!bytes) return {labels: {}, batches: {}};
-                    const image = await createImageBitmap(new Blob([bytes as BlobPart]));
+                    // (A custom protocol can return the image decoded.)
+                    const image = 'length' in bytes ? await createImageBitmap(new Blob([bytes as BlobPart])) : bytes;
                     if (this.tiles.get(key) !== t) { image.close(); return {labels: {}, batches: {}}; }
                     const tile = this.renderer.createImageTile(image, undefined, id);
                     image.close();
@@ -1725,9 +1740,9 @@ export class Engine {
      * `icon-rotate` in radians. (The same rules as for an icon that is placed with the labels: see `placeLabels`.)
      */
     private iconBox(L: CompiledLayer, w: number, h: number, size: number, turn: number, f?: Feature): [number, number, number, number] {
-        const z = this.tr.zoom, anchor = L.p.iconAnchor.eval(z, f) as string, offset = L.p.iconOffset.eval(z, f) as number[], move = L.p.iconTranslate.eval(z) as number[] | null;
+        const z = this.tr.zoom, anchor = L.p.iconAnchor.eval(z, f) as string, offset = L.p.iconOffset.eval(z, f) as number[], move = screenTranslate(L.p.iconTranslate.eval(z), L.p.iconTranslateAnchor.eval(z), this.tr.bearing);
         const angle = (L.p.iconAlign.eval(z, f) === 'map' ? -this.tr.bearing * Math.PI / 180 : 0) + turn, cos = Math.abs(Math.cos(angle)), sin = Math.abs(Math.sin(angle));
-        return [(offset[0] + (anchor.includes('left') ? 0.5 : anchor.includes('right') ? -0.5 : 0) * w) * size + (move?.[0] ?? 0), (offset[1] + (anchor.includes('top') ? 0.5 : anchor.includes('bottom') ? -0.5 : 0) * h) * size + (move?.[1] ?? 0),
+        return [(offset[0] + (anchor.includes('left') ? 0.5 : anchor.includes('right') ? -0.5 : 0) * w) * size + move[0], (offset[1] + (anchor.includes('top') ? 0.5 : anchor.includes('bottom') ? -0.5 : 0) * h) * size + move[1],
             (w * cos + h * sin) / 2 * size, (w * sin + h * cos) / 2 * size];
     }
 
@@ -1764,7 +1779,8 @@ export class Engine {
     private underIcon(L: CompiledLayer, q: QueriedFeature, box: number[], radius: number, texts: {x: number; y: number; box: number[]}[]): boolean {
         const tr = this.tr, z = tr.zoom, g = q.geometry, f: Feature = {type: 1, id: q.id, properties: q.properties};
         const points = g?.type === 'Point' ? [g.coordinates as number[]] : g?.type === 'MultiPoint' ? g.coordinates as number[][] : null;
-        const image = this.imageNamed(String(L.p.icon.eval(z, f) ?? '').split(VARIANT)[0].replace(/\{([^}]+)\}/g, (_, k) => f.properties[k] ?? '').trim());
+        const name = pickImage(String(L.p.icon.eval(z, f) ?? ''), n => this.imageNamed(n.split(VARIANT)[0])).split(VARIANT)[0];
+        const image = this.imageNamed((L.p.icon.tokens ? name.replace(/\{([^}]+)\}/g, (_, k) => f.properties[k] ?? '') : name).trim());
         if (!points) return true;
         const near = !image || !!String(L.p.field.eval(z, f) ?? ''), turn = L.p.iconRotate.eval(z, f) * Math.PI / 180;
         return points.some(([lng, lat]) => {

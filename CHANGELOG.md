@@ -7,6 +7,314 @@ number, and its entry starts with a section "Breaking changes". See
 `#12` is a link to pull request 12. A change without a number comes from before 2026-11-11, when the repository had
 no pull requests.
 
+## 0.6.0 (2026-11-17)
+
+This entry covers the changes after 0.5.0 (the tag `v0.5.0`).
+
+### Breaking changes
+
+The first group changes the main API (`@map-jr/map-jr-gl`) and its adapters. A name or a field that is removed or
+renamed has no alias.
+
+- `@map-jr/map-jr-gl`: the type `MapSpec` is now `MapDescription`, and the type `MapHost` is now `MapInstance`, also in
+  `@map-jr/map-jr-gl/react` and `@map-jr/map-jr-gl/svelte`. In `@map-jr/map-jr-gl/vue` and the Nuxt module,
+  `useMapHost()` is now `useMapInstance()`, `useMapJr()` returns `{map, state}` in place of `{host, state}`, and the
+  template ref and the default slot of `MapJr` have `map` in place of `host`. Write the new names ([#542]).
+- `@map-jr/map-jr-gl`: the description has no field `extend`. Write its three parts as the root fields `sources`,
+  `layers` and `terrain`. This also applies to the Vue prop `extend`, to `extend` in React and to the option `extend` of
+  `renderToSVG`. A description with `extend` gets no warning, and its sources and layers are not added. The type
+  `StyleExtension` is no longer exported. `terrain: null` now keeps the terrain of the style, where it removed it
+  before: a map that must be flat needs a style without terrain. The warnings for a layer with an unknown `before` or
+  source start with `layers:` in place of `extend:` ([#520]).
+- `@map-jr/map-jr-gl`: the field `markers` of the description is removed, with the Vue prop `markers`, `markers` in
+  React and Svelte, and the option `markers` of `renderToSVG` and `renderToImage`. It has no effect now, and TypeScript
+  reports it. Write `data: {[id]: points(records, {lngLat})}` and a symbol layer in `layers` with
+  `layout: {'icon-image': image}`. The table "Coming from the field `markers`" in
+  [docs/markers.md](docs/markers.md) has the other options. The index of a marker is no longer the id of its feature:
+  use `id` of `points()`. In Vue, a change inside the data of a source (a `push` into an array) is not seen: give a new
+  object. The types `MarkerLayerOptions` and `MarkerInput` are no longer exported from `@map-jr/map-jr-gl`,
+  `@map-jr/map-jr-gl/maplibre-compat` or `@map-jr/map-jr-gl/server` ([#527]).
+- `@map-jr/map-jr-gl`: the field `fonts` of the description has the shape of `font-faces` of the style specification.
+  Write `fonts: {'<text-font name>': '<url>'}` in place of `fonts: [{family, src, weight, style, unicodeRange}]`. A
+  value can also be a list of `{url, 'unicode-range'}`. TypeScript reports the old shape, and at run time the fonts of
+  a list do not load. The Vue prop `fonts` takes the same object. `fonts` in `update` now loads the fonts, where it was
+  ignored with a warning. The type `FontSource` is no longer exported from `@map-jr/map-jr-gl`, and the type
+  `FontFaces` is. `@map-jr/map-jr-gl/maplibre-compat` keeps its option `fonts` and its `FontSource` ([#531]).
+- Both entries: `queryFeatures(at, {sources})` and `watchFeatures(at, {sources}, listener)` no longer read the tile
+  data of sources. They now find what the style layers draw and ignore `sources`, and the development build warns
+  once. Write `querySource(sourceId, at, options)` or `watchSource(sourceId, at, options, listener)`, which take one
+  source id. In `@map-jr/map-jr-gl/vue`, write `useMapSource(sourceId, at, options)` in place of
+  `useMapFeatures(at, {sources})`. The type `FeatureOptions` has only `layers`, `filter` and `radius`, and
+  `queryFeatures` always returns `RenderedFeature[]`. `queryRenderedFeatures` and `querySourceFeatures` of
+  `@map-jr/map-jr-gl/maplibre-compat` do not change ([#523]).
+- `@map-jr/map-jr-gl`: an event of `listen` and `once`, and of the events of the Vue and React components, gives
+  positions as arrays. `lngLat` is `[lng, lat]`, `lngLats` of a touch event is a list of `[lng, lat]`, and
+  `boxZoomBounds` is `[[west, south], [east, north]]`. Write `event.lngLat[0]` in place of `event.lngLat.lng`. `target`
+  is the `MapInstance` and no longer the core map, so read `event.target.state` in place of a call such as
+  `event.target.getZoom()` ([#521]).
+- `@map-jr/map-jr-gl`: the member `map` of the object that `createMap` returns is removed, which includes
+  `ref.host.map` in Vue and `ref.current.map` in React. Members that start with `_` are private. `custom({onAdd})` is
+  the one place where an application gets the core map ([#526]).
+- `@map-jr/map-jr-gl`: `clusterLeaves(sourceId, clusterId, {limit, offset})` replaces the positional `limit` and
+  `offset`. The defaults stay 10 and 0. A number as the third argument rejects with a message that names the new
+  form ([#526]).
+- `@map-jr/map-jr-gl`: `moveTo({padding})` no longer sets the padding of the map. Give `padding` in the description
+  instead. In `moveTo`, `padding` is now the space for one fit of `bounds`. Without `bounds`, the call ignores
+  `padding`, and the development build warns once ([#522]).
+- `@map-jr/map-jr-gl`: the description uses the style types of the entry, so TypeScript reports code that compiled
+  before. Nothing changes at run time. A style from a JSON import or of the type `object` needs `as
+  StyleSpecification`. A layer in a variable needs a layer type (for example `FillLayerSpecification`), and its
+  `source` is a string id. A filter in a variable needs the type `FilterSpecification`. A value of `data` is GeoJSON
+  or a string. `maxBounds`, `initialView.bounds` and `fitBounds` take the type `Bounds`, which is `[[w, s], [e, n]]` or
+  `[w, s, e, n]`, and no longer `LngLat` or `LngLatBounds` objects or `{lng, lat}` corners ([#537]).
+- `@map-jr/map-jr-gl`: the controls, the attribution, the scale and the popup have a new look. A group of buttons is a
+  pill and a single button is a circle, the backgrounds are translucent with a blur, the compass is a round button of
+  its own below the zoom buttons, and the scale sits on the bottom edge beside the attribution on a wide map. The look
+  needs Safari 18, Chrome 120 or Firefox 121, and an older browser shows the look of before. The CSS variables
+  `--map-control-opacity` and `--map-control-radius` set the opacity and the radius, and the other `--map-control-*`,
+  `--map-attribution-background` and `--map-popup-*` variables and the rules of a page still win.
+  `@map-jr/map-jr-gl/maplibre-compat` keeps the look of MapLibre GL JS ([#553]).
+- `@map-jr/map-jr-gl`: the map sets the global state property `color-scheme` of the style to `'light'` or `'dark'`. A
+  style that has a state property `color-scheme` of its own gets the value of the map. Give the value in `globalState`
+  of the description to keep your own ([#535]).
+- `@map-jr/map-jr-gl`: the state has the new member `pointer`, which changes at each move of the mouse over the map.
+  A subscriber without a selector is now called at each such move, and a Vue slot that reads `state` renders at each
+  move. Subscribe with a selector ([#516]).
+
+The second group corrects results, most of them so that they agree with MapLibre GL JS.
+
+- Both entries: a rotate drag (the right mouse button, or Ctrl with the left one) turns the map as MapLibre GL JS
+  6.17 does. More than 100 pixels above or below the centre of the map, the map turns by the angle that the sideways
+  movement of the pointer makes around the centre. Nearer to the centre, it turns by 0.8° for each pixel. Before, the
+  map turned by −0.4° for each pixel to the right at every height, so below the centre of the map it now turns the
+  other way, and within 100 pixels of the centre it turns twice as fast ([#597]).
+- Both entries: a drag on the compass of the navigation control turns the map by −0.4° for each pixel to the right.
+  Before, it turned the map by the angle of the pointer around the centre of the button, so the first move turned the
+  map by about 85°. The compass and a rotate drag on the map now differ ([#551], [#552]).
+- Both entries: a circle layer reads `circle-pitch-scale` and `circle-pitch-alignment`, with the defaults `map` and
+  `viewport` of MapLibre GL JS. On a map with pitch, a style that sets neither property now draws the circles away
+  from the centre smaller or larger than before. Set `circle-pitch-scale: viewport` to keep the old picture. A map
+  without pitch draws the same picture ([#580]).
+- Both entries: circle and symbol layers read `circle-translate-anchor`, `icon-translate-anchor` and
+  `text-translate-anchor`, whose default is `map`. On a map with a bearing, a translate without an anchor now moves in
+  the direction of the map. Set the anchor `viewport` to keep the old result ([#614]).
+- Both entries: `text-translate` and `icon-translate` take a legacy zoom function or an expression. Before, such a
+  value did not move the label or the icon at any zoom, and now it does. A constant value gives the same result
+  ([#625]).
+- Both entries: a `{name}` token in `text-field` and `icon-image` is replaced only when the value is a constant or a
+  legacy zoom function. A text that an expression or a property function gives keeps its braces, which includes
+  `["literal", "{name}"]` and a `step` expression on the zoom. Before, the property took the place of the token in
+  every value. MapLibre GL JS does the same as the library does now ([#621]).
+- Both entries: three expressions give other results. `typeof` of an array gives `"array<number, 3>"` or a similar
+  text in place of `"array"`, and `typeof` of a colour gives `"color"`. `["array", x]` no longer passes an object, and
+  it reads a type and a length as the style specification says. `to-rgba` of an array that is not a colour returns the
+  numbers as they are, where it multiplied them by 255 ([#582]).
+- Both entries: a legacy identity function with a `default` gives the `default` when the value of the feature does not
+  have the type of the property. Before, it gave the value of the feature, for example the number `0` for a text
+  property ([#592]).
+- Both entries: a negative `fill-extrusion-height` or `fill-extrusion-base` is drawn as 0. A style that drew below the
+  ground with a negative value now draws from 0 ([#626]).
+- Both entries: a `raster-dem` source with `encoding: 'custom'` uses its `redFactor`, `greenFactor`, `blueFactor` and
+  `baseShift`. Before, it was read with the encoding `mapbox` ([#629]).
+- Both entries: a query returns a GeoJSON feature without an `id` one time when several tiles hold it. This applies
+  to `queryFeatures` and `querySource`, and to `queryRenderedFeatures` and `querySourceFeatures` of
+  `@map-jr/map-jr-gl/maplibre-compat`. Code that counted the copies gets fewer features. MapLibre GL JS gives a polygon
+  once for each tile, and a feature of a vector tile source without an id still comes once for each tile ([#613]).
+- Both entries: a protocol of `addProtocol` gets the request of a tile of a `raster` or `raster-dem` source with the
+  type `image` and the header `accept: image/webp,*/*`. A protocol that tested `type === 'arrayBuffer'` for these
+  tiles must accept `image` ([#622]).
+- Both entries: a URL of a custom protocol reaches the protocol as the style writes it, so `cog://https://…` keeps
+  the colon of the inner URL. The library no longer makes the host of such a URL lower case and no longer normalises
+  its path (`..`, spaces): the protocol function gets what the style has ([#602]).
+- Both entries: an image that is a URL (in `images` of the description, in `metadata["map-jr:images"]` of a style, or
+  given to `addImage` of `@map-jr/map-jr-gl/maplibre-compat`) is requested through `transformRequest` and the
+  protocols, with the kind `Image`. A `transformRequest` function that changes the URL for that kind now changes these
+  requests. In the server renderer, an image of `images` now takes the place of an image of the sprite with the same
+  name, as in the browser ([#538]).
+- Both entries: the map adds its style sheet to the root node of the container. In a browser with
+  `adoptedStyleSheets`, the element `<style id="map-jr-control-css">` is no longer in `document.head`, and code that
+  looked for that element finds nothing ([#465]).
+- `@map-jr/map-jr-gl/maplibre-compat`: `isSourceLoaded(id)` fires `error` and returns `undefined` for an id that the
+  style does not have, as in MapLibre GL JS. Before, it threw, so code that wrapped the call in `try` to find a
+  missing source must test for `undefined` or listen for `error` ([#617]).
+- `@map-jr/map-jr-gl/maplibre-compat`: `getProjection()` returns the projection of the style as it was given, and
+  `undefined` for a style without `projection`. Before, it returned `{type: 'mercator'}` in every case. `GlobeControl`
+  now adds a button, where it added an empty element ([#471]).
+- `@map-jr/map-jr-gl/maplibre-compat`: the type `AddLayerObject` is a union with `CustomLayerInterface`, so TypeScript
+  code that reads `.source` from a variable of that type needs a narrowing. A custom layer on a map that was not made
+  with `renderer: 'main'` fires `error` (and throws with `strict: true`), where it wrote a warning ([#468]).
+- Both entries: when the map is removed, its markers and popups leave the page at once, and a popup ends its closing
+  animation. Before, an open popup and a marker stayed in the container. After `Map.remove()` of
+  `@map-jr/map-jr-gl/maplibre-compat`, a `close` listener of an open popup now runs, as in MapLibre GL JS, and the
+  elements of markers and popups are no longer in the container. `destroy()` of `@map-jr/map-jr-gl` removes the
+  elements of `overlay()` in the same way and does not call `onClose` ([#635]).
+
+### New
+
+- Both entries: the globe. A map with the projection `globe` draws on a sphere and turns into Mercator between zoom 11
+  and 12, as in MapLibre GL JS, and `vertical-perspective` keeps the sphere at every zoom. Both renderers draw it.
+  - `@map-jr/map-jr-gl` has the field `projection` of the description, the control `globe()` in
+    `@map-jr/map-jr-gl/controls` and the event `projectiontransition`. `@map-jr/map-jr-gl/maplibre-compat` has
+    `setProjection`, `getProjection`, `GlobeControl` and the root property `projection` of a style.
+  - Not drawn on the globe yet: 3D terrain, `fill-extrusion` layers, custom layers and the atmosphere of `sky`. Each
+    writes one warning, and they show past zoom 12.
+  - `maxBounds` has no effect on the globe, as in MapLibre GL JS. `queryRenderedFeatures` is less exact near the
+    horizon. The server renderer draws Mercator. The constructor option `projection` of the compat `Map` has no
+    effect, as MapLibre GL JS 6.17 does not have it.
+  - A drag turns the globe as MapLibre GL JS 6.17 does, and a camera call without a `zoom` keeps the size of the
+    globe and changes the zoom. A switch from Mercator to the globe waits until the tiles of the view are built for
+    the globe, for 1 s at most.
+  - The code of the globe loads with the first style that has a globe. The other differences from MapLibre GL JS are
+    in [docs/maplibre-compatibility.md](docs/maplibre-compatibility.md) ([#471], [#473], [#474], [#478], [#493]).
+- Both entries: the layer type `color-relief` colours the ground by its elevation, with the new expression
+  `["elevation"]`. The colour between two stops is a linear mix. The server renderer does not draw the layer
+  ([#589]).
+- Both entries: a `hillshade` layer draws every value of `hillshade-method` (`standard`, `basic`, `combined`, `igor`,
+  `multidirectional`) and uses `hillshade-illumination-altitude`. Before, it drew `standard` for every method. A layer
+  draws at most 8 lights ([#604]).
+- `@map-jr/map-jr-gl`: dark mode. The field `colorScheme` of the description is `'light'` (the default), `'dark'` or
+  `'auto'`, which follows `prefers-color-scheme`. The controls and the popup have dark colours, and
+  `state.colorScheme` has the resolved value. `style` takes a pair `{light, dark}` of style objects or URLs, and one
+  style can serve both schemes with `["global-state", "color-scheme"]`. The control `colorScheme()` in
+  `@map-jr/map-jr-gl/controls` is a button that changes the scheme and calls the new field `onColorSchemeChange`
+  (`v-model:color-scheme` in Vue) ([#529], [#536], [#535], [#553]).
+- `@map-jr/map-jr-gl`: new fields of the description. Each is a prop of the Vue component, and React and Svelte pass
+  the description through.
+  - `globalState` sets the values of the `global-state` expressions of the style ([#515]).
+  - `hoverState` (default `false`) gives the top feature of `interactiveLayers` under the pointer the feature state
+    `hover: true` ([#530]).
+  - `sprite: [{id, url}]` adds sprites to the sprite of the style. An `icon-image` names such an image as `id:name`
+    ([#540]).
+  - A key of `data` that is not the id of a source makes a GeoJSON source with that id ([#511]).
+  - `nonce` sets the nonce of the `<style>` element of the map, for a page with a Content Security Policy. The compat
+    `Map` has the same option ([#465]).
+- `@map-jr/map-jr-gl`: new members of the object that `createMap` returns.
+  - `patch(part)` changes only some fields of the description, and `description` is the description from the last
+    `createMap`, `update` or `patch` ([#514]).
+  - `once(type)` returns a promise of the next event of that type. `once('load')` on a loaded map resolves at once
+    ([#510]).
+  - `setFeatureState(target, state)` and `removeFeatureState(target, key?)` take `{source, sourceLayer?, id}`
+    ([#512]).
+  - `querySource` and `watchSource` read the tile data of one source, with `useMapSource` in
+    `@map-jr/map-jr-gl/vue` ([#523]).
+  - `moveTo` accepts `bounds` with `padding` and `maxZoom`, and `fitBounds` also takes `bearing`, `pitch` and `fly`
+    ([#522]).
+  - `state.pointer` has the point and the position of the pointer while the mouse is over the map ([#516]).
+- `@map-jr/map-jr-gl`: `points(records, {lngLat, id?, properties?})` makes a GeoJSON `FeatureCollection` with a point
+  for each record ([#509]).
+- `@map-jr/map-jr-gl`: a style can carry its own images in `metadata["map-jr:images"]`, at most 200 of them. The
+  server renderer draws them too, and the compat entry does not read the key ([#538]).
+- `@map-jr/map-jr-gl`: the entry exports the types `FlyOptions`, `LngLatInput`, `LngLatBoundsInput`, `LngLatBounds`,
+  `Bounds`, `GeoJSON`, `GeoJSONGeometry`, `GeoJSONFeature`, `LayerInput`, `MoveToOptions`, `SourceOptions`,
+  `PointerPosition` and `FontFaces` ([#508], [#537], [#522], [#523], [#516], [#531]).
+- Both entries: the map adds its style sheet to the shadow root when its container is inside one ([#465]).
+- Both entries: a protocol of `addProtocol` can answer the request of a raster tile with an `ImageBitmap`, an
+  `HTMLImageElement` or the bytes of an image file ([#622]).
+- `@map-jr/map-jr-gl/maplibre-compat`: custom layers work on a map that was made with `renderer: 'main'`, and
+  `MercatorCoordinate` is exported. The values of `args` are close to those of MapLibre GL JS and not equal;
+  [docs/maplibre-compatibility.md](docs/maplibre-compatibility.md) lists the differences ([#468]).
+- `@map-jr/map-jr-gl/maplibre-compat`: the entry exports 38 more type names of MapLibre GL JS 6.17, among them the
+  options of the controls and the types of events, gestures and sources. The section "Types" of
+  [docs/maplibre-compatibility.md](docs/maplibre-compatibility.md) names the 71 that are still missing ([#578]).
+- `@map-jr/map-jr-gl/maplibre-compat`: the `Map` has `listens(type)`, `getStyleUrl()`,
+  `fitScreenCoordinates(p0, p1, bearing, options)` and `isRolling()`, which returns `false` ([#598]).
+- `@map-jr/map-jr-gl/maplibre-compat`: the object of `getSource(id)` has more members. A GeoJSON source has
+  `setClusterOptions`, `getClusterOptions` and `getBounds`. A `vector`, `raster` or `raster-dem` source has `reload()`
+  (which MapLibre GL JS does not have) and the `minzoom`, `maxzoom` and `tiles` of its TileJSON. Both have `loaded()`
+  and `serialize()` ([#605]).
+- `@map-jr/map-jr-gl/maplibre-compat`: `addLayer` takes a layer whose `source` is a source object, and adds that
+  source under the id of the layer ([#585]).
+- `@map-jr/map-jr-gl/maplibre-compat`: `isActive()` of `dragPan`, `dragRotate`, `touchZoomRotate`, `touchPitch` and
+  `boxZoom` is `true` during the gesture. For `scrollZoom`, `doubleClickZoom`, `keyboard` and `cooperativeGestures` it
+  still returns `false` ([#617]).
+
+### Fixed
+
+- Both entries: `["coalesce", ["image", "a"], ["image", "b"]]` draws the first image that the map has. Before, it
+  gave the first name, so an icon with a fallback was not drawn. A section of `format` with a list in `text-font`
+  keeps the whole list for the glyph files ([#619]).
+- Both entries: `number-format` uses `unit`, and it gives the plain number with one warning when `Intl.NumberFormat`
+  rejects its options, where a tile failed to build before. `feature-state` takes an expression as the name,
+  `is-supported-script` gives `true`, and `to-string` of a `format` expression gives the text of the sections
+  ([#582], [#587]).
+- Both entries: after a new style, a zoom out no longer draws tiles in the colours of the style before ([#554]).
+- Both entries: with the worker renderer, an HTML marker or popup follows a one-finger drag in the same frame as the
+  map. During `easeTo`, `flyTo`, a fling or a pinch it can still trail by about one frame ([#467]).
+- Both entries: with the worker renderer, a fast drag on the compass no longer loses a part of the turn, and the map
+  does not step back for a frame ([#552]).
+- Both entries: `addImage` with an image that draws itself with WebGL (`renderWithWebGL`) rejects with a message that
+  says what to pass instead ([#464]).
+- Both entries: a sprite sheet that does not load is an error of the map, and the other sheets are drawn. A new style
+  without a sprite no longer draws the icons of the sprite before. The server renderer loads every sheet of a sprite
+  list ([#540]).
+- Both entries: with the worker renderer, a web font that loads after the first labels is used ([#531]).
+- `@map-jr/map-jr-gl/maplibre-compat`: `setGlobalStateProperty` before the first style has loaded keeps its value
+  ([#515]).
+- `@map-jr/map-jr-gl/maplibre-compat`: `querySourceFeatures` asks a custom protocol for the URL of a GeoJSON source as
+  it is written ([#622]).
+- Both entries: a style whose `layers` is missing or is not an array fires one `error` event
+  with a message that names the fault, and the map takes the next style. Before, the map threw ([#630]).
+
+[#464]: https://github.com/map-jr/map-jr-gl/pull/464
+[#465]: https://github.com/map-jr/map-jr-gl/pull/465
+[#467]: https://github.com/map-jr/map-jr-gl/pull/467
+[#468]: https://github.com/map-jr/map-jr-gl/pull/468
+[#471]: https://github.com/map-jr/map-jr-gl/pull/471
+[#473]: https://github.com/map-jr/map-jr-gl/pull/473
+[#474]: https://github.com/map-jr/map-jr-gl/pull/474
+[#478]: https://github.com/map-jr/map-jr-gl/pull/478
+[#493]: https://github.com/map-jr/map-jr-gl/pull/493
+[#508]: https://github.com/map-jr/map-jr-gl/pull/508
+[#509]: https://github.com/map-jr/map-jr-gl/pull/509
+[#510]: https://github.com/map-jr/map-jr-gl/pull/510
+[#511]: https://github.com/map-jr/map-jr-gl/pull/511
+[#512]: https://github.com/map-jr/map-jr-gl/pull/512
+[#514]: https://github.com/map-jr/map-jr-gl/pull/514
+[#515]: https://github.com/map-jr/map-jr-gl/pull/515
+[#516]: https://github.com/map-jr/map-jr-gl/pull/516
+[#520]: https://github.com/map-jr/map-jr-gl/pull/520
+[#521]: https://github.com/map-jr/map-jr-gl/pull/521
+[#522]: https://github.com/map-jr/map-jr-gl/pull/522
+[#523]: https://github.com/map-jr/map-jr-gl/pull/523
+[#526]: https://github.com/map-jr/map-jr-gl/pull/526
+[#527]: https://github.com/map-jr/map-jr-gl/pull/527
+[#529]: https://github.com/map-jr/map-jr-gl/pull/529
+[#530]: https://github.com/map-jr/map-jr-gl/pull/530
+[#531]: https://github.com/map-jr/map-jr-gl/pull/531
+[#535]: https://github.com/map-jr/map-jr-gl/pull/535
+[#536]: https://github.com/map-jr/map-jr-gl/pull/536
+[#537]: https://github.com/map-jr/map-jr-gl/pull/537
+[#538]: https://github.com/map-jr/map-jr-gl/pull/538
+[#540]: https://github.com/map-jr/map-jr-gl/pull/540
+[#542]: https://github.com/map-jr/map-jr-gl/pull/542
+[#551]: https://github.com/map-jr/map-jr-gl/pull/551
+[#552]: https://github.com/map-jr/map-jr-gl/pull/552
+[#553]: https://github.com/map-jr/map-jr-gl/pull/553
+[#554]: https://github.com/map-jr/map-jr-gl/pull/554
+[#578]: https://github.com/map-jr/map-jr-gl/pull/578
+[#580]: https://github.com/map-jr/map-jr-gl/pull/580
+[#582]: https://github.com/map-jr/map-jr-gl/pull/582
+[#585]: https://github.com/map-jr/map-jr-gl/pull/585
+[#587]: https://github.com/map-jr/map-jr-gl/pull/587
+[#589]: https://github.com/map-jr/map-jr-gl/pull/589
+[#592]: https://github.com/map-jr/map-jr-gl/pull/592
+[#597]: https://github.com/map-jr/map-jr-gl/pull/597
+[#598]: https://github.com/map-jr/map-jr-gl/pull/598
+[#602]: https://github.com/map-jr/map-jr-gl/pull/602
+[#604]: https://github.com/map-jr/map-jr-gl/pull/604
+[#605]: https://github.com/map-jr/map-jr-gl/pull/605
+[#613]: https://github.com/map-jr/map-jr-gl/pull/613
+[#614]: https://github.com/map-jr/map-jr-gl/pull/614
+[#617]: https://github.com/map-jr/map-jr-gl/pull/617
+[#619]: https://github.com/map-jr/map-jr-gl/pull/619
+[#621]: https://github.com/map-jr/map-jr-gl/pull/621
+[#622]: https://github.com/map-jr/map-jr-gl/pull/622
+[#625]: https://github.com/map-jr/map-jr-gl/pull/625
+[#626]: https://github.com/map-jr/map-jr-gl/pull/626
+[#629]: https://github.com/map-jr/map-jr-gl/pull/629
+[#630]: https://github.com/map-jr/map-jr-gl/pull/630
+[#635]: https://github.com/map-jr/map-jr-gl/pull/635
+
 ## 0.5.0 (2026-11-15)
 
 This entry covers the changes after 0.4.0 (the tag `v0.4.0`).

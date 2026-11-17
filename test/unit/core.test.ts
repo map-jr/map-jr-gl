@@ -3,7 +3,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {Transform, bezier, mercX, mercY} from '../../src/geo.ts';
-import {compileExpr, compileFilter, compileProp, parseColor} from '../../src/expr.ts';
+import {compileExpr, compileFilter, compileProp, parseColor, pickImage} from '../../src/expr.ts';
 import {applySSROverrides, compileLayer} from '../../src/style.ts';
 import {LINE_VERTEX, buildTile, tessellate, type Batch} from '../../src/tile.ts';
 import {queryTile, sampleElevation} from '../../src/query.ts';
@@ -131,6 +131,29 @@ test('expressions: conversions, type checks and options give the results of the 
     assert.equal(run(['is-supported-script', ['get', 'x']], {x: 'שלום'}), true);
 });
 
+test('expressions: coalesce with images gives the first image that the map has, and a format section keeps its list of fonts (#584)', () => {
+    const run = (e: unknown, properties = {}) => compileExpr(e, {dd: false, zoom: false})({zoom: 0, f: {type: 1, properties}});
+    const names = run(['coalesce', ['image', 'foo'], ['image', 'bar'], ['image', 'monument-15']]);
+    assert.equal(pickImage(names, n => n === 'monument-15'), 'monument-15');
+    assert.equal(pickImage(names, n => n !== 'foo'), 'bar');
+    // With none of them, the first name is the image that is missing.
+    assert.equal(pickImage(names, () => false), 'foo');
+    // An image with no name is passed over, and a value before the first image is the result as before.
+    assert.equal(run(['coalesce', ['image', ['get', 'icon']], ['image', 'dot']]), 'dot');
+    assert.equal(run(['coalesce', ['get', 'n'], ['image', 'dot']], {n: 3}), 3);
+    assert.equal(run(['coalesce', ['get', 'a'], ['get', 'b']], {b: 'x'}), 'x');
+    assert.equal(pickImage('plain', () => false), 'plain');
+    // The tile builder keeps all the names for the engine.
+    const layer = compileLayer({id: 'poi', type: 'symbol', source: 's', 'source-layer': 'poi', layout: {'icon-image': ['coalesce', ['image', 'foo'], ['image', '{class}'], ['image', 'pin']]}})!;
+    const labels = buildTile(bytes, TILE.z, [layer], true, undefined, {pin: ['color']}).labels.poi;
+    assert.ok(labels.length > 0 && labels.every(l => pickImage(l.icon!.name, n => n !== 'foo') === l.icon!.name.split('\uE004')[1]));
+    // (The value is an expression, so the name `{class}` keeps its braces: see #593.)
+    assert.ok(labels.every(l => l.icon!.name.split('\uE004')[1] === '{class}'));
+    // (The last name is a template: it has the value of its slot.)
+    assert.ok(labels.every(l => pickImage(l.icon!.name, n => n.startsWith('pin')).startsWith('pin' + VARIANT)));
+    assert.equal(run(['format', 'c', {'text-font': ['literal', ['a', 'b']]}]), '\uE002|a,b|\uE003c\uE002\uE003');
+});
+
 test('expressions: number-format with an option that Intl.NumberFormat rejects gives the plain number and one warning (#583)', () => {
     const run = (e: unknown, properties: Record<string, unknown> = {}) => compileExpr(e, {dd: false, zoom: false})({zoom: 0, f: {type: 1, properties}});
     const warnings: string[] = [], warn = console.warn;
@@ -185,6 +208,28 @@ test('tiles: an icon name from data that is the name of a member of every object
     for (const name of ['toString', 'constructor', '__proto__', 'valueOf']) {
         const labels = buildTile(bytes, TILE.z, layer(name), true, undefined, {pin: ['color']}).labels.poi;
         assert.ok(labels.length > 0 && labels.every(l => l.icon!.name === name), name);
+    }
+});
+
+test('tiles: a {token} stands for a property only in a constant and in a zoom function of text-field and icon-image (#593)', async () => {
+    const {prepareGeoJSON, sliceGeoJSON} = await import('../../src/geojson.ts');
+    const n = 2 ** TILE.z, lng = (TILE.x + 0.5) / n * 360 - 180, lat = Math.atan(Math.sinh(Math.PI * (1 - 2 * (TILE.y + 0.5) / n))) * 180 / Math.PI;
+    const data: any = {type: 'Feature', properties: {name: '{A}', kind: 'x', A: 'wrong'}, geometry: {type: 'Point', coordinates: [lng, lat]}};
+    const label = (layout: object) => {
+        const layer = compileLayer({id: 'p', type: 'symbol', source: 'g', layout})!;
+        return buildTile(sliceGeoJSON(prepareGeoJSON(data), TILE.z, TILE.x, TILE.y), TILE.z, [layer], true).labels.p[0];
+    };
+    for (const [value, want] of [
+        ['{kind}', 'x'],
+        [{stops: [[0, '{kind}'], [20, 'b-{kind}']]}, 'x'],
+        [['get', 'name'], '{A}'],
+        [['literal', '{kind}'], '{kind}'],
+        [['step', ['zoom'], '{kind}', 22, 'b'], '{kind}'],
+        [{property: 'name', type: 'identity'}, '{A}'],
+        [{property: 'kind', type: 'categorical', stops: [['x', '{A}']]}, '{A}'],
+    ] as [unknown, string][]) {
+        assert.equal(label({'text-field': value}).text, want, 'text-field ' + JSON.stringify(value));
+        assert.equal(label({'icon-image': value}).icon!.name, want, 'icon-image ' + JSON.stringify(value));
     }
 });
 

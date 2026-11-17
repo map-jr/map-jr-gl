@@ -4,7 +4,7 @@ import {cutFill, cutLine, type GlobeBuild} from './subdivide.ts';
 import {decodeVectorTile} from './mvt.ts';
 import {GEOJSON_LAYER} from './geojson.ts';
 import {parseFontName, type CompiledLayer} from './style.ts';
-import {IMAGE_CLOSE, IMAGE_IN_TEXT, IMAGE_OPEN, type Feature, type MapStates, type RGBA} from './expr.ts';
+import {IMAGE_CLOSE, IMAGE_IN_TEXT, IMAGE_OPEN, IMAGE_OR, type Feature, type MapStates, type Prop, type RGBA} from './expr.ts';
 import {VARIANT, variantName} from './markers.ts';
 
 /**
@@ -57,7 +57,7 @@ export interface LabelSrc {
     /** `text-rotate`, in radians clockwise. */
     rotate: number;
     /** Line height in ems, and a fixed shift on screen in pixels. */
-    lineHeight: number; translate: [number, number];
+    lineHeight: number;
     font: string; maxWidth: number; spacing: number; offset: [number, number]; anchor: string; padding: number; overlap: boolean;
     /** Text stays upright instead of following the line it is placed on (e.g. road shields). */
     upright: boolean;
@@ -70,7 +70,7 @@ export interface LabelSrc {
     justifyAuto: boolean;
     icon?: {
         name: string; size: number; /** Size at the next zoom level, to interpolate towards. */ size1: number; offset: [number, number]; rotate: number; fit: string; fitPad: [number, number, number, number];
-        opacity: number; anchor: string; color: RGBA; /** Distance-field icons: an outline in this colour, this many pixels wide. */ halo: RGBA; haloWidth: number; ignore: boolean; padding: number; translate: [number, number];
+        opacity: number; anchor: string; color: RGBA; /** Distance-field icons: an outline in this colour, this many pixels wide. */ halo: RGBA; haloWidth: number; ignore: boolean; padding: number;
         overlap: boolean; optional: boolean; upright: boolean;
     };
 }
@@ -117,7 +117,7 @@ const WHITE: RGBA = [1, 1, 1, 1];
 
 /** A decoded tile: named layers of features. Vector tiles and sliced GeoJSON both take this shape. */
 export type TileLayers = Record<string, {features: TileFeature[]}>;
-export interface TileFeature extends Feature { geometry(extent: number, coords: number[], ringEnds: number[]): number }
+export interface TileFeature extends Feature { /** See `SlicedFeature`. */ index?: number; geometry(extent: number, coords: number[], ringEnds: number[]): number }
 
 export function buildTile(data: Uint8Array | TileLayers, z: number, layers: CompiledLayer[], overscaled: number | false, states?: MapStates['f'], templates?: Record<string, string[]>, /** Icons that need no place among the labels go to `icons` (see `IconBatch`). */ direct?: boolean): TileIR {
     const vt: TileLayers = data instanceof Uint8Array ? decodeVectorTile(data) : data;
@@ -157,11 +157,14 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
                 ctx.f = f;
                 f.state = f.id === undefined ? undefined : states?.[L.source!]?.[`${L.sourceLayer ?? ''}|${f.id}`];
                 if (L.filter && !L.filter(ctx)) continue;
-                const tokens = (v: unknown) => String(v ?? '').replace(/\{([^}]+)\}/g, (_, k) => f.properties[k] ?? '').trim();
-                let text = tokens(p.field.eval(z, f));
+                // A `{name}` token stands for a property of the feature only in a constant and in a zoom function, as in
+                // MapLibre GL JS. The result of a property function or of an expression keeps its braces.
+                const tokens = (q: Prop, x: unknown) => { const v = String(x ?? ''); return (q.tokens ? v.replace(/\{([^}]+)\}/g, (_, k) => f.properties[k] ?? '') : v).trim(); };
+                let text = tokens(p.field, p.field.eval(z, f));
                 // An image that is an SVG template: the name gets the value of each slot of the template, from `params` of
                 // the `image` expression, or else from the property of the feature that has the name of the slot.
-                const icon = String(p.icon.eval(z, f) ?? ''), iconName = variantName(icon.includes(VARIANT) ? icon : tokens(icon), templates, f.properties);
+                // (`coalesce` gives several names: each one is made in this way.)
+                const icon = String(p.icon.eval(z, f) ?? ''), iconName = icon.split(IMAGE_OR).map(n => variantName(n.includes(VARIANT) ? n : tokens(p.icon, n), templates, f.properties)).join(IMAGE_OR);
                 // (The same for the images inside `format` text.)
                 if (templates && text.includes(IMAGE_OPEN)) text = text.replace(IMAGE_IN_TEXT, (_, n) => IMAGE_OPEN + variantName(n, templates, f.properties) + IMAGE_CLOSE);
                 if (!text && !iconName) continue;
@@ -183,12 +186,12 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
                     color: [color[0], color[1], color[2], color[3] * op] as RGBA,
                     halo: [haloColor[0], haloColor[1], haloColor[2], haloColor[3] * op] as RGBA, haloWidth: p.haloWidth.eval(z, f), haloBlur: p.haloBlur.eval(z, f), rotate: p.rotate.eval(z, f) * Math.PI / 180, justify: justification(p.justify.eval(z, f), p.anchor.eval(z, f)), font: fontStyle(p.font.eval(z, f)),
                     maxWidth: p.maxWidth.eval(z, f), spacing: p.spacing.eval(z, f), offset: p.offset.eval(z, f), anchor: p.anchor.eval(z, f),
-                    padding: p.padding.eval(z, f), overlap: overlaps(p.overlapMode.eval(z, f), p.overlap.eval(z, f)), lineHeight: p.lineHeight.eval(z, f), translate: p.translate.eval(z, f),
+                    padding: p.padding.eval(z, f), overlap: overlaps(p.overlapMode.eval(z, f), p.overlap.eval(z, f)), lineHeight: p.lineHeight.eval(z, f),
                     upright: turns(p.textAlign.eval(z, f)), textOptional: !!p.textOptional.eval(z, f), ignore: !!p.ignore.eval(z, f),
                     varAnchor: p.varAnchor.eval(z, f), radial: p.radial.eval(z, f), varOffset: p.varOffset.eval(z, f), maxAngle: p.maxAngle.eval(z, f), justifyAuto: p.justify.eval(z, f) === 'auto',
                     icon: iconName ? {
                         name: iconName, size: p.iconSize.eval(zs, f), size1: p.iconSize.eval(z1, f), opacity: p.iconOpacity.dd ? p.iconOpacity.eval(z, f) : 1, anchor: p.iconAnchor.eval(z, f), color: p.iconColor.eval(z, f), halo: p.iconHalo.eval(z, f), haloWidth: p.iconHaloWidth.eval(z, f), offset: p.iconOffset.eval(z, f), rotate: p.iconRotate.eval(z, f),
-                        fit: p.iconFit.eval(z, f), fitPad: p.iconFitPad.eval(z, f), overlap: overlaps(p.iconOverlapMode.eval(z, f), p.iconOverlap.eval(z, f)), ignore: !!p.iconIgnore.eval(z, f), padding: p.iconPadding.eval(z, f), translate: p.iconTranslate.eval(z, f),
+                        fit: p.iconFit.eval(z, f), fitPad: p.iconFitPad.eval(z, f), overlap: overlaps(p.iconOverlapMode.eval(z, f), p.iconOverlap.eval(z, f)), ignore: !!p.iconIgnore.eval(z, f), padding: p.iconPadding.eval(z, f),
                         optional: !!p.iconOptional.eval(z, f), upright: turns(p.iconAlign.eval(z, f)),
                     } : undefined,
                 };
@@ -301,7 +304,8 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
                 if (next !== now) grows = true;
             }
             if (progress) progress.push(f.properties.mapbox_clip_start ?? 0, f.properties.mapbox_clip_end ?? 1);
-            if (extrude) { heights.push(p.height.eval(z, f)); bases.push(p.base.eval(z, f)); }
+            // (As in MapLibre GL JS, a negative height or base is 0.)
+            if (extrude) heights.push(Math.max(0, p.height.eval(z, f))), bases.push(Math.max(0, p.base.eval(z, f)));
         }
         if (!featEnds.length) continue;
         const batch: Batch = {

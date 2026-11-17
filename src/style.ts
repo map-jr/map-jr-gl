@@ -28,7 +28,7 @@ const SPEC: Record<string, Record<string, [string, PropKind, any]>> = {
     circle: {
         color: ['circle-color', 'color', '#000'], opacity: ['circle-opacity', 'number', 1], radius: ['circle-radius', 'number', 5],
         strokeColor: ['circle-stroke-color', 'color', '#000'], strokeWidth: ['circle-stroke-width', 'number', 0],
-        strokeOpacity: ['circle-stroke-opacity', 'number', 1], blur: ['circle-blur', 'number', 0], translate: ['circle-translate', 'string', [0, 0]], sortKey: ['circle-sort-key', 'number', 0],
+        strokeOpacity: ['circle-stroke-opacity', 'number', 1], blur: ['circle-blur', 'number', 0], translate: ['circle-translate', 'string', [0, 0]], translateAnchor: ['circle-translate-anchor', 'string', 'map'], sortKey: ['circle-sort-key', 'number', 0],
         pitchAlign: ['circle-pitch-alignment', 'string', 'viewport'], pitchScale: ['circle-pitch-scale', 'string', 'map'],
     },
     heatmap: {
@@ -47,7 +47,8 @@ const SPEC: Record<string, Record<string, [string, PropKind, any]>> = {
     symbol: {
         icon: ['icon-image', 'string', ''], iconSize: ['icon-size', 'number', 1], iconOffset: ['icon-offset', 'string', [0, 0]], iconRotate: ['icon-rotate', 'number', 0],
         rotate: ['text-rotate', 'number', 0],
-        lineHeight: ['text-line-height', 'number', 1.2], translate: ['text-translate', 'raw', [0, 0]], iconTranslate: ['icon-translate', 'raw', [0, 0]],
+        lineHeight: ['text-line-height', 'number', 1.2], translate: ['text-translate', 'string', [0, 0]], iconTranslate: ['icon-translate', 'string', [0, 0]],
+        translateAnchor: ['text-translate-anchor', 'raw', 'map'], iconTranslateAnchor: ['icon-translate-anchor', 'raw', 'map'],
         iconIgnore: ['icon-ignore-placement', 'raw', false], iconPadding: ['icon-padding', 'number', 2], sortKey: ['symbol-sort-key', 'number', 0],
         overlapMode: ['text-overlap', 'string', ''], iconOverlapMode: ['icon-overlap', 'string', ''],
         iconOpacity: ['icon-opacity', 'number', 1], iconAnchor: ['icon-anchor', 'string', 'center'], iconColor: ['icon-color', 'color', '#000'], iconHalo: ['icon-halo-color', 'color', 'rgba(0,0,0,0)'], iconHaloWidth: ['icon-halo-width', 'number', 0],
@@ -119,6 +120,18 @@ export interface CompiledLayer {
 /** The most lights that a `hillshade` layer with the method `multidirectional` draws. */
 export const LIGHTS = 8;
 const LIGHT_PROPS = ['direction', 'altitude', 'shadow', 'highlight'], HILLSHADE_METHODS = ['standard', 'combined', 'igor', 'multidirectional', 'basic'];
+
+/**
+ * A `*-translate` in pixels of the screen. With the anchor `map` (the default) the direction turns with the bearing of
+ * the map, and with `viewport` it stays fixed on the screen. A pitch does not change the result.
+ */
+export function screenTranslate(t: unknown, anchor: unknown, bearing: number): [number, number] {
+    // (A value that is no array moves nothing.)
+    const [x = 0, y = 0] = (Array.isArray(t) ? t : []) as number[];
+    if (anchor === 'viewport' || !bearing || !(x || y)) return [x, y];
+    const a = -bearing * Math.PI / 180, c = Math.cos(a), s = Math.sin(a);
+    return [x * c - y * s, x * s + y * c];
+}
 
 /**
  * The lights of a `hillshade` layer at a zoom, as the `hillshade` program takes them. `method` is 0 for `standard`,

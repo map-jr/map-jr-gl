@@ -390,6 +390,27 @@ for (const renderer of renderers) {
             host.destroy(); el.remove();
             return out;
         }, renderer);
+        // 3d. A GeoJSON feature without an id that several tiles hold is given one time (#606). [0, 0] is the corner of
+        // four tiles at zoom 2, and each of them has the three points and a part of the square.
+        const corner = await page.evaluate(async renderer => {
+            const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const point = {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [0, 0]}};
+            const square = {type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[-20, -20], [20, -20], [20, 20], [-20, 20], [-20, -20]]]}};
+            const host = t.lib.createMap(el, {style: {version: 8, sources: {}, layers: []}, initialView: {center: [0, 0], zoom: 2}, renderer, attribution: false,
+                sources: {points: {type: 'geojson', data: {type: 'FeatureCollection', features: [point, point, point]}}, square: {type: 'geojson', data: square}},
+                layers: [{id: 'square', type: 'fill', source: 'square'}, {id: 'points', type: 'circle', source: 'points'}]});
+            await new Promise(r => { let at = host.state.get().idle ? performance.now() : 0; const off = host.state.subscribe(s => s.idle, v => { at = v ? performance.now() : 0; }), done = () => { clearInterval(timer); off(); r(); }, timer = setInterval(() => at && performance.now() - at > 500 && done(), 50); setTimeout(done, 8000); });
+            const at = {x: 100, y: 75}, box = [{x: 90, y: 65}, {x: 110, y: 85}], out = {};
+            for (const layer of ['points', 'square']) {
+                const found = [await host.queryFeatures(at, {layers: [layer]}), await host.queryFeatures(box, {layers: [layer]}), await host.queryFeatures({layers: [layer]}), await host.querySource(layer, box), await host.querySource(layer)];
+                out[layer] = found.map(f => f.length);
+                out.keys = out.keys !== false && found.flat().every(f => !('index' in f));
+            }
+            host.destroy(); el.remove();
+            return out;
+        }, renderer);
+        check(`[${renderer}] queryFeatures and querySource give a GeoJSON feature without an id one time when several tiles hold it (#606)`,
+            corner.points.join() === '3,3,3,3,3' && corner.square.join() === '1,1,1,1,1' && corner.keys, JSON.stringify(corner));
         check(`[${renderer}] queryFeatures: radius widens a query for drawn features, and its default is 0 there and 3 in querySource`,
             radius.on === 1 && radius.none === 0 && radius.small === 0 && radius.point === 1 && radius.position === 1 && radius.data === 1 && radius.dataDefault === 0 && radius.layer === 'own-line', JSON.stringify(radius));
 
@@ -1333,6 +1354,27 @@ for (const renderer of renderers) {
         check(`[${renderer}] the controls of the main API have a blur, a rule of the page still wins, --map-control-opacity and --map-control-radius reach the popup, the compass names the nearest of N, E, S and W, and a map of the compat entry keeps the look of MapLibre GL JS`,
             glass.main && glass.blur === 'blur(5px)' && glass.radius === '4px' && glass.compat === 'none' && !glass.compatClass
             && glass.popupDefault === 'rgba(255, 255, 255, 0.65) 12px' && glass.popupSet === 'rgba(255, 255, 255, 0.4) 6px' && glass.faces === 'N E1 W1 N1', JSON.stringify(glass));
+        // #435: destroy() leaves no popup and no marker of overlay() on the page, and does not call onClose.
+        const destroyed = await page.evaluate(async renderer => {
+            const el = Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'});
+            document.body.appendChild(el);
+            const host = window.t.lib.createMap(el, {style: {version: 8, sources: {}, layers: []}, attribution: false, renderer});
+            const content = () => Object.assign(document.createElement('div'), {textContent: 'Overlay'});
+            let closes = 0;
+            const open = content(), fading = content(), marker = content();
+            host.overlay(open, {lngLat: [0, 0], popup: true, onClose() { closes++; }});
+            const closing = host.overlay(fading, {lngLat: [0, 0], popup: true});
+            host.overlay(marker, {lngLat: [0, 0]});
+            await new Promise(r => setTimeout(r, 300));
+            closing.remove();
+            const during = el.querySelectorAll('.map-jr-popup').length;
+            host.destroy();
+            const out = {during, open: open.isConnected, marker: marker.isConnected, popups: el.querySelectorAll('.map-jr-popup').length, closes};
+            el.remove();
+            return out;
+        }, renderer);
+        check(`[${renderer}] destroy() removes the popups (open or fading out) and the markers of overlay() at once, and does not call onClose`,
+            destroyed.during === 2 && !destroyed.open && !destroyed.marker && destroyed.popups === 0 && destroyed.closes === 0, JSON.stringify(destroyed));
         // The control colorScheme() (#541): for each start (no value, 'auto' with the system light and dark, a fixed value),
         // what two clicks give: the value of the description, the scheme of the map, the calls of onColorSchemeChange and the label.
         const toggles = {};
@@ -1575,6 +1617,51 @@ if (only === 'worker') { await browser.close(); process.exit(failed ? 1 : 0); }
         check('the file for the images of a style does not load: the map reports an error and the page has no unhandled rejection',
             got.length === 1 && got[0].startsWith('[map-jr-gl] the style: the code for the images') && !rejections.length, JSON.stringify({got, rejections}));
     } catch (e) { check('the test of a failed style-images file was completed', false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
+// A style that is not a style (#539): an error of the map (`onError`, `state.error`) that says what is missing, no error
+// of the page, and the map draws the next style. Each style is given as an object and as the answer of a URL.
+for (const renderer of ['main', 'worker']) {
+    const page = await browser.newPage({viewport: {width: 900, height: 600}});
+    const thrown = [];
+    page.on('pageerror', e => thrown.push(e.message));
+    try {
+        await page.goto(origin + '/bench');
+        const out = await page.evaluate(async renderer => {
+            const lib = await import('/dist/map-jr-gl.js'), wait = ms => new Promise(r => setTimeout(r, ms)), results = {}, unhandled = [];
+            window.addEventListener('unhandledrejection', e => unhandled.push(String(e.reason?.message ?? e.reason)));
+            const good = {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]};
+            const bad = {noLayers: {version: 8, sources: {}}, layersNotAList: {version: 8, sources: {}, layers: {bg: {type: 'background'}}}, notAnObject: 42};
+            const url = style => 'data:application/json,' + encodeURIComponent(JSON.stringify(style));
+            const run = async (name, style) => {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'})), errors = [];
+                const spec = {style, renderer, attribution: false, onError: e => errors.push(e.message)};
+                let host;
+                try { host = lib.createMap(el, spec); } catch (e) { results[name] = {made: String(e.message)}; el.remove(); return; }
+                await wait(700);
+                const first = errors.join(' | '), state = host.state.get().error?.message;
+                // The next style is drawn, and a later style that is not a style gives an error again.
+                host.update({...spec, style: good});
+                const idle = await Promise.race([new Promise(r => host.state.subscribe(s => s.idle, i => i && r(true))), wait(5000).then(() => false)]);
+                const cleared = !host.state.get().error, before = errors.length;
+                host.update(spec);
+                await wait(700);
+                results[name] = {first, state, idle, cleared, second: errors.slice(before).join(' | ')};
+                host.destroy(); el.remove();
+            };
+            for (const [name, style] of Object.entries(bad)) { await run(name, style); await run(name + 'URL', url(style)); }
+            // (A style with no "sources" has no source: its layers without a source are drawn.)
+            await run('noSources', {version: 8, layers: good.layers});
+            return {results, unhandled};
+        }, renderer);
+        const said = /^\[map-jr-gl\] The style has no list "layers"/;
+        for (const [name, r] of Object.entries(out.results)) {
+            if (name === 'noSources') check(`[${renderer}] a style with no "sources" is drawn without an error`, r.first === '' && r.idle && r.second === '', JSON.stringify(r));
+            else check(`[${renderer}] a style that is not a style (${name}): one error of the map that names "layers", and update() with a good style draws`,
+                said.test(r.first) && !r.first.includes(' | ') && said.test(r.state ?? '') && r.idle && said.test(r.second) && !r.second.includes(' | '), JSON.stringify(r));
+        }
+        check(`[${renderer}] a style that is not a style gives no error of the page`, !thrown.length && !out.unhandled.length, JSON.stringify({thrown, unhandled: out.unhandled}));
+    } catch (e) { check(`[${renderer}] the test of a style that is not a style was completed`, false, String(e.message).split('\n')[0]); }
     await page.close();
 }
 // A map that is destroyed while it loads (React StrictMode does this on each mount), and two maps in one element.

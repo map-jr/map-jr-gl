@@ -880,6 +880,49 @@ for (const mode of renderers) {
     });
     check(`[${mode}] addProtocol('pmtiles') warns once that the library reads pmtiles:// itself`,
         pmWarns.length === 1 && pmWarns[0].startsWith('[map-jr-gl]') && pmWarns[0].includes('pmtiles://'), JSON.stringify(pmWarns));
+    // #603: a protocol gets the request of a raster or raster-dem tile with the type `image` and an `accept` header, as in
+    // MapLibre GL JS, and it can answer with an ImageBitmap, an HTMLImageElement or the bytes of an image file.
+    const drawn = await page.evaluate(async () => {
+        const m = window.map, mod = await import('/dist/map-jr-gl-maplibre-compat.js'), asked = {}, kept = [], urls = [];
+        const colours = {bitmap: '#ff0000', element: '#00ff00', bytes: '#0000ff', dem: '#018000'};
+        mod.addProtocol('drawn', async request => {
+            const how = request.url.split('/')[2], c = Object.assign(document.createElement('canvas'), {width: 64, height: 64}), g = c.getContext('2d');
+            if (how === 'https:') { urls.push(request.url); return {data: {type: 'FeatureCollection', features: []}}; }
+            asked[how] = request.type + ' ' + request.headers?.accept;
+            g.fillStyle = colours[how]; g.fillRect(0, 0, 64, 64);
+            if (how === 'element') { const img = new Image(); img.src = c.toDataURL(); await img.decode(); return {data: img}; }
+            if (how === 'bytes') return {data: await (await new Promise(r => c.toBlob(r))).arrayBuffer()};
+            const data = await createImageBitmap(c);
+            kept.push(data); // (the protocol keeps its image, as a protocol with a cache does)
+            return {data};
+        });
+        const middle = async () => { const bmp = await createImageBitmap(await m.toBlob()), g = new OffscreenCanvas(bmp.width, bmp.height).getContext('2d'); g.drawImage(bmp, 0, 0); return [...g.getImageData(bmp.width >> 1, bmp.height >> 1, 1, 1).data].slice(0, 3).join(); };
+        const seen = {};
+        try {
+            for (const how of ['bitmap', 'element', 'bytes']) {
+                m.addSource('drawn', {type: 'raster', tiles: [`drawn://${how}/{z}/{x}/{y}`], tileSize: 256});
+                m.addLayer({id: 'drawn', type: 'raster', source: 'drawn', paint: {'raster-fade-duration': 0}});
+                for (let i = 0; i < 80 && !(asked[how] && m.areTilesLoaded()); i++) await new Promise(r => setTimeout(r, 100));
+                await new Promise(r => { m.once('idle', r); m.triggerRepaint(); setTimeout(r, 5000); });
+                seen[how] = await middle();
+                m.removeLayer('drawn'); m.removeSource('drawn');
+            }
+            m.addSource('drawn', {type: 'raster-dem', tiles: ['drawn://dem/{z}/{x}/{y}'], tileSize: 256});
+            m.addLayer({id: 'drawn', type: 'hillshade', source: 'drawn'});
+            for (let i = 0; i < 80 && !(asked.dem && m.areTilesLoaded()); i++) await new Promise(r => setTimeout(r, 100));
+            seen.demLoaded = m.areTilesLoaded();
+            m.removeLayer('drawn'); m.removeSource('drawn');
+            // The compat entry fetches the data of a GeoJSON source for querySourceFeatures: the URL of a protocol that has
+            // another URL inside reaches the protocol as it is written.
+            m.addSource('drawn', {type: 'geojson', data: 'drawn://https://example.com/points.json'});
+            m.querySourceFeatures('drawn');
+            for (let i = 0; i < 30 && urls.length < 2; i++) await new Promise(r => setTimeout(r, 100));
+            m.removeSource('drawn');
+        } finally { mod.removeProtocol('drawn'); }
+        return {asked, seen, urls, keptWhole: kept.length > 0 && kept.every(b => b.width === 64)};
+    });
+    check(`[${mode}] addProtocol: a raster and a raster-dem tile have the request type image, and an ImageBitmap, an HTMLImageElement and bytes are drawn; querySourceFeatures asks for the URL of a GeoJSON source as written (#603)`,
+        Object.values(drawn.asked).length === 4 && Object.values(drawn.asked).every(a => a === 'image image/webp,*/*') && drawn.seen.bitmap === '255,0,0' && drawn.seen.element === '0,255,0' && drawn.seen.bytes === '0,0,255' && drawn.seen.demLoaded && drawn.keptWhole && drawn.urls.length === 2 && drawn.urls.every(u => u === 'drawn://https://example.com/points.json'), JSON.stringify(drawn));
     // map.painter (#205): the development build warns once per map, and the value is undefined; the production build does not warn.
     const painter = await page.evaluate(async () => {
         const out = {}, warn = console.warn;
@@ -1498,6 +1541,38 @@ for (const mode of renderers) {
         }, mode);
         check(`[${mode}] compat: addImage with sdf: true is recoloured by icon-color (#46)`, r.px?.[0] > 200 && r.px[1] < 60 && r.px[2] < 60 && r.sdf === true, JSON.stringify(r));
     }
+    // `coalesce` with images: the icon is the first image that the map has. The map has only the second image (blue)
+    // when the layer is added, and it gets the first image (red) after that.
+    // The map asks for no image (`styleimagemissing`), because one of the two is there.
+    {
+        const r = await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const m = new mod.Map({container: el, renderer: mode, attributionControl: false, center: [0, 0], zoom: 1, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]}});
+            await new Promise(res => m.once('load', res));
+            const asked = [];
+            m.on('styleimagemissing', e => asked.push(e.id));
+            const square = (r, g, b) => { const data = new Uint8Array(16 * 16 * 4); for (let i = 0; i < data.length; i += 4) data.set([r, g, b, 255], i); return {width: 16, height: 16, data}; };
+            const centre = async () => {
+                await new Promise(res => { m.once('idle', res); setTimeout(res, 8000); });
+                const url = await new Promise(res => { m.once('render', () => res(m.getCanvas().toDataURL())); m.triggerRepaint(); setTimeout(() => res(null), 5000); });
+                if (!url) return null;
+                const bmp = await createImageBitmap(await (await fetch(url)).blob()), c = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}), g = c.getContext('2d');
+                g.drawImage(bmp, 0, 0);
+                return Array.from(g.getImageData(bmp.width >> 1, bmp.height >> 1, 1, 1).data);
+            };
+            await m.addImage('second', square(0, 0, 255));
+            m.addSource('p', {type: 'geojson', data: {type: 'Point', coordinates: [0, 0]}});
+            m.addLayer({id: 'p', type: 'symbol', source: 'p', layout: {'icon-image': ['coalesce', ['image', 'first'], ['image', 'second']]}});
+            const before = await centre();
+            await m.addImage('first', square(255, 0, 0));
+            const after = await centre();
+            m.remove(); el.remove();
+            return {before, after, asked};
+        }, mode);
+        check(`[${mode}] compat: coalesce with images draws the first image that the map has, also one that is added after the layer (#584)`,
+            r.before?.[2] > 200 && r.before[0] < 60 && r.after?.[0] > 200 && r.after[2] < 60 && r.asked.length === 0, JSON.stringify(r));
+    }
     // #196: with `interactive: false`, the handlers are off, a drag does nothing, and `enable()` on a handler turns it on,
     // as in MapLibre GL JS. #253: the map still fires `click`, `mousemove` and the events of a layer.
     {
@@ -1625,6 +1700,50 @@ for (const mode of renderers) {
             failed.badSource.seen.length === 1 && failed.badSource.seen[0].includes('"bad"') && failed.badSource.later > 0, JSON.stringify(failed.badSource));
         // (The browser writes its own line to the console for each 404 that this test asks for.)
         for (let i = errors.length; i-- > errorsBefore;) if (errors[i].startsWith('Failed to load resource')) errors.splice(i, 1);
+    }
+    // A style that is not a style (#539): an `error` event that says what is missing, no error of the page, and the map
+    // works with the next style. Each style is given as an object and as the answer of a URL.
+    {
+        const errorsBefore = errors.length;
+        const out = await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), wait = ms => new Promise(r => setTimeout(r, ms));
+            const thrown = [], onError = e => thrown.push(String(e.reason?.message ?? e.message));
+            addEventListener('unhandledrejection', onError); addEventListener('error', onError);
+            const good = {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]};
+            const bad = {noLayers: {version: 8, sources: {}}, layersNotAList: {version: 8, sources: {}, layers: {bg: {type: 'background'}}}, notAnObject: 42};
+            const url = style => 'data:application/json,' + encodeURIComponent(JSON.stringify(style)), results = {};
+            const run = async (name, style) => {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'})), seen = [];
+                let m, made = '';
+                try { m = new mod.Map({container: el, style, renderer: mode, attributionControl: false, center: [0, 0], zoom: 1}); } catch (e) { made = String(e.message); }
+                if (m) {
+                    for (const type of ['error', 'load']) m.on(type, e => seen.push(type === 'error' ? 'error: ' + (e.error?.message ?? e.error) : type));
+                    await wait(700);
+                    const first = seen.join(' | ');
+                    // The next style loads the map, and a later style that is not a style leaves that style in place.
+                    m.setStyle(good);
+                    for (let i = 0; i < 40 && !seen.includes('load'); i++) await wait(100);
+                    const loaded = seen.includes('load'), before = seen.length;
+                    m.setStyle(style);
+                    await wait(700);
+                    results[name] = {first, loaded, second: seen.slice(before).join(' | '), kept: !!m.getLayer('bg')};
+                    m.remove();
+                } else results[name] = {made};
+                el.remove();
+            };
+            for (const [name, style] of Object.entries(bad)) { await run(name, style); await run(name + 'URL', url(style)); }
+            // (A style with no "sources" has no source: its layers without a source are drawn.)
+            await run('noSources', {version: 8, layers: good.layers});
+            removeEventListener('unhandledrejection', onError); removeEventListener('error', onError);
+            return {results, thrown};
+        }, mode);
+        const said = /^error: \[map-jr-gl\] The style has no list "layers"/;
+        for (const [name, r] of Object.entries(out.results)) {
+            if (name === 'noSources') check(`[${mode}] a style with no "sources" loads without an error`, r.first === 'load' && r.loaded && r.second === '', JSON.stringify(r));
+            else check(`[${mode}] a style that is not a style (${name}): one error event that names "layers", then setStyle with a good style loads the map and the map keeps it`,
+                said.test(r.first) && !r.first.includes(' | ') && r.loaded && said.test(r.second) && !r.second.includes(' | ') && r.kept, JSON.stringify(r));
+        }
+        check(`[${mode}] a style that is not a style gives no error of the page`, !out.thrown.length && errors.length === errorsBefore, JSON.stringify({thrown: out.thrown, page: errors.slice(errorsBefore)}));
     }
     // A container under a CSS transform (#189): the map takes the layout size, as MapLibre does, and event.point is in
     // element pixels. One container is scaled itself, the other sits in a scaled parent.
@@ -1988,9 +2107,12 @@ for (const mode of renderers) {
             const i0 = log.findIndex(s => s.t >= t0), perDegree = 512 * 8 / 360;
             return {renderer: m.renderer, steps: log.slice(Math.max(0, i0 - 1), i0 + 6).map((s, i, a) => i ? Math.round((s.lng - a[i - 1].lng) * perDegree) : null).slice(1)};
         });
-        // (Each move goes 10 px west, and the centre goes east. A jump back is a step west or a first step that is short.)
+        // (Each move goes 10 px west, and the centre goes east. A jump back is a step west: the page's camera is 50 ms and
+        // more than 57 px behind the engine's. The first step is 10 px or more: it is one move when the worker draws a
+        // frame between the first move and the second, which happens in CI (#616), two moves when the second move
+        // arrives before that frame, or a frame of the `easeTo`, about 19 px.)
         check('[worker] compat: a drag that starts during an easeTo does not jump back (#38)',
-            steps.renderer === 'worker' && steps.steps.length >= 4 && steps.steps[0] >= 15 && steps.steps.every(d => d >= 0), JSON.stringify(steps));
+            steps.renderer === 'worker' && steps.steps.length >= 4 && steps.steps[0] >= 10 && steps.steps.every(d => d >= 0), JSON.stringify(steps));
     }
     // A worker that cannot make a WebGL2 context: the map goes to the main thread, `load` and `idle` fire, and what the
     // page sent before the fall back (the rules for requests, a change of the style) is not lost.
@@ -2657,6 +2779,100 @@ for (const mode of renderers) {
         });
         check('[main] maplibre-compat: listens, getStyleUrl and fitScreenCoordinates (with a bearing, padding and maxZoom) agree with MapLibre (#564)',
             m564.ml.length === m564.compat.length && m564.ml.every((v, i) => typeof v === 'number' ? Math.abs(v - m564.compat[i]) < 1e-3 : v === m564.compat[i]), JSON.stringify(m564));
+        // #565: isSourceLoaded(id) answers for one source and fires `error` for an id that the style does not have, and
+        // isActive() of a handler is true during its gesture, as in MapLibre GL JS (served at /ml/).
+        const m565 = {};
+        for (const name of ['ml', 'compat']) {
+            const sources = await page.evaluate(async name => {
+                const lib = await import(name === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+                if (name === 'ml') lib.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px;z-index:99999'}));
+                const point = lng => ({type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [lng, 45]}});
+                const style = {version: 8, sources: {a: {type: 'geojson', data: point(10)}, b: {type: 'geojson', data: point(11)}},
+                    layers: [{id: 'bg', type: 'background'}, {id: 'a', type: 'circle', source: 'a'}, {id: 'b', type: 'circle', source: 'b'}]};
+                const m = window.m565 = new lib.Map({container: el, renderer: 'main', style, center: [10, 45], zoom: 4, fadeDuration: 0});
+                await new Promise(r => m.once('idle', r));
+                const errors = [];
+                m.on('error', e => errors.push(e.error));
+                let missing;
+                try { missing = m.isSourceLoaded('nope'); } catch { missing = 'threw'; }
+                const out = [String(missing), errors.length, errors[0] instanceof Error, m.isSourceLoaded('a'), m.isSourceLoaded('b')];
+                m.getSource('a').setData(point(12));
+                out.push(m.isSourceLoaded('a'), m.isSourceLoaded('b'), m.getSource('a').loaded(), m.getSource('b').loaded());
+                await new Promise(r => m.once('idle', r));
+                out.push(m.isSourceLoaded('a'), errors.length);
+                return out.join();
+            }, name);
+            const active = () => page.evaluate(() => ['dragPan', 'dragRotate', 'boxZoom', 'touchZoomRotate', 'touchPitch', 'scrollZoom'].map(h => +window.m565[h].isActive()).join(''));
+            const gesture = async (button, key) => {
+                await page.mouse.move(150, 100);
+                if (key) await page.keyboard.down(key);
+                await page.mouse.down({button});
+                const before = await active();
+                await page.mouse.move(180, 120, {steps: 5});
+                const during = await active();
+                await page.mouse.up({button});
+                if (key) await page.keyboard.up(key);
+                const after = await active();
+                await page.waitForTimeout(500);
+                return [before, during, after].join('>');
+            };
+            m565[name] = [sources, await gesture('left'), await gesture('right'), await gesture('left', 'Shift')].join(' ');
+            // (Chromium has no touch input here: the two-finger gestures are checked for the compat entry alone.)
+            if (name === 'compat') m565.touch = await page.evaluate(() => {
+                const m = window.m565, c = m.getCanvas(), out = [];
+                const send = (type, id, x, y) => c.dispatchEvent(new PointerEvent(type, {pointerId: id, pointerType: 'touch', clientX: x, clientY: y, bubbles: true, cancelable: true}));
+                const read = () => out.push(['touchZoomRotate', 'touchPitch', 'dragPan'].map(h => +m[h].isActive()).join(''));
+                send('pointerdown', 11, 100, 100); send('pointerdown', 12, 200, 100);
+                for (let i = 1; i <= 3; i++) { send('pointermove', 11, 100 - i * 15, 100); send('pointermove', 12, 200 + i * 15, 100); }
+                read();
+                send('pointerup', 11, 55, 100); read(); send('pointerup', 12, 245, 100);
+                send('pointerdown', 13, 120, 60); send('pointerdown', 14, 180, 60);
+                for (let i = 1; i <= 3; i++) { send('pointermove', 13, 120, 60 + i * 10); send('pointermove', 14, 180, 60 + i * 10); }
+                read();
+                m.touchPitch.disable(); read(); m.touchPitch.enable();
+                send('pointerup', 13, 120, 90); send('pointerup', 14, 180, 90); read();
+                return out.join();
+            });
+            await page.evaluate(() => { const el = window.m565.getContainer(); window.m565.remove(); el.remove(); delete window.m565; });
+        }
+        check('[main] maplibre-compat: isSourceLoaded answers for one source and fires error for an unknown id, and isActive of dragPan, dragRotate and boxZoom is true during the gesture, as in MapLibre (#565)',
+            m565.ml === m565.compat && m565.compat.startsWith('undefined,1,true,true,true,false,true,false,true,true,1 100000>100000>000000 000000>010000>000000 001000>001000>000000'), JSON.stringify(m565));
+        check('[main] maplibre-compat: isActive of touchZoomRotate is true during a pinch and of touchPitch during a tilt, and false after a finger lifts or after disable() (#565)',
+            m565.touch === '100,000,010,000,000', JSON.stringify(m565));
+        // #606: a GeoJSON feature without an id that several tiles hold is given one time. [0, 0] is the corner of four
+        // tiles at zoom 2, and each of them has the three points in its buffer. MapLibre GL JS (served at /ml/) gives the
+        // points one time too. It gives the square once for each tile, and this library gives it one time.
+        const m606 = await page.evaluate(async () => {
+            const ml = await import('/ml/maplibre-gl.mjs');
+            ml.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const compat = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const point = {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [0, 0]}};
+            const square = {type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[-20, -20], [20, -20], [20, 20], [-20, 20], [-20, -20]]]}};
+            const style = {version: 8, sources: {points: {type: 'geojson', data: {type: 'FeatureCollection', features: [point, point, point]}}, square: {type: 'geojson', data: square}},
+                layers: [{id: 'square', type: 'fill', source: 'square'}, {id: 'points', type: 'circle', source: 'points'}]};
+            const run = async lib => {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+                const m = new lib.Map({container: el, renderer: 'main', style, center: [0, 0], zoom: 2});
+                await new Promise(r => m.loaded?.() ? r() : m.once('load', r));
+                await new Promise(r => { m.once('idle', r); setTimeout(r, 3000); });
+                const box = [[140, 90], [160, 110]], out = {};
+                for (const layer of ['points', 'square']) {
+                    const found = [await m.queryRenderedFeatures([150, 100], {layers: [layer]}), await m.queryRenderedFeatures(box, {layers: [layer]}), await m.queryRenderedFeatures({layers: [layer]})];
+                    out[layer] = found.map(f => f.length);
+                    out.keys = out.keys !== false && found.flat().every(f => !('index' in f));
+                }
+                // (The array is read at once. The promise is awaited so that the map is not removed while the question is open.)
+                const atOnce = m.queryRenderedFeatures(box, {layers: ['points']});
+                out.atOnce = [...atOnce].length;
+                await atOnce;
+                m.remove(); el.remove();
+                return out;
+            };
+            return {ml: await run(ml), compat: await run(compat)};
+        });
+        check('[main] maplibre-compat: queryRenderedFeatures gives a GeoJSON feature without an id one time when several tiles hold it, as MapLibre gives three points at the corner of four tiles (#606)',
+            m606.ml.points.join() === '3,3,3' && m606.compat.points.join() === '3,3,3' && m606.compat.atOnce === 3 && m606.ml.atOnce === 3 && m606.compat.square.join() === '1,1,1' && m606.compat.keys, JSON.stringify(m606));
         // #261: the eventData argument of a camera method is on the events of that move, and not on the next move.
         const tagged = await page.evaluate(async () => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
@@ -2799,6 +3015,38 @@ for (const mode of renderers) {
             return {connected: p.getElement().isConnected, open: p.isOpen()};
         });
         check('[main] Popup: remove() removes the element when the closing animation never ends', !stuck.connected && !stuck.open, JSON.stringify(stuck));
+        // #435: the other cases in which the closing animation does not play. The element leaves the page on a hidden page
+        // (at once), in a container with `display: none`, and when the map is removed (at once, open or fading out).
+        const left = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), wait = t => new Promise(r => setTimeout(r, t));
+            const el = Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'});
+            document.body.appendChild(el);
+            const m = new mod.Map({container: el, renderer: 'main', center: [0, 0], zoom: 1, attributionControl: false, style: {version: 8, sources: {}, layers: []}});
+            const popup = text => new mod.Popup().setLngLat([0, 0]).setText(text).addTo(m), on = p => p.getElement().isConnected;
+            const hidden = popup('Hidden page'), none = popup('No display');
+            await wait(300);
+            Object.defineProperty(document, 'hidden', {get: () => true, configurable: true});
+            try { hidden.remove(); } finally { delete document.hidden; }
+            const hiddenPage = on(hidden);
+            el.style.display = 'none';
+            none.remove();
+            await wait(1000);
+            const displayNone = on(none);
+            el.style.display = '';
+            let closes = 0;
+            const open = popup('Open').on('close', () => closes++), fading = popup('Fading').on('close', () => closes++);
+            const marker = new mod.Marker().setLngLat([0, 0]).setPopup(new mod.Popup().setText('Of the marker')).addTo(m).togglePopup();
+            await wait(300);
+            fading.remove();
+            const during = on(fading);
+            m.remove();
+            const out = {hiddenPage, displayNone, during, open: on(open) || open.isOpen(), fading: on(fading), marker: on(marker) || on(marker.getPopup()), closes,
+                rest: el.querySelectorAll('.maplibregl-popup,.maplibregl-marker').length};
+            el.remove();
+            return out;
+        });
+        check('[main] Popup: remove() removes the element at once on a hidden page and within a second in a container with display: none; Map.remove() removes its popups and markers at once, and each popup fires close once',
+            !left.hiddenPage && !left.displayNone && left.during && !left.open && !left.fading && !left.marker && left.closes === 2 && left.rest === 0, JSON.stringify(left));
         // A popup that fades out after remove() does not catch a click: the click goes to the map below it.
         const fading = await page.evaluate(async () => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), m = window.a11yMap, wait = t => new Promise(r => setTimeout(r, t));
@@ -3260,6 +3508,60 @@ for (const mode of renderers) {
             return out;
         }, mode);
         check(`[${mode}] a color-relief layer colours the ground by its elevation, with color-relief-opacity`, relief.idle && relief.full.join() === '0,0,255' && Math.abs(relief.half[0] - 128) < 3 && Math.abs(relief.half[1] - 128) < 3 && relief.half[2] === 255, JSON.stringify(relief));
+    }
+
+    // #590: `encoding: 'custom'` of a `raster-dem` source. With the factors 0 and `baseShift: -500`, every elevation is
+    // 500 m, whatever the tiles hold (read as `mapbox`, these tiles give elevations far above 1000 m). A
+    // `color-relief-color` with one stop draws the colour of the stop. With two stops at one elevation it draws one of
+    // the two colours (the expression of the style decides which one), and not a colour that the division by the
+    // distance of zero between the stops makes.
+    if (decodes) {
+        const custom = await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:200px'}));
+            const ramp = (...stops) => ['interpolate', ['linear'], ['elevation'], ...stops];
+            const m = new mod.Map({container: el, renderer: mode, attributionControl: false, center: [7.6586, 45.9763], zoom: 12.4, style: {version: 8,
+                sources: {dem: {type: 'raster-dem', tiles: ['https://tiles.mapterhorn.com/{z}/{x}/{y}.webp'], encoding: 'custom', redFactor: 0, greenFactor: 0, blueFactor: 0, baseShift: -500, tileSize: 512, maxzoom: 12}},
+                layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}},
+                    {id: 'relief', type: 'color-relief', source: 'dem', paint: {'color-relief-color': ramp(0, '#f00', 1000, '#f00', 1001, '#00f', 9000, '#00f')}}]}});
+            const idle = () => new Promise(r => { m.once('idle', () => r(true)); setTimeout(() => r(false), 20000); });
+            const centre = async () => { const bmp = await createImageBitmap(await m.toBlob()), c = new OffscreenCanvas(bmp.width, bmp.height).getContext('2d'); c.drawImage(bmp, 0, 0); return [...c.getImageData(bmp.width >> 1, bmp.height >> 1, 1, 1).data].slice(0, 3).join(); };
+            const out = {idle: await idle()};
+            out.custom = await centre();
+            out.elevation = await m.queryElevation([7.6586, 45.9763], {source: 'dem'});
+            const colour = async stops => { m.setPaintProperty('relief', 'color-relief-color', stops); await idle(); return centre(); };
+            out.one = await colour(ramp(300, '#0f0'));
+            out.below = await colour(ramp(400, '#f00', 400, '#0f0'));
+            out.at = await colour(ramp(500, '#f00', 500, '#0f0'));
+            out.above = await colour(ramp(600, '#f00', 600, '#0f0'));
+            m.remove(); el.remove();
+            return out;
+        }, mode);
+        check(`[${mode}] a raster-dem source with encoding 'custom' gives its elevations from the factors and the shift`, custom.idle && custom.custom === '255,0,0' && custom.elevation === 500, JSON.stringify(custom));
+        // A factor that is not a finite number: the engine warns one time for the source (also when the style is set
+        // again) and reads the source as `mapbox`, so it gives the elevation of a source without `encoding`.
+        const told = [], listen = m => { if (m.type() === 'warning' && m.text().includes('"redFactor"')) told.push(m.text()); };
+        page.on('console', listen);
+        const wrong = await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:200px'}));
+            const dem = more => ({type: 'raster-dem', tiles: ['https://tiles.mapterhorn.com/{z}/{x}/{y}.webp'], tileSize: 512, maxzoom: 12, ...more});
+            const style = () => ({version: 8, sources: {wrong: dem({encoding: 'custom', redFactor: '2', baseShift: 5}), plain: dem({})},
+                layers: [{id: 'hills', type: 'hillshade', source: 'wrong'}]});
+            const m = new mod.Map({container: el, renderer: mode, attributionControl: false, center: [7.6586, 45.9763], zoom: 12.4, style: style()});
+            const idle = () => new Promise(r => { m.once('idle', () => r(true)); setTimeout(() => r(false), 20000); });
+            const out = {idle: await idle()};
+            m.setStyle(style());
+            await idle();
+            out.wrong = await m.queryElevation([7.6586, 45.9763], {source: 'wrong'});
+            out.plain = await m.queryElevation([7.6586, 45.9763], {source: 'plain'});
+            m.remove(); el.remove();
+            return out;
+        }, mode);
+        await page.waitForTimeout(100);
+        page.off('console', listen);
+        check(`[${mode}] a factor of encoding 'custom' that is not a finite number gives one warning and the mapbox encoding`, wrong.idle && told.length === 1 && told[0].startsWith('[map-jr-gl] The source "wrong": ') && Number.isFinite(wrong.wrong) && wrong.wrong === wrong.plain, JSON.stringify({wrong, told}));
+        check(`[${mode}] a color-relief layer with one stop, or two stops at one elevation, draws the colour of a stop`, custom.one === '0,255,0' && [custom.below, custom.at, custom.above].every(c => c === '255,0,0' || c === '0,255,0'), JSON.stringify(custom));
     }
 
     // A tile of the deepest level of its source has only the labels of the layers that show near the zoom of the map.

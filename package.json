@@ -1,6 +1,6 @@
 {
   "name": "@map-jr/map-jr-gl",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "A small vector map renderer for the web with worker rendering, server rendering and canvas markers; reads MapLibre styles.",
   "scripts": {
     "test": "pnpm test:unit && pnpm test:expressions && pnpm test:api && pnpm test:size && pnpm test:examples && pnpm test:consistency",
@@ -15,14 +15,14 @@
     "status": "node scripts/status.mjs",
     "test:cloudflare": "node test/cloudflare/run.mjs",
     "test:unit": "node --experimental-transform-types --no-warnings --test test/unit/*.test.ts",
-    "test:expressions": "node test/conformance/expressions.mjs --min=354",
+    "test:expressions": "node test/conformance/expressions.mjs --min=357",
     "test:api": "node test/conformance/api.mjs --min=122",
     "test:browser": "node test/interact.mjs .cache/shots && node test/host.mjs",
     "bench": "node test/bench/compare.mjs",
     "test:loading": "node test/loading.mjs",
     "test:vue": "node test/vue.mjs",
     "test:react": "node test/react.mjs",
-    "test:render": "node test/conformance/render.mjs --min=1132"
+    "test:render": "node test/conformance/render.mjs --min=1148"
   },
   "keywords": [
     "map",

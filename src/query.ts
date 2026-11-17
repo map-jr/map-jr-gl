@@ -28,6 +28,17 @@ export interface TileQuery {
     /** Several questions in one pass: for each, a style layer's name, source layer, filters and tolerance in tile units. */
     sets?: QuerySet[];
 }
+/** A feature of a GeoJSON source as a tile gives it for a rectangle: `index` is its place in the data of the source. The engine removes it. */
+export type FoundFeature = QueriedFeature & {index?: number};
+/**
+ * A key for a feature that several tiles hold, so that a query gives the feature one time: its id, or for a GeoJSON
+ * feature without an id its place in the data. It is empty for a feature that has neither. It removes `index`.
+ */
+export function featureKey(f: FoundFeature): string {
+    const i = f.index;
+    delete f.index;
+    return f.id === undefined && i === undefined ? '' : `${f.id === undefined ? i : ''}|${f.layer}|${f.source}|${f.sourceLayer}|${f.id}`;
+}
 export interface QuerySet { layer: string; sourceLayer?: string; filter?: unknown; also?: unknown; radius: number }
 
 const TYPES = ['Point', 'Point', 'LineString', 'Polygon'] as const;
@@ -71,8 +82,8 @@ function touches(type: number, c: number[], ends: number[], px: number, py: numb
 }
 
 /** Finds every feature in a vector tile at (or within `radius` of) a position, or in a box. */
-export function queryTile(data: Uint8Array | TileLayers, q: TileQuery): QueriedFeature[] {
-    const out: QueriedFeature[] = [], layers: TileLayers = data instanceof Uint8Array ? decodeVectorTile(data) : data;
+export function queryTile(data: Uint8Array | TileLayers, q: TileQuery): FoundFeature[] {
+    const out: FoundFeature[] = [], layers: TileLayers = data instanceof Uint8Array ? decodeVectorTile(data) : data;
     const n = 2 ** q.z, toLngLat = (x: number, y: number) => [lngFromMerc((q.x + x / EXTENT) / n), latFromMerc((q.y + y / EXTENT) / n)];
     // Without sets there is one question for all the data. With sets (the style layers of a rendered-features query)
     // each feature is read one time and tested for each set.
@@ -89,8 +100,9 @@ export function queryTile(data: Uint8Array | TileLayers, q: TileQuery): QueriedF
                 if ((set.test && !set.test({zoom: q.z, f})) || (set.test2 && !set.test2({zoom: q.z, f}))) continue;
                 if (!c) f.geometry(EXTENT, c = [], ends);
                 if (!touches(f.type, c, ends, q.px, q.py, set.radius, q.box)) continue;
-                const feature: QueriedFeature = {source: q.source, sourceLayer: name === GEOJSON_LAYER ? '' : name, id: f.id, type: TYPES[f.type], properties: f.properties};
+                const feature: FoundFeature = {source: q.source, sourceLayer: name === GEOJSON_LAYER ? '' : name, id: f.id, type: TYPES[f.type], properties: f.properties};
                 if (set.layer !== undefined) feature.layer = set.layer;
+                if (q.box && f.id === undefined && f.index !== undefined) feature.index = f.index;
                 if (q.geometry) {
                     if (!geometry) {
                         const rings: number[][][] = [];
@@ -115,13 +127,22 @@ export function queryTile(data: Uint8Array | TileLayers, q: TileQuery): QueriedF
     return out;
 }
 
+/**
+ * The encoding of the elevation of a `raster-dem` source: `'terrarium'`, `'mapbox'`, or for `encoding: 'custom'` the
+ * factors of red, green and blue and the shift (`redFactor`, `greenFactor`, `blueFactor`, `baseShift`).
+ */
+export type DemEncoding = string | number[];
+
+/** The factors of red, green and blue (0 to 255) and the shift that give the elevation in metres, for the shaders. */
+export const demUnpack = (encoding: DemEncoding) => typeof encoding != 'string' ? encoding : encoding === 'terrarium' ? [256, 1, 1 / 256, 32768] : [6553.6, 25.6, 0.1, 10000];
+
 /** Decodes one elevation sample from RGBA pixels. */
-export function decodeElevation(d: ArrayLike<number>, i: number, encoding: string) {
-    return encoding === 'terrarium' ? d[i] * 256 + d[i + 1] + d[i + 2] / 256 - 32768 : -10000 + (d[i] * 65536 + d[i + 1] * 256 + d[i + 2]) * 0.1;
+export function decodeElevation(d: ArrayLike<number>, i: number, encoding: DemEncoding) {
+    return typeof encoding != 'string' ? d[i] * encoding[0] + d[i + 1] * encoding[1] + d[i + 2] * encoding[2] - encoding[3] : encoding === 'terrarium' ? d[i] * 256 + d[i + 1] + d[i + 2] / 256 - 32768 : -10000 + (d[i] * 65536 + d[i + 1] * 256 + d[i + 2]) * 0.1;
 }
 
 /** Bilinear elevation lookup at fractional tile position (u, v in 0..1) in decoded elevation-tile pixels. */
-export function sampleElevation(pixels: ArrayLike<number>, width: number, height: number, u: number, v: number, encoding: string): number {
+export function sampleElevation(pixels: ArrayLike<number>, width: number, height: number, u: number, v: number, encoding: DemEncoding): number {
     const fx = Math.max(0, Math.min(width - 1, u * width - 0.5)), fy = Math.max(0, Math.min(height - 1, v * height - 0.5));
     const x0 = Math.floor(fx), y0 = Math.floor(fy), x1 = Math.min(width - 1, x0 + 1), y1 = Math.min(height - 1, y0 + 1), tx = fx - x0, ty = fy - y0;
     const e = (x: number, y: number) => decodeElevation(pixels, (y * width + x) * 4, encoding);

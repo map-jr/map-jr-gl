@@ -93,6 +93,17 @@ export function compileFor(states: MapStates) { compiling = states; }
 /** Rich text (`format` with options): the size, font and colour of the text that follows, between these two characters. */
 export const STYLE_OPEN = '\uE002', STYLE_CLOSE = '\uE003';
 export const IMAGE_OPEN = '\uE000', IMAGE_CLOSE = '\uE001', IMAGE_IN_TEXT = /\uE000([^\uE001]*)\uE001/g;
+/**
+ * `coalesce` with `image`: an expression does not know which images the map has, so it gives the names of all its
+ * images in their order with this character between them. `pickImage` takes one of them where the images are known.
+ */
+export const IMAGE_OR = '\uE004';
+/** The first name of a value with IMAGE_OR that `has` accepts, or else the first name, as in MapLibre GL JS. */
+export const pickImage = (name: string, has: (name: string) => unknown) => {
+    if (!name.includes(IMAGE_OR)) return name;
+    const names = name.split(IMAGE_OR);
+    return names.find(has) ?? names[0];
+};
 
 /**
  * A heatmap's colour for each density from 0 to 1, as 256 premultiplied RGBA pixels: the `heatmap-color` expression
@@ -272,10 +283,18 @@ export function compileExpr(e: any, flags: Flags): Fn {
             return c => (table.get(input(c)) ?? fallback)(c);
         }
         case 'coalesce': {
-            const a = args();
+            const a = args(), image = e.slice(1).map((x: unknown) => Array.isArray(x) && x[0] === 'image');
+            // With an `image` among the values, the result has the name of that image and of each value after it
+            // (see IMAGE_OR): the first image that the map has is drawn, so an icon can have a fallback.
             return c => {
-                for (const f of a) { const v = f(c); if (v !== null && v !== undefined) return v; }
-                return null;
+                let names: string | undefined;
+                for (let i = 0; i < a.length; i++) {
+                    const v = a[i](c);
+                    if (v === null || v === undefined) continue;
+                    if (names === undefined && !image[i]) return v;
+                    names = names === undefined ? v : names + IMAGE_OR + v;
+                }
+                return names ?? null;
             };
         }
         case 'step': {
@@ -416,7 +435,7 @@ export function compileExpr(e: any, flags: Flags): Fn {
                         const t = text(c);
                         if (t == null || t === '') return '';
                         const f = font(c), col = colorize(tint(c));
-                        return `${STYLE_OPEN}${scale(c) ?? ''}|${Array.isArray(f) ? f[0] : f ?? ''}|${Array.isArray(col) ? col.join(',') : ''}${STYLE_CLOSE}${t}${STYLE_OPEN}${STYLE_CLOSE}`;
+                        return `${STYLE_OPEN}${scale(c) ?? ''}|${f ?? ''}|${Array.isArray(col) ? col.join(',') : ''}${STYLE_CLOSE}${t}${STYLE_OPEN}${STYLE_CLOSE}`;
                     });
                 }
             }
@@ -517,7 +536,15 @@ export function compileFilter(f: any): Fn | null {
     return isExpressionFilter(f) ? compileExpr(f, {dd: true, zoom: false}) : legacyFilter(f);
 }
 
-export interface Prop { dd: boolean; zoom: boolean; eval(zoom: number, f?: Feature | null): any }
+export interface Prop {
+    dd: boolean; zoom: boolean;
+    /**
+     * The value is a constant or a zoom function (a function with no `property`), and not an expression. Only in such
+     * a value of `text-field` or `icon-image` does a `{name}` token stand for a property of the feature.
+     */
+    tokens?: boolean;
+    eval(zoom: number, f?: Feature | null): any;
+}
 /** 'discrete' values (e.g. dash arrays) step between stops instead of interpolating. */
 export type PropKind = 'color' | 'number' | 'string' | 'discrete' | 'raw';
 
@@ -556,9 +583,9 @@ function legacyFunction(v: any, flags: Flags, kind: PropKind): Fn {
 
 export function compileProp(v: any, kind: PropKind, def: any): Prop {
     const flags: Flags = {dd: false, zoom: false};
-    let fn: Fn;
+    let fn: Fn, expression = false;
     if (v === undefined || v === null) v = def;
-    if (kind !== 'raw' && Array.isArray(v) && typeof v[0] === 'string') fn = compileExpr(v, flags);
+    if (kind !== 'raw' && Array.isArray(v) && typeof v[0] === 'string') { fn = compileExpr(v, flags); expression = true; }
     else if (kind !== 'raw' && v && typeof v === 'object' && !Array.isArray(v) && (v.stops || v.type === 'identity')) fn = legacyFunction(v, flags, kind);
     else { const k = v; fn = () => k; }
     const defColor = kind === 'color' ? (typeof def === 'string' ? parseColor(def) : def) ?? [0, 0, 0, 1] : null;
@@ -568,11 +595,11 @@ export function compileProp(v: any, kind: PropKind, def: any): Prop {
         : (x: any) => x ?? def;
     if (!flags.dd && !flags.zoom) {
         const k = finish(fn({zoom: 0, f: null}));
-        return {dd: false, zoom: false, eval: () => k};
+        return {dd: false, zoom: false, tokens: !expression, eval: () => k};
     }
     const ctx: Ctx = {zoom: 0, f: null};
     return {
-        dd: flags.dd, zoom: flags.zoom,
+        dd: flags.dd, zoom: flags.zoom, tokens: !expression && !flags.dd,
         eval(zoom, f) { ctx.zoom = zoom; ctx.f = f ?? null; return finish(fn(ctx)); },
     };
 }

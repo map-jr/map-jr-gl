@@ -139,7 +139,7 @@ The library compares each field with the field of the last description:
 | `interactiveLayers` | The ids of style layers. The features of these layers under the pointer are in `state.hover` and in `onClick`. |
 | `hoverState` | `true`: the map gives the top feature of `interactiveLayers` under the pointer the feature state `hover: true`, and removes it when the pointer leaves the feature or the map. A style highlights it with `['case', ['boolean', ['feature-state', 'hover'], false], 0.9, 0.5]`. A feature needs an id: a feature with no id gets no state, and the development build warns once for the layer (set `promoteId` of the source, or `generateId: true` for a GeoJSON source). A GeoJSON feature whose `id` is a string has no id for the map unless the source has `promoteId`. A layer that does not read `feature-state` costs nothing more. An `icon-image` with `params` that read `feature-state` builds the tiles of the source again at each change, which is slow for a hover. The default is `false`, so an application that sets `hover` itself with `setFeatureState` is not changed. |
 | `onClick` | A function that is called for a click, with `point`, `lngLat` and `features`. |
-| `onError` | A function that is called with each error of the map (an `Error`): a style or a source that does not load, a mistake in a style edit, a failure of the renderer. Use it to send errors to your error tracker. Without it, the map writes each error to the console with `console.error`. |
+| `onError` | A function that is called with each error of the map (an `Error`): a style or a source that does not load, a style that has no list `layers`, a mistake in a style edit, a failure of the renderer. Use it to send errors to your error tracker. Without it, the map writes each error to the console with `console.error`. |
 | `minZoom`, `maxZoom`, `maxPitch`, `maxBounds` | The limits of the camera. `maxBounds` keeps the whole view inside the bounds, as MapLibre GL JS does: the canvas less the padding, with no regard to bearing and pitch. When the bounds are smaller than that view, the zoom rises until they fill it. A west edge east of the east edge (for example `[[150, -50], [-120, 10]]`) gives bounds that cross the antimeridian. |
 | `cooperativeGestures` | `true`: the wheel zooms the map only with Ctrl (⌘ on a Mac), one finger scrolls the page and two fingers move the map. A blocked gesture shows a hint over the map. The default is `false`. `update()` can turn it on and off. |
 | `colorScheme` | The colours of the controls, the popup, the attribution and the message of a browser without WebGL 2: `'light'` (the default), `'dark'` or `'auto'`. `'auto'` follows the media query `prefers-color-scheme` and changes while the page is open. An application with its own theme switch passes `'light'` or `'dark'`. While the scheme is dark, the container has the class `map-jr-dark`. The dark colours have no specificity, so a rule of the application and the custom properties `--map-control-*`, `--map-attribution-background` and `--map-popup-*` still win. `update()` changes it. The map also sets the global state property `color-scheme` of the style to the resolved scheme, so that a style can follow it: see [Dark mode](#dark-mode). A value that is not one of the three gives the light colours, and the development build warns once. |
@@ -823,6 +823,10 @@ There are two methods to find features:
 - for `querySource`, a point of the screen or a position, or nothing for the tiles of the view. A rectangle of the
   screen also works: it gives the features of the tiles of the view within the rectangle.
 
+A feature that several tiles hold is in the result one time when it has an id or comes from a GeoJSON source. Its
+geometry is the part of the feature in one of the tiles. A feature of a vector tile source that has no id is in the
+result once for each tile that holds it.
+
 The options can come in the place of `at`. `map.queryFeatures({layers: ['places']})` asks the whole map, and it is the
 same as `map.queryFeatures(undefined, {layers: ['places']})`. An object is a place when it has `x`, `y`, `lng`, `lat`
 or `lon`, and the options otherwise.
@@ -1046,7 +1050,7 @@ symbol layer with an image: it is drawn on the canvas, and 100,000 markers cost 
 | `update(description)` | Changes the map to a new description. Takes the complete description. See [Change the map](#change-the-map). |
 | `patch(part)` | Changes only the fields of `part`; a field that is `undefined` is removed. See [Change the map](#change-the-map). |
 | `description` | The description of the last `createMap`, `update` or `patch` (read only). |
-| `destroy()` | Removes the map and frees its memory. It can be called while the map loads. Call it before you make another map in the same element: a second map in an element that has a map leaves two canvases in the element, and the library warns in the console. |
+| `destroy()` | Removes the map and frees its memory. It also removes the elements of `overlay()` from the page at once, without the closing animation of a popup, and it does not call `onClose`. It can be called while the map loads. Call it before you make another map in the same element: a second map in an element that has a map leaves two canvases in the element, and the library warns in the console. |
 | `moveTo(target)` | Moves the camera now to a view or to `bounds` (with `padding` and `maxZoom` for the fit), with `bearing`, `pitch`, `duration` (milliseconds) and `fly`. It does not change the padding of the map. See [The camera](#the-camera). |
 | `fitBounds(bounds, options)` | The short form of `moveTo({bounds, ...options})`: the options are those of `moveTo` other than `center` and `zoom`, and `duration` is 800 ms by default. |
 | `queryFeatures(at, options)`, `watchFeatures(at, options, listener)` | Find the features that the style layers draw, one time or kept up to date. See [Queries](#queries). |
@@ -1135,6 +1139,13 @@ MapLibre GL JS. `fn` gets `{url, type, headers}` and an `AbortController`, and r
 `url` is the URL as the style or the TileJSON has it, also when it has another URL inside
 (`cog://https://example.com/a.tif`). The map calls `abort()` of that controller when the map is removed, and when a newer `setData` of a GeoJSON source replaces the request (also the request of `updateData` whose diffs that `setData` drops). A tile request that is no longer needed is not aborted. After an abort, the map ignores the answer of `fn`. The
 data can be an `ArrayBuffer`, a typed array, a string or an object (which the map turns into JSON).
+
+| Request | `type` | `data` that `fn` can return |
+|---|---|---|
+| A tile of a `raster` or `raster-dem` source | `image`, and `headers.accept` is `image/webp,*/*` | The bytes of an image file (an `ArrayBuffer` or a typed array), an `ImageBitmap` or an `HTMLImageElement`. The map copies the image, so `fn` can keep it. |
+| A tile of a `vector` source, an image of `addImage`, the image of a sprite | `arrayBuffer` | The bytes of the file. |
+| Every other request (a style, a TileJSON, GeoJSON data, the JSON of a sprite, glyphs) | `json` | An object, a string or bytes. |
+
 `removeProtocol(name)` removes it. The protocols are the same for every map of the page, and a map that exists
 already uses a protocol added later.
 
