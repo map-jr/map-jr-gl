@@ -5,7 +5,9 @@
 /** What a thread knows about the page's request functions: if there is a transform, and which protocols are registered. */
 export interface RequestRules { transform: boolean; protocols: string[] }
 /** The page's answer for one request: where and how to fetch it, or the data itself (from a protocol). */
-export interface RequestAnswer { url?: string; headers?: Record<string, string>; credentials?: RequestCredentials; data?: ArrayBuffer; error?: string }
+export interface RequestAnswer { url?: string; headers?: Record<string, string>; credentials?: RequestCredentials; data?: ArrayBuffer | ImageBitmap; error?: string }
+/** The options of a request for an image tile (`raster`, `raster-dem`). */
+export type ImageInit = RequestInit & {image?: boolean};
 export type Ask = (url: string, kind: string, signal?: AbortSignal | null) => Promise<RequestAnswer>;
 
 /** A `fetch` that follows the rules: it asks first when the page has something to say about the request. */
@@ -13,9 +15,11 @@ export function fetchWith(rules: () => RequestRules | undefined, ask: Ask, kind 
     return async (input, init) => {
         const url = String(input), r = rules();
         if (!r || !(r.transform || r.protocols.includes(url.slice(0, url.indexOf(':'))))) return fetch(input, init);
-        const a = await ask(url, kind, init?.signal);
+        // (The kind `RasterTile` is `Tile` for `transformRequest`, and a protocol gets the request type `image` for it.)
+        const a = await ask(url, (init as ImageInit | undefined)?.image ? 'RasterTile' : kind, init?.signal);
         if (a.error) throw new Error(a.error);
-        if (a.data) return new Response(a.data);
+        // (A response cannot hold an image that a protocol returned: `fetchTile` reads it from the member `image`.)
+        if (a.data) return a.data instanceof ArrayBuffer ? new Response(a.data) : Object.assign(new Response(), {image: a.data});
         return fetch(a.url ?? url, {...init, headers: {...a.headers, ...(init?.headers as Record<string, string> | undefined)}, credentials: a.credentials});
     };
 }

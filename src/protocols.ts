@@ -1,7 +1,10 @@
 // Custom protocols, as in MapLibre: `addProtocol('name', fn)` makes the library load each URL that starts with
 // `name://` through `fn`. The registry is on the page and is the same for every map.
 
-/** A protocol function, with the arguments of MapLibre GL JS. It returns the data of the request. */
+/**
+ * A protocol function, with the arguments of MapLibre GL JS. It returns the data of the request. The `type` is `image`
+ * for a tile of a `raster` or `raster-dem` source, whose data can also be an `ImageBitmap` or an `HTMLImageElement`.
+ */
 export type ProtocolFunction = (request: {url: string; type?: string; headers?: Record<string, string>}, abort: AbortController) => Promise<{data: unknown}>;
 
 export const protocols = new Map<string, ProtocolFunction>();
