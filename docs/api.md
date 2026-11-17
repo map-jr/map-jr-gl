@@ -330,13 +330,16 @@ any key in `metadata`, so MapLibre GL JS reads the style and ignores the images.
   of the style in place of an image of the sprite.
 - The images belong to the style: a new style removes them, and an `update` that changes `images` keeps them.
 - A style comes from another party, so the map takes at most 500 images from it, each at most 200,000 characters of
-  text. The page draws every image of the style when the style arrives, also an image that no layer uses. The images
-  share the texture of the run-time images (see [An image that is a template](#an-image-that-is-a-template)): that
-  texture is full after 961 icons of the size of those of OpenFreeMap (most are 21 by 21 CSS pixels) at a pixel
-  ratio of 3, so 500 of them leave about half of it for the images that the application adds. An SVG of the style
-  must not refer to another file (`href` or `url(...)` other than
-  `#...` and `data:`). The map leaves out an image that breaks one of these rules and reports an error (`onError`,
-  `state.error`) with its name.
+  text. An SVG of the style must not refer to another file (`href` or `url(...)` other than `#...` and `data:`). The
+  map leaves out an image that breaks one of these rules and reports an error (`onError`, `state.error`) with its
+  name.
+- The map draws an image of the style when a layer asks for it, and requests an image that is a URL then. An image
+  that no layer of the view names costs no time and no room in the texture, and an image that does not load is an
+  error only when a layer asks for it. So a style with many images is ready as soon as a style with a sprite. An SVG
+  template is known to the map at once, and each of its variants is drawn when a layer asks for it. The images that
+  are drawn share the texture of the run-time images (see [An image that is a template](#an-image-that-is-a-template)):
+  that texture is full after 961 icons of the size of those of OpenFreeMap (most are 21 by 21 CSS pixels) at a pixel
+  ratio of 3.
 - The server renderer (`renderToSVG`, `renderToImage`) draws the SVG images of the style, with the same rules.
 - The compat entry (`@map-jr/map-jr-gl/maplibre-compat`) does not read the key, as MapLibre GL JS does not.
 
@@ -378,7 +381,8 @@ const map = createMap(document.getElementById('map'), {
 
 When a layer names an image that the map does not have, the map reports the event `styleimagemissing` with the
 name as `id`. Add an image with that name to `images`, and the map draws it. Use this for images that your code
-makes from the name, for example a badge for each value of a property.
+makes from the name, for example a badge for each value of a property. The map reports a name one time for
+each style: after a new style, it reports a name again that is still missing.
 
 ```js
 import {createMap} from '@map-jr/map-jr-gl';
