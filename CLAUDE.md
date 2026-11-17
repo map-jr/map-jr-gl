@@ -182,7 +182,10 @@ a hurry gets the right answer on the first read.
   Things that exist only for that goal go here and not into the core (`src/map.ts`): other names for methods,
   methods with no effect, members that wrappers read, results that are an array and a promise. The conformance
   tools (render tests, example pages, plugins) test this entry.
-- The package is version 0.x: the API can change, but a breaking change needs the owner (see above).
+- The package is version 0.x and the library is before its public release. A change of the API does not need to
+  protect existing users: remove or rename the old form in the same change, with no deprecation warning and no period
+  in which both forms work. A breaking change still needs the owner (see above), and the pull request lists what
+  breaks.
 - Class names: the library uses `map-jr-*` internally. Elements also carry `maplibregl-*` names for compatibility
   only; do not style or query by those.
 
