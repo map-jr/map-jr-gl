@@ -1598,6 +1598,25 @@ for (const mode of renderers) {
         await page.evaluate(() => { for (const m of window.pair) { const el = m.getContainer(); m.remove(); el.remove(); } });
         check(`[${mode}] two maps with the same source name keep their own feature state and global state`, two.a === '255,0,0' && two.b === '0,255,0' && two.stateA === '{}', JSON.stringify(two));
     }
+    // A string id of a GeoJSON feature stays in the queries of the compat entry, and feature state takes it (#528).
+    {
+        const textId = await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const square = {type: 'Feature', id: 'square-a', properties: {}, geometry: {type: 'Polygon', coordinates: [[[-20, -20], [20, -20], [20, 20], [-20, 20], [-20, -20]]]}};
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:200px;height:150px;z-index:1000'}));
+            const m = new mod.Map({container: el, renderer: mode, attributionControl: false, center: [0, 0], zoom: 1, style: {version: 8, sources: {g: {type: 'geojson', data: square}},
+                layers: [{id: 'fill', type: 'fill', source: 'g', paint: {'fill-color': ['case', ['boolean', ['feature-state', 'on'], false], '#0000ff', '#ff0000']}}]}});
+            await new Promise(r => { m.once('idle', r); setTimeout(r, 8000); });
+            const rendered = (await m.queryRenderedFeatures([100, 75], {layers: ['fill']})).map(f => f.id), source = (await m.querySourceFeatures('g')).map(f => f.id);
+            m.setFeatureState({source: 'g', id: 'square-a'}, {on: true});
+            await new Promise(r => { m.once('idle', r); setTimeout(r, 4000); });
+            const state = (await m.queryRenderedFeatures([100, 75], {layers: ['fill']}))[0]?.state;
+            m.remove(); el.remove();
+            return {rendered, source: [...new Set(source)], state};
+        }, mode);
+        check(`[${mode}] queryRenderedFeatures and querySourceFeatures give the string id of a GeoJSON feature, and setFeatureState takes it (#528)`,
+            textId.rendered.join() === 'square-a' && textId.source.join() === 'square-a' && textId.state?.on === true, JSON.stringify(textId));
+    }
     // A source or a style that fails: the map reports it with an `error` event and goes on with the rest.
     {
         const errorsBefore = errors.length;

@@ -720,6 +720,17 @@ test('GeoJSON lines for a gradient know which part of the whole line each piece 
     assert.equal(sliceGeoJSON(prepared, 2, 1, 1)._geojson.features[0].properties.mapbox_clip_start, undefined);
 });
 
+test('a GeoJSON feature keeps an id that is a string, in the source and in a tile (#528)', async () => {
+    const {prepareGeoJSON, sliceGeoJSON} = await import('../../src/geojson.ts');
+    const point = (id: unknown) => ({type: 'Feature', id, properties: {key: 'k'}, geometry: {type: 'Point', coordinates: [10, 10]}});
+    const prepared = prepareGeoJSON({type: 'FeatureCollection', features: [point('louvre'), point(7), point('12'), point({a: 1}), point(true)]});
+    assert.deepEqual(prepared.map(f => f.id), ['louvre', 7, '12', undefined, undefined]);
+    assert.deepEqual(sliceGeoJSON(prepared, 0, 0, 0)._geojson.features.map((f: {id?: unknown}) => f.id), ['louvre', 7, '12', undefined, undefined]);
+    // `generateId` and `promoteId` still replace the id of the feature.
+    assert.equal(prepareGeoJSON(point('louvre'), undefined, true)[0].id, 0);
+    assert.equal(prepareGeoJSON(point('louvre'), 'key')[0].id, 'k');
+});
+
 test('GeoJSON clusters: points join at low zoom and divide at the expansion zoom', async () => {
     const {prepareSource, sliceGeoJSON} = await import('../../src/geojson.ts');
     const point = (lng: number, lat: number, n: number) => ({type: 'Feature', properties: {n}, geometry: {type: 'Point', coordinates: [lng, lat]}});

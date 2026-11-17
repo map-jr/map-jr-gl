@@ -515,7 +515,7 @@ map.update({style, data: {places}});
 | Option | Meaning |
 |---|---|
 | `lngLat(record, index)` | Required. The position of the record as `[lng, lat]`. |
-| `id(record, index)` | The id of the feature. Without it, a feature has no id: the function does not use the index, because the index changes when a record is removed. |
+| `id(record, index)` | The id of the feature, a number or a string. `queryFeatures` and `state.hover` give it as it is, and `setFeatureState` takes it. Without it, a feature has no id: the function does not use the index, because the index changes when a record is removed. |
 | `properties(record, index)` | The properties of the feature. Without it, the properties are the record itself. |
 
 A record whose position is not two finite numbers (a string such as `'2.3'` included) is left out. The development
@@ -956,7 +956,7 @@ in the style read (for example the highlight of a selected feature):
 
 `target` is `{source, sourceLayer, id}`. `id` is the `id` of the feature, as `queryFeatures` gives it, and
 `sourceLayer` is required for a vector source. A vector source needs the numeric id of the feature in the tile; a
-GeoJSON source takes the `id` of the feature or the property of `promoteId`. `queryFeatures` gives the state of each
+GeoJSON source takes the `id` of the feature or the property of `promoteId`, and each can be a number or a string. `queryFeatures` gives the state of each
 drawn feature in `state`. The methods have no effect after `destroy()`.
 
 ```js

@@ -156,7 +156,8 @@ export function prepareGeoJSON(data: any, promoteId?: string, generateId?: boole
             bbox[0] = Math.min(bbox[0], r[i]); bbox[1] = Math.min(bbox[1], r[i + 1]); bbox[2] = Math.max(bbox[2], r[i]); bbox[3] = Math.max(bbox[3], r[i + 1]);
         }
         const id = generateId ? index : promoteId ? f.properties?.[promoteId] : f.id;
-        if (rings.length) out.push({type, id: typeof id === 'number' || (promoteId && typeof id === 'string') ? id : undefined, properties: f.properties ?? {}, rings, bbox});
+        // A string id stays (#528). MapLibre GL JS keeps a string only from `promoteId`, and makes a number of a string id.
+        if (rings.length) out.push({type, id: typeof id === 'number' || typeof id === 'string' ? id : undefined, properties: f.properties ?? {}, rings, bbox});
     };
     const walk = (f: any, g: any) => {
         if (!g) return;
