@@ -153,7 +153,7 @@ These fields are read only when the map is made:
 
 | Field | Meaning |
 |---|---|
-| `renderer` | `'auto'` (the default), `'worker'` or `'main'`: the thread that draws. See [Loading](loading.md). |
+| `renderer` | `'auto'` (the default), `'worker'` or `'main'`: the thread that draws. When the worker cannot draw (it has no WebGL2 context, or loses it), the map draws on the main thread. With `'auto'` this happens without a warning (the development build writes a note with `console.info`); with `'worker'` the map warns once. `state.renderer` says which thread draws. See [Loading](loading.md). |
 | `fontFamily` | The CSS family for text that has no web font: the map tries it after the family of the `text-font` name. See [Web fonts](#web-fonts). |
 | `interactive` | `false` for a map that the user cannot move. The default is `true`. With `false`, `onClick` and `state.hover` still work, and a touch on the map scrolls the page. |
 | `antialias` | Multisample antialiasing for the canvas. |

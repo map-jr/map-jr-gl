@@ -52,8 +52,8 @@ renderer. The behaviour tests are `test/interact.mjs`, `test/host.mjs`, `test/vu
 Notes on these lines:
 
 - WebKit here is the build that Playwright ships. It is not Safari, and it does not behave as Safari in each case.
-- On Linux, WebKit has no WebGL2 context in a worker. The map writes "Worker rendering unavailable, using the main
-  thread: WebGL2 is not available" and draws on the main thread.
+- On Linux, WebKit has no WebGL2 context in a worker. The map draws on the main thread. With `renderer: 'worker'` it
+  warns "Worker rendering unavailable, using the main thread: WebGL2 is not available"; with `'auto'` it does not warn.
 - On Windows, WebKit has no `OffscreenCanvas`. Some tests fail with "Can't find variable: OffscreenCanvas". The
   benchmark page reports a terrain height of 0 m at the centre there and 10 m in the other browsers. This is the
   same condition as Safari before 16.4.
