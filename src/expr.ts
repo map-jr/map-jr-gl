@@ -536,7 +536,15 @@ export function compileFilter(f: any): Fn | null {
     return isExpressionFilter(f) ? compileExpr(f, {dd: true, zoom: false}) : legacyFilter(f);
 }
 
-export interface Prop { dd: boolean; zoom: boolean; eval(zoom: number, f?: Feature | null): any }
+export interface Prop {
+    dd: boolean; zoom: boolean;
+    /**
+     * The value is a constant or a zoom function (a function with no `property`), and not an expression. Only in such
+     * a value of `text-field` or `icon-image` does a `{name}` token stand for a property of the feature.
+     */
+    tokens?: boolean;
+    eval(zoom: number, f?: Feature | null): any;
+}
 /** 'discrete' values (e.g. dash arrays) step between stops instead of interpolating. */
 export type PropKind = 'color' | 'number' | 'string' | 'discrete' | 'raw';
 
@@ -575,9 +583,9 @@ function legacyFunction(v: any, flags: Flags, kind: PropKind): Fn {
 
 export function compileProp(v: any, kind: PropKind, def: any): Prop {
     const flags: Flags = {dd: false, zoom: false};
-    let fn: Fn;
+    let fn: Fn, expression = false;
     if (v === undefined || v === null) v = def;
-    if (kind !== 'raw' && Array.isArray(v) && typeof v[0] === 'string') fn = compileExpr(v, flags);
+    if (kind !== 'raw' && Array.isArray(v) && typeof v[0] === 'string') { fn = compileExpr(v, flags); expression = true; }
     else if (kind !== 'raw' && v && typeof v === 'object' && !Array.isArray(v) && (v.stops || v.type === 'identity')) fn = legacyFunction(v, flags, kind);
     else { const k = v; fn = () => k; }
     const defColor = kind === 'color' ? (typeof def === 'string' ? parseColor(def) : def) ?? [0, 0, 0, 1] : null;
@@ -587,11 +595,11 @@ export function compileProp(v: any, kind: PropKind, def: any): Prop {
         : (x: any) => x ?? def;
     if (!flags.dd && !flags.zoom) {
         const k = finish(fn({zoom: 0, f: null}));
-        return {dd: false, zoom: false, eval: () => k};
+        return {dd: false, zoom: false, tokens: !expression, eval: () => k};
     }
     const ctx: Ctx = {zoom: 0, f: null};
     return {
-        dd: flags.dd, zoom: flags.zoom,
+        dd: flags.dd, zoom: flags.zoom, tokens: !expression && !flags.dd,
         eval(zoom, f) { ctx.zoom = zoom; ctx.f = f ?? null; return finish(fn(ctx)); },
     };
 }
