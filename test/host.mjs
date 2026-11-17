@@ -490,6 +490,31 @@ for (const renderer of renderers) {
         }, renderer);
         check(`[${renderer}] queryFeatures and querySource give a GeoJSON feature without an id one time when several tiles hold it (#606)`,
             corner.points.join() === '3,3,3,3,3' && corner.square.join() === '1,1,1,1,1' && corner.keys, JSON.stringify(corner));
+        // A string id of a GeoJSON feature stays in queries, a string of digits becomes the number, and feature state takes a string id (#528).
+        const textId = await page.evaluate(async renderer => {
+            const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const idle = host => new Promise(r => { let at = host.state.get().idle ? performance.now() : 0; const off = host.state.subscribe(s => s.idle, v => { at = v ? performance.now() : 0; }), done = () => { clearInterval(timer); off(); r(); }, timer = setInterval(() => at && performance.now() - at > 500 && done(), 50); setTimeout(done, 8000); });
+            // The square lies on the corner of four tiles, and the points are records with string ids.
+            const square = {type: 'Feature', id: 'square-a', properties: {}, geometry: {type: 'Polygon', coordinates: [[[-1, -1], [1, -1], [1, 1], [-1, 1], [-1, -1]]]}};
+            const places = t.lib.points([{id: 'louvre', lng: 0, lat: 0}, {id: '12', lng: 0, lat: 0}], {lngLat: r => [r.lng, r.lat], id: r => r.id});
+            const host = t.lib.createMap(el, {style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]}, initialView: {center: [0, 0], zoom: 5}, renderer, attribution: false,
+                sources: {square: {type: 'geojson', data: square}, places: {type: 'geojson', data: places}},
+                layers: [{id: 'square', type: 'fill', source: 'square', paint: {'fill-color': ['case', ['boolean', ['feature-state', 'on'], false], '#f00', '#00f']}}, {id: 'places', type: 'circle', source: 'places', paint: {'circle-radius': 2, 'circle-opacity': 0.01}}]});
+            await idle(host);
+            const at = {x: 100, y: 75}, ids = async list => (await list).map(f => JSON.stringify(f.id)).sort().join();
+            const out = {square: [await ids(host.queryFeatures(at, {layers: ['square']})), await ids(host.queryFeatures({layers: ['square']})), await ids(host.querySource('square', at)), await ids(host.querySource('square'))],
+                places: [await ids(host.queryFeatures(at, {layers: ['places']})), await ids(host.querySource('places'))]};
+            host.setFeatureState({source: 'square', id: 'square-a'}, {on: true});
+            await new Promise(r => setTimeout(r, 300)); await idle(host);
+            const b = await host.toBlob(), c = new OffscreenCanvas(1, 1).getContext('2d'), i = await createImageBitmap(b); c.drawImage(i, i.width / 2, i.height / 2, 1, 1, 0, 0, 1, 1);
+            const [r, , bl] = c.getImageData(0, 0, 1, 1).data;
+            out.colour = r > 200 && bl < 50 ? 'red' : `${r},${bl}`;
+            out.state = (await host.queryFeatures(at, {layers: ['square']}))[0]?.state;
+            host.destroy(); el.remove();
+            return out;
+        }, renderer);
+        check(`[${renderer}] queryFeatures and querySource give the string id of a GeoJSON feature and the number for a string of digits, and setFeatureState takes a string id (#528)`,
+            textId.square.join('|') === '"square-a"|"square-a"|"square-a"|"square-a"' && textId.places.join('|') === '"louvre",12|"louvre",12' && textId.colour === 'red' && textId.state?.on === true, JSON.stringify(textId));
         check(`[${renderer}] queryFeatures: radius widens a query for drawn features, and its default is 0 there and 3 in querySource`,
             radius.on === 1 && radius.none === 0 && radius.small === 0 && radius.point === 1 && radius.position === 1 && radius.data === 1 && radius.dataDefault === 0 && radius.layer === 'own-line', JSON.stringify(radius));
 

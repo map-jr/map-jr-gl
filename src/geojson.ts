@@ -156,7 +156,10 @@ export function prepareGeoJSON(data: any, promoteId?: string, generateId?: boole
             bbox[0] = Math.min(bbox[0], r[i]); bbox[1] = Math.min(bbox[1], r[i + 1]); bbox[2] = Math.max(bbox[2], r[i]); bbox[3] = Math.max(bbox[3], r[i + 1]);
         }
         const id = generateId ? index : promoteId ? f.properties?.[promoteId] : f.id;
-        if (rings.length) out.push({type, id: typeof id === 'number' || (promoteId && typeof id === 'string') ? id : undefined, properties: f.properties ?? {}, rings, bbox});
+        // A string `id` of digits that is a safe integer becomes the number, as in MapLibre GL JS ('012' gives 12); any
+        // other string stays the string (#528). An id from `promoteId` is kept as it is.
+        const n = typeof id === 'string' && !promoteId && /^\d+$/.test(id) ? +id : NaN;
+        if (rings.length) out.push({type, id: Number.isSafeInteger(n) ? n : typeof id === 'number' || typeof id === 'string' ? id : undefined, properties: f.properties ?? {}, rings, bbox});
     };
     const walk = (f: any, g: any) => {
         if (!g) return;
