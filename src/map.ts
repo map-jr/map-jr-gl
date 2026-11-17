@@ -1605,6 +1605,15 @@ export class Map {
         let lastTap = {t: 0, x: 0, y: 0}, tapDrag: {x: number; y: number; zoomed: boolean} | null = null, suppressClick = false, lastPointerType = 'mouse';
         const twoFingers = () => { const [a, b] = [...pointers.values()]; return {a, b, dist: Math.hypot(a.x - b.x, a.y - b.y), angle: Math.atan2(b.y - a.y, b.x - a.x), mid: {x: (a.x + b.x) / 2, y: (a.y + b.y) / 2}}; };
 
+        // A rotate drag (the right mouse button, or Ctrl with the left one) turns the map as the default of MapLibre GL JS
+        // does (`generateMouseRotationHandler` in its `src/ui/handler/mouse.ts`; the code here is new, #557). More than 100
+        // pixels above or below the centre of the map, the map turns by the angle that the sideways movement of the pointer
+        // makes around that centre. Nearer to the centre, the map turns by 0.8 degrees for each pixel: with the pointer
+        // below the centre a drag to the right increases the bearing, and above the centre it decreases the bearing.
+        const turn = (a: {x: number; y: number}, b: {x: number; y: number}) => {
+            const [cx, cy] = this.tr.project(this.tr.lng, this.tr.lat), y = b.y - cy, x0 = a.x - cx, x1 = b.x - cx;
+            return Math.abs(cy - a.y) > 100 ? Math.atan2(y * (x1 - x0), x1 * x0 + y * y) * 180 / Math.PI : (x1 - x0) * (y < 0 ? -.8 : .8);
+        };
         listen('pointerdown', e => {
             try { el.setPointerCapture(e.pointerId); } catch { /* synthetic events have no capturable pointer */ }
             const p = pos(e), now = performance.now();
@@ -1682,7 +1691,7 @@ export class Map {
             } else if (tapDrag && pointers.size === 1) {
                 // Second tap held and dragged: down zooms in, up zooms out, around where the taps landed.
                 if (moved > 6) { tapDrag.zoomed = true; this.post({type: 'zoom', delta: dy * 0.01, x: tapDrag.x, y: tapDrag.y}); }
-            } else if (rotating) { if (this.dragRotate.isEnabled()) this.post({type: 'rotate', delta: -dx * 0.4, pitch: -dy * 0.5}); } // right- or ctrl-drag: turn and tilt
+            } else if (rotating) { if (this.dragRotate.isEnabled()) this.post({type: 'rotate', delta: turn(prev, p), pitch: -dy * 0.5}); } // right- or ctrl-drag: turn and tilt
             else if (moved > 3 && pointers.size === 1 && this.dragPan.isEnabled() && !(e.pointerType === 'touch' && this.gate?.('touch_pan', e))) {
                 if (!this.dragging) this.fire('dragstart', {originalEvent: e});
                 this.dragging = true;

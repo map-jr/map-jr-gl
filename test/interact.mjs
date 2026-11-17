@@ -3046,6 +3046,55 @@ for (const mode of renderers) {
             check('[main] compat: a touch drag on the compass rotates and pitches the map without panning it', Math.abs(r.dragged.bearing) > 1 && r.dragged.pitch > 21 && !r.dragged.panned, JSON.stringify(r));
         }
     }
+    // #557: a rotate drag (the right mouse button, or Ctrl with the left one) turns the map of the compat entry as it
+    // turns MapLibre GL JS (served at /ml/): the same way and by the same angle, at five heights of the map. Two fingers
+    // that turn (Chromium only) do the same. test/host.mjs has the same drags for the main API.
+    try {
+        const make = kind => page.evaluate(async ([kind, renderer]) => {
+            const style = {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]};
+            const el = window.turnEl = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:600px;height:400px;z-index:9'}));
+            if (kind === 'ml') {
+                const ml = await import('/ml/maplibre-gl.mjs');
+                ml.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+                window.turnMap = new ml.Map({container: el, style, center: [0, 0], zoom: 2, attributionControl: false});
+            } else {
+                const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+                window.turnMap = new mod.Map({container: el, renderer, style, center: [0, 0], zoom: 2, attributionControl: false});
+            }
+            await new Promise(r => window.turnMap.once('load', r));
+        }, [kind, mode]);
+        const bearing = async () => { await page.waitForTimeout(250); return page.evaluate(() => { const m = window.turnMap, b = m.getBearing(); m.jumpTo({bearing: 0, pitch: 0}); return b; }); };
+        const drags = async kind => {
+            await make(kind);
+            // (Each drag holds still for 250 ms before it ends, so that the inertia of MapLibre GL JS adds no turn.)
+            const out = [];
+            for (const y of [40, 150, 200, 250, 360]) {
+                await page.waitForTimeout(100);
+                await page.mouse.move(250, y); await page.mouse.down({button: 'right'});
+                for (let i = 1; i <= 10; i++) await page.mouse.move(250 + i * 10, y);
+                await page.waitForTimeout(250); await page.mouse.up({button: 'right'});
+                out.push(await bearing());
+            }
+            await page.keyboard.down('Control'); await page.mouse.move(250, 250); await page.mouse.down();
+            for (let i = 1; i <= 10; i++) await page.mouse.move(250 + i * 10, 250);
+            await page.waitForTimeout(250); await page.mouse.up(); await page.keyboard.up('Control');
+            out.push(await bearing());
+            if (browserName === 'chromium') {
+                // Two fingers 200 pixels apart turn by 40 degrees around the centre of the map, clockwise on the screen.
+                const cdp = await page.context().newCDPSession(page);
+                const at = deg => [0, 1].map(k => ({id: k, x: 300 + (k ? -100 : 100) * Math.cos(deg * Math.PI / 180), y: 200 + (k ? -100 : 100) * Math.sin(deg * Math.PI / 180)}));
+                await cdp.send('Input.dispatchTouchEvent', {type: 'touchStart', touchPoints: at(0)});
+                for (let d = 2; d <= 40; d += 2) await cdp.send('Input.dispatchTouchEvent', {type: 'touchMove', touchPoints: at(d)});
+                await page.waitForTimeout(250); await cdp.send('Input.dispatchTouchEvent', {type: 'touchEnd', touchPoints: []}); await cdp.detach();
+                out.push(await bearing());
+            }
+            await page.evaluate(() => { window.turnMap.remove(); window.turnEl.remove(); window.turnMap = undefined; });
+            return out.map(b => Math.round(b * 10) / 10);
+        };
+        const ml = await drags('ml'), compat = await drags('compat');
+        check(`[${mode}] compat: a rotate drag with the right button, with Ctrl and the left button${browserName === 'chromium' ? ', and with two fingers' : ''} turns the map the same way and by the same angle as MapLibre GL JS (#557)`,
+            ml.length === compat.length && ml.every((b, i) => Math.abs(b) > 10 && Math.abs(b - compat[i]) < 1.5), JSON.stringify({ml, compat}));
+    } catch (e) { check(`[${mode}] the rotate drags of #557: the test run was completed`, false, String(e.message).split('\n')[0]); }
     // 3D terrain off and on again: the elevation tiles that are loaded stay, so the relief does not go away for a
     // moment and no tile is asked for again.
     {

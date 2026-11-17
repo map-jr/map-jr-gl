@@ -163,6 +163,18 @@ These fields are read only when the map is made:
 For a map in a page that scrolls, set `cooperativeGestures: true` (see the table of fields above), or
 `interactive: false` for a map that the user cannot move.
 
+A drag with the right mouse button, or with Ctrl and the left mouse button, rotates and pitches the map as in
+MapLibre GL JS:
+
+- When the pointer is more than 100 pixels above or below the centre of the map, the map turns by the angle that the
+  sideways movement of the pointer makes around that centre.
+- Nearer to the centre, the map turns by 0.8 degrees for each pixel sideways. A drag to the right increases the bearing
+  when the pointer is below the centre, and decreases it when the pointer is above the centre.
+- The map pitches by 0.5 degrees for each pixel that the pointer moves up.
+
+The map stops when the drag ends. The compass of the control `navigation` turns the map in a different way: see
+[Controls](#controls).
+
 ## A light and a dark style
 
 `style` of the description (`@map-jr/map-jr-gl`) also takes a pair `{light, dark}`, where each value is a style object
@@ -611,7 +623,7 @@ bottom edge of the map beside the attribution; with the compact attribution it k
 
 | Function | Control | Options (each also has `position`) |
 |---|---|---|
-| `navigation` | Zoom buttons and a compass. A click on the compass resets the bearing, and dragging it rotates the map. With `visualizePitch: true`, the compass also shows the pitch, the drag also pitches the map, and a click resets the pitch (default false, as in MapLibre GL JS). | `showZoom`, `showCompass`, `visualizePitch` |
+| `navigation` | Zoom buttons and a compass. A click on the compass resets the bearing, and dragging it rotates the map by 0.4 degrees for each pixel sideways: a drag to the right decreases the bearing at every height, unlike the rotate drag on the map. With `visualizePitch: true`, the compass also shows the pitch, the drag also pitches the map, and a click resets the pitch (default false, as in MapLibre GL JS). | `showZoom`, `showCompass`, `visualizePitch` |
 | `scale` | A scale bar | `maxWidth`, `unit` (`'metric'`, the default; `'imperial'`; or `'nautical'`) |
 | `fullscreen` | A button for the full screen. Where the browser has no Fullscreen API (Safari on iPhone), the container gets the class `map-jr-pseudo-fullscreen` and fills the window. | |
 | `geolocate` | A button that moves the map to the position of the user. With `trackUserLocation: true`, the button turns tracking on and off, the map follows the position until it is moved, and a dot shows the position (`showUserLocation: false` hides it). | `zoom`, `positionOptions`, `trackUserLocation`, `showUserLocation` |
