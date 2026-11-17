@@ -107,5 +107,41 @@ for (const [what, query] of [['same origin', ''], ['another origin', `&from=http
     check('start-up under worker-src \'self\': one error at most per start-up worker, and one request more than the workers', ok && renderer === 'worker' && asked <= 4 && blocked <= 3, `renderer=${renderer} requests=${asked} errors=${blocked}`);
     await page.close();
 }
+// A blob URL of a worker is never revoked while a worker still loads it, and a map made after the revoke starts (#782).
+// The page shortens the 10 s timers to 0 ms and records each blob URL that is revoked before its worker answered.
+{
+    const page = await browser.newPage(), errors = [];
+    page.on('pageerror', e => errors.push(e.message));
+    await page.addInitScript(() => {
+        const st = window.setTimeout, W = window.Worker, revoke = URL.revokeObjectURL, loading = new Map();
+        window.setTimeout = (f, ms, ...a) => st(f, ms === 10000 ? 0 : ms, ...a);
+        window.early = [];
+        window.Worker = class extends W {
+            constructor(u, o) {
+                super(u, o);
+                const k = String(u);
+                if (!k.startsWith('blob:')) return;
+                loading.set(k, (loading.get(k) ?? 0) + 1);
+                let once = false; const done = () => { if (!once) { once = true; loading.set(k, loading.get(k) - 1); } };
+                this.addEventListener('message', done); this.addEventListener('error', done);
+            }
+        };
+        URL.revokeObjectURL = u => { if (loading.get(u) > 0) window.early.push(u); revoke.call(URL, u); };
+    });
+    await page.goto(`http://localhost:${port}/style.json`);
+    const result = await page.evaluate(async () => {
+        const {Map} = await import('/dist/map-jr-gl-maplibre-compat.js');
+        const make = () => new Promise(res => {
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:200px;height:150px'}));
+            const m = new Map({container: el, attributionControl: false, style: {version: 8, sources: {}, layers: []}});
+            m.on('load', () => res(m.renderer)); setTimeout(() => res('no load'), 20000);
+        });
+        const first = await make();
+        await new Promise(r => setTimeout(r, 200));
+        return {first, second: await make(), early: window.early.length};
+    });
+    check('worker blob URL: not revoked while a worker loads it, and a map made after the revoke starts', result.first === 'worker' && result.second === 'worker' && !result.early && !errors.length, `${JSON.stringify(result)} errors=${errors.join(' | ')}`);
+    await page.close();
+}
 await browser.close();
 process.exit(failed ? 1 : 0);
