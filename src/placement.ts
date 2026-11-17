@@ -235,8 +235,9 @@ export function placeLabels(
                         textAngle = turned;
                         candidates = candidates.map(([dx, dy]) => [dx * c - dy * sn, dx * sn + dy * c]);
                     }
-                    if (l.translate[0] || l.translate[1]) {
-                        const [mx, my] = screenTranslate(l.translate, L.p.translateAnchor.eval(tr.zoom), tr.bearing);
+                    // (The translate is a paint property: its value is the one at the zoom of the map, not of the tile.)
+                    const [mx, my] = screenTranslate(L.p.translate.eval(tr.zoom), L.p.translateAnchor.eval(tr.zoom), tr.bearing);
+                    if (mx || my) {
                         candidates = candidates.map(([dx, dy]) => [dx + mx, dy + my]);
                     }
                     // The same name often arrives from several tiles or road segments: keep them apart.
@@ -295,7 +296,7 @@ export function placeLabels(
                     // (An icon that is fitted to text on a line turns with the text, which reads from left to right.)
                     const along = fit !== 'none' && Math.abs(lineAngle) > Math.PI / 2 ? lineAngle + Math.PI : lineAngle;
                     const angle = (ic.upright ? 0 : line ? along : north) + ic.rotate * Math.PI / 180;
-                    const move = screenTranslate(ic.translate, L.p.iconTranslateAnchor.eval(tr.zoom), tr.bearing);
+                    const move = screenTranslate(L.p.iconTranslate.eval(tr.zoom), L.p.iconTranslateAnchor.eval(tr.zoom), tr.bearing);
                     ix += move[0]; iy += move[1];
                     const box = boxAround(ix, iy, iw, ih, angle, ic.padding);
                     if (ic.overlap || !grid.hits(...box)) {
