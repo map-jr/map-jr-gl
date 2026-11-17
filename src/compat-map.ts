@@ -178,6 +178,17 @@ export class Map extends CoreMap {
         console.warn('[map-jr-gl] setTransformCameraUpdate: the function changed the camera of a movement. This library draws that camera only when the movement ends (react-map-gl: onMove did not set viewState to e.viewState). To keep the map in a region, use the option maxBounds.');
     }
     setTransformConstrain(fn?: unknown) { return this.unsupported('setTransformConstrain', !fn); }
+    // The debug drawing of MapLibre GL JS is not available (#752): setting one of these to true warns once.
+    get showTileBoundaries() { return !!this.debugDraw.showTileBoundaries; }
+    set showTileBoundaries(v: boolean) { this.setDebug('showTileBoundaries', v); }
+    get showPadding() { return !!this.debugDraw.showPadding; }
+    set showPadding(v: boolean) { this.setDebug('showPadding', v); }
+    get showCollisionBoxes() { return !!this.debugDraw.showCollisionBoxes; }
+    set showCollisionBoxes(v: boolean) { this.setDebug('showCollisionBoxes', v); }
+    get showOverdrawInspector() { return !!this.debugDraw.showOverdrawInspector; }
+    set showOverdrawInspector(v: boolean) { this.setDebug('showOverdrawInspector', v); }
+    private debugDraw: Record<string, boolean> = {};
+    private setDebug(name: string, v: boolean) { this.debugDraw[name] = !!v; this.unsupported(name, !v); }
     setEventedParent(..._args: unknown[]) { return this; }
 
     /**
