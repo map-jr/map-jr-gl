@@ -641,7 +641,19 @@ export class Engine {
      * `data`: the data of the GeoJSON sources that are new or changed. Without it (at the start), the sources of `style`
      * carry their data. The engine does not keep the data: the tile workers have it.
      */
+    /** The sources with `encoding: 'custom'` whose factors got the message of `setStyle`. */
+    private toldEncoding = new Set<string>();
+
     private setStyle(style: ResolvedStyle, reload: boolean, data?: Record<string, unknown>) {
+        // `encoding: 'custom'` of a `raster-dem` source (#590): the factors and the shift come from the style or from a
+        // TileJSON as they are. When one is not a finite number, the source and its contours are read as `mapbox`.
+        for (const [name, src] of Object.entries(style.sources)) {
+            const bad = (e?: string | number[]) => typeof e == 'object' && !e.every(Number.isFinite);
+            if (src.contour && bad(src.contour.encoding)) src.contour.encoding = 'mapbox';
+            if (!bad(src.encoding)) continue;
+            src.encoding = 'mapbox';
+            if (!this.toldEncoding.has(name)) { this.toldEncoding.add(name); console.warn(`[map-jr-gl] The source "${name}": "redFactor", "greenFactor", "blueFactor" and "baseShift" of the encoding "custom" must be finite numbers. The source is read with the encoding "mapbox". Write a number for each one, or leave it out for its default (1, 1, 1 and 0).`); }
+        }
         // The globe (#463): the stops say at which zooms the projection draws it. Its code loads with the first style
         // that needs it (built into the worker file; a file of its own for the engine on the main thread), and frames
         // wait for it (see `frame`).

@@ -6,13 +6,6 @@ import {resolveStyle} from '../../src/resolve.ts';
 import {decodeElevation, demUnpack, sampleElevation} from '../../src/query.ts';
 
 const resolved = async (source: object) => (await resolveStyle({version: 8, sources: {dem: {type: 'raster-dem', tiles: ['https://example.com/{z}/{x}/{y}.png'], ...source}}, layers: []} as any)).sources.dem.encoding;
-const warnings = async (run: () => Promise<unknown>) => {
-    const seen: string[] = [], warn = console.warn;
-    console.warn = (text: string) => { seen.push(text); };
-    try { await run(); } finally { console.warn = warn; }
-    return seen;
-};
-
 test('custom encoding: the source gives its factors and its shift, with the defaults 1, 1, 1 and 0', async () => {
     assert.deepEqual(await resolved({encoding: 'custom', redFactor: 2, greenFactor: 0.5, blueFactor: 0, baseShift: 100}), [2, 0.5, 0, 100]);
     assert.deepEqual(await resolved({encoding: 'custom', baseShift: -7}), [1, 1, 1, -7]);
@@ -20,18 +13,8 @@ test('custom encoding: the source gives its factors and its shift, with the defa
     assert.equal(await resolved({}), 'mapbox');
 });
 
-test('custom encoding: a factor that is not a finite number gives one message and the mapbox encoding', async () => {
-    for (const bad of [{redFactor: '2'}, {greenFactor: NaN}, {blueFactor: Infinity}, {baseShift: {}}]) {
-        const source = {type: 'raster-dem', tiles: ['https://example.com/{z}/{x}/{y}.png'], encoding: 'custom', ...bad};
-        const style = {version: 8, sources: {dem: source}, layers: []} as any;
-        let encoding: unknown;
-        // (The style is resolved two times: the message comes one time for the source.)
-        const seen = await warnings(async () => { encoding = (await resolveStyle(style)).sources.dem.encoding; await resolveStyle(style); });
-        assert.equal(encoding, 'mapbox');
-        assert.equal(seen.length, 1, JSON.stringify(seen));
-        assert.match(seen[0], /^\[map-jr-gl\] The source "dem": .*"redFactor".*finite numbers.*"mapbox"/);
-    }
-    assert.deepEqual(await warnings(() => resolved({encoding: 'custom', redFactor: 3})), []);
+test('custom encoding: the page passes the values on as they are (the engine checks them, see test/interact.mjs)', async () => {
+    assert.deepEqual(await resolved({encoding: 'custom', redFactor: '2', baseShift: 5}), ['2', 1, 1, 5]);
 });
 
 test('custom encoding: an elevation is red * redFactor + green * greenFactor + blue * blueFactor - baseShift', () => {

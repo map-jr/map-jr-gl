@@ -3401,6 +3401,29 @@ for (const mode of renderers) {
             return out;
         }, mode);
         check(`[${mode}] a raster-dem source with encoding 'custom' gives its elevations from the factors and the shift`, custom.idle && custom.custom === '255,0,0' && custom.elevation === 500, JSON.stringify(custom));
+        // A factor that is not a finite number: the engine warns one time for the source (also when the style is set
+        // again) and reads the source as `mapbox`, so it gives the elevation of a source without `encoding`.
+        const told = [], listen = m => { if (m.type() === 'warning' && m.text().includes('"redFactor"')) told.push(m.text()); };
+        page.on('console', listen);
+        const wrong = await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:200px'}));
+            const dem = more => ({type: 'raster-dem', tiles: ['https://tiles.mapterhorn.com/{z}/{x}/{y}.webp'], tileSize: 512, maxzoom: 12, ...more});
+            const style = () => ({version: 8, sources: {wrong: dem({encoding: 'custom', redFactor: '2', baseShift: 5}), plain: dem({})},
+                layers: [{id: 'hills', type: 'hillshade', source: 'wrong'}]});
+            const m = new mod.Map({container: el, renderer: mode, attributionControl: false, center: [7.6586, 45.9763], zoom: 12.4, style: style()});
+            const idle = () => new Promise(r => { m.once('idle', () => r(true)); setTimeout(() => r(false), 20000); });
+            const out = {idle: await idle()};
+            m.setStyle(style());
+            await idle();
+            out.wrong = await m.queryElevation([7.6586, 45.9763], {source: 'wrong'});
+            out.plain = await m.queryElevation([7.6586, 45.9763], {source: 'plain'});
+            m.remove(); el.remove();
+            return out;
+        }, mode);
+        await page.waitForTimeout(100);
+        page.off('console', listen);
+        check(`[${mode}] a factor of encoding 'custom' that is not a finite number gives one warning and the mapbox encoding`, wrong.idle && told.length === 1 && told[0].startsWith('[map-jr-gl] The source "wrong": ') && Number.isFinite(wrong.wrong) && wrong.wrong === wrong.plain, JSON.stringify({wrong, told}));
         check(`[${mode}] a color-relief layer with one stop, or two stops at one elevation, draws the colour of a stop`, custom.one === '0,255,0' && [custom.below, custom.at, custom.above].every(c => c === '255,0,0' || c === '0,255,0'), JSON.stringify(custom));
     }
 
