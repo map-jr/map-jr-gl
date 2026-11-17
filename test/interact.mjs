@@ -1536,20 +1536,28 @@ for (const mode of renderers) {
             const icon = (id, image) => ({id, type: 'symbol', source: 'spot', layout: {'icon-image': image, 'icon-allow-overlap': true, 'icon-ignore-placement': true}});
             const style = {version: 8, metadata: {'map-jr:images': {pin: '<svg viewBox="0 0 40 40"><rect width="40" height="40" fill="{{c}}"/></svg>', box: '<svg viewBox="0 0 40 40"><rect width="40" height="40" fill="#00f"/></svg>', unused: '<svg viewBox="0 0 4 4"><rect width="4" height="4"/></svg>'}},
                 sources: {spot: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [0, 0]}}}},
-                layers: [bg, icon('pin', ['image', 'pin', {params: {c: '#f00'}}]), {...icon('box', 'box'), layout: {...icon('box', 'box').layout, 'icon-offset': [0, 40]}}]};
-            const m = new mod.Map({container: el, renderer: mode, attributionControl: false, center: [0, 0], zoom: 1, style});
+                layers: [bg, icon('pin', ['image', 'pin', {params: {c: '#f00'}}]), {...icon('box', 'box'), layout: {...icon('box', 'box').layout, 'icon-offset': [0, 40]}}, {...icon('other', 'other'), layout: {...icon('other', 'other').layout, 'icon-offset': [0, -40]}}]};
+            const m = new mod.Map({container: el, renderer: mode, attributionControl: false, center: [0, 0], zoom: 1, style}), resolved = [];
+            const square = c => `<svg viewBox="0 0 40 40"><rect width="40" height="40" fill="${c}"/></svg>`;
+            // (A resolver of the page gets a name that the style does not have, and not one that it has.)
+            m.setMissingStyleImageResolver(name => { resolved.push(name); if (name === 'other') return m.addImage('other', square('#0f0')); });
             const at = async (dy) => { const bmp = await createImageBitmap(await m.toBlob()), c = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}), g = c.getContext('2d'); g.drawImage(bmp, 0, 0); const k = bmp.width / 200; return Array.from(g.getImageData(bmp.width >> 1, (bmp.height >> 1) + dy * k, 1, 1).data).slice(0, 3).join(); };
             let pin, box;
             for (let i = 0; i < 50 && !(pin === '255,0,0' && box === '0,0,255'); i++) { await wait(100); [pin, box] = [await at(0), await at(40)]; }
             const had = ['pin', 'box', 'unused'].map(n => m.hasImage(n));
+            let other;
+            for (let i = 0; i < 30 && other !== '0,255,0'; i++) { other = await at(-40); if (other !== '0,255,0') await wait(100); }
+            // (An image that the page adds under the name of an image of the style wins, and a new style keeps it.)
+            await m.addImage('box', square('#ff0'));
+            for (let i = 0; i < 30 && box !== '255,255,0'; i++) { await wait(100); box = await at(40); }
             m.setStyle({version: 8, sources: {}, layers: [bg]});
             for (let i = 0; i < 30 && m.hasImage('box'); i++) await wait(100);
-            const after = ['pin', 'box'].map(n => m.hasImage(n));
+            const after = ['pin', 'box', 'other'].map(n => m.hasImage(n));
             m.remove(); el.remove();
-            return {pin, box, had, after};
+            return {pin, box, other, had, after, resolved};
         }, mode);
-        check(`[${mode}] compat: the images in metadata["map-jr:images"] of the style are drawn (a template with params, an image on demand), and setStyle without the key removes them (#759)`,
-            r.pin === '255,0,0' && r.box === '0,0,255' && r.had.join() === 'true,true,false' && r.after.join() === 'false,false', JSON.stringify(r));
+        check(`[${mode}] compat: the images in metadata["map-jr:images"] of the style are drawn (a template with params, an image on demand), an image of addImage wins, a resolver of the page gets only other names, and setStyle without the key removes them (#759)`,
+            r.pin === '255,0,0' && r.box === '255,255,0' && r.other === '0,255,0' && r.had.join() === 'true,true,false' && r.after.join() === 'false,true,true' && r.resolved.join() === 'other', JSON.stringify(r));
     }
     // #591: the textures of colour ramps (heatmap, line-gradient, color-relief) are deleted when their layer goes. The
     // probe counts live textures whose image is one pixel high (only ramps are), in the page or in the drawing worker.
