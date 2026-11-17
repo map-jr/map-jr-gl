@@ -9,7 +9,22 @@ import {markers, images, view, asSpec} from '../demo/markers.mjs';
 import {shield} from '../demo/shields.mjs';
 
 // The "server rendering" row shows pictures made here, at build time, with no browser involved.
-const tileJSON = await (await fetch('https://tiles.openfreemap.org/planet')).json();
+// The fetch is tried three times, 2 s apart: the server sometimes resets a connection, and one reset must not fail CI.
+const TILEJSON_URL = 'https://tiles.openfreemap.org/planet';
+async function fetchJSON(url, tries = 3) {
+    for (let i = 1; ; i++) {
+        try {
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            return await res.json();
+        } catch (e) {
+            if (i >= tries) throw new Error(`[site] could not fetch ${url} after ${tries} tries: ${e.cause?.message ?? e.message}`);
+            console.warn(`[site] fetch ${url} failed (${e.cause?.message ?? e.message}); try ${i + 1} of ${tries} in 2 s`);
+            await new Promise(r => setTimeout(r, 2000));
+        }
+    }
+}
+const tileJSON = await fetchJSON(TILEJSON_URL);
 const style = makeStyle(tileJSON.tiles[0], '');
 // overrides: false: the row compares the server renders with a live map, so the server uses the complete style.
 // (A page that shows a server render only until the live map is ready keeps the simpler render, which is smaller.)
