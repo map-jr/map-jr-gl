@@ -6,14 +6,21 @@ import {cls, ui, toggleClass, type Control, type ControlPosition} from './contro
 
 export const svg = (path: string, extra = '') => `<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" ${extra}>${path}</svg>`;
 
-/** `name` gives the button the class name that MapLibre GL JS gives it (`maplibregl-ctrl-zoom-in`), for stylesheets and tests written for that library. */
+/**
+ * `name` gives the button the class name that MapLibre GL JS gives it (`maplibregl-ctrl-zoom-in`), for stylesheets and tests written for that library.
+ * The icon is in a span `maplibregl-ctrl-icon`, as in that library. A page that sets a `background-image` on that span sees its image in
+ * place of the library's icon.
+ */
 export function button(group: HTMLElement, name: string, label: string, icon: string, onClick: () => void): HTMLButtonElement {
     const b = document.createElement('button');
     b.className = cls('ctrl-' + name);
     b.type = 'button';
     b.title = label;
     b.setAttribute('aria-label', label);
-    b.innerHTML = icon;
+    const s = b.appendChild(document.createElement('span'));
+    s.className = cls('ctrl-icon');
+    s.innerHTML = icon;
+    requestAnimationFrame(() => { if (getComputedStyle(s).backgroundImage != 'none') s.style.color = 'transparent'; });
     b.addEventListener('click', onClick);
     return group.appendChild(b);
 }
@@ -73,7 +80,7 @@ export class NavigationControl implements Control {
         // (In the main API, the compass is a round button of its own below the zoom buttons: the control is a column of two groups.)
         const glass = map.getContainer().classList.contains('map-jr-glass'), el = this.el = glass ? document.createElement('div') : group();
         if (glass) { el.className = cls('ctrl'); el.style.cssText = 'display:flex;flex-direction:column;gap:10px;align-items:center'; }
-        let zoomIn: HTMLButtonElement | undefined, zoomOut: HTMLButtonElement | undefined, needle: SVGElement | null = null;
+        let zoomIn: HTMLButtonElement | undefined, zoomOut: HTMLButtonElement | undefined, needle: SVGElement | null = null, icon: HTMLElement | undefined;
         if (this.options.showZoom !== false) {
             const zoom = glass ? el.appendChild(group()) : el;
             zoomIn = button(zoom, 'zoom-in', ui(map, 'NavigationControl.ZoomIn', 'Zoom in'), svg('<path d="M9 4v10M4 9h10"/>'), () => map.zoomIn());
@@ -94,6 +101,7 @@ export class NavigationControl implements Control {
                 : svg('<path d="M9 2.500 12 9H6z" fill="currentColor" stroke="none"/><path d="M9 15.500 6 9h6z" fill="currentColor" stroke="none" opacity=".35"/>'),
                 () => map.easeTo({bearing: 0, ...this.pitch && {pitch: 0}}));
             needle = b.querySelector(glass ? 'g' : 'svg');
+            icon = b.firstElementChild as HTMLElement;
             letter = b.querySelector('text');
             if (glass) needle!.style.transformOrigin = '12px 12px';
             dragCompass(map, b, this.pitch);
@@ -101,7 +109,8 @@ export class NavigationControl implements Control {
         this.update = () => {
             if (zoomIn) zoomIn.disabled = map.getZoom() >= map.getMaxZoom();
             if (zoomOut) zoomOut.disabled = map.getZoom() <= map.getMinZoom();
-            if (needle) needle.style.transform = `rotateX(${this.pitch ? map.getPitch() : 0}deg) rotate(${-map.getBearing()}deg)`;
+            // (When the page draws the compass as the background of the span, the span turns, as in MapLibre GL JS.)
+            if (needle) (icon!.style.color ? icon! : needle).style.transform = `rotateX(${this.pitch ? map.getPitch() : 0}deg) rotate(${-map.getBearing()}deg)`;
             if (letter) letter.textContent = 'NESW'[Math.round((map.getBearing() + 360) / 90) % 4];
         };
         map.on('move', this.update);

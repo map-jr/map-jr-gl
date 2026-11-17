@@ -2484,6 +2484,33 @@ for (const mode of renderers) {
         check('[main] maplibre-compat: the container, the canvas, the controls, their buttons, markers and popups have their maplibregl-* class names, and remove() takes the name from the container',
             names.missing.length === 0 && names.canvasInMap && !names.left, JSON.stringify(names));
     }
+    // Each button has a span maplibregl-ctrl-icon, and a page that sets a background-image on it sees that image in place of the library's icon (#758).
+    if (mode === 'main') {
+        const icons = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const css = document.head.appendChild(Object.assign(document.createElement('style'), {textContent: '.icon758 .maplibregl-ctrl button.maplibregl-ctrl-zoom-in .maplibregl-ctrl-icon,.icon758 .maplibregl-ctrl-compass .maplibregl-ctrl-icon{background-image:url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27/%3E")}'}));
+            const run = async (styled) => {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px', className: styled ? 'icon758' : ''}));
+                const m = new mod.Map({container: el, renderer: 'main', center: [0, 0], zoom: 2, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+                m.addControl(new mod.NavigationControl());
+                await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+                m.setBearing(30);
+                await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+                const out = ['zoom-in', 'zoom-out', 'compass'].map(n => {
+                    const span = el.querySelector(`.maplibregl-ctrl-${n} > .maplibregl-ctrl-icon`);
+                    return span && {image: getComputedStyle(span).backgroundImage !== 'none', svg: getComputedStyle(span.querySelector('svg')).color, w: span.offsetWidth, turn: span.style.transform};
+                });
+                m.remove(); el.remove();
+                return out;
+            };
+            const r = {plain: await run(false), styled: await run(true)};
+            css.remove();
+            return r;
+        });
+        const hidden = c => c === 'rgba(0, 0, 0, 0)';
+        check('[main] maplibre-compat: the navigation buttons have a span maplibregl-ctrl-icon; a page background-image on it replaces the icon of the library, the compass span turns with the bearing, and without such CSS the icons show',
+            icons.plain.every(i => i && !i.image && !hidden(i.svg) && i.w > 0) && icons.styled[0]?.image && hidden(icons.styled[0].svg) && !hidden(icons.styled[1]?.svg) && icons.styled[2]?.image && hidden(icons.styled[2].svg) && /rotate\(-30deg\)/.test(icons.styled[2].turn) && !icons.plain[2].turn, JSON.stringify(icons));
+    }
     // A control added without a position goes to the corner that MapLibre GL JS uses for it (#257).
     if (mode === 'main') {
         const corners = await page.evaluate(async () => {
