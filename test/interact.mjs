@@ -3143,6 +3143,29 @@ for (const mode of renderers) {
     });
     if (decodes) check(`[${mode}] image tiles are not built again as geometry`, imageErrors.length === 0, imageErrors.slice(0, 2).join(' | '));
 
+    // #568: a `color-relief` layer colours the ground by its elevation. The view is around the Matterhorn, where all the
+    // ground is above 1000 m: the ramp is red up to 1000 m and blue from 1001 m.
+    if (decodes) {
+        const relief = await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:200px'}));
+            const m = new mod.Map({container: el, renderer: mode, attributionControl: false, center: [7.6586, 45.9763], zoom: 12.4, style: {version: 8,
+                sources: {dem: {type: 'raster-dem', tiles: ['https://tiles.mapterhorn.com/{z}/{x}/{y}.webp'], encoding: 'terrarium', tileSize: 512, maxzoom: 12}},
+                layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}},
+                    {id: 'relief', type: 'color-relief', source: 'dem', paint: {'color-relief-color': ['interpolate', ['linear'], ['elevation'], 0, '#f00', 1000, '#f00', 1001, '#00f', 9000, '#00f']}}]}});
+            const idle = () => new Promise(r => { m.once('idle', () => r(true)); setTimeout(() => r(false), 20000); });
+            const centre = async () => { const bmp = await createImageBitmap(await m.toBlob()), c = new OffscreenCanvas(bmp.width, bmp.height).getContext('2d'); c.drawImage(bmp, 0, 0); return [...c.getImageData(bmp.width >> 1, bmp.height >> 1, 1, 1).data].slice(0, 3); };
+            const out = {idle: await idle()};
+            out.full = await centre();
+            m.setPaintProperty('relief', 'color-relief-opacity', 0.5);
+            await idle();
+            out.half = await centre();
+            m.remove(); el.remove();
+            return out;
+        }, mode);
+        check(`[${mode}] a color-relief layer colours the ground by its elevation, with color-relief-opacity`, relief.idle && relief.full.join() === '0,0,255' && Math.abs(relief.half[0] - 128) < 3 && Math.abs(relief.half[1] - 128) < 3 && relief.half[2] === 255, JSON.stringify(relief));
+    }
+
     // A tile of the deepest level of its source has only the labels of the layers that show near the zoom of the map.
     // When the map goes to a much higher zoom, the tile is built again and the labels of the other layers come.
     // (The labels are found in the image: with the layer hidden, the image is another.)

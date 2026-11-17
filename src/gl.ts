@@ -69,6 +69,15 @@ float ground(vec2 uv) {
 }
 `;
 
+// The vertex shader of the layers that colour an elevation tile (`hillshade`, `color-relief`).
+const VS_DEM = `${VS_COMMON}
+layout(location=0) in vec2 a_pos; out vec2 v_uv; out vec2 v_tile;
+#ifdef GLOBE
+void main() { v_uv = clamp(unpole(a_pos) / ${EXTENT}.0, 0.0, 1.0); v_tile = v_uv * ${EXTENT}.0; gl_Position = toClip(isPole(a_pos) ? vec2(v_tile.x, a_pos.y) : v_tile); }
+#else
+void main() { v_uv = a_pos; v_tile = a_pos * ${EXTENT}.0; gl_Position = toClip(v_tile); }
+#endif`;
+
 const SQUARE = [0, 0, EXTENT, 0, EXTENT, EXTENT, 0, EXTENT], ONES = [1, 1, 1, 1];
 /** Heatmap densities are accumulated at this fraction of the screen's resolution: the result is smooth anyway. */
 const HEAT_SCALE = 4;
@@ -348,13 +357,7 @@ void main() {
   o = clamp(vec4(deriv / 8.0 + 128.0 / 255.0, 1.0, 1.0), 0.0, 1.0);
 }`],
 
-    hillshade: [`${VS_COMMON}
-layout(location=0) in vec2 a_pos; out vec2 v_uv; out vec2 v_tile;
-#ifdef GLOBE
-void main() { v_uv = clamp(unpole(a_pos) / ${EXTENT}.0, 0.0, 1.0); v_tile = v_uv * ${EXTENT}.0; gl_Position = toClip(isPole(a_pos) ? vec2(v_tile.x, a_pos.y) : v_tile); }
-#else
-void main() { v_uv = a_pos; v_tile = a_pos * ${EXTENT}.0; gl_Position = toClip(v_tile); }
-#endif`, `
+    hillshade: [VS_DEM, `
 uniform sampler2D u_image; uniform vec4 u_clip; uniform vec2 u_latrange; uniform vec2 u_light;
 uniform vec4 u_shadow; uniform vec4 u_highlight; uniform vec4 u_accent; in vec2 v_uv; in vec2 v_tile; out vec4 o;
 const float PI = 3.141592653589793;
@@ -372,6 +375,22 @@ void main() {
   float shade = abs(mod((aspect + azimuth) / PI + 0.5, 2.0) - 1.0);
   vec4 shadeColor = mix(u_shadow, u_highlight, shade) * sin(scaledSlope) * clamp(intensity * 2.0, 0.0, 1.0);
   o = accent * (1.0 - shadeColor.a) + shadeColor;
+}`],
+
+    // A `color-relief` layer: the colour of each pixel comes from its elevation. `u_stops` has the elevations of the
+    // stops of `color-relief-color` and `u_ramp` has the colour at each stop. The colour between two stops is a linear
+    // mix, as in MapLibre GL JS. (The filter of the elevation texture is linear, and so is the encoding: the texture
+    // gives the elevation between its pixels.)
+    'color-relief': [VS_DEM, `
+uniform sampler2D u_image; uniform sampler2D u_ramp; uniform highp sampler2D u_stops; uniform vec4 u_clip; uniform vec4 u_unpack; uniform float u_opacity;
+in vec2 v_uv; in vec2 v_tile; out vec4 o;
+float stop(int i) { return texelFetch(u_stops, ivec2(i, 0), 0).r; }
+void main() {
+  ${FS_CLIP}
+  float e = dot(texture(u_image, v_uv).rgb * 255.0, u_unpack.rgb) - u_unpack.a;
+  int l = 0, r = textureSize(u_stops, 0).x - 1;
+  while (r - l > 1) { int m = (l + r) / 2; if (e < stop(m)) r = m; else l = m; }
+  o = mix(texelFetch(u_ramp, ivec2(l, 0), 0), texelFetch(u_ramp, ivec2(r, 0), 0), clamp((e - stop(l)) / (stop(r) - stop(l)), 0.0, 1.0)) * u_opacity;
 }`],
 
     // The icons of a tile that need no place among the labels (see `IconBatch`). The GPU finds the place of each one
@@ -421,7 +440,7 @@ void main() {
 /** `u` is empty until the program is first used: see `link`. */
 interface Program { prog: WebGLProgram; u: Record<string, WebGLUniformLocation>; shaders?: WebGLShader[]; /** The globe variant: the frame whose globe it has. */ frame?: number }
 /** The programs that have a globe variant (see `GLOBE_GLSL`). */
-const GLOBE_PROGRAMS = new Set(['fill', 'pattern', 'edge', 'line', 'circle', 'heat', 'raster', 'hillshade', 'icon']);
+const GLOBE_PROGRAMS = new Set(['fill', 'pattern', 'edge', 'line', 'circle', 'heat', 'raster', 'hillshade', 'color-relief', 'icon']);
 /** Floats for one corner of an icon: see `a_v` and `a_d` of the `icon` program. */
 const ICON_VERTEX = 7;
 interface IconBuffers {
@@ -979,7 +998,7 @@ export class GLRenderer {
             }
             const items = bySource.get(L.source!);
             if (!items) continue;
-            if (L.type === 'raster' || L.type === 'hillshade') {
+            if (L.type === 'raster' || L.type === 'hillshade' || L.type === 'color-relief') {
                 const u = use(L.type), p = L.p;
                 gl.activeTexture(gl.TEXTURE0);
                 gl.uniform1i(u.u_image, 0);
@@ -990,6 +1009,12 @@ export class GLRenderer {
                     gl.uniform2f(u.u_bright, p.brightnessMin.eval(zoom), p.brightnessMax.eval(zoom));
                     const h = p.hueRotate.eval(zoom) * Math.PI / 180, sn = Math.sin(h), cs = Math.cos(h);
                     gl.uniform3f(u.u_spin, (2 * cs + 1) / 3, (-Math.sqrt(3) * sn - cs + 1) / 3, (Math.sqrt(3) * sn - cs + 1) / 3);
+                } else if (L.relief) {
+                    gl.uniform1f(u.u_opacity, p.opacity.eval(zoom));
+                    gl.uniform1i(u.u_ramp, 1); gl.uniform1i(u.u_stops, 2);
+                    gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, this.rampTexture(L.ramp!));
+                    gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, this.rampTexture(L.relief));
+                    gl.activeTexture(gl.TEXTURE0);
                 } else {
                     const pre = (c: number[]) => [c[0] * c[3], c[1] * c[3], c[2] * c[3], c[3]];
                     const azimuth = p.direction.eval(zoom) * Math.PI / 180 + (p.anchor.eval(zoom) === 'viewport' ? s.tr.bearing * Math.PI / 180 : 0) // the map's bearing, also when drawing a terrain tile's picture;
@@ -1015,7 +1040,8 @@ export class GLRenderer {
                     gl.uniform4fv(u.u_clip, it.clip);
                     if (it.tile.lat) gl.uniform2fv(u.u_latrange, it.tile.lat);
                     if (L.type === 'raster') { gl.uniform2fv(u.u_corners, it.corners ?? SQUARE); gl.uniform4fv(u.u_q, it.corners ? cornerWeights(it.corners) : ONES); }
-                    gl.bindTexture(gl.TEXTURE_2D, it.tile.tex);
+                    if (L.relief) gl.uniform4fv(u.u_unpack, it.tile.unpack!);
+                    gl.bindTexture(gl.TEXTURE_2D, L.relief ? it.tile.raw! : it.tile.tex);
                     if (this.globe) this.drawGrid(it.id); else gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
                 }
                 continue;
@@ -1288,15 +1314,23 @@ export class GLRenderer {
     }
 
     private heatTarget?: {fb: WebGLFramebuffer; tex: WebGLTexture; w: number; h: number};
-    private ramps = new WeakMap<Uint8Array, WebGLTexture>();
-    /** The texture of a colour ramp (heatmap colours, line gradients), made on first use. */
-    private rampTexture(pixels: Uint8Array): WebGLTexture {
+    private ramps = new WeakMap<Uint8Array | Float32Array, WebGLTexture>();
+    /**
+     * The texture of a colour ramp (heatmap colours, line gradients, the colours of a `color-relief` layer), made on
+     * first use. A `Float32Array` gives a texture of one number for each pixel (the elevations of a `color-relief` layer).
+     */
+    private rampTexture(pixels: Uint8Array | Float32Array): WebGLTexture {
         const gl = this.gl;
         let ramp = this.ramps.get(pixels);
         if (!ramp) {
             ramp = this.newTexture();
             gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
-            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 256, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+            if (pixels instanceof Uint8Array) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, pixels.length / 4, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+            else {
+                // (A browser filters a texture of floats only with an extension, and the shader reads single pixels.)
+                gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32F, pixels.length, 1, 0, gl.RED, gl.FLOAT, pixels);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+            }
             this.ramps.set(pixels, ramp);
         }
         return ramp;

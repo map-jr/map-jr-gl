@@ -96,12 +96,13 @@ export const IMAGE_OPEN = '\uE000', IMAGE_CLOSE = '\uE001', IMAGE_IN_TEXT = /\uE
 
 /**
  * A heatmap's colour for each density from 0 to 1, as 256 premultiplied RGBA pixels: the `heatmap-color` expression
- * evaluated once, so the GPU only has to look colours up.
+ * evaluated once, so the GPU only has to look colours up. With `at`, the result has one pixel for each of these
+ * inputs instead (the elevations of the stops of a `color-relief` layer).
  */
-export function colorRamp(expression: unknown): Uint8Array {
-    const fn = compileExpr(expression as any, {dd: false, zoom: false}), out = new Uint8Array(256 * 4), ctx: Ctx = {zoom: 0, f: null, density: 0};
-    for (let i = 0; i < 256; i++) {
-        ctx.density = i / 255;
+export function colorRamp(expression: unknown, at?: ArrayLike<number>): Uint8Array {
+    const n = at ? at.length : 256, fn = compileExpr(expression as any, {dd: false, zoom: false}), out = new Uint8Array(n * 4), ctx: Ctx = {zoom: 0, f: null, density: 0};
+    for (let i = 0; i < n; i++) {
+        ctx.density = at ? at[i] : i / 255;
         const v = fn(ctx), c = Array.isArray(v) ? v : (typeof v === 'string' && parseColor(v)) || [0, 0, 0, 0];
         out.set([c[0] * c[3] * 255, c[1] * c[3] * 255, c[2] * c[3] * 255, c[3] * 255], i * 4);
     }
@@ -232,7 +233,7 @@ export function compileExpr(e: any, flags: Flags): Fn {
         case 'properties': flags.dd = true; return c => c.f?.properties ?? {};
         case 'geometry-type': flags.dd = true; return c => GEOM[c.f?.type ?? 0];
         case 'zoom': flags.zoom = true; return c => c.zoom;
-        case 'heatmap-density': case 'line-progress': return c => c.density ?? 0;
+        case 'heatmap-density': case 'line-progress': case 'elevation': return c => c.density ?? 0;
         case 'feature-state': { const key = arg(1); flags.dd = true; return c => c.f?.state?.[key(c)] ?? null; }
         case 'global-state': {
             // Read when evaluated, so one compiled style follows later changes. Marked like a zoom dependency so the
@@ -428,14 +429,31 @@ export function compileExpr(e: any, flags: Flags): Fn {
             return params.length ? c => name(c) + params.map(([k, f]) => VARIANT + k + '=' + String(f(c)).replaceAll(VARIANT, '')).join('') : name;
         }
         case 'number-format': {
-            const a = arg(1), o = e[2] ?? {}, cache = new Map<string, Intl.NumberFormat>();
+            // The options come from the style, and they can come from a property of a feature. Intl.NumberFormat
+            // throws for a locale, a currency, a unit or a number of digits that it does not accept: the expression
+            // then gives the number as plain text (null in the cache) and warns once, so that the tile is still
+            // built. The cache is emptied when it is full, so that options from the data cannot grow it without limit.
+            const a = arg(1), o = e[2] ?? {}, cache = new Map<string, Intl.NumberFormat | null>();
             const opt = (k: string) => o[k] === undefined ? null : compileExpr(o[k], flags);
             const locale = opt('locale'), min = opt('min-fraction-digits'), max = opt('max-fraction-digits'), currency = opt('currency'), unit = opt('unit');
+            let warned = false;
             return c => {
                 const l = locale?.(c), mn = min?.(c), mx = max?.(c), cur = currency?.(c), u = unit?.(c), key = `${l}|${mn}|${mx}|${cur}|${u}`;
                 let f = cache.get(key);
-                if (!f) cache.set(key, f = new Intl.NumberFormat(l ?? undefined, {minimumFractionDigits: mn ?? undefined, maximumFractionDigits: mx ?? undefined, ...(cur ? {style: 'currency', currency: cur} : u ? {style: 'unit', unit: u} : {})}));
-                return f.format(a(c));
+                if (f === undefined) {
+                    try {
+                        f = new Intl.NumberFormat(l ?? undefined, {minimumFractionDigits: mn ?? undefined, maximumFractionDigits: mx ?? undefined, ...(cur ? {style: 'currency', currency: cur} : u ? {style: 'unit', unit: u} : {})});
+                    } catch (err) {
+                        f = null;
+                        if (!warned) {
+                            warned = true;
+                            warnOnce(`number-format: Intl.NumberFormat does not accept the options ${JSON.stringify({locale: l, 'min-fraction-digits': mn, 'max-fraction-digits': mx, currency: cur, unit: u})} (${(err as Error).message}). The expression gives the number as plain text. Pass a BCP 47 locale, an ISO 4217 currency and a unit that Intl.NumberFormat supports.`);
+                        }
+                    }
+                    if (cache.size >= 64) cache.clear();
+                    cache.set(key, f);
+                }
+                return f ? f.format(a(c)) : String(a(c));
             };
         }
         case 'let': {

@@ -131,6 +131,45 @@ test('expressions: conversions, type checks and options give the results of the 
     assert.equal(run(['is-supported-script', ['get', 'x']], {x: 'שלום'}), true);
 });
 
+test('expressions: number-format with an option that Intl.NumberFormat rejects gives the plain number and one warning (#583)', () => {
+    const run = (e: unknown, properties: Record<string, unknown> = {}) => compileExpr(e, {dd: false, zoom: false})({zoom: 0, f: {type: 1, properties}});
+    const warnings: string[] = [], warn = console.warn;
+    console.warn = (m: string) => { warnings.push(m); };
+    try {
+        assert.equal(run(['number-format', 1234.5, {currency: 'not a currency'}]), '1234.5');
+        assert.equal(warnings.length, 1);
+        assert.match(warnings[0], /^\[map-jr-gl\] number-format: .*"not a currency"/);
+        assert.equal(run(['number-format', 1234.5, {locale: 'en-US', unit: 'furlong'}]), '1234.5');
+        assert.equal(run(['number-format', 1234.5, {locale: 'not_a_locale!'}]), '1234.5');
+        assert.equal(run(['number-format', 1234.5, {'min-fraction-digits': 500}]), '1234.5');
+        assert.equal(run(['number-format', 1234.5, {'min-fraction-digits': 4, 'max-fraction-digits': 1}]), '1234.5');
+        // One expression warns once, however many values of a property are wrong, and a good value still formats.
+        warnings.length = 0;
+        const f = compileExpr(['number-format', 2, {locale: 'en-US', currency: ['get', 'c']}], {dd: false, zoom: false});
+        for (let i = 0; i < 500; i++) assert.equal(f({zoom: 0, f: {type: 1, properties: {c: 'bad' + i}}}), '2');
+        assert.equal(warnings.length, 1);
+        assert.equal(f({zoom: 0, f: {type: 1, properties: {c: 'USD'}}}), '$2.00');
+    } finally { console.warn = warn; }
+});
+
+test('expressions: number-format keeps a bounded number of formats (#583)', () => {
+    let made = 0;
+    const Real = Intl.NumberFormat;
+    (Intl as any).NumberFormat = function (...a: any[]) { made++; return new Real(...a); };
+    try {
+        const f = compileExpr(['number-format', 1.23456, {locale: 'en-US', 'max-fraction-digits': ['get', 'd']}], {dd: false, zoom: false});
+        const at = (d: number) => f({zoom: 0, f: {type: 1, properties: {d}}});
+        // The same options make one format.
+        at(0); at(0); at(0);
+        assert.equal(made, 1);
+        // Many different options do not keep a format each: after them, the first one is made again.
+        for (let d = 0; d < 100; d++) at(d);
+        const before = made;
+        assert.equal(at(0), '1');
+        assert.equal(made, before + 1, 'the cache dropped the first format');
+    } finally { (Intl as any).NumberFormat = Real; }
+});
+
 test('images: a template has its slots, and the image expression with params gives the name with the values', () => {
     assert.deepEqual(templateSlots('<svg><path fill="{{color}}" stroke="{{ stroke }}"/><text fill="{{color}}">{{label}}</text></svg>'), ['color', 'stroke', 'label']);
     assert.deepEqual(templateSlots('<svg viewBox="0 0 4 4"/>'), []);
