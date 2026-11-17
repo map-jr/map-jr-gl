@@ -172,6 +172,7 @@ export type CircleLayerSpecification = LayerOf<'circle'>;
 export type HeatmapLayerSpecification = LayerOf<'heatmap'>;
 export type RasterLayerSpecification = LayerOf<'raster'>;
 export type HillshadeLayerSpecification = LayerOf<'hillshade'>;
+export type ColorReliefLayerSpecification = LayerOf<'color-relief'>;
 export type SymbolLayerSpecification = LayerOf<'symbol', 'text' | 'icon', 'text' | 'icon' | 'symbol'>;
 /**
  * The projection of a style: `{type: 'mercator'}`, `{type: 'globe'}`, `{type: 'vertical-perspective'}`, or an expression

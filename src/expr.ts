@@ -96,12 +96,13 @@ export const IMAGE_OPEN = '\uE000', IMAGE_CLOSE = '\uE001', IMAGE_IN_TEXT = /\uE
 
 /**
  * A heatmap's colour for each density from 0 to 1, as 256 premultiplied RGBA pixels: the `heatmap-color` expression
- * evaluated once, so the GPU only has to look colours up.
+ * evaluated once, so the GPU only has to look colours up. With `at`, the result has one pixel for each of these
+ * inputs instead (the elevations of the stops of a `color-relief` layer).
  */
-export function colorRamp(expression: unknown): Uint8Array {
-    const fn = compileExpr(expression as any, {dd: false, zoom: false}), out = new Uint8Array(256 * 4), ctx: Ctx = {zoom: 0, f: null, density: 0};
-    for (let i = 0; i < 256; i++) {
-        ctx.density = i / 255;
+export function colorRamp(expression: unknown, at?: ArrayLike<number>): Uint8Array {
+    const n = at ? at.length : 256, fn = compileExpr(expression as any, {dd: false, zoom: false}), out = new Uint8Array(n * 4), ctx: Ctx = {zoom: 0, f: null, density: 0};
+    for (let i = 0; i < n; i++) {
+        ctx.density = at ? at[i] : i / 255;
         const v = fn(ctx), c = Array.isArray(v) ? v : (typeof v === 'string' && parseColor(v)) || [0, 0, 0, 0];
         out.set([c[0] * c[3] * 255, c[1] * c[3] * 255, c[2] * c[3] * 255, c[3] * 255], i * 4);
     }
@@ -232,7 +233,7 @@ export function compileExpr(e: any, flags: Flags): Fn {
         case 'properties': flags.dd = true; return c => c.f?.properties ?? {};
         case 'geometry-type': flags.dd = true; return c => GEOM[c.f?.type ?? 0];
         case 'zoom': flags.zoom = true; return c => c.zoom;
-        case 'heatmap-density': case 'line-progress': return c => c.density ?? 0;
+        case 'heatmap-density': case 'line-progress': case 'elevation': return c => c.density ?? 0;
         case 'feature-state': { const key = arg(1); flags.dd = true; return c => c.f?.state?.[key(c)] ?? null; }
         case 'global-state': {
             // Read when evaluated, so one compiled style follows later changes. Marked like a zoom dependency so the

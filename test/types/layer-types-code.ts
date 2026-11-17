@@ -2,7 +2,7 @@
 // `node test/examples.mjs` checks that it compiles against the built types (dist/types). It is not run.
 import type {
     BackgroundLayerSpecification, FillLayerSpecification, FillExtrusionLayerSpecification, LineLayerSpecification, CircleLayerSpecification,
-    HeatmapLayerSpecification, RasterLayerSpecification, HillshadeLayerSpecification, SymbolLayerSpecification, LayerSpecification,
+    HeatmapLayerSpecification, RasterLayerSpecification, HillshadeLayerSpecification, ColorReliefLayerSpecification, SymbolLayerSpecification, LayerSpecification,
 } from '@map-jr/map-jr-gl/maplibre-compat';
 
 const background: BackgroundLayerSpecification = {id: 'bg', type: 'background', paint: {'background-color': '#fff'}, layout: {visibility: 'visible'}};
@@ -13,8 +13,9 @@ const circle: CircleLayerSpecification = {id: 'c', type: 'circle', source: 's', 
 const heatmap: HeatmapLayerSpecification = {id: 'h', type: 'heatmap', source: 's', paint: {'heatmap-weight': 1}};
 const raster: RasterLayerSpecification = {id: 'r', type: 'raster', source: 's', paint: {'raster-opacity': 1}};
 const hillshade: HillshadeLayerSpecification = {id: 'hs', type: 'hillshade', source: 's', paint: {'hillshade-exaggeration': 0.5}};
+const relief: ColorReliefLayerSpecification = {id: 'cr', type: 'color-relief', source: 's', paint: {'color-relief-opacity': 0.5, 'color-relief-color': ['interpolate', ['linear'], ['elevation'], 0, '#060', 3000, '#fff']}};
 const symbol: SymbolLayerSpecification = {id: 'sy', type: 'symbol', source: 's', paint: {'text-color': '#000', 'icon-opacity': 1}, layout: {'text-field': ['get', 'name'], 'icon-image': 'pin', 'symbol-placement': 'point'}};
-const all: LayerSpecification[] = [background, fill, extrusion, line, circle, heatmap, raster, hillshade, symbol];
+const all: LayerSpecification[] = [background, fill, extrusion, line, circle, heatmap, raster, hillshade, relief, symbol];
 
 // One wrong name per layer type.
 // @ts-expect-error a background layer has no `fill-color`

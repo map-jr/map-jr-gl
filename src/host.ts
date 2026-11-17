@@ -18,7 +18,7 @@ import type {Checked} from './mistakes.ts';
 import {fontFaces, type FontFaces} from './resolve.ts';
 import type {LngLatBoundsInput} from './lnglat.ts';
 import type {PaddingInput} from './geo.ts';
-import type {BackgroundLayerSpecification, CircleLayerSpecification, FillExtrusionLayerSpecification, FillLayerSpecification, HeatmapLayerSpecification, HillshadeLayerSpecification, LineLayerSpecification, ProjectionSpecification, RasterLayerSpecification, SourceSpecification, StyleSpecification, SymbolLayerSpecification, TerrainSpecification} from './compat-types.ts';
+import type {BackgroundLayerSpecification, CircleLayerSpecification, ColorReliefLayerSpecification, FillExtrusionLayerSpecification, FillLayerSpecification, HeatmapLayerSpecification, HillshadeLayerSpecification, LineLayerSpecification, ProjectionSpecification, RasterLayerSpecification, SourceSpecification, StyleSpecification, SymbolLayerSpecification, TerrainSpecification} from './compat-types.ts';
 
 /**
  * Set by the build (`define` in build.mjs). True in the development build (`dist/*.dev.js`, which the `development`
@@ -54,7 +54,7 @@ export type GeoJSON = {type: 'FeatureCollection'; features: readonly GeoJSONFeat
  * A layer of the field `layers` of `MapDescription`: a style layer of one of the types that the library draws, with
  * `before`. TypeScript checks `type` and the prefix of each name in `paint` and `layout`.
  */
-export type LayerInput = (BackgroundLayerSpecification | FillLayerSpecification | FillExtrusionLayerSpecification | LineLayerSpecification | CircleLayerSpecification | HeatmapLayerSpecification | RasterLayerSpecification | HillshadeLayerSpecification | SymbolLayerSpecification) & {before?: string};
+export type LayerInput = (BackgroundLayerSpecification | FillLayerSpecification | FillExtrusionLayerSpecification | LineLayerSpecification | CircleLayerSpecification | HeatmapLayerSpecification | RasterLayerSpecification | HillshadeLayerSpecification | ColorReliefLayerSpecification | SymbolLayerSpecification) & {before?: string};
 /** A cluster or a point that the cluster methods of `MapInstance` return, as GeoJSON in longitude and latitude. */
 export interface ClusterFeature {type: 'Feature'; id?: string | number; properties: Record<string, unknown>; geometry: {type: 'Point'; coordinates: [number, number]}}
 /**

@@ -99,6 +99,7 @@ The [status table](../README.md#status) gives the current test results.
 | Plugins | | A plugin that only uses public methods usually works. A plugin that reads `map.style` or `map.painter` does not. |
 | Members that are not available | Every class has its public members. | In the development build (the `development` export condition, `dist/*.dev.js`), reading a public member of the MapLibre class that `Map`, `Marker`, `Popup` or a control of `@map-jr/map-jr-gl/maplibre-compat` does not have warns once for each name, for example `[map-jr-gl] ScaleControl.setUnit is not available in @map-jr/map-jr-gl/maplibre-compat.` Reading `map.transform` says that it is private state of MapLibre GL JS and what to call instead. Symbols and names that start with `_` or `$` do not warn. The value is `undefined`, as before, and the production build does not warn. |
 | Custom layers | `addLayer` takes a custom layer (`CustomLayerInterface`, `type: 'custom'`) on every map. | `addLayer` takes a custom layer on a map that was made with `renderer: 'main'` (or after `configure({renderer: 'main'})`), because only the renderer on the main thread shares its WebGL context with the page. With another renderer, `addLayer` fires `error` with a message that says to pass `renderer: 'main'`, and adds nothing. `onAdd(map, gl)` runs once. `onRemove(map, gl)` runs on `removeLayer` and on `remove()`. As in MapLibre GL JS 6.17, `setStyle` keeps the custom layers with `diff` (the default), each before the layer that came after it, and drops them with `diff: false`; neither calls `onRemove`. `render(gl, args)` gets the same fields as in MapLibre GL JS 6 for the Mercator projection: `defaultProjectionData.mainMatrix` (for the x, y and z of a `MercatorCoordinate`), `modelViewProjectionMatrix`, `projectionMatrix`, `nearZ`, `farZ`, `fov`, `shaderData` and `getProjectionData`. The matrices are `Float64Array`s. They put a point on the same pixel as in MapLibre GL JS, but some values are close and not equal: the near and the far plane are those of this library (at pitch 0 on a map 300 pixels high, `nearZ` and `farZ` are 45 and 1800, where MapLibre GL JS gives 6 and 454.5), so the depth rows of `projectionMatrix` and of the other matrices differ; a height in `mainMatrix` is 0.11 % lower, because the map turns metres into pixels with the radius of Web Mercator (6,378,137 m) and `MercatorCoordinate` uses 6,371,008.8 m; and the depth range of a `'3d'` layer is 0 to 1, where MapLibre GL JS uses 0 to 0.99915. `prerender(gl, args)` runs directly before `render` of the same layer, and not before the whole frame. A layer with `renderingMode: '3d'` draws with the depth test and shares the depth buffer with 3D terrain and with the fill-extrusion layers below it; a fill-extrusion layer above it does not see its depth. A custom layer follows the rule of "Order of symbol layers" above, and with 3D terrain it draws in 3D, below all labels. After the code of the layer, the map restores the GL state that it needs. After a lost WebGL context, the map restores it and the custom layers keep their places: `onAdd` runs again with the new context, and `render` gets that context. (MapLibre GL JS does not call `onAdd` again.) `getStyle()` leaves custom layers out, and `getLayer(id).implementation` is the object of the layer, as in MapLibre GL JS. `renderToTerrainTile` and `renderTerrainHeightMap` are not available. The code of custom layers (about 2 KB gzip) loads with the first custom layer. `MercatorCoordinate` is exported with `fromLngLat`, `toLngLat`, `toAltitude` and `meterInMercatorCoordinateUnits`, and gives the values of MapLibre GL JS. |
+| The layer type `color-relief` | `color-relief-color` is an `interpolate` expression of `["elevation"]`. The colour between two stops is a linear mix, also when the expression names another interpolation. | The same, with up to 2048 stops. The stops after these are not used. A `color-relief-color` that is not an `interpolate` expression draws nothing, as in MapLibre GL JS. A `raster-dem` source with `encoding: 'custom'` is read as `mapbox` (this is so for every layer of the source). The server renderer does not draw the layer. |
 | `map.painter` and `GPUInitializationError` | The map has a `painter`. When WebGL cannot start, the constructor throws a `GPUInitializationError`. | The map has no `painter`, so a check such as `if (!map.painter) throw new GPUInitializationError(...)` throws for every map. Call `supported()` before you create the map instead. In the development build (the `development` export condition, `dist/*.dev.js`), reading `map.painter` warns once per map and says what to write instead; the value is `undefined` in both builds. `@map-jr/map-jr-gl/maplibre-compat` exports `GPUInitializationError` (also on the default export). When the map cannot start, the constructor does not throw: the map fires `error` with a `GPUInitializationError` and shows a message in the container. |
 
 ## What is not available
@@ -111,7 +112,6 @@ Sources:
 
 Layers:
 
-- Color relief
 - Custom layers with the worker renderer (see "Custom layers" in [What is different](#what-is-different))
 - `fill-extrusion-pattern`
 - Patterns that are different for each feature
@@ -130,12 +130,11 @@ Properties:
 
 Layers that the server renderer does not draw:
 
-- Heatmap and relief shading
+- The layer types `heatmap`, `hillshade` and `color-relief`
 
 Other:
 
 - Sky and fog, the atmosphere around the globe, and projections other than `mercator`, `globe` and `vertical-perspective` (`addProjection`)
-- The layer type `color-relief`
 - The right-to-left text plugin. The browser draws right-to-left text correctly without it.
 
 ## Map methods
