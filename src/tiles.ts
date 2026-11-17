@@ -39,7 +39,7 @@ export class TileBuilder {
     private loadDEM = (url: string, encoding: string): Promise<DEM | null> => {
         let dem = this.dems.get(url);
         if (!dem) {
-            dem = fetchTile(url, this.fetchFn).then(bytes => bytes ? decodeDEM(bytes, encoding, this.decodeImage) : null);
+            dem = fetchTile(url, this.fetchFn, undefined, undefined, true).then(bytes => bytes ? decodeDEM(bytes, encoding, this.decodeImage) : null);
             this.dems.set(url, dem);
             dem.catch(() => this.dems.delete(url));
             if (this.dems.size > 40) this.dems.delete(this.dems.keys().next().value!);
@@ -59,7 +59,7 @@ export class TileBuilder {
         const ac = new AbortController();
         this.aborts.set(req.id, ac);
         try {
-            const bytes = await fetchTile(req.url, this.fetchFn, ac.signal);
+            const bytes = await fetchTile(req.url, this.fetchFn, ac.signal, undefined, true);
             if (!bytes) return null;
             const px = await decodePixels(bytes, this.decodeImage), {width: w, height: h} = px, grid = new Float32Array(HEIGHT_GRID * HEIGHT_GRID);
             let lo = Infinity, hi = -Infinity;
