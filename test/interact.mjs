@@ -3003,6 +3003,36 @@ for (const mode of renderers) {
         });
         check('[main] Popup: addTo() during the closing animation keeps it open, remove() twice fires close once, the focus goes to the map when its marker is removed, and Enter on a child of the marker does not toggle it',
             faults.reopened && faults.closesReopen === 1 && faults.closesTwice === 1 && faults.gone && faults.inPopup && faults.focusMap && !faults.childToggles, JSON.stringify(faults));
+        // #709: Escape closes a popup that has a close button and holds the focus, and the focus returns to the marker.
+        const escape = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), m = window.a11yMap, wait = t => new Promise(r => setTimeout(r, t));
+            const key = el => { const e = new KeyboardEvent('keydown', {key: 'Escape', bubbles: true, cancelable: true}); el.dispatchEvent(e); return e.defaultPrevented; };
+            let closes = 0;
+            const mk = new mod.Marker().setLngLat([0, 0]).setPopup(new mod.Popup().setText('Escape').on('close', () => closes++)).addTo(m);
+            mk.getElement().focus();
+            mk.getElement().dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
+            const p = mk.getPopup(), inPopup = p.getElement().contains(document.activeElement);
+            // (A key that the content used does not close the popup.)
+            const used = e => e.preventDefault();
+            p.getElement().addEventListener('keydown', used, true);
+            key(document.activeElement);
+            const keptUsed = p.isOpen();
+            p.getElement().removeEventListener('keydown', used, true);
+            const prevented = key(document.activeElement), closed = !p.isOpen();
+            await wait(500);
+            const focusMarker = document.activeElement === mk.getElement(), gone = !p.getElement().isConnected;
+            mk.remove();
+            // (Without a close button, the popup stays open.)
+            const input = document.createElement('input');
+            const plain = new mod.Popup({closeButton: false}).setLngLat([0, 0]).setDOMContent(input).addTo(m);
+            input.focus();
+            const plainPrevented = key(input), plainOpen = plain.isOpen() && document.activeElement === input;
+            plain.remove();
+            await wait(500);
+            return {inPopup, keptUsed, prevented, closed, closes, focusMarker, gone, plainPrevented, plainOpen};
+        });
+        check('[main] Popup: Escape closes a popup that has a close button and holds the focus, the focus returns to the marker, and a popup without a close button stays open',
+            escape.inPopup && escape.keptUsed && escape.prevented && escape.closed && escape.closes === 1 && escape.focusMarker && escape.gone && !escape.plainPrevented && escape.plainOpen, JSON.stringify(escape));
         // A closing animation that never ends (here: paused, as on a page that draws no frames) does not keep the popup on the page.
         const stuck = await page.evaluate(async () => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), m = window.a11yMap, wait = t => new Promise(r => setTimeout(r, t));

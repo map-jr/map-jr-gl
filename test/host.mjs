@@ -1358,6 +1358,30 @@ for (const renderer of renderers) {
         check(`[${renderer}] the controls of the main API have a blur, a rule of the page still wins, --map-control-opacity and --map-control-radius reach the popup, the compass names the nearest of N, E, S and W, and a map of the compat entry keeps the look of MapLibre GL JS`,
             glass.main && glass.blur === 'blur(5px)' && glass.radius === '4px' && glass.compat === 'none' && !glass.compatClass
             && glass.popupDefault === 'rgba(255, 255, 255, 0.65) 12px' && glass.popupSet === 'rgba(255, 255, 255, 0.4) 6px' && glass.faces === 'N E1 W1 N1', JSON.stringify(glass));
+        // #709: Escape closes a popup of overlay() that has `onClose` and holds the focus. A popup without `onClose` stays open.
+        const escape = await page.evaluate(async () => {
+            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms));
+            const key = el => el.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true, cancelable: true}));
+            const lngLat = t.host.state.get().view.center, content = document.createElement('div'), plain = document.createElement('input');
+            content.textContent = 'Escape';
+            let closes = 0;
+            const popup = t.host.overlay(content, {lngLat, popup: true, onClose() { closes++; popup.remove(); }});
+            const other = t.host.overlay(plain, {lngLat, popup: true});
+            await wait(300);
+            content.closest('.map-jr-popup-content').querySelector('button').focus();
+            const focused = content.parentElement.contains(document.activeElement);
+            key(document.activeElement);
+            await wait(500);
+            const gone = !content.isConnected, focus = document.activeElement === t.host._map.getCanvas();
+            plain.focus();
+            key(plain);
+            await wait(300);
+            const plainOpen = plain.isConnected && document.activeElement === plain;
+            other.remove();
+            return {focused, closes, gone, focus, plainOpen};
+        });
+        check(`[${renderer}] Escape closes a popup of overlay() that has onClose and holds the focus, the focus goes to the map, and a popup without onClose stays open`,
+            escape.focused && escape.closes === 1 && escape.gone && escape.focus && escape.plainOpen, JSON.stringify(escape));
         // #435: destroy() leaves no popup and no marker of overlay() on the page, and does not call onClose.
         const destroyed = await page.evaluate(async renderer => {
             const el = Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'});

@@ -131,6 +131,12 @@ export class Popup extends Overlay {
             // The text keeps clear of the button.
             box.style.paddingRight = '30px';
             b.addEventListener('click', () => this.remove());
+            // Escape closes the popup while the focus is inside it, as the button does (#709). A popup without the button
+            // does not listen. A key that the content used (`preventDefault()`) or that ends a composition is left alone.
+            box.addEventListener('keydown', e => {
+                if (e.key !== 'Escape' || e.defaultPrevented || e.isComposing) return;
+                e.preventDefault(); e.stopPropagation(); this.remove();
+            });
             box.appendChild(b);
             this.closeButton = b;
         }
