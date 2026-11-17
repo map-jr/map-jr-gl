@@ -80,17 +80,6 @@ export class Map extends CoreMap {
     /** As in MapLibre GL JS: with it on, the wheel zooms only with Ctrl (⌘ on a Mac), and one finger scrolls the page. */
     readonly cooperativeGestures = cooperativeGestures(this);
     /**
-     * @internal A rotate drag (the right mouse button, or Ctrl with the left one) turns the map as the default of
-     * MapLibre GL JS does (`generateMouseRotationHandler` in its `src/ui/handler/mouse.ts`; the code here is new). More
-     * than 100 pixels above or below the centre of the map, the map turns by the angle that the sideways movement of the
-     * pointer makes around that centre. Nearer to the centre, the map turns by 0.8 degrees for each pixel: with the
-     * pointer below the centre a drag to the right increases the bearing, and above the centre it decreases the bearing.
-     */
-    override dragTurn = (a: {x: number; y: number}, b: {x: number; y: number}) => {
-        const c = super.project(this.getCenter()), y = b.y - c.y, x0 = a.x - c.x, x1 = b.x - c.x;
-        return Math.abs(c.y - a.y) > 100 ? Math.atan2(y * (x1 - x0), x1 * x0 + y * y) * 180 / Math.PI : (x1 - x0) * (y < 0 ? -.8 : .8);
-    };
-    /**
      * The text of a UI string from the option `locale`, with the keys of MapLibre GL JS. For a key that the option does
      * not have it returns undefined, and the control uses its own English text.
      * The controls and the hint of `cooperativeGestures` call it.
