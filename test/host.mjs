@@ -190,16 +190,19 @@ for (const renderer of renderers) {
         });
         check(`[${renderer}] update with a new style: a layer comes and goes, and queries find features`, style.withLayer > 0 && style.without === 0 && style.raw > 0, JSON.stringify(style));
 
-        // 3a. A style URL that fails, with `extend`: the error is in the state with the URL and the status, and no promise is left rejected.
+        // 3a. A style URL that fails, with `extend`: `onError` gets the error with the URL and the status, the state has no `error` (#655), and no promise is left rejected.
         const badStyle = await page.evaluate(async () => {
             const t = window.t, el = document.body.appendChild(document.createElement('div'));
-            const host = t.lib.createMap(el, {style: '/no-such-style.json', layers: [{id: 'extra', type: 'background'}], attribution: false});
-            await new Promise(r => { host.state.subscribe(s => s.error, e => e && r()); setTimeout(r, 4000); });
-            const message = host.state.get().error?.message;
+            let message;
+            const host = await new Promise(r => {
+                const host = t.lib.createMap(el, {style: '/no-such-style.json', layers: [{id: 'extra', type: 'background'}], attribution: false, onError: e => { message ??= e.message; r(host); }});
+                setTimeout(() => r(host), 4000);
+            });
+            const inState = 'error' in host.state.get();
             host.destroy(); el.remove();
-            return message;
+            return {message, inState};
         });
-        check(`[${renderer}] a style URL that fails: state.error has the URL and the status, and no promise is left rejected`, /Style \/no-such-style\.json: HTTP 404/.test(badStyle ?? '') && !errors.length, JSON.stringify({badStyle, errors}));
+        check(`[${renderer}] a style URL that fails: onError has the URL and the status, the state has no "error", and no promise is left rejected`, /Style \/no-such-style\.json: HTTP 404/.test(badStyle.message ?? '') && badStyle.inState === false && !errors.length, JSON.stringify({badStyle, errors}));
 
         // The first `idle` does not wait for a camera that has just stopped (#436): the first camera of a map is not a
         // movement. A map with a background only is idle less than a fifth of a second after `createMap`. The
@@ -371,14 +374,14 @@ for (const renderer of renderers) {
             withHook.destroy();
             const without = t.lib.createMap(el, {style: '/no-such-style.json', attribution: false});
             await wait(1200);
-            out.logged = logged.join(); out.state = without.state.get().error?.message;
+            out.logged = logged.join();
             without.destroy(); el.remove(); console.error = log;
             return out;
         });
         check(`[${renderer}] mistakes have a message: a container that is not there`,
             mistakes.noId === '[map-jr-gl] createMap(): no element with the id "nope".' && mistakes.isNull.startsWith('[map-jr-gl] createMap(): the container is null.') && mistakes.left === 0, JSON.stringify(mistakes));
         check(`[${renderer}] onError gets each error, and without it the error is written to the console`,
-            /HTTP 404/.test(mistakes.hook) && mistakes.loggedWithHook === 0 && /^\[map-jr-gl\] .*HTTP 404/.test(mistakes.logged) && /HTTP 404/.test(mistakes.state ?? ''), JSON.stringify(mistakes));
+            /HTTP 404/.test(mistakes.hook) && mistakes.loggedWithHook === 0 && /^\[map-jr-gl\] .*HTTP 404/.test(mistakes.logged), JSON.stringify(mistakes));
 
         // 3d. Two maps with one `extend` object whose source has its data at a URL: both load it.
         const sharedExtend = await page.evaluate(async () => {
@@ -1537,12 +1540,12 @@ for (const renderer of renderers) {
             await wait(1500);
             stop();
             const offA = h.listen('test22', () => { throw new Error('thrown by a listener'); }), offB = h.listen('test22', () => second++);
-            const log = console.error;
+            const log = console.error, reported = [], offError = h.listen('error', e => reported.push(e.error?.message));
             console.error = () => {};
             h._map.fire('test22');
             console.error = log;
-            offA(); offB();
-            return {calls, second, error: h.state.get().error?.message};
+            offA(); offB(); offError();
+            return {calls, second, error: reported.join()};
         });
         check(`[${renderer}] a watchFeatures listener that throws is called again, and a listener that throws leaves the next listener its event and is reported as an error`,
             thrown.calls >= 2 && thrown.second === 1 && thrown.error === 'thrown by a listener', JSON.stringify(thrown));
@@ -1574,12 +1577,12 @@ for (const renderer of renderers) {
 
         // 5c. A rejection of the question of watchFeatures is an error of the map, and is not lost (#92).
         const rejected = await page.evaluate(async () => {
-            const h = window.t.host, log = console.error;
+            const h = window.t.host, log = console.error, reported = [], offError = h.listen('error', e => reported.push(e.error?.message));
             console.error = () => {};
             const stop = h.watchFeatures({lng: -74.0105, lat: 40.7045}, {}, () => {});
             await new Promise(r => setTimeout(r, 600));
-            stop(); console.error = log;
-            return h.state.get().error?.message ?? '';
+            stop(); offError(); console.error = log;
+            return reported.join(' | ');
         });
         check(`[${renderer}] a watchFeatures question that is rejected is reported as an error of the map`, rejected.includes('queryFeatures()'), rejected);
 
@@ -1665,7 +1668,7 @@ if (only === 'worker') { await browser.close(); process.exit(failed ? 1 : 0); }
     } catch (e) { check('the test of a failed style-images file was completed', false, String(e.message).split('\n')[0]); }
     await page.close();
 }
-// A style that is not a style (#539): an error of the map (`onError`, `state.error`) that says what is missing, no error
+// A style that is not a style (#539): an error of the map (`onError`) that says what is missing, no error
 // of the page, and the map draws the next style. Each style is given as an object and as the answer of a URL.
 for (const renderer of ['main', 'worker']) {
     const page = await browser.newPage({viewport: {width: 900, height: 600}});
@@ -1685,14 +1688,14 @@ for (const renderer of ['main', 'worker']) {
                 let host;
                 try { host = lib.createMap(el, spec); } catch (e) { results[name] = {made: String(e.message)}; el.remove(); return; }
                 await wait(700);
-                const first = errors.join(' | '), state = host.state.get().error?.message;
+                const first = errors.join(' | ');
                 // The next style is drawn, and a later style that is not a style gives an error again.
                 host.update({...spec, style: good});
                 const idle = await Promise.race([new Promise(r => host.state.subscribe(s => s.idle, i => i && r(true))), wait(5000).then(() => false)]);
-                const cleared = !host.state.get().error, before = errors.length;
+                const before = errors.length;
                 host.update(spec);
                 await wait(700);
-                results[name] = {first, state, idle, cleared, second: errors.slice(before).join(' | ')};
+                results[name] = {first, idle, second: errors.slice(before).join(' | ')};
                 host.destroy(); el.remove();
             };
             for (const [name, style] of Object.entries(bad)) { await run(name, style); await run(name + 'URL', url(style)); }
@@ -1704,7 +1707,7 @@ for (const renderer of ['main', 'worker']) {
         for (const [name, r] of Object.entries(out.results)) {
             if (name === 'noSources') check(`[${renderer}] a style with no "sources" is drawn without an error`, r.first === '' && r.idle && r.second === '', JSON.stringify(r));
             else check(`[${renderer}] a style that is not a style (${name}): one error of the map that names "layers", and update() with a good style draws`,
-                said.test(r.first) && !r.first.includes(' | ') && said.test(r.state ?? '') && r.idle && said.test(r.second) && !r.second.includes(' | '), JSON.stringify(r));
+                said.test(r.first) && !r.first.includes(' | ') && r.idle && said.test(r.second) && !r.second.includes(' | '), JSON.stringify(r));
         }
         check(`[${renderer}] a style that is not a style gives no error of the page`, !thrown.length && !out.unhandled.length, JSON.stringify({thrown, unhandled: out.unhandled}));
     } catch (e) { check(`[${renderer}] the test of a style that is not a style was completed`, false, String(e.message).split('\n')[0]); }
@@ -1919,7 +1922,7 @@ for (const [build, file] of [['the development build, and the file of the checks
 }
 
 // A browser without WebGL2, on the page and in the worker: `supported()` says so before a map is made. A map that is
-// made all the same reports one error (`onError`, `state.error`) and puts a message into the container.
+// made all the same reports one error (`onError`) and puts a message into the container.
 for (const [entry, renderer] of [['main API', 'worker'], ['main API', 'main'], ['maplibre-compat', 'worker']]) {
     const page = await browser.newPage({viewport: {width: 900, height: 600}});
     try {
@@ -1942,7 +1945,7 @@ for (const [entry, renderer] of [['main API', 'worker'], ['main API', 'main'], [
                 lib.configure({createWorker});
                 supported = lib.supported();
                 const host = lib.createMap(el, {style, initialView: {center: [-74.0065, 40.7085], zoom: 14.3}, renderer, attribution: false, onError: e => errors.push(e.message)});
-                state = () => ({error: host.state.get().error?.message, loaded: host.state.get().loaded});
+                state = () => ({error: errors[0], loaded: host.state.get().loaded});
                 destroy = () => host.destroy();
             } else {
                 const lib = await import('/dist/map-jr-gl-maplibre-compat.js');

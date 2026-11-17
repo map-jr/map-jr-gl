@@ -43,7 +43,7 @@ if (supported()) {
 }
 ```
 
-A map that is made in such a browser does not load. It reports one error (`onError` and `state.error`) with the
+A map that is made in such a browser does not load. It reports one error (`onError`) with the
 message `[map-jr-gl] The map cannot be shown: WebGL2 is not available. Call supported() before you make a map, and
 show other content when it returns false.` It also puts an element into the container with the class
 `map-jr-unavailable` and the text "This browser cannot show the map.". The element fills the container. To change
@@ -331,7 +331,7 @@ any key in `metadata`, so MapLibre GL JS reads the style and ignores the images.
 - The images belong to the style: a new style removes them, and an `update` that changes `images` keeps them.
 - A style comes from another party, so the map takes at most 500 images from it, each at most 200,000 characters of
   text. An SVG of the style must not refer to another file (`href` or `url(...)` other than `#...` and `data:`). The
-  map leaves out an image that breaks one of these rules and reports an error (`onError`, `state.error`) with its
+  map leaves out an image that breaks one of these rules and reports an error (`onError`) with its
   name.
 - The map draws an image of the style when a layer asks for it, and requests an image that is a URL then. An image
   that no layer of the view names costs no time and no room in the texture, and an image that does not load is an
@@ -343,7 +343,7 @@ any key in `metadata`, so MapLibre GL JS reads the style and ignores the images.
 - The server renderer (`renderToSVG`, `renderToImage`) draws the SVG images of the style, with the same rules.
 - The compat entry (`@map-jr/map-jr-gl/maplibre-compat`) does not read the key, as MapLibre GL JS does not.
 
-An image that does not load is an error of the map (`onError`, `state.error`) with the name of the image. The map
+An image that does not load is an error of the map (`onError`) with the name of the image. The map
 draws the layer without that image.
 
 ### A sprite of the description
@@ -370,7 +370,7 @@ const map = createMap(document.getElementById('map'), {
 - A sprite of a style is one URL (the id `default`) or a list. A sprite of the description replaces a sprite of the
   style with the same id, so the id `default` replaces the sprite of a style whose `sprite` is one URL.
 - An image of `images` or of the style is used in place of an image of a sprite with the same name (`pins:hotel`).
-- A sprite that does not load is an error of the map (`onError`, `state.error`) with its URL. The map draws the images
+- A sprite that does not load is an error of the map (`onError`) with its URL. The map draws the images
   of the other sprites.
 - A change of `sprite` in `update()` loads the style again. A new style gets the sprites of the description.
 - The server renderer (`renderToSVG`, `renderToImage`) has the option `sprite` with the same rule. There, a relative
@@ -736,7 +736,9 @@ stop(); // stops the first subscription
 | `pointer` | Where the pointer is while it is over the map: `{point: {x, y}, lngLat: [lng, lat]}`, with `point` in CSS pixels from the top left corner of the map. It is `null` before the first move and after the pointer leaves the map. It changes at each move of the mouse, also without `interactiveLayers`, and a touch does not set it. |
 | `renderer` | `'worker'` or `'main'`, when the map has started. |
 | `colorScheme` | `'light'` or `'dark'`: `colorScheme` of the description, with `'auto'` resolved by `prefers-color-scheme`. |
-| `error` | The last error only. An earlier error is not kept: use `onError` in the description to get each one. |
+
+The state has no field for errors. To get each error of the map, write `onError` in the description or call
+`map.listen('error', fn)` (see [Events](#events)).
 
 `loaded` becomes `true` before `idle` does, in the same task. A listener of the `load` event and a subscriber of
 `loaded` see `idle: false`, so code there that waits for the first `idle` gets it.
@@ -1134,7 +1136,7 @@ has the right type, and a name that is not in the table does not compile.
 | `stats` | At most one time each second while the map draws. | `fps` (frames per second), `frameMs` (the CPU time of a frame in milliseconds), `labels` (the number of labels and icons that the last frame placed among the labels; icons that are drawn from buffers are not counted, see [Markers](markers.md#which-icons-are-fast)). |
 | `geolocate` | The geolocate control has a position. | `coords`. |
 | `webglcontextlost`, `webglcontextrestored` | The browser has taken the WebGL context away, or the map has it again. The map starts again on a new canvas with the same view and data. A map with the worker renderer starts again on the main thread and writes one warning when the worker loses the context before its first frame, loses it twice within 10 seconds, or does not draw in the 5 seconds after its start or a restart (it reports no first frame, or stops drawing after it). A worker that does not draw in that time also fires `webglcontextlost` first. When the main thread then loses the context again before its first frame, or does not draw in the 15 seconds after the restart, the map fires `error` and does not start again. The time that the page is hidden, or that the map has no size, does not count. | |
-| `error` | An error of the map. `onError` and `state.error` have the same errors as an `Error`. | `error`. |
+| `error` | An error of the map. `onError` has the same errors as an `Error`. | `error`. |
 
 ## Custom protocols
 

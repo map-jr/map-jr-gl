@@ -169,7 +169,7 @@ export interface MapDescription extends MapSetup {
      */
     hoverState?: boolean;
     onClick?: (event: MapPointer) => void;
-    /** Called for each error of the map. Without it, the map writes each error to the console. (`state.error` has the last error in each case.) */
+    /** Called for each error of the map. Without it, the map writes each error to the console. */
     onError?: (error: Error) => void;
     minZoom?: number; maxZoom?: number; maxPitch?: number; maxBounds?: Bounds | null;
     /** The mouse cursor over the map. Without it, the cursor is a pointer over a feature of `interactiveLayers`. */
@@ -232,7 +232,6 @@ export interface MapState {
     renderer: 'worker' | 'main' | undefined;
     /** The colour scheme of the controls: `colorScheme` of the description, with `'auto'` resolved. */
     colorScheme: 'light' | 'dark';
-    error: Error | undefined;
 }
 
 /** Where an element of the page is on the map. */
@@ -313,7 +312,7 @@ export interface MapEvents extends
     projectiontransition: MapEventBase<'projectiontransition'> & {newProjection: string};
     /** The geolocate control of `@map-jr/map-jr-gl/controls` has a position. */
     geolocate: MapEventBase<'geolocate'> & {coords: GeolocationCoordinates};
-    /** `error` is usually an `Error`. (`onError` and `state.error` always have an `Error`.) */
+    /** `error` is usually an `Error`. (`onError` always has an `Error`.) */
     error: MapEventBase<'error'> & {error: unknown};
 }
 
@@ -546,7 +545,7 @@ export function makeMap(container: HTMLElement | string, spec: MapDescription, n
     // (The height of the container is read after a second, so that a container which gets its height a moment later gives no warning.)
     setTimeout(() => check(0, name), 1000);
     const viewOf = (): View => { const c = map.getCenter(), b = map.getBounds().toArray() as View['bounds']; return {center: [c.lng, c.lat], zoom: map.getZoom(), bearing: map.getBearing(), pitch: map.getPitch(), bounds: b}; };
-    const state = createStore<MapState>({loaded: false, idle: false, moving: false, view: viewOf(), hover: [], pointer: null, renderer: undefined, colorScheme: 'light', error: undefined});
+    const state = createStore<MapState>({loaded: false, idle: false, moving: false, view: viewOf(), hover: [], pointer: null, renderer: undefined, colorScheme: 'light'});
     const controls = new globalThis.Map<string, ReturnType<ControlSpec['create']>>();
     // `colorScheme`: the class `map-jr-dark` on the container. With `'auto'`, a listener of the media query, which `destroy()` removes.
     let wanted: MapDescription['colorScheme'], dark: MediaQueryList | undefined;
@@ -582,7 +581,6 @@ export function makeMap(container: HTMLElement | string, spec: MapDescription, n
     map.on('idle', () => state.set({idle: true}));
     map.on('error', e => {
         const error = e.error instanceof Error ? e.error : new Error(String(e.error));
-        state.set({error});
         // (This listener takes the place of the report of the map itself: an error must not be lost in silence.)
         if (now.onError) now.onError(error); else logError(error);
     });
