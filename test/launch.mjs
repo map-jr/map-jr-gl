@@ -17,5 +17,32 @@ export function launch() {
     const firefoxUserPrefs = {'webgl.force-enabled': true, 'webgl.disable-fail-if-major-performance-caveat': true, 'webgl.enable-webgl2': true, 'gfx.webrender.software': true};
     // Firefox without a window draws a few frames each second on the page's thread, which makes each test time out.
     // HEADED=1 opens a window (on Linux that needs a display, for example xvfb-run).
-    return type.launch(browserName === 'firefox' ? {firefoxUserPrefs, headless: !process.env.HEADED} : {args});
+    const started = type.launch(browserName === 'firefox' ? {firefoxUserPrefs, headless: !process.env.HEADED} : {args});
+    return process.env.NO_WORKER_WEBGL ? started.then(withoutWorkerWebGL) : started;
+}
+
+// Whether the browser of the page can make a WebGL2 context in a worker. WebKit on Linux and Windows and Safari before
+// 16.4 cannot: the map then renders on the main thread, and a check of the worker renderer prints SKIP.
+export const workerRenders = page => page.evaluate(() => new Promise(resolve => {
+    const w = new Worker(URL.createObjectURL(new Blob(['postMessage(typeof OffscreenCanvas !== "undefined" && !!new OffscreenCanvas(1, 1).getContext("webgl2"))'])));
+    w.onmessage = e => { resolve(e.data); w.terminate(); }; w.onerror = () => resolve(false);
+}));
+export const noWorkerRender = 'this browser cannot render in a worker';
+
+// NO_WORKER_WEBGL=1 makes each classic worker of each page unable to get a WebGL context, as in WebKit on Linux and
+// Windows, so that the SKIP of the checks of the worker renderer can be seen in Chromium (#772).
+function withoutWorkerWebGL(browser) {
+    const script = () => {
+        const W = self.Worker, patch = 'const get = OffscreenCanvas.prototype.getContext; OffscreenCanvas.prototype.getContext = function (kind, ...rest) { return /webgl/.test(kind) ? null : get.call(this, kind, ...rest); };';
+        self.Worker = class extends W {
+            constructor(url, options) {
+                if (options?.type === 'module') super(url, options);
+                else super(URL.createObjectURL(new Blob([`${patch} importScripts(${JSON.stringify(new URL(url, location.href).href)});`], {type: 'text/javascript'})), options);
+            }
+        };
+    };
+    const newContext = browser.newContext.bind(browser);
+    browser.newContext = async options => { const context = await newContext(options); await context.addInitScript(script); return context; };
+    browser.newPage = async options => { const context = await browser.newContext(options), page = await context.newPage(); page.once('close', () => context.close().catch(() => {})); return page; };
+    return browser;
 }

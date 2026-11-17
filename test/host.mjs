@@ -1,5 +1,5 @@
 // Tests of the main API (`createMap`, see src/host.ts) in a real browser: node test/host.mjs (demo server running)
-import {launch, browserName} from './launch.mjs';
+import {launch, browserName, workerRenders, noWorkerRender} from './launch.mjs';
 import {watchdog} from './watchdog.mjs';
 import {crc32, deflateSync} from 'node:zlib';
 
@@ -385,7 +385,8 @@ for (const renderer of renderers) {
         // 3b2b. `state.idle` after a new style comes once the page shows the frame of the new style (#555). The worker
         // renderer sent `idle` with the frame, and the page could still show the frame before. (The canvas of the main
         // renderer cannot be read 1 s later: its drawing buffer is cleared once it is shown.)
-        if (renderer === 'worker') {
+        if (renderer === 'worker' && !await workerRenders(page)) skip('[worker] after a new style, the canvas at state.idle shows the new style: no pixel differs from the canvas 1 s later (#555)', noWorkerRender);
+        else if (renderer === 'worker') {
             const shownAtIdle = await page.evaluate(async renderer => {
                 const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:450px;height:300px;z-index:100'}));
                 const other = JSON.parse(JSON.stringify(t.style), (k, v) => typeof v === 'string' && /^(#|rgb|hsl)/i.test(v) ? '#2050c0' : v);
