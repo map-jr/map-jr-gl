@@ -29,9 +29,11 @@ test('style images: a style from a URL brings its images to the server renderer'
 
 test('style images: values that break a bound are left out with a message', () => {
     const faults: string[] = [];
-    const many = Object.fromEntries(Array.from({length: 205}, (_, i) => ['i' + i, square('#000')]));
-    assert.equal(Object.keys(styleImages(style(many), m => faults.push(m))).length, 200);
+    // (A style takes 500 images (#610): the styles of map-jr-styles have up to 190, and a style with more icons must not lose them.)
+    const many = Object.fromEntries(Array.from({length: 505}, (_, i) => ['i' + i, square('#000')]));
+    assert.equal(Object.keys(styleImages(style(many), m => faults.push(m))).length, 500);
     assert.equal(faults.length, 5);
+    assert.match(faults[0], /the image "i500" .* is left out, because the style has more than 500 images/);
     faults.length = 0;
     const out = styleImages(style({
         ok: square('#000'), url: 'https://images.test/a.png', obj: {image: square('#111'), width: 4},
@@ -45,4 +47,11 @@ test('style images: values that break a bound are left out with a message', () =
     assert.deepEqual(styleImages({version: 8}, () => assert.fail()), {});
     styleImages(style([square('#000')]), m => faults.push(m));
     assert.match(faults.at(-1)!, /is not an object of images by name/);
+});
+
+test('style images: the names of the SVG templates are given apart, because the map must know them before the tiles are built (#628)', () => {
+    const now = new Set<string>();
+    const out = styleImages(style({plain: square('#000'), pin: '<svg viewBox="0 0 20 20"><rect width="20" height="20" fill="{{color}}"/></svg>', sized: {image: square('{{fill}}'), width: 10, height: 10}, url: '/icon.png'}), () => {}, now);
+    assert.deepEqual(Object.keys(out), ['plain', 'pin', 'sized', 'url']);
+    assert.deepEqual([...now], ['pin', 'sized']);
 });

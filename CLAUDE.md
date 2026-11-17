@@ -13,6 +13,41 @@ to protect those qualities.
 - **The owner's messages can arrive late in a long turn.** Read notifications often. When a message arrives,
   answer it and do what it asks before other work.
 - Every few tool calls, give the user a one-line update on where things stand.
+- **A question for the owner goes through the question tool (`AskUserQuestion`), not into the text of an update.**
+  Use it for every decision that the owner must make while other work goes on: a pull request that waits for the
+  owner, a recommendation to accept, a number to choose. A question in an update is hard to find again and hard to
+  answer in a short reply.
+  - Each question stands on its own. It names the issue or the pull request, gives the facts and the numbers that the
+    decision needs, and has the options with the recommended one first. It does not refer to an earlier message.
+  - Ask as soon as the work that does not depend on the answer is started, and ask several open decisions in one
+    call (it takes up to four). Carry on with the other work.
+  - Write the answer into the issue (the line "Decision") before you act on it.
+  - Where the tool is missing, end every update with the heading "Waiting for you" and each open question in full,
+    also the ones from earlier updates.
+  - A worker does not ask the owner. It writes "Needs owner" in its report, and the coordinator asks.
+
+## Issues
+
+- **An issue has one fault or one decision,** so that one pull request closes it. Two faults that were found
+  together are two issues, unless one fix of a line or two covers both.
+- **Search before you file** (`gh issue list --search`). A fault that has an issue gets no second one.
+- **The title names the thing and the fault in about 80 characters.** It does not list, and it does not say who
+  found it.
+- **The body has these fields and nothing else:**
+  - **Fault:** what happens and what should happen, in one or two sentences, with the entry. A proposal has
+    **Proposal** in its place.
+  - **Where:** `file:line`, or the command that shows it.
+  - **Evidence:** "ran", "measured" (with the number) or "read". An issue that was only read has the label
+    `unverified`.
+  - **Done when:** the check that closes it.
+  - **From:** the issue or pull request where it was found.
+- **The body is the current state.** When the state changes, edit the body. A comment is for a decision of the
+  owner or for new evidence, with the date, in one paragraph.
+- **A table of measurements or a design goes into the pull request or a file of `docs/`.** The issue has the result
+  in one line and the link.
+- **A check that fails in some runs has one issue.** A new sighting adds one line (date, job) to the body.
+- **A tracking issue is a list of links to issues.** It has no fault of its own, and it is the only kind of issue
+  that a pull request names with `Part of`.
 
 ## Branches, pull requests and merging
 
@@ -23,7 +58,7 @@ to protect those qualities.
 - **Merge with squash** once CI is green — you may merge your own pull request, **except** when the change does one
   of these. Then leave it open and ask the owner:
   - removes or renames public API of either entry, or changes a default;
-  - raises a size budget (see "Size");
+  - changes the hard line of the size or a ceiling in `scripts/size-check.mjs` (see "Size");
   - adds a dependency to the built files, or takes code or a method from a project whose licence is not on the list
     in "Code and methods from other projects";
   - changes this file, the CI workflows, or the release process;
@@ -91,7 +126,7 @@ A change is done when all of these that apply are true. The pull request templat
    handle failure of any one request without stopping the map, and never put their text into `innerHTML`.
 9. **Asynchronous steps.** After every `await` in the map, check that the map still exists and that a newer
    request has not replaced this one.
-10. **Size.** `pnpm test:size` passes. See below before you touch a budget.
+10. **Size.** `pnpm test:size` passes, and the pull request says what the change adds. See "Size" below.
 11. **Numbers.** After a change that affects results or sizes, run `pnpm status` (it rewrites the status table in
     the README) and commit the result.
 12. **Licence.** `ACKNOWLEDGEMENTS.md` and `THIRD-PARTY-LICENSES.md` are correct when a library is added to the
@@ -159,7 +194,10 @@ a hurry gets the right answer on the first read.
   Things that exist only for that goal go here and not into the core (`src/map.ts`): other names for methods,
   methods with no effect, members that wrappers read, results that are an array and a promise. The conformance
   tools (render tests, example pages, plugins) test this entry.
-- The package is version 0.x: the API can change, but a breaking change needs the owner (see above).
+- The package is version 0.x and the library is before its public release. A change of the API does not need to
+  protect existing users: remove or rename the old form in the same change, with no deprecation warning and no period
+  in which both forms work. A breaking change still needs the owner (see above), and the pull request lists what
+  breaks.
 - Class names: the library uses `map-jr-*` internally. Elements also carry `maplibregl-*` names for compatibility
   only; do not style or query by those.
 
@@ -181,9 +219,13 @@ in every change, and do not spend an hour to save 50 bytes.
   mistakes, long messages) goes into the development build (`src/mistakes.ts`). The build shortens the names of
   private class members and of the names in the shaders (see `docs/development.md`): declare members `private`, and
   name uniforms `u_...`.
-- **A budget is a ceiling for accidents, not a target.** The budgets in `scripts/size-check.mjs` were raised on
-  2026-11-14 and have several KB of room. Do not rewrite working code to fit a fix into the last bytes of a budget:
-  if a budget is reached, stop and ask the owner. Raising one needs the owner.
+- **The hard line is a third of MapLibre GL JS.** The page script that loads up front and the worker file together
+  stay under a third of what MapLibre GL JS downloads (its page script, its worker and its CSS), for each entry.
+  `scripts/size-check.mjs` computes the limit from the installed MapLibre GL JS, so the limit does not rise, and the
+  owner does not raise it. The other built files have wide ceilings that only catch an accident. The line is not a
+  target: keep each change as small as it can be, and do not rewrite working code to save a few bytes.
+- **When the download comes within 5 KB of the line,** tell the owner, and start the pass for savings before more
+  features merge.
 - **Savings are found in one pass before a release,** not in each pull request: one worker reads the built files for
   what is large or repeated, and its pull request has only that concern. Write a saving that you notice during
   other work into the issue for that pass.

@@ -30,6 +30,8 @@ if (only && only !== 'main' && only !== 'worker') { console.log(`FAIL  RENDERER 
 const renderers = only ? [only] : ['worker', 'main'];
 for (const renderer of renderers) {
     const page = await browser.newPage({viewport: {width: 900, height: 600}});
+    // CPU_THROTTLE=4 slows the CPU of the page four times (Chromium only), as a loaded CI runner does (#532).
+    if (process.env.CPU_THROTTLE) await (await page.context().newCDPSession(page)).send('Emulation.setCPUThrottlingRate', {rate: Number(process.env.CPU_THROTTLE)});
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
     try {
@@ -190,16 +192,62 @@ for (const renderer of renderers) {
         });
         check(`[${renderer}] update with a new style: a layer comes and goes, and queries find features`, style.withLayer > 0 && style.without === 0 && style.raw > 0, JSON.stringify(style));
 
-        // 3a. A style URL that fails, with `extend`: the error is in the state with the URL and the status, and no promise is left rejected.
+        // 3a. A style URL that fails, with `extend`: `onError` gets the error with the URL and the status, the state has no `error` (#655), and no promise is left rejected.
         const badStyle = await page.evaluate(async () => {
             const t = window.t, el = document.body.appendChild(document.createElement('div'));
-            const host = t.lib.createMap(el, {style: '/no-such-style.json', layers: [{id: 'extra', type: 'background'}], attribution: false});
-            await new Promise(r => { host.state.subscribe(s => s.error, e => e && r()); setTimeout(r, 4000); });
-            const message = host.state.get().error?.message;
+            let message;
+            const host = await new Promise(r => {
+                const host = t.lib.createMap(el, {style: '/no-such-style.json', layers: [{id: 'extra', type: 'background'}], attribution: false, onError: e => { message ??= e.message; r(host); }});
+                setTimeout(() => r(host), 4000);
+            });
+            const inState = 'error' in host.state.get();
             host.destroy(); el.remove();
-            return message;
+            return {message, inState};
         });
-        check(`[${renderer}] a style URL that fails: state.error has the URL and the status, and no promise is left rejected`, /Style \/no-such-style\.json: HTTP 404/.test(badStyle ?? '') && !errors.length, JSON.stringify({badStyle, errors}));
+        check(`[${renderer}] a style URL that fails: onError has the URL and the status, the state has no "error", and no promise is left rejected`, /Style \/no-such-style\.json: HTTP 404/.test(badStyle.message ?? '') && badStyle.inState === false && !errors.length, JSON.stringify({badStyle, errors}));
+
+        // The first `idle` does not wait for a camera that has just stopped (#436): the first camera of a map is not a
+        // movement. A map with a background only is idle less than a fifth of a second after `createMap`. The
+        // shortest of three starts is read, so that a slow moment of the machine does not decide the result.
+        const firstIdle = await page.evaluate(async renderer => {
+            const t = window.t, times = [];
+            for (let i = 0; i < 3; i++) {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+                const began = performance.now();
+                const host = t.lib.createMap(el, {style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#abc'}}]}, renderer, attribution: false});
+                const idle = await new Promise(r => { if (host.state.get().idle) r(performance.now()); else host.state.subscribe(s => s.idle, v => v && r(performance.now())); });
+                times.push(Math.round(idle - began));
+                host.destroy(); el.remove();
+            }
+            return times;
+        }, renderer);
+        check(`[${renderer}] the first idle of a map does not wait a fifth of a second for a camera that has just stopped (#436)`, Math.min(...firstIdle) < 200, JSON.stringify(firstIdle));
+
+        // A new height of the ground under the camera is not a movement (#436). 3D terrain that is switched on gives the
+        // camera its height when the elevation data comes: the map is idle then, and not 200 to 400 ms later. The
+        // elevation tiles are one picture in the page (1000 m everywhere), so no network decides the time. The shortest
+        // of three tries is read.
+        const terrainIdle = await page.evaluate(async renderer => {
+            const t = window.t, times = [];
+            const c = Object.assign(document.createElement('canvas'), {width: 256, height: 256}), g = c.getContext('2d');
+            g.fillStyle = 'rgb(131,232,0)'; g.fillRect(0, 0, 256, 256); // 1000 m in the terrarium encoding
+            for (let i = 0; i < 3; i++) {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+                const spec = {style: {version: 8, sources: {dem: {type: 'raster-dem', tiles: [c.toDataURL('image/png')], encoding: 'terrarium', tileSize: 256, maxzoom: 10}}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#abc'}}]},
+                    initialView: {center: [7.7, 46], zoom: 10, pitch: 50}, renderer, attribution: false};
+                const host = t.lib.createMap(el, spec);
+                await new Promise(r => { if (host.state.get().idle) r(); else host.state.subscribe(s => s.idle, v => v && r()); });
+                await new Promise(r => setTimeout(r, 300));
+                const began = performance.now(), done = new Promise(r => host._map.once('idle', () => r(performance.now())));
+                host.update({...spec, terrain: {source: 'dem'}});
+                times.push(Math.round(await done - began));
+                const ground = Math.round(await host.queryElevation([7.7, 46]));
+                host.destroy(); el.remove();
+                if (ground !== 1000) return [`the ground is at ${ground} m`];
+            }
+            return times;
+        }, renderer);
+        check(`[${renderer}] 3D terrain that is switched on: the map is idle when the elevation data has come, not 200 ms after the camera got its height (#436)`, Math.min(...terrainIdle) < 200, JSON.stringify(terrainIdle));
 
         // 3b. `projection` of the description (#463): it takes the place of the projection of the style, `null` gives the
         // projection of the style back, the same content does nothing, and the control `globe()` switches it.
@@ -354,14 +402,14 @@ for (const renderer of renderers) {
             withHook.destroy();
             const without = t.lib.createMap(el, {style: '/no-such-style.json', attribution: false});
             await wait(1200);
-            out.logged = logged.join(); out.state = without.state.get().error?.message;
+            out.logged = logged.join();
             without.destroy(); el.remove(); console.error = log;
             return out;
         });
         check(`[${renderer}] mistakes have a message: a container that is not there`,
             mistakes.noId === '[map-jr-gl] createMap(): no element with the id "nope".' && mistakes.isNull.startsWith('[map-jr-gl] createMap(): the container is null.') && mistakes.left === 0, JSON.stringify(mistakes));
         check(`[${renderer}] onError gets each error, and without it the error is written to the console`,
-            /HTTP 404/.test(mistakes.hook) && mistakes.loggedWithHook === 0 && /^\[map-jr-gl\] .*HTTP 404/.test(mistakes.logged) && /HTTP 404/.test(mistakes.state ?? ''), JSON.stringify(mistakes));
+            /HTTP 404/.test(mistakes.hook) && mistakes.loggedWithHook === 0 && /^\[map-jr-gl\] .*HTTP 404/.test(mistakes.logged), JSON.stringify(mistakes));
 
         // 3d. Two maps with one `extend` object whose source has its data at a URL: both load it.
         const sharedExtend = await page.evaluate(async () => {
@@ -852,11 +900,15 @@ for (const renderer of renderers) {
             const t = window.t, c = t.host.unproject({x: 450, y: 300});
             t.imageErrors = []; t.kinds = [];
             t.withImages = images => ({...t.style, metadata: {...t.style.metadata, 'map-jr:images': images}, sources: {...t.style.sources, spot: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: c}}}},
-                layers: [...t.style.layers, {id: 'spot', type: 'symbol', source: 'spot', layout: {'icon-image': 'square', 'icon-allow-overlap': true, 'icon-ignore-placement': true}}]});
-            t.host.update(t.spec = {...t.spec, style: t.withImages({square: t.square('#f80'), far: '/no-such-style-image.png', outside: '<svg viewBox="0 0 4 4"><image href="https://example.com/a.png"/></svg>'}),
+                // (An image of the style is requested when a layer asks for it (#628): the layer `far` asks for the URL.)
+                layers: [...t.style.layers, {id: 'spot', type: 'symbol', source: 'spot', layout: {'icon-image': 'square', 'icon-allow-overlap': true, 'icon-ignore-placement': true}},
+                    {id: 'far', type: 'symbol', source: 'spot', layout: {'icon-image': 'far', 'icon-allow-overlap': true, 'icon-ignore-placement': true}}]});
+            t.host.update(t.spec = {...t.spec, style: t.withImages({square: t.square('#f80'), unused: t.square('#123'), far: '/no-such-style-image.png', outside: '<svg viewBox="0 0 4 4"><image href="https://example.com/a.png"/></svg>'}),
                 transformRequest: (url, kind) => { if (url.includes('no-such-style-image')) t.kinds.push(kind); }, onError: e => t.imageErrors.push(e.message)});
         });
         const ofStyle = await shows('#f80');
+        // (#628: the map draws an image of the style when a layer asks for it, and not an image that no layer names.)
+        const onDemand = await page.evaluate(() => [window.t.host._map.hasImage('square'), window.t.host._map.hasImage('unused')]);
         await page.evaluate(() => { const t = window.t; t.host.update(t.spec = {...t.spec, images: {square: t.square('#0f0')}}); });
         const overridden = await shows('#0f0');
         await page.evaluate(() => { const t = window.t, {images: _, ...rest} = t.spec; t.host.update(t.spec = rest); });
@@ -870,9 +922,9 @@ for (const renderer of renderers) {
             return {errors, kinds: t.kinds, has: t.host._map.hasImage('square')};
         });
         check(`[${renderer}] images of the style in metadata["map-jr:images"]: drawn, replaced by images of the description, removed with the style, an SVG with a reference to another file is left out, and a URL goes through transformRequest as Image`,
-            ofStyle === '#f80' && overridden === '#0f0' && back === '#f80' && !styleGone.has && styleGone.kinds.includes('Image')
+            ofStyle === '#f80' && onDemand[0] && !onDemand[1] && overridden === '#0f0' && back === '#f80' && !styleGone.has && styleGone.kinds.includes('Image')
             && styleGone.errors.some(e => e.startsWith('[map-jr-gl] the style: the image "outside"')) && styleGone.errors.some(e => e.startsWith('[map-jr-gl] the style: the image "far" did not load')),
-            JSON.stringify({ofStyle, overridden, back, styleGone}));
+            JSON.stringify({ofStyle, onDemand, overridden, back, styleGone}));
 
         // A sprite of the description (#495): added to the sprite of the style, its images named `id:name` in icon-image,
         // a relative URL is relative to the page, a sprite that does not load is an error and the other sprite is drawn,
@@ -1349,20 +1401,25 @@ for (const renderer of renderers) {
         const glass = await page.evaluate(async () => {
             const t = window.t, {navigation} = await import('/dist/controls.js'), mod = await import('/dist/map-jr-gl-maplibre-compat.js');
             t.host.update({...t.spec, controls: [navigation()]});
+            // (The control puts its element in place when its code has loaded with import(), so the check waits for it,
+            // for at most 3 s, as the check of colorScheme does: one frame was too short on a loaded machine, #532.
+            // A missing element gives the value null and fails this check, and the run goes on.)
+            for (const end = Date.now() + 3000; !document.querySelector('#host .map-jr-ctrl-group') && Date.now() < end;) await new Promise(r => setTimeout(r, 20));
             await new Promise(r => requestAnimationFrame(r));
-            const s = getComputedStyle(document.querySelector('#host .map-jr-ctrl-group')), group = {backdropFilter: s.backdropFilter, borderTopLeftRadius: s.borderTopLeftRadius};
+            const css = e => e ? getComputedStyle(e) : {};
+            const s = css(document.querySelector('#host .map-jr-ctrl-group')), group = {backdropFilter: s.backdropFilter ?? null, borderTopLeftRadius: s.borderTopLeftRadius ?? null};
             const el = Object.assign(document.createElement('div'), {style: 'width:100px;height:80px'});
             document.body.appendChild(el);
             const m = new mod.Map({container: el, attributionControl: false, center: [0, 0], zoom: 1, style: {version: 8, sources: {}, layers: []}});
             m.addControl(new mod.NavigationControl());
-            const compat = getComputedStyle(el.querySelector('.map-jr-ctrl-group')).backdropFilter;
+            const compat = css(el.querySelector('.map-jr-ctrl-group')).backdropFilter ?? null;
             m.remove(); el.remove();
             // The two custom properties of the look reach the popup (whose inline background and radius the CSS of MapLibre does not change).
             const host = document.querySelector('#host'), content = document.createElement('div');
             content.textContent = 'Popup';
             const popup = t.host.overlay(content, {lngLat: t.host.state.get().view.center, popup: true, onClose() {}});
             await new Promise(r => requestAnimationFrame(r));
-            const box = content.closest('.map-jr-popup-content'), look = () => { const p = getComputedStyle(box); return `${p.backgroundColor} ${p.borderTopLeftRadius}`; };
+            const box = content.closest('.map-jr-popup-content'), look = () => { const p = css(box); return `${p.backgroundColor} ${p.borderTopLeftRadius}`; };
             const popupDefault = look();
             host.style.setProperty('--map-control-opacity', '.3'); host.style.setProperty('--map-control-radius', '8px');
             const popupSet = look();
@@ -1379,6 +1436,52 @@ for (const renderer of renderers) {
         check(`[${renderer}] the controls of the main API have a blur, a rule of the page still wins, --map-control-opacity and --map-control-radius reach the popup, the compass names the nearest of N, E, S and W, and a map of the compat entry keeps the look of MapLibre GL JS`,
             glass.main && glass.blur === 'blur(5px)' && glass.radius === '4px' && glass.compat === 'none' && !glass.compatClass
             && glass.popupDefault === 'rgba(255, 255, 255, 0.65) 12px' && glass.popupSet === 'rgba(255, 255, 255, 0.4) 6px' && glass.faces === 'N E1 W1 N1', JSON.stringify(glass));
+        // #709: Escape closes a popup of overlay() that has `onClose` and holds the focus. A popup without `onClose` stays open.
+        const escape = await page.evaluate(async () => {
+            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms));
+            const key = el => el.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true, cancelable: true}));
+            const lngLat = t.host.state.get().view.center, content = document.createElement('div'), plain = document.createElement('input');
+            content.textContent = 'Escape';
+            let closes = 0;
+            const popup = t.host.overlay(content, {lngLat, popup: true, onClose() { closes++; popup.remove(); }});
+            const other = t.host.overlay(plain, {lngLat, popup: true});
+            await wait(300);
+            const box = content.closest('.map-jr-popup-content');
+            box.querySelector('button').focus();
+            const focused = box.contains(document.activeElement) && document.activeElement !== document.body;
+            key(document.activeElement);
+            await wait(500);
+            const gone = !content.isConnected, focus = document.activeElement === t.host._map.getCanvas();
+            plain.focus();
+            key(plain);
+            await wait(300);
+            const plainOpen = plain.isConnected && document.activeElement === plain;
+            other.remove();
+            return {focused, closes, gone, focus, plainOpen};
+        });
+        check(`[${renderer}] Escape closes a popup of overlay() that has onClose and holds the focus, the focus goes to the map, and a popup without onClose stays open`,
+            escape.focused && escape.closes === 1 && escape.gone && escape.focus && escape.plainOpen, JSON.stringify(escape));
+        // #435: destroy() leaves no popup and no marker of overlay() on the page, and does not call onClose.
+        const destroyed = await page.evaluate(async renderer => {
+            const el = Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'});
+            document.body.appendChild(el);
+            const host = window.t.lib.createMap(el, {style: {version: 8, sources: {}, layers: []}, attribution: false, renderer});
+            const content = () => Object.assign(document.createElement('div'), {textContent: 'Overlay'});
+            let closes = 0;
+            const open = content(), fading = content(), marker = content();
+            host.overlay(open, {lngLat: [0, 0], popup: true, onClose() { closes++; }});
+            const closing = host.overlay(fading, {lngLat: [0, 0], popup: true});
+            host.overlay(marker, {lngLat: [0, 0]});
+            await new Promise(r => setTimeout(r, 300));
+            closing.remove();
+            const during = el.querySelectorAll('.map-jr-popup').length;
+            host.destroy();
+            const out = {during, open: open.isConnected, marker: marker.isConnected, popups: el.querySelectorAll('.map-jr-popup').length, closes};
+            el.remove();
+            return out;
+        }, renderer);
+        check(`[${renderer}] destroy() removes the popups (open or fading out) and the markers of overlay() at once, and does not call onClose`,
+            destroyed.during === 2 && !destroyed.open && !destroyed.marker && destroyed.popups === 0 && destroyed.closes === 0, JSON.stringify(destroyed));
         // The control colorScheme() (#541): for each start (no value, 'auto' with the system light and dark, a fixed value),
         // what two clicks give: the value of the description, the scheme of the map, the calls of onColorSchemeChange and the label.
         const toggles = {};
@@ -1495,12 +1598,12 @@ for (const renderer of renderers) {
             await wait(1500);
             stop();
             const offA = h.listen('test22', () => { throw new Error('thrown by a listener'); }), offB = h.listen('test22', () => second++);
-            const log = console.error;
+            const log = console.error, reported = [], offError = h.listen('error', e => reported.push(e.error?.message));
             console.error = () => {};
             h._map.fire('test22');
             console.error = log;
-            offA(); offB();
-            return {calls, second, error: h.state.get().error?.message};
+            offA(); offB(); offError();
+            return {calls, second, error: reported.join()};
         });
         check(`[${renderer}] a watchFeatures listener that throws is called again, and a listener that throws leaves the next listener its event and is reported as an error`,
             thrown.calls >= 2 && thrown.second === 1 && thrown.error === 'thrown by a listener', JSON.stringify(thrown));
@@ -1532,12 +1635,12 @@ for (const renderer of renderers) {
 
         // 5c. A rejection of the question of watchFeatures is an error of the map, and is not lost (#92).
         const rejected = await page.evaluate(async () => {
-            const h = window.t.host, log = console.error;
+            const h = window.t.host, log = console.error, reported = [], offError = h.listen('error', e => reported.push(e.error?.message));
             console.error = () => {};
             const stop = h.watchFeatures({lng: -74.0105, lat: 40.7045}, {}, () => {});
             await new Promise(r => setTimeout(r, 600));
-            stop(); console.error = log;
-            return h.state.get().error?.message ?? '';
+            stop(); offError(); console.error = log;
+            return reported.join(' | ');
         });
         check(`[${renderer}] a watchFeatures question that is rejected is reported as an error of the map`, rejected.includes('queryFeatures()'), rejected);
 
@@ -1621,6 +1724,51 @@ if (only === 'worker') { await browser.close(); process.exit(failed ? 1 : 0); }
         check('the file for the images of a style does not load: the map reports an error and the page has no unhandled rejection',
             got.length === 1 && got[0].startsWith('[map-jr-gl] the style: the code for the images') && !rejections.length, JSON.stringify({got, rejections}));
     } catch (e) { check('the test of a failed style-images file was completed', false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
+// A style that is not a style (#539): an error of the map (`onError`) that says what is missing, no error
+// of the page, and the map draws the next style. Each style is given as an object and as the answer of a URL.
+for (const renderer of ['main', 'worker']) {
+    const page = await browser.newPage({viewport: {width: 900, height: 600}});
+    const thrown = [];
+    page.on('pageerror', e => thrown.push(e.message));
+    try {
+        await page.goto(origin + '/bench');
+        const out = await page.evaluate(async renderer => {
+            const lib = await import('/dist/map-jr-gl.js'), wait = ms => new Promise(r => setTimeout(r, ms)), results = {}, unhandled = [];
+            window.addEventListener('unhandledrejection', e => unhandled.push(String(e.reason?.message ?? e.reason)));
+            const good = {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]};
+            const bad = {noLayers: {version: 8, sources: {}}, layersNotAList: {version: 8, sources: {}, layers: {bg: {type: 'background'}}}, notAnObject: 42};
+            const url = style => 'data:application/json,' + encodeURIComponent(JSON.stringify(style));
+            const run = async (name, style) => {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'})), errors = [];
+                const spec = {style, renderer, attribution: false, onError: e => errors.push(e.message)};
+                let host;
+                try { host = lib.createMap(el, spec); } catch (e) { results[name] = {made: String(e.message)}; el.remove(); return; }
+                await wait(700);
+                const first = errors.join(' | ');
+                // The next style is drawn, and a later style that is not a style gives an error again.
+                host.update({...spec, style: good});
+                const idle = await Promise.race([new Promise(r => host.state.subscribe(s => s.idle, i => i && r(true))), wait(5000).then(() => false)]);
+                const before = errors.length;
+                host.update(spec);
+                await wait(700);
+                results[name] = {first, idle, second: errors.slice(before).join(' | ')};
+                host.destroy(); el.remove();
+            };
+            for (const [name, style] of Object.entries(bad)) { await run(name, style); await run(name + 'URL', url(style)); }
+            // (A style with no "sources" has no source: its layers without a source are drawn.)
+            await run('noSources', {version: 8, layers: good.layers});
+            return {results, unhandled};
+        }, renderer);
+        const said = /^\[map-jr-gl\] The style has no list "layers"/;
+        for (const [name, r] of Object.entries(out.results)) {
+            if (name === 'noSources') check(`[${renderer}] a style with no "sources" is drawn without an error`, r.first === '' && r.idle && r.second === '', JSON.stringify(r));
+            else check(`[${renderer}] a style that is not a style (${name}): one error of the map that names "layers", and update() with a good style draws`,
+                said.test(r.first) && !r.first.includes(' | ') && r.idle && said.test(r.second) && !r.second.includes(' | '), JSON.stringify(r));
+        }
+        check(`[${renderer}] a style that is not a style gives no error of the page`, !thrown.length && !out.unhandled.length, JSON.stringify({thrown, unhandled: out.unhandled}));
+    } catch (e) { check(`[${renderer}] the test of a style that is not a style was completed`, false, String(e.message).split('\n')[0]); }
     await page.close();
 }
 // A map that is destroyed while it loads (React StrictMode does this on each mount), and two maps in one element.
@@ -1832,7 +1980,7 @@ for (const [build, file] of [['the development build, and the file of the checks
 }
 
 // A browser without WebGL2, on the page and in the worker: `supported()` says so before a map is made. A map that is
-// made all the same reports one error (`onError`, `state.error`) and puts a message into the container.
+// made all the same reports one error (`onError`) and puts a message into the container.
 for (const [entry, renderer] of [['main API', 'worker'], ['main API', 'main'], ['maplibre-compat', 'worker']]) {
     const page = await browser.newPage({viewport: {width: 900, height: 600}});
     try {
@@ -1855,7 +2003,7 @@ for (const [entry, renderer] of [['main API', 'worker'], ['main API', 'main'], [
                 lib.configure({createWorker});
                 supported = lib.supported();
                 const host = lib.createMap(el, {style, initialView: {center: [-74.0065, 40.7085], zoom: 14.3}, renderer, attribution: false, onError: e => errors.push(e.message)});
-                state = () => ({error: host.state.get().error?.message, loaded: host.state.get().loaded});
+                state = () => ({error: errors[0], loaded: host.state.get().loaded});
                 destroy = () => host.destroy();
             } else {
                 const lib = await import('/dist/map-jr-gl-maplibre-compat.js');
@@ -1947,7 +2095,7 @@ for (const other of [true, false]) {
             window.tapHost = lib.createMap(el, {style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, initialView: {center: [0, 0], zoom: 2}, controls: [navigation()], attribution: false});
             for (let i = 0; i < 50 && !el.querySelector('.map-jr-ctrl-zoom-in'); i++) await new Promise(r => setTimeout(r, 100));
         });
-        const look = () => page.evaluate(() => { const s = getComputedStyle(document.querySelector('.map-jr-ctrl-zoom-in')); return `${s.backgroundColor} ${s.outlineStyle} ${s.webkitTapHighlightColor}`; });
+        const look = () => page.evaluate(() => { const e = document.querySelector('.map-jr-ctrl-zoom-in'); if (!e) return 'no button'; const s = getComputedStyle(e); return `${s.backgroundColor} ${s.outlineStyle} ${s.webkitTapHighlightColor}`; });
         const before = await look();
         await page.tap('.map-jr-ctrl-zoom-in'); await page.waitForTimeout(400);
         const after = await look();
@@ -2455,6 +2603,34 @@ for (const renderer of ['worker', 'main']) {
         const e = await styled({csp: "style-src 'nonce-x'", adopt: false});
         check("a page with style-src 'nonce-x' and no adoptedStyleSheets has styled controls with nonce: 'x' (#47)", ok(e.first), JSON.stringify(e));
     } catch (e) { check('the style sheet in a shadow root and with a nonce was checked', false, String(e.message).split('\n')[0]); }
+}
+// A touch screen gets buttons of 44px, as docs/api.md says for `--map-control-size`, in both entries (#639). (A blank
+// page: /bench loads the CSS of MapLibre GL JS, which sets the size of the buttons itself.)
+{
+    const context = await browser.newContext({viewport: {width: 600, height: 400}, hasTouch: true, isMobile: true});
+    const page = await context.newPage();
+    try {
+        await page.route(`${origin}/blank-page`, r => r.fulfill({contentType: 'text/html', body: '<!doctype html><title>blank</title><body></body>'}));
+        await page.goto(`${origin}/blank-page`);
+        const sizes = await page.evaluate(async () => {
+            const lib = await import('/dist/map-jr-gl.js'), {navigation} = await import('/dist/controls.js'), compat = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const wait = ms => new Promise(r => setTimeout(r, ms)), style = {version: 8, sources: {}, layers: []};
+            const box = () => document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+            const size = b => b && `${getComputedStyle(b).width} ${getComputedStyle(b).height}`;
+            const el = box(), host = lib.createMap(el, {style, renderer: 'main', controls: [navigation()]});
+            let b = null;
+            for (let i = 0; i < 50 && !(b = el.querySelector('.map-jr-ctrl-zoom-in')); i++) await wait(50);
+            const out = {coarse: matchMedia('(pointer: coarse)').matches, main: size(b)};
+            host.destroy();
+            const el2 = box(), m = new compat.Map({container: el2, attributionControl: false, center: [0, 0], zoom: 1, style});
+            m.addControl(new compat.NavigationControl());
+            out.compat = size(el2.querySelector('.map-jr-ctrl-zoom-in'));
+            m.remove();
+            return out;
+        });
+        check('a touch screen gets buttons of 44px in both entries (#639)', sizes.coarse && sizes.main === '44px 44px' && sizes.compat === '44px 44px', JSON.stringify(sizes));
+    } catch (e) { check('the size of the buttons on a touch screen was checked', false, String(e.message).split('\n')[0]); }
+    finally { await context.close(); }
 }
 // circle-pitch-alignment and circle-pitch-scale (#567). One circle of radius 20 is behind the centre of a map with a
 // pitch of 60 degrees, where the map is drawn at about 0.8 of its size at the centre. The size of the dark box on the

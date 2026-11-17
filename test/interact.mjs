@@ -1720,6 +1720,50 @@ for (const mode of renderers) {
         // (The browser writes its own line to the console for each 404 that this test asks for.)
         for (let i = errors.length; i-- > errorsBefore;) if (errors[i].startsWith('Failed to load resource')) errors.splice(i, 1);
     }
+    // A style that is not a style (#539): an `error` event that says what is missing, no error of the page, and the map
+    // works with the next style. Each style is given as an object and as the answer of a URL.
+    {
+        const errorsBefore = errors.length;
+        const out = await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), wait = ms => new Promise(r => setTimeout(r, ms));
+            const thrown = [], onError = e => thrown.push(String(e.reason?.message ?? e.message));
+            addEventListener('unhandledrejection', onError); addEventListener('error', onError);
+            const good = {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]};
+            const bad = {noLayers: {version: 8, sources: {}}, layersNotAList: {version: 8, sources: {}, layers: {bg: {type: 'background'}}}, notAnObject: 42};
+            const url = style => 'data:application/json,' + encodeURIComponent(JSON.stringify(style)), results = {};
+            const run = async (name, style) => {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'})), seen = [];
+                let m, made = '';
+                try { m = new mod.Map({container: el, style, renderer: mode, attributionControl: false, center: [0, 0], zoom: 1}); } catch (e) { made = String(e.message); }
+                if (m) {
+                    for (const type of ['error', 'load']) m.on(type, e => seen.push(type === 'error' ? 'error: ' + (e.error?.message ?? e.error) : type));
+                    await wait(700);
+                    const first = seen.join(' | ');
+                    // The next style loads the map, and a later style that is not a style leaves that style in place.
+                    m.setStyle(good);
+                    for (let i = 0; i < 40 && !seen.includes('load'); i++) await wait(100);
+                    const loaded = seen.includes('load'), before = seen.length;
+                    m.setStyle(style);
+                    await wait(700);
+                    results[name] = {first, loaded, second: seen.slice(before).join(' | '), kept: !!m.getLayer('bg')};
+                    m.remove();
+                } else results[name] = {made};
+                el.remove();
+            };
+            for (const [name, style] of Object.entries(bad)) { await run(name, style); await run(name + 'URL', url(style)); }
+            // (A style with no "sources" has no source: its layers without a source are drawn.)
+            await run('noSources', {version: 8, layers: good.layers});
+            removeEventListener('unhandledrejection', onError); removeEventListener('error', onError);
+            return {results, thrown};
+        }, mode);
+        const said = /^error: \[map-jr-gl\] The style has no list "layers"/;
+        for (const [name, r] of Object.entries(out.results)) {
+            if (name === 'noSources') check(`[${mode}] a style with no "sources" loads without an error`, r.first === 'load' && r.loaded && r.second === '', JSON.stringify(r));
+            else check(`[${mode}] a style that is not a style (${name}): one error event that names "layers", then setStyle with a good style loads the map and the map keeps it`,
+                said.test(r.first) && !r.first.includes(' | ') && r.loaded && said.test(r.second) && !r.second.includes(' | ') && r.kept, JSON.stringify(r));
+        }
+        check(`[${mode}] a style that is not a style gives no error of the page`, !out.thrown.length && errors.length === errorsBefore, JSON.stringify({thrown: out.thrown, page: errors.slice(errorsBefore)}));
+    }
     // A container under a CSS transform (#189): the map takes the layout size, as MapLibre does, and event.point is in
     // element pixels. One container is scaled itself, the other sits in a scaled parent.
     {
@@ -2978,6 +3022,36 @@ for (const mode of renderers) {
         });
         check('[main] Popup: addTo() during the closing animation keeps it open, remove() twice fires close once, the focus goes to the map when its marker is removed, and Enter on a child of the marker does not toggle it',
             faults.reopened && faults.closesReopen === 1 && faults.closesTwice === 1 && faults.gone && faults.inPopup && faults.focusMap && !faults.childToggles, JSON.stringify(faults));
+        // #709: Escape closes a popup that has a close button and holds the focus, and the focus returns to the marker.
+        const escape = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), m = window.a11yMap, wait = t => new Promise(r => setTimeout(r, t));
+            const key = el => { const e = new KeyboardEvent('keydown', {key: 'Escape', bubbles: true, cancelable: true}); el.dispatchEvent(e); return e.defaultPrevented; };
+            let closes = 0;
+            const mk = new mod.Marker().setLngLat([0, 0]).setPopup(new mod.Popup().setText('Escape').on('close', () => closes++)).addTo(m);
+            mk.getElement().focus();
+            mk.getElement().dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
+            const p = mk.getPopup(), inPopup = p.getElement().contains(document.activeElement);
+            // (A key that the content used does not close the popup.)
+            const used = e => e.preventDefault();
+            p.getElement().addEventListener('keydown', used, true);
+            key(document.activeElement);
+            const keptUsed = p.isOpen();
+            p.getElement().removeEventListener('keydown', used, true);
+            const prevented = key(document.activeElement), closed = !p.isOpen();
+            await wait(500);
+            const focusMarker = document.activeElement === mk.getElement(), gone = !p.getElement().isConnected;
+            mk.remove();
+            // (Without a close button, the popup stays open.)
+            const input = document.createElement('input');
+            const plain = new mod.Popup({closeButton: false}).setLngLat([0, 0]).setDOMContent(input).addTo(m);
+            input.focus();
+            const plainPrevented = key(input), plainOpen = plain.isOpen() && document.activeElement === input;
+            plain.remove();
+            await wait(500);
+            return {inPopup, keptUsed, prevented, closed, closes, focusMarker, gone, plainPrevented, plainOpen};
+        });
+        check('[main] Popup: Escape closes a popup that has a close button and holds the focus, the focus returns to the marker, and a popup without a close button stays open',
+            escape.inPopup && escape.keptUsed && escape.prevented && escape.closed && escape.closes === 1 && escape.focusMarker && escape.gone && !escape.plainPrevented && escape.plainOpen, JSON.stringify(escape));
         // A closing animation that never ends (here: paused, as on a page that draws no frames) does not keep the popup on the page.
         const stuck = await page.evaluate(async () => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), m = window.a11yMap, wait = t => new Promise(r => setTimeout(r, t));
@@ -2990,6 +3064,38 @@ for (const mode of renderers) {
             return {connected: p.getElement().isConnected, open: p.isOpen()};
         });
         check('[main] Popup: remove() removes the element when the closing animation never ends', !stuck.connected && !stuck.open, JSON.stringify(stuck));
+        // #435: the other cases in which the closing animation does not play. The element leaves the page on a hidden page
+        // (at once), in a container with `display: none`, and when the map is removed (at once, open or fading out).
+        const left = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), wait = t => new Promise(r => setTimeout(r, t));
+            const el = Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'});
+            document.body.appendChild(el);
+            const m = new mod.Map({container: el, renderer: 'main', center: [0, 0], zoom: 1, attributionControl: false, style: {version: 8, sources: {}, layers: []}});
+            const popup = text => new mod.Popup().setLngLat([0, 0]).setText(text).addTo(m), on = p => p.getElement().isConnected;
+            const hidden = popup('Hidden page'), none = popup('No display');
+            await wait(300);
+            Object.defineProperty(document, 'hidden', {get: () => true, configurable: true});
+            try { hidden.remove(); } finally { delete document.hidden; }
+            const hiddenPage = on(hidden);
+            el.style.display = 'none';
+            none.remove();
+            await wait(1000);
+            const displayNone = on(none);
+            el.style.display = '';
+            let closes = 0;
+            const open = popup('Open').on('close', () => closes++), fading = popup('Fading').on('close', () => closes++);
+            const marker = new mod.Marker().setLngLat([0, 0]).setPopup(new mod.Popup().setText('Of the marker')).addTo(m).togglePopup();
+            await wait(300);
+            fading.remove();
+            const during = on(fading);
+            m.remove();
+            const out = {hiddenPage, displayNone, during, open: on(open) || open.isOpen(), fading: on(fading), marker: on(marker) || on(marker.getPopup()), closes,
+                rest: el.querySelectorAll('.maplibregl-popup,.maplibregl-marker').length};
+            el.remove();
+            return out;
+        });
+        check('[main] Popup: remove() removes the element at once on a hidden page and within a second in a container with display: none; Map.remove() removes its popups and markers at once, and each popup fires close once',
+            !left.hiddenPage && !left.displayNone && left.during && !left.open && !left.fading && !left.marker && left.closes === 2 && left.rest === 0, JSON.stringify(left));
         // A popup that fades out after remove() does not catch a click: the click goes to the map below it.
         const fading = await page.evaluate(async () => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), m = window.a11yMap, wait = t => new Promise(r => setTimeout(r, t));
@@ -3451,6 +3557,60 @@ for (const mode of renderers) {
             return out;
         }, mode);
         check(`[${mode}] a color-relief layer colours the ground by its elevation, with color-relief-opacity`, relief.idle && relief.full.join() === '0,0,255' && Math.abs(relief.half[0] - 128) < 3 && Math.abs(relief.half[1] - 128) < 3 && relief.half[2] === 255, JSON.stringify(relief));
+    }
+
+    // #590: `encoding: 'custom'` of a `raster-dem` source. With the factors 0 and `baseShift: -500`, every elevation is
+    // 500 m, whatever the tiles hold (read as `mapbox`, these tiles give elevations far above 1000 m). A
+    // `color-relief-color` with one stop draws the colour of the stop. With two stops at one elevation it draws one of
+    // the two colours (the expression of the style decides which one), and not a colour that the division by the
+    // distance of zero between the stops makes.
+    if (decodes) {
+        const custom = await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:200px'}));
+            const ramp = (...stops) => ['interpolate', ['linear'], ['elevation'], ...stops];
+            const m = new mod.Map({container: el, renderer: mode, attributionControl: false, center: [7.6586, 45.9763], zoom: 12.4, style: {version: 8,
+                sources: {dem: {type: 'raster-dem', tiles: ['https://tiles.mapterhorn.com/{z}/{x}/{y}.webp'], encoding: 'custom', redFactor: 0, greenFactor: 0, blueFactor: 0, baseShift: -500, tileSize: 512, maxzoom: 12}},
+                layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}},
+                    {id: 'relief', type: 'color-relief', source: 'dem', paint: {'color-relief-color': ramp(0, '#f00', 1000, '#f00', 1001, '#00f', 9000, '#00f')}}]}});
+            const idle = () => new Promise(r => { m.once('idle', () => r(true)); setTimeout(() => r(false), 20000); });
+            const centre = async () => { const bmp = await createImageBitmap(await m.toBlob()), c = new OffscreenCanvas(bmp.width, bmp.height).getContext('2d'); c.drawImage(bmp, 0, 0); return [...c.getImageData(bmp.width >> 1, bmp.height >> 1, 1, 1).data].slice(0, 3).join(); };
+            const out = {idle: await idle()};
+            out.custom = await centre();
+            out.elevation = await m.queryElevation([7.6586, 45.9763], {source: 'dem'});
+            const colour = async stops => { m.setPaintProperty('relief', 'color-relief-color', stops); await idle(); return centre(); };
+            out.one = await colour(ramp(300, '#0f0'));
+            out.below = await colour(ramp(400, '#f00', 400, '#0f0'));
+            out.at = await colour(ramp(500, '#f00', 500, '#0f0'));
+            out.above = await colour(ramp(600, '#f00', 600, '#0f0'));
+            m.remove(); el.remove();
+            return out;
+        }, mode);
+        check(`[${mode}] a raster-dem source with encoding 'custom' gives its elevations from the factors and the shift`, custom.idle && custom.custom === '255,0,0' && custom.elevation === 500, JSON.stringify(custom));
+        // A factor that is not a finite number: the engine warns one time for the source (also when the style is set
+        // again) and reads the source as `mapbox`, so it gives the elevation of a source without `encoding`.
+        const told = [], listen = m => { if (m.type() === 'warning' && m.text().includes('"redFactor"')) told.push(m.text()); };
+        page.on('console', listen);
+        const wrong = await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:200px'}));
+            const dem = more => ({type: 'raster-dem', tiles: ['https://tiles.mapterhorn.com/{z}/{x}/{y}.webp'], tileSize: 512, maxzoom: 12, ...more});
+            const style = () => ({version: 8, sources: {wrong: dem({encoding: 'custom', redFactor: '2', baseShift: 5}), plain: dem({})},
+                layers: [{id: 'hills', type: 'hillshade', source: 'wrong'}]});
+            const m = new mod.Map({container: el, renderer: mode, attributionControl: false, center: [7.6586, 45.9763], zoom: 12.4, style: style()});
+            const idle = () => new Promise(r => { m.once('idle', () => r(true)); setTimeout(() => r(false), 20000); });
+            const out = {idle: await idle()};
+            m.setStyle(style());
+            await idle();
+            out.wrong = await m.queryElevation([7.6586, 45.9763], {source: 'wrong'});
+            out.plain = await m.queryElevation([7.6586, 45.9763], {source: 'plain'});
+            m.remove(); el.remove();
+            return out;
+        }, mode);
+        await page.waitForTimeout(100);
+        page.off('console', listen);
+        check(`[${mode}] a factor of encoding 'custom' that is not a finite number gives one warning and the mapbox encoding`, wrong.idle && told.length === 1 && told[0].startsWith('[map-jr-gl] The source "wrong": ') && Number.isFinite(wrong.wrong) && wrong.wrong === wrong.plain, JSON.stringify({wrong, told}));
+        check(`[${mode}] a color-relief layer with one stop, or two stops at one elevation, draws the colour of a stop`, custom.one === '0,255,0' && [custom.below, custom.at, custom.above].every(c => c === '255,0,0' || c === '0,255,0'), JSON.stringify(custom));
     }
 
     // A tile of the deepest level of its source has only the labels of the layers that show near the zoom of the map.

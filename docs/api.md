@@ -43,7 +43,7 @@ if (supported()) {
 }
 ```
 
-A map that is made in such a browser does not load. It reports one error (`onError` and `state.error`) with the
+A map that is made in such a browser does not load. It reports one error (`onError`) with the
 message `[map-jr-gl] The map cannot be shown: WebGL2 is not available. Call supported() before you make a map, and
 show other content when it returns false.` It also puts an element into the container with the class
 `map-jr-unavailable` and the text "This browser cannot show the map.". The element fills the container. To change
@@ -139,7 +139,7 @@ The library compares each field with the field of the last description:
 | `interactiveLayers` | The ids of style layers. The features of these layers under the pointer are in `state.hover` and in `onClick`. |
 | `hoverState` | `true`: the map gives the top feature of `interactiveLayers` under the pointer the feature state `hover: true`, and removes it when the pointer leaves the feature or the map. A style highlights it with `['case', ['boolean', ['feature-state', 'hover'], false], 0.9, 0.5]`. A feature needs an id: a feature with no id gets no state, and the development build warns once for the layer (set `promoteId` of the source, or `generateId: true` for a GeoJSON source). A GeoJSON feature whose `id` is a string has no id for the map unless the source has `promoteId`. A layer that does not read `feature-state` costs nothing more. An `icon-image` with `params` that read `feature-state` builds the tiles of the source again at each change, which is slow for a hover. The default is `false`, so an application that sets `hover` itself with `setFeatureState` is not changed. |
 | `onClick` | A function that is called for a click, with `point`, `lngLat` and `features`. |
-| `onError` | A function that is called with each error of the map (an `Error`): a style or a source that does not load, a mistake in a style edit, a failure of the renderer. Use it to send errors to your error tracker. Without it, the map writes each error to the console with `console.error`. |
+| `onError` | A function that is called with each error of the map (an `Error`): a style or a source that does not load, a style that has no list `layers`, a mistake in a style edit, a failure of the renderer. Use it to send errors to your error tracker. Without it, the map writes each error to the console with `console.error`. |
 | `minZoom`, `maxZoom`, `maxPitch`, `maxBounds` | The limits of the camera. `maxBounds` keeps the whole view inside the bounds, as MapLibre GL JS does: the canvas less the padding, with no regard to bearing and pitch. When the bounds are smaller than that view, the zoom rises until they fill it. A west edge east of the east edge (for example `[[150, -50], [-120, 10]]`) gives bounds that cross the antimeridian. |
 | `cooperativeGestures` | `true`: the wheel zooms the map only with Ctrl (⌘ on a Mac), one finger scrolls the page and two fingers move the map. A blocked gesture shows a hint over the map. The default is `false`. `update()` can turn it on and off. |
 | `colorScheme` | The colours of the controls, the popup, the attribution and the message of a browser without WebGL 2: `'light'` (the default), `'dark'` or `'auto'`. `'auto'` follows the media query `prefers-color-scheme` and changes while the page is open. An application with its own theme switch passes `'light'` or `'dark'`. While the scheme is dark, the container has the class `map-jr-dark`. The dark colours have no specificity, so a rule of the application and the custom properties `--map-control-*`, `--map-attribution-background` and `--map-popup-*` still win. `update()` changes it. The map also sets the global state property `color-scheme` of the style to the resolved scheme, so that a style can follow it: see [Dark mode](#dark-mode). A value that is not one of the three gives the light colours, and the development build warns once. |
@@ -329,13 +329,21 @@ any key in `metadata`, so MapLibre GL JS reads the style and ignores the images.
 - An image of `images` of the description is used in place of an image of the style with the same name, and an image
   of the style in place of an image of the sprite.
 - The images belong to the style: a new style removes them, and an `update` that changes `images` keeps them.
-- A style comes from another party, so the map takes at most 200 images from it, each at most 200,000 characters of
+- A style comes from another party, so the map takes at most 500 images from it, each at most 200,000 characters of
   text. An SVG of the style must not refer to another file (`href` or `url(...)` other than `#...` and `data:`). The
-  map leaves out an image that breaks one of these rules and reports an error (`onError`, `state.error`) with its name.
+  map leaves out an image that breaks one of these rules and reports an error (`onError`) with its
+  name.
+- The map draws an image of the style when a layer asks for it, and requests an image that is a URL then. An image
+  that no layer of the view names costs no time and no room in the texture, and an image that does not load is an
+  error only when a layer asks for it. So a style with many images is ready as soon as a style with a sprite. An SVG
+  template is known to the map at once, and each of its variants is drawn when a layer asks for it. The images that
+  are drawn share the texture of the run-time images (see [An image that is a template](#an-image-that-is-a-template)):
+  that texture is full after 961 icons of the size of those of OpenFreeMap (most are 21 by 21 CSS pixels) at a pixel
+  ratio of 3.
 - The server renderer (`renderToSVG`, `renderToImage`) draws the SVG images of the style, with the same rules.
 - The compat entry (`@map-jr/map-jr-gl/maplibre-compat`) does not read the key, as MapLibre GL JS does not.
 
-An image that does not load is an error of the map (`onError`, `state.error`) with the name of the image. The map
+An image that does not load is an error of the map (`onError`) with the name of the image. The map
 draws the layer without that image.
 
 ### A sprite of the description
@@ -362,7 +370,7 @@ const map = createMap(document.getElementById('map'), {
 - A sprite of a style is one URL (the id `default`) or a list. A sprite of the description replaces a sprite of the
   style with the same id, so the id `default` replaces the sprite of a style whose `sprite` is one URL.
 - An image of `images` or of the style is used in place of an image of a sprite with the same name (`pins:hotel`).
-- A sprite that does not load is an error of the map (`onError`, `state.error`) with its URL. The map draws the images
+- A sprite that does not load is an error of the map (`onError`) with its URL. The map draws the images
   of the other sprites.
 - A change of `sprite` in `update()` loads the style again. A new style gets the sprites of the description.
 - The server renderer (`renderToSVG`, `renderToImage`) has the option `sprite` with the same rule. There, a relative
@@ -373,7 +381,8 @@ const map = createMap(document.getElementById('map'), {
 
 When a layer names an image that the map does not have, the map reports the event `styleimagemissing` with the
 name as `id`. Add an image with that name to `images`, and the map draws it. Use this for images that your code
-makes from the name, for example a badge for each value of a property.
+makes from the name, for example a badge for each value of a property. The map reports a name one time for
+each style: after a new style, it reports a name again that is still missing.
 
 ```js
 import {createMap} from '@map-jr/map-jr-gl';
@@ -727,7 +736,9 @@ stop(); // stops the first subscription
 | `pointer` | Where the pointer is while it is over the map: `{point: {x, y}, lngLat: [lng, lat]}`, with `point` in CSS pixels from the top left corner of the map. It is `null` before the first move and after the pointer leaves the map. It changes at each move of the mouse, also without `interactiveLayers`, and a touch does not set it. |
 | `renderer` | `'worker'` or `'main'`, when the map has started. |
 | `colorScheme` | `'light'` or `'dark'`: `colorScheme` of the description, with `'auto'` resolved by `prefers-color-scheme`. |
-| `error` | The last error only. An earlier error is not kept: use `onError` in the description to get each one. |
+
+The state has no field for errors. To get each error of the map, write `onError` in the description or call
+`map.listen('error', fn)` (see [Events](#events)).
 
 `loaded` becomes `true` before `idle` does, in the same task. A listener of the `load` event and a subscriber of
 `loaded` see `idle: false`, so code there that waits for the first `idle` gets it.
@@ -1006,7 +1017,7 @@ const popup = map.overlay(content, {lngLat, popup: true, onClose: () => popup.re
 | `anchor` | The part of the element that is at the position: `'center'` (the default), `'bottom'`, `'top-left'` and others. |
 | `offset` | A distance in pixels from the position, to the right and down. |
 | `popup` | `true` to show the element in a box with a pointer to the position. |
-| `onClose` | For a popup: the box gets a button to close it, and this function is called. |
+| `onClose` | For a popup: the box gets a button to close it, and this function is called. The Escape key does the same while the keyboard focus is inside the popup. A popup without `onClose` does not react to the key. |
 | `draggable` | `true` to let the user move the element with the mouse, a finger or a pen. The default is `false`. It has no effect on a popup. |
 | `onDragStart`, `onDrag`, `onDragEnd` | For a draggable element: called when a drag starts, at each move, and when it ends, with the position of the element as `[lng, lat]`. |
 
@@ -1046,7 +1057,7 @@ symbol layer with an image: it is drawn on the canvas, and 100,000 markers cost 
 | `update(description)` | Changes the map to a new description. Takes the complete description. See [Change the map](#change-the-map). |
 | `patch(part)` | Changes only the fields of `part`; a field that is `undefined` is removed. See [Change the map](#change-the-map). |
 | `description` | The description of the last `createMap`, `update` or `patch` (read only). |
-| `destroy()` | Removes the map and frees its memory. It can be called while the map loads. Call it before you make another map in the same element: a second map in an element that has a map leaves two canvases in the element, and the library warns in the console. |
+| `destroy()` | Removes the map and frees its memory. It also removes the elements of `overlay()` from the page at once, without the closing animation of a popup, and it does not call `onClose`. It can be called while the map loads. Call it before you make another map in the same element: a second map in an element that has a map leaves two canvases in the element, and the library warns in the console. |
 | `moveTo(target)` | Moves the camera now to a view or to `bounds` (with `padding` and `maxZoom` for the fit), with `bearing`, `pitch`, `duration` (milliseconds) and `fly`. It does not change the padding of the map. See [The camera](#the-camera). |
 | `fitBounds(bounds, options)` | The short form of `moveTo({bounds, ...options})`: the options are those of `moveTo` other than `center` and `zoom`, and `duration` is 800 ms by default. |
 | `queryFeatures(at, options)`, `watchFeatures(at, options, listener)` | Find the features that the style layers draw, one time or kept up to date. See [Queries](#queries). |
@@ -1125,7 +1136,7 @@ has the right type, and a name that is not in the table does not compile.
 | `stats` | At most one time each second while the map draws. | `fps` (frames per second), `frameMs` (the CPU time of a frame in milliseconds), `labels` (the number of labels and icons that the last frame placed among the labels; icons that are drawn from buffers are not counted, see [Markers](markers.md#which-icons-are-fast)). |
 | `geolocate` | The geolocate control has a position. | `coords`. |
 | `webglcontextlost`, `webglcontextrestored` | The browser has taken the WebGL context away, or the map has it again. The map starts again on a new canvas with the same view and data. A map with the worker renderer starts again on the main thread and writes one warning when the worker loses the context before its first frame, loses it twice within 10 seconds, or does not draw in the 5 seconds after its start or a restart (it reports no first frame, or stops drawing after it). A worker that does not draw in that time also fires `webglcontextlost` first. When the main thread then loses the context again before its first frame, or does not draw in the 15 seconds after the restart, the map fires `error` and does not start again. The time that the page is hidden, or that the map has no size, does not count. | |
-| `error` | An error of the map. `onError` and `state.error` have the same errors as an `Error`. | `error`. |
+| `error` | An error of the map. `onError` has the same errors as an `Error`. | `error`. |
 
 ## Custom protocols
 

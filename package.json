@@ -1,6 +1,6 @@
 {
   "name": "@map-jr/map-jr-gl",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "A small vector map renderer for the web with worker rendering, server rendering and canvas markers; reads MapLibre styles.",
   "scripts": {
     "test": "pnpm test:unit && pnpm test:expressions && pnpm test:api && pnpm test:size && pnpm test:examples && pnpm test:consistency",
@@ -15,14 +15,14 @@
     "status": "node scripts/status.mjs",
     "test:cloudflare": "node test/cloudflare/run.mjs",
     "test:unit": "node --experimental-transform-types --no-warnings --test test/unit/*.test.ts",
-    "test:expressions": "node test/conformance/expressions.mjs --min=355",
+    "test:expressions": "node test/conformance/expressions.mjs --min=357",
     "test:api": "node test/conformance/api.mjs --min=122",
     "test:browser": "node test/interact.mjs .cache/shots && node test/host.mjs",
     "bench": "node test/bench/compare.mjs",
     "test:loading": "node test/loading.mjs",
     "test:vue": "node test/vue.mjs",
     "test:react": "node test/react.mjs",
-    "test:render": "node test/conformance/render.mjs --min=1132"
+    "test:render": "node test/conformance/render.mjs --min=1148"
   },
   "keywords": [
     "map",
@@ -164,6 +164,40 @@
   },
   "module": "./dist/map-jr-gl.js",
   "types": "./dist/types/index.d.ts",
+  "typesVersions": {
+    "*": {
+      "maplibre-compat": [
+        "dist/types/maplibre-compat.d.ts"
+      ],
+      "controls": [
+        "dist/types/control-specs.d.ts"
+      ],
+      "react": [
+        "dist/types/react.d.ts"
+      ],
+      "svelte": [
+        "dist/types/svelte.d.ts"
+      ],
+      "nuxt": [
+        "dist/types/nuxt.d.ts"
+      ],
+      "vue": [
+        "dist/types/vue.d.ts"
+      ],
+      "standalone": [
+        "dist/types/standalone.d.ts"
+      ],
+      "maplibre-compat/standalone": [
+        "dist/types/maplibre-compat.d.ts"
+      ],
+      "server": [
+        "dist/types/server.d.ts"
+      ],
+      "worker": [
+        "dist/types/worker.d.ts"
+      ]
+    }
+  },
   "files": [
     "dist",
     "CHANGELOG.md",

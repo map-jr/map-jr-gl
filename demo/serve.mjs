@@ -133,7 +133,7 @@ http.createServer(async (req, res) => {
             const width = +(url.searchParams.get('w') || 1000), height = +(url.searchParams.get('h') || 700);
             const zoom = +(url.searchParams.get('zoom') || view.zoom), bearing = +(url.searchParams.get('bearing') || view.bearing);
             const t0 = performance.now();
-            const {svg, tiles} = await renderToSVG({style, ...view, zoom, bearing, width, height, resolveImage: shield, ssrOverrides: !url.searchParams.has('full'), images, ...(url.searchParams.has('nomarkers') ? {} : asSpec(markers))});
+            const {svg, tiles} = await renderToSVG({style, ...view, zoom, bearing, width, height, resolveImage: shield, ...(url.searchParams.has('full') ? {overrides: false} : {}), images, ...(url.searchParams.has('nomarkers') ? {} : asSpec(markers))});
             const ms = (performance.now() - t0).toFixed(0);
             if (url.pathname === '/ssr.svg') return send(200, 'image/svg+xml', svg, {'x-render-ms': ms});
             const preload = tiles.map(u => `<link rel="preload" as="fetch" crossorigin href="${u}">`).join('');

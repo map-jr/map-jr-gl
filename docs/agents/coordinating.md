@@ -47,9 +47,11 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
 - **Send a CI failure, a review finding or a decision of the owner to the worker that opened the pull request**
   (`SendMessage`): the failure and the check run, not the task again. A follow-up costs 10,000 to 20,000 tokens and a
   new worker about 100,000.
-- **Turn the "found" lines of a report into issues** at once, or into a comment on the issue they belong to.
-- **Say in each update to the owner** which pull requests wait for the owner and why, with a recommendation. Ask
-  several decisions in one question.
+- **Turn each "found" line of a report into its own issue** at once, in the form of "Issues" in `CLAUDE.md`. Search
+  for an issue of the same fault first (`gh issue list --search`). Do not add a fault to another issue as a comment.
+- **Ask the owner with the question tool** (`AskUserQuestion`; see "How work goes" in `CLAUDE.md`) for each pull
+  request that waits for the owner and each decision, with the recommendation as the first option. Ask several
+  decisions in one call. An update says what happened and does not hold a question.
 - **For a change of the look, the owner wants a live page on a local port** with controls for the values in
   question, not screenshots. The server of a worker ends with the worker, so start `PORT=… node demo/serve.mjs` in
   the background in the worktree of the worker.
@@ -77,6 +79,8 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
 - **The `Browsers` workflow keeps one waiting run,** so a start by hand or a merge while another run waits cancels
   the waiting one. Start the Safari run after the last merge of a series, once the run of that merge has started its
   jobs, and merge nothing until it has finished (about 15 minutes).
+- **When a merged pull request did only a part of its issue,** edit the title and the body of the issue to what is
+  left (the line "Left of the issue" of the report), or close it and file what is left, before the next worker starts.
 - **Do not send a worker to fight for bytes.** If a budget is reached, ask the owner at once.
 - **Each number of `src/mistakes.ts` has one issue.** A new text or check kind takes the number of its issue, and
   `pnpm test:consistency` fails on a number that is taken twice.
@@ -99,7 +103,7 @@ alone cannot.
 ## After a batch
 
 1. Run `pnpm status` once on `main` and open one pull request with the result.
-2. Update the roadmap issue (#55): tick what closed, and correct the text of issues that were partly done.
+2. Check that each issue that the batch touched is closed, or has a title and a body that say what is left.
 3. Read the results of the `Browsers` workflow on the last merged commit
    (`git fetch origin bench-results && git show origin/bench-results:README.md`, and `<system>-<browser>-tests.txt`
    for the names of failing checks). CI runs only Chromium.

@@ -1,11 +1,13 @@
 # Server rendering
 
-The server renderer renders the first view of a map without a browser. Use it for these tasks:
+The server renderer (`@map-jr/map-jr-gl/server`) renders one view of a map to an SVG without WebGL. Use it for these
+tasks:
 
 - Show a map immediately, before the page script runs.
 - Make an image for an email, a document, or a link preview.
+- Export a map as a vector SVG from a page, with no server (see [Export an SVG in the browser](#export-an-svg-in-the-browser)).
 
-It works on Node.js, on Cloudflare Workers, and in other JavaScript environments that have `fetch`.
+It works on Node.js, on Cloudflare Workers, in a browser, and in other JavaScript environments that have `fetch`.
 
 ## Make an SVG
 
@@ -43,6 +45,38 @@ const {svg, tiles} = await renderToSVG({
    ```
 
 3. Create the map with the same style, centre and zoom. The map removes the SVG when its first frame is ready.
+
+## Export an SVG in the browser
+
+`renderToSVG` also runs in a page. This example of the entry `@map-jr/map-jr-gl/server` saves the view as a vector SVG
+when the user clicks a button:
+
+```js
+import {renderToSVG} from '@map-jr/map-jr-gl/server';
+
+document.querySelector('#export').addEventListener('click', async () => {
+  const {svg} = await renderToSVG({
+    style: 'https://tiles.openfreemap.org/styles/liberty',
+    center: [-74.0065, 40.7085],
+    zoom: 14.3,
+    width: 800,
+    height: 500,
+  });
+  const url = URL.createObjectURL(new Blob([svg], {type: 'image/svg+xml'}));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'map.svg';
+  link.click();
+  URL.revokeObjectURL(url);
+});
+```
+
+The page needs a `<button id="export">`. The style, the tiles and the glyphs must allow requests from the page
+(CORS), as for the map itself. To export the view that a map shows, pass its centre, zoom and bearing. The server renderer draws no pitch.
+
+This example ran on 2026-11-17 in Chromium 153 and in WebKit 26.6 of Playwright, with `dist/server.js` loaded as a
+module and no bundler. Each run gave the same SVG of 428 KB, in 0.8 s in Chromium and 0.4 s in WebKit. It is not
+checked in Firefox or in Safari on a device.
 
 ## Make an image
 
@@ -118,8 +152,7 @@ Notes for Cloudflare Workers:
 | `layerFilter` | A function that returns `false` for a layer to leave out |
 | `inlineImages` | When `true`, raster tiles and the sprite go into the SVG as data. Required when the SVG is shown with an `<img>` element. |
 | `highDensity` | When `true`, the render uses the high-density (@2x) sprite |
-| `ssrOverrides` | When `false`, the server changes in the style are ignored. See below. |
-| `overrides` | Server changes for style layers, by the id of the layer: `{building: {hidden: true}}`. For a style that you do not write yourself. See below. |
+| `overrides` | Server changes for style layers, by the id of the layer: `{building: {hidden: true}}`. For a style that you do not write yourself. `false` renders the style with no server change. Without the option, the server changes in the style apply. See below. |
 | `sources`, `layers`, `terrain` | Sources and layers to add to the style, and terrain in place of that of the style, as the fields of the same names in `MapDescription`. A style from a URL is fetched first. |
 | `data` | GeoJSON for GeoJSON sources, by the id of the source, as `data` in `MapDescription`. A key with no source of that id makes a GeoJSON source with the default options. A key that is the id of a source of another type makes `renderToSVG` reject with an error. |
 | `decodeImage` | A function that decodes elevation tiles. Required only for formats other than PNG and lossless WebP. |
@@ -196,7 +229,8 @@ that you pass as `fetch`, or in front of the render.
 This is the case for a network error, for a time limit, and for a tile with an HTTP status that is not successful.
 There are two exceptions: a tile with status 404 or 204 is an empty tile, and the render continues. The renderer
 does not return a part of a map. Catch the error and send the page without the SVG: the map then draws in the
-browser as it does without a server render.
+browser as it does without a server render. The Vue component (`ssr` prop of `<MapJr>`) does this itself, and it
+writes one message to the console of the server.
 
 ```js
 import {renderFirstView} from '@map-jr/map-jr-gl/server';
@@ -246,6 +280,9 @@ const {svg, attribution} = await renderToSVG({
 ```
 
 A value in `overrides` comes before the value in the style.
+
+With `overrides: false`, the renderer ignores every `map-jr:ssr` in the style, `simplify` and `minSize` included. The
+defaults of `simplify` (0.6 pixels) and `minSize` (0.8 pixels) still apply.
 
 | Key | Effect on the server render |
 |---|---|

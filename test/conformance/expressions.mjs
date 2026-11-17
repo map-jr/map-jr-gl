@@ -89,8 +89,9 @@ const walk = dir => {
                 const type = t.propertySpec?.type;
                 if (!legacy && (type === 'string' || type === 'formatted')) got = String(got ?? '');
                 // A property with tokens ("text-field", "icon-image"): the tile builder puts the properties of the feature
-                // in place of the tokens of the value (src/tile.ts). It also trims the text, which is left out here.
-                if (legacy && t.propertySpec?.tokens && typeof got === 'string') got = got.replace(/\{([^}]+)\}/g, (_, k) => feature?.properties?.[k] ?? '');
+                // in place of the tokens of a constant and of a zoom function (src/tile.ts). It also trims the text, which is
+                // left out here.
+                if (prop?.tokens && t.propertySpec?.tokens && typeof got === 'string') got = got.replace(/\{([^}]+)\}/g, (_, k) => feature?.properties?.[k] ?? '');
                 if (typeof got === 'string') got = pickImage(got, name => globals?.availableImages?.includes(name));
                 want = internal(want);
                 if (isColor && typeof got === 'string') got = parseColor(got);

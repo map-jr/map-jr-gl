@@ -3,6 +3,7 @@ import {hillshadeLights, LIGHTS, screenTranslate, type CompiledLayer, type Light
 import {compileProp} from './expr.ts';
 import {LINE_VERTEX, WALL_OTHER, WALL_TOP, type GLBatch, type IconBatch, type LabelSrc, type TileGL} from './tile.ts';
 import type {Placed, RenderItem} from './placement.ts';
+import {demUnpack, type DemEncoding} from './query.ts';
 import {lineMiddle, BASELINE, EM, SDF_BUFFER, SDF_RADIUS, type GlyphAtlas} from './text.ts';
 
 const HEAD = '#version 300 es\nprecision highp float;\n';
@@ -396,7 +397,8 @@ void main() {
     // A `color-relief` layer: the colour of each pixel comes from its elevation. `u_stops` has the elevations of the
     // stops of `color-relief-color` and `u_ramp` has the colour at each stop. The colour between two stops is a linear
     // mix, as in MapLibre GL JS. (The filter of the elevation texture is linear, and so is the encoding: the texture
-    // gives the elevation between its pixels.)
+    // gives the elevation between its pixels.) Two stops of the same elevation have one colour in `u_ramp`,
+    // and the shader does not divide by their distance of zero. (A ramp of one stop arrives here as two stops.)
     'color-relief': [VS_DEM, `
 uniform sampler2D u_image; uniform sampler2D u_ramp; uniform highp sampler2D u_stops; uniform vec4 u_clip; uniform vec4 u_unpack; uniform float u_opacity;
 in vec2 v_uv; in vec2 v_tile; out vec4 o;
@@ -406,7 +408,8 @@ void main() {
   float e = dot(texture(u_image, v_uv).rgb * 255.0, u_unpack.rgb) - u_unpack.a;
   int l = 0, r = textureSize(u_stops, 0).x - 1;
   while (r - l > 1) { int m = (l + r) / 2; if (e < stop(m)) r = m; else l = m; }
-  o = mix(texelFetch(u_ramp, ivec2(l, 0), 0), texelFetch(u_ramp, ivec2(r, 0), 0), clamp((e - stop(l)) / (stop(r) - stop(l)), 0.0, 1.0)) * u_opacity;
+  float d = stop(r) - stop(l);
+  o = mix(texelFetch(u_ramp, ivec2(l, 0), 0), texelFetch(u_ramp, ivec2(r, 0), 0), d > 0.0 ? clamp((e - stop(l)) / d, 0.0, 1.0) : 0.0) * u_opacity;
 }`],
 
     // The icons of a tile that need no place among the labels (see `IconBatch`). The GPU finds the place of each one
@@ -848,7 +851,7 @@ export class GLRenderer {
     }
 
     /** Wraps a decoded raster or elevation tile image as a drawable tile. */
-    createImageTile(image: ImageBitmap | {width: number; height: number; data: Uint8Array}, encoding: string | undefined, id: TileID): GLTile {
+    createImageTile(image: ImageBitmap | {width: number; height: number; data: Uint8Array}, encoding: DemEncoding | undefined, id: TileID): GLTile {
         const dem = !!encoding;
         const gl = this.gl, tex = this.newTexture();
         gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, !dem);
@@ -869,12 +872,11 @@ export class GLRenderer {
             gl.bindTexture(gl.TEXTURE_2D, tex);
             gl.uniform1i(u.u.u_dem, 0);
             gl.uniform1f(u.u.u_zoom, id.z);
-            gl.uniform4fv(u.u.u_unpack, encoding === 'terrarium' ? [256, 1, 1 / 256, 32768] : [6553.6, 25.6, 0.1, 10000]);
+            gl.uniform4fv(u.u.u_unpack, tile.unpack = demUnpack(encoding!));
             gl.bindVertexArray(this.quad);
             gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
             gl.bindFramebuffer(gl.FRAMEBUFFER, null);
             tile.raw = tex; tile.rawSize = image.width;
-            tile.unpack = encoding === 'terrarium' ? [256, 1, 1 / 256, 32768] : [6553.6, 25.6, 0.1, 10000];
             tile.tex = slopes;
             tile.lat = [latFromMerc(id.y / n), latFromMerc((id.y + 1) / n)];
         }
@@ -976,8 +978,8 @@ export class GLRenderer {
             if (L.type === 'fill-extrusion' && this.globe) continue;
             if (L.type === 'background' && this.globe && pass === 'all') {
                 // On the globe the background covers the sphere, tile by tile, and not the whole canvas.
-                const name = L.p.pattern.eval(zoom), place = name ? pattern(name, L.p.opacity.eval(zoom)) : null;
-                if (name && !place) continue;
+                const name = L.p.pattern.eval(zoom), place = name != null ? pattern(name, L.p.opacity.eval(zoom)) : null;
+                if (name != null && !place) continue;
                 const u = place ? undefined : use('fill');
                 if (u) { gl.vertexAttrib4f(1, 1, 1, 1, 1); gl.uniform4fv(u.u_color, color(L)); }
                 gl.bindVertexArray(this.globeGrid().vao);
@@ -989,7 +991,8 @@ export class GLRenderer {
                 }
                 continue;
             }
-            if (L.type === 'background' && L.p.pattern.eval(zoom)) {
+            // A background-pattern that is set but names no image (also "") draws nothing; only an unset one draws the color.
+            if (L.type === 'background' && L.p.pattern.eval(zoom) != null) {
                 const place = pattern(L.p.pattern.eval(zoom), L.p.opacity.eval(zoom));
                 if (!place) continue;
                 // Screen position -> world pixels at zoom Z, about the map centre (pitch is ignored for backgrounds).

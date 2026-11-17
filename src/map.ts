@@ -1170,12 +1170,20 @@ export class Map {
     }
     /** A source or a style that cannot be used: the map reports it, and draws the rest of the style or keeps its style. */
     private sourceFailed = (error: unknown) => { this.fire('error', {error}); };
-    /** The JSON of a style: a copy of an object, or the answer of a URL. */
+    /**
+     * The JSON of a style: a copy of an object, or the answer of a URL. A style comes from another party: one without a
+     * list of layers is an error here, before the map and the engine read the layers (#539).
+     */
     private async loadStyle(style: unknown) {
-        if (typeof style !== 'string') return plain(style);
-        const res = await this.fetchAs('Style')(style);
-        if (!res.ok) throw new Error(`[map-jr-gl] Style ${style}: HTTP ${res.status}`);
-        return res.json();
+        let made: any;
+        if (typeof style !== 'string') made = plain(style);
+        else {
+            const res = await this.fetchAs('Style')(style);
+            if (!res.ok) throw new Error(`[map-jr-gl] Style ${style}: HTTP ${res.status}`);
+            made = await res.json();
+        }
+        if (!Array.isArray(made?.layers)) throw new Error('[map-jr-gl] The style has no list "layers". Give a style object with "version", "sources" and "layers", or its URL.');
+        return made;
     }
     /** `transformStyle` gets the style before and the new style, and returns the style to use (as in MapLibre). */
     async setStyle(style: unknown, options?: {transformStyle?: StyleChange}) {

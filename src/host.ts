@@ -169,7 +169,7 @@ export interface MapDescription extends MapSetup {
      */
     hoverState?: boolean;
     onClick?: (event: MapPointer) => void;
-    /** Called for each error of the map. Without it, the map writes each error to the console. (`state.error` has the last error in each case.) */
+    /** Called for each error of the map. Without it, the map writes each error to the console. */
     onError?: (error: Error) => void;
     minZoom?: number; maxZoom?: number; maxPitch?: number; maxBounds?: Bounds | null;
     /** The mouse cursor over the map. Without it, the cursor is a pointer over a feature of `interactiveLayers`. */
@@ -232,7 +232,6 @@ export interface MapState {
     renderer: 'worker' | 'main' | undefined;
     /** The colour scheme of the controls: `colorScheme` of the description, with `'auto'` resolved. */
     colorScheme: 'light' | 'dark';
-    error: Error | undefined;
 }
 
 /** Where an element of the page is on the map. */
@@ -313,7 +312,7 @@ export interface MapEvents extends
     projectiontransition: MapEventBase<'projectiontransition'> & {newProjection: string};
     /** The geolocate control of `@map-jr/map-jr-gl/controls` has a position. */
     geolocate: MapEventBase<'geolocate'> & {coords: GeolocationCoordinates};
-    /** `error` is usually an `Error`. (`onError` and `state.error` always have an `Error`.) */
+    /** `error` is usually an `Error`. (`onError` always has an `Error`.) */
     error: MapEventBase<'error'> & {error: unknown};
 }
 
@@ -503,7 +502,10 @@ export function makeMap(container: HTMLElement | string, spec: MapDescription, n
     // (The `fonts` of the last description, with URLs that are relative to the page made absolute: the style has its own base.)
     let wantedFonts = spec.fonts;
     // The images in `metadata['map-jr:images']` of the style (#495), and the `images` of the last description, which win by name.
-    let fromStyle: Record<string, ImageInput> = {}, wantedImages = spec.images, styleTurn = 0;
+    // An image of the style is drawn when a layer asks for it (`asked` has the names), so that a style with many images
+    // does not keep the page busy before the first tiles are requested (#628). `styleCode` is the load of the code.
+    let fromStyle: Record<string, ImageInput> = {}, wantedImages = spec.images, styleTurn = 0, asked = new Set<string>(), styleCode: Promise<unknown> | undefined;
+    const adding = new globalThis.Map<string, Promise<unknown>>();
     const absolute = (faces: FontFaces | undefined) => { const out: FontFaces = {}; for (const f of fontFaces(faces, document.baseURI)) ((out[f.name!] ??= []) as {url: string; 'unicode-range'?: string[]}[]).push({url: f.src, ...(f.unicodeRange ? {'unicode-range': f.unicodeRange.split(', ')} : {})}); return out; };
     const typeError = (id: string, type: string) => setTimeout(() => { if (alive) map.fire('error', {error: dataTypeError(id, type)}); });
     // `style: {light, dark}`: the scheme of the style that the map has (`colorScheme` resolved), and the last description.
@@ -517,10 +519,12 @@ export function makeMap(container: HTMLElement | string, spec: MapDescription, n
         // still exist and the style must not have been replaced.)
         const turn = ++styleTurn, given = style.metadata?.['map-jr:images'];
         fromStyle = {};
+        asked = new Set();
+        adding.clear();
         putImages();
-        if (given != null) import('./style-images.ts').then(m => {
+        styleCode = given == null ? undefined : import('./style-images.ts').then(m => {
             if (!alive || turn !== styleTurn) return;
-            fromStyle = m.styleImages(style, message => { if (alive) map.fire('error', {error: new Error(message)}); });
+            fromStyle = m.styleImages(style, message => { if (alive) map.fire('error', {error: new Error(message)}); }, asked);
             putImages();
         }, () => { if (alive && turn === styleTurn) map.fire('error', {error: new Error('[map-jr-gl] the style: the code for the images in metadata["map-jr:images"] did not load, and the map draws the style without them. Check that the files of the library are served next to it.')}); });
         // (The description of this moment: it can have changed while the style loaded.)
@@ -541,7 +545,7 @@ export function makeMap(container: HTMLElement | string, spec: MapDescription, n
     // (The height of the container is read after a second, so that a container which gets its height a moment later gives no warning.)
     setTimeout(() => check(0, name), 1000);
     const viewOf = (): View => { const c = map.getCenter(), b = map.getBounds().toArray() as View['bounds']; return {center: [c.lng, c.lat], zoom: map.getZoom(), bearing: map.getBearing(), pitch: map.getPitch(), bounds: b}; };
-    const state = createStore<MapState>({loaded: false, idle: false, moving: false, view: viewOf(), hover: [], pointer: null, renderer: undefined, colorScheme: 'light', error: undefined});
+    const state = createStore<MapState>({loaded: false, idle: false, moving: false, view: viewOf(), hover: [], pointer: null, renderer: undefined, colorScheme: 'light'});
     const controls = new globalThis.Map<string, ReturnType<ControlSpec['create']>>();
     // `colorScheme`: the class `map-jr-dark` on the container. With `'auto'`, a listener of the media query, which `destroy()` removes.
     let wanted: MapDescription['colorScheme'], dark: MediaQueryList | undefined;
@@ -577,7 +581,6 @@ export function makeMap(container: HTMLElement | string, spec: MapDescription, n
     map.on('idle', () => state.set({idle: true}));
     map.on('error', e => {
         const error = e.error instanceof Error ? e.error : new Error(String(e.error));
-        state.set({error});
         // (This listener takes the place of the report of the map itself: an error must not be lost in silence.)
         if (now.onError) now.onError(error); else logError(error);
     });
@@ -675,8 +678,10 @@ export function makeMap(container: HTMLElement | string, spec: MapDescription, n
     };
 
     // Gives the map the images of the style and of the description, and removes those that neither has now.
-    const putImages = () => {
-        const wanted: Record<string, ImageInput> = {...fromStyle, ...wantedImages};
+    const putImages = (only?: string) => {
+        const wanted: Record<string, ImageInput> = {};
+        for (const name of asked) if (Object.hasOwn(fromStyle, name)) wanted[name] = fromStyle[name];
+        Object.assign(wanted, wantedImages);
         for (const name of images.keys()) if (!Object.hasOwn(wanted, name)) { images.delete(name); map.removeImage(name); }
         for (const name in wanted) {
             const v = wanted[name], key = imageKey(v);
@@ -685,11 +690,15 @@ export function makeMap(container: HTMLElement | string, spec: MapDescription, n
             images.set(name, key);
             const spec = v && typeof v === 'object' && 'image' in v ? v : null;
             // (An image that does not load is an error of the map, and the map goes on without it.)
-            map.addImage(name, spec ? spec.image : v as ImageSource, spec ?? {}).then(busy, () => {
+            const p = map.addImage(name, spec ? spec.image : v as ImageSource, spec ?? {}).then(busy, () => {
                 if (alive && images.get(name) === key) map.fire('error', {error: new Error(`[map-jr-gl] ${Object.hasOwn(wantedImages ?? {}, name) ? 'images' : 'the style'}: the image "${name}" did not load. Give an SVG document or the URL of an image that the page can read.`)});
             });
+            adding.set(name, p);
         }
+        return only && adding.get(only);
     };
+    // (The map asks for an image that a layer names and that it does not have. The answer waits for the code of the images.)
+    map.setMissingStyleImageResolver(name => { asked.add(name); return Promise.resolve(styleCode).then(() => putImages(name)) as Promise<void>; });
     // A change that gave the engine work makes the map not idle until the engine reports idle again (#411).
     const busy = () => { if (alive && state.get().idle && !map.areTilesLoaded()) state.set({idle: false}); };
     const apply = (next: MapDescription, before?: MapDescription) => {
@@ -858,7 +867,8 @@ export function makeMap(container: HTMLElement | string, spec: MapDescription, n
                     return m;
                 }
                 const p = new GlassPopup({anchor: now.anchor, offset: now.offset, closeButton: !!now.onClose, closeOnClick: false}).setLngLat(now.lngLat).setDOMContent(element).addTo(map);
-                p.on('close', () => { if (made === p) now.onClose?.(); });
+                // (`destroy()` closes the popup with the map. That is not the user's close, so `onClose` does not run.)
+                p.on('close', () => { if (alive && made === p) now.onClose?.(); });
                 return p;
             };
             let made: Marker | Popup | null = make();

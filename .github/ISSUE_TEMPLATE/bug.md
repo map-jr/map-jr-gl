@@ -4,10 +4,12 @@ about: Something is wrong: an error, a wrong image, a hang, a result that differ
 labels: bug
 ---
 
-**What happens, and what you expected**
+**Fault:** (what happens and what you expected, in one or two sentences; which entry: `@map-jr/map-jr-gl` or `@map-jr/map-jr-gl/maplibre-compat`)
 
-**How to reproduce** (the smallest style and code that shows it; which entry: `@map-jr/map-jr-gl` or `@map-jr/map-jr-gl/maplibre-compat`)
+**Where:** (the smallest style and code that shows it, or the file and line; browser, system and renderer if they matter)
 
-**Where** (browser and version, system, device; `renderer: 'worker'` or `'main'` if you know)
+**Evidence:** (ran, measured or read; console output, a number, a comparison with MapLibre GL JS)
 
-**Evidence** (console output, a screenshot, a comparison with MapLibre GL JS)
+**Done when:** (the check that closes the issue)
+
+**From:** (the issue or pull request where it was found, if any)

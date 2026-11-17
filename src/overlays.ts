@@ -41,6 +41,11 @@ abstract class Overlay extends Evented {
     toggleClassName(name: string) { return this.el.classList.toggle(name); }
     /** Applies the map's `locale` to the labels that the overlay made itself (the elements exist before the map does). */
     protected localize(_map: Map) {}
+    abstract remove(): this;
+    /** Ends the closing animation that runs, if one runs (only a popup has one). */
+    protected closing?: () => void;
+    /** The map is removed: the overlay leaves the page with it, and a popup does not wait for its closing animation. */
+    private left = () => { this.remove(); this.closing?.(); };
     protected attach(map: Map) {
         this.detach();
         this.map = map;
@@ -49,12 +54,14 @@ abstract class Overlay extends Evented {
         this.localize(map);
         map.on('move', this.update);
         map.on('resize', this.update);
+        map.on('remove', this.left);
         map.overlays.add(this.update);
         this.update();
     }
     protected detach() {
         this.map?.off('move', this.update);
         this.map?.off('resize', this.update);
+        this.map?.off('remove', this.left);
         this.map?.overlays.delete(this.update);
         this.el.remove();
         this.map = undefined;
@@ -124,6 +131,12 @@ export class Popup extends Overlay {
             // The text keeps clear of the button.
             box.style.paddingRight = '30px';
             b.addEventListener('click', () => this.remove());
+            // Escape closes the popup while the focus is inside it, as the button does (#709). A popup without the button
+            // does not listen. A key that the content used (`preventDefault()`) or that ends a composition is left alone.
+            box.addEventListener('keydown', e => {
+                if (e.key !== 'Escape' || e.defaultPrevented || e.isComposing) return;
+                e.preventDefault(); e.stopPropagation(); this.remove();
+            });
             box.appendChild(b);
             this.closeButton = b;
         }
@@ -194,8 +207,7 @@ export class Popup extends Overlay {
         this.transition(false);
         return this.fire('open');
     }
-    /** Ends the closing animation that runs, if one runs: the popup is removed (it fired `close` when the animation started). */
-    private closing?: () => void;
+    /** (`closing` ends the closing animation that runs: the popup is removed. It fired `close` when the animation started.) */
     remove() {
         if (!this.isOpen()) return this;
         const map = this.map!;

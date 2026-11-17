@@ -40,7 +40,7 @@ function walk(node, fn, parent = null) {
 
 /** Each use of a property name in one file: `sites` are the places that can be renamed, `other` the names to keep. */
 function uses(code, file) {
-    const sites = [], loose = [], strict = new Set(), other = {add: v => strict.add(v)}, name = k => k.type === 'Identifier' ? k.name : k.type === 'Literal' && typeof k.value === 'string' ? k.value : null;
+    const sites = [], loose = [], strict = new Set(), exported = new Set(), other = {add: v => strict.add(v)}, name = k => k.type === 'Identifier' ? k.name : k.type === 'Literal' && typeof k.value === 'string' ? k.value : null;
     walk(parseAst(code, {lang: 'ts'}, file), (n, parent) => {
         if (n.type === 'Literal' && typeof n.value === 'string') other.add(n.value);
         else if (n.type === 'TemplateElement') for (const word of (n.value?.cooked ?? '').match(/[A-Za-z_$][\w$]*/g) ?? []) other.add(word);
@@ -52,24 +52,34 @@ function uses(code, file) {
         } else if (n.type === 'TSParameterProperty') walk(n.parameter, p => { if (p.type === 'Identifier') other.add(p.name); });
         else if ((n.type === 'Property' || n.type === 'TSPropertySignature' || n.type === 'TSMethodSignature') && !n.computed) { const k = name(n.key); if (k) other.add(k); }
         else if (n.type === 'TSEnumMember') { const k = name(n.id); if (k) other.add(k); }
+        if (n.type === 'ExportNamedDeclaration') {
+            const d = n.declaration;
+            if (d?.id?.type === 'Identifier') exported.add(d.id.name);
+            for (const v of d?.declarations ?? []) if (v.id.type === 'Identifier') exported.add(v.id.name);
+            for (const s of n.specifiers ?? []) { const k = name(s.exported); if (k) exported.add(k); }
+        }
         void parent;
     });
     // `loose`: a property of something other than `this`, or a class member that is not private. `strict`: the rest.
-    return {sites, loose, strict};
+    // `exported`: the names that the file exports. A call `module.name()` of such an export is a `loose` use.
+    return {sites, loose, strict, exported};
 }
 
 /** The names that are safe to shorten, each with its short name. The most used names get the shortest ones. */
-export function privateNames() {
-    const count = new Map(), declared = new Set(), other = new Set(), strict = new Set(), members = new Set();
-    for (const f of readdirSync(src).filter(f => f.endsWith('.ts'))) {
-        const u = uses(readFileSync(path.join(src, f), 'utf8'), f);
+export function privateNames(dir = src, internal = INTERNAL) {
+    const count = new Map(), declared = new Set(), other = new Set(), strict = new Set(), members = new Set(), exports = new Map();
+    for (const f of readdirSync(dir).filter(f => f.endsWith('.ts'))) {
+        const u = uses(readFileSync(path.join(dir, f), 'utf8'), f);
+        for (const e of u.exported) if (!exports.has(e)) exports.set(e, f);
         for (const s of u.sites) { count.set(s.name, (count.get(s.name) ?? 0) + 1); if (s.declared) declared.add(s.name); }
         for (const o of u.strict) { other.add(o); strict.add(o); }
         for (const l of u.loose) { other.add(l.name); if (l.member) members.add(l.name); }
         // (An internal name is counted with the private names, so that the names used most get the shortest names.)
-        for (const l of [...u.sites, ...u.loose]) if (INTERNAL.includes(l.name)) count.set(l.name, (count.get(l.name) ?? 0) + 1);
+        for (const l of [...u.sites, ...u.loose]) if (internal.includes(l.name)) count.set(l.name, (count.get(l.name) ?? 0) + 1);
     }
-    for (const n of INTERNAL) {
+    for (const n of internal) {
+        // Each `.name` of an internal name is renamed, so a call `module.name()` of an export would be renamed too (#475).
+        if (exports.has(n)) throw new Error(`[map-jr-gl] private-names: the internal member "${n}" has the name of the export "${n}" of src/${exports.get(n)}. Rename the export or the member, or remove "${n}" from INTERNAL in scripts/private-names.mjs.`);
         if (strict.has(n) || !members.has(n)) throw new Error(`private-names: "${n}" cannot be shortened (it is a key, a field of a type or a string, or no class declares it)`);
         declared.add(n); other.delete(n);
     }

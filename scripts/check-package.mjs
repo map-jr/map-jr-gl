@@ -1,6 +1,6 @@
 // Checks the package as npm would publish it. Run after a build (`pnpm build` or `node build.mjs`): pnpm test:package
 //
-//   1. Packs the tarball with `pnpm pack` and runs `publint` and `arethetypeswrong` on it. A warning of publint is a
+//   1. Packs the tarball with `pnpm pack` and runs `publint` and `arethetypeswrong` (with node10 resolution) on it. A warning of publint is a
 //      failure.
 //   2. Each file that `exports`, `module` and `types` of package.json name is in the tarball.
 //   3. No image of docs/images is in the tarball, and each image of the README has an absolute URL: npm shows the
@@ -28,8 +28,9 @@ run('pnpm', ['pack', '--out', tarball]);
 const packed = new Set(run('tar', ['-tzf', tarball]).split('\n').filter(Boolean).map(f => f.replace(/^package\//, '')));
 
 try { console.log(run('pnpm', ['exec', 'publint', 'run', tarball, '--strict']).trim()); } catch { failures.push('publint reports a fault in the tarball (see its output above)'); }
-// (The package has ES modules only, so the profile leaves out the two ways of resolving that need CommonJS.)
-try { run('pnpm', ['exec', 'attw', tarball, '--profile', 'esm-only', '--format', 'ascii', '--no-emoji']); console.log('ok    arethetypeswrong finds the types of each entry (profile esm-only)'); } catch (e) { console.log(e.stdout ?? ''); failures.push('arethetypeswrong reports a fault in the types of the tarball (see its output above)'); }
+// (The package has ES modules only, so a require() call that finds an ES module is not a fault. The check keeps node10,
+// the resolution of `"moduleResolution": "node"`, which reads `typesVersions` of package.json for the subpaths.)
+try { run('pnpm', ['exec', 'attw', tarball, '--ignore-rules', 'cjs-resolves-to-esm', '--format', 'ascii', '--no-emoji']); console.log('ok    arethetypeswrong finds the types of each entry, also under "moduleResolution": "node"'); } catch (e) { console.log(e.stdout ?? ''); failures.push('arethetypeswrong reports a fault in the types of the tarball (see its output above)'); }
 
 // 5. An application that installs the tarball: test/consumer, built with Vite in production mode. The package has no
 //    dependencies of its own, so unpacking the tarball into node_modules of the application is what an install does,

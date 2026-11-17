@@ -1,6 +1,6 @@
 import {imagePixels} from './exact-pixels.ts';
 import {EXTENT} from './geo.ts';
-import {decodeElevation} from './query.ts';
+import {decodeElevation, type DemEncoding} from './query.ts';
 import type {TileLayers} from './tile.ts';
 
 /**
@@ -10,7 +10,7 @@ import type {TileLayers} from './tile.ts';
  */
 export interface ContourConfig {
     /** Tile URL template, encoding, size and deepest zoom of the elevation source the contours are derived from. */
-    tiles: string[]; encoding: string; demMaxzoom: number; demMinzoom: number;
+    tiles: string[]; encoding: DemEncoding; demMaxzoom: number; demMinzoom: number;
     /** Intervals by zoom: `{9: [200, 1000], 12: [50, 200]}` draws 200 (minor) and 1000 (major) from zoom 9, and so on. */
     thresholds: Record<string, number[]>;
     /** Elevation is multiplied by this first; 3.28084 turns metres into feet. */
@@ -45,7 +45,7 @@ export async function decodePixels(bytes: Uint8Array | ImageBitmap, decode?: Ima
  * Decodes an elevation tile image into metres, with `decode` if given (the server renderer passes its own decoders)
  * and otherwise the browser's.
  */
-export async function decodeDEM(bytes: Uint8Array | ImageBitmap, encoding: string, decode?: ImageDecoder): Promise<DEM> {
+export async function decodeDEM(bytes: Uint8Array | ImageBitmap, encoding: DemEncoding, decode?: ImageDecoder): Promise<DEM> {
     const px = await decodePixels(bytes, decode);
     const data = new Float32Array(px.width * px.height);
     for (let i = 0; i < data.length; i++) data[i] = decodeElevation(px.data, i * 4, encoding);

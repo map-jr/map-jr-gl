@@ -88,6 +88,10 @@ for (const doc of [...docs, 'CLAUDE.md', 'CONTRIBUTING.md'].filter(f => existsSy
         for (const n of numbers) { if (seen.has(n)) fail('src/mistakes.ts', `the ${what} ${n} is taken twice. Give the newer one the number of its issue.`); seen.add(n); }
     };
     once('text', [...m.matchAll(/\/\* (\d+) \*\/ (?:\(|\w+ =>)|^texts\[(\d+)\] =/gm)].map(x => x[1] ?? x[2]));
+    // The list of the fields of the description, which warns for any other field (#524), agrees with src/host.ts.
+    const list = new Set(JSON.parse('[' + (m.match(/const descriptionFields = new Set\(\[([^\]]*)\]/)?.[1] ?? '').replaceAll("'", '"') + ']'));
+    for (const f of spec) if (!list.has(f)) fail('src/mistakes.ts', `the field \`${f}\` of the description is not in descriptionFields, so it would warn as unknown`);
+    for (const f of list) if (!spec.includes(f)) fail('src/mistakes.ts', `descriptionFields has \`${f}\`, which is not a field of the description in src/host.ts`);
     once('check kind', [...m.matchAll(/kind === (\d+)\)/g)].map(x => x[1]));
 }
 

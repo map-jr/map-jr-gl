@@ -43,6 +43,8 @@ texts[30] = a => `hoverState: a feature of the layer "${a}" has no id, so it get
 texts[40] = a => `colorScheme: ${a} is not a colour scheme, so the map uses the light colours. Write 'auto', 'light' or 'dark'.`;
 texts[45] = () => 'style: the object is not a style, because it has no "version" and "layers", and it is not a pair {light, dark}. Give a style object, the URL of a style, or {light: style, dark: style}.';
 texts[46] = (a, b) => `style: the pair has no "${a}", so the map uses "${b}" in both colour schemes. Give both "light" and "dark".`;
+texts[524] = a => `the description has no field "${a}", so the map ignores it. Check the spelling against MapDescription in docs/api.md, or remove "${a}".`;
+texts[10524] = () => 'the description has no field "extend", so the map ignores it. Write "sources", "layers" and "terrain" at the root of the description.';
 texts[55] = a => `sprite: ${a} is not a list of sprites. Write a list of {id, url}, for example [{id: 'pins', url: 'https://example.com/sprites/pins'}], and name an image of it in "icon-image" as "pins:name".`;
 
 /** The message with the number `code` for the names `a` and `b`. */
@@ -63,6 +65,8 @@ export const warnOnce = (code: number, a = '') => { if (!pageWarned.has(code)) {
 
 /** The fields of `MapSetup`, and `initialView`: a change of one of them in `update` has no effect. */
 const setupOnly = ['renderer', 'fontFamily', 'interactive', 'antialias', 'attribution', 'hash', 'nonce', 'initialView'] as const;
+/** The fields of `MapDescription` (and of `MapSetup`). `pnpm test:consistency` compares the list with src/host.ts. Other fields warn (#524). */
+const descriptionFields = new Set(['renderer', 'fontFamily', 'interactive', 'antialias', 'attribution', 'hash', 'nonce', 'style', 'sources', 'layers', 'terrain', 'fonts', 'initialView', 'view', 'onViewChange', 'data', 'images', 'sprite', 'controls', 'projection', 'globalState', 'interactiveLayers', 'hoverState', 'onClick', 'onError', 'minZoom', 'maxZoom', 'maxPitch', 'maxBounds', 'cursor', 'cooperativeGestures', 'colorScheme', 'onColorSchemeChange', 'padding', 'transformRequest']);
 /** A query at a point or a position, and not in a rectangle or on the whole map. */
 const place = (at: unknown) => !!at && !(Array.isArray(at) && typeof at[0] !== 'number');
 const differ = (a: unknown, b: unknown) => a !== b && JSON.stringify(a) !== JSON.stringify(b);
@@ -108,6 +112,7 @@ export function check(c: Checked, kind: number, a?: any, b?: any) {
         // (A template that is replaced by one with other slots: the layers of the map give it the same parameters.)
         if (before && differ(next.images, before.images) && c.ready()) slots(map.getStyle()?.layers ?? [], [], next.images);
         if (!before && 'glyphs' in next) warn(20);
+        for (const k in next) if (k !== 'glyphs' && !descriptionFields.has(k)) k === 'extend' ? warn(10524) : warn(524, k);
         if (next.sprite !== before?.sprite && next.sprite != null && !(Array.isArray(next.sprite) && next.sprite.every(s => typeof s?.id === 'string' && typeof s.url === 'string'))) warn(55, JSON.stringify(next.sprite));
         for (const name in next.globalState) if (next.globalState[name] !== before?.globalState?.[name] && !isJson(next.globalState[name])) warn(22, name);
         if (next.colorScheme != null && next.colorScheme !== before?.colorScheme && !['auto', 'light', 'dark'].includes(next.colorScheme)) warn(40, JSON.stringify(next.colorScheme));

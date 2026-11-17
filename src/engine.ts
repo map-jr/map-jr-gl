@@ -229,6 +229,8 @@ export class Engine {
     private nextReq = 1;
     private nextBackend = 0;
     private lastCamera = '';
+    /** `lastCamera` without the height of the ground and the exaggeration of the terrain. */
+    private lastView = '';
     private wasIdle = false;
     /** The map has been idle once: the overview tiles wait for that (#326). */
     private wentIdle = false;
@@ -641,7 +643,21 @@ export class Engine {
      * `data`: the data of the GeoJSON sources that are new or changed. Without it (at the start), the sources of `style`
      * carry their data. The engine does not keep the data: the tile workers have it.
      */
+    /** The sources with `encoding: 'custom'` whose factors got the message of `setStyle`. */
+    private toldEncoding = new Set<string>();
+
     private setStyle(style: ResolvedStyle, reload: boolean, data?: Record<string, unknown>) {
+        // (A new style can have an image that the style before did not have: the engine asks the page again, #628.)
+        if (reload) this.missing.clear();
+        // `encoding: 'custom'` of a `raster-dem` source (#590): the factors and the shift come from the style or from a
+        // TileJSON as they are. When one is not a finite number, the source and its contours are read as `mapbox`.
+        for (const [name, src] of Object.entries(style.sources)) {
+            const bad = (e?: string | number[]) => typeof e == 'object' && !e.every(Number.isFinite);
+            if (src.contour && bad(src.contour.encoding)) src.contour.encoding = 'mapbox';
+            if (!bad(src.encoding)) continue;
+            src.encoding = 'mapbox';
+            if (!this.toldEncoding.has(name)) { this.toldEncoding.add(name); console.warn(`[map-jr-gl] The source "${name}": "redFactor", "greenFactor", "blueFactor" and "baseShift" of the encoding "custom" must be finite numbers. The source is read with the encoding "mapbox". Write a number for each one, or leave it out for its default (1, 1, 1 and 0).`); }
+        }
         // The globe (#463): the stops say at which zooms the projection draws it. Its code loads with the first style
         // that needs it (built into the worker file; a file of its own for the engine on the main thread), and frames
         // wait for it (see `frame`).
@@ -780,6 +796,17 @@ export class Engine {
     /** An image for a pattern: the name of a template with `params` names one of its variants (see `variantName`). */
     private pattern = (name: string) => this.icon(name.includes(VARIANT) ? name.split(IMAGE_OR).map(n => variantName(n, this.slots)).join(IMAGE_OR) : name);
 
+    /**
+     * Asks the page for the images of a tile that the map does not have, when the tile arrives. The page then makes them
+     * while the tile goes to the GPU, and the first picture of the tile has its icons. Without this, the map asks when
+     * it first draws the tile, and an image that the page draws on demand (a variant of an SVG template, an image of a
+     * style) comes one round later than the tile (#628). A tile that the view does not use yet (`used` below 0: an
+     * overview, a tile of the end of a movement) asks when it is drawn, so that it does not end `idle`.
+     */
+    private askImages(tile: {labels?: Record<string, {icon?: {name: string}}[]>; icons?: Record<string, {names: string[]}>}) {
+        for (const list of Object.values(tile.labels ?? {})) for (const l of list) if (l.icon) this.icon(l.icon.name);
+        for (const b of Object.values(tile.icons ?? {})) for (const name of b.names) this.icon(name);
+    }
     private icon = (name: string) => {
         // `coalesce` with images: the first image that the map has, or a variant of a template (it is made when it is
         // asked for). With none, the first name is the image that is missing, as in MapLibre GL JS.
@@ -1246,7 +1273,7 @@ export class Engine {
         else if (isGeometrySource(src)) {
             const backend = this.backends[t.backend = this.nextBackend++ % this.backends.length], req = this.nextReq++;
             t.cancel = () => backend.cancel(req);
-            load = backend.load(this.build(req, source, id, t)).then(tile => (t.built = true, this.tapTile(key, 'ans'), this.upload(tile, () => this.tiles.get(key) === t)));
+            load = backend.load(this.build(req, source, id, t)).then(tile => (t.built = true, this.tapTile(key, 'ans'), t.used < 0 || this.askImages(tile), this.upload(tile, () => this.tiles.get(key) === t)));
         } else {
             // Elevation tiles are decoded in a tile worker, which also reads the heights that 3D terrain needs: this thread
             // only sends the finished pixels to the GPU. (Reading pixels back here made the map hitch as tiles arrived.)
@@ -1585,7 +1612,13 @@ export class Engine {
         }
 
         const camera = `${tr.padding},${tr.lng},${tr.lat},${tr.zoom},${tr.bearing},${tr.pitch},${Math.round(tr.elevation)},${this.exaggeration}`, cameraChanged = camera !== this.lastCamera;
-        if (cameraChanged) { this.placeDirty = true; this.cameraMovedAt = began; }
+        // (The first camera of the map is not a movement: a map that starts is at rest, and the wait for a camera that
+        // has just stopped would hold up the first `idle` by a fifth of a second, #436.)
+        // (Nor is a new height of the ground under the camera, which comes with the elevation data of 3D terrain and not
+        // from a movement: the camera string without it is `flat`.)
+        const flat = camera.replace(/,[^,]*,[^,]*$/, '');
+        if (cameraChanged) { this.placeDirty = true; if (this.lastCamera && flat !== this.lastView) this.cameraMovedAt = began; }
+        this.lastView = flat;
 
         // Decide which labels show only every so often; in between they ride along with the map and fade.
         const zooming = Math.abs(tr.zoom - this.placeZoom) > 0.12;
@@ -1659,7 +1692,9 @@ export class Engine {
             // Images often come one after another (the variants of a template, the answers to missing images). The
             // buffers are made again when no image came for a tenth of a second, and after a second at the latest.
             if (this.iconsRev !== this.iconsSeen) { this.iconsSeen = this.iconsRev; this.iconsLast = now; this.iconsSince ||= now; }
-            if (now - this.iconsLast >= 100 || now - this.iconsSince >= 1000) {
+            // (Before the first `idle` the buffers do not wait: an image that a layer asked for is on the way to the first
+            // complete picture, and a wait of a tenth of a second would hold up `idle` (#628).)
+            if (!this.wentIdle || now - this.iconsLast >= 100 || now - this.iconsSince >= 1000) {
                 this.iconsDone = this.iconsRev; this.iconsSince = 0;
                 for (const t of this.tiles.values()) if (t.gl?.icons) this.renderer.refreshIcons(t.gl, this.iconsAll);
                 this.iconsAll = false;
@@ -1691,7 +1726,8 @@ export class Engine {
         }
         const busy = animating || fading || this.placeDirty || this.iconsRev !== this.iconsDone || behind || this.meshBehind;
         const idle = complete && !busy && !settling && !this.spritePending && !this.contourWait && !this.atlas.loading;
-        if (settling && !busy) setTimeout(() => this.repaint(), 200);
+        // (The frame for the map at rest comes when the 200 ms are over, not 200 ms after this frame.)
+        if (settling && !busy) setTimeout(() => this.repaint(), 200 - (began - this.cameraMovedAt));
         if (this.contourWait) { this.contourWait = false; setTimeout(() => this.repaint(), CONTOUR_WAIT + 20); }
         // (A context can be lost with no event. Nothing was drawn then, and the page must not take this for a frame.)
         // The page always gets a `frame` event for the first frame that an engine has drawn to its end: a new engine that
@@ -1767,7 +1803,8 @@ export class Engine {
     private underIcon(L: CompiledLayer, q: QueriedFeature, box: number[], radius: number, texts: {x: number; y: number; box: number[]}[]): boolean {
         const tr = this.tr, z = tr.zoom, g = q.geometry, f: Feature = {type: 1, id: q.id, properties: q.properties};
         const points = g?.type === 'Point' ? [g.coordinates as number[]] : g?.type === 'MultiPoint' ? g.coordinates as number[][] : null;
-        const image = this.imageNamed(pickImage(String(L.p.icon.eval(z, f) ?? ''), n => this.imageNamed(n.split(VARIANT)[0])).split(VARIANT)[0].replace(/\{([^}]+)\}/g, (_, k) => f.properties[k] ?? '').trim());
+        const name = pickImage(String(L.p.icon.eval(z, f) ?? ''), n => this.imageNamed(n.split(VARIANT)[0])).split(VARIANT)[0];
+        const image = this.imageNamed((L.p.icon.tokens ? name.replace(/\{([^}]+)\}/g, (_, k) => f.properties[k] ?? '') : name).trim());
         if (!points) return true;
         const near = !image || !!String(L.p.field.eval(z, f) ?? ''), turn = L.p.iconRotate.eval(z, f) * Math.PI / 180;
         return points.some(([lng, lat]) => {
