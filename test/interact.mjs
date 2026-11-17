@@ -803,17 +803,20 @@ for (const mode of renderers) {
 
     // #765: as in MapLibre, `data` fires with `dataType: 'source'` and `e.tile` for each tile that loads.
     const tileEvents = await page.evaluate(async () => {
-        const m = window.map, got = new Set(), drawn = new Set();
-        let bad = 0;
-        const onData = e => { if (e.dataType !== 'source' || !e.tile) return; if (e.sourceId === 'omt') got.add(e.tile.tileID.canonical.key); if (e.tile.tileID.canonical.key !== `${e.tile.tileID.canonical.z}/${e.tile.tileID.canonical.x}/${e.tile.tileID.canonical.y}`) bad++; };
+        const m = window.map, got = new Set(), drawn = new Set(), odd = 'a/b|c';
+        let bad = 0, oddTiles = 0;
+        m.addSource(odd, {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [-73.98, 40.75]}}});
+        m.addLayer({id: 'odd-765', type: 'circle', source: odd});
+        const onData = e => { if (e.dataType !== 'source' || !e.tile) return; if (e.sourceId === odd) oddTiles++; if (e.sourceId === 'omt') got.add(e.tile.tileID.canonical.key); if (e.tile.tileID.canonical.key !== `${e.tile.tileID.canonical.z}/${e.tile.tileID.canonical.x}/${e.tile.tileID.canonical.y}`) bad++; };
         const onFrame = e => { if (e.kind === 'frame') { drawn.clear(); for (const k of [e.key].flat()) if (k.startsWith('omt|')) drawn.add(k.split('|')[1]); } };
         m.on('data', onData); m.on('tile', onFrame); m._tileReport(true);
         m.jumpTo({center: [-73.98, 40.75], zoom: 15});
         await new Promise(r => m.once('idle', r));
         m._tileReport(false); m.off('data', onData); m.off('tile', onFrame);
-        return {got: got.size, drawn: [...drawn], missing: [...drawn].filter(k => !got.has(k)), bad};
+        m.removeLayer('odd-765'); m.removeSource(odd);
+        return {oddTiles, got: got.size, drawn: [...drawn], missing: [...drawn].filter(k => !got.has(k)), bad};
     });
-    check(`[${mode}] data events with dataType "source" carry e.tile for each tile that loads`, tileEvents.drawn.length > 0 && tileEvents.missing.length === 0 && tileEvents.bad === 0, JSON.stringify(tileEvents));
+    check(`[${mode}] data events with dataType "source" carry e.tile for each tile that loads, also for a source id with "/" and "|"`, tileEvents.drawn.length > 0 && tileEvents.missing.length === 0 && tileEvents.bad === 0 && tileEvents.oddTiles > 0, JSON.stringify(tileEvents));
 
     // #7: `dblclick` reaches the listener after a query of the engine. preventDefault() there still stops the zoom, and
     // without it the map zooms. The array of queryRenderedFeatures is not an answer from before setData.

@@ -695,7 +695,8 @@ export class Map {
             heightsChanged(this.heights);
             if (this.tr.heightAt && !this.moving) this.fire('move'); // overlays re-position onto the newly known ground (while moving, every frame does this anyway)
         } else if (e.type === 'tileLoaded') {
-            const [source, z, x, y] = e.key.split(/[|/]/);
+            // (A source id can hold "|" and "/"; the part after the last "|" is z/x/y.)
+            const cut = e.key.lastIndexOf('|'), source = e.key.slice(0, cut), [z, x, y] = e.key.slice(cut + 1).split('/');
             if (!this.removed && this.rawStyle?.sources[source]) this.tileLoaded(source, +z, +x, +y);
         } else if (e.type === 'tile') {
             this.fire('tile', e); // (for the benchmark page, after `_tileReport`; #360)
