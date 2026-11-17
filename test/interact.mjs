@@ -3015,6 +3015,38 @@ for (const mode of renderers) {
             return {connected: p.getElement().isConnected, open: p.isOpen()};
         });
         check('[main] Popup: remove() removes the element when the closing animation never ends', !stuck.connected && !stuck.open, JSON.stringify(stuck));
+        // #435: the other cases in which the closing animation does not play. The element leaves the page on a hidden page
+        // (at once), in a container with `display: none`, and when the map is removed (at once, open or fading out).
+        const left = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), wait = t => new Promise(r => setTimeout(r, t));
+            const el = Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'});
+            document.body.appendChild(el);
+            const m = new mod.Map({container: el, renderer: 'main', center: [0, 0], zoom: 1, attributionControl: false, style: {version: 8, sources: {}, layers: []}});
+            const popup = text => new mod.Popup().setLngLat([0, 0]).setText(text).addTo(m), on = p => p.getElement().isConnected;
+            const hidden = popup('Hidden page'), none = popup('No display');
+            await wait(300);
+            Object.defineProperty(document, 'hidden', {get: () => true, configurable: true});
+            try { hidden.remove(); } finally { delete document.hidden; }
+            const hiddenPage = on(hidden);
+            el.style.display = 'none';
+            none.remove();
+            await wait(1000);
+            const displayNone = on(none);
+            el.style.display = '';
+            let closes = 0;
+            const open = popup('Open').on('close', () => closes++), fading = popup('Fading').on('close', () => closes++);
+            const marker = new mod.Marker().setLngLat([0, 0]).setPopup(new mod.Popup().setText('Of the marker')).addTo(m).togglePopup();
+            await wait(300);
+            fading.remove();
+            const during = on(fading);
+            m.remove();
+            const out = {hiddenPage, displayNone, during, open: on(open) || open.isOpen(), fading: on(fading), marker: on(marker) || on(marker.getPopup()), closes,
+                rest: el.querySelectorAll('.maplibregl-popup,.maplibregl-marker').length};
+            el.remove();
+            return out;
+        });
+        check('[main] Popup: remove() removes the element at once on a hidden page and within a second in a container with display: none; Map.remove() removes its popups and markers at once, and each popup fires close once',
+            !left.hiddenPage && !left.displayNone && left.during && !left.open && !left.fading && !left.marker && left.closes === 2 && left.rest === 0, JSON.stringify(left));
         // A popup that fades out after remove() does not catch a click: the click goes to the map below it.
         const fading = await page.evaluate(async () => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), m = window.a11yMap, wait = t => new Promise(r => setTimeout(r, t));

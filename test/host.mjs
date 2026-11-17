@@ -1354,6 +1354,27 @@ for (const renderer of renderers) {
         check(`[${renderer}] the controls of the main API have a blur, a rule of the page still wins, --map-control-opacity and --map-control-radius reach the popup, the compass names the nearest of N, E, S and W, and a map of the compat entry keeps the look of MapLibre GL JS`,
             glass.main && glass.blur === 'blur(5px)' && glass.radius === '4px' && glass.compat === 'none' && !glass.compatClass
             && glass.popupDefault === 'rgba(255, 255, 255, 0.65) 12px' && glass.popupSet === 'rgba(255, 255, 255, 0.4) 6px' && glass.faces === 'N E1 W1 N1', JSON.stringify(glass));
+        // #435: destroy() leaves no popup and no marker of overlay() on the page, and does not call onClose.
+        const destroyed = await page.evaluate(async renderer => {
+            const el = Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'});
+            document.body.appendChild(el);
+            const host = window.t.lib.createMap(el, {style: {version: 8, sources: {}, layers: []}, attribution: false, renderer});
+            const content = () => Object.assign(document.createElement('div'), {textContent: 'Overlay'});
+            let closes = 0;
+            const open = content(), fading = content(), marker = content();
+            host.overlay(open, {lngLat: [0, 0], popup: true, onClose() { closes++; }});
+            const closing = host.overlay(fading, {lngLat: [0, 0], popup: true});
+            host.overlay(marker, {lngLat: [0, 0]});
+            await new Promise(r => setTimeout(r, 300));
+            closing.remove();
+            const during = el.querySelectorAll('.map-jr-popup').length;
+            host.destroy();
+            const out = {during, open: open.isConnected, marker: marker.isConnected, popups: el.querySelectorAll('.map-jr-popup').length, closes};
+            el.remove();
+            return out;
+        }, renderer);
+        check(`[${renderer}] destroy() removes the popups (open or fading out) and the markers of overlay() at once, and does not call onClose`,
+            destroyed.during === 2 && !destroyed.open && !destroyed.marker && destroyed.popups === 0 && destroyed.closes === 0, JSON.stringify(destroyed));
         // The control colorScheme() (#541): for each start (no value, 'auto' with the system light and dark, a fixed value),
         // what two clicks give: the value of the description, the scheme of the map, the calls of onColorSchemeChange and the label.
         const toggles = {};

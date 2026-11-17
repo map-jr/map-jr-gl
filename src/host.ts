@@ -858,7 +858,8 @@ export function makeMap(container: HTMLElement | string, spec: MapDescription, n
                     return m;
                 }
                 const p = new GlassPopup({anchor: now.anchor, offset: now.offset, closeButton: !!now.onClose, closeOnClick: false}).setLngLat(now.lngLat).setDOMContent(element).addTo(map);
-                p.on('close', () => { if (made === p) now.onClose?.(); });
+                // (`destroy()` closes the popup with the map. That is not the user's close, so `onClose` does not run.)
+                p.on('close', () => { if (alive && made === p) now.onClose?.(); });
                 return p;
             };
             let made: Marker | Popup | null = make();
