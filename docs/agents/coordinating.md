@@ -49,8 +49,9 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
   new worker about 100,000.
 - **Turn each "found" line of a report into its own issue** at once, in the form of "Issues" in `CLAUDE.md`. Search
   for an issue of the same fault first (`gh issue list --search`). Do not add a fault to another issue as a comment.
-- **Say in each update to the owner** which pull requests wait for the owner and why, with a recommendation. Ask
-  several decisions in one question.
+- **Ask the owner with the question tool** (`AskUserQuestion`; see "How work goes" in `CLAUDE.md`) for each pull
+  request that waits for the owner and each decision, with the recommendation as the first option. Ask several
+  decisions in one call. An update says what happened and does not hold a question.
 - **For a change of the look, the owner wants a live page on a local port** with controls for the values in
   question, not screenshots. The server of a worker ends with the worker, so start `PORT=… node demo/serve.mjs` in
   the background in the worktree of the worker.
