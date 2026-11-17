@@ -1738,7 +1738,18 @@ export class Engine {
             // (The answer to `ping`: this worker still takes messages and still draws.)
             if (this.pinged) { this.emit({type: 'pong', n: this.pinged}); this.pinged = 0; }
         }
-        if (idle && !this.wasIdle) this.emit({type: 'idle', seq: this.seq});
+        // In a worker, the frame of the `OffscreenCanvas` reaches the page after this task, and on a loaded machine one
+        // frame of the page later still (#555). The next animation frame of the worker starts once this frame has gone
+        // to the page, so `idle` goes then; a hidden page runs no frames, so a timer sends it too.
+        if (idle && !this.wasIdle) {
+            if (typeof document !== 'undefined') this.emit({type: 'idle', seq: this.seq});
+            else {
+                const seq = this.seq;
+                let sent = false;
+                const send = () => { if (!sent) { sent = true; if (this.wasIdle && seq === this.seq) this.emit({type: 'idle', seq}); } };
+                raf(send); setTimeout(send, 100);
+            }
+        }
         // (One more frame after the first `idle`: it requests the overview tiles.)
         if (idle && !this.wentIdle) { this.wentIdle = true; this.repaint(); }
         // WebKit does not always show the one frame that a map draws after a pause (#429): the page keeps the old picture,
