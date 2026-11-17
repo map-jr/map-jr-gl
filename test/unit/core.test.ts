@@ -750,12 +750,18 @@ test('GeoJSON lines for a gradient know which part of the whole line each piece 
     assert.equal(sliceGeoJSON(prepared, 2, 1, 1)._geojson.features[0].properties.mapbox_clip_start, undefined);
 });
 
-test('a GeoJSON feature keeps an id that is a string, in the source and in a tile (#528)', async () => {
+test('a GeoJSON feature keeps an id that is a string, and a string of digits becomes the number (#528)', async () => {
     const {prepareGeoJSON, sliceGeoJSON} = await import('../../src/geojson.ts');
     const point = (id: unknown) => ({type: 'Feature', id, properties: {key: 'k'}, geometry: {type: 'Point', coordinates: [10, 10]}});
     const prepared = prepareGeoJSON({type: 'FeatureCollection', features: [point('louvre'), point(7), point('12'), point({a: 1}), point(true)]});
-    assert.deepEqual(prepared.map(f => f.id), ['louvre', 7, '12', undefined, undefined]);
-    assert.deepEqual(sliceGeoJSON(prepared, 0, 0, 0)._geojson.features.map((f: {id?: unknown}) => f.id), ['louvre', 7, '12', undefined, undefined]);
+    assert.deepEqual(prepared.map(f => f.id), ['louvre', 7, 12, undefined, undefined]);
+    assert.deepEqual(sliceGeoJSON(prepared, 0, 0, 0)._geojson.features.map((f: {id?: unknown}) => f.id), ['louvre', 7, 12, undefined, undefined]);
+    // MapLibre GL JS 6.17.0 gives 12 for '012'. It gives other numbers for the strings that are not digits, or that are
+    // larger than a safe integer, and those stay strings here.
+    const texts = ['012', '-3', '1.5', ' 7', '9007199254740993', ''];
+    assert.deepEqual(prepareGeoJSON({type: 'FeatureCollection', features: texts.map(point)}).map(f => f.id), [12, '-3', '1.5', ' 7', '9007199254740993', '']);
+    // A string from `promoteId` stays the string.
+    assert.equal(prepareGeoJSON({...point(1), properties: {key: '12'}}, 'key')[0].id, '12');
     // `generateId` and `promoteId` still replace the id of the feature.
     assert.equal(prepareGeoJSON(point('louvre'), undefined, true)[0].id, 0);
     assert.equal(prepareGeoJSON(point('louvre'), 'key')[0].id, 'k');
