@@ -1,5 +1,5 @@
 // Drives the demo in Chromium and checks behaviour in both renderer modes: node test/interact.mjs [outDir] (default .cache/shots)
-import {launch, browserName} from './launch.mjs';
+import {launch, browserName, workerRenders, noWorkerRender} from './launch.mjs';
 import {watchdog} from './watchdog.mjs';
 import {checkCustomLayers} from './custom-layers.mjs';
 const out = process.argv[2] || '.cache/shots'; // (the directory for the screenshots; Playwright creates it)
@@ -39,10 +39,7 @@ for (const mode of renderers) {
     await page.waitForFunction(() => window.mapLoaded, null, {timeout: 30000});
     // Some browsers cannot make a WebGL context in a worker (WebKit on Linux and Windows, Safari before 16.4). The map
     // must then render on the main thread, and the tests of the worker have nothing to test.
-    const workerCan = mode !== 'worker' || await page.evaluate(() => new Promise(resolve => {
-        const w = new Worker(URL.createObjectURL(new Blob(['postMessage(typeof OffscreenCanvas !== "undefined" && !!new OffscreenCanvas(1, 1).getContext("webgl2"))'])));
-        w.onmessage = e => resolve(e.data); w.onerror = () => resolve(false);
-    }));
+    const canWorker = await workerRenders(page), workerCan = mode !== 'worker' || canWorker;
     if (!workerCan) console.log('INFO  [worker] this browser cannot render in a worker: the map must use the main thread');
     check(`[${mode}] loads with requested renderer`, await page.evaluate(() => window.map.renderer) === (workerCan ? mode : 'main'));
 
@@ -1357,7 +1354,8 @@ for (const mode of renderers) {
     }
     // setWorkerUrl with the worker file of MapLibre GL JS (#219): the URL is ignored with one warning, and the map
     // keeps the worker of this library.
-    {
+    if (!canWorker) skip('setWorkerUrl with the worker file of MapLibre GL JS is ignored with one warning, and the map keeps its own worker', noWorkerRender);
+    else {
         const r = await page.evaluate(async () => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
             const warns = [], warn = console.warn;
@@ -1602,7 +1600,8 @@ for (const mode of renderers) {
     }
     // #591: the textures of colour ramps (heatmap, line-gradient, color-relief) are deleted when their layer goes. The
     // probe counts live textures whose image is one pixel high (only ramps are), in the page or in the drawing worker.
-    {
+    if (!workerCan) skip(`[${mode}] the textures of colour ramps are deleted when their layers are removed or the style changes (#591)`, noWorkerRender);
+    else {
         const r = await page.evaluate(async mode => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
             const probe = `(() => { const P = WebGL2RenderingContext.prototype, live = new Set(), bound = new WeakMap(), ch = new BroadcastChannel('ramps-591-${mode}');
@@ -2244,7 +2243,8 @@ for (const mode of renderers) {
     // the camera that the engine reports, which came one frame after the picture (#38). The worker here sends its
     // camera 150 ms late, so that the marker can only be in place in time when the page places it. (The page learns the
     // ground that the engine grabbed from the first report of the drag: the test waits for it after the first move.)
-    if (mode === 'worker') {
+    if (mode === 'worker' && !workerCan) for (const name of ['an HTML marker follows a drag in the second frame after each pointer move, without waiting for the camera of the engine (#38)', 'a drag that starts during an easeTo does not jump back (#38)']) skip(`[worker] compat: ${name}`, noWorkerRender);
+    else if (mode === 'worker') {
         const followed = await page.evaluate(async () => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
@@ -2390,7 +2390,9 @@ for (const mode of renderers) {
     }
     // The same with the engine chunk delayed by 6 seconds, on a page of its own (the chunk is not in its module cache).
     // The watch of the worker must not count while the chunk loads: one warning, no `webglcontextlost`, one canvas.
-    if (mode === 'worker') {
+    // (A browser that cannot render in a worker goes to the main thread before the worker of the test can fail.)
+    if (mode === 'worker' && !workerCan) skip('[worker] a worker without WebGL2, renderer \'worker\' and an engine chunk that takes 6 seconds: one engine on the main thread, one warning, and no webglcontextlost', noWorkerRender);
+    else if (mode === 'worker') {
         const slowContext = await page.context().browser().newContext({viewport: page.viewportSize()}), slow = await slowContext.newPage();
         await slow.route(/engine-entry-.*\.js/, async r => { await new Promise(f => setTimeout(f, 6000)); await r.continue(); });
         await slow.goto(page.url());
@@ -2425,7 +2427,13 @@ for (const mode of renderers) {
     // - `hidden`: as `hang`, while the page is hidden for 8 seconds. That time does not count, because an engine draws
     //   nothing for a hidden page.
     // - `first`: the first worker draws its first frame and then stops, with no lost context at all (#119).
-    if (mode === 'worker') {
+    if (mode === 'worker' && !workerCan) {
+        for (const name of ['a worker that loses its WebGL context at once: the map goes to the main thread after one or two losses, warns once, and load and idle fire',
+            'one loss, one restore, then a worker that cannot draw: the map goes to the main thread after 5 seconds, warns once, and load and idle fire',
+            'one loss, one restore, then a worker that stops after its first frame: the map goes to the main thread after 5 seconds, warns once, and load and idle fire',
+            'the same while the page is hidden for 8 seconds: the map stays with the worker for that time, and goes to the main thread 5 seconds later',
+            'a worker that stops after its first frame at its first start, with no lost context: the map goes to the main thread after 5 seconds, warns once, and load and idle fire']) skip(`[worker] ${name}`, noWorkerRender);
+    } else if (mode === 'worker') {
         for (const kind of ['now', 'quiet', 'hang', 'hidden', 'first']) {
             const fell = await page.evaluate(async kind => {
                 const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
