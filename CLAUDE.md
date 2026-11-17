@@ -13,6 +13,18 @@ to protect those qualities.
 - **The owner's messages can arrive late in a long turn.** Read notifications often. When a message arrives,
   answer it and do what it asks before other work.
 - Every few tool calls, give the user a one-line update on where things stand.
+- **A question for the owner goes through the question tool (`AskUserQuestion`), not into the text of an update.**
+  Use it for every decision that the owner must make while other work goes on: a pull request that waits for the
+  owner, a recommendation to accept, a number to choose. A question in an update is hard to find again and hard to
+  answer in a short reply.
+  - Each question stands on its own. It names the issue or the pull request, gives the facts and the numbers that the
+    decision needs, and has the options with the recommended one first. It does not refer to an earlier message.
+  - Ask as soon as the work that does not depend on the answer is started, and ask several open decisions in one
+    call (it takes up to four). Carry on with the other work.
+  - Write the answer into the issue (the line "Decision") before you act on it.
+  - Where the tool is missing, end every update with the heading "Waiting for you" and each open question in full,
+    also the ones from earlier updates.
+  - A worker does not ask the owner. It writes "Needs owner" in its report, and the coordinator asks.
 
 ## Issues
 
