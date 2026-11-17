@@ -396,7 +396,7 @@ for (const renderer of renderers) {
                 return {used, out};
             }, renderer).catch(e => ({error: String(e)}));
             check(`[worker] after a new style, the canvas at state.idle shows the new style: no pixel differs from the canvas 1 s later (#555)`,
-                shownAtIdle.out?.every(n => n === 0), JSON.stringify(shownAtIdle));
+                shownAtIdle.used === 'worker' && shownAtIdle.out?.every(n => n === 0), JSON.stringify(shownAtIdle));
         }
         // 3b2. `patch` (#483): it keeps the fields that `part` leaves out, `undefined` removes a field, and `description` is the last description.
         const patched = await page.evaluate(async renderer => {
