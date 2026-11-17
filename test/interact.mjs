@@ -26,6 +26,8 @@ const renderers = only ? [only] : ['main', 'worker'];
 for (const mode of renderers) {
   try {
     const page = await browser.newPage({viewport: {width: 1000, height: 700}});
+    // CPU_THROTTLE=4 slows the CPU of the page four times (Chromium only), as a loaded CI runner does (#328).
+    if (process.env.CPU_THROTTLE) await (await page.context().newCDPSession(page)).send('Emulation.setCPUThrottlingRate', {rate: Number(process.env.CPU_THROTTLE)});
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
     // (The browser's own line for a 404 that a test asks for on purpose, from `/no-such-…`, can come after that test.)
@@ -709,9 +711,12 @@ for (const mode of renderers) {
         m.setPaintProperty('building', 'fill-color', ['case', ['boolean', ['feature-state', 'hover'], false], '#f00', '#ddd']);
         await wait(1500);
         const edit = rebuilds;
+        // (The check waits for the first rebuild, for at most 5 s: a tile that is still being built for the edit above
+        // is built again when that build ends, which on a loaded machine came later than a fixed 600 ms, #328.)
+        const asked = performance.now();
         m.setFeatureState(f, {hover: true});
-        await wait(600);
-        const read = rebuilds - edit;
+        while (rebuilds === edit && performance.now() - asked < 5000) await wait(20);
+        const read = rebuilds - edit, readMs = Math.round(performance.now() - asked);
         // The page sends only the features that changed: with 10,000 states, one call sends one state.
         for (let i = 0; i < 10000; i++) m.setFeatureState({source: 'omt', sourceLayer: 'building', id: 100000 + i}, {hover: true});
         const sent = [];
@@ -734,11 +739,11 @@ for (const mode of renderers) {
         m.setFeatureState({source: 'omt', sourceLayer: 'building', id: 'def'}, {hover: true});
         console.warn = warn;
         m.removeFeatureState({source: 'omt'});
-        return {both, one, none: m.getFeatureState(f), unread, read, idle, sent, warned};
+        return {both, one, none: m.getFeatureState(f), unread, read, readMs, idle, sent, warned};
     });
     check(`[${mode}] setFeatureState with a text id on a vector source warns once`, fs.warned.length === 1 && /setFeatureState\(\): the source "omt"/.test(fs.warned[0]), JSON.stringify(fs.warned));
     check(`[${mode}] feature state is set, merged and removed, and the map is idle after a state that no layer reads`, fs.both.hover === true && fs.both.picked === 1 && !('hover' in fs.one) && fs.one.picked === 1 && Object.keys(fs.none).length === 0 && fs.idle, JSON.stringify(fs));
-    if (mode === 'main') check('[main] setFeatureState builds tiles again only when a layer of the source reads feature state', fs.unread === 0 && fs.read > 0, JSON.stringify({unread: fs.unread, read: fs.read}));
+    if (mode === 'main') check('[main] setFeatureState builds tiles again only when a layer of the source reads feature state', fs.unread === 0 && fs.read > 0, JSON.stringify({unread: fs.unread, read: fs.read, readMs: fs.readMs}));
     if (mode === 'main') check('[main] setFeatureState sends the tile workers only the state that changed', fs.sent.length > 0 && fs.sent[0] < 200, JSON.stringify(fs.sent));
 
     // Map events and interaction handlers, as plugins for MapLibre use them: a listener can take a drag for itself
