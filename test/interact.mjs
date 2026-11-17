@@ -2248,8 +2248,8 @@ for (const mode of renderers) {
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:300px;height:200px'}));
             const code = `const get = OffscreenCanvas.prototype.getContext; OffscreenCanvas.prototype.getContext = function (kind, ...rest) { return /webgl/.test(kind) ? null : get.call(this, kind, ...rest); }; importScripts(${JSON.stringify(location.origin + '/dist/map-jr-gl-worker.js')});`;
             const url = URL.createObjectURL(new Blob([code], {type: 'text/javascript'}));
-            const seen = [], asked = [], warn = console.warn;
-            console.warn = () => {}; // (the map says that it uses the main thread)
+            const seen = [], asked = [], warnings = [], warn = console.warn;
+            console.warn = (...a) => warnings.push(a.join(' ')); // (with the default renderer 'auto' the map does not warn; #792)
             const m = new mod.Map({container: el, style: '/style.json', center: [-74.0065, 40.7085], zoom: 14, attributionControl: false, createWorker: () => new Worker(url),
                 transformRequest: (u, kind) => { asked.push(kind === 'Tile' && /\/14\//.test(u) ? 'view' : kind); return {url: u}; }});
             for (const type of ['load', 'idle', 'error']) m.on(type, () => seen.push(type));
@@ -2257,14 +2257,14 @@ for (const mode of renderers) {
             m.once('style.load', () => m.addLayer({id: 'fall-back-test', type: 'background', paint: {'background-color': '#f0f', 'background-opacity': 0.01}}));
             await new Promise(r => { m.once('idle', r); setTimeout(r, 12000); });
             console.warn = warn;
-            const out = {renderer: m.renderer, seen: [...new Set(seen)], tiles: asked.filter(k => k === 'view').length, layer: (await Promise.race([m.queryRenderedFeatures({layers: ['building']}), new Promise(r => setTimeout(() => r([]), 4000))])).length};
+            const out = {renderer: m.renderer, seen: [...new Set(seen)], warnings: warnings.filter(w => /using the main thread/.test(w)).length, tiles: asked.filter(k => k === 'view').length, layer: (await Promise.race([m.queryRenderedFeatures({layers: ['building']}), new Promise(r => setTimeout(() => r([]), 4000))])).length};
             m.remove(); el.remove();
             return out;
         });
         // (Only the tiles of the view count: the coarse overview tiles come later and could hide a tile of the view that
         // the new engine fetched before it had the rules for requests; #355.)
-        check('[worker] a worker without WebGL2: the map uses the main thread, load and idle fire, and transformRequest sees the tile requests of the view',
-            fell.renderer === 'main' && fell.seen.includes('load') && fell.seen.includes('idle') && !fell.seen.includes('error') && fell.tiles > 0 && fell.layer > 0, JSON.stringify(fell));
+        check('[worker] a worker without WebGL2 and renderer \'auto\': the map uses the main thread without a warning, load and idle fire, and transformRequest sees the tile requests of the view',
+            fell.renderer === 'main' && fell.warnings === 0 && fell.seen.includes('load') && fell.seen.includes('idle') && !fell.seen.includes('error') && fell.tiles > 0 && fell.layer > 0, JSON.stringify(fell));
     }
     // The same with the engine chunk delayed by 6 seconds, on a page of its own (the chunk is not in its module cache).
     // The watch of the worker must not count while the chunk loads: one warning, no `webglcontextlost`, one canvas.
@@ -2279,7 +2279,7 @@ for (const mode of renderers) {
             const url = URL.createObjectURL(new Blob([code], {type: 'text/javascript'}));
             const seen = [], warnings = [], warn = console.warn;
             console.warn = (...a) => warnings.push(a.join(' '));
-            const m = new mod.Map({container: el, style: '/style.json', center: [-74.0065, 40.7085], zoom: 14, attributionControl: false, createWorker: () => new Worker(url)});
+            const m = new mod.Map({container: el, style: '/style.json', center: [-74.0065, 40.7085], zoom: 14, attributionControl: false, renderer: 'worker', createWorker: () => new Worker(url)});
             for (const type of ['load', 'idle', 'error', 'webglcontextlost']) m.on(type, () => seen.push(type));
             await new Promise(r => { m.once('idle', r); setTimeout(r, 20000); });
             await new Promise(r => setTimeout(r, 2000));
@@ -2289,7 +2289,7 @@ for (const mode of renderers) {
             return out;
         });
         await slowContext.close();
-        check('[worker] a worker without WebGL2 and an engine chunk that takes 6 seconds: one engine on the main thread, one warning, and no webglcontextlost',
+        check('[worker] a worker without WebGL2, renderer \'worker\' and an engine chunk that takes 6 seconds: one engine on the main thread, one warning, and no webglcontextlost',
             late.renderer === 'main' && late.seen.includes('idle') && !late.seen.includes('webglcontextlost') && !late.seen.includes('error') && late.warnings === 1 && late.canvases === 1, JSON.stringify(late));
     }
     // A worker whose WebGL context is lost (#78). In each case the map must go to the main thread and warn once.
@@ -2317,7 +2317,7 @@ for (const mode of renderers) {
                 const seen = [], warnings = [], warn = console.warn, start = performance.now();
                 console.warn = (...a) => warnings.push(a.join(' '));
                 let lost = 0, secondLoss = 0;
-                const m = new mod.Map({container: el, style: '/style.json', center: [-74.0065, 40.7085], zoom: 14, attributionControl: false,
+                const m = new mod.Map({container: el, style: '/style.json', center: [-74.0065, 40.7085], zoom: 14, attributionControl: false, renderer: 'worker',
                     createWorker: () => new Worker(kind === 'first' ? hang : kind === 'now' ? now : !lost ? later : kind === 'quiet' ? silent : hang)});
                 for (const type of ['load', 'idle', 'error']) m.on(type, () => seen.push(type));
                 m.on('webglcontextlost', () => { if (++lost === 2) secondLoss = performance.now(); });

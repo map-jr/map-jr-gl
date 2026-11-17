@@ -193,8 +193,11 @@ export class Map {
     private nextQuery = 1;
     /** Which thread the engine ended up on. */
     renderer: 'worker' | 'main' = 'main';
+    /** The page asked for `renderer: 'worker'` by name. Only then does a fall back to the main thread warn (#792). */
+    private askedWorker: boolean;
 
     constructor(private options: MapOptions) {
+        this.askedWorker = (options.renderer ?? loadDefaults.renderer) === 'worker';
         const c = typeof options.container === 'string' ? document.getElementById(options.container) : options.container;
         if (!c) throw new Error('Map container not found');
         // Two maps in one element leave two canvases. Hot module replacement and an effect without a clean-up do this.
@@ -366,7 +369,7 @@ export class Map {
             w.onmessage = e => {
                 if (e.data.type !== 'fatal') return this.onEngineEvent(e.data);
                 // The worker could not create a WebGL2 context. A transferred canvas cannot be taken back, so swap in a new one.
-                console.warn('[map-jr-gl] Worker rendering unavailable, using the main thread: ' + e.data.message);
+                this.fellBack(e.data.message);
                 const fresh = this.canvas.cloneNode() as HTMLCanvasElement;
                 this.canvas.replaceWith(fresh);
                 for (const fn of this.inputCleanup.splice(0)) fn();
@@ -524,12 +527,19 @@ export class Map {
         this.lostAt = now;
         if (__DEV__) this.note('decision', drew || worker || !this.restarted ? toMain ? 'restart on the main thread' : 'restart with the same renderer' : 'error, no restart');
         if (drew || worker || !this.restarted) {
-            if (toMain) console.warn('[map-jr-gl] Worker rendering unavailable, using the main thread: the WebGL context was lost');
+            if (toMain) this.fellBack('the WebGL context was lost');
             this.restart(toMain);
         } else {
             this.watchTurn++;
             this.fire('error', {error: new Error('[map-jr-gl] The WebGL context was lost again. Call remove() and create the map again later.')});
         }
+    }
+
+    /** Says that the engine goes to the main thread: a warning for `renderer: 'worker'`, and with `'auto'` only a note of the development build. */
+    private fellBack(why: string) {
+        const text = '[map-jr-gl] Worker rendering unavailable, using the main thread: ' + why;
+        if (this.askedWorker) console.warn(text);
+        else if (__DEV__) console.info(text);
     }
 
     /** Sends again what an engine gets through commands, and not through the style. A new engine needs it. */
