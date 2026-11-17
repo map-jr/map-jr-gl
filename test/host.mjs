@@ -390,6 +390,27 @@ for (const renderer of renderers) {
             host.destroy(); el.remove();
             return out;
         }, renderer);
+        // 3d. A GeoJSON feature without an id that several tiles hold is given one time (#606). [0, 0] is the corner of
+        // four tiles at zoom 2, and each of them has the three points and a part of the square.
+        const corner = await page.evaluate(async renderer => {
+            const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const point = {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [0, 0]}};
+            const square = {type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[-20, -20], [20, -20], [20, 20], [-20, 20], [-20, -20]]]}};
+            const host = t.lib.createMap(el, {style: {version: 8, sources: {}, layers: []}, initialView: {center: [0, 0], zoom: 2}, renderer, attribution: false,
+                sources: {points: {type: 'geojson', data: {type: 'FeatureCollection', features: [point, point, point]}}, square: {type: 'geojson', data: square}},
+                layers: [{id: 'square', type: 'fill', source: 'square'}, {id: 'points', type: 'circle', source: 'points'}]});
+            await new Promise(r => { let at = host.state.get().idle ? performance.now() : 0; const off = host.state.subscribe(s => s.idle, v => { at = v ? performance.now() : 0; }), done = () => { clearInterval(timer); off(); r(); }, timer = setInterval(() => at && performance.now() - at > 500 && done(), 50); setTimeout(done, 8000); });
+            const at = {x: 100, y: 75}, box = [{x: 90, y: 65}, {x: 110, y: 85}], out = {};
+            for (const layer of ['points', 'square']) {
+                const found = [await host.queryFeatures(at, {layers: [layer]}), await host.queryFeatures(box, {layers: [layer]}), await host.queryFeatures({layers: [layer]}), await host.querySource(layer, box), await host.querySource(layer)];
+                out[layer] = found.map(f => f.length);
+                out.keys = out.keys !== false && found.flat().every(f => !('index' in f));
+            }
+            host.destroy(); el.remove();
+            return out;
+        }, renderer);
+        check(`[${renderer}] queryFeatures and querySource give a GeoJSON feature without an id one time when several tiles hold it (#606)`,
+            corner.points.join() === '3,3,3,3,3' && corner.square.join() === '1,1,1,1,1' && corner.keys, JSON.stringify(corner));
         check(`[${renderer}] queryFeatures: radius widens a query for drawn features, and its default is 0 there and 3 in querySource`,
             radius.on === 1 && radius.none === 0 && radius.small === 0 && radius.point === 1 && radius.position === 1 && radius.data === 1 && radius.dataDefault === 0 && radius.layer === 'own-line', JSON.stringify(radius));
 
