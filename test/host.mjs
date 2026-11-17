@@ -168,16 +168,19 @@ for (const renderer of renderers) {
             const cleared = at();
             t.host.moveTo({center: mid});
             console.warn = warn;
-            return {fit, ignored, spec, bounds, kept, same, flown, cleared: at(), detached, warned: warned.filter(w => w.includes('moveTo()')).length};
+            const {width: w, height: h} = document.getElementById('host').getBoundingClientRect();
+            return {w, h, fit, ignored, spec, bounds, kept, same, flown, cleared: at(), detached, warned: warned.filter(w => w.includes('moveTo()')).length};
         });
-        // (The page is 900 × 600: the centre of the rest of the map is at x = 400 + 245 = 645, 450 with no padding, 300 with
-        // the padding {right: 300} of the description, and with both 400 + (900 - 400 - 300 - 10 - 10) / 2 ... = 300 for the fly.)
+        // (The container is w × h, 900 × 600 where the page has no scroll bars; Firefox on macOS makes it 14 px smaller (#774).
+        // The centre of the rest of the map is at x = 400 + (w - 410) / 2 (645), w / 2 with no padding (450), and (w - 300) / 2
+        // with the padding {right: 300} of the description (300), also for the fly, whose y is h / 2.)
+        const P = padding, near = (a, b) => Math.abs(a - b) <= 2, half = P.w / 2, rest = (P.w - 300) / 2;
         check(`[${renderer}] padding per side: fitBounds takes {top, right, bottom, left}, and padding of the description moves the centre`,
-            Math.abs(padding.fit[0] - 645) <= 2 && padding.spec[0] === 300 && padding.cleared[0] === 450, JSON.stringify(padding));
+            near(P.fit[0], 400 + (P.w - 410) / 2) && near(P.spec[0], rest) && near(P.cleared[0], half), JSON.stringify(padding));
         check(`[${renderer}] moveTo leaves the padding of the map as the description gave it, and padding without bounds warns once (#501)`,
-            padding.ignored[0] === 450 && padding.ignored[1] === 300 && padding.kept[0] === 300 && padding.same[0] === 300 && padding.warned === 1, JSON.stringify(padding));
+            near(P.ignored[0], half) && near(P.ignored[1], P.h / 2) && near(P.kept[0], rest) && near(P.same[0], rest) && P.warned === 1, JSON.stringify(padding));
         check(`[${renderer}] moveTo with bounds fits the box with its padding, with bearing and pitch, and with fly, and a destructured fitBounds works (#501)`,
-            padding.bounds.bearing === 20 && padding.bounds.pitch === 30 && Math.abs(padding.flown[0] - 300) <= 2 && Math.abs(padding.flown[1] - 300) <= 2 && padding.detached === 'ok', JSON.stringify(padding));
+            padding.bounds.bearing === 20 && padding.bounds.pitch === 30 && near(P.flown[0], rest) && near(P.flown[1], P.h / 2) && padding.detached === 'ok', JSON.stringify(padding));
 
         // 3. A new style object: a layer is added and found by a query; with the old style again it is gone.
         const style = await page.evaluate(async () => {
@@ -1325,7 +1328,8 @@ for (const renderer of renderers) {
 
         // 4b. An SVG image without a viewBox has the size of its width and height attributes (#175): a 9×9 image that
         // replaces a 40×40 one under the same name is drawn at 9×9 centred on its anchor, and the 40×40 one is not cropped.
-        // (The blue box of each picture is read from a picture of the page; the anchor is at the centre, 450, 300.)
+        // (The blue box of each picture is read from a picture of the page; the anchor is at the centre of the container,
+        // 450, 300 where it is 900 × 600, and 7 px less in Firefox on macOS, whose scroll bars take 14 px (#774).)
         {
             const svg = (s, c) => `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}"><rect width="${s}" height="${s}" fill="${c}"/></svg>`;
             const box = async () => page.evaluate(async png => {
@@ -1343,12 +1347,14 @@ for (const renderer of renderers) {
                     {id: 'i', type: 'symbol', source: 'p', layout: {'icon-image': 'b', 'icon-allow-overlap': true}}]}, initialView: {center: [0, 0], zoom: 1}, renderer, attribution: false, images: {b: big}}};
                 window.sized.host = window.t.lib.createMap(el, window.sized.spec);
             }, {renderer, big: svg(40, '#00f')});
-            const big = await seen('430,469,280,319');
+            const [cx, cy] = await page.evaluate(() => { const r = document.getElementById('sized').getBoundingClientRect(); return [Math.round(r.width / 2), Math.round(r.height / 2)]; });
+            const want = n => [cx - n, cx + n - 1 + (n === 4), cy - n, cy + n - 1 + (n === 4)].join();
+            const big = await seen(want(20));
             await page.evaluate(small => { const s = window.sized; s.host.update(s.spec = {...s.spec, images: {b: small}}); }, svg(9, '#00f'));
-            const small = await seen('446,454,296,304');
+            const small = await seen(want(4));
             await page.evaluate(() => { window.sized.host.destroy(); document.getElementById('sized').remove(); });
             check(`[${renderer}] an SVG image without a viewBox has the size of its width and height: 40×40 is not cropped, and 9×9 after it is centred on its anchor`,
-                big === '430,469,280,319' && small === '446,454,296,304', JSON.stringify({big, small}));
+                big === want(20) && small === want(4), JSON.stringify({big, small}));
         }
 
         // 5. The features under the pointer, and a click.
@@ -2087,7 +2093,7 @@ for (const [entry, renderer] of [['main API', 'worker'], ['main API', 'main'], [
             for (let i = 0; i < 150 && !errors.length; i++) await wait(100);
             await wait(500);
             const box = message()?.getBoundingClientRect();
-            const out = {supported, errors, ...state(), text: message()?.textContent, count: el.querySelectorAll('.map-jr-unavailable').length, children: message()?.childElementCount, covers: !!box && box.width === 900 && box.height === 600, unhandled};
+            const out = {supported, errors, ...state(), text: message()?.textContent, count: el.querySelectorAll('.map-jr-unavailable').length, children: message()?.childElementCount, covers: !!box && box.width === el.clientWidth && box.height === el.clientHeight && box.width > 800, unhandled};
             // (The message is the application's to change: a rule of its own style sheet wins over the rule of the library.)
             document.head.appendChild(Object.assign(document.createElement('style'), {textContent: '.map-jr-unavailable{display:none}'}));
             out.hidden = !!message() && getComputedStyle(message()).display === 'none';
