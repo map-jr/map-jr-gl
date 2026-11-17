@@ -6,7 +6,7 @@
 // 2. For a suite that reads PORT (host.mjs, interact.mjs, loading.mjs), it starts the demo server on a free port and
 //    waits until the server answers. Several agents can run suites at the same time, each with its own server.
 // 3. It runs the suite with BROWSER=chromium when BROWSER is not a browser of Playwright (the Mac sets BROWSER=open).
-// 4. It prints the PASS and FAIL counts and each FAIL line, and keeps the complete output in .cache/agents/.
+// 4. It prints the PASS, FAIL and SKIP counts and each FAIL line, and keeps the complete output in .cache/agents/.
 // 5. It stops the server in every case. The server and the suite also end by themselves when this script ends,
 //    even when it is killed, because each of them exits when its standard input closes.
 //
@@ -103,7 +103,7 @@ const code = await new Promise(resolve => start([suite, ...suiteArgs], env, d =>
 stop();
 writeFileSync(outFile, output);
 const lines = output.split('\n'), fails = lines.filter(l => l.startsWith('FAIL'));
-console.log(`${suite}: ${lines.filter(l => l.startsWith('PASS')).length} passed, ${fails.length} failed, exit code ${code}`);
+console.log(`${suite}: ${lines.filter(l => l.startsWith('PASS')).length} passed, ${fails.length} failed, ${lines.filter(l => l.startsWith('SKIP')).length} skipped, exit code ${code}`);
 for (const l of fails) console.log(l);
 if (code !== 0 && !fails.length) console.log(lines.slice(-15).join('\n'));
 console.log(`suite.mjs: the complete output is in ${path.relative(root, outFile)}`);
