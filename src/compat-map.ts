@@ -244,6 +244,48 @@ export class Map extends CoreMap {
         // (Labels here always fade for a fixed time, and a drag with the right button always turns and tilts the map.)
         this.unsupported('The option fadeDuration', o.fadeDuration === undefined || o.fadeDuration === 300);
         this.unsupported('The option pitchWithRotate: false', o.pitchWithRotate !== false);
+        super.setMissingStyleImageResolver(name => this.styleImage(name));
+        this.once('remove', () => { this.imagesTurn++; });
+    }
+
+    // ---- The images in metadata["map-jr:images"] of the style (#759), as the main entry has them (#495) ----
+    // The code is loaded only for a style that has the key. A template is added at once, because a tile names the
+    // variants that it needs; another image is added when a layer asks for it (#628). An image that the page added wins.
+    private imagesSeen: unknown;
+    private imagesTurn = 0;
+    private imagesCode?: Promise<unknown>;
+    private fromStyle: Record<string, any> = {};
+    private styleImageNames = new Set<string>();
+    private resolver: Parameters<CoreMap['setMissingStyleImageResolver']>[0] = null;
+    setMissingStyleImageResolver(resolver: Parameters<CoreMap['setMissingStyleImageResolver']>[0]) { this.resolver = resolver; return this; }
+    addImage(...args: Parameters<CoreMap['addImage']>) { this.styleImageNames.delete(args[0]); return super.addImage(...args); }
+    private putStyleImage(name: string) {
+        if (!Object.hasOwn(this.fromStyle, name) || this.hasImage(name) && !this.styleImageNames.has(name)) return;
+        const v = this.fromStyle[name], spec = typeof v === 'object' ? v : null, turn = this.imagesTurn;
+        this.styleImageNames.add(name);
+        return super.addImage(name, spec ? spec.image : v, spec ?? {}).catch(() => {
+            if (turn === this.imagesTurn) this.fire('error', {error: new Error(`[map-jr-gl] the style: the image "${name}" did not load. Give an SVG document or the URL of an image that the page can read.`)});
+        });
+    }
+    private async styleImage(name: string) {
+        await this.imagesCode;
+        if (Object.hasOwn(this.fromStyle, name) && !this.hasImage(name)) await this.putStyleImage(name);
+        else await this.resolver?.(name);
+    }
+    private styleImages() {
+        const given = this.rawStyle.metadata?.['map-jr:images'];
+        if (given === this.imagesSeen) return;
+        this.imagesSeen = given;
+        const turn = ++this.imagesTurn;
+        for (const name of this.styleImageNames) this.removeImage(name);
+        this.styleImageNames.clear();
+        this.fromStyle = {};
+        this.imagesCode = given == null ? undefined : import('./style-images.ts').then(m => {
+            if (turn !== this.imagesTurn) return;
+            const now = new Set<string>();
+            this.fromStyle = m.styleImages(this.rawStyle, message => this.fire('error', {error: new Error(message)}), now);
+            for (const name of now) this.putStyleImage(name);
+        }, () => { if (turn === this.imagesTurn) this.fire('error', {error: new Error('[map-jr-gl] the style: the code for the images in metadata["map-jr:images"] did not load, and the map draws the style without them. Check that the files of the library are served next to it.')}); });
     }
 
     // ---- Changes of the style that MapLibre GL JS refuses ----
@@ -528,6 +570,7 @@ export class Map extends CoreMap {
     }
 
     protected override styleChanged() {
+        this.styleImages();
         if (this.customs) for (const l of this.rawStyle.layers ?? []) if (l.type === 'custom' && !l.implementation && this.customs.has(l.id)) Object.defineProperty(l, 'implementation', {value: this.customs.get(l.id)});
         if (!this.syncQuery && Object.values<any>(this.rawStyle.sources ?? {}).some(src => src.type === 'geojson' && src.data && typeof src.data === 'object')) import('./sync-query.ts').then(m => { this.syncQuery = m; });
     }
