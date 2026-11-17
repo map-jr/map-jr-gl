@@ -2501,6 +2501,34 @@ for (const renderer of ['worker', 'main']) {
         check("a page with style-src 'nonce-x' and no adoptedStyleSheets has styled controls with nonce: 'x' (#47)", ok(e.first), JSON.stringify(e));
     } catch (e) { check('the style sheet in a shadow root and with a nonce was checked', false, String(e.message).split('\n')[0]); }
 }
+// A touch screen gets buttons of 44px, as docs/api.md says for `--map-control-size`, in both entries (#639). (A blank
+// page: /bench loads the CSS of MapLibre GL JS, which sets the size of the buttons itself.)
+{
+    const context = await browser.newContext({viewport: {width: 600, height: 400}, hasTouch: true, isMobile: true});
+    const page = await context.newPage();
+    try {
+        await page.route(`${origin}/blank-page`, r => r.fulfill({contentType: 'text/html', body: '<!doctype html><title>blank</title><body></body>'}));
+        await page.goto(`${origin}/blank-page`);
+        const sizes = await page.evaluate(async () => {
+            const lib = await import('/dist/map-jr-gl.js'), {navigation} = await import('/dist/controls.js'), compat = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const wait = ms => new Promise(r => setTimeout(r, ms)), style = {version: 8, sources: {}, layers: []};
+            const box = () => document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+            const size = b => b && `${getComputedStyle(b).width} ${getComputedStyle(b).height}`;
+            const el = box(), host = lib.createMap(el, {style, renderer: 'main', controls: [navigation()]});
+            let b = null;
+            for (let i = 0; i < 50 && !(b = el.querySelector('.map-jr-ctrl-zoom-in')); i++) await wait(50);
+            const out = {coarse: matchMedia('(pointer: coarse)').matches, main: size(b)};
+            host.destroy();
+            const el2 = box(), m = new compat.Map({container: el2, attributionControl: false, center: [0, 0], zoom: 1, style});
+            m.addControl(new compat.NavigationControl());
+            out.compat = size(el2.querySelector('.map-jr-ctrl-zoom-in'));
+            m.remove();
+            return out;
+        });
+        check('a touch screen gets buttons of 44px in both entries (#639)', sizes.coarse && sizes.main === '44px 44px' && sizes.compat === '44px 44px', JSON.stringify(sizes));
+    } catch (e) { check('the size of the buttons on a touch screen was checked', false, String(e.message).split('\n')[0]); }
+    finally { await context.close(); }
+}
 // circle-pitch-alignment and circle-pitch-scale (#567). One circle of radius 20 is behind the centre of a map with a
 // pitch of 60 degrees, where the map is drawn at about 0.8 of its size at the centre. The size of the dark box on the
 // screen says how the circle is drawn.
