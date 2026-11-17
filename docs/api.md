@@ -1015,7 +1015,7 @@ const popup = map.overlay(content, {lngLat, popup: true, onClose: () => popup.re
 | `anchor` | The part of the element that is at the position: `'center'` (the default), `'bottom'`, `'top-left'` and others. |
 | `offset` | A distance in pixels from the position, to the right and down. |
 | `popup` | `true` to show the element in a box with a pointer to the position. |
-| `onClose` | For a popup: the box gets a button to close it, and this function is called. |
+| `onClose` | For a popup: the box gets a button to close it, and this function is called. The Escape key does the same while the keyboard focus is inside the popup. A popup without `onClose` does not react to the key. |
 | `draggable` | `true` to let the user move the element with the mouse, a finger or a pen. The default is `false`. It has no effect on a popup. |
 | `onDragStart`, `onDrag`, `onDragEnd` | For a draggable element: called when a drag starts, at each move, and when it ends, with the position of the element as `[lng, lat]`. |
 
