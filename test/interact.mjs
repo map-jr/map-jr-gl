@@ -8,6 +8,9 @@ const origin = `http://localhost:${process.env.PORT || 8080}`; // (the demo serv
 let failed = 0, mainFrames = 0;
 const check = (name, ok, detail = '') => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${name} ${detail}`); if (!ok) failed++; finished(name); };
 const finished = watchdog(browser, message => { console.log(`FAIL  ${message}`); failed++; });
+// A check that cannot run in this browser prints SKIP with the reason; it is neither passed nor failed.
+const skip = (name, reason) => { console.log(`SKIP  ${name} (${reason})`); finished(name); };
+const noCDP = `${browserName} has no CDP session for touch events`;
 // The map is settled when it does not move and the camera has been the same for a quarter of a second. (A browser
 // can report that the mouse was released before the page has handled the events, so `isMoving()` alone can be
 // false before a drag and its inertia have started.)
@@ -54,7 +57,7 @@ for (const mode of renderers) {
             const g = window.globeMap = new mod.Map({container: a, style: {...style, projection: {type: 'globe'}}, center: [10, 45], zoom: 1, renderer, attributionControl: false});
             const m = window.flatMap = new mod.Map({container: b, style, center: [10, 45], zoom: 1, renderer, attributionControl: false});
             await Promise.all([idle(g), idle(m)]);
-            const pixels = async map => { const blob = await map.toBlob(); const bmp = await createImageBitmap(blob), c = new OffscreenCanvas(bmp.width, bmp.height).getContext('2d'); c.drawImage(bmp, 0, 0); const at = (x, y) => [...c.getImageData(x * bmp.width, y * bmp.height, 1, 1).data]; return {corner: at(0.02, 0.02), middle: at(0.5, 0.5)}; };
+            const pixels = async map => { const blob = await map.toBlob(); const bmp = await createImageBitmap(blob), c = (typeof OffscreenCanvas === 'function' ? new OffscreenCanvas(bmp.width, bmp.height) : Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height})).getContext('2d'); c.drawImage(bmp, 0, 0); const at = (x, y) => [...c.getImageData(x * bmp.width, y * bmp.height, 1, 1).data]; return {corner: at(0.02, 0.02), middle: at(0.5, 0.5)}; };
             const p = g.project([10, 45]), q = g.project([-60, 10]), back = g.unproject([q.x, q.y]).toArray().map(v => +v.toFixed(3));
             // getBounds has the visible edge of the globe and a pole in view (MapLibre GL JS 6.17: -180, -46.81, 180, 90),
             // and a Marker on the far side takes opacityWhenCovered and the covered class (MapLibre: 0.2).
@@ -129,7 +132,7 @@ for (const mode of renderers) {
             await new Promise(r => { map.once('idle', r); setTimeout(r, 15000); });
         }, mode);
         const redPixels = async () => page.evaluate(async b64 => {
-            const img = await createImageBitmap(await (await fetch('data:image/png;base64,' + b64)).blob()), c = new OffscreenCanvas(img.width, img.height).getContext('2d');
+            const img = await createImageBitmap(await (await fetch('data:image/png;base64,' + b64)).blob()), c = (typeof OffscreenCanvas === 'function' ? new OffscreenCanvas(img.width, img.height) : Object.assign(document.createElement('canvas'), {width: img.width, height: img.height})).getContext('2d');
             c.drawImage(img, 0, 0);
             const d = c.getImageData(0, 0, img.width, img.height).data;
             let n = 0; for (let i = 0; i < d.length; i += 4) if (d[i] > 60 && d[i + 1] < 60) n++;
@@ -147,7 +150,7 @@ for (const mode of renderers) {
             m.setProjection({type: 'globe'});
             await new Promise(r => setTimeout(r, 50));
             await new Promise(r => { m.once('idle', r); setTimeout(r, 15000); });
-            const bmp = await createImageBitmap(await m.toBlob()), c = new OffscreenCanvas(bmp.width, bmp.height).getContext('2d');
+            const bmp = await createImageBitmap(await m.toBlob()), c = (typeof OffscreenCanvas === 'function' ? new OffscreenCanvas(bmp.width, bmp.height) : Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height})).getContext('2d');
             c.drawImage(bmp, 0, 0);
             const corner = c.getImageData(2, 2, 1, 1).data[3];
             m.setProjection({type: 'mercator'});
@@ -901,7 +904,7 @@ for (const mode of renderers) {
             kept.push(data); // (the protocol keeps its image, as a protocol with a cache does)
             return {data};
         });
-        const middle = async () => { const bmp = await createImageBitmap(await m.toBlob()), g = new OffscreenCanvas(bmp.width, bmp.height).getContext('2d'); g.drawImage(bmp, 0, 0); return [...g.getImageData(bmp.width >> 1, bmp.height >> 1, 1, 1).data].slice(0, 3).join(); };
+        const middle = async () => { const bmp = await createImageBitmap(await m.toBlob()), g = (typeof OffscreenCanvas === 'function' ? new OffscreenCanvas(bmp.width, bmp.height) : Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height})).getContext('2d'); g.drawImage(bmp, 0, 0); return [...g.getImageData(bmp.width >> 1, bmp.height >> 1, 1, 1).data].slice(0, 3).join(); };
         const seen = {};
         try {
             for (const how of ['bitmap', 'element', 'bytes']) {
@@ -3432,7 +3435,7 @@ for (const mode of renderers) {
         if (browserName === 'chromium') {
             r = await compass(true, true);
             check('[main] compat: a touch drag on the compass rotates and pitches the map without panning it', Math.abs(r.dragged.bearing) > 1 && r.dragged.pitch > 21 && !r.dragged.panned, JSON.stringify(r));
-        }
+        } else skip('[main] compat: a touch drag on the compass rotates and pitches the map without panning it', noCDP);
     }
     // #557: a rotate drag (the right mouse button, or Ctrl with the left one) turns the map of the compat entry as it
     // turns MapLibre GL JS (served at /ml/): the same way and by the same angle, at five heights of the map. Two fingers
@@ -3482,6 +3485,7 @@ for (const mode of renderers) {
         const ml = await drags('ml'), compat = await drags('compat');
         check(`[${mode}] compat: a rotate drag with the right button, with Ctrl and the left button${browserName === 'chromium' ? ', and with two fingers' : ''} turns the map the same way and by the same angle as MapLibre GL JS (#557)`,
             ml.length === compat.length && ml.every((b, i) => Math.abs(b) > 10 && Math.abs(b - compat[i]) < 1.5), JSON.stringify({ml, compat}));
+        if (browserName !== 'chromium') skip(`[${mode}] compat: a rotate drag with two fingers turns the map as MapLibre GL JS does (#557)`, noCDP);
     } catch (e) { check(`[${mode}] the rotate drags of #557: the test run was completed`, false, String(e.message).split('\n')[0]); }
     // 3D terrain off and on again: the elevation tiles that are loaded stay, so the relief does not go away for a
     // moment and no tile is asked for again.
@@ -3591,7 +3595,7 @@ for (const mode of renderers) {
                 layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}},
                     {id: 'relief', type: 'color-relief', source: 'dem', paint: {'color-relief-color': ['interpolate', ['linear'], ['elevation'], 0, '#f00', 1000, '#f00', 1001, '#00f', 9000, '#00f']}}]}});
             const idle = () => new Promise(r => { m.once('idle', () => r(true)); setTimeout(() => r(false), 20000); });
-            const centre = async () => { const bmp = await createImageBitmap(await m.toBlob()), c = new OffscreenCanvas(bmp.width, bmp.height).getContext('2d'); c.drawImage(bmp, 0, 0); return [...c.getImageData(bmp.width >> 1, bmp.height >> 1, 1, 1).data].slice(0, 3); };
+            const centre = async () => { const bmp = await createImageBitmap(await m.toBlob()), c = (typeof OffscreenCanvas === 'function' ? new OffscreenCanvas(bmp.width, bmp.height) : Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height})).getContext('2d'); c.drawImage(bmp, 0, 0); return [...c.getImageData(bmp.width >> 1, bmp.height >> 1, 1, 1).data].slice(0, 3); };
             const out = {idle: await idle()};
             out.full = await centre();
             m.setPaintProperty('relief', 'color-relief-opacity', 0.5);
@@ -3618,7 +3622,7 @@ for (const mode of renderers) {
                 layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}},
                     {id: 'relief', type: 'color-relief', source: 'dem', paint: {'color-relief-color': ramp(0, '#f00', 1000, '#f00', 1001, '#00f', 9000, '#00f')}}]}});
             const idle = () => new Promise(r => { m.once('idle', () => r(true)); setTimeout(() => r(false), 20000); });
-            const centre = async () => { const bmp = await createImageBitmap(await m.toBlob()), c = new OffscreenCanvas(bmp.width, bmp.height).getContext('2d'); c.drawImage(bmp, 0, 0); return [...c.getImageData(bmp.width >> 1, bmp.height >> 1, 1, 1).data].slice(0, 3).join(); };
+            const centre = async () => { const bmp = await createImageBitmap(await m.toBlob()), c = (typeof OffscreenCanvas === 'function' ? new OffscreenCanvas(bmp.width, bmp.height) : Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height})).getContext('2d'); c.drawImage(bmp, 0, 0); return [...c.getImageData(bmp.width >> 1, bmp.height >> 1, 1, 1).data].slice(0, 3).join(); };
             const out = {idle: await idle()};
             out.custom = await centre();
             out.elevation = await m.queryElevation([7.6586, 45.9763], {source: 'dem'});

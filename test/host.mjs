@@ -1,5 +1,5 @@
 // Tests of the main API (`createMap`, see src/host.ts) in a real browser: node test/host.mjs (demo server running)
-import {launch} from './launch.mjs';
+import {launch, browserName} from './launch.mjs';
 import {watchdog} from './watchdog.mjs';
 import {crc32, deflateSync} from 'node:zlib';
 
@@ -22,6 +22,10 @@ const check = (name, ok, detail = '') => {
     finished(name);
 };
 const finished = watchdog(browser, message => { console.log(`FAIL  ${message}`); failed++; });
+// A check that cannot run in this browser prints SKIP with the reason; it is neither passed nor failed.
+const skip = (name, reason) => { console.log(`SKIP  ${name} (${reason})`); finished(name); };
+// Touch events through a CDP session (newCDPSession) exist in Chromium only.
+const cdpTouch = browserName === 'chromium', noCDP = `${browserName} has no CDP session for touch events`;
 
 // RENDERER=main or RENDERER=worker runs the checks of one renderer, and CI runs each in its own job (#519). The checks
 // after the first loop run with RENDERER=main. Without the variable the suite runs everything.
@@ -610,7 +614,7 @@ for (const renderer of renderers) {
             const spec = {style: base(), initialView: {center: [0, 0], zoom: 5}, renderer, attribution: false,
                 sources: {own: {type: 'geojson', data: {type: 'FeatureCollection', features: [square]}}}, layers: [{id: 'own-fill', type: 'fill', source: 'own', paint: {'fill-color': ['case', ['boolean', ['feature-state', 'on'], false], '#f00', '#00f']}}]};
             const host = t.lib.createMap(el, spec);
-            const red = async () => { const b = await host.toBlob(), c = new OffscreenCanvas(1, 1).getContext('2d'), i = await createImageBitmap(b); c.drawImage(i, i.width / 2, i.height / 2, 1, 1, 0, 0, 1, 1); const [r, , bl] = c.getImageData(0, 0, 1, 1).data; return r > 200 && bl < 50 ? 'red' : bl > 200 && r < 50 ? 'blue' : `${r},${bl}`; };
+            const red = async () => { const b = await host.toBlob(), c = (typeof OffscreenCanvas === 'function' ? new OffscreenCanvas(1, 1) : Object.assign(document.createElement('canvas'), {width: 1, height: 1})).getContext('2d'), i = await createImageBitmap(b); c.drawImage(i, i.width / 2, i.height / 2, 1, 1, 0, 0, 1, 1); const [r, , bl] = c.getImageData(0, 0, 1, 1).data; return r > 200 && bl < 50 ? 'red' : bl > 200 && r < 50 ? 'blue' : `${r},${bl}`; };
             const read = async () => (await host.queryFeatures({x: 100, y: 75}, {layers: ['own-fill']}))[0]?.state;
             const settle = async () => { await new Promise(r => setTimeout(r, 300)); await idle(host); };
             await idle(host);
@@ -2182,7 +2186,8 @@ for (const visualizePitch of [undefined, true]) {
         // #548: a drag sideways across the compass, with the mouse and with a finger, turns the map steadily: 0.4 degrees
         // for each pixel, as a drag with the right button does, in one direction, with no jump where the pointer passes the
         // centre of the button.
-        if (!visualizePitch) for (const kind of ['mouse', 'touch']) {
+        if (!visualizePitch && !cdpTouch) for (const what of ['turns the map by 0.4 degrees for each pixel, without a jump', 'keeps one bearing']) skip(`${name}: a drag of the compass with the touch ${what}`, noCDP);
+        if (!visualizePitch) for (const kind of cdpTouch ? ['mouse', 'touch'] : ['mouse']) {
             await page.evaluate(() => window.compassHost.moveTo({bearing: 0, duration: 0}));
             await page.waitForTimeout(100);
             const bearing = () => page.evaluate(() => window.compassHost._map.getBearing()); // (the state follows a frame later)
@@ -2233,9 +2238,10 @@ for (const renderer of renderers) {
             for (let i = 0; i < 50 && !el.querySelector('.maplibregl-ctrl-compass'); i++) await new Promise(r => setTimeout(r, 100));
         }, renderer);
         const box = await page.evaluate(() => { const r = document.querySelector('.maplibregl-ctrl-compass').getBoundingClientRect(); return {x: r.left + r.width / 2, y: r.top + r.height / 2}; });
-        const cdp = await page.context().newCDPSession(page), ends = {}, steps = {}, letters = {};
+        const cdp = cdpTouch && await page.context().newCDPSession(page), ends = {}, steps = {}, letters = {};
+        if (!cdpTouch) skip(`[${renderer}] a fast drag from the compass with the touch`, noCDP);
         const touch = (type, x, y) => cdp.send('Input.dispatchTouchEvent', {type, touchPoints: type === 'touchEnd' ? [] : [{x, y}]});
-        for (const kind of ['mouse', 'touch']) for (const moves of [100, 25, 5]) {
+        for (const kind of cdpTouch ? ['mouse', 'touch'] : ['mouse']) for (const moves of [100, 25, 5]) {
             await page.evaluate(() => window.fastHost.moveTo({bearing: 0, duration: 0}));
             await page.waitForTimeout(200);
             await page.evaluate(() => {
@@ -2605,7 +2611,7 @@ for (const renderer of ['worker', 'main']) {
         let px = [];
         for (let i = 0; i < 20 && !(px[1] > 200 && px[0] < 50); i++) {
             const b64 = (await page.screenshot({clip: {x: 100, y: 75, width: 1, height: 1}})).toString('base64');
-            px = await page.evaluate(async b64 => { const img = new Image(); img.src = 'data:image/png;base64,' + b64; await img.decode(); const c = new OffscreenCanvas(1, 1).getContext('2d'); c.drawImage(img, 0, 0); return [...c.getImageData(0, 0, 1, 1).data]; }, b64);
+            px = await page.evaluate(async b64 => { const img = new Image(); img.src = 'data:image/png;base64,' + b64; await img.decode(); const c = (typeof OffscreenCanvas === 'function' ? new OffscreenCanvas(1, 1) : Object.assign(document.createElement('canvas'), {width: 1, height: 1})).getContext('2d'); c.drawImage(img, 0, 0); return [...c.getImageData(0, 0, 1, 1).data]; }, b64);
             if (!(px[1] > 200 && px[0] < 50)) await new Promise(r => setTimeout(r, 250));
         }
         check(`[${renderer}] a change of the style after a pause reaches the screen, with two maps on the page (#429)`, renders >= 2 && px[1] > 200 && px[0] < 50, JSON.stringify({renders, px}));
@@ -2705,7 +2711,7 @@ if ((only ?? 'main') === 'main') {
             const b64 = (await page.screenshot({clip: {x: 0, y: 0, width: 400, height: 300}})).toString('base64');
             return page.evaluate(async b64 => {
                 const img = new Image(); img.src = 'data:image/png;base64,' + b64; await img.decode();
-                const c = new OffscreenCanvas(400, 300).getContext('2d'); c.drawImage(img, 0, 0, 400, 300);
+                const c = (typeof OffscreenCanvas === 'function' ? new OffscreenCanvas(400, 300) : Object.assign(document.createElement('canvas'), {width: 400, height: 300})).getContext('2d'); c.drawImage(img, 0, 0, 400, 300);
                 const d = c.getImageData(0, 0, 400, 300).data;
                 let x0 = 400, x1 = -1, y0 = 300, y1 = -1;
                 for (let y = 0; y < 300; y++) for (let x = 0; x < 400; x++) if (d[(y * 400 + x) * 4] < 128) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
