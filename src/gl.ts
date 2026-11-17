@@ -1,5 +1,5 @@
 import {EXTENT, latFromMerc, mercX, mercY, type TileID, type Transform} from './geo.ts';
-import {hillshadeLights, LIGHTS, type CompiledLayer, type Light} from './style.ts';
+import {hillshadeLights, LIGHTS, screenTranslate, type CompiledLayer, type Light} from './style.ts';
 import {compileProp} from './expr.ts';
 import {LINE_VERTEX, WALL_OTHER, WALL_TOP, type GLBatch, type IconBatch, type LabelSrc, type TileGL} from './tile.ts';
 import type {Placed, RenderItem} from './placement.ts';
@@ -803,7 +803,7 @@ export class GLRenderer {
                 const p = L.p;
                 if (!u) {
                     u = this.use('icon', tr);
-                    const anchor = p.iconAnchor.eval(zoom) as string, offset = p.iconOffset.eval(zoom) as number[], translate = p.iconTranslate.eval(zoom) as number[], color = p.iconColor.eval(zoom) as number[];
+                    const anchor = p.iconAnchor.eval(zoom) as string, offset = p.iconOffset.eval(zoom) as number[], translate = screenTranslate(p.iconTranslate.eval(zoom), p.iconTranslateAnchor.eval(zoom), tr.bearing), color = p.iconColor.eval(zoom) as number[];
                     gl.uniform1f(u.u_size, p.iconSize.dd ? 1 : p.iconSize.eval(zoom));
                     gl.uniform1f(u.u_opacity, p.iconOpacity.dd ? 1 : p.iconOpacity.eval(zoom));
                     // (`icon-rotation-alignment`: an icon that is aligned with the map turns with the map.)
@@ -812,7 +812,7 @@ export class GLRenderer {
                     gl.uniform1f(u.u_dpr, this.dpr);
                     gl.uniform2f(u.u_offset, offset[0], offset[1]);
                     gl.uniform2f(u.u_anchor, anchor.includes('left') ? 0.5 : anchor.includes('right') ? -0.5 : 0, anchor.includes('top') ? 0.5 : anchor.includes('bottom') ? -0.5 : 0);
-                    gl.uniform2f(u.u_translate, translate?.[0] ?? 0, translate?.[1] ?? 0);
+                    gl.uniform2f(u.u_translate, translate[0], translate[1]);
                     gl.uniform4f(u.u_color, color[0], color[1], color[2], color[3]);
                     gl.uniform1i(u.u_img, 0);
                 }
@@ -1151,9 +1151,9 @@ export class GLRenderer {
                     }
                     if (b.type === 'circle') {
                         const sc = L.p.strokeColor.eval(zoom), a = sc[3] * (L.p.strokeOpacity.dd ? 1 : L.p.strokeOpacity.eval(zoom));
-                        const tl = L.p.translate.eval(zoom) as number[];
+                        const tl = screenTranslate(L.p.translate.eval(zoom), L.p.translateAnchor.eval(zoom), tr.bearing);
                         gl.uniform1f(u.u_blur, L.p.blur.dd ? 0 : L.p.blur.eval(zoom));
-                        gl.uniform2f(u.u_translate, tl?.[0] ?? 0, tl?.[1] ?? 0);
+                        gl.uniform2f(u.u_translate, tl[0], tl[1]);
                         gl.uniform1f(u.u_radius, L.p.radius.dd ? 1 : L.p.radius.eval(zoom));
                         gl.uniform1f(u.u_strokeWidth, L.p.strokeWidth.eval(zoom));
                         gl.uniform4f(u.u_stroke, sc[0] * a, sc[1] * a, sc[2] * a, a);

@@ -4,13 +4,13 @@ import {globeBuild} from './subdivide.ts';
 import {compileFor, type Feature, type MapStates} from './expr.ts';
 import {VARIANT, variantName} from './markers.ts';
 import {layerRules} from './rules.ts';
-import {compileLayer, isGeometrySource, loadSprite, tileURL, type CompiledLayer, type FontSource, type ResolvedStyle, type Sprite, type SpriteIcon} from './style.ts';
+import {compileLayer, isGeometrySource, screenTranslate, loadSprite, tileURL, type CompiledLayer, type FontSource, type ResolvedStyle, type Sprite, type SpriteIcon} from './style.ts';
 import {AtlasSpace} from './atlas-space.ts';
 import {GLRenderer, SPRITE_ATLAS, type DemRef, type GLTile, type TerrainTile} from './gl.ts';
 import {CollisionGrid, placeLabels, renderItems, type Placed, type RenderItem} from './placement.ts';
 import {EM, GlyphAtlas} from './text.ts';
 import {fetchWith, withTimeout, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
-import {decodeElevation, sampleElevation, tilesUnderBox, type QueriedFeature, type QuerySet} from './query.ts';
+import {decodeElevation, sampleElevation, featureKey, tilesUnderBox, type QueriedFeature, type QuerySet} from './query.ts';
 import type {FeatureStates, TileBackend, TileRequest} from './tiles.ts';
 import type {TileGL} from './tile.ts';
 import {fetchTile, heads} from './pmtiles.ts';
@@ -1054,15 +1054,14 @@ export class Engine {
                 }));
             }
         }
-        // A feature with an id that is in two tiles is given one time.
+        // A feature that is in two tiles is given one time, when it has an id or comes from a GeoJSON source.
         const seen = new Set<string>();
         return (await Promise.all(jobs)).flat().filter(f => {
             const L = radii.has(f.layer!) && this.layers.find(l => l.id === f.layer);
             if (L && !this.underIcon(L, f, c.box, radii.get(f.layer!)!, shown.get(f.layer!)!)) return false;
             if (L && !c.geometry) delete f.geometry;
-            if (f.id === undefined) return true;
-            const key = `${f.layer}|${f.source}|${f.sourceLayer}|${f.id}`;
-            return seen.has(key) ? false : (seen.add(key), true);
+            const key = featureKey(f);
+            return !key || (seen.has(key) ? false : (seen.add(key), true));
         });
     }
 
@@ -1725,9 +1724,9 @@ export class Engine {
      * `icon-rotate` in radians. (The same rules as for an icon that is placed with the labels: see `placeLabels`.)
      */
     private iconBox(L: CompiledLayer, w: number, h: number, size: number, turn: number, f?: Feature): [number, number, number, number] {
-        const z = this.tr.zoom, anchor = L.p.iconAnchor.eval(z, f) as string, offset = L.p.iconOffset.eval(z, f) as number[], move = L.p.iconTranslate.eval(z) as number[] | null;
+        const z = this.tr.zoom, anchor = L.p.iconAnchor.eval(z, f) as string, offset = L.p.iconOffset.eval(z, f) as number[], move = screenTranslate(L.p.iconTranslate.eval(z), L.p.iconTranslateAnchor.eval(z), this.tr.bearing);
         const angle = (L.p.iconAlign.eval(z, f) === 'map' ? -this.tr.bearing * Math.PI / 180 : 0) + turn, cos = Math.abs(Math.cos(angle)), sin = Math.abs(Math.sin(angle));
-        return [(offset[0] + (anchor.includes('left') ? 0.5 : anchor.includes('right') ? -0.5 : 0) * w) * size + (move?.[0] ?? 0), (offset[1] + (anchor.includes('top') ? 0.5 : anchor.includes('bottom') ? -0.5 : 0) * h) * size + (move?.[1] ?? 0),
+        return [(offset[0] + (anchor.includes('left') ? 0.5 : anchor.includes('right') ? -0.5 : 0) * w) * size + move[0], (offset[1] + (anchor.includes('top') ? 0.5 : anchor.includes('bottom') ? -0.5 : 0) * h) * size + move[1],
             (w * cos + h * sin) / 2 * size, (w * sin + h * cos) / 2 * size];
     }
 
