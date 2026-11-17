@@ -202,8 +202,9 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
         return ok;
     });
     // A style has one sprite (a URL) or a list of sprites with ids. A list goes to the engine as text (see loadIcons).
+    // An empty URL is no sprite, as in MapLibre GL JS (#760).
     const spriteURL = (u: string) => absolute(u, base);
-    const sprite = typeof style.sprite === 'string' ? spriteURL(style.sprite)
+    const sprite = typeof style.sprite === 'string' ? style.sprite ? spriteURL(style.sprite) : undefined
         : Array.isArray(style.sprite) && style.sprite.length ? JSON.stringify(style.sprite.map((s: {id: string; url: string}) => ({id: s.id, url: spriteURL(s.url)}))) : undefined;
     const fonts = fontFaces(style['font-faces'], base);
     const rawTerrain = (style as any).terrain;

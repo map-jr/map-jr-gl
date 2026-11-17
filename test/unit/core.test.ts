@@ -434,6 +434,14 @@ test('server: renders a tile to SVG offline, with generated icons and overrides'
     assert.equal((await renderToSVG({...opts, style: coarse, overrides: false})).svg, full.svg);
 });
 
+test('style: an empty sprite is no sprite (#760)', async () => {
+    const {resolveStyle} = await import('../../src/style.ts');
+    const style = await resolveStyle({version: 8, sources: {}, layers: [], sprite: ''}, undefined, 'https://example.test/maputnik/?layer=1');
+    assert.equal(style.sprite, undefined);
+    const named = await resolveStyle({version: 8, sources: {}, layers: [], sprite: 'sprites/a'}, undefined, 'https://example.test/styles/style.json');
+    assert.equal(named.sprite, 'https://example.test/styles/sprites/a');
+});
+
 test('style: font-faces become web fonts keyed by family, weight and style', async () => {
     const {resolveStyle, parseFontName} = await import('../../src/style.ts');
     assert.deepEqual(parseFontName('Open Sans Semibold Italic'), {family: 'Open Sans', weight: 600, style: 'italic'});
