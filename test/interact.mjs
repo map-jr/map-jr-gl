@@ -2058,6 +2058,26 @@ for (const mode of renderers) {
         check(`[${mode}] raster source: setTiles and setUrl load tiles from the new URLs, and a wrong argument gives a message`,
             r.a && r.b && r.c && r.same && r.url === '/test-255.json' && !r.tiles && r.message.startsWith('[map-jr-gl] getSource("r").setTiles'), JSON.stringify(r));
     }
+    // Maputnik reads the source layers of each vector source from `map.style.tileManagers[id]._source.vectorLayerIds`
+    // (`sourceCaches` in MapLibre GL JS 5), which come from `vector_layers` of the TileJSON (#766).
+    {
+        await page.route('**/test-766.json', route => route.fulfill({contentType: 'application/json', body: JSON.stringify({tilejson: '2.2.0', tiles: [new URL('/t766/{z}/{x}/{y}.pbf', page.url()).href], vector_layers: [{id: 'roads', fields: {}}, {id: 'water', fields: {}}]})}));
+        await page.route(/\/t766\//, route => route.fulfill({status: 404}));
+        const r = await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const m = new mod.Map({container: el, renderer: mode, attributionControl: false, center: [0, 0], zoom: 1,
+                style: {version: 8, sources: {v: {type: 'vector', url: '/test-766.json'}, g: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}}, layers: []}});
+            m.on('error', () => {});
+            await new Promise(r => { m.once('load', r); setTimeout(r, 5000); });
+            const s = m.style, out = {ids: Object.keys(s.tileManagers).sort(), layers: s.tileManagers.v?._source.vectorLayerIds, geo: s.tileManagers.g?._source.vectorLayerIds, same: s.sourceCaches === s.tileManagers};
+            m.remove(); el.remove();
+            return out;
+        }, mode);
+        await page.unroute('**/test-766.json'); await page.unroute(/\/t766\//);
+        check(`[${mode}] compat map.style.tileManagers gives the vector_layers ids of each vector source (#766)`,
+            r.ids.join() === 'g,v' && r.layers?.join() === 'roads,water' && r.geo === undefined && r.same, JSON.stringify(r));
+    }
     // The other members of a source of the compat entry: the cluster options and the bounds of a GeoJSON source, and
     // `reload` and the values of the TileJSON of a tile source (#566).
     {

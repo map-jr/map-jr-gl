@@ -38,7 +38,7 @@ export interface SourceInfo {
     /** Contour sources: how to derive lines from their elevation source. */
     contour?: ContourConfig;
     /** GeoJSON sources carry their data; it is handed to the tile workers, which cut tiles from it. */
-    data?: unknown; /** GeoJSON sources: clusters and the id property. */ options?: GeoJSONOptions; tiles: string[]; minzoom: number; maxzoom: number; tileSize: number; attribution?: string; /** A PMTiles archive: its URL and its first bytes (header and root directory). */ head?: {url: string; bytes: Uint8Array}; /** The rows of tiles are counted from the south (`scheme: 'tms'`). */ tms?: boolean; encoding?: 'terrarium' | 'mapbox' | number[];
+    data?: unknown; /** GeoJSON sources: clusters and the id property. */ options?: GeoJSONOptions; tiles: string[]; minzoom: number; maxzoom: number; tileSize: number; attribution?: string; /** A PMTiles archive: its URL and its first bytes (header and root directory). */ head?: {url: string; bytes: Uint8Array}; /** The rows of tiles are counted from the south (`scheme: 'tms'`). */ tms?: boolean; /** Vector sources: the ids of `vector_layers` of the TileJSON (for the compat entry). */ layerIds?: string[]; encoding?: 'terrarium' | 'mapbox' | number[];
     /** The area that has tiles: west, south, east, north. A tile outside it is not requested. */
     bounds?: number[];
 }
@@ -177,6 +177,7 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
             // the engine checks them, see `setStyle` there.)
             encoding: raw.type !== 'raster-dem' ? undefined : src.encoding === 'custom' ? [src.redFactor ?? 1, src.greenFactor ?? 1, src.blueFactor ?? 1, src.baseShift ?? 0] : src.encoding === 'terrarium' ? 'terrarium' : 'mapbox',
             head: src.head,
+            layerIds: Array.isArray(src.vector_layers) ? src.vector_layers.map((l: any) => String(l?.id)) : undefined,
         };
     }));
     // (In the order of the style, whichever answer came first.)
