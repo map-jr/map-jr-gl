@@ -109,8 +109,11 @@ export class Map extends CoreMap {
     }
     protected override tileLoaded(sourceId: string, z: number, x: number, y: number) {
         const canonical = {z, x, y, key: `${z}/${x}/${y}`}, tile = {tileID: {canonical, overscaledZ: z, wrap: 0, key: canonical.key}, state: 'loaded'};
+        this.lastTile.set(sourceId, tile);
         for (const type of ['sourcedata', 'data']) this.fire(type, {dataType: 'source', sourceId, tile, coord: tile.tileID, isSourceLoaded: this.isSourceLoaded(sourceId), source: this.getSource(sourceId)});
     }
+    /** The last tile that loaded, for each source (see `querySourceFeatures`). */
+    private lastTile = new globalThis.Map<string, {tileID: {canonical: object}}>();
     /** The version of this library, as the member `version` of a map of MapLibre GL JS. */
     get version() { return __VERSION__; }
     /** The controls on the map, in the order they were added. vue-maplibre-gl reads this private member of MapLibre GL JS. */
@@ -349,7 +352,7 @@ export class Map extends CoreMap {
     }
     removeSource(id: string) {
         const user = this.rawStyle?.layers.find((l: any) => l.source === id);
-        return user ? this.refused(`removeSource: the layer "${user.id}" uses the source "${id}". Remove the layer first.`) : super.removeSource(id);
+        return user ? this.refused(`removeSource: the layer "${user.id}" uses the source "${id}". Remove the layer first.`) : (this.forgetSource(id), super.removeSource(id));
     }
 
     /**
@@ -550,8 +553,9 @@ export class Map extends CoreMap {
     /**
      * The features of a source in the tiles of the present view, as in MapLibre: all the features of those tiles, also
      * those that no layer draws and those outside the view. As with `queryRenderedFeatures`, the result is an array
-     * that can also be awaited: at once it has the features of a GeoJSON source whose data the page has (clusters too);
-     * awaited, it has the features of each kind of source.
+     * that can also be awaited: at once it has the features of a GeoJSON source whose data the page has (clusters too),
+     * and for other sources the last answer of the engine for the same source and options; awaited, it has the
+     * features of each kind of source in the present view.
      */
     querySourceFeatures(sourceId: string, options: QuerySourceFeatureOptions = {}): GeoJSONFeature[] & PromiseLike<GeoJSONFeature[]> {
         const sets = [{layer: '', source: sourceId, sourceLayer: options.sourceLayer, filter: options.filter, radius: Infinity}], box: [number, number, number, number] = [0, 0, this.tr.width, this.tr.height];
@@ -559,11 +563,24 @@ export class Map extends CoreMap {
         const features = (found: QueriedFeature[]): Omit<RenderedFeature, 'layer'>[] => found.map(f => ({type: 'Feature', id: f.id, geometry: f.geometry!, properties: f.properties, source: f.source, sourceLayer: f.sourceLayer || undefined,
             state: f.id === undefined ? {} : this.getFeatureState({source: f.source, sourceLayer: f.sourceLayer || undefined, id: f.id})}));
         const spec = this.rawStyle?.sources[sourceId], data = spec?.type === 'geojson' && this.geoData(sourceId);
-        let now: QueriedFeature[] = [];
+        // At once: the last answer of the engine for this source and these options, in any view (see `sourceAnswers`).
+        const key = JSON.stringify([sourceId, options.sourceLayer, options.filter]), turn = this.sourceTurn.get(sourceId);
+        let now: QueriedFeature[] = this.sourceAnswers.get(key)?.found ?? [];
         if (data && this.syncQuery) try { now = this.syncQuery.queryGeoJSON(sourceId, {...spec, data}, this.tr, box, sets); } catch { /* the promise has the complete result or the error */ }
         let awaited = false;
         const result = features(now), had = now.length, all = this.ask<QueriedFeature[]>(id => ({type: 'queryRendered', id, box, sets, geometry: true})).then(found => {
-            if (!awaited && found.length > had) this.incomplete('querySourceFeatures', had, found.length);
+            if (turn === this.sourceTurn.get(sourceId)) {
+                this.sourceAnswers.delete(key);
+                this.sourceAnswers.set(key, {sourceId, found});
+                if (this.sourceAnswers.size > 64) this.sourceAnswers.delete(this.sourceAnswers.keys().next().value!);
+            }
+            if (!awaited && found.length > had) {
+                this.incomplete('querySourceFeatures', had, found.length);
+                // Code that reads the array asks again when a tile loads (Maputnik does): report the last tile of the
+                // source again, one time for a question, and the same question then has the answer at once.
+                const tile = this.lastTile.get(sourceId);
+                if (tile && !this.refired.has(key)) { this.refired.add(key); for (const type of ['sourcedata', 'data']) this.fire(type, {dataType: 'source', sourceId, tile, coord: tile.tileID, isSourceLoaded: this.isSourceLoaded(sourceId), source: this.getSource(sourceId)}); }
+            }
             return features(found);
         });
         Object.defineProperty(result, 'then', {value: (done?: (v: Omit<RenderedFeature, 'layer'>[]) => unknown, failed?: (e: unknown) => unknown) => { awaited = true; return all.then(done, failed); }});
@@ -637,7 +654,18 @@ export class Map extends CoreMap {
     /** (`turn` counts the changes of data by the page. An answer to a question from before such a change is not kept.) */
     private turn = 0;
     private forget() { this.answers.clear(); this.turn++; }
-    override refreshTiles(sourceId: string) { this.forget(); return super.refreshTiles(sourceId); }
+    /**
+     * The last answer of the engine to `querySourceFeatures`, by source and options. A change of the style keeps it (the
+     * tile data stays the same); new data of the source (`setData`, `refreshTiles`, a new source) drops it.
+     */
+    private sourceAnswers = new globalThis.Map<string, {sourceId: string; found: QueriedFeature[]}>();
+    /** (A count of the changes of data of each source: an answer to a question from before such a change is not kept.) */
+    private sourceTurn = new globalThis.Map<string, object>();
+    private forgetSource(sourceId: string) {
+        this.sourceTurn.set(sourceId, {});
+        for (const [key, a] of this.sourceAnswers) if (a.sourceId === sourceId) this.sourceAnswers.delete(key);
+    }
+    override refreshTiles(sourceId: string) { this.forget(); this.forgetSource(sourceId); return super.refreshTiles(sourceId); }
     private keep(key: string, found: QueriedFeature[], turn: number) {
         if (turn !== this.turn) return;
         this.answers.delete(key);
@@ -653,7 +681,7 @@ export class Map extends CoreMap {
      */
     override fire(type: string, data: Record<string, unknown> = {}): void | PromiseLike<unknown> {
         // The page gave new data (`setData`, a change of the style): the answers from before are old. They are not given.
-        if (type === 'dataloading') this.forget();
+        if (type === 'dataloading') { this.forget(); if (data.sourceId) this.forgetSource(data.sourceId as string); }
         // No engine could start (`cannotShow` of the core): MapLibre GL JS reports this with a GPUInitializationError (#205).
         const e = data.error as Error | undefined;
         if (type === 'error' && e?.message?.startsWith('[map-jr-gl] The map cannot be shown:') && !(e instanceof GPUInitializationError)) data = {...data, error: new GPUInitializationError(e.message, null, {cause: e.cause})};
