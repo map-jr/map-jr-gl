@@ -752,6 +752,7 @@ export function makeMap(container: HTMLElement | string, spec: MapDescription, n
         if (before && styled && !restyled && differ(next.projection, before.projection)) map.setProjection(next.projection ? copy(next.projection) : styleProjection);
         // (A new `locale` adds every control again: some controls set their texts only when they are added.)
         const relabel = differ(next.locale, before?.locale);
+        if (relabel && before) map.fire('_locale');
         if (next.controls !== before?.controls || relabel) {
             const wanted = new Set(relabel ? [] : (next.controls ?? []).map(c => c.key));
             for (const [key, c] of controls) if (!wanted.has(key)) { map.removeControl(c as any); controls.delete(key); }
