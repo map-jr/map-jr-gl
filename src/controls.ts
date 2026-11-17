@@ -106,7 +106,6 @@ export const CONTROL_CSS = `
   @media (hover:hover){&:hover{background:color-mix(in oklab,currentColor 16%,transparent)!important}}
   &::before,&::after{content:"";position:absolute;left:6px;top:10.25px;width:10px;height:1.5px;border-radius:1px;background:currentColor;opacity:.8;rotate:45deg}&::after{rotate:-45deg}}
 }}
-}}
 /* Touch screens get finger-sized buttons. Kept last so it overrides the sizes above. */
 @media (pointer:coarse){:where(.map-jr-ctrl-group button){width:var(--map-control-size,44px);height:var(--map-control-size,44px)}}
 @media (forced-colors:active){:where(.map-jr-ctrl-group,.map-jr-ctrl-attrib,.map-jr-ctrl-scale,.map-jr-popup-content){border:1px solid CanvasText}:where(.map-jr-ctrl button:focus-visible){outline:2px solid Highlight}}

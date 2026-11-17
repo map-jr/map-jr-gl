@@ -361,12 +361,20 @@ const MapJrComponent = defineComponent({
         if (!import.meta.env || import.meta.env.SSR) onServerPrefetch(async () => {
             if (!props.ssr) return;
             const view = {...props.initialView, ...props.view}, fit = !props.view && props.initialView?.bounds, o = props.ssr === true ? {} : props.ssr;
+            // A render that fails does not fail the page (#706): the page is sent without the first view, and the map
+            // draws in the browser as it does without the `ssr` prop.
+            try {
             // (By the name of the package, so that this file does not contain the server renderer, and so that a tool that
             // collects the files of a server finds it.)
             // @ts-ignore: the package refers to itself, which the type check of this project does not resolve
             const server = await import('@map-jr/map-jr-gl/server') as typeof import('./server.ts');
             first.value = await server.renderFirstView({style: toRaw(props.mapStyle), center: view.center ?? [0, 0], zoom: view.zoom ?? 0, bearing: view.bearing, bounds: fit ? toRaw(fit) as LngLatBoundsInput : undefined, padding: props.initialView?.padding, width: o.width ?? 800, height: o.height ?? 500,
                 images: props.images && toRaw(props.images) as Record<string, string>, overrides: o.overrides, sources: toRaw(props.sources), layers: toRaw(props.layers), terrain: toRaw(props.terrain), sprite: props.sprite && toRaw(props.sprite), data: props.data && toRaw(props.data), timeout: o.timeout, requestTimeout: o.requestTimeout, maxBytes: o.maxBytes, allowHosts: o.allowHosts, attribution: props.attribution === false ? false : o.attribution, colorScheme: props.colorScheme ?? 'light'});
+            } catch (cause) {
+                const error = new Error(`[map-jr-gl] <MapJr>: the server render failed, and the page has no first view. The map draws in the browser. The cause: ${(cause as Error)?.message ?? cause}`, {cause});
+                console.error(error.message);
+                if (listensForError) emit('error', error);
+            }
         });
         return () => h('div', {class: 'map-jr-vue', style: 'position:relative;width:100%;height:100%'}, [
             h('div', {ref: el, style: 'position:absolute;inset:0', innerHTML: first.value}),
