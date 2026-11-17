@@ -52,13 +52,17 @@ abstract class Overlay extends Evented {
         Object.assign(this.el.style, {position: 'absolute', left: '0', top: '0', willChange: 'transform'});
         map.getContainer().appendChild(this.el);
         this.localize(map);
+        map.on('_locale', this.relocalize);
         map.on('move', this.update);
         map.on('resize', this.update);
         map.on('remove', this.left);
         map.overlays.add(this.update);
         this.update();
     }
+    /** The host fires `_locale` when `locale` of the description changes (#748). */
+    private relocalize = () => { if (this.map) this.localize(this.map); };
     protected detach() {
+        this.map?.off('_locale', this.relocalize);
         this.map?.off('move', this.update);
         this.map?.off('resize', this.update);
         this.map?.off('remove', this.left);
