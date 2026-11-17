@@ -231,6 +231,14 @@ for (const renderer of renderers) {
         // camera its height when the elevation data comes: the map is idle then, and not 200 to 400 ms later. The
         // elevation tiles are one picture in the page (1000 m everywhere), so no network decides the time. The shortest
         // of three tries is read.
+        // Elevation tiles are decoded in the tile workers, which needs OffscreenCanvas there (#778).
+        const decodes = await page.evaluate(() => new Promise(resolve => {
+            const w = new Worker(URL.createObjectURL(new Blob(['postMessage(typeof OffscreenCanvas !== "undefined" && typeof createImageBitmap !== "undefined")'])));
+            w.onmessage = e => { resolve(e.data); w.terminate(); }; w.onerror = () => resolve(false);
+        }));
+        const terrainName = `[${renderer}] 3D terrain that is switched on: the map is idle when the elevation data has come, not 200 ms after the camera got its height (#436)`;
+        if (!decodes) skip(terrainName, 'no OffscreenCanvas in workers');
+        else {
         const terrainIdle = await page.evaluate(async renderer => {
             const t = window.t, times = [];
             const c = Object.assign(document.createElement('canvas'), {width: 256, height: 256}), g = c.getContext('2d');
@@ -251,7 +259,8 @@ for (const renderer of renderers) {
             }
             return times;
         }, renderer);
-        check(`[${renderer}] 3D terrain that is switched on: the map is idle when the elevation data has come, not 200 ms after the camera got its height (#436)`, Math.min(...terrainIdle) < 200, JSON.stringify(terrainIdle));
+        check(terrainName, Math.min(...terrainIdle) < 200, JSON.stringify(terrainIdle));
+        }
 
         // 3b. `projection` of the description (#463): it takes the place of the projection of the style, `null` gives the
         // projection of the style back, the same content does nothing, and the control `globe()` switches it.
@@ -386,7 +395,7 @@ for (const renderer of renderers) {
                 host.state.subscribe(s => s.idle, v => { if (v && wake) { const f = wake; wake = null; f(); } });
                 if (!host.state.get().idle) await new Promise(r => { wake = r; });
                 const c = el.querySelector('canvas');
-                const grab = () => { const o = new OffscreenCanvas(c.width, c.height), g = o.getContext('2d'); g.drawImage(c, 0, 0); return g.getImageData(0, 0, c.width, c.height).data; };
+                const grab = () => { const o = typeof OffscreenCanvas === 'function' ? new OffscreenCanvas(c.width, c.height) : Object.assign(document.createElement('canvas'), {width: c.width, height: c.height}), g = o.getContext('2d', {willReadFrequently: true}); g.drawImage(c, 0, 0); return g.getImageData(0, 0, c.width, c.height).data; };
                 const differ = (a, b) => { let n = 0; for (let i = 0; i < a.length; i += 4) if (Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) + Math.abs(a[i + 2] - b[i + 2]) > 24) n++; return n; };
                 const out = [];
                 for (let i = 0; i < 6; i++) {
@@ -510,7 +519,7 @@ for (const renderer of renderers) {
                 places: [await ids(host.queryFeatures(at, {layers: ['places']})), await ids(host.querySource('places'))]};
             host.setFeatureState({source: 'square', id: 'square-a'}, {on: true});
             await new Promise(r => setTimeout(r, 300)); await idle(host);
-            const b = await host.toBlob(), c = new OffscreenCanvas(1, 1).getContext('2d'), i = await createImageBitmap(b); c.drawImage(i, i.width / 2, i.height / 2, 1, 1, 0, 0, 1, 1);
+            const b = await host.toBlob(), c = (typeof OffscreenCanvas === 'function' ? new OffscreenCanvas(1, 1) : Object.assign(document.createElement('canvas'), {width: 1, height: 1})).getContext('2d'), i = await createImageBitmap(b); c.drawImage(i, i.width / 2, i.height / 2, 1, 1, 0, 0, 1, 1);
             const [r, , bl] = c.getImageData(0, 0, 1, 1).data;
             out.colour = r > 200 && bl < 50 ? 'red' : `${r},${bl}`;
             out.state = (await host.queryFeatures(at, {layers: ['square']}))[0]?.state;

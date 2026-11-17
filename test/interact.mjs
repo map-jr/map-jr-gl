@@ -3595,8 +3595,9 @@ for (const mode of renderers) {
         if (browserName !== 'chromium') skip(`[${mode}] compat: a rotate drag with two fingers turns the map as MapLibre GL JS does (#557)`, noCDP);
     } catch (e) { check(`[${mode}] the rotate drags of #557: the test run was completed`, false, String(e.message).split('\n')[0]); }
     // 3D terrain off and on again: the elevation tiles that are loaded stay, so the relief does not go away for a
-    // moment and no tile is asked for again.
-    {
+    // moment and no tile is asked for again. Elevation tiles need OffscreenCanvas in the workers (#778).
+    if (!decodes) skip(`[${mode}] 3D terrain off and on again asks for no elevation tile again, and the ground has its height at once`, 'no OffscreenCanvas in workers');
+    else {
         const asked = [];
         let done = 0;
         const count = r => { if (r.url().includes('tiles.mapterhorn.com')) asked.push(r.url()); };
