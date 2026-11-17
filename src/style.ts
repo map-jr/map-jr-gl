@@ -47,7 +47,7 @@ const SPEC: Record<string, Record<string, [string, PropKind, any]>> = {
     symbol: {
         icon: ['icon-image', 'string', ''], iconSize: ['icon-size', 'number', 1], iconOffset: ['icon-offset', 'string', [0, 0]], iconRotate: ['icon-rotate', 'number', 0],
         rotate: ['text-rotate', 'number', 0],
-        lineHeight: ['text-line-height', 'number', 1.2], translate: ['text-translate', 'raw', [0, 0]], iconTranslate: ['icon-translate', 'raw', [0, 0]],
+        lineHeight: ['text-line-height', 'number', 1.2], translate: ['text-translate', 'string', [0, 0]], iconTranslate: ['icon-translate', 'string', [0, 0]],
         translateAnchor: ['text-translate-anchor', 'raw', 'map'], iconTranslateAnchor: ['icon-translate-anchor', 'raw', 'map'],
         iconIgnore: ['icon-ignore-placement', 'raw', false], iconPadding: ['icon-padding', 'number', 2], sortKey: ['symbol-sort-key', 'number', 0],
         overlapMode: ['text-overlap', 'string', ''], iconOverlapMode: ['icon-overlap', 'string', ''],
@@ -126,7 +126,7 @@ const LIGHT_PROPS = ['direction', 'altitude', 'shadow', 'highlight'], HILLSHADE_
  * the map, and with `viewport` it stays fixed on the screen. A pitch does not change the result.
  */
 export function screenTranslate(t: unknown, anchor: unknown, bearing: number): [number, number] {
-    // (A value that is no array, which a legacy function of the zoom gives here at present, moves nothing.)
+    // (A value that is no array moves nothing.)
     const [x = 0, y = 0] = (Array.isArray(t) ? t : []) as number[];
     if (anchor === 'viewport' || !bearing || !(x || y)) return [x, y];
     const a = -bearing * Math.PI / 180, c = Math.cos(a), s = Math.sin(a);
