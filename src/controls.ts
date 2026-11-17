@@ -50,7 +50,7 @@ export const CONTROL_CSS = `
 :where(.map-jr-unavailable){position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:1em;text-align:center;font:14px/1.4 system-ui,sans-serif;color:#555;background:#f2f2f2}
 .map-jr-pseudo-fullscreen{position:fixed!important;width:100%!important;height:100%!important;top:0!important;left:0!important;z-index:99999}
 :where(.map-jr-ctrl-attrib){background:var(--map-attribution-background,rgba(255,255,255,.75));color:var(--map-control-color,#333);font-size:11px;line-height:1.4;padding:2px 6px;padding-right:max(6px,env(safe-area-inset-right));border-top-left-radius:4px;overflow-wrap:anywhere}
-:where(.map-jr-ctrl-attrib a){color:inherit}
+.map-jr-ctrl-attrib a{color:inherit}
 :where(.map-jr-ctrl-attrib.map-jr-compact){display:flex;align-items:center;min-height:28px;padding:0 28px 0 0;margin:0 max(10px,env(safe-area-inset-right)) 10px 0;border-radius:14px;background:var(--map-control-background,#fff);box-shadow:0 0 0 1.5px rgba(0,0,0,.12)}
 :where(.map-jr-ctrl-attrib.map-jr-compact .map-jr-ctrl-attrib-inner){display:none;padding:2px 4px 2px 10px}
 :where(.map-jr-ctrl-attrib.map-jr-compact.map-jr-compact-show .map-jr-ctrl-attrib-inner){display:block}

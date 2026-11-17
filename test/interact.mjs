@@ -294,6 +294,16 @@ for (const mode of renderers) {
     check(`[${mode}] queryElevation reads the elevation source`, q.summit > 4300 && q.summit < 4500 && Math.abs(q.sea) < 15, `Matterhorn ${q.summit?.toFixed(0)} m, New York harbour ${q.sea?.toFixed(1)} m`);
     const attribution = await page.evaluate(() => document.querySelector('.maplibregl-ctrl-attrib')?.textContent);
     check(`[${mode}] attribution shows © and keeps links`, attribution.includes('©') && !attribution.includes('&copy') && await page.evaluate(() => document.querySelectorAll('.maplibregl-ctrl-attrib a').length) > 0, attribution);
+    // A page-wide rule for links does not colour the attribution links (#757), as in MapLibre GL JS.
+    const linkColour = await page.evaluate(() => {
+        const style = document.head.appendChild(document.createElement('style'));
+        style.textContent = 'a {color: rgb(255, 255, 255)}';
+        const ctrl = document.querySelector('.maplibregl-ctrl-attrib'), a = ctrl?.querySelector('a');
+        const r = {control: ctrl && getComputedStyle(ctrl).color, link: a && getComputedStyle(a).color};
+        style.remove();
+        return r;
+    });
+    check(`[${mode}] attribution links keep the colour of the control under a page rule for a`, !!linkColour.link && linkColour.link === linkColour.control, JSON.stringify(linkColour));
     const img = await page.evaluate(() => window.map.addImage('star', '<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="gold"/></svg>').then(() => true, e => String(e)));
     check(`[${mode}] addImage accepts an SVG`, img === true, String(img));
     const gl = await page.evaluate(() => Promise.resolve().then(() => window.map.addImage('gl', {width: 1, height: 1, data: {renderWithWebGL() {}}})).then(() => 'resolved', e => String(e.message)));
