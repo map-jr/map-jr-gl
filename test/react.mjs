@@ -15,7 +15,21 @@ const root = path.resolve(import.meta.dirname, '..');
 let failed = 0;
 const check = (name, ok, detail = '') => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${name} ${detail}`); if (!ok) failed++; };
 
-const tiles = (await (await fetch('https://tiles.openfreemap.org/planet')).json()).tiles[0];
+// The fetch is tried three times, 2 s apart: the server sometimes resets a connection, and one reset must not fail CI.
+async function fetchJSON(url, tries = 3) {
+    for (let i = 1; ; i++) {
+        try {
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            return await res.json();
+        } catch (e) {
+            if (i >= tries) throw new Error(`could not fetch ${url} after ${tries} tries: ${e.cause?.message ?? e.message}`);
+            console.warn(`fetch ${url} failed (${e.cause?.message ?? e.message}); try ${i + 1} of ${tries} in 2 s`);
+            await new Promise(r => setTimeout(r, 2000));
+        }
+    }
+}
+const tiles = (await fetchJSON('https://tiles.openfreemap.org/planet')).tiles[0];
 const style = makeStyle(tiles, '<a href="https://example.com/credits">Example tiles</a>'), view = {center: [-74.0065, 40.7085], zoom: 14.3};
 const disc = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="{{color}}"/></svg>';
 // A point with the colour for the template, in `data`, and the symbol layer that draws the image at the point.
