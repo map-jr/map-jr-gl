@@ -25,6 +25,7 @@ pnpm install
 | `node test/conformance/ecosystem.mjs --write` | Reads popular plugins and frameworks from npm and writes which parts of the MapLibre API they use that the entry `@map-jr/map-jr-gl/maplibre-compat` does not have, or accepts with no effect (`docs/ecosystem.md`). It reads that entry with `test/conformance/compat-surface.mjs`. |
 | `node test/conformance/plugins.mjs --write` | Runs popular plugins with the library in a browser, each in a short scenario. |
 | `node test/conformance/examples.mjs --write` | Runs each example page of the MapLibre documentation with MapLibre GL JS and with the library, and writes the pages that give an error or a different image into `docs/ecosystem.md`. It takes about 30 minutes. `--filter=<regex>` runs a part of the pages. |
+| `node test/conformance/maputnik.mjs --write` | Runs Maputnik, the style editor (the fork `map-jr/maputnik`), with MapLibre GL JS and with the library: Maputnik's own end-to-end tests and a few scenarios of its use. It writes the comparison into `docs/ecosystem.md`. It takes about 10 minutes, needs `pnpm build` and a free port 8888; `--no-suite` runs only the scenarios. |
 | `node test/conformance/styles.mjs --write` | Draws popular public styles with MapLibre GL JS and with the library, side by side, and writes how much each pair of images differs into `docs/ecosystem.md`. Start `pnpm demo` first. |
 | `pnpm status` | Writes the test results and sizes into the README |
 | `pnpm screenshots` | Takes the screenshots in `docs/images` from the gallery. Start `pnpm demo` first. |

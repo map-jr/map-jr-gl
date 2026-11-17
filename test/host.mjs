@@ -2162,6 +2162,7 @@ for (const other of [true, false]) {
 // with visualizePitch: true does it also show, change and reset the pitch, as in MapLibre GL JS.
 for (const visualizePitch of [undefined, true]) {
     const page = await browser.newPage({viewport: {width: 900, height: 600}}), name = `navigation(${visualizePitch ? '{visualizePitch: true}' : ''})`;
+    if (process.env.CPU_THROTTLE && cdpTouch) await (await page.context().newCDPSession(page)).send('Emulation.setCPUThrottlingRate', {rate: Number(process.env.CPU_THROTTLE)});
     try {
         await page.goto(`${origin}/style.json`);
         await page.evaluate(async visualizePitch => {
@@ -2194,9 +2195,13 @@ for (const visualizePitch of [undefined, true]) {
             const steps = [], cdp = kind === 'touch' && await page.context().newCDPSession(page);
             const touch = (type, x, y) => cdp.send('Input.dispatchTouchEvent', {type, touchPoints: type === 'touchEnd' ? [] : [{x, y}]});
             if (cdp) await touch('touchStart', box.x - 12, box.y + 2); else { await page.mouse.move(box.x - 12, box.y + 2); await page.mouse.down(); }
+            // (Each read waits for the pointermove of its move, and the next move waits for that read. A fixed wait of 20 ms
+            // could read before a move that the busy page had queued, and that move then merged with the next one: #632.)
+            await page.evaluate(() => { if (window.moves === undefined) { window.moves = 0; document.addEventListener('pointermove', () => window.moves++, true); } });
             for (let dx = -8; dx <= 36; dx += 4) {
+                const n = await page.evaluate(() => window.moves);
                 if (cdp) await touch('touchMove', box.x + dx, box.y + 2); else await page.mouse.move(box.x + dx, box.y + 2);
-                await page.waitForTimeout(20);
+                await page.waitForFunction(n => window.moves > n, n, {polling: 'raf', timeout: 5000});
                 steps.push(await bearing());
             }
             if (cdp) await touch('touchEnd'); else await page.mouse.up();

@@ -44,6 +44,26 @@ short scenario in `test/conformance/plugins/`. The plugin imports `maplibre-gl` 
 | @geoman-io/maplibre-geoman-free 0.10.8 | Pass | features after the import: 1; after a marker was drawn with a click: 2; layers of the plugin: 33 |
 <!-- plugins:end -->
 
+<!-- maputnik:start -->
+## Maputnik, the style editor
+
+`node test/conformance/maputnik.mjs --write` runs Maputnik in a browser two times: with MapLibre GL JS, and with the
+entry `@map-jr/map-jr-gl/maplibre-compat` of this library in its place. It uses the fork
+[map-jr/maputnik](https://github.com/map-jr/maputnik), whose preview renders with this library; the fork also accepts `params` of the
+`image` expression. Each build runs the end-to-end tests of Maputnik and the scenarios below, which test what those
+tests do not.
+
+Maputnik 3.1.0 (63ae6a9). **Maputnik's own tests: 184 of 184 pass with this library, and 184 of 184 with MapLibre GL JS 6.18.0.**
+
+| Scenario | This library | MapLibre GL JS 6.18.0 |
+|---|---|---|
+| Loads the style elevation-color of map-jr-styles | Pass: layers: 113; messages of the editor: 0; errors: 0 | Pass: layers: 113; messages of the editor: 0; errors: 0 |
+| Loads the style liberty of OpenFreeMap | Pass: layers: 111; errors: 0 | Pass: layers: 111; errors: 0 |
+| Opens with the empty default style | Pass: errors: 0 | Pass: errors: 0 |
+| Suggests the properties of a source layer in the filter editor | Fail: properties of the layer "building": none (#765, #766) | Pass: properties of the layer "building": render_height, render_min_height, colour, hide_3d |
+| Shows the icons of the navigation control in the colours of the editor | Fail: icons with the colour of the editor: 0 of 3 (#758) | Pass: icons with the colour of the editor: 3 of 3 |
+<!-- maputnik:end -->
+
 <!-- styles:start -->
 ## Public styles that were drawn
 

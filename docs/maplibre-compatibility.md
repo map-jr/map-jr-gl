@@ -33,7 +33,7 @@ The [status table](../README.md#status) gives the current test results.
 | Contour source | `type: 'contour'` makes contour lines from an elevation source. See [Terrain and elevation](terrain-and-elevation.md). |
 | PMTiles | A source URL that starts with `pmtiles://` reads a PMTiles archive. You do not need a plugin. |
 | Changes for the server in the style | `metadata["map-jr:ssr"]` on a layer changes that layer only on the server. |
-| Images in the style | `metadata["map-jr:images"]` of a style gives images by name. The main entry (`@map-jr/map-jr-gl`) and the server renderer draw them; MapLibre GL JS and the compat entry ignore the key. See [Images in the style](api.md#images-in-the-style). |
+| Images in the style | `metadata["map-jr:images"]` of a style gives images by name. The main entry (`@map-jr/map-jr-gl`), the compat entry (`@map-jr/map-jr-gl/maplibre-compat`) and the server renderer draw them; MapLibre GL JS ignores the key. In the compat entry, an image that the page adds with `addImage` wins over an image of the style with the same name, and `setMissingStyleImageResolver` gets only the names that the style does not have. See [Images in the style](api.md#images-in-the-style). |
 | Icons generated on demand | `setMissingStyleImageResolver` supplies an image for a name that the sprite does not contain. |
 | `toBlob(type, quality)` | Gives the map as an image: it waits until the map is idle, draws one frame and resolves to a `Blob` of the canvas, with both renderers. Use it instead of `preserveDrawingBuffer`, which has no effect (see "Reading the canvas" in [What is different](#what-is-different)). |
 | Frame data | The `stats` event gives the frames per second and the work for each frame. |
