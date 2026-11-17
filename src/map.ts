@@ -121,7 +121,7 @@ export class Map {
     protected container: HTMLElement;
     private canvas: HTMLCanvasElement;
     protected tr = new Transform();
-    private listeners: Record<string, Listener[]> = {};
+    protected listeners: Record<string, Listener[]> = {};
     private send: (c: Command, transfer?: Transferable[]) => void = () => {};
     private queue: [Command, Transferable[]?][] = [];
     private workers: Worker[] = [];
@@ -755,7 +755,7 @@ export class Map {
     private protocolAborts = new Set<AbortController>();
     /** A `fetch` for requests that this thread makes itself (the style, its sources, GeoJSON data), with the timeout of `withTimeout`. */
     protected fetchAs = (kind: string) => withTimeout(fetchWith(() => ({transform: !!this.transformRequest, protocols: [...protocols.keys()]}), (url, k, signal) => this.answer(url, k, signal), kind));
-    private layerListeners: {type: string; layers: string[]; fn: Listener}[] = [];
+    protected layerListeners: {type: string; layers: string[]; fn: Listener}[] = [];
     /** The `mouseenter` and `mouseleave` listeners whose layers are under the pointer. */
     private hovered = new WeakSet<object>();
     private hoverBusy = false;

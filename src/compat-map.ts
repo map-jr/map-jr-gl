@@ -6,7 +6,7 @@ import {Map as CoreMap, type CameraInput, type PointLike, type RenderedFeature, 
 import type {QueriedFeature} from './query.ts';
 import {GPUInitializationError} from './gpu-error.ts';
 import {defaults as loadDefaults} from './loader.ts';
-import type {LngLatLike} from './geo.ts';
+import {mercX, mercY, lngFromMerc, latFromMerc, sides, type LngLatLike} from './geo.ts';
 import type {AddLayerObject, CustomLayerInterface, GeoJSONFeature, MapGeoJSONFeature, MapEventType, MapLayerEventType, Source, MapOptions, EaseToOptions, StyleSwapOptions, FitBoundsOptions, QuerySourceFeatureOptions, FeatureIdentifier, StyleSpecification} from './compat-types.ts';
 
 /**
@@ -206,6 +206,7 @@ export class Map extends CoreMap {
             set();
             this.once('remove', () => el.classList.remove('maplibregl-' + name));
         }
+        if (typeof o.style === 'string') this.styleUrl = o.style;
         if (o.maxBounds) this.setMaxBounds(o.maxBounds);
         if (o.cooperativeGestures) this.cooperativeGestures.enable();
         if ((o as {glyphs?: unknown}).glyphs !== undefined) console.warn('[map-jr-gl] Map: the option glyphs was removed and has no effect; the map loads the glyph files of the style. Remove the option. To draw text with the fonts of the browser, remove "glyphs" from the style.');
@@ -269,11 +270,17 @@ export class Map extends CoreMap {
         return super.addLayer(one, beforeId);
     }
     removeLayer(id: string) { this.customs?.delete(id); return super.removeLayer(id); }
+    private styleUrl: string | null = null;
+    /** The URL given as the option `style` or to the latest call of `setStyle`, as it was written; `null` when that was an object or nothing. */
+    getStyleUrl() { return this.styleUrl; }
+    /** Whether the map has a listener for the event `type`, a listener for a layer included. */
+    listens(type: string) { return !!this.listeners[type]?.length || this.layerListeners.some(l => l.type === type); }
     /**
      * As in MapLibre GL JS 6.17: with `diff` (the default), the custom layers stay in the new style, each before the layer
      * that came after it, and get no `onRemove`. With `diff: false` they leave the map, also without `onRemove`.
      */
     setStyle(style: unknown, options: StyleSwapOptions = {}) {
+        this.styleUrl = typeof style === 'string' ? style : null;
         const own = options.transformStyle;
         return super.setStyle(style, !this.customs?.size ? options : {transformStyle: (previous: any, next: any) => {
             next = own ? own(previous, next) : next;
@@ -306,6 +313,21 @@ export class Map extends CoreMap {
     fitBounds(bounds: Parameters<CoreMap['fitBounds']>[0], o?: FitBoundsOptions, eventData?: EventData) {
         this.unsupported('The options speed, curve and linear of fitBounds', o?.speed === undefined && o?.curve === undefined && o?.linear === undefined);
         return this.camera(eventData, () => super.fitBounds(bounds, o));
+    }
+    /**
+     * Moves the map so that the box between the screen points `p0` and `p1` (CSS pixels) fills the view at `bearing`,
+     * by the method of MapLibre GL JS 6.17. The options are those of `fitBounds`.
+     */
+    fitScreenCoordinates(p0: PointLike, p1: PointLike, bearing: number, o: FitBoundsOptions = {}, eventData?: EventData) {
+        this.unsupported('The options speed, curve and linear of fitScreenCoordinates', o.speed === undefined && o.curve === undefined && o.linear === undefined);
+        const a = this.unproject(p0), b = this.unproject(p1), r = bearing * Math.PI / 180, c = Math.cos(r), s = Math.sin(r);
+        const x0 = mercX(a.lng), x1 = mercX(b.lng), y0 = mercY(a.lat), y1 = mercY(b.lat), dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0);
+        // The box of the two places, with edges along the meridians and parallels, is turned by the bearing: its extent on the screen is this.
+        const pad = sides(o.padding), own = this.tr.padding, fit = (size: number, i: number, extent: number) => Math.max(1, size - pad[i] - pad[i + 2] - own[i] - own[i + 2]) / Math.max(extent, 1e-12);
+        const zoom = Math.min(o.maxZoom ?? this.tr.maxZoom, Math.log2(Math.min(fit(this.tr.width, 1, dx * Math.abs(c) + dy * Math.abs(s)), fit(this.tr.height, 0, dx * Math.abs(s) + dy * Math.abs(c))) / 512));
+        // As in fitBounds, the padding of the call moves the centre (the padding of the map does that by itself): here along the turned axes.
+        const world = 512 * 2 ** zoom, sx = (pad[3] - pad[1]) / 2 / world, sy = (pad[0] - pad[2]) / 2 / world;
+        return this.easeTo({center: [lngFromMerc((x0 + x1) / 2 - c * sx + s * sy), latFromMerc((y0 + y1) / 2 - s * sx - c * sy)], zoom, bearing, duration: o.duration ?? 800}, eventData);
     }
     private camera(eventData: EventData | undefined, f: () => this) {
         if (!this.nested) this.moveData = eventData;
@@ -342,6 +364,7 @@ export class Map extends CoreMap {
     getCameraTargetElevation() { return this.tr.elevation; }
     isZooming() { return this.zooming; }
     isRotating() { return this.rotating; }
+    isRolling() { return false; }
     isPitching() { return this.pitching; }
     getCanvasContainer() { return this.container; }
     remove() { super.remove(); this.getContainer().classList.remove('maplibregl-map'); }
