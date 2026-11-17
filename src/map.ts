@@ -391,10 +391,8 @@ export class Map {
                     // map has resolved, so a source that failed is not fetched and reported again; #777.)
                     this.restyle(true, true);
                     for (const [name, [source, options]] of this.imageInputs) this.addImage(name, source, options);
-                    // (The worker drew nothing, so an animation that the page started went nowhere: the new engine runs
-                    // it for the time that is left; #777.)
-                    const ease = this.eased, left = ease ? (ease.c as {duration: number}).duration - (performance.now() - ease.at) : 0;
-                    if (left > 0) this.post({...ease!.c, duration: left} as Command);
+                    // (The worker drew nothing, so an animation that the page started went nowhere; #777.)
+                    this.resumeEase();
                     this.bindInput();
                 }, error => this.fire('error', {error}));
             };
@@ -468,10 +466,17 @@ export class Map {
             // The engine got the style without what `restyle` adds: the number of each source (without it the page does not
             // accept the report that a source is loaded), the layers that the page has hidden, and the global state.
             this.restyle(true);
+            this.resumeEase();
             for (const [name, [source, options]] of this.imageInputs) await this.addImage(name, source, options);
             this.fire('webglcontextrestored');
             if (__DEV__) this.note('restart() ended', {renderer: this.renderer, drew: this.drew});
         } catch (error) { if (__DEV__) this.note('restart() failed', String(error)); this.fire('error', {error}); } finally { this.restarting = false; }
+    }
+
+    /** A new engine (after a fall back or a restart) runs the last `easeTo` for the time that is left; #777, #807. */
+    private resumeEase() {
+        const ease = this.eased, left = ease ? (ease.c as {duration: number}).duration - (performance.now() - ease.at) : 0;
+        if (left > 0) this.post({...ease!.c, duration: left} as Command);
     }
 
     /** The engine of the last start has drawn a frame. */
