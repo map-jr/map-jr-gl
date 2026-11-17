@@ -327,11 +327,12 @@ export class Map extends CoreMap {
     /**
      * As in MapLibre GL JS 6.17: with `diff` (the default), the custom layers stay in the new style, each before the layer
      * that came after it, and get no `onRemove`. With `diff: false` they leave the map, also without `onRemove`.
+     * With `diff`, a style equal to this one (apart from the camera) fires no event, as in MapLibre GL JS 6.17.
      */
     setStyle(style: unknown, options: StyleSwapOptions = {}) {
         this.styleUrl = typeof style === 'string' ? style : null;
-        const own = options.transformStyle;
-        return super.setStyle(style, !this.customs?.size ? options : {transformStyle: (previous: any, next: any) => {
+        const own = options.transformStyle, diff = options.diff !== false;
+        return super.setStyle(style, !this.customs?.size ? {transformStyle: own, diff} : {diff, transformStyle: (previous: any, next: any) => {
             next = own ? own(previous, next) : next;
             if (options.diff === false) { this.customs!.clear(); this.customLayers?.forget(); return next; }
             const layers = [...next.layers], ids = new Set(layers.map((l: {id: string}) => l.id));

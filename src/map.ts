@@ -1236,7 +1236,7 @@ export class Map {
         return made;
     }
     /** `transformStyle` gets the style before and the new style, and returns the style to use (as in MapLibre). */
-    async setStyle(style: unknown, options?: {transformStyle?: StyleChange}) {
+    async setStyle(style: unknown, options?: {transformStyle?: StyleChange, diff?: boolean}) {
         const turn = ++this.styleTurn;
         // Before the first style has come, the new style takes its place.
         if (!this.rawStyle) { this.options.style = style; this.firstChange = options?.transformStyle; return this.starting ? undefined : this.start().catch(this.sourceFailed); }
@@ -1248,7 +1248,11 @@ export class Map {
         if (turn !== this.styleTurn) return;
         this.styleLoading = false;
         this.styleBase = typeof style === 'string' ? new URL(style, location.href).href : location.href;
-        this.rawStyle = options?.transformStyle?.(this.rawStyle, next) ?? next;
+        next = options?.transformStyle?.(this.rawStyle, next) ?? next;
+        // (With `diff`, as in MapLibre GL JS 6.17: a style that differs from this one only in the camera changes nothing
+        // and fires no event. Any other style fires `style.load`.)
+        if (options?.diff && sameStyle(this.rawStyle, next)) return;
+        this.rawStyle = next;
         this.newStyle = true;
         this.restyle(true);
     }
@@ -2012,4 +2016,16 @@ function applyDiff(data: any, diff: GeoJSONDiff, promoteId?: string | Record<str
 /** The data and the options (as text) of each GeoJSON source of a resolved style: what an engine that starts with it has. */
 function geoOf(style?: ResolvedStyle) {
     return new globalThis.Map(Object.entries(style?.sources ?? {}).filter(([, s]) => s.type === 'geojson').map(([name, s]) => [name, {data: s.data, key: JSON.stringify([s.options, s.maxzoom])}]));
+}
+
+/** Whether two styles are equal, apart from the camera fields that MapLibre GL JS leaves out of a diff. */
+function sameStyle(a: any, b: any) {
+    const camera = {center: 0, zoom: 0, bearing: 0, pitch: 0, roll: 0};
+    return equal({...a, ...camera}, {...b, ...camera});
+}
+function equal(a: any, b: any): boolean {
+    if (a === b) return true;
+    if (typeof a !== 'object' || typeof b !== 'object' || !a || !b || Array.isArray(a) !== Array.isArray(b)) return false;
+    const ka = Object.keys(a).filter(k => a[k] !== undefined), kb = Object.keys(b).filter(k => b[k] !== undefined);
+    return ka.length === kb.length && ka.every(k => equal(a[k], b[k]));
 }

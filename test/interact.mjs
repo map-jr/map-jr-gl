@@ -1931,6 +1931,40 @@ for (const mode of renderers) {
         check(`[${mode}] loaded() is false after a style edit and after setStyle until idle`,
             got.start && !got.afterEdit && got.editIdle && !got.afterSetStyle && !got.onStyledata && got.styleIdle, JSON.stringify(got));
     }
+    // The events of setStyle are those of MapLibre GL JS 6.17 (served at /ml/): with `diff` (the default), the same style
+    // fires nothing and a changed style (a paint value, another sprite) fires `style.load` once; `diff: false` fires it
+    // for the same style. A listener of `style.load` that calls setStyle with what it already gave, as
+    // @mapbox/mapbox-gl-language does, stops after one more load (#743).
+    {
+        // (A sprite of one pixel.)
+        await page.route(/\/test-sprite-743\//, r => r.request().url().endsWith('.json') ? r.fulfill({contentType: 'application/json', body: '{"a": {"x": 0, "y": 0, "width": 1, "height": 1, "pixelRatio": 1}}'})
+            : r.fulfill({contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==', 'base64')}));
+        const run = (lib, mode) => page.evaluate(async ([lib, mode]) => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js'), wait = ms => new Promise(r => setTimeout(r, ms));
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const style = (colour, sprite) => ({version: 8, ...sprite ? {sprite} : {}, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': colour}}]});
+            const m = new mod.Map({container: el, style: style('#fff'), ...lib === 'ml' ? {} : {renderer: mode}, attributionControl: false, center: [0, 0], zoom: 1});
+            await new Promise(r => m.once('load', r));
+            let loads = 0;
+            m.on('style.load', () => loads++);
+            const step = async f => { loads = 0; f(); await wait(1000); return loads; };
+            const out = {};
+            out.same = await step(() => m.setStyle(style('#fff')));
+            out.paint = await step(() => m.setStyle(style('#f00')));
+            out.sprite = await step(() => m.setStyle(style('#f00', location.origin + '/test-sprite-743/s')));
+            out.whole = await step(() => m.setStyle(style('#f00', location.origin + '/test-sprite-743/s'), {diff: false}));
+            const again = () => m.setStyle(style('#00f'));
+            m.on('style.load', again);
+            out.listener = await step(() => m.setStyle(style('#0f0'), {diff: false}));
+            m.off('style.load', again);
+            m.remove(); el.remove();
+            return out;
+        }, [lib, mode]);
+        const ours = await run('ours', mode), ml = mode === 'main' ? await run('ml', mode) : {same: 0, paint: 1, sprite: 1, whole: 1, listener: 2};
+        check(`[${mode}] compat: the style.load events of setStyle are those of MapLibre GL JS (the same style, a paint change, another sprite, diff: false, setStyle in a listener of style.load) (#743)`,
+            JSON.stringify(ours) === JSON.stringify(ml), JSON.stringify({ours, maplibre: ml}));
+    }
     // The kept network result of a source: new data at the same URL stays after a change of the style, and two maps
     // that are given the same source object both load it.
     {
