@@ -38,7 +38,7 @@ export interface SourceInfo {
     /** Contour sources: how to derive lines from their elevation source. */
     contour?: ContourConfig;
     /** GeoJSON sources carry their data; it is handed to the tile workers, which cut tiles from it. */
-    data?: unknown; /** GeoJSON sources: clusters and the id property. */ options?: GeoJSONOptions; tiles: string[]; minzoom: number; maxzoom: number; tileSize: number; attribution?: string; /** A PMTiles archive: its URL and its first bytes (header and root directory). */ head?: {url: string; bytes: Uint8Array}; /** The rows of tiles are counted from the south (`scheme: 'tms'`). */ tms?: boolean; encoding?: 'terrarium' | 'mapbox';
+    data?: unknown; /** GeoJSON sources: clusters and the id property. */ options?: GeoJSONOptions; tiles: string[]; minzoom: number; maxzoom: number; tileSize: number; attribution?: string; /** A PMTiles archive: its URL and its first bytes (header and root directory). */ head?: {url: string; bytes: Uint8Array}; /** The rows of tiles are counted from the south (`scheme: 'tms'`). */ tms?: boolean; encoding?: 'terrarium' | 'mapbox' | number[];
     /** The area that has tiles: west, south, east, north. A tile outside it is not requested. */
     bounds?: number[];
 }
@@ -83,6 +83,19 @@ export function parseFontName(name: string): {family: string; weight: number; st
 
 /** What the network gave for a source of a style (its TileJSON, its GeoJSON, the header of its archive), by source object. */
 const told = new WeakSet<object>();
+const toldEncoding = new WeakSet<object>();
+/**
+ * The encoding of the elevation of a `raster-dem` source. For `encoding: 'custom'` it is the factors of red, green and
+ * blue and the shift: the elevation in metres is `red * redFactor + green * greenFactor + blue * blueFactor - baseShift`.
+ * `src` is the source with the values of its TileJSON, and `raw` is the source as the style has it (for one message).
+ */
+function demEncoding(name: string, raw: object, src: any): 'terrarium' | 'mapbox' | number[] {
+    if (src.encoding !== 'custom') return src.encoding === 'terrarium' ? 'terrarium' : 'mapbox';
+    const factors = [src.redFactor ?? 1, src.greenFactor ?? 1, src.blueFactor ?? 1, src.baseShift ?? 0];
+    if (factors.every(Number.isFinite)) return factors;
+    if (!toldEncoding.has(raw)) { toldEncoding.add(raw); console.warn(`[map-jr-gl] The source "${name}": "redFactor", "greenFactor", "blueFactor" and "baseShift" of the encoding "custom" must be finite numbers. The source is read with the encoding "mapbox". Write a number for each one, or leave it out for its default (1, 1, 1 and 0).`); }
+    return 'mapbox';
+}
 const fetched = new WeakMap<object, {url: string; p: Promise<any>; v?: any; err?: any; told?: boolean; late?: () => void}>();
 /** Puts data that the map fetched itself (`setData` with a URL) in the place of the kept result of a source. */
 export function keep(raw: object, url: string, v: unknown) { fetched.set(raw, {url, p: Promise.resolve(v), v}); }
@@ -173,7 +186,7 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
         return {
             type: raw.type, tiles: src.tiles, minzoom: src.minzoom ?? 0, maxzoom: src.maxzoom ?? (raw.type === 'vector' ? 14 : 22),
             tileSize: raw.type === 'vector' ? 512 : src.tileSize ?? 512, attribution: src.attribution, tms: src.scheme === 'tms', bounds: src.bounds,
-            encoding: raw.type === 'raster-dem' ? (src.encoding === 'terrarium' ? 'terrarium' : 'mapbox') : undefined, // (from the source or from its TileJSON)
+            encoding: raw.type === 'raster-dem' ? demEncoding(name, raw, src) : undefined, // (from the source or from its TileJSON)
             head: src.head,
         };
     }));
