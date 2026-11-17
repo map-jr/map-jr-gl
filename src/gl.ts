@@ -1469,7 +1469,7 @@ export class GLRenderer {
         if (list.length < 8) list.push(d.tex); else this.gl.deleteTexture(d.tex);
     }
     /** Gives the memory of the GPU back at once. Without this, a map that was removed keeps it until the browser collects the context. */
-    destroy() { this.gl.getExtension('WEBGL_lose_context')?.loseContext(); }
+    destroy() { if (!this.gl.isContextLost()) this.gl.getExtension('WEBGL_lose_context')?.loseContext(); }
 
     private drapeWaits = new Map<string, number>();
     private gap = 33;

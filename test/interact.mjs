@@ -34,7 +34,11 @@ for (const mode of renderers) {
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
     // (The browser's own line for a 404 that a test asks for on purpose, from `/no-such-…`, can come after that test.)
-    page.on('console', m => { if (m.type() === 'error' && !(m.text().startsWith('Failed to load resource') && m.location().url?.includes('/no-such-'))) errors.push(m.text() + (m.location().url ? ' (' + m.location().url + ')' : '')); });
+    // (WebKit keeps a context that loseContext() released on its list of active contexts until the canvas is collected,
+    // so a page that makes and removes more than 16 maps gets these two lines from WebKit itself, about contexts that
+    // the library has already lost; #776.)
+    const webkitList = m => browserName === 'webkit' && /too many active WebGL contexts|loseContext: context already lost/.test(m.text());
+    page.on('console', m => { if (m.type() === 'error' && !webkitList(m) && !(m.text().startsWith('Failed to load resource') && m.location().url?.includes('/no-such-'))) errors.push(m.text() + (m.location().url ? ' (' + m.location().url + ')' : '')); });
     await page.goto(`${origin}/?renderer=${mode}`);
     await page.waitForFunction(() => window.mapLoaded, null, {timeout: 30000});
     // Some browsers cannot make a WebGL context in a worker (WebKit on Linux and Windows, Safari before 16.4). The map
@@ -3907,6 +3911,41 @@ for (const mode of renderers) {
 // (The checks below run with RENDERER=main.)
 if (only === 'worker') { await browser.close(); process.exit(failed ? 1 : 0); }
 
+// remove() on a map whose WebGL context is lost does not lose it a second time: WebKit reports that as an error (#776).
+{
+    const page = await browser.newPage({viewport: {width: 1000, height: 700}});
+    // (Every call of loseContext() on the page is counted, and those on a context that is already lost.)
+    await page.addInitScript(() => {
+        const calls = window.loseCalls = {all: 0, whileLost: 0}, get = WebGL2RenderingContext.prototype.getExtension;
+        WebGL2RenderingContext.prototype.getExtension = function (name) {
+            const ext = get.call(this, name), gl = this;
+            if (ext && name === 'WEBGL_lose_context' && !ext.counted) {
+                const lose = ext.loseContext.bind(ext);
+                ext.loseContext = () => { calls.all++; if (gl.isContextLost()) calls.whileLost++; lose(); };
+                ext.counted = true;
+            }
+            return ext;
+        };
+    });
+    await page.goto(origin + '/?renderer=main&nomarkers');
+    await page.waitForFunction(() => window.mapLoaded, null, {timeout: 30000});
+    const calls = await page.evaluate(async () => {
+        const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+        const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+        const m = new mod.Map({container: el, renderer: 'main', attributionControl: false, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+        await new Promise(r => { m.once('load', r); setTimeout(r, 10000); });
+        const gl = m.getCanvas().getContext('webgl2'), before = {...window.loseCalls};
+        gl.getExtension('WEBGL_lose_context').loseContext();
+        const lost = gl.isContextLost();
+        // (The map starts again on a new canvas after a moment, and remove() then loses that new context.)
+        await new Promise(r => setTimeout(r, 300));
+        m.remove(); el.remove();
+        await new Promise(r => setTimeout(r, 300));
+        return {lost, all: window.loseCalls.all - before.all, whileLost: window.loseCalls.whileLost - before.whileLost};
+    });
+    check('[main] after a lost WebGL context the map does not call loseContext() on the lost context, and remove() loses the new one', calls.lost && calls.whileLost === 0 && calls.all === 2, JSON.stringify(calls));
+    await page.close();
+}
 // A lost WebGL context when the style came from a URL in another folder. The relative URLs of the style still belong
 // to that folder after the restart, and a source that is loaded says so before the tiles of the other sources are there.
 {
