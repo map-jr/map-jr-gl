@@ -64,6 +64,8 @@ This entry covers the changes after 0.6.0 (the tag `v0.6.0`).
   `renderer: 'worker'`. With `'auto'` the development build writes the text with `console.info` ([#798]).
 - Both entries: a map that fell back to the main thread fires `error` for a failed source once, finishes an `easeTo`
   that had started, and sets `touch-action` on the new canvas ([#806]).
+- Both entries: after a lost WebGL context, the map finishes an `easeTo` that was running, for the time that is left
+  ([#818]).
 - Both entries: in Firefox, a worker no longer fails with "Failed to load worker script at blob:" when the URL was
   revoked before it loaded ([#797]).
 - Both entries: a vector feature with no id comes once in query results, not once for each tile ([#755]).
@@ -113,6 +115,7 @@ This entry covers the changes after 0.6.0 (the tag `v0.6.0`).
 [#806]: https://github.com/map-jr/map-jr-gl/pull/806
 [#815]: https://github.com/map-jr/map-jr-gl/pull/815
 [#816]: https://github.com/map-jr/map-jr-gl/pull/816
+[#818]: https://github.com/map-jr/map-jr-gl/pull/818
 
 ## 0.6.0 (2026-11-17)
 
