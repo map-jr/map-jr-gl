@@ -301,7 +301,8 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
                 if (next !== now) grows = true;
             }
             if (progress) progress.push(f.properties.mapbox_clip_start ?? 0, f.properties.mapbox_clip_end ?? 1);
-            if (extrude) { heights.push(p.height.eval(z, f)); bases.push(p.base.eval(z, f)); }
+            // (As in MapLibre GL JS, a negative height or base is 0.)
+            if (extrude) heights.push(Math.max(0, p.height.eval(z, f))), bases.push(Math.max(0, p.base.eval(z, f)));
         }
         if (!featEnds.length) continue;
         const batch: Batch = {
