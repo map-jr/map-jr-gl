@@ -72,10 +72,17 @@ export class InteractionHandler {
     /** @internal Called by `enable()`: a map made with `interactive: false` takes touch gestures from the page then. */
     wake?: () => void;
     enable(_options?: unknown) { this.on = true; this.wake?.(); }
-    disable() { this.on = false; }
+    disable() { this.on = this.active = false; }
     isEnabled() { return this.on; }
-    /** Always false: the library does not report a gesture in progress for each handler. */
-    isActive() { return false; }
+    /** @internal Set by the map while the gesture of this handler is in progress. */
+    active = false;
+    /**
+     * Whether the gesture of this handler is in progress, as in MapLibre: a drag (`dragPan`, from the press of the mouse
+     * button or the first movement of a finger), a rotate drag (`dragRotate`),
+     * a pinch (`touchZoomRotate`), a tilt with two fingers (`touchPitch`) or the box of a box zoom (`boxZoom`). The other
+     * handlers always return false.
+     */
+    isActive() { return this.active; }
 }
 /** Pinch gestures. The rotation part can be turned off alone. */
 export class TouchZoomRotateHandler extends InteractionHandler {
@@ -943,9 +950,12 @@ export class Map {
         const [lng, lat] = toLngLat(lngLat);
         return this.tr.heightAt ? this.tr.heightAt(mercX(lng), mercY(lat)) : null;
     }
-    /** Whether the tiles needed for the current view have loaded. (Tracked for the map as a whole, not per source.) */
-    isSourceLoaded(id: string) {
-        if (!this.rawStyle?.sources[id]) throw new Error(`There is no source with ID "${id}"`);
+    /**
+     * Whether the data of one source is loaded for the current view. As in MapLibre, an id that the style does not have
+     * fires `error`, and the result is `undefined` then.
+     */
+    isSourceLoaded(id: string): boolean {
+        if (!this.rawStyle?.sources[id]) { this.fire('error', {error: new Error(`There is no source with ID "${id}"`)}); return undefined!; }
         return !!this.resolved?.sources[id] && (this.tilesLoaded || this.loadedSources.has(id));
     }
     /** Loads a source's tiles again, e.g. after the data behind its URL changed. */
@@ -1595,6 +1605,9 @@ export class Map {
         // A listener that prevents the default of the event that starts a gesture takes the whole gesture for itself.
         let inert = false;
         let box: {x: number; y: number; el: HTMLElement} | null = null;
+        // `isActive()` of a handler is true from the start of its gesture (see where each is set) until a pointer of the gesture lifts.
+        const rest = () => { for (const h of [this.dragPan, this.dragRotate, this.touchZoomRotate, this.touchPitch, this.boxZoom]) h.active = false; };
+        this.inputCleanup.push(rest);
         let rotating = false, moved = 0, samples: {t: number; x: number; y: number}[] = [], pinch: {dist: number; angle: number} | null = null;
         // Wheel events do not say what produced them. As MapLibre does, tell mouse wheels from trackpads by their
         // deltas and timing, because the two need different handling to feel right.
@@ -1629,11 +1642,14 @@ export class Map {
             if (e.shiftKey && e.button === 0 && e.pointerType === 'mouse' && this.boxZoom.isEnabled()) {
                 box = {x: p.x, y: p.y, el: this.container.appendChild(Object.assign(document.createElement('div'), {className: cls('boxzoom')}))};
                 box.el.style.cssText = 'position:absolute;left:0;top:0;width:0;height:0;border:2px dotted #202020;background:rgba(255,255,255,.3);pointer-events:none;z-index:2';
+                this.boxZoom.active = true;
                 this.fire('boxzoomstart', {originalEvent: e});
                 return;
             }
             this.post({type: 'stop'});
             if (pointers.size === 1) {
+                // (As in MapLibre, a mouse button that is down makes `dragPan` active before the pointer moves.)
+                this.dragPan.active = e.pointerType === 'mouse' && !rotating && this.dragPan.isEnabled();
                 suppressClick = false;
                 // A second tap landing soon after and near the first starts a double-tap (or tap-and-drag zoom).
                 tapDrag = e.pointerType === 'touch' && now - lastTap.t < 300 && Math.hypot(p.x - lastTap.x, p.y - lastTap.y) < 30 ? {x: p.x, y: p.y, zoomed: false} : null;
@@ -1675,8 +1691,9 @@ export class Map {
                     this.dragging = true;
                 }
                 if (g.mode !== 'undecided') this.fire('drag', {originalEvent: e});
-                if (g.mode === 'pitch') { if (this.touchPitch.isEnabled()) this.post({type: 'rotate', delta: 0, pitch: -(f.mid.y - g.mid.y) * 0.5}); }
+                if (g.mode === 'pitch') { if (this.touchPitch.isEnabled()) { this.touchPitch.active = true; this.post({type: 'rotate', delta: 0, pitch: -(f.mid.y - g.mid.y) * 0.5}); } }
                 else if (g.mode === 'pinch' && this.touchZoomRotate.isEnabled()) {
+                    this.touchZoomRotate.active = true;
                     this.post({type: 'pan', dx: f.mid.x - g.mid.x, dy: f.mid.y - g.mid.y, x: f.mid.x, y: f.mid.y});
                     if (f.dist > 0 && g.dist > 0) this.post({type: 'zoom', delta: Math.log2(f.dist / g.dist), x: f.mid.x, y: f.mid.y});
                     let turn = f.angle - g.angle;
@@ -1693,10 +1710,10 @@ export class Map {
             } else if (tapDrag && pointers.size === 1) {
                 // Second tap held and dragged: down zooms in, up zooms out, around where the taps landed.
                 if (moved > 6) { tapDrag.zoomed = true; this.post({type: 'zoom', delta: dy * 0.01, x: tapDrag.x, y: tapDrag.y}); }
-            } else if (rotating) { if (this.dragRotate.isEnabled()) this.post({type: 'rotate', delta: turn(prev, p), pitch: -dy * 0.5}); } // right- or ctrl-drag: turn and tilt
+            } else if (rotating) { if (this.dragRotate.isEnabled()) { this.dragRotate.active = true; this.post({type: 'rotate', delta: turn(prev, p), pitch: -dy * 0.5}); } } // right- or ctrl-drag: turn and tilt
             else if (moved > 3 && pointers.size === 1 && this.dragPan.isEnabled() && !(e.pointerType === 'touch' && this.gate?.('touch_pan', e))) {
                 if (!this.dragging) this.fire('dragstart', {originalEvent: e});
-                this.dragging = true;
+                this.dragging = this.dragPan.active = true;
                 this.fire('drag', {originalEvent: e});
                 // (With 3D terrain the page does not know the ground well enough, and the engine moves the camera alone.)
                 const pan = {type: 'pan' as const, dx, dy, x: p.x, y: p.y};
@@ -1726,6 +1743,7 @@ export class Map {
         const up = (e: PointerEvent) => {
             if (!pointers.has(e.pointerId)) return;
             this.held = null;
+            rest();
             if (e.type !== 'blur') pointerEvent(e.type === 'pointerup' ? 'end' : 'cancel', e);
             pointers.delete(e.pointerId);
             if (inert) { if (!pointers.size) inert = false; return; }
