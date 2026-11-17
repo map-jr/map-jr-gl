@@ -1763,7 +1763,8 @@ export class Engine {
     private underIcon(L: CompiledLayer, q: QueriedFeature, box: number[], radius: number, texts: {x: number; y: number; box: number[]}[]): boolean {
         const tr = this.tr, z = tr.zoom, g = q.geometry, f: Feature = {type: 1, id: q.id, properties: q.properties};
         const points = g?.type === 'Point' ? [g.coordinates as number[]] : g?.type === 'MultiPoint' ? g.coordinates as number[][] : null;
-        const image = this.imageNamed(String(L.p.icon.eval(z, f) ?? '').split(VARIANT)[0].replace(/\{([^}]+)\}/g, (_, k) => f.properties[k] ?? '').trim());
+        const name = String(L.p.icon.eval(z, f) ?? '').split(VARIANT)[0];
+        const image = this.imageNamed((L.p.icon.tokens ? name.replace(/\{([^}]+)\}/g, (_, k) => f.properties[k] ?? '') : name).trim());
         if (!points) return true;
         const near = !image || !!String(L.p.field.eval(z, f) ?? ''), turn = L.p.iconRotate.eval(z, f) * Math.PI / 180;
         return points.some(([lng, lat]) => {

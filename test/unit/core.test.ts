@@ -188,6 +188,28 @@ test('tiles: an icon name from data that is the name of a member of every object
     }
 });
 
+test('tiles: a {token} stands for a property only in a constant and in a zoom function of text-field and icon-image (#593)', async () => {
+    const {prepareGeoJSON, sliceGeoJSON} = await import('../../src/geojson.ts');
+    const n = 2 ** TILE.z, lng = (TILE.x + 0.5) / n * 360 - 180, lat = Math.atan(Math.sinh(Math.PI * (1 - 2 * (TILE.y + 0.5) / n))) * 180 / Math.PI;
+    const data: any = {type: 'Feature', properties: {name: '{A}', kind: 'x', A: 'wrong'}, geometry: {type: 'Point', coordinates: [lng, lat]}};
+    const label = (layout: object) => {
+        const layer = compileLayer({id: 'p', type: 'symbol', source: 'g', layout})!;
+        return buildTile(sliceGeoJSON(prepareGeoJSON(data), TILE.z, TILE.x, TILE.y), TILE.z, [layer], true).labels.p[0];
+    };
+    for (const [value, want] of [
+        ['{kind}', 'x'],
+        [{stops: [[0, '{kind}'], [20, 'b-{kind}']]}, 'x'],
+        [['get', 'name'], '{A}'],
+        [['literal', '{kind}'], '{kind}'],
+        [['step', ['zoom'], '{kind}', 22, 'b'], '{kind}'],
+        [{property: 'name', type: 'identity'}, '{A}'],
+        [{property: 'kind', type: 'categorical', stops: [['x', '{A}']]}, '{A}'],
+    ] as [unknown, string][]) {
+        assert.equal(label({'text-field': value}).text, want, 'text-field ' + JSON.stringify(value));
+        assert.equal(label({'icon-image': value}).icon!.name, want, 'icon-image ' + JSON.stringify(value));
+    }
+});
+
 test('renderer: each WebGL extension that the code asks for is a name of an extension', () => {
     // (A replacement of text in src/gl.ts once changed a name to one that no browser has, and the heatmap lost its fallback.)
     const asked = [...readFileSync(new URL('../../src/gl.ts', import.meta.url), 'utf8').matchAll(/getExtension\('([^']+)'\)/g)].map(m => m[1]);
