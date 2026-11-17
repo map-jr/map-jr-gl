@@ -738,6 +738,9 @@ export class Map {
     private requestRules = () => ({transform: !!this.transformRequest, protocols: [...protocols.keys()]});
     /** What to do with one request: the transform first, then a custom protocol if the URL has one. */
     private async answer(url: string, kind: string, signal?: AbortSignal | null): Promise<RequestAnswer> {
+        // (`RasterTile` is the kind of a `raster` or `raster-dem` tile on the way to this function only.)
+        const image = kind === 'RasterTile';
+        if (image) kind = 'Tile';
         const t = this.transformRequest?.(url, kind), to = t?.url ?? url, protocol = protocols.get(to.slice(0, to.indexOf(':')));
         if (!protocol) return {url: to, headers: t?.headers, credentials: t?.credentials};
         // The protocol's controller is aborted when the request is no longer wanted (`signal`) or the map is removed.
@@ -746,9 +749,12 @@ export class Map {
         signal?.addEventListener('abort', stop);
         this.protocolAborts.add(ac);
         try {
-            const {data} = await protocol({url: to, type: kind === 'Tile' || kind === 'Image' || kind === 'SpriteImage' ? 'arrayBuffer' : 'json', headers: t?.headers}, ac);
-            if (ac.signal.aborted) throw new Error(`[map-jr-gl] the request to ${to} was aborted.`);
-            return {data: toBytes(data)};
+            // An image tile has the type `image` and the `accept` header of MapLibre GL JS. The protocol can answer it with
+            // the bytes of the file or with a decoded image, which is copied as bytes are: the copy goes to another thread.
+            const {data} = await protocol({url: to, type: image ? 'image' : kind === 'Tile' || kind === 'Image' || kind === 'SpriteImage' ? 'arrayBuffer' : 'json', headers: image ? {...t?.headers, accept: 'image/webp,*/*'} : t?.headers}, ac);
+            const out = image && (data instanceof ImageBitmap || data instanceof HTMLImageElement) ? await createImageBitmap(data) : toBytes(data);
+            if (ac.signal.aborted) { (out as Partial<ImageBitmap>).close?.(); throw new Error(`[map-jr-gl] the request to ${to} was aborted.`); }
+            return {data: out};
         } finally { this.protocolAborts.delete(ac); signal?.removeEventListener('abort', stop); }
     }
     /** The controllers of the protocol requests that run: `remove()` aborts them. */

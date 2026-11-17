@@ -13,7 +13,7 @@ const root = path.resolve(import.meta.dirname, '../..'), repo = path.join(root, 
 const commit = 'f94442fd4c768a40f1896630ccb64dd50067d94b';
 if (!existsSync(repo)) execSync(`git init -q "${repo}" && git -C "${repo}" fetch -q --depth 1 https://github.com/maplibre/maplibre-style-spec.git ${commit} && git -C "${repo}" checkout -q FETCH_HEAD`, {stdio: 'inherit'});
 await build({entryPoints: [path.join(root, 'src/expr.ts')], bundle: true, format: 'esm', outfile: path.join(root, '.cache/expr.mjs'), logLevel: 'error'});
-const {compileExpr, compileProp, parseColor, compileFor} = await import(path.join(root, '.cache/expr.mjs'));
+const {compileExpr, compileProp, parseColor, compileFor, pickImage} = await import(path.join(root, '.cache/expr.mjs'));
 const warn = console.warn; console.warn = () => {};
 
 const TYPES = {Point: 1, MultiPoint: 1, LineString: 2, MultiLineString: 2, Polygon: 3, MultiPolygon: 3};
@@ -27,9 +27,9 @@ const same = (a, b) => {
 // gives the text that the library has for the object of a fixture (see STYLE_OPEN and IMAGE_OPEN in src/expr.ts), so
 // that the two are compared in one form. Three things have no place in the text, and they differ as follows.
 // - "vertical-align" is not supported. A fixture that sets it gets a text that no result is equal to, so it fails.
-// - Of a font stack, the library keeps the first font. A fixture with a second font fails.
 // - The expression gives the name of an image and does not know whether the image is available, so `available` is
-//   not compared.
+//   not compared. `coalesce` gives the names of all its images, and the engine takes the first one that the map has
+//   (`pickImage`): the runner does the same with `availableImages` of the fixture.
 const internal = want => {
     if (!want || typeof want !== 'object' || Array.isArray(want)) return want;
     if (typeof want.name === 'string' && 'available' in want) return want.name;
@@ -51,6 +51,8 @@ const deliberate = [
         reason: 'The fixture expects a compile error. By a decision of the owner of 2026-11-16, the production build does not check the types of an expression or validate a style. Checks in the development build are possible later.'},
     {label: 'within-distance', decision: 'later', match: f => f.op === 'within' || f.op === 'distance',
         reason: 'The operators "within" and "distance" are not implemented.'},
+    {label: 'projection-transition', decision: 'later', match: f => f.id.startsWith('interpolate/projection'),
+        reason: 'An "interpolate" between two projections gives the first projection, and not the transition between the two ({from, to, transition}).'},
 ];
 const labelled = Object.fromEntries(deliberate.map(d => [d.label, 0]));
 const results = {}, failures = [];
@@ -89,6 +91,7 @@ const walk = dir => {
                 // A property with tokens ("text-field", "icon-image"): the tile builder puts the properties of the feature
                 // in place of the tokens of the value (src/tile.ts). It also trims the text, which is left out here.
                 if (legacy && t.propertySpec?.tokens && typeof got === 'string') got = got.replace(/\{([^}]+)\}/g, (_, k) => feature?.properties?.[k] ?? '');
+                if (typeof got === 'string') got = pickImage(got, name => globals?.availableImages?.includes(name));
                 want = internal(want);
                 if (isColor && typeof got === 'string') got = parseColor(got);
                 if (Array.isArray(got) && Array.isArray(want) && want.some(Array.isArray)) got = got.map(v => typeof v === 'string' ? parseColor(v) ?? v : v);

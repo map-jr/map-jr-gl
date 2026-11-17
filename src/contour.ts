@@ -28,10 +28,12 @@ export interface Pixels { width: number; height: number; data: Uint8Array | Uint
 export type ImageDecoder = (bytes: Uint8Array) => Promise<Pixels> | Pixels;
 
 /** The pixels of an elevation tile image, from `decode` if given and otherwise from the browser. */
-export async function decodePixels(bytes: Uint8Array, decode?: ImageDecoder): Promise<Pixels> {
-    if (decode) return decode(bytes);
+export async function decodePixels(bytes: Uint8Array | ImageBitmap, decode?: ImageDecoder): Promise<Pixels> {
+    // (An `ImageBitmap` is the answer of a custom protocol, which is on a page: a server has none.)
+    const given = !('length' in bytes);
+    if (decode && !given) return decode(bytes);
     if (typeof createImageBitmap === 'undefined' || typeof OffscreenCanvas === 'undefined') throw new Error('Elevation tiles need a browser or decodeImage');
-    const image = await createImageBitmap(new Blob([bytes as BlobPart]), {premultiplyAlpha: 'none', colorSpaceConversion: 'none'});
+    const image = given ? bytes : await createImageBitmap(new Blob([bytes as BlobPart]), {premultiplyAlpha: 'none', colorSpaceConversion: 'none'});
     const {width, height} = image; // read before close(), which zeroes them
     // Heights are in the colour channels, so pixels must be exact: see `imagePixels`.
     const data = imagePixels(image, width, height);
@@ -43,7 +45,7 @@ export async function decodePixels(bytes: Uint8Array, decode?: ImageDecoder): Pr
  * Decodes an elevation tile image into metres, with `decode` if given (the server renderer passes its own decoders)
  * and otherwise the browser's.
  */
-export async function decodeDEM(bytes: Uint8Array, encoding: DemEncoding, decode?: ImageDecoder): Promise<DEM> {
+export async function decodeDEM(bytes: Uint8Array | ImageBitmap, encoding: DemEncoding, decode?: ImageDecoder): Promise<DEM> {
     const px = await decodePixels(bytes, decode);
     const data = new Float32Array(px.width * px.height);
     for (let i = 0; i < data.length; i++) data[i] = decodeElevation(px.data, i * 4, encoding);
