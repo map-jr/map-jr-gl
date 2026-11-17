@@ -41,8 +41,11 @@ function workerHref(o: LoadOptions): string | undefined {
     return new URL(url ?? new URL(/* @vite-ignore */ './map-jr-gl-worker.js', import.meta.url), location.href).href;
 }
 
-/** The worker file, fetched once and kept as a blob URL for a few seconds, so that the start-up workers share one request (#325). */
-const fetched = new globalThis.Map<string, Promise<string>>();
+/**
+ * The worker file, fetched once and kept as a blob URL so that the start-up workers share one request (#325). The URL
+ * is revoked 10 s after the last worker that uses it has started or failed, never while a worker still loads it (#782).
+ */
+const fetched = new globalThis.Map<string, {url: Promise<string>; pending: number; timer?: ReturnType<typeof setTimeout>}>();
 /** Worker URLs whose blob worker failed (a `worker-src` policy without `blob:`): later workers start from the URL. */
 const noBlob = new Set<string>();
 /**
@@ -53,14 +56,34 @@ const noBlob = new Set<string>();
 export function startWorker(o: LoadOptions = {}): Promise<Worker> {
     const href = workerHref(o), plain = () => workerReady(createWorker(o));
     if (!href || !/^https?:/.test(href) || noBlob.has(href)) return plain();
-    let blob = fetched.get(href);
-    if (!blob) {
+    let e = fetched.get(href);
+    if (!e) {
         // (The source map comment of the file is relative, and a blob: URL cannot resolve it: the blob gets an absolute one.)
-        fetched.set(href, blob = fetch(href).then(r => r.ok ? r.blob() : Promise.reject())
-            .then(b => URL.createObjectURL(new Blob([b, `\n//# sourceMappingURL=${href}.map`], {type: 'text/javascript'}))));
-        blob.then(u => setTimeout(() => { URL.revokeObjectURL(u); fetched.delete(href); }, 10000), () => fetched.delete(href));
+        const url = fetch(href).then(r => r.ok ? r.blob() : Promise.reject())
+            .then(b => URL.createObjectURL(new Blob([b, `\n//# sourceMappingURL=${href}.map`], {type: 'text/javascript'})));
+        fetched.set(href, e = {url, pending: 0});
+        url.catch(() => fetched.delete(href));
     }
-    return blob.then(u => workerReady(new Worker(u))).catch(() => { noBlob.add(href); return plain(); });
+    const entry = e;
+    entry.pending++;
+    clearTimeout(entry.timer);
+    const settle = () => {
+        if (--entry.pending) return;
+        entry.timer = setTimeout(() => {
+            if (fetched.get(href) === entry) fetched.delete(href);
+            entry.url.then(u => URL.revokeObjectURL(u), () => {});
+        }, 10000);
+    };
+    const started = entry.url.then(u => workerReady(new Worker(u)));
+    started.then(settle, settle);
+    return started.catch(() => { noBlob.add(href); return plain(); });
+}
+
+/** Revokes a blob URL once the worker that loads it has answered or failed: Firefox loads it after `new Worker` returns. */
+function revokeWhenLoaded(w: Worker, url: string) {
+    const done = () => { URL.revokeObjectURL(url); w.removeEventListener('message', done); w.removeEventListener('error', done); };
+    w.addEventListener('message', done);
+    w.addEventListener('error', done);
 }
 
 export function createWorker(o: LoadOptions = {}): Worker {
@@ -70,7 +93,7 @@ export function createWorker(o: LoadOptions = {}): Worker {
     if (!url && __WORKER_SRC__) {
         // Standalone build: the worker travels inside this file.
         const blob = URL.createObjectURL(new Blob([__WORKER_SRC__], {type: 'text/javascript'})), w = new Worker(blob);
-        setTimeout(() => URL.revokeObjectURL(blob), 10000);
+        revokeWhenLoaded(w, blob);
         return w;
     }
     // Bundlers that understand this pattern copy the worker file and rewrite the URL; loaded directly, it is simply the sibling file.
@@ -80,7 +103,7 @@ export function createWorker(o: LoadOptions = {}): Worker {
     if (abs.origin === location.origin || abs.protocol === 'blob:' || abs.protocol === 'data:') return new Worker(abs);
     // Browsers refuse to start a worker from another origin (a CDN, say), but a same-origin stub may import one.
     const stub = URL.createObjectURL(new Blob([`importScripts(${JSON.stringify(abs.href)});`], {type: 'text/javascript'})), w = new Worker(stub);
-    setTimeout(() => URL.revokeObjectURL(stub), 10000);
+    revokeWhenLoaded(w, stub);
     return w;
 }
 
