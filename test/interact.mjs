@@ -2299,6 +2299,26 @@ for (const mode of renderers) {
         check('[worker] a map that fell back to the main thread behaves as one that started there: one error for each failed source, an easeTo of 60 s keeps running, and cooperativeGestures blocks the wheel on the canvas it shows (#777)',
             renderer === 'main' && fellTo === 'main' && JSON.stringify(main) === JSON.stringify(fell) && main.errors.length === 2 && main.moving && main.idles === 0 && main.touch === 'pan-x pan-y' && !main.wheel,
             JSON.stringify(same));
+        // Two maps that fall back and share one style object, with a GeoJSON source that fails: each fires its own one error.
+        const pair = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const code = `const get = OffscreenCanvas.prototype.getContext; OffscreenCanvas.prototype.getContext = function (kind, ...rest) { return /webgl/.test(kind) ? null : get.call(this, kind, ...rest); }; importScripts(${JSON.stringify(location.origin + '/dist/map-jr-gl-worker.js')});`;
+            const url = URL.createObjectURL(new Blob([code], {type: 'text/javascript'}));
+            const style = {version: 8, sources: {bad: {type: 'geojson', data: '/no-such-shared.geojson'}}, layers: [{id: 'b', type: 'background', paint: {'background-color': '#ccc'}}]};
+            const maps = [0, 1].map(() => {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+                const m = new mod.Map({container: el, style, attributionControl: false, createWorker: () => new Worker(url)}), errors = [];
+                m.on('error', e => errors.push(String(e.error?.message)));
+                return {m, el, errors};
+            });
+            await Promise.all(maps.map(({m}) => new Promise(r => { m.once('idle', r); setTimeout(r, 10000); })));
+            await new Promise(r => setTimeout(r, 2000));
+            const out = maps.map(({m, errors}) => ({renderer: m.renderer, errors: errors.length}));
+            for (const {m, el} of maps) { m.remove(); el.remove(); }
+            return out;
+        });
+        check('[worker] two maps that fall back and share a style object with a GeoJSON source that fails: each map fires one error (#777)',
+            pair.every(p => p.renderer === 'main' && p.errors === 1), JSON.stringify(pair));
     }
     // The same with the engine chunk delayed by 6 seconds, on a page of its own (the chunk is not in its module cache).
     // The watch of the worker must not count while the chunk loads: one warning, no `webglcontextlost`, one canvas.

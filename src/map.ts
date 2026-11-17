@@ -387,8 +387,9 @@ export class Map {
                     for (const [c, t] of this.queue.splice(0)) this.deliver(c, t);
                     this.resend();
                     // (The data of GeoJSON sources and changes of the style since the start. It is also a numbered command:
-                    // the new engine reports `idle` with the number that the page waits for.)
-                    this.restyle(true);
+                    // the new engine reports `idle` with the number that the page waits for. It sends the style that the
+                    // map has resolved, so a source that failed is not fetched and reported again; #777.)
+                    this.restyle(true, true);
                     for (const [name, [source, options]] of this.imageInputs) this.addImage(name, source, options);
                     // (The worker drew nothing, so an animation that the page started went nowhere: the new engine runs
                     // it for the time that is left; #777.)
@@ -1036,7 +1037,14 @@ export class Map {
     /** Called when the style has changed, before it is resolved (for a class that extends this one). */
     protected styleChanged() {}
     private reloadPending = false;
-    private restyle(reload: boolean) {
+    /** The next resolve of the style uses `resolved` as it is, without requests (see `restyle`). */
+    private reuse = false;
+    /**
+     * `reuse`: the style has not changed, and the engine needs it again (a new engine after a fall back). It is used only
+     * when no other change waits or is being resolved.
+     */
+    private restyle(reload: boolean, reuse = false) {
+        this.reuse = reuse && this.restyled === this.restyles && (this.reuse || !this.restyleQueued);
         // As in MapLibre, the loading events come before the data events.
         for (const type of ['styledataloading', 'dataloading']) this.fire(type, {dataType: 'style'});
         this.styleChanged();
@@ -1065,7 +1073,9 @@ export class Map {
         }
         // A change of a style that the map shows does not wait for a source that is new: the source comes later.
         const partial = this.newStyle || !this.resolved ? undefined : {late: () => { if (this.rawStyle) this.restyle(true); }, fail: this.sourceFailed};
-        Promise.all([resolveStyle(this.rawStyle, this.fetchAs('Source'), this.styleBase, partial, this.sourceFailed), this.globeReady()]).then(([style]) => {
+        const reuse = this.reuse && this.resolved;
+        this.reuse = false;
+        Promise.all([reuse || resolveStyle(this.rawStyle, this.fetchAs('Source'), this.styleBase, partial, this.sourceFailed), this.globeReady()]).then(([style]) => {
             if (turn !== this.restyles) return;
             const reload = this.reloadPending;
             this.reloadPending = false;

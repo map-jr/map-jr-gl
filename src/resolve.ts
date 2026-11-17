@@ -38,7 +38,7 @@ export interface SourceInfo {
     /** Contour sources: how to derive lines from their elevation source. */
     contour?: ContourConfig;
     /** GeoJSON sources carry their data; it is handed to the tile workers, which cut tiles from it. */
-    data?: unknown; /** GeoJSON sources: clusters and the id property. */ options?: GeoJSONOptions; tiles: string[]; minzoom: number; maxzoom: number; tileSize: number; attribution?: string; /** A PMTiles archive: its URL and its first bytes (header and root directory). */ head?: {url: string; bytes: Uint8Array}; /** The rows of tiles are counted from the south (`scheme: 'tms'`). */ tms?: boolean; encoding?: 'terrarium' | 'mapbox' | number[];
+    data?: unknown; /** GeoJSON sources: clusters and the id property. */ options?: GeoJSONOptions; tiles: string[]; minzoom: number; maxzoom: number; tileSize: number; attribution?: string; /** A PMTiles archive: its URL and its first bytes (header and root directory). */ head?: {url: string; bytes: Uint8Array}; /** The rows of tiles are counted from the south (`scheme: 'tms'`). */ tms?: boolean; /** Vector sources: the ids of `vector_layers` of the TileJSON (for the compat entry). */ layerIds?: string[]; encoding?: 'terrarium' | 'mapbox' | number[];
     /** The area that has tiles: west, south, east, north. A tile outside it is not requested. */
     bounds?: number[];
 }
@@ -95,17 +95,14 @@ const SKIP = Symbol();
  * The network data of a source, fetched one time for the source object and its URL. A change of the style then
  * resolves without a request. With `partial`, a source that is still on its way gives SKIP.
  */
-function once(raw: object, url: string, load: () => Promise<any>, partial?: Partial, fail?: (error: unknown) => void): any {
+function once(raw: object, url: string, load: () => Promise<any>, partial?: Partial): any {
     let m = fetched.get(raw);
     if (m?.url !== url) {
         const made: NonNullable<typeof m> = m = {url, p: load()};
         fetched.set(raw, m);
         m.p.then(v => { made.v = v; made.late?.(); }, e => { made.err = e ?? 1; made.late?.(); });
     }
-    // (With `fail`, a failure is reported once for the source object, as with `partial`: a later change of the style, or
-    // a new engine after a fall back to the main thread, does not fetch it and report it again; #777.)
-    const memo = m;
-    if (!partial) return memo.told ? Promise.resolve(SKIP) : memo.p.catch(e => { if (!fail) { fetched.delete(raw); throw e; } memo.told = true; fail(e); return SKIP; });
+    if (!partial) return m.p.catch(e => { fetched.delete(raw); throw e; });
     if (m.err) { if (!m.told) { m.told = true; partial.fail(m.err); } return SKIP; }
     if (m.v === undefined) { m.late = partial.late; return SKIP; }
     return m.v;
@@ -118,7 +115,7 @@ function once(raw: object, url: string, load: () => Promise<any>, partial?: Part
 export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) => fetch(...a), base?: string, partial?: Partial, fail = partial?.fail): Promise<ResolvedStyle> {
     const bad = (error: unknown): typeof SKIP => { if (!fail) throw error; fail(error); return SKIP; };
     // (With `partial`, `once` reports a failure itself.)
-    const get = (raw: object, url: string, load: () => Promise<any>) => partial ? once(raw, url, load, partial) : once(raw, url, load, undefined, fail);
+    const get = (raw: object, url: string, load: () => Promise<any>) => partial ? once(raw, url, load, partial) : once(raw, url, load).catch(bad);
     if (typeof style === 'string') {
         const url = absolute(style, base);
         const res = await fetchFn(url);
@@ -180,6 +177,7 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
             // the engine checks them, see `setStyle` there.)
             encoding: raw.type !== 'raster-dem' ? undefined : src.encoding === 'custom' ? [src.redFactor ?? 1, src.greenFactor ?? 1, src.blueFactor ?? 1, src.baseShift ?? 0] : src.encoding === 'terrarium' ? 'terrarium' : 'mapbox',
             head: src.head,
+            layerIds: Array.isArray(src.vector_layers) ? src.vector_layers.map((l: any) => String(l?.id)) : undefined,
         };
     }));
     // (In the order of the style, whichever answer came first.)
