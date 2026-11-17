@@ -29,11 +29,11 @@ test('style images: a style from a URL brings its images to the server renderer'
 
 test('style images: values that break a bound are left out with a message', () => {
     const faults: string[] = [];
-    // (A style takes 800 images (#610): the styles of map-jr-styles have up to 190, and a style with more icons must not lose them.)
-    const many = Object.fromEntries(Array.from({length: 805}, (_, i) => ['i' + i, square('#000')]));
-    assert.equal(Object.keys(styleImages(style(many), m => faults.push(m))).length, 800);
+    // (A style takes 500 images (#610): the styles of map-jr-styles have up to 190, and a style with more icons must not lose them.)
+    const many = Object.fromEntries(Array.from({length: 505}, (_, i) => ['i' + i, square('#000')]));
+    assert.equal(Object.keys(styleImages(style(many), m => faults.push(m))).length, 500);
     assert.equal(faults.length, 5);
-    assert.match(faults[0], /the image "i800" .* is left out, because the style has more than 800 images/);
+    assert.match(faults[0], /the image "i500" .* is left out, because the style has more than 500 images/);
     faults.length = 0;
     const out = styleImages(style({
         ok: square('#000'), url: 'https://images.test/a.png', obj: {image: square('#111'), width: 4},
