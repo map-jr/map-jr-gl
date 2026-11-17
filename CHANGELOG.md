@@ -148,10 +148,6 @@ The second group corrects results, most of them so that they agree with MapLibre
   `@map-jr/map-jr-gl/maplibre-compat`, a `close` listener of an open popup now runs, as in MapLibre GL JS, and the
   elements of markers and popups are no longer in the container. `destroy()` of `@map-jr/map-jr-gl` removes the
   elements of `overlay()` in the same way and does not call `onClose` ([#635]).
-- <!-- only if merged --> Both entries: a GeoJSON feature whose `id` is a string keeps that id in the results of
-  queries, in `state.hover` and `onClick`, and it can take a feature state. Before, such a feature had no id unless
-  `promoteId` named a property. Code that relied on the missing id sees the string. MapLibre GL JS 6.17 gives a number
-  in place of such an id ([#633]).
 
 ### New
 
@@ -317,7 +313,6 @@ The second group corrects results, most of them so that they agree with MapLibre
 [#626]: https://github.com/map-jr/map-jr-gl/pull/626
 [#629]: https://github.com/map-jr/map-jr-gl/pull/629
 [#630]: https://github.com/map-jr/map-jr-gl/pull/630
-[#633]: https://github.com/map-jr/map-jr-gl/pull/633
 [#635]: https://github.com/map-jr/map-jr-gl/pull/635
 
 ## 0.5.0 (2026-11-15)
