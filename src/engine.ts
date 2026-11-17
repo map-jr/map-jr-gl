@@ -794,6 +794,17 @@ export class Engine {
     /** An image for a pattern: the name of a template with `params` names one of its variants (see `variantName`). */
     private pattern = (name: string) => this.icon(name.includes(VARIANT) ? name.split(IMAGE_OR).map(n => variantName(n, this.slots)).join(IMAGE_OR) : name);
 
+    /**
+     * Asks the page for the images of a tile that the map does not have, when the tile arrives. The page then makes them
+     * while the tile goes to the GPU, and the first picture of the tile has its icons. Without this, the map asks when
+     * it first draws the tile, and an image that the page draws on demand (a variant of an SVG template, an image of a
+     * style) comes one round later than the tile (#628). A tile that the view does not use yet (`used` below 0: an
+     * overview, a tile of the end of a movement) asks when it is drawn, so that it does not end `idle`.
+     */
+    private askImages(tile: {labels?: Record<string, {icon?: {name: string}}[]>; icons?: Record<string, {names: string[]}>}) {
+        for (const list of Object.values(tile.labels ?? {})) for (const l of list) if (l.icon) this.icon(l.icon.name);
+        for (const b of Object.values(tile.icons ?? {})) for (const name of b.names) this.icon(name);
+    }
     private icon = (name: string) => {
         // `coalesce` with images: the first image that the map has, or a variant of a template (it is made when it is
         // asked for). With none, the first name is the image that is missing, as in MapLibre GL JS.
@@ -1260,7 +1271,7 @@ export class Engine {
         else if (isGeometrySource(src)) {
             const backend = this.backends[t.backend = this.nextBackend++ % this.backends.length], req = this.nextReq++;
             t.cancel = () => backend.cancel(req);
-            load = backend.load(this.build(req, source, id, t)).then(tile => (t.built = true, this.tapTile(key, 'ans'), this.upload(tile, () => this.tiles.get(key) === t)));
+            load = backend.load(this.build(req, source, id, t)).then(tile => (t.built = true, this.tapTile(key, 'ans'), t.used < 0 || this.askImages(tile), this.upload(tile, () => this.tiles.get(key) === t)));
         } else {
             // Elevation tiles are decoded in a tile worker, which also reads the heights that 3D terrain needs: this thread
             // only sends the finished pixels to the GPU. (Reading pixels back here made the map hitch as tiles arrived.)
