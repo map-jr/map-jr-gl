@@ -204,6 +204,7 @@ export type GeoJSONSource = Source & {
     setData(data: unknown): unknown; getData(): Promise<any>; updateData(diff: GeoJSONDiff): unknown;
     getClusterExpansionZoom(clusterId: number): Promise<number>; getClusterChildren(clusterId: number): Promise<any[]>;
     getClusterLeaves(clusterId: number, limit?: number, offset?: number): Promise<any[]>;
+    setClusterOptions(options: SetClusterOptions): Promise<void>; getClusterOptions(): GetClusterOptions; getBounds(): Promise<LngLatBounds>;
 };
 export type VectorTileSource = Source;
 export type RasterTileSource = Source;
@@ -291,13 +292,9 @@ export type DragRotateOptions = {around?: 'center'; movement?: 'circular' | 'lin
 export type GeoJSONFeatureId = number | string;
 /** The change of one feature in the diff of `updateData`. */
 export type GeoJSONFeatureDiff = NonNullable<GeoJSONDiff['update']>[number];
-/**
- * The cluster options that `setClusterOptions` of a GeoJSON source takes in MapLibre GL JS. The source of this
- * library has no `setClusterOptions`, so no method takes this type: set `cluster`, `clusterMaxZoom` and
- * `clusterRadius` in the description of the source.
- */
+/** The cluster options that `setClusterOptions` of a GeoJSON source takes. An option that is left out keeps its value. */
 export type SetClusterOptions = {cluster?: boolean; clusterMaxZoom?: number; clusterRadius?: number};
-/** The cluster options of a GeoJSON source. No method of this library returns this type: `map.getSource(id)` has the three values. */
+/** The cluster options of a GeoJSON source, as `getClusterOptions` gives them. */
 export type GetClusterOptions = Required<SetClusterOptions>;
 /** The four corners of an image source: top left, top right, bottom right and bottom left, each `[lng, lat]`. */
 export type Coordinates = [[number, number], [number, number], [number, number], [number, number]];

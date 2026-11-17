@@ -1799,6 +1799,53 @@ for (const mode of renderers) {
         check(`[${mode}] raster source: setTiles and setUrl load tiles from the new URLs, and a wrong argument gives a message`,
             r.a && r.b && r.c && r.same && r.url === '/test-255.json' && !r.tiles && r.message.startsWith('[map-jr-gl] getSource("r").setTiles'), JSON.stringify(r));
     }
+    // The other members of a source of the compat entry: the cluster options and the bounds of a GeoJSON source, and
+    // `reload` and the values of the TileJSON of a tile source (#566).
+    {
+        await page.route('**/test-566.json', route => route.fulfill({contentType: 'application/json', body: JSON.stringify({tilejson: '2.2.0', tiles: [new URL('/t566/{z}/{x}/{y}.png', page.url()).href], minzoom: 1, maxzoom: 9})}));
+        const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==', 'base64');
+        await page.route(/\/t566\//, route => route.fulfill({contentType: 'image/png', body: png}));
+        const r = await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), asked = [];
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const point = (lng, lat) => ({type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [lng, lat, 5, 7]}});
+            const m = new mod.Map({container: el, renderer: mode, attributionControl: false, center: [20, 20], zoom: 2,
+                transformRequest: url => { asked.push(url.replace(location.origin, '')); return {url}; },
+                style: {version: 8, sources: {
+                    r: {type: 'raster', url: '/test-566.json', tileSize: 256},
+                    g: {type: 'geojson', cluster: true, data: {type: 'FeatureCollection', features: [point(20, 20), point(20.001, 20.002), point(19.997, 20.001)]}},
+                }, layers: [{id: 'r', type: 'raster', source: 'r'}, {id: 'g', type: 'circle', source: 'g', paint: {'circle-radius': 10}}]}});
+            m.on('error', () => {});
+            const idle = () => new Promise(r => { m.once('idle', r); setTimeout(r, 5000); });
+            const tiles = () => asked.filter(u => u.startsWith('/t566/')).length;
+            const found = async () => { let f = []; for (let i = 0; i < 40 && !f.length; i++) { await new Promise(r => setTimeout(r, 100)); f = await m.queryRenderedFeatures({layers: ['g']}); } return f; };
+            const shown = async () => (await found()).map(f => f.properties.point_count ?? 1);
+            await idle();
+            const g = m.getSource('g'), before = {options: g.getClusterOptions(), shown: await shown(), zoom: await g.getClusterExpansionZoom((await found())[0]?.properties.cluster_id).catch(e => e.message)};
+            const promise = g.setClusterOptions({cluster: false, clusterRadius: 20});
+            await promise;
+            await idle();
+            for (let i = 0; i < 40 && (await shown()).length < 3; i++) await new Promise(r => setTimeout(r, 100));
+            const g2 = m.getSource('g'), after = {options: g2.getClusterOptions(), shown: await shown(), spec: m.getStyle().sources.g.cluster, zoom: await g2.getClusterExpansionZoom(1).catch(e => e.message)};
+            const bounds = (await g2.getBounds()).toArray();
+            const message = await g2.setClusterOptions(true).catch(e => e.message);
+            const t = m.getSource('r'), had = tiles(), loaded = t.loaded(), serialized = t.serialize();
+            const result = t.reload();
+            await idle();
+            const out = {before, after, bounds, message, isPromise: promise instanceof Promise, had, again: tiles(), loaded, serialized, result,
+                minzoom: t.minzoom, maxzoom: t.maxzoom, tiles: t.tiles, geoLoaded: g2.loaded(), geoSerialized: Object.keys(g2.serialize()).sort().join()};
+            m.remove(); el.remove();
+            return out;
+        }, mode);
+        // (The route of the tiles stays, as for #255 above.)
+        await page.unroute('**/test-566.json');
+        check(`[${mode}] GeoJSON source: setClusterOptions builds the clusters again, getClusterOptions gives the options, and getBounds gives the bounds of the data`,
+            r.isPromise && JSON.stringify(r.before.options) === '{"cluster":true,"clusterMaxZoom":17,"clusterRadius":50}' && r.before.shown.join() === '3' && r.before.zoom > 2
+            && JSON.stringify(r.after.options) === '{"cluster":false,"clusterMaxZoom":17,"clusterRadius":20}' && r.after.shown.join() === '1,1,1' && r.after.spec === false && /no clusters/.test(r.after.zoom)
+            && JSON.stringify(r.bounds) === '[[19.997,20],[20.001,20.002]]' && r.message.startsWith('[map-jr-gl] getSource("g").setClusterOptions') && r.geoLoaded && r.geoSerialized === 'cluster,clusterRadius,data,type', JSON.stringify(r));
+        check(`[${mode}] raster source: reload loads the tiles again, and the source has the zoom range and the tiles of its TileJSON`,
+            r.had > 0 && r.again > r.had && r.result === undefined && r.loaded && r.minzoom === 1 && r.maxzoom === 9 && /\/t566\/\{z\}/.test(r.tiles?.[0]) && JSON.stringify(r.serialized) === '{"type":"raster","url":"/test-566.json","tileSize":256}', JSON.stringify(r));
+    }
     // The coarse overview tiles (zoom 11 for a view at zoom 14.3) are not drawn while the tiles of the view are there.
     // Their arrival does not place the labels again: the map fires no second `idle`, and before the first `idle` it
     // does not wait for another placement. They are requested only after the first `idle` (#326).
