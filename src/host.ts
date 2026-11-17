@@ -488,11 +488,12 @@ export function makeMap(container: HTMLElement | string, spec: MapDescription, n
     // `cooperativeGestures`: the handler of the compat entry (cooperative-gestures.ts) loads on demand. Until it has
     // loaded, the gestures are blocked without the hint. `stop` removes the hint; `cooperating` is the wanted state.
     let cooperating = false, stop: (() => void) | undefined;
-    const canvasStyle = map.getCanvas().style, touchAction = canvasStyle.touchAction;
+    // (The canvas is read each time: a fall back from the worker to the main thread replaces it; #777.)
+    const touchAction = map.getCanvas().style.touchAction;
     const cooperate = (on: boolean) => {
         cooperating = on;
-        if (!on) { stop?.(); stop = map.gate = undefined; canvasStyle.touchAction = touchAction; return; }
-        canvasStyle.touchAction = 'pan-x pan-y';
+        if (!on) { stop?.(); stop = map.gate = undefined; map.getCanvas().style.touchAction = touchAction; return; }
+        map.getCanvas().style.touchAction = 'pan-x pan-y';
         map.gate = (type, e) => type === 'touch_pan' || !(e as WheelEvent)[navigator.userAgent.includes('Mac') ? 'metaKey' : 'ctrlKey'];
         // (After the import, the field may be off again or the map destroyed.)
         import('./cooperative-gestures.ts').then(m => { if (alive && cooperating && !stop) stop = m.cooperate(map); });
