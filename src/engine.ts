@@ -1,7 +1,7 @@
 import {heightsChanged} from './geo.ts';
 import {EXTENT, HEIGHT_GRID, TILE_SIZE, Transform, bezier, globeStops, groundHeight, clamp, keepSize, latFromMerc, lngFromMerc, mercX, mercY, type LngLatLike, type TileID} from './geo.ts';
 import {globeBuild} from './subdivide.ts';
-import {compileFor, type Feature, type MapStates} from './expr.ts';
+import {compileFor, IMAGE_OR, pickImage, type Feature, type MapStates} from './expr.ts';
 import {VARIANT, variantName} from './markers.ts';
 import {layerRules} from './rules.ts';
 import {compileLayer, isGeometrySource, screenTranslate, loadSprite, tileURL, type CompiledLayer, type FontSource, type ResolvedStyle, type Sprite, type SpriteIcon} from './style.ts';
@@ -778,9 +778,12 @@ export class Engine {
     /** The slots of each SVG template (see the command `templates`). */
     private slots: Record<string, string[]> = {};
     /** An image for a pattern: the name of a template with `params` names one of its variants (see `variantName`). */
-    private pattern = (name: string) => this.icon(name.includes(VARIANT) ? variantName(name, this.slots) : name);
+    private pattern = (name: string) => this.icon(name.includes(VARIANT) ? name.split(IMAGE_OR).map(n => variantName(n, this.slots)).join(IMAGE_OR) : name);
 
     private icon = (name: string) => {
+        // `coalesce` with images: the first image that the map has, or a variant of a template (it is made when it is
+        // asked for). With none, the first name is the image that is missing, as in MapLibre GL JS.
+        name = pickImage(name, n => this.images.has(n) || this.sprite && Object.hasOwn(this.sprite.icons, n) || Object.hasOwn(this.slots, n.split(VARIANT)[0]));
         // (The name can come from data: `toString` is no icon of the sprite.)
         const found = this.images.get(name) ?? (this.sprite && Object.hasOwn(this.sprite.icons, name) ? this.sprite.icons[name] : undefined);
         // Ask the page for images the style names but nothing provides (once each, and only after the sprite has had its chance).
@@ -1763,7 +1766,7 @@ export class Engine {
     private underIcon(L: CompiledLayer, q: QueriedFeature, box: number[], radius: number, texts: {x: number; y: number; box: number[]}[]): boolean {
         const tr = this.tr, z = tr.zoom, g = q.geometry, f: Feature = {type: 1, id: q.id, properties: q.properties};
         const points = g?.type === 'Point' ? [g.coordinates as number[]] : g?.type === 'MultiPoint' ? g.coordinates as number[][] : null;
-        const image = this.imageNamed(String(L.p.icon.eval(z, f) ?? '').split(VARIANT)[0].replace(/\{([^}]+)\}/g, (_, k) => f.properties[k] ?? '').trim());
+        const image = this.imageNamed(pickImage(String(L.p.icon.eval(z, f) ?? ''), n => this.imageNamed(n.split(VARIANT)[0])).split(VARIANT)[0].replace(/\{([^}]+)\}/g, (_, k) => f.properties[k] ?? '').trim());
         if (!points) return true;
         const near = !image || !!String(L.p.field.eval(z, f) ?? ''), turn = L.p.iconRotate.eval(z, f) * Math.PI / 180;
         return points.some(([lng, lat]) => {
