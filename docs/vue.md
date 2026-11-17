@@ -487,8 +487,11 @@ With the `ssr` prop, the server also renders the first view as SVG:
   tilted view (`pitch`) from straight above.
 - The requests of the server have time limits: 10 seconds for one request and 30 seconds for all requests of one
   render. Change them with `timeout` and `requestTimeout` in the `ssr` prop, limit the size of a response with
-  `maxBytes`, and the hosts with `allowHosts`. When the render fails, the component does not catch the error. See
-  "Limits for requests" in [Server rendering](server-rendering.md).
+  `maxBytes`, and the hosts with `allowHosts`. See "Limits for requests" in [Server rendering](server-rendering.md).
+- When the render fails, the component sends the page without the first view, and the map draws in the browser as
+  it does without the `ssr` prop. The component writes one message that starts with `[map-jr-gl] <MapJr>` and has
+  the cause to the console of the server (`console.error`). A listener for `error` also gets an `Error` with that
+  message on the server, and its `cause` is the error of the render.
 - The layout does not shift: the element has its size from your page, and the map changes nothing around it. A
   test of the library measures this.
 
