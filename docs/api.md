@@ -144,6 +144,7 @@ The library compares each field with the field of the last description:
 | `cooperativeGestures` | `true`: the wheel zooms the map only with Ctrl (⌘ on a Mac), one finger scrolls the page and two fingers move the map. A blocked gesture shows a hint over the map. The default is `false`. `update()` can turn it on and off. |
 | `colorScheme` | The colours of the controls, the popup, the attribution and the message of a browser without WebGL 2: `'light'` (the default), `'dark'` or `'auto'`. `'auto'` follows the media query `prefers-color-scheme` and changes while the page is open. An application with its own theme switch passes `'light'` or `'dark'`. While the scheme is dark, the container has the class `map-jr-dark`. The dark colours have no specificity, so a rule of the application and the custom properties `--map-control-*`, `--map-attribution-background` and `--map-popup-*` still win. `update()` changes it. The map also sets the global state property `color-scheme` of the style to the resolved scheme, so that a style can follow it: see [Dark mode](#dark-mode). A value that is not one of the three gives the light colours, and the development build warns once. |
 | `onColorSchemeChange` | Called with the new value when the control `colorScheme()` changes `colorScheme`. The control has changed the map already with `patch`; an application that keeps the description in its state (Vue, React) writes the value back, or the next `update` with the old value changes the map back. |
+| `locale` | The texts of the controls, the popup, the marker and the hint of `cooperativeGestures`, by the keys of MapLibre GL JS: `{'NavigationControl.ZoomIn': 'Zoom avant'}`. A key that is left out keeps the English text, and the library ships no translations. `update()` changes it and adds the controls again with the new texts; a popup or a marker that exists keeps its texts. It does not change the language of the labels of the map: set a property of `globalState` for that. See [The texts of the controls](#the-texts-of-the-controls). |
 | `cursor` | The mouse cursor over the map. Without it, the cursor is a pointer over a feature of `interactiveLayers`. |
 | `transformRequest` | A function that changes a request before the map makes it, as `transformRequest` of MapLibre GL JS. It gets the URL and the kind of resource (`Style`, `Source`, `Tile`, `Glyphs`, `SpriteJSON`, `SpriteImage`, `Image` or `Font`) and returns `{url, headers, credentials}`, or `undefined` to leave the request as it is. It applies to the requests of the tile workers too. The map calls the function of the last description, so a function that is made again in each render works. Example: `transformRequest: url => url.startsWith('https://api.os.uk/') ? {url: url + '&key=' + KEY} : undefined`. |
 | `padding` | Space in CSS pixels at the sides of the map that the view keeps free, for example under a side panel: one number for all sides, or `{top, right, bottom, left}` (a side that is left out is 0). The centre of the view is the centre of the rest of the map. The default is 0. A change moves the camera at once (as `setPadding` of MapLibre GL JS). It is not the `padding` of `initialView` and `moveTo`, which is space around `bounds` for one fit. |
@@ -640,6 +641,44 @@ bottom edge of the map beside the attribution; with the compact attribution it k
 | `globe` | A button that switches the projection between `globe` and `mercator`. While the projection is `globe`, the button has the class `map-jr-ctrl-globe-enabled` and `aria-pressed="true"`. A click changes the map until a description with a different `projection` comes. See `projection` for what the globe draws. | |
 | `colorScheme` | A prototype. A button that switches the colour scheme between light and dark. It shows the scheme that the map has (a sun or a moon), and its label names the action ("Use dark colours"). A click changes `colorScheme` of the description with `patch` and calls `onColorSchemeChange`. When the description has `'auto'`, a click sets the opposite of the system, and the click after it, which lands on the scheme of the system, sets `'auto'` again. With no value, `'light'` or `'dark'`, a click flips between `'light'` and `'dark'`. The code loads in a file of its own when the map adds the control. | |
 | `custom` | A control of your own (see below) | `key` (required), and `element` or `onAdd` with `onRemove` |
+
+### The texts of the controls
+
+`locale` of the description gives the texts of the controls and of the other elements that the map adds, by the
+keys of MapLibre GL JS (the option `locale` of its `Map`). A key that is left out keeps the English text.
+
+```js
+import {createMap} from '@map-jr/map-jr-gl';
+import {navigation, fullscreen} from '@map-jr/map-jr-gl/controls';
+
+createMap('map', {
+  style: 'https://tiles.openfreemap.org/styles/liberty',
+  controls: [navigation(), fullscreen()],
+  locale: {'NavigationControl.ZoomIn': 'Zoom avant', 'NavigationControl.ZoomOut': 'Zoom arrière'},
+});
+```
+
+| Key | English text |
+|---|---|
+| `AttributionControl.ToggleAttribution` | `Toggle map data credits` (the label) and `Map data credits` (the title) |
+| `NavigationControl.ZoomIn` | `Zoom in` |
+| `NavigationControl.ZoomOut` | `Zoom out` |
+| `NavigationControl.ResetBearing` | `Reset bearing to north` |
+| `FullscreenControl.Enter` | `Enter fullscreen` |
+| `FullscreenControl.Exit` | `Exit fullscreen` |
+| `GeolocateControl.FindMyLocation` | `Find my location` |
+| `GeolocateControl.LocationNotAvailable` | `Location not available` |
+| `ColorSchemeControl.Light` | `Use light colours` (a key of this library) |
+| `ColorSchemeControl.Dark` | `Use dark colours` (a key of this library) |
+| `Popup.Close` | `Close popup` |
+| `Marker.Title` | `Map marker` |
+| `CooperativeGesturesHandler.WindowsHelpText` | `Use Ctrl + scroll to zoom the map` |
+| `CooperativeGesturesHandler.MacHelpText` | `Use ⌘ + scroll to zoom the map` |
+| `CooperativeGesturesHandler.MobileHelpText` | `Use two fingers to move the map` |
+
+A change of `locale` with `update()` adds the controls again, so that they show the new texts. A popup or a marker
+that is on the map keeps the texts that it had when it was added. The development build warns once when `locale` is
+not an object or a value is not a string.
 
 ### A control of your own
 

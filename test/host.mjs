@@ -1238,6 +1238,25 @@ for (const renderer of renderers) {
         });
         check(`[${renderer}] controls follow the description`, controls.two === 2 && controls.still === 2 && controls.one === 1 && controls.none === 0, JSON.stringify(controls));
 
+        // `locale` gives the texts of the controls, and a change adds the controls again with the new texts (#685).
+        const locale = await page.evaluate(async () => {
+            const t = window.t, {navigation} = await import('/dist/controls.js');
+            const settle = () => new Promise(r => setTimeout(r, 50)), label = () => document.querySelector('#host .map-jr-ctrl-zoom-in')?.getAttribute('aria-label');
+            t.host.update(t.spec = {...t.spec, controls: [navigation()], locale: {'NavigationControl.ZoomIn': 'Zoom avant'}});
+            for (let i = 0; i < 40 && !label(); i++) await settle();
+            const fr = label();
+            t.host.update(t.spec = {...t.spec, locale: {'NavigationControl.ZoomIn': 'Hineinzoomen'}});
+            await settle();
+            const de = label();
+            t.host.update(t.spec = {...t.spec, locale: undefined});
+            await settle();
+            const en = label();
+            t.host.update(t.spec = {...t.spec, controls: undefined});
+            await settle();
+            return {fr, de, en};
+        });
+        check(`[${renderer}] locale sets the texts of the controls and follows the description`, locale.fr === 'Zoom avant' && locale.de === 'Hineinzoomen' && locale.en === 'Zoom in', JSON.stringify(locale));
+
         // A control of your own (#216): an element, and an object with onAdd/onRemove, follow the description by key.
         const custom = await page.evaluate(async () => {
             const t = window.t, {navigation, custom} = await import('/dist/controls.js');

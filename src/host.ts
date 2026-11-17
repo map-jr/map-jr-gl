@@ -192,6 +192,12 @@ export interface MapDescription extends MapSetup {
      */
     onColorSchemeChange?: (colorScheme: 'auto' | 'light' | 'dark') => void;
     /**
+     * The texts of the controls, the popup, the marker and the hint of `cooperativeGestures`, by the keys of MapLibre GL
+     * JS: `{'NavigationControl.ZoomIn': 'Zoom avant'}`. A key that is left out keeps the English text. The library
+     * ships no translations. A change of this field adds the controls again with the new texts.
+     */
+    locale?: Record<string, string>;
+    /**
      * Space in CSS pixels at the sides of the map that the view keeps free, for example under a side panel: one number
      * for all sides, or `{top, right, bottom, left}` (a side that is left out is 0). The centre of the view is the centre
      * of the rest of the map. The default is 0.
@@ -464,6 +470,8 @@ export function makeMap(container: HTMLElement | string, spec: MapDescription, n
     const transform: RequestTransform = (url, kind) => transformLast?.(url, kind);
     if (spec.transformRequest) options.transformRequest = transform;
     const map = new Map(options);
+    // (The controls read their texts through `ui()` of controls.ts, which calls this. `latest` is the last description.)
+    (map as {_getUIString?(k: string): string | undefined})._getUIString = k => latest.locale?.[k];
     // The look of the controls of the main API (the class map-jr-glass, see controls.ts). The compat entry does not set it.
     const box = map.getContainer();
     box.classList.add('map-jr-glass');
@@ -741,8 +749,10 @@ export function makeMap(container: HTMLElement | string, spec: MapDescription, n
             if (differ(value, before?.globalState?.[name])) map.setGlobalStateProperty(name, value == null ? null : copy(value));
         }
         if (before && styled && !restyled && differ(next.projection, before.projection)) map.setProjection(next.projection ? copy(next.projection) : styleProjection);
-        if (next.controls !== before?.controls) {
-            const wanted = new Set((next.controls ?? []).map(c => c.key));
+        // (A new `locale` adds every control again: some controls set their texts only when they are added.)
+        const relabel = differ(next.locale, before?.locale);
+        if (next.controls !== before?.controls || relabel) {
+            const wanted = new Set(relabel ? [] : (next.controls ?? []).map(c => c.key));
             for (const [key, c] of controls) if (!wanted.has(key)) { map.removeControl(c as any); controls.delete(key); }
             for (const c of next.controls ?? []) if (!controls.has(c.key)) { const made = c.create(() => host); controls.set(c.key, made); map.addControl(made, c.position); }
         }

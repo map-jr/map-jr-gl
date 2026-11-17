@@ -247,6 +247,8 @@ const MapJrComponent = defineComponent({
         cooperativeGestures: {type: Boolean, default: undefined},
         /** The colours of the controls, the popup and the attribution: `'light'` (the default), `'dark'`, or `'auto'` to follow the browser. */
         colorScheme: String as PropType<MapDescription['colorScheme']>,
+        /** The texts of the controls by the keys of MapLibre GL JS: `{'NavigationControl.ZoomIn': 'Zoom avant'}`. */
+        locale: Object as PropType<MapDescription['locale']>,
         /** Space in CSS pixels at the sides of the map that the view keeps free: one number, or `{top, right, bottom, left}`. */
         padding: [Number, Object] as PropType<MapDescription['padding']>,
         /** Controls from `@map-jr/map-jr-gl/controls`: `[navigation(), scale()]`. */
@@ -327,7 +329,7 @@ const MapJrComponent = defineComponent({
         const spec = computed<MapDescription>(() => {
             const out: MapDescription = {
                 style: style.value, sources: sources.value, layers: added.value, terrain: terrain.value, view: view.value, initialView: props.initialView && toRaw(props.initialView), images: images.value, data: data.value, interactiveLayers: layers.value, hoverState: props.hoverState, controls: controls.value,
-                minZoom: props.minZoom, maxZoom: props.maxZoom, maxPitch: props.maxPitch, maxBounds: props.maxBounds && toRaw(props.maxBounds), cursor: props.cursor, transformRequest: props.transformRequest, cooperativeGestures: props.cooperativeGestures, colorScheme: props.colorScheme, padding: props.padding && typeof props.padding === 'object' ? toRaw(props.padding) : props.padding, projection: props.projection && toRaw(props.projection), globalState: props.globalState && toRaw(props.globalState),
+                minZoom: props.minZoom, maxZoom: props.maxZoom, maxPitch: props.maxPitch, maxBounds: props.maxBounds && toRaw(props.maxBounds), cursor: props.cursor, transformRequest: props.transformRequest, cooperativeGestures: props.cooperativeGestures, colorScheme: props.colorScheme, locale: props.locale && toRaw(props.locale), padding: props.padding && typeof props.padding === 'object' ? toRaw(props.padding) : props.padding, projection: props.projection && toRaw(props.projection), globalState: props.globalState && toRaw(props.globalState),
                 fonts: props.fonts && toRaw(props.fonts), sprite: props.sprite && toRaw(props.sprite), renderer: props.renderer, fontFamily: props.fontFamily, interactive: props.interactive, antialias: props.antialias,
                 attribution: (props.attribution as unknown) === true ? undefined : props.attribution && toRaw(props.attribution), hash: props.hash, nonce: props.nonce,
                 onViewChange: view => emit('update:view', view), onColorSchemeChange: scheme => emit('update:colorScheme', scheme), onClick: event => emit('click', event),
