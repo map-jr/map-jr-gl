@@ -1988,9 +1988,12 @@ for (const mode of renderers) {
             const i0 = log.findIndex(s => s.t >= t0), perDegree = 512 * 8 / 360;
             return {renderer: m.renderer, steps: log.slice(Math.max(0, i0 - 1), i0 + 6).map((s, i, a) => i ? Math.round((s.lng - a[i - 1].lng) * perDegree) : null).slice(1)};
         });
-        // (Each move goes 10 px west, and the centre goes east. A jump back is a step west or a first step that is short.)
+        // (Each move goes 10 px west, and the centre goes east. A jump back is a step west: the page's camera is 50 ms and
+        // more than 57 px behind the engine's. The first step is 10 px or more: it is one move when the worker draws a
+        // frame between the first move and the second, which happens in CI (#616), two moves when the second move
+        // arrives before that frame, or a frame of the `easeTo`, about 19 px.)
         check('[worker] compat: a drag that starts during an easeTo does not jump back (#38)',
-            steps.renderer === 'worker' && steps.steps.length >= 4 && steps.steps[0] >= 15 && steps.steps.every(d => d >= 0), JSON.stringify(steps));
+            steps.renderer === 'worker' && steps.steps.length >= 4 && steps.steps[0] >= 10 && steps.steps.every(d => d >= 0), JSON.stringify(steps));
     }
     // A worker that cannot make a WebGL2 context: the map goes to the main thread, `load` and `idle` fire, and what the
     // page sent before the fall back (the rules for requests, a change of the style) is not lost.
