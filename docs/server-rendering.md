@@ -196,7 +196,8 @@ that you pass as `fetch`, or in front of the render.
 This is the case for a network error, for a time limit, and for a tile with an HTTP status that is not successful.
 There are two exceptions: a tile with status 404 or 204 is an empty tile, and the render continues. The renderer
 does not return a part of a map. Catch the error and send the page without the SVG: the map then draws in the
-browser as it does without a server render.
+browser as it does without a server render. The Vue component (`ssr` prop of `<MapJr>`) does this itself, and it
+writes one message to the console of the server.
 
 ```js
 import {renderFirstView} from '@map-jr/map-jr-gl/server';

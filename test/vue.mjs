@@ -34,11 +34,28 @@ const extended = await renderToString(createSSRApp({render: () => h(MapJr, {mapS
     sources: {own: {type: 'geojson', data: square(view.center)}, live: empty}, layers: [{id: 'own', type: 'fill', source: 'own', paint: {'fill-color': '#123456'}}, {id: 'live', type: 'fill', source: 'live', paint: {'fill-color': '#654321'}}],
     data: {live: square([view.center[0] + 0.004, view.center[1]])}})}));
 check('server: the SVG has the sources and layers of the description and the GeoJSON of data', extended.includes('#123456') && extended.includes('#654321'), JSON.stringify({layers: extended.includes('#123456'), data: extended.includes('#654321')}));
-let blocked = '';
-const guarded = createSSRApp({render: () => h(MapJr, {mapStyle: style, initialView: view, ssr: {allowHosts: ['other.example.com']}})});
-guarded.config.errorHandler = e => { blocked = e.message; };
-await renderToString(guarded);
-check('server: the ssr prop passes allowHosts to the server renderer', blocked.includes('allowHosts'), blocked.slice(0, 120));
+// A render that fails: the page has no first view, the console has one message, and a listener of `error` gets the error.
+const failing = async (props) => {
+    const logged = [], emitted = [], thrown = [], error = console.error;
+    console.error = (...args) => logged.push(args.join(' '));
+    const app = createSSRApp({render: () => h(MapJr, {mapStyle: style, initialView: view, onError: e => emitted.push(e), ...props})});
+    app.config.errorHandler = e => thrown.push(e.message);
+    let page = '';
+    try { page = await renderToString(app); } catch (e) { thrown.push(e.message); } finally { console.error = error; }
+    return {page, logged, emitted, thrown};
+};
+const guarded = await failing({ssr: {allowHosts: ['other.example.com']}});
+check('server: the ssr prop passes allowHosts to the server renderer', guarded.logged.length === 1 && guarded.logged[0].includes('allowHosts'), (guarded.logged[0] ?? guarded.thrown[0] ?? '').slice(0, 200));
+// (A tile server that answers 500 for each tile, and a style whose source has its tiles there.)
+const broken = http.createServer((req, res) => { res.writeHead(500); res.end(); });
+await new Promise(resolve => broken.listen(0, '127.0.0.1', resolve));
+const down = await failing({mapStyle: makeStyle(`http://127.0.0.1:${broken.address().port}/{z}/{x}/{y}.pbf`, 'Example tiles'), ssr: {width: 800, height: 500}});
+const silent = await failing({mapStyle: makeStyle(`http://127.0.0.1:${broken.address().port}/{z}/{x}/{y}.pbf`, 'Example tiles'), ssr: true, onError: undefined});
+broken.close();
+check('server: a tile with status 500 gives the page without the first view, one message in the console and one error event (#706)',
+    down.page.includes('map-jr-vue') && !down.page.includes('<svg') && !down.thrown.length && down.logged.length === 1 && down.logged[0].startsWith('[map-jr-gl] <MapJr>') && down.logged[0].includes('500') && down.emitted.length === 1 && down.emitted[0] instanceof Error && down.emitted[0].message === down.logged[0]
+    && silent.page.includes('map-jr-vue') && !silent.thrown.length && silent.logged.length === 1,
+    JSON.stringify({page: down.page.slice(0, 80), thrown: down.thrown, logged: down.logged.map(m => m.slice(0, 200)), emitted: down.emitted.length, silent: {thrown: silent.thrown, logged: silent.logged.length}}));
 check('server: without the ssr prop the component renders an empty element', !plain.includes('<svg') && plain.includes('map-jr-vue'), plain.slice(0, 120));
 
 const bare = await renderToString(createSSRApp({render: () => h('div', {id: 'frame', style: 'width:800px;height:500px'}, [h(MapJr, {mapStyle: style, initialView: view, images: {disc}, ...pins, attribution: false})])}));
