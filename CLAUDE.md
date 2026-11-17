@@ -46,7 +46,7 @@ to protect those qualities.
 - **Merge with squash** once CI is green — you may merge your own pull request, **except** when the change does one
   of these. Then leave it open and ask the owner:
   - removes or renames public API of either entry, or changes a default;
-  - raises a size budget (see "Size");
+  - changes the hard line of the size or a ceiling in `scripts/size-check.mjs` (see "Size");
   - adds a dependency to the built files, or takes code or a method from a project whose licence is not on the list
     in "Code and methods from other projects";
   - changes this file, the CI workflows, or the release process;
@@ -114,7 +114,7 @@ A change is done when all of these that apply are true. The pull request templat
    handle failure of any one request without stopping the map, and never put their text into `innerHTML`.
 9. **Asynchronous steps.** After every `await` in the map, check that the map still exists and that a newer
    request has not replaced this one.
-10. **Size.** `pnpm test:size` passes. See below before you touch a budget.
+10. **Size.** `pnpm test:size` passes, and the pull request says what the change adds. See "Size" below.
 11. **Numbers.** After a change that affects results or sizes, run `pnpm status` (it rewrites the status table in
     the README) and commit the result.
 12. **Licence.** `ACKNOWLEDGEMENTS.md` and `THIRD-PARTY-LICENSES.md` are correct when a library is added to the
@@ -207,9 +207,13 @@ in every change, and do not spend an hour to save 50 bytes.
   mistakes, long messages) goes into the development build (`src/mistakes.ts`). The build shortens the names of
   private class members and of the names in the shaders (see `docs/development.md`): declare members `private`, and
   name uniforms `u_...`.
-- **A budget is a ceiling for accidents, not a target.** The budgets in `scripts/size-check.mjs` were raised on
-  2026-11-14 and have several KB of room. Do not rewrite working code to fit a fix into the last bytes of a budget:
-  if a budget is reached, stop and ask the owner. Raising one needs the owner.
+- **The hard line is a third of MapLibre GL JS.** The page script that loads up front and the worker file together
+  stay under a third of what MapLibre GL JS downloads (its page script, its worker and its CSS), for each entry.
+  `scripts/size-check.mjs` computes the limit from the installed MapLibre GL JS, so the limit does not rise, and the
+  owner does not raise it. The other built files have wide ceilings that only catch an accident. The line is not a
+  target: keep each change as small as it can be, and do not rewrite working code to save a few bytes.
+- **When the download comes within 5 KB of the line,** tell the owner, and start the pass for savings before more
+  features merge.
 - **Savings are found in one pass before a release,** not in each pull request: one worker reads the built files for
   what is large or repeated, and its pull request has only that concern. Write a saving that you notice during
   other work into the issue for that pass.

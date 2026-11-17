@@ -53,14 +53,14 @@ export interface RenderOptions {
      * Return undefined for names you do not handle. The SVG goes into the output as vector artwork.
      */
     resolveImage?: (name: string) => {svg: string; width: number; height: number} | undefined;
-    /** Set false to ignore the style's `map-jr:ssr` layer overrides and render exactly what the client would. */
-    ssrOverrides?: boolean;
     /**
      * Changes for the server render, for each id of a style layer: the same values as `map-jr:ssr` in the metadata of a
      * layer. Use this for a style that you do not write yourself (a style from a URL), to make the render smaller:
      * `{building: {hidden: true}, 'road-minor': {minzoom: 15}}`. A value here comes before the value in the style.
+     * Without the option, the values of `map-jr:ssr` in the style apply. `false` renders the style with no override:
+     * every value of `map-jr:ssr` in the style is ignored, `simplify` and `minSize` included.
      */
-    overrides?: Record<string, SSROverrides>;
+    overrides?: false | Record<string, SSROverrides>;
     /** Sources to add to the style, by id, as `sources` in the description of a map (`MapDescription`). */
     sources?: Record<string, object>;
     /** Layers to add to the layers of the style, as `layers` in the description of a map (`MapDescription`). */
@@ -184,8 +184,10 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
     }
     const full: any = withData(adds ? extended(given, o) : given, o.data, true, (id, type) => { throw dataTypeError(id, type); });
     const style = await resolveStyle(full, fetchFn, base);
-    if (o.overrides) style.layers = style.layers.map(l => o.overrides![l.id] ? {...l, metadata: {...l.metadata, [SSR_KEY]: {...(l.metadata?.[SSR_KEY] as object), ...o.overrides![l.id]}}} : l);
-    if (o.ssrOverrides !== false) style.layers = applySSROverrides(style.layers);
+    const over = o.overrides;
+    // (`false` also removes `map-jr:ssr` from the layers, because `compileLayer` reads `simplify` and `minSize` from it (#723).)
+    style.layers = over === false ? style.layers.map(l => l.metadata?.[SSR_KEY] ? {...l, metadata: {...l.metadata, [SSR_KEY]: undefined}} : l)
+        : applySSROverrides(over ? style.layers.map(l => over[l.id] ? {...l, metadata: {...l.metadata, [SSR_KEY]: {...(l.metadata?.[SSR_KEY] as object), ...over[l.id]}}} : l) : style.layers);
     if (o.layerFilter) style.layers = style.layers.filter(l => o.layerFilter!(l.id));
     const layers = style.layers.map(compileLayer).filter((l): l is CompiledLayer => !!l);
     const tr = new Transform();

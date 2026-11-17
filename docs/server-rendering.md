@@ -118,8 +118,7 @@ Notes for Cloudflare Workers:
 | `layerFilter` | A function that returns `false` for a layer to leave out |
 | `inlineImages` | When `true`, raster tiles and the sprite go into the SVG as data. Required when the SVG is shown with an `<img>` element. |
 | `highDensity` | When `true`, the render uses the high-density (@2x) sprite |
-| `ssrOverrides` | When `false`, the server changes in the style are ignored. See below. |
-| `overrides` | Server changes for style layers, by the id of the layer: `{building: {hidden: true}}`. For a style that you do not write yourself. See below. |
+| `overrides` | Server changes for style layers, by the id of the layer: `{building: {hidden: true}}`. For a style that you do not write yourself. `false` renders the style with no server change. Without the option, the server changes in the style apply. See below. |
 | `sources`, `layers`, `terrain` | Sources and layers to add to the style, and terrain in place of that of the style, as the fields of the same names in `MapDescription`. A style from a URL is fetched first. |
 | `data` | GeoJSON for GeoJSON sources, by the id of the source, as `data` in `MapDescription`. A key with no source of that id makes a GeoJSON source with the default options. A key that is the id of a source of another type makes `renderToSVG` reject with an error. |
 | `decodeImage` | A function that decodes elevation tiles. Required only for formats other than PNG and lossless WebP. |
@@ -247,6 +246,9 @@ const {svg, attribution} = await renderToSVG({
 ```
 
 A value in `overrides` comes before the value in the style.
+
+With `overrides: false`, the renderer ignores every `map-jr:ssr` in the style, `simplify` and `minSize` included. The
+defaults of `simplify` (0.6 pixels) and `minSize` (0.8 pixels) still apply.
 
 | Key | Effect on the server render |
 |---|---|
