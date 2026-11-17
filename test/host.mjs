@@ -1368,8 +1368,9 @@ for (const renderer of renderers) {
             const popup = t.host.overlay(content, {lngLat, popup: true, onClose() { closes++; popup.remove(); }});
             const other = t.host.overlay(plain, {lngLat, popup: true});
             await wait(300);
-            content.closest('.map-jr-popup-content').querySelector('button').focus();
-            const focused = content.parentElement.contains(document.activeElement);
+            const box = content.closest('.map-jr-popup-content');
+            box.querySelector('button').focus();
+            const focused = box.contains(document.activeElement) && document.activeElement !== document.body;
             key(document.activeElement);
             await wait(500);
             const gone = !content.isConnected, focus = document.activeElement === t.host._map.getCanvas();
