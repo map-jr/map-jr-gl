@@ -143,6 +143,11 @@ The second group corrects results, most of them so that they agree with MapLibre
 - `@map-jr/map-jr-gl/maplibre-compat`: the type `AddLayerObject` is a union with `CustomLayerInterface`, so TypeScript
   code that reads `.source` from a variable of that type needs a narrowing. A custom layer on a map that was not made
   with `renderer: 'main'` fires `error` (and throws with `strict: true`), where it wrote a warning ([#468]).
+- Both entries: when the map is removed, its markers and popups leave the page at once, and a popup ends its closing
+  animation. Before, an open popup and a marker stayed in the container. After `Map.remove()` of
+  `@map-jr/map-jr-gl/maplibre-compat`, a `close` listener of an open popup now runs, as in MapLibre GL JS, and the
+  elements of markers and popups are no longer in the container. `destroy()` of `@map-jr/map-jr-gl` removes the
+  elements of `overlay()` in the same way and does not call `onClose` ([#635]).
 - <!-- only if merged --> Both entries: a GeoJSON feature whose `id` is a string keeps that id in the results of
   queries, in `state.hover` and `onClick`, and it can take a feature state. Before, such a feature had no id unless
   `promoteId` named a property. Code that relied on the missing id sees the string. MapLibre GL JS 6.17 gives a number
@@ -251,11 +256,9 @@ The second group corrects results, most of them so that they agree with MapLibre
   ([#515]).
 - `@map-jr/map-jr-gl/maplibre-compat`: `querySourceFeatures` asks a custom protocol for the URL of a GeoJSON source as
   it is written ([#622]).
-- <!-- only if merged --> Both entries: a style whose `layers` is missing or is not an array fires one `error` event
+- Both entries: a style whose `layers` is missing or is not an array fires one `error` event
   with a message that names the fault, and the map takes the next style. Before, the map threw ([#630]).
-- <!-- only if merged --> Both entries: `Popup.remove()` removes the element of the popup when its closing animation
-  never finishes. <!-- This item is written from issue #435, because its pull request did not exist on 2026-11-17.
-  Check it against the pull request and add the link. -->
+
 [#464]: https://github.com/map-jr/map-jr-gl/pull/464
 [#465]: https://github.com/map-jr/map-jr-gl/pull/465
 [#467]: https://github.com/map-jr/map-jr-gl/pull/467
@@ -315,6 +318,7 @@ The second group corrects results, most of them so that they agree with MapLibre
 [#629]: https://github.com/map-jr/map-jr-gl/pull/629
 [#630]: https://github.com/map-jr/map-jr-gl/pull/630
 [#633]: https://github.com/map-jr/map-jr-gl/pull/633
+[#635]: https://github.com/map-jr/map-jr-gl/pull/635
 
 ## 0.5.0 (2026-11-15)
 
