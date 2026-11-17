@@ -2022,6 +2022,53 @@ for (const renderer of renderers) {
     await page.close();
 }
 
+// #557: a rotate drag (the right mouse button, or Ctrl with the left one) turns the map of the main API as it turns
+// MapLibre GL JS (served at /ml/): the same way and by the same angle, at five heights of the map. (test/interact.mjs
+// has the same drags for the compat entry, and two fingers.)
+for (const renderer of renderers) {
+    const page = await browser.newPage({viewport: {width: 900, height: 600}});
+    try {
+        await page.goto(`${origin}/style.json`);
+        const drags = async kind => {
+            await page.evaluate(async ([kind, renderer]) => {
+                const style = {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]};
+                const el = window.turnEl = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:600px;height:400px;z-index:99'}));
+                if (kind === 'ml') {
+                    const ml = await import('/ml/maplibre-gl.mjs');
+                    ml.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+                    const m = window.turnMap = new ml.Map({container: el, style, center: [0, 0], zoom: 2, attributionControl: false});
+                    await new Promise(r => m.once('load', r));
+                } else {
+                    const lib = await import('/dist/map-jr-gl.js');
+                    const host = window.turnHost = lib.createMap(el, {style, renderer, initialView: {center: [0, 0], zoom: 2}, attribution: false});
+                    await new Promise(r => host.state.subscribe(s => s.loaded, v => v && r()));
+                    window.turnMap = host._map;
+                }
+            }, [kind, renderer]);
+            const bearing = async () => { await page.waitForTimeout(250); return page.evaluate(() => { const m = window.turnMap, b = m.getBearing(); m.jumpTo({bearing: 0, pitch: 0}); return Math.round(b * 10) / 10; }); };
+            // (Each drag holds still for 250 ms before it ends, so that the inertia of MapLibre GL JS adds no turn.)
+            const out = [];
+            for (const y of [40, 150, 200, 250, 360]) {
+                await page.waitForTimeout(100);
+                await page.mouse.move(250, y); await page.mouse.down({button: 'right'});
+                for (let i = 1; i <= 10; i++) await page.mouse.move(250 + i * 10, y);
+                await page.waitForTimeout(250); await page.mouse.up({button: 'right'});
+                out.push(await bearing());
+            }
+            await page.keyboard.down('Control'); await page.mouse.move(250, 250); await page.mouse.down();
+            for (let i = 1; i <= 10; i++) await page.mouse.move(250 + i * 10, 250);
+            await page.waitForTimeout(250); await page.mouse.up(); await page.keyboard.up('Control');
+            out.push(await bearing());
+            await page.evaluate(() => { window.turnHost ? window.turnHost.destroy() : window.turnMap.remove(); window.turnEl.remove(); window.turnHost = window.turnMap = undefined; });
+            return out;
+        };
+        const ml = await drags('ml'), main = await drags('main');
+        check(`[${renderer}] a rotate drag with the right button, and with Ctrl and the left button, turns the map the same way and by the same angle as MapLibre GL JS (#557)`,
+            ml.length === main.length && ml.every((b, i) => Math.abs(b) > 10 && Math.abs(b - main[i]) < 1.5), JSON.stringify({ml, main}));
+    } catch (e) { check(`[${renderer}] the rotate drags of #557: the test run was completed`, false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
+
 // The `querySource` example of the gallery (site/examples/query.js and query.compat.js; the site must be built), with
 // the usual number of tile workers.
 for (const code of ['core', 'compat']) {

@@ -15,12 +15,19 @@ BSD-3-Clause.
 - The layer type `color-relief` follows the method of MapLibre GL JS (BSD-3-Clause; `color_relief_style_layer.ts` and
   the shader `color_relief`): the stops of the `interpolate` expression go to the GPU, and the shader searches the two
   stops around an elevation and mixes their colours. The code in `src/style.ts` and `src/gl.ts` is new.
+- The methods of `hillshade-method` (`basic`, `combined`, `igor`, `multidirectional`) and
+  `hillshade-illumination-altitude` follow the formulas of MapLibre GL JS (BSD-3-Clause; the shader `hillshade` and
+  `hillshade_style_layer.ts`), which says that it bases them on `gdaldem` of GDAL (MIT). The code in `src/style.ts`
+  and `src/gl.ts` is new.
 - The tile URL tokens `{prefix}` and `{ratio}` follow the rules of `CanonicalTileID.url` in `src/source/tile_id.ts`
   of MapLibre GL JS (BSD-3-Clause). The code in `src/resolve.ts` is new.
 - The texts and the CSS of the hint of `cooperativeGestures` in the compat entry follow MapLibre GL JS
   (BSD-3-Clause): `src/ui/handler/cooperative_gestures.ts` and `maplibre-gl.css`.
 - The option `locale` of the compat entry reads the keys of `src/ui/default_locale.ts` of MapLibre GL JS 6.17.0
   (BSD-3-Clause), so that a `locale` object for MapLibre GL JS works unchanged. The English texts are not copied.
+- The rotate drag on the map (the right mouse button, or Ctrl with the left one) follows the method of
+  `generateMouseRotationHandler` in `src/ui/handler/mouse.ts` of MapLibre GL JS (BSD-3-Clause). The code in
+  `src/map.ts` is new.
 - A map at rest places labels in the next frame after a tile arrives and shows the labels of a newly loaded tile
   without a fade. This follows the method of `skipFade` in the placement of MapLibre GL JS (BSD-3-Clause); the code
   is new.

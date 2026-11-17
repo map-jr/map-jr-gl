@@ -1799,6 +1799,53 @@ for (const mode of renderers) {
         check(`[${mode}] raster source: setTiles and setUrl load tiles from the new URLs, and a wrong argument gives a message`,
             r.a && r.b && r.c && r.same && r.url === '/test-255.json' && !r.tiles && r.message.startsWith('[map-jr-gl] getSource("r").setTiles'), JSON.stringify(r));
     }
+    // The other members of a source of the compat entry: the cluster options and the bounds of a GeoJSON source, and
+    // `reload` and the values of the TileJSON of a tile source (#566).
+    {
+        await page.route('**/test-566.json', route => route.fulfill({contentType: 'application/json', body: JSON.stringify({tilejson: '2.2.0', tiles: [new URL('/t566/{z}/{x}/{y}.png', page.url()).href], minzoom: 1, maxzoom: 9})}));
+        const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==', 'base64');
+        await page.route(/\/t566\//, route => route.fulfill({contentType: 'image/png', body: png}));
+        const r = await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), asked = [];
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const point = (lng, lat) => ({type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [lng, lat, 5, 7]}});
+            const m = new mod.Map({container: el, renderer: mode, attributionControl: false, center: [20, 20], zoom: 2,
+                transformRequest: url => { asked.push(url.replace(location.origin, '')); return {url}; },
+                style: {version: 8, sources: {
+                    r: {type: 'raster', url: '/test-566.json', tileSize: 256},
+                    g: {type: 'geojson', cluster: true, data: {type: 'FeatureCollection', features: [point(20, 20), point(20.001, 20.002), point(19.997, 20.001)]}},
+                }, layers: [{id: 'r', type: 'raster', source: 'r'}, {id: 'g', type: 'circle', source: 'g', paint: {'circle-radius': 10}}]}});
+            m.on('error', () => {});
+            const idle = () => new Promise(r => { m.once('idle', r); setTimeout(r, 5000); });
+            const tiles = () => asked.filter(u => u.startsWith('/t566/')).length;
+            const found = async () => { let f = []; for (let i = 0; i < 40 && !f.length; i++) { await new Promise(r => setTimeout(r, 100)); f = await m.queryRenderedFeatures({layers: ['g']}); } return f; };
+            const shown = async () => (await found()).map(f => f.properties.point_count ?? 1);
+            await idle();
+            const g = m.getSource('g'), before = {options: g.getClusterOptions(), shown: await shown(), zoom: await g.getClusterExpansionZoom((await found())[0]?.properties.cluster_id).catch(e => e.message)};
+            const promise = g.setClusterOptions({cluster: false, clusterRadius: 20});
+            await promise;
+            await idle();
+            for (let i = 0; i < 40 && (await shown()).length < 3; i++) await new Promise(r => setTimeout(r, 100));
+            const g2 = m.getSource('g'), after = {options: g2.getClusterOptions(), shown: await shown(), spec: m.getStyle().sources.g.cluster, zoom: await g2.getClusterExpansionZoom(1).catch(e => e.message)};
+            const bounds = (await g2.getBounds()).toArray();
+            const message = await g2.setClusterOptions(true).catch(e => e.message);
+            const t = m.getSource('r'), had = tiles(), loaded = t.loaded(), serialized = t.serialize();
+            const result = t.reload();
+            await idle();
+            const out = {before, after, bounds, message, isPromise: promise instanceof Promise, had, again: tiles(), loaded, serialized, result,
+                minzoom: t.minzoom, maxzoom: t.maxzoom, tiles: t.tiles, geoLoaded: g2.loaded(), geoSerialized: Object.keys(g2.serialize()).sort().join()};
+            m.remove(); el.remove();
+            return out;
+        }, mode);
+        // (The route of the tiles stays, as for #255 above.)
+        await page.unroute('**/test-566.json');
+        check(`[${mode}] GeoJSON source: setClusterOptions builds the clusters again, getClusterOptions gives the options, and getBounds gives the bounds of the data`,
+            r.isPromise && JSON.stringify(r.before.options) === '{"cluster":true,"clusterMaxZoom":17,"clusterRadius":50}' && r.before.shown.join() === '3' && r.before.zoom > 2
+            && JSON.stringify(r.after.options) === '{"cluster":false,"clusterMaxZoom":17,"clusterRadius":20}' && r.after.shown.join() === '1,1,1' && r.after.spec === false && /no clusters/.test(r.after.zoom)
+            && JSON.stringify(r.bounds) === '[[19.997,20],[20.001,20.002]]' && r.message.startsWith('[map-jr-gl] getSource("g").setClusterOptions') && r.geoLoaded && r.geoSerialized === 'cluster,clusterRadius,data,type', JSON.stringify(r));
+        check(`[${mode}] raster source: reload loads the tiles again, and the source has the zoom range and the tiles of its TileJSON`,
+            r.had > 0 && r.again > r.had && r.result === undefined && r.loaded && r.minzoom === 1 && r.maxzoom === 9 && /\/t566\/\{z\}/.test(r.tiles?.[0]) && JSON.stringify(r.serialized) === '{"type":"raster","url":"/test-566.json","tileSize":256}', JSON.stringify(r));
+    }
     // The coarse overview tiles (zoom 11 for a view at zoom 14.3) are not drawn while the tiles of the view are there.
     // Their arrival does not place the labels again: the map fires no second `idle`, and before the first `idle` it
     // does not wait for another placement. They are requested only after the first `idle` (#326).
@@ -3046,6 +3093,55 @@ for (const mode of renderers) {
             check('[main] compat: a touch drag on the compass rotates and pitches the map without panning it', Math.abs(r.dragged.bearing) > 1 && r.dragged.pitch > 21 && !r.dragged.panned, JSON.stringify(r));
         }
     }
+    // #557: a rotate drag (the right mouse button, or Ctrl with the left one) turns the map of the compat entry as it
+    // turns MapLibre GL JS (served at /ml/): the same way and by the same angle, at five heights of the map. Two fingers
+    // that turn (Chromium only) do the same. test/host.mjs has the same drags for the main API.
+    try {
+        const make = kind => page.evaluate(async ([kind, renderer]) => {
+            const style = {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]};
+            const el = window.turnEl = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:600px;height:400px;z-index:9'}));
+            if (kind === 'ml') {
+                const ml = await import('/ml/maplibre-gl.mjs');
+                ml.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+                window.turnMap = new ml.Map({container: el, style, center: [0, 0], zoom: 2, attributionControl: false});
+            } else {
+                const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+                window.turnMap = new mod.Map({container: el, renderer, style, center: [0, 0], zoom: 2, attributionControl: false});
+            }
+            await new Promise(r => window.turnMap.once('load', r));
+        }, [kind, mode]);
+        const bearing = async () => { await page.waitForTimeout(250); return page.evaluate(() => { const m = window.turnMap, b = m.getBearing(); m.jumpTo({bearing: 0, pitch: 0}); return b; }); };
+        const drags = async kind => {
+            await make(kind);
+            // (Each drag holds still for 250 ms before it ends, so that the inertia of MapLibre GL JS adds no turn.)
+            const out = [];
+            for (const y of [40, 150, 200, 250, 360]) {
+                await page.waitForTimeout(100);
+                await page.mouse.move(250, y); await page.mouse.down({button: 'right'});
+                for (let i = 1; i <= 10; i++) await page.mouse.move(250 + i * 10, y);
+                await page.waitForTimeout(250); await page.mouse.up({button: 'right'});
+                out.push(await bearing());
+            }
+            await page.keyboard.down('Control'); await page.mouse.move(250, 250); await page.mouse.down();
+            for (let i = 1; i <= 10; i++) await page.mouse.move(250 + i * 10, 250);
+            await page.waitForTimeout(250); await page.mouse.up(); await page.keyboard.up('Control');
+            out.push(await bearing());
+            if (browserName === 'chromium') {
+                // Two fingers 200 pixels apart turn by 40 degrees around the centre of the map, clockwise on the screen.
+                const cdp = await page.context().newCDPSession(page);
+                const at = deg => [0, 1].map(k => ({id: k, x: 300 + (k ? -100 : 100) * Math.cos(deg * Math.PI / 180), y: 200 + (k ? -100 : 100) * Math.sin(deg * Math.PI / 180)}));
+                await cdp.send('Input.dispatchTouchEvent', {type: 'touchStart', touchPoints: at(0)});
+                for (let d = 2; d <= 40; d += 2) await cdp.send('Input.dispatchTouchEvent', {type: 'touchMove', touchPoints: at(d)});
+                await page.waitForTimeout(250); await cdp.send('Input.dispatchTouchEvent', {type: 'touchEnd', touchPoints: []}); await cdp.detach();
+                out.push(await bearing());
+            }
+            await page.evaluate(() => { window.turnMap.remove(); window.turnEl.remove(); window.turnMap = undefined; });
+            return out.map(b => Math.round(b * 10) / 10);
+        };
+        const ml = await drags('ml'), compat = await drags('compat');
+        check(`[${mode}] compat: a rotate drag with the right button, with Ctrl and the left button${browserName === 'chromium' ? ', and with two fingers' : ''} turns the map the same way and by the same angle as MapLibre GL JS (#557)`,
+            ml.length === compat.length && ml.every((b, i) => Math.abs(b) > 10 && Math.abs(b - compat[i]) < 1.5), JSON.stringify({ml, compat}));
+    } catch (e) { check(`[${mode}] the rotate drags of #557: the test run was completed`, false, String(e.message).split('\n')[0]); }
     // 3D terrain off and on again: the elevation tiles that are loaded stay, so the relief does not go away for a
     // moment and no tile is asked for again.
     {

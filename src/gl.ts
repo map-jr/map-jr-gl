@@ -1,5 +1,5 @@
 import {EXTENT, latFromMerc, mercX, mercY, type TileID, type Transform} from './geo.ts';
-import type {CompiledLayer, Light} from './style.ts';
+import {hillshadeLights, LIGHTS, type CompiledLayer, type Light} from './style.ts';
 import {compileProp} from './expr.ts';
 import {LINE_VERTEX, WALL_OTHER, WALL_TOP, type GLBatch, type IconBatch, type LabelSrc, type TileGL} from './tile.ts';
 import type {Placed, RenderItem} from './placement.ts';
@@ -357,23 +357,39 @@ void main() {
   o = clamp(vec4(deriv / 8.0 + 128.0 / 255.0, 1.0, 1.0), 0.0, 1.0);
 }`],
 
+    // A `hillshade` layer. `u_light` has `hillshade-exaggeration`, the method (0 `standard`, 1 `combined`, 2 `igor`,
+    // 3 `basic` and `multidirectional`) and the number of lights; `u_sun` has the direction and the altitude of each
+    // light in radians. The methods are those of MapLibre GL JS; `basic` is `multidirectional` with one light.
     hillshade: [VS_DEM, `
-uniform sampler2D u_image; uniform vec4 u_clip; uniform vec2 u_latrange; uniform vec2 u_light;
-uniform vec4 u_shadow; uniform vec4 u_highlight; uniform vec4 u_accent; in vec2 v_uv; in vec2 v_tile; out vec4 o;
+uniform sampler2D u_image; uniform vec4 u_clip; uniform vec2 u_latrange; uniform vec3 u_light; uniform vec2 u_sun[${LIGHTS}];
+uniform vec4 u_shadow[${LIGHTS}]; uniform vec4 u_highlight[${LIGHTS}]; uniform vec4 u_accent; in vec2 v_uv; in vec2 v_tile; out vec4 o;
 const float PI = 3.141592653589793;
 void main() {
   ${FS_CLIP}
   // Slopes are divided by cos(latitude) to undo the mercator projection's stretching.
   float scaleFactor = cos(radians((u_latrange.x - u_latrange.y) * (1.0 - v_uv.y) + u_latrange.y));
   vec2 deriv = (texture(u_image, v_uv).rg - 128.0 / 255.0) * 8.0 / scaleFactor;
-  float slope = atan(0.625 * length(deriv));
   float aspect = deriv.x != 0.0 ? atan(deriv.y, -deriv.x) : PI / 2.0 * (deriv.y > 0.0 ? 1.0 : -1.0);
-  float intensity = u_light.x, azimuth = u_light.y + PI;
+  float intensity = u_light.x, shade = abs(mod((aspect + u_sun[0].x) / PI + 1.5, 2.0) - 1.0);
+  if (u_light.y > 0.0) {
+    deriv *= intensity * 2.0;
+    float steep = atan(length(deriv)) * 2.0 / PI;
+    o = steep * mix(u_shadow[0], u_highlight[0], shade);
+    if (u_light.y == 2.0) return;
+    for (int i = 0; i < int(u_light.z); i++) {
+      // The cosine of the angle between the light and the normal of the ground.
+      float c = clamp((sin(u_sun[i].y) + cos(u_sun[i].y) * (deriv.y * cos(u_sun[i].x) - deriv.x * sin(u_sun[i].x))) / sqrt(1.0 + dot(deriv, deriv)), 0.0, 1.0);
+      if (u_light.y == 1.0) { o = steep * mix(u_highlight[0], u_shadow[0], acos(c) * 2.0 / PI); return; }
+      if (i == 0) o = vec4(0.0);
+      o += (c > 0.5 ? u_highlight[i] * (2.0 * c - 1.0) : u_shadow[i] * (1.0 - 2.0 * c)) / u_light.z;
+    }
+    return;
+  }
+  float slope = atan(0.625 * length(deriv));
   float base = 1.875 - intensity * 1.75, maxValue = 0.5 * PI;
   float scaledSlope = intensity != 0.5 ? ((pow(base, slope) - 1.0) / (pow(base, maxValue) - 1.0)) * maxValue : slope;
   vec4 accent = (1.0 - cos(scaledSlope)) * u_accent * clamp(intensity * 2.0, 0.0, 1.0);
-  float shade = abs(mod((aspect + azimuth) / PI + 0.5, 2.0) - 1.0);
-  vec4 shadeColor = mix(u_shadow, u_highlight, shade) * sin(scaledSlope) * clamp(intensity * 2.0, 0.0, 1.0);
+  vec4 shadeColor = mix(u_shadow[0], u_highlight[0], shade) * sin(scaledSlope) * clamp(intensity * 2.0, 0.0, 1.0);
   o = accent * (1.0 - shadeColor.a) + shadeColor;
 }`],
 
@@ -1016,12 +1032,12 @@ export class GLRenderer {
                     gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, this.rampTexture(L.relief));
                     gl.activeTexture(gl.TEXTURE0);
                 } else {
-                    const pre = (c: number[]) => [c[0] * c[3], c[1] * c[3], c[2] * c[3], c[3]];
-                    const azimuth = p.direction.eval(zoom) * Math.PI / 180 + (p.anchor.eval(zoom) === 'viewport' ? s.tr.bearing * Math.PI / 180 : 0) // the map's bearing, also when drawing a terrain tile's picture;
-                    gl.uniform2f(u.u_light, p.exaggeration.eval(zoom), azimuth);
-                    gl.uniform4fv(u.u_shadow, pre(p.shadow.eval(zoom)));
-                    gl.uniform4fv(u.u_highlight, pre(p.highlight.eval(zoom)));
-                    gl.uniform4fv(u.u_accent, pre(p.accent.eval(zoom)));
+                    const h = hillshadeLights(p, zoom, p.anchor.eval(zoom) === 'viewport' ? s.tr.bearing * Math.PI / 180 : 0); // the map's bearing, also when drawing a terrain tile's picture
+                    gl.uniform3f(u.u_light, p.exaggeration.eval(zoom), h.method, h.n);
+                    gl.uniform2fv(u.u_sun, h.sun);
+                    gl.uniform4fv(u.u_shadow, h.shadow);
+                    gl.uniform4fv(u.u_highlight, h.highlight);
+                    const c = p.accent.eval(zoom); gl.uniform4f(u.u_accent, c[0] * c[3], c[1] * c[3], c[2] * c[3], c[3]);
                 }
                 // A map at rest, seen from above: the image moves by less than a pixel, so that its pixels are on the pixels of
                 // the screen. An image between the pixels is blurred. The rule is that of MapLibre GL JS: the centre of the

@@ -25,9 +25,8 @@ export function group(extraClass = ''): HTMLElement {
 }
 
 /**
- * Dragging the compass rotates the map with the sideways movement and pitches it with the vertical movement, as a drag
- * on the map with the right button does. A movement of 3 pixels or less is a click, which resets the bearing; a
- * longer drag does not.
+ * Dragging the compass rotates the map with the sideways movement and pitches it with the vertical movement. A
+ * movement of 3 pixels or less is a click, which resets the bearing; a longer drag does not.
  */
 function dragCompass(map: Map, b: HTMLButtonElement, pitch: boolean) {
     let last: PointerEvent | null = null, dragged = false, bearing = 0, tilt = 0;
@@ -45,9 +44,9 @@ function dragCompass(map: Map, b: HTMLButtonElement, pitch: boolean) {
         // the map does not shake between two angles.)
         if (dragged && Math.abs(dx) < 2 && (!pitch || Math.abs(dy) < 2)) return;
         dragged = true;
-        // A drag on the compass turns the map as a drag on the map with the right button does (src/map.ts, 'rotate'):
-        // 0.4 degrees of bearing for each pixel sideways, in the same direction, and 0.5 degrees of pitch for each pixel
-        // up. (0.8 degrees turned the map by more than a full turn on a drag across a map of 600 pixels. An angle around the
+        // A drag on the compass turns the map by 0.4 degrees of bearing for each pixel sideways (a drag to the right
+        // decreases the bearing) and by 0.5 degrees of pitch for each pixel up. The owner decided on 2026-11-16 that the
+        // compass keeps this method, while the rotate drag on the map follows MapLibre GL JS (#557). (0.8 degrees turned the map by more than a full turn on a drag across a map of 600 pixels. An angle around the
         // centre of the button, as before #548, jumped by up to 180 degrees when the pointer passed near that centre.)
         // The drag keeps its own bearing and pitch, as the engine does for that drag: with the worker renderer,
         // getBearing() returns the camera that the engine last reported, which a fast drag has already passed, and a turn

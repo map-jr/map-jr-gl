@@ -7,7 +7,8 @@ import type {QueriedFeature} from './query.ts';
 import {GPUInitializationError} from './gpu-error.ts';
 import {defaults as loadDefaults} from './loader.ts';
 import {mercX, mercY, lngFromMerc, latFromMerc, sides, type LngLatLike} from './geo.ts';
-import type {AddLayerObject, CustomLayerInterface, GeoJSONFeature, MapGeoJSONFeature, MapEventType, MapLayerEventType, Source, MapOptions, EaseToOptions, StyleSwapOptions, FitBoundsOptions, QuerySourceFeatureOptions, FeatureIdentifier, StyleSpecification} from './compat-types.ts';
+import {LngLatBounds} from './lnglat.ts';
+import type {SetClusterOptions, AddLayerObject, CustomLayerInterface, GeoJSONFeature, MapGeoJSONFeature, MapEventType, MapLayerEventType, Source, MapOptions, EaseToOptions, StyleSwapOptions, FitBoundsOptions, QuerySourceFeatureOptions, FeatureIdentifier, StyleSpecification} from './compat-types.ts';
 
 /**
  * The types of `on`, `once`, `off` and `getSource` as in MapLibre GL JS: the event of a listener follows from the name
@@ -401,16 +402,38 @@ export class Map extends CoreMap {
     /**
      * As in MapLibre GL JS, a vector, raster or raster-dem source has `setTiles(tiles)` and `setUrl(url)` (a TileJSON
      * URL), which replace its tiles and load them again. The TileJSON goes through the same request as in the style.
+     * Such a source also has `minzoom`, `maxzoom` and `tiles` of its TileJSON once that has loaded, and `reload()`.
+     * A GeoJSON source has `setClusterOptions`, `getClusterOptions` and `getBounds`.
      */
     getSource(id: string): any {
-        const spec = super.getSource(id);
-        if (!/^(vector|raster)/.test(spec?.type)) return spec;
+        const spec = super.getSource(id), type = spec?.type;
+        const more = {loaded: () => this.isSourceLoaded(id), serialize: () => this.getStyle()?.sources[id]};
+        if (type === 'geojson') return {
+            ...spec, ...more,
+            getClusterOptions: () => ({cluster: !!spec.cluster, clusterMaxZoom: spec.clusterMaxZoom ?? (spec.maxzoom ?? 18) - 1, clusterRadius: spec.clusterRadius ?? 50}),
+            // (A promise, as in MapLibre GL JS. The map builds the clusters again with the next frame.)
+            setClusterOptions: async (o: SetClusterOptions) => {
+                if (!o || typeof o !== 'object') throw new Error(`[map-jr-gl] getSource("${id}").setClusterOptions(options): "options" must be an object with cluster, clusterMaxZoom or clusterRadius.`);
+                this.editStyle(s => { const src = s.sources[id]; if (src) for (const k of ['cluster', 'clusterMaxZoom', 'clusterRadius'] as const) if (o[k] !== undefined) src[k] = o[k]; });
+            },
+            getBounds: async () => {
+                const bounds = new LngLatBounds();
+                const walk = (g: any, depth: number) => {
+                    if (typeof g?.[0] === 'number') bounds.extend([g[0], g[1]]);
+                    else if (g && depth < 9) for (const x of g.features ?? g.geometries ?? (Array.isArray(g) ? g : [g.geometry ?? g.coordinates])) walk(x, depth + 1);
+                };
+                walk(await spec.getData(), 0);
+                return bounds;
+            },
+        };
+        if (!/^(vector|raster)/.test(type)) return spec;
         const set = (k: string, v: unknown, ok: boolean) => {
             if (!ok) throw new Error(`[map-jr-gl] getSource("${id}").${k === 'url' ? 'setUrl(url): "url" must be a string' : 'setTiles(tiles): "tiles" must be an array of URL strings'}.`);
             this.editStyle(s => { const src = s.sources[id]; if (src) delete src.url, delete src.tiles, src[k] = Array.isArray(v) ? [...v] : v; });
             return source;
         };
-        const source = {...spec, id, setTiles: (t: string[]) => set('tiles', t, Array.isArray(t) && t.every(x => typeof x === 'string')), setUrl: (u: string) => set('url', u, typeof u === 'string')};
+        const {minzoom, maxzoom, tiles} = this.resolved?.sources[id] ?? {};
+        const source = {minzoom, maxzoom, tiles, ...spec, ...more, id, setTiles: (t: string[]) => set('tiles', t, Array.isArray(t) && t.every(x => typeof x === 'string')), setUrl: (u: string) => set('url', u, typeof u === 'string'), reload: () => { this.refreshTiles(id); }};
         return source;
     }
     getFontFaces() { return this.rawStyle?.['font-faces'] ?? {}; }
