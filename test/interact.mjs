@@ -1658,6 +1658,50 @@ for (const mode of renderers) {
         // (The browser writes its own line to the console for each 404 that this test asks for.)
         for (let i = errors.length; i-- > errorsBefore;) if (errors[i].startsWith('Failed to load resource')) errors.splice(i, 1);
     }
+    // A style that is not a style (#539): an `error` event that says what is missing, no error of the page, and the map
+    // works with the next style. Each style is given as an object and as the answer of a URL.
+    {
+        const errorsBefore = errors.length;
+        const out = await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), wait = ms => new Promise(r => setTimeout(r, ms));
+            const thrown = [], onError = e => thrown.push(String(e.reason?.message ?? e.message));
+            addEventListener('unhandledrejection', onError); addEventListener('error', onError);
+            const good = {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]};
+            const bad = {noLayers: {version: 8, sources: {}}, layersNotAList: {version: 8, sources: {}, layers: {bg: {type: 'background'}}}, notAnObject: 42};
+            const url = style => 'data:application/json,' + encodeURIComponent(JSON.stringify(style)), results = {};
+            const run = async (name, style) => {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'})), seen = [];
+                let m, made = '';
+                try { m = new mod.Map({container: el, style, renderer: mode, attributionControl: false, center: [0, 0], zoom: 1}); } catch (e) { made = String(e.message); }
+                if (m) {
+                    for (const type of ['error', 'load']) m.on(type, e => seen.push(type === 'error' ? 'error: ' + (e.error?.message ?? e.error) : type));
+                    await wait(700);
+                    const first = seen.join(' | ');
+                    // The next style loads the map, and a later style that is not a style leaves that style in place.
+                    m.setStyle(good);
+                    for (let i = 0; i < 40 && !seen.includes('load'); i++) await wait(100);
+                    const loaded = seen.includes('load'), before = seen.length;
+                    m.setStyle(style);
+                    await wait(700);
+                    results[name] = {first, loaded, second: seen.slice(before).join(' | '), kept: !!m.getLayer('bg')};
+                    m.remove();
+                } else results[name] = {made};
+                el.remove();
+            };
+            for (const [name, style] of Object.entries(bad)) { await run(name, style); await run(name + 'URL', url(style)); }
+            // (A style with no "sources" has no source: its layers without a source are drawn.)
+            await run('noSources', {version: 8, layers: good.layers});
+            removeEventListener('unhandledrejection', onError); removeEventListener('error', onError);
+            return {results, thrown};
+        }, mode);
+        const said = /^error: \[map-jr-gl\] The style has no list "layers"/;
+        for (const [name, r] of Object.entries(out.results)) {
+            if (name === 'noSources') check(`[${mode}] a style with no "sources" loads without an error`, r.first === 'load' && r.loaded && r.second === '', JSON.stringify(r));
+            else check(`[${mode}] a style that is not a style (${name}): one error event that names "layers", then setStyle with a good style loads the map and the map keeps it`,
+                said.test(r.first) && !r.first.includes(' | ') && r.loaded && said.test(r.second) && !r.second.includes(' | ') && r.kept, JSON.stringify(r));
+        }
+        check(`[${mode}] a style that is not a style gives no error of the page`, !out.thrown.length && errors.length === errorsBefore, JSON.stringify({thrown: out.thrown, page: errors.slice(errorsBefore)}));
+    }
     // A container under a CSS transform (#189): the map takes the layout size, as MapLibre does, and event.point is in
     // element pixels. One container is scaled itself, the other sits in a scaled parent.
     {
