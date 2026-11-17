@@ -89,7 +89,7 @@
 "circle-translate/literal": "match",
 "collator/default": "match",
 "collator/resolved-locale": "match",
-"color-relief/custom-encoding-all-zero-factors": "differ",
+"color-relief/custom-encoding-all-zero-factors": "match",
 "color-relief/custom-encoding-zero-factor": "match",
 "color-relief/hillshade": "match",
 "color-relief/low-zoom": "near",

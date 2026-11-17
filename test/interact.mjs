@@ -3434,6 +3434,60 @@ for (const mode of renderers) {
         check(`[${mode}] a color-relief layer colours the ground by its elevation, with color-relief-opacity`, relief.idle && relief.full.join() === '0,0,255' && Math.abs(relief.half[0] - 128) < 3 && Math.abs(relief.half[1] - 128) < 3 && relief.half[2] === 255, JSON.stringify(relief));
     }
 
+    // #590: `encoding: 'custom'` of a `raster-dem` source. With the factors 0 and `baseShift: -500`, every elevation is
+    // 500 m, whatever the tiles hold (read as `mapbox`, these tiles give elevations far above 1000 m). A
+    // `color-relief-color` with one stop draws the colour of the stop. With two stops at one elevation it draws one of
+    // the two colours (the expression of the style decides which one), and not a colour that the division by the
+    // distance of zero between the stops makes.
+    if (decodes) {
+        const custom = await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:200px'}));
+            const ramp = (...stops) => ['interpolate', ['linear'], ['elevation'], ...stops];
+            const m = new mod.Map({container: el, renderer: mode, attributionControl: false, center: [7.6586, 45.9763], zoom: 12.4, style: {version: 8,
+                sources: {dem: {type: 'raster-dem', tiles: ['https://tiles.mapterhorn.com/{z}/{x}/{y}.webp'], encoding: 'custom', redFactor: 0, greenFactor: 0, blueFactor: 0, baseShift: -500, tileSize: 512, maxzoom: 12}},
+                layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}},
+                    {id: 'relief', type: 'color-relief', source: 'dem', paint: {'color-relief-color': ramp(0, '#f00', 1000, '#f00', 1001, '#00f', 9000, '#00f')}}]}});
+            const idle = () => new Promise(r => { m.once('idle', () => r(true)); setTimeout(() => r(false), 20000); });
+            const centre = async () => { const bmp = await createImageBitmap(await m.toBlob()), c = new OffscreenCanvas(bmp.width, bmp.height).getContext('2d'); c.drawImage(bmp, 0, 0); return [...c.getImageData(bmp.width >> 1, bmp.height >> 1, 1, 1).data].slice(0, 3).join(); };
+            const out = {idle: await idle()};
+            out.custom = await centre();
+            out.elevation = await m.queryElevation([7.6586, 45.9763], {source: 'dem'});
+            const colour = async stops => { m.setPaintProperty('relief', 'color-relief-color', stops); await idle(); return centre(); };
+            out.one = await colour(ramp(300, '#0f0'));
+            out.below = await colour(ramp(400, '#f00', 400, '#0f0'));
+            out.at = await colour(ramp(500, '#f00', 500, '#0f0'));
+            out.above = await colour(ramp(600, '#f00', 600, '#0f0'));
+            m.remove(); el.remove();
+            return out;
+        }, mode);
+        check(`[${mode}] a raster-dem source with encoding 'custom' gives its elevations from the factors and the shift`, custom.idle && custom.custom === '255,0,0' && custom.elevation === 500, JSON.stringify(custom));
+        // A factor that is not a finite number: the engine warns one time for the source (also when the style is set
+        // again) and reads the source as `mapbox`, so it gives the elevation of a source without `encoding`.
+        const told = [], listen = m => { if (m.type() === 'warning' && m.text().includes('"redFactor"')) told.push(m.text()); };
+        page.on('console', listen);
+        const wrong = await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:200px'}));
+            const dem = more => ({type: 'raster-dem', tiles: ['https://tiles.mapterhorn.com/{z}/{x}/{y}.webp'], tileSize: 512, maxzoom: 12, ...more});
+            const style = () => ({version: 8, sources: {wrong: dem({encoding: 'custom', redFactor: '2', baseShift: 5}), plain: dem({})},
+                layers: [{id: 'hills', type: 'hillshade', source: 'wrong'}]});
+            const m = new mod.Map({container: el, renderer: mode, attributionControl: false, center: [7.6586, 45.9763], zoom: 12.4, style: style()});
+            const idle = () => new Promise(r => { m.once('idle', () => r(true)); setTimeout(() => r(false), 20000); });
+            const out = {idle: await idle()};
+            m.setStyle(style());
+            await idle();
+            out.wrong = await m.queryElevation([7.6586, 45.9763], {source: 'wrong'});
+            out.plain = await m.queryElevation([7.6586, 45.9763], {source: 'plain'});
+            m.remove(); el.remove();
+            return out;
+        }, mode);
+        await page.waitForTimeout(100);
+        page.off('console', listen);
+        check(`[${mode}] a factor of encoding 'custom' that is not a finite number gives one warning and the mapbox encoding`, wrong.idle && told.length === 1 && told[0].startsWith('[map-jr-gl] The source "wrong": ') && Number.isFinite(wrong.wrong) && wrong.wrong === wrong.plain, JSON.stringify({wrong, told}));
+        check(`[${mode}] a color-relief layer with one stop, or two stops at one elevation, draws the colour of a stop`, custom.one === '0,255,0' && [custom.below, custom.at, custom.above].every(c => c === '255,0,0' || c === '0,255,0'), JSON.stringify(custom));
+    }
+
     // A tile of the deepest level of its source has only the labels of the layers that show near the zoom of the map.
     // When the map goes to a much higher zoom, the tile is built again and the labels of the other layers come.
     // (The labels are found in the image: with the layer hidden, the image is another.)

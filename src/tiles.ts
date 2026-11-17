@@ -2,7 +2,7 @@ import {compileLayer, type CompiledLayer, type LayerJSON} from './style.ts';
 import {compileFor, type MapStates} from './expr.ts';
 import {buildTile, packLabels, toGL, unpackLabels, type TileGL, type TileIR} from './tile.ts';
 import type {GlobeBuild} from './subdivide.ts';
-import {decodeElevation, queryTile, type QueriedFeature, type TileQuery} from './query.ts';
+import {decodeElevation, queryTile, type DemEncoding, type QueriedFeature, type TileQuery} from './query.ts';
 import {HEIGHT_GRID} from './geo.ts';
 import {fetchWith, withTimeout, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
 import {fetchTile, heads} from './pmtiles.ts';
@@ -10,7 +10,7 @@ import {GEOJSON_PREFIX, prepareSource, sliceGeoJSON, type GeoJSONOptions, type P
 import {contourTile, decodeDEM, decodePixels, type ContourConfig, type DEM, type ImageDecoder} from './contour.ts';
 
 /** An elevation tile to fetch, and what comes back: its pixels for the GPU, and its heights on a coarse grid with their range. */
-export interface ElevationRequest { id: number; url: string; encoding: string }
+export interface ElevationRequest { id: number; url: string; encoding: DemEncoding }
 export interface ElevationTile { width: number; height: number; pixels: Uint8Array; grid: Float32Array; lo: number; hi: number }
 /** `overscaled`: for a tile of the deepest level of its source, the zoom of the map that the tile is built for. */
 export interface TileRequest { id: number; source: string; url: string; z: number; overscaled: number | false; /** Built again after a change of the style: the bytes that the builder has are good. */ again?: boolean; /** The map draws icons from buffers of the tile (see `IconBatch`). */ direct?: boolean;
@@ -36,7 +36,7 @@ export class TileBuilder {
     setContours(sources: Record<string, ContourConfig>) { this.contours = new Map(Object.entries(sources)); }
 
     /** Elevation tiles are shared between neighbouring contour tiles, so decoded ones are kept for a while. */
-    private loadDEM = (url: string, encoding: string): Promise<DEM | null> => {
+    private loadDEM = (url: string, encoding: DemEncoding): Promise<DEM | null> => {
         let dem = this.dems.get(url);
         if (!dem) {
             dem = fetchTile(url, this.fetchFn, undefined, undefined, true).then(bytes => bytes ? decodeDEM(bytes, encoding, this.decodeImage) : null);
