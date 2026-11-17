@@ -6,6 +6,7 @@ import {Map as CoreMap, type CameraInput, type PointLike, type RenderedFeature, 
 import type {QueriedFeature} from './query.ts';
 import {GPUInitializationError} from './gpu-error.ts';
 import {defaults as loadDefaults} from './loader.ts';
+import {absolute} from './resolve.ts';
 import {mercX, mercY, lngFromMerc, latFromMerc, sides, type LngLatLike} from './geo.ts';
 import {LngLatBounds} from './lnglat.ts';
 import type {SetClusterOptions, AddLayerObject, CustomLayerInterface, GeoJSONFeature, MapGeoJSONFeature, MapEventType, MapLayerEventType, Source, MapOptions, EaseToOptions, StyleSwapOptions, FitBoundsOptions, QuerySourceFeatureOptions, FeatureIdentifier, StyleSpecification} from './compat-types.ts';
@@ -486,7 +487,7 @@ export class Map extends CoreMap {
         if (kept?.from === spec.data) return kept!.data;
         const entry: {from: string; data?: object} = {from: spec.data};
         this.geoKept.set(id, entry);
-        Promise.all([this.fetchAs('Source')(new URL(spec.data, this.styleBase)).then(r => r.json()), import('./sync-query.ts')]).then(([data, m]) => {
+        Promise.all([this.fetchAs('Source')(absolute(spec.data, this.styleBase)).then(r => r.json()), import('./sync-query.ts')]).then(([data, m]) => {
             entry.data = data; this.syncQuery = m;
             for (const type of ['sourcedata', 'data']) this.fire(type, {dataType: 'source', sourceId: id, isSourceLoaded: true, sourceDataType: 'content'});
         }, () => {});

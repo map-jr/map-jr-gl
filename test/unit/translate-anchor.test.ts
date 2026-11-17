@@ -48,3 +48,31 @@ test('translate: a label with text-translate moves along the turned direction on
     close(map[0] - still[0], 0, 'map, x:'); close(map[1] - still[1], -20, 'map, y:');
     close(viewport[0] - still[0], 20, 'viewport, x:'); close(viewport[1] - still[1], 0, 'viewport, y:');
 });
+
+test('translate: text-translate and icon-translate take a legacy function of the zoom or an expression, read at the zoom of the map', () => {
+    // (The render tests `text-translate/function` and `icon-translate/function` of MapLibre GL JS.)
+    const z = 10, tx = 300, ty = 380, n = 2 ** z;
+    const lng = (tx + 0.5) / n * 360 - 180, lat = Math.atan(Math.sinh(Math.PI * (1 - 2 * (ty + 0.5) / n))) * 180 / Math.PI;
+    const data = sliceGeoJSON(prepareGeoJSON({type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [lng, lat]}}), z, tx, ty);
+    const id = {z, x: tx, y: ty, w: 0, key: `${z}/${tx}/${ty}`};
+    const icon = {x: 0, y: 0, width: 10, height: 10, pixelRatio: 1} as any;
+    const at = (zoom: number, paint: Record<string, unknown>) => {
+        const layer = compileLayer({id: 'p', type: 'symbol', source: 'g', layout: {'text-field': 'A', 'icon-image': 'pin'}, paint})!;
+        const labels = buildTile(data, z, [layer], true).labels;
+        const tr = new Transform();
+        tr.width = 800; tr.height = 600;
+        tr.set([lng, lat], zoom, 0, 0);
+        const [p] = placeLabels(tr, renderItems(tr, [id], () => ({labels})), [layer], new EstimateShaper(), new CollisionGrid(), () => icon);
+        return [p.x, p.y, p.icon!.x, p.icon!.y];
+    };
+    const legacy = {stops: [[10, [0, 0]], [11, [20, 40]]]}, expression = ['interpolate', ['linear'], ['zoom'], 10, ['literal', [0, 0]], 11, ['literal', [20, 40]]];
+    // The tile has the zoom 10 and the map has the zoom 10.5: the translate is the one of the zoom 10.5.
+    const still = at(10.5, {});
+    for (const value of [legacy, expression]) {
+        const text = at(10.5, {'text-translate': value}), image = at(10.5, {'icon-translate': value});
+        close(text[0] - still[0], 10, 'text, x:'); close(text[1] - still[1], 20, 'text, y:');
+        close(text[2] - still[2], 0, 'text, the icon stays, x:'); close(text[3] - still[3], 0, 'text, the icon stays, y:');
+        close(image[2] - still[2], 10, 'icon, x:'); close(image[3] - still[3], 20, 'icon, y:');
+        close(image[0] - still[0], 0, 'icon, the text stays, x:'); close(image[1] - still[1], 0, 'icon, the text stays, y:');
+    }
+});
