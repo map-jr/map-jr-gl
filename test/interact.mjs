@@ -1121,6 +1121,19 @@ for (const mode of renderers) {
     check(`[${mode}] querySourceFeatures: features that no layer draws and features outside the view, the same at once and awaited, no warning`,
         unseen.found.join() === '1,2' && unseen.now.join() === '1,2' && unseen.outside && !unseen.warnings.length, JSON.stringify(unseen));
 
+    // A vector source: without `await`, the array has the last answer for the same source and options, as Maputnik
+    // reads it every 5 seconds (#804).
+    const vectorSource = await page.evaluate(async () => {
+        const m = window.map, id = Object.keys(m.getStyle().sources).find(s => m.getStyle().sources[s].type === 'vector');
+        let all = [];
+        for (let i = 0; i < 50 && !all.length; i++) { await new Promise(r => setTimeout(r, 100)); all = await m.querySourceFeatures(id); }
+        const sourceLayer = all[0]?.sourceLayer, awaited = await m.querySourceFeatures(id, {sourceLayer});
+        const now = [...m.querySourceFeatures(id, {sourceLayer})], other = [...m.querySourceFeatures(id, {sourceLayer: 'no-such-layer'})];
+        return {sourceLayer, awaited: awaited.length, now: now.length, same: now.every(f => f.sourceLayer === sourceLayer), other: other.length};
+    });
+    check(`[${mode}] querySourceFeatures on a vector source: a call without await has the last answer for the same source and options (#804)`,
+        vectorSource.awaited > 0 && vectorSource.now === vectorSource.awaited && vectorSource.same && vectorSource.other === 0, JSON.stringify(vectorSource));
+
     // MapLibre code reads the result of queryRenderedFeatures at once. The features of tiles are there when the code
     // asks in a click listener, and when it asks on `idle`.
     {
