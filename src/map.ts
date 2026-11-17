@@ -538,6 +538,7 @@ export class Map {
         this.limits();
         if (this.rulesSent) this.sendRequestRules();
         if (this.wantsFrames) this.post({type: 'frames', on: true});
+        if (this.wantsTiles) this.post({type: 'tileLoads', on: true});
         for (const source of Object.keys(this.featureStates)) this.post({type: 'featureState', source, states: this.featureStates[source], replace: true});
     }
 
@@ -588,7 +589,7 @@ export class Map {
     /** @internal Sends a command to the engine. */
 
     private post(c: Command, transfer?: Transferable[]) {
-        if (c.type !== 'query' && c.type !== 'elevation' && c.type !== 'queryRendered' && c.type !== 'frames' && c.type !== 'tileReport') { this.tilesLoaded = false; (c as {seq?: number}).seq = ++this.seq; }
+        if (c.type !== 'query' && c.type !== 'elevation' && c.type !== 'queryRendered' && c.type !== 'frames' && c.type !== 'tileReport' && c.type !== 'tileLoads') { this.tilesLoaded = false; (c as {seq?: number}).seq = ++this.seq; }
         if (this.ready) this.deliver(c, transfer); else this.queue.push([c, transfer]);
     }
     /** Sends a command. A value that structured clone refuses (a Vue reactive proxy, #242) is sent as a JSON copy. */
@@ -693,6 +694,9 @@ export class Map {
             if (e.grid) this.heights.set(e.key, e.grid); else this.heights.delete(e.key);
             heightsChanged(this.heights);
             if (this.tr.heightAt && !this.moving) this.fire('move'); // overlays re-position onto the newly known ground (while moving, every frame does this anyway)
+        } else if (e.type === 'tileLoaded') {
+            const [source, z, x, y] = e.key.split(/[|/]/);
+            if (!this.removed && this.rawStyle?.sources[source]) this.tileLoaded(source, +z, +x, +y);
         } else if (e.type === 'tile') {
             this.fire('tile', e); // (for the benchmark page, after `_tileReport`; #360)
         } else if (e.type === 'stats') {
@@ -1004,6 +1008,11 @@ export class Map {
         this.fire('data', {dataType: 'style'});
         if (whole) this.fire('style.load');
     }
+    /** After `reportTiles()`: a tile of the source has loaded (for a class that extends this one). */
+    protected tileLoaded(_source: string, _z: number, _x: number, _y: number) {}
+    private wantsTiles = false;
+    /** Asks the engine to report each tile that loads (one message for each tile), for `tileLoaded`. */
+    protected reportTiles() { if (!this.wantsTiles) { this.wantsTiles = true; this.post({type: 'tileLoads', on: true}); } }
     /** Called when the style has changed, before it is resolved (for a class that extends this one). */
     protected styleChanged() {}
     private reloadPending = false;

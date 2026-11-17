@@ -101,6 +101,15 @@ export class Map extends CoreMap {
         const wrap = (e: any) => { this.off(type, layer, wrap); fn(e); };
         return this.on(type, layer, wrap);
     }
+    /** As in MapLibre GL JS, a listener for `data` or `sourcedata` hears each tile that loads (`e.tile`); the engine reports tiles only from then on. */
+    override on(type: string, a: any, b?: any): this {
+        if (type === 'data' || type === 'sourcedata') this.reportTiles();
+        return super.on(type, a, b);
+    }
+    protected override tileLoaded(sourceId: string, z: number, x: number, y: number) {
+        const canonical = {z, x, y, key: `${z}/${x}/${y}`}, tile = {tileID: {canonical, overscaledZ: z, wrap: 0, key: canonical.key}, state: 'loaded'};
+        for (const type of ['sourcedata', 'data']) this.fire(type, {dataType: 'source', sourceId, tile, coord: tile.tileID, isSourceLoaded: this.isSourceLoaded(sourceId), source: this.getSource(sourceId)});
+    }
     /** The version of this library, as the member `version` of a map of MapLibre GL JS. */
     get version() { return __VERSION__; }
     /** The controls on the map, in the order they were added. vue-maplibre-gl reads this private member of MapLibre GL JS. */

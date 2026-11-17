@@ -71,6 +71,8 @@ export type Command =
     | {type: 'ping'; n: number}
     /** For the benchmark page (#360): report the steps of each tile and the tiles of the view of each frame with `tile` events. */
     | {type: 'tileReport'; on: boolean}
+    /** The compat entry, when a listener wants `data` or `sourcedata`: report each tile that has loaded with a `tileLoaded` event. */
+    | {type: 'tileLoads'; on: boolean}
     /** The compat entry, with the engine on the main thread: draws its custom layers (custom-layers.ts). The answer is the WebGL context. */
     | {type: 'custom'; id: number; draw: GLRenderer['custom']};
 export type EngineEvent =
@@ -100,7 +102,9 @@ export type EngineEvent =
     | {type: 'imagemissing'; name: string}
     | {type: 'error'; message: string}
     /** After `tileReport`: a step of a tile (`req`, `ans`, `up`, `miss`, `fail`, `drop`), or, with `kind` `frame`, the tile slots of the view in a frame. `t`: the engine's clock, in ms. */
-    | {type: 'tile'; key: string | string[]; kind: string; t: number; error?: string};
+    | {type: 'tile'; key: string | string[]; kind: string; t: number; error?: string}
+    /** After `tileLoads`: the tile `key` (`source|z/x/y`) has loaded. */
+    | {type: 'tileLoaded'; key: string};
 
 /**
  * Describes what a source's tiles depend on: first the source itself, then everything about its layers that is baked
@@ -824,7 +828,7 @@ export class Engine {
     command(c: Command) {
         const tr = this.tr;
         // Whatever was asked, report when the map has settled again, so callers can wait on any change.
-        if (c.type !== 'query' && c.type !== 'elevation' && c.type !== 'queryRendered' && c.type !== 'ping' && c.type !== 'tileReport') this.wasIdle = false;
+        if (c.type !== 'query' && c.type !== 'elevation' && c.type !== 'queryRendered' && c.type !== 'ping' && c.type !== 'tileReport' && c.type !== 'tileLoads') this.wasIdle = false;
         // (The page numbers its commands. `idle` and `source` carry the last number, so that the page can tell a report
         // about a state from before its last command.)
         const seq = (c as {seq?: number}).seq;
@@ -978,6 +982,7 @@ export class Engine {
             case 'requests': this.rules = c.rules; for (const b of this.backends) b.setRequests(c.rules, this.ask); break;
             case 'resourceResult': this.asked.get(c.id)?.(c); this.asked.delete(c.id); break;
             case 'tileReport': this.tap = c.on; return;
+            case 'tileLoads': this.tellLoads = c.on; return;
             case 'custom': this.renderer.custom = c.draw; this.emit({type: 'result', id: c.id, value: this.renderer.gl}); break;
         }
         this.repaint();
@@ -1222,6 +1227,7 @@ export class Engine {
 
     /** The benchmark page asks for `tile` events (#360). The report itself is made on the page (demo/tile-report.mjs). */
     private tap = false;
+    private tellLoads = false;
     private tapTile(key: string | string[], kind: string, error?: string) { if (this.tap) this.emit({type: 'tile', key, kind, t: performance.now(), error}); }
 
     private dropTile(key: string, t: TileState) {
@@ -1305,6 +1311,7 @@ export class Engine {
             // A tile that was dropped while it waited (it left the view, or the source changed) frees what it sent to the GPU (#400).
             if (this.tiles.get(key) !== t) return this.renderer.destroyTile(gl);
             this.tapTile(key, t.missing ? 'miss' : 'up');
+            if (this.tellLoads) this.emit({type: 'tileLoaded', key});
             t.gl = gl;
             t.state = 'ok';
             t.rev = ++this.tilesVersion;
