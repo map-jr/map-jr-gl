@@ -4,7 +4,7 @@ import {cutFill, cutLine, type GlobeBuild} from './subdivide.ts';
 import {decodeVectorTile} from './mvt.ts';
 import {GEOJSON_LAYER} from './geojson.ts';
 import {parseFontName, type CompiledLayer} from './style.ts';
-import {IMAGE_CLOSE, IMAGE_IN_TEXT, IMAGE_OPEN, type Feature, type MapStates, type Prop, type RGBA} from './expr.ts';
+import {IMAGE_CLOSE, IMAGE_IN_TEXT, IMAGE_OPEN, IMAGE_OR, type Feature, type MapStates, type Prop, type RGBA} from './expr.ts';
 import {VARIANT, variantName} from './markers.ts';
 
 /**
@@ -159,11 +159,12 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
                 if (L.filter && !L.filter(ctx)) continue;
                 // A `{name}` token stands for a property of the feature only in a constant and in a zoom function, as in
                 // MapLibre GL JS. The result of a property function or of an expression keeps its braces.
-                const tokens = (q: Prop) => { const v = String(q.eval(z, f) ?? ''); return (q.tokens ? v.replace(/\{([^}]+)\}/g, (_, k) => f.properties[k] ?? '') : v).trim(); };
-                let text = tokens(p.field);
+                const tokens = (q: Prop, x: unknown) => { const v = String(x ?? ''); return (q.tokens ? v.replace(/\{([^}]+)\}/g, (_, k) => f.properties[k] ?? '') : v).trim(); };
+                let text = tokens(p.field, p.field.eval(z, f));
                 // An image that is an SVG template: the name gets the value of each slot of the template, from `params` of
                 // the `image` expression, or else from the property of the feature that has the name of the slot.
-                const icon = String(p.icon.eval(z, f) ?? ''), iconName = variantName(icon.includes(VARIANT) ? icon : tokens(p.icon), templates, f.properties);
+                // (`coalesce` gives several names: each one is made in this way.)
+                const icon = String(p.icon.eval(z, f) ?? ''), iconName = icon.split(IMAGE_OR).map(n => variantName(n.includes(VARIANT) ? n : tokens(p.icon, n), templates, f.properties)).join(IMAGE_OR);
                 // (The same for the images inside `format` text.)
                 if (templates && text.includes(IMAGE_OPEN)) text = text.replace(IMAGE_IN_TEXT, (_, n) => IMAGE_OPEN + variantName(n, templates, f.properties) + IMAGE_CLOSE);
                 if (!text && !iconName) continue;

@@ -1498,6 +1498,38 @@ for (const mode of renderers) {
         }, mode);
         check(`[${mode}] compat: addImage with sdf: true is recoloured by icon-color (#46)`, r.px?.[0] > 200 && r.px[1] < 60 && r.px[2] < 60 && r.sdf === true, JSON.stringify(r));
     }
+    // `coalesce` with images: the icon is the first image that the map has. The map has only the second image (blue)
+    // when the layer is added, and it gets the first image (red) after that.
+    // The map asks for no image (`styleimagemissing`), because one of the two is there.
+    {
+        const r = await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const m = new mod.Map({container: el, renderer: mode, attributionControl: false, center: [0, 0], zoom: 1, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]}});
+            await new Promise(res => m.once('load', res));
+            const asked = [];
+            m.on('styleimagemissing', e => asked.push(e.id));
+            const square = (r, g, b) => { const data = new Uint8Array(16 * 16 * 4); for (let i = 0; i < data.length; i += 4) data.set([r, g, b, 255], i); return {width: 16, height: 16, data}; };
+            const centre = async () => {
+                await new Promise(res => { m.once('idle', res); setTimeout(res, 8000); });
+                const url = await new Promise(res => { m.once('render', () => res(m.getCanvas().toDataURL())); m.triggerRepaint(); setTimeout(() => res(null), 5000); });
+                if (!url) return null;
+                const bmp = await createImageBitmap(await (await fetch(url)).blob()), c = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}), g = c.getContext('2d');
+                g.drawImage(bmp, 0, 0);
+                return Array.from(g.getImageData(bmp.width >> 1, bmp.height >> 1, 1, 1).data);
+            };
+            await m.addImage('second', square(0, 0, 255));
+            m.addSource('p', {type: 'geojson', data: {type: 'Point', coordinates: [0, 0]}});
+            m.addLayer({id: 'p', type: 'symbol', source: 'p', layout: {'icon-image': ['coalesce', ['image', 'first'], ['image', 'second']]}});
+            const before = await centre();
+            await m.addImage('first', square(255, 0, 0));
+            const after = await centre();
+            m.remove(); el.remove();
+            return {before, after, asked};
+        }, mode);
+        check(`[${mode}] compat: coalesce with images draws the first image that the map has, also one that is added after the layer (#584)`,
+            r.before?.[2] > 200 && r.before[0] < 60 && r.after?.[0] > 200 && r.after[2] < 60 && r.asked.length === 0, JSON.stringify(r));
+    }
     // #196: with `interactive: false`, the handlers are off, a drag does nothing, and `enable()` on a handler turns it on,
     // as in MapLibre GL JS. #253: the map still fires `click`, `mousemove` and the events of a layer.
     {
@@ -1988,9 +2020,12 @@ for (const mode of renderers) {
             const i0 = log.findIndex(s => s.t >= t0), perDegree = 512 * 8 / 360;
             return {renderer: m.renderer, steps: log.slice(Math.max(0, i0 - 1), i0 + 6).map((s, i, a) => i ? Math.round((s.lng - a[i - 1].lng) * perDegree) : null).slice(1)};
         });
-        // (Each move goes 10 px west, and the centre goes east. A jump back is a step west or a first step that is short.)
+        // (Each move goes 10 px west, and the centre goes east. A jump back is a step west: the page's camera is 50 ms and
+        // more than 57 px behind the engine's. The first step is 10 px or more: it is one move when the worker draws a
+        // frame between the first move and the second, which happens in CI (#616), two moves when the second move
+        // arrives before that frame, or a frame of the `easeTo`, about 19 px.)
         check('[worker] compat: a drag that starts during an easeTo does not jump back (#38)',
-            steps.renderer === 'worker' && steps.steps.length >= 4 && steps.steps[0] >= 15 && steps.steps.every(d => d >= 0), JSON.stringify(steps));
+            steps.renderer === 'worker' && steps.steps.length >= 4 && steps.steps[0] >= 10 && steps.steps.every(d => d >= 0), JSON.stringify(steps));
     }
     // A worker that cannot make a WebGL2 context: the map goes to the main thread, `load` and `idle` fire, and what the
     // page sent before the fall back (the rules for requests, a change of the style) is not lost.
