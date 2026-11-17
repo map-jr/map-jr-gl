@@ -4,7 +4,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 // @ts-expect-error (a plain module of the conformance tools, without types)
-import {summarize, readExpectations, report, changes, percent} from '../../test/conformance/render-summary.mjs';
+import {summarize, readExpectations, report, changes, percent, skipReason, operationsNotDone} from '../../test/conformance/render-summary.mjs';
 
 const dir = new URL('../conformance/', import.meta.url);
 const results = [
@@ -22,7 +22,24 @@ test('render summary: the count for near includes the matches, and the tests tha
     const s = summarize(results, expectations);
     assert.deepEqual(s.totals, {match: 2, near: 3, differ: 3, differWontfix: 1, differLater: 1, errored: 1, skipped: 1, run: 7});
     assert.deepEqual(s.labels.globe, {decision: 'later', tests: 2, match: 0, near: 1, differ: 1, error: 0, skipped: 0});
-    assert.equal(report(s)[0], 'MapLibre render tests: 2 of 7 match (28.6%; 1% of pixels or less are different), 3 match or are near (42.9%; 5% or less), 3 differ (1 of them wontfix, 1 later), 1 errored; 1 skipped (scripted or high-density)');
+    assert.equal(report(s)[0], 'MapLibre render tests: 2 of 7 match (28.6%; 1% of pixels or less are different), 3 match or are near (42.9%; 5% or less), 3 differ (1 of them wontfix, 1 later), 1 errored; 1 skipped (tests that the run cannot do)');
+});
+
+test('render summary: a test that scripts the map or has another pixel ratio runs, and one with an operation that the run cannot do is skipped (#559)', () => {
+    assert.equal(skipReason({operations: [['setPaintProperty', 'a', 'fill-color', 'red'], ['wait'], ['idle'], ['sleep', 100], ['addImage', 'a', 'image/marker.png']]}), null);
+    assert.equal(skipReason({pixelRatio: 2}), null);
+    assert.equal(skipReason({}), null);
+    assert.equal(skipReason(), null);
+    // The reason is the name of the first operation that the run cannot do.
+    assert.equal(skipReason({operations: [['wait'], ['addCustomLayer', 'tent-3d'], ['pauseTiles', 'a']]}), 'addCustomLayer');
+    for (const name of operationsNotDone) assert.equal(skipReason({operations: [[name, 'a']]}), name);
+    assert.equal(skipReason({pixelRatio: 5, reportWidth: 256, reportHeight: 256}), 'reportWidth');
+    // A style that setStyle loads can have tiles of the package @mapbox/mvt-fixtures, which the run does not have.
+    const asset = (name: string) => name === 'styles/nepal.json' ? '{"tiles": ["http://localhost:2901/nepal/{z}-{x}-{y}.mvt"]}' : name === 'styles/basic.json' ? '{}' : '';
+    assert.equal(skipReason({operations: [['setStyle', 'local://styles/nepal.json'], ['wait']]}, asset), '@mapbox/mvt-fixtures');
+    assert.equal(skipReason({operations: [['setStyle', 'http://localhost:1234/styles/nepal.json']]}, asset), '@mapbox/mvt-fixtures');
+    assert.equal(skipReason({operations: [['setStyle', 'local://styles/basic.json']]}, asset), null);
+    assert.equal(skipReason({operations: [['setStyle', {version: 8, sources: {}, layers: []}]]}, asset), null);
 });
 
 test('render summary: a percent has one decimal place, so that a change of two tests of 1429 shows', () => {

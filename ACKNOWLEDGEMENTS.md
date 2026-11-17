@@ -55,7 +55,10 @@ BSD-3-Clause.
   the dial near a pole. The fling follows `computeGlobePanCenter` in the same file, and the latitude that the centre
   can reach follows `_getMaxLatitude` in `vertical_perspective_transform.ts`. The size of the globe during `jumpTo`, `easeTo` and `flyTo` follows `getZoomAdjustment` and `VerticalPerspectiveCameraHelper` (`vertical_perspective_camera_helper.ts`): the zoom of the same size at the equator, the length of a flight on the great circle, and the way of the centre (`interpolateLngLatForGlobe`). The code is new.
 - The tests of MapLibre GL JS and of the MapLibre style specification measure the compatibility of this library.
-  The tests are not part of this repository. The test commands download them.
+  The tests are not part of this repository. The test commands download them. `test/conformance/render.mjs` applies
+  the operations of a render test in the order and with the arguments of `applyOperations` in
+  `test/integration/render/render.test.ts` of MapLibre GL JS (BSD-3-Clause). The code is new, and it is not part of
+  the built files.
 
 MapLibre GL JS started from Mapbox GL JS (version 1.13 and earlier, BSD-3-Clause, Mapbox).
 

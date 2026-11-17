@@ -15,14 +15,14 @@
     "status": "node scripts/status.mjs",
     "test:cloudflare": "node test/cloudflare/run.mjs",
     "test:unit": "node --experimental-transform-types --no-warnings --test test/unit/*.test.ts",
-    "test:expressions": "node test/conformance/expressions.mjs --min=347",
+    "test:expressions": "node test/conformance/expressions.mjs --min=353",
     "test:api": "node test/conformance/api.mjs --min=122",
     "test:browser": "node test/interact.mjs .cache/shots && node test/host.mjs",
     "bench": "node test/bench/compare.mjs",
     "test:loading": "node test/loading.mjs",
     "test:vue": "node test/vue.mjs",
     "test:react": "node test/react.mjs",
-    "test:render": "node test/conformance/render.mjs --min=860"
+    "test:render": "node test/conformance/render.mjs --min=1109"
   },
   "keywords": [
     "map",
