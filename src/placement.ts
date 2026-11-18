@@ -57,7 +57,42 @@ export interface Placed {
     tile: TileID;
     /** Where the label's map anchor was on screen when placed, so it can be moved with the map between placements. */
     ax: number; ay: number;
+    /** The distance of the anchor from the camera when placed (see `moveLabel`). */
+    depth: number;
     opacity: number;
+}
+
+/** The factor of the perspective for the size of labels at a distance `depth` from the camera, as in `placeLabels`. */
+const perspective = (tr: Transform, depth: number) => tr.pitch && depth > 0 ? Math.min(4, 0.5 + 0.5 * tr.cameraDistance / depth) : 1;
+
+/**
+ * Moves the drawn copy `d` of the placed label `p` with the camera between placements: its anchor is now at (ax, ay)
+ * and at the distance `depth` from the camera, and the map has turned by `turn` radians since the placement.
+ * On a tilted map a label that comes nearer to the camera grows and one that goes away shrinks, in each frame, as at
+ * its next placement (#914): without that its size changed in a step at each placement while the map panned. Text
+ * that lies on the ground takes the whole perspective of the ground, less what its size on the ground takes away.
+ * Returns whether the copy is turned.
+ */
+export function moveLabel(tr: Transform, p: Placed, d: Placed, ax: number, ay: number, depth: number, turn: number, turned: boolean): boolean {
+    const grow = perspective(tr, depth) / perspective(tr, p.depth);
+    const k = p.ground ? (depth > 0 ? p.depth / depth : 1) / grow : grow;
+    d.size = p.size * k;
+    const rotate = !!turn && (!p.src.upright || (!p.shaped && !!p.icon && !p.src.icon!.upright));
+    const tc = rotate ? Math.cos(turn) * k : k, ts = rotate ? Math.sin(turn) * k : 0, gc = rotate ? Math.cos(turn) : 1, gs = rotate ? Math.sin(turn) : 0;
+    const ox = p.x - p.ax, oy = p.y - p.ay;
+    d.x = ax + ox * tc - oy * ts; d.y = ay + ox * ts + oy * tc; d.angle = p.angle + (rotate ? turn : 0);
+    const curve = p.curve, ground = p.ground, dc = d.curve, dg = d.ground;
+    // (Ground text: the size above gives the length of the glyphs, and the triples of `ground` only their direction.)
+    if (curve && dc) for (let i = 0; i < curve.length; i += 3) { const cx = curve[i], cy = curve[i + 1]; dc[i] = cx * tc - cy * ts; dc[i + 1] = cx * ts + cy * tc; dc[i + 2] = curve[i + 2] + (rotate ? turn : 0); }
+    if (ground && dg && (rotate || turned)) for (let i = 0; i < ground.length; i += 3) { const cx = ground[i + 1], cy = ground[i + 2]; dg[i] = ground[i]; dg[i + 1] = cx * gc - cy * gs; dg[i + 2] = cx * gs + cy * gc; }
+    if (p.icon && d.icon) {
+        const ix = p.icon.x - p.ax, iy = p.icon.y - p.ay;
+        d.icon.x = ax + ix * tc - iy * ts; d.icon.y = ay + ix * ts + iy * tc; d.icon.angle = p.icon.angle + (rotate ? turn : 0);
+        d.icon.w = p.icon.w * grow; d.icon.h = p.icon.h * grow;
+        // (A stretched icon: the odd entries of its pairs are screen pixels.)
+        for (const [from, to] of [[p.icon.gx, d.icon.gx], [p.icon.gy, d.icon.gy]]) if (from && to) for (let i = 1; i < from.length; i += 2) to[i] = from[i] * grow;
+    }
+    return rotate;
 }
 /**
  * Sizes one axis of an icon so that its content range [c0, c1] (image pixels) becomes `target` screen pixels long,
@@ -202,7 +237,7 @@ export function placeLabels(
                         seen.add(l.text, ax, ay, itemNo);
                         const n = 2 ** it.id.z, q = 2 ** 22;
                         const key = `${L.id}|${l.text}||${Math.round((it.id.x + l.x / EXTENT) / n * q)},${Math.round((it.id.y + l.y / EXTENT) / n * q)},${it.id.w}`;
-                        bent = {x: ax, y: ay, angle: 0, size: curved.ground ? size / persp / persp : size, shaped, src: l, curve: curved.curve, ground: curved.ground, key, layer: L.id, tile: it.id, ax, ay, opacity: 1, alpha};
+                        bent = {x: ax, y: ay, angle: 0, size: curved.ground ? size / persp / persp : size, shaped, src: l, curve: curved.curve, ground: curved.ground, key, layer: L.id, tile: it.id, ax, ay, depth, opacity: 1, alpha};
                         // (No icon: the text is all. With an icon, the icon is found below, as for other text.)
                         if (!meta) { out.push(bent); continue; }
                     } else if (line && !l.upright) {
@@ -322,7 +357,7 @@ export function placeLabels(
                 // Features with the same text at the same position keep separate keys, in their order in the tile.
                 const same = keys.get(key) ?? 0;
                 keys.set(key, same + 1);
-                out.push({x: tx, y: ty, angle: textAngle, size, shaped: textBox ? shaped : null, src: l, icon, key: same ? key + '#' + same : key, layer: L.id, tile: it.id, ax, ay, opacity: 1, justify, alpha});
+                out.push({x: tx, y: ty, angle: textAngle, size, shaped: textBox ? shaped : null, src: l, icon, key: same ? key + '#' + same : key, layer: L.id, tile: it.id, ax, ay, depth, opacity: 1, justify, alpha});
             }
         }
     }
