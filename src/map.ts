@@ -1601,6 +1601,7 @@ export class Map {
      * Replaces the pixels of an image added earlier and keeps its options (stretch, content, sdf), as MapLibre GL JS
      * does. When the new pixels have the size of the old ones, they are copied into the texture in place and the map
      * redraws without placing its icons again. Another size replaces the image as `addImage` would. (#949)
+     * Pixels and drawables go to the map at the end of the task: of several calls in one task, only the last is sent (#979).
      */
     updateImage(name: string, source: Parameters<Map['addImage']>[1]) {
         if (!this.imageNames.has(name)) throw new Error(`There is no image with ID "${name}"`);
