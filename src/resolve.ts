@@ -85,6 +85,26 @@ export function parseFontName(name: string): {family: string; weight: number; st
     return {family, weight, style: /italic|oblique/.test(n) ? 'italic' : 'normal'};
 }
 
+/** The CSS generic family keywords: a `text-font` name that is one of them stays unquoted, so that it names the fonts of the system. */
+const GENERIC = /^(serif|sans-serif|monospace|cursive|fantasy|system-ui|math|emoji|fangsong|ui-serif|ui-sans-serif|ui-monospace|ui-rounded)$/i;
+/**
+ * The CSS family list of a font stack ("Segoe UI Semibold,system-ui" -> `"Segoe UI", system-ui`): each name without its
+ * weight and style words, in order, once each, quoted unless it is a generic family keyword.
+ */
+export function cssFamilies(stack: string): string {
+    const out = new Set<string>();
+    for (const name of stack.split(',')) {
+        const f = parseFontName(name).family;
+        if (f) out.add(GENERIC.test(f) ? f.toLowerCase() : `"${f}"`);
+    }
+    return [...out].join(', ');
+}
+/** "Open Sans Semibold Italic" -> "italic 600|Open Sans|Open Sans Semibold Italic": CSS style and weight of the first name, its family, and the font stack (for the CSS family list and the glyph files of the style). */
+export function fontKey(names: unknown): string {
+    const f = parseFontName(String(Array.isArray(names) ? names[0] : names));
+    return (f.style === 'italic' ? 'italic ' : '') + f.weight + '|' + f.family + '|' + (Array.isArray(names) ? names.join(',') : names);
+}
+
 /** What the network gave for a source of a style (its TileJSON, its GeoJSON, the header of its archive), by source object. */
 const told = new WeakSet<object>();
 const fetched = new WeakMap<object, {url: string; p: Promise<any>; v?: any; err?: any; told?: WeakSet<object>; late?: () => void}>();

@@ -9,7 +9,7 @@
 /** How far below the middle of a line the baseline is, in ems. The value puts text where MapLibre draws it. */
 export const BASELINE = 0.38;
 
-import {parseFontName} from './resolve.ts';
+import {cssFamilies, fontKey} from './resolve.ts';
 import {Pbf} from './mvt.ts';
 
 export const EM = 24;
@@ -150,8 +150,7 @@ abstract class BaseShaper implements Shaper {
             if (part[0] === '\uE002') {
                 const [scale, font, color] = part.slice(1, -1).split('|');
                 if (!scale && !font && !color) { mark = ''; continue; }
-                const f = font ? parseFontName(font.split(',')[0]) : null; // (a list of fonts: as `fontStyle` of the tile builder)
-                this.styles.push({scale: +scale || 1, font: f ? (f.style === 'italic' ? 'italic ' : '') + f.weight + '|' + f.family + '|' + font : undefined, color: color ? color.split(',').map(Number) : undefined});
+                this.styles.push({scale: +scale || 1, font: font ? fontKey(font.split(',')) : undefined, color: color ? color.split(',').map(Number) : undefined});
                 mark = String.fromCharCode(STYLE_CHAR + this.styles.length - 1);
             } else out += mark ? graphemes(part).map(g => g === '\n' ? g : mark + g).join('') : part;
         }
@@ -250,12 +249,12 @@ export class GlyphAtlas extends BaseShaper {
         return {text, width, glyphs, chars, advances: glyphs.map(g => g.advance)};
     }
 
-    /** Label fonts arrive as "style weight|family|font stack"; the family named by the style is tried before the map default. */
+    /** Label fonts arrive as "style weight|family|font stack" (see `fontKey`); each family of the stack is tried in order before the map default. */
     private css(font: string) {
-        const [variant, family] = font.split('|');
+        const [variant, family, stack] = font.split('|'), list = cssFamilies(stack ?? family);
         // (After web fonts load, a family that is never found ends the string: Chromium keeps, in a worker, the font that it
         // resolved for each font string, also for a new context, and a new string resolves the fonts again.)
-        return `${variant} ${EM}px ${family ? `"${family}", ` : ''}${this.family}${this.fontsRev ? `, "map-jr-${this.fontsRev}"` : ''}`;
+        return `${variant} ${EM}px ${list ? list + ', ' : ''}${this.family}${this.fontsRev ? `, "map-jr-${this.fontsRev}"` : ''}`;
     }
 
     /**
@@ -269,10 +268,7 @@ export class GlyphAtlas extends BaseShaper {
         // With glyph files, the file of the first 256 characters of each font stack is requested now, before the tiles
         // arrive: nearly every label needs it, and otherwise its request would wait for the first placement (#371).
         if (this.glyphsURL) { for (const names of fonts) this.file(Array.isArray(names) ? names.join(',') : String(names), 0); return; }
-        const todo = fonts.map(names => {
-            const f = parseFontName(String(Array.isArray(names) ? names[0] : names));
-            return this.css((f.style === 'italic' ? 'italic ' : '') + f.weight + '|' + f.family);
-        });
+        const todo = [...new Set(fonts.map(names => this.css(fontKey(names))))];
         const next = () => {
             const css = todo.shift();
             if (!css || this.glyphsURL) return;
