@@ -551,3 +551,16 @@ export function bezier(x1: number, y1: number, x2: number, y2: number): (x: numb
         return ((ay * t + by) * t + cy) * t;
     };
 }
+
+/**
+ * The inertia after a rotate drag, as `HandlerInertia` of MapLibre GL JS computes it: the change of the bearing (`x`)
+ * and the pitch (`y`) from the first sample of the last 60 ms (or the last but one) to the last sample, over the time
+ * up to the release, gives a speed (at most 360 degrees per second for the bearing, 90 for the pitch) that decelerates
+ * by 1000 degrees per second. Returns the turn and the tilt still to come and the duration in ms, or nothing.
+ */
+export function turnInertia(samples: {t: number; x: number; y: number}[], now: number) {
+    const last = samples[samples.length - 1], from = samples.find(s => now - s.t <= 60 && s !== last) ?? samples[samples.length - 2];
+    if (!from) return;
+    const speed = (d: number, max: number) => clamp(d * 300 / (now - from.t), -max, max), b = speed(last.x - from.x, 360), p = speed(last.y - from.y, 90);
+    if (b || p) return {bearing: clamp(b * Math.abs(b) / 600, -179, 179), pitch: p * Math.abs(p) / 600, duration: Math.max(Math.abs(b), Math.abs(p)) * 10 / 3};
+}
