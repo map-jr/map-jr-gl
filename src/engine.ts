@@ -105,7 +105,7 @@ export type EngineEvent =
     | {type: 'result'; id: number; value?: unknown; error?: string}
     | {type: 'imagemissing'; name: string}
     | {type: 'error'; message: string}
-    /** After `tileReport`: a step of a tile (`req`, `ans`, `up`, `miss`, `fail`, `drop`), or, with `kind` `frame`, the tile slots of the view in a frame. `t`: the engine's clock, in ms. */
+    /** After `tileReport`: a step of a tile (`req`, `ans`, `up`, `miss`, `fail`, `drop`, `rebuild`), or, with `kind` `frame`, the tile slots of the view in a frame. `t`: the engine's clock, in ms. */
     | {type: 'tile'; key: string | string[]; kind: string; t: number; error?: string}
     /** After `tileLoads`: the tile `key` (`source|z/x/y`) has loaded. */
     | {type: 'tileLoaded'; key: string};
@@ -121,7 +121,9 @@ function sourceSignature(style: ResolvedStyle, name: string): [string, string] {
     // tiles that are there. See `ground`. New data of a GeoJSON source is not part of it either: see `newData`.)
     const source = JSON.stringify({...src, head: undefined, data: undefined});
     if (!isGeometrySource(src)) return [source, '']; // image tiles do not depend on layers
-    const layers = style.layers.filter(l => l.source === name).map(l => layerRules(l));
+    // (In the order of their ids: each layer is built on its own, so a new order of the layers draws the same tiles in
+    // another order and needs no new tiles; #961.)
+    const layers = style.layers.filter(l => l.source === name).map(l => layerRules(l)).sort((a, b) => (a[0] as string) < (b[0] as string) ? -1 : 1);
     // Layers that read global state are rebuilt when it changes. A tile for a globe is cut along a grid (subdivide.ts),
     // so a change between the globe and Mercator builds the tiles again.
     const json = JSON.stringify(layers) + (globeStops(style.projection?.type) ? 'globe' : '');
@@ -1429,6 +1431,7 @@ export class Engine {
     private rebuild(source: string, id: TileID, key: string, t: TileState) {
         // (The tile worker that loaded the tile has its bytes still: it builds the tile again without a request.)
         const backend = this.backends[t.backend ?? this.nextBackend++ % this.backends.length], req = this.nextReq++;
+        this.tapTile(key, 'rebuild');
         t.rebuilding = true; // one rebuild at a time per tile; data that changes meanwhile marks it stale again
         backend.load({...this.build(req, source, id, t), again: true}).then(tile => {
             t.rebuilding = false;
