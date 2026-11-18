@@ -19,3 +19,8 @@ test('the sky values have the defaults of the specification and follow zoom func
     assert.equal(skyValues({}, 10, 50).opacity, 0);
     assert.equal(skyValues({'sky-horizon-blend': ['interpolate', ['linear'], ['zoom'], 0, 0, 10, 1]}, 5, 85).skyBlend, 0.5);
 });
+
+test('atmosphere-blend has the default of the specification and follows zoom functions (#888)', () => {
+    assert.equal(skyValues({}, 3, 0).atmosphere, 0.8);
+    assert.equal(skyValues({'atmosphere-blend': ['interpolate', ['linear'], ['zoom'], 4, 1, 6, 0]}, 5, 0).atmosphere, 0.5);
+});
