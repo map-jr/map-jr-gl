@@ -10,7 +10,8 @@
 //   WD_NAME      the name of the result files (the default is the browser name that the server reports)
 //   BENCH_BASE   where the demo server is (the default is http://localhost:8080). With BENCH_URL, the benchmark page
 //                is opened there (for example the page of the gallery site), and the short checks are left out.
-//   BENCH_SECONDS, BENCH_QUERY   the length of each animation, and more of the query of the benchmark page
+//   BENCH_SECONDS, BENCH_RUNS, BENCH_QUERY   the length of each animation, the runs of each scenario (1 by default),
+//                and more of the query of the benchmark page
 import {mkdirSync, writeFileSync} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -20,7 +21,7 @@ const server = (process.env.WD_URL ?? 'http://localhost:4444').replace(/\/$/, ''
 const caps = JSON.parse(process.env.WD_CAPS ?? '{"browserName":"safari"}');
 const base = process.env.BENCH_BASE ?? 'http://localhost:8080';
 const seconds = process.env.BENCH_SECONDS ?? 4, more = process.env.BENCH_QUERY ? '&' + process.env.BENCH_QUERY : '';
-const benchURL = (process.env.BENCH_URL ?? `${base}/bench`) + `?auto&seconds=${seconds}${more}`;
+const benchURL = (process.env.BENCH_URL ?? `${base}/bench`) + `?auto&seconds=${seconds}&runs=${process.env.BENCH_RUNS ?? 1}${more}`;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 mkdirSync(out, {recursive: true});
 

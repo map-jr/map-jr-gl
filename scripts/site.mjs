@@ -1,6 +1,7 @@
 // Builds the gallery site into site-dist/ (what GitHub Pages serves). Run after the library is built: pnpm site
 import {fileURLToPath} from 'node:url';
 import {build} from 'vite';
+import {execSync} from 'node:child_process';
 import {cpSync, mkdirSync, readdirSync, writeFileSync} from 'node:fs';
 import {Renderer} from '@takumi-rs/core';
 import {renderToSVG, renderToImage} from '../dist/server.js';
@@ -48,4 +49,6 @@ cpSync(at('../demo/bench.html'), bench + 'index.html');
 for (const f of ['bench.mjs', 'markers.mjs', 'tile-report.mjs', 'start-timeline.mjs']) cpSync(at('../demo/' + f), bench + 'demo/' + f);
 cpSync(at('../dist'), bench + 'dist', {recursive: true, filter: src => !/[\\/]types([\\/]|$)/.test(src)});
 for (const f of readdirSync(at('../node_modules/maplibre-gl/dist'))) if (/^maplibre-gl(-shared|-worker)?\.mjs$|\.css$/.test(f)) cpSync(at('../node_modules/maplibre-gl/dist/' + f), bench + 'ml/' + f);
+// (The commit that the copied results of the page name.)
+try { writeFileSync(bench + 'commit.txt', process.env.GITHUB_SHA || execSync('git rev-parse HEAD', {encoding: 'utf8'}).trim()); } catch { /* without git, the page says "commit unknown" */ }
 console.log('site built in site-dist/ (with the benchmark page in site-dist/bench/)');
