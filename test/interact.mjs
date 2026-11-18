@@ -1081,7 +1081,11 @@ for (const mode of renderers) {
 
     // A lost WebGL context during an `easeTo`: the new engine runs the animation for the time that is left, so the camera
     // reaches the target and `moveend` fires once (#807). On the worker, the workers of the first start lose their context
-    // 600 ms after they get the `ease` (only the engine worker has one).
+    // 600 ms after they get the `ease` (only the engine worker has one). A browser that cannot render in a worker has
+    // no engine worker to lose its context: the map draws on the main thread from the start.
+    const easeName = `[${mode}] a lost WebGL context during an easeTo: the camera reaches the target and moveend fires once`;
+    if (!workerCan) skip(easeName, noWorkerRender);
+    else {
     const easeLost = await page.evaluate(async mode => {
         const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
         const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:300px;height:200px'}));
@@ -1100,8 +1104,9 @@ for (const mode of renderers) {
         m.remove(); el.remove();
         return out;
     }, mode);
-    check(`[${mode}] a lost WebGL context during an easeTo: the camera reaches the target and moveend fires once`,
+    check(easeName,
         easeLost.events.includes('webglcontextrestored') && easeLost.events.filter(e => e === 'moveend').length === 1 && Math.abs(easeLost.lng - 20) < 1e-6 && Math.abs(easeLost.lat - 10) < 1e-6 && Math.abs(easeLost.zoom - 4) < 1e-6, JSON.stringify(easeLost));
+    }
 
     // queryRenderedFeatures, as in MapLibre but with a promise: at a point, in a box, and with a list of layers.
     const rendered = await page.evaluate(async () => {
