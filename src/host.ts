@@ -238,10 +238,6 @@ export interface MapState {
     renderer: 'worker' | 'main' | undefined;
     /** The colour scheme of the controls: `colorScheme` of the description, with `'auto'` resolved. */
     colorScheme: 'light' | 'dark';
-    /** A copy of the style that the map loaded (for a URL or a `{light, dark}` pair, the loaded one), with the parts of the description. `undefined` until the first `style.load`; new at each `style.load`. */
-    style: StyleSpecification | undefined;
-    /** The global state in effect: the defaults of the style's `state`, `color-scheme` and `globalState` of the description. */
-    globalState: Record<string, unknown>;
 }
 
 /** Where an element of the page is on the map. */
@@ -560,10 +556,7 @@ export function makeMap(container: HTMLElement | string, spec: MapDescription, n
     // (The height of the container is read after a second, so that a container which gets its height a moment later gives no warning.)
     setTimeout(() => check(0, name), 1000);
     const viewOf = (): View => { const c = map.getCenter(), b = map.getBounds().toArray() as View['bounds']; return {center: [c.lng, c.lat], zoom: map.getZoom(), bearing: map.getBearing(), pitch: map.getPitch(), bounds: b}; };
-    const state = createStore<MapState>({loaded: false, idle: false, moving: false, view: viewOf(), hover: [], pointer: null, renderer: undefined, colorScheme: 'light', style: undefined, globalState: {}});
-    // (`globalState` of the state changes only when its text changes, so that the store does not emit for nothing.)
-    const global = () => { const g = map.getGlobalState(); if (JSON.stringify(g) !== JSON.stringify(state.get().globalState)) state.set({globalState: g}); };
-    map.on('style.load', () => state.set({style: map.getStyle() as StyleSpecification, globalState: map.getGlobalState()}));
+    const state = createStore<MapState>({loaded: false, idle: false, moving: false, view: viewOf(), hover: [], pointer: null, renderer: undefined, colorScheme: 'light'});
     const controls = new globalThis.Map<string, ReturnType<ControlSpec['create']>>();
     // `colorScheme`: the class `map-jr-dark` on the container. With `'auto'`, a listener of the media query, which `destroy()` removes.
     let wanted: MapDescription['colorScheme'], dark: MediaQueryList | undefined;
@@ -573,7 +566,7 @@ export function makeMap(container: HTMLElement | string, spec: MapDescription, n
         const on = wanted === 'dark' || wanted === 'auto' && !!dark?.matches;
         map.getContainer().classList.toggle('map-jr-dark', on);
         state.set({colorScheme: on ? 'dark' : 'light'});
-        if (!forced && schemeSent !== (schemeSent = on ? 'dark' : 'light')) map.setGlobalStateProperty('color-scheme', schemeSent), global();
+        if (!forced && schemeSent !== (schemeSent = on ? 'dark' : 'light')) map.setGlobalStateProperty('color-scheme', schemeSent);
         if (isStylePair(latest.style) && on !== styledDark && alive) { state.set({idle: false}); sent.clear(); restyle(latest); }
     };
     const scheme = (to: MapDescription['colorScheme']) => {
@@ -758,7 +751,6 @@ export function makeMap(container: HTMLElement | string, spec: MapDescription, n
             const value = next.globalState?.[name] ?? (name === 'color-scheme' ? (schemeSent = state.get().colorScheme) : undefined);
             if (differ(value, before?.globalState?.[name])) map.setGlobalStateProperty(name, value == null ? null : copy(value));
         }
-        global();
         if (before && styled && !restyled && differ(next.projection, before.projection)) map.setProjection(next.projection ? copy(next.projection) : styleProjection);
         // (A new `locale` adds every control again: some controls set their texts only when they are added.)
         const relabel = differ(next.locale, before?.locale);
