@@ -971,12 +971,14 @@ export class GLRenderer {
     }
 
     /** Copies premultiplied RGBA pixels for one image into the texture of the images that are added at runtime. */
-    uploadSprite(x: number, y: number, w: number, h: number, pixels: Uint8Array) {
+    uploadSprite(x: number, y: number, w: number, h: number, pixels: Uint8Array, edges = true) {
         const gl = this.gl;
         gl.bindTexture(gl.TEXTURE_2D, this.spriteTex);
         if (!this.spriteSized) { this.spriteSized = true; gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, this.spriteSize, this.spriteSize, 0, gl.RGBA, gl.UNSIGNED_BYTE, null); }
         gl.texSubImage2D(gl.TEXTURE_2D, 0, x, y, w, h, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
-        // (The empty pixel to the right and below may hold an image that was there before: a filtered edge must not read it.)
+        // (The empty pixel to the right and below may hold an image that was there before: a filtered edge must not read it.
+        // An image that is updated in its own place cleared it when it was added.)
+        if (!edges) return;
         const zero = new Uint8Array(4 * (Math.max(w, h) + 1));
         gl.texSubImage2D(gl.TEXTURE_2D, 0, x + w, y, 1, h + 1, gl.RGBA, gl.UNSIGNED_BYTE, zero);
         gl.texSubImage2D(gl.TEXTURE_2D, 0, x, y + h, w, 1, gl.RGBA, gl.UNSIGNED_BYTE, zero);

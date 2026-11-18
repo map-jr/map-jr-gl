@@ -624,6 +624,8 @@ export class Map {
     /** @internal Sends a command to the engine. */
 
     private post(c: Command, transfer?: Transferable[]) {
+        // (A command that changes or reads the images goes after the updates of this task. A repaint does not wait.)
+        if (c.type === 'style' || c.type === 'templates' || c.type === 'removeImage' || c.type === 'snapshot' || c.type === 'image' && !c.update) this.sendUpdates();
         if (c.type !== 'query' && c.type !== 'elevation' && c.type !== 'queryRendered' && c.type !== 'frames' && c.type !== 'snapshot' && c.type !== 'tileReport' && c.type !== 'tileLoads') { this.tilesLoaded = false; (c as {seq?: number}).seq = ++this.seq; }
         if (c.type === 'query' || c.type === 'queryRendered') this.tilePool?.wake(); // (#824)
         if (this.ready) this.deliver(c, transfer); else this.queue.push([c, transfer]);
@@ -1528,7 +1530,8 @@ export class Map {
     addImage(name: string, source: string | CanvasImageSource | ImageData | {width: number; height: number; data: Uint8Array | Uint8ClampedArray}, options: ImageOptions = {}) { return this.putImage(name, source, options); }
     /** `variant`: the image is one variant of a template. It is not an image that the page added, and it is not looked at for slots. */
     private async putImage(name: string, source: Parameters<Map['addImage']>[1], options: ImageOptions, variant?: boolean, update?: boolean): Promise<this> {
-        let drawable: CanvasImageSource | undefined, width = options.width, height = options.height, sourceWidth = 0;
+        if (!update) this.sendUpdates();
+        let drawable: CanvasImageSource | undefined, width = options.width, height = options.height, sourceWidth = 0, w = 0, h = 0;
         const turn = this.imageTurn(name);
         if (!variant) {
             const slots = typeof source === 'string' && source.trimStart().startsWith('<') ? templateSlots(source) : [], before = this.templates.get(name);
@@ -1561,12 +1564,14 @@ export class Map {
             drawable = img;
         } else if ('data' in source) {
             if (typeof (source.data as {length?: unknown})?.length !== 'number') throw new Error(`[map-jr-gl] addImage("${name}"): images that draw themselves with WebGL (renderWithWebGL) are not supported. Pass pixels, a canvas, an image or SVG text.`);
-            // Raw pixels, as MapLibre accepts (ImageData or {width, height, data}). At the stored size they are premultiplied
-            // directly below; at another size they go on a CPU-backed canvas to scale from, so reading back costs no GPU copy.
+            // Raw pixels, as MapLibre accepts (ImageData or {width, height, data}). They are stored at their own size, as in
+            // MapLibre GL JS, and premultiplied directly below: scaling them to the screen adds no detail, and at a pixel
+            // ratio of 3 it sent 9 times the bytes for each updateImage (#979). Pixels whose length is not width × height × 4
+            // go through ImageData, which throws an error that names the lengths.
             sourceWidth = source.width;
             width ??= source.width / (options.pixelRatio ?? 1); height ??= source.height / (options.pixelRatio ?? 1);
-            if (Math.ceil(width * this.dpr) !== source.width || Math.ceil(height * this.dpr) !== source.height || source.data.length !== source.width * source.height * 4) {
-                const canvas = document.createElement('canvas');
+            if (source.data.length === source.width * source.height * 4) { w = source.width; h = source.height; } else {
+                const canvas = this.scratch[1] ??= document.createElement('canvas');
                 canvas.width = source.width; canvas.height = source.height;
                 canvas.getContext('2d', {willReadFrequently: true})!.putImageData(new ImageData(new Uint8ClampedArray(source.data), source.width, source.height), 0, 0);
                 drawable = canvas;
@@ -1576,7 +1581,8 @@ export class Map {
             sourceWidth = (source as ImageBitmap).width as number;
             width ??= sourceWidth / (options.pixelRatio ?? 1); height ??= (source as ImageBitmap).height as number / (options.pixelRatio ?? 1);
         }
-        const w = Math.ceil(width * this.dpr), h = Math.ceil(height * this.dpr), data = drawable ? pixels(drawable, w, h) : premultiply((source as {data: ArrayLike<number>}).data);
+        if (!w) { w = Math.ceil(width * this.dpr); h = Math.ceil(height * this.dpr); }
+        const data = drawable ? pixels(this.scratch[0] ??= document.createElement('canvas'), drawable, w, h) : premultiply((source as {data: ArrayLike<number>}).data);
         // Stretch ranges and the content box are given in the source image's pixels; the stored copy may be another size.
         const k = sourceWidth ? w / sourceWidth : 1, scale = (v?: number[]) => v?.map(n => n * k);
         if (!variant) { this.imageNames.add(name); this.imageInputs.set(name, [source, options]); }
@@ -1585,6 +1591,7 @@ export class Map {
         return this;
     }
     removeImage(name: string) {
+        this.sendUpdates();
         this.imageTurn(name); this.imageNames.delete(name); this.imageInputs.delete(name);
         if (this.templates.delete(name)) this.sendTemplates(name, true);
         this.post({type: 'removeImage', name});
@@ -1598,7 +1605,22 @@ export class Map {
     updateImage(name: string, source: Parameters<Map['addImage']>[1]) {
         if (!this.imageNames.has(name)) throw new Error(`There is no image with ID "${name}"`);
         if (this.templates.has(name) || typeof source === 'string' && source.trimStart().startsWith('<') && templateSlots(source).length) return this.removeImage(name).addImage(name, source, this.imageInputs.get(name)?.[1]);
-        return this.putImage(name, source, this.imageInputs.get(name)?.[1] ?? {}, false, true);
+        // Pixels and drawables wait for the end of the task: of several calls in one task, only the last is scaled,
+        // premultiplied and sent (#979). Any other command sends them first, so the order stays.
+        if (typeof source === 'string' || 'data' in source && typeof (source.data as {length?: unknown})?.length !== 'number') return this.putImage(name, source, this.imageInputs.get(name)?.[1] ?? {}, false, true);
+        if (!this.updates.size) queueMicrotask(() => this.sendUpdates());
+        this.updates.set(name, source);
+        return Promise.resolve(this);
+    }
+    /** The sources that `updateImage` got in this task, by image name (see `updateImage`). */
+    private updates = new globalThis.Map<string, Parameters<Map['addImage']>[1]>();
+    /** Two canvases that scale images: one holds raw pixels, and the other draws at the stored size. */
+    private scratch: HTMLCanvasElement[] = [];
+    private sendUpdates() {
+        if (!this.updates.size) return;
+        const list = [...this.updates];
+        this.updates.clear();
+        for (const [name, source] of list) if (!this.removed && this.imageNames.has(name)) this.putImage(name, source, this.imageInputs.get(name)?.[1] ?? {}, false, true);
     }
     hasImage(name: string) { return this.imageNames.has(name); }
     /**
@@ -2071,8 +2093,7 @@ export interface ImageOptions {
     sdf?: boolean;
 }
 
-function pixels(source: CanvasImageSource, w: number, h: number): Uint8Array {
-    const canvas = document.createElement('canvas');
+function pixels(canvas: HTMLCanvasElement, source: CanvasImageSource, w: number, h: number): Uint8Array {
     canvas.width = w; canvas.height = h;
     const ctx = canvas.getContext('2d', {willReadFrequently: true})!;
     ctx.drawImage(source, 0, 0, w, h);
