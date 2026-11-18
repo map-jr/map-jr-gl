@@ -31,13 +31,14 @@ export interface TileQuery {
 /** A feature of a GeoJSON source as a tile gives it for a rectangle: `index` is its place in the data of the source. The engine removes it. */
 export type FoundFeature = QueriedFeature & {index?: number};
 /**
- * A key for a feature that several tiles hold, so that a query gives the feature one time: its id, or for a GeoJSON
- * feature without an id its place in the data. It is empty for a feature that has neither. It removes `index`.
+ * A key for a feature that several tiles hold, so that a query gives the feature one time: for a GeoJSON feature its
+ * place in the data, and for another feature its id. Two GeoJSON features with the same id are two results, as in
+ * MapLibre GL JS. It is empty for a feature that has neither. It removes `index`.
  */
 export function featureKey(f: FoundFeature): string {
     const i = f.index;
     delete f.index;
-    return f.id === undefined && i === undefined ? '' : `${f.id === undefined ? i : ''}|${f.layer}|${f.source}|${f.sourceLayer}|${f.id}`;
+    return f.id === undefined && i === undefined ? '' : `${i ?? ''}|${f.layer}|${f.source}|${f.sourceLayer}|${i === undefined ? f.id : ''}`;
 }
 export interface QuerySet { layer: string; sourceLayer?: string; filter?: unknown; also?: unknown; radius: number }
 
@@ -113,7 +114,7 @@ export function queryTile(data: Uint8Array | TileLayers, q: TileQuery): FoundFea
                 if (!touches(f.type, c, ends, q.px, q.py, set.radius, q.box)) continue;
                 const feature: FoundFeature = {source: q.source, sourceLayer: name === GEOJSON_LAYER ? '' : name, id: f.id, type: TYPES[f.type], properties: f.properties};
                 if (set.layer !== undefined) feature.layer = set.layer;
-                if (q.box && f.id === undefined && f.index !== undefined) feature.index = f.index;
+                if (q.box && f.index !== undefined) feature.index = f.index;
                 if (q.geometry) {
                     if (!geometry) {
                         const rings: number[][][] = [];
