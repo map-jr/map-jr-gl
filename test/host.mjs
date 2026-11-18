@@ -2465,6 +2465,8 @@ for (const other of [true, false]) {
     try {
         await page.goto(`${origin}/style.json`);
         await page.evaluate(async () => {
+            // #780: without this tag a mobile WebKit lays the page out 980 pixels wide and scales it, and page.tap misses the button.
+            document.head.appendChild(Object.assign(document.createElement('meta'), {name: 'viewport', content: 'width=device-width'}));
             const lib = await import('/dist/map-jr-gl.js'), {navigation} = await import('/dist/controls.js');
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:400px'}));
             window.tapHost = lib.createMap(el, {style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, initialView: {center: [0, 0], zoom: 2}, controls: [navigation()], attribution: false});
