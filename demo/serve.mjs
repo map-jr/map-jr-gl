@@ -45,11 +45,13 @@ import {markers, view, photos, manyMarkers, addImages, addMarkers} from '/demo/m
 import {shield} from '/demo/shields.mjs';
 const q = new URLSearchParams(location.search);
 const map = window.map = new Map({container: 'map', style: q.get('style') || ('/style.json' + (q.has('local') ? '?local' : '')), ...view,
-  ...(q.has('zoom') ? {zoom: +q.get('zoom')} : {}), ...(q.has('bearing') ? {bearing: +q.get('bearing')} : {}), ...(q.has('pitch') ? {pitch: +q.get('pitch')} : {}),
+  ...(q.has('zoom') ? {zoom: +q.get('zoom')} : {}), ...(q.has('bearing') ? {bearing: +q.get('bearing')} : {}), ...(q.has('pitch') ? {pitch: +q.get('pitch'), maxPitch: Math.max(60, +q.get('pitch'))} : {}),
   ...(q.has('center') ? {center: q.get('center').split(',').map(Number)} : {}), renderer: q.get('renderer') || 'auto', antialias: q.has('msaa'),
   // Styles naming Open Sans get the real font; it loads on the rendering thread, so it works with worker rendering.
   fonts: q.has('nofonts') ? [] : ['normal', 'italic'].map(style => ({family: 'Open Sans', style, weight: '300 800',
     src: 'https://cdn.jsdelivr.net/fontsource/fonts/open-sans:vf@latest/latin-wght-' + style + '.woff2'}))});
+// ?sky draws the sky of the style specification with its default colours (for a look at a pitch above about 64).
+if (q.has('sky')) map.on('style.load', () => map.setSky({'sky-color': '#88c6fc', 'horizon-color': '#ffffff', 'sky-horizon-blend': 0.8}));
 map.setMissingStyleImageResolver(id => { const s = shield(id); if (s) return map.addImage(id, s.svg, s); });
 if (!q.has('nocontrols')) map.addControl(new NavigationControl()).addControl(new ScaleControl(), 'bottom-left');
 // The markers are symbol layers with an image that is an SVG template. The pointer over a pin sets the state "hover"
