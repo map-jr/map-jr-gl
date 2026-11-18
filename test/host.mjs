@@ -387,6 +387,32 @@ for (const renderer of renderers) {
         }, renderer).catch(e => ({error: String(e)}));
         check(`[${renderer}] colorScheme sets the global state property color-scheme: a background and an icon template change with no request, and globalState of the same name wins`,
             JSON.stringify(colorState) === JSON.stringify({light: '#f00 #0f0', dark: '#00f #ff0', requests: 0, forced: '#f00 #0f0', back: '#00f #ff0'}), JSON.stringify(colorState));
+        // 3b2b. getResolvedDescription() (#872): the style that a URL gave, with the `state` defaults and `globalState`
+        // merged; for a pair, the style of the scheme; a copy at each call; before style.load, the style as written.
+        const resolved = await page.evaluate(async renderer => {
+            const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:100px;height:80px'}));
+            const make = name => ({version: 8, name, state: {tone: {default: '#f00'}, size: {default: 2}}, sources: {}, layers: [{id: 'bg-' + name, type: 'background', paint: {'background-color': ['global-state', 'tone']}}]});
+            const url = URL.createObjectURL(new Blob([JSON.stringify(make('url'))], {type: 'application/json'})), out = {};
+            const host = t.lib.createMap(el, {style: url, globalState: {tone: '#00f'}, renderer, attribution: false});
+            out.early = host.getResolvedDescription().style === url;
+            const loaded = () => new Promise(r => { const off = host.listen('style.load', () => { off(); r(); }); setTimeout(r, 15000); });
+            await loaded();
+            let d = host.getResolvedDescription();
+            out.url = [d.style.name, d.style.layers.map(l => l.id).join(), d.globalState.tone, d.globalState.size, d.globalState['color-scheme']];
+            d.style.layers.length = 0; d.globalState.tone = '#000';
+            d = host.getResolvedDescription();
+            out.copy = d.style.layers.length === 1 && d.globalState.tone === '#00f' && host.description.style === url;
+            host.update({style: {light: make('light'), dark: make('dark')}, colorScheme: 'light', renderer, attribution: false}); await loaded();
+            out.light = [host.getResolvedDescription().style.name, host.getResolvedDescription().globalState['color-scheme']];
+            host.update({style: {light: make('light'), dark: make('dark')}, colorScheme: 'dark', renderer, attribution: false}); await loaded();
+            d = host.getResolvedDescription();
+            out.dark = [d.style.name, d.globalState['color-scheme'], d.globalState.tone, d.colorScheme];
+            host.destroy(); el.remove(); URL.revokeObjectURL(url);
+            return out;
+        }, renderer);
+        check(`[${renderer}] getResolvedDescription: the style that a URL or a {light, dark} pair gave, the global state in effect, a copy at each call`,
+            JSON.stringify(resolved) === JSON.stringify({early: true, url: ['url', 'bg-url', '#00f', 2, 'light'], copy: true, light: ['light', 'light'], dark: ['dark', 'dark', '#f00', 'dark']}), JSON.stringify(resolved));
+
         // 3b2a. A new style drops the tiles that it makes stale and that are not on screen (#550): kept, they stood in
         // for the tiles of a zoom out and showed the colours of the style before until they were built again. The
         // steps of the report: zoom out and in, change the scheme of `style: {light, dark}`, zoom out again.
