@@ -6,6 +6,7 @@
 //   runs=N            the number of runs of each scenario (the default is 3)
 //   seconds=S         the length of each animation in seconds (the default is 5; the camera parts take 0.6 × S each)
 //   only=text         only the scenarios whose id or name contains the text, for example only=terrain
+//   skip=a,b          leaves out the scenarios with these ids, for example skip=markers10000,terrain
 //   nomarkers         leaves out the marker scenarios
 //   noterrain         leaves out the 3D terrain scenario
 //   nocold            leaves out the cold start (test/bench/browsers.mjs runs it apart, in a fresh browser context for each load)
@@ -13,6 +14,10 @@
 //   latency=MS        the delay that the runner adds to each request; the page only names it in the cold start's note
 //   style=URL         another style (the default is OpenFreeMap Liberty)
 //   commit=SHA        the commit that the copied results name (the gallery site writes commit.txt instead)
+//
+// The page keeps each finished pair of a scenario and a library in sessionStorage (#977). When a scenario ends the
+// page (Safari on an iPhone can lose the tab), a reload shows the kept results with a note that names the pair that
+// did not finish; with `auto`, the run then goes on after that pair, and marks the pair as failed.
 import * as compat from '../dist/map-jr-gl-maplibre-compat.js';
 import * as host from '../dist/map-jr-gl.js';
 import * as maplibre from '../ml/maplibre-gl.mjs';
@@ -428,10 +433,10 @@ const scenarios = [
 ];
 
 // ---- The page ----
-const list = $('scenarios'), only = q.get('only')?.toLowerCase();
+const list = $('scenarios'), only = q.get('only')?.toLowerCase(), skipped = new Set((q.get('skip') ?? '').split(',').map(x => x.trim()).filter(Boolean));
 for (const s of scenarios) {
     const li = list.appendChild(document.createElement('li')), label = li.appendChild(document.createElement('label'));
-    s.box = label.appendChild(Object.assign(document.createElement('input'), {type: 'checkbox', checked: !s.skip && (!only || s.id.toLowerCase().includes(only) || s.name.toLowerCase().includes(only))}));
+    s.box = label.appendChild(Object.assign(document.createElement('input'), {type: 'checkbox', checked: !s.skip && !skipped.has(s.id) && (!only || s.id.toLowerCase().includes(only) || s.name.toLowerCase().includes(only))}));
     const text = label.appendChild(document.createElement('span'));
     text.append(s.name, Object.assign(document.createElement('small'), {textContent: s.note}));
 }
@@ -457,15 +462,33 @@ const orderLines = () => results.filter(r => r.scenario === 'cold' && r.runs.len
 });
 const timelineLines = () => [...results.filter(r => r.scenario === 'load' && r.runs.length).map(r => timelineLine(r.libName, r.runs.map(x => x.steps))), ...orderLines()];
 
-async function runAll(chosen) {
+// ---- Kept results (#977): {search, runs, done: [results without measures], current: the name of the pair in progress} ----
+const KEEP = 'map-jr-bench-kept', SEARCH = (() => { const k = new URLSearchParams(location.search); k.delete('auto'); return k.toString(); })();
+const readKept = () => { try { const k = JSON.parse(sessionStorage.getItem(KEEP)); return k?.search === SEARCH && Array.isArray(k.done) ? k : null; } catch { return null; } };
+const writeKept = k => { try { if (k) sessionStorage.setItem(KEEP, JSON.stringify(k)); else sessionStorage.removeItem(KEEP); } catch { /* storage full or blocked: the run goes on without it */ } };
+const addRow = r => { for (const cells of rowsOf(r)) { const tr = tbody.insertRow(); for (const c of cells) tr.insertCell().textContent = c; } };
+const withMeasures = r => ({...r, measures: scenarios.find(s => s.id === r.scenario)?.measures ?? []});
+let keptNote = '';
+
+async function runAll(chosen, kept = null) {
     $('run').disabled = $('runSelected').disabled = true; $('copy').disabled = true;
     tbody.replaceChildren(); $('timeline').replaceChildren(); results.length = 0; delete window.benchResults;
-    const runs = Math.max(1, Math.min(20, Math.round(+$('runs').value) || 3));
+    const runs = kept?.runs ?? Math.max(1, Math.min(20, Math.round(+$('runs').value) || 3));
     const jobs = chosen.flatMap(s => (s.libs ?? ALL).map(lib => ({s, lib})));
+    const keep = {search: SEARCH, runs, done: [], current: null};
+    const save = () => { keep.done = results.map(({measures, ...r}) => r); writeKept(keep); };
+    if (kept) {
+        for (const r of kept.done) { results.push(withMeasures(r)); addRow(results.at(-1)); }
+        const ended = kept.current && jobs.find(({s, lib}) => `${s.name}: ${LIBS[lib]}` === kept.current);
+        if (ended) { const r = {scenario: ended.s.id, scenarioName: ended.s.name, lib: ended.lib, libName: LIBS[ended.lib], name: kept.current, measures: ended.s.measures, runs: [], error: 'the page ended during this scenario'}; for (const [key] of r.measures) r[key] = NaN; results.push(r); addRow(r); }
+        save();
+    } else writeKept(null);
     let n = 0;
     for (const {s, lib} of jobs) {
         n++;
+        if (results.some(x => x.scenario === s.id && x.lib === lib)) continue;
         const r = {scenario: s.id, scenarioName: s.name, lib, libName: LIBS[lib], name: `${s.name}: ${LIBS[lib]}`, measures: s.measures, runs: []};
+        keep.current = r.name; save();
         for (let i = 0; i < runs; i++) {
             status.textContent = `Running ${n} of ${jobs.length}, run ${i + 1} of ${runs}: ${r.name}`;
             stage.replaceChildren();
@@ -478,15 +501,16 @@ async function runAll(chosen) {
             await window.benchBetween?.(`${r.name}, run ${i + 1}`); // (a measuring script can set it, to read the memory once the maps of a run are removed)
         }
         for (const [key] of s.measures) r[key] = median(r.runs.map(x => x.values[key]));
-        results.push(r);
-        for (const cells of rowsOf(r)) { const tr = tbody.insertRow(); for (const c of cells) tr.insertCell().textContent = c; }
+        results.push(r); keep.current = null; save();
+        addRow(r);
     }
     const lines = timelineLines();
-    const shown = [...(results.some(r => r.runs.some(x => x.outOfView)) ? [OUT_NOTE] : []), ...(lines.length ? [TIMELINE, ...lines] : [])];
+    const shown = [...(keptNote ? [keptNote] : []), ...(results.some(r => r.runs.some(x => x.outOfView)) ? [OUT_NOTE] : []), ...(lines.length ? [TIMELINE, ...lines] : [])];
     $('timeline').replaceChildren(...shown.map(l => Object.assign(document.createElement('div'), {textContent: l})));
     stage.replaceChildren();
     status.textContent = `Done: ${jobs.length} pairs of a scenario and a library, ${runs === 1 ? '1 run' : runs + ' runs'} of each.`;
     window.benchResults = results.map(({measures, ...r}) => r);
+    writeKept(null); keptNote = '';
     $('run').disabled = $('runSelected').disabled = false; $('copy').disabled = false;
 }
 const runButton = $('run');
@@ -515,4 +539,13 @@ window.benchMerge = lists => {
     const head = [...document.querySelectorAll('#results th')].map(th => th.textContent);
     return {bench: bench.map(({measures, ...r}) => r), table: [head, ...bench.flatMap(r => r.measures ? rowsOf(r) : [])]};
 };
-if (q.has('auto')) $('runSelected').click();
+const kept = readKept();
+if (kept) {
+    keptNote = `The page was reloaded${kept.current ? ` or ended during "${kept.current}"` : ''}; it kept ${kept.done.length} finished ${kept.done.length === 1 ? 'pair' : 'pairs'} of a scenario and a library from before.`;
+    if (q.has('auto')) runAll(scenarios.filter(s => s.box.checked), kept);
+    else {
+        for (const r of kept.done) { results.push(withMeasures(r)); addRow(results.at(-1)); }
+        $('timeline').replaceChildren(Object.assign(document.createElement('div'), {textContent: keptNote + (kept.current ? ' Open the page with ?auto to go on after it.' : '')}));
+        status.textContent = keptNote; $('copy').disabled = false;
+    }
+} else if (q.has('auto')) $('runSelected').click();
