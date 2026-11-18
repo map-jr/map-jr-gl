@@ -1251,6 +1251,12 @@ export class Map {
     setLight(light: {anchor?: 'map' | 'viewport'; position?: [number, number, number]; color?: string; intensity?: number}) {
         return this.editStyle(s => { s.light = {...s.light, ...light}; });
     }
+    /** Sets the sky above the horizon and the fog on 3D terrain (the `sky` of the style); `null` removes them. */
+    setSky(sky?: Record<string, unknown> | null) {
+        return this.editStyle(s => { if (sky) s.sky = {...sky}; else delete s.sky; });
+    }
+    /** The `sky` of the style, or undefined when the style has none. */
+    getSky(): Record<string, unknown> | undefined { return this.rawStyle?.sky; }
     /** A source or a style that cannot be used: the map reports it, and draws the rest of the style or keeps its style. */
     private sourceFailed = (error: unknown) => { this.fire('error', {error}); };
     /**

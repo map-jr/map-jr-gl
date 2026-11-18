@@ -146,7 +146,6 @@ export class Map extends CoreMap {
         this.warned.add(name);
         console.warn(`[map-jr-gl] ${name}: the result was used without \`await\` and was not complete (${had} of ${has} features). Tile data is in a worker. Change\n    const features = map.${name}(...);\nto\n    const features = await map.${name}(...);\n(this also works in MapLibre GL JS). See "Feature queries" in docs/maplibre-compatibility.md.`);
     }
-    setSky(sky?: object | null) { return this.unsupported('setSky', !sky || !Object.keys(sky).length); }
     setRenderWorldCopies(copies?: boolean | null) { return this.unsupported('setRenderWorldCopies(false)', copies !== false); }
     setRoll(roll?: number) { return this.unsupported('setRoll', !roll); }
     setVerticalFieldOfView(fov?: number) { return this.unsupported('setVerticalFieldOfView', fov === undefined || Math.abs(fov - 36.87) < 0.01); }
@@ -433,8 +432,6 @@ export class Map extends CoreMap {
     }
     _render() { this.triggerRepaint(); }
     _update() { this.triggerRepaint(); }
-    /** There is no sky in this library. (react-map-gl reads the value when a style has loaded.) */
-    getSky() { return undefined; }
     getLight() { return {anchor: 'viewport', position: [1.15, 210, 30], color: '#ffffff', intensity: 0.5, ...this.rawStyle?.light}; }
     /** The style, as in MapLibre GL JS: without its custom layers. */
     getStyle() { const style = super.getStyle(); if (style) style.layers = style.layers.filter((l: {type: string}) => l.type !== 'custom'); return style; }
