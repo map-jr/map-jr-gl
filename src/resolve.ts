@@ -81,10 +81,15 @@ export function parseFontName(name: string): {family: string; weight: number; st
     const n = name.toLowerCase();
     const weight = /black|heavy/.test(n) ? 900 : /extra ?bold/.test(n) ? 800 : /semi ?bold|demi/.test(n) ? 600 : /bold/.test(n) ? 700 :
         /medium/.test(n) ? 500 : /light/.test(n) ? 300 : 400;
-    const family = name.replace(/\b(thin|extra ?light|light|regular|normal|book|medium|semi ?bold|demi ?bold|demi|extra ?bold|bold|black|heavy|italic|oblique)\b/gi, '').replace(/\s+/g, ' ').trim().replace(/["\\]/g, '');
+    const family = name.replace(/\b(thin|extra ?light|light|regular|normal|book|medium|semi ?bold|demi ?bold|demi|extra ?bold|bold|black|heavy|italic|oblique)\b/gi, '').replace(/\s+/g, ' ').trim().replace(/["\\|]/g, '');
     return {family, weight, style: /italic|oblique/.test(n) ? 'italic' : 'normal'};
 }
 
+/** The fields of a font key (see `fontKey`): a name of the stack can contain "|", so only the first two separate fields. */
+export function splitFontKey(key: string): [variant: string, family: string, stack: string | undefined] {
+    const a = key.indexOf('|'), b = key.indexOf('|', a + 1);
+    return a < 0 ? [key, '', undefined] : b < 0 ? [key.slice(0, a), key.slice(a + 1), undefined] : [key.slice(0, a), key.slice(a + 1, b), key.slice(b + 1)];
+}
 /** The CSS generic family keywords: a `text-font` name that is one of them stays unquoted, so that it names the fonts of the system. */
 const GENERIC = /^(serif|sans-serif|monospace|cursive|fantasy|system-ui|math|emoji|fangsong|ui-serif|ui-sans-serif|ui-monospace|ui-rounded)$/i;
 /**

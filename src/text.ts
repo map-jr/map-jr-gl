@@ -9,7 +9,7 @@
 /** How far below the middle of a line the baseline is, in ems. The value puts text where MapLibre draws it. */
 export const BASELINE = 0.38;
 
-import {cssFamilies, fontKey} from './resolve.ts';
+import {cssFamilies, fontKey, splitFontKey} from './resolve.ts';
 import {Pbf} from './mvt.ts';
 
 export const EM = 24;
@@ -251,7 +251,7 @@ export class GlyphAtlas extends BaseShaper {
 
     /** Label fonts arrive as "style weight|family|font stack" (see `fontKey`); each family of the stack is tried in order before the map default. */
     private css(font: string) {
-        const [variant, family, stack] = font.split('|'), list = cssFamilies(stack ?? family);
+        const [variant, family, stack] = splitFontKey(font), list = cssFamilies(stack ?? family);
         // (After web fonts load, a family that is never found ends the string: Chromium keeps, in a worker, the font that it
         // resolved for each font string, also for a new context, and a new string resolves the fonts again.)
         return `${variant} ${EM}px ${list ? list + ', ' : ''}${this.family}${this.fontsRev ? `, "map-jr-${this.fontsRev}"` : ''}`;
@@ -367,7 +367,7 @@ export class GlyphAtlas extends BaseShaper {
         const key = font + '|' + text;
         let g = this.glyphs.get(key);
         if (g) return g;
-        const stack = this.glyphsURL && font.split('|')[2];
+        const stack = this.glyphsURL && splitFontKey(font)[2];
         if (stack) {
             const found = this.fromFile(text, stack);
             // (A glyph that waits for its file is not kept: the text is shaped again when the file is there.)
