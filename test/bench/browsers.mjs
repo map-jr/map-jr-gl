@@ -49,20 +49,31 @@ for (const mode of ['worker', 'main']) {
 if (!result.checks.some(c => c.loaded)) result.errors.push('bench: not run, because the map did not load');
 else try {
     // (The page runs each scenario once. The machines of the workflow share their GPU with others, and one measurement
-    // can be far off, so the page runs again, up to BENCH_RUNS times (3), while the time since the first start is under
-    // BENCH_BUDGET_MIN minutes (20): the job has a limit of 40 minutes. The medians are over all the runs.)
-    const budget = +(process.env.BENCH_BUDGET_MIN ?? 20) * 60000, most = +(process.env.BENCH_RUNS ?? 3), t0 = Date.now(), lists = [];
-    let page;
+    // can be far off, so the page runs again, up to BENCH_RUNS times (3), while another run, as long as the longest so
+    // far, still ends within BENCH_BUDGET_MIN minutes (8) of the first start. The job has a limit of 40 minutes, and the
+    // behaviour tests after this script take up to 25 of them (run 44352973623, #947). One run takes 3 to 6 minutes.
+    // A run that does not end by then is stopped, and the rows that its page has are kept. The medians are over all the runs.)
+    const budget = +(process.env.BENCH_BUDGET_MIN ?? 8) * 60000, most = +(process.env.BENCH_RUNS ?? 3), t0 = Date.now(), lists = [];
+    let page, longest = 0, partial = null;
     do {
         await page?.close();
         page = await browser.newPage({viewport: {width: 1000, height: 700}});
         page.on('pageerror', e => result.errors.push(e.message));
+        const start = Date.now();
         await page.goto(`${base}/bench?auto&seconds=${process.env.BENCH_SECONDS ?? 4}&runs=1`);
-        await page.waitForFunction(() => window.benchResults, null, {timeout: 30 * 60000, polling: 1000});
+        try {
+            await page.waitForFunction(() => window.benchResults, null, {timeout: Math.max(60000, t0 + budget - Date.now()), polling: 1000});
+        } catch (e) {
+            result.errors.push(`bench: run ${lists.length + 1} of the page did not end within ${budget / 60000} min; the page says: ${await page.textContent('#status').catch(() => '?')}`);
+            if (!lists.length) partial = await page.$$eval('#results tr', trs => trs.map(tr => [...tr.cells].map(c => c.textContent)));
+            break;
+        }
         lists.push(await page.evaluate(() => window.benchResults));
-    } while (lists.length < most && Date.now() - t0 < budget);
+        longest = Math.max(longest, Date.now() - start);
+    } while (lists.length < most && Date.now() + longest - t0 < budget);
     result.env = await page.textContent('#env');
-    Object.assign(result, await page.evaluate(lists => window.benchMerge(lists), lists));
+    if (lists.length) Object.assign(result, await page.evaluate(lists => window.benchMerge(lists), lists));
+    else result.table = partial;
     result.runs = lists.length; result.minutes = +((Date.now() - t0) / 60000).toFixed(1);
     console.log(`bench: ${lists.length} runs of the page in ${result.minutes} min`);
     await page.close();

@@ -11,8 +11,8 @@
 //   BENCH_BASE   where the demo server is (the default is http://localhost:8080). With BENCH_URL, the benchmark page
 //                is opened there (for example the page of the gallery site), and the short checks are left out.
 //   BENCH_SECONDS, BENCH_QUERY   the length of each animation, and more of the query of the benchmark page
-//   BENCH_RUNS, BENCH_BUDGET_MIN   the page runs again, up to BENCH_RUNS times (3), while the time since the first
-//                start is under BENCH_BUDGET_MIN minutes (12; the Safari job has a limit of 30 minutes)
+//   BENCH_RUNS, BENCH_BUDGET_MIN   the page runs again, up to BENCH_RUNS times (3), while another run, as long as
+//                the longest so far, still ends within BENCH_BUDGET_MIN minutes (12; the Safari job has a limit of 30 minutes)
 import {mkdirSync, writeFileSync} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -133,10 +133,11 @@ try {
     // closing a session that looks idle.)
     // (When the page does not finish, the rows that it has and its status line are still read.)
     const budget = +(process.env.BENCH_BUDGET_MIN ?? 12) * 60000, most = +(process.env.BENCH_RUNS ?? 3), t0 = Date.now(), lists = [];
-    for (;;) {
-        const ok = await until('return !!window.benchResults', 14 * 60000, 2000).then(() => true, async e => { result.errors.push(`${e.message}; the page says: ${await run('return document.getElementById("status").textContent').catch(() => '?')}`); return false; });
+    for (let longest = 0, start = Date.now(); ; start = Date.now()) {
+        const ok = await until('return !!window.benchResults', Math.max(60000, Math.min(14 * 60000, t0 + budget - Date.now())), 2000).then(() => true, async e => { result.errors.push(`${e.message}; the page says: ${await run('return document.getElementById("status").textContent').catch(() => '?')}`); return false; });
         lists.push(await run('return window.benchResults || []'));
-        if (!ok || lists.length >= most || Date.now() - t0 >= budget) break;
+        longest = Math.max(longest, Date.now() - start);
+        if (!ok || lists.length >= most || Date.now() + longest - t0 >= budget) break;
         await wd('POST', `/session/${id}/url`, {url: benchURL});
     }
     result.env = await run('return document.getElementById("env").textContent');
