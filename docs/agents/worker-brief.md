@@ -31,6 +31,16 @@ writing); this brief has the steps.
   how). Do not take the next free number: another branch takes it too.
 - A test that fails locally but passes in the `checks` and `browser` jobs of `main` is load on this machine. Say so
   in the report, and do not change the test for it. A test that fails in CI too is a fault.
+- Bring your branch up to date by merging `origin/main`, not by a rebase that squashes it into one commit. After a
+  merge, a rebase or a force-push, check that `git diff origin/main...HEAD -- src` has only your lines.
+- Two switches help to reproduce faults in Chromium: `CPU_THROTTLE=<rate>` (in `test/host.mjs` and
+  `test/interact.mjs`) slows the page as a loaded CI runner does, and `NO_WORKER_WEBGL=1` (in `test/launch.mjs`)
+  takes WebGL away from workers, as in WebKit on Linux and Windows.
+- `node test/conformance/render.mjs` has no `--help`, and any argument that it does not know starts the whole run. A
+  run with `--filter` rewrites `test/conformance/render-result.json` and `render-tests.json`: restore them with
+  `git checkout --` before you commit.
+- `gh pr edit` fails on this repository; change the body of your pull request with
+  `gh api -X PATCH repos/map-jr/map-jr-gl/pulls/N -F body=@file`.
 - Start the name of each file that you write to the shared scratchpad with your branch name.
 - Do not leave a process running when you stop. `suite.mjs` stops its server; stop any server that you start
   yourself in the same command.
@@ -40,6 +50,8 @@ writing); this brief has the steps.
 - The shell sets `BROWSER=open` (`suite.mjs` uses `chromium` then; other commands need `BROWSER=chromium`), aliases
   `cp` to `cp -i` (write `command cp`), and sets `noclobber` (write `>|` to replace a file).
 - Headless Chromium draws WebGL in software. Playwright's WebKit draws on the GPU.
+- Playwright's Firefox does not start here ("Could not find profile folder", #810). Do not spend time on it: read the
+  code, write "not checked in Firefox", and rely on the `Browsers` workflow, which runs Firefox on three systems.
 - An iOS Simulator can open a page of your server: `xcrun simctl openurl booted http://localhost:<port>/…`.
 
 ## Report (your final message; at most 12 lines, no preamble)

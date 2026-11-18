@@ -342,7 +342,8 @@ any key in `metadata`, so MapLibre GL JS reads the style and ignores the images.
   that texture is full after 961 icons of the size of those of OpenFreeMap (most are 21 by 21 CSS pixels) at a pixel
   ratio of 3.
 - The server renderer (`renderToSVG`, `renderToImage`) draws the SVG images of the style, with the same rules.
-- The compat entry (`@map-jr/map-jr-gl/maplibre-compat`) does not read the key, as MapLibre GL JS does not.
+- The compat entry (`@map-jr/map-jr-gl/maplibre-compat`) draws them too, with the same rules (#759). An image that the
+  page adds with `addImage` wins over an image of the style with the same name. MapLibre GL JS ignores the key.
 
 An image that does not load is an error of the map (`onError`) with the name of the image. The map
 draws the layer without that image.
@@ -946,7 +947,8 @@ A query whose map goes away is rejected, so that code that awaits it does not wa
 | `destroy()` is called before the answer has come, or the query is asked after `destroy()`. | `[map-jr-gl] The query has no answer: the map was removed.` |
 | The browser takes the WebGL context away before the answer has come. | `[map-jr-gl] The query has no answer: the map lost its WebGL context. Ask again.` A query that is asked again waits for the new context and is answered then. |
 
-Catch the error where a query can be open while the map is removed, for example in a handler of a component that
+A query that nobody awaits or catches does not become an unhandled rejection of the page when `destroy()` rejects it.
+The rejection after a lost WebGL context is not handled in this way. Catch the error where a query can be open while the map is removed, for example in a handler of a component that
 can unmount. `watchFeatures` and `watchSource` need no such code: they do not call their listener after `destroy()`,
 and after a lost context they ask again by themselves. When a listener throws, the browser reports the error as an
 unhandled rejection, and the watch goes on. When the question itself is wrong (for example a place that is not

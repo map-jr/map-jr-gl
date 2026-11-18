@@ -1734,11 +1734,15 @@ for (const renderer of renderers) {
             h.watchSource(sources[0], undefined, {}, () => watched++);
             const waits = said(h.once('dragend'));
             const pending = said(h.querySource(sources[0])), height = said(h.queryElevation([-74.0105, 40.7045]));
+            // (Queries that nobody awaits: destroy() must not make them unhandled rejections of the page, #787.)
+            h.queryFeatures({x: 450, y: 300}); h.querySource(sources[0]); h.queryElevation([-74.0105, 40.7045]);
+            const forgotten = [];
+            addEventListener('unhandledrejection', e => forgotten.push(String(e.reason?.message ?? e.reason)));
             h.destroy(); h.update(t.spec);
             const later = said(h.querySource(sources[0])), onceLater = said(h.once('idle'));
             const out = {canvas: !!document.querySelector('#host canvas'), waits: await waits, onceLater: await onceLater, pending: await pending, height: await height, later: await later};
             await new Promise(r => setTimeout(r, 300));
-            return {...out, clicks, watched};
+            return {...out, clicks, watched, forgotten};
         });
         check(`[${renderer}] destroy removes the map`, !end.canvas);
         const gone = '[map-jr-gl] The query has no answer: the map was removed.';
@@ -1746,6 +1750,7 @@ for (const renderer of renderers) {
             end.waits === '[map-jr-gl] once("dragend"): the map was removed.' && end.onceLater === '[map-jr-gl] once("idle"): the map was removed.', JSON.stringify(end));
         check(`[${renderer}] destroy rejects the queries that wait and a query after it, and onClick and a watchFeatures listener do not run after it`,
             end.pending === gone && end.height === gone && end.later === gone && end.clicks === 0 && end.watched === 0, JSON.stringify(end));
+        check(`[${renderer}] destroy with queries that nobody awaits gives no unhandled rejection (#787)`, end.forgotten.length === 0, end.forgotten.join(' | '));
         const other = errors.filter(e => !e.includes('thrown by the test')); // (the browser reports what the listener of 5b threw)
         check(`[${renderer}] no page errors`, other.length === 0, other.slice(0, 2).join(' | '));
     } catch (e) { check(`[${renderer}] the test run was completed`, false, String(e.message).split('\n')[0]); }
@@ -2056,6 +2061,28 @@ for (const [build, file] of [['the development build, and the file of the checks
         check(`${build}: the map draws with no warning, a wrong place of a query is refused with a short message, no rejection is unhandled, and ${file === 'map-jr-gl.js' ? 'the file of the checks is not requested' : 'the file of the checks was requested'}`,
             (file === 'map-jr-gl.js' ? asked.length === 0 : asked.length > 0) && lost.said.length === 0 && lost.drawn > 0 && lost.place === '[map-jr-gl] queryFeatures(): the place is not {x, y} or [lng, lat].' && !lost.unhandled.length, JSON.stringify(lost));
     } catch (e) { check(`${build}: the test run was completed`, false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
+
+// `supported()` releases its probe context once it has the answer (#825), keeps the answer, and a map starts after it.
+{
+    const page = await browser.newPage({viewport: {width: 900, height: 600}});
+    try {
+        await page.goto(`${origin}/style.json`);
+        const out = await page.evaluate(async () => {
+            const made = [], get = HTMLCanvasElement.prototype.getContext;
+            HTMLCanvasElement.prototype.getContext = function (kind, ...rest) { const c = get.call(this, kind, ...rest); if (c && /webgl/.test(kind)) made.push(c); return c; };
+            const lib = await import('/dist/map-jr-gl.js');
+            const first = lib.supported(), second = lib.supported(), probes = made.length, lost = made.map(c => c.isContextLost());
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:400px;height:300px'}));
+            const host = lib.createMap(el, {style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#abc'}}]}, renderer: 'main', attribution: false});
+            const idle = await Promise.race([new Promise(r => { if (host.state.get().idle) r(true); else host.state.subscribe(s => s.idle, v => v && r(true)); }), new Promise(r => setTimeout(() => r(false), 8000))]);
+            host.destroy();
+            return {first, second, probes, lost, idle};
+        });
+        check('supported() returns true twice with one probe context, releases that context, and a map reaches idle after it (#825)',
+            out.first && out.second && out.probes === 1 && out.lost[0] === true && out.idle, JSON.stringify(out));
+    } catch (e) { check('supported() releases its probe context: the test run was completed', false, String(e.message).split('\n')[0]); }
     await page.close();
 }
 

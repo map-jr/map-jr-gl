@@ -583,6 +583,7 @@ export class Map extends CoreMap {
             }
             return features(found);
         });
+        all.catch(() => {}); // (MapLibre's query is synchronous: a result that nobody awaits rejects nothing on the page, also after `remove()`.)
         Object.defineProperty(result, 'then', {value: (done?: (v: Omit<RenderedFeature, 'layer'>[]) => unknown, failed?: (e: unknown) => unknown) => { awaited = true; return all.then(done, failed); }});
         return result as unknown[] as GeoJSONFeature[] & PromiseLike<GeoJSONFeature[]>;
     }
@@ -634,6 +635,7 @@ export class Map extends CoreMap {
             return features([...found]);
         }) : Promise.resolve([]);
         let awaited = false;
+        later.catch(() => {}); // (As in `querySourceFeatures`: a result that nobody awaits rejects nothing on the page.)
         Object.defineProperty(result, 'then', {value: (done?: (v: RenderedFeature[]) => unknown, failed?: (e: unknown) => unknown) => { awaited = true; return later.then(done, failed); }});
         return result as unknown[] as MapGeoJSONFeature[] & PromiseLike<MapGeoJSONFeature[]>;
     }

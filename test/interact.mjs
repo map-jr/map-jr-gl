@@ -1827,7 +1827,8 @@ for (const mode of renderers) {
         const failed = await page.evaluate(async mode => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), wait = ms => new Promise(r => setTimeout(r, ms));
             // (A map that never starts does not answer a query: the test must not wait for ever.)
-            const count = query => Promise.race([query.then(found => found.length), wait(4000).then(() => -1)]);
+            // (A query that loses the race is rejected by remove() at the end; its rejection is handled here, #787.)
+            const count = query => Promise.race([query.then(found => found.length, () => -2), wait(4000).then(() => -1)]);
             const make = style => {
                 const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
                 const m = new mod.Map({container: el, style, renderer: mode, attributionControl: false, center: [0, 0], zoom: 1}), seen = [];
@@ -1866,8 +1867,13 @@ for (const mode of renderers) {
             c.m.setPaintProperty('fill', 'fill-color', '#00f');
             await wait(1500);
             out.badSource = {seen: c.seen.slice(errorsBefore), later: await count(c.m.queryRenderedFeatures({layers: ['later']}))};
-            removeEventListener('unhandledrejection', onRejection);
+            // 5. Queries that nobody awaits, then remove(): as in MapLibre, whose queries are synchronous, the page hears of no rejection (#787).
+            const before5 = rejections.length;
+            c.m.queryRenderedFeatures({layers: ['fill']}); c.m.querySourceFeatures('g'); c.m.queryRenderedFeatures([10, 10]);
             for (const x of [a, b, c]) { x.m.remove(); x.el.remove(); }
+            await wait(300);
+            out.forgotten = rejections.slice(before5);
+            removeEventListener('unhandledrejection', onRejection);
             return {...out, rejections};
         }, mode);
         check(`[${mode}] a source that fails: one error with the URL, the other layers are drawn and load fires`,
@@ -1878,6 +1884,7 @@ for (const mode of renderers) {
             failed.badStyle.seen.length === 1 && /HTTP 404/.test(failed.badStyle.seen[0]) && !failed.badStyle.rejected && failed.badStyle.kept && !failed.rejections.length, JSON.stringify({...failed.badStyle, rejections: failed.rejections}));
         check(`[${mode}] addSource with no tiles and no url: one error that names the source, and later changes of the style work`,
             failed.badSource.seen.length === 1 && failed.badSource.seen[0].includes('"bad"') && failed.badSource.later > 0, JSON.stringify(failed.badSource));
+        check(`[${mode}] maplibre-compat: remove() with queries that nobody awaits gives no unhandled rejection (#787)`, failed.forgotten.length === 0, failed.forgotten.join(' | '));
         // (The browser writes its own line to the console for each 404 that this test asks for.)
         for (let i = errors.length; i-- > errorsBefore;) if (errors[i].startsWith('Failed to load resource')) errors.splice(i, 1);
     }
@@ -2219,7 +2226,10 @@ for (const mode of renderers) {
         await page.waitForTimeout(1500); // (the tiles arrive and are built, and a frame would place the labels)
         const {idles, at} = await page.evaluate(() => { const {m, el, idles, at} = window.overview; m.remove(); el.remove(); return {idles, at}; });
         await page.unroute('**/tiles/11/**', slow);
-        check(`[${mode}] the overview tiles are requested after the first idle and arrive with no second idle`, late > 0 && idles === 1 && at > 0 && first >= at,
+        // (A first request up to one worker frame before the page gets `idle` passes: the worker sends `idle` after its
+        // frame has gone to the page, and its next frame, which requests the overview, can run first (#555, #756,
+        // src/engine.ts:1753-1762). Both times are `Date.now()` of one machine (#789).)
+        check(`[${mode}] the overview tiles are requested after the first idle and arrive with no second idle`, late > 0 && idles === 1 && at > 0 && first >= at - 50,
             `idle events=${idles}, late tiles=${late}, first request ${first - at} ms after the first idle`);
     }
     // A map that never becomes idle (here one that keeps rotating from the start) still requests its overview tiles (#326).
@@ -3203,6 +3213,31 @@ for (const mode of renderers) {
         });
         check('[main] maplibre-compat: queryRenderedFeatures gives a GeoJSON feature without an id one time when several tiles hold it, as MapLibre gives three points at the corner of four tiles (#606)',
             m606.ml.points.join() === '3,3,3' && m606.compat.points.join() === '3,3,3' && m606.compat.atOnce === 3 && m606.ml.atOnce === 3 && m606.compat.square.join() === '1,1,1' && m606.compat.keys, JSON.stringify(m606));
+        // #659: two GeoJSON features with the same id are two results, as in MapLibre GL JS (served at /ml/). Three points
+        // share the id 12, one point has no id, and a square crosses the borders of four tiles at zoom 2.
+        const m659 = await page.evaluate(async () => {
+            const ml = await import('/ml/maplibre-gl.mjs');
+            ml.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const compat = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const point = (id, c) => ({type: 'Feature', ...(id === undefined ? {} : {id}), properties: {}, geometry: {type: 'Point', coordinates: c}});
+            const square = {type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[-20, -20], [20, -20], [20, 20], [-20, 20], [-20, -20]]]}};
+            const style = {version: 8, sources: {points: {type: 'geojson', data: {type: 'FeatureCollection', features: [point(12, [-10, 5]), point(12, [10, 5]), point(12, [10, -5]), point(undefined, [-10, -5])]}}, square: {type: 'geojson', data: square}},
+                layers: [{id: 'square', type: 'fill', source: 'square'}, {id: 'points', type: 'circle', source: 'points'}]};
+            const run = async lib => {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+                const m = new lib.Map({container: el, renderer: 'main', style, center: [0, 0], zoom: 2});
+                await new Promise(r => m.loaded?.() ? r() : m.once('load', r));
+                await new Promise(r => { m.once('idle', r); setTimeout(r, 3000); });
+                const at = m.project([10, 5]), out = {};
+                for (const layer of ['points', 'square']) out[layer] = [(await m.queryRenderedFeatures([at.x, at.y], {layers: [layer]})).length, (await m.queryRenderedFeatures([[0, 0], [300, 200]], {layers: [layer]})).length];
+                out.source = [(await m.querySourceFeatures('points')).length, (await m.querySourceFeatures('square')).length];
+                m.remove(); el.remove();
+                return out;
+            };
+            return {ml: await run(ml), compat: await run(compat)};
+        });
+        check('[main] maplibre-compat: queryRenderedFeatures gives each GeoJSON feature that shares an id with another, as MapLibre does (#659)',
+            JSON.stringify(m659.ml.points) === JSON.stringify(m659.compat.points) && m659.compat.points.join() === '1,4' && m659.compat.square.join() === '1,1', JSON.stringify(m659));
         // #261: the eventData argument of a camera method is on the events of that move, and not on the next move.
         const tagged = await page.evaluate(async () => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
