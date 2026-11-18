@@ -620,6 +620,55 @@ for (const renderer of renderers) {
             check(`[worker] after a new style, the canvas at state.idle shows the new style: no pixel differs from the canvas 1 s later (#555)`,
                 shownAtIdle.used === 'worker' && shownAtIdle.out?.every(n => n === 0), JSON.stringify(shownAtIdle));
         }
+        // 3b2c. After setPixelRatio, `idle` of the worker renderer comes once the canvas of the page has the new size (#950).
+        // Chromium gives the canvas the size of a resized frame only when that frame arrives, which can be more than one
+        // frame of the page after the engine sent `idle`. As in the bench of #948, new maps get setPixelRatio(2) after
+        // their first `idle`: maps of the compat entry (the main API has no pixel ratio), two on one page.
+        const resizedName = '[worker] after setPixelRatio, the canvas has the new size at idle, with two maps on one page (#950)';
+        if (renderer === 'worker' && !await workerRenders(page)) skip(resizedName, noWorkerRender);
+        else if (renderer === 'worker') {
+            const resized = await page.evaluate(async () => {
+                const t = window.t, mod = await import('/dist/map-jr-gl-maplibre-compat.js'), wrong = [];
+                const idle = map => new Promise(r => { map.once('idle', () => r(true)); setTimeout(() => r(false), 10000); });
+                for (let round = 0; round < 6; round++) {
+                    const maps = [0, 1].map(i => {
+                        const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: `position:fixed;left:0;top:${i * 300}px;width:450px;height:300px;z-index:100`}));
+                        return {el, map: new mod.Map({container: el, style: t.style, center: [-74.0065, 40.7085], zoom: 14.3, attributionControl: false})};
+                    });
+                    await Promise.all(maps.map(m => idle(m.map)));
+                    await Promise.all(maps.map(async ({el, map}, i) => {
+                        for (const ratio of [2, 1]) {
+                            const armed = idle(map);
+                            map.setPixelRatio(ratio);
+                            const came = await armed, width = map.getCanvas().width, want = Math.round(el.clientWidth * ratio);
+                            if (!came || width !== want) wrong.push({round, map: i, ratio, came, width, want});
+                        }
+                    }));
+                    for (const m of maps) { m.map.remove(); m.el.remove(); }
+                }
+                return {wrong};
+            }).catch(e => ({error: String(e)}));
+            check(resizedName, resized.wrong?.length === 0, JSON.stringify(resized));
+            // The browser clamps a large canvas (to 8192 × 8192 in Chromium): `idle` does not wait for a size that the
+            // canvas cannot have. It comes within 300 ms of the last frame after a jump.
+            const clampName = '[worker] a canvas that the browser clamps: idle comes within 300 ms of the last frame (#950)';
+            const clamped = await page.evaluate(async () => {
+                const t = window.t, mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:6000px;height:4000px;z-index:100'}));
+                // (The style has only a background. With tiles, a canvas of this size kept a 2-core CI runner busy into the
+                // next checks, whose maps did not reach idle.)
+                const map = new mod.Map({container: el, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#8ac'}}]}, attributionControl: false});
+                const idle = () => new Promise(r => { map.once('idle', () => r(performance.now())); setTimeout(() => r(null), 10000); });
+                await idle(); map.setPixelRatio(3); await idle();
+                let last = 0; map.on('render', () => { last = performance.now(); });
+                const gaps = [];
+                for (let i = 0; i < 3; i++) { const armed = idle(); map.jumpTo({zoom: 14.3 + (i + 1) * 0.0001}); const at = await armed; gaps.push(at === null ? 'no idle' : Math.round(at - last)); }
+                const canvas = [map.getCanvas().width, map.getCanvas().height];
+                map.remove(); el.remove();
+                return {gaps, canvas};
+            }).catch(e => ({error: String(e)}));
+            check(clampName, clamped.gaps?.every(g => typeof g === 'number' && g < 300), JSON.stringify(clamped));
+        }
         // 3b2. `patch` (#483): it keeps the fields that `part` leaves out, `undefined` removes a field, and `description` is the last description.
         const patched = await page.evaluate(async renderer => {
             const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));

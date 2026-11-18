@@ -464,7 +464,7 @@ export class Map {
             for (const w of this.workers.splice(0)) w.terminate();
             this.tilePool?.release();
             this.tilePool = undefined; // (a `remove` during the start below must not give the same workers back again)
-            this.ready = false; this.queue = []; this.tilesLoaded = false; this.seq = 0; this.jumped = 0;
+            this.ready = false; this.queue = []; this.tilesLoaded = false; this.seq = 0; this.buffer = undefined; this.jumped = 0;
             this.loadedSources.clear(); // (the new engine has no tiles)
             const fresh = this.canvas.cloneNode() as HTMLCanvasElement, tr = this.tr;
             this.canvas.replaceWith(fresh);
@@ -654,6 +654,8 @@ export class Map {
     readonly overlays = new Set<() => void>();
     /** The `idle` report of the worker that waited for the page to show its frame (see `onEngineEvent`). */
     private shown?: EngineEvent;
+    /** The size of the drawing buffer after the last resize, as the engine reports it, and the time until which an `idle` waits for the canvas to have it (see `onEngineEvent`). */
+    private buffer?: [number, number, number];
     private onEngineEvent(e: EngineEvent) {
         if (__DEV__ && e.type !== 'camera' && e.type !== 'heights' && e.type !== 'result') this.note('engine: ' + e.type, e.type === 'pong' ? e.n : e.type === 'idle' ? {seq: e.seq, expected: this.seq} : e.type === 'frame' ? {first: !this.drew} : e.type === 'error' ? e.message : undefined);
         if (e.type === 'camera') {
@@ -712,11 +714,22 @@ export class Map {
             if (e.seq !== this.seq || this.restyled !== this.restyles || this.resolved?.waiting) return;
             // An engine in a worker sends `idle` once its frame has gone to the page (see `frame` in engine.ts), and the
             // page shows that frame when it next paints (#555). Wait for the page's next frame; a hidden page runs none,
-            // so a timer ends the wait too.
+            // so a timer ends the wait too. The canvas of the page takes the size of a resized frame only when that frame
+            // arrives, which can be several frames after the resize (#950): the wait also lasts until the canvas has the
+            // size of the drawing buffer after the last resize, until a second after that resize. (The engine reports that size: the
+            // browser clamps a large canvas.)
             if (this.renderer === 'worker' && this.shown !== e) {
                 let done = false;
-                const go = () => { if (!done && !this.removed) { done = true; this.shown = e; this.onEngineEvent(e); } };
-                requestAnimationFrame(go); setTimeout(go, 100);
+                const c = this.canvas;
+                const go = () => {
+                    if (done || this.removed) { done = true; return; }
+                    const b = this.buffer;
+                    if (b && (c.width !== b[0] || c.height !== b[1]) && performance.now() < b[2]) return;
+                    this.buffer = undefined; // (the size has arrived, or will not: later reports do not wait for it)
+                    done = true; this.shown = e; this.onEngineEvent(e);
+                };
+                const frame = () => { go(); if (!done) requestAnimationFrame(frame); }, timer = () => { go(); if (!done) setTimeout(timer, 100); };
+                requestAnimationFrame(frame); setTimeout(timer, 100);
                 return;
             }
             this.tilesLoaded = true;
@@ -746,6 +759,7 @@ export class Map {
         } else if (e.type === 'stats') {
             this.fire('stats', {fps: e.fps, frameMs: e.frameMs, labels: e.labels});
         } else if (e.type === 'resized') {
+            this.buffer = [...e.buffer, performance.now() + 1000];
             this.fire('resize');
         } else if (e.type === 'result') {
             const p = this.pending.get(e.id);
