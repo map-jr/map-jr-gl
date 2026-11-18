@@ -102,7 +102,7 @@ jobs:
             timeout: 20
           - part: host-worker
             renderer: worker
-            suites: 'test/host.mjs test/vue.mjs test/react.mjs test/loading.mjs'
+            suites: 'test/host.mjs test/vue.mjs test/element.mjs test/react.mjs test/loading.mjs'
             timeout: 20
     steps:
       - uses: actions/checkout@v4

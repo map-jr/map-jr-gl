@@ -304,6 +304,10 @@ uses this function for its `ssr` prop. For a pair `{light, dark}` in `style`, th
 style: `'dark'` uses `dark`, and each other value uses `light`. With React, call it on the server and give the result to the component. See
 [Vue and Nuxt](vue.md) and [React](react.md).
 
+`renderElement(description, options)` returns the markup of the element `<map-jr>` of `@map-jr/map-jr-gl/element`:
+the attributes from the description (`MapDescription`) and the result of `renderFirstView` as the children of the
+element. See [Server rendering](element.md#server-rendering) in the document of the web component.
+
 ## Credits
 
 The result of `renderToSVG` has `attribution`: the credits of the sources of the style, as a list of HTML strings.

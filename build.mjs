@@ -157,7 +157,7 @@ const esm = (input, extra = {}) => ({
 // Two entries in one build, so that they share their chunks: the main entry (the new API) and the entry that is a
 // replacement for MapLibre GL JS.
 // (The adapters for the frameworks are entries of the same build: they use the main entry's files. The framework itself is not in them.)
-const entries = {'map-jr-gl': 'src/index.ts', 'map-jr-gl-maplibre-compat': 'src/maplibre-compat.ts', vue: 'src/vue.ts', react: 'src/react.ts', svelte: 'src/svelte.ts', nuxt: 'src/nuxt.ts', controls: 'src/control-specs.ts'};
+const entries = {'map-jr-gl': 'src/index.ts', 'map-jr-gl-maplibre-compat': 'src/maplibre-compat.ts', vue: 'src/vue.ts', react: 'src/react.ts', svelte: 'src/svelte.ts', element: 'src/element.ts', nuxt: 'src/nuxt.ts', controls: 'src/control-specs.ts'};
 await run(esm(entries));
 // The development build of the same entries (`<name>.dev.js`, the `development` condition of package.json). It differs
 // from the build above in `__DEV__` only: it loads the checks for common mistakes (src/mistakes.ts) after the map has

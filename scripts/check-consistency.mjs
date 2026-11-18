@@ -39,6 +39,21 @@ for (const f of spec) {
     if (!vueDoc.includes('`' + kebab(f) + '`') && !vueDoc.includes('`' + f + '`') && !vueDoc.includes(':' + kebab(f)) && !vueDoc.includes(kebab(f) + '=')) fail('docs/vue.md', `the prop \`${kebab(f)}\` is not mentioned`);
 }
 
+// 2b. Each field of the description is a property or an attribute of the element <map-jr> (src/element.ts, and the
+//     table of attributes in src/element-attributes.ts), and is in docs/element.md. A field that the element gives in
+//     another way is named here with the word that the document must have.
+const elementOther = {nonce: 'nonce', onViewChange: 'map-viewchange', onColorSchemeChange: 'map-colorschemechange', onClick: 'map-click', onError: 'map-error'};
+{
+    const element = read('src/element.ts'), elementDoc = read('docs/element.md');
+    const properties = element.match(/const PROPERTIES = \[([^\]]*)\]/)?.[1] ?? '', attributes = read('src/element-attributes.ts').match(/export const ATTRIBUTES = \{([^}]*)\}/)?.[1] ?? '';
+    for (const f of spec) {
+        const prop = f === 'style' ? 'mapStyle' : f, attr = f === 'style' ? 'map-style' : kebab(f);
+        if (elementOther[f]) { if (!elementDoc.includes('`' + elementOther[f] + '`')) fail('docs/element.md', `\`${elementOther[f]}\` (the field \`${f}\` of the description) is not mentioned`); continue; }
+        if (!properties.includes(`'${prop}'`) && !new RegExp(`(^|[\\s,{])${f}:`).test(attributes)) fail('src/element.ts', `the element <map-jr> has no property (PROPERTIES) and no attribute (ATTRIBUTES in src/element-attributes.ts) for the field \`${f}\` of the description`);
+        if (!elementDoc.includes('`' + prop + '`') && !elementDoc.includes('`' + attr + '`')) fail('docs/element.md', `the property \`${prop}\` (the field \`${f}\` of the description) is not mentioned`);
+    }
+}
+
 // 3. Each member of the map object of the main API is in its document.
 for (const m of fields(host, 'MapInstance')) if (!api.includes(m)) fail('docs/api.md', `the member \`${m}\` of the map (MapInstance in src/host.ts) is not mentioned`);
 
@@ -69,7 +84,7 @@ for (const entry of Object.keys(pkg.exports ?? {})) {
     const names = new Set([...block.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/'([a-z.]+)'|^\s+([a-z.]+):/gm)].map(m => m[1] ?? m[2]));
     for (const drop of ['boxzoomstart', 'boxzoomcancel', 'boxzoomend', 'click', 'wheel', 'stats', 'styleimagemissing', 'terrain', 'geolocate', 'error']) names.add(drop);
     for (const name of names) if (!api.includes('`' + name + '`')) fail('docs/api.md', `the event \`${name}\` of the map (MapEvents in src/host.ts) is not in the table of events`);
-    for (const [file, word] of [['docs/vue.md', '@moveend'], ['docs/react.md', 'onMoveend'], ['docs/svelte.md', 'listen(']]) if (!read(file).includes(word)) fail(file, `the document does not say how an event of the map reaches the application (expected "${word}")`);
+    for (const [file, word] of [['docs/vue.md', '@moveend'], ['docs/react.md', 'onMoveend'], ['docs/svelte.md', 'listen('], ['docs/element.md', 'map-moveend']]) if (!read(file).includes(word)) fail(file, `the document does not say how an event of the map reaches the application (expected "${word}")`);
 }
 
 // 6. Links between the documents lead to files that exist.

@@ -7,6 +7,8 @@ import {CollisionGrid, placeLabels, renderItems, type RenderItem} from './placem
 import {DEFAULT_FONT, EstimateShaper} from './text.ts';
 import {dataTypeError, extended, styleFor, fillTemplate, svgSize, templateSlots, withData, VARIANT} from './markers.ts';
 import {renderSVG} from './svg.ts';
+import {ATTRIBUTES, VIEW_FIELDS, attributeOf, readAttribute} from './element-attributes.ts';
+import type {MapDescription} from './host.ts';
 import {pickImage} from './expr.ts';
 import {styleImages} from './style-images.ts';
 import type {ImageDecoder} from './contour.ts';
@@ -314,6 +316,56 @@ export async function renderFirstView(o: RenderOptions & {attribution?: string |
     const light = 'background:rgba(255,255,255,.75);color:#333', dark = 'background:rgba(30,30,30,.75);color:#ccc';
     const colors = o.colorScheme === 'dark' ? dark : o.colorScheme === 'auto' ? light + ';color-scheme:light dark;background:light-dark(rgba(255,255,255,.75),rgba(30,30,30,.75));color:light-dark(#333,#ccc)' : light;
     return made.svg + (credits.length ? `<div data-map-jr-ssr="" style="position:absolute;right:0;bottom:0;${colors};font:11px/1.4 sans-serif;padding:2px 6px">${credits.join(' ')}</div>` : '');
+}
+
+/** The options of `renderElement`: those of `renderToSVG` that the description does not give, and the attributes of the element. */
+export interface ElementRenderOptions extends Omit<RenderOptions, 'style' | 'colorScheme' | 'center' | 'zoom' | 'bearing' | 'bounds' | 'padding' | 'width' | 'height' | 'images' | 'fontFamily' | 'sources' | 'layers' | 'sprite' | 'terrain' | 'data'> {
+    /** The size in CSS pixels that the element has on most screens. The default is 800 by 500. */
+    width?: number;
+    height?: number;
+    /** The credits to show, when the server must not take them from the sources of the style. */
+    attribution?: string | string[];
+    /**
+     * More attributes of the element, by name: `{id: 'map', class: 'map', style: 'height:400px'}`. The text of `style`
+     * comes after `display:block;position:relative;overflow:hidden`, which the first view needs before the script runs.
+     */
+    attributes?: Record<string, string>;
+}
+
+/**
+ * The markup of the element `<map-jr>` of `@map-jr/map-jr-gl/element` for a description (`MapDescription`): an
+ * attribute for each field that has one, and the first view (the result of `renderFirstView`) as its children. The
+ * browser shows the first view before any script runs, and the map removes it after its first frame. The page gives
+ * the fields that have no attribute (`layers`, `data`, a style object) to the element as properties, with the same
+ * values as here. A render that fails does not fail the page: the result is the element without the first view, and
+ * the console has the error.
+ */
+export async function renderElement(description: MapDescription, options: ElementRenderOptions = {}): Promise<string> {
+    const d = description as MapDescription & Record<string, unknown>, quote = (t: string) => t.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+    const view: Record<string, unknown> = {...d.initialView, ...d.view}, attrs: string[] = [];
+    for (const [field, kind] of Object.entries(ATTRIBUTES)) {
+        const v = VIEW_FIELDS.includes(field) ? view[field] : field === 'projection' ? (d.projection as {type?: string} | null)?.type : d[field];
+        const text = v === undefined || v === null || v === false || typeof v === 'object' && !Array.isArray(v) ? undefined
+            : kind === 'b' || v === true ? '' : Array.isArray(v) ? v.join(kind === 'l' ? ' ' : ',') : String(v);
+        if (text !== undefined && readAttribute(kind, text) !== undefined) attrs.push(text ? `${attributeOf(field)}="${quote(text)}"` : attributeOf(field));
+    }
+    if (d.nonce) attrs.push(`nonce="${quote(d.nonce)}"`);
+    const {attributes = {}, width = 800, height = 500, attribution, ...rest} = options;
+    for (const name in attributes) {
+        if (!/^[a-z_:][\w:.-]*$/i.test(name) || /^on/i.test(name)) throw new Error(`[map-jr-gl] renderElement(): "${name}" is not the name of an attribute${/^on/i.test(name) ? ' that the element can have: an event handler attribute runs script' : ''}. Give names such as "id", "class" or "style".`);
+        if (name !== 'style') attrs.push(`${name}="${quote(attributes[name])}"`);
+    }
+    attrs.push(`style="${quote('display:block;position:relative;overflow:hidden;' + (attributes.style ?? ''))}"`);
+    let first = '';
+    try {
+        const fit = !d.view && d.initialView?.bounds;
+        first = await renderFirstView({...rest, style: d.style, center: (view.center as LngLatLike) ?? [0, 0], zoom: (view.zoom as number) ?? 0, bearing: view.bearing as number, bounds: fit ? fit as LngLatBoundsInput : undefined, padding: d.initialView?.padding,
+            width, height, images: d.images as RenderOptions['images'], sources: d.sources, layers: d.layers as RenderOptions['layers'], terrain: d.terrain, sprite: d.sprite, data: d.data, fontFamily: d.fontFamily,
+            attribution: d.attribution === false ? false : attribution, colorScheme: d.colorScheme ?? 'light'});
+    } catch (cause) {
+        console.error(`[map-jr-gl] renderElement(): the server render failed, and the element has no first view. The map draws in the browser. The cause: ${(cause as Error)?.message ?? cause}`);
+    }
+    return `<map-jr ${attrs.join(' ')}>${first}</map-jr>`;
 }
 
 /**
