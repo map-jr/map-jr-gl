@@ -1056,6 +1056,8 @@ export class Map {
     /** The last change of the style that the engine has got (`restyles`: the last that the page asked for). */
     private restyled = 0;
     private newStyle = false;
+    /** The new style came from `setStyle` without `diff`: its paint values do not transition (#960). */
+    private instant = false;
     /** The events after the style changed. `style.load` is only for a whole new style (the first one, or `setStyle`). */
     private styleEvents(whole: boolean) {
         // (As in MapLibre, a whole new style puts its projection in place first, and that fires `projectiontransition`.)
@@ -1134,7 +1136,7 @@ export class Map {
             this.restyled = turn;
             this.checkProjection();
             if (this.toggled.size) style.layers = style.layers.map(l => this.toggled.has(l.id) ? {...l, keep: true} : l);
-            this.post({type: 'style', style: {...style, sources}, reload, versions, data});
+            this.post({type: 'style', style: {...style, sources}, reload, versions, data, instant: this.newStyle && this.instant});
             this.sendGeo();
             this.styleEvents(this.newStyle);
             this.newStyle = false;
@@ -1301,6 +1303,7 @@ export class Map {
         if (options?.diff) for (const [id, src] of Object.entries<any>(next.sources ?? {})) { const old = this.rawStyle.sources?.[id]; if (old && equal(old, src)) next.sources[id] = old; }
         this.rawStyle = next;
         this.newStyle = true;
+        this.instant = !options?.diff;
         this.restyle(true);
     }
     getLayer(id: string) { return this.rawStyle?.layers.find((l: any) => l.id === id); }

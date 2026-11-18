@@ -135,6 +135,26 @@ The library compares each field with the field of the last description:
   a new object. Do not change the old object in place. This holds for the Vue component too: see
   [Vue and Nuxt](vue.md).
 
+### Paint transitions
+
+A new paint value of a layer that stays in the style moves from the old value to the new one, as in MapLibre GL JS.
+This holds for both entries: a new value in `update()` or `patch()` (in the style or in `layers` of the description),
+`setPaintProperty`, and `setStyle` with `diff` in `@map-jr/map-jr-gl/maplibre-compat`.
+
+- The time comes from the layer's `*-transition` property (for example `'fill-color-transition': {duration: 500}`),
+  then from the root property `transition` of the style, then from the default `{duration: 300, delay: 0}`. Both are
+  in milliseconds. The value waits for `delay` and then moves over `duration` with a cubic ease in and out.
+- Colours, numbers and lists of numbers of the same length (for example `fill-translate`) move. A zoom-dependent
+  value moves between the values at the zoom of each frame.
+- These change at once: a value that depends on the feature (an expression with `get` or `feature-state`, before or
+  after the change), `*-pattern`, `line-dasharray`, and a value of any other type.
+- Symbol layers, fill-extrusion layers and `fill-outline-color` do not transition: their tiles hold the values, and a
+  new value shows when the tiles are built again.
+- The map draws a frame for each animation frame until the last transition ends, and `idle` comes after it.
+- `{duration: 0}` in `transition` or in a `*-transition` makes changes instant. In the compat entry, `setStyle` with
+  `diff: false` changes every value at once, as in MapLibre GL JS. In the main API, a description whose style differs
+  in more than `layers` loads the style again, and its values change at once.
+
 ## The description
 
 | Field | Meaning |

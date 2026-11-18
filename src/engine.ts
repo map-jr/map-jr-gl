@@ -4,7 +4,7 @@ import {globeBuild} from './subdivide.ts';
 import {compileFor, IMAGE_OR, pickImage, type Feature, type MapStates} from './expr.ts';
 import {VARIANT, variantName} from './markers.ts';
 import {layerRules} from './rules.ts';
-import {compileLayer, isGeometrySource, screenTranslate, loadSprite, tileURL, type CompiledLayer, type FontSource, type ResolvedStyle, type Sprite, type SpriteIcon} from './style.ts';
+import {compileLayer, transition, isGeometrySource, screenTranslate, loadSprite, tileURL, type CompiledLayer, type FontSource, type ResolvedStyle, type Sprite, type SpriteIcon} from './style.ts';
 import {AtlasSpace} from './atlas-space.ts';
 import {GLRenderer, SPRITE_ATLAS, type DemRef, type GLTile, type TerrainTile} from './gl.ts';
 import {CollisionGrid, moveLabel, placeLabels, tooFar, renderItems, type Placed, type RenderItem} from './placement.ts';
@@ -42,7 +42,8 @@ export type Command =
     /** Throws away a source's tiles (all sources if none is named) and loads them again. */
     | {type: 'refresh'; source?: string}
     | {type: 'style'; style: ResolvedStyle; reload: boolean; /** A number for each source that changes when the page changes what its tiles are built from. */ versions?: Record<string, number>;
-        /** The data of the GeoJSON sources that are new or changed since the last style (the sources in `style` carry no data). */ data?: Record<string, unknown>}
+        /** The data of the GeoJSON sources that are new or changed since the last style (the sources in `style` carry no data). */ data?: Record<string, unknown>;
+        /** A whole new style (`setStyle` without `diff`): its paint values do not transition from the style before. */ instant?: boolean}
     /**
      * The images that are SVG templates: the slots of each one by name. `changed` has the names whose template is new,
      * other or gone: their variants are dropped and asked for again. `rebuild`: the slots are different, so tiles are built again.
@@ -301,6 +302,8 @@ export class Engine {
     private cameraMovedAt = -1e9;
     /** How many sprite and font downloads are in progress. */
     private spritePending = 0;
+    /** When the last paint transition ends (#960): the map draws until then and is not idle. */
+    private transitionEnd = 0;
     /** The answers that the page requested before the engine started, while the first style is set. */
     private answered?: Map<string, Promise<Response>>;
     private lastPlace = -Infinity;
@@ -676,7 +679,7 @@ export class Engine {
     /** The sources with `encoding: 'custom'` whose factors got the message of `setStyle`. */
     private toldEncoding = new Set<string>();
 
-    private setStyle(style: ResolvedStyle, reload: boolean, data?: Record<string, unknown>) {
+    private setStyle(style: ResolvedStyle, reload: boolean, data?: Record<string, unknown>, instant?: boolean) {
         // (A new style can have an image that the style before did not have: the engine asks the page again, #628.)
         if (reload) this.missing.clear();
         // `encoding: 'custom'` of a `raster-dem` source (#590): the factors and the shift come from the style or from a
@@ -705,11 +708,18 @@ export class Engine {
         // Another source shapes the ground, or none: the elevation tiles that are loaded go in or out of the ground.
         const was = this.style?.terrain?.source, now = style.terrain?.source;
         if (was !== now) for (const [key, t] of this.tiles) { const source = key.slice(0, key.lastIndexOf('|')); if (source === was) this.ground(key, t, false); else if (source === now) this.ground(key, t, true); }
+        const before = this.style;
         this.style = style;
         this.styleVersion++;
         this.states.g = style.state ?? {};
         compileFor(this.states);
+        const olds = new Map(this.layers.map(l => [l.id, l])), at = performance.now();
         this.layers = style.layers.map(compileLayer).filter((l): l is CompiledLayer => !!l);
+        // (A changed paint value of a layer that stays moves to the new value over its transition, #960.)
+        if (before && !instant) {
+            const json = new Map(style.layers.map(l => [l.id, l]));
+            for (const l of this.layers) { const was = olds.get(l.id); if (was) this.transitionEnd = Math.max(this.transitionEnd, transition(l, json.get(l.id)!, was, style.transition, at)); }
+        }
         this.zoomBuilt = new Set(this.layers.filter(l => l.type === 'fill-extrusion' && Object.values(l.p).some((p: any) => p?.dd && p.zoom)).map(l => l.source));
         this.imageSources = Object.keys(style.sources).filter(name => /^raster/.test(style.sources[name].type) && this.layers.some(l => l.source === name && l.visible));
         if (style.sprite && style.sprite !== this.spriteUrl) {
@@ -953,7 +963,7 @@ export class Engine {
                 break;
             case 'style':
                 this.versions = c.versions ?? {};
-                this.setStyle(c.style, c.reload, c.data ?? {});
+                this.setStyle(c.style, c.reload, c.data ?? {}, c.instant);
                 // The tiles that the changed style needs are asked for now, not in the next frame: a page can show a
                 // layer for a moment only (to load one layer after another), and a frame can come later than that.
                 if (!this.exaggeration && this.tr.width) for (const source in this.style.sources) {
@@ -1448,6 +1458,8 @@ export class Engine {
 
     private frame(now: number) {
         const tr = this.tr, frameNo = ++this.frameNo, began = performance.now();
+        // (After the last paint transition the layers get their new values back, and a frame does no work for them, #960.)
+        if (this.transitionEnd && began >= this.transitionEnd) { this.transitionEnd = 0; for (const l of this.layers) for (const k in l.p) l.p[k] = (l.p[k] as any).to ?? l.p[k]; }
         compileFor(this.states); // (the light of the style is compiled when it is drawn)
         if (!tr.width || !tr.height || this.lost || (tr.globeStops && !tr.globe)) return;
         // The fonts of the labels are looked up while the tiles load, and not in the first label placement (#326).
@@ -1768,7 +1780,7 @@ export class Engine {
             this.emit({type: 'camera', lng: tr.lng, lat: tr.lat, zoom: tr.zoom, bearing: tr.bearing, pitch: tr.pitch, elevation: tr.elevation, exaggeration: this.exaggeration, groundRange: tr.groundRange, padding: tr.padding, moving: animating, seq: this.seq,
                 grab: this.grab ? [this.grab.lng, this.grab.lat, this.grab.seq] : undefined});
         }
-        const busy = animating || fading || this.placeDirty || this.iconsRev !== this.iconsDone || behind || this.meshBehind || !!ground && this.demLoading;
+        const busy = animating || fading || began < this.transitionEnd || this.placeDirty || this.iconsRev !== this.iconsDone || behind || this.meshBehind || !!ground && this.demLoading;
         const idle = complete && !busy && !settling && !this.spritePending && !this.contourWait && !this.atlas.loading;
         // (The frame for the map at rest comes when the 200 ms are over, not 200 ms after this frame.)
         if (settling && !busy) setTimeout(() => this.repaint(), 200 - (began - this.cameraMovedAt));

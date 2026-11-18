@@ -466,6 +466,38 @@ for (const renderer of renderers) {
         }, renderer).catch(e => ({error: String(e)}));
         check(`[${renderer}] globalState: the description replaces the default of the style, a change repaints without a style request, a name left out goes back to the default, a new style keeps the values`,
             JSON.stringify(globalState) === JSON.stringify({start: '#00f', changed: '#0f0', requests: 0, cleared: '#f00', restyled: '#0f0'}), JSON.stringify(globalState));
+        // Paint transitions (#960): a new paint value in update() moves over the style's `transition` (here 3 s), the map
+        // is not idle until it ends, and a `*-transition` of duration 0 changes the value at once. (`toBlob` waits for
+        // `idle`, so a screenshot of the page reads the colour in the middle.)
+        const transitioned = await (async () => {
+            const red = async () => page.evaluate(async png => { const bmp = await createImageBitmap(await (await fetch('data:image/png;base64,' + png)).blob()), c = Object.assign(document.createElement('canvas'), {width: 1, height: 1}).getContext('2d'); c.drawImage(bmp, 0, 0); return c.getImageData(0, 0, 1, 1).data[0]; }, (await page.screenshot({clip: {x: 50, y: 40, width: 1, height: 1}})).toString('base64'));
+            const wait = ms => new Promise(r => setTimeout(r, ms)), out = {};
+            const idle = () => page.evaluate(() => new Promise(r => { const h = window.transitionHost; if (h.state.get().idle) r(); else h.state.subscribe(s => s.idle, i => i && r()); }));
+            await page.evaluate(renderer => {
+                const make = window.transitionStyle = (c, own) => ({version: 8, transition: {duration: 3000, delay: 0}, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': c, ...own}}]});
+                const el = window.transitionEl = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:100px;height:80px;z-index:99999'}));
+                window.transitionSpec = {style: make('#000'), renderer, attribution: false};
+                window.transitionHost = window.t.lib.createMap(el, window.transitionSpec);
+            }, renderer);
+            await idle(); await wait(100);
+            out.start = await red();
+            const began = Date.now();
+            await page.evaluate(() => { const s = window.transitionSpec = {...window.transitionSpec, style: window.transitionStyle('#f00')}; window.transitionHost.update(s); });
+            await wait(1500);
+            out.middle = await red();
+            out.idleInMiddle = await page.evaluate(() => window.transitionHost.state.get().idle);
+            await idle();
+            out.took = Date.now() - began > 2500;
+            await wait(100);
+            out.end = await red();
+            await page.evaluate(() => { const s = window.transitionSpec = {...window.transitionSpec, style: window.transitionStyle('#000', {'background-color-transition': {duration: 0}})}; window.transitionHost.update(s); });
+            await wait(300);
+            out.instant = await red();
+            await page.evaluate(() => { window.transitionHost.destroy(); window.transitionEl.remove(); });
+            return out;
+        })().catch(e => ({error: String(e)}));
+        check(`[${renderer}] paint transitions: update() moves a background colour over the style's transition, idle waits for its end, and a duration of 0 is at once (#960)`,
+            transitioned.start === 0 && transitioned.middle > 40 && transitioned.middle < 215 && transitioned.idleInMiddle === false && transitioned.took && transitioned.end === 255 && transitioned.instant === 0, JSON.stringify(transitioned));
         // 3b2. The global state property `color-scheme` (#492): the map sets it to the resolved scheme, a change of the
         // scheme repaints a background and builds the tiles of an icon whose template parameter reads it, with no
         // request, and a value of `globalState` with that name wins until the description leaves it out.
