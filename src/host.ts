@@ -701,24 +701,41 @@ export function makeMap(container: HTMLElement | string, spec: MapDescription, n
     };
 
     // A new style object that differs from the old one only in the `paint`, `layout` and `filter` of its layers goes to
-    // the map as edits, as `setStyle(style, {diff: true})` of MapLibre GL JS does (#858). It returns false, with nothing
-    // changed, when anything else differs: a key of the style other than `layers`, the ids or the order of the layers,
-    // or another key of a layer (`minzoom` and `maxzoom` too: the map has no `setLayerZoomRange`).
+    // the map as edits, as `setStyle(style, {diff: true})` of MapLibre GL JS does (#858). A layer that is new or removed,
+    // and a new order of the layers, are edits too (#875). It returns false, with nothing changed, when anything else
+    // differs: a key of the style other than `layers`, a new layer whose source the map does not have, or another key of
+    // a layer that stays (`minzoom` and `maxzoom` too: the map has no `setLayerZoomRange`).
     const editStyle = (next: unknown, before: unknown, differ: (a: unknown, b: unknown) => boolean) => {
         type L = Record<string, unknown> & {id: string; paint?: Record<string, unknown>; layout?: Record<string, unknown>};
         const a = styleFor(next, styledDark) as Record<string, unknown>, b = styleFor(before, styledDark) as Record<string, unknown>;
         if (!a || !b || typeof a !== 'object' || typeof b !== 'object' || !Array.isArray(a.layers) || !Array.isArray(b.layers)) return false;
         const is = a.layers as L[], was = b.layers as L[], keys = ['paint', 'layout', 'filter'];
-        if (is.length !== was.length || Object.keys({...a, ...b}).some(k => k !== 'layers' && differ(a[k], b[k]))) return false;
-        if (is.some((l, i) => !l || l.id !== was[i]?.id || !map.getLayer(l.id) || Object.keys({...l, ...was[i]}).some(k => !keys.includes(k) && differ(l[k], was[i][k])))) return false;
-        is.forEach((l, i) => {
-            const w = was[i];
+        if (Object.keys({...a, ...b}).some(k => k !== 'layers' && differ(a[k], b[k]))) return false;
+        if (is.some(l => !l || typeof l.id !== 'string') || new Set(is.map(l => l.id)).size !== is.length) return false;
+        const old = (id: string) => was.find(w => w?.id === id), kept = is.filter(l => old(l.id));
+        for (const l of is) {
+            const w = old(l.id);
+            if (w ? !map.getLayer(l.id) || Object.keys({...l, ...w}).some(k => !keys.includes(k) && differ(l[k], w[k])) : map.getLayer(l.id) || typeof l.source === 'string' && !map.getSource(l.source)) return false;
+        }
+        // (The layers stay in place when the kept layers keep their order and every new layer comes after them.
+        // Otherwise the layers of the style are added again in their order, before the first layer that the application
+        // added after them, if any.)
+        const order = (x: L[]) => x.filter(l => l && (x === is ? old(l.id) : is.some(n => n.id === l.id))).map(l => l.id).join('\n');
+        const last = kept.length ? is.indexOf(kept[kept.length - 1]) : -1;
+        const moved = order(is) !== order(was) || is.some((l, i) => !old(l.id) && i < last);
+        const live = moved || kept.length < is.length ? (map.getStyle()!.layers as {id: string}[]).map(l => l.id) : [] as string[], ids = new Set(was.map(w => w?.id));
+        const anchor = live.slice(live.findLastIndex(id => ids.has(id)) + 1).find(id => !ids.has(id));
+        for (const w of was) if (w && !is.some(l => l.id === w.id) && map.getLayer(w.id)) map.removeLayer(w.id);
+        if (moved) for (const l of kept) map.removeLayer(l.id);
+        else for (const l of kept) {
+            const w = old(l.id)!;
             for (const g of ['paint', 'layout'] as const) {
                 const x = l[g] ?? {}, y = w[g] ?? {};
                 for (const k in {...x, ...y}) if (differ(x[k], y[k])) (g === 'paint' ? map.setPaintProperty : map.setLayoutProperty).call(map, l.id, k, x[k] === undefined ? undefined : copy(x[k]));
             }
             if (differ(l.filter, w.filter)) map.setFilter(l.id, l.filter === undefined ? undefined : copy(l.filter) as any);
-        });
+        }
+        for (const l of is) if (moved || !old(l.id)) map.addLayer(copy(l) as {id: string}, anchor);
         return true;
     };
 
