@@ -44,3 +44,7 @@ test('moves that are always less than 16 ms apart leave one sample for each 16 m
     for (let k = 0; k <= 8; k++) addTurnSample(fast, {t: k * 4, x: k, y: 0});
     assert.deepEqual(fast.map(s => s.t), [12, 28, 32]);
 });
+
+test('a rotate drag that holds still for more than 160 ms before the release gives no inertia, as in MapLibre GL JS (#939)', () => {
+    assert.equal(turnInertia([{t: 0, x: 0, y: 0}, {t: 16, x: 8, y: 0}], 266), undefined);
+});
