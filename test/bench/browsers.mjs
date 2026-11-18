@@ -50,10 +50,11 @@ if (!result.checks.some(c => c.loaded)) result.errors.push('bench: not run, beca
 else try {
     // (The page runs each scenario once. The machines of the workflow share their GPU with others, and one measurement
     // can be far off, so the page runs again, up to BENCH_RUNS times (3), while another run, as long as the longest so
-    // far, still ends within BENCH_BUDGET_MIN minutes (8) of the first start. The job has a limit of 40 minutes, and the
-    // behaviour tests after this script take up to 25 of them (run 44352973623, #947). One run takes 3 to 6 minutes.
+    // far, still ends within BENCH_BUDGET_MIN minutes (15) of the first start. The job has a limit of 55 minutes: setup
+    // takes up to 4, the checks 1, and the behaviour tests after this script up to 25 (run 44352973623, #947), so about
+    // 10 are left in the worst case. One run takes 5 to 7.5 minutes on the machines of the workflow, so they get two runs.
     // A run that does not end by then is stopped, and the rows that its page has are kept. The medians are over all the runs.)
-    const budget = +(process.env.BENCH_BUDGET_MIN ?? 8) * 60000, most = +(process.env.BENCH_RUNS ?? 3), t0 = Date.now(), lists = [];
+    const budget = +(process.env.BENCH_BUDGET_MIN ?? 15) * 60000, most = +(process.env.BENCH_RUNS ?? 3), t0 = Date.now(), lists = [];
     let page, longest = 0, partial = null;
     do {
         await page?.close();
