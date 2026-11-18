@@ -53,15 +53,15 @@ entry `@map-jr/map-jr-gl/maplibre-compat` of this library in its place. It uses 
 `image` expression. Each build runs the end-to-end tests of Maputnik and the scenarios below, which test what those
 tests do not.
 
-Maputnik 3.1.0 (63ae6a9). **Maputnik's own tests: 184 of 184 pass with this library, and 184 of 184 with MapLibre GL JS 6.18.0.**
+Maputnik 3.1.0 (fb8f67a). **Maputnik's own tests: 184 of 184 pass with this library, and 184 of 184 with MapLibre GL JS 6.18.0.**
 
 | Scenario | This library | MapLibre GL JS 6.18.0 |
 |---|---|---|
 | Loads the style elevation-color of map-jr-styles | Pass: layers: 113; messages of the editor: 0; errors: 0 | Pass: layers: 113; messages of the editor: 0; errors: 0 |
 | Loads the style liberty of OpenFreeMap | Pass: layers: 111; errors: 0 | Pass: layers: 111; errors: 0 |
 | Opens with the empty default style | Pass: errors: 0 | Pass: errors: 0 |
-| Suggests the properties of a source layer in the filter editor | Fail: properties of the layer "building": none (#765, #766) | Pass: properties of the layer "building": render_height, render_min_height, colour, hide_3d |
-| Shows the icons of the navigation control in the colours of the editor | Fail: icons with the colour of the editor: 0 of 3 (#758) | Pass: icons with the colour of the editor: 3 of 3 |
+| Suggests the properties of a source layer in the filter editor | Pass: properties of the layer "building": render_height, render_min_height, colour, hide_3d | Pass: properties of the layer "building": render_height, render_min_height, colour, hide_3d |
+| Shows the icons of the navigation control in the colours of the editor | Pass: icons with the colour of the editor: 3 of 3 | Pass: icons with the colour of the editor: 3 of 3 |
 <!-- maputnik:end -->
 
 <!-- styles:start -->
