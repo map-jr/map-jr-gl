@@ -25,7 +25,7 @@ export function launch() {
 // 16.4 cannot: the map then renders on the main thread, and a check of the worker renderer prints SKIP.
 export const workerRenders = page => page.evaluate(() => new Promise(resolve => {
     const w = new Worker(URL.createObjectURL(new Blob(['postMessage(typeof OffscreenCanvas !== "undefined" && !!new OffscreenCanvas(1, 1).getContext("webgl2"))'])));
-    w.onmessage = e => { resolve(e.data); w.terminate(); }; w.onerror = () => resolve(false);
+    w.onmessage = e => { resolve(e.data); w.terminate(); }; w.onerror = e => { e.preventDefault(); resolve(false); }; // (keeps the error of a worker that does not load from the page, #751)
 }));
 export const noWorkerRender = 'this browser cannot render in a worker';
 

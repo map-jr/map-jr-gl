@@ -248,6 +248,7 @@ export class Engine {
     /** `lastCamera` without the height of the ground and the exaggeration of the terrain. */
     private lastView = '';
     private wasIdle = false;
+    private inResize = false;
     /** The map has been idle once: the overview tiles wait for that (#326). */
     private wentIdle = false;
     /** When the previous frame began (performance.now()). */
@@ -857,8 +858,11 @@ export class Engine {
                 tr.width = c.width; tr.height = c.height; this.dpr = c.dpr;
                 this.renderer.resize(c.width, c.height, c.dpr);
                 this.placeDirty = true;
-                // Draw immediately: resizing clears the canvas, and waiting a frame would flash.
-                this.frame(performance.now());
+                // Draw immediately: resizing clears the canvas, and waiting a frame would flash. On the page this runs in
+                // the callback of the ResizeObserver, so `idle` waits for the next frame: code that runs on `idle` (a new
+                // map, for example) must not change the layout in that callback (#751).
+                this.inResize = true;
+                try { this.frame(performance.now()); } finally { this.inResize = false; }
                 this.emit({type: 'resized', width: c.width, height: c.height, dpr: c.dpr});
                 return;
             case 'jump': this.stop(); if (c.padding) tr.padding = c.padding; tr.set(c.center, c.zoom, c.bearing, c.pitch); if (c.center || c.zoom !== undefined) this.centreGiven = true; break;
@@ -1771,7 +1775,7 @@ export class Engine {
         // frame of the page later still (#555). The next animation frame of the worker starts once this frame has gone
         // to the page, so `idle` goes then; a hidden page runs no frames, so a timer sends it too.
         if (idle && !this.wasIdle) {
-            if (typeof document !== 'undefined') this.emit({type: 'idle', seq: this.seq});
+            if (typeof document !== 'undefined' && !this.inResize) this.emit({type: 'idle', seq: this.seq});
             else {
                 const seq = this.seq;
                 let sent = false;

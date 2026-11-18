@@ -336,6 +336,27 @@ for (const renderer of renderers) {
         }, renderer);
         check(`[${renderer}] the first idle of a map does not wait a fifth of a second for a camera that has just stopped (#436)`, Math.min(...firstIdle) < 200, JSON.stringify(firstIdle));
 
+        // `idle` does not come in the callback of the map's ResizeObserver (#751). The engine on the main thread draws the
+        // new size at once in that callback; code that runs on `idle` and changes the layout there (here, a new map) made
+        // WebKit report "ResizeObserver loop completed with undelivered notifications" as a page error.
+        const idleInObserver = await page.evaluate(async renderer => {
+            const t = window.t, Native = window.ResizeObserver, seen = [];
+            let inside = false;
+            window.ResizeObserver = class extends Native { constructor(cb) { super((...a) => { inside = true; try { cb(...a); } finally { inside = false; } }); } };
+            try {
+                for (let i = 0; i < 3; i++) {
+                    const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+                    const host = t.lib.createMap(el, {style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, renderer, attribution: false});
+                    await new Promise(r => { if (host.state.get().idle) r(); else host.state.subscribe(s => s.idle, v => { if (v) { seen.push(inside); r(); } }); });
+                    host.destroy(); el.remove();
+                }
+            } finally { window.ResizeObserver = Native; }
+            await new Promise(r => setTimeout(r, 100));
+            return seen;
+        }, renderer);
+        check(`[${renderer}] idle does not come in the callback of the map's ResizeObserver, and the page has no error from it (#751)`,
+            idleInObserver.length === 3 && !idleInObserver.includes(true) && !errors.some(e => e.includes('ResizeObserver')), JSON.stringify({idleInObserver, errors}));
+
         // A new height of the ground under the camera is not a movement (#436). 3D terrain that is switched on gives the
         // camera its height when the elevation data comes: the map is idle then, and not 200 to 400 ms later. The
         // elevation tiles are one picture in the page (1000 m everywhere), so no network decides the time. The shortest
@@ -343,7 +364,8 @@ for (const renderer of renderers) {
         // Elevation tiles are decoded in the tile workers, which needs OffscreenCanvas there (#778).
         const decodes = await page.evaluate(() => new Promise(resolve => {
             const w = new Worker(URL.createObjectURL(new Blob(['postMessage(typeof OffscreenCanvas !== "undefined" && typeof createImageBitmap !== "undefined")'])));
-            w.onmessage = e => { resolve(e.data); w.terminate(); }; w.onerror = () => resolve(false);
+            // (WebKit does not load this worker here: preventDefault keeps its error from the page, #751.)
+            w.onmessage = e => { resolve(e.data); w.terminate(); }; w.onerror = e => { e.preventDefault(); resolve(false); };
         }));
         const terrainName = `[${renderer}] 3D terrain that is switched on: the map is idle when the elevation data has come, not 200 ms after the camera got its height (#436)`;
         if (!decodes) skip(terrainName, 'no OffscreenCanvas in workers');
