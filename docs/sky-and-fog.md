@@ -12,15 +12,15 @@ a pitch of about 64° (estimated: at pitch 60 the horizon is 0.74 of the height 
 
 | Part | What it does | Estimated lines | Estimated size (gzip) |
 |---|---|---|---|
-| A | `maxPitch` up to 85, with a far plane and a tile cover that stop at the horizon | 30 | worker +150 B |
+| A | `maxPitch` up to 180, with a far plane and a tile cover that stop at the horizon, and the elevation of the camera above 90 | more than 30 | worker +150 B for the horizon; more for the elevation, not estimated |
 | B | The sky gradient above the horizon, and fog on 3D terrain, in Mercator | 45 | worker +0.6 to 0.9 KB, compat page script +80 B |
-| C | The atmosphere around the globe | 200, mostly GLSL | worker +1.5 to 2 KB |
+| C | The atmosphere around the globe: first a simple halo (the owner's decision of 2026-11-18) | under 50 for the halo; 200 for a port | worker under 0.5 KB for the halo; +1.5 to 2 KB for a port |
 
-### A. Pitch up to 85
+### A. Pitch up to 180
 
-- `setMaxPitch` caps the pitch at 60 (`src/map.ts:1000`); the constructor option does not. Raise the cap to 85. The
-  default stays 60, as in MapLibre GL JS. MapLibre GL JS allows up to 180; a pitch above 90 needs a camera elevation
-  and is not part of this plan.
+- `setMaxPitch` caps the pitch at 60 (`src/map.ts:1000`); the constructor option does not. Raise the cap to 180, as
+  MapLibre GL JS allows (the owner's decision of 2026-11-18). The default stays 60. Above 90 the camera looks up, so
+  it needs its elevation (`setCenterElevation`, a no-op today), and the render tests `high-pitch/pitch95*` check it.
 - The far plane in `tileMatrix4` (`src/geo.ts:318`) cuts the ground at about 4 times the camera distance at pitch 85,
   while the horizon of MapLibre GL JS is at about 7.6 times. Port the horizon of MapLibre GL JS
   (`getMercatorHorizon`, `mercator_transform.ts:880-917`): the horizon is at
@@ -59,8 +59,8 @@ precision of a 16-bit depth buffer with a far plane about 80 times the near plan
 
 ### C. The atmosphere on the globe
 
-A port of `atmosphere.fragment.glsl` and `drawAtmosphere` (`webgl/draw/draw_sky.ts`) of MapLibre GL JS: the sun
-position comes from `light`, and the blend is `atmosphere-blend` times the transition of the projection. The worker
+First a simple halo: a radial gradient in the sky colours around the globe. A port of `atmosphere.fragment.glsl` and `drawAtmosphere` (`webgl/draw/draw_sky.ts`) of MapLibre GL JS: the sun
+position comes from `light`, and the blend is `atmosphere-blend` times the transition of the projection, follows only if the halo is too far from the render tests. The worker
 pays for it on every map, because the globe code is built into the worker file (`src/engine.ts:673`).
 
 ## Render tests
