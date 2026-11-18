@@ -787,7 +787,7 @@ stop(); // stops the first subscription
 | `idle` | Nothing moves and nothing loads. |
 | `moving` | The camera moves. |
 | `view` | `{center, zoom, bearing, pitch, bounds}`. `bounds` is `[[west, south], [east, north]]`: the smallest box that contains the visible map, also with bearing and pitch, as `getBounds()` gives it in MapLibre GL JS. It changes when the map moves and when the size of the map changes. |
-| `hover` | The features of `interactiveLayers` under the pointer, the top one first. |
+| `hover` | The features of `interactiveLayers` under the pointer, the top one first. The map asks the engine at most once in a frame, for the last position of the pointer, so the value can come one frame after the move. |
 | `pointer` | Where the pointer is while it is over the map: `{point: {x, y}, lngLat: [lng, lat]}`, with `point` in CSS pixels from the top left corner of the map. It is `null` before the first move and after the pointer leaves the map. It changes at each move of the mouse, also without `interactiveLayers`, and a touch does not set it. |
 | `renderer` | `'worker'` or `'main'`, when the map has started. |
 | `colorScheme` | `'light'` or `'dark'`: `colorScheme` of the description, with `'auto'` resolved by `prefers-color-scheme`. |

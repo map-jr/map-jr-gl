@@ -2,7 +2,7 @@ import {fetchWith, withTimeout, type RequestAnswer} from './requests.ts';
 import {protocolListeners, protocols, toBytes} from './protocols.ts';
 import {LngLat, LngLatBounds, type LngLatBoundsInput} from './lnglat.ts';
 import type {FilterSpecification} from './compat-types.ts';
-import {MAX_PITCH, Transform, fitBox, globeStops, groundHeight, heightsChanged, mercX, mercY, sides, toLngLat, type LngLatLike} from './geo.ts';
+import {MAX_PITCH, Transform, bezier, fitBox, turnInertia, globeStops, groundHeight, heightsChanged, mercX, mercY, sides, toLngLat, type LngLatLike} from './geo.ts';
 import type {PreparedSource} from './geojson.ts';
 import {DEFAULT_FONT, absolute, keep, kept, resolveStyle, type ResolvedStyle} from './resolve.ts';
 import {layerRules} from './rules.ts';
@@ -1255,10 +1255,11 @@ export class Map {
     }
     /** Sets the sky above the horizon and the fog on 3D terrain (the `sky` of the style); `null` removes them. */
     setSky(sky?: Record<string, unknown> | null) {
-        return this.editStyle(s => { if (sky) s.sky = {...sky}; else delete s.sky; });
+        // As in MapLibre GL JS, removing a sky leaves `sky: null` in the style, and removing none changes nothing.
+        return this.editStyle(s => { if (sky) s.sky = {...sky}; else if (s.sky !== undefined) s.sky = null; });
     }
-    /** The `sky` of the style, or undefined when the style has none. */
-    getSky(): Record<string, unknown> | undefined { return this.rawStyle?.sky; }
+    /** The `sky` of the style: `undefined` when the style has none, and `null` after `setSky(null)` removed it. */
+    getSky(): Record<string, unknown> | null | undefined { return this.rawStyle?.sky; }
     /** A source or a style that cannot be used: the map reports it, and draws the rest of the style or keeps its style. */
     private sourceFailed = (error: unknown) => { this.fire('error', {error}); };
     /**
@@ -1753,7 +1754,7 @@ export class Map {
         // `isActive()` of a handler is true from the start of its gesture (see where each is set) until a pointer of the gesture lifts.
         const rest = () => { for (const h of [this.dragPan, this.dragRotate, this.touchZoomRotate, this.touchPitch, this.boxZoom]) h.active = false; };
         this.inputCleanup.push(rest);
-        let rotating = false, moved = 0, samples: {t: number; x: number; y: number}[] = [], pinch: {dist: number; angle: number} | null = null;
+        let rotating = false, moved = 0, samples: {t: number; x: number; y: number}[] = [], aim = {b: 0, p: 0}, pinch: {dist: number; angle: number} | null = null;
         // Wheel events do not say what produced them. As MapLibre does, tell mouse wheels from trackpads by their
         // deltas and timing, because the two need different handling to feel right.
         let wheelKind: 'wheel' | 'trackpad' | null = null, lastWheel = 0, held = 0, heldTimer: ReturnType<typeof setTimeout> | undefined;
@@ -1780,7 +1781,7 @@ export class Map {
             lastPointerType = e.pointerType;
             pointers.set(e.pointerId, p);
             rotating = e.button === 2 || e.ctrlKey;
-            moved = 0; samples = []; pinch = null; this.held = null;
+            moved = 0; samples = []; aim = {b: this.tr.bearing, p: this.tr.pitch}; pinch = null; this.held = null;
             if (pointerEvent('start', e)) inert = true;
             if (inert) return;
             // Shift and drag: a box to zoom to.
@@ -1855,7 +1856,7 @@ export class Map {
             } else if (tapDrag && pointers.size === 1) {
                 // Second tap held and dragged: down zooms in, up zooms out, around where the taps landed.
                 if (moved > 6) { tapDrag.zoomed = true; this.post({type: 'zoom', delta: dy * 0.01, x: tapDrag.x, y: tapDrag.y}); }
-            } else if (rotating) { if (this.dragRotate.isEnabled()) { this.dragRotate.active = true; this.post({type: 'rotate', delta: turn(prev, p), pitch: -dy * 0.5}); } } // right- or ctrl-drag: turn and tilt
+            } else if (rotating) { if (this.dragRotate.isEnabled()) { this.dragRotate.active = true; const b = turn(prev, p), t = performance.now(); aim = {b: aim.b + b, p: Math.max(this.tr.minPitch, Math.min(this.tr.maxPitch, aim.p - dy * 0.5))}; if (t - (samples[samples.length - 1]?.t ?? -99) < 16) samples.pop(); samples.push({t, x: aim.b, y: aim.p}); while (samples[0].t < t - 160) samples.shift(); this.post({type: 'rotate', delta: b, pitch: -dy * 0.5}); } } // right- or ctrl-drag: turn and tilt
             else if (moved > 3 && pointers.size === 1 && this.dragPan.isEnabled() && !(e.pointerType === 'touch' && this.gate?.('touch_pan', e))) {
                 if (!this.dragging) this.fire('dragstart', {originalEvent: e});
                 this.dragging = this.dragPan.active = true;
@@ -1929,6 +1930,11 @@ export class Map {
             // Inertia from the last 60ms of movement; a pointer that stopped before release gives none.
             const last = samples[samples.length - 1];
             const first = samples.find(s => now - s.t <= 60) ?? last;
+            // A rotate drag turns on as in MapLibre GL JS (see `turnInertia`). Its samples are the bearing and the pitch
+            // that the drag asked for, because the view of a worker renderer can be a frame behind.
+            const spin = rotating && this.dragRotate.isEnabled() && turnInertia(samples, now);
+            if (rotating) samples = [];
+            if (spin) this.easeTo({bearing: last.x + spin.bearing, pitch: last.y + spin.pitch, duration: spin.duration, easing: bezier(0, 0, 0.3, 1)});
             if (wasDragging && last && first !== last && now - last.t < 60 && (last.x !== first.x || last.y !== first.y)) {
                 this.awaitingInertia = true;
                 this.post({type: 'fling', dx: last.x - first.x, dy: last.y - first.y, ms: now - first.t});

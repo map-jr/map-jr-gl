@@ -617,11 +617,14 @@ export function makeMap(container: HTMLElement | string, spec: MapDescription, n
     map.on('moveend', () => moved(false));
     map.on('resize', () => moved(state.get().moving));
 
-    // The features under the pointer: one query at a time, and the last position is asked again when it has changed.
+    // The features under the pointer: one query at a time and at most one in a frame (#694). The moves of a frame make
+    // one query for the last of them, and the last position is asked again when it has changed during a query.
     const hover = async () => {
         if (asking || !alive) return;
         asking = true;
         while (alive) {
+            await new Promise(r => requestAnimationFrame(r));
+            if (!alive) break;
             const at = pointer, layers = now.interactiveLayers;
             // (A query is rejected when the map is removed or loses its WebGL context: nothing is under the pointer then.)
             const found = at && layers?.length ? await map.queryFeatures(at, {layers}).catch(() => []) : [];
