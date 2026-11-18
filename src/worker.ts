@@ -6,9 +6,13 @@ import {PortBackend, serveTiles} from './tiles.ts';
 /** One worker script, two roles: a tile parser, or the host of the whole rendering engine. */
 const scope = self as unknown as {onmessage: ((e: MessageEvent) => void) | null; postMessage(m: unknown): void};
 // Engines hosted here, by the id the page gave each; one worker can serve tiles for many maps and host an engine too.
+/** The ports of the maps that this worker serves tiles for, by the id that the page gave each. */
+const tilePorts = new Map<number, MessagePort>();
 scope.onmessage = e => {
     const m = e.data;
-    if (m.role === 'tiles') serveTiles(m.port);
+    if (m.role === 'tiles') { tilePorts.set(m.id, m.port); serveTiles(m.port); }
+    // The page drops the port of a map that it no longer uses (its engine worker ended, or the map was removed; #838).
+    else if (m.role === 'drop') { const p = tilePorts.get(m.id); tilePorts.delete(m.id); if (p) { p.onmessage = null; p.close(); } }
     else if (m.role === 'engine') {
         try {
             const engine = new Engine(m.canvas, m.options, m.ports.map((p: MessagePort) => new PortBackend(p)), ev => scope.postMessage(ev));

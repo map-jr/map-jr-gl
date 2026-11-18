@@ -1081,7 +1081,11 @@ for (const mode of renderers) {
 
     // A lost WebGL context during an `easeTo`: the new engine runs the animation for the time that is left, so the camera
     // reaches the target and `moveend` fires once (#807). On the worker, the workers of the first start lose their context
-    // 600 ms after they get the `ease` (only the engine worker has one).
+    // 600 ms after they get the `ease` (only the engine worker has one). A browser that cannot render in a worker has
+    // no engine worker to lose its context: the map draws on the main thread from the start.
+    const easeName = `[${mode}] a lost WebGL context during an easeTo: the camera reaches the target and moveend fires once`;
+    if (!workerCan) skip(easeName, noWorkerRender);
+    else {
     const easeLost = await page.evaluate(async mode => {
         const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
         const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:300px;height:200px'}));
@@ -1100,8 +1104,9 @@ for (const mode of renderers) {
         m.remove(); el.remove();
         return out;
     }, mode);
-    check(`[${mode}] a lost WebGL context during an easeTo: the camera reaches the target and moveend fires once`,
+    check(easeName,
         easeLost.events.includes('webglcontextrestored') && easeLost.events.filter(e => e === 'moveend').length === 1 && Math.abs(easeLost.lng - 20) < 1e-6 && Math.abs(easeLost.lat - 10) < 1e-6 && Math.abs(easeLost.zoom - 4) < 1e-6, JSON.stringify(easeLost));
+    }
 
     // queryRenderedFeatures, as in MapLibre but with a promise: at a point, in a box, and with a list of layers.
     const rendered = await page.evaluate(async () => {
@@ -2010,6 +2015,39 @@ for (const mode of renderers) {
         }, [lib, mode]);
         const ours = await run('ours', mode), ml = mode === 'main' ? await run('ml', mode) : {same: 0, paint: 1, sprite: 1, whole: 1, listener: 2};
         check(`[${mode}] compat: the style.load events of setStyle are those of MapLibre GL JS (the same style, a paint change, another sprite, diff: false, setStyle in a listener of style.load) (#743)`,
+            JSON.stringify(ours) === JSON.stringify(ml), JSON.stringify({ours, maplibre: ml}));
+    }
+    // A GeoJSON source whose URL fails (404) is requested, and fires `error`, as often as in MapLibre GL JS 6.17: one time,
+    // and not again after a paint change or a setStyle (with `diff`) that keeps the source. `diff: false` loads it again.
+    // A second map with the same style object gets its own `error` (#809).
+    {
+        await page.route(/\/no-such-809\//, r => { globalThis.asked809++; return r.fulfill({status: 404, body: ''}); });
+        const run = (lib, mode) => page.evaluate(async ([lib, mode]) => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js'), wait = ms => new Promise(r => setTimeout(r, ms));
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const style = colour => ({version: 8, sources: {bad: {type: 'geojson', data: location.origin + '/no-such-809/a.geojson'}}, layers: [{id: 'bg', type: 'background', paint: {'background-color': colour}}, {id: 'c', type: 'circle', source: 'bad'}]});
+            const first = style('#fff'), errors = [0, 0], maps = [];
+            for (const i of [0, 1]) {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+                const m = new mod.Map({container: el, style: first, ...lib === 'ml' ? {} : {renderer: mode}, attributionControl: false, center: [0, 0], zoom: 1});
+                m.on('error', () => errors[i]++);
+                maps.push(m);
+                await wait(1500);
+            }
+            const [m] = maps, out = {start: [await window.asked809(), ...errors]};
+            const step = async (name, f) => { f(); await wait(1000); out[name] = [await window.asked809(), ...errors]; };
+            await step('paint', () => m.setPaintProperty('bg', 'background-color', '#eee'));
+            await step('sameObject', () => m.setStyle(first));
+            await step('newStyle', () => m.setStyle(style('#f00')));
+            await step('noDiff', () => m.setStyle(style('#f00'), {diff: false}));
+            for (const x of maps) { x.getContainer().remove(); x.remove(); }
+            return out;
+        }, [lib, mode]);
+        if (!await page.evaluate(() => !!window.asked809)) await page.exposeFunction('asked809', () => globalThis.asked809);
+        const once = async (lib, mode) => { globalThis.asked809 = 0; return run(lib, mode); };
+        const ours = await once('ours', mode), ml = mode === 'main' ? await once('ml', mode) : {start: [2, 1, 1], paint: [2, 1, 1], sameObject: [2, 1, 1], newStyle: [2, 1, 1], noDiff: [3, 2, 1]};
+        await page.unroute(/\/no-such-809\//);
+        check(`[${mode}] compat: a GeoJSON source that fails is requested and fires error as in MapLibre GL JS after a paint change and setStyle (#809)`,
             JSON.stringify(ours) === JSON.stringify(ml), JSON.stringify({ours, maplibre: ml}));
     }
     // The kept network result of a source: new data at the same URL stays after a change of the style, and two maps

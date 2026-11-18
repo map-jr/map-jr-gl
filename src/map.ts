@@ -1258,6 +1258,9 @@ export class Map {
         // (With `diff`, as in MapLibre GL JS 6.17: a style that differs from this one only in the camera changes nothing
         // and fires no event. Any other style fires `style.load`.)
         if (options?.diff && sameStyle(this.rawStyle, next)) return;
+        // (With `diff`, a source that is equal to the one before keeps its object, so that its data, or the failure of its
+        // request, is not fetched again, as in MapLibre (#809).)
+        if (options?.diff) for (const [id, src] of Object.entries<any>(next.sources ?? {})) { const old = this.rawStyle.sources?.[id]; if (old && equal(old, src)) next.sources[id] = old; }
         this.rawStyle = next;
         this.newStyle = true;
         this.restyle(true);

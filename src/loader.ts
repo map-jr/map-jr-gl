@@ -138,6 +138,8 @@ export function workerReady(w: Worker, timeout = 8000): Promise<Worker> {
 }
 
 /** Tile workers are shared by every map on the page: a dozen maps should not mean four dozen workers. */
+/** Numbers the channels to the tile workers, so a tile worker can close the end of one; unique on the page. */
+let channels = 0;
 let pool: {key: unknown; workers: Promise<Worker[]>; users: number} | null = null;
 export async function acquireTileWorkers(o: LoadOptions): Promise<{connect(): MessagePort[]; release(): void}> {
     const key = o.createWorker ?? defaults.createWorker ?? String(o.workerUrl ?? defaults.workerUrl ?? '');
@@ -148,15 +150,20 @@ export async function acquireTileWorkers(o: LoadOptions): Promise<{connect(): Me
     }
     const mine = pool, workers = await mine.workers;
     mine.users++;
-    let ports: MessagePort[] = [];
+    let ports: MessagePort[] = [], ids: number[] = [];
+    // The tile-worker end of a port that went to an engine worker can only be closed by the tile worker (#838).
+    const drop = () => { for (const id of ids) for (const w of workers) w.postMessage({role: 'drop', id}); };
     return {
         connect() {
+            drop();
             // Each map talks to each worker over its own channel, so their styles and requests stay separate.
-            ports = workers.map(w => { const ch = new MessageChannel(); w.postMessage({role: 'tiles', port: ch.port1}, [ch.port1]); return ch.port2; });
+            ids = workers.map(() => ++channels);
+            ports = workers.map((w, i) => { const ch = new MessageChannel(); w.postMessage({role: 'tiles', port: ch.port1, id: ids[i]}, [ch.port1]); return ch.port2; });
             return ports;
         },
         release() {
             for (const p of ports) { try { p.postMessage({type: 'close'}); p.close(); } catch { /* already transferred to the engine worker */ } }
+            drop();
             // A pool that a map with another worker URL replaced is shared no more, so its last map ends it too.
             if (--mine.users <= 0) { for (const w of workers) w.terminate(); if (pool === mine) pool = null; }
         },
