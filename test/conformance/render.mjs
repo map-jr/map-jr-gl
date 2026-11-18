@@ -93,6 +93,11 @@ async function worker(queue) {
                 const el = document.getElementById('map');
                 Object.assign(el.style, {width: width + 'px', height: height + 'px', position: 'relative'});
                 const errors = [];
+                // MapLibre's harness counts the time of `wait` with a clock of its own. Here, after a `wait` of a number of
+                // ms, `performance.now()` stays at that much later than the time when the operations before it ran, until
+                // the next operation, so that a paint transition is drawn at that point of its course (#960).
+                const clock = window.clock ??= (() => { const real = performance.now.bind(performance), c = {at: null}; performance.now = () => c.at ?? real(); return c; })();
+                clock.at = null;
                 const map = window.map = new window.mapjr.Map({container: el, style, renderer: 'main', attributionControl: false, interactive: false, tileWorkers: 1, ...(meta.maxPitch === undefined ? {} : {maxPitch: meta.maxPitch}), ...(meta.pixelRatio === undefined ? {} : {pixelRatio: meta.pixelRatio})});
                 map.on('error', e => errors.push(String(e.error?.message ?? e.error)));
                 let idle = false, at = '';
@@ -108,9 +113,11 @@ async function worker(queue) {
                 const operate = async () => {
                     for (const op of meta.operations ?? []) {
                         at = ` in the operation ${op[0]}`;
+                        const from = performance.now();
+                        if (!(op[0] === 'wait' && op.length > 1)) clock.at = null;
                         if (op[0] === 'wait') {
-                            if (op.length <= 1) while (!map.loaded()) await map.once('render');
-                            else { await sleep(op[1]); map._render(); }
+                            if (op.length <= 1) while (!map.loaded()) await Promise.race([map.once('render'), map.once('idle')]); // (`idle` can come after the last frame, for example at the end of a paint transition)
+                            else { await sleep(op[1]); clock.at = from + op[1]; map._render(); }
                         } else if (op[0] === 'idle') {
                             // MapLibre's harness waits for the next "idle" event, which its map fires when the harness stops
                             // the drawing without a stop. Here the wait ends also when the map fired the event after the last

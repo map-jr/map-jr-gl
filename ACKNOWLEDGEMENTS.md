@@ -11,6 +11,9 @@ BSD-3-Clause.
 - Map Jr. GL contains no files of MapLibre GL JS. All the code is new, except the CSS named below.
 - `update()` of the main API changes the layers of a new style object in place where only their `paint`, `layout` and
   `filter` differ, and moves the layers of `layers` to a new order without a new style. This follows the method of `diff` in the MapLibre style specification (BSD-3-Clause). The code is new.
+- Paint transitions follow the method of `Transitionable` and `TransitioningPropertyValue` of MapLibre GL JS
+  (BSD-3-Clause; `style/properties.ts`): the defaults, the order of `*-transition` and `transition`, the ease `easeCubicInOut`,
+  and which values move. The code is new.
 - At a high pitch, the line of the horizon (`getMercatorHorizon`) and the cutoff of labels far from the camera
   (`perspectiveRatioCutoff`) follow MapLibre GL JS (BSD-3-Clause). The code is new.
 - The sky and the fog of the root property `sky` follow the formulas of MapLibre GL JS (BSD-3-Clause; the shaders `sky` and `terrain` and `fog` in `shaders/_prelude_fog`). The code in `src/gl.ts` is new. The atmosphere on the globe is a close translation of `atmosphere.fragment.glsl` of MapLibre GL JS (BSD-3-Clause), changed, and follows its `drawAtmosphere`, `getSunPos` and `getAtmosphereAltitudeBlend`; the notice is in `THIRD-PARTY-LICENSES.md`.

@@ -104,6 +104,8 @@ const HEATMAP_COLORS = ['interpolate', ['linear'], ['heatmap-density'], 0, 'rgba
 export interface CompiledLayer {
     id: string; type: string; source?: string; sourceLayer?: string; minzoom: number; maxzoom: number;
     visible: boolean; /** Built also while it is not visible. */ keep?: boolean; filter: Fn | null; p: Record<string, Prop>;
+    /** The paint values as JSON, as they were when the layer was compiled (the page can change the style object in place). */
+    paint: Record<string, string>;
     ssr?: SSROverrides;
     /** Heatmap layers: the colour for each density (see colorRamp). Line layers: the colours of `line-gradient` along the line. */
     ramp?: Uint8Array;
@@ -186,6 +188,45 @@ export function compileLayer(l: LayerJSON): CompiledLayer | null {
         minzoom: l.minzoom ?? -2, maxzoom: l.maxzoom ?? 24,
         // Pattern fills need sprite images, which are not supported yet; hiding them beats drawing solid black.
         visible: l.layout?.visibility !== 'none', keep: l.keep, filter: own && extra ? c => own(c) && extra(c) : own ?? extra, p,
+        paint: Object.fromEntries(Object.entries(l.paint ?? {}).map(([k, v]) => [k, JSON.stringify(v)])),
     };
+}
+
+const ease = (t: number) => 4 * (t < 0.5 ? t * t * t : 3 * (t - t * t) + t * t * t - 0.75);
+const numbers = (a: any) => Array.isArray(a) && a.every(x => typeof x == 'number');
+/** The value at `t` between `a` and `b`: numbers, and lists of numbers of one length (a colour premultiplied), else `b`. */
+function blend(a: any, b: any, t: number, color: boolean): any {
+    if (typeof a == 'number' && typeof b == 'number') return a + (b - a) * t;
+    if (!numbers(a) || !numbers(b) || a.length !== b.length) return b;
+    if (!color) return a.map((x: number, i: number) => x + (b[i] - x) * t);
+    const alpha = a[3] + (b[3] - a[3]) * t;
+    return [0, 1, 2].map(i => alpha && (a[i] * a[3] + (b[i] * b[3] - a[i] * a[3]) * t) / alpha).concat(alpha);
+}
+
+/**
+ * Paint transitions (#960), as in MapLibre GL JS: a paint value of `l` (compiled from `json`) that differs from the one
+ * of the same layer before (`was`, compiled from `old`) goes from the old value to the new one, eased, over the
+ * `duration` after the `delay` (ms) of its `*-transition`, or else of the style's `transition`, or else 300 and 0.
+ * Values that a feature decides, texts, and lists of another length change at once. Gives the end of the last one (0 for none).
+ */
+export function transition(l: CompiledLayer, json: LayerJSON, was: CompiledLayer, root: {duration?: number; delay?: number} | undefined, now: number): number {
+    let last = 0;
+    if (was.type !== l.type) return last;
+    for (const k in l.p) {
+        const [name, kind] = SPEC[l.type][k], from = was.p[k], to = l.p[k];
+        if (kind === 'raw' || kind === 'discrete' || from.dd || to.dd) continue;
+        // (A value that did not change keeps the transition that it is in.)
+        if (l.paint[name] === was.paint[name]) { if ((from as any).end > now) { l.p[k] = from; last = Math.max(last, (from as any).end); } continue; }
+        const o = {duration: 300, delay: 0, ...root, ...json.paint?.[name + '-transition']}, begin = now + (+o.delay || 0), span = +o.duration || 0, end = begin + span;
+        if (end <= now) continue;
+        last = Math.max(last, end);
+        l.p[k] = {dd: false, zoom: true, tokens: to.tokens, end, to, eval(zoom, f) {
+            const t = performance.now();
+            if (t >= end) return to.eval(zoom, f);
+            const a = from.eval(zoom, f);
+            return t < begin ? a : blend(a, to.eval(zoom, f), ease((t - begin) / span), kind === 'color');
+        }} as Prop;
+    }
+    return last;
 }
 
