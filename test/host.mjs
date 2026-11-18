@@ -208,6 +208,35 @@ for (const renderer of renderers) {
             return {withLayer, without, raw, inPlace};
         });
         check(`[${renderer}] update with a new style: a layer comes and goes, and queries find features`, style.withLayer > 0 && style.without === 0 && style.raw > 0, JSON.stringify(style));
+
+        // A new order of the layers of `layers`, and a new layer before one that stays: the map moves and adds the layers
+        // and loads no style (#859).
+        const order = await page.evaluate(async () => {
+            const t = window.t, map = t.host._map, wait = ms => new Promise(r => setTimeout(r, ms)), box = [{x: 0, y: 0}, {x: 900, y: 600}];
+            const fill = (id, color) => ({id, type: 'fill', source: 'omt', 'source-layer': 'water', paint: {'fill-color': color}});
+            const ours = () => map.getStyle().layers.map(l => l.id).filter(id => id.startsWith('o-')).join();
+            const top = async () => (await t.host.queryFeatures(box, {layers: ['o-a', 'o-b', 'o-c']}))[0]?.layer?.id;
+            const base = t.spec.layers ?? [];
+            t.host.update(t.spec = {...t.spec, layers: [...base, fill('o-a', '#f00'), fill('o-b', '#00f')]});
+            await wait(1200);
+            const first = {order: ours(), top: await top()};
+            let loads = 0;
+            const count = () => loads++;
+            map.on('style.load', count);
+            t.host.update(t.spec = {...t.spec, layers: [...base, fill('o-b', '#00f'), fill('o-a', '#f00')]});
+            await wait(1200);
+            const swapped = {order: ours(), top: await top()};
+            t.host.update(t.spec = {...t.spec, layers: [...base, fill('o-c', '#0f0'), fill('o-b', '#00f'), fill('o-a', '#f00')]});
+            await wait(1200);
+            const inserted = {order: ours(), top: await top()};
+            map.off('style.load', count);
+            t.host.update(t.spec = {...t.spec, layers: base});
+            await wait(800);
+            return {first, swapped, inserted, loads, gone: ours()};
+        });
+        check(`[${renderer}] update with a new order of layers, and with a new layer before one that stays: the map draws the new order and loads no style (#859)`,
+            order.first.order === 'o-a,o-b' && order.first.top === 'o-b' && order.swapped.order === 'o-b,o-a' && order.swapped.top === 'o-a'
+            && order.inserted.order === 'o-c,o-b,o-a' && order.inserted.top === 'o-a' && order.loads === 0 && order.gone === '', JSON.stringify(order));
         check(`[${renderer}] update with a style object that changes one filter and one paint value of a layer: the map edits the layer and loads no style (#858)`,
             style.inPlace.loads === 0 && style.inPlace.filtered === 0 && style.inPlace.color === '#00f' && style.inPlace.filter.includes('no-such-class'), JSON.stringify(style.inPlace));
 

@@ -10,7 +10,7 @@ BSD-3-Clause.
 - Map Jr. GL reads the MapLibre style specification and has an API that follows the API of MapLibre GL JS.
 - Map Jr. GL contains no files of MapLibre GL JS. All the code is new, except the CSS named below.
 - `update()` of the main API changes the layers of a new style object in place where only their `paint`, `layout` and
-  `filter` differ. This follows the method of `diff` in the MapLibre style specification (BSD-3-Clause). The code is new.
+  `filter` differ, and moves the layers of `layers` to a new order without a new style. This follows the method of `diff` in the MapLibre style specification (BSD-3-Clause). The code is new.
 - Some methods follow MapLibre GL JS, so that a map looks the same in the two libraries. Examples: the line breaks
   in labels, the light on buildings, the size of dashes, the size of circles on a map with pitch, and the movement of the camera
   on 3D terrain.
