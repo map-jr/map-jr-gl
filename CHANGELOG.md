@@ -62,6 +62,8 @@ This entry covers the changes after 0.7.0 (the tag `v0.7.0`).
   is not an unhandled rejection ([#835]), and `supported()` releases its WebGL2 probe context ([#833]).
 - Both entries: a map that connects to the tile workers again closes its old tile ports ([#849]).
 - Both entries: a frame moves the labels in place instead of making new objects for each label ([#892]).
+- Both entries: a `text-font` name with "|", also in a `format` section, keeps its family, and the section keeps its
+  color ([#941]).
 - `@map-jr/map-jr-gl/maplibre-compat`: a click on a `Marker` fires `click` on the marker ([#907]), and a rotate drag
   has inertia ([#903]), as in MapLibre GL JS.
 
@@ -104,6 +106,7 @@ This entry covers the changes after 0.7.0 (the tag `v0.7.0`).
 [#925]: https://github.com/map-jr/map-jr-gl/pull/925
 [#934]: https://github.com/map-jr/map-jr-gl/pull/934
 [#935]: https://github.com/map-jr/map-jr-gl/pull/935
+[#941]: https://github.com/map-jr/map-jr-gl/pull/941
 
 ## 0.7.0 (2026-11-17)
 
