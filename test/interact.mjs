@@ -1827,7 +1827,8 @@ for (const mode of renderers) {
         const failed = await page.evaluate(async mode => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), wait = ms => new Promise(r => setTimeout(r, ms));
             // (A map that never starts does not answer a query: the test must not wait for ever.)
-            const count = query => Promise.race([query.then(found => found.length), wait(4000).then(() => -1)]);
+            // (A query that loses the race is rejected by remove() at the end; its rejection is handled here, #787.)
+            const count = query => Promise.race([query.then(found => found.length, () => -2), wait(4000).then(() => -1)]);
             const make = style => {
                 const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
                 const m = new mod.Map({container: el, style, renderer: mode, attributionControl: false, center: [0, 0], zoom: 1}), seen = [];
@@ -1866,8 +1867,13 @@ for (const mode of renderers) {
             c.m.setPaintProperty('fill', 'fill-color', '#00f');
             await wait(1500);
             out.badSource = {seen: c.seen.slice(errorsBefore), later: await count(c.m.queryRenderedFeatures({layers: ['later']}))};
-            removeEventListener('unhandledrejection', onRejection);
+            // 5. Queries that nobody awaits, then remove(): as in MapLibre, whose queries are synchronous, the page hears of no rejection (#787).
+            const before5 = rejections.length;
+            c.m.queryRenderedFeatures({layers: ['fill']}); c.m.querySourceFeatures('g'); c.m.queryRenderedFeatures([10, 10]);
             for (const x of [a, b, c]) { x.m.remove(); x.el.remove(); }
+            await wait(300);
+            out.forgotten = rejections.slice(before5);
+            removeEventListener('unhandledrejection', onRejection);
             return {...out, rejections};
         }, mode);
         check(`[${mode}] a source that fails: one error with the URL, the other layers are drawn and load fires`,
@@ -1878,6 +1884,7 @@ for (const mode of renderers) {
             failed.badStyle.seen.length === 1 && /HTTP 404/.test(failed.badStyle.seen[0]) && !failed.badStyle.rejected && failed.badStyle.kept && !failed.rejections.length, JSON.stringify({...failed.badStyle, rejections: failed.rejections}));
         check(`[${mode}] addSource with no tiles and no url: one error that names the source, and later changes of the style work`,
             failed.badSource.seen.length === 1 && failed.badSource.seen[0].includes('"bad"') && failed.badSource.later > 0, JSON.stringify(failed.badSource));
+        check(`[${mode}] maplibre-compat: remove() with queries that nobody awaits gives no unhandled rejection (#787)`, failed.forgotten.length === 0, failed.forgotten.join(' | '));
         // (The browser writes its own line to the console for each 404 that this test asks for.)
         for (let i = errors.length; i-- > errorsBefore;) if (errors[i].startsWith('Failed to load resource')) errors.splice(i, 1);
     }

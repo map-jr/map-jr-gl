@@ -191,7 +191,7 @@ export class Map {
     protected zooming = false; protected rotating = false; protected pitching = false;
     /** Height grids of loaded elevation tiles (3D terrain), mirrored from the engine. */
     private heights = new globalThis.Map<string, Float32Array>();
-    private pending = new globalThis.Map<number, {resolve(v: any): void; reject(e: Error): void}>();
+    private pending = new globalThis.Map<number, {resolve(v: any): void; reject(e: Error): void; result?: Promise<unknown>}>();
     private nextQuery = 1;
     /** Which thread the engine ended up on. */
     renderer: 'worker' | 'main' = 'main';
@@ -1530,18 +1530,22 @@ export class Map {
     setMissingStyleImageResolver(resolver: ((id: string) => void | Promise<void>) | null) { this.imageResolver = resolver; return this; }
 
     // ---- queries ----
-    protected ask<T>(command: (id: number) => Command): Promise<T> {
-        return new Promise((resolve, reject) => {
-            const id = this.nextQuery++;
-            this.pending.set(id, {resolve, reject});
-            if (this.removed) this.drop('was removed'); else this.post(command(id));
-        });
+    /** (`then` makes the result from the answer. The promise that the caller gets is kept, so that `drop` can find it.) */
+    protected ask<T, R = T>(command: (id: number) => Command, then?: (answer: T) => R): Promise<R> {
+        const id = this.nextQuery++;
+        const answer = new Promise<T>((resolve, reject) => this.pending.set(id, {resolve, reject}));
+        const result = then ? answer.then(then) : answer as unknown as Promise<R>;
+        this.pending.get(id)!.result = result;
+        if (this.removed) this.drop('was removed'); else this.post(command(id));
+        return result;
     }
     /** @internal For the benchmark page (#360): the engine fires a `tile` event for each step of a tile and for each frame. */
     _tileReport(on: boolean) { this.post({type: 'tileReport', on}); }
     /** Rejects the queries that have no answer yet. The engine that had them is gone, so no answer can come. */
     private drop(why: string) {
-        for (const p of this.pending.values()) p.reject(new Error(`[map-jr-gl] The query has no answer: the map ${why}.`));
+        // (After `remove()`, a query that nobody awaits is not an unhandled rejection of the page: a caller that awaits
+        // still gets the error, but the page that forgot the query does not hear of it, as with MapLibre's synchronous queries.)
+        for (const p of this.pending.values()) { if (why === 'was removed') p.result?.catch(() => {}); p.reject(new Error(`[map-jr-gl] The query has no answer: the map ${why}.`)); }
         this.pending.clear();
     }
 
@@ -1612,7 +1616,7 @@ export class Map {
     /** The features that the style layers draw in the geometry that `rendered` takes, from the top layer down. */
     private queryLayers(geometry?: PointLike | [PointLike, PointLike], options?: RenderedQueryOptions): Promise<RenderedFeature[]> {
         const {box, sets, features} = this.rendered(geometry, options);
-        return sets.length ? this.ask<QueriedFeature[]>(id => ({type: 'queryRendered', id, box, sets, geometry: true})).then(features) : Promise.resolve([]);
+        return sets.length ? this.ask(id => ({type: 'queryRendered', id, box, sets, geometry: true}), features) : Promise.resolve([]);
     }
 
 

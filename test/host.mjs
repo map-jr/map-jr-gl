@@ -1734,11 +1734,15 @@ for (const renderer of renderers) {
             h.watchSource(sources[0], undefined, {}, () => watched++);
             const waits = said(h.once('dragend'));
             const pending = said(h.querySource(sources[0])), height = said(h.queryElevation([-74.0105, 40.7045]));
+            // (Queries that nobody awaits: destroy() must not make them unhandled rejections of the page, #787.)
+            h.queryFeatures({x: 450, y: 300}); h.querySource(sources[0]); h.queryElevation([-74.0105, 40.7045]);
+            const forgotten = [];
+            addEventListener('unhandledrejection', e => forgotten.push(String(e.reason?.message ?? e.reason)));
             h.destroy(); h.update(t.spec);
             const later = said(h.querySource(sources[0])), onceLater = said(h.once('idle'));
             const out = {canvas: !!document.querySelector('#host canvas'), waits: await waits, onceLater: await onceLater, pending: await pending, height: await height, later: await later};
             await new Promise(r => setTimeout(r, 300));
-            return {...out, clicks, watched};
+            return {...out, clicks, watched, forgotten};
         });
         check(`[${renderer}] destroy removes the map`, !end.canvas);
         const gone = '[map-jr-gl] The query has no answer: the map was removed.';
@@ -1746,6 +1750,7 @@ for (const renderer of renderers) {
             end.waits === '[map-jr-gl] once("dragend"): the map was removed.' && end.onceLater === '[map-jr-gl] once("idle"): the map was removed.', JSON.stringify(end));
         check(`[${renderer}] destroy rejects the queries that wait and a query after it, and onClick and a watchFeatures listener do not run after it`,
             end.pending === gone && end.height === gone && end.later === gone && end.clicks === 0 && end.watched === 0, JSON.stringify(end));
+        check(`[${renderer}] destroy with queries that nobody awaits gives no unhandled rejection (#787)`, end.forgotten.length === 0, end.forgotten.join(' | '));
         const other = errors.filter(e => !e.includes('thrown by the test')); // (the browser reports what the listener of 5b threw)
         check(`[${renderer}] no page errors`, other.length === 0, other.slice(0, 2).join(' | '));
     } catch (e) { check(`[${renderer}] the test run was completed`, false, String(e.message).split('\n')[0]); }
