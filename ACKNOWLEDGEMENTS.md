@@ -13,7 +13,7 @@ BSD-3-Clause.
   `filter` differ, and moves the layers of `layers` to a new order without a new style. This follows the method of `diff` in the MapLibre style specification (BSD-3-Clause). The code is new.
 - At a high pitch, the line of the horizon (`getMercatorHorizon`) and the cutoff of labels far from the camera
   (`perspectiveRatioCutoff`) follow MapLibre GL JS (BSD-3-Clause). The code is new.
-- The sky and the fog of the root property `sky` follow the formulas of MapLibre GL JS (BSD-3-Clause; the shaders `sky` and `terrain` and `fog` in `shaders/_prelude_fog`). The code in `src/gl.ts` is new.
+- The sky and the fog of the root property `sky` follow the formulas of MapLibre GL JS (BSD-3-Clause; the shaders `sky` and `terrain` and `fog` in `shaders/_prelude_fog`). The code in `src/gl.ts` is new. The fade of the halo of the atmosphere with the height of the camera follows `getAtmosphereAltitudeBlend` of MapLibre GL JS (BSD-3-Clause); the halo itself is new code.
 - Some methods follow MapLibre GL JS, so that a map looks the same in the two libraries. Examples: the line breaks
   in labels, the light on buildings, the size of dashes, the size of circles on a map with pitch, and the movement of the camera
   on 3D terrain.
