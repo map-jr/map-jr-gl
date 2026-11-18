@@ -191,13 +191,25 @@ for (const renderer of renderers) {
             t.host.update(t.spec = {...t.spec, style: added});
             await wait(200); await idle();
             const withLayer = (await t.host.queryFeatures(at, {layers: ['test-water']})).length;
+            // One filter and one paint value of a layer of a new style object: edits, and no new style (#858).
+            let loads = 0;
+            const count = () => loads++, map = t.host._map;
+            map.on('style.load', count);
+            const edited = {...added, layers: added.layers.map(l => l.id === 'test-water' ? {...l, filter: ['==', ['get', 'class'], 'no-such-class'], paint: {'fill-color': '#00f'}} : l)};
+            t.host.update(t.spec = {...t.spec, style: edited});
+            await wait(200); await idle();
+            const live = map.getStyle().layers.find(l => l.id === 'test-water');
+            const inPlace = {loads, filtered: (await t.host.queryFeatures(at, {layers: ['test-water']})).length, color: live?.paint?.['fill-color'], filter: JSON.stringify(live?.filter)};
+            map.off('style.load', count);
             t.host.update(t.spec = {...t.spec, style: t.style});
             await wait(200); await idle();
             const without = (await t.host.queryFeatures(at, {layers: ['test-water']})).length;
             const raw = (await t.host.querySource('omt', {x: 450, y: 300}, {radius: 30})).length;
-            return {withLayer, without, raw};
+            return {withLayer, without, raw, inPlace};
         });
         check(`[${renderer}] update with a new style: a layer comes and goes, and queries find features`, style.withLayer > 0 && style.without === 0 && style.raw > 0, JSON.stringify(style));
+        check(`[${renderer}] update with a style object that changes one filter and one paint value of a layer: the map edits the layer and loads no style (#858)`,
+            style.inPlace.loads === 0 && style.inPlace.filtered === 0 && style.inPlace.color === '#00f' && style.inPlace.filter.includes('no-such-class'), JSON.stringify(style.inPlace));
 
         // 3a. A style URL that fails, with `extend`: `onError` gets the error with the URL and the status, the state has no `error` (#655), and no promise is left rejected.
         const badStyle = await page.evaluate(async () => {
