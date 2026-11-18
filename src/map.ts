@@ -1522,7 +1522,7 @@ export class Map {
      */
     addImage(name: string, source: string | CanvasImageSource | ImageData | {width: number; height: number; data: Uint8Array | Uint8ClampedArray}, options: ImageOptions = {}) { return this.putImage(name, source, options); }
     /** `variant`: the image is one variant of a template. It is not an image that the page added, and it is not looked at for slots. */
-    private async putImage(name: string, source: Parameters<Map['addImage']>[1], options: ImageOptions, variant?: boolean): Promise<this> {
+    private async putImage(name: string, source: Parameters<Map['addImage']>[1], options: ImageOptions, variant?: boolean, update?: boolean): Promise<this> {
         let drawable: CanvasImageSource | undefined, width = options.width, height = options.height, sourceWidth = 0;
         const turn = this.imageTurn(name);
         if (!variant) {
@@ -1576,7 +1576,7 @@ export class Map {
         const k = sourceWidth ? w / sourceWidth : 1, scale = (v?: number[]) => v?.map(n => n * k);
         if (!variant) { this.imageNames.add(name); this.imageInputs.set(name, [source, options]); }
         this.post({type: 'image', name, w, h, width, height, data, stretchX: options.stretchX?.map(r => scale(r) as [number, number]), stretchY: options.stretchY?.map(r => scale(r) as [number, number]),
-            content: scale(options.content) as [number, number, number, number] | undefined, textFitWidth: options.textFitWidth, textFitHeight: options.textFitHeight, sdf: options.sdf}, [data.buffer]);
+            content: scale(options.content) as [number, number, number, number] | undefined, textFitWidth: options.textFitWidth, textFitHeight: options.textFitHeight, sdf: options.sdf, update}, [data.buffer]);
         return this;
     }
     removeImage(name: string) {
@@ -1585,10 +1585,15 @@ export class Map {
         this.post({type: 'removeImage', name});
         return this;
     }
-    /** Replaces an image added earlier; icons using it are redrawn. */
-    updateImage(name: string, source: Parameters<Map['addImage']>[1], options: ImageOptions = {}) {
+    /**
+     * Replaces the pixels of an image added earlier and keeps its options (stretch, content, sdf), as MapLibre GL JS
+     * does. When the new pixels have the size of the old ones, they are copied into the texture in place and the map
+     * redraws without placing its icons again. Another size replaces the image as `addImage` would. (#949)
+     */
+    updateImage(name: string, source: Parameters<Map['addImage']>[1]) {
         if (!this.imageNames.has(name)) throw new Error(`There is no image with ID "${name}"`);
-        return this.removeImage(name).addImage(name, source, options);
+        if (this.templates.has(name) || typeof source === 'string' && source.trimStart().startsWith('<') && templateSlots(source).length) return this.removeImage(name).addImage(name, source, this.imageInputs.get(name)?.[1]);
+        return this.putImage(name, source, this.imageInputs.get(name)?.[1] ?? {}, false, true);
     }
     hasImage(name: string) { return this.imageNames.has(name); }
     /**

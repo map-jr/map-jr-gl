@@ -49,7 +49,7 @@ export type Command =
      */
     | {type: 'templates'; slots: Record<string, string[]>; changed: string[]; rebuild: boolean}
     | {type: 'fonts'; fonts: FontSource[]}
-    | {type: 'image'; name: string; w: number; h: number; width: number; height: number; data: Uint8Array; stretchX?: [number, number][]; stretchY?: [number, number][]; content?: [number, number, number, number]; textFitWidth?: 'stretchOrShrink' | 'stretchOnly' | 'proportional'; textFitHeight?: 'stretchOrShrink' | 'stretchOnly' | 'proportional'; sdf?: boolean}
+    | {type: 'image'; name: string; w: number; h: number; width: number; height: number; data: Uint8Array; stretchX?: [number, number][]; stretchY?: [number, number][]; content?: [number, number, number, number]; textFitWidth?: 'stretchOrShrink' | 'stretchOnly' | 'proportional'; textFitHeight?: 'stretchOrShrink' | 'stretchOnly' | 'proportional'; sdf?: boolean; update?: boolean}
     | {type: 'removeImage'; name: string}
     | {type: 'geojson'; source: string; data: unknown}
     /** Replaces the feature state of one source ("sourceLayer|id" -> state); its tiles are rebuilt in place. */
@@ -961,6 +961,9 @@ export class Engine {
                 break;
             case 'fonts': this.loadFonts(c.fonts); break;
             case 'image': {
+                // (`updateImage` with pixels of the same size: the texture changes in place, and the icons keep their places.)
+                const old = c.update && this.images.get(c.name);
+                if (old && old.width === c.w && old.height === c.h) { this.renderer.uploadSprite(old.x, old.y, c.w, c.h, c.data); break; }
                 this.dropImage(c.name);
                 const rect = this.addSprite(c.w, c.h, c.data);
                 if (rect) this.images.set(c.name, {x: rect[0], y: rect[1], width: c.w, height: c.h, pixelRatio: c.w / c.width, custom: true, stretchX: c.stretchX, stretchY: c.stretchY, content: c.content, textFitWidth: c.textFitWidth, textFitHeight: c.textFitHeight, sdf: c.sdf});

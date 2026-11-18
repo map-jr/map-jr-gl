@@ -1750,6 +1750,40 @@ for (const mode of renderers) {
         }, mode);
         check(`[${mode}] compat: addImage with sdf: true is recoloured by icon-color (#46)`, r.px?.[0] > 200 && r.px[1] < 60 && r.px[2] < 60 && r.sdf === true, JSON.stringify(r));
     }
+    // #949: updateImage replaces the pixels in place and keeps the options of the image (here `sdf`), as in MapLibre
+    // GL JS. The icon is drawn with the new pixels, and an image of another size replaces the old one.
+    {
+        const r = await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const m = new mod.Map({container: el, renderer: mode, attributionControl: false, center: [0, 0], zoom: 1, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]}});
+            await new Promise(res => m.once('load', res));
+            const square = (n, r, g, b) => { const data = new Uint8Array(n * n * 4); for (let i = 0; i < data.length; i += 4) data.set([r, g, b, 255], i); return {width: n, height: n, data}; };
+            const centre = async () => {
+                await new Promise(res => { m.once('idle', res); setTimeout(res, 8000); });
+                const url = await new Promise(res => { m.once('render', () => res(m.getCanvas().toDataURL())); m.triggerRepaint(); setTimeout(() => res(null), 5000); });
+                if (!url) return null;
+                const bmp = await createImageBitmap(await (await fetch(url)).blob()), c = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}), g = c.getContext('2d');
+                g.drawImage(bmp, 0, 0);
+                return Array.from(g.getImageData(bmp.width >> 1, bmp.height >> 1, 1, 1).data);
+            };
+            await m.addImage('sq', square(16, 255, 0, 0));
+            await m.addImage('dot', square(16, 255, 255, 255), {sdf: true});
+            m.addSource('p', {type: 'geojson', data: {type: 'Point', coordinates: [0, 0]}});
+            m.addLayer({id: 'p', type: 'symbol', source: 'p', layout: {'icon-image': 'sq'}});
+            const before = await centre();
+            await m.updateImage('sq', square(16, 0, 0, 255));
+            const after = await centre();
+            await m.updateImage('sq', square(24, 0, 255, 0));
+            const resized = await centre();
+            await m.updateImage('dot', square(16, 255, 255, 255));
+            const sdf = m.getImage('dot')?.sdf;
+            m.remove(); el.remove();
+            return {before, after, resized, sdf};
+        }, mode);
+        check(`[${mode}] compat: updateImage draws the new pixels, also at another size, and keeps the options of the image (#949)`,
+            r.before?.[0] > 200 && r.before[2] < 60 && r.after?.[2] > 200 && r.after[0] < 60 && r.resized?.[1] > 200 && r.resized[0] < 60 && r.sdf === true, JSON.stringify(r));
+    }
     // `coalesce` with images: the icon is the first image that the map has. The map has only the second image (blue)
     // when the layer is added, and it gets the first image (red) after that.
     // The map asks for no image (`styleimagemissing`), because one of the two is there.
