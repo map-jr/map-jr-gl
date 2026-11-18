@@ -665,20 +665,24 @@ export function makeMap(container: HTMLElement | string, spec: MapDescription, n
     // A change of only `sources`, `layers` and `terrain` goes to the map as edits, so that the style is not loaded again and the layers that the
     // application added through the core map stay. It returns false, with nothing changed, for a change that needs a new
     // style: a changed `terrain`, a changed source, a source id that the style has, a changed `type`, `source`,
-    // `source-layer`, `minzoom`, `maxzoom` or `before` of a layer, a new order of the layers, or a new layer before
-    // one that stays.
+    // `source-layer`, `minzoom` or `maxzoom` of a layer. A new order of the layers, a new layer before one that stays
+    // and another `before` move the layers of `layers` (#859).
     const edit = (next: StyleParts, before: StyleParts, differ: (a: unknown, b: unknown) => boolean) => {
         const was = before.layers ?? [], is = next.layers ?? [], ns = next.sources ?? {}, os = before.sources ?? {};
         const ids = (a: typeof is, b: typeof is) => a.filter(l => b.some(x => x.id === l.id)).map(l => l.id).join('\n');
-        const kept = is.filter(l => was.some(w => w.id === l.id)), keys = ['paint', 'layout', 'filter', 'id'];
-        if (differ(next.terrain, before.terrain) || ids(is, was) !== ids(was, is) || is.some((l, i) => !kept.includes(l) && i < is.indexOf(kept[kept.length - 1]))) return false;
+        const kept = is.filter(l => was.some(w => w.id === l.id)), keys = ['paint', 'layout', 'filter', 'id', 'before'];
+        if (differ(next.terrain, before.terrain)) return false;
+        // (A new order, a new layer before one that stays, or another `before`: the layers of `layers` are added again
+        // in their order, with the rule of `extended()`, as the style would have them (#859).)
+        const moved = ids(is, was) !== ids(was, is) || is.some((l, i) => !kept.includes(l) && i < is.indexOf(kept[kept.length - 1])) || kept.some(l => differ(l.before, was.find(x => x.id === l.id)!.before));
         for (const id in ns) if (id in os ? differ(ns[id], os[id]) : map.getSource(id)) return false;
         for (const id in {...ns, ...os}) if (Object.hasOwn(baseSources, id)) return false;
         for (const l of kept) { const w = was.find(x => x.id === l.id)!; if (Object.keys({...l, ...w}).some(k => !keys.includes(k) && differ((l as Record<string, unknown>)[k], (w as Record<string, unknown>)[k]))) return false; }
         for (const w of was) if (!kept.some(l => l.id === w.id)) map.removeLayer(w.id);
         for (const id in os) if (!(id in ns)) { sent.delete(id); map.removeSource(id); }
         for (const id in ns) if (!(id in os)) { sent.delete(id); map.addSource(id, ns[id]); }
-        for (const l of kept) {
+        if (moved) for (const l of kept) map.removeLayer(l.id);
+        else for (const l of kept) {
             const w = was.find(x => x.id === l.id)!;
             for (const g of ['paint', 'layout'] as const) {
                 const a = (l[g] ?? {}) as Record<string, unknown>, b = (w[g] ?? {}) as Record<string, unknown>;
@@ -686,7 +690,7 @@ export function makeMap(container: HTMLElement | string, spec: MapDescription, n
             }
             if (differ(l.filter, w.filter)) map.setFilter(l.id, l.filter);
         }
-        for (const {before: at, ...l} of is) if (!kept.some(k => k.id === l.id)) map.addLayer(copy(l) as {id: string}, at && map.getLayer(at) ? at : undefined);
+        for (const {before: at, ...l} of is) if (moved || !kept.some(k => k.id === l.id)) map.addLayer(copy(l) as {id: string}, at && map.getLayer(at) ? at : undefined);
         giveData();
         return true;
     };
