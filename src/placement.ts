@@ -52,6 +52,8 @@ export interface Placed {
     ground?: number[];
     /** Identity that survives between placements (and between a tile and its parent), for fading. */
     key: string;
+    /** The id of the symbol layer of the label, so that its text is drawn in the place of that layer. */
+    layer: string;
     tile: TileID;
     /** Where the label's map anchor was on screen when placed, so it can be moved with the map between placements. */
     ax: number; ay: number;
@@ -197,7 +199,7 @@ export function placeLabels(
                         seen.add(l.text, ax, ay, itemNo);
                         const n = 2 ** it.id.z, q = 2 ** 22;
                         const key = `${L.id}|${l.text}||${Math.round((it.id.x + l.x / EXTENT) / n * q)},${Math.round((it.id.y + l.y / EXTENT) / n * q)},${it.id.w}`;
-                        bent = {x: ax, y: ay, angle: 0, size: curved.ground ? size / persp / persp : size, shaped, src: l, curve: curved.curve, ground: curved.ground, key, tile: it.id, ax, ay, opacity: 1, alpha};
+                        bent = {x: ax, y: ay, angle: 0, size: curved.ground ? size / persp / persp : size, shaped, src: l, curve: curved.curve, ground: curved.ground, key, layer: L.id, tile: it.id, ax, ay, opacity: 1, alpha};
                         // (No icon: the text is all. With an icon, the icon is found below, as for other text.)
                         if (!meta) { out.push(bent); continue; }
                     } else if (line && !l.upright) {
@@ -317,7 +319,7 @@ export function placeLabels(
                 // Features with the same text at the same position keep separate keys, in their order in the tile.
                 const same = keys.get(key) ?? 0;
                 keys.set(key, same + 1);
-                out.push({x: tx, y: ty, angle: textAngle, size, shaped: textBox ? shaped : null, src: l, icon, key: same ? key + '#' + same : key, tile: it.id, ax, ay, opacity: 1, justify, alpha});
+                out.push({x: tx, y: ty, angle: textAngle, size, shaped: textBox ? shaped : null, src: l, icon, key: same ? key + '#' + same : key, layer: L.id, tile: it.id, ax, ay, opacity: 1, justify, alpha});
             }
         }
     }
