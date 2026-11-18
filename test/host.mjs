@@ -2059,6 +2059,28 @@ for (const [build, file] of [['the development build, and the file of the checks
     await page.close();
 }
 
+// `supported()` releases its probe context once it has the answer (#825), keeps the answer, and a map starts after it.
+{
+    const page = await browser.newPage({viewport: {width: 900, height: 600}});
+    try {
+        await page.goto(`${origin}/style.json`);
+        const out = await page.evaluate(async () => {
+            const made = [], get = HTMLCanvasElement.prototype.getContext;
+            HTMLCanvasElement.prototype.getContext = function (kind, ...rest) { const c = get.call(this, kind, ...rest); if (c && /webgl/.test(kind)) made.push(c); return c; };
+            const lib = await import('/dist/map-jr-gl.js');
+            const first = lib.supported(), second = lib.supported(), probes = made.length, lost = made.map(c => c.isContextLost());
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:400px;height:300px'}));
+            const host = lib.createMap(el, {style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#abc'}}]}, renderer: 'main', attribution: false});
+            const idle = await Promise.race([new Promise(r => { if (host.state.get().idle) r(true); else host.state.subscribe(s => s.idle, v => v && r(true)); }), new Promise(r => setTimeout(() => r(false), 8000))]);
+            host.destroy();
+            return {first, second, probes, lost, idle};
+        });
+        check('supported() returns true twice with one probe context, releases that context, and a map reaches idle after it (#825)',
+            out.first && out.second && out.probes === 1 && out.lost[0] === true && out.idle, JSON.stringify(out));
+    } catch (e) { check('supported() releases its probe context: the test run was completed', false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
+
 // A browser without WebGL2, on the page and in the worker: `supported()` says so before a map is made. A map that is
 // made all the same reports one error (`onError`) and puts a message into the container.
 for (const [entry, renderer] of [['main API', 'worker'], ['main API', 'main'], ['maplibre-compat', 'worker']]) {

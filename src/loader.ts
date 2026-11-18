@@ -8,10 +8,17 @@ declare const __VERSION__: string; // the version of package.json, set by the bu
 let canDraw: boolean | undefined;
 /**
  * Whether this browser can show a map: it needs WebGL2. Call it before you make a map, to show other content instead.
- * (The first call makes a WebGL2 context on a canvas that is not in the page. Later calls return the same answer.)
+ * (The first call makes a WebGL2 context on a canvas that is not in the page and releases it at once. Later calls
+ * return the same answer.)
  */
 export function supported(): boolean {
-    try { canDraw ??= !!document.createElement('canvas').getContext('webgl2'); } catch { canDraw = false; }
+    if (canDraw === undefined) {
+        try {
+            const gl = document.createElement('canvas').getContext('webgl2');
+            canDraw = !!gl;
+            gl?.getExtension('WEBGL_lose_context')?.loseContext();
+        } catch { canDraw = false; }
+    }
     return canDraw;
 }
 
