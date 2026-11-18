@@ -53,13 +53,29 @@ window.Worker = function (url, opts) {
 // The heading of the copied results: browser, GPU, pixel ratio, version and commit.
 const gl = document.createElement('canvas').getContext('webgl2'), info = gl?.getExtension('WEBGL_debug_renderer_info');
 let commit = q.get('commit') ?? '';
-const env = () => `GPU: ${info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : 'unknown'} · screen pixel ratio ${devicePixelRatio} · map-jr-gl ${compat.getVersion()}, commit ${commit || 'unknown'} · MapLibre GL JS ${maplibre.getVersion()} · ${navigator.userAgent.replace(/^.*?\) /, '')}`;
+// (Safari 27.2 has the extension and gives null for it, #967: then the plain renderer string, or a note that there is none.)
+const gpu = (info && gl.getParameter(info.UNMASKED_RENDERER_WEBGL)) || gl?.getParameter(gl.RENDERER) || 'not given by the browser';
+const env = () => `GPU: ${gpu} · screen pixel ratio ${devicePixelRatio} · map-jr-gl ${compat.getVersion()}, commit ${commit || 'unknown'} · MapLibre GL JS ${maplibre.getVersion()} · ${navigator.userAgent.replace(/^.*?\) /, '')}`;
 $('env').textContent = env();
 // (The gallery site has commit.txt next to the page, at bench/; the demo server has none.)
 if (!commit && location.pathname.endsWith('/')) fetch('commit.txt').then(r => r.ok ? r.text() : '').then(t => { if (/^[0-9a-f]{7,40}$/.test(t.trim())) { commit = t.trim().slice(0, 12); $('env').textContent = env(); } }).catch(() => {});
 
 const LIBS = {maplibre: 'MapLibre GL JS', main: 'This library, main thread', worker: 'This library, worker'};
 const ALL = Object.keys(LIBS).filter(l => !q.get('libs') || q.get('libs').split(',').includes(l));
+
+// Whether the stage is in view (#973). A browser can throttle the drawing and the animation frames of a map that is out
+// of view, as Safari on a phone does, so each run records whether the stage was at least 90 % in view, and the tab in
+// front, the whole time. The page scrolls the stage into view before each run.
+let stageSeen = false, stageOut = false;
+const checkView = () => { if (!stageSeen || document.hidden) stageOut = true; };
+new IntersectionObserver(([e]) => { stageSeen = e.intersectionRatio >= 0.9; checkView(); }, {threshold: [0.9]}).observe(stage);
+document.addEventListener('visibilitychange', checkView);
+async function intoView() {
+    stage.scrollIntoView({block: 'nearest'});
+    // (The observer answers after a frame or two.)
+    await frame(); await frame(); await frame();
+    stageOut = false; checkView();
+}
 
 // ---- Statistics of numbers ----
 const sorted = a => a.filter(v => typeof v === 'number' && !Number.isNaN(v)).sort((x, y) => x - y);
@@ -424,11 +440,14 @@ if (q.get('runs')) $('runs').value = q.get('runs');
 const fmt = (v, d = 0) => typeof v !== 'number' || Number.isNaN(v) ? 'n/a' : v.toFixed(d);
 /** The results: one entry for each scenario and library, with the runs and, for each measure, the median as a field (results.load, results.panFps). */
 const results = [];
-const rowsOf = r => r.error ? [[r.scenarioName, r.libName, `failed: ${r.error}`, '', '', `${r.runs.length}`]]
+/** The count of runs, with the runs that were measured while the map was not in view (#973). */
+const runsCell = (r, n) => { const out = r.runs.filter(x => x.outOfView).length; return out ? `${n} (${out} out of view)` : `${n}`; };
+const rowsOf = r => r.error ? [[r.scenarioName, r.libName, `failed: ${r.error}`, '', '', runsCell(r, r.runs.length)]]
     : r.measures.map(([key, label, unit, d]) => {
         const v = r.runs.map(x => x.values[key]), s = sorted(v), u = unit ? ' ' + unit : '';
-        return [r.scenarioName, r.libName, label, fmt(r[key], d) + u, s.length > 1 ? `${fmt(s[0], d)}–${fmt(s.at(-1), d)}` : '', `${s.length}`];
+        return [r.scenarioName, r.libName, label, fmt(r[key], d) + u, s.length > 1 ? `${fmt(s[0], d)}–${fmt(s.at(-1), d)}` : '', runsCell(r, s.length)];
     });
+const OUT_NOTE = '"out of view": the map was less than 90 % in view, or the tab was not in front, during that many runs; the browser can slow such a map, and its numbers are not comparable.';
 const TIMELINE = 'Start timeline, ms after the map was made (sprite, glyphs and worker file from resource timings, which do not list requests made in a worker; tiles from the tile events, counted until idle; for the last tile before idle, "net" is its network answer, "built" its tile event and "up" its upload to the GPU; the tile event of MapLibre GL JS (`data` with a tile) fires when the tile is built, before the upload; the style is fetched by the page before the map is made):';
 /** The order of the first request of each kind in the cold start, the most common one over the runs, with its count. */
 const orderLines = () => results.filter(r => r.scenario === 'cold' && r.runs.length).map(r => {
@@ -450,7 +469,8 @@ async function runAll(chosen) {
         for (let i = 0; i < runs; i++) {
             status.textContent = `Running ${n} of ${jobs.length}, run ${i + 1} of ${runs}: ${r.name}`;
             stage.replaceChildren();
-            try { r.runs.push(await s.run(lib)); } catch (err) { r.error = String(err?.message ?? err); break; }
+            await intoView();
+            try { const x = await s.run(lib); if (stageOut) x.outOfView = true; r.runs.push(x); } catch (err) { r.error = String(err?.message ?? err); break; }
             stage.replaceChildren();
             // (A pause, so that the browser can give back the memory of the removed maps before the next run. Safari on
             // an iPhone ended the page during 3 runs when the pause was 300 ms, #959.)
@@ -462,7 +482,8 @@ async function runAll(chosen) {
         for (const cells of rowsOf(r)) { const tr = tbody.insertRow(); for (const c of cells) tr.insertCell().textContent = c; }
     }
     const lines = timelineLines();
-    if (lines.length) $('timeline').replaceChildren(...[TIMELINE, ...lines].map(l => Object.assign(document.createElement('div'), {textContent: l})));
+    const shown = [...(results.some(r => r.runs.some(x => x.outOfView)) ? [OUT_NOTE] : []), ...(lines.length ? [TIMELINE, ...lines] : [])];
+    $('timeline').replaceChildren(...shown.map(l => Object.assign(document.createElement('div'), {textContent: l})));
     stage.replaceChildren();
     status.textContent = `Done: ${jobs.length} pairs of a scenario and a library, ${runs === 1 ? '1 run' : runs + ' runs'} of each.`;
     window.benchResults = results.map(({measures, ...r}) => r);
@@ -475,7 +496,8 @@ $('runSelected').onclick = () => runAll(scenarios.filter(s => s.box.checked));
 $('copy').onclick = () => {
     const head = [...document.querySelectorAll('#results th')].map(th => th.textContent);
     const md = [env(), '', `| ${head.join(' | ')} |`, `|${head.map((_, i) => i < 3 ? '---' : '---:').join('|')}|`,
-        ...results.flatMap(rowsOf).map(c => `| ${c.join(' | ')} |`), '', ...(timelineLines().length ? [TIMELINE, '', ...timelineLines().map(l => `- ${l}`)] : [])].join('\n');
+        ...results.flatMap(rowsOf).map(c => `| ${c.join(' | ')} |`), '',
+        ...(results.some(r => r.runs.some(x => x.outOfView)) ? [OUT_NOTE, ''] : []), ...(timelineLines().length ? [TIMELINE, '', ...timelineLines().map(l => `- ${l}`)] : [])].join('\n');
     navigator.clipboard.writeText(md).then(() => { status.textContent = 'Copied.'; }, () => { status.textContent = 'The browser did not allow the copy.'; });
 };
 /**
