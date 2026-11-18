@@ -2310,7 +2310,13 @@ for (const renderer of renderers) {
             });
             if (kind === 'touch') await touch('touchStart', box.x, box.y); else { await page.mouse.move(box.x, box.y); await page.mouse.down(); }
             // 500 pixels to the left, downwards in a shallow arc, as a hand moves a mouse.
-            for (let i = 1; i <= moves; i++) { const x = box.x - 500 * i / moves, y = box.y + 200 * (i / moves) ** 2; if (kind === 'touch') await touch('touchMove', x, y); else await page.mouse.move(x, y); }
+            // (With 5 moves, each move waits for a frame: 5 moves in one frame turn the map by 200 degrees between two
+            // recorded frames, and a step over 180 degrees reads as a step back. Playwright's WebKit sends them in one frame, #779.)
+            for (let i = 1; i <= moves; i++) {
+                const x = box.x - 500 * i / moves, y = box.y + 200 * (i / moves) ** 2;
+                if (kind === 'touch') await touch('touchMove', x, y); else await page.mouse.move(x, y);
+                if (moves === 5) await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
+            }
             if (kind === 'touch') await touch('touchEnd'); else await page.mouse.up();
             await page.waitForTimeout(400);
             ends[`${kind} ${moves}`] = Math.round(await page.evaluate(() => window.fastHost._map.getBearing()) * 10) / 10;
