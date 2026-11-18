@@ -2,6 +2,8 @@
  * How the library finds and starts its workers. The default needs no configuration: the worker file is looked for
  * next to this module. Everything can be overridden per map or globally with `configure()`.
  */
+import {LOSE_CONTEXT} from './gl-names.ts';
+
 declare const __WORKER_SRC__: string; // the worker's source, embedded only in the standalone build
 declare const __VERSION__: string; // the version of package.json, set by the build
 
@@ -16,7 +18,7 @@ export function supported(): boolean {
         try {
             const gl = document.createElement('canvas').getContext('webgl2');
             canDraw = !!gl;
-            gl?.getExtension('WEBGL_lose_context')?.loseContext();
+            gl?.getExtension(LOSE_CONTEXT)?.loseContext();
         } catch { canDraw = false; }
     }
     return canDraw;

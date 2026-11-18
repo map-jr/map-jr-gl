@@ -1,6 +1,7 @@
 import {EXTENT, latFromMerc, mercX, mercY, type TileID, type Transform} from './geo.ts';
 import {hillshadeLights, LIGHTS, screenTranslate, type CompiledLayer, type Light} from './style.ts';
 import {compileProp} from './expr.ts';
+import {LOSE_CONTEXT} from './gl-names.ts';
 import {LINE_VERTEX, WALL_OTHER, WALL_TOP, type GLBatch, type IconBatch, type LabelSrc, type TileGL} from './tile.ts';
 import type {Placed, RenderItem} from './placement.ts';
 import {demUnpack, type DemEncoding} from './query.ts';
@@ -1469,7 +1470,7 @@ export class GLRenderer {
         if (list.length < 8) list.push(d.tex); else this.gl.deleteTexture(d.tex);
     }
     /** Gives the memory of the GPU back at once. Without this, a map that was removed keeps it until the browser collects the context. */
-    destroy() { if (!this.gl.isContextLost()) this.gl.getExtension('WEBGL_lose_context')?.loseContext(); }
+    destroy() { if (!this.gl.isContextLost()) this.gl.getExtension(LOSE_CONTEXT)?.loseContext(); }
 
     private drapeWaits = new Map<string, number>();
     private gap = 33;
