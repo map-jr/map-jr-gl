@@ -979,7 +979,7 @@ export class Engine {
             case 'image': {
                 // (`updateImage` with pixels of the same size: the texture changes in place, and the icons keep their places.)
                 const old = c.update && this.images.get(c.name);
-                if (old && old.width === c.w && old.height === c.h) { this.renderer.uploadSprite(old.x, old.y, c.w, c.h, c.data); break; }
+                if (old && old.width === c.w && old.height === c.h) { this.renderer.uploadSprite(old.x, old.y, c.w, c.h, c.data, false); break; }
                 this.dropImage(c.name);
                 const rect = this.addSprite(c.w, c.h, c.data);
                 if (rect) this.images.set(c.name, {x: rect[0], y: rect[1], width: c.w, height: c.h, pixelRatio: c.w / c.width, custom: true, stretchX: c.stretchX, stretchY: c.stretchY, content: c.content, textFitWidth: c.textFitWidth, textFitHeight: c.textFitHeight, sdf: c.sdf});

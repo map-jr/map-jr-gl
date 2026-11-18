@@ -1814,6 +1814,42 @@ for (const mode of renderers) {
         check(`[${mode}] compat: updateImage draws the new pixels, also at another size, and keeps the options of the image (#949)`,
             r.before?.[0] > 200 && r.before[2] < 60 && r.after?.[2] > 200 && r.after[0] < 60 && r.resized?.[1] > 200 && r.resized[0] < 60 && r.sdf === true, JSON.stringify(r));
     }
+    // #979: 500 × updateImage of a 64 × 64 image in one task send the pixels once (16 KB), not 500 times, and the
+    // icon shows the pixels of the last call. (Each call sent its pixels, 8 MB in all, and at a pixel ratio of 3 the
+    // pixels went at 192 × 192: the bench scenario `images` ended the Safari page on an iPhone.)
+    {
+        const r = await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const m = new mod.Map({container: el, renderer: mode, attributionControl: false, center: [0, 0], zoom: 1, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]}});
+            await new Promise(res => m.once('load', res));
+            const square = (r, g, b) => { const data = new Uint8Array(64 * 64 * 4); for (let i = 0; i < data.length; i += 4) data.set([r, g, b, 255], i); return {width: 64, height: 64, data}; };
+            await m.addImage('sq', square(255, 0, 0));
+            m.addSource('p', {type: 'geojson', data: {type: 'Point', coordinates: [0, 0]}});
+            m.addLayer({id: 'p', type: 'symbol', source: 'p', layout: {'icon-image': 'sq'}});
+            await new Promise(res => { m.once('idle', res); setTimeout(res, 8000); });
+            const red = square(255, 0, 0), blue = square(0, 0, 255);
+            let bytes = 0;
+            const posts = [Worker.prototype.postMessage, MessagePort.prototype.postMessage];
+            for (const C of [Worker, MessagePort]) { const p = C.prototype.postMessage; C.prototype.postMessage = function (msg, t) { for (const c of [msg].flat()) if (c?.type === 'image') bytes += c.data.byteLength; return p.call(this, msg, t); }; }
+            try {
+                for (let i = 0; i < 500; i++) { m.updateImage('sq', i === 499 ? blue : i % 2 ? blue : red); m.triggerRepaint(); }
+                await new Promise(res => setTimeout(res, 0));
+            } finally { [Worker.prototype.postMessage, MessagePort.prototype.postMessage] = posts; }
+            await new Promise(res => { m.once('idle', res); setTimeout(res, 8000); });
+            const url = await new Promise(res => { m.once('render', () => res(m.getCanvas().toDataURL())); m.triggerRepaint(); setTimeout(() => res(null), 5000); });
+            let px = null;
+            if (url) {
+                const bmp = await createImageBitmap(await (await fetch(url)).blob()), c = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}), g = c.getContext('2d');
+                g.drawImage(bmp, 0, 0);
+                px = Array.from(g.getImageData(bmp.width >> 1, bmp.height >> 1, 1, 1).data);
+            }
+            m.remove(); el.remove();
+            return {bytes, px};
+        }, mode);
+        check(`[${mode}] compat: 500 × updateImage in one task send the pixels once and draw the last ones (#979)`,
+            (mode !== 'worker' || r.bytes <= 2 * 64 * 64 * 4) && r.px?.[2] > 200 && r.px[0] < 60, JSON.stringify(r));
+    }
     // `coalesce` with images: the icon is the first image that the map has. The map has only the second image (blue)
     // when the layer is added, and it gets the first image (red) after that.
     // The map asks for no image (`styleimagemissing`), because one of the two is there.
