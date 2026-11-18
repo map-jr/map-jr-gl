@@ -1427,7 +1427,7 @@
 "terrain/symbol-height-offset-building": "differ",
 "terrain/symbol-height-offset-occluded-ground": "differ",
 "terrain/symbol-line": "differ",
-"terrain/tile-stiching": "differ",
+"terrain/tile-stiching": "near",
 "terrain/tile-transparency-overlap-fill": "match",
 "terrain/tile-transparency-overlap-line": "match",
 "text-anchor/bottom": "match",
