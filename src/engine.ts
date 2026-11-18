@@ -69,6 +69,8 @@ export type Command =
     | {type: 'frames'; on: boolean}
     /** Asks for a `pong` event with the same number after the next frame that the engine has drawn to its end. */
     | {type: 'ping'; n: number}
+    /** In a worker: answers with the next frame that is drawn, encoded as an image (a Blob), taken in the same task as the frame (#965). */
+    | {type: 'snapshot'; id: number; mime: string; quality?: number}
     /** For the benchmark page (#360): report the steps of each tile and the tiles of the view of each frame with `tile` events. */
     | {type: 'tileReport'; on: boolean}
     /** The compat entry, when a listener wants `data` or `sourcedata`: report each tile that has loaded with a `tileLoaded` event. */
@@ -283,6 +285,8 @@ export class Engine {
     private reportFrames = false;
     private drew = false;
     private pinged = 0;
+    /** The `snapshot` commands that wait for the next frame. */
+    private shots: Extract<Command, {type: 'snapshot'}>[] = [];
     /** The WebGL context is gone: nothing more is drawn. */
     private lost = false;
     // Requests that the page can change. This thread and the tile workers ask the page through `ask`.
@@ -325,7 +329,7 @@ export class Engine {
     private dem = new Map<string, Promise<{width: number; height: number; data: Uint8ClampedArray} | null>>();
     private dpr = 1;
 
-    constructor(canvas: HTMLCanvasElement | OffscreenCanvas, o: EngineOptions, private backends: TileBackend[], private emit: (e: EngineEvent) => void) {
+    constructor(private canvas: HTMLCanvasElement | OffscreenCanvas, o: EngineOptions, private backends: TileBackend[], private emit: (e: EngineEvent) => void) {
         this.renderer = new GLRenderer(canvas, o.antialias);
         this.renderer.iconOf = this.icon;
         (canvas as EventTarget).addEventListener('webglcontextlost', () => { if (!this.lost) { this.lost = true; this.emit({type: 'contextlost'}); } }); // (not when the map itself freed the context)
@@ -1007,6 +1011,7 @@ export class Engine {
             case 'destroy': this.lost = true; this.renderer.destroy(); return;
             case 'frames': this.reportFrames = c.on; break;
             case 'ping': this.pinged = c.n; break; // (and a frame follows)
+            case 'snapshot': this.shots.push(c); break;
             case 'requests': this.rules = c.rules; for (const b of this.backends) b.setRequests(c.rules, this.ask); break;
             case 'resourceResult': this.asked.get(c.id)?.(c); this.asked.delete(c.id); break;
             case 'tileReport': this.tap = c.on; return;
@@ -1773,6 +1778,10 @@ export class Engine {
             if (this.reportFrames || !this.drew) { this.drew = true; this.emit({type: 'frame'}); }
             // (The answer to `ping`: this worker still takes messages and still draws.)
             if (this.pinged) { this.emit({type: 'pong', n: this.pinged}); this.pinged = 0; }
+            // (The bitmap is copied when `convertToBlob` is called, before the drawing buffer goes to the page and is cleared.
+            // WebKit gives blank pixels for the canvas of the page whose control went to a worker; #965.)
+            for (const c of this.shots.splice(0)) (this.canvas as OffscreenCanvas).convertToBlob({type: c.mime, quality: c.quality})
+                .then(value => this.emit({type: 'result', id: c.id, value}), err => this.emit({type: 'result', id: c.id, error: '[map-jr-gl] toBlob(): the browser could not encode the image as ' + c.mime + '. ' + err}));
         }
         // In a worker, the frame of the `OffscreenCanvas` reaches the page after this task, and on a loaded machine one
         // frame of the page later still (#555). The next animation frame of the worker starts once this frame has gone
