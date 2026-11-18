@@ -258,11 +258,8 @@ export interface Subscription { unsubscribe(): void }
 export type EventTypeMap = Record<string, {type: string; target?: unknown}>;
 export type ErrorEventType = {error: ErrorEvent};
 type Fired<T, D = {}> = {type: string; target: T} & D;
-/**
- * The events that a `Marker` fires on itself. A click on a marker fires `click` on the map and not on the marker, so
- * there is no `click` here.
- */
-export type MarkerEventType = Each<'dragstart' | 'drag' | 'dragend', Fired<Marker>>;
+/** The events that a `Marker` fires on itself. A click on a marker fires `click` on the marker and then on the map. */
+export type MarkerEventType = Each<'dragstart' | 'drag' | 'dragend', Fired<Marker>> & {click: Fired<Marker, {originalEvent: MouseEvent}>};
 /** The events that a `Popup` fires on itself. */
 export type PopupEventType = Each<'open' | 'close', Fired<Popup>>;
 /** The events that a `FullscreenControl` of this entry fires on itself. */

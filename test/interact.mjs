@@ -3630,7 +3630,7 @@ for (const mode of renderers) {
         check('[main] a camera animation jumps with "reduce motion", but for essential: true', moving < 3.9 && reduced === 4 && essential < 3.9, JSON.stringify({moving, reduced, essential}));
     }
     // A click on a draggable marker fires no drag events, and a drag fires dragstart only after the pointer moves, with
-    // no click after it, as in MapLibre GL JS (#258).
+    // no click after it, as in MapLibre GL JS (#258). A click fires `click` on the marker before the map's (#676).
     if (mode === 'main') {
         await page.evaluate(async () => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
@@ -3639,6 +3639,7 @@ for (const mode of renderers) {
             const mk = new mod.Marker({draggable: true}).setLngLat(m.unproject({x: 200, y: 150})).addTo(m);
             window.markerEvents = [];
             for (const t of ['dragstart', 'drag', 'dragend']) mk.on(t, () => window.markerEvents.push(t));
+            mk.on('click', e => window.markerEvents.push('marker click' + (e.originalEvent && e.target === mk ? '' : '!')));
             mk.getElement().addEventListener('click', () => window.markerEvents.push('click'));
             // #198: the marker has a popup, and another popup with closeOnClick is open.
             (window.popup198 = new mod.Popup({offset: 40}).setText('Marker')), mk.setPopup(window.popup198); // (the offset keeps the popup off the marker)
@@ -3664,7 +3665,7 @@ for (const mode of renderers) {
         await page.waitForTimeout(300);
         const popupAfterDrag = await page.evaluate(() => window.popup198.isOpen());
         const drag = await page.evaluate(() => { const ev = window.markerEvents.join(' '); window.dragMap.remove(); window.dragEl.remove(); return ev; });
-        check('[main] a click on a draggable marker fires no drag events, and a drag starts after a move and fires no click', ['map click click', 'click map click'].includes(click) && early === '' && /^dragstart( drag)+ dragend$/.test(drag), JSON.stringify({click, early, drag}));
+        check('[main] a click on a draggable marker fires click on the marker and the map and no drag events, and a drag starts after a move and fires no click', ['marker click map click click', 'click marker click map click'].includes(click) && early === '' && /^dragstart( drag)+ dragend$/.test(drag), JSON.stringify({click, early, drag}));
         check('[main] a click on a marker toggles its popup and is a click of the map that closes a closeOnClick popup; a drag does not open the popup (#198)', afterClick.own && !afterClick.other && !popupAfterDrag, JSON.stringify({afterClick, popupAfterDrag}));
     }
     // A marker in a container scaled by CSS follows the pointer, and the 3 px threshold is in CSS pixels of the map
