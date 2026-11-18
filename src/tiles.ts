@@ -245,11 +245,10 @@ export class PortBackend implements TileBackend {
         return new Promise((resolve, reject) => { this.pending.set(req.id, {resolve, reject}); this.port.postMessage({type: 'dem', req}); });
     }
     setGeoJSON(source: string, data: unknown, options?: GeoJSONOptions, maxzoom?: number) {
-        return new Promise((resolve, reject) => {
-            const id = this.nextQuery--;
-            this.pending.set(id, {resolve, reject});
-            this.port.postMessage({type: 'geojson', id, source, data, options, maxzoom});
-        });
+        // (Data that cannot be copied throws here, before the promise, so that the engine reports it as before.)
+        const id = this.nextQuery--;
+        this.port.postMessage({type: 'geojson', id, source, data, options, maxzoom});
+        return new Promise((resolve, reject) => this.pending.set(id, {resolve, reject}));
     }
     setFeatureState(source: string, states: FeatureStates, replace?: boolean) { this.port.postMessage({type: 'featureState', source, states, replace}); }
     setTemplates(templates: Record<string, string[]>) { this.port.postMessage({type: 'templates', templates}); }

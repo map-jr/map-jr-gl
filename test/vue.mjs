@@ -380,7 +380,11 @@ try {
             const cycle = reactive({type: 'FeatureCollection', features: []}); cycle.self = cycle;
             map.getSource('pts').setData(cycle);
             await wait(500);
-            out['compat ' + renderer] = {found, style: style2, errs: errs.filter(m => !m.startsWith('[map-jr-gl] The map could not copy data')), cycle: errs.length === 1};
+            // (After that error, new data of the source still goes to the engine: the source does not wait for an answer, #856.)
+            map.getSource('pts').setData({type: 'FeatureCollection', features: [1, 2].map(n => ({type: 'Feature', properties: {n}, geometry: {type: 'Point', coordinates: [-74.0065, 40.7085]}}))});
+            await wait(1500);
+            const after = (await map.querySourceFeatures('pts')).length;
+            out['compat ' + renderer] = {found, style: style2, errs: errs.filter(m => !m.startsWith('[map-jr-gl] The map could not copy data')), cycle: errs.length === 1, after};
             map.remove(); el.remove();
             step = 'main API map, ' + renderer;
             const herrs = [], hel = box();
@@ -397,7 +401,7 @@ try {
         return out;
     })()]); });
     check('browser: reactive GeoJSON and a reactive style (Vue proxies) are drawn in both entries and with both renderers, without errors, and data that cannot be copied is an error event (#242)',
-        Object.values(proxied).every(r => r.found >= 1 && r.errs.length === 0 && (r.style ?? true) === true && (r.cycle ?? true)), JSON.stringify(proxied));
+        Object.values(proxied).every(r => r.found >= 1 && r.errs.length === 0 && (r.style ?? true) === true && (r.cycle ?? true) && (r.after ?? 2) === 2), JSON.stringify(proxied));
     check('browser: no page errors', errors.length === 0, errors.slice(0, 2).join(' | '));
     await page.close();
 } catch (e) { check('the test run was completed', false, String(e.message).split('\n')[0]); }

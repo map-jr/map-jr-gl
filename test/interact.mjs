@@ -1049,6 +1049,29 @@ for (const mode of renderers) {
     }, mode);
     check(`[${mode}] addProtocol: the controller is aborted by a newer setData, by a setData that drops the diffs of updateData, and by remove()`,
         aborts.setData === true && aborts.name === 'slow://b' && aborts.updateData === true && aborts.remove === true, JSON.stringify(aborts));
+    // Data of a setData that waits behind an update in flight does not draw over newer data that a change of the style
+    // carries: a source removed and added again, or setStyle (#856). D1 is large, so that it is still in flight when D2 waits.
+    const waited = await page.evaluate(async mode => {
+        const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), out = {};
+        const pts = (v, n) => ({type: 'FeatureCollection', features: Array.from({length: n}, (_, i) => ({type: 'Feature', properties: {v}, geometry: {type: 'Point', coordinates: [(i % 200 - 100) * 0.00005, ((i / 200 | 0) - 50) * 0.00005]}}))});
+        const style = d => ({version: 8, sources: {s: {type: 'geojson', data: d}}, layers: [{id: 'c', type: 'circle', source: 's', paint: {'circle-radius': 2}}]});
+        const task = () => new Promise(r => setTimeout(r, 0)), idle = m => new Promise(r => { m.once('idle', r); setTimeout(r, 15000); });
+        for (const how of ['remove and add the source', 'setStyle']) {
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:400px;height:300px'}));
+            const m = new mod.Map({container: el, style: style(pts(0, 10)), center: [0, 0], zoom: 15, attributionControl: false, renderer: mode});
+            await new Promise(r => m.once('load', r));
+            m.getSource('s').setData(pts(1, 40000)); await task();
+            m.getSource('s').setData(pts(2, 10)); await task();
+            if (how === 'setStyle') m.setStyle(style(pts(3, 10)));
+            else { m.removeLayer('c'); m.removeSource('s'); m.addSource('s', {type: 'geojson', data: pts(3, 10)}); m.addLayer({id: 'c', type: 'circle', source: 's', paint: {'circle-radius': 2}}); }
+            await idle(m); await new Promise(r => setTimeout(r, 1500)); await idle(m);
+            out[how] = [...new Set((await m.querySourceFeatures('s')).map(f => f.properties.v))].join(',');
+            m.remove(); el.remove();
+        }
+        return out;
+    }, mode);
+    check(`[${mode}] setData that waits behind an update in flight does not draw over the data of a later setStyle or a source added again (#856)`,
+        Object.values(waited).every(v => v === '3'), JSON.stringify(waited));
 
     // A map made in a container that is not yet in the page: the container is positioned and clips once it is attached (#201).
     const detached = await page.evaluate(async mode => {

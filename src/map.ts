@@ -622,7 +622,11 @@ export class Map {
     private deliver(c: Command, transfer?: Transferable[]) {
         try { this.send(c, transfer); } catch (e) {
             try { if ((e as Error).name !== 'DataCloneError') throw e; this.send(plain(c), transfer); }
-            catch (error) { this.fire('error', {error: new Error(`[map-jr-gl] The map could not copy data to its workers (${(e as Error).message}). Pass plain objects (toRaw() in Vue).`, {cause: error})}); }
+            catch (error) {
+                // (Data that did not go gets no `geojsonDone`: the source must not wait for it.)
+                if (c.type === 'geojson') this.geoBusy.delete(c.source);
+                this.fire('error', {error: new Error(`[map-jr-gl] The map could not copy data to its workers (${(e as Error).message}). Pass plain objects (toRaw() in Vue).`, {cause: error})});
+            }
         }
     }
 
@@ -1100,8 +1104,10 @@ export class Map {
                 const old = sent.get(name), key = JSON.stringify([src.options, src.maxzoom]);
                 if (!old || old.data !== src.data || old.key !== key) {
                     data[name] = src.data; sent.set(name, {data: src.data, key});
-                    // (This message carries the newest data of a `setData` that waits: it is not sent again.)
-                    if (this.geoPending.get(name) === src.data) this.geoPending.delete(name);
+                    // (This message carries the newest data of a `setData` that waits: it is not sent again. Data of a
+                    // `setData` from before this change of the style waits behind an update in flight, and this data
+                    // replaces it: sent later, it would draw over the newer data, #856.)
+                    if (this.geoPending.get(name) === src.data || (this.geoTurns.get(name) ?? turn) < turn) this.geoPending.delete(name);
                 }
                 sources[name] = {...src, data: undefined};
             }
@@ -1366,6 +1372,7 @@ export class Map {
         // older data: the data waits and is sent after that change.)
         if (!this.geoQueued) { this.geoQueued = true; queueMicrotask(() => { this.geoQueued = false; if (this.restyled === this.restyles) this.sendGeo(); }); }
         this.geoPending.set(id, data);
+        this.geoTurns.set(id, this.restyles);
     }
     private sendGeo() {
         const sent = this.geoSent ??= geoOf(this.resolved);
@@ -1395,6 +1402,8 @@ export class Map {
     /** The GeoJSON sources whose last data the engine has not yet indexed (see `geojsonDone`). */
     private geoBusy = new Set<string>();
     private geoQueued = false;
+    /** The change of the style (`restyles`) at the time of the `setData` that waits in `geoPending`, for each source. */
+    private geoTurns = new globalThis.Map<string, number>();
     // (A copy of the description: the map keeps the network result of a source by this object, and another map that is
     // given the same object must have its own. The data of a GeoJSON source is not copied.)
     addSource(id: string, source: object) { return this.editStyle(s => { s.sources[id] = {...source}; }); }

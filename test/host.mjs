@@ -625,10 +625,13 @@ for (const renderer of renderers) {
         check(`[${renderer}] extend.sources gets features from data, and a partial owned view that the map reported is not applied again`,
             extendData.before === 0 && extendData.after === 1 && extendData.jumps === 0, JSON.stringify(extendData));
 
-        // 3d. A worker renderer draws new GeoJSON data while the page sets 10,000 points in each frame for 1 s (#856): at least
-        // one frame for two updates. The engine worker drew few or no frames until the updates stopped, because each update
-        // filled its queue with copies of the data. (Measured on 2026-11-17 in headless Chromium: 53 to 58 frames for about
-        // 58 updates with the fix, and 3 to 22 without it. A smaller map has few tiles to build and kept up in some runs.)
+        // 3d. A worker renderer keeps drawing while the page sets 10,000 points in each frame for 1 s (#856): at least 5 frames,
+        // and no stretch of more than 400 ms without a frame. Without the fix, the engine worker drew no frame until the
+        // updates stopped, because each update filled its queue with copies of the data. The check measures that stretch and
+        // not the number of frames, because the frame rate depends on the machine: with CPU_THROTTLE=4 on 2026-11-18, the
+        // fix gave 45 to 49 frames with stretches of 36 to 68 ms, and without it 0 to 2 frames with stretches of 824 to
+        // 1000 ms. A CI runner drew 20 to 24 frames (about 50 ms each). The newest data that a query sees during the second
+        // is not checked: it was as high without the fix. A smaller map has few tiles to build and kept up in some runs.
         const streamName = `[${renderer}] 10,000 points set in each frame for 1 s: the map draws new data during that second (#856)`;
         if (renderer === 'worker' && !await workerRenders(page)) skip(streamName, noWorkerRender);
         else if (renderer === 'worker') {
@@ -642,19 +645,20 @@ for (const renderer of renderers) {
                 await new Promise(r => { const off = host.state.subscribe(s => s.idle, idle => { if (idle) { off(); r(); } }); setTimeout(r, 10000); });
                 host.update({...spec, data: {v: pre[0]}});
                 await new Promise(r => { const off = host.state.subscribe(s => s.idle, idle => { if (idle) { off(); r(); } }); setTimeout(r, 10000); });
-                let frames = 0, newest = 0, asking = false, updates = 0;
-                const off = host.listen('render', () => frames++), start = performance.now();
+                let frames = 0, newest = 0, asking = false, updates = 0, last = 0, gap = 0;
+                const start = performance.now(), off = host.listen('render', () => { const now = performance.now() - start; if (now < 1000) { frames++; gap = Math.max(gap, now - last); last = now; } });
                 for (let i = 1; performance.now() - start < 1000; i++, updates++) {
                     host.update({...spec, data: {v: pre[i % pre.length]}});
                     if (!asking) { asking = true; host.queryFeatures({x: 450, y: 300}, {layers: ['v-dots']}).then(f => { if (performance.now() - start < 1000) newest = Math.max(newest, ...f.map(x => x.properties.v)); asking = false; }, () => {}); }
                     await new Promise(r => requestAnimationFrame(r));
                 }
+                gap = Math.round(Math.max(gap, 1000 - last));
                 const used = host.state.get().renderer;
                 off(); host.destroy(); el.remove();
-                return {frames, updates, newest, used};
+                return {frames, updates, gap, newest, used};
             }, renderer);
             if (stream.used !== 'worker') skip(streamName, 'the map fell back to the main thread');
-            else check(streamName, stream.frames >= stream.updates / 2 && stream.newest > 0, JSON.stringify(stream));
+            else check(streamName, stream.frames >= 5 && stream.gap <= 400, JSON.stringify(stream));
         }
 
         // 3d. setFeatureState and removeFeatureState of the host: queryFeatures reads the state, the fill draws it, and a new style keeps it (#485).
