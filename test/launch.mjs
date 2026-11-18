@@ -21,12 +21,17 @@ export function launch() {
     return process.env.NO_WORKER_WEBGL ? started.then(withoutWorkerWebGL) : started;
 }
 
+// Answers what the expression `test` gives in a classic worker of the page, or false when the worker does not load. The
+// blob has the type text/javascript, as the blob workers of the library have (src/loader.ts): WebKit on macOS does not
+// load a worker from a blob without a type on a page of the demo server ("Load failed", #936).
+export const inWorker = (page, test) => page.evaluate(test => new Promise(resolve => {
+    const w = new Worker(URL.createObjectURL(new Blob([`postMessage(${test})`], {type: 'text/javascript'})));
+    w.onmessage = e => { resolve(e.data); w.terminate(); }; w.onerror = e => { e.preventDefault(); resolve(false); }; // (keeps the error of a worker that does not load from the page, #751)
+}), test);
+
 // Whether the browser of the page can make a WebGL2 context in a worker. WebKit on Linux and Windows and Safari before
 // 16.4 cannot: the map then renders on the main thread, and a check of the worker renderer prints SKIP.
-export const workerRenders = page => page.evaluate(() => new Promise(resolve => {
-    const w = new Worker(URL.createObjectURL(new Blob(['postMessage(typeof OffscreenCanvas !== "undefined" && !!new OffscreenCanvas(1, 1).getContext("webgl2"))'])));
-    w.onmessage = e => { resolve(e.data); w.terminate(); }; w.onerror = e => { e.preventDefault(); resolve(false); }; // (keeps the error of a worker that does not load from the page, #751)
-}));
+export const workerRenders = page => inWorker(page, 'typeof OffscreenCanvas !== "undefined" && !!new OffscreenCanvas(1, 1).getContext("webgl2")');
 export const noWorkerRender = 'this browser cannot render in a worker';
 
 // NO_WORKER_WEBGL=1 makes each classic worker of each page unable to get a WebGL context, as in WebKit on Linux and
