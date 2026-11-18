@@ -571,6 +571,36 @@ for (const renderer of renderers) {
             check(`[worker] after a new style, the canvas at state.idle shows the new style: no pixel differs from the canvas 1 s later (#555)`,
                 shownAtIdle.used === 'worker' && shownAtIdle.out?.every(n => n === 0), JSON.stringify(shownAtIdle));
         }
+        // 3b2c. After setPixelRatio, `idle` of the worker renderer comes once the canvas of the page has the new size (#950).
+        // Chromium gives the canvas the size of a resized frame only when that frame arrives, which can be more than one
+        // frame of the page after the engine sent `idle`. As in the bench of #948, new maps get setPixelRatio(2) after
+        // their first `idle`: maps of the compat entry (the main API has no pixel ratio), two on one page.
+        const resizedName = '[worker] after setPixelRatio, the canvas has the new size at idle, with two maps on one page (#950)';
+        if (renderer === 'worker' && !await workerRenders(page)) skip(resizedName, noWorkerRender);
+        else if (renderer === 'worker') {
+            const resized = await page.evaluate(async () => {
+                const t = window.t, mod = await import('/dist/map-jr-gl-maplibre-compat.js'), wrong = [];
+                const idle = map => new Promise(r => { map.once('idle', () => r(true)); setTimeout(() => r(false), 10000); });
+                for (let round = 0; round < 6; round++) {
+                    const maps = [0, 1].map(i => {
+                        const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: `position:fixed;left:0;top:${i * 300}px;width:450px;height:300px;z-index:100`}));
+                        return {el, map: new mod.Map({container: el, style: t.style, center: [-74.0065, 40.7085], zoom: 14.3, attributionControl: false})};
+                    });
+                    await Promise.all(maps.map(m => idle(m.map)));
+                    await Promise.all(maps.map(async ({el, map}, i) => {
+                        for (const ratio of [2, 1]) {
+                            const armed = idle(map);
+                            map.setPixelRatio(ratio);
+                            const came = await armed, width = map.getCanvas().width, want = Math.round(el.clientWidth * ratio);
+                            if (!came || width !== want) wrong.push({round, map: i, ratio, came, width, want});
+                        }
+                    }));
+                    for (const m of maps) { m.map.remove(); m.el.remove(); }
+                }
+                return {wrong};
+            }).catch(e => ({error: String(e)}));
+            check(resizedName, resized.wrong?.length === 0, JSON.stringify(resized));
+        }
         // 3b2. `patch` (#483): it keeps the fields that `part` leaves out, `undefined` removes a field, and `description` is the last description.
         const patched = await page.evaluate(async renderer => {
             const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));

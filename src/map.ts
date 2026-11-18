@@ -712,11 +712,19 @@ export class Map {
             if (e.seq !== this.seq || this.restyled !== this.restyles || this.resolved?.waiting) return;
             // An engine in a worker sends `idle` once its frame has gone to the page (see `frame` in engine.ts), and the
             // page shows that frame when it next paints (#555). Wait for the page's next frame; a hidden page runs none,
-            // so a timer ends the wait too.
+            // so a timer ends the wait too. The canvas of the page takes the size of a resized frame only when that frame
+            // arrives, which can be several frames after the resize (#950): the wait also lasts until the canvas has the
+            // size of the last resize, for at most a second.
             if (this.renderer === 'worker' && this.shown !== e) {
                 let done = false;
-                const go = () => { if (!done && !this.removed) { done = true; this.shown = e; this.onEngineEvent(e); } };
-                requestAnimationFrame(go); setTimeout(go, 100);
+                const c = this.canvas, t0 = performance.now(), size = (n: number) => Math.max(1, Math.round(n * this.dpr));
+                const go = () => {
+                    if (done || this.removed) { done = true; return; }
+                    if ((c.width !== size(this.tr.width) || c.height !== size(this.tr.height)) && performance.now() - t0 < 1000) return;
+                    done = true; this.shown = e; this.onEngineEvent(e);
+                };
+                const frame = () => { go(); if (!done) requestAnimationFrame(frame); }, timer = () => { go(); if (!done) setTimeout(timer, 100); };
+                requestAnimationFrame(frame); setTimeout(timer, 100);
                 return;
             }
             this.tilesLoaded = true;
