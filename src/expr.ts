@@ -441,7 +441,7 @@ export function compileExpr(e: any, flags: Flags): Fn {
                         const t = text(c);
                         if (t == null || t === '') return '';
                         const f = font(c), col = colorize(tint(c));
-                        return `${STYLE_OPEN}${scale(c) ?? ''}|${f ?? ''}|${Array.isArray(col) ? col.join(',') : ''}${STYLE_CLOSE}${t}${STYLE_OPEN}${STYLE_CLOSE}`;
+                        return `${STYLE_OPEN}${scale(c) ?? ''}|${f == null ? '' : String(f).replace(/\|/g, '')}|${Array.isArray(col) ? col.join(',') : ''}${STYLE_CLOSE}${t}${STYLE_OPEN}${STYLE_CLOSE}`;
                     });
                 }
             }
