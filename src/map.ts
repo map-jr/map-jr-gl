@@ -168,7 +168,11 @@ export class Map {
         }
         // (A picture that the SVG names is put into it first, as for a marker template.)
         const svg = await this.embedImages(fillTemplate(template.svg, Object.fromEntries(template.slots.map((s, i) => [s, values[i]]))));
-        if (this.removed || this.templates.get(image) !== template) return;
+        if (this.removed) return;
+        // (A template given again with the same SVG, as after a fall back to the main thread, still gets the variant
+        // that the engine asked for: the engine asks for each name once; #882.)
+        const now = this.templates.get(image);
+        if (now !== template) { if (now?.svg === template.svg && String(now.slots) === String(template.slots)) this.addVariant(name, image, now, values); return; }
         // (A template that cannot be drawn gives one error with its name, not one for each of its variants.)
         this.putImage(name, svg, template.options, true).catch(error => {
             if (!template.failed) this.fire('error', {error: new Error(`[map-jr-gl] The image "${image}" cannot be drawn with the values of its slots (${(error as Error).message}). Check that the SVG is well-formed, also with a value in each slot.`)});
@@ -392,6 +396,9 @@ export class Map {
                     // map has resolved, so a source that failed is not fetched and reported again; #777.)
                     this.restyle(true, true);
                     // (`putImage` and not `addImage`: an image of the style stays one in the compat entry; #853.)
+                    // (The new engine can build tiles before it has the slots of the templates: they are given as new,
+                    // so that those tiles are built again; #882.)
+                    this.templates.clear();
                     for (const [name, [source, options]] of this.imageInputs) this.putImage(name, source, options);
                     // (The worker drew nothing, so an animation that the page started went nowhere; #777.)
                     this.resumeEase();
@@ -469,6 +476,7 @@ export class Map {
             // accept the report that a source is loaded), the layers that the page has hidden, and the global state.
             this.restyle(true);
             this.resumeEase();
+            this.templates.clear(); // (as after a fall back; #882)
             for (const [name, [source, options]] of this.imageInputs) await this.putImage(name, source, options);
             this.fire('webglcontextrestored');
             if (__DEV__) this.note('restart() ended', {renderer: this.renderer, drew: this.drew});
