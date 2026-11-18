@@ -1,5 +1,5 @@
 // Tests of the main API (`createMap`, see src/host.ts) in a real browser: node test/host.mjs (demo server running)
-import {launch, browserName, workerRenders, noWorkerRender} from './launch.mjs';
+import {launch, browserName, workerRenders, inWorker, noWorkerRender} from './launch.mjs';
 import {watchdog} from './watchdog.mjs';
 import {crc32, deflateSync} from 'node:zlib';
 
@@ -362,11 +362,7 @@ for (const renderer of renderers) {
         // elevation tiles are one picture in the page (1000 m everywhere), so no network decides the time. The shortest
         // of three tries is read.
         // Elevation tiles are decoded in the tile workers, which needs OffscreenCanvas there (#778).
-        const decodes = await page.evaluate(() => new Promise(resolve => {
-            const w = new Worker(URL.createObjectURL(new Blob(['postMessage(typeof OffscreenCanvas !== "undefined" && typeof createImageBitmap !== "undefined")'])));
-            // (WebKit does not load this worker here: preventDefault keeps its error from the page, #751.)
-            w.onmessage = e => { resolve(e.data); w.terminate(); }; w.onerror = e => { e.preventDefault(); resolve(false); };
-        }));
+        const decodes = await inWorker(page, 'typeof OffscreenCanvas !== "undefined" && typeof createImageBitmap !== "undefined"');
         const terrainName = `[${renderer}] 3D terrain that is switched on: the map is idle when the elevation data has come, not 200 ms after the camera got its height (#436)`;
         if (!decodes) skip(terrainName, 'no OffscreenCanvas in workers');
         else {
@@ -2729,7 +2725,7 @@ for (const code of ['core', 'compat']) {
     await page.close();
 }
 // Tiles before they are in view (#361). (1) The tiles of the destination of an `easeTo` and of a `flyTo` are requested
-// when it starts. The movement goes 0.3 degrees east at zoom 13 in 5 s: after 500 ms
+// when it starts. The movement goes 0.3 degrees east at zoom 13 in 5 s: for the first 1500 ms
 // the view is still near the start, so a request for a tile next to the destination is a request made early.
 // (2) A newer movement does not cancel the early requests that are on their way (tile answers are 1.5 s late here).
 // (3) A drag requests no tiles beyond the leading edge of the view.
@@ -2756,11 +2752,15 @@ for (const method of ['easeTo', 'flyTo']) {
         const p = await prefetchPage(); page = p.page;
         const before = p.asked.length;
         await page.evaluate(([method, east, lat]) => window.host._map[method]({center: [east, lat], duration: 5000}), [method, east, from[1]]);
-        await page.waitForTimeout(500);
         // (Only tiles of the level of the view: a flyTo zooms out, and its coarser tiles cover the destination early.)
         const zView = Math.max(...p.asked.slice(0, before).map(t => t[0]));
-        const early = p.asked.slice(before).filter(([z, x]) => z === zView && Math.abs(x - tileOf(east, z)) <= 1);
-        check(`prefetch: the tiles at the destination of ${method} are requested at its start`, early.length > 0, JSON.stringify({early: early.length, after: p.asked.length - before}));
+        const earlyOf = () => p.asked.slice(before).filter(([z, x]) => z === zView && Math.abs(x - tileOf(east, z)) <= 1);
+        // Wait for the first early request instead of a fixed time (#790). Up to 1500 ms, the view is still more
+        // than 5 tiles away from the destination, so a request for it cannot come from the view itself.
+        const start = Date.now();
+        while (!earlyOf().length && Date.now() - start < 1500) await page.waitForTimeout(25);
+        const early = earlyOf();
+        check(`prefetch: the tiles at the destination of ${method} are requested at its start`, early.length > 0, JSON.stringify({early: early.length, after: p.asked.length - before, ms: Date.now() - start}));
     } catch (e) { check(`prefetch, ${method}: the test run was completed`, false, String(e.message).split('\n')[0]); }
     await page?.close();
 }

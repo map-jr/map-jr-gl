@@ -1,6 +1,6 @@
 {
   "name": "@map-jr/map-jr-gl",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "A small vector map renderer for the web with worker rendering, server rendering and canvas markers; reads MapLibre styles.",
   "scripts": {
     "test": "pnpm test:unit && pnpm test:expressions && pnpm test:api && pnpm test:size && pnpm test:examples && pnpm test:consistency",
@@ -61,7 +61,7 @@
     "magic-string": "^1.4.5",
     "maplibre-gl": "^6.17.0",
     "miniflare": "^4.20260730.0",
-    "playwright": "1.63.0",
+    "playwright": "1.65.1",
     "publint": "^0.3.25",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
