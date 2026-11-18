@@ -669,6 +669,14 @@ for (const mode of renderers) {
         return {dx: Math.abs((tip.left + tip.right) / 2 - at.x), dy: Math.abs(tip.bottom - at.y), shift, got, isPoint, open, gone: !document.querySelector('.maplibregl-marker, .maplibregl-popup')};
     });
     check(`[${mode}] DOM Marker and Popup`, dom.dx < 1 && dom.dy < 1 && Math.abs(dom.shift[0] - 7) < 1 && Math.abs(dom.shift[1] + 5) < 1 && dom.got.x === 3 && dom.got.y === 4 && dom.isPoint && dom.open.startsWith('Hello') && dom.gone, JSON.stringify(dom));
+    // #672: a popup `offset` that is `{x, y}`, a `Point` or a point per anchor moves the popup as `[x, y]` does.
+    const popOffset = await page.evaluate(async () => {
+        const {Popup, Point} = await import('/dist/map-jr-gl-maplibre-compat.js'), m = window.map;
+        const at = (offset) => { const p = new Popup({anchor: 'bottom', offset, closeOnClick: false}).setLngLat([-74.0065, 40.7085]).setText('x').addTo(m), r = p.getElement().getBoundingClientRect(); p.remove(); return [r.left, r.bottom]; };
+        const base = at([0, 0]);
+        return [[7, -5], {x: 7, y: -5}, new Point(7, -5), {bottom: {x: 7, y: -5}}, {bottom: new Point(7, -5)}].map(o => { const r = at(o); return [Math.round(r[0] - base[0]), Math.round(r[1] - base[1])]; });
+    });
+    check(`[${mode}] Popup offset as {x, y}, a Point or a point per anchor (#672)`, popOffset.every(([dx, dy]) => dx === 7 && dy === -5), JSON.stringify(popOffset));
 
     // A PMTiles archive as a vector source, read by range requests.
     const pm = await page.evaluate(async () => {
