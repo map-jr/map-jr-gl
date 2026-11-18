@@ -1537,10 +1537,20 @@ for (const renderer of renderers) {
             await wait(300);
             const plainOpen = plain.isConnected && document.activeElement === plain;
             other.remove();
-            return {focused, closes, gone, focus, plainOpen};
+            // #832: the focus also returns to the map when it was on a button in the content.
+            const inner = document.createElement('div'), button = inner.appendChild(document.createElement('button'));
+            button.textContent = 'In the content';
+            const second = t.host.overlay(inner, {lngLat, popup: true, onClose() { second.remove(); }});
+            await wait(300);
+            button.focus();
+            const innerFocused = document.activeElement === button;
+            key(button);
+            await wait(500);
+            const innerFocus = document.activeElement === t.host._map.getCanvas();
+            return {focused, closes, gone, focus, plainOpen, innerFocused, innerFocus};
         });
-        check(`[${renderer}] Escape closes a popup of overlay() that has onClose and holds the focus, the focus goes to the map, and a popup without onClose stays open`,
-            escape.focused && escape.closes === 1 && escape.gone && escape.focus && escape.plainOpen, JSON.stringify(escape));
+        check(`[${renderer}] Escape closes a popup of overlay() that has onClose and holds the focus, the focus goes to the map (also from a button in the content), and a popup without onClose stays open`,
+            escape.focused && escape.closes === 1 && escape.gone && escape.focus && escape.plainOpen && escape.innerFocused && escape.innerFocus, JSON.stringify(escape));
         // #435: destroy() leaves no popup and no marker of overlay() on the page, and does not call onClose.
         const destroyed = await page.evaluate(async renderer => {
             const el = Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'});
