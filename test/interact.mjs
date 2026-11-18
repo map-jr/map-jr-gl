@@ -219,7 +219,8 @@ for (const mode of renderers) {
         const kept = m.getZoom();
         seen.length = 0;
         m.jumpTo({zoom: 14.3, bearing: 10, pitch: 10});
-        await new Promise(r => setTimeout(r, 600));
+        // Wait for the events themselves (#714): with the engine in a worker they can arrive late on a loaded runner.
+        for (const end = performance.now() + 5000; !['zoom', 'rotate', 'pitch'].every(t => seen.includes(t)) && performance.now() < end;) await new Promise(r => setTimeout(r, 20));
         const events = [...new Set(seen)];
         m.jumpTo({bearing: 0, pitch: 0});
         await new Promise(r => setTimeout(r, 400));
