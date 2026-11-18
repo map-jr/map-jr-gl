@@ -342,7 +342,8 @@ any key in `metadata`, so MapLibre GL JS reads the style and ignores the images.
   that texture is full after 961 icons of the size of those of OpenFreeMap (most are 21 by 21 CSS pixels) at a pixel
   ratio of 3.
 - The server renderer (`renderToSVG`, `renderToImage`) draws the SVG images of the style, with the same rules.
-- The compat entry (`@map-jr/map-jr-gl/maplibre-compat`) does not read the key, as MapLibre GL JS does not.
+- The compat entry (`@map-jr/map-jr-gl/maplibre-compat`) draws them too, with the same rules (#759). An image that the
+  page adds with `addImage` wins over an image of the style with the same name. MapLibre GL JS ignores the key.
 
 An image that does not load is an error of the map (`onError`) with the name of the image. The map
 draws the layer without that image.
