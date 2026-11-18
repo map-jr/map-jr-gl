@@ -997,10 +997,12 @@ export class Map {
     private limits() { this.post({type: 'limits', minZoom: this.tr.minZoom, maxZoom: this.tr.maxZoom, maxPitch: this.tr.maxPitch, minPitch: this.tr.minPitch, maxBounds: this.tr.maxBounds}); return this; }
     setMinZoom(z = -2) { this.tr.minZoom = z; return this.limits(); }
     setMaxZoom(z = 22) { this.tr.maxZoom = z; return this.limits(); }
-    setMaxPitch(p?: number) { this.tr.maxPitch = this.pitchCap(p); return this.limits(); }
-    private pitchCap(p = 60) {
+    declare private pitchWarned?: boolean;
+    setMaxPitch(p?: number | null) { this.tr.maxPitch = this.pitchCap(p); return this.limits(); }
+    private pitchCap(p?: number | null) {
+        p ??= 60;
         // MapLibre GL JS allows up to 180, where the camera looks up and needs its own elevation (not here yet).
-        if (p > MAX_PITCH) console.warn(`[map-jr-gl] maxPitch ${p}: the pitch stops at ${MAX_PITCH}, because the library has no elevation of the camera yet. Pass ${MAX_PITCH} or less.`);
+        if (p > MAX_PITCH && !this.pitchWarned && (this.pitchWarned = true)) console.warn(`[map-jr-gl] maxPitch ${p}: the pitch stops at ${MAX_PITCH}, because the library has no elevation of the camera yet. Pass ${MAX_PITCH} or less.`);
         return Math.min(MAX_PITCH, p);
     }
     getMaxPitch() { return this.tr.maxPitch; }
