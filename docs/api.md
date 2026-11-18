@@ -946,7 +946,8 @@ A query whose map goes away is rejected, so that code that awaits it does not wa
 | `destroy()` is called before the answer has come, or the query is asked after `destroy()`. | `[map-jr-gl] The query has no answer: the map was removed.` |
 | The browser takes the WebGL context away before the answer has come. | `[map-jr-gl] The query has no answer: the map lost its WebGL context. Ask again.` A query that is asked again waits for the new context and is answered then. |
 
-Catch the error where a query can be open while the map is removed, for example in a handler of a component that
+A query that nobody awaits or catches does not become an unhandled rejection of the page when `destroy()` rejects it.
+The rejection after a lost WebGL context is not handled in this way. Catch the error where a query can be open while the map is removed, for example in a handler of a component that
 can unmount. `watchFeatures` and `watchSource` need no such code: they do not call their listener after `destroy()`,
 and after a lost context they ask again by themselves. When a listener throws, the browser reports the error as an
 unhandled rejection, and the watch goes on. When the question itself is wrong (for example a place that is not
