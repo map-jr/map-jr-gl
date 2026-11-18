@@ -61,7 +61,7 @@ else try {
         page = await browser.newPage({viewport: {width: 1000, height: 700}});
         page.on('pageerror', e => result.errors.push(e.message));
         const start = Date.now();
-        await page.goto(`${base}/bench?auto&seconds=${process.env.BENCH_SECONDS ?? 4}&runs=1`);
+        await page.goto(`${base}/bench?auto&nocold&seconds=${process.env.BENCH_SECONDS ?? 4}&runs=1`);
         try {
             await page.waitForFunction(() => window.benchResults, null, {timeout: Math.max(60000, t0 + budget - Date.now()), polling: 1000});
         } catch (e) {
@@ -72,11 +72,33 @@ else try {
         lists.push(await page.evaluate(() => window.benchResults));
         longest = Math.max(longest, Date.now() - start);
     } while (lists.length < most && Date.now() + longest - t0 < budget);
+    // The cold start (#29): each load in a fresh browser context, so that nothing comes from a cache, with BENCH_LATENCY
+    // ms (100) before each answer, as scripts/timeline.mjs does, and the libraries in turn; BENCH_COLD_RUNS loads (5) of
+    // each. A load starts only if one as long as the longest so far still ends by the same deadline as the runs of the
+    // page, and none starts when no run of the page ended (the deadline has passed then, and the rows of that page are kept).
+    const latency = +(process.env.BENCH_LATENCY ?? 100), cold = +(process.env.BENCH_COLD_RUNS ?? 5);
+    let longestCold = 0;
+    const pageRuns = lists.length;
+    cold: for (let i = 0; lists.length && i < cold; i++) for (const lib of ['maplibre', 'main', 'worker']) {
+        if (Date.now() + longestCold - t0 >= budget) { result.errors.push(`bench: the cold start stopped after ${lists.length - pageRuns} loads, at the deadline of ${budget / 60000} min`); break cold; }
+        const start = Date.now(), context = await browser.newContext({viewport: {width: 1000, height: 700}});
+        // (Requests of workers go through the context, so that they wait as well.)
+        await context.route('**/*', async route => { await new Promise(r => setTimeout(r, latency)); await route.continue().catch(() => {}); });
+        const p = await context.newPage();
+        p.on('pageerror', e => result.errors.push(e.message));
+        try {
+            await p.goto(`${base}/bench?auto&only=cold&runs=1&libs=${lib}&latency=${latency}`);
+            await p.waitForFunction(() => window.benchResults, null, {timeout: Math.max(30000, Math.min(3 * 60000, t0 + budget - Date.now())), polling: 500});
+            lists.push(await p.evaluate(() => window.benchResults));
+        } catch (e) { result.errors.push(`bench: a cold start of ${lib} did not end: ${String(e.message).split('\n')[0]}`); break cold; }
+        finally { await context.close(); }
+        longestCold = Math.max(longestCold, Date.now() - start);
+    }
     result.env = await page.textContent('#env');
     if (lists.length) Object.assign(result, await page.evaluate(lists => window.benchMerge(lists), lists));
     else result.table = partial;
-    result.runs = lists.length; result.minutes = +((Date.now() - t0) / 60000).toFixed(1);
-    console.log(`bench: ${lists.length} runs of the page in ${result.minutes} min`);
+    result.runs = pageRuns; result.coldLoads = lists.length - pageRuns; result.minutes = +((Date.now() - t0) / 60000).toFixed(1);
+    console.log(`bench: ${pageRuns} runs of the page and ${lists.length - pageRuns} cold loads in ${result.minutes} min`);
     await page.close();
 } catch (e) { result.errors.push('bench: ' + String(e.message).split('\n')[0]); }
 await browser.close();
