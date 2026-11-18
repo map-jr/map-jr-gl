@@ -72,7 +72,7 @@ abstract class Overlay extends Evented {
     }
 }
 
-export type PopupOffset = number | [number, number] | Partial<Record<Anchor, [number, number]>>;
+export type PopupOffset = number | PointLike | Partial<Record<Anchor, PointLike>>;
 export interface PopupOptions {
     closeButton?: boolean; closeOnClick?: boolean; maxWidth?: string; className?: string;
     /**
@@ -80,7 +80,7 @@ export interface PopupOptions {
      * does: above the point by default, below when there is no room above, shifted sideways near the left and right edges.
      */
     anchor?: Anchor;
-    /** Distance from the map position: one number, an [x, y] pair, or a pair per anchor (so it can clear a marker on any side). */
+    /** Distance from the map position: one number, a point (`[x, y]`, `{x, y}` or a `Point`), or a point per anchor (so it can clear a marker on any side). */
     offset?: PopupOffset;
     /** Set false to show and hide without the short fade. */
     animate?: boolean;
@@ -160,7 +160,7 @@ export class Popup extends Overlay {
         const o = this.options.offset ?? 0;
         const [x, y] = part(anchor), side = anchor.split('-')[0];
         // (One number moves the popup away from the position: down and to the right for `top-left`.)
-        this.offset = typeof o === 'number' ? [(1 - x / 50) * o, (1 - y / 50) * o] : Array.isArray(o) ? o : o[anchor] ?? [0, 0];
+        this.offset = typeof o === 'number' ? [(1 - x / 50) * o, (1 - y / 50) * o] : Array.isArray(o) || 'x' in o ? xy(o as PointLike) : xy((o as Partial<Record<Anchor, PointLike>>)[anchor] ?? [0, 0]);
         // (Across the top or the bottom, the pointer is 14 pixels from the left edge, in the middle, or 14 pixels from the right edge.)
         this.box.dataset.side = side; // (for the CSS of the main API, which draws the tip as a part of the box)
         this.tip.style.cssText = side === 'center' ? 'display:none' : `position:absolute;width:12px;height:12px;background:inherit;transform:rotate(45deg);${side}:-5px;` +
@@ -172,7 +172,7 @@ export class Popup extends Overlay {
     /** Above the point when it fits, otherwise below; hugging the left or right edge when the point is near one. */
     private chooseAnchor(): Anchor {
         const map = this.map!, p = map.project(this.lngLat!), c = map.getContainer(), w = this.box.offsetWidth + 16, h = this.box.offsetHeight + 16;
-        const o = this.options.offset, lift = typeof o === 'number' ? o : o && !Array.isArray(o) ? -(o.bottom?.[1] ?? 0) : 0;
+        const o = this.options.offset, lift = typeof o === 'number' ? o : o && !Array.isArray(o) && !('x' in o) ? -xy((o as Partial<Record<Anchor, PointLike>>).bottom ?? [0, 0])[1] : 0;
         const vertical = p.y - lift - h < 0 && p.y + h < c.clientHeight + 40 ? 'top' : 'bottom';
         const horizontal = p.x - w / 2 < 0 ? '-left' : p.x + w / 2 > c.clientWidth ? '-right' : '';
         return (vertical + horizontal) as Anchor;
