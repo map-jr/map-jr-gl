@@ -1102,6 +1102,7 @@ symbol layer with an image: it is drawn on the canvas, and 100,000 markers cost 
 | `update(description)` | Changes the map to a new description. Takes the complete description. See [Change the map](#change-the-map). |
 | `patch(part)` | Changes only the fields of `part`; a field that is `undefined` is removed. See [Change the map](#change-the-map). |
 | `description` | The description of the last `createMap`, `update` or `patch` (read only). |
+| `getResolvedDescription()` | The description with `style` as a copy of the style that the map loaded and `globalState` as the global state in effect (prototype of #872). |
 | `destroy()` | Removes the map and frees its memory. It also removes the elements of `overlay()` from the page at once, without the closing animation of a popup, and it does not call `onClose`. It can be called while the map loads. Call it before you make another map in the same element: a second map in an element that has a map leaves two canvases in the element, and the library warns in the console. |
 | `moveTo(target)` | Moves the camera now to a view or to `bounds` (with `padding` and `maxZoom` for the fit), with `bearing`, `pitch`, `duration` (milliseconds) and `fly`. It does not change the padding of the map. See [The camera](#the-camera). |
 | `fitBounds(bounds, options)` | The short form of `moveTo({bounds, ...options})`: the options are those of `moveTo` other than `center` and `zoom`, and `duration` is 800 ms by default. |
