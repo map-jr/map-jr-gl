@@ -13,10 +13,12 @@ This entry covers the changes after 0.7.0 (the tag `v0.7.0`).
 
 ### Breaking changes
 
-- Both entries: a style without `glyphs` draws its labels in the CSS family list of `text-font`. A second or later
-  name of `text-font` that exists on the system now draws in that font, where the map used `fontFamily`, and a name
-  that is a generic family (`sans-serif`, `serif`, `monospace`) draws in that generic font. Leave such names out of
-  `text-font` to keep the old fonts ([#934]).
+- Both entries: text that the map draws with the fonts of the browser uses the CSS family list of `text-font`. This
+  is all text of a style without `glyphs`. In a style with `glyphs`, it is the text that the glyph files cannot draw:
+  a font stack or a range that the server does not have, a character missing from the files, and text that the
+  browser must shape. A second or later name of `text-font` that exists on the system now draws in that font, where
+  the map used `fontFamily`, and a name that is a generic family (`sans-serif`, `serif`, `monospace`) draws in that
+  generic font. Leave such names out of `text-font` to keep the old fonts ([#934]).
 - Both entries: two GeoJSON features with the same id are two query results, where the query returned only the first.
   Code that expected one result for each id must handle each feature ([#829]).
 - `@map-jr/map-jr-gl/maplibre-compat`: `getSky()` returns the `sky` of the style, where it returned `undefined` for
