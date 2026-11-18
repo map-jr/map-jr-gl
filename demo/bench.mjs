@@ -42,10 +42,11 @@ const NET = `try{const c=new BroadcastChannel('bench-net'),o=performance.timeOri
 const PageWorker = window.Worker;
 window.Worker = function (url, opts) {
     workers.started++;
-    const w = opts?.type === 'module' ? new PageWorker(url, opts)
-        : new PageWorker(URL.createObjectURL(new Blob([`${NET};importScripts(${JSON.stringify(new URL(url, location.href).href)});`], {type: 'text/javascript'})), opts);
+    const blob = opts?.type === 'module' ? null : URL.createObjectURL(new Blob([`${NET};importScripts(${JSON.stringify(new URL(url, location.href).href)});`], {type: 'text/javascript'}));
+    const w = new PageWorker(blob ?? url, opts);
     const end = w.terminate.bind(w);
-    w.terminate = () => { workers.ended++; end(); };
+    // (The blob URL is given back with the worker, so that the runs do not keep one for each worker that they started, #959.)
+    w.terminate = () => { workers.ended++; end(); if (blob) URL.revokeObjectURL(blob); };
     return w;
 };
 
@@ -451,7 +452,10 @@ async function runAll(chosen) {
             stage.replaceChildren();
             try { r.runs.push(await s.run(lib)); } catch (err) { r.error = String(err?.message ?? err); break; }
             stage.replaceChildren();
-            await sleep(300);
+            // (A pause, so that the browser can give back the memory of the removed maps before the next run. Safari on
+            // an iPhone ended the page during 3 runs when the pause was 300 ms, #959.)
+            await sleep(1000);
+            await window.benchBetween?.(`${r.name}, run ${i + 1}`); // (a measuring script can set it, to read the memory once the maps of a run are removed)
         }
         for (const [key] of s.measures) r[key] = median(r.runs.map(x => x.values[key]));
         results.push(r);
