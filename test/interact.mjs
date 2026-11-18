@@ -3203,6 +3203,31 @@ for (const mode of renderers) {
         });
         check('[main] maplibre-compat: queryRenderedFeatures gives a GeoJSON feature without an id one time when several tiles hold it, as MapLibre gives three points at the corner of four tiles (#606)',
             m606.ml.points.join() === '3,3,3' && m606.compat.points.join() === '3,3,3' && m606.compat.atOnce === 3 && m606.ml.atOnce === 3 && m606.compat.square.join() === '1,1,1' && m606.compat.keys, JSON.stringify(m606));
+        // #659: two GeoJSON features with the same id are two results, as in MapLibre GL JS (served at /ml/). Three points
+        // share the id 12, one point has no id, and a square crosses the borders of four tiles at zoom 2.
+        const m659 = await page.evaluate(async () => {
+            const ml = await import('/ml/maplibre-gl.mjs');
+            ml.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const compat = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const point = (id, c) => ({type: 'Feature', ...(id === undefined ? {} : {id}), properties: {}, geometry: {type: 'Point', coordinates: c}});
+            const square = {type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[-20, -20], [20, -20], [20, 20], [-20, 20], [-20, -20]]]}};
+            const style = {version: 8, sources: {points: {type: 'geojson', data: {type: 'FeatureCollection', features: [point(12, [-10, 5]), point(12, [10, 5]), point(12, [10, -5]), point(undefined, [-10, -5])]}}, square: {type: 'geojson', data: square}},
+                layers: [{id: 'square', type: 'fill', source: 'square'}, {id: 'points', type: 'circle', source: 'points'}]};
+            const run = async lib => {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+                const m = new lib.Map({container: el, renderer: 'main', style, center: [0, 0], zoom: 2});
+                await new Promise(r => m.loaded?.() ? r() : m.once('load', r));
+                await new Promise(r => { m.once('idle', r); setTimeout(r, 3000); });
+                const at = m.project([10, 5]), out = {};
+                for (const layer of ['points', 'square']) out[layer] = [(await m.queryRenderedFeatures([at.x, at.y], {layers: [layer]})).length, (await m.queryRenderedFeatures([[0, 0], [300, 200]], {layers: [layer]})).length];
+                out.source = [(await m.querySourceFeatures('points')).length, (await m.querySourceFeatures('square')).length];
+                m.remove(); el.remove();
+                return out;
+            };
+            return {ml: await run(ml), compat: await run(compat)};
+        });
+        check('[main] maplibre-compat: queryRenderedFeatures gives each GeoJSON feature that shares an id with another, as MapLibre does (#659)',
+            JSON.stringify(m659.ml.points) === JSON.stringify(m659.compat.points) && m659.compat.points.join() === '1,4' && m659.compat.square.join() === '1,1', JSON.stringify(m659));
         // #261: the eventData argument of a camera method is on the events of that move, and not on the next move.
         const tagged = await page.evaluate(async () => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
