@@ -553,6 +553,18 @@ export function bezier(x1: number, y1: number, x2: number, y2: number): (x: numb
 }
 
 /**
+ * Records a sample of a rotate drag: the samples of one 16 ms window (one frame, as `HandlerInertia` of MapLibre GL JS
+ * has one entry for each frame) merge into one with the latest time and value, and samples older than 160 ms go.
+ * `w` is the time at which the window of a sample begins, so that moves that are always less than 16 ms apart still
+ * leave one sample for each window (#939).
+ */
+export function addTurnSample(samples: {t: number; x: number; y: number; w?: number}[], s: {t: number; x: number; y: number}) {
+    const last = samples[samples.length - 1], w = last && s.t - (last.w ?? last.t) < 16 ? samples.pop()!.w ?? last.t : s.t;
+    samples.push({...s, w});
+    while (samples[0].t < s.t - 160) samples.shift();
+}
+
+/**
  * The inertia after a rotate drag, as `HandlerInertia` of MapLibre GL JS computes it: the change of the bearing (`x`)
  * and the pitch (`y`) from the first sample of the last 60 ms (or the last but one) to the last sample, over the time
  * up to the release, gives a speed (at most 360 degrees per second for the bearing, 90 for the pitch) that decelerates
