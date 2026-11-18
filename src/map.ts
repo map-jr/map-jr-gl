@@ -1282,10 +1282,12 @@ export class Map {
         return {
             ...spec, id, setData: (data: unknown) => this.setGeoJSON(id, data),
             // (A URL: the answer that the map keeps for the source, and a request only when it has none for this URL.)
+            // (The source object of the map now: `setData` can have replaced it with a copy, #857.)
             getData: async () => {
-                if (typeof spec.data !== 'string') return spec.data;
-                const url = absolute(spec.data, this.styleBase);
-                return kept(spec, url) ?? (await this.fetchAs('Source')(url)).json();
+                const now = this.rawStyle?.sources[id] ?? spec;
+                if (typeof now.data !== 'string') return now.data;
+                const url = absolute(now.data, this.styleBase);
+                return kept(now, url) ?? (await this.fetchAs('Source')(url)).json();
             },
             updateData: (diff: GeoJSONDiff) => this.updateGeoJSON(id, diff),
             // The cluster methods give promises, as in MapLibre. The page makes its own copy of the cluster index for them.
@@ -1335,11 +1337,16 @@ export class Map {
     private dataCalls = new globalThis.Map<string, number>();
     /** The request of the newest `setData` with a URL of each GeoJSON source, while it loads. */
     private dataAborts = new globalThis.Map<string, AbortController>();
+    /** The source objects that the map copied from the description and may change (#857). */
+    private ownSources = new WeakSet<object>();
     private async setGeoJSON(id: string, data: unknown) {
         const call = (this.dataCalls.get(id) ?? 0) + 1;
         this.dataCalls.set(id, call);
         // (A copy: the source object can be the application's own, from the description, and the map does not change it (#857).)
-        this.rawStyle.sources[id] = {...this.rawStyle.sources[id], data};
+        // (Copied once: later calls write into the map's copy, so that requests keyed by the source object stay valid.)
+        let src = this.rawStyle.sources[id];
+        if (!this.ownSources.has(src)) this.ownSources.add(src = this.rawStyle.sources[id] = {...src});
+        src.data = data;
         this.unloaded(id);
         for (const type of ['sourcedataloading', 'dataloading']) this.fire(type, {dataType: 'source', sourceId: id});
         // A request of an older call is no longer wanted: it is aborted.
