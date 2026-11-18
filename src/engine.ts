@@ -448,10 +448,10 @@ export class Engine {
         return new Promise(done => { this.uploads.push({bytes, make, done}); this.repaint(); });
     }
     private flushUploads(paced = true) {
-        // While the camera moves, about 4 ms of upload work a frame, and always at least one tile so that progress is
-        // certain. Before the first idle and while the camera is still, no frame is smooth to keep: everything goes now,
-        // which saves a frame for each tile that waited (#436).
-        for (const t0 = performance.now(); this.uploads.length && (!paced || performance.now() - t0 < 4);) {
+        // While the camera moves, about 4 ms of upload work a frame. Before the first idle and while the camera is still,
+        // no movement is smooth to keep, so a frame does up to 24 ms, which saves a frame for most tiles that waited and
+        // still answers input soon (#436). A frame always uploads at least one tile, so that progress is certain.
+        for (const t0 = performance.now(), ms = paced ? 4 : 24; this.uploads.length && performance.now() - t0 < ms;) {
             const u = this.uploads.shift()!;
             u.done(u.make());
         }
