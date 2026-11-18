@@ -25,3 +25,25 @@ test('the workers of a replaced pool end when its last map releases them', async
     second.release();
     assert.deepEqual(b.map(w => w.terminated), [true, true]);
 });
+
+test('a map that connects again closes its old tile ports and leaves the other map\'s open (#838)', async () => {
+    // The fake tile worker keeps its open ports by id, as src/worker.ts does.
+    const open: Set<number>[] = [];
+    const tileWorker = () => {
+        const w = fakeWorker([]) as any, mine = new Set<number>();
+        open.push(mine);
+        w.postMessage = (m: any) => { if (m.role === 'tiles') { mine.add(m.id); m.port.close(); } else if (m.role === 'drop') mine.delete(m.id); };
+        return w as Worker;
+    };
+    const o = {createWorker: tileWorker, tileWorkers: 2};
+    const a = await acquireTileWorkers(o), b = await acquireTileWorkers(o);
+    for (const p of [...a.connect(), ...b.connect()]) p.close();
+    const sizes = () => open.map(s => s.size);
+    assert.deepEqual(sizes(), [2, 2]);
+    for (const p of a.connect()) p.close(); // a fallback to the main thread (#812)
+    assert.deepEqual(sizes(), [2, 2]);
+    a.release();
+    assert.deepEqual(sizes(), [1, 1]);
+    b.release();
+    assert.deepEqual(sizes(), [0, 0]);
+});
