@@ -11,6 +11,10 @@ import {Renderer} from '@takumi-rs/core';
 
 const rasteriser = new Renderer();
 
+// An upstream fetch can fail inside Node's undici with an error thrown from a socket event, which no `try` around the
+// fetch catches (#880). The server logs it and goes on, so that one bad answer of the tile host does not end a test run.
+process.on('uncaughtException', error => console.error('[demo] an uncaught error, the server goes on:', error));
+
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const port = +(process.env.PORT || 8080), origin = `http://localhost:${port}`;
 const cache = path.join(root, '.cache/tiles');
