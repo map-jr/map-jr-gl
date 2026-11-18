@@ -992,6 +992,30 @@ for (const renderer of renderers) {
             pins.one === 1 && pins.id === 1 && pins.top === 'pins' && pins.moved === 0 && pins.back === 1 && pins.index === 2 && pins.color === '#00d' && pins.sameStyle
             && pins.late === '3 #0a0' && pins.none, JSON.stringify(pins));
 
+        // A key of `data` that names a source of `sources` (#857): the map does not write the data into the source object
+        // of the description, so that an update with a copy of the same description is no new style.
+        const declared = await page.evaluate(async () => {
+            const t = window.t, map = t.host._map, wait = ms => new Promise(r => setTimeout(r, ms));
+            const empty = () => ({type: 'FeatureCollection', features: []});
+            const point = {type: 'FeatureCollection', features: [{type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [0, 0]}}]};
+            const v = {type: 'geojson', data: empty()};
+            t.host.update(t.spec = {...t.spec, sources: {...t.spec.sources, v}, data: {...t.spec.data, v: point}});
+            await wait(900);
+            let restyled = 0;
+            const count = () => restyled++;
+            map.on('style.load', count);
+            t.host.update(t.spec = {...t.spec, sources: {...t.spec.sources, v: {type: 'geojson', data: empty()}}, data: {...t.spec.data}});
+            await wait(700);
+            map.off('style.load', count);
+            const unchanged = v.data.features.length === 0 && Object.keys(v).length === 2;
+            const {v: _, ...sources} = t.spec.sources, {v: __, ...data} = t.spec.data;
+            t.host.update(t.spec = {...t.spec, sources, data});
+            await wait(500);
+            return {restyled, unchanged};
+        });
+        check(`[${renderer}] data for a source of sources: the source object of the description is unchanged, and an update with an equal description is no new style (#857)`,
+            declared.restyled === 0 && declared.unchanged, JSON.stringify(declared));
+
         {
         // Images: added, replaced and removed by the description. A symbol layer draws a square of 40 pixels at the centre.
         // (The colour of the square is read from a picture of the page, at two places inside the square.)

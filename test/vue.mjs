@@ -355,6 +355,30 @@ try {
     });
     check('browser: useMapFeatures gives what the style layers draw, and useMapSource the data of the source that a ref names',
         kept.first.drawn === 1 && kept.first.layer === 'pts' && kept.first.raw === 1 && kept.first.type === 'Point' && kept.other.raw === 0 && kept.other.drawn === 1, JSON.stringify(kept));
+    // `:sources` written in the render and `:data` from a shallowRef (#857): new data is no new style, and the map does
+    // not write the data into the source object of the render.
+    const declared = await page.evaluate(async () => {
+        const {createApp, h, ref, shallowRef} = await import('vue'), {MapJr} = await import('/dist/vue.js'), wait = ms => new Promise(r => setTimeout(r, ms));
+        const c = [-74.0065, 40.7085], fc = coords => ({type: 'FeatureCollection', features: coords.map(coordinates => ({type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates}}))});
+        const data = shallowRef({v: fc([c])}), mapRef = ref(), made = [];
+        const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+        const app = createApp({render: () => { const sources = {v: {type: 'geojson', data: fc([])}}; made.push(sources.v); return h(MapJr, {ref: mapRef, mapStyle: '/style.json', initialView: {center: c, zoom: 14}, attribution: false, sources, data: data.value, layers: [{id: 'v', type: 'circle', source: 'v'}], style: 'height:200px'}); }});
+        app.mount(el);
+        for (let i = 0; i < 80 && !mapRef.value?.map?.state.get().loaded; i++) await wait(100);
+        await wait(500);
+        const map = mapRef.value.map._map;
+        let restyled = 0;
+        map.on('style.load', () => restyled++);
+        data.value = {v: fc([c, [c[0] + 0.001, c[1]]])};
+        await wait(1000);
+        data.value = {v: fc([c])};
+        await wait(1000);
+        const unchanged = made.every(s => s.data.features.length === 0);
+        app.unmount(); el.remove();
+        return {restyled, unchanged, renders: made.length};
+    });
+    check('browser: :sources in the render and :data from a shallowRef: new data is no new style, and the source objects of the render are unchanged (#857)',
+        declared.restyled === 0 && declared.unchanged && declared.renders >= 3, JSON.stringify(declared));
     // Reactive data (Vue proxies, #242): structured clone refuses a proxy, and the map copies it instead, in both entries
     // and with both renderers. The data must be drawn, getStyle() must work, and no error may be reported.
     const proxied = await page.evaluate(() => { let step = 'start'; return Promise.race([new Promise(r => setTimeout(() => r({timeout: 'no answer in 60 s at the step: ' + step}), 60000)), (async () => {
