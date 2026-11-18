@@ -27,7 +27,7 @@ test('warm() looks up each font of the style once, in later tasks, and not when 
     atlas.warm(['Noto Sans Bold', ['Open Sans Italic', 'Arial Unicode MS Regular'], 'Noto Sans Bold']);
     assert.deepEqual(measured, [], 'nothing is looked up in the task that asks');
     await new Promise(r => setTimeout(r, 20));
-    assert.deepEqual(measured, ['700 24px "Noto Sans", sans-serif', 'italic 400 24px "Open Sans", sans-serif']);
+    assert.deepEqual(measured, ['700 24px "Noto Sans", sans-serif', 'italic 400 24px "Open Sans", "Arial Unicode MS", sans-serif']);
     atlas.setGlyphs('https://example.com/{fontstack}/{range}.pbf');
     atlas.fetchGlyphs = () => new Promise(() => {});
     atlas.warm(['Roboto Regular']);

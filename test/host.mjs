@@ -3120,5 +3120,42 @@ if ((only ?? 'main') === 'main') {
     } catch (e) { check('circle-pitch-alignment and circle-pitch-scale were checked', false, String(e.message).split('\n')[0]); }
     finally { await page.close(); }
 }
+// A text-font stack without glyphs is a CSS family list (#927): each name is tried in order before fontFamily, and a
+// generic family keyword stays unquoted. A label of narrow letters is about twice as wide in monospace as in a
+// proportional font, so the width of the dark pixels says which font drew it. With the stack, the two missing names
+// are skipped and the third, "monospace", draws. Before the fix only the first name was used, and it was quoted.
+for (const renderer of renderers) {
+    const page = await browser.newPage({viewport: {width: 400, height: 300}});
+    try {
+        await page.goto(`${origin}/bench`);
+        await page.evaluate(async renderer => {
+            const lib = await import('/dist/map-jr-gl.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:300px;z-index:99'}));
+            const spec = font => ({style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]},
+                data: {pts: {type: 'FeatureCollection', features: [{type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [0, 0]}}]}},
+                layers: [{id: 'l', type: 'symbol', source: 'pts', layout: {'text-field': 'iiiiiiiiiiii', 'text-font': font, 'text-size': 20}, paint: {'text-color': '#000'}}],
+                initialView: {center: [0, 0], zoom: 2}, renderer, attribution: false, fontFamily: 'sans-serif'});
+            const host = lib.createMap(el, spec(['No Such Font A']));
+            const idle = () => new Promise(r => { const off = host.state.subscribe(s => s.idle, v => { if (v) { off(); r(); } }); setTimeout(r, 15000); });
+            window.label = async font => { host.update(spec(font)); await new Promise(r => setTimeout(r, 300)); await idle(); await new Promise(r => setTimeout(r, 300)); };
+        }, renderer);
+        const width = async font => {
+            await page.evaluate(font => window.label(font), font);
+            const b64 = (await page.screenshot({clip: {x: 0, y: 0, width: 400, height: 300}})).toString('base64');
+            return page.evaluate(async b64 => {
+                const img = new Image(); img.src = 'data:image/png;base64,' + b64; await img.decode();
+                const c = Object.assign(document.createElement('canvas'), {width: 400, height: 300}).getContext('2d'); c.drawImage(img, 0, 0, 400, 300);
+                const d = c.getImageData(0, 0, 400, 300).data;
+                let x0 = 400, x1 = -1;
+                for (let y = 0; y < 300; y++) for (let x = 0; x < 400; x++) if (d[(y * 400 + x) * 4] < 128) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); }
+                return x1 - x0 + 1;
+            }, b64);
+        };
+        const sans = await width(['No Such Font A']), mono = await width(['monospace']), stack = await width(['No Such Font A', 'No Such Font B Bold', 'monospace']);
+        check(`[${renderer}] text-font: an unquoted generic family and the later names of a stack are used before fontFamily (#927)`,
+            sans > 10 && mono > sans * 1.5 && Math.abs(stack - mono) <= 3, JSON.stringify({sans, mono, stack}));
+    } catch (e) { check(`[${renderer}] the text-font stack was checked`, false, String(e.message).split('\n')[0]); }
+    finally { await page.close(); }
+}
 await browser.close();
 process.exit(failed ? 1 : 0);

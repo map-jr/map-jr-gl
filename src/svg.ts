@@ -5,6 +5,7 @@ import type {Sprite} from './style.ts';
 import type {Placed, RenderItem} from './placement.ts';
 import {lineMiddle, BASELINE, EM} from './text.ts';
 import {escapeXML, parseSVG, svgSize} from './markers.ts';
+import {cssFamilies} from './resolve.ts';
 import type {RGBA} from './expr.ts';
 
 /** Tile coordinates are written at half resolution: sub-pixel accuracy at native zoom for roughly a third less markup. */
@@ -178,11 +179,11 @@ export function renderSVG(s: SVGScene): string {
         for (const l of s.labels) {
             const shaped = l.shaped;
             if (!shaped) continue;
-            const src = l.src, k = l.size / EM, [variant, family] = src.font.split('|');
+            const src = l.src, k = l.size / EM, [variant, family, stack] = src.font.split('|'), list = cssFamilies(stack ?? family);
             const [style, weight] = variant.includes(' ') ? variant.split(' ') : ['', variant];
             const halo = src.haloWidth > 0 && src.halo[3] > 0
                 ? ` stroke="${hex(src.halo)}" stroke-width="${num(src.haloWidth * 2)}"${alpha('stroke-opacity', src.halo[3] * (l.alpha ?? 1))}` : '';
-            const common = `font-size="${num(l.size)}"${family ? ` font-family="${escapeXML(`'${family}', ${s.fontFamily}`)}"` : ''}${weight !== '400' ? ` font-weight="${weight}"` : ''}${style ? ` font-style="${style}"` : ''}` +
+            const common = `font-size="${num(l.size)}"${list ? ` font-family="${escapeXML(`${list}, ${s.fontFamily}`)}"` : ''}${weight !== '400' ? ` font-weight="${weight}"` : ''}${style ? ` font-style="${style}"` : ''}` +
                 `${src.spacing ? ` letter-spacing="${num(src.spacing * l.size)}"` : ''} fill="${hex(src.color)}"${alpha('fill-opacity', src.color[3] * (l.alpha ?? 1))}${halo}`;
             if (l.curve) {
                 // Text along a line: one position and rotation per character, which SVG text supports directly.

@@ -169,7 +169,7 @@ These fields are read only when the map is made:
 | Field | Meaning |
 |---|---|
 | `renderer` | `'auto'` (the default), `'worker'` or `'main'`: the thread that draws. When the worker cannot draw (it has no WebGL2 context, or loses it), the map draws on the main thread. With `'auto'` this happens without a warning (the development build writes a note with `console.info`); with `'worker'` the map warns once. `state.renderer` says which thread draws. See [Loading](loading.md). |
-| `fontFamily` | The CSS family for text that has no web font: the map tries it after the family of the `text-font` name. See [Web fonts](#web-fonts). |
+| `fontFamily` | The CSS family for text that has no web font: the map tries it after the families of the `text-font` list. See [Web fonts](#web-fonts). |
 | `interactive` | `false` for a map that the user cannot move. The default is `true`. With `false`, `onClick` and `state.hover` still work, and a touch on the map scrolls the page. |
 | `antialias` | Multisample antialiasing for the canvas. |
 | `attribution` | `false` to show the credits yourself, or options for the built-in credits. |
@@ -278,6 +278,15 @@ createMap('map', {
   (700), `Semibold` (600), `Medium` (500), `Light` (300), `Black` (900) and `Italic` are taken out of the name, and the
   rest is the family. So `Open Sans Semibold Italic` is the family `Open Sans` at weight 600 in italic. A name without
   such a word has weight 400.
+- **The stack.** The text uses each family of the `text-font` list in order, then `fontFamily`. The weight and the
+  style come from the first name. A family that appears twice is used once. A CSS generic family keyword
+  (`system-ui`, `sans-serif`, `serif`, `monospace`, `cursive`, `fantasy`, `math`, `emoji`, `fangsong`, `ui-sans-serif`,
+  `ui-serif`, `ui-monospace`, `ui-rounded`) stays a keyword, so it gives the fonts of the system. Every other family is
+  quoted. The family list does not change which glyph files a style with `glyphs` requests: `{fontstack}` is still
+  the names of the list as they are written, joined by commas.
+- **System fonts.** For a style without `glyphs`, a stack such as `["system-ui Semibold", "Segoe UI Semibold",
+  "Roboto Medium", "sans-serif"]` draws its labels in the font of the operating system (SF Pro on Apple systems,
+  Segoe UI on Windows, Roboto on Android) at weight 600. Browsers that do not know `system-ui` take the next name.
 - **The style.** The `font-faces` of the style are loaded too. A name of `fonts` replaces the same name of the style. A
   relative URL in `fonts` is relative to the page, and one in the style is relative to the style.
 - **`update`.** A name that is new or has a new value loads its font, and the labels are drawn again. A name that
@@ -288,8 +297,8 @@ createMap('map', {
   `text-font`, then `fontFamily`, then the fonts of the browser.
 - **Workers.** The map fetches each file and gives it to the thread that draws, so web fonts also work when the map
   draws in a worker, which does not see fonts that the CSS of the page loads.
-- **`fontFamily`** (read only when the map is made) is the CSS family that the map tries after the family of the
-  `text-font` name. The default is `"Noto Sans", "Helvetica Neue", Arial, sans-serif`. It has no equal in the style
+- **`fontFamily`** (read only when the map is made) is the CSS family that the map tries after the families of the
+  `text-font` list. The default is `"Noto Sans", "Helvetica Neue", Arial, sans-serif`. It has no equal in the style
   specification.
 
 ## Images for style layers

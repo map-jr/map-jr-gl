@@ -3,7 +3,7 @@ import {EXTENT} from './geo.ts';
 import {cutFill, cutLine, type GlobeBuild} from './subdivide.ts';
 import {decodeVectorTile} from './mvt.ts';
 import {GEOJSON_LAYER} from './geojson.ts';
-import {parseFontName, type CompiledLayer} from './style.ts';
+import {fontKey, type CompiledLayer} from './style.ts';
 import {IMAGE_CLOSE, IMAGE_IN_TEXT, IMAGE_OPEN, IMAGE_OR, type Feature, type MapStates, type Prop, type RGBA} from './expr.ts';
 import {VARIANT, variantName} from './markers.ts';
 
@@ -103,12 +103,6 @@ export interface TileGL { layers: Record<string, GLBatch>; labels: Record<string
 /** A raster tile as the SVG backend sees it: just somewhere to load the image from. */
 export interface TileImage { href: string }
 
-/** "Open Sans Semibold Italic" -> "italic 600|Open Sans|Open Sans Semibold Italic": CSS style and weight, the family named by the style, and the font stack (for the glyph files of the style). */
-function fontStyle(names: any): string {
-    const f = parseFontName(String(Array.isArray(names) ? names[0] : names));
-    return (f.style === 'italic' ? 'italic ' : '') + f.weight + '|' + f.family + '|' + (Array.isArray(names) ? names.join(',') : names);
-}
-
 function pushColor(out: number[], c: RGBA, alpha: number) {
     out.push(Math.round(c[0] * 255), Math.round(c[1] * 255), Math.round(c[2] * 255), Math.round(c[3] * alpha * 255));
 }
@@ -184,7 +178,7 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
                 const base = {
                     text, size0: p.size.eval(zs, f), size1: p.size.eval(z1, f),
                     color: [color[0], color[1], color[2], color[3] * op] as RGBA,
-                    halo: [haloColor[0], haloColor[1], haloColor[2], haloColor[3] * op] as RGBA, haloWidth: p.haloWidth.eval(z, f), haloBlur: p.haloBlur.eval(z, f), rotate: p.rotate.eval(z, f) * Math.PI / 180, justify: justification(p.justify.eval(z, f), p.anchor.eval(z, f)), font: fontStyle(p.font.eval(z, f)),
+                    halo: [haloColor[0], haloColor[1], haloColor[2], haloColor[3] * op] as RGBA, haloWidth: p.haloWidth.eval(z, f), haloBlur: p.haloBlur.eval(z, f), rotate: p.rotate.eval(z, f) * Math.PI / 180, justify: justification(p.justify.eval(z, f), p.anchor.eval(z, f)), font: fontKey(p.font.eval(z, f)),
                     maxWidth: p.maxWidth.eval(z, f), spacing: p.spacing.eval(z, f), offset: p.offset.eval(z, f), anchor: p.anchor.eval(z, f),
                     padding: p.padding.eval(z, f), overlap: overlaps(p.overlapMode.eval(z, f), p.overlap.eval(z, f)), lineHeight: p.lineHeight.eval(z, f),
                     upright: turns(p.textAlign.eval(z, f)), textOptional: !!p.textOptional.eval(z, f), ignore: !!p.ignore.eval(z, f),
