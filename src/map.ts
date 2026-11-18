@@ -1437,6 +1437,14 @@ export class Map {
         return this.editStyle(s => { s.layers.splice(beforeId ? this.layerIndex(s, beforeId) : s.layers.length, 0, layer); });
     }
     removeLayer(id: string) { return this.editStyle(s => { s.layers.splice(this.layerIndex(s, id), 1); }); }
+    /** Changes the zooms at which a layer is drawn, without a new style. `undefined` or `null` removes the bound. */
+    setLayerZoomRange(id: string, minzoom?: number | null, maxzoom?: number | null) {
+        return this.editStyle(s => {
+            const l = s.layers[this.layerIndex(s, id)];
+            if (minzoom == null) delete l.minzoom; else l.minzoom = minzoom;
+            if (maxzoom == null) delete l.maxzoom; else l.maxzoom = maxzoom;
+        });
+    }
 
     private setProp(group: 'paint' | 'layout', layerId: string, name: string, value: unknown) {
         // (The engine works out whether this needs tiles rebuilt: per-feature values are baked into their buffers.)

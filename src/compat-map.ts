@@ -448,7 +448,6 @@ export class Map extends CoreMap {
             s.layers.splice(beforeId ? this.layerIndex(s, beforeId) : s.layers.length, 0, layer);
         });
     }
-    setLayerZoomRange(id: string, minzoom: number, maxzoom: number) { return this.editStyle(s => Object.assign(s.layers[this.layerIndex(s, id)], {minzoom, maxzoom})); }
     getSprite() { const s = this.rawStyle?.sprite; return typeof s === 'string' ? [{id: 'default', url: s}] : s ?? []; }
     setSprite(url: string | {id: string; url: string}[] | null) { return this.editStyle(s => { if (url) s.sprite = url; else delete s.sprite; }); }
     /** Adds a sprite sheet. Its icons have the names `id:name`. */

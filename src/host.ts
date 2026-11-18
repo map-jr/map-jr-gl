@@ -669,13 +669,13 @@ export function makeMap(container: HTMLElement | string, spec: MapDescription, n
 
     // A change of only `sources`, `layers` and `terrain` goes to the map as edits, so that the style is not loaded again and the layers that the
     // application added through the core map stay. It returns false, with nothing changed, for a change that needs a new
-    // style: a changed `terrain`, a changed source, a source id that the style has, a changed `type`, `source`,
-    // `source-layer`, `minzoom` or `maxzoom` of a layer. A new order of the layers, a new layer before one that stays
+    // style: a changed `terrain`, a changed source, a source id that the style has, a changed `type`, `source` or
+    // `source-layer` of a layer. A changed `minzoom` or `maxzoom` goes to `setLayerZoomRange` (#871). A new order of the layers, a new layer before one that stays
     // and another `before` move the layers of `layers` (#859).
     const edit = (next: StyleParts, before: StyleParts, differ: (a: unknown, b: unknown) => boolean) => {
         const was = before.layers ?? [], is = next.layers ?? [], ns = next.sources ?? {}, os = before.sources ?? {};
         const ids = (a: typeof is, b: typeof is) => a.filter(l => b.some(x => x.id === l.id)).map(l => l.id).join('\n');
-        const kept = is.filter(l => was.some(w => w.id === l.id)), keys = ['paint', 'layout', 'filter', 'id', 'before'];
+        const kept = is.filter(l => was.some(w => w.id === l.id)), keys = ['paint', 'layout', 'filter', 'minzoom', 'maxzoom', 'id', 'before'];
         if (differ(next.terrain, before.terrain)) return false;
         // (A new order, a new layer before one that stays, or another `before`: the layers of `layers` are added again
         // in their order, with the rule of `extended()`, as the style would have them (#859).)
@@ -694,6 +694,7 @@ export function makeMap(container: HTMLElement | string, spec: MapDescription, n
                 for (const k in {...a, ...b}) if (differ(a[k], b[k])) (g === 'paint' ? map.setPaintProperty : map.setLayoutProperty).call(map, l.id, k, a[k]);
             }
             if (differ(l.filter, w.filter)) map.setFilter(l.id, l.filter);
+            if (differ(l.minzoom, w.minzoom) || differ(l.maxzoom, w.maxzoom)) map.setLayerZoomRange(l.id, l.minzoom, l.maxzoom);
         }
         for (const {before: at, ...l} of is) if (moved || !kept.some(k => k.id === l.id)) map.addLayer(copy(l) as {id: string}, at && map.getLayer(at) ? at : undefined);
         giveData();
@@ -704,12 +705,12 @@ export function makeMap(container: HTMLElement | string, spec: MapDescription, n
     // the map as edits, as `setStyle(style, {diff: true})` of MapLibre GL JS does (#858). A layer that is new or removed,
     // and a new order of the layers, are edits too (#875). It returns false, with nothing changed, when anything else
     // differs: a key of the style other than `layers`, a new layer whose source the map does not have, or another key of
-    // a layer that stays (`minzoom` and `maxzoom` too: the map has no `setLayerZoomRange`).
+    // a layer that stays. A changed `minzoom` or `maxzoom` goes to `setLayerZoomRange` (#871).
     const editStyle = (next: unknown, before: unknown, differ: (a: unknown, b: unknown) => boolean) => {
         type L = Record<string, unknown> & {id: string; paint?: Record<string, unknown>; layout?: Record<string, unknown>};
         const a = styleFor(next, styledDark) as Record<string, unknown>, b = styleFor(before, styledDark) as Record<string, unknown>;
         if (!a || !b || typeof a !== 'object' || typeof b !== 'object' || !Array.isArray(a.layers) || !Array.isArray(b.layers)) return false;
-        const is = a.layers as L[], was = b.layers as L[], keys = ['paint', 'layout', 'filter'];
+        const is = a.layers as L[], was = b.layers as L[], keys = ['paint', 'layout', 'filter', 'minzoom', 'maxzoom'];
         if (Object.keys({...a, ...b}).some(k => k !== 'layers' && differ(a[k], b[k]))) return false;
         if (is.some(l => !l || typeof l.id !== 'string') || new Set(is.map(l => l.id)).size !== is.length) return false;
         const old = (id: string) => was.find(w => w?.id === id), kept = is.filter(l => old(l.id));
@@ -734,6 +735,7 @@ export function makeMap(container: HTMLElement | string, spec: MapDescription, n
                 for (const k in {...x, ...y}) if (differ(x[k], y[k])) (g === 'paint' ? map.setPaintProperty : map.setLayoutProperty).call(map, l.id, k, x[k] === undefined ? undefined : copy(x[k]));
             }
             if (differ(l.filter, w.filter)) map.setFilter(l.id, l.filter === undefined ? undefined : copy(l.filter) as any);
+            if (differ(l.minzoom, w.minzoom) || differ(l.maxzoom, w.maxzoom)) map.setLayerZoomRange(l.id, l.minzoom as number | undefined, l.maxzoom as number | undefined);
         }
         for (const l of is) if (moved || !old(l.id)) map.addLayer(copy(l) as {id: string}, anchor);
         return true;
