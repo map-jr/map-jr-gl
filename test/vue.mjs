@@ -422,6 +422,25 @@ try {
     })()]); });
     check('browser: reactive GeoJSON and a reactive style (Vue proxies) are drawn in both entries and with both renderers, without errors, and data that cannot be copied is an error event (#242)',
         Object.values(proxied).every(r => r.found >= 1 && r.errs.length === 0 && (r.style ?? true) === true && (r.cycle ?? true)), JSON.stringify(proxied));
+
+    // A reactive map-style whose paint value changes in place: the map edits the layer and loads no style (#858).
+    const repainted = await page.evaluate(async () => {
+        const {reactive, createApp, h, nextTick} = await import('vue'), {MapJr} = await import('/dist/vue.js');
+        const wait = ms => new Promise(r => setTimeout(r, ms)), style = reactive(await (await fetch('/style.json')).json());
+        const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+        let loads = 0, host;
+        const app = createApp({render: () => h(MapJr, {mapStyle: style, initialView: {center: [-74.0065, 40.7085], zoom: 14}, attribution: false, onLoad: m => { host = m; }, onStyleload: () => loads++})});
+        app.mount(el);
+        for (let i = 0; i < 100 && !host; i++) await wait(100);
+        await wait(500);
+        const before = loads, layer = style.layers.find(l => l.type === 'fill');
+        layer.paint = {...layer.paint, 'fill-color': '#123456'};
+        await nextTick(); await wait(500);
+        const color = host?._map.getStyle().layers.find(l => l.id === layer.id)?.paint?.['fill-color'];
+        app.unmount(); el.remove();
+        return {loaded: !!host, loads: loads - before, color};
+    });
+    check('browser: a paint value that changes in a reactive map-style reaches the map without a new style (#858)', repainted.loaded && repainted.loads === 0 && repainted.color === '#123456', JSON.stringify(repainted));
     check('browser: no page errors', errors.length === 0, errors.slice(0, 2).join(' | '));
     await page.close();
 } catch (e) { check('the test run was completed', false, String(e.message).split('\n')[0]); }

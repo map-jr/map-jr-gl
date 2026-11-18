@@ -74,6 +74,19 @@ the last `createMap`, `update` or `patch`. It is read only. After `createMap` an
 passed, so do not change that object in place. A framework adapter gives the complete description from its props, so with an adapter use the props
 and not `patch`. The compat entry has neither member.
 
+`map.getResolvedDescription()` returns the description with two fields resolved, for an inspector or a debug view:
+
+- `style` is a copy of the style that the map loaded, with the `sources`, `layers` and other parts of the description
+  added. For a URL it is the style that the URL gave; for a `{light, dark}` pair it is the style of the resolved
+  `colorScheme`. Before the first `style.load` it is the `style` of the description as you wrote it.
+- `globalState` is the global state in effect: the defaults of the style's `state`, `color-scheme` (see
+  `colorScheme`), and the values of `globalState` of the description.
+
+The result is a new copy at each call: changing it does not change the map. The other fields are those of
+`map.description`. Read the result again after `listen('style.load', …)` or after `update`, because the map fires no
+event when only `globalState` changes. Do not pass the result to `update` or `patch`: these expect the description as
+you wrote it, and a resolved `style` replaces a URL or a `{light, dark}` pair with one fixed style.
+
 `update` takes the complete description, not only the changed fields:
 
 - A description with no `style` throws an error, in `update`, `patch` and `createMap`. Write
@@ -126,9 +139,9 @@ The library compares each field with the field of the last description:
 
 | Field | Meaning |
 |---|---|
-| `style` | A style object or the URL of a style (the MapLibre style specification). Required. A new object or URL is a new style. A pair `{light, dark}` of two styles uses the style of the resolved `colorScheme`: see [A light and a dark style](#a-light-and-a-dark-style). |
+| `style` | A style object or the URL of a style (the MapLibre style specification). Required. A new URL is a new style. A new object is a new style too, except when it differs from the old one only in the `paint`, `layout` and `filter` of its layers, with the same layers in the same order: then `update()` changes those layers in place and loads no style. A change of `minzoom` or `maxzoom` of a layer of the style loads the style again. A pair `{light, dark}` of two styles uses the style of the resolved `colorScheme`: see [A light and a dark style](#a-light-and-a-dark-style). |
 | `sources` | Sources to add to the sources of the style, by id. A source here replaces the source of the style with the same id. See [Your own layers on a style from a URL](#your-own-layers-on-a-style-from-a-url). |
-| `layers` | Layers to add to the layers of the style: they do not replace them. A layer with `before` goes below the layer of the style with that id, and a layer without it goes on top. See [Your own layers on a style from a URL](#your-own-layers-on-a-style-from-a-url). |
+| `layers` | Layers to add to the layers of the style: they do not replace them. A layer with `before` goes below the layer of the style with that id, and a layer without it goes on top. A change in `update()` (other properties, a new order, a new or removed layer, another `before`) edits the layers and loads no style; a change of `type`, `source`, `source-layer`, `minzoom` or `maxzoom` of a layer loads the style again. See [Your own layers on a style from a URL](#your-own-layers-on-a-style-from-a-url). |
 | `terrain` | 3D terrain in place of the terrain of the style: `{source: 'dem', exaggeration: 1.5}`. `null` or no field means the terrain of the style. |
 | `initialView` | The view at the start: `center` (`[lng, lat]`), `zoom`, `bearing`, `pitch`. In place of `center` and `zoom`, give `bounds` (`[[west, south], [east, north]]` or `[west, south, east, north]`) and the map starts with that box fitted into the view, with `padding` in CSS pixels around it (a number or `{top, right, bottom, left}`, default 0) and `maxZoom` as the largest zoom of the fit. See [The camera](#the-camera). This is `bounds` with `fitBoundsOptions.padding` of MapLibre GL JS. When the description also has `view`, the map starts at `view` and `bounds` has no effect. The user then moves the map. |
 | `view`, `onViewChange` | A view that your application owns. See below. |
@@ -1066,7 +1079,7 @@ const popup = map.overlay(content, {lngLat, popup: true, onClose: () => popup.re
 | `draggable` | `true` to let the user move the element with the mouse, a finger or a pen. The default is `false`. It has no effect on a popup. |
 | `onDragStart`, `onDrag`, `onDragEnd` | For a draggable element: called when a drag starts, at each move, and when it ends, with the position of the element as `[lng, lat]`. |
 
-A popup of `overlay()` does not take the keyboard focus when it opens, and it stays open when the map moves. The popup of `@map-jr/map-jr-gl/maplibre-compat` has the options `focusAfterOpen`, `closeOnMove` and `trackPointer` for that.
+A popup of `overlay()` takes the keyboard focus when the user opened it from the keyboard. The library counts a popup as opened from the keyboard when it opens within one second of a key press on the map's container and no pointer press on the container came in between. The focus goes to the first element in the popup that can take it, or to the close button when no element in the content can take it. When the popup closes with the focus inside, through Escape or the close button, the focus returns to the element in the map that had it before, or to the map. A popup that opens after a click, or without user input, leaves the focus where it is. A popup stays open when the map moves. The popup of `@map-jr/map-jr-gl/maplibre-compat` has the options `focusAfterOpen`, `closeOnMove` and `trackPointer` for that.
 
 A drag starts once the pointer has moved 3 pixels, as in MapLibre GL JS. A click without that move stays a click
 and calls no drag callback, and the click at the end of a drag does not reach the element. The map does not pan
@@ -1102,6 +1115,7 @@ symbol layer with an image: it is drawn on the canvas, and 100,000 markers cost 
 | `update(description)` | Changes the map to a new description. Takes the complete description. See [Change the map](#change-the-map). |
 | `patch(part)` | Changes only the fields of `part`; a field that is `undefined` is removed. See [Change the map](#change-the-map). |
 | `description` | The description of the last `createMap`, `update` or `patch` (read only). |
+| `getResolvedDescription()` | The description with `style` and `globalState` resolved, for reading (see below). |
 | `destroy()` | Removes the map and frees its memory. It also removes the elements of `overlay()` from the page at once, without the closing animation of a popup, and it does not call `onClose`. It can be called while the map loads. Call it before you make another map in the same element: a second map in an element that has a map leaves two canvases in the element, and the library warns in the console. |
 | `moveTo(target)` | Moves the camera now to a view or to `bounds` (with `padding` and `maxZoom` for the fit), with `bearing`, `pitch`, `duration` (milliseconds) and `fly`. It does not change the padding of the map. See [The camera](#the-camera). |
 | `fitBounds(bounds, options)` | The short form of `moveTo({bounds, ...options})`: the options are those of `moveTo` other than `center` and `zoom`, and `duration` is 800 ms by default. |

@@ -1631,19 +1631,20 @@ for (const mode of renderers) {
             // (A resolver of the page gets a name that the style does not have, and not one that it has.)
             m.setMissingStyleImageResolver(name => { resolved.push(name); if (name === 'other') return m.addImage('other', square('#0f0')); });
             const at = async (dy) => { const bmp = await createImageBitmap(await m.toBlob()), c = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}), g = c.getContext('2d'); g.drawImage(bmp, 0, 0); const k = bmp.width / 200; return Array.from(g.getImageData(bmp.width >> 1, (bmp.height >> 1) + dy * k, 1, 1).data).slice(0, 3).join(); };
-            let pin, box;
-            for (let i = 0; i < 50 && !(pin === '255,0,0' && box === '0,0,255'); i++) { await wait(100); [pin, box] = [await at(0), await at(40)]; }
+            // (Each step waits for what it expects, up to 20 s, and the check gives the last value: a busy CPU can draw
+            // late, and a fixed time made the check fail in some runs; #795.)
+            const took = {}, until = async (name, read, ok) => { const t0 = performance.now(); let v = await read(); while (!ok(v) && performance.now() - t0 < 20000) { await wait(100); v = await read(); } took[name] = Math.round(performance.now() - t0); return v; };
+            let [pin, box] = await until('pin', async () => [await at(0), await at(40)], ([p, b]) => p === '255,0,0' && b === '0,0,255');
             const had = ['pin', 'box', 'unused'].map(n => m.hasImage(n));
-            let other;
-            for (let i = 0; i < 30 && other !== '0,255,0'; i++) { other = await at(-40); if (other !== '0,255,0') await wait(100); }
+            const other = await until('other', () => at(-40), v => v === '0,255,0');
             // (An image that the page adds under the name of an image of the style wins, and a new style keeps it.)
             await m.addImage('box', square('#ff0'));
-            for (let i = 0; i < 30 && box !== '255,255,0'; i++) { await wait(100); box = await at(40); }
+            box = await until('addImage', () => at(40), v => v === '255,255,0');
             m.setStyle({version: 8, sources: {}, layers: [bg]});
-            for (let i = 0; i < 30 && m.hasImage('box'); i++) await wait(100);
+            await until('setStyle', async () => m.hasImage('pin'), v => !v); // (the image of addImage, box, stays)
             const after = ['pin', 'box', 'other'].map(n => m.hasImage(n));
             m.remove(); el.remove();
-            return {renderer: m.renderer, pin, box, other, had, after, resolved};
+            return {renderer: m.renderer, pin, box, other, had, after, resolved, took};
         }, [mode, fall]);
         check(`[${mode}${fall ? ', fell back' : ''}] compat: the images in metadata["map-jr:images"] of the style are drawn (a template with params, an image on demand), an image of addImage wins, a resolver of the page gets only other names, and setStyle without the key removes them (#759)`,
             (!fall || r.renderer === 'main') && r.pin === '255,0,0' && r.box === '255,255,0' && r.other === '0,255,0' && r.had.join() === 'true,true,false' && r.after.join() === 'false,true,true' && r.resolved.join() === 'other', JSON.stringify(r));
