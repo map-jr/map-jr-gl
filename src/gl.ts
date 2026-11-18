@@ -1010,7 +1010,9 @@ export class GLRenderer {
                 const u = use('fill');
                 gl.bindVertexArray(this.quad);
                 gl.vertexAttrib4f(1, 1, 1, 1, 1);
-                gl.uniformMatrix4fv(u.u_matrix, false, [2, 0, 0, 0, 0, -2, 0, 0, 0, 0, 1, 0, -1, 1, 0, 1]); // unit square -> whole screen
+                // Unit square -> the screen below the horizon (all of it unless the pitch is high).
+                const top = tr.globeness ? 1 : Math.min(1, 1 - 2 * (tr.cy - tr.horizon()) / tr.height);
+                gl.uniformMatrix4fv(u.u_matrix, false, [2, 0, 0, 0, 0, -1 - top, 0, 0, 0, 0, 1, 0, -1, top, 0, 1]);
                 gl.uniform4f(u.u_clip, -1, -1, 2, 2);
                 gl.uniform4fv(u.u_color, color(L));
                 gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);

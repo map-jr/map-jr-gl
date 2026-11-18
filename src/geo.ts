@@ -1,6 +1,8 @@
 export const EXTENT = 4096;
 export const TILE_SIZE = 512;
 const MAX_LAT = 85.051129;
+/** The highest pitch that the camera takes (degrees). Above 90 the camera would look up from below the ground: that needs the elevation of the camera, which the library does not have yet. */
+export const MAX_PITCH = 90;
 /**
  * The change of zoom that keeps the size of the globe on the screen when the centre moves from one latitude to
  * another (MapLibre's `getZoomAdjustment`). Past 85.05° the size of the globe stays that of 85.05°.
@@ -149,7 +151,7 @@ export class Transform {
     private get angle() { return -this.bearing * Math.PI / 180; }
 
     set(center: LngLatLike | undefined, zoom?: number, bearing?: number, pitch?: number) {
-        if (pitch !== undefined) this.pitch = clamp(pitch, this.minPitch, this.maxPitch);
+        if (pitch !== undefined) this.pitch = clamp(pitch, this.minPitch, Math.min(MAX_PITCH, this.maxPitch));
         const lat0 = this.lat;
         if (center) [this.lng, this.lat] = toLngLat(center);
         if (zoom !== undefined) this.zoom = clamp(zoom, this.minZoom, this.maxZoom);
@@ -238,6 +240,15 @@ export class Transform {
         return o;
     }
 
+    /**
+     * The pixels from the map centre up to the horizon on the screen, as MapLibre GL JS draws it (`getMercatorHorizon`):
+     * a little below the true horizon, so that the ground ends at a finite distance.
+     */
+    horizon(): number {
+        const p = this.pitch * Math.PI / 180;
+        return this.cameraDistance * Math.min(0.85 * Math.tan(Math.PI / 2 - p), Math.tan((89.25 * Math.PI / 180) - p));
+    }
+
     /** Mercator [0..1] coordinates to screen pixels (on the ground surface, with 3D terrain). */
     mercToScreen(mx: number, my: number): [number, number] {
         const z = this.heightAt ? (this.heightAt(mx, my) - this.elevation) * this.pixelsPerMetre : 0;
@@ -250,9 +261,10 @@ export class Transform {
     screenToMerc(px: number, py: number, z = 0): [number, number] {
         if (this.globeness) return this.globe!.toMerc(this, px, py);
         const ws = this.worldSize, a = this.angle, cos = Math.cos(a), sin = Math.sin(a), p = this.pitch * Math.PI / 180, d = this.cameraDistance;
-        const sx = px - this.cx, sy = py - this.cy;
-        // Invert the perspective for a point on that plane. Above the horizon there is no ground; clamp just below it.
-        const denom = Math.max(Math.cos(p) * d + sy * Math.sin(p), d * 0.02);
+        const sx = px - this.cx, sy = Math.max(py - this.cy, -this.horizon());
+        // Invert the perspective for a point on that plane. Above the horizon there is no ground: a point there is taken
+        // on the horizon, and the floor keeps planes above the map centre (with 3D terrain) below their own horizon.
+        const denom = Math.max(Math.cos(p) * d + sy * Math.sin(p), d * Math.min(0.02, 0.1 * Math.cos(p)));
         const ry = (sy * (d - z * Math.cos(p)) + d * z * Math.sin(p)) / denom, rx = sx * (d - ry * Math.sin(p) - z * Math.cos(p)) / d;
         return [mercX(this.lng) + (cos * rx + sin * ry) / ws, mercY(this.lat) + (-sin * rx + cos * ry) / ws];
     }
@@ -320,7 +332,10 @@ export class Transform {
         // A tight depth range (everything visible at the steepest pitch fits) keeps depth precise even in a 16-bit buffer.
         // With 3D terrain, ground far below the map centre is seen from higher up and so reaches further away.
         const drop = this.groundRange ? Math.max(0, this.elevation - this.groundRange[0]) * ppm : 0;
-        const near = d / 10, far = Math.min(60, 4 * (1 + drop / (d * cp))) * d, A = (far + near) / (far - near), B = -2 * far * near / (far - near);
+        // The far plane reaches the ground at the top of the screen or at the horizon, whichever is nearer (and at least 4
+        // times the camera distance, for buildings beyond that ground at a low pitch).
+        const top = Math.min(this.cy, Math.max(0, this.horizon())), reach = cp * d - top * sp > 1e-6 ? d + top * d * sp / (cp * d - top * sp) : 100 * d;
+        const near = d / 10, far = Math.min(100 * d, Math.max(4 * d, reach * 1.01) * (1 + drop / (d * Math.max(cp, 1e-3)))), A = (far + near) / (far - near), B = -2 * far * near / (far - near);
         // Rows: X = kx * xc, Y = ky * yc, W = depth, Z = A * depth + B (so Z/W runs -1..1 from near to far).
         const X = [cos * s * kx, -sin * s * kx, 0, tx * kx];
         const Y = [sin * s * cp * ky, cos * s * cp * ky, -ppm * sp * ky, ty * cp * ky];
