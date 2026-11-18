@@ -474,6 +474,11 @@ export function makeMap(container: HTMLElement | string, spec: MapDescription, n
     (map as {_getUIString?(k: string): string | undefined})._getUIString = k => latest.locale?.[k];
     // The look of the controls of the main API (the class map-jr-glass, see controls.ts). The compat entry does not set it.
     const box = map.getContainer();
+    // A popup of overlay() takes the focus when it opens within a second of a key press on the map, with no pointer
+    // input in between (#866): the application opens the popup itself, so the last input on the container tells how.
+    let keyAt = -1e9;
+    const input = (e: Event) => { keyAt = e.type === 'keydown' ? performance.now() : -1e9; };
+    box.addEventListener('keydown', input, true); box.addEventListener('pointerdown', input, true);
     box.classList.add('map-jr-glass');
     // The checks for mistakes of the user, and the texts of their warnings, are in a file that is loaded after the map
     // has started: `check` gives it the kind of the check (see `src/mistakes.ts`). A file that does not load gives no check.
@@ -848,7 +853,7 @@ export function makeMap(container: HTMLElement | string, spec: MapDescription, n
             if (alive) apply(next, now);
         },
         get description() { return now; },
-        destroy() { if (!alive) return; alive = false; cooperate(false); dark?.removeEventListener('change', paint); map.remove(); box.classList.remove('map-jr-glass', 'map-jr-dark'); for (const drop of waiting) drop(); waiting.clear(); },
+        destroy() { if (!alive) return; alive = false; cooperate(false); box.removeEventListener('keydown', input, true); box.removeEventListener('pointerdown', input, true); dark?.removeEventListener('change', paint); map.remove(); box.classList.remove('map-jr-glass', 'map-jr-dark'); for (const drop of waiting) drop(); waiting.clear(); },
         state,
         queryFeatures,
         setFeatureState(target, value) { if (alive) map.setFeatureState(target, value); },
@@ -881,6 +886,9 @@ export function makeMap(container: HTMLElement | string, spec: MapDescription, n
                 const p = new GlassPopup({anchor: now.anchor, offset: now.offset, closeButton: !!now.onClose, closeOnClick: false}).setLngLat(now.lngLat).setDOMContent(element).addTo(map);
                 // (`destroy()` closes the popup with the map. That is not the user's close, so `onClose` does not run.)
                 p.on('close', () => { if (alive && made === p) now.onClose?.(); });
+                // (Escape or the button then returns the focus to the element that had it, else to the map.)
+                const active = (box.getRootNode() as Document | ShadowRoot).activeElement as HTMLElement | null;
+                if (performance.now() - keyAt < 1000) { if (active && box.contains(active)) p.opener = active; p.focusFirst(); }
                 return p;
             };
             let made: Marker | Popup | null = make();

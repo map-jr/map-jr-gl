@@ -1551,6 +1551,33 @@ for (const renderer of renderers) {
         });
         check(`[${renderer}] Escape closes a popup of overlay() that has onClose and holds the focus, the focus goes to the map (also from a button in the content), and a popup without onClose stays open`,
             escape.focused && escape.closes === 1 && escape.gone && escape.focus && escape.plainOpen && escape.innerFocused && escape.innerFocus, JSON.stringify(escape));
+        // #866: a popup of overlay() that opens from a key press on the map takes the focus, and Escape returns it to the
+        // map. A popup that opens from a click leaves the focus where it is.
+        await page.evaluate(() => {
+            const t = window.t, box = t.host.container;
+            t.open866 = () => {
+                const inner = document.createElement('div'), button = inner.appendChild(document.createElement('button'));
+                button.textContent = 'Details';
+                t.pop866 = t.host.overlay(inner, {lngLat: t.host.state.get().view.center, popup: true, onClose() { t.pop866.remove(); }});
+                t.in866 = inner;
+            };
+            t.key866 = e => { if (e.key === 'Enter') t.open866(); };
+            box.addEventListener('keydown', t.key866);
+            t.host._map.getCanvas().focus();
+        });
+        await page.keyboard.press('Enter');
+        await page.waitForTimeout(300);
+        const byKey = await page.evaluate(() => window.t.in866.closest('.map-jr-popup').contains(document.activeElement));
+        await page.keyboard.press('Escape');
+        await page.waitForTimeout(500);
+        const back = await page.evaluate(() => { const t = window.t; t.host.container.removeEventListener('keydown', t.key866); return !t.in866.isConnected && document.activeElement === t.host._map.getCanvas(); });
+        const r866 = await page.evaluate(() => { const r = window.t.host.container.getBoundingClientRect(); return {x: r.left + 20, y: r.top + 20}; });
+        await page.evaluate(() => window.t.host.container.addEventListener('pointerdown', window.t.open866, {once: true}));
+        await page.mouse.click(r866.x, r866.y);
+        await page.waitForTimeout(300);
+        const byClick = await page.evaluate(() => { const t = window.t, inside = t.in866.closest('.map-jr-popup').contains(document.activeElement); t.pop866.remove(); return inside; });
+        check(`[${renderer}] a popup of overlay() opened from a key press takes the focus and Escape returns it to the map, and a popup opened from a click leaves the focus`,
+            byKey && back && !byClick, JSON.stringify({byKey, back, byClick}));
         // #435: destroy() leaves no popup and no marker of overlay() on the page, and does not call onClose.
         const destroyed = await page.evaluate(async renderer => {
             const el = Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'});
