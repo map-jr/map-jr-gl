@@ -8,6 +8,9 @@
 //   only=text         only the scenarios whose id or name contains the text, for example only=terrain
 //   nomarkers         leaves out the marker scenarios
 //   noterrain         leaves out the 3D terrain scenario
+//   nocold            leaves out the cold start (test/bench/browsers.mjs runs it apart, in a fresh browser context for each load)
+//   libs=a,b          only these libraries (maplibre, main, worker)
+//   latency=MS        the delay that the runner adds to each request; the page only names it in the cold start's note
 //   style=URL         another style (the default is OpenFreeMap Liberty)
 //   commit=SHA        the commit that the copied results name (the gallery site writes commit.txt instead)
 import * as compat from '../dist/map-jr-gl-maplibre-compat.js';
@@ -35,7 +38,7 @@ try { new PerformanceObserver(list => { for (const e of list.getEntries()) block
 // also counts the workers that it starts and ends, for the lifecycle scenario.
 const workerNet = [], workers = {started: 0, ended: 0};
 new BroadcastChannel('bench-net').onmessage = e => { for (const r of e.data) if (workerNet.length < 20000) workerNet.push(r); };
-const NET = `try{const c=new BroadcastChannel('bench-net'),o=performance.timeOrigin-${performance.timeOrigin};new PerformanceObserver(l=>c.postMessage(l.getEntries().map(e=>({name:e.name,startTime:e.startTime+o,responseEnd:e.responseEnd+o})))).observe({type:'resource',buffered:true})}catch{}`;
+const NET = `try{const c=new BroadcastChannel('bench-net'),o=performance.timeOrigin-${performance.timeOrigin};new PerformanceObserver(l=>c.postMessage(l.getEntries().map(e=>({name:e.name,startTime:e.startTime+o,responseEnd:e.responseEnd+o,transferSize:e.transferSize,decodedBodySize:e.decodedBodySize})))).observe({type:'resource',buffered:true})}catch{}`;
 const PageWorker = window.Worker;
 window.Worker = function (url, opts) {
     workers.started++;
@@ -55,7 +58,7 @@ $('env').textContent = env();
 if (!commit && location.pathname.endsWith('/')) fetch('commit.txt').then(r => r.ok ? r.text() : '').then(t => { if (/^[0-9a-f]{7,40}$/.test(t.trim())) { commit = t.trim().slice(0, 12); $('env').textContent = env(); } }).catch(() => {});
 
 const LIBS = {maplibre: 'MapLibre GL JS', main: 'This library, main thread', worker: 'This library, worker'};
-const ALL = Object.keys(LIBS);
+const ALL = Object.keys(LIBS).filter(l => !q.get('libs') || q.get('libs').split(',').includes(l));
 
 // ---- Statistics of numbers ----
 const sorted = a => a.filter(v => typeof v === 'number' && !Number.isNaN(v)).sort((x, y) => x - y);
@@ -183,6 +186,68 @@ async function loadWithTimeline(lib) {
     return {map, values: {load: idle - t0, firstFrame: events.frame - t0, loadEvent: events.load - t0}, steps};
 }
 
+// ---- The cold start (#29) ----
+/** The kind of a request of a start, for the order of the requests. */
+const kindOf = (url, styleUrl) => url === styleUrl ? 'style' : /\/fonts\/|glyphs/.test(url) ? 'glyphs' : /sprite/.test(url) ? 'sprite'
+    : /worker/.test(url) ? 'worker' : /\.(pbf|mvt)\b|\/\d+\/\d+\/\d+/.test(url) ? 'tiles' : /\.json\b|\/planet/.test(url) ? 'TileJSON' : 'other';
+/**
+ * A start with the style given by URL, with a query that no cache has, so that the map fetches the style itself. The
+ * other files can still come from the HTTP cache of the page: the measure `cached` counts them, and test/bench/browsers.mjs
+ * runs this scenario in a fresh browser context, with no cache, for each load.
+ */
+async function coldStart(lib) {
+    try { performance.setResourceTimingBufferSize(5000); performance.clearResourceTimings(); } catch {}
+    workerNet.length = 0;
+    const url = STYLE + (STYLE.includes('?') ? '&' : '?') + 'benchcold=' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    const t0 = performance.now(), map = makeMap(lib, box(), url, VIEW), ev = {}, at = k => () => { ev[k] ??= performance.now(); };
+    map.once('render', at('frame'));
+    if (lib === 'maplibre') map.on('dataloading', e => { if (e.tile) at('tileReq')(); });
+    else { map._tileReport(true); map.on('tile', e => { if (e.kind === 'req') at('tileReq')(); }); }
+    let idle;
+    try {
+        idle = await settle(map);
+        // (The sources are known once the style has loaded.)
+        idle = await settle(map, Object.keys(map.getStyle()?.sources ?? {}), Promise.resolve(true));
+    } catch (e) { map.remove(); throw e; }
+    map.remove();
+    const pick = e => ({name: e.name, startTime: e.startTime, transferSize: e.transferSize, decodedBodySize: e.decodedBodySize});
+    const entries = [...performance.getEntriesByType('resource').map(pick), ...workerNet].filter(e => e.startTime >= t0 - 1 && e.startTime <= idle);
+    // (The workers of MapLibre GL JS are modules, whose requests the page does not see: its tiles come from the tile event.)
+    const seen = entries.map(e => ({kind: kindOf(e.name, url), at: e.startTime}));
+    if (ev.tileReq !== undefined && !seen.some(e => e.kind === 'tiles')) seen.push({kind: 'tiles', at: ev.tileReq});
+    const order = [...new Set(seen.sort((a, b) => a.at - b.at).map(e => e.kind))].filter(k => k !== 'other').join(' → ');
+    // (A cross-origin answer without Timing-Allow-Origin has both sizes 0, and is not counted.)
+    const cached = entries.filter(e => e.transferSize === 0 && e.decodedBodySize > 0).length;
+    return {values: {tileReq: ev.tileReq - t0, firstFrame: ev.frame - t0, idle: idle - t0, requests: entries.length, cached}, order};
+}
+/** Raw pixels of a 64 × 64 icon with stripes; `i` moves them. */
+const pixels = i => {
+    const S = 64, d = new Uint8Array(S * S * 4);
+    for (let p = 0; p < S * S; p++) d.set(((p % S + (p / S | 0) + i * 4) >> 3) & 1 ? [209, 73, 91, 255] : [47, 127, 209, 255], p * 4);
+    return {width: S, height: S, data: d};
+};
+const camera = ratio => ({id: ratio ? 'camera' + ratio : 'camera', name: ratio ? `Camera at pixel ratio ${ratio}` : 'Camera',
+    note: `a static repaint, a pan, a rotation and a zoom, apart${ratio ? ` (setPixelRatio(${ratio}) after the load)` : ''}`,
+    measures: [...cam('static', 'Static repaint'), ...cam('pan', 'Pan'), ...cam('rotate', 'Rotation'), ...cam('zoom', 'Zoom'), ['blocked', 'Main thread blocked (long tasks) in the pan', 'ms', 0], ['ratio', 'Pixel ratio of the drawing buffer', '', 2]],
+    async run(lib) {
+        const {map, ids} = await loaded(lib), part = SECONDS * 600;
+        // (setPixelRatio and not the option of the constructor, which the compat entry does not read yet: #662.)
+        if (ratio) { const armed = nextIdle(map); map.setPixelRatio(ratio); await settle(map, ids, armed); }
+        // (Against the container: the canvas of this library has a CSS size of the ratio × 100 %, scaled down.)
+        const values = {ratio: map.getCanvas().width / map.getContainer().clientWidth};
+        await sleep(300);
+        // (A static repaint draws the same view in each frame: the cost of a frame without new tiles or labels.)
+        Object.assign(values, camValues('static', await everyFrame(map, part, () => map.triggerRepaint())));
+        const pan = await animate(map, {center: [-73.99, 40.725]}, part);
+        Object.assign(values, camValues('pan', pan), {blocked: pan.blocked});
+        await settle(map, ids, map.benchIdle);
+        Object.assign(values, camValues('rotate', await animate(map, {bearing: 90}, part)));
+        await settle(map, ids, map.benchIdle);
+        Object.assign(values, camValues('zoom', await animate(map, {zoom: VIEW.zoom + 1.5}, part)));
+        map.remove();
+        return {values};
+    }});
+
 // ---- The scenarios ----
 // Each scenario has an id, a name, the libraries it compares, its measures ([key, label, unit]) and `run(lib)`, which
 // returns {values, steps?} for one run and removes its maps.
@@ -193,6 +258,10 @@ const TERRAIN_VIEW = {center: [7.70, 45.99], zoom: 12, pitch: 60, bearing: 20}, 
 const scenarios = [
     {id: 'load', name: 'Load to idle', note: 'with the start timeline', measures: [['load', 'Load to idle', 'ms', 0], ['firstFrame', 'First frame', 'ms', 0], ['loadEvent', 'load event', 'ms', 0]],
         async run(lib) { const {map, values, steps} = await loadWithTimeline(lib); map.remove(); return {values, steps}; }},
+    {id: 'cold', name: 'Cold start', note: q.get('latency') ? `the style by URL, ${q.get('latency')} ms added to each request, no cache` : 'the style by URL, past the cache, on the network of this device',
+        skip: q.has('nocold'), measures: [['tileReq', 'First tile request', 'ms', 0], ['firstFrame', 'First frame', 'ms', 0], ['idle', 'Idle', 'ms', 0],
+            ['requests', 'Requests before idle (the page, and the workers of this library)', '', 0], ['cached', 'Of these, answered from the HTTP cache', '', 0]],
+        run: coldStart},
     {id: 'terrain', name: '3D terrain', note: 'load and a pan around the Matterhorn', skip: q.has('noterrain'), measures: [['load', 'Load to idle', 'ms', 0], ...cam('pan', 'Pan')],
         async run(lib) {
             const {map, load} = await loaded(lib, {style: withTerrain(await loadStyle()), view: TERRAIN_VIEW});
@@ -216,21 +285,7 @@ const scenarios = [
             const f = await animate(map, {center: [50, 30]}); map.remove();
             return {values: {load, ...camValues('turn', f)}};
         }},
-    {id: 'camera', name: 'Camera', note: 'a static repaint, a pan, a rotation and a zoom, apart', measures: [...cam('static', 'Static repaint'), ...cam('pan', 'Pan'), ...cam('rotate', 'Rotation'), ...cam('zoom', 'Zoom'), ['blocked', 'Main thread blocked (long tasks) in the pan', 'ms', 0]],
-        async run(lib) {
-            const {map, ids} = await loaded(lib), part = SECONDS * 600, values = {};
-            await sleep(300);
-            // (A static repaint draws the same view in each frame: the cost of a frame without new tiles or labels.)
-            Object.assign(values, camValues('static', await everyFrame(map, part, () => map.triggerRepaint())));
-            const pan = await animate(map, {center: [-73.99, 40.725]}, part);
-            Object.assign(values, camValues('pan', pan), {blocked: pan.blocked});
-            await settle(map, ids, map.benchIdle);
-            Object.assign(values, camValues('rotate', await animate(map, {bearing: 90}, part)));
-            await settle(map, ids, map.benchIdle);
-            Object.assign(values, camValues('zoom', await animate(map, {zoom: VIEW.zoom + 1.5}, part)));
-            map.remove();
-            return {values};
-        }},
+    camera(), camera(2), camera(3),
     ...[1000, 10000].map(n => ({id: 'markers' + n, name: `${n.toLocaleString('en')} markers`, note: 'MapLibre GL JS: Marker (DOM); this library: a marker layer', skip: q.has('nomarkers'), markers: true,
         measures: [['add', 'Add the markers', 'ms', 0], ...cam('pan', 'Pan').filter(m => !m[0].endsWith('Gap'))],
         async run(lib) {
@@ -306,6 +361,30 @@ const scenarios = [
             }
             return {values};
         }},
+    {id: 'images', name: 'Images', note: 'addImage with raw pixels (64 × 64) for 1,000 icons, then 500 × updateImage, each with triggerRepaint (MapLibre GL JS draws no frame for updateImage alone)',
+        measures: [['add', 'addImage and the icon layer: to idle', 'ms', 0], ['frames', '500 × updateImage, one per frame: first call to idle', 'ms', 0],
+            ['fps', 'Frames per second during the updates', 'fps', 1], ['worst', 'Worst frame gap during the updates', 'ms', 0],
+            ['task', '500 × updateImage in one task: the calls', 'ms', 1], ['taskIdle', '500 × updateImage in one task: first call to idle', 'ms', 0]],
+        async run(lib) {
+            const {map, ids} = await loaded(lib), pics = [0, 1, 2, 3, 4, 5, 6, 7].map(pixels), all = [...ids, 'bench-icons'], values = {};
+            await sleep(300);
+            let t = performance.now(), armed = nextIdle(map);
+            map.addImage('bench-icon', pics[0]);
+            map.addSource('bench-icons', {type: 'geojson', data: points(1000, 5)});
+            map.addLayer({id: 'bench-icons', type: 'symbol', source: 'bench-icons', layout: {'icon-image': 'bench-icon', 'icon-size': 0.4, 'icon-allow-overlap': true}});
+            values.add = await settle(map, all, armed) - t;
+            const f = frames(map).start();
+            t = performance.now();
+            for (let i = 0; i < 500; i++) { map.updateImage('bench-icon', pics[(i + 1) % pics.length]); map.triggerRepaint(); if (i === 499) armed = nextIdle(map); await frame(); }
+            Object.assign(values, (({fps, worst}) => ({fps, worst}))(f.stop()));
+            values.frames = await settle(map, all, armed) - t;
+            t = performance.now();
+            for (let i = 0; i < 500; i++) { map.updateImage('bench-icon', pics[i % pics.length]); map.triggerRepaint(); }
+            values.task = performance.now() - t;
+            values.taskIdle = await settle(map, all, nextIdle(map)) - t;
+            map.remove();
+            return {values};
+        }},
     {id: 'lifecycle', name: 'Lifecycle', note: '8 × create and remove(), and two maps on one page',
         measures: [['create', 'Create to idle, median of 8', 'ms', 0], ['remove', 'remove(), median of 8', 'ms', 1], ['workers', 'Workers started by the 8 maps and not ended', '', 0],
             ['two', 'Two maps: create both to both idle', 'ms', 0], ['twoFps', 'Two maps: frames per second of each in a pan', 'fps', 1], ['twoWorst', 'Two maps: worst frame gap', 'ms', 0]],
@@ -350,7 +429,13 @@ const rowsOf = r => r.error ? [[r.scenarioName, r.libName, `failed: ${r.error}`,
         return [r.scenarioName, r.libName, label, fmt(r[key], d) + u, s.length > 1 ? `${fmt(s[0], d)}–${fmt(s.at(-1), d)}` : '', `${s.length}`];
     });
 const TIMELINE = 'Start timeline, ms after the map was made (sprite, glyphs and worker file from resource timings, which do not list requests made in a worker; tiles from the tile events, counted until idle; for the last tile before idle, "net" is its network answer, "built" its tile event and "up" its upload to the GPU; the tile event of MapLibre GL JS (`data` with a tile) fires when the tile is built, before the upload; the style is fetched by the page before the map is made):';
-const timelineLines = () => results.filter(r => r.scenario === 'load' && r.runs.length).map(r => timelineLine(r.libName, r.runs.map(x => x.steps)));
+/** The order of the first request of each kind in the cold start, the most common one over the runs, with its count. */
+const orderLines = () => results.filter(r => r.scenario === 'cold' && r.runs.length).map(r => {
+    const n = {}; for (const x of r.runs) n[x.order] = (n[x.order] ?? 0) + 1;
+    const [order, k] = Object.entries(n).sort((a, b) => b[1] - a[1])[0];
+    return `${r.libName}, cold start, order of the first requests: ${order || 'none seen'} (${k} of ${r.runs.length} runs)`;
+});
+const timelineLines = () => [...results.filter(r => r.scenario === 'load' && r.runs.length).map(r => timelineLine(r.libName, r.runs.map(x => x.steps))), ...orderLines()];
 
 async function runAll(chosen) {
     $('run').disabled = $('runSelected').disabled = true; $('copy').disabled = true;

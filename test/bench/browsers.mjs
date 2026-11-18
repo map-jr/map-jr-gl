@@ -57,10 +57,25 @@ else try {
         await page?.close();
         page = await browser.newPage({viewport: {width: 1000, height: 700}});
         page.on('pageerror', e => result.errors.push(e.message));
-        await page.goto(`${base}/bench?auto&seconds=${process.env.BENCH_SECONDS ?? 4}&runs=1`);
+        await page.goto(`${base}/bench?auto&nocold&seconds=${process.env.BENCH_SECONDS ?? 4}&runs=1`);
         await page.waitForFunction(() => window.benchResults, null, {timeout: 30 * 60000, polling: 1000});
         lists.push(await page.evaluate(() => window.benchResults));
     } while (lists.length < most && Date.now() - t0 < budget);
+    // The cold start (#29): each load in a fresh browser context, so that nothing comes from a cache, with BENCH_LATENCY
+    // ms (100) before each answer, as scripts/timeline.mjs does, and the libraries in turn; BENCH_COLD_RUNS loads (5) of each.
+    const latency = +(process.env.BENCH_LATENCY ?? 100), cold = +(process.env.BENCH_COLD_RUNS ?? 5);
+    for (let i = 0; i < cold; i++) for (const lib of ['maplibre', 'main', 'worker']) {
+        const context = await browser.newContext({viewport: {width: 1000, height: 700}});
+        // (Requests of workers go through the context, so that they wait as well.)
+        await context.route('**/*', async route => { await new Promise(r => setTimeout(r, latency)); await route.continue().catch(() => {}); });
+        const p = await context.newPage();
+        p.on('pageerror', e => result.errors.push(e.message));
+        try {
+            await p.goto(`${base}/bench?auto&only=cold&runs=1&libs=${lib}&latency=${latency}`);
+            await p.waitForFunction(() => window.benchResults, null, {timeout: 3 * 60000, polling: 500});
+            lists.push(await p.evaluate(() => window.benchResults));
+        } finally { await context.close(); }
+    }
     result.env = await page.textContent('#env');
     Object.assign(result, await page.evaluate(lists => window.benchMerge(lists), lists));
     result.runs = lists.length; result.minutes = +((Date.now() - t0) / 60000).toFixed(1);
