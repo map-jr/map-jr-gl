@@ -112,8 +112,9 @@ for (const build of builds) {
         }
         await browser.close();
         if (suite) {
+            // The tests get MAPUTNIK_RENDERER too: a test of what only this library draws runs only on its build.
             const out = path.join(dir, 'e2e-result.json');
-            try { run('npx', ['playwright', 'test', '--reporter=json', '--trace', 'off'], {env: {...process.env, E2E_NO_WEBSERVER: '1', PLAYWRIGHT_JSON_OUTPUT_NAME: out}, stdio: ['ignore', 'ignore', 'inherit']}); }
+            try { run('npx', ['playwright', 'test', '--reporter=json', '--trace', 'off'], {env: {...process.env, ...build.env, E2E_NO_WEBSERVER: '1', PLAYWRIGHT_JSON_OUTPUT_NAME: out}, stdio: ['ignore', 'ignore', 'inherit']}); }
             catch { /* A failed test makes the exit code 1; the results are in the file. */ }
             const tests = [], walk = s => { for (const spec of s.specs ?? []) for (const t of spec.tests) tests.push({title: `${spec.file} › ${spec.title}`, status: t.results.at(-1)?.status, error: t.results.at(-1)?.error?.message?.split('\n')[0]?.replace(/\x1b\[[0-9;]*m/g, '')}); (s.suites ?? []).forEach(walk); };
             JSON.parse(readFileSync(out, 'utf8')).suites.forEach(walk);
