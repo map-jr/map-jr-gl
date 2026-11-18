@@ -139,7 +139,7 @@ export function workerReady(w: Worker, timeout = 8000): Promise<Worker> {
 
 /** Tile workers are shared by every map on the page: a dozen maps should not mean four dozen workers. */
 let pool: {key: unknown; workers: Promise<Worker[]>; users: number} | null = null;
-export async function acquireTileWorkers(o: LoadOptions): Promise<{connect(): MessagePort[]; release(): void}> {
+export async function acquireTileWorkers(o: LoadOptions): Promise<{connect(): MessagePort[]; wake(): void; release(): void}> {
     const key = o.createWorker ?? defaults.createWorker ?? String(o.workerUrl ?? defaults.workerUrl ?? '');
     if (!pool || pool.key !== key) {
         const count = o.tileWorkers ?? defaults.tileWorkers ?? Math.max(1, Math.min(4, (navigator.hardwareConcurrency || 4) - 2));
@@ -155,6 +155,10 @@ export async function acquireTileWorkers(o: LoadOptions): Promise<{connect(): Me
             ports = workers.map(w => { const ch = new MessageChannel(); w.postMessage({role: 'tiles', port: ch.port1}, [ch.port1]); return ch.port2; });
             return ports;
         },
+        // WebKit can hold a message on the port of a worker that has been idle for a few seconds for about a second
+        // (#824). A message to the worker itself wakes it, and the message on the port then arrives at once. The map
+        // wakes the workers when it asks a query, so that a `click` listener has the features in time.
+        wake() { for (const w of workers) w.postMessage(0); },
         release() {
             for (const p of ports) { try { p.postMessage({type: 'close'}); p.close(); } catch { /* already transferred to the engine worker */ } }
             // A pool that a map with another worker URL replaced is shared no more, so its last map ends it too.
