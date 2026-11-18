@@ -603,7 +603,7 @@ for (const renderer of renderers) {
             // The browser clamps a large canvas (to 8192 × 8192 in Chromium): `idle` does not wait for a size that the
             // canvas cannot have. It comes within 300 ms of the last frame after a jump.
             const clampName = '[worker] a canvas that the browser clamps: idle comes within 300 ms of the last frame (#950)';
-            const clamped = await page.evaluate(async () => { globalThis.__dbg950 = [];
+            const clamped = await page.evaluate(async () => {
                 const t = window.t, mod = await import('/dist/map-jr-gl-maplibre-compat.js');
                 const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:6000px;height:4000px;z-index:100'}));
                 const map = new mod.Map({container: el, style: t.style, center: [-74.0065, 40.7085], zoom: 14.3, attributionControl: false});
@@ -614,7 +614,7 @@ for (const renderer of renderers) {
                 for (let i = 0; i < 3; i++) { const armed = idle(); map.jumpTo({zoom: 14.3 + (i + 1) * 0.0001}); const at = await armed; gaps.push(at === null ? 'no idle' : Math.round(at - last)); }
                 const canvas = [map.getCanvas().width, map.getCanvas().height];
                 map.remove(); el.remove();
-                return {gaps, canvas, dbg: globalThis.__dbg950?.slice(-40)};
+                return {gaps, canvas};
             }).catch(e => ({error: String(e)}));
             check(clampName, clamped.gaps?.every(g => typeof g === 'number' && g < 300), JSON.stringify(clamped));
         }
@@ -665,14 +665,14 @@ for (const renderer of renderers) {
             /HTTP 404/.test(mistakes.hook) && mistakes.loggedWithHook === 0 && /^\[map-jr-gl\] .*HTTP 404/.test(mistakes.logged), JSON.stringify(mistakes));
 
         // 3d. Two maps with one `extend` object whose source has its data at a URL: both load it.
-        const sharedExtend = await page.evaluate(async () => { globalThis.__dbg950 = [];
+        const sharedExtend = await page.evaluate(async () => {
             const t = window.t, square = {type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[-74.02, 40.70], [-73.99, 40.70], [-73.99, 40.72], [-74.02, 40.72], [-74.02, 40.70]]]}};
             const extend = {sources: {own: {type: 'geojson', data: 'data:application/json,' + encodeURIComponent(JSON.stringify(square))}}, layers: [{id: 'own-fill', type: 'fill', source: 'own'}]};
             const made = [0, 1].map(() => { const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'})); return {el, host: t.lib.createMap(el, {style: t.style, ...extend, initialView: {center: [-74.0065, 40.7085], zoom: 13}, attribution: false})}; });
             const idles = await Promise.all(made.map(({host}) => new Promise(r => { host.state.subscribe(s => s.idle, v => v && r(true)); setTimeout(() => r(false), 8000); })));
             const drawn = await Promise.all(made.map(({host}) => Promise.race([host.queryFeatures(undefined, {layers: ['own-fill']}).then(f => f.length), new Promise(r => setTimeout(() => r(-1), 4000))])));
             for (const {el, host} of made) { host.destroy(); el.remove(); }
-            return {idles, drawn, dbg: globalThis.__dbg950?.slice(-60)};
+            return {idles, drawn};
         });
         check(`[${renderer}] two maps with one extend object both load its source`, sharedExtend.idles.every(Boolean) && sharedExtend.drawn.every(n => n > 0), JSON.stringify(sharedExtend));
 

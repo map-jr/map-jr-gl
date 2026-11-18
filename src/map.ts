@@ -710,7 +710,6 @@ export class Map {
                 for (const type of ['sourcedata', 'data']) this.fire(type, {dataType: 'source', sourceId: e.source, isSourceLoaded: true, source: this.rawStyle.sources[e.source]});
             }
         } else if (e.type === 'idle') {
-            ((globalThis as any).__dbg950 ??= []).push(['idle', e.seq, this.seq, this.restyled, this.restyles, !!this.resolved?.waiting, this.shown === e, this.canvas.width, this.canvas.height, JSON.stringify(this.buffer), Math.round(performance.now())]);
             // (A report from before the last command: the engine sends another after that command.)
             if (e.seq !== this.seq || this.restyled !== this.restyles || this.resolved?.waiting) return;
             // An engine in a worker sends `idle` once its frame has gone to the page (see `frame` in engine.ts), and the
@@ -726,7 +725,6 @@ export class Map {
                     if (done || this.removed) { done = true; return; }
                     const b = this.buffer;
                     if (b && (c.width !== b[0] || c.height !== b[1]) && performance.now() < b[2]) return;
-                    ((globalThis as any).__dbg950 ??= []).push(['go', e.type === 'idle' && e.seq, c.width, c.height, JSON.stringify(b), Math.round(performance.now())]);
                     this.buffer = undefined; // (the size has arrived, or will not: later reports do not wait for it)
                     done = true; this.shown = e; this.onEngineEvent(e);
                 };
@@ -762,7 +760,6 @@ export class Map {
             this.fire('stats', {fps: e.fps, frameMs: e.frameMs, labels: e.labels});
         } else if (e.type === 'resized') {
             this.buffer = [...e.buffer, performance.now() + 1000];
-            ((globalThis as any).__dbg950 ??= []).push(['resized', JSON.stringify(e.buffer), this.canvas.width, Math.round(performance.now())]);
             this.fire('resize');
         } else if (e.type === 'result') {
             const p = this.pending.get(e.id);
