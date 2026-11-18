@@ -606,7 +606,9 @@ for (const renderer of renderers) {
             const clamped = await page.evaluate(async () => {
                 const t = window.t, mod = await import('/dist/map-jr-gl-maplibre-compat.js');
                 const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:6000px;height:4000px;z-index:100'}));
-                const map = new mod.Map({container: el, style: t.style, center: [-74.0065, 40.7085], zoom: 14.3, attributionControl: false});
+                // (The style has only a background. With tiles, a canvas of this size kept a 2-core CI runner busy into the
+                // next checks, whose maps did not reach idle.)
+                const map = new mod.Map({container: el, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#8ac'}}]}, attributionControl: false});
                 const idle = () => new Promise(r => { map.once('idle', () => r(performance.now())); setTimeout(() => r(null), 10000); });
                 await idle(); map.setPixelRatio(3); await idle();
                 let last = 0; map.on('render', () => { last = performance.now(); });
