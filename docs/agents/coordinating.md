@@ -48,7 +48,9 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
   is in the session. A Monitor ends after 30 minutes; start it again.
 - **Send a CI failure, a review finding or a decision of the owner to the worker that opened the pull request**
   (`SendMessage`): the failure and the check run, not the task again. A follow-up costs 10,000 to 20,000 tokens and a
-  new worker about 100,000.
+  new worker about 100,000. A worker that ended with no change has lost its worktree (it is removed when nothing
+  changed), and a message to it resumes it in your own checkout. Give such a worker a new task only when your
+  checkout is free, or start a new worker in a worktree.
 - **Turn each "found" line of a report into its own issue** at once, in the form of "Issues" in `CLAUDE.md`. Search
   for an issue of the same fault first (`gh issue list --search`). Do not add a fault to another issue as a comment.
   When an issue already has the same fault, add the new evidence to it instead: a line under "Sightings" for a check
