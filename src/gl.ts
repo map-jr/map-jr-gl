@@ -1,4 +1,4 @@
-import {EXTENT, latFromMerc, mercX, mercY, type TileID, type Transform} from './geo.ts';
+import {EXTENT, clamp, latFromMerc, mercX, mercY, type TileID, type Transform} from './geo.ts';
 import {hillshadeLights, LIGHTS, screenTranslate, type CompiledLayer, type Light} from './style.ts';
 import {compileProp} from './expr.ts';
 import type {Sky} from './resolve.ts';
@@ -169,6 +169,18 @@ void main() {
   float b = gl_FragCoord.y - u_sky.x;
   if (b <= 0.0) discard;
   o = b < u_sky.y ? mix(u_skyColor, u_horizonColor, pow(1.0 - b / u_sky.y, 2.0)) : u_skyColor;
+}`],
+    // The atmosphere on the globe, a halo: u_rays gives the ray of a screen pixel in the space of the unit sphere and
+    // u_cam is the camera there. t is the lowest height of the ray above the sphere, in parts of the halo's height; the
+    // colour goes from horizon-color at the edge of the globe to sky-color and fades out. u_halo is the blend and the
+    // device pixels per pixel.
+    halo: [`layout(location=0) in vec2 a_pos; void main() { gl_Position = vec4(a_pos * 2.0 - 1.0, 0.0, 1.0); }`, `
+uniform mat3 u_rays; uniform vec3 u_cam; uniform vec2 u_halo; uniform vec2 u_view; uniform vec4 u_skyColor; uniform vec4 u_horizonColor; out vec4 o;
+void main() {
+  vec3 r = normalize(u_rays * vec3(gl_FragCoord.x / u_halo.y, u_view.y - gl_FragCoord.y / u_halo.y, 1.0));
+  float b = dot(u_cam, r), t = ((b < 0.0 ? sqrt(max(dot(u_cam, u_cam) - b * b, 0.0)) : length(u_cam)) - 1.0) / 0.05;
+  if (t < 0.0 || t > 1.0) discard;
+  o = mix(u_horizonColor, u_skyColor, t) * u_halo.x * (1.0 - t) * (1.0 - t);
 }`],
 
     fill: [`${VS_COMMON}
@@ -554,7 +566,7 @@ export interface Scene {
      * plane of the horizon, how much of a globe (1) or of Mercator (0) is drawn, the cosine of the latitude of the
      * centre, and the tiles of the background.
      */
-    globe?: {m: Float32Array; horizon: number[]; t: number; cosLat: number; tiles: TileID[]};
+    globe?: {m: Float32Array; horizon: number[]; cam: number[]; rays: number[]; t: number; cosLat: number; tiles: TileID[]};
 }
 
 /**
@@ -564,7 +576,7 @@ export interface Scene {
 export function skyValues(sky: Sky, zoom: number, pitch: number) {
     const at = (k: keyof Sky, kind: 'number' | 'color', def: unknown) => compileProp(sky[k], kind, def).eval(zoom) as any;
     return {sky: at('sky-color', 'color', '#88c6fc') as number[], horizon: at('horizon-color', 'color', '#ffffff') as number[], fog: at('fog-color', 'color', '#ffffff') as number[],
-        skyBlend: at('sky-horizon-blend', 'number', 0.8) as number, horizonFog: at('horizon-fog-blend', 'number', 0.8) as number, ground: at('fog-ground-blend', 'number', 0.5) as number,
+        skyBlend: at('sky-horizon-blend', 'number', 0.8) as number, horizonFog: at('horizon-fog-blend', 'number', 0.8) as number, ground: at('fog-ground-blend', 'number', 0.5) as number, atmosphere: at('atmosphere-blend', 'number', 0.8) as number,
         opacity: Math.min(1, Math.max(0, (pitch - 60) / 10))};
 }
 
@@ -1707,8 +1719,30 @@ export class GLRenderer {
             else if (!s.terrain) this.drawLayers(s, tr, s.items, target, 'all', undefined, i, i + 1);
         }
 
+        this.drawHalo(s);
         gl.bindVertexArray(null);
         return behind;
+    }
+
+    /**
+     * The atmosphere around the globe, as a halo in the colours of the sky, over the layers as in MapLibre GL JS. A style
+     * with no `sky` has the defaults. The blend is atmosphere-blend times the change to the globe, and it fades out as
+     * the camera comes within ten heights of the atmosphere (100 km) of the ground, as MapLibre's altitude blend does.
+     */
+    private drawHalo(s: Scene) {
+        const g = s.globe, tr = s.tr;
+        if (!g) return;
+        const v = skyValues(s.sky ?? {}, tr.zoom, tr.pitch), h = 100 / 6371, x = clamp((Math.hypot(...g.cam) - 1 - h) / (9 * h), 0, 1);
+        const blend = v.atmosphere * g.t * x * x * (3 - 2 * x), gl = this.gl;
+        if (!(blend > 0)) return;
+        const u = this.use('halo', tr);
+        gl.uniformMatrix3fv(u.u_rays, false, g.rays);
+        gl.uniform3fv(u.u_cam, g.cam);
+        gl.uniform2f(u.u_halo, blend, this.canvas.height / tr.height);
+        gl.uniform4fv(u.u_skyColor, v.sky);
+        gl.uniform4fv(u.u_horizonColor, v.horizon);
+        gl.bindVertexArray(this.quad);
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     }
 
     /** Draws placed labels: their icons, then their text in one pass for the halos and one for the fill. */
