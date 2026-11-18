@@ -2470,7 +2470,7 @@ for (const other of [true, false]) {
             window.tapHost = lib.createMap(el, {style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, initialView: {center: [0, 0], zoom: 2}, controls: [navigation()], attribution: false});
             for (let i = 0; i < 50 && !el.querySelector('.map-jr-ctrl-zoom-in'); i++) await new Promise(r => setTimeout(r, 100));
         });
-        const look = () => page.evaluate(() => { const e = document.querySelector('.map-jr-ctrl-zoom-in'); if (!e) return 'no button'; const s = getComputedStyle(e); return `${s.backgroundColor} ${s.outlineStyle} ${s.webkitTapHighlightColor}`; });
+        const look = () => page.evaluate(() => { const e = document.querySelector('.map-jr-ctrl-zoom-in'); if (!e) return 'no button'; const s = getComputedStyle(e); return `${s.backgroundColor} ${s.outlineStyle} ${s.webkitTapHighlightColor ?? 'rgba(0, 0, 0, 0)'}`; }); // #781: Firefox has no tap highlight and no such property
         const before = await look();
         await page.tap('.map-jr-ctrl-zoom-in'); await page.waitForTimeout(400);
         const after = await look();
