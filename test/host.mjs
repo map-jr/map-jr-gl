@@ -191,13 +191,47 @@ for (const renderer of renderers) {
             t.host.update(t.spec = {...t.spec, style: added});
             await wait(200); await idle();
             const withLayer = (await t.host.queryFeatures(at, {layers: ['test-water']})).length;
+            // One filter and one paint value of a layer of a new style object: edits, and no new style (#858).
+            let loads = 0;
+            const count = () => loads++, map = t.host._map;
+            map.on('style.load', count);
+            const edited = {...added, layers: added.layers.map(l => l.id === 'test-water' ? {...l, filter: ['==', ['get', 'class'], 'no-such-class'], paint: {'fill-color': '#00f'}} : l)};
+            t.host.update(t.spec = {...t.spec, style: edited});
+            await wait(200); await idle();
+            const live = map.getStyle().layers.find(l => l.id === 'test-water');
+            const inPlace = {loads, filtered: (await t.host.queryFeatures(at, {layers: ['test-water']})).length, color: live?.paint?.['fill-color'], filter: JSON.stringify(live?.filter)};
+            map.off('style.load', count);
             t.host.update(t.spec = {...t.spec, style: t.style});
             await wait(200); await idle();
             const without = (await t.host.queryFeatures(at, {layers: ['test-water']})).length;
             const raw = (await t.host.querySource('omt', {x: 450, y: 300}, {radius: 30})).length;
-            return {withLayer, without, raw};
+            return {withLayer, without, raw, inPlace};
         });
         check(`[${renderer}] update with a new style: a layer comes and goes, and queries find features`, style.withLayer > 0 && style.without === 0 && style.raw > 0, JSON.stringify(style));
+        check(`[${renderer}] update with a style object that changes one filter and one paint value of a layer: the map edits the layer and loads no style (#858)`,
+            style.inPlace.loads === 0 && style.inPlace.filtered === 0 && style.inPlace.color === '#00f' && style.inPlace.filter.includes('no-such-class'), JSON.stringify(style.inPlace));
+
+        // A pair {light, dark}, and in one update() another colorScheme and a paint change of a layer of the dark style:
+        // the map loads the dark style, and the paint change is in it (#858).
+        const pair = await page.evaluate(async () => {
+            const t = window.t, map = t.host._map, wait = ms => new Promise(r => setTimeout(r, ms));
+            const id = t.style.layers.find(l => l.type === 'fill').id, mark = (c, extra) => ({...t.style, metadata: {...t.style.metadata, scheme: c}, layers: t.style.layers.map(l => l.id === id ? {...l, paint: {...l.paint, 'fill-color': extra}} : l)});
+            t.host.update(t.spec = {...t.spec, style: {light: mark('light', '#111111'), dark: mark('dark', '#222222')}, colorScheme: 'light'});
+            await wait(1500);
+            let loads = 0;
+            const count = () => loads++;
+            map.on('style.load', count);
+            t.host.update(t.spec = {...t.spec, style: {light: mark('light', '#111111'), dark: mark('dark', '#333333')}, colorScheme: 'dark'});
+            await wait(1500);
+            map.off('style.load', count);
+            const live = map.getStyle(), out = {loads, scheme: live.metadata?.scheme, color: live.layers.find(l => l.id === id)?.paint?.['fill-color']};
+            const {colorScheme: _, ...rest} = t.spec;
+            t.host.update(t.spec = {...rest, style: t.style});
+            await wait(1500);
+            return out;
+        });
+        check(`[${renderer}] update with a style pair, another colorScheme and a paint change at once: the map loads the other style of the pair, with the paint change (#858)`,
+            pair.loads >= 1 && pair.scheme === 'dark' && pair.color === '#333333', JSON.stringify(pair));
 
         // 3a. A style URL that fails, with `extend`: `onError` gets the error with the URL and the status, the state has no `error` (#655), and no promise is left rejected.
         const badStyle = await page.evaluate(async () => {
@@ -1551,6 +1585,33 @@ for (const renderer of renderers) {
         });
         check(`[${renderer}] Escape closes a popup of overlay() that has onClose and holds the focus, the focus goes to the map (also from a button in the content), and a popup without onClose stays open`,
             escape.focused && escape.closes === 1 && escape.gone && escape.focus && escape.plainOpen && escape.innerFocused && escape.innerFocus, JSON.stringify(escape));
+        // #866: a popup of overlay() that opens from a key press on the map takes the focus, and Escape returns it to the
+        // map. A popup that opens from a click leaves the focus where it is.
+        await page.evaluate(() => {
+            const t = window.t, box = t.host.container;
+            t.open866 = () => {
+                const inner = document.createElement('div'), button = inner.appendChild(document.createElement('button'));
+                button.textContent = 'Details';
+                t.pop866 = t.host.overlay(inner, {lngLat: t.host.state.get().view.center, popup: true, onClose() { t.pop866.remove(); }});
+                t.in866 = inner;
+            };
+            t.key866 = e => { if (e.key === 'Enter') t.open866(); };
+            box.addEventListener('keydown', t.key866);
+            t.host._map.getCanvas().focus();
+        });
+        await page.keyboard.press('Enter');
+        await page.waitForTimeout(300);
+        const byKey = await page.evaluate(() => window.t.in866.closest('.map-jr-popup').contains(document.activeElement));
+        await page.keyboard.press('Escape');
+        await page.waitForTimeout(500);
+        const back = await page.evaluate(() => { const t = window.t; t.host.container.removeEventListener('keydown', t.key866); return !t.in866.isConnected && document.activeElement === t.host._map.getCanvas(); });
+        const r866 = await page.evaluate(() => { const r = window.t.host.container.getBoundingClientRect(); return {x: r.left + 20, y: r.top + 20}; });
+        await page.evaluate(() => window.t.host.container.addEventListener('pointerdown', window.t.open866, {once: true}));
+        await page.mouse.click(r866.x, r866.y);
+        await page.waitForTimeout(300);
+        const byClick = await page.evaluate(() => { const t = window.t, inside = t.in866.closest('.map-jr-popup').contains(document.activeElement); t.pop866.remove(); return inside; });
+        check(`[${renderer}] a popup of overlay() opened from a key press takes the focus and Escape returns it to the map, and a popup opened from a click leaves the focus`,
+            byKey && back && !byClick, JSON.stringify({byKey, back, byClick}));
         // #435: destroy() leaves no popup and no marker of overlay() on the page, and does not call onClose.
         const destroyed = await page.evaluate(async renderer => {
             const el = Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'});

@@ -476,6 +476,11 @@ export function makeMap(container: HTMLElement | string, spec: MapDescription, n
     (map as {_getUIString?(k: string): string | undefined})._getUIString = k => latest.locale?.[k];
     // The look of the controls of the main API (the class map-jr-glass, see controls.ts). The compat entry does not set it.
     const box = map.getContainer();
+    // A popup of overlay() takes the focus when it opens within a second of a key press on the map, with no pointer
+    // input in between (#866): the application opens the popup itself, so the last input on the container tells how.
+    let keyAt = -1e9;
+    const input = (e: Event) => { keyAt = e.type === 'keydown' ? performance.now() : -1e9; };
+    box.addEventListener('keydown', input, true); box.addEventListener('pointerdown', input, true);
     box.classList.add('map-jr-glass');
     // The checks for mistakes of the user, and the texts of their warnings, are in a file that is loaded after the map
     // has started: `check` gives it the kind of the check (see `src/mistakes.ts`). A file that does not load gives no check.
@@ -688,6 +693,28 @@ export function makeMap(container: HTMLElement | string, spec: MapDescription, n
         return true;
     };
 
+    // A new style object that differs from the old one only in the `paint`, `layout` and `filter` of its layers goes to
+    // the map as edits, as `setStyle(style, {diff: true})` of MapLibre GL JS does (#858). It returns false, with nothing
+    // changed, when anything else differs: a key of the style other than `layers`, the ids or the order of the layers,
+    // or another key of a layer (`minzoom` and `maxzoom` too: the map has no `setLayerZoomRange`).
+    const editStyle = (next: unknown, before: unknown, differ: (a: unknown, b: unknown) => boolean) => {
+        type L = Record<string, unknown> & {id: string; paint?: Record<string, unknown>; layout?: Record<string, unknown>};
+        const a = styleFor(next, styledDark) as Record<string, unknown>, b = styleFor(before, styledDark) as Record<string, unknown>;
+        if (!a || !b || typeof a !== 'object' || typeof b !== 'object' || !Array.isArray(a.layers) || !Array.isArray(b.layers)) return false;
+        const is = a.layers as L[], was = b.layers as L[], keys = ['paint', 'layout', 'filter'];
+        if (is.length !== was.length || Object.keys({...a, ...b}).some(k => k !== 'layers' && differ(a[k], b[k]))) return false;
+        if (is.some((l, i) => !l || l.id !== was[i]?.id || !map.getLayer(l.id) || Object.keys({...l, ...was[i]}).some(k => !keys.includes(k) && differ(l[k], was[i][k])))) return false;
+        is.forEach((l, i) => {
+            const w = was[i];
+            for (const g of ['paint', 'layout'] as const) {
+                const x = l[g] ?? {}, y = w[g] ?? {};
+                for (const k in {...x, ...y}) if (differ(x[k], y[k])) (g === 'paint' ? map.setPaintProperty : map.setLayoutProperty).call(map, l.id, k, x[k] === undefined ? undefined : copy(x[k]));
+            }
+            if (differ(l.filter, w.filter)) map.setFilter(l.id, l.filter === undefined ? undefined : copy(l.filter) as any);
+        });
+        return true;
+    };
+
     // Gives the map the images of the style and of the description, and removes those that neither has now.
     const putImages = (only?: string) => {
         const wanted: Record<string, ImageInput> = {};
@@ -727,7 +754,7 @@ export function makeMap(container: HTMLElement | string, spec: MapDescription, n
             else if (!(id in (before.data ?? {})) && s.type !== 'geojson') typeError(id, s.type!);
         }
         // (After a new style the data waits for the `styledata` event: the engine must have the new style first.)
-        const restyled = !!before && (differ(next.style, before.style) || (['sources', 'layers', 'terrain'] as const).some(k => differ(next[k], before[k])) && !(styled && edit(parts(next), parts(before), differ)) || differ(next.sprite, before.sprite));
+        const restyled = !!before && (differ(next.style, before.style) && !(styled && editStyle(next.style, before.style, differ)) || (['sources', 'layers', 'terrain'] as const).some(k => differ(next[k], before[k])) && !(styled && edit(parts(next), parts(before), differ)) || differ(next.sprite, before.sprite));
         if (restyled) { state.set({idle: false}); sent.clear(); restyle(next); }
         else for (const id of madeData) if (!Object.hasOwn(next.data ?? {}, id)) { madeData.delete(id); sent.delete(id); map.removeSource(id); }
         // (A font of a name that is new or changed is loaded; the new style of a restyle has the fonts already. A font
@@ -851,7 +878,7 @@ export function makeMap(container: HTMLElement | string, spec: MapDescription, n
         },
         get description() { return now; },
         getResolvedDescription: () => ({...now, style: map.getStyle() as StyleSpecification ?? now.style, globalState: map.getGlobalState()}),
-        destroy() { if (!alive) return; alive = false; cooperate(false); dark?.removeEventListener('change', paint); map.remove(); box.classList.remove('map-jr-glass', 'map-jr-dark'); for (const drop of waiting) drop(); waiting.clear(); },
+        destroy() { if (!alive) return; alive = false; cooperate(false); box.removeEventListener('keydown', input, true); box.removeEventListener('pointerdown', input, true); dark?.removeEventListener('change', paint); map.remove(); box.classList.remove('map-jr-glass', 'map-jr-dark'); for (const drop of waiting) drop(); waiting.clear(); },
         state,
         queryFeatures,
         setFeatureState(target, value) { if (alive) map.setFeatureState(target, value); },
@@ -884,6 +911,9 @@ export function makeMap(container: HTMLElement | string, spec: MapDescription, n
                 const p = new GlassPopup({anchor: now.anchor, offset: now.offset, closeButton: !!now.onClose, closeOnClick: false}).setLngLat(now.lngLat).setDOMContent(element).addTo(map);
                 // (`destroy()` closes the popup with the map. That is not the user's close, so `onClose` does not run.)
                 p.on('close', () => { if (alive && made === p) now.onClose?.(); });
+                // (Escape or the button then returns the focus to the element that had it, else to the map.)
+                const active = (box.getRootNode() as Document | ShadowRoot).activeElement as HTMLElement | null;
+                if (performance.now() - keyAt < 1000) { if (active && box.contains(active)) p.opener = active; p.focusFirst(); }
                 return p;
             };
             let made: Marker | Popup | null = make();

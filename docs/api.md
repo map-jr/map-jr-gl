@@ -126,7 +126,7 @@ The library compares each field with the field of the last description:
 
 | Field | Meaning |
 |---|---|
-| `style` | A style object or the URL of a style (the MapLibre style specification). Required. A new object or URL is a new style. A pair `{light, dark}` of two styles uses the style of the resolved `colorScheme`: see [A light and a dark style](#a-light-and-a-dark-style). |
+| `style` | A style object or the URL of a style (the MapLibre style specification). Required. A new URL is a new style. A new object is a new style too, except when it differs from the old one only in the `paint`, `layout` and `filter` of its layers, with the same layers in the same order: then `update()` changes those layers in place and loads no style. A change of `minzoom` or `maxzoom` of a layer of the style loads the style again. A pair `{light, dark}` of two styles uses the style of the resolved `colorScheme`: see [A light and a dark style](#a-light-and-a-dark-style). |
 | `sources` | Sources to add to the sources of the style, by id. A source here replaces the source of the style with the same id. See [Your own layers on a style from a URL](#your-own-layers-on-a-style-from-a-url). |
 | `layers` | Layers to add to the layers of the style: they do not replace them. A layer with `before` goes below the layer of the style with that id, and a layer without it goes on top. See [Your own layers on a style from a URL](#your-own-layers-on-a-style-from-a-url). |
 | `terrain` | 3D terrain in place of the terrain of the style: `{source: 'dem', exaggeration: 1.5}`. `null` or no field means the terrain of the style. |
@@ -1066,7 +1066,7 @@ const popup = map.overlay(content, {lngLat, popup: true, onClose: () => popup.re
 | `draggable` | `true` to let the user move the element with the mouse, a finger or a pen. The default is `false`. It has no effect on a popup. |
 | `onDragStart`, `onDrag`, `onDragEnd` | For a draggable element: called when a drag starts, at each move, and when it ends, with the position of the element as `[lng, lat]`. |
 
-A popup of `overlay()` does not take the keyboard focus when it opens, and it stays open when the map moves. The popup of `@map-jr/map-jr-gl/maplibre-compat` has the options `focusAfterOpen`, `closeOnMove` and `trackPointer` for that.
+A popup of `overlay()` takes the keyboard focus when the user opened it from the keyboard. The library counts a popup as opened from the keyboard when it opens within one second of a key press on the map's container and no pointer press on the container came in between. The focus goes to the first element in the popup that can take it, or to the close button when no element in the content can take it. When the popup closes with the focus inside, through Escape or the close button, the focus returns to the element in the map that had it before, or to the map. A popup that opens after a click, or without user input, leaves the focus where it is. A popup stays open when the map moves. The popup of `@map-jr/map-jr-gl/maplibre-compat` has the options `focusAfterOpen`, `closeOnMove` and `trackPointer` for that.
 
 A drag starts once the pointer has moved 3 pixels, as in MapLibre GL JS. A click without that move stays a click
 and calls no drag callback, and the click at the end of a drag does not reach the element. The map does not pan
