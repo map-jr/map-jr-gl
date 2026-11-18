@@ -161,6 +161,8 @@ const md = [`### ${name} (${result.browser} ${result.version}${result.device ? '
     ...result.checks.filter(c => c.closer?.debug).flatMap(c => ['', `The debug record of the second map (${c.mode}, ${c.closer.debug.length} entries):`, '', '```', ...c.closer.debug, '```']), '',
     ...(rows.length ? [`| ${rows[0].join(' | ')} |`, `|${rows[0].map(() => '---').join('|')}|`, ...rows.slice(1).map(r => `| ${r.join(' | ')} |`)] : ['(no benchmark results)']),
     ...failedRows.map(r => `- ${r[0]}`),
+    // (The page marks a run that it measured while the map was not in view, #973.)
+    ...(() => { const n = (result.bench ?? []).reduce((k, r) => k + (r.runs ?? []).filter(x => x.outOfView).length, 0); return n ? ['', `Out of view: ${n} runs were measured while the map was less than 90 % in view or the tab was not in front; their numbers are not comparable.`] : []; })(),
     ...(result.errors.length ? ['', 'Errors: ' + result.errors.join(' | ')] : []), ''].join('\n');
 writeFileSync(path.join(out, `${name}.md`), md);
 console.log(md);
