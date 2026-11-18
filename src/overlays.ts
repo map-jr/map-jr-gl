@@ -217,6 +217,8 @@ export class Popup extends Overlay {
         const map = this.map!;
         map.off('click', this.closeOnMapClick);
         const animation = this.transition(true), content = this.content, ghost = content.cloneNode(true) as HTMLElement;
+        // (Moving the content drops a focus inside it to `body`, so the focus is read before.)
+        const focused = this.el.contains(document.activeElement);
         // (A copy of the content fades out: an application often takes its element out of the popup when it closes, and the
         // box would then shrink to its close button during the fade.)
         content.replaceWith(ghost);
@@ -228,7 +230,8 @@ export class Popup extends Overlay {
             for (const a of this.el.getAnimations({subtree: true})) a.cancel();
             this.box.style.pointerEvents = this.clicks;
             // (The focus returns to the marker, or to the map when the marker is no longer on the page.)
-            if (this.el.contains(document.activeElement)) (this.opener?.isConnected ? this.opener : map.getCanvas()).focus({preventScroll: true});
+            const active = document.activeElement;
+            if (this.el.contains(active) || focused && (!active || active === document.body)) (this.opener?.isConnected ? this.opener : map.getCanvas()).focus({preventScroll: true});
             this.detach();
         };
         this.closing = finish;
