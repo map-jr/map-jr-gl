@@ -600,6 +600,23 @@ for (const renderer of renderers) {
                 return {wrong};
             }).catch(e => ({error: String(e)}));
             check(resizedName, resized.wrong?.length === 0, JSON.stringify(resized));
+            // The browser clamps a large canvas (to 8192 × 8192 in Chromium): `idle` does not wait for a size that the
+            // canvas cannot have. It comes within 300 ms of the last frame after a jump.
+            const clampName = '[worker] a canvas that the browser clamps: idle comes within 300 ms of the last frame (#950)';
+            const clamped = await page.evaluate(async () => {
+                const t = window.t, mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:6000px;height:4000px;z-index:100'}));
+                const map = new mod.Map({container: el, style: t.style, center: [-74.0065, 40.7085], zoom: 14.3, attributionControl: false});
+                const idle = () => new Promise(r => { map.once('idle', () => r(performance.now())); setTimeout(() => r(null), 10000); });
+                await idle(); map.setPixelRatio(3); await idle();
+                let last = 0; map.on('render', () => { last = performance.now(); });
+                const gaps = [];
+                for (let i = 0; i < 3; i++) { const armed = idle(); map.jumpTo({zoom: 14.3 + (i + 1) * 0.0001}); const at = await armed; gaps.push(at === null ? 'no idle' : Math.round(at - last)); }
+                const canvas = [map.getCanvas().width, map.getCanvas().height];
+                map.remove(); el.remove();
+                return {gaps, canvas};
+            }).catch(e => ({error: String(e)}));
+            check(clampName, clamped.gaps?.every(g => typeof g === 'number' && g < 300), JSON.stringify(clamped));
         }
         // 3b2. `patch` (#483): it keeps the fields that `part` leaves out, `undefined` removes a field, and `description` is the last description.
         const patched = await page.evaluate(async renderer => {

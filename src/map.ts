@@ -464,7 +464,7 @@ export class Map {
             for (const w of this.workers.splice(0)) w.terminate();
             this.tilePool?.release();
             this.tilePool = undefined; // (a `remove` during the start below must not give the same workers back again)
-            this.ready = false; this.queue = []; this.tilesLoaded = false; this.seq = 0; this.jumped = 0;
+            this.ready = false; this.queue = []; this.tilesLoaded = false; this.seq = 0; this.buffer = undefined; this.jumped = 0;
             this.loadedSources.clear(); // (the new engine has no tiles)
             const fresh = this.canvas.cloneNode() as HTMLCanvasElement, tr = this.tr;
             this.canvas.replaceWith(fresh);
@@ -654,6 +654,8 @@ export class Map {
     readonly overlays = new Set<() => void>();
     /** The `idle` report of the worker that waited for the page to show its frame (see `onEngineEvent`). */
     private shown?: EngineEvent;
+    /** The size of the drawing buffer after the last resize, as the engine reports it (see `onEngineEvent`). */
+    private buffer?: [number, number];
     private onEngineEvent(e: EngineEvent) {
         if (__DEV__ && e.type !== 'camera' && e.type !== 'heights' && e.type !== 'result') this.note('engine: ' + e.type, e.type === 'pong' ? e.n : e.type === 'idle' ? {seq: e.seq, expected: this.seq} : e.type === 'frame' ? {first: !this.drew} : e.type === 'error' ? e.message : undefined);
         if (e.type === 'camera') {
@@ -714,13 +716,14 @@ export class Map {
             // page shows that frame when it next paints (#555). Wait for the page's next frame; a hidden page runs none,
             // so a timer ends the wait too. The canvas of the page takes the size of a resized frame only when that frame
             // arrives, which can be several frames after the resize (#950): the wait also lasts until the canvas has the
-            // size of the last resize, for at most a second.
+            // size of the drawing buffer after the last resize, for at most a second. (The engine reports that size: the
+            // browser clamps a large canvas.)
             if (this.renderer === 'worker' && this.shown !== e) {
                 let done = false;
-                const c = this.canvas, t0 = performance.now(), size = (n: number) => Math.max(1, Math.round(n * this.dpr));
+                const c = this.canvas, t0 = performance.now();
                 const go = () => {
                     if (done || this.removed) { done = true; return; }
-                    if ((c.width !== size(this.tr.width) || c.height !== size(this.tr.height)) && performance.now() - t0 < 1000) return;
+                    if (this.buffer && (c.width !== this.buffer[0] || c.height !== this.buffer[1]) && performance.now() - t0 < 1000) return;
                     done = true; this.shown = e; this.onEngineEvent(e);
                 };
                 const frame = () => { go(); if (!done) requestAnimationFrame(frame); }, timer = () => { go(); if (!done) setTimeout(timer, 100); };
@@ -754,6 +757,7 @@ export class Map {
         } else if (e.type === 'stats') {
             this.fire('stats', {fps: e.fps, frameMs: e.frameMs, labels: e.labels});
         } else if (e.type === 'resized') {
+            this.buffer = e.buffer;
             this.fire('resize');
         } else if (e.type === 'result') {
             const p = this.pending.get(e.id);

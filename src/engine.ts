@@ -99,7 +99,7 @@ export type EngineEvent =
     /** A question to the page about one request. */
     | {type: 'resource'; id: number; url: string; kind: string}
     /** A frame at a new canvas size has been drawn. */
-    | {type: 'resized'; width: number; height: number; dpr: number}
+    | {type: 'resized'; width: number; height: number; dpr: number; /** The size of the drawing buffer, which the browser can clamp (#950). */ buffer: [number, number]}
     | {type: 'result'; id: number; value?: unknown; error?: string}
     | {type: 'imagemissing'; name: string}
     | {type: 'error'; message: string}
@@ -863,7 +863,7 @@ export class Engine {
                 // map, for example) must not change the layout in that callback (#751).
                 this.inResize = true;
                 try { this.frame(performance.now()); } finally { this.inResize = false; }
-                this.emit({type: 'resized', width: c.width, height: c.height, dpr: c.dpr});
+                this.emit({type: 'resized', width: c.width, height: c.height, dpr: c.dpr, buffer: [this.renderer.gl.drawingBufferWidth, this.renderer.gl.drawingBufferHeight]});
                 return;
             case 'jump': this.stop(); if (c.padding) tr.padding = c.padding; tr.set(c.center, c.zoom, c.bearing, c.pitch); if (c.center || c.zoom !== undefined) this.centreGiven = true; break;
             case 'ease': {
