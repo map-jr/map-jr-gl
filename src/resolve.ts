@@ -83,7 +83,7 @@ export function parseFontName(name: string): {family: string; weight: number; st
 
 /** What the network gave for a source of a style (its TileJSON, its GeoJSON, the header of its archive), by source object. */
 const told = new WeakSet<object>();
-const fetched = new WeakMap<object, {url: string; p: Promise<any>; v?: any; err?: any; told?: boolean; late?: () => void}>();
+const fetched = new WeakMap<object, {url: string; p: Promise<any>; v?: any; err?: any; told?: WeakSet<object>; late?: () => void}>();
 /** Puts data that the map fetched itself (`setData` with a URL) in the place of the kept result of a source. */
 export function keep(raw: object, url: string, v: unknown) { fetched.set(raw, {url, p: Promise.resolve(v), v}); }
 /** The kept result of a source for this URL, or undefined when the map has none (yet) or has it for another URL. */
@@ -95,15 +95,19 @@ const SKIP = Symbol();
  * The network data of a source, fetched one time for the source object and its URL. A change of the style then
  * resolves without a request. With `partial`, a source that is still on its way gives SKIP.
  */
-function once(raw: object, url: string, load: () => Promise<any>, partial?: Partial): any {
+function once(raw: object, url: string, load: () => Promise<any>, partial?: Partial, fail?: (error: unknown) => void): any {
     let m = fetched.get(raw);
     if (m?.url !== url) {
         const made: NonNullable<typeof m> = m = {url, p: load()};
         fetched.set(raw, m);
         m.p.then(v => { made.v = v; made.late?.(); }, e => { made.err = e ?? 1; made.late?.(); });
     }
-    if (!partial) return m.p.catch(e => { fetched.delete(raw); throw e; });
-    if (m.err) { if (!m.told) { m.told = true; partial.fail(m.err); } return SKIP; }
+    // A failed request is not made again for the same source object, and each map hears of it one time, as in MapLibre
+    // GL JS (#809). A new source object (a new style) makes a new request. Without `fail`, the whole style fails, and
+    // a later call tries again.
+    const report = (f: (e: unknown) => void, e: unknown) => { const t = m!.told ??= new WeakSet(); if (!t.has(f)) { t.add(f); f(e); } return SKIP; };
+    if (!partial) return fail ? m.p.catch(e => report(fail, e)) : m.p.catch(e => { fetched.delete(raw); throw e; });
+    if (m.err) return report(partial.fail, m.err);
     if (m.v === undefined) { m.late = partial.late; return SKIP; }
     return m.v;
 }
@@ -114,8 +118,8 @@ function once(raw: object, url: string, load: () => Promise<any>, partial?: Part
  */
 export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) => fetch(...a), base?: string, partial?: Partial, fail = partial?.fail): Promise<ResolvedStyle> {
     const bad = (error: unknown): typeof SKIP => { if (!fail) throw error; fail(error); return SKIP; };
-    // (With `partial`, `once` reports a failure itself.)
-    const get = (raw: object, url: string, load: () => Promise<any>) => partial ? once(raw, url, load, partial) : once(raw, url, load).catch(bad);
+    // (With `partial` or `fail`, `once` reports a failure itself, one time for each map.)
+    const get = (raw: object, url: string, load: () => Promise<any>) => partial || fail ? once(raw, url, load, partial, fail) : once(raw, url, load);
     if (typeof style === 'string') {
         const url = absolute(style, base);
         const res = await fetchFn(url);
