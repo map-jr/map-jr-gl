@@ -7,6 +7,107 @@ number, and its entry starts with a section "Breaking changes". See
 `#12` is a link to pull request 12. A change without a number comes from before 2026-11-11, when the repository had
 no pull requests.
 
+## 0.8.0 (2026-11-18)
+
+This entry covers the changes after 0.7.0 (the tag `v0.7.0`).
+
+### Breaking changes
+
+- Both entries: text that the map draws with the fonts of the browser uses the CSS family list of `text-font`. This
+  is all text of a style without `glyphs`. In a style with `glyphs`, it is the text that the glyph files cannot draw:
+  a font stack or a range that the server does not have, a character missing from the files, and text that the
+  browser must shape. A second or later name of `text-font` that exists on the system now draws in that font, where
+  the map used `fontFamily`, and a name that is a generic family (`sans-serif`, `serif`, `monospace`) draws in that
+  generic font. Leave such names out of `text-font` to keep the old fonts ([#934]).
+- Both entries: two GeoJSON features with the same id are two query results, where the query returned only the first.
+  Code that expected one result for each id must handle each feature ([#829]).
+- `@map-jr/map-jr-gl/maplibre-compat`: `getSky()` returns the `sky` of the style, where it returned `undefined` for
+  every style ([#901]). After `setSky(null)` it returns `null`, as in MapLibre GL JS. Code that tested
+  `getSky() === undefined` must test for `null` ([#918]).
+- Both entries: with the main renderer, `idle` after a resize comes one animation frame later ([#935]). In
+  `@map-jr/map-jr-gl`, `state.hover` can come one frame later ([#909]).
+
+### New
+
+- Both entries: the sky of the style above the horizon and fog on 3D terrain, in Mercator ([#901]), and the
+  atmosphere on the globe ([#911]).
+- Both entries: the pitch goes up to 90 with `maxPitch` or `setMaxPitch`. The default stays 60, and a value above 90
+  warns once and gives 90 ([#893]).
+- `@map-jr/map-jr-gl/element`: the web component `<map-jr>`, with `renderElement` in `@map-jr/map-jr-gl/server`
+  ([#845]). See [docs/element.md](docs/element.md).
+- `@map-jr/map-jr-gl`: `getResolvedDescription()` returns the description with the style that the map loaded and the
+  global state in effect ([#873]).
+- `@map-jr/map-jr-gl`: `update()` applies a new order of layers, a new layer, and a change of `paint`, `layout`,
+  `filter`, `minzoom` or `maxzoom` in place, without loading the style again ([#870], [#874], [#895], [#904]). The
+  core map has `setLayerZoomRange` ([#904]).
+
+### Fixed
+
+- Both entries: a layer between two symbol layers draws over the labels before it, as in MapLibre GL JS ([#900]).
+- Both entries: labels on a tilted map follow the perspective of their anchor in each frame between placements
+  ([#921]), and a label whose anchor is behind the camera or too far is not drawn ([#925]).
+- Both entries: all waiting tiles are uploaded in one frame before the first `idle` and at rest ([#894]), and 3D
+  terrain is idle only when its elevation tiles have loaded ([#837]).
+- Both entries: a failed source is requested once and fires `error` once, as in MapLibre GL JS ([#854]).
+- Both entries: after a fallback to the main thread or a restart, the map uses the tile workers again ([#836]), the
+  GeoJSON of `setData` reaches the engine ([#861]), and the images of the style stay images of the style and are drawn
+  ([#867], [#883]).
+- Both entries: the worker renderer draws while GeoJSON data changes in each frame ([#877]). The engine encodes a
+  GeoJSON update once for all tile workers ([#891]), and `setData` keeps its own copy of a source object ([#869]).
+- Both entries: in WebKit, the map answers a click in time, because a query wakes the tile workers ([#863]).
+- Both entries: a map in a shadow root reads the focus and the fullscreen element from its root ([#865]).
+- Both entries: a popup offset that is a `Point` or `{x, y}` moves the popup ([#906]). Escape returns the focus to the
+  map from a button in a popup ([#846]), and a popup of `overlay()` opened from the keyboard takes the focus ([#868]).
+- Both entries: `remove()` does not call `loseContext()` on a lost context ([#823]), a query that `remove()` rejects
+  is not an unhandled rejection ([#835]), and `supported()` releases its WebGL2 probe context ([#833]).
+- Both entries: a map that connects to the tile workers again closes its old tile ports ([#849]).
+- Both entries: a frame moves the labels in place instead of making new objects for each label ([#892]).
+- Both entries: a `text-font` name with "|", also in a `format` section, keeps its family, and the section keeps its
+  color ([#941]).
+- `@map-jr/map-jr-gl/maplibre-compat`: a click on a `Marker` fires `click` on the marker ([#907]), and a rotate drag
+  has inertia ([#903]), as in MapLibre GL JS.
+
+[#823]: https://github.com/map-jr/map-jr-gl/pull/823
+[#829]: https://github.com/map-jr/map-jr-gl/pull/829
+[#833]: https://github.com/map-jr/map-jr-gl/pull/833
+[#835]: https://github.com/map-jr/map-jr-gl/pull/835
+[#836]: https://github.com/map-jr/map-jr-gl/pull/836
+[#837]: https://github.com/map-jr/map-jr-gl/pull/837
+[#845]: https://github.com/map-jr/map-jr-gl/pull/845
+[#846]: https://github.com/map-jr/map-jr-gl/pull/846
+[#849]: https://github.com/map-jr/map-jr-gl/pull/849
+[#854]: https://github.com/map-jr/map-jr-gl/pull/854
+[#861]: https://github.com/map-jr/map-jr-gl/pull/861
+[#863]: https://github.com/map-jr/map-jr-gl/pull/863
+[#865]: https://github.com/map-jr/map-jr-gl/pull/865
+[#867]: https://github.com/map-jr/map-jr-gl/pull/867
+[#868]: https://github.com/map-jr/map-jr-gl/pull/868
+[#869]: https://github.com/map-jr/map-jr-gl/pull/869
+[#870]: https://github.com/map-jr/map-jr-gl/pull/870
+[#873]: https://github.com/map-jr/map-jr-gl/pull/873
+[#874]: https://github.com/map-jr/map-jr-gl/pull/874
+[#877]: https://github.com/map-jr/map-jr-gl/pull/877
+[#883]: https://github.com/map-jr/map-jr-gl/pull/883
+[#891]: https://github.com/map-jr/map-jr-gl/pull/891
+[#892]: https://github.com/map-jr/map-jr-gl/pull/892
+[#893]: https://github.com/map-jr/map-jr-gl/pull/893
+[#894]: https://github.com/map-jr/map-jr-gl/pull/894
+[#895]: https://github.com/map-jr/map-jr-gl/pull/895
+[#900]: https://github.com/map-jr/map-jr-gl/pull/900
+[#901]: https://github.com/map-jr/map-jr-gl/pull/901
+[#903]: https://github.com/map-jr/map-jr-gl/pull/903
+[#904]: https://github.com/map-jr/map-jr-gl/pull/904
+[#906]: https://github.com/map-jr/map-jr-gl/pull/906
+[#907]: https://github.com/map-jr/map-jr-gl/pull/907
+[#909]: https://github.com/map-jr/map-jr-gl/pull/909
+[#911]: https://github.com/map-jr/map-jr-gl/pull/911
+[#918]: https://github.com/map-jr/map-jr-gl/pull/918
+[#921]: https://github.com/map-jr/map-jr-gl/pull/921
+[#925]: https://github.com/map-jr/map-jr-gl/pull/925
+[#934]: https://github.com/map-jr/map-jr-gl/pull/934
+[#935]: https://github.com/map-jr/map-jr-gl/pull/935
+[#941]: https://github.com/map-jr/map-jr-gl/pull/941
+
 ## 0.7.0 (2026-11-17)
 
 This entry covers the changes after 0.6.0 (the tag `v0.6.0`).
