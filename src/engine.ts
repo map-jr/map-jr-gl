@@ -7,7 +7,7 @@ import {layerRules} from './rules.ts';
 import {compileLayer, isGeometrySource, screenTranslate, loadSprite, tileURL, type CompiledLayer, type FontSource, type ResolvedStyle, type Sprite, type SpriteIcon} from './style.ts';
 import {AtlasSpace} from './atlas-space.ts';
 import {GLRenderer, SPRITE_ATLAS, type DemRef, type GLTile, type TerrainTile} from './gl.ts';
-import {CollisionGrid, placeLabels, renderItems, type Placed, type RenderItem} from './placement.ts';
+import {CollisionGrid, moveLabel, placeLabels, renderItems, type Placed, type RenderItem} from './placement.ts';
 import {EM, GlyphAtlas} from './text.ts';
 import {fetchWith, withTimeout, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
 import {decodeElevation, sampleElevation, featureKey, tilesUnderBox, type QueriedFeature, type QuerySet} from './query.ts';
@@ -1690,7 +1690,7 @@ export class Engine {
         }
         const labels: Placed[] = [];
         let fading = false;
-        const turn = -tr.bearing * Math.PI / 180 - this.placeAngle, tc = Math.cos(turn), ts = Math.sin(turn), at: [number, number, number] = [0, 0, 0];
+        const turn = -tr.bearing * Math.PI / 180 - this.placeAngle, at: [number, number, number] = [0, 0, 0];
         for (const [key, st] of this.labels) {
             if (st.opacity !== st.target) {
                 st.opacity = fadeStep(st.opacity, st.target, dt, this.fade, !this.wentIdle);
@@ -1702,29 +1702,17 @@ export class Engine {
             // JS does in its shaders. It keeps its state, so that it is there at once when it turns back. (Placement
             // comes every 250 ms only, and the fade takes 200 ms more: until then the label showed through the globe.)
             if (globeness && tr.globe!.hidden(tr, (p.tile.x + p.src.x / EXTENT) / 2 ** p.tile.z, (p.tile.y + p.src.y / EXTENT) / 2 ** p.tile.z)) continue;
-            const q = tr.projectTile(p.tile, p.src.x, p.src.y, undefined, at), ax = q[0], ay = q[1], dx = ax - p.ax, dy = ay - p.ay;
+            const q = tr.projectTile(p.tile, p.src.x, p.src.y, undefined, at);
             let d = st.drawn!;
             if (st.drawnFrom !== p) {
-                d = st.drawn = {...p, icon: p.icon && {...p.icon}, curve: p.curve?.slice(), ground: p.ground?.slice()};
-                st.drawnFrom = p;
+                d = st.drawn = {...p, icon: p.icon && {...p.icon, gx: p.icon.gx?.slice(), gy: p.icon.gy?.slice()}, curve: p.curve?.slice(), ground: p.ground?.slice()};
+                st.drawnFrom = p; st.turned = false;
             }
             d.opacity = st.opacity;
             labels.push(d);
-            if (turn && (!p.src.upright || (!p.shaped && p.icon && !p.src.icon!.upright))) {
-                // Text along a line (and a symbol at a point that is aligned with the map) turns with the map between placements; otherwise it would hold its old angle and
-                // then snap, which reads as rocking while the map rotates.
-                const ox = p.x - p.ax, oy = p.y - p.ay;
-                d.x = ax + ox * tc - oy * ts; d.y = ay + ox * ts + oy * tc; d.angle = p.angle + turn;
-                st.turned = true;
-                const curve = p.curve, ground = p.ground, dc = d.curve, dg = d.ground;
-                if (curve && dc) for (let i = 0; i < curve.length; i += 3) { const cx = curve[i], cy = curve[i + 1]; dc[i] = cx * tc - cy * ts; dc[i + 1] = cx * ts + cy * tc; dc[i + 2] = curve[i + 2] + turn; }
-                if (ground && dg) for (let i = 0; i < ground.length; i += 3) { const cx = ground[i + 1], cy = ground[i + 2]; dg[i] = ground[i]; dg[i + 1] = cx * tc - cy * ts; dg[i + 2] = cx * ts + cy * tc; }
-                if (p.icon && d.icon) { const ix = p.icon.x - p.ax, iy = p.icon.y - p.ay; d.icon.x = ax + ix * tc - iy * ts; d.icon.y = ay + ix * ts + iy * tc; d.icon.angle = p.icon.angle + turn; }
-                continue;
-            }
-            d.x = p.x + dx; d.y = p.y + dy; d.angle = p.angle;
-            if (st.turned) { st.turned = false; if (p.curve) d.curve = p.curve.slice(); if (p.ground) d.ground = p.ground.slice(); }
-            if (p.icon && d.icon) { d.icon.x = p.icon.x + dx; d.icon.y = p.icon.y + dy; d.icon.angle = p.icon.angle; }
+            // (Text along a line, and a symbol at a point that is aligned with the map, turn with the map between
+            // placements; otherwise they would hold the old angle and then snap, which reads as rocking while the map rotates.)
+            st.turned = moveLabel(tr, p, d, q[0], q[1], q[2], turn, !!st.turned);
         }
         if (this.iconsRev !== this.iconsDone) {
             // Images often come one after another (the variants of a template, the answers to missing images). The
