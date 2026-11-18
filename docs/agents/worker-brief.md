@@ -50,8 +50,6 @@ writing); this brief has the steps.
 - The shell sets `BROWSER=open` (`suite.mjs` uses `chromium` then; other commands need `BROWSER=chromium`), aliases
   `cp` to `cp -i` (write `command cp`), and sets `noclobber` (write `>|` to replace a file).
 - Headless Chromium draws WebGL in software. Playwright's WebKit draws on the GPU.
-- Playwright's Firefox does not start here ("Could not find profile folder", #810). Do not spend time on it: read the
-  code, write "not checked in Firefox", and rely on the `Browsers` workflow, which runs Firefox on three systems.
 - An iOS Simulator can open a page of your server: `xcrun simctl openurl booted http://localhost:<port>/…`.
 
 ## Report (your final message; at most 12 lines, no preamble)

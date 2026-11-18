@@ -50,7 +50,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       # The browser driver is not a dependency of the package: the development machine has its own copy.
-      - run: pnpm add -D playwright@1.63.0
+      - run: pnpm add -D playwright@1.65.1
       - run: pnpm exec playwright install --with-deps ${{ matrix.browser }}
       - run: node build.mjs && node scripts/site.mjs
       - name: Benchmark and checks
