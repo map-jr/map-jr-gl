@@ -5,7 +5,7 @@ import type {Sprite} from './style.ts';
 import type {Placed, RenderItem} from './placement.ts';
 import {lineMiddle, BASELINE, EM} from './text.ts';
 import {escapeXML, parseSVG, svgSize} from './markers.ts';
-import {cssFamilies} from './resolve.ts';
+import {cssFamilies, splitFontKey} from './resolve.ts';
 import type {RGBA} from './expr.ts';
 
 /** Tile coordinates are written at half resolution: sub-pixel accuracy at native zoom for roughly a third less markup. */
@@ -179,7 +179,7 @@ export function renderSVG(s: SVGScene): string {
         for (const l of s.labels) {
             const shaped = l.shaped;
             if (!shaped) continue;
-            const src = l.src, k = l.size / EM, [variant, family, stack] = src.font.split('|'), list = cssFamilies(stack ?? family);
+            const src = l.src, k = l.size / EM, [variant, family, stack] = splitFontKey(src.font), list = cssFamilies(stack ?? family);
             const [style, weight] = variant.includes(' ') ? variant.split(' ') : ['', variant];
             const halo = src.haloWidth > 0 && src.halo[3] > 0
                 ? ` stroke="${hex(src.halo)}" stroke-width="${num(src.haloWidth * 2)}"${alpha('stroke-opacity', src.halo[3] * (l.alpha ?? 1))}` : '';

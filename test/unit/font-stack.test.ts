@@ -10,3 +10,11 @@ test('a text-font stack becomes a CSS family list with generic keywords unquoted
     assert.equal(cssFamilies('Bold'), '');
     assert.equal(fontKey(['Noto Sans Italic', 'Arial Unicode MS Regular']), 'italic 400|Noto Sans|Noto Sans Italic,Arial Unicode MS Regular');
 });
+
+test('a text-font name with "|" keeps its family and the whole stack in the font key (#937)', async () => {
+    const {splitFontKey} = await import('../../src/resolve.ts');
+    const key = fontKey(['a|b Bold', 'Noto Sans']);
+    assert.deepEqual(splitFontKey(key), ['700', 'ab', 'a|b Bold,Noto Sans']);
+    assert.equal(cssFamilies(splitFontKey(key)[2]!), '"ab", "Noto Sans"');
+    assert.deepEqual(splitFontKey('400|Noto Sans'), ['400', 'Noto Sans', undefined]);
+});
