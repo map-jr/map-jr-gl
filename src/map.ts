@@ -1364,8 +1364,10 @@ export class Map {
         for (const [source, d] of this.geoPending) {
             if (!this.rawStyle?.sources[source]) continue;
             this.post({type: 'geojson', source, data: d});
-            const old = sent.get(source);
+            const old = sent.get(source), src = this.resolved?.sources[source];
             if (old) old.data = d;
+            // (A new engine, after a fall back or a restart, starts with `resolved`: it must have this data; #852.)
+            if (src?.type === 'geojson') this.resolved.sources[source] = {...src, data: d};
         }
         this.geoPending.clear();
     }

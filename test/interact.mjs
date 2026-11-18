@@ -2385,6 +2385,25 @@ for (const mode of renderers) {
         check('[worker] a worker without WebGL2 and renderer \'auto\': the map uses the main thread without a warning, load and idle fire, and transformRequest sees the tile requests of the view',
             fell.renderer === 'main' && fell.warnings === 0 && fell.seen.includes('load') && fell.seen.includes('idle') && !fell.seen.includes('error') && fell.tiles > 0 && fell.layer > 0, JSON.stringify(fell));
     }
+    // The data that setData gives to the worker that fails reaches the engine on the main thread (#852).
+    if (mode === 'worker') {
+        const data = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const code = `const get = OffscreenCanvas.prototype.getContext; OffscreenCanvas.prototype.getContext = function (kind, ...rest) { return /webgl/.test(kind) ? null : get.call(this, kind, ...rest); }; importScripts(${JSON.stringify(location.origin + '/dist/map-jr-gl-worker.js')});`;
+            const url = URL.createObjectURL(new Blob([code], {type: 'text/javascript'}));
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:300px;height:200px'}));
+            const m = new mod.Map({container: el, attributionControl: false, center: [0, 0], zoom: 2, createWorker: () => new Worker(url),
+                style: {version: 8, sources: {pts: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}}, layers: [{id: 'p', type: 'circle', source: 'pts'}]}});
+            m.once('style.load', () => m.getSource('pts').setData({type: 'FeatureCollection', features: [{type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [1, 1]}}]}));
+            let count = 0;
+            for (let i = 0; i < 16 && !count; i++) { await new Promise(r => setTimeout(r, 500)); count = m.renderer === 'main' ? (await m.querySourceFeatures('pts')).length : 0; }
+            const out = {renderer: m.renderer, count};
+            m.remove(); el.remove();
+            return out;
+        });
+        check('[worker] the data of setData that went to a worker without WebGL2 reaches the engine on the main thread (#852)',
+            data.renderer === 'main' && data.count === 1, JSON.stringify(data));
+    }
     // A map whose worker cannot make a WebGL2 context behaves as a map that started on the main thread (#777): a source
     // that fails gives one error, an easeTo of 60 s that started before the fall back still runs, and cooperativeGestures
     // turned on after the fall back sets touch-action on the canvas that the map shows and blocks a plain wheel.
