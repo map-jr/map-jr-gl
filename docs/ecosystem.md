@@ -53,7 +53,7 @@ entry `@map-jr/map-jr-gl/maplibre-compat` of this library in its place. It uses 
 `image` expression. Each build runs the end-to-end tests of Maputnik and the scenarios below, which test what those
 tests do not.
 
-Maputnik 3.1.0 (fb8f67a). **Maputnik's own tests: 184 of 184 pass with this library, and 184 of 184 with MapLibre GL JS 6.18.0.**
+Maputnik 3.1.0 (2ca0ccc). **Maputnik's own tests: 194 of 194 pass with this library, and 194 of 194 with MapLibre GL JS 6.18.0.**
 
 | Scenario | This library | MapLibre GL JS 6.18.0 |
 |---|---|---|
