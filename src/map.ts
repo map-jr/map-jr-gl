@@ -1336,7 +1336,8 @@ export class Map {
     private async setGeoJSON(id: string, data: unknown) {
         const call = (this.dataCalls.get(id) ?? 0) + 1;
         this.dataCalls.set(id, call);
-        this.rawStyle.sources[id].data = data;
+        // (A copy: the source object can be the application's own, from the description, and the map does not change it (#857).)
+        this.rawStyle.sources[id] = {...this.rawStyle.sources[id], data};
         this.unloaded(id);
         for (const type of ['sourcedataloading', 'dataloading']) this.fire(type, {dataType: 'source', sourceId: id});
         // A request of an older call is no longer wanted: it is aborted.
