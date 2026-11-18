@@ -93,7 +93,7 @@ async function worker(queue) {
                 const el = document.getElementById('map');
                 Object.assign(el.style, {width: width + 'px', height: height + 'px', position: 'relative'});
                 const errors = [];
-                const map = window.map = new window.mapjr.Map({container: el, style, renderer: 'main', attributionControl: false, interactive: false, tileWorkers: 1, ...(meta.pixelRatio === undefined ? {} : {pixelRatio: meta.pixelRatio})});
+                const map = window.map = new window.mapjr.Map({container: el, style, renderer: 'main', attributionControl: false, interactive: false, tileWorkers: 1, ...(meta.maxPitch === undefined ? {} : {maxPitch: meta.maxPitch}), ...(meta.pixelRatio === undefined ? {} : {pixelRatio: meta.pixelRatio})});
                 map.on('error', e => errors.push(String(e.error?.message ?? e.error)));
                 let idle = false, at = '';
                 map.on('idle', () => { idle = true; });

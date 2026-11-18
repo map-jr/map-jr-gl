@@ -162,7 +162,10 @@ export function placeLabels(
                 // two levels only, and is mixed between them.)
                 // On a tilted map, labels and icons far from the camera are smaller and near ones are larger, by half of what
                 // the perspective does to the map itself (as in MapLibre).
-                const persp = tr.pitch ? Math.min(4, 0.5 + 0.5 * tr.cameraDistance / depth) : 1;
+                const ratio = 0.5 + 0.5 * tr.cameraDistance / depth;
+                // Far from the camera a label is hidden, as with perspectiveRatioCutoff of MapLibre GL JS.
+                if (tr.pitch && ratio < 0.6) continue;
+                const persp = tr.pitch ? Math.min(4, ratio) : 1;
                 const size = (L.p.size.dd ? l.size0 + (l.size1 - l.size0) * t : L.p.size.eval(tr.zoom)) * persp, s = size / EM, line = l.angle !== null;
                 const alpha = L.p.opacity.dd ? 1 : L.p.opacity.eval(tr.zoom);
                 const meta = l.icon ? icons?.(l.icon.name) : undefined;
