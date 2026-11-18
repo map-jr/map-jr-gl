@@ -333,6 +333,8 @@ export interface MapInstance {
     patch(part: Partial<MapDescription>): void;
     /** The description of the last `createMap`, `update` or `patch`. Read only: change the map with `update` or `patch`. */
     readonly description: Readonly<MapDescription>;
+    /** The description with `style` as the copy of the style that the map loaded and `globalState` as the global state in effect. */
+    getResolvedDescription(): MapDescription;
     destroy(): void;
     readonly state: Readable<MapState>;
     /**
@@ -856,6 +858,7 @@ export function makeMap(container: HTMLElement | string, spec: MapDescription, n
             if (alive) apply(next, now);
         },
         get description() { return now; },
+        getResolvedDescription: () => ({...now, style: map.getStyle() as StyleSpecification ?? now.style, globalState: map.getGlobalState()}),
         destroy() { if (!alive) return; alive = false; cooperate(false); dark?.removeEventListener('change', paint); map.remove(); box.classList.remove('map-jr-glass', 'map-jr-dark'); for (const drop of waiting) drop(); waiting.clear(); },
         state,
         queryFeatures,
