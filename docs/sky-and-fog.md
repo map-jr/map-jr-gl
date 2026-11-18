@@ -63,6 +63,8 @@ First a simple halo: a radial gradient in the sky colours around the globe. A po
 position comes from `light`, and the blend is `atmosphere-blend` times the transition of the projection, follows only if the halo is too far from the render tests. The worker
 pays for it on every map, because the globe code is built into the worker file (`src/engine.ts:673`).
 
+The halo was tried in #908 (worker +365 B gzip) and changed none of the 15 render tests of the atmosphere, because those tests show the scattering over the globe itself. The owner then decided on the port, which shipped with #888: the worker grew by about 1.1 KB gzip, and 14 of the 15 tests match.
+
 ## Render tests
 
 All 26 tests under `sky/` are labelled "later" in `test/conformance/render-expectations.json`. The tests without

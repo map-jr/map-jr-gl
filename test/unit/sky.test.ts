@@ -21,6 +21,11 @@ test('the sky values have the defaults of the specification and follow zoom func
     assert.equal(skyValues({'sky-horizon-blend': ['interpolate', ['linear'], ['zoom'], 0, 0, 10, 1]}, 5, 85).skyBlend, 0.5);
 });
 
+test('atmosphere-blend has the default of the specification and follows zoom functions (#888)', () => {
+    assert.equal(skyValues({}, 3, 0).atmosphere, 0.8);
+    assert.equal(skyValues({'atmosphere-blend': ['interpolate', ['linear'], ['zoom'], 4, 1, 6, 0]}, 5, 0).atmosphere, 0.5);
+});
+
 test('setSky(null) leaves getSky() at null, as in MapLibre GL JS 6.17 (#916)', () => {
     const map: any = {rawStyle: {sky: {'sky-color': '#ff0000'}}, editStyle(fn: (s: any) => void) { fn(this.rawStyle); return this; }};
     Map.prototype.setSky.call(map, null);
