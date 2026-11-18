@@ -2758,6 +2758,63 @@ for (const renderer of ['worker', 'main']) {
         check("a page with style-src 'nonce-x' and no adoptedStyleSheets has styled controls with nonce: 'x' (#47)", ok(e.first), JSON.stringify(e));
     } catch (e) { check('the style sheet in a shadow root and with a nonce was checked', false, String(e.message).split('\n')[0]); }
 }
+// #828: a map in an open shadow root. The focus moves into a popup that opens and returns to the map after Escape, from
+// the close button and from a button in the content (#832), and the fullscreen control shows its state.
+{
+    const page = await browser.newPage({viewport: {width: 600, height: 400}});
+    try {
+        await page.goto(`${origin}/bench`);
+        await page.evaluate(async () => {
+            const lib = await import('/dist/map-jr-gl.js'), {fullscreen} = await import('/dist/controls.js');
+            const root = document.body.appendChild(document.createElement('div')).attachShadow({mode: 'open'});
+            const el = root.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+            const style = {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]};
+            window.shadowMap = {root, host: lib.createMap(el, {style, renderer: 'main', controls: [fullscreen()]})};
+            await new Promise(r => setTimeout(r, 500));
+        });
+        const focus = await page.evaluate(async () => {
+            const {root, host} = window.shadowMap, wait = ms => new Promise(r => setTimeout(r, ms)), canvas = host._map.getCanvas();
+            const key = el => el.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true, composed: true, cancelable: true}));
+            const lngLat = host.state.get().view.center, out = {};
+            for (const where of ['close', 'content']) {
+                const content = document.createElement('div'), button = content.appendChild(document.createElement('button'));
+                button.textContent = 'In the content';
+                const popup = host.overlay(content, {lngLat, popup: true, onClose() { popup.remove(); }});
+                await wait(300);
+                const box = content.closest('.map-jr-popup');
+                const target = where === 'close' ? box.querySelector('.map-jr-popup-close-button') ?? box.querySelector('button') : button;
+                target.focus();
+                key(target);
+                await wait(500);
+                out[where + 'Back'] = root.activeElement === canvas;
+            }
+            // (The focus moves into a popup that Enter on its marker opens. overlay() has no marker with a popup, so the
+            // compat entry makes it, in the same shadow root.)
+            const compat = await import('/dist/map-jr-gl-maplibre-compat.js'), el = root.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+            const map = new compat.Map({container: el, style: {version: 8, sources: {}, layers: []}});
+            await wait(300);
+            const marker = new compat.Marker().setLngLat([0, 0]).setPopup(new compat.Popup().setHTML('<button>Inside</button>')).addTo(map);
+            marker.getElement().focus();
+            marker.getElement().dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true, composed: true, cancelable: true}));
+            await wait(300);
+            out.into = root.activeElement?.textContent === 'Inside';
+            map.remove();
+            return out;
+        });
+        check('[main] a map in a shadow root: the focus moves into a popup and returns to the map after Escape, from the close button and from the content (#828)',
+            focus.into && focus.closeBack && focus.contentBack, JSON.stringify(focus));
+        const pressed = () => page.evaluate(() => window.shadowMap.root.querySelector('.map-jr-ctrl-fullscreen').getAttribute('aria-pressed'));
+        await page.click('.map-jr-ctrl-fullscreen');
+        await page.waitForTimeout(500);
+        const on = await pressed();
+        await page.click('.map-jr-ctrl-fullscreen');
+        await page.waitForTimeout(500);
+        const off = await pressed();
+        check('[main] a map in a shadow root: the fullscreen control shows its state (#828)', on === 'true' && off === 'false', JSON.stringify({on, off}));
+        await page.evaluate(() => window.shadowMap.host.destroy());
+    } catch (e) { check('a map in a shadow root was checked for focus and fullscreen (#828)', false, String(e.message).split('\n')[0]); }
+    finally { await page.close(); }
+}
 // A touch screen gets buttons of 44px, as docs/api.md says for `--map-control-size`, in both entries (#639). (A blank
 // page: /bench loads the CSS of MapLibre GL JS, which sets the size of the buttons itself.)
 {

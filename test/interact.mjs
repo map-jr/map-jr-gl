@@ -1613,8 +1613,10 @@ for (const mode of renderers) {
     }
     // #759: the compat entry draws the images in metadata["map-jr:images"] of the style: a template with `params`, and
     // an image when a layer asks for it. setStyle to a style without the key removes them.
-    {
-        const r = await page.evaluate(async mode => {
+    // (In worker mode it also runs with a worker that has no WebGL2: the images of the style stay images of the style
+    // after the fall back to the main thread; #853.)
+    for (const fall of mode === 'worker' ? [false, true] : [false]) {
+        const r = await page.evaluate(async ([mode, fall]) => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), wait = ms => new Promise(res => setTimeout(res, ms));
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
             const bg = {id: 'bg', type: 'background', paint: {'background-color': '#fff'}};
@@ -1622,7 +1624,9 @@ for (const mode of renderers) {
             const style = {version: 8, metadata: {'map-jr:images': {pin: '<svg viewBox="0 0 40 40"><rect width="40" height="40" fill="{{c}}"/></svg>', box: '<svg viewBox="0 0 40 40"><rect width="40" height="40" fill="#00f"/></svg>', unused: '<svg viewBox="0 0 4 4"><rect width="4" height="4"/></svg>'}},
                 sources: {spot: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [0, 0]}}}},
                 layers: [bg, icon('pin', ['image', 'pin', {params: {c: '#f00'}}]), {...icon('box', 'box'), layout: {...icon('box', 'box').layout, 'icon-offset': [0, 40]}}, {...icon('other', 'other'), layout: {...icon('other', 'other').layout, 'icon-offset': [0, -40]}}]};
-            const m = new mod.Map({container: el, renderer: mode, attributionControl: false, center: [0, 0], zoom: 1, style}), resolved = [];
+            const code = `const get = OffscreenCanvas.prototype.getContext; OffscreenCanvas.prototype.getContext = function (kind, ...rest) { return /webgl/.test(kind) ? null : get.call(this, kind, ...rest); }; importScripts(${JSON.stringify(location.origin + '/dist/map-jr-gl-worker.js')});`;
+            const failing = fall && {createWorker: () => new Worker(URL.createObjectURL(new Blob([code], {type: 'text/javascript'})))};
+            const m = new mod.Map({container: el, renderer: mode, attributionControl: false, center: [0, 0], zoom: 1, style, ...failing}), resolved = [];
             const square = c => `<svg viewBox="0 0 40 40"><rect width="40" height="40" fill="${c}"/></svg>`;
             // (A resolver of the page gets a name that the style does not have, and not one that it has.)
             m.setMissingStyleImageResolver(name => { resolved.push(name); if (name === 'other') return m.addImage('other', square('#0f0')); });
@@ -1639,10 +1643,10 @@ for (const mode of renderers) {
             for (let i = 0; i < 30 && m.hasImage('box'); i++) await wait(100);
             const after = ['pin', 'box', 'other'].map(n => m.hasImage(n));
             m.remove(); el.remove();
-            return {pin, box, other, had, after, resolved};
-        }, mode);
-        check(`[${mode}] compat: the images in metadata["map-jr:images"] of the style are drawn (a template with params, an image on demand), an image of addImage wins, a resolver of the page gets only other names, and setStyle without the key removes them (#759)`,
-            r.pin === '255,0,0' && r.box === '255,255,0' && r.other === '0,255,0' && r.had.join() === 'true,true,false' && r.after.join() === 'false,true,true' && r.resolved.join() === 'other', JSON.stringify(r));
+            return {renderer: m.renderer, pin, box, other, had, after, resolved};
+        }, [mode, fall]);
+        check(`[${mode}${fall ? ', fell back' : ''}] compat: the images in metadata["map-jr:images"] of the style are drawn (a template with params, an image on demand), an image of addImage wins, a resolver of the page gets only other names, and setStyle without the key removes them (#759)`,
+            (!fall || r.renderer === 'main') && r.pin === '255,0,0' && r.box === '255,255,0' && r.other === '0,255,0' && r.had.join() === 'true,true,false' && r.after.join() === 'false,true,true' && r.resolved.join() === 'other', JSON.stringify(r));
     }
     // #591: the textures of colour ramps (heatmap, line-gradient, color-relief) are deleted when their layer goes. The
     // probe counts live textures whose image is one pixel high (only ramps are), in the page or in the drawing worker.
