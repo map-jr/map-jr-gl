@@ -181,7 +181,7 @@ export interface TileBackend {
     /** Fetches and decodes an elevation tile for the GPU and for 3D terrain. */
     loadElevation(req: ElevationRequest): Promise<ElevationTile | null>;
     /** Sets the data of a GeoJSON source. A worker answers once it has indexed the data (see `geojsonDone` of the engine). */
-    setGeoJSON(source: string, data: unknown, options?: GeoJSONOptions, maxzoom?: number): Promise<unknown> | void;
+    setGeoJSON(source: string, data: unknown, options?: GeoJSONOptions, maxzoom?: number, packed?: () => Uint8Array | null): Promise<unknown> | void;
     /** Changes the feature state of one source ("sourceLayer|id" -> state, `null` removes it); `replace` drops the other states. */
     setFeatureState(source: string, states: FeatureStates, replace?: boolean): void;
     /** The slots of each image that is an SVG template. Tiles that are built later give each icon the name of its variant. */
@@ -244,10 +244,12 @@ export class PortBackend implements TileBackend {
     loadElevation(req: ElevationRequest): Promise<ElevationTile | null> {
         return new Promise((resolve, reject) => { this.pending.set(req.id, {resolve, reject}); this.port.postMessage({type: 'dem', req}); });
     }
-    setGeoJSON(source: string, data: unknown, options?: GeoJSONOptions, maxzoom?: number) {
+    setGeoJSON(source: string, data: unknown, options?: GeoJSONOptions, maxzoom?: number, packed?: () => Uint8Array | null) {
         // (Data that cannot be copied throws here, before the promise, so that the engine reports it as before.)
-        const id = this.nextQuery--;
-        this.port.postMessage({type: 'geojson', id, source, data, options, maxzoom});
+        // (The bytes of `packGeoJSON` are encoded once for all tile workers; each worker gets its own copy and parses it, #878.)
+        const id = this.nextQuery--, bytes = packed?.()?.slice();
+        if (bytes) this.port.postMessage({type: 'geojson', id, source, bytes, options, maxzoom}, [bytes.buffer]);
+        else this.port.postMessage({type: 'geojson', id, source, data, options, maxzoom});
         return new Promise((resolve, reject) => this.pending.set(id, {resolve, reject}));
     }
     setFeatureState(source: string, states: FeatureStates, replace?: boolean) { this.port.postMessage({type: 'featureState', source, states, replace}); }
@@ -282,7 +284,7 @@ export function serveTiles(port: Port) {
         if (m.type === 'requests') rules = m.rules;
         else if (m.type === 'resourceResult') { asked.get(m.id)?.(m); asked.delete(m.id); }
         else if (m.type === 'style') builder.setStyle(m.layers, m.state);
-        else if (m.type === 'geojson') { try { builder.setGeoJSON(m.source, m.data, m.options, m.maxzoom); } finally { port.postMessage({id: m.id, result: null}); } }
+        else if (m.type === 'geojson') { try { builder.setGeoJSON(m.source, m.bytes ? JSON.parse(new TextDecoder().decode(m.bytes)) : m.data, m.options, m.maxzoom); } finally { port.postMessage({id: m.id, result: null}); } }
         else if (m.type === 'featureState') builder.setFeatureState(m.source, m.states, m.replace);
         else if (m.type === 'templates') builder.setTemplates(m.templates);
         else if (m.type === 'contours') builder.setContours(m.sources);
