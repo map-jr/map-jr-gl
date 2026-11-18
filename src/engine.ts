@@ -447,11 +447,12 @@ export class Engine {
     private paced(bytes: number, make: () => GLTile): Promise<GLTile> {
         return new Promise(done => { this.uploads.push({bytes, make, done}); this.repaint(); });
     }
-    private flushUploads() {
-        // About 1.5 MB a frame, and always at least one tile so that progress is certain.
-        for (let budget = 1.5e6; this.uploads.length && budget > 0;) {
+    private flushUploads(paced = true) {
+        // While the camera moves, about 4 ms of upload work a frame, and always at least one tile so that progress is
+        // certain. Before the first idle and while the camera is still, no frame is smooth to keep: everything goes now,
+        // which saves a frame for each tile that waited (#436).
+        for (const t0 = performance.now(); this.uploads.length && (!paced || performance.now() - t0 < 4);) {
             const u = this.uploads.shift()!;
-            budget -= u.bytes;
             u.done(u.make());
         }
         if (this.uploads.length) this.repaint();
@@ -1433,7 +1434,7 @@ export class Engine {
         this.frameTime = began;
         if (tr.zoom !== this.zoomSeen) { if (!Number.isNaN(this.zoomSeen)) this.zoomMovedAt = began; this.zoomSeen = tr.zoom; }
         const cameraAnimating = this.animate(now), animating = cameraAnimating;
-        this.flushUploads();
+        this.flushUploads(this.wentIdle && (cameraAnimating || began - this.cameraMovedAt < 200));
 
         const items = new Map<string, RenderItem<GLTile>[]>(), all: RenderItem<GLTile>[] = [];
         let complete = true; const loading = new Set<string>();
