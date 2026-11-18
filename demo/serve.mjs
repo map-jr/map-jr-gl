@@ -110,7 +110,8 @@ http.createServer(async (req, res) => {
             return buf ? send(200, 'application/x-protobuf', buf, {'cache-control': 'max-age=3600'}) : send(204, 'text/plain', '');
         }
         // ?local labels places in their local script instead of English, to exercise non-Latin text.
-        if (url.pathname === '/style.json') return send(200, 'application/json', JSON.stringify(style).replaceAll(url.searchParams.has('local') ? '["get","name:en"],' : '\u0000', ''));
+        // (The tile URLs name the host that the page came through, so that a phone sees the tiles through a tunnel too.)
+        if (url.pathname === '/style.json') return send(200, 'application/json', JSON.stringify(style).replaceAll(origin, req.headers.host ? `${req.headers['x-forwarded-proto'] ?? 'http'}://${req.headers.host}` : origin).replaceAll(url.searchParams.has('local') ? '["get","name:en"],' : '\u0000', ''));
         if (url.pathname === '/bench') return send(200, 'text/html', await readFile(path.join(root, 'demo/bench.html')));
         // The look of the controls of the main API, to compare live (#541).
         if (url.pathname === '/controls-preview.html') return send(200, 'text/html', await readFile(path.join(root, 'demo/controls-preview.html')));

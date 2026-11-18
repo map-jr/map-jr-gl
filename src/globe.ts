@@ -108,13 +108,21 @@ export function bounds(tr: Transform): [number, number, number, number] {
 }
 
 /** The direction of the ray through a screen point, in the space of the sphere. */
-function ray(tr: Transform, px: number, py: number): V3 {
-    const d = tr.cameraDistance;
-    let v: number[] = [(px - tr.cx) / d, (tr.cy - py) / d, -1];
+/** A vector of the camera's view in the space of the sphere. */
+const view = (tr: Transform, v: number[]) => {
     v = turn(rot(0, tr.pitch * RAD), v); v = turn(rot(2, -tr.bearing * RAD), v);
-    v = turn(rot(0, -tr.lat * RAD), v); v = turn(rot(1, tr.lng * RAD), v);
-    const l = Math.hypot(v[0], v[1], v[2]);
+    return turn(rot(1, tr.lng * RAD), turn(rot(0, -tr.lat * RAD), v));
+};
+
+function ray(tr: Transform, px: number, py: number): V3 {
+    const d = tr.cameraDistance, v = view(tr, [(px - tr.cx) / d, (tr.cy - py) / d, -1]), l = Math.hypot(v[0], v[1], v[2]);
     return [v[0] / l, v[1] / l, v[2] / l];
+}
+
+/** The rays of the screen as a 3×3 matrix (columns): the ray through screen pixels x, y is `rays · (x, y, 1)`, not of unit length. */
+export function rays(tr: Transform): number[] {
+    const d = tr.cameraDistance;
+    return [...view(tr, [1 / d, 0, 0]), ...view(tr, [0, -1 / d, 0]), ...view(tr, [-tr.cx / d, tr.cy / d, -1])];
 }
 
 /** Screen pixels to the Mercator position of the globe there; off the globe, the nearest point of the horizon (as in MapLibre). */

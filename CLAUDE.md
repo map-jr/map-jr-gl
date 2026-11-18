@@ -263,5 +263,14 @@ CI runs all of these except `test:cloudflare`. Run locally what your change can 
   Real numbers come from the owner running `/bench` (an Apple M4 and an iPhone so far).
 - Safari on iOS behaves differently from Chromium in places (canvas scaling, OffscreenCanvas in workers). Changes
   to image or canvas handling need a check on a device by the owner.
+- **To show the owner a branch on a phone,** serve the demo and open a quick tunnel to it. The tunnel gives a public
+  URL with no account, and anyone with the URL reaches the server, so stop both when the owner is done.
+  - `pnpm build`, then `PORT=8000 node demo/serve.mjs` in the background, in the worktree of the branch.
+  - `cloudflared tunnel --url http://localhost:8000` in the background. It prints `https://<words>.trycloudflare.com`
+    within a few seconds (`cloudflared` is installed with Homebrew on the owner's Mac).
+  - The new hostname can take a minute to resolve on the Mac, while the phone resolves it at once. To check it from
+    the Mac, resolve it through `1.1.1.1`: `curl --resolve <host>:443:$(dig +short <host> @1.1.1.1 | head -1) https://<host>/`.
+  - The demo's `/style.json` names the host that the page came through, so tiles load through the tunnel (#910).
+    Pages of the demo: `/?sky&pitch=85`, `/bench`; the playground of the gallery site (#912) needs no tunnel.
 - For a larger change, ask for an independent review before merging: a reviewer that has not seen your reasoning,
   told to reproduce what it suspects. The reviews of 2026-11-12 found 25 reproducible faults this way.

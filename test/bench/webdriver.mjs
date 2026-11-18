@@ -10,8 +10,9 @@
 //   WD_NAME      the name of the result files (the default is the browser name that the server reports)
 //   BENCH_BASE   where the demo server is (the default is http://localhost:8080). With BENCH_URL, the benchmark page
 //                is opened there (for example the page of the gallery site), and the short checks are left out.
-//   BENCH_SECONDS, BENCH_RUNS, BENCH_QUERY   the length of each animation, the runs of each scenario (1 by default),
-//                and more of the query of the benchmark page
+//   BENCH_SECONDS, BENCH_QUERY   the length of each animation, and more of the query of the benchmark page
+//   BENCH_RUNS, BENCH_BUDGET_MIN   the page runs again, up to BENCH_RUNS times (3), while the time since the first
+//                start is under BENCH_BUDGET_MIN minutes (12; the Safari job has a limit of 30 minutes)
 import {mkdirSync, writeFileSync} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -21,7 +22,7 @@ const server = (process.env.WD_URL ?? 'http://localhost:4444').replace(/\/$/, ''
 const caps = JSON.parse(process.env.WD_CAPS ?? '{"browserName":"safari"}');
 const base = process.env.BENCH_BASE ?? 'http://localhost:8080';
 const seconds = process.env.BENCH_SECONDS ?? 4, more = process.env.BENCH_QUERY ? '&' + process.env.BENCH_QUERY : '';
-const benchURL = (process.env.BENCH_URL ?? `${base}/bench`) + `?auto&seconds=${seconds}&runs=${process.env.BENCH_RUNS ?? 1}${more}`;
+const benchURL = (process.env.BENCH_URL ?? `${base}/bench`) + `?auto&seconds=${seconds}&runs=1${more}`;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 mkdirSync(out, {recursive: true});
 
@@ -131,16 +132,26 @@ try {
     // (The page sets `benchResults` when it has finished. Each question to the browser also keeps a device farm from
     // closing a session that looks idle.)
     // (When the page does not finish, the rows that it has and its status line are still read.)
-    await until('return !!window.benchResults', 14 * 60000, 2000).catch(async e => { result.errors.push(`${e.message}; the page says: ${await run('return document.getElementById("status").textContent').catch(() => '?')}`); });
+    const budget = +(process.env.BENCH_BUDGET_MIN ?? 12) * 60000, most = +(process.env.BENCH_RUNS ?? 3), t0 = Date.now(), lists = [];
+    for (;;) {
+        const ok = await until('return !!window.benchResults', 14 * 60000, 2000).then(() => true, async e => { result.errors.push(`${e.message}; the page says: ${await run('return document.getElementById("status").textContent').catch(() => '?')}`); return false; });
+        lists.push(await run('return window.benchResults || []'));
+        if (!ok || lists.length >= most || Date.now() - t0 >= budget) break;
+        await wd('POST', `/session/${id}/url`, {url: benchURL});
+    }
     result.env = await run('return document.getElementById("env").textContent');
-    result.bench = await run('return window.benchResults || []');
-    result.table = await run('return [...document.querySelectorAll("#results tr")].map(tr => [...tr.cells].map(c => c.textContent))');
+    // (The last list is the page that is open; with a page that did not finish, its rows are read as they are.)
+    const merged = lists.at(-1).length ? await run('return window.benchMerge(arguments[0])', [lists]).catch(() => null) : null;
+    result.bench = merged?.bench ?? lists.flat();
+    result.table = merged?.table ?? await run('return [...document.querySelectorAll("#results tr")].map(tr => [...tr.cells].map(c => c.textContent))');
+    result.runs = lists.length; result.minutes = +((Date.now() - t0) / 60000).toFixed(1);
+    console.log(`bench: ${lists.length} runs of the page in ${result.minutes} min`);
 } catch (e) { result.errors.push(e.message); }
 await wd('DELETE', `/session/${id}`).catch(() => {});
 
 writeFileSync(path.join(out, `${name}.json`), JSON.stringify(result, null, 1));
 const table = result.table ?? [], rows = table.filter(r => r.length > 1), failedRows = table.filter(r => r.length === 1 && r[0]), p = result.probe ?? {}, yes = v => v === true ? 'yes' : v === false ? 'no' : String(v ?? 'unknown');
-const md = [`### ${name} (${result.browser} ${result.version}${result.device ? ', ' + result.device : ''})`, '', `${result.os}, through WebDriver`, '', result.env ?? '', '',
+const md = [`### ${name} (${result.browser} ${result.version}${result.device ? ', ' + result.device : ''})`, '', `${result.os}, through WebDriver`, '', result.env ?? '', '', ...(result.runs ? [`Runs of the page: ${result.runs} in ${result.minutes} min.`, ''] : []),
     ...(p.page ? [`- On the page: OffscreenCanvas ${yes(p.page.offscreenCanvas)}, transferControlToOffscreen ${yes(p.page.transfer)}, WebGL2 ${yes(p.page.webgl2)}, "reduce motion" ${yes(p.page.reducedMotion)}, pixel ratio ${p.page.pixelRatio}, screen ${p.page.screen}`,
         `- In a worker: ${p.worker?.error ? 'FAILED: ' + p.worker.error : `OffscreenCanvas ${yes(p.worker?.offscreenCanvas)}, WebGL2 context ${yes(p.worker?.webgl2)}, 2D context ${yes(p.worker?.context2d)}, requestAnimationFrame ${yes(p.worker?.requestAnimationFrame)}`}`,
         `- Frames in one second: ${p.page.frames ?? 'unknown'} on the page, ${p.worker?.frames ?? 'unknown'} in a worker`] : p.error ? [`- The check of what the browser can do failed: ${p.error}`] : []),

@@ -178,3 +178,14 @@ test('globe: a drag over the area around a pole turns the globe there, and a cen
     tr.set([10, 90], -2);
     assert.ok(tr.project(10, 80).every(Number.isFinite), `${tr.project(10, 80)}`);
 });
+
+test('globe: the rays of the halo (#888) go through the place of the globe under each pixel', () => {
+    const tr = make([30, 20], 2, 20, 30), m = globe.rays(tr), {cam} = globe.frame(tr);
+    for (const [x, y] of [[400, 300], [330, 250], [480, 360]]) {
+        const d = [0, 1, 2].map(i => m[i] * x + m[3 + i] * y + m[6 + i]), l = Math.hypot(...d), r = d.map(v => v / l);
+        const b = r[0] * cam[0] + r[1] * cam[1] + r[2] * cam[2], t = -b - Math.sqrt(b * b - (cam[0] ** 2 + cam[1] ** 2 + cam[2] ** 2 - 1));
+        const p = cam.map((v, i) => v + r[i] * t), lng = Math.atan2(p[0], p[2]) * 180 / Math.PI, lat = Math.asin(p[1]) * 180 / Math.PI;
+        const [mx, my] = globe.toMerc(tr, x, y);
+        assert.ok(Math.abs(mercX(lng) - mx) < 1e-9 && Math.abs(mercY(lat) - my) < 1e-9, `${x},${y}`);
+    }
+});

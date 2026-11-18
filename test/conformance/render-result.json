@@ -1,9 +1,9 @@
 {
-  "match": 1167,
-  "near": 1501,
-  "differ": 239,
+  "match": 1181,
+  "near": 1513,
+  "differ": 227,
   "differWontfix": 21,
-  "differLater": 125,
+  "differLater": 113,
   "errored": 0,
   "skipped": 20,
   "run": 1740

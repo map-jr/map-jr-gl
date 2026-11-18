@@ -389,4 +389,19 @@ $('copy').onclick = () => {
         ...results.flatMap(rowsOf).map(c => `| ${c.join(' | ')} |`), '', ...(timelineLines().length ? [TIMELINE, '', ...timelineLines().map(l => `- ${l}`)] : [])].join('\n');
     navigator.clipboard.writeText(md).then(() => { status.textContent = 'Copied.'; }, () => { status.textContent = 'The browser did not allow the copy.'; });
 };
+/**
+ * For the scripts that run the page several times (test/bench/browsers.mjs, webdriver.mjs): joins the runs of several
+ * lists of benchResults, computes the medians again, and returns {bench, table} with the rows of the table as the page has them.
+ */
+window.benchMerge = lists => {
+    const by = new Map();
+    for (const list of lists) for (const r of list) {
+        const k = r.scenario + '|' + r.lib, m = by.get(k);
+        if (!m) by.set(k, {...r, runs: [...r.runs]}); else { m.runs.push(...r.runs); if (r.error) m.error ??= r.error; }
+    }
+    const bench = [...by.values()];
+    for (const r of bench) { const s = scenarios.find(x => x.id === r.scenario); if (s) { r.measures = s.measures; for (const [key] of s.measures) r[key] = median(r.runs.map(x => x.values[key])); } }
+    const head = [...document.querySelectorAll('#results th')].map(th => th.textContent);
+    return {bench: bench.map(({measures, ...r}) => r), table: [head, ...bench.flatMap(r => r.measures ? rowsOf(r) : [])]};
+};
 if (q.has('auto')) $('runSelected').click();

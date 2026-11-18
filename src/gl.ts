@@ -1,4 +1,4 @@
-import {EXTENT, latFromMerc, mercX, mercY, type TileID, type Transform} from './geo.ts';
+import {EXTENT, clamp, latFromMerc, mercX, mercY, type TileID, type Transform} from './geo.ts';
 import {hillshadeLights, LIGHTS, screenTranslate, type CompiledLayer, type Light} from './style.ts';
 import {compileProp} from './expr.ts';
 import type {Sky} from './resolve.ts';
@@ -169,6 +169,43 @@ void main() {
   float b = gl_FragCoord.y - u_sky.x;
   if (b <= 0.0) discard;
   o = b < u_sky.y ? mix(u_skyColor, u_horizonColor, pow(1.0 - b / u_sky.y, 2.0)) : u_skyColor;
+}`],
+    // The atmosphere on the globe: a port of atmosphere.fragment.glsl of MapLibre GL JS (BSD-3-Clause), which follows
+    // glsl-atmosphere (Rayleigh and Mie scattering, 5 steps along the ray and 3 toward the sun). u_rays gives the ray
+    // of a screen pixel in the space of the unit sphere, u_cam is the camera and u_sun the direction to the sun there.
+    // The globe is scaled to the radius of the earth. u_halo is the blend and the device pixels per pixel.
+    halo: [`layout(location=0) in vec2 a_pos; void main() { gl_Position = vec4(a_pos * 2.0 - 1.0, 0.0, 1.0); }`, `
+uniform mat3 u_rays; uniform vec3 u_cam; uniform vec3 u_sun; uniform vec2 u_halo; uniform vec2 u_view; out vec4 o;
+const float RP = 6371e3, RA = 6471e3, HR = 8e3, HM = 1.2e3, KM = 21e-6, G = 0.758;
+const vec3 KR = vec3(5.5e-6, 13.0e-6, 22.4e-6);
+vec2 rsi(vec3 r0, vec3 rd, float sr) {
+  float b = 2.0 * dot(rd, r0), d = b * b - 4.0 * (dot(r0, r0) - sr * sr);
+  return d < 0.0 ? vec2(1e5, -1e5) : vec2(-b - sqrt(d), -b + sqrt(d)) / 2.0;
+}
+void main() {
+  vec3 r = normalize(u_rays * vec3(gl_FragCoord.x / u_halo.y, u_view.y - gl_FragCoord.y / u_halo.y, 1.0)), r0 = u_cam * RP, s = normalize(u_sun);
+  vec2 p = rsi(r0, r, RA);
+  vec4 c = vec4(0.0, 0.0, 0.0, 1.0);
+  if (p.x <= p.y) {
+    p.x = max(p.x, 0.0);
+    vec2 p2 = rsi(r0, r, RP);
+    if (p2.x <= p2.y && p2.x > 0.0) p.y = min(p.y, p2.x);
+    float st = (p.y - p.x) / 5.0, t = p.x + st * 0.5, odR = 0.0, odM = 0.0, mu = dot(r, s), gg = G * G;
+    vec3 tR = vec3(0.0), tM = vec3(0.0);
+    for (int i = 0; i < 5; i++) {
+      vec3 q = r0 + r * t;
+      float h = length(q) - RP, dR = exp(-h / HR) * st, dM = exp(-h / HM) * st, js = rsi(q, s, RA).y / 3.0, jt = js * 0.5, jR = 0.0, jM = 0.0;
+      odR += dR; odM += dM;
+      for (int j = 0; j < 3; j++) { float jh = length(q + s * jt) - RP; jR += exp(-jh / HR) * js; jM += exp(-jh / HM) * js; jt += js; }
+      vec3 at = exp(-(KM * (odM + jM) + KR * (odR + jR)));
+      tR += dR * at; tM += dM * at; t += st;
+    }
+    float pR = 3.0 / (16.0 * 3.141593) * (1.0 + mu * mu), pM = 3.0 / (8.0 * 3.141593) * ((1.0 - gg) * (mu * mu + 1.0)) / (pow(1.0 + gg - 2.0 * mu * G, 1.5) * (2.0 + gg));
+    c = vec4(22.0 * (pR * KR * tR + pM * KM * tM), exp(-(length(KR) * length(tR) + KM * length(tM))));
+  }
+  c.rgb = 1.0 - exp(-c.rgb);
+  c = pow(c, vec4(1.0 / 2.2));
+  o = vec4(c.rgb, 1.0 - c.a) * u_halo.x;
 }`],
 
     fill: [`${VS_COMMON}
@@ -554,7 +591,7 @@ export interface Scene {
      * plane of the horizon, how much of a globe (1) or of Mercator (0) is drawn, the cosine of the latitude of the
      * centre, and the tiles of the background.
      */
-    globe?: {m: Float32Array; horizon: number[]; t: number; cosLat: number; tiles: TileID[]};
+    globe?: {m: Float32Array; horizon: number[]; cam: number[]; rays: number[]; t: number; cosLat: number; tiles: TileID[]};
 }
 
 /**
@@ -564,7 +601,7 @@ export interface Scene {
 export function skyValues(sky: Sky, zoom: number, pitch: number) {
     const at = (k: keyof Sky, kind: 'number' | 'color', def: unknown) => compileProp(sky[k], kind, def).eval(zoom) as any;
     return {sky: at('sky-color', 'color', '#88c6fc') as number[], horizon: at('horizon-color', 'color', '#ffffff') as number[], fog: at('fog-color', 'color', '#ffffff') as number[],
-        skyBlend: at('sky-horizon-blend', 'number', 0.8) as number, horizonFog: at('horizon-fog-blend', 'number', 0.8) as number, ground: at('fog-ground-blend', 'number', 0.5) as number,
+        skyBlend: at('sky-horizon-blend', 'number', 0.8) as number, horizonFog: at('horizon-fog-blend', 'number', 0.8) as number, ground: at('fog-ground-blend', 'number', 0.5) as number, atmosphere: at('atmosphere-blend', 'number', 0.8) as number,
         opacity: Math.min(1, Math.max(0, (pitch - 60) / 10))};
 }
 
@@ -1707,8 +1744,39 @@ export class GLRenderer {
             else if (!s.terrain) this.drawLayers(s, tr, s.items, target, 'all', undefined, i, i + 1);
         }
 
+        this.drawHalo(s);
         gl.bindVertexArray(null);
         return behind;
+    }
+
+    /**
+     * The atmosphere around the globe, over the layers, as MapLibre GL JS's drawAtmosphere does: only for a style with a
+     * `sky`. The blend is atmosphere-blend times the change to the globe, and it fades out as the camera comes within ten
+     * heights of the atmosphere (100 km) of the ground. The sun comes from the position of `light`: with the anchor
+     * `map` it stays over one place of the globe, with `viewport` (the default) it turns with the view.
+     */
+    private drawHalo(s: Scene) {
+        const g = s.globe, tr = s.tr;
+        if (!g || !s.sky) return;
+        const v = skyValues(s.sky, tr.zoom, tr.pitch), h = 100 / 6371, x = clamp((Math.hypot(...g.cam) - 1 - h) / (9 * h), 0, 1);
+        const blend = v.atmosphere * g.t * x * x * (3 - 2 * x), gl = this.gl;
+        if (!(blend > 0)) return;
+        const light = s.light ?? {}, [, az, polar] = compileProp(light.position, 'string', [1.15, 210, 30]).eval(tr.zoom) as number[];
+        const a = (az + 90) * Math.PI / 180, p = polar * Math.PI / 180, R = Math.PI / 180;
+        // The sun in view space (x right, y up, z toward the camera), as MapLibre's getSunPos.
+        let sun = [-Math.cos(a) * Math.sin(p), -Math.sin(a) * Math.sin(p), -Math.cos(p)];
+        const turn = (i: number, j: number, t: number) => { const c = Math.cos(t), n = Math.sin(t), u = sun[i], w = sun[j]; sun[i] = c * u - n * w; sun[j] = n * u + c * w; };
+        if (light.anchor === 'map') { turn(2, 0, -tr.lng * R); turn(1, 2, tr.lat * R); turn(0, 1, tr.bearing * R); turn(1, 2, -tr.pitch * R); }
+        // To the space of the sphere with the rays of the screen: the ray through x, y is A x + B y + C (see `rays`).
+        const r = g.rays, d = tr.cameraDistance, ax = [0, 1, 2].map(i => r[i] * d), ay = [0, 1, 2].map(i => -r[3 + i] * d), az2 = [0, 1, 2].map(i => -r[6 + i] - tr.cx * r[i] - tr.cy * r[3 + i]);
+        sun = [0, 1, 2].map(i => ax[i] * sun[0] + ay[i] * sun[1] + az2[i] * sun[2]);
+        const u = this.use('halo', tr);
+        gl.uniformMatrix3fv(u.u_rays, false, g.rays);
+        gl.uniform3fv(u.u_cam, g.cam);
+        gl.uniform3fv(u.u_sun, sun);
+        gl.uniform2f(u.u_halo, blend, this.canvas.height / tr.height);
+        gl.bindVertexArray(this.quad);
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     }
 
     /** Draws placed labels: their icons, then their text in one pass for the halos and one for the fill. */

@@ -48,22 +48,30 @@ for (const mode of ['worker', 'main']) {
 // (Where the map did not load at all, for example a browser without WebGL, the benchmark would only wait for its time limit.)
 if (!result.checks.some(c => c.loaded)) result.errors.push('bench: not run, because the map did not load');
 else try {
-    const page = await browser.newPage({viewport: {width: 1000, height: 700}});
-    page.on('pageerror', e => result.errors.push(e.message));
-    // (Each scenario runs BENCH_RUNS times, 3 by default, and the page gives the median and the range: the machines of
-    // the workflow share their GPU with others, and one measurement can be far off.)
-    await page.goto(`${base}/bench?auto&seconds=${process.env.BENCH_SECONDS ?? 4}&runs=${process.env.BENCH_RUNS ?? 3}`);
-    await page.waitForFunction(() => window.benchResults, null, {timeout: 30 * 60000, polling: 1000});
+    // (The page runs each scenario once. The machines of the workflow share their GPU with others, and one measurement
+    // can be far off, so the page runs again, up to BENCH_RUNS times (3), while the time since the first start is under
+    // BENCH_BUDGET_MIN minutes (20): the job has a limit of 40 minutes. The medians are over all the runs.)
+    const budget = +(process.env.BENCH_BUDGET_MIN ?? 20) * 60000, most = +(process.env.BENCH_RUNS ?? 3), t0 = Date.now(), lists = [];
+    let page;
+    do {
+        await page?.close();
+        page = await browser.newPage({viewport: {width: 1000, height: 700}});
+        page.on('pageerror', e => result.errors.push(e.message));
+        await page.goto(`${base}/bench?auto&seconds=${process.env.BENCH_SECONDS ?? 4}&runs=1`);
+        await page.waitForFunction(() => window.benchResults, null, {timeout: 30 * 60000, polling: 1000});
+        lists.push(await page.evaluate(() => window.benchResults));
+    } while (lists.length < most && Date.now() - t0 < budget);
     result.env = await page.textContent('#env');
-    result.bench = await page.evaluate(() => window.benchResults);
-    result.table = await page.evaluate(() => [...document.querySelectorAll('#results tr')].map(tr => [...tr.cells].map(c => c.textContent)));
+    Object.assign(result, await page.evaluate(lists => window.benchMerge(lists), lists));
+    result.runs = lists.length; result.minutes = +((Date.now() - t0) / 60000).toFixed(1);
+    console.log(`bench: ${lists.length} runs of the page in ${result.minutes} min`);
     await page.close();
 } catch (e) { result.errors.push('bench: ' + String(e.message).split('\n')[0]); }
 await browser.close();
 
 writeFileSync(path.join(out, `${name}.json`), JSON.stringify(result, null, 1));
 const rows = (result.table ?? []).filter(r => r.length > 1);
-const md = [`### ${name} (${result.browser} ${result.version})`, '', `${result.os}, ${result.cpu ?? ''}`, '', result.env ?? '', '',
+const md = [`### ${name} (${result.browser} ${result.version})`, '', `${result.os}, ${result.cpu ?? ''}`, '', result.env ?? '', '', ...(result.runs ? [`Runs of the page: ${result.runs} in ${result.minutes} min.`, ''] : []),
     ...result.checks.map(c => `- ${c.mode}: ${c.error ? 'FAILED: ' + c.error : `loaded, renderer ${c.renderer}, ${c.features} features at the centre, terrain ${c.terrain ? 'on' : 'off'} (centre ${c.elevation} m)`}${c.errors.length ? ' — errors: ' + c.errors.join(' | ') : ''}`), '',
     ...(rows.length ? [`| ${rows[0].join(' | ')} |`, `|${rows[0].map(() => '---').join('|')}|`, ...rows.slice(1).map(r => `| ${r.join(' | ')} |`)] : ['(no benchmark results)']),
     ...(result.errors.length ? ['', 'Errors: ' + result.errors.join(' | ')] : []), ''].join('\n');

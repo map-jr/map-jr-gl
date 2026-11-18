@@ -1599,6 +1599,41 @@ for (const renderer of renderers) {
         const noId = await page.evaluate(() => { const t = window.t; console.warn = t.litLog; return t.litSaid.filter(w => w.startsWith('[map-jr-gl] hoverState: a feature of the layer "sq" has no id')).length; });
         await page.mouse.move(450, 300); await page.waitForTimeout(400);
         const litGone = await states();
+        // A sweep of the pointer for 1 s (#694): the map asks the engine at most once in a frame, and the answer is the
+        // one for the last position. (The test counts the calls of `queryFeatures` of the core map, which it finds as
+        // the target of an event of that map.)
+        await page.evaluate(() => {
+            const t = window.t, define = Object.defineProperties;
+            Object.defineProperties = (o, d) => { const m = o?.target; if (m && typeof m.queryFeatures === 'function' && !t.sweepProto) t.sweepProto = Object.getPrototypeOf(m); return define(o, d); };
+            t.sweepRestore = () => { Object.defineProperties = define; };
+        });
+        await page.mouse.move(60, 75); await page.waitForTimeout(100);
+        await page.evaluate(() => {
+            const t = window.t; t.sweepRestore();
+            const p = t.sweepProto, own = p.queryFeatures;
+            t.sweep = {queries: 0, frames: 0, on: true};
+            p.queryFeatures = function (...a) { if (t.sweep.on) t.sweep.queries++; return own.apply(this, a); };
+            t.sweepUndo = () => { p.queryFeatures = own; };
+            const tick = () => { if (t.sweep.on) { t.sweep.frames++; requestAnimationFrame(tick); } };
+            requestAnimationFrame(tick);
+        });
+        // (Four moves in each frame, as a mouse that reports more often than the screen draws: the page gets them all.)
+        const sweep = await page.evaluate(async () => {
+            const t = window.t, canvas = document.querySelector('#lit canvas'), box = canvas.getBoundingClientRect();
+            const move = x => canvas.dispatchEvent(new PointerEvent('pointermove', {pointerType: 'mouse', bubbles: true, clientX: box.left + x, clientY: box.top + 75}));
+            let moves = 0;
+            for (const start = performance.now(); performance.now() - start < 1000;) {
+                for (let i = 0; i < 4; i++, moves++) move(20 + (moves * 3) % 150);
+                await new Promise(r => requestAnimationFrame(r));
+            }
+            move(130); moves++;
+            await new Promise(r => setTimeout(r, 400));
+            t.sweep.on = false; t.sweepUndo();
+            return {...t.sweep, moves, top: t.litHost.state.get().hover[0]?.id};
+        });
+        console.log(`      [${renderer}] hover sweep: ${JSON.stringify(sweep)}`);
+        check(`[${renderer}] a sweep of the pointer for 1 s asks the engine at most once in a frame, and the hover is the feature at the last position (#694)`,
+            sweep.queries > 0 && sweep.queries <= sweep.frames + 2 && sweep.top === 2, JSON.stringify(sweep));
         await page.evaluate(() => { window.t.litHost.destroy(); document.getElementById('lit').remove(); });
         check(`[${renderer}] hoverState gives the feature under the pointer the feature state hover, takes it away when the pointer leaves it, and warns once for a feature with no id`,
             onA[1] === true && onA[2] === false && onB[1] === false && onB[2] === true && litGone[1] === false && litGone[2] === false && noId === 1, JSON.stringify({onA, onB, litGone, noId}));
