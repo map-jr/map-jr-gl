@@ -180,9 +180,11 @@ export class Popup extends Overlay {
     getAnchor() { return this.anchor; }
     /** Moves the focus to the first element that takes it. A candidate can refuse it (a disabled button, a hidden link). */
     focusFirst() {
+        // (In a shadow root, `document.activeElement` is the shadow host: the root of the popup knows the element.)
+        const root = this.el.getRootNode() as Document | ShadowRoot;
         for (const c of this.el.querySelectorAll<HTMLElement>('[href],button,input,select,textarea,[tabindex]')) {
             c.focus({preventScroll: true});
-            if (document.activeElement === c) break;
+            if (root.activeElement === c) break;
         }
     }
     setOffset(offset?: PopupOffset) { this.options.offset = offset; this.applyAnchor(this.anchor); this.update(); return this; }
@@ -218,7 +220,7 @@ export class Popup extends Overlay {
         map.off('click', this.closeOnMapClick);
         const animation = this.transition(true), content = this.content, ghost = content.cloneNode(true) as HTMLElement;
         // (Moving the content drops a focus inside it to `body`, so the focus is read before.)
-        const focused = this.el.contains(document.activeElement);
+        const root = this.el.getRootNode() as Document | ShadowRoot, focused = this.el.contains(root.activeElement);
         // (A copy of the content fades out: an application often takes its element out of the popup when it closes, and the
         // box would then shrink to its close button during the fade.)
         content.replaceWith(ghost);
@@ -230,7 +232,7 @@ export class Popup extends Overlay {
             for (const a of this.el.getAnimations({subtree: true})) a.cancel();
             this.box.style.pointerEvents = this.clicks;
             // (The focus returns to the marker, or to the map when the marker is no longer on the page.)
-            const active = document.activeElement;
+            const active = root.activeElement;
             if (this.el.contains(active) || focused && (!active || active === document.body)) (this.opener?.isConnected ? this.opener : map.getCanvas()).focus({preventScroll: true});
             this.detach();
         };
