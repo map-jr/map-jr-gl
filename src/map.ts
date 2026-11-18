@@ -2,7 +2,7 @@ import {fetchWith, withTimeout, type RequestAnswer} from './requests.ts';
 import {protocolListeners, protocols, toBytes} from './protocols.ts';
 import {LngLat, LngLatBounds, type LngLatBoundsInput} from './lnglat.ts';
 import type {FilterSpecification} from './compat-types.ts';
-import {Transform, bezier, fitBox, turnInertia, globeStops, groundHeight, heightsChanged, mercX, mercY, sides, toLngLat, type LngLatLike} from './geo.ts';
+import {MAX_PITCH, Transform, bezier, fitBox, turnInertia, globeStops, groundHeight, heightsChanged, mercX, mercY, sides, toLngLat, type LngLatLike} from './geo.ts';
 import type {PreparedSource} from './geojson.ts';
 import {DEFAULT_FONT, absolute, keep, kept, resolveStyle, type ResolvedStyle} from './resolve.ts';
 import {layerRules} from './rules.ts';
@@ -232,7 +232,7 @@ export class Map {
         this.measure();
         this.canvas.width = Math.round(this.tr.width * this.dpr);
         this.canvas.height = Math.round(this.tr.height * this.dpr);
-        this.tr.maxPitch = options.maxPitch ?? 60;
+        this.tr.maxPitch = this.pitchCap(options.maxPitch);
         const key = options.hash;
         if (key) {
             // The camera is in the fragment of the URL, as in MapLibre (see hash.ts, which is loaded only for this option).
@@ -997,7 +997,14 @@ export class Map {
     private limits() { this.post({type: 'limits', minZoom: this.tr.minZoom, maxZoom: this.tr.maxZoom, maxPitch: this.tr.maxPitch, minPitch: this.tr.minPitch, maxBounds: this.tr.maxBounds}); return this; }
     setMinZoom(z = -2) { this.tr.minZoom = z; return this.limits(); }
     setMaxZoom(z = 22) { this.tr.maxZoom = z; return this.limits(); }
-    setMaxPitch(p = 60) { this.tr.maxPitch = Math.min(60, p); return this.limits(); }
+    declare private pitchWarned?: boolean;
+    setMaxPitch(p?: number | null) { this.tr.maxPitch = this.pitchCap(p); return this.limits(); }
+    private pitchCap(p?: number | null) {
+        p ??= 60;
+        // MapLibre GL JS allows up to 180, where the camera looks up and needs its own elevation (not here yet).
+        if (p > MAX_PITCH && !this.pitchWarned && (this.pitchWarned = true)) console.warn(`[map-jr-gl] maxPitch ${p}: the pitch stops at ${MAX_PITCH}, because the library has no elevation of the camera yet. Pass ${MAX_PITCH} or less.`);
+        return Math.min(MAX_PITCH, p);
+    }
     getMaxPitch() { return this.tr.maxPitch; }
     getMinPitch() { return this.tr.minPitch; }
     setMinPitch(p = 0) { this.tr.minPitch = Math.max(0, Math.min(p, this.tr.maxPitch)); return this.limits(); }
@@ -1246,6 +1253,12 @@ export class Map {
     setLight(light: {anchor?: 'map' | 'viewport'; position?: [number, number, number]; color?: string; intensity?: number}) {
         return this.editStyle(s => { s.light = {...s.light, ...light}; });
     }
+    /** Sets the sky above the horizon and the fog on 3D terrain (the `sky` of the style); `null` removes them. */
+    setSky(sky?: Record<string, unknown> | null) {
+        return this.editStyle(s => { if (sky) s.sky = {...sky}; else delete s.sky; });
+    }
+    /** The `sky` of the style, or undefined when the style has none. */
+    getSky(): Record<string, unknown> | undefined { return this.rawStyle?.sky; }
     /** A source or a style that cannot be used: the map reports it, and draws the rest of the style or keeps its style. */
     private sourceFailed = (error: unknown) => { this.fire('error', {error}); };
     /**
@@ -1430,6 +1443,14 @@ export class Map {
         return this.editStyle(s => { s.layers.splice(beforeId ? this.layerIndex(s, beforeId) : s.layers.length, 0, layer); });
     }
     removeLayer(id: string) { return this.editStyle(s => { s.layers.splice(this.layerIndex(s, id), 1); }); }
+    /** Changes the zooms at which a layer is drawn, without a new style. `undefined` or `null` removes the bound. */
+    setLayerZoomRange(id: string, minzoom?: number | null, maxzoom?: number | null) {
+        return this.editStyle(s => {
+            const l = s.layers[this.layerIndex(s, id)];
+            if (minzoom == null) delete l.minzoom; else l.minzoom = minzoom;
+            if (maxzoom == null) delete l.maxzoom; else l.maxzoom = maxzoom;
+        });
+    }
 
     private setProp(group: 'paint' | 'layout', layerId: string, name: string, value: unknown) {
         // (The engine works out whether this needs tiles rebuilt: per-feature values are baked into their buffers.)

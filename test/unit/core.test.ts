@@ -1041,3 +1041,25 @@ test('a URL of a custom protocol that has another URL inside stays as it is writ
     // (A relative URL is still joined to the URL of the style.)
     assert.deepEqual(resolved.sources.d.tiles, ['https://example.org/styles/tiles/{z}/{x}/{y}.png']);
 });
+
+test('transform: a pitch up to 90, with a tile cover and a far plane that stop at the horizon (#886)', () => {
+    const t = new Transform(); t.width = 1024; t.height = 768; t.maxPitch = 180; t.set([-74.006, 40.7128], 14, 0, 85);
+    assert.equal(t.pitch, 85, 'a pitch above 60 is kept');
+    t.set(undefined, undefined, undefined, 120); assert.equal(t.pitch, 90, 'the pitch stops at 90');
+    t.set(undefined, undefined, undefined, 85);
+    // The horizon of MapLibre GL JS: d · min(0.85 · tan(5°), tan(4.25°)) above the centre.
+    const d = t.cameraDistance, h = t.horizon();
+    close(h, d * Math.min(0.85 * Math.tan(5 * Math.PI / 180), Math.tan(4.25 * Math.PI / 180)), 1e-6);
+    // A point above the horizon is taken on the horizon.
+    assert.deepEqual(t.screenToMerc(512, 0), t.screenToMerc(512, t.cy - h));
+    const tiles = t.coveringTiles(0, 14);
+    assert.ok(tiles.length <= 40, `${tiles.length} tiles at pitch 85 (55 before the horizon)`);
+    // The far plane reaches the ground at the horizon: a point there is inside the depth range, one 1.5 times as far is not.
+    // (In a tile of zoom 10, so that 32-bit floats keep the depth exact.)
+    const [cx, cy] = [mercX(-74.006), mercY(40.7128)], [hx, hy] = t.screenToMerc(512, t.cy - h + 0.5), n = 1024, tx = Math.floor(cx * n), ty = Math.floor(cy * n);
+    const m = t.tileMatrix4({z: 10, x: tx, y: ty, w: 0, key: ''});
+    const clipZ = (mx: number, my: number) => { const x = (mx * n - tx) * 4096, y = (my * n - ty) * 4096; return (m[2] * x + m[6] * y + m[14]) / (m[3] * x + m[7] * y + m[15]); };
+    assert.ok(clipZ(hx, hy) < 1, 'the horizon is in front of the far plane');
+    assert.ok(clipZ(cx + (hx - cx) * 1.5, cy + (hy - cy) * 1.5) > 1, 'ground beyond the horizon is behind it');
+    console.log(`pitch 85: ${tiles.length} tiles on zooms ${Math.min(...tiles.map(x => x.z))} to ${Math.max(...tiles.map(x => x.z))}`);
+});

@@ -250,6 +250,34 @@ for (const renderer of renderers) {
         check(`[${renderer}] update with a new order of layers, and with a new layer before one that stays: the map draws the new order and loads no style (#859)`,
             order.first.order === 'o-a,o-b' && order.first.top === 'o-b' && order.swapped.order === 'o-b,o-a' && order.swapped.top === 'o-a'
             && order.inserted.order === 'o-c,o-b,o-a' && order.inserted.top === 'o-a' && order.loads === 0 && order.gone === '', JSON.stringify(order));
+        // A changed minzoom of a layer of `layers` and of a layer of the style object: the map changes the zoom range in
+        // place, loads no style, and draws the layer only at the new zooms (#871).
+        const range = await page.evaluate(async () => {
+            const t = window.t, map = t.host._map, wait = ms => new Promise(r => setTimeout(r, ms)), box = [{x: 0, y: 0}, {x: 900, y: 600}];
+            const above = Math.floor(map.getZoom()) + 2, base = t.spec.layers ?? [], style = t.spec.style;
+            const fill = (id, minzoom) => ({id, type: 'fill', source: 'omt', 'source-layer': 'water', paint: {'fill-color': '#f0f'}, ...(minzoom === undefined ? {} : {minzoom})});
+            const found = async id => (await t.host.queryFeatures(box, {layers: [id]})).length;
+            const withStyle = z => ({...style, layers: [...style.layers, fill('z-style', z)]});
+            t.host.update(t.spec = {...t.spec, layers: [...base, fill('z-layers')], style: withStyle()});
+            await wait(1500);
+            const before = {layers: await found('z-layers'), style: await found('z-style')};
+            let loads = 0;
+            const count = () => loads++;
+            map.on('style.load', count);
+            t.host.update(t.spec = {...t.spec, layers: [...base, fill('z-layers', above)], style: withStyle(above)});
+            await wait(1500);
+            const after = {layers: await found('z-layers'), style: await found('z-style'), min: map.getLayer('z-layers')?.minzoom, styleMin: map.getLayer('z-style')?.minzoom};
+            t.host.update(t.spec = {...t.spec, layers: [...base, fill('z-layers')], style: withStyle()});
+            await wait(1500);
+            const back = {layers: await found('z-layers'), style: await found('z-style')};
+            map.off('style.load', count);
+            t.host.update(t.spec = {...t.spec, layers: base, style});
+            await wait(1000);
+            return {before, after, back, loads, above};
+        });
+        check(`[${renderer}] update with a new minzoom of a layer of layers and of the style object: the map draws the layer only at the new zooms and loads no style (#871)`,
+            range.before.layers > 0 && range.before.style > 0 && range.after.layers === 0 && range.after.style === 0 && range.after.min === range.above && range.after.styleMin === range.above
+            && range.back.layers > 0 && range.back.style > 0 && range.loads === 0, JSON.stringify(range));
         check(`[${renderer}] update with a style object that changes one filter and one paint value of a layer: the map edits the layer and loads no style (#858)`,
             style.inPlace.loads === 0 && style.inPlace.filtered === 0 && style.inPlace.color === '#00f' && style.inPlace.filter.includes('no-such-class'), JSON.stringify(style.inPlace));
         check(`[${renderer}] update with a style object whose layers have a new order, and a new layer before one that stays: the map draws the new order and loads no style (#875)`,
@@ -533,11 +561,15 @@ for (const renderer of renderers) {
             out.removed = ['cursor' in host.description, 'maxZoom' in host.description, host.description.minZoom, host._map.getMaxZoom(), el.querySelector('canvas').style.cursor];
             try { host.patch({style: undefined}); out.style = 'no error'; } catch (e) { out.style = e.message; }
             out.styleKept = host.description.style === t.style;
+            // A maxPitch above 90 warns once per map, and null gives the default 60 (#886).
+            const warn = console.warn; let warned = 0; console.warn = (...a) => { if (String(a[0]).includes('maxPitch')) warned++; else warn(...a); };
+            host._map.setMaxPitch(120); host._map.setMaxPitch(150); out.pitch = [host._map.getMaxPitch(), warned];
+            host._map.setMaxPitch(null); out.pitch.push(host._map.getMaxPitch()); console.warn = warn;
             host.destroy(); el.remove();
             return out;
         }, renderer).catch(e => ({error: String(e)}));
         check(`[${renderer}] patch keeps the other fields, undefined removes a field, and description is the last description`,
-            JSON.stringify(patched) === JSON.stringify({first: true, kept: ['crosshair', 10, 2, 10, 2, 'crosshair'], removed: [false, false, 2, 22, ''], style: '[map-jr-gl] patch(): the description has no "style". Do not set "style" to undefined.', styleKept: true}), JSON.stringify(patched));
+            JSON.stringify(patched) === JSON.stringify({first: true, kept: ['crosshair', 10, 2, 10, 2, 'crosshair'], removed: [false, false, 2, 22, ''], style: '[map-jr-gl] patch(): the description has no "style". Do not set "style" to undefined.', styleKept: true, pitch: [90, 1, 60]}), JSON.stringify(patched));
 
         // 3c. Mistakes and errors: a container that is not there has a message; `onError`
         // gets each error; without it the error is written to the console.
