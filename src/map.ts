@@ -381,7 +381,8 @@ export class Map {
                 this.ready = false;
                 this.watchTurn++; // (the watch of the worker must not count while the engine chunk loads; #146)
                 w.terminate();
-                this.startMainEngine(fresh, {...engineOptions, style: this.resolved, center: [this.tr.lng, this.tr.lat], zoom: this.tr.zoom, bearing: this.tr.bearing, pitch: this.tr.pitch}, []).then(() => {
+                // (The ports went to the worker and end with it. New ones keep the tiles in the tile workers; #812.)
+                this.startMainEngine(fresh, {...engineOptions, style: this.resolved, center: [this.tr.lng, this.tr.lat], zoom: this.tr.zoom, bearing: this.tr.bearing, pitch: this.tr.pitch}, this.tilePool?.connect() ?? []).then(() => {
                     if (this.removed) return;
                     this.ready = true;
                     for (const [c, t] of this.queue.splice(0)) this.deliver(c, t);
