@@ -1008,7 +1008,7 @@
 "regressions/mapbox-gl-js#2533": "match",
 "regressions/mapbox-gl-js#2534": "match",
 "regressions/mapbox-gl-js#2762": "near",
-"regressions/mapbox-gl-js#2769": "near",
+"regressions/mapbox-gl-js#2769": "match",
 "regressions/mapbox-gl-js#2787": "match",
 "regressions/mapbox-gl-js#2846": "match",
 "regressions/mapbox-gl-js#2929": "match",

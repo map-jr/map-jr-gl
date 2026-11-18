@@ -70,9 +70,9 @@ export interface ResolvedStyle { layers: LayerJSON[]; sources: Record<string, So
     light?: Light;
     /** The sky above the horizon and the fog on 3D terrain (the `sky` of the style). */
     sky?: Sky;
-    /** Global state: the values `global-state` expressions read. */
     /** The root property `transition` of the style (#960). */
     transition?: {duration?: number; delay?: number};
+    /** Global state: the values `global-state` expressions read. */
     state?: Record<string, unknown> }
 
 /**
