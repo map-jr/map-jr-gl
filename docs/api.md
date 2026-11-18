@@ -7,7 +7,9 @@ This model fits how the library works: the map draws in a worker, and one descri
 It also fits frameworks, which describe what the page must show and do not call methods one after the other.
 
 For the API of MapLibre GL JS (`new Map`, `map.addLayer`), use the entry `@map-jr/map-jr-gl/maplibre-compat`. See
-[MapLibre compatibility](maplibre-compatibility.md).
+[MapLibre compatibility](maplibre-compatibility.md). The adapters ([Vue](vue.md), [React](react.md), [Svelte](svelte.md))
+and the web component `<map-jr>` of `@map-jr/map-jr-gl/element` ([The web component](element.md)) make their maps
+with this entry.
 
 ## Make a map
 

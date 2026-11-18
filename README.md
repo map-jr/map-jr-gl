@@ -4,7 +4,8 @@ A small, fast map library for the web. It reads MapLibre styles. Map Jr. GL is a
 whatismyelevation.com. It has two entries:
 
 - `@map-jr/map-jr-gl`: a map from one description, with state that your code can watch. The adapters for frameworks
-  (`@map-jr/map-jr-gl/vue`, `@map-jr/map-jr-gl/react`) use this entry.
+  (`@map-jr/map-jr-gl/vue`, `@map-jr/map-jr-gl/react`) and the web component `<map-jr>` (`@map-jr/map-jr-gl/element`)
+  use this entry.
 - `@map-jr/map-jr-gl/maplibre-compat`: an API that is almost the same as MapLibre GL JS, for code and plugins that were
   written for that library.
 
@@ -17,6 +18,7 @@ Which entry to use:
 | You have | Use | Why |
 |---|---|---|
 | A new application, or an application with Vue, Nuxt, React or Svelte | `@map-jr/map-jr-gl` and its adapters | New features go to this entry first. |
+| A page in plain HTML, a CMS, or a framework with no adapter (Angular, Lit, Solid) | `@map-jr/map-jr-gl/element` | The element `<map-jr>` takes the description as attributes and properties. |
 | Code or plugins that were written for MapLibre GL JS | `@map-jr/map-jr-gl/maplibre-compat` | The code keeps its calls (`new Map`, `map.on`, `map.addLayer`). |
 
 The two entries have different methods. Each example below names its entry. The comparisons with MapLibre GL JS in
@@ -425,6 +427,7 @@ To measure on your device, open [the benchmark page](https://map-jr.github.io/ma
 - [Vue and Nuxt](docs/vue.md): the component, the composable, server rendering.
 - [React](docs/react.md): the component, the hooks, server rendering.
 - [Svelte](docs/svelte.md): an action and a store.
+- [The web component](docs/element.md): the element `<map-jr>`, for plain HTML and frameworks without an adapter.
 - [Loading](docs/loading.md): how the files load, and how to change that.
 - [Markers](docs/markers.md): symbol layers with images that are SVG templates, and DOM markers.
 - [Terrain and elevation](docs/terrain-and-elevation.md): terrain, relief shading, contour lines, elevation queries.
