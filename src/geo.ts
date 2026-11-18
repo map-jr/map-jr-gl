@@ -322,6 +322,17 @@ export class Transform {
         return this.view((id.x + id.w * n) * ws / n - mercX(this.lng) * ws + x * s, id.y * ws / n - mercY(this.lat) * ws + y * s, (metres - this.elevation) * this.pixelsPerMetre, out);
     }
 
+    /** The distances of the near and the far plane from the camera, in pixels (the w of a point in clip space). */
+    depthRange(): [number, number] {
+        const p = this.pitch * Math.PI / 180, cp = Math.cos(p), sp = Math.sin(p), d = this.cameraDistance;
+        // With 3D terrain, ground far below the map centre is seen from higher up and so reaches further away.
+        const drop = this.groundRange ? Math.max(0, this.elevation - this.groundRange[0]) * this.pixelsPerMetre : 0;
+        // The far plane reaches the ground at the top of the screen or at the horizon, whichever is nearer (and at least 4
+        // times the camera distance, for buildings beyond that ground at a low pitch).
+        const top = Math.min(this.cy, Math.max(0, this.horizon())), reach = cp * d - top * sp > 1e-6 ? d + top * d * sp / (cp * d - top * sp) : 100 * d;
+        return [d / 10, Math.min(100 * d, Math.max(4 * d, reach * 1.01) * (1 + drop / (d * Math.max(cp, 1e-3))))];
+    }
+
     /** Tile units (x, y) and metres (z) to clip space, as a column-major 4x4 matrix for the GPU. */
     tileMatrix4(id: TileID): Float32Array {
         const ws = this.worldSize, n = 2 ** id.z, s = ws / n / EXTENT;
@@ -331,11 +342,7 @@ export class Transform {
         const tx = cos * ox - sin * oy, ty = sin * ox + cos * oy, kx = 2 * d / this.width, ky = -2 * d / this.height;
         // A tight depth range (everything visible at the steepest pitch fits) keeps depth precise even in a 16-bit buffer.
         // With 3D terrain, ground far below the map centre is seen from higher up and so reaches further away.
-        const drop = this.groundRange ? Math.max(0, this.elevation - this.groundRange[0]) * ppm : 0;
-        // The far plane reaches the ground at the top of the screen or at the horizon, whichever is nearer (and at least 4
-        // times the camera distance, for buildings beyond that ground at a low pitch).
-        const top = Math.min(this.cy, Math.max(0, this.horizon())), reach = cp * d - top * sp > 1e-6 ? d + top * d * sp / (cp * d - top * sp) : 100 * d;
-        const near = d / 10, far = Math.min(100 * d, Math.max(4 * d, reach * 1.01) * (1 + drop / (d * Math.max(cp, 1e-3)))), A = (far + near) / (far - near), B = -2 * far * near / (far - near);
+        const [near, far] = this.depthRange(), A = (far + near) / (far - near), B = -2 * far * near / (far - near);
         // Rows: X = kx * xc, Y = ky * yc, W = depth, Z = A * depth + B (so Z/W runs -1..1 from near to far).
         const X = [cos * s * kx, -sin * s * kx, 0, tx * kx];
         const Y = [sin * s * cp * ky, cos * s * cp * ky, -ppm * sp * ky, ty * cp * ky];

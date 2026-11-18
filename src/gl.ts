@@ -1,6 +1,7 @@
 import {EXTENT, latFromMerc, mercX, mercY, type TileID, type Transform} from './geo.ts';
 import {hillshadeLights, LIGHTS, screenTranslate, type CompiledLayer, type Light} from './style.ts';
 import {compileProp} from './expr.ts';
+import type {Sky} from './resolve.ts';
 import {LOSE_CONTEXT} from './gl-names.ts';
 import {LINE_VERTEX, WALL_OTHER, WALL_TOP, type GLBatch, type IconBatch, type LabelSrc, type TileGL} from './tile.ts';
 import type {Placed, RenderItem} from './placement.ts';
@@ -144,10 +145,31 @@ void main() {
     // 3D terrain: a grid over the tile, raised to the ground height and textured with the tile's flat layers.
     // `u_part` picks the part of the picture to show: all of it, or the tile's share of an ancestor's while its own is drawn.
     terrain: [`uniform mat4 u_matrix; uniform float u_skirt; uniform float u_exag;
-layout(location=0) in vec3 a_pos; layout(location=1) in float a_height; uniform vec3 u_part; out vec2 v_uv;
-void main() { vec2 p = u_part.xy + a_pos.xy * u_part.z; v_uv = vec2(p.x, 1.0 - p.y); gl_Position = u_matrix * vec4(a_pos.xy * ${EXTENT}.0, a_height * u_exag - a_pos.z * u_skirt, 1.0); }`, `
+layout(location=0) in vec3 a_pos; layout(location=1) in float a_height; uniform vec3 u_part; uniform vec2 u_fogRange; out vec2 v_uv; out float v_fog;
+void main() { vec2 p = u_part.xy + a_pos.xy * u_part.z; v_uv = vec2(p.x, 1.0 - p.y); gl_Position = u_matrix * vec4(a_pos.xy * ${EXTENT}.0, a_height * u_exag - a_pos.z * u_skirt, 1.0);
+  v_fog = clamp((gl_Position.w - u_fogRange.x) / (u_fogRange.y - u_fogRange.x), 0.0, 1.0); }`, `
 uniform sampler2D u_drape; in vec2 v_uv; out vec4 o;
-void main() { o = texture(u_drape, v_uv); }`],
+// Fog (the sky of the style, as in MapLibre GL JS): v_fog is 0 at the map centre and 1 at the far plane. u_fog has
+// fog-ground-blend, horizon-fog-blend and the opacity of the fog (from the pitch); u_fogColor and u_horizonColor are opaque.
+uniform vec3 u_fog; uniform vec4 u_fogColor; uniform vec4 u_horizonColor; in float v_fog;
+void main() {
+  o = texture(u_drape, v_uv);
+  float f = max(v_fog - u_fog.x, 0.0) / (1.0 - u_fog.x), k = f * f * u_fog.z;
+  if (k <= 0.0) return;
+  vec3 c = mix(u_fogColor.rgb, u_horizonColor.rgb, smoothstep(0.0, 1.0, (v_fog - u_fog.y) / (1.0 - u_fog.y)));
+  // The mix is in linear space (gamma 2.2), on the colour without its alpha.
+  vec3 s = o.a > 0.0 ? o.rgb / o.a : vec3(0.0);
+  o.rgb = pow(mix(pow(s, vec3(2.2)), pow(c, vec3(2.2)), k), vec3(1.0 / 2.2)) * o.a;
+}`],
+    // The sky (the `sky` of the style): a quad over the screen. u_sky has the horizon line in device pixels from the
+    // bottom and the height of the band in which sky-color turns into horizon-color; below the line nothing is drawn.
+    sky: [`layout(location=0) in vec2 a_pos; void main() { gl_Position = vec4(a_pos * 2.0 - 1.0, 0.0, 1.0); }`, `
+uniform vec2 u_sky; uniform vec4 u_skyColor; uniform vec4 u_horizonColor; out vec4 o;
+void main() {
+  float b = gl_FragCoord.y - u_sky.x;
+  if (b <= 0.0) discard;
+  o = b < u_sky.y ? mix(u_skyColor, u_horizonColor, pow(1.0 - b / u_sky.y, 2.0)) : u_skyColor;
+}`],
 
     fill: [`${VS_COMMON}
 layout(location=0) in vec2 a_pos; layout(location=1) in vec4 a_color; out vec4 v_color; out vec2 v_tile;
@@ -521,6 +543,8 @@ export interface Scene {
     terrain?: {exaggeration: number; tiles: TerrainTile[]; dem(id: TileID): DemRef | null};
     /** The light on buildings. */
     light?: Light;
+    /** The sky above the horizon, and the fog on 3D terrain. */
+    sky?: Sky;
     /** True while the camera moves. */
     moving?: boolean;
     /** Looks up a sprite or runtime image by name, for patterns. */
@@ -532,6 +556,20 @@ export interface Scene {
      */
     globe?: {m: Float32Array; horizon: number[]; t: number; cosLat: number; tiles: TileID[]};
 }
+
+/**
+ * The values of the `sky` of a style at a zoom, with the defaults of the specification: the colours (premultiplied
+ * RGBA) and the blends. Fog has an opacity of 0 below a pitch of 60 that rises to 1 at 70, as in MapLibre GL JS.
+ */
+export function skyValues(sky: Sky, zoom: number, pitch: number) {
+    const at = (k: keyof Sky, kind: 'number' | 'color', def: unknown) => compileProp(sky[k], kind, def).eval(zoom) as any;
+    return {sky: at('sky-color', 'color', '#88c6fc') as number[], horizon: at('horizon-color', 'color', '#ffffff') as number[], fog: at('fog-color', 'color', '#ffffff') as number[],
+        skyBlend: at('sky-horizon-blend', 'number', 0.8) as number, horizonFog: at('horizon-fog-blend', 'number', 0.8) as number, ground: at('fog-ground-blend', 'number', 0.5) as number,
+        opacity: Math.min(1, Math.max(0, (pitch - 60) / 10))};
+}
+
+/** A colour without its alpha. */
+const opaque = (c: number[]) => { const a = c[3] || 1; return [c[0] / a, c[1] / a, c[2] / a, 1]; };
 
 export const SPRITE_ATLAS = 2048;
 // How the light's direction maps to tile coordinates (y points south) and turns with the bearing.
@@ -1567,6 +1605,11 @@ export class GLRenderer {
         gl.enableVertexAttribArray(1);
         gl.uniform1i(u.u_drape, 0);
         gl.uniform1f(u.u_exag, s.terrain!.exaggeration);
+        // Fog only where the style has a sky, and not on the globe.
+        const fog = s.sky && !this.globe ? skyValues(s.sky, s.tr.zoom, s.tr.pitch) : undefined;
+        gl.uniform2f(u.u_fogRange, s.tr.cameraDistance, s.tr.depthRange()[1]);
+        gl.uniform3f(u.u_fog, Math.min(fog?.ground ?? 0, 0.999), Math.min(fog?.horizonFog ?? 0, 0.999), fog?.opacity ?? 0);
+        if (fog) { gl.uniform4fv(u.u_fogColor, opaque(fog.fog)); gl.uniform4fv(u.u_horizonColor, opaque(fog.horizon)); }
         for (const t of s.terrain!.tiles) {
             let d = this.drapes.get(t.key), part = [0, 0, 1];
             // No picture of its own yet: show its share of the nearest ancestor's rather than a hole.
@@ -1599,6 +1642,18 @@ export class GLRenderer {
         gl.disable(gl.DEPTH_TEST);
     }
 
+    /** The sky of the style above the horizon, in Mercator (on the globe there is none yet). */
+    private drawSky(s: Scene) {
+        const tr = s.tr;
+        if (!s.sky || tr.globeness) return;
+        const v = skyValues(s.sky, tr.zoom, tr.pitch), gl = this.gl, k = this.canvas.height / tr.height, u = this.use('sky', tr);
+        gl.uniform2f(u.u_sky, (tr.height - tr.cy + tr.horizon()) * k, Math.max(v.skyBlend, 1e-6) * this.canvas.height / 2);
+        gl.uniform4fv(u.u_skyColor, v.sky);
+        gl.uniform4fv(u.u_horizonColor, v.horizon);
+        gl.bindVertexArray(this.quad);
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    }
+
     /** Draws a frame. Returns true if some terrain pictures are still out of date, so another frame is wanted. */
     render(s: Scene): boolean {
         const gl = this.gl, tr = s.tr;
@@ -1612,6 +1667,7 @@ export class GLRenderer {
         gl.clearColor(0, 0, 0, 0);
         gl.clear(gl.COLOR_BUFFER_BIT);
         this.current = null;
+        this.drawSky(s);
         const target: [number, number] = [this.canvas.width, this.canvas.height];
         const use = (name: keyof typeof SHADERS) => this.use(name, tr);
 
