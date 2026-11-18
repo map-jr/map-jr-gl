@@ -127,7 +127,11 @@ function sourceSignature(style: ResolvedStyle, name: string): [string, string] {
 }
 
 interface TileState { state: 'loading' | 'ok' | 'error'; gl?: GLTile; /** An image tile that the server does not have (404). */ missing?: boolean; /** The zoom that the tile was built for (see `buildZoom`). */ band?: number; /** A number that changes each time the state or the content of the tile changes. */ rev?: number; /** Elevation tiles shaping 3D terrain: the lowest and highest ground on the tile, in metres. */ range?: [number, number]; /** An elevation tile: its heights, for when it shapes 3D terrain (see `ground`). */ dem?: {grid: Float32Array; lo: number; hi: number}; used: number; cancel(): void; /** A failed load: how many loads of this tile have failed, and when it is requested again. */ tries?: number; retryAt?: number; /** Built, and waiting for its turn to be uploaded: it is not cancelled when it leaves the view. */ built?: boolean; /** Shown, but built from data that has since changed. */ stale?: boolean; rebuilding?: boolean; /** The tile worker that loaded the tile. */ backend?: number; /** The rules of the style that the tile was built for (see `sourceSignature`). */ rules?: string }
-interface LabelState { placed: Placed; opacity: number; target: number }
+/**
+ * A label that is shown or fading. `drawn` is the copy of `placed` that the frames move with the map; it is made once
+ * for each placement and changed in place in each frame, so that a frame makes no new object for a label (#692).
+ */
+interface LabelState { placed: Placed; opacity: number; target: number; drawn?: Placed; drawnFrom?: Placed; turned?: boolean }
 
 const raf: (cb: (t: number) => void) => unknown = globalThis.requestAnimationFrame
     ? cb => globalThis.requestAnimationFrame(cb) : cb => setTimeout(() => cb(performance.now()), 16);
@@ -1678,7 +1682,7 @@ export class Engine {
         }
         const labels: Placed[] = [];
         let fading = false;
-        const turn = -tr.bearing * Math.PI / 180 - this.placeAngle, tc = Math.cos(turn), ts = Math.sin(turn);
+        const turn = -tr.bearing * Math.PI / 180 - this.placeAngle, tc = Math.cos(turn), ts = Math.sin(turn), at: [number, number, number] = [0, 0, 0];
         for (const [key, st] of this.labels) {
             if (st.opacity !== st.target) {
                 st.opacity = fadeStep(st.opacity, st.target, dt, this.fade, !this.wentIdle);
@@ -1690,25 +1694,29 @@ export class Engine {
             // JS does in its shaders. It keeps its state, so that it is there at once when it turns back. (Placement
             // comes every 250 ms only, and the fade takes 200 ms more: until then the label showed through the globe.)
             if (globeness && tr.globe!.hidden(tr, (p.tile.x + p.src.x / EXTENT) / 2 ** p.tile.z, (p.tile.y + p.src.y / EXTENT) / 2 ** p.tile.z)) continue;
-            const [ax, ay] = tr.projectTile(p.tile, p.src.x, p.src.y), dx = ax - p.ax, dy = ay - p.ay;
+            const q = tr.projectTile(p.tile, p.src.x, p.src.y, undefined, at), ax = q[0], ay = q[1], dx = ax - p.ax, dy = ay - p.ay;
+            let d = st.drawn!;
+            if (st.drawnFrom !== p) {
+                d = st.drawn = {...p, icon: p.icon && {...p.icon}, curve: p.curve?.slice(), ground: p.ground?.slice()};
+                st.drawnFrom = p;
+            }
+            d.opacity = st.opacity;
+            labels.push(d);
             if (turn && (!p.src.upright || (!p.shaped && p.icon && !p.src.icon!.upright))) {
                 // Text along a line (and a symbol at a point that is aligned with the map) turns with the map between placements; otherwise it would hold its old angle and
                 // then snap, which reads as rocking while the map rotates.
                 const ox = p.x - p.ax, oy = p.y - p.ay;
-                let curve = p.curve, ground = p.ground;
-                if (curve) {
-                    curve = curve.slice();
-                    for (let i = 0; i < curve.length; i += 3) { const cx = curve[i], cy = curve[i + 1]; curve[i] = cx * tc - cy * ts; curve[i + 1] = cx * ts + cy * tc; curve[i + 2] += turn; }
-                }
-                if (ground) {
-                    ground = ground.slice();
-                    for (let i = 0; i < ground.length; i += 3) { const cx = ground[i + 1], cy = ground[i + 2]; ground[i + 1] = cx * tc - cy * ts; ground[i + 2] = cx * ts + cy * tc; }
-                }
-                labels.push({...p, x: ax + ox * tc - oy * ts, y: ay + ox * ts + oy * tc, angle: p.angle + turn, curve, ground, opacity: st.opacity,
-                    icon: p.icon && {...p.icon, x: ax + (p.icon.x - p.ax) * tc - (p.icon.y - p.ay) * ts, y: ay + (p.icon.x - p.ax) * ts + (p.icon.y - p.ay) * tc, angle: p.icon.angle + turn}});
+                d.x = ax + ox * tc - oy * ts; d.y = ay + ox * ts + oy * tc; d.angle = p.angle + turn;
+                st.turned = true;
+                const curve = p.curve, ground = p.ground, dc = d.curve, dg = d.ground;
+                if (curve && dc) for (let i = 0; i < curve.length; i += 3) { const cx = curve[i], cy = curve[i + 1]; dc[i] = cx * tc - cy * ts; dc[i + 1] = cx * ts + cy * tc; dc[i + 2] = curve[i + 2] + turn; }
+                if (ground && dg) for (let i = 0; i < ground.length; i += 3) { const cx = ground[i + 1], cy = ground[i + 2]; dg[i] = ground[i]; dg[i + 1] = cx * tc - cy * ts; dg[i + 2] = cx * ts + cy * tc; }
+                if (p.icon && d.icon) { const ix = p.icon.x - p.ax, iy = p.icon.y - p.ay; d.icon.x = ax + ix * tc - iy * ts; d.icon.y = ay + ix * ts + iy * tc; d.icon.angle = p.icon.angle + turn; }
                 continue;
             }
-            labels.push({...p, x: p.x + dx, y: p.y + dy, icon: p.icon && {...p.icon, x: p.icon.x + dx, y: p.icon.y + dy}, opacity: st.opacity});
+            d.x = p.x + dx; d.y = p.y + dy; d.angle = p.angle;
+            if (st.turned) { st.turned = false; if (p.curve) d.curve = p.curve.slice(); if (p.ground) d.ground = p.ground.slice(); }
+            if (p.icon && d.icon) { d.icon.x = p.icon.x + dx; d.icon.y = p.icon.y + dy; d.icon.angle = p.icon.angle; }
         }
         if (this.iconsRev !== this.iconsDone) {
             // Images often come one after another (the variants of a template, the answers to missing images). The
@@ -1815,10 +1823,10 @@ export class Engine {
      * pixels of the screen, each with the point of its label on the screen now. (Text along a line is not among them.)
      */
     private textBoxes(layer: string) {
-        const out: {x: number; y: number; box: number[]}[] = [];
+        const out: {x: number; y: number; box: number[]}[] = [], at: [number, number, number] = [0, 0, 0];
         for (const [key, {placed: p, target}] of this.labels) {
             if (!target || !p.shaped || p.curve || p.src.angle !== null || !key.startsWith(layer + '|')) continue;
-            const [x, y] = this.tr.projectTile(p.tile, p.src.x, p.src.y), s = p.size / EM, w = p.shaped.width * s, h = p.shaped.height * s;
+            const [x, y] = this.tr.projectTile(p.tile, p.src.x, p.src.y, undefined, at), s = p.size / EM, w = p.shaped.width * s, h = p.shaped.height * s;
             const cos = Math.abs(Math.cos(p.angle)), sin = Math.abs(Math.sin(p.angle)), hw = (w * cos + h * sin) / 2 + p.src.padding, hh = (w * sin + h * cos) / 2 + p.src.padding;
             const cx = p.x + x - p.ax, cy = p.y + y - p.ay;
             out.push({x, y, box: [cx - hw, cy - hh, cx + hw, cy + hh]});
