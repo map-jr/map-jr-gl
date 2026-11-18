@@ -201,7 +201,7 @@ export class FullscreenControl implements Control {
             b.setAttribute('aria-pressed', String(this.full));
         };
         name();
-        this.change = () => set(document.fullscreenElement === c);
+        this.change = () => set((c.getRootNode() as Document | ShadowRoot).fullscreenElement === c);
         document.addEventListener('fullscreenchange', this.change);
         this.cleanup = () => { if (c.classList.contains('map-jr-pseudo-fullscreen')) { toggleClass(c, 'pseudo-fullscreen', false); map.resize(); } set(false); };
         return el;

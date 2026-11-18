@@ -149,7 +149,7 @@ export class Map {
     private inputCleanup: (() => void)[] = [];
     /** The last `easeTo` (or `flyTo`) and when it was sent, for a fall back from the worker before it drew (#777). */
     private eased?: {c: Command; at: number};
-    private tilePool?: {connect(): MessagePort[]; release(): void};
+    private tilePool?: {connect(): MessagePort[]; wake(): void; release(): void};
     private removed = false;
     private beforeStyle: (() => void)[] = [];
     protected imageNames = new Set<string>();
@@ -613,6 +613,7 @@ export class Map {
 
     private post(c: Command, transfer?: Transferable[]) {
         if (c.type !== 'query' && c.type !== 'elevation' && c.type !== 'queryRendered' && c.type !== 'frames' && c.type !== 'tileReport' && c.type !== 'tileLoads') { this.tilesLoaded = false; (c as {seq?: number}).seq = ++this.seq; }
+        if (c.type === 'query' || c.type === 'queryRendered') this.tilePool?.wake(); // (#824)
         if (this.ready) this.deliver(c, transfer); else this.queue.push([c, transfer]);
     }
     /** Sends a command. A value that structured clone refuses (a Vue reactive proxy, #242) is sent as a JSON copy. */
