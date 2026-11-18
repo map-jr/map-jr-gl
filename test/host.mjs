@@ -1,5 +1,5 @@
 // Tests of the main API (`createMap`, see src/host.ts) in a real browser: node test/host.mjs (demo server running)
-import {launch, browserName, workerRenders, noWorkerRender} from './launch.mjs';
+import {launch, browserName, workerRenders, inWorker, noWorkerRender} from './launch.mjs';
 import {watchdog} from './watchdog.mjs';
 import {crc32, deflateSync} from 'node:zlib';
 
@@ -362,11 +362,7 @@ for (const renderer of renderers) {
         // elevation tiles are one picture in the page (1000 m everywhere), so no network decides the time. The shortest
         // of three tries is read.
         // Elevation tiles are decoded in the tile workers, which needs OffscreenCanvas there (#778).
-        const decodes = await page.evaluate(() => new Promise(resolve => {
-            const w = new Worker(URL.createObjectURL(new Blob(['postMessage(typeof OffscreenCanvas !== "undefined" && typeof createImageBitmap !== "undefined")'])));
-            // (WebKit does not load this worker here: preventDefault keeps its error from the page, #751.)
-            w.onmessage = e => { resolve(e.data); w.terminate(); }; w.onerror = e => { e.preventDefault(); resolve(false); };
-        }));
+        const decodes = await inWorker(page, 'typeof OffscreenCanvas !== "undefined" && typeof createImageBitmap !== "undefined"');
         const terrainName = `[${renderer}] 3D terrain that is switched on: the map is idle when the elevation data has come, not 200 ms after the camera got its height (#436)`;
         if (!decodes) skip(terrainName, 'no OffscreenCanvas in workers');
         else {
