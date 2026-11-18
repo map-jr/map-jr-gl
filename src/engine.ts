@@ -7,7 +7,7 @@ import {layerRules} from './rules.ts';
 import {compileLayer, isGeometrySource, screenTranslate, loadSprite, tileURL, type CompiledLayer, type FontSource, type ResolvedStyle, type Sprite, type SpriteIcon} from './style.ts';
 import {AtlasSpace} from './atlas-space.ts';
 import {GLRenderer, SPRITE_ATLAS, type DemRef, type GLTile, type TerrainTile} from './gl.ts';
-import {CollisionGrid, moveLabel, placeLabels, renderItems, type Placed, type RenderItem} from './placement.ts';
+import {CollisionGrid, moveLabel, placeLabels, tooFar, renderItems, type Placed, type RenderItem} from './placement.ts';
 import {EM, GlyphAtlas} from './text.ts';
 import {fetchWith, withTimeout, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
 import {decodeElevation, sampleElevation, featureKey, tilesUnderBox, type QueriedFeature, type QuerySet} from './query.ts';
@@ -1690,7 +1690,7 @@ export class Engine {
         }
         const labels: Placed[] = [];
         let fading = false;
-        const turn = -tr.bearing * Math.PI / 180 - this.placeAngle, at: [number, number, number] = [0, 0, 0];
+        const turn = -tr.bearing * Math.PI / 180 - this.placeAngle, at: [number, number, number] = [0, 0, 0], far = tr.depthRange()[1];
         for (const [key, st] of this.labels) {
             if (st.opacity !== st.target) {
                 st.opacity = fadeStep(st.opacity, st.target, dt, this.fade, !this.wentIdle);
@@ -1703,6 +1703,9 @@ export class Engine {
             // comes every 250 ms only, and the fade takes 200 ms more: until then the label showed through the globe.)
             if (globeness && tr.globe!.hidden(tr, (p.tile.x + p.src.x / EXTENT) / 2 ** p.tile.z, (p.tile.y + p.src.y / EXTENT) / 2 ** p.tile.z)) continue;
             const q = tr.projectTile(p.tile, p.src.x, p.src.y, undefined, at);
+            // (An anchor that is too far away or beyond the horizon is not drawn in this frame, as at a placement (#924).
+            // It keeps its state, as on the globe.)
+            if (tooFar(tr, q[2], far)) continue;
             let d = st.drawn!;
             if (st.drawnFrom !== p) {
                 d = st.drawn = {...p, icon: p.icon && {...p.icon, gx: p.icon.gx?.slice(), gy: p.icon.gy?.slice()}, curve: p.curve?.slice(), ground: p.ground?.slice()};
