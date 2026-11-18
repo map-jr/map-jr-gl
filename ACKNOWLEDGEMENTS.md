@@ -23,6 +23,9 @@ BSD-3-Clause.
   and `src/gl.ts` is new.
 - The tile URL tokens `{prefix}` and `{ratio}` follow the rules of `CanonicalTileID.url` in `src/source/tile_id.ts`
   of MapLibre GL JS (BSD-3-Clause). The code in `src/resolve.ts` is new.
+- New data of a GeoJSON source follows the method of `GeoJSONSource` in `src/source/geojson_source.ts` of MapLibre
+  GL JS (BSD-3-Clause): one update of each source is on its way to the workers at a time, and a newer one replaces the
+  update that waits. The code in `src/map.ts`, `src/engine.ts` and `src/tiles.ts` is new.
 - The texts and the CSS of the hint of `cooperativeGestures` in the compat entry follow MapLibre GL JS
   (BSD-3-Clause): `src/ui/handler/cooperative_gestures.ts` and `maplibre-gl.css`.
 - The option `locale` of the compat entry reads the keys of `src/ui/default_locale.ts` of MapLibre GL JS 6.17.0

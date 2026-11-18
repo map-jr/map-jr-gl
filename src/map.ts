@@ -559,6 +559,9 @@ export class Map {
     /** Sends again what an engine gets through commands, and not through the style. A new engine needs it. */
     private resend() {
         this.geoSent = undefined;
+        // (The answers for data sent to the old engine do not come: the data that waits goes to the new one.)
+        this.geoBusy.clear();
+        if (this.geoPending.size) queueMicrotask(() => { if (this.restyled === this.restyles) this.sendGeo(); });
         this.limits();
         if (this.rulesSent) this.sendRequestRules();
         if (this.wantsFrames) this.post({type: 'frames', on: true});
@@ -621,7 +624,11 @@ export class Map {
     private deliver(c: Command, transfer?: Transferable[]) {
         try { this.send(c, transfer); } catch (e) {
             try { if ((e as Error).name !== 'DataCloneError') throw e; this.send(plain(c), transfer); }
-            catch (error) { this.fire('error', {error: new Error(`[map-jr-gl] The map could not copy data to its workers (${(e as Error).message}). Pass plain objects (toRaw() in Vue).`, {cause: error})}); }
+            catch (error) {
+                // (Data that did not go gets no `geojsonDone`: the source must not wait for it.)
+                if (c.type === 'geojson') this.geoBusy.delete(c.source);
+                this.fire('error', {error: new Error(`[map-jr-gl] The map could not copy data to its workers (${(e as Error).message}). Pass plain objects (toRaw() in Vue).`, {cause: error})});
+            }
         }
     }
 
@@ -678,6 +685,9 @@ export class Map {
             this.answer(e.url, e.kind).then(a => a, (err): RequestAnswer => ({error: String(err.message)})).then(a => this.post({type: 'resourceResult', id: e.id, ...a}, a.data ? [a.data] : undefined));
         } else if (e.type === 'contextlost') {
             this.contextLost();
+        } else if (e.type === 'geojsonDone') {
+            this.geoBusy.delete(e.source);
+            if (this.geoPending.has(e.source) && this.restyled === this.restyles) this.sendGeo();
         } else if (e.type === 'pong') {
             this.pong = e.n;
         } else if (e.type === 'frame') {
@@ -1096,8 +1106,10 @@ export class Map {
                 const old = sent.get(name), key = JSON.stringify([src.options, src.maxzoom]);
                 if (!old || old.data !== src.data || old.key !== key) {
                     data[name] = src.data; sent.set(name, {data: src.data, key});
-                    // (This message carries the newest data of a `setData` that waits: it is not sent again.)
-                    if (this.geoPending.get(name) === src.data) this.geoPending.delete(name);
+                    // (This message carries the newest data of a `setData` that waits: it is not sent again. Data of a
+                    // `setData` from before this change of the style waits behind an update in flight, and this data
+                    // replaces it: sent later, it would draw over the newer data, #856.)
+                    if (this.geoPending.get(name) === src.data || (this.geoTurns.get(name) ?? turn) < turn) this.geoPending.delete(name);
                 }
                 sources[name] = {...src, data: undefined};
             }
@@ -1368,21 +1380,27 @@ export class Map {
         // (Calls in the same task send only the last data of each source: the tile workers index it once.)
         // (While a change of the style is on its way, the engine may not know the source yet, and that change carries
         // older data: the data waits and is sent after that change.)
-        if (!this.geoPending.size) queueMicrotask(() => { if (this.restyled === this.restyles) this.sendGeo(); });
+        if (!this.geoQueued) { this.geoQueued = true; queueMicrotask(() => { this.geoQueued = false; if (this.restyled === this.restyles) this.sendGeo(); }); }
         this.geoPending.set(id, data);
+        this.geoTurns.set(id, this.restyles);
     }
     private sendGeo() {
         const sent = this.geoSent ??= geoOf(this.resolved);
         // (Data from `setData` is always sent, also the same object again: it can have changed in place.)
+        // One update of each source is on its way to the tile workers at a time, and a newer one replaces the one that
+        // waits, as in MapLibre GL JS. Without this, a page that sets data in each frame fills the queue of a worker
+        // engine with copies of the data, and the engine draws no frame until the updates stop (#856).
         for (const [source, d] of this.geoPending) {
+            if (this.geoBusy.has(source)) continue;
+            this.geoPending.delete(source);
             if (!this.rawStyle?.sources[source]) continue;
+            this.geoBusy.add(source);
             this.post({type: 'geojson', source, data: d});
             const old = sent.get(source), src = this.resolved?.sources[source];
             if (old) old.data = d;
             // (A new engine, after a fall back or a restart, starts with `resolved`: it must have this data; #852.)
             if (src?.type === 'geojson') this.resolved.sources[source] = {...src, data: d};
         }
-        this.geoPending.clear();
     }
     /**
      * The data of each GeoJSON source that the engine has, and its options as text. `undefined`: as in `resolved` (the
@@ -1391,6 +1409,11 @@ export class Map {
     private geoSent?: globalThis.Map<string, {data: unknown, key: string}>;
     /** The newest data of each GeoJSON source that waits to be sent to the engine at the end of the task. */
     private geoPending = new globalThis.Map<string, unknown>();
+    /** The GeoJSON sources whose last data the engine has not yet indexed (see `geojsonDone`). */
+    private geoBusy = new Set<string>();
+    private geoQueued = false;
+    /** The change of the style (`restyles`) at the time of the `setData` that waits in `geoPending`, for each source. */
+    private geoTurns = new globalThis.Map<string, number>();
     // (A copy of the description: the map keeps the network result of a source by this object, and another map that is
     // given the same object must have its own. The data of a GeoJSON source is not copied.)
     addSource(id: string, source: object) { return this.editStyle(s => { s.sources[id] = {...source}; }); }
