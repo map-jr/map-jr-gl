@@ -5,7 +5,9 @@
 // canvas is distorted, the image is read through WebGL (`texImage2D` and `readPixels`), which is not distorted.
 //
 // The result of the check and the WebGL context are kept per JavaScript context (page or worker). They describe the
-// browser, not a map, so two maps can share them.
+// browser, not a map, so two maps can share them. The context exists only in a browser that distorts the canvas, and
+// it is kept because it reads every elevation and contour tile; such a page holds one for each JavaScript context
+// that reads tiles (the page and each tile worker), which counts toward WebKit's limit of active contexts (#839).
 
 type Canvas = OffscreenCanvas | HTMLCanvasElement;
 type Source = CanvasImageSource & TexImageSource;
