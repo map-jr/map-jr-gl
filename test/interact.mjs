@@ -1360,16 +1360,23 @@ for (const mode of renderers) {
             const pad = Object.assign(document.createElement('canvas'), {width: 1, height: 1}).getContext('2d', {willReadFrequently: true});
             const middle = async layers => {
                 const m = new mod.Map({container: el, renderer: 'main', center: [0, 0], zoom: 2, attributionControl: false, fadeDuration: 0, style: {version: 8,
-                    sources: {p: {type: 'geojson', data: point}, s: {type: 'geojson', data: square}}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}, ...layers]}});
-                const colour = await new Promise(r => { m.once('idle', () => { const c = m.getCanvas(); pad.drawImage(c, c.width / 2, c.height / 2, 1, 1, 0, 0, 1, 1); r([...pad.getImageData(0, 0, 1, 1).data].slice(0, 3).join()); }); setTimeout(() => r('no idle'), 8000); });
+                    sources: {p: {type: 'geojson', data: point}, q: {type: 'geojson', data: {...point, geometry: {type: 'Point', coordinates: [-10, 0]}}}, s: {type: 'geojson', data: square}}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}, ...layers]}});
+                const colour = await new Promise(r => { m.once('idle', () => {
+                    const c = m.getCanvas(), at = x => { pad.drawImage(c, x, c.height / 2, 1, 1, 0, 0, 1, 1); return [...pad.getImageData(0, 0, 1, 1).data].slice(0, 3).join(); };
+                    const centre = at(c.width / 2);
+                    r(layers.length > 2 ? centre + '/' + at(m.project([-10, 0]).x * c.width / 200) : centre);
+                }); setTimeout(() => r('no idle'), 8000); });
                 m.remove();
                 return colour;
             };
-            const out = {fillAbove: await middle([label, fill]), fillBelow: await middle([fill, label])};
+            // A second symbol layer after the fill, with its label on the left, also over the square (#885).
+            const left = {id: 'left', type: 'symbol', source: 'q', layout: {'text-field': 'MMM', 'text-size': 24, 'text-allow-overlap': true, 'text-ignore-placement': true}, paint: {'text-color': '#000', 'text-halo-color': '#000', 'text-halo-width': 8}};
+            const out = {fillAbove: await middle([label, fill]), fillBelow: await middle([fill, label]), fillBetween: await middle([label, fill, left])};
             el.remove();
             return out;
         });
         check('[main] a fill layer after a symbol layer draws over its labels, and a fill layer before it draws under them', order.fillAbove === '255,0,0' && order.fillBelow === '0,0,0', JSON.stringify(order));
+        check('[main] a fill layer between two symbol layers draws over the labels of the first and under the labels of the second (#885)', order.fillBetween === '255,0,0/0,0,0', JSON.stringify(order));
 
         // refreshTiles with four tile workers: queries after it see the new tile, and each query goes to the worker
         // that loaded the tile, so the tile is requested one time before the refresh and one time after it.

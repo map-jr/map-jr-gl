@@ -1613,19 +1613,52 @@ export class GLRenderer {
         const target: [number, number] = [this.canvas.width, this.canvas.height];
         const use = (name: keyof typeof SHADERS) => this.use(name, tr);
 
-        // All labels are drawn at once, above the last symbol layer that has labels (`above` is the index after it).
-        // The layers that come after it in the style are drawn over the labels, as in MapLibre GL JS: their icons that
-        // the tiles have in buffers and, without 3D terrain, the layers of other types. The rest is drawn below all
-        // labels. (With 3D terrain, the layers on the ground are pictures on the terrain and stay below the labels.)
-        let above = 0;
-        s.layers.forEach((L, i) => { if (L.type === 'symbol' && L.visible && tr.zoom >= L.minzoom && tr.zoom < L.maxzoom && s.items.get(L.source!)?.some(it => it.tile.labels[L.id]?.length)) above = i + 1; });
-        if (s.terrain) { this.drawTerrain(s); this.drawLayers(s, tr, s.items, target, 'buildings'); }
-        else this.drawLayers(s, tr, s.items, target, 'all', undefined, 0, above);
-        this.drawIcons(s, tr, 0, above);
+        // Labels are drawn above the last symbol layer that has labels (`above` is the index after it). Without 3D
+        // terrain, a visible layer of another type between two symbol layers with labels splits them, as in MapLibre GL
+        // JS: the labels of the layers before it are drawn below it and the others over it. Each part costs its own
+        // draw calls, so symbol layers next to each other share one. The layers after `above` are drawn over all
+        // labels: their icons that the tiles have in buffers and, without 3D terrain, the layers of other types. (With
+        // 3D terrain, the layers on the ground are pictures on the terrain and stay below all labels.)
+        const shown = (L: CompiledLayer) => L.visible && tr.zoom >= L.minzoom && tr.zoom < L.maxzoom;
+        let above = 0, first = -1;
+        s.layers.forEach((L, i) => { if (L.type === 'symbol' && shown(L) && s.items.get(L.source!)?.some(it => it.tile.labels[L.id]?.length)) { above = i + 1; if (first < 0) first = i; } });
+        if (s.terrain) {
+            this.drawTerrain(s); this.drawLayers(s, tr, s.items, target, 'buildings');
+            this.drawIcons(s, tr, 0, above);
+            this.drawLabels(s, s.labels);
+        } else {
+            // The starts of the parts: each visible layer of another type after the first symbol layer with labels.
+            const cuts = [0];
+            for (let i = first + 1; i < above; i++) if (s.layers[i].type !== 'symbol' && shown(s.layers[i])) cuts.push(i);
+            cuts.push(above);
+            let part: Map<string, number> | undefined;
+            if (cuts.length > 2) {
+                part = new Map();
+                for (let k = 0; k + 1 < cuts.length; k++) for (let i = cuts[k]; i < cuts[k + 1]; i++) part.set(s.layers[i].id, k);
+            }
+            for (let k = 0; k + 1 < cuts.length; k++) {
+                this.drawLayers(s, tr, s.items, target, 'all', undefined, cuts[k], cuts[k + 1]);
+                this.drawIcons(s, tr, cuts[k], cuts[k + 1]);
+                this.drawLabels(s, part ? s.labels.filter(l => (part.get(l.layer) ?? cuts.length - 2) === k) : s.labels);
+            }
+        }
 
+        // The layers above the labels, each in its place: icons of symbol layers and, without terrain, other layers.
+        for (let i = above; i < s.layers.length; i++) {
+            if (s.layers[i].type === 'symbol') this.drawIcons(s, tr, i, i + 1);
+            else if (!s.terrain) this.drawLayers(s, tr, s.items, target, 'all', undefined, i, i + 1);
+        }
+
+        gl.bindVertexArray(null);
+        return behind;
+    }
+
+    /** Draws placed labels: their icons, then their text in one pass for the halos and one for the fill. */
+    private drawLabels(s: Scene, labels: Placed[]) {
+        const gl = this.gl, use = (name: keyof typeof SHADERS) => this.use(name, s.tr);
         // Style-sheet icons and images added at runtime live in different textures.
         for (const custom of [false, true]) {
-            const icons = this.iconQuads(s.labels, custom, s.icon);
+            const icons = this.iconQuads(labels, custom, s.icon);
             if (!icons.length) continue;
             const u = use('sprite');
             gl.activeTexture(gl.TEXTURE0);
@@ -1638,8 +1671,8 @@ export class GLRenderer {
             gl.drawArrays(gl.TRIANGLES, 0, icons.length / 9);
         }
 
-        if (s.labels.length) {
-            const quads = this.textQuads(s.labels); // shaping may add glyphs, so build quads before uploading the atlas
+        if (labels.length) {
+            const quads = this.textQuads(labels); // shaping may add glyphs, so build quads before uploading the atlas
             gl.activeTexture(gl.TEXTURE0);
             gl.bindTexture(gl.TEXTURE_2D, this.sdfTex);
             if (this.sdfVersion !== s.atlas.version) {
@@ -1663,14 +1696,6 @@ export class GLRenderer {
             gl.drawArrays(gl.TRIANGLES, 0, n);
         }
 
-        // The layers above the labels, each in its place: icons of symbol layers and, without terrain, other layers.
-        for (let i = above; i < s.layers.length; i++) {
-            if (s.layers[i].type === 'symbol') this.drawIcons(s, tr, i, i + 1);
-            else if (!s.terrain) this.drawLayers(s, tr, s.items, target, 'all', undefined, i, i + 1);
-        }
-
-        gl.bindVertexArray(null);
-        return behind;
     }
 
     /** Kept between frames and grown when necessary, as `textData` is: icons are built again on each frame. */

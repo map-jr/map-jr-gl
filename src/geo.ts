@@ -229,11 +229,13 @@ export class Transform {
      * (and z pixels above the height of the ground at the centre) is rotated by the bearing, tilted by the pitch, then seen in perspective from
      * `cameraDistance` away. With no pitch this reduces to the plain 2D rotation.
      */
-    private view(dx: number, dy: number, z = 0): [number, number, number] {
+    private view(dx: number, dy: number, z = 0, out?: [number, number, number]): [number, number, number] {
         const a = this.angle, cos = Math.cos(a), sin = Math.sin(a), p = this.pitch * Math.PI / 180, d = this.cameraDistance;
         const rx = cos * dx - sin * dy, ry = sin * dx + cos * dy;
         const depth = d - ry * Math.sin(p) - z * Math.cos(p), k = d / depth;
-        return [rx * k + this.cx, (ry * Math.cos(p) - z * Math.sin(p)) * k + this.cy, depth];
+        const o = out ?? [0, 0, 0];
+        o[0] = rx * k + this.cx; o[1] = (ry * Math.cos(p) - z * Math.sin(p)) * k + this.cy; o[2] = depth;
+        return o;
     }
 
     /** Mercator [0..1] coordinates to screen pixels (on the ground surface, with 3D terrain). */
@@ -294,15 +296,18 @@ export class Transform {
     }
 
     /** A point in a tile (tile units, optional height in metres) to screen pixels. */
-    /** Tile units to screen pixels. The third value is the distance from the camera, in pixels along the view direction. */
-    projectTile(id: TileID, x: number, y: number, metres?: number): [number, number, number] {
+    /**
+     * Tile units to screen pixels. The third value is the distance from the camera, in pixels along the view direction.
+     * With `out`, the result is written into it and it is returned (on the globe, a new array is still made).
+     */
+    projectTile(id: TileID, x: number, y: number, metres?: number, out?: [number, number, number]): [number, number, number] {
         const ws = this.worldSize, n = 2 ** id.z, s = ws / n / EXTENT;
         metres ??= this.heightAt ? this.heightAt((id.x + x / EXTENT) / n, (id.y + y / EXTENT) / n) : this.elevation;
         if (this.globeness) {
             const flat = this.view((id.x + id.w * n) * ws / n - mercX(this.lng) * ws + x * s, id.y * ws / n - mercY(this.lat) * ws + y * s, (metres - this.elevation) * this.pixelsPerMetre);
             return this.globe!.toScreen(this, (id.x + x / EXTENT) / n, (id.y + y / EXTENT) / n, metres, flat);
         }
-        return this.view((id.x + id.w * n) * ws / n - mercX(this.lng) * ws + x * s, id.y * ws / n - mercY(this.lat) * ws + y * s, (metres - this.elevation) * this.pixelsPerMetre);
+        return this.view((id.x + id.w * n) * ws / n - mercX(this.lng) * ws + x * s, id.y * ws / n - mercY(this.lat) * ws + y * s, (metres - this.elevation) * this.pixelsPerMetre, out);
     }
 
     /** Tile units (x, y) and metres (z) to clip space, as a column-major 4x4 matrix for the GPU. */
