@@ -2062,7 +2062,8 @@ for (const mode of renderers) {
     }
     // A GeoJSON source whose URL fails (404) is requested, and fires `error`, as often as in MapLibre GL JS 6.17: one time,
     // and not again after a paint change or a setStyle (with `diff`) that keeps the source. `diff: false` loads it again.
-    // A second map with the same style object gets its own `error` (#809).
+    // A second map with the same style object gets its own `error` (#809). MapLibre GL JS in WebKit requests the
+    // source again more than 1 s after `diff: false`, so that step waits 4 s (#931).
     {
         await page.route(/\/no-such-809\//, r => { globalThis.asked809++; return r.fulfill({status: 404, body: ''}); });
         const run = (lib, mode) => page.evaluate(async ([lib, mode]) => {
@@ -2078,7 +2079,7 @@ for (const mode of renderers) {
                 await wait(1500);
             }
             const [m] = maps, out = {start: [await window.asked809(), ...errors]};
-            const step = async (name, f) => { f(); await wait(1000); out[name] = [await window.asked809(), ...errors]; };
+            const step = async (name, f) => { f(); await wait(name === 'noDiff' ? 4000 : 1000); out[name] = [await window.asked809(), ...errors]; };
             await step('paint', () => m.setPaintProperty('bg', 'background-color', '#eee'));
             await step('sameObject', () => m.setStyle(first));
             await step('newStyle', () => m.setStyle(style('#f00')));
