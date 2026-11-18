@@ -5,7 +5,7 @@
     {"pattern": "^combinations/heatmap-translucent--(background|fill)-opaque$", "label": "heatmap over an opaque layer above it", "decision": "wontfix", "issue":570, "reason": "MapLibre GL JS draws a heatmap over an opaque layer that is above it in the style. The library follows the order of the style. The owner decided on 2026-11-17 to keep this."},
     {"pattern": "^projection/globe/", "label": "globe", "decision": "later", "issue": 463, "reason": "The work on the globe is in issue #463."},
     {"pattern": "^sky/roll/roll(?!-0)|^terrain/fog.*-roll$", "label": "roll", "decision": "later", "reason": "The camera has no roll (setRoll has no effect)."},
-    {"pattern": "^sky/atmosphere-blend/|^terrain/fog-sky-blend-globe$", "label": "atmosphere", "decision": "later", "reason": "The atmosphere around the globe is a halo (#888); MapLibre GL JS draws the scattering of the sun, which lights the day side and darkens the night side of the globe (part C of docs/sky-and-fog.md)."},
+    {"pattern": "^terrain/fog-sky-blend-globe$", "label": "atmosphere", "decision": "later", "reason": "The globe draws the atmosphere (#888) but no sky and no fog, so the sky above the horizon of a globe with 3D terrain is missing."},
     {"pattern": "^terrain/fog$|^high-pitch/pitch95", "label": "sky and fog", "decision": "later", "reason": "terrain/fog differs by about 5% at the edge of the fog; pitch95 needs the elevation of the camera."},
     {"pattern": "^mlt/", "label": "MLT", "decision": "later", "reason": "MapLibre Tiles (MLT) are not available."},
     {"pattern": "^(video|canvas)/", "label": "video and canvas sources", "decision": "later", "reason": "Video and canvas sources are not available."},

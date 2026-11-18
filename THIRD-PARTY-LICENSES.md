@@ -28,7 +28,7 @@ THIS SOFTWARE.
 ## MapLibre GL JS
 
 Map Jr. GL contains no files of MapLibre GL JS. Some methods and formulas follow MapLibre GL JS, and the built
-files contain one copied CSS rule of MapLibre GL JS 6.17.0, the rule for pseudo fullscreen (see `ACKNOWLEDGEMENTS.md`). Its licence text is here for that reason.
+files contain one copied CSS rule of MapLibre GL JS 6.17.0, the rule for pseudo fullscreen (see `ACKNOWLEDGEMENTS.md`). The shader of the atmosphere on the globe (`halo` in `src/gl.ts`) is a close translation of `atmosphere.fragment.glsl` of MapLibre GL JS 6.17, changed: the ray and the camera are in the space of the unit sphere, and the code is shortened. Its licence text is here for these reasons.
 
 ```
 Copyright (c) 2023, MapLibre contributors
