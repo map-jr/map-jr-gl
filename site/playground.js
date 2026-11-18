@@ -42,6 +42,8 @@ const map = new Map({
 map.addControl(new NavigationControl({visualizePitch: true}), 'bottom-right');
 
 const $ = id => document.getElementById(id);
+// On a phone the panel is a bottom sheet that starts shrunk to one row.
+if (matchMedia('(max-width: 600px)').matches) $('panel').open = false;
 const skyKeys = ['sky-color', 'horizon-color', 'fog-color', 'sky-horizon-blend', 'horizon-fog-blend', 'fog-ground-blend', 'atmosphere-blend'];
 
 // Apply the state that is not the camera to the map. It runs when the style has loaded and after each change.
