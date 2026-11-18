@@ -2,7 +2,7 @@ import {fetchWith, withTimeout, type RequestAnswer} from './requests.ts';
 import {protocolListeners, protocols, toBytes} from './protocols.ts';
 import {LngLat, LngLatBounds, type LngLatBoundsInput} from './lnglat.ts';
 import type {FilterSpecification} from './compat-types.ts';
-import {Transform, bezier, fitBox, globeStops, groundHeight, heightsChanged, mercX, mercY, sides, toLngLat, type LngLatLike} from './geo.ts';
+import {Transform, bezier, fitBox, turnInertia, globeStops, groundHeight, heightsChanged, mercX, mercY, sides, toLngLat, type LngLatLike} from './geo.ts';
 import type {PreparedSource} from './geojson.ts';
 import {DEFAULT_FONT, absolute, keep, kept, resolveStyle, type ResolvedStyle} from './resolve.ts';
 import {layerRules} from './rules.ts';
@@ -1908,16 +1908,11 @@ export class Map {
             // Inertia from the last 60ms of movement; a pointer that stopped before release gives none.
             const last = samples[samples.length - 1];
             const first = samples.find(s => now - s.t <= 60) ?? last;
-            // A rotate drag turns on as in MapLibre GL JS: its samples are the bearing and the pitch that the drag asked
-            // for (the view of a worker renderer can be a frame behind), one per frame of 16 ms. The change from the first
-            // sample of the last 60 ms (or the last but one) up to the release gives a speed (at most 360 degrees per second
-            // for the bearing, 90 for the pitch) that decelerates by 1000 degrees per second.
-            const from = first === last ? samples[samples.length - 2] : first;
-            if (rotating && from && this.dragRotate.isEnabled()) {
-                const ease = (d: number, max: number) => Math.max(-max, Math.min(max, d * 300 / (now - from.t))), b = ease(last.x - from.x, 360), p = ease(last.y - from.y, 90);
-                samples = [];
-                if (b || p) this.easeTo({bearing: last.x + Math.max(-179, Math.min(179, b * Math.abs(b) / 600)), pitch: last.y + p * Math.abs(p) / 600, duration: Math.max(Math.abs(b), Math.abs(p)) * 10 / 3, easing: bezier(0, 0, 0.3, 1)});
-            }
+            // A rotate drag turns on as in MapLibre GL JS (see `turnInertia`). Its samples are the bearing and the pitch
+            // that the drag asked for, because the view of a worker renderer can be a frame behind.
+            const spin = rotating && this.dragRotate.isEnabled() && turnInertia(samples, now);
+            if (rotating) samples = [];
+            if (spin) this.easeTo({bearing: last.x + spin.bearing, pitch: last.y + spin.pitch, duration: spin.duration, easing: bezier(0, 0, 0.3, 1)});
             if (wasDragging && last && first !== last && now - last.t < 60 && (last.x !== first.x || last.y !== first.y)) {
                 this.awaitingInertia = true;
                 this.post({type: 'fling', dx: last.x - first.x, dy: last.y - first.y, ms: now - first.t});
