@@ -1066,7 +1066,7 @@ const popup = map.overlay(content, {lngLat, popup: true, onClose: () => popup.re
 | `draggable` | `true` to let the user move the element with the mouse, a finger or a pen. The default is `false`. It has no effect on a popup. |
 | `onDragStart`, `onDrag`, `onDragEnd` | For a draggable element: called when a drag starts, at each move, and when it ends, with the position of the element as `[lng, lat]`. |
 
-A popup of `overlay()` does not take the keyboard focus when it opens, and it stays open when the map moves. The popup of `@map-jr/map-jr-gl/maplibre-compat` has the options `focusAfterOpen`, `closeOnMove` and `trackPointer` for that.
+A popup of `overlay()` takes the keyboard focus when the user opened it from the keyboard. The library counts a popup as opened from the keyboard when it opens within one second of a key press on the map's container and no pointer press on the container came in between. The focus goes to the first element in the popup that can take it, or to the close button when no element in the content can take it. When the popup closes with the focus inside, through Escape or the close button, the focus returns to the element in the map that had it before, or to the map. A popup that opens after a click, or without user input, leaves the focus where it is. A popup stays open when the map moves. The popup of `@map-jr/map-jr-gl/maplibre-compat` has the options `focusAfterOpen`, `closeOnMove` and `trackPointer` for that.
 
 A drag starts once the pointer has moved 3 pixels, as in MapLibre GL JS. A click without that move stays a click
 and calls no drag callback, and the click at the end of a drag does not reach the element. The map does not pan
