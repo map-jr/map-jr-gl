@@ -943,7 +943,8 @@ for (const renderer of renderers) {
         // 3e. Common mistakes: each gives one warning that says what to write, and a correct description gives none.
         const warnings = await page.evaluate(async renderer => {
             const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), said = [], log = console.warn;
-            console.warn = (...a) => said.push(a.join(' '));
+            // (The fallback of renderer 'worker' to the main thread warns where a worker cannot render, #792: not a mistake, #813.)
+            console.warn = (...a) => { const m = a.join(' '); if (!m.startsWith('[map-jr-gl] Worker rendering unavailable')) said.push(m); };
             const div = style => document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;' + style}));
             const idle = host => new Promise(r => { host.state.subscribe(s => s.idle, v => v && r(true)); setTimeout(() => r(false), 8000); });
             const empty = {type: 'FeatureCollection', features: []}, dot = '<svg viewBox="0 0 8 8"><circle cx="4" cy="4" r="4"/></svg>';
