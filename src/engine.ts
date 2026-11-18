@@ -90,6 +90,8 @@ export type EngineEvent =
     /** `labels`: how many labels and icons of the last frame were placed among the labels (the icons that the tiles have in buffers are not counted). */
     | {type: 'stats'; fps: number; frameMs: number; labels: number}
     | {type: 'frame'}
+    /** The tile workers have indexed the data of the last `geojson` command for this source. The page sends the next data then. */
+    | {type: 'geojsonDone'; source: string}
     /** The engine has drawn a frame to its end after the `ping` command with this number. */
     | {type: 'pong'; n: number}
     /** The browser took the WebGL context away (for example, a phone that needs the memory). The page starts the map again. */
@@ -962,7 +964,8 @@ export class Engine {
                 this.placeDirty = true; this.iconsRev++;
                 break;
             case 'geojson': {
-                for (const b of this.backends) b.setGeoJSON(c.source, c.data, this.style.sources[c.source]?.options, this.style.sources[c.source]?.maxzoom);
+                const done = () => this.emit({type: 'geojsonDone', source: c.source});
+                Promise.all(this.backends.map(b => b.setGeoJSON(c.source, c.data, this.style.sources[c.source]?.options, this.style.sources[c.source]?.maxzoom))).then(done, done);
                 this.newData(c.source);
                 break;
             }

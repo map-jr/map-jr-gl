@@ -180,7 +180,8 @@ export interface TileBackend {
     setRequests(rules: RequestRules, ask: Ask): void;
     /** Fetches and decodes an elevation tile for the GPU and for 3D terrain. */
     loadElevation(req: ElevationRequest): Promise<ElevationTile | null>;
-    setGeoJSON(source: string, data: unknown, options?: GeoJSONOptions, maxzoom?: number): void;
+    /** Sets the data of a GeoJSON source. A worker answers once it has indexed the data (see `geojsonDone` of the engine). */
+    setGeoJSON(source: string, data: unknown, options?: GeoJSONOptions, maxzoom?: number): Promise<unknown> | void;
     /** Changes the feature state of one source ("sourceLayer|id" -> state, `null` removes it); `replace` drops the other states. */
     setFeatureState(source: string, states: FeatureStates, replace?: boolean): void;
     /** The slots of each image that is an SVG template. Tiles that are built later give each icon the name of its variant. */
@@ -243,7 +244,13 @@ export class PortBackend implements TileBackend {
     loadElevation(req: ElevationRequest): Promise<ElevationTile | null> {
         return new Promise((resolve, reject) => { this.pending.set(req.id, {resolve, reject}); this.port.postMessage({type: 'dem', req}); });
     }
-    setGeoJSON(source: string, data: unknown, options?: GeoJSONOptions, maxzoom?: number) { this.port.postMessage({type: 'geojson', source, data, options, maxzoom}); }
+    setGeoJSON(source: string, data: unknown, options?: GeoJSONOptions, maxzoom?: number) {
+        return new Promise((resolve, reject) => {
+            const id = this.nextQuery--;
+            this.pending.set(id, {resolve, reject});
+            this.port.postMessage({type: 'geojson', id, source, data, options, maxzoom});
+        });
+    }
     setFeatureState(source: string, states: FeatureStates, replace?: boolean) { this.port.postMessage({type: 'featureState', source, states, replace}); }
     setTemplates(templates: Record<string, string[]>) { this.port.postMessage({type: 'templates', templates}); }
     setContours(sources: Record<string, ContourConfig>) { this.port.postMessage({type: 'contours', sources}); }
@@ -276,7 +283,7 @@ export function serveTiles(port: Port) {
         if (m.type === 'requests') rules = m.rules;
         else if (m.type === 'resourceResult') { asked.get(m.id)?.(m); asked.delete(m.id); }
         else if (m.type === 'style') builder.setStyle(m.layers, m.state);
-        else if (m.type === 'geojson') builder.setGeoJSON(m.source, m.data, m.options, m.maxzoom);
+        else if (m.type === 'geojson') { try { builder.setGeoJSON(m.source, m.data, m.options, m.maxzoom); } finally { port.postMessage({id: m.id, result: null}); } }
         else if (m.type === 'featureState') builder.setFeatureState(m.source, m.states, m.replace);
         else if (m.type === 'templates') builder.setTemplates(m.templates);
         else if (m.type === 'contours') builder.setContours(m.sources);

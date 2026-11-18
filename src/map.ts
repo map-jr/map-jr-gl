@@ -558,6 +558,9 @@ export class Map {
     /** Sends again what an engine gets through commands, and not through the style. A new engine needs it. */
     private resend() {
         this.geoSent = undefined;
+        // (The answers for data sent to the old engine do not come: the data that waits goes to the new one.)
+        this.geoBusy.clear();
+        if (this.geoPending.size) queueMicrotask(() => { if (this.restyled === this.restyles) this.sendGeo(); });
         this.limits();
         if (this.rulesSent) this.sendRequestRules();
         if (this.wantsFrames) this.post({type: 'frames', on: true});
@@ -676,6 +679,9 @@ export class Map {
             this.answer(e.url, e.kind).then(a => a, (err): RequestAnswer => ({error: String(err.message)})).then(a => this.post({type: 'resourceResult', id: e.id, ...a}, a.data ? [a.data] : undefined));
         } else if (e.type === 'contextlost') {
             this.contextLost();
+        } else if (e.type === 'geojsonDone') {
+            this.geoBusy.delete(e.source);
+            if (this.geoPending.has(e.source) && this.restyled === this.restyles) this.sendGeo();
         } else if (e.type === 'pong') {
             this.pong = e.n;
         } else if (e.type === 'frame') {
@@ -1358,21 +1364,26 @@ export class Map {
         // (Calls in the same task send only the last data of each source: the tile workers index it once.)
         // (While a change of the style is on its way, the engine may not know the source yet, and that change carries
         // older data: the data waits and is sent after that change.)
-        if (!this.geoPending.size) queueMicrotask(() => { if (this.restyled === this.restyles) this.sendGeo(); });
+        if (!this.geoQueued) { this.geoQueued = true; queueMicrotask(() => { this.geoQueued = false; if (this.restyled === this.restyles) this.sendGeo(); }); }
         this.geoPending.set(id, data);
     }
     private sendGeo() {
         const sent = this.geoSent ??= geoOf(this.resolved);
         // (Data from `setData` is always sent, also the same object again: it can have changed in place.)
+        // One update of each source is on its way to the tile workers at a time, and a newer one replaces the one that
+        // waits, as in MapLibre GL JS. Without this, a page that sets data in each frame fills the queue of a worker
+        // engine with copies of the data, and the engine draws no frame until the updates stop (#856).
         for (const [source, d] of this.geoPending) {
+            if (this.geoBusy.has(source)) continue;
+            this.geoPending.delete(source);
             if (!this.rawStyle?.sources[source]) continue;
+            this.geoBusy.add(source);
             this.post({type: 'geojson', source, data: d});
             const old = sent.get(source), src = this.resolved?.sources[source];
             if (old) old.data = d;
             // (A new engine, after a fall back or a restart, starts with `resolved`: it must have this data; #852.)
             if (src?.type === 'geojson') this.resolved.sources[source] = {...src, data: d};
         }
-        this.geoPending.clear();
     }
     /**
      * The data of each GeoJSON source that the engine has, and its options as text. `undefined`: as in `resolved` (the
@@ -1381,6 +1392,9 @@ export class Map {
     private geoSent?: globalThis.Map<string, {data: unknown, key: string}>;
     /** The newest data of each GeoJSON source that waits to be sent to the engine at the end of the task. */
     private geoPending = new globalThis.Map<string, unknown>();
+    /** The GeoJSON sources whose last data the engine has not yet indexed (see `geojsonDone`). */
+    private geoBusy = new Set<string>();
+    private geoQueued = false;
     // (A copy of the description: the map keeps the network result of a source by this object, and another map that is
     // given the same object must have its own. The data of a GeoJSON source is not copied.)
     addSource(id: string, source: object) { return this.editStyle(s => { s.sources[id] = {...source}; }); }
