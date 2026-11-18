@@ -369,6 +369,8 @@ export class Engine {
     /** `version` is the elevation data that the heights were made from; `checked` is the newest data that is known not to change them. */
     private meshHeights = new Map<string, {data: Float32Array; version: number; checked: number; used: number}>();
     private meshBehind = false;
+    /** 3D terrain: an elevation tile that the ground needs is still loading in this frame. */
+    private demLoading = false;
     private grab: {lng: number; lat: number; at: number; seq: number} | null = null;
     /** 3D terrain: the centre was set by the API rather than reached by a gesture, so it keeps its position. */
     private centreGiven = true;
@@ -560,6 +562,7 @@ export class Engine {
         const tr = this.tr, terrain = this.style.terrain!, demSrc = this.style.sources[terrain.source], out: TerrainTile[] = [];
         let meshBudget = 4;
         this.meshBehind = false;
+        this.demLoading = false;
         this.viewCovers.clear();
         for (const [k, m] of this.meshHeights) if (this.frameNo - m.used > 120) this.meshHeights.delete(k);
         for (const [k, m] of this.groundCache) if (this.frameNo - (m.used ?? 0) > 120) this.groundCache.delete(k);
@@ -595,8 +598,10 @@ export class Engine {
                 const x = t.x >> t.z - dz, y = t.y >> t.z - dz, dk = `${dz}/${x}/${y}`, demKey = terrain.source + '|' + dk;
                 wanted.add(demKey);
                 const dem = this.tiles.get(demKey);
-                if (!dem) { this.request(terrain.source, {z: dz, x, y, w: 0, key: dk}, demKey); break; }
+                if (!dem) { this.request(terrain.source, {z: dz, x, y, w: 0, key: dk}, demKey); this.demLoading = true; break; }
                 dem.used = this.frameNo;
+                // (A loading elevation tile holds `idle` back: no layer may draw the source, and then nothing else waits for it, #820.)
+                if (dem.state === 'loading') this.demLoading = true;
                 if (dem.state === 'loading' || dem.range) break; // otherwise it failed or came back empty: try the level above
             }
             // A coarse elevation tile of the surroundings stays loaded as well (one tile covers many ground tiles). Ground
@@ -607,6 +612,7 @@ export class Engine {
                 const x = id.x >> id.z - oz, y = id.y >> id.z - oz, dk = `${oz}/${x}/${y}`, demKey = terrain.source + '|' + dk, dem = this.tiles.get(demKey);
                 wanted.add(demKey);
                 if (dem) dem.used = this.frameNo; else this.request(terrain.source, {z: oz, x, y, w: 0, key: dk}, demKey);
+                if (!dem || dem.state === 'loading') this.demLoading = true;
             }
             // Heights for the tile's mesh, looked up by position in data all tiles share (so edges meet exactly), and
             // refreshed a few tiles per frame when new elevation data arrives.
@@ -1472,7 +1478,11 @@ export class Engine {
                 if (this.centreGiven) {
                     // The centre was set outright (jumpTo, the end of an animation, terrain switched on): it stays where
                     // it was put and takes the height of the ground there, as soon as that is known.
-                    if (known(mercX(tr.lng), mercY(tr.lat))) { tr.elevation = this.heightAt(mercX(tr.lng), mercY(tr.lat)); this.centreGiven = false; }
+                    // It waits for the detailed elevation tile of the view (one level above the map, as `viewCover` selects)
+                    // while that is loading: a height from the coarse tile of the surroundings would fix the camera at
+                    // another height for good, and the picture would depend on which tile arrived first, #820.
+                    const d = this.demTile(mercX(tr.lng) - Math.floor(mercX(tr.lng)), mercY(tr.lat), 30), src = this.style.sources[terrain.source];
+                    if (d && (d.z >= Math.min(src.maxzoom, Math.floor(tr.zoom) - 1) || !this.demLoading)) { tr.elevation = this.heightAt(mercX(tr.lng), mercY(tr.lat)); this.centreGiven = false; }
                 } else if (tr.recenterOnGround()) this.lastPose = `${tr.lng},${tr.lat},${tr.zoom}`;
             }
             // Never inside the mountain: if the ground under the camera reaches it, the camera is lifted clear.
@@ -1733,7 +1743,7 @@ export class Engine {
             this.emit({type: 'camera', lng: tr.lng, lat: tr.lat, zoom: tr.zoom, bearing: tr.bearing, pitch: tr.pitch, elevation: tr.elevation, exaggeration: this.exaggeration, groundRange: tr.groundRange, padding: tr.padding, moving: animating, seq: this.seq,
                 grab: this.grab ? [this.grab.lng, this.grab.lat, this.grab.seq] : undefined});
         }
-        const busy = animating || fading || this.placeDirty || this.iconsRev !== this.iconsDone || behind || this.meshBehind;
+        const busy = animating || fading || this.placeDirty || this.iconsRev !== this.iconsDone || behind || this.meshBehind || !!ground && this.demLoading;
         const idle = complete && !busy && !settling && !this.spritePending && !this.contourWait && !this.atlas.loading;
         // (The frame for the map at rest comes when the 200 ms are over, not 200 ms after this frame.)
         if (settling && !busy) setTimeout(() => this.repaint(), 200 - (began - this.cameraMovedAt));
