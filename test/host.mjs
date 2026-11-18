@@ -200,6 +200,19 @@ for (const renderer of renderers) {
             await wait(200); await idle();
             const live = map.getStyle().layers.find(l => l.id === 'test-water');
             const inPlace = {loads, filtered: (await t.host.queryFeatures(at, {layers: ['test-water']})).length, color: live?.paint?.['fill-color'], filter: JSON.stringify(live?.filter)};
+            // A new order of the layers of the style object, and a new layer before one that stays: moves, and no new style (#875).
+            const two = {...edited, layers: [...edited.layers, {id: 'test-water-2', type: 'fill', source: 'omt', 'source-layer': 'water', paint: {'fill-color': '#0f0'}}]};
+            t.host.update(t.spec = {...t.spec, style: two});
+            await wait(200); await idle();
+            const ids = () => map.getStyle().layers.map(l => l.id).filter(id => id.startsWith('test-water')).join();
+            const n = two.layers.length, swapped = {...two, layers: [...two.layers.slice(0, n - 2), two.layers[n - 1], {...two.layers[n - 2], filter: undefined}]};
+            t.host.update(t.spec = {...t.spec, style: swapped});
+            await wait(200); await idle();
+            const swapOrder = ids(), swapTop = (await t.host.queryFeatures(at, {layers: ['test-water', 'test-water-2']}))[0]?.layer?.id;
+            const front = {...swapped, layers: [...swapped.layers.slice(0, n - 2), {id: 'test-water-0', type: 'fill', source: 'omt', 'source-layer': 'water'}, ...swapped.layers.slice(n - 2)]};
+            t.host.update(t.spec = {...t.spec, style: front});
+            await wait(200); await idle();
+            inPlace.moves = {swapOrder, swapTop, frontOrder: ids(), loads};
             map.off('style.load', count);
             t.host.update(t.spec = {...t.spec, style: t.style});
             await wait(200); await idle();
@@ -239,6 +252,8 @@ for (const renderer of renderers) {
             && order.inserted.order === 'o-c,o-b,o-a' && order.inserted.top === 'o-a' && order.loads === 0 && order.gone === '', JSON.stringify(order));
         check(`[${renderer}] update with a style object that changes one filter and one paint value of a layer: the map edits the layer and loads no style (#858)`,
             style.inPlace.loads === 0 && style.inPlace.filtered === 0 && style.inPlace.color === '#00f' && style.inPlace.filter.includes('no-such-class'), JSON.stringify(style.inPlace));
+        check(`[${renderer}] update with a style object whose layers have a new order, and a new layer before one that stays: the map draws the new order and loads no style (#875)`,
+            style.inPlace.moves.swapOrder === 'test-water-2,test-water' && style.inPlace.moves.swapTop === 'test-water' && style.inPlace.moves.frontOrder === 'test-water-0,test-water-2,test-water' && style.inPlace.moves.loads === 0, JSON.stringify(style.inPlace.moves));
 
         // A pair {light, dark}, and in one update() another colorScheme and a paint change of a layer of the dark style:
         // the map loads the dark style, and the paint change is in it (#858).
