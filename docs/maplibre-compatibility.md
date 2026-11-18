@@ -201,7 +201,6 @@ These types differ from MapLibre GL JS:
 | `Offset` | It is a number, `[x, y]`, or `[x, y]` for each anchor. It does not accept a `Point`. |
 | `Listener` | Its type parameter is the type of the event, and the default is `MapLibreEvent`. |
 | `Subscription` | No method returns it: `map.on` returns the map. Remove a listener with `map.off(type, listener)`. |
-| `MarkerEventType` | It has no `click`: a click on a marker fires `click` on the map. |
 | `FullscreenControlEventType`, `GeolocateControlEventType`, `PopupEventType`, `EventTypeMap` | An event is a plain object with `type` and `target`, and not an instance of the class `Event`. The event of `geolocate` has `coords` and `timestamp`, and the event of `error` has `code` and `message`. |
 | `DragPanOptions`, `DragRotateOptions`, `AroundCenterOptions` | They have no effect: `enable()` of a handler does not read its argument, and the options `dragPan` and `dragRotate` of `new Map()` are booleans. |
 | `UpdateImageOptions` | It has `url` and `coordinates`, and no `image`. |

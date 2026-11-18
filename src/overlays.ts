@@ -328,11 +328,13 @@ export class Marker extends Overlay {
             this.el.classList.toggle('maplibregl-marker-covered', covered);
         };
         // As in MapLibre GL JS, a click on a marker is also a `click` of the map, so that a popup with `closeOnClick` closes
-        // (#198). The map listens on its canvas only, so the marker fires the event. The click that ends a drag does not
-        // get here (see `startDrag`).
+        // (#198). The marker's own `click` comes before it. The map listens on its canvas only, so the marker fires the
+        // event. The click that ends a drag does not get here (see `startDrag`).
         this.el.addEventListener('click', e => {
             const map = this.map;
             if (!map) return;
+            // The marker fires `click` on itself first, with `originalEvent`, as in MapLibre GL JS (#676).
+            this.fire('click', {originalEvent: e});
             const c = map.getContainer(), r = c.getBoundingClientRect(), sx = r.width / c.offsetWidth || 1, sy = r.height / c.offsetHeight || 1;
             const point = {x: (e.clientX - r.left) / sx - c.clientLeft, y: (e.clientY - r.top) / sy - c.clientTop};
             let prevented = false;
