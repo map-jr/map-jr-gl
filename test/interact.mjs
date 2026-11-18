@@ -3870,6 +3870,21 @@ for (const mode of renderers) {
         check(`[${mode}] compat: a rotate drag with the right button, with Ctrl and the left button${browserName === 'chromium' ? ', and with two fingers' : ''} turns the map the same way and by the same angle as MapLibre GL JS (#557)`,
             ml.length === compat.length && ml.every((b, i) => Math.abs(b) > 10 && Math.abs(b - compat[i]) < 1.5), JSON.stringify({ml, compat}));
         if (browserName !== 'chromium') skip(`[${mode}] compat: a rotate drag with two fingers turns the map as MapLibre GL JS does (#557)`, noCDP);
+        // #679: a rotate drag released while it moves turns on with inertia, by about as much as in MapLibre GL JS.
+        const fling = async kind => {
+            await make(kind);
+            await page.mouse.move(250, 250); await page.mouse.down({button: 'right'});
+            for (let i = 1; i <= 10; i++) { await page.mouse.move(250 + i * 10, 250); await page.waitForTimeout(8); }
+            const atRelease = await page.evaluate(() => window.turnMap.getBearing());
+            await page.mouse.up({button: 'right'});
+            await page.waitForTimeout(1500);
+            const end = await page.evaluate(() => window.turnMap.getBearing());
+            await page.evaluate(() => { window.turnMap.remove(); window.turnEl.remove(); window.turnMap = undefined; });
+            return {atRelease: Math.round(atRelease * 10) / 10, end: Math.round(end * 10) / 10};
+        };
+        const mlFling = await fling('ml'), compatFling = await fling('compat');
+        check(`[${mode}] compat: a rotate drag released while it moves turns on with inertia as in MapLibre GL JS (#679)`,
+            Math.abs(compatFling.end - compatFling.atRelease) > 3 && Math.abs(compatFling.end - mlFling.end) < 0.25 * Math.abs(mlFling.end - mlFling.atRelease) + 3, JSON.stringify({ml: mlFling, compat: compatFling}));
     } catch (e) { check(`[${mode}] the rotate drags of #557: the test run was completed`, false, String(e.message).split('\n')[0]); }
     // 3D terrain off and on again: the elevation tiles that are loaded stay, so the relief does not go away for a
     // moment and no tile is asked for again. Elevation tiles need OffscreenCanvas in the workers (#778).

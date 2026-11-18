@@ -2,7 +2,7 @@ import {fetchWith, withTimeout, type RequestAnswer} from './requests.ts';
 import {protocolListeners, protocols, toBytes} from './protocols.ts';
 import {LngLat, LngLatBounds, type LngLatBoundsInput} from './lnglat.ts';
 import type {FilterSpecification} from './compat-types.ts';
-import {Transform, fitBox, globeStops, groundHeight, heightsChanged, mercX, mercY, sides, toLngLat, type LngLatLike} from './geo.ts';
+import {Transform, bezier, fitBox, globeStops, groundHeight, heightsChanged, mercX, mercY, sides, toLngLat, type LngLatLike} from './geo.ts';
 import type {PreparedSource} from './geojson.ts';
 import {DEFAULT_FONT, absolute, keep, kept, resolveStyle, type ResolvedStyle} from './resolve.ts';
 import {layerRules} from './rules.ts';
@@ -1732,7 +1732,7 @@ export class Map {
         // `isActive()` of a handler is true from the start of its gesture (see where each is set) until a pointer of the gesture lifts.
         const rest = () => { for (const h of [this.dragPan, this.dragRotate, this.touchZoomRotate, this.touchPitch, this.boxZoom]) h.active = false; };
         this.inputCleanup.push(rest);
-        let rotating = false, moved = 0, samples: {t: number; x: number; y: number}[] = [], pinch: {dist: number; angle: number} | null = null;
+        let rotating = false, moved = 0, samples: {t: number; x: number; y: number}[] = [], turns: {t: number; b: number; p: number}[] = [], aim = {b: 0, p: 0}, pinch: {dist: number; angle: number} | null = null;
         // Wheel events do not say what produced them. As MapLibre does, tell mouse wheels from trackpads by their
         // deltas and timing, because the two need different handling to feel right.
         let wheelKind: 'wheel' | 'trackpad' | null = null, lastWheel = 0, held = 0, heldTimer: ReturnType<typeof setTimeout> | undefined;
@@ -1759,7 +1759,7 @@ export class Map {
             lastPointerType = e.pointerType;
             pointers.set(e.pointerId, p);
             rotating = e.button === 2 || e.ctrlKey;
-            moved = 0; samples = []; pinch = null; this.held = null;
+            moved = 0; samples = []; turns = []; aim = {b: this.tr.bearing, p: this.tr.pitch}; pinch = null; this.held = null;
             if (pointerEvent('start', e)) inert = true;
             if (inert) return;
             // Shift and drag: a box to zoom to.
@@ -1834,7 +1834,7 @@ export class Map {
             } else if (tapDrag && pointers.size === 1) {
                 // Second tap held and dragged: down zooms in, up zooms out, around where the taps landed.
                 if (moved > 6) { tapDrag.zoomed = true; this.post({type: 'zoom', delta: dy * 0.01, x: tapDrag.x, y: tapDrag.y}); }
-            } else if (rotating) { if (this.dragRotate.isEnabled()) { this.dragRotate.active = true; this.post({type: 'rotate', delta: turn(prev, p), pitch: -dy * 0.5}); } } // right- or ctrl-drag: turn and tilt
+            } else if (rotating) { if (this.dragRotate.isEnabled()) { this.dragRotate.active = true; const b = turn(prev, p), t = performance.now(); const l = turns[turns.length - 1]; if (l && t - l.t < 16) Object.assign(l, {t, b: l.b + b, p: l.p - dy * 0.5}); else turns.push({t, b, p: -dy * 0.5}); turns = turns.filter(s => t - s.t <= 160); aim = {b: aim.b + b, p: Math.max(this.tr.minPitch, Math.min(this.tr.maxPitch, aim.p - dy * 0.5))}; this.post({type: 'rotate', delta: b, pitch: -dy * 0.5}); } } // right- or ctrl-drag: turn and tilt
             else if (moved > 3 && pointers.size === 1 && this.dragPan.isEnabled() && !(e.pointerType === 'touch' && this.gate?.('touch_pan', e))) {
                 if (!this.dragging) this.fire('dragstart', {originalEvent: e});
                 this.dragging = this.dragPan.active = true;
@@ -1891,6 +1891,24 @@ export class Map {
                 samples = [];
             }
             if (pointers.size) return;
+            // A rotate drag turns on as in MapLibre GL JS: the turn and tilt of the last 60 ms (or of the last two moves in
+            // the last 160 ms), measured up to the release, give a speed that decelerates by 1000 degrees per second
+            // (the bearing at most 360 and the pitch at most 90 degrees per second). As MapLibre GL JS records once per
+            // frame, the moves of one frame (16 ms) are one entry. The ease starts from the view that the drag asked for (`aim`), because the
+            // view of a worker renderer can be a frame behind.
+            let recent = rotating ? turns.filter(s => now - s.t <= 160) : [], i = Math.max(0, recent.length - 2);
+            while (i > 0 && now - recent[i - 1].t <= 60) i--;
+            recent = recent.slice(i);
+            if (recent.length > 1 && this.dragRotate.isEnabled()) {
+                const ms = now - recent[0].t, ease = (sum: number, max: number) => {
+                    const speed = Math.max(-max, Math.min(max, sum * 0.3 / (ms / 1000)));
+                    return {d: Math.abs(speed) / 300 * 1000, amount: speed * Math.abs(speed) / 600};
+                };
+                const b = ease(recent.slice(1).reduce((a, s) => a + s.b, 0), 360), p = ease(recent.slice(1).reduce((a, s) => a + s.p, 0), 90);
+                const duration = Math.max(b.d, p.d);
+                if (duration > 0) this.easeTo({bearing: aim.b + Math.max(-179, Math.min(179, b.amount)), pitch: aim.p + p.amount, duration, easing: bezier(0, 0, 0.3, 1)});
+            }
+            turns = [];
             const wasDragging = this.dragging;
             this.dragging = false;
             if (wasDragging) this.fire('dragend', {originalEvent: e});
