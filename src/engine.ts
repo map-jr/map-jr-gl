@@ -103,7 +103,7 @@ export type EngineEvent =
     | {type: 'result'; id: number; value?: unknown; error?: string}
     | {type: 'imagemissing'; name: string}
     | {type: 'error'; message: string}
-    /** After `tileReport`: a step of a tile (`req`, `ans`, `up`, `miss`, `fail`, `drop`), or, with `kind` `frame`, the tile slots of the view in a frame. `t`: the engine's clock, in ms. */
+    /** After `tileReport`: a step of a tile (`req`, `ans`, `up`, `miss`, `fail`, `drop`, `rebuild`), or, with `kind` `frame`, the tile slots of the view in a frame. `t`: the engine's clock, in ms. */
     | {type: 'tile'; key: string | string[]; kind: string; t: number; error?: string}
     /** After `tileLoads`: the tile `key` (`source|z/x/y`) has loaded. */
     | {type: 'tileLoaded'; key: string};
@@ -1424,6 +1424,7 @@ export class Engine {
     private rebuild(source: string, id: TileID, key: string, t: TileState) {
         // (The tile worker that loaded the tile has its bytes still: it builds the tile again without a request.)
         const backend = this.backends[t.backend ?? this.nextBackend++ % this.backends.length], req = this.nextReq++;
+        this.tapTile(key, 'rebuild');
         t.rebuilding = true; // one rebuild at a time per tile; data that changes meanwhile marks it stale again
         backend.load({...this.build(req, source, id, t), again: true}).then(tile => {
             t.rebuilding = false;

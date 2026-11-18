@@ -250,6 +250,26 @@ for (const renderer of renderers) {
         check(`[${renderer}] update with a new order of layers, and with a new layer before one that stays: the map draws the new order and loads no style (#859)`,
             order.first.order === 'o-a,o-b' && order.first.top === 'o-b' && order.swapped.order === 'o-b,o-a' && order.swapped.top === 'o-a'
             && order.inserted.order === 'o-c,o-b,o-a' && order.inserted.top === 'o-a' && order.loads === 0 && order.gone === '', JSON.stringify(order));
+        // A new order of the layers of the style object changes only the draw order: no tile is built or loaded again (#961).
+        const reorder = await page.evaluate(async () => {
+            const t = window.t, map = t.host._map, wait = ms => new Promise(r => setTimeout(r, ms)), steps = {};
+            const idle = async () => { await wait(100); for (let i = 0; i < 100 && !t.host.state.get().idle; i++) await wait(50); };
+            await idle();
+            const layers = t.style.layers, fill = layers.findIndex(l => l.type === 'fill'), last = layers.findLastIndex(l => l.type !== 'symbol');
+            const moved = layers.filter((_, i) => i !== fill);
+            moved.splice(moved.indexOf(layers[last]) + 1, 0, layers[fill]);
+            const count = e => { for (const k of [e.key].flat()) if (e.kind !== 'frame') steps[e.kind] = (steps[e.kind] ?? 0) + 1; };
+            map._tileReport(true); map.on('tile', count);
+            t.host.update(t.spec = {...t.spec, style: {...t.style, layers: moved}});
+            await idle();
+            const order = map.getStyle().layers.map(l => l.id).indexOf(layers[fill].id) === last;
+            map.off('tile', count); map._tileReport(false);
+            t.host.update(t.spec = {...t.spec, style: t.style});
+            await idle();
+            return {fill: fill >= 0 && fill < last, order, steps};
+        });
+        check(`[${renderer}] update with a new order of the layers of the style object builds no tile again (#961)`,
+            reorder.fill && reorder.order && !reorder.steps.rebuild && !reorder.steps.req && !reorder.steps.drop, JSON.stringify(reorder));
         // A changed minzoom of a layer of `layers` and of a layer of the style object: the map changes the zoom range in
         // place, loads no style, and draws the layer only at the new zooms (#871).
         const range = await page.evaluate(async () => {
