@@ -221,6 +221,12 @@ const touches = (a: TileID, b: TileID) => {
 
 /** How many times a tile whose request failed is requested again. */
 const TILE_RETRIES = 3;
+/** Encodes GeoJSON data as JSON bytes on the first call, so that several tile workers cost one encoding and a copy of bytes each, not one structured clone each (#878). Data that is not an object is sent as it is. */
+function packGeoJSON(data: unknown): () => Uint8Array | null {
+    let bytes: Uint8Array | null | undefined;
+    return () => bytes !== undefined ? bytes : (bytes = data && typeof data === 'object' ? new TextEncoder().encode(JSON.stringify(data)) : null);
+}
+
 export class Engine {
     tr = new Transform();
     private renderer: GLRenderer;
@@ -709,7 +715,7 @@ export class Engine {
         if (style.glyphs !== this.atlas.glyphsURL) { this.atlas.setGlyphs(style.glyphs); this.relabel(); }
         if (reload) {
             // Only the GeoJSON sources whose data or options changed are indexed again (#8).
-            for (const name in data) { const src = style.sources[name]; if (src?.type === 'geojson') for (const b of this.backends) b.setGeoJSON(name, data[name], src.options, src.maxzoom); }
+            for (const name in data) { const src = style.sources[name]; if (src?.type === 'geojson') { const packed = packGeoJSON(data[name]); for (const b of this.backends) b.setGeoJSON(name, data[name], src.options, src.maxzoom, packed); } }
             // The page has read the first bytes of each PMTiles archive: the readers of the tiles do not fetch them again.
             for (const {head} of Object.values(style.sources)) if (head && !heads.has(head.url)) { heads.set(head.url, head.bytes); for (const b of this.backends) b.setHead(head.url, head.bytes); }
             const contours = Object.fromEntries(Object.entries(style.sources).filter(([, s]) => s.contour).map(([name, s]) => [name, s.contour!])), text = JSON.stringify(contours);
@@ -965,7 +971,8 @@ export class Engine {
                 break;
             case 'geojson': {
                 const done = () => this.emit({type: 'geojsonDone', source: c.source});
-                Promise.all(this.backends.map(b => b.setGeoJSON(c.source, c.data, this.style.sources[c.source]?.options, this.style.sources[c.source]?.maxzoom))).then(done, done);
+                const packed = packGeoJSON(c.data);
+                Promise.all(this.backends.map(b => b.setGeoJSON(c.source, c.data, this.style.sources[c.source]?.options, this.style.sources[c.source]?.maxzoom, packed))).then(done, done);
                 this.newData(c.source);
                 break;
             }
