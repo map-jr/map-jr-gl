@@ -2219,7 +2219,10 @@ for (const mode of renderers) {
         await page.waitForTimeout(1500); // (the tiles arrive and are built, and a frame would place the labels)
         const {idles, at} = await page.evaluate(() => { const {m, el, idles, at} = window.overview; m.remove(); el.remove(); return {idles, at}; });
         await page.unroute('**/tiles/11/**', slow);
-        check(`[${mode}] the overview tiles are requested after the first idle and arrive with no second idle`, late > 0 && idles === 1 && at > 0 && first >= at,
+        // (A first request up to one worker frame before the page gets `idle` passes: the worker sends `idle` after its
+        // frame has gone to the page, and its next frame, which requests the overview, can run first (#555, #756,
+        // src/engine.ts:1753-1762). Both times are `Date.now()` of one machine (#789).)
+        check(`[${mode}] the overview tiles are requested after the first idle and arrive with no second idle`, late > 0 && idles === 1 && at > 0 && first >= at - 50,
             `idle events=${idles}, late tiles=${late}, first request ${first - at} ms after the first idle`);
     }
     // A map that never becomes idle (here one that keeps rotating from the start) still requests its overview tiles (#326).
