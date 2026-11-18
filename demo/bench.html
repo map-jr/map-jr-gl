@@ -6,32 +6,45 @@
 <title>Benchmark against MapLibre GL JS</title>
 <link rel="stylesheet" href="ml/maplibre-gl.css">
 <style>
-  body { margin: 0; font: 14px/1.45 system-ui, sans-serif; color: #1d1d1f; background: #f6f5f2; }
-  main { max-width: 1100px; margin: 0 auto; padding: 20px; }
-  h1 { font-size: 22px; margin: 0 0 6px; }
+  body { margin: 0; font: 15px/1.45 system-ui, sans-serif; color: #1d1d1f; background: #f6f5f2; }
+  main { max-width: 1100px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 21px; margin: 0 0 6px; }
   p { margin: 0 0 10px; color: #55555a; max-width: 80ch; }
-  #stage { width: 1000px; max-width: 100%; height: 700px; position: relative; background: #ddd; margin: 14px 0; border-radius: 8px; overflow: hidden; }
-  button { font: inherit; padding: 8px 16px; border-radius: 8px; border: 1px solid #c9c7c1; background: #fff; cursor: pointer; margin-right: 8px; }
+  #scenarios { list-style: none; padding: 0; margin: 10px 0; display: grid; gap: 4px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+  #scenarios label { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; background: #fff; border: 1px solid #e5e3de; border-radius: 8px; }
+  #scenarios input { width: 20px; height: 20px; margin: 0; flex: none; }
+  #scenarios small { display: block; color: #6b6b70; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0; }
+  button, #runs { font: inherit; padding: 10px 16px; border-radius: 8px; border: 1px solid #c9c7c1; background: #fff; color: inherit; }
+  button { cursor: pointer; }
+  #runs { width: 4.5em; padding: 10px 8px; }
   button:disabled { opacity: .5; cursor: default; }
-  table { border-collapse: collapse; width: 100%; background: #fff; font-variant-numeric: tabular-nums; }
-  th, td { text-align: right; padding: 6px 10px; border-bottom: 1px solid #e5e3de; white-space: nowrap; }
-  th:first-child, td:first-child { text-align: left; white-space: normal; }
+  #stage { width: 100%; height: min(70vh, 700px); position: relative; background: #ddd; margin: 12px 0; border-radius: 8px; overflow: hidden; }
+  .scroll { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; background: #fff; font-variant-numeric: tabular-nums; font-size: 13px; }
+  th, td { text-align: right; padding: 5px 8px; border-bottom: 1px solid #e5e3de; white-space: nowrap; }
+  th:nth-child(-n+3), td:nth-child(-n+3) { text-align: left; white-space: normal; }
   th { font-weight: 600; background: #efede8; }
-  #timeline, #undrawn { font: 12px/1.5 ui-monospace, Menlo, monospace; color: #55555a; margin: 8px 0; overflow-wrap: anywhere; }
-  #status, #env { font: 12px/1.5 ui-monospace, Menlo, monospace; color: #55555a; margin: 8px 0; }
+  #timeline, #notes, #status, #env { font: 12px/1.5 ui-monospace, Menlo, monospace; color: #55555a; margin: 8px 0; overflow-wrap: anywhere; }
 </style>
 </head>
 <body>
 <main>
   <h1>Benchmark against MapLibre GL JS</h1>
-  <p>Runs both libraries in <em>this</em> browser, on this machine's GPU, one after another: the same style, the same view and the same five-second pan, zoom and rotate. Keep this tab in front and leave the mouse alone while it runs (about a minute and a half).</p>
-  <div><button id="run">Run benchmark</button><button id="copy" disabled>Copy results as Markdown</button><label><input type="checkbox" id="markers" checked> include marker tests</label></div>
+  <p>The page runs MapLibre GL JS and this library (the entry <code>@map-jr/map-jr-gl/maplibre-compat</code>, on the main thread and in a worker) one after another in this browser, on the GPU of this device, with the same style and the same views. Keep the tab in front and do not touch the map while it runs. Each scenario runs as many times as "Runs" says, and the table gives the median and the range (lowest to highest) over the runs.</p>
+  <p>A page cannot read the memory of the browser's processes, so the page does not report memory. The lifecycle scenario counts the workers that the page started and that were not ended instead.</p>
+  <ul id="scenarios"></ul>
+  <div class="controls">
+    <button id="run">Run all</button>
+    <label>Runs <input id="runs" type="number" min="1" max="20" value="3" inputmode="numeric"></label>
+    <button id="copy" disabled>Copy results as Markdown</button>
+  </div>
   <div id="env"></div>
   <div id="status">Idle.</div>
   <div id="stage"></div>
-  <table id="results"><thead><tr><th>Scenario</th><th>Load to idle</th><th>Frames per second</th><th>Slowest frame gap</th><th>Main-thread script per frame (median / worst)</th><th>Main thread blocked</th><th>Engine: time per frame, and its own count of frames</th></tr></thead><tbody></tbody></table>
+  <div class="scroll"><table id="results"><thead><tr><th>Scenario</th><th>Library</th><th>Measure</th><th>Median</th><th>Range</th><th>Runs</th></tr></thead><tbody></tbody></table></div>
   <div id="timeline"></div>
-  <div id="undrawn"></div>
+  <div id="notes"></div>
 </main>
 <script type="module" src="demo/bench.mjs"></script>
 </body>
