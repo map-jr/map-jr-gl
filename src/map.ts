@@ -624,7 +624,7 @@ export class Map {
     /** @internal Sends a command to the engine. */
 
     private post(c: Command, transfer?: Transferable[]) {
-        if (c.type !== 'query' && c.type !== 'elevation' && c.type !== 'queryRendered' && c.type !== 'frames' && c.type !== 'tileReport' && c.type !== 'tileLoads') { this.tilesLoaded = false; (c as {seq?: number}).seq = ++this.seq; }
+        if (c.type !== 'query' && c.type !== 'elevation' && c.type !== 'queryRendered' && c.type !== 'frames' && c.type !== 'snapshot' && c.type !== 'tileReport' && c.type !== 'tileLoads') { this.tilesLoaded = false; (c as {seq?: number}).seq = ++this.seq; }
         if (c.type === 'query' || c.type === 'queryRendered') this.tilePool?.wake(); // (#824)
         if (this.ready) this.deliver(c, transfer); else this.queue.push([c, transfer]);
     }
@@ -892,6 +892,8 @@ export class Map {
             const gone = () => reject(new Error('[map-jr-gl] toBlob(): the map was removed before its image was taken.'));
             const shoot = () => {
                 if (this.removed) return gone();
+                // (The engine in a worker takes the image itself: WebKit gives blank pixels for the canvas of the page; #965.)
+                if (this.renderer === 'worker') { this.off('remove', gone); return void this.ask<Blob>(id => ({type: 'snapshot', id, mime: type, quality})).then(resolve, e => this.removed ? gone() : reject(e)); }
                 this.once('render', () => {
                     // (The engine reports frames only while a page listens to `render`.)
                     if (!this.listeners.render?.length) { this.wantsFrames = false; this.post({type: 'frames', on: false}); }
