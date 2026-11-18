@@ -119,7 +119,9 @@ function sourceSignature(style: ResolvedStyle, name: string): [string, string] {
     // tiles that are there. See `ground`. New data of a GeoJSON source is not part of it either: see `newData`.)
     const source = JSON.stringify({...src, head: undefined, data: undefined});
     if (!isGeometrySource(src)) return [source, '']; // image tiles do not depend on layers
-    const layers = style.layers.filter(l => l.source === name).map(l => layerRules(l));
+    // (In the order of their ids: each layer is built on its own, so a new order of the layers draws the same tiles in
+    // another order and needs no new tiles; #961.)
+    const layers = style.layers.filter(l => l.source === name).map(l => layerRules(l)).sort((a, b) => (a[0] as string) < (b[0] as string) ? -1 : 1);
     // Layers that read global state are rebuilt when it changes. A tile for a globe is cut along a grid (subdivide.ts),
     // so a change between the globe and Mercator builds the tiles again.
     const json = JSON.stringify(layers) + (globeStops(style.projection?.type) ? 'globe' : '');
