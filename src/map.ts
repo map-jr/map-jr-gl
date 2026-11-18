@@ -391,7 +391,8 @@ export class Map {
                     // the new engine reports `idle` with the number that the page waits for. It sends the style that the
                     // map has resolved, so a source that failed is not fetched and reported again; #777.)
                     this.restyle(true, true);
-                    for (const [name, [source, options]] of this.imageInputs) this.addImage(name, source, options);
+                    // (`putImage` and not `addImage`: an image of the style stays one in the compat entry; #853.)
+                    for (const [name, [source, options]] of this.imageInputs) this.putImage(name, source, options);
                     // (The worker drew nothing, so an animation that the page started went nowhere; #777.)
                     this.resumeEase();
                     this.bindInput();
@@ -468,7 +469,7 @@ export class Map {
             // accept the report that a source is loaded), the layers that the page has hidden, and the global state.
             this.restyle(true);
             this.resumeEase();
-            for (const [name, [source, options]] of this.imageInputs) await this.addImage(name, source, options);
+            for (const [name, [source, options]] of this.imageInputs) await this.putImage(name, source, options);
             this.fire('webglcontextrestored');
             if (__DEV__) this.note('restart() ended', {renderer: this.renderer, drew: this.drew});
         } catch (error) { if (__DEV__) this.note('restart() failed', String(error)); this.fire('error', {error}); } finally { this.restarting = false; }
