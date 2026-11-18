@@ -251,23 +251,24 @@ for (const renderer of renderers) {
             order.first.order === 'o-a,o-b' && order.first.top === 'o-b' && order.swapped.order === 'o-b,o-a' && order.swapped.top === 'o-a'
             && order.inserted.order === 'o-c,o-b,o-a' && order.inserted.top === 'o-a' && order.loads === 0 && order.gone === '', JSON.stringify(order));
         // A new order of the layers of the style object changes only the draw order: no tile is built or loaded again (#961).
-        const reorder = await page.evaluate(async () => {
-            const t = window.t, map = t.host._map, wait = ms => new Promise(r => setTimeout(r, ms)), steps = {};
-            const idle = async () => { await wait(100); for (let i = 0; i < 100 && !t.host.state.get().idle; i++) await wait(50); };
-            await idle();
-            const layers = t.style.layers, fill = layers.findIndex(l => l.type === 'fill'), last = layers.findLastIndex(l => l.type !== 'symbol');
+        const reorder = await page.evaluate(async renderer => {
+            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), steps = {}, style = t.style;
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:900px;height:600px'}));
+            const spec = {style, initialView: {center: [-74.0065, 40.7085], zoom: 14.3}, renderer, attribution: false};
+            const host = t.lib.createMap(el, spec), map = host._map;
+            const idle = async () => { await wait(100); for (let i = 0; i < 200 && !host.state.get().idle; i++) await wait(50); };
+            await idle(); await wait(500); await idle();
+            const layers = style.layers, fill = layers.findIndex(l => l.type === 'fill'), last = layers.findLastIndex(l => l.type !== 'symbol');
             const moved = layers.filter((_, i) => i !== fill);
             moved.splice(moved.indexOf(layers[last]) + 1, 0, layers[fill]);
-            const count = e => { for (const k of [e.key].flat()) if (e.kind !== 'frame') steps[e.kind] = (steps[e.kind] ?? 0) + 1; };
-            map._tileReport(true); map.on('tile', count);
-            t.host.update(t.spec = {...t.spec, style: {...t.style, layers: moved}});
-            await idle();
+            map._tileReport(true);
+            map.on('tile', e => { if (e.kind !== 'frame') steps[e.kind] = (steps[e.kind] ?? 0) + 1; });
+            host.update({...spec, style: {...style, layers: moved}});
+            await wait(300); await idle();
             const order = map.getStyle().layers.map(l => l.id).indexOf(layers[fill].id) === last;
-            map.off('tile', count); map._tileReport(false);
-            t.host.update(t.spec = {...t.spec, style: t.style});
-            await idle();
+            host.destroy(); el.remove();
             return {fill: fill >= 0 && fill < last, order, steps};
-        });
+        }, renderer);
         check(`[${renderer}] update with a new order of the layers of the style object builds no tile again (#961)`,
             reorder.fill && reorder.order && !reorder.steps.rebuild && !reorder.steps.req && !reorder.steps.drop, JSON.stringify(reorder));
         // A changed minzoom of a layer of `layers` and of a layer of the style object: the map changes the zoom range in
