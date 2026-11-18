@@ -1255,10 +1255,11 @@ export class Map {
     }
     /** Sets the sky above the horizon and the fog on 3D terrain (the `sky` of the style); `null` removes them. */
     setSky(sky?: Record<string, unknown> | null) {
-        return this.editStyle(s => { if (sky) s.sky = {...sky}; else delete s.sky; });
+        // As in MapLibre GL JS, removing a sky leaves `sky: null` in the style, and removing none changes nothing.
+        return this.editStyle(s => { if (sky) s.sky = {...sky}; else if (s.sky !== undefined) s.sky = null; });
     }
-    /** The `sky` of the style, or undefined when the style has none. */
-    getSky(): Record<string, unknown> | undefined { return this.rawStyle?.sky; }
+    /** The `sky` of the style: `undefined` when the style has none, and `null` after `setSky(null)` removed it. */
+    getSky(): Record<string, unknown> | null | undefined { return this.rawStyle?.sky; }
     /** A source or a style that cannot be used: the map reports it, and draws the rest of the style or keeps its style. */
     private sourceFailed = (error: unknown) => { this.fire('error', {error}); };
     /**
