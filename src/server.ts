@@ -352,7 +352,7 @@ export async function renderElement(description: MapDescription, options: Elemen
     if (d.nonce) attrs.push(`nonce="${quote(d.nonce)}"`);
     const {attributes = {}, width = 800, height = 500, attribution, ...rest} = options;
     for (const name in attributes) {
-        if (!/^[a-z_:][\w:.-]*$/i.test(name)) throw new Error(`[map-jr-gl] renderElement(): "${name}" is not the name of an attribute. Give names such as "id", "class" or "style".`);
+        if (!/^[a-z_:][\w:.-]*$/i.test(name) || /^on/i.test(name)) throw new Error(`[map-jr-gl] renderElement(): "${name}" is not the name of an attribute${/^on/i.test(name) ? ' that the element can have: an event handler attribute runs script' : ''}. Give names such as "id", "class" or "style".`);
         if (name !== 'style') attrs.push(`${name}="${quote(attributes[name])}"`);
     }
     attrs.push(`style="${quote('display:block;position:relative;overflow:hidden;' + (attributes.style ?? ''))}"`);

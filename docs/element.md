@@ -73,6 +73,9 @@ ignored, and the development build warns once for each element:
 
 To switch off a boolean attribute, remove it: an HTML boolean attribute is on whatever its value is.
 
+Removing `map-style` from an element whose map exists, with no property `mapStyle`, keeps the style that the map has,
+and the development build warns. To change the style, give another URL or set `mapStyle`.
+
 The element writes nothing back to its attributes. The view that the user moves is in the property `state` and in the
 event `map-viewchange`, not in `center` and `zoom`.
 
@@ -132,7 +135,7 @@ Each event is a `CustomEvent` that bubbles. Its name is `map-` and the name of t
 | `map-hover` | The features of `interactive-layers` under the pointer. |
 | `map-viewchange` | The view (`{center, zoom, bearing, pitch, bounds}`), after each change. It is the event `update:view` of Vue. |
 | `map-colorschemechange` | The `colorScheme` that the control `colorScheme()` chose. It is the event `update:colorScheme` of Vue. |
-| `map-error` | Each error of the map (an `Error`). Without a listener for this event, the map writes each error to the console. |
+| `map-error` | Each error of the map (an `Error`). The error also goes to the console unless a listener calls `event.preventDefault()`, as for the event `error` of `window`. |
 | Each other event of the map | The event of `listen` of the main API: `map-moveend`, `map-zoomend`, `map-styleimagemissing`, `map-sourcedata` and the others. See [Events](api.md#events) for the list. The event `style.load` is `map-styleload`. |
 
 The names have the prefix so that they cannot be the native events of the canvas, such as `click` and `wheel`. The
@@ -193,7 +196,7 @@ const html = await renderElement(
 | Option | Meaning |
 |---|---|
 | `width`, `height` | The size in CSS pixels that the element has on most screens. The default is 800 by 500. |
-| `attributes` | More attributes of the element, by name. The text of `style` comes after `display:block;position:relative;overflow:hidden`, which the first view needs before the script runs. |
+| `attributes` | More attributes of the element, by name. A name that starts with `on` (an event handler attribute) throws. The text of `style` comes after `display:block;position:relative;overflow:hidden`, which the first view needs before the script runs. |
 | `attribution` | The credits to show, when the server must not take them from the sources of the style. |
 | `overrides`, `timeout`, `requestTimeout`, `maxBytes`, `allowHosts` and the other options of `renderToSVG` | See [Server rendering](server-rendering.md#options). |
 

@@ -110,6 +110,9 @@ try {
     let thrown = '';
     try { await renderElement(description, {attributes: {'on click': 'x'}}); } catch (e) { thrown = e.message; }
     check('server: an attribute name that is not one throws a message', thrown.startsWith('[map-jr-gl] renderElement(): "on click"'), thrown);
+    thrown = '';
+    try { await renderElement(description, {attributes: {onload: 'alert(1)'}}); } catch (e) { thrown = e.message; }
+    check('server: an event handler attribute throws a message', thrown.includes('"onload" is not the name of an attribute that the element can have'), thrown);
     const logged = [], error = console.error;
     console.error = m => logged.push(m);
     const failedRender = await renderElement({style: 'http://127.0.0.1:1/style.json', initialView: {zoom: 2}}, {timeout: 3000}).finally(() => { console.error = error; });
@@ -227,18 +230,49 @@ try {
         return customElements.get('map-jr') === window.Element_ && !!customElements.get('city-map');
     });
     check('browser: a second import of the entry does not define map-jr again, and the class defines another name', again && !page.errors.length, page.errors.slice(0, 2).join(' | '));
+    // Errors: two GeoJSON sources whose URLs answer 404, for each way of listening to map-error.
+    const errors = await page.evaluate(async () => {
+        const logged = [], error = console.error;
+        console.error = (...args) => { if (String(args[0]).startsWith('[map-jr-gl]')) logged.push(String(args[0])); return error(...args); };
+        const run = async listen => {
+            const a = document.createElement('map-jr');
+            a.style.cssText = 'width:200px;height:150px';
+            a.mapStyle = '/style.json';
+            document.getElementById('box').append(a);
+            await new Promise(r => a.addEventListener('map-load', r, {once: true}));
+            let events = 0;
+            const listener = e => { events++; if (listen === 'prevent') e.preventDefault(); };
+            if (listen === 'once') a.addEventListener('map-error', listener, {once: true});
+            if (listen === 'removed' || listen === 'prevent') a.addEventListener('map-error', listener);
+            if (listen === 'removed') a.removeEventListener('map-error', listener);
+            const before = logged.length, n = Math.random();
+            a.sources = {m1: {type: 'geojson', data: '/missing-1.json?' + n}};
+            await new Promise(r => setTimeout(r, 1500));
+            a.sources = {m1: a.sources.m1, m2: {type: 'geojson', data: '/missing-2.json?' + n}};
+            await new Promise(r => setTimeout(r, 1500));
+            a.remove();
+            return {events, console: logged.length - before};
+        };
+        const out = {};
+        for (const listen of ['none', 'once', 'removed', 'prevent']) out[listen] = await run(listen);
+        console.error = error;
+        return out;
+    });
+    check('browser: an error goes to the console unless a listener of map-error calls preventDefault(), also after a {once} listener has fired or a listener was removed',
+        errors.none.events === 0 && errors.none.console === 2 && errors.once.events === 1 && errors.once.console === 2 && errors.removed.events === 0 && errors.removed.console === 2 && errors.prevent.events === 2 && errors.prevent.console === 0, JSON.stringify(errors));
     await page.close();
 
     // 6. The development build warns once for each attribute that cannot be read, and for an element with no style.
     page = await open('/dev');
     await page.waitForFunction(() => document.getElementById('a').map?.state.get().loaded, null, {timeout: 60000});
-    await page.evaluate(() => { document.getElementById('a').cursor = 'wait'; });
+    await page.evaluate(() => { const a = document.getElementById('a'); a.cursor = 'wait'; a.removeAttribute('map-style'); setTimeout(() => { a.maxZoom = 18; }, 100); });
     await page.waitForTimeout(1500);
     const warned = page.warnings.filter(w => w.includes('<map-jr>'));
     const expected = ['center="Berlin"', 'zoom="near"', 'hover-state="false"', 'projection="flat"'];
     check('browser, development build: each attribute that cannot be read warns once, with what to write', expected.every(a => warned.filter(w => w.includes(`the attribute ${a} cannot be read`)).length === 1) && warned.some(w => w.includes('zoom="near" cannot be read, so the element ignores it. Write a number')),
         JSON.stringify(warned.map(w => w.slice(0, 110))));
     check('browser, development build: an element with no style warns', warned.filter(w => w.includes('the element has no style')).length === 1, '');
+    check('browser, development build: removing map-style from an element with a map warns once, and the map keeps its style', warned.filter(w => w.includes('"map-style" was removed')).length === 1 && await page.evaluate(() => document.getElementById('a').map.description.style === '/style.json'), '');
     await page.close();
 } catch (e) { check('the test run was completed', false, String(e.message).split('\n')[0]); }
 await browser.close();

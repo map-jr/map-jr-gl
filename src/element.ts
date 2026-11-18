@@ -12,6 +12,7 @@
  * the event of the Vue component. See docs/element.md.
  */
 import {makeMap, type MapDescription, type MapInstance} from './host.ts';
+import {logError} from './map.ts';
 import {ATTRIBUTES, VIEW_FIELDS, attributeOf, readAttribute, type AttributeKind} from './element-attributes.ts';
 declare const __DEV__: boolean;
 
@@ -85,8 +86,7 @@ export class MapJrElement extends Base {
         const name = type.startsWith('map-') && type.slice(4);
         if (!name || this.heard.has(name)) return;
         this.heard.add(name);
-        if (name === 'error') this.changed(); // (`onError` of the description: without it, the map writes errors to the console)
-        else if (this.made) this.listen(name);
+        if (this.made) this.listen(name);
     }
 
     /** One `update` for the changes of this task, one microtask later. */
@@ -99,12 +99,12 @@ export class MapJrElement extends Base {
     private flush() {
         if (!this.isConnected) { this.end(); return; }
         const spec = this.description();
+        const map = this.made;
         if (!spec.style) {
-            // (A page script can set `mapStyle` a moment later.)
-            if (__DEV__) setTimeout(() => { if (this.isConnected && !this.made && !this.description().style) this.warn(10826); }, 1000);
+            // (A page script can set `mapStyle` a moment later. A map that exists keeps the style that it has.)
+            if (__DEV__) map ? this.warn(20826) : setTimeout(() => { if (this.isConnected && !this.made && !this.description().style) this.warn(10826); }, 1000);
             return;
         }
-        const map = this.made;
         if (!map) return this.start(spec);
         // (`initialView` is read when the map is made: the view attributes that change move the map instead.)
         if (this.props.initialView === this.firstProp) spec.initialView = this.first;
@@ -144,7 +144,8 @@ export class MapJrElement extends Base {
         this.stops.push(this.made!.listen((name === 'styleload' ? 'style.load' : name) as 'move', e => this.emit(name, e)));
     }
 
-    private emit(name: string, detail?: unknown) { this.dispatchEvent(new CustomEvent('map-' + name, {detail, bubbles: true})); }
+    /** Dispatches `map-` and the name. Returns `false` when a listener called `preventDefault()` (only `map-error` can be cancelled). */
+    private emit(name: string, detail?: unknown) { return this.dispatchEvent(new CustomEvent('map-' + name, {detail, bubbles: true, cancelable: name === 'error'})); }
 
     /** The fields of the view attributes that can be read. */
     private viewOfAttributes(): Record<string, unknown> {
@@ -169,9 +170,10 @@ export class MapJrElement extends Base {
         for (const k of PROPERTIES) { const v = this.props[k]; if (v !== undefined) out[k === 'mapStyle' ? 'style' : k] = v; }
         if (Object.keys(view).length || out.initialView) out.initialView = {...view, ...out.initialView as object};
         if (this.nonce) out.nonce = this.nonce;
-        return {...out, onViewChange: v => this.emit('viewchange', v), onColorSchemeChange: v => this.emit('colorschemechange', v), onClick: e => this.emit('click', e),
-            // (Without a listener for `map-error`, the map writes each error to the console.)
-            onError: this.heard.has('error') ? e => this.emit('error', e) : undefined} as MapDescription;
+        return {...out, onViewChange: v => { this.emit('viewchange', v); }, onColorSchemeChange: v => { this.emit('colorschemechange', v); }, onClick: e => { this.emit('click', e); },
+            // (An error goes to the console unless a listener of `map-error` calls `preventDefault()`, as for the event
+            // `error` of `window`. The listeners cannot be counted: `{once: true}` and `removeEventListener` are not seen.)
+            onError: e => { if (this.emit('error', e)) logError(e); }} as MapDescription;
     }
 
     /** (Development build) a warning of src/mistakes.ts, once for each element and text. */
