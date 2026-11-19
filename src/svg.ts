@@ -81,9 +81,12 @@ export function renderSVG(s: SVGScene): string {
         const uniform = !p.color || p.color.dd ? null : p.color.eval(zoom) as RGBA;
         if (L.type === 'background' ? L.p.pattern.eval(zoom) != null : L.type === 'fill' && L.p.pattern.eval(zoom)) continue; // image patterns are not drawn in SVG output
         if (L.type === 'background') {
-            body.push(`<rect width="100%" height="100%" fill="${hex(uniform!)}"${alpha('fill-opacity', uniform![3] * opacity)}/>`);
+            if (opacity > 0 && uniform![3] > 0) body.push(`<rect width="100%" height="100%" fill="${hex(uniform!)}"${alpha('fill-opacity', uniform![3] * opacity)}/>`);
             continue;
         }
+        // A layer that draws nothing at this zoom writes nothing (a data-driven value is checked per feature below).
+        if (opacity <= 0 || L.type === 'line' && (!p.width.dd && p.width.eval(zoom) <= 0 || uniform && uniform[3] <= 0)) continue;
+        if (L.type === 'fill' && uniform && uniform[3] <= 0 && !((p.outline?.eval(zoom) as RGBA | undefined)?.[3]! > 0)) continue;
         for (const it of s.items.get(L.source!) ?? []) {
             if ('href' in it.tile) {
                 if (L.type === 'raster') {
@@ -132,12 +135,14 @@ export function renderSVG(s: SVGScene): string {
             const unitsPerPx = 1 / (it.scale * Q), minSize = (L.ssr?.minSize ?? 0.8) * unitsPerPx, tol = (L.ssr?.simplify ?? 0.6) * unitsPerPx;
             for (let f = 0; f < n; f++) {
                 const [col, a] = styleOf(f), w = fill ? 0 : b.width ? b.width[f] : p.width.eval(zoom);
+                if (fill ? a <= 0 && !outline : a <= 0 || w <= 0) continue;
                 const key = fill ? `fill="${col}"${alpha('fill-opacity', a)}${outline}`
                     : `stroke="${col}" stroke-width="${num(w)}"${alpha('stroke-opacity', a * Math.min(1, w))}` +
                         (dash ? ` stroke-dasharray="${dash.map(d => num(d * Math.max(w, 0.5))).join(' ')}"` : '');
                 const d = pathData(b, f, fill, box, minSize, tol);
                 if (d) groups.set(key, (groups.get(key) ?? '') + d);
             }
+            if (!groups.size) continue;
             const m = it.matrix.map((v, i) => i < 4 ? +(v * Q).toFixed(6) : +v.toFixed(2));
             body.push(`<g transform="matrix(${m.join(' ')})" clip-path="url(#${clipIds.get(it)})"${fill ? '' : ` fill="none"${b.cap && b.cap !== 'butt' ? ` stroke-linecap="${b.cap}"` : ''}${b.join && b.join !== 'miter' ? ` stroke-linejoin="${b.join}"` : ''}`}>`);
             for (const [attrs, d] of groups) if (d) body.push(`<path ${attrs}${fill && !outline ? '' : ' vector-effect="non-scaling-stroke"'} d="${d}"/>`);
