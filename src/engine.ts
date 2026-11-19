@@ -41,7 +41,7 @@ export type Command =
     | {type: 'limits'; minZoom: number; maxZoom: number; maxPitch: number; minPitch?: number; maxBounds?: [number, number, number, number] | null}
     /** Throws away a source's tiles (all sources if none is named) and loads them again. */
     | {type: 'refresh'; source?: string}
-    /** The parameters of `setSourceTileLodParams` (maximum zoom levels on screen, tile count ratio) for these sources. */
+    /** The parameters of `setSourceTileLodParams` (maximum zoom levels on screen, tile count ratio) for these sources; an empty `lod` drops them (removeSource). */
     | {type: 'lod'; sources: string[]; lod: number[]}
     | {type: 'style'; style: ResolvedStyle; reload: boolean; /** A number for each source that changes when the page changes what its tiles are built from. */ versions?: Record<string, number>;
         /** The data of the GeoJSON sources that are new or changed since the last style (the sources in `style` carry no data). */ data?: Record<string, unknown>;
@@ -687,6 +687,8 @@ export class Engine {
     private setStyle(style: ResolvedStyle, reload: boolean, data?: Record<string, unknown>, instant?: boolean) {
         // (A new style can have an image that the style before did not have: the engine asks the page again, #628.)
         if (reload) this.missing.clear();
+        // A source that the new style removes or replaces drops its values of setSourceTileLodParams, as in MapLibre GL JS (#1059).
+        for (const id in this.lod) if (this.style?.sources[id] && JSON.stringify(style.sources[id]) !== JSON.stringify(this.style.sources[id])) delete this.lod[id];
         // `encoding: 'custom'` of a `raster-dem` source (#590): the factors and the shift come from the style or from a
         // TileJSON as they are. When one is not a finite number, the source and its contours are read as `mapbox`.
         for (const [name, src] of Object.entries(style.sources)) {
@@ -960,7 +962,7 @@ export class Engine {
             }
             case 'stop': this.stop(); break;
             case 'limits': Object.assign(tr, {minZoom: c.minZoom, maxZoom: c.maxZoom, maxPitch: c.maxPitch, minPitch: c.minPitch ?? 0, maxBounds: c.maxBounds ?? null}); tr.set(undefined, tr.zoom, undefined, tr.pitch); break;
-            case 'lod': for (const id of c.sources) this.lod[id] = c.lod; this.viewCovers.clear(); this.invalidate(); break;
+            case 'lod': for (const id of c.sources) if (c.lod.length) this.lod[id] = c.lod; else delete this.lod[id]; this.viewCovers.clear(); this.invalidate(); break;
             case 'refresh':
                 for (const [key, t] of this.tiles) if (!c.source || key.startsWith(c.source + '|')) this.dropTile(key, t);
                 // The tile workers keep the bytes of recent tiles for queries: those are old now.
