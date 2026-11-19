@@ -8,8 +8,9 @@
 // `--min` fails the run when fewer properties than that are supported in full, so a new gap fails `pnpm test`.
 //
 // How a property counts as read:
-// - A layer property in `SPEC` (src/style.ts) is compiled by `compileProp`. Unless its kind is `raw`, it takes any
-//   expression, so it evaluates zoom, feature, feature-state and global-state. A `raw` one takes literal values only.
+// - A layer property in `SPEC` (src/style.ts) is compiled by `compileProp`. It takes any expression, so it
+//   evaluates zoom, feature, feature-state and global-state. A value of kind `raw` whose first item is no operator
+//   is a list of values (fonts, anchors), as in MapLibre GL JS (#1004).
 // - The table `OTHER` below lists the properties that the code reads in another way, with the inputs that it
 //   evaluates and a pattern that must still match its file (else the entry is stale and the check fails).
 // - A layer property that is in neither, but whose name appears quoted in src/, is "read, not classified": it fails
@@ -40,7 +41,7 @@ if (Object.keys(SPEC).length < 10) { console.error('FAIL: could not read the lis
 
 // Properties that the code reads outside `SPEC`: [layer type or group ('*' for each layer type), name, inputs, file, pattern].
 const OTHER = [
-    ['*', 'visibility', [], 'style.ts', /l\.layout\?\.visibility !== 'none'/],
+    ['*', 'visibility', ['global-state'], 'style.ts', /compileProp\(l\.layout\.visibility, 'string', 'visible'\)/],
     ['line', 'line-gradient', ['line-progress'], 'style.ts', /l\.paint\['line-gradient'\]/],
     ['heatmap', 'heatmap-color', ['heatmap-density'], 'style.ts', /l\.paint\?\.\['heatmap-color'\]/],
     // (Only an `interpolate` expression gives stops; see `relief` in src/style.ts.)
@@ -78,8 +79,8 @@ const check = (group, name, def, layerType) => {
     const entry = layerType && Object.entries(SPEC[layerType] ?? {}).find(([n]) => n === name);
     const o = other(layerType ?? group, name);
     if (entry) {
-        const [kind, d] = entry[1];
-        inputs = kind === 'raw' ? [] : ALL;
+        const d = entry[1][1];
+        inputs = ALL;
         if (def.default !== undefined && written(d) !== undefined && written(d) !== null && norm(written(d)) !== norm(def.default)) note = `default ${d.replace(/'/g, '"')}, the specification has ${JSON.stringify(def.default)}`;
         status = 'read';
     } else if (o) { inputs = o[2]; status = 'read'; }

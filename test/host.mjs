@@ -466,6 +466,25 @@ for (const renderer of renderers) {
         }, renderer).catch(e => ({error: String(e)}));
         check(`[${renderer}] globalState: the description replaces the default of the style, a change repaints without a style request, a name left out goes back to the default, a new style keeps the values`,
             JSON.stringify(globalState) === JSON.stringify({start: '#00f', changed: '#0f0', requests: 0, cleared: '#f00', restyled: '#0f0'}), JSON.stringify(globalState));
+        // #998: a `visibility` that is an expression of the global state hides a hillshade layer, and its raster-dem
+        // source requests no tiles until the state shows the layer.
+        const hiddenDem = await page.evaluate(async renderer => {
+            const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:100px;height:80px'}));
+            const urls = [], style = {version: 8, state: {relief: {default: true}}, sources: {dem: {type: 'raster-dem', tiles: [location.origin + '/no-such-dem-998/{z}/{x}/{y}.png'], tileSize: 256}},
+                layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}, {id: 'relief', type: 'hillshade', source: 'dem', layout: {visibility: ['case', ['global-state', 'relief'], 'visible', 'none']}}]};
+            let spec = {style, globalState: {relief: false}, renderer, attribution: false, initialView: {center: [0, 0], zoom: 3}, transformRequest: url => { if (url.includes('no-such-dem-998')) urls.push(url); }};
+            const host = t.lib.createMap(el, spec), out = {};
+            await new Promise(r => host.state.subscribe(s => s.idle, i => i && r()));
+            await new Promise(r => setTimeout(r, 300));
+            out.hidden = urls.length;
+            host.update(spec = {...spec, globalState: {relief: true}});
+            for (let i = 0; i < 50 && !urls.length; i++) await new Promise(r => setTimeout(r, 100));
+            out.shown = urls.length > 0;
+            host.destroy(); el.remove();
+            return out;
+        }, renderer).catch(e => ({error: String(e)}));
+        check(`[${renderer}] visibility: an expression of the global state hides a hillshade layer, whose raster-dem source requests no tiles until the state shows it (#998)`,
+            JSON.stringify(hiddenDem) === JSON.stringify({hidden: 0, shown: true}), JSON.stringify(hiddenDem));
         // Paint transitions (#960): a new paint value in update() moves over the style's `transition` (here 3 s), the map
         // is not idle until it ends, and a `*-transition` of duration 0 changes the value at once. (`toBlob` waits for
         // `idle`, so a screenshot of the page reads the colour in the middle.)
