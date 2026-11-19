@@ -649,25 +649,30 @@ for (const renderer of renderers) {
                 return {wrong};
             }).catch(e => ({error: String(e)}));
             check(resizedName, resized.wrong?.length === 0, JSON.stringify(resized));
-            // The browser clamps a large canvas (to 8192 × 8192 in Chromium): `idle` does not wait for a size that the
-            // canvas cannot have. It comes within 300 ms of the last frame after a jump.
-            const clampName = '[worker] a canvas that the browser clamps: idle comes within 300 ms of the last frame (#950)';
+            // The browser clamps a canvas that is wider than the GPU allows (16384 pixels in Chromium and WebKit on the Mac):
+            // `idle` does not wait for a size that the canvas cannot have. A strip of 6000 × 200 at pixel ratio 3 asks for
+            // 18000 × 600, which is wider than that and small enough to allocate (#997: 6000 × 4000 crashed WebKit). The
+            // idle after setPixelRatio comes within 500 ms (an idle that waits for the size takes the whole second of the
+            // wait, while frames still come), and after a jump it comes within 300 ms of the last frame.
+            const clampName = '[worker] a canvas that the browser clamps: idle comes within 500 ms of setPixelRatio and 300 ms of the last frame (#950)';
             const clamped = await page.evaluate(async () => {
-                const t = window.t, mod = await import('/dist/map-jr-gl-maplibre-compat.js');
-                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:6000px;height:4000px;z-index:100'}));
-                // (The style has only a background. With tiles, a canvas of this size kept a 2-core CI runner busy into the
-                // next checks, whose maps did not reach idle.)
+                const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:6000px;height:200px;z-index:100'}));
                 const map = new mod.Map({container: el, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#8ac'}}]}, attributionControl: false});
                 const idle = () => new Promise(r => { map.once('idle', () => r(performance.now())); setTimeout(() => r(null), 10000); });
-                await idle(); map.setPixelRatio(3); await idle();
+                await idle();
+                const start = performance.now(), resized = idle();
+                map.setPixelRatio(3);
+                const after = await resized, ratio = after === null ? 'no idle' : Math.round(after - start);
                 let last = 0; map.on('render', () => { last = performance.now(); });
                 const gaps = [];
                 for (let i = 0; i < 3; i++) { const armed = idle(); map.jumpTo({zoom: 14.3 + (i + 1) * 0.0001}); const at = await armed; gaps.push(at === null ? 'no idle' : Math.round(at - last)); }
                 const canvas = [map.getCanvas().width, map.getCanvas().height];
                 map.remove(); el.remove();
-                return {gaps, canvas};
+                return {ratio, gaps, canvas};
             }).catch(e => ({error: String(e)}));
-            check(clampName, clamped.gaps?.every(g => typeof g === 'number' && g < 300), JSON.stringify(clamped));
+            check(clampName, typeof clamped.ratio === 'number' && clamped.ratio < 500 && clamped.gaps?.every(g => typeof g === 'number' && g < 300)
+                && clamped.canvas[0] < 18000, JSON.stringify(clamped));
         }
         // 3b2. `patch` (#483): it keeps the fields that `part` leaves out, `undefined` removes a field, and `description` is the last description.
         const patched = await page.evaluate(async renderer => {
@@ -1164,37 +1169,40 @@ for (const renderer of renderers) {
         // 4. Points for a symbol layer (#499): a key of `data` with `points()` and a layer of `layers`. New data is no new
         // style, and data that comes with a change of the layer is not lost.
         const pins = await page.evaluate(async () => {
-            const t = window.t, map = t.host._map, wait = ms => new Promise(r => setTimeout(r, ms)), at = () => t.host.queryFeatures({x: 450, y: 300}, {layers: ['pins']});
+            // A query that does not settle within 5 s gives a mark that fails the check, so that it cannot hold the run (#997).
+            const t = window.t, map = t.host._map, wait = ms => new Promise(r => setTimeout(r, ms)), stuck = [];
+            const query = (point, step) => Promise.race([t.host.queryFeatures(point, {layers: ['pins']}), wait(5000).then(() => (stuck.push(step), []))]);
+            const at = step => query({x: 450, y: 300}, step);
             const centre = t.host.unproject({x: 450, y: 300}), points = list => t.lib.points(list, {lngLat: p => p.lngLat, id: p => p.id, properties: p => ({color: p.color})});
             const layer = layout => ({id: 'pins', type: 'symbol', source: 'pins', layout: {'icon-image': 'disc', 'icon-allow-overlap': true, 'icon-ignore-placement': true, ...layout}});
             t.host.update(t.spec = {...t.spec, images: {disc: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="{{color}}"/></svg>'}, data: {...t.spec.data, pins: points([{id: 1, lngLat: centre, color: '#d00'}])}, layers: [...t.spec.layers ?? [], layer()]});
             await wait(900);
-            const one = await at(), top = map.getStyle().layers.at(-1).id;
+            const one = await at('one'), top = map.getStyle().layers.at(-1).id;
             // Other data: the points move, and the style is the same.
             let restyled = 0;
             const count = () => restyled++;
             map.on('style.load', count);
             t.host.update(t.spec = {...t.spec, data: {...t.spec.data, pins: points([{id: 1, lngLat: [centre[0] + 1, centre[1]], color: '#d00'}])}});
             await wait(700);
-            const moved = (await at()).length;
+            const moved = (await at('moved')).length;
             t.host.update(t.spec = {...t.spec, data: {...t.spec.data, pins: points([{id: 1, lngLat: [0, 0]}, {id: 2, lngLat: centre, color: '#00d'}])}});
             await wait(700);
-            const back = await at(), sameStyle = restyled === 0;
+            const back = await at('back'), sameStyle = restyled === 0;
             map.off('style.load', count);
             // Another layout and other data at once: the source gets the data.
             t.host.update(t.spec = {...t.spec, layers: [...t.spec.layers.filter(l => l.id !== 'pins'), layer({'icon-anchor': 'top'})]});
             t.host.update(t.spec = {...t.spec, data: {...t.spec.data, pins: points([{id: 3, lngLat: centre, color: '#0a0'}])}});
             await wait(1200);
-            const late = await t.host.queryFeatures({x: 450, y: 310}, {layers: ['pins']});
+            const late = await query({x: 450, y: 310}, 'late');
             const {images: _, ...rest} = t.spec, {pins: __, ...data} = rest.data;
             t.host.update(t.spec = {...rest, data, layers: rest.layers.filter(l => l.id !== 'pins')});
             await wait(700);
             return {one: one.length, id: one[0]?.id, top, moved, back: back.length, index: back[0]?.id, color: back[0]?.properties.color, sameStyle,
-                late: late.map(f => f.id + ' ' + f.properties.color).join(), none: !map.getLayer('pins') && !map.getSource('pins')};
+                late: late.map(f => f.id + ' ' + f.properties.color).join(), none: !map.getLayer('pins') && !map.getSource('pins'), stuck};
         });
         check(`[${renderer}] points() in data and a symbol layer in layers: the points are features with their ids, new data is no new style, and data that comes with a change of the layer is not lost`,
             pins.one === 1 && pins.id === 1 && pins.top === 'pins' && pins.moved === 0 && pins.back === 1 && pins.index === 2 && pins.color === '#00d' && pins.sameStyle
-            && pins.late === '3 #0a0' && pins.none, JSON.stringify(pins));
+            && pins.late === '3 #0a0' && pins.none && !pins.stuck.length, JSON.stringify(pins));
 
         // A key of `data` that names a source of `sources` (#857): the map does not write the data into the source object
         // of the description, so that an update with a copy of the same description is no new style.
