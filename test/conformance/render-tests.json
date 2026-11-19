@@ -1529,7 +1529,7 @@
 "text-max-width/force-double-newline": "match",
 "text-max-width/force-newline": "match",
 "text-max-width/force-newline-line": "match",
-"text-max-width/force-newline-line-center": "near",
+"text-max-width/force-newline-line-center": "match",
 "text-max-width/ideographic-breaking": "match",
 "text-max-width/ideographic-punctuation-breaking": "match",
 "text-max-width/literal": "match",
