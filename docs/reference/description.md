@@ -340,7 +340,7 @@ createMap('map', {
 });
 ```
 
-See [Controls](../api.md#controls) for the functions and their options.
+See [Controls](controls.md) for the functions and their options.
 
 ## `projection`
 
@@ -482,7 +482,7 @@ createMap('map', {
 });
 ```
 
-The keys are those of the option `locale` of MapLibre GL JS: see [The texts of the controls](../api.md#the-texts-of-the-controls) for
+The keys are those of the option `locale` of MapLibre GL JS: see [The texts of the controls](controls.md#the-texts-of-the-controls) for
 the list. A key that is not set keeps the English text, and the library includes no translations. `locale` does not
 change the language of the labels of the map.
 

@@ -17,6 +17,12 @@ sections:
       - controls.md
       - images-and-fonts.md
       - color-scheme.md
+      - loading.md
+      - browser-support.md
+      - accessibility.md
+      - size-and-speed.md
+      - terrain.md
+      - globe.md
       - server-rendering.md
   - title: Recipes
     folder: recipes
@@ -32,6 +38,7 @@ sections:
       - exports.md
       - types.md
       - css.md
+      - controls.md
       - server.md
   - title: Migrate
     folder: migrate
