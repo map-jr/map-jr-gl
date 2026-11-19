@@ -43,3 +43,8 @@ test('an icon along a line (beside its text) follows the line, and turns over wi
     assert.ok(Math.abs(Math.cos(angle()) + 1) < 1e-6, `default: ${angle()}`);
     assert.ok(Math.abs(Math.cos(angle(true)) - 1) < 1e-6, `upright: ${angle(true)}`);
 });
+test('an icon along a line is not dropped because of its own bent text (#1072)', () => {
+    const placed = place({'symbol-placement': 'line', 'icon-image': 'a'}, line, 0, true);
+    assert.ok(placed?.curve, 'the text follows the line');
+    assert.ok(placed.icon, 'the icon is placed with its text');
+});
