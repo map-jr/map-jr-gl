@@ -683,6 +683,10 @@ direction that the map faces (a bearing of 45 degrees shows `E`), and a mark of 
 click turns the map to the north, and a drag sideways turns it by 0.8 degrees for each pixel. The scale sits at the
 bottom edge of the map beside the attribution; with the compact attribution it keeps a distance of 10 pixels.
 
+The options of each function have a type that `@map-jr/map-jr-gl/controls` exports: `NavigationOptions`,
+`ScaleOptions`, `GeolocateOptions` and `TerrainOptions`. The options of `attribution` of the description have the type
+`AttributionOptions`, which `@map-jr/map-jr-gl` exports.
+
 | Function | Control | Options (each also has `position`) |
 |---|---|---|
 | `navigation` | Zoom buttons and a compass. A click on the compass resets the bearing, and dragging it rotates the map by 0.4 degrees for each pixel sideways: a drag to the right decreases the bearing at every height, unlike the rotate drag on the map. With `visualizePitch: true`, the compass also shows the pitch, the drag also pitches the map, and a click resets the pitch (default false, as in MapLibre GL JS). | `showZoom`, `showCompass`, `visualizePitch` |

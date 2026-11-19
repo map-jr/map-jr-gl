@@ -1,7 +1,7 @@
 // TypeScript code for the main API (`@map-jr/map-jr-gl`), as the documentation and the gallery write it.
 // `node test/examples.mjs` checks that it compiles against the built types (dist/types). It is not run.
-import {createMap, points, type FeatureOptions, type MapDragEvent, type MapEvents, type MapDescription, type Position, type RenderedFeature, type View} from '@map-jr/map-jr-gl';
-import {navigation} from '@map-jr/map-jr-gl/controls';
+import {createMap, points, type AttributionOptions, type FeatureOptions, type MapDragEvent, type MapEvents, type MapDescription, type Position, type RenderedFeature, type View} from '@map-jr/map-jr-gl';
+import {navigation, scale, geolocate, terrain, type NavigationOptions, type ScaleOptions, type GeolocateOptions, type TerrainOptions} from '@map-jr/map-jr-gl/controls';
 
 // A position that is declared apart from the call has the type number[].
 const NYC = [-74.0065, 40.7085];
@@ -96,3 +96,16 @@ console.log(ownControl);
 const made = navigation().create();
 const corner: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | undefined = made.getDefaultPosition?.();
 console.log(corner);
+
+// The options of the controls and of the attribution have names (#1127).
+const navOptions: NavigationOptions = {showZoom: true, visualizePitch: true};
+const scaleOptions: ScaleOptions = {unit: 'imperial', maxWidth: 80};
+const geoOptions: GeolocateOptions = {zoom: 12, trackUserLocation: true};
+const terrainOptions: TerrainOptions = {source: 'dem', exaggeration: 1.5};
+const attributionOptions: AttributionOptions = {compact: true, customAttribution: ['© Me']};
+createMap('map', {style: 'https://styles.map-jr.org/1/elevation-zero.json', attribution: attributionOptions, controls: [navigation(navOptions), scale(scaleOptions), geolocate(geoOptions), terrain(terrainOptions)]});
+// @ts-expect-error `unit` takes one of three names.
+const badScale: ScaleOptions = {unit: 'miles'};
+// @ts-expect-error `source` is required.
+const badTerrain: TerrainOptions = {exaggeration: 2};
+console.log(badScale, badTerrain);
