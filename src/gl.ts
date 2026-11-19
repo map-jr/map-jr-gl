@@ -1,5 +1,5 @@
 import {EXTENT, clamp, latFromMerc, mercX, mercY, type TileID, type Transform} from './geo.ts';
-import {hillshadeLights, LIGHTS, screenTranslate, type CompiledLayer, type Light} from './style.ts';
+import {hillshadeLights, LIGHTS, withFilter, screenTranslate, type CompiledLayer, type Light} from './style.ts';
 import {compileProp} from './expr.ts';
 import type {Sky} from './resolve.ts';
 import {LOSE_CONTEXT} from './gl-names.ts';
@@ -1062,10 +1062,10 @@ export class GLRenderer {
             // (A custom layer draws on the screen, also with 3D terrain, and not on the pictures of the terrain tiles.)
             if (L.type === 'custom') { if (pass !== 'ground') { this.custom?.(L.id, s); this.current = null; } continue; }
             if (L.type === 'heatmap') { if (pass !== 'buildings') this.drawHeatmap(L, tr, bySource.get(L.source!) ?? [], target); continue; }
-            if (!only && (L.type === 'fill' || L.type === 'line') && pass !== 'buildings') {
+            if (!only && (L.type === 'fill' || L.type === 'line' || L.type === 'raster') && pass !== 'buildings') {
                 // Layer-wide opacity and blending: the layer is drawn on its own first, so that overlapping features
                 // form one surface, and that surface is then put onto the map once.
-                const opacity = L.p.layerOpacity.eval(zoom), blend = L.p.layerBlend.eval(zoom) as string;
+                const opacity = L.p.layerOpacity?.eval(zoom) ?? 1, blend = L.p.layerBlend.eval(zoom) as string;
                 if (opacity < 1 || blend !== 'normal') {
                     if (opacity > 0) this.compositeLayer(s, tr, bySource, target, pass, L, opacity, blend);
                     continue;
@@ -1122,6 +1122,8 @@ export class GLRenderer {
                 gl.activeTexture(gl.TEXTURE0);
                 gl.uniform1i(u.u_image, 0);
                 gl.bindVertexArray(this.globe ? this.globeGrid().vao : this.quad);
+                // `raster-resampling` (or `resampling`): the filter of the texture, set before each tile is drawn.
+                const filter = (p.resampling.eval(zoom) ?? p.rasterResampling?.eval(zoom)) === 'nearest' ? gl.NEAREST : gl.LINEAR;
                 if (L.type === 'raster') {
                     const sat = p.saturation.eval(zoom), con = p.contrast.eval(zoom);
                     gl.uniform3f(u.u_adjust, p.opacity.eval(zoom), sat > 0 ? 1 - 1 / (1.001 - sat) : -sat, con > 0 ? 1 / (1 - con) : 1 + con);
@@ -1161,7 +1163,7 @@ export class GLRenderer {
                     if (L.type === 'raster') { gl.uniform2fv(u.u_corners, it.corners ?? SQUARE); gl.uniform4fv(u.u_q, it.corners ? cornerWeights(it.corners) : ONES); }
                     if (L.relief) gl.uniform4fv(u.u_unpack, it.tile.unpack!);
                     gl.bindTexture(gl.TEXTURE_2D, L.relief ? it.tile.raw! : it.tile.tex);
-                    if (this.globe) this.drawGrid(it.id); else gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+                    withFilter(gl, filter, () => this.globe ? this.drawGrid(it.id) : gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4));
                 }
                 continue;
             }

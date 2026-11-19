@@ -57,6 +57,8 @@ const OTHER = [
     ['projection', 'type', ['zoom'], 'geo.ts', /type\[0\] === 'interpolate' && type\[2\]\?\.\[0\] === 'zoom'/],
     ['transition', 'duration', [], 'style.ts', /duration: 300/],
     ['transition', 'delay', [], 'style.ts', /delay: 0/],
+    // (Accepted with no effect: the name is in src/ only for its warning, so the inputs are `null` and it counts as not read.)
+    ['raster', 'raster-fade-duration', null, 'style.ts', /raster-fade-duration: the property has no effect/],
 ];
 const stale = OTHER.filter(([, , , f, re]) => !re.test(src[f]));
 const other = (group, name) => OTHER.find(([g, n]) => (g === group || (g === '*' && !['sky', 'light', 'terrain', 'projection', 'transition'].includes(group))) && n === name);
@@ -83,7 +85,7 @@ const check = (group, name, def, layerType) => {
         inputs = ALL;
         if (def.default !== undefined && written(d) !== undefined && written(d) !== null && norm(written(d)) !== norm(def.default)) note = `default ${d.replace(/'/g, '"')}, the specification has ${JSON.stringify(def.default)}`;
         status = 'read';
-    } else if (o) { inputs = o[2]; status = 'read'; }
+    } else if (o) { inputs = o[2] ?? []; status = o[2] ? 'read' : 'not read'; }
     else if (layerType && named(name)) status = 'not classified';
     else if (!layerType && named(name)) status = 'read';
     else status = 'not read';

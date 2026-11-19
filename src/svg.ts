@@ -94,7 +94,7 @@ export function renderSVG(s: SVGScene): string {
                 if (L.type === 'raster') {
                     const m = it.matrix.map((v, i) => i < 4 ? +(v * Q).toFixed(6) : +v.toFixed(2));
                     body.push(`<g transform="matrix(${m.join(' ')})" clip-path="url(#${clipIds.get(it)})"${alpha('opacity', opacity)}>` +
-                        `<image href="${escapeXML(it.tile.href)}" width="${EXTENT / Q}" height="${EXTENT / Q}" preserveAspectRatio="none"/></g>`);
+                        `<image href="${escapeXML(it.tile.href)}" width="${EXTENT / Q}" height="${EXTENT / Q}" preserveAspectRatio="none"${(p.resampling.eval(zoom) ?? p.rasterResampling.eval(zoom)) === 'nearest' ? ' style="image-rendering:pixelated"' : ''}/></g>`);
                 }
                 continue;
             }
