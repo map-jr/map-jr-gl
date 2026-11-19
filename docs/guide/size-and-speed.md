@@ -21,14 +21,12 @@ Sizes in KB, compressed with gzip, next to MapLibre GL JS 6.17.0. The page scrip
 
 - A usual map downloads the page script of its entry and the worker file. The [loading guide](loading.md#the-files-that-a-map-loads)
   says which other files a map loads and when.
-- The hard line is a third of what MapLibre GL JS downloads. The page script and the worker file of each entry stay
-  below it.
 - The server renderer is the file of `@map-jr/map-jr-gl/server`. A page in the browser does not load it.
 
 ## Speed in browsers
 
 <!-- speed:start -->
-The workflow [Browsers](https://github.com/map-jr/map-jr-gl/tree/bench-results) runs the same page with both libraries after each change, next to MapLibre GL JS 6.17.0. Map Jr. GL uses the worker renderer where the browser has it. The ratio is the number of Map Jr. GL divided by the number of MapLibre GL JS.
+The workflow [Browsers](https://github.com/map-jr/map-jr-gl/tree/bench-results) runs the same page with both libraries after each change, next to MapLibre GL JS 6.17.0. These figures are from the run of 2026-11-19, for commit 20280bb. Map Jr. GL uses the worker renderer where the browser has it. The ratio is the number of Map Jr. GL divided by the number of MapLibre GL JS.
 
 Load to idle, in milliseconds. A ratio below 1 means that Map Jr. GL is faster.
 
@@ -67,8 +65,10 @@ Frames per second while a map with 10,000 markers moves. A ratio above 1 means t
 | Windows, WebKit | 3 | 20 | 6.10 |
 <!-- speed:end -->
 
-The computers of the workflow are virtual machines, and those for Linux and Windows have no GPU. Use these tables
-to compare the two libraries, not as the speed of a real device.
+Load to idle is the time from the start of the page until the map has drawn its first view completely. The
+computers of the workflow are virtual machines, and those for Linux and Windows have no GPU: they draw WebGL in
+software, which explains low frame rates such as those of Linux, Chromium. Use these tables to compare the two
+libraries, not as the speed of a real device.
 
 ## Measure on your device
 

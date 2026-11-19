@@ -53,14 +53,15 @@ test('the speed block has one table for each measure, with one number in each ce
     assert.match(block, /on 2026-11-19 \(commit dea6a7f\)/);
 });
 
-test('the blocks of the page of sizes have the same numbers, and no date, no commit and no link of the README', () => {
+test('the blocks of the page of sizes have the same numbers, and no link of the README', () => {
     const sizes = sizesBlock(figures);
     assert.deepEqual(cellsOf(sizes), [['Worker file', '84.3', '145.0', '58.1%'], ['Server renderer', '47.7', '', '']]);
     assert.match(sizes, /^<!-- sizes:start -->\n[\s\S]*\n<!-- sizes:end -->$/);
     const speed = speedBlock({date: '2026-11-19T10:00:00Z', commit: 'dea6a7f0123', rows: [
         {system: 'macOS', browser: 'Chromium', load: {maplibre: 904.4, mapJr: 431.2}, moving: null, markers: null}]}, '6.17.0', {page: true});
     assert.deepEqual(cellsOf(speed), [['macOS, Chromium', '904', '431', '0.48']]);
-    assert.doesNotMatch(speed, /2026|dea6a7f|[Mm]easured/);
+    assert.match(speed, /the run of 2026-11-19, for commit dea6a7f\./);
+    assert.doesNotMatch(speed, /[Mm]easured/);
 });
 
 test('the blocks of the conformance tools keep what a scenario found out of the cells', () => {

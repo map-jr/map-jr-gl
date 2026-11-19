@@ -40,12 +40,13 @@ The worker renderer draws the map in a worker, and the main-thread renderer draw
 | Feature | What it needs | Without it |
 |---|---|---|
 | Worker renderer | `transferControlToOffscreen` on a canvas, and WebGL2 in a worker | The map draws on the main thread. |
-| Main-thread renderer | WebGL2 on the page | The map shows no map, as in "What a browser needs". |
+| Main-thread renderer | WebGL2 on the page | The container shows "This browser cannot show the map." |
 | Tile workers | A page that is allowed to start workers | The map builds the tiles on the main thread and writes a warning. |
-| Elevation tiles: 3D terrain, hillshade, contour lines, elevation queries | `OffscreenCanvas` with a 2D context, and `createImageBitmap`, in a worker | The map does not decode elevation tiles. |
+| 3D terrain | `OffscreenCanvas` in a worker | The terrain is flat: in WebKit on Windows, the height at the centre of the benchmark page is 0 m, and 10 m elsewhere. Elevation queries still return heights. |
 
 The map also changes to the main thread after it started, when the worker loses its WebGL context before its first
-frame, loses it twice in 10 seconds, or draws nothing in the 5 seconds after its start.
+frame, loses it twice in 10 seconds, or draws nothing in the 5 seconds after its start. It warns then as it does at
+the start: with `renderer: 'worker'` always, and with `'auto'` only in the development build.
 
 To read the renderer that the map uses, read `map.state.get().renderer` in `@map-jr/map-jr-gl`, or `map.renderer` in
 `@map-jr/map-jr-gl/maplibre-compat`. Read it after the map has loaded: before that, `state.renderer` is `undefined`
@@ -72,20 +73,17 @@ test.
 | System | Chromium | Firefox | WebKit |
 |---|---|---|---|
 | macOS | Worker renderer | Worker renderer | Worker renderer |
-| Linux | Worker renderer | Worker renderer | Main-thread renderer, because WebKit has no WebGL2 in a worker there |
-| Windows | Worker renderer | Worker renderer | Main-thread renderer, because WebKit has no `OffscreenCanvas` there, so elevation tiles are not decoded |
+| Linux | Worker renderer | Worker renderer | Main-thread renderer |
+| Windows | Worker renderer | Worker renderer | Main-thread renderer, and flat terrain, because WebKit has no `OffscreenCanvas` there |
 
-The WebKit of Playwright is not Safari. Safari 27.2 on macOS and Safari 26.5 in the iOS Simulator load the map,
-when the workflow is started with Safari by hand. On the virtual machine for macOS, the worker renderer of Safari
-takes several seconds to become idle.
+The WebKit of Playwright is not Safari. Safari itself is not checked by the workflow that runs after each change.
 
 ## Browsers that no test covers
 
 No test runs in these browsers. Their support is not known:
 
-- a real iPhone or iPad, and Android in any browser;
+- Safari on macOS and iOS, a real iPhone or iPad, and Android in any browser;
 - Safari before 16.4, which has no `OffscreenCanvas` in workers;
-- Safari on a Mac with a GPU;
 - a real GPU on Linux or Windows;
 - the released builds of Chrome, Edge and Firefox.
 

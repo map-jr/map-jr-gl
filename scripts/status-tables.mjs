@@ -50,9 +50,9 @@ export function sizesBlock(f) {
  */
 export function speedBlock(speed, maplibre, {page = false} = {}) {
     const number = (n, digits = 0) => typeof n === 'number' && isFinite(n) ? n.toFixed(digits) : '';
-    // The page of the user docs has no date and no commit: they belong to the README and to the branch of results.
+    // The page of the user docs names the run in a sentence of its own, and links to nothing of the repository.
     return ['<!-- speed:start -->', page
-        ? `The workflow [Browsers](https://github.com/map-jr/map-jr-gl/tree/bench-results) runs the same page with both libraries after each change, next to MapLibre GL JS ${maplibre}. Map Jr. GL uses the worker renderer where the browser has it. The ratio is the number of Map Jr. GL divided by the number of MapLibre GL JS.`
+        ? `The workflow [Browsers](https://github.com/map-jr/map-jr-gl/tree/bench-results) runs the same page with both libraries after each change, next to MapLibre GL JS ${maplibre}. These figures are from the run of ${speed.date.slice(0, 10)}, for commit ${speed.commit.slice(0, 7)}. Map Jr. GL uses the worker renderer where the browser has it. The ratio is the number of Map Jr. GL divided by the number of MapLibre GL JS.`
         : `Measured by the workflow [Browsers](https://github.com/map-jr/map-jr-gl/tree/bench-results) on ${speed.date.slice(0, 10)} (commit ${speed.commit.slice(0, 7)}), next to MapLibre GL JS ${maplibre}. Map Jr. GL uses the worker renderer where the browser has it. The ratio is the number of Map Jr. GL divided by the number of MapLibre GL JS.`,
         ...speedMeasures.flatMap(m => ['', m.title, '',
             ...table(['System, browser', 'MapLibre GL JS', 'Map Jr. GL', 'Ratio'], speed.rows.filter(r => r[m.key]).map(r => [`${r.system}, ${r.browser}`, number(r[m.key].maplibre), number(r[m.key].mapJr), number(r[m.key].mapJr / r[m.key].maplibre, 2)]), [1, 2, 3])]),

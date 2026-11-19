@@ -13,9 +13,10 @@ these keys work as in MapLibre GL JS:
 | Arrow keys | Move the map. |
 | Shift with left or right | Rotate the map by 15°. |
 | Shift with up or down | Change the pitch by 10°. |
-| `+` and `-` | Zoom in and out. |
+| `+` or `=`, and `-` | Zoom in and out. |
 
-The container of the map shows an outline of 2 pixels while the map has the focus. The colour is the custom property
+The container of the map shows an outline of 2 pixels while the map has the keyboard focus. A click on the map
+gives it the focus but shows no outline. The colour is the custom property
 `--map-control-focus`, and its default is `#2f7fd1`.
 
 ```js
@@ -29,22 +30,21 @@ const map = createMap('map', {
 });
 ```
 
-In `@map-jr/map-jr-gl/maplibre-compat`, `map.keyboard.disable()` turns the keys off. In `@map-jr/map-jr-gl`, only
-`interactive: false` of the [description](../reference/description.md) turns them off, and it also turns off the
-mouse and touch.
+In `@map-jr/map-jr-gl/maplibre-compat`, `map.keyboard.disable()` turns the keys off. The main API has no setting that turns off only the keys.
+[`interactive: false`](../reference/description.md) of the description turns off the keys, the mouse and touch.
 
 ## Names for assistive technology
 
 | Part | Name and role |
 |---|---|
-| The canvas | `role="region"` and `aria-label="Map"`. |
+| The canvas | `role="region"` and `aria-label="Map"`. The name cannot be changed. |
 | A button of a control | An `aria-label` and a `title`. The fullscreen button is "Enter fullscreen" or "Exit fullscreen", with `aria-pressed`. |
 | The close button of a popup | "Close popup". |
 | The default marker of `@map-jr/map-jr-gl/maplibre-compat` | `aria-label="Map marker"`. |
 | A marker with a popup in `@map-jr/map-jr-gl/maplibre-compat` | `role="button"` and `tabindex="0"`. Enter and the space bar open and close the popup. An element of your own keeps its own `role` and `tabindex`. |
 | The SVG of the server renderer | `role="img"` and the `aria-label` from the option `label`. The default is "Map". |
 
-To change these names, set [`locale`](../reference/description.md#locale) of the description, or the option
+To change the names of the controls, the popup and the marker, set [`locale`](../reference/description.md#locale) of the description, or the option
 `locale` of `new Map()` in `@map-jr/map-jr-gl/maplibre-compat`. Both take the keys of MapLibre GL JS, such as
 `'Popup.Close'`.
 
@@ -82,4 +82,4 @@ To move the focus into such a popup, give an element of its content `tabindex="0
 
 - [Markers and popups](markers-and-popups.md) for elements of the page on the map.
 - [Controls](controls.md) for the buttons of the map.
-- [Server rendering](../server-rendering.md) for the option `label`.
+- [`RenderOptions`](../reference/server.md#renderoptions) for the option `label` of the server renderer.

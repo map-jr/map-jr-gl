@@ -5,19 +5,20 @@ Content Security Policy and TypeScript for the library.
 
 ## The files that a map loads
 
-A bundler needs no setting. The page script finds the worker file next to itself with
+A production build needs no setting of the bundler. In development, Vite needs one setting: see
+[Vite in development](#vite-in-development). The page script finds the worker file next to itself with
 `new URL('./map-jr-gl-worker.js', import.meta.url)`, and Vite, webpack 5, Rollup and Parcel copy the worker file
 into the build when they read that line.
 
 | File | When the map loads it |
 |---|---|
-| The page script: the file of the entry and its parts | When the page imports the entry |
-| `map-jr-gl-worker.js` | When the map is created, together with the style. The worker renderer draws the map in it. |
+| The page script: the file of the entry and the files that it imports, called its parts | When the page imports the entry |
+| `map-jr-gl-worker.js` | When the map is created, together with the style. The same file starts the worker of the renderer and the tile workers. |
 | `map-jr-gl-engine-entry-<hash>.js` | Only when the map draws on the main thread: with `renderer: 'main'`, or when a worker cannot draw |
 | `map-jr-gl-custom-layers-<hash>.js` | Only in `@map-jr/map-jr-gl/maplibre-compat`, when `addLayer` adds the first custom layer |
 | `map-jr-gl-standalone.js` | Only when the page imports the one-file build instead of the entry |
 
-All maps on a page share one group of tile workers. [Size and speed](size-and-speed.md#download-size) gives the
+The tile workers decode the tiles. All maps on a page that use the same worker file share them. [Size and speed](size-and-speed.md#download-size) gives the
 size of each file.
 
 ## Change where and how the map loads its files
@@ -30,8 +31,10 @@ export it. In `@map-jr/map-jr-gl/maplibre-compat`, each option is also an option
 |---|---|---|---|
 | `workerUrl` | `string \| URL` | The worker file next to the page script | The URL of `map-jr-gl-worker.js`. |
 | `createWorker` | `() => Worker` | | A function that starts the worker, for the worker syntax of a bundler. It overrides `workerUrl`. |
-| `tileWorkers` | `number` | Two fewer than the processor cores, from 1 to 4 | The number of tile workers. It has no effect while a map that uses the same worker file exists. |
+| `tileWorkers` | `number` | Two fewer than the processor cores, from 1 to 4 | The number of tile workers. While a map with the same worker file exists, a new value is ignored with no warning. |
 | `renderer` | `'auto' \| 'worker' \| 'main'` | `'auto'` | The thread that draws the map. See [What each renderer needs](browser-support.md#what-each-renderer-needs). |
+
+To change `tileWorkers`, call `remove()` on every map of the page, then `configure`, then create the maps again.
 
 In `@map-jr/map-jr-gl`, `renderer` is also a field of the [description](../reference/description.md), and the field
 overrides `configure` for that map.
@@ -66,7 +69,9 @@ const map = new Map({
 });
 ```
 
-To use the worker syntax of the bundler, pass `createWorker`:
+To use the worker syntax of the bundler, pass `createWorker`. The map calls it for the worker of the renderer and
+for each tile worker. The package exports the worker file as `@map-jr/map-jr-gl/worker`. Vite 8 then writes the
+worker file twice into the build, and the map requests only one of the two.
 
 ```js
 import {configure, createMap} from '@map-jr/map-jr-gl';
@@ -84,8 +89,10 @@ const map = createMap('map', {
 
 The map draws on the main thread when the worker file is not at its URL, when a Content Security Policy does not
 allow workers, or when the browser cannot draw WebGL2 in a worker. It then loads the renderer as one more file and
-writes a warning to the console that says what to change. With `renderer: 'auto'`, a browser that cannot draw WebGL2 in
-a worker gets no warning, and the development build writes the text as a note with `console.info`. [Browser support](browser-support.md#what-each-renderer-needs) lists what each renderer needs.
+writes a warning to the console that says what to change.
+
+With `renderer: 'auto'`, a browser that cannot draw WebGL2 in a worker gets no warning in the production build. The
+development build writes the same text with `console.info`. [Browser support](browser-support.md#what-each-renderer-needs) lists what each renderer needs.
 
 The page script and the worker file must come from the same version of the package. When a CDN or a cache serves
 a worker file of another version, the map writes this warning once and still starts, but it can fail later:
@@ -97,29 +104,38 @@ same version of the package as the page file, or pass `workerUrl` with the URL o
 
 ## Preload the parts of the page script
 
-The file of each entry imports parts that the entries share. The browser finds the names of the parts only after it
-has read the file of the entry. When a page loads the files of `dist/` as they are, list the parts in the `<head>`
-with `<link rel="modulepreload">`, so that the browser requests them together:
+The browser finds the names of the parts only after it has read the file of the entry. When a page loads the files
+of `dist/` as they are, list the entry and its parts in the `<head>` with `<link rel="modulepreload">`, so that the
+browser requests them together. The names of the parts have a hash that changes with each version. This script
+prints the lines for an entry from the files of the installed package:
 
-```html
-<link rel="modulepreload" href="/assets/map-jr-gl.js">
-<link rel="modulepreload" href="/assets/map-jr-gl-host-BxRbga7b.js">
-<link rel="modulepreload" href="/assets/map-jr-gl-map-xyaVeUwQ.js">
+```js
+// preload-links.mjs: prints the <link rel="modulepreload"> lines for an entry of the library.
+// Run it with: node preload-links.mjs map-jr-gl.js /assets/
+import {readFileSync} from 'node:fs';
+
+const dist = 'node_modules/@map-jr/map-jr-gl/dist/';
+const [entry = 'map-jr-gl.js', base = '/assets/'] = process.argv.slice(2);
+const seen = new Set();
+const visit = file => {
+  if (seen.has(file)) return;
+  seen.add(file);
+  // The static imports of a built file are its parts.
+  for (const [, part] of readFileSync(dist + file, 'utf8').matchAll(/\bimport\s*(?:[^'"();]*?from\s*)?["']\.\/([^"']+)["']/g)) visit(part);
+};
+visit(entry);
+for (const file of seen) console.log(`<link rel="modulepreload" href="${base}${file}">`);
 ```
 
-| Entry | File | Parts |
-|---|---|---|
-| `@map-jr/map-jr-gl` | `map-jr-gl.js` | `map-jr-gl-host-<hash>.js`, `map-jr-gl-map-<hash>.js` |
-| `@map-jr/map-jr-gl/maplibre-compat` | `map-jr-gl-maplibre-compat.js` | `map-jr-gl-map-<hash>.js`, `map-jr-gl-controls-more-<hash>.js` |
-
-The hash changes with each version. Copy the names from the `import` statements at the start of the file of the
-entry in `node_modules/@map-jr/map-jr-gl/dist/`. A bundler puts the parts into the files of the application and
-preloads them itself. The worker file is not a module of the page, so `modulepreload` does not apply to it.
+The file of `@map-jr/map-jr-gl` is `map-jr-gl.js`, and the file of `@map-jr/map-jr-gl/maplibre-compat` is
+`map-jr-gl-maplibre-compat.js`. Run the script again after each update of the library. A bundler puts the parts
+into the files of the application and preloads them itself. The worker file is not a module of the page, so
+`modulepreload` does not apply to it.
 
 ## Load one file
 
 The standalone build contains the page script and the worker in one file. Use it where a second file is a problem,
-for example in an embedded widget. It is larger, and the page loads all of it before the map starts.
+for example in an embedded widget. The page loads all of it before the map starts.
 
 **Main API**
 
@@ -144,9 +160,20 @@ const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/eleva
 
 ## Load the library from a CDN
 
-A page script from a CDN needs no setting. A browser does not start a worker from another origin, so the map fetches
-the worker file and starts the worker from a `blob:` URL. [Getting started](getting-started.md#load-the-library-without-a-bundler)
-has a complete page.
+Import the entry from the CDN with the version in the URL. The map finds the worker file next to it on the CDN.
+
+```js
+import {createMap} from 'https://unpkg.com/@map-jr/map-jr-gl@0.9.0/dist/map-jr-gl.js';
+
+// The page has <div id="map" style="height: 400px"></div>.
+const map = createMap('map', {
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+  initialView: {center: [-74.0065, 40.7085], zoom: 13.6},
+});
+```
+
+A browser does not start a worker from another origin, so the map starts it from a `blob:` URL. A page with a
+Content Security Policy therefore needs `blob:` in `worker-src`.
 
 ## Content Security Policy
 
@@ -158,21 +185,26 @@ The map needs no `'unsafe-eval'` and no `'unsafe-inline'`. Both entries need the
 | `worker-src` | The origin of the worker file, and `blob:`. |
 | `connect-src` | The origin of the worker file, and the hosts of the style, the TileJSON, the tiles, the glyphs, the sprite and the `fonts` of the description. |
 | `img-src` | The URL of each image that `images` of the description or `addImage` loads, and `data:` for an image passed as SVG text. |
-| `style-src` | Nothing in Chrome and Edge 73, Firefox 101 and Safari 16.4 or later. In an older browser, pass the nonce of the policy as `nonce`, or allow `'unsafe-inline'`. |
+| `style-src` | Nothing for the map itself in Chrome and Edge 73, Firefox 101 and Safari 16.4 or later. In an older browser, pass the nonce of the policy as `nonce`. |
 
-The map fetches the worker file once and starts all workers from a `blob:` URL of it. Without `blob:` in
-`worker-src`, the map starts the workers from the URL of the file. The first map on the page then writes one console
-error for each worker, up to 5, and requests the file once more.
+`nonce` is a field of the [description](../reference/description.md) in `@map-jr/map-jr-gl`, and an option of
+`new Map()` in `@map-jr/map-jr-gl/maplibre-compat`.
 
-Two things still need `style-src 'unsafe-inline'`, because the policy blocks `style` attributes:
+Without `blob:` in `worker-src`, the map starts its workers from the URL of the file and still draws with the worker
+renderer. The first map of the page then writes one console error for each worker that it starts, and requests the
+worker file once more for each. On a device with 4 cores, which starts 2 tile workers and the worker of the
+renderer, that is 3 errors and 4 requests.
 
-- the markup of the [server renderer](../server-rendering.md) in the page;
+Two things of the application need `style-src 'unsafe-inline'`, because the policy blocks `style` attributes:
+
+- the markup of the [server renderer](server-rendering.md) in the page;
 - a `style` attribute in HTML that the application passes to a popup or a marker. Use classes instead.
 
 ## Vite in development
 
 In development, Vite 5 serves the library from its cache of dependencies, which does not contain the worker file.
-The map then draws on the main thread and warns "Workers are unavailable". Exclude the library from the cache:
+The map then draws on the main thread and warns "Workers are unavailable". This is not checked with Vite 5, 6 and 7;
+Vite 8 needs no setting for the library alone. Exclude the library from the cache:
 
 ```js
 // vite.config.js
@@ -202,7 +234,7 @@ setting.
 
 ## Next.js
 
-Create the map in `useEffect` of a client component. The server can import the library, so `next/dynamic` is not
+The configuration of this section is not checked with a current version of Next.js. Create the map in `useEffect` of a client component. The server can import the library, so `next/dynamic` is not
 needed. webpack and Turbopack load the worker file with no setting.
 
 ```jsx
@@ -247,7 +279,7 @@ the types that TypeScript reads: see [Wrappers and plugins](../migrate/from-mapl
 
 The server can import both entries. The library uses no browser API until `createMap()` or `new Map()` runs, so
 create the map in the function that runs after the component is in the page, such as `onMounted` or `useEffect`. To
-show a map before the script runs, see [Server rendering](../server-rendering.md).
+show a map before the script runs, see [Server rendering](server-rendering.md).
 
 ## TypeScript
 
