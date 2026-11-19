@@ -130,6 +130,7 @@ Properties:
 - `line-offset` and `line-blur` that are different for each feature
 - Circle stroke and blur that are different for each feature
 - `line-gap-width` that is different for each feature. The line is drawn without a gap, and nothing warns.
+- `line-round-limit` in the server renderer. Its SVG does not apply the property, because SVG has no equivalent, so a round join rounds every corner.
 - `heatmap-radius` that is different for each feature. The layer uses the default radius of 30 pixels, and nothing warns.
 - `text-writing-mode`
 - `text-pitch-alignment` and `icon-pitch-alignment` with `map` at a point are approximations. The symbol lies on the ground with the slant of the ground at its anchor, so a large symbol near the horizon is not as wide at its far edge as MapLibre GL JS draws it. Images inside text, and an icon with `icon-text-fit`, face the screen. The SVG output of the server renderer draws all symbols facing the screen.
