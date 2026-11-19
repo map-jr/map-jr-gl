@@ -44,22 +44,22 @@ and the sprite.
 <!-- ref:RenderOptions:start -->
 | Name | Type | Default | Description |
 |---|---|---|---|
-| [`style`](#style) **required** | `string \| StyleSpecification \| {light, dark}` | | The style: the URL of a style, a style object, or one style for each colour scheme. |
-| `center` **required** | `[number, number] \| {lng, lat}` | | The centre of the view, as longitude and latitude. |
+| [`style`](#style) **required** | `unknown` | | The style: the URL of a style, a style object, or `{light, dark}` with one style for each colour scheme. |
+| `center` **required** | `LngLatLike` | | The centre of the view: `[lng, lat]`, `{lng, lat}` or `{lon, lat}`. |
 | `zoom` **required** | `number` | | The zoom of the view. |
 | `width` **required** | `number` | | The width of the render in CSS pixels. |
 | `height` **required** | `number` | | The height of the render in CSS pixels. |
 | `bearing` | `number` | `0` | The rotation of the map in degrees, clockwise from north. |
-| [`bounds`](#bounds-and-padding) | `[west, south, east, north] \| [[west, south], [east, north]]` | | A box to fit into the view. It overrides `center` and `zoom`. |
-| [`padding`](#bounds-and-padding) | `number \| {top, right, bottom, left}` | `0` | Space in CSS pixels around `bounds`. |
+| [`bounds`](#bounds-and-padding) | `LngLatBoundsInput` | | A box to fit into the view, `[west, south, east, north]` or `[[west, south], [east, north]]`. It overrides `center` and `zoom`. |
+| [`padding`](#bounds-and-padding) | `PaddingInput` | `0` | Space in CSS pixels around `bounds`: a number, or `{top, right, bottom, left}`. |
 | `colorScheme` | `'auto' \| 'light' \| 'dark'` | `'light'` | `'dark'` selects the `dark` style of a pair `{light, dark}`. Each other value selects `light`. |
 | [`images`](#images) | `Record<string, string \| {image, width?, height?}>` | | Images for the style layers, by name, as SVG documents. |
 | `resolveImage` | `(name: string) => {svg, width, height} \| undefined` | | Returns an icon as SVG for a name that neither the sprite nor `images` has. |
-| `sources` | `Record<string, SourceSpecification>` | | Sources to add to the sources of the style, as [`sources`](description.md#sources) of the description. |
-| `layers` | `LayerInput[]` | | Layers to add to the layers of the style, as [`layers`](description.md#layers) of the description. |
+| `sources` | `Record<string, object>` | | Sources to add to the sources of the style, as [`sources`](description.md#sources) of the description. |
+| `layers` | `({id: string; before?: string} & Record<string, unknown>)[]` | | Layers to add to the layers of the style, as [`layers`](description.md#layers) of the description. |
 | `sprite` | `{id: string; url: string}[]` | | Sprites to add to the sprite of the style, as [`sprite`](description.md#sprite) of the description. |
-| `terrain` | `TerrainSpecification \| null` | | Overrides the terrain of the style. The render is flat in either case. |
-| `data` | `Record<string, GeoJSON>` | | GeoJSON for GeoJSON sources, by the id of the source, as [`data`](description.md#data) of the description. |
+| `terrain` | `object \| null` | | A terrain specification, or `null`, that overrides the terrain of the style. The render is flat in either case. |
+| `data` | `Record<string, unknown>` | | GeoJSON for GeoJSON sources, by the id of the source, as [`data`](description.md#data) of the description. |
 | [`overrides`](#overrides) | `false \| Record<string, SSROverrides>` | | Changes for the server render, by the id of a style layer. |
 | `layerFilter` | `(layerId: string) => boolean` | | Leaves out each style layer for which the function returns `false`. |
 | [`tileZoomOffset`](#tilezoomoffset) | `number` | `0` | Builds the render from vector tiles this many zoom levels lower, or higher for a negative value. |
@@ -72,7 +72,7 @@ and the sprite.
 | [`requestTimeout`](#limits-for-requests) | `number` | `10000` | The time in milliseconds that one request can take, with its redirects and its body. `0` sets no limit. |
 | [`maxBytes`](#limits-for-requests) | `number` | `0` | The largest body of one response in bytes, after decompression. `0` sets no limit. |
 | [`allowHosts`](#limits-for-requests) | `string[]` | | The host names that the render can request. Without it, every host is allowed. |
-| `decodeImage` | `(bytes: Uint8Array) => {width, height, data}` | PNG and lossless WebP | Decodes the elevation tiles of a contour source, to RGBA bytes in `data`. |
+| [`decodeImage`](#decodepng-and-decodewebplossless) | `ImageDecoder` | PNG and lossless WebP | Decodes the elevation tiles that a [contour source](../terrain-and-elevation.md#contour-lines) reads. |
 <!-- ref:RenderOptions:end -->
 
 ### `style`
@@ -191,7 +191,7 @@ Each name of `allowHosts` is compared with the complete host name of the URL, wi
 name. Without `inlineImages`, the SVG links to raster tiles and to the sprite, which the browser of the visitor
 loads, and `allowHosts` does not check these links.
 
-A negative number, or a host name with a scheme, a port or a path, makes the render reject with a message that
+A negative number, or a host name with a scheme, a port, a path, an `@` or an IPv6 address in brackets, makes the render reject with a message that
 names the option.
 
 ## `RenderResult`
@@ -224,10 +224,11 @@ right. Put the HTML into the element of the map, which needs a `position` that i
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `attribution` | `string \| string[] \| false` | the attribution of the sources | The attribution as HTML. `false` shows none. |
-| `colorScheme` | `'auto' \| 'light' \| 'dark'` | `'light'` | The colours of the attribution box. `'auto'` follows the browser with the CSS function `light-dark()`. |
+| `colorScheme` | `'auto' \| 'light' \| 'dark'` | `'light'` | The colours of the attribution box, and the [style](#style) of a pair `{light, dark}`. |
 
-The HTML keeps only the text and the links to `http` and `https` URLs of the attribution. A browser without
-`light-dark()` shows the light colours for `'auto'`.
+The HTML keeps only the text and the links to `http` and `https` URLs of the attribution. With `'auto'`, the box
+follows the colour scheme of the browser with the CSS function `light-dark()`, and the render uses the `light` style.
+A browser without `light-dark()` shows the light colours.
 
 **Returns** a promise of the HTML as a string. The promise rejects in the cases of [`renderToSVG`](#rendertosvg).
 
@@ -276,8 +277,8 @@ the first view, and the console of the server has the error.
 renderToImage(options: ImageOptions): Promise<ImageResult>
 ```
 
-Draws the view as a JPEG, WebP or PNG image. It calls `renderToSVG` with `inlineImages: true`, and with
-`highDensity: true` when `pixelRatio` is more than 1, and passes the SVG to `rasteriser`.
+Draws the view as a JPEG, WebP or PNG image with `rasteriser`. The default of `inlineImages` is `true` here, and the
+default of `highDensity` is `true` when `pixelRatio` is more than 1. A value that you pass overrides each default.
 
 | Parameter | Type | Description |
 |---|---|---|
@@ -318,21 +319,26 @@ decodePNG(bytes: Uint8Array): Promise<{width: number; height: number; data: Uint
 decodeWebPLossless(bytes: Uint8Array): {width: number; height: number; data: Uint8Array}
 ```
 
-The decoders that `decodeImage` uses by default. Each returns the pixels of an image as RGBA bytes. Call one of them
+```ts
+type ImageDecoder = (bytes: Uint8Array) => Pixels | Promise<Pixels>;  // Pixels is {width, height, data}
+```
+
+The decoders that `decodeImage` uses by default. `data` has the RGBA bytes of the image, and `bytes` is the file of
+an elevation tile. Each returns the pixels of an image as RGBA bytes. Call one of them
 from your own `decodeImage` to keep these formats and add another one.
 
 ## The `ssr` prop of `<MapJr>`
 
 The Vue component of `@map-jr/map-jr-gl/vue` renders the first view on the server when it has the prop `ssr`. The
-value is `true`, or an object with these options. When the render fails, the component renders the element without
-the first view, writes the error to the console of the server, and emits it as `error`.
+value `true` renders with the defaults below. An object sets these options. When the render fails, the component renders the element without
+the first view, writes the error to the console of the server, and emits it as `error` when it has a listener for `error`.
 
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `width` | `number` | `800` | The width in CSS pixels that the map has on most screens. |
 | `height` | `number` | `500` | The height in CSS pixels that the map has on most screens. |
 | `overrides` | `false \| Record<string, SSROverrides>` | | As [`overrides`](#overrides) of `renderToSVG`. |
-| `attribution` | `string \| string[]` | the attribution of the sources | The attribution to show, as HTML. The prop `:attribution="false"` shows none. |
+| `attribution` | `string \| string[]` | the attribution of the sources | The attribution to show, as HTML. The prop `:attribution="false"` overrides it and shows none. |
 | `tileZoomOffset` | `number` | `0` | As [`tileZoomOffset`](#tilezoomoffset) of `renderToSVG`. |
 | `timeout`, `requestTimeout`, `maxBytes`, `allowHosts` | | | As the [limits for requests](#limits-for-requests) of `renderToSVG`. |
 

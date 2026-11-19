@@ -92,11 +92,13 @@ import {MapJr} from '@map-jr/map-jr-gl/vue';
 **`<map-jr>`**
 
 ```html [<map-jr>]
-<!-- page.html. The server replaces the marker after the script with the result of renderElement. -->
+<!doctype html>
+<!-- page.html. The server below writes the element of renderElement in place of the last line. -->
+<script type="importmap">{"imports": {"@map-jr/map-jr-gl/element": "/map-jr-gl/element.js"}}</script>
 <script type="module">
   import '@map-jr/map-jr-gl/element';
 </script>
-<!--map-->
+MAP
 ```
 
 The Vue component renders the first view on the server when it has the [`ssr` prop](../reference/server.md#the-ssr-prop-of-mapjr).
@@ -104,17 +106,30 @@ In Nuxt, the module `@map-jr/map-jr-gl/nuxt` registers the component, and the pa
 `ssr` prop, the server renders an empty element and the map draws in the browser.
 
 For `<map-jr>`, [`renderElement`](../reference/server.md#renderelement) returns the element with its attributes and
-the first view inside it:
+the first view inside it. This Node.js server sends `page.html` with the element and serves the built files of the
+package:
 
 ```js
+import http from 'node:http';
+import path from 'node:path';
 import {readFile} from 'node:fs/promises';
 import {renderElement} from '@map-jr/map-jr-gl/server';
 
-const element = await renderElement(
-  {style: 'https://styles.map-jr.org/1/elevation-zero.json', initialView: {center: [-74.0065, 40.7085], zoom: 13.6}},
-  {width: 800, height: 500, attributes: {id: 'map', style: 'height: 500px'}},
-);
-const page = (await readFile('page.html', 'utf8')).replace('<!--map-->', element);
+const dist = path.resolve('node_modules/@map-jr/map-jr-gl/dist');
+
+http.createServer(async (req, res) => {
+  if (req.url.startsWith('/map-jr-gl/')) {
+    res.writeHead(200, {'content-type': 'text/javascript'});
+    return res.end(await readFile(path.join(dist, path.basename(req.url))));
+  }
+  const element = await renderElement(
+    {style: 'https://styles.map-jr.org/1/elevation-zero.json', initialView: {center: [-74.0065, 40.7085], zoom: 13.6}},
+    // width and height set the size of the render. The CSS height in attributes sets the size of the element.
+    {width: 800, height: 500, attributes: {id: 'map', style: 'height: 500px'}},
+  );
+  res.writeHead(200, {'content-type': 'text/html'});
+  res.end((await readFile('page.html', 'utf8')).replace('MAP', element));
+}).listen(3000);
 ```
 
 With React, call `renderFirstView` on the server and pass the HTML to the `firstView` prop of `<MapJr>`. The
@@ -151,7 +166,9 @@ The adapter for Svelte has no server rendering. Put the HTML of `renderFirstView
 Two things go wrong most often:
 
 - The server and the map have different styles or views. The page then shows one map and replaces it with
-  another. Pass both the same `style`, `center`, `zoom` and `bearing`.
+  another. Pass the server the same `style`, `sources`, `layers`, `data`, `images` and `colorScheme` as the map. Pass
+  `center`, `zoom` and `bearing` of `initialView` (or its `bounds` and `padding`) as options of the same names. The
+  Vue component and `renderElement` pass all of them themselves.
 - The element of the map has no `position`. The SVG is positioned at `inset: 0`, so the element needs
   `position: relative` or another position that is not `static`. The Vue and React components and `<map-jr>` set it.
 
@@ -188,10 +205,11 @@ returns a part of a map. Catch the error and send the page without the first vie
 as it does without a server.
 
 The Vue component and `renderElement` do this themselves. They write the error to the console of the server, and
-the Vue component also emits it as `error`.
+the Vue component also emits it as `error` when it has a listener for `error`.
 
 A host that does not answer delays the page by 10 seconds for one request and by 30 seconds at most for a render.
-For a page that a visitor waits for, set a smaller [`timeout`](../reference/server.md#limits-for-requests):
+For a page that a visitor waits for, set a smaller [`timeout`](../reference/server.md#limits-for-requests). In the
+Vue component, set it in the `ssr` prop: `:ssr="{timeout: 3000}"`.
 
 ```js
 import {renderFirstView} from '@map-jr/map-jr-gl/server';
@@ -244,7 +262,8 @@ style sets changes for the server render in the metadata of a layer, under the k
 ignores this key. The styles of `https://styles.map-jr.org/1/` already hide the road labels, the points of interest,
 the buildings and the casings of the roads in the server render.
 
-For a style that you do not write yourself, pass the same changes as `overrides`, by the id of the layer. A value of
+For a style that you do not write yourself, pass the same changes as `overrides`, by the id of the layer. The ids
+and the `map-jr:ssr` entries are in the `layers` of the style JSON, which the URL of the style returns. A value of
 `overrides` overrides the value of `map-jr:ssr` in the style. This render shows the road labels that the style hides:
 
 ```js
@@ -270,8 +289,12 @@ live map. See [`tileZoomOffset`](../reference/server.md#tilezoomoffset).
 ## Create an image
 
 [`renderToImage`](../reference/server.md#rendertoimage) converts the render to a JPEG, WebP or PNG image, for an email
-or a link preview. It needs the Takumi renderer as `rasteriser`, which you install yourself. On Node.js, use
-`@takumi-rs/core`:
+or a link preview. It needs a `Renderer` of Takumi, a library that converts HTML and SVG to images, as
+`rasteriser`. The library works with Takumi 2.20. On Node.js, install `@takumi-rs/core`:
+
+```sh
+npm install @takumi-rs/core
+```
 
 ```js
 import {writeFile} from 'node:fs/promises';
@@ -292,7 +315,7 @@ await writeFile('manhattan.webp', image);
 ```
 
 On Cloudflare Workers, use the WebAssembly build `@takumi-rs/wasm`, and initialize it once for each instance of the
-Worker:
+Worker. Wrangler imports a `.wasm` file as a `WebAssembly.Module` with its default rules:
 
 ```js
 import {renderToImage} from '@map-jr/map-jr-gl/server';
@@ -321,15 +344,16 @@ export default {
 };
 ```
 
-Use `format: 'jpeg'` with the WebAssembly build, which writes only lossless WebP images. One render takes a few
-hundred milliseconds of CPU time, so keep the image in a cache.
+With the WebAssembly build, use `format: 'jpeg'` or `'png'`. That build writes a WebP image only as a lossless image,
+which is larger than its JPEG. One render takes a few hundred milliseconds of CPU time, so keep the image in a cache.
 
 An SVG is sharp at each size, but its size grows with the detail of the map. An image has a size that changes little
 with the detail, and its sharpness is set by `pixelRatio`.
 
 ## Export an SVG in the browser
 
-`renderToSVG` also runs in a page. This module saves the view as an SVG file when the user clicks a button:
+`renderToSVG` also runs in a page. This module saves the view as an SVG file when the user clicks a button. Without
+a bundler, map `@map-jr/map-jr-gl/server` to the file `dist/server.js` of the package with an import map.
 
 ```js
 import {renderToSVG} from '@map-jr/map-jr-gl/server';
@@ -348,7 +372,8 @@ document.querySelector('#export').addEventListener('click', async () => {
   link.href = URL.createObjectURL(new Blob([svg], {type: 'image/svg+xml'}));
   link.download = 'manhattan.svg';
   link.click();
-  URL.revokeObjectURL(link.href);
+  // Some browsers cancel the download when the URL is revoked at once.
+  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
 });
 ```
 
@@ -362,13 +387,13 @@ that a map shows, pass its `center`, `zoom` and `bearing`.
 | Pitch | The view from straight above. |
 | Hillshade, color relief and 3D terrain | The other layers, on flat ground. |
 | Image patterns (`fill-pattern`, `background-pattern`) | Nothing for that layer. |
-| Images that the page adds with `addImage` | Nothing. Pass them as `images`, or return them from `resolveImage`. |
+| Images that a page adds with `map.addImage` of `@map-jr/map-jr-gl/maplibre-compat` | Nothing. Pass them as [`images`](../reference/server.md#images), or return them from [`resolveImage`](../reference/server.md#renderoptions). |
 | Images of `images` that are not SVG documents | Nothing for that image. |
 
 The SVG uses the fonts of the page that shows it. Set `fontFamily` to the font of the live map. The server estimates
 the width of each label, so where labels are close together it can show a different label than the live map shows.
-For an image, register the fonts with the Takumi renderer, which is required for text that is not in the Latin
-script.
+For an image, register the font files with `renderer.registerFont(bytes)` of Takumi before the render. Text in a
+script that is not Latin needs this.
 
 ## See also
 
