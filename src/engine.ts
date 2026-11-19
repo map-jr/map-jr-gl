@@ -1799,7 +1799,7 @@ export class Engine {
             this.emit({type: 'camera', lng: tr.lng, lat: tr.lat, zoom: tr.zoom, bearing: tr.bearing, pitch: tr.pitch, elevation: tr.elevation, exaggeration: this.exaggeration, groundRange: tr.groundRange, padding: tr.padding, moving: animating, seq: this.seq,
                 grab: this.grab ? [this.grab.lng, this.grab.lat, this.grab.seq] : undefined});
         }
-        const busy = animating || fading || began < this.transitionEnd || this.placeDirty || this.iconsRev !== this.iconsDone || behind || this.meshBehind || !!ground && this.demLoading;
+        const busy = animating || fading || began < this.transitionEnd || this.placeDirty || this.iconsRev !== this.iconsDone || behind || this.renderer.iconsBehind || this.meshBehind || !!ground && this.demLoading;
         const idle = complete && !busy && !settling && !this.spritePending && !this.contourWait && !this.atlas.loading;
         // (The frame for the map at rest comes when the 200 ms are over, not 200 ms after this frame.)
         if (settling && !busy) setTimeout(() => this.repaint(), 200 - (began - this.cameraMovedAt));
