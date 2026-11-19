@@ -71,6 +71,12 @@ A writer who has the source open tends to write what the source shows. These rul
   the cases in which the user must act.
 - **Leave out the errors of plain misuse,** or put them in a short section at the end of the entry. Describe a
   failure where the reader meets it only when a correct program can meet it, such as a style that does not load.
+- **Name a value by what it is to the user,** not by how the code recognises it: "an SVG document as a string", not
+  "a string that starts with `<`"; "the URL of a style", not "a string".
+- **A row and a section start with what the member is for,** in the user's terms, before they name any other member.
+  "`interactiveLayers` selects the style layers that respond to the pointer" comes before `state.hover` and
+  `onClick`. Each reference to another member is then a link, and the words beside it say what the reader finds
+  there.
 - **Do not refer to something that the page does not define.** "The default options" and "the usual rules" tell the
   reader nothing. State the values, or link to the place that lists them.
 - **Link every name where it first appears,** before the first example that uses it: a method (`patch`, `moveTo`,
@@ -164,6 +170,8 @@ Three to five short points on the lines that matter, each with a link to the ref
 
 ## Variations
 
+One sentence that says what the names in the fragments are (`map`, `e`).
+
 Short changes of the code above, each with its own heading and only the lines that differ.
 
 ## See also
@@ -171,6 +179,7 @@ Short changes of the code above, each with its own heading and only the lines th
 
 - The title is the goal in the words that a user searches for.
 - The code is a complete file in every variant. It comes from a file of `examples/`, which the tests run.
+- "Variations" is the one place of the docs where a block is a fragment: see "Code".
 - Write a recipe for a task that many applications have. A task that one application in a hundred has gets none.
 - A recipe for a complex case is a starting point. It says what it leaves out.
 
@@ -214,10 +223,13 @@ for a mistake, what is not supported, one short example, and "See also".
 
 - Code comes first. At most one sentence stands before a code block, and it says what the code does.
 - Every example runs as it is written: it has its imports, a real URL and the setup.
-- On a guide, the first block of each variant is complete. A later `js` block of the same variant can continue it:
-  it uses the names that the first block declares (`map`, `places`), and the sentence before the group says so. A
-  component (`vue`, `jsx`, `svelte`) is complete each time. On a reference page, a block can leave out the import of
-  `createMap` after the first block of the page.
+- Every block is complete, also a block that shows a change to a map that exists: it creates the map first, with
+  the two or three lines of setup that the change needs. A reader pastes one block and it runs. The lint reports a `js` or `ts` block that
+  creates a map with no import, or that uses `map` and does not declare it (lint). Where a change
+  happens later than the setup, put it in a function with a name (`movePlace`).
+- A fragment is allowed in one place: under "Variations" of a recipe. Each variation changes the complete example
+  that stands directly above it on the same page, and a second copy of that example for each variation would hide
+  the lines that differ. One sentence under the heading says what the names of the fragments are.
 - Use the official styles at `https://styles.map-jr.org/1/`: they have images and colour schemes that the library
   draws with no further setup. The default is `elevation-zero.json`. The others are `elevation.json` (with
   elevation tiles, for terrain and hillshade), `elevation-radar.json` (a neutral base for an overlay) and

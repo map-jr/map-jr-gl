@@ -2,7 +2,7 @@
 
 The entry `@map-jr/map-jr-gl/maplibre-compat` has the API of MapLibre GL JS 6: `new Map({...})`, `map.on(...)`,
 `map.addLayer(...)`, the controls, `Marker` and `Popup`. To migrate an application, change its imports and the calls
-that this page lists.
+that this page lists. The page is written for an application that uses MapLibre GL JS 6.
 
 ## Steps
 
@@ -12,42 +12,64 @@ that this page lists.
    npm install @map-jr/map-jr-gl
    ```
 
-2. Change the name of the module in each import.
+2. Change the name of the module in each import. An import of all names (`import * as maplibregl from …`) and a
+   default import change in the same way.
+
+   Before:
 
    ```js
-   // Before
    import {Map, Marker, Popup} from 'maplibre-gl';
-   import * as maplibregl from 'maplibre-gl';
+   ```
 
-   // After
+   After:
+
+   ```js
    import {Map, Marker, Popup} from '@map-jr/map-jr-gl/maplibre-compat';
-   import * as maplibregl from '@map-jr/map-jr-gl/maplibre-compat';
    ```
 
 3. Remove the CSS file and the worker file of MapLibre GL JS. The library adds its own styles and loads its own
    worker file. See [Loading](../loading.md) for a page with a Content Security Policy or files on a CDN.
 
-   ```js
-   // Before
-   import 'maplibre-gl/dist/maplibre-gl.css';
-   import workerUrl from 'maplibre-gl/dist/maplibre-gl-csp-worker.js?url';
-   maplibregl.setWorkerUrl(workerUrl);
+   Before:
 
-   // After: nothing
+   ```js
+   import {Map, setWorkerUrl} from 'maplibre-gl';
+   import 'maplibre-gl/dist/maplibre-gl.css';
+   import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
+
+   setWorkerUrl(workerUrl);
+   ```
+
+   After:
+
+   ```js
+   import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
    ```
 
 4. Add `await` to each call of `queryRenderedFeatures` and `querySourceFeatures`. See
    [Queries return a promise](#queries-return-a-promise) for what the result holds without `await`.
 
-   ```js
-   // Before
-   map.on('click', event => {
-     const features = map.queryRenderedFeatures(event.point, {layers: ['places']});
-   });
+   Before:
 
-   // After
+   ```js
+   import {Map} from 'maplibre-gl';
+
+   const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json'});
+   map.on('click', event => {
+     const features = map.queryRenderedFeatures(event.point, {layers: ['building']});
+     console.log(features);
+   });
+   ```
+
+   After:
+
+   ```js
+   import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
+
+   const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json'});
    map.on('click', async event => {
-     const features = await map.queryRenderedFeatures(event.point, {layers: ['places']});
+     const features = await map.queryRenderedFeatures(event.point, {layers: ['building']});
+     console.log(features);
    });
    ```
 
@@ -56,6 +78,8 @@ that this page lists.
    `strict: true` after the migration.
 
    ```js
+   import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
+
    const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json', strict: true});
    ```
 
@@ -70,7 +94,8 @@ that this page lists.
 
 | MapLibre GL JS | Map Jr. GL | Notes |
 |---|---|---|
-| `'maplibre-gl'` | `'@map-jr/map-jr-gl/maplibre-compat'` | The same named exports. The default export is an object with the same names, for `import maplibregl from 'maplibre-gl'`. |
+| `'maplibre-gl'` | `'@map-jr/map-jr-gl/maplibre-compat'` | It exports `Map`, `Marker`, `Popup`, the control classes, `LngLat`, `LngLatBounds`, `Point`, `addProtocol` and `setWorkerUrl`, and a default export with the same names. |
+| Other exports, such as `Evented`, `Hash`, `addSourceType` and `prewarm` | None | An import of a name that the entry does not export fails when the application is built. |
 | `maplibre-gl/dist/maplibre-gl.css` | None | The map adds its styles to the page. |
 | `setWorkerUrl(url)`, `workerUrl` of react-map-gl | None | A URL of the worker file of MapLibre GL JS is ignored with one warning. |
 | `map.queryRenderedFeatures(...)` | `await map.queryRenderedFeatures(...)` | The arguments and the features are the same. |
@@ -93,8 +118,11 @@ value is an array that has the features of GeoJSON sources and can lack the feat
 works in MapLibre GL JS, so the same code runs with both.
 
 ```js
+import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
+
+const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json', center: [-74.0065, 40.7085], zoom: 15});
 map.on('mousemove', async event => {
-  const features = await map.queryRenderedFeatures(event.point, {layers: ['places']});
+  const features = await map.queryRenderedFeatures(event.point, {layers: ['building']});
   map.getCanvas().style.cursor = features.length ? 'pointer' : '';
 });
 ```
@@ -105,9 +133,15 @@ map.on('mousemove', async event => {
 map, call `map.toBlob(type, quality)`. It waits until the map is idle and resolves to a `Blob` of the canvas.
 
 ```js
-const blob = await map.toBlob('image/png');
-const link = Object.assign(document.createElement('a'), {href: URL.createObjectURL(blob), download: 'map.png'});
-link.click();
+import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
+
+const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json'});
+
+async function download() {
+  const blob = await map.toBlob('image/png');
+  const link = Object.assign(document.createElement('a'), {href: URL.createObjectURL(blob), download: 'map.png'});
+  link.click();
+}
 ```
 
 ### A custom layer needs the main-thread renderer
@@ -116,8 +150,18 @@ The map draws in a worker where the browser permits it, and a custom layer (`typ
 Create the map with `renderer: 'main'`. Without it, `addLayer` fires an `error` event and adds nothing.
 
 ```js
+import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
+
+const overlay = {
+  id: 'overlay',
+  type: 'custom',
+  render(gl) {
+    // Draw with `gl`, the WebGL context of the map.
+  },
+};
+
 const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json', renderer: 'main'});
-map.on('load', () => map.addLayer(customLayer));
+map.on('load', () => map.addLayer(overlay));
 ```
 
 ### Private members do not exist
@@ -127,12 +171,22 @@ work, and a plugin that uses only public methods usually does. The development b
 development (see [Change the map](../api.md#change-the-map)), warns once for each public member of MapLibre GL JS
 that the code reads and this library does not have.
 
-```js
-// Before
-const zoom = map.transform.zoom;
+Before:
 
-// After
-const zoom = map.getZoom();
+```js
+import {Map} from 'maplibre-gl';
+
+const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json'});
+map.on('moveend', () => console.log(map.transform.zoom));
+```
+
+After:
+
+```js
+import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
+
+const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json'});
+map.on('moveend', () => console.log(map.getZoom()));
 ```
 
 ### The style is not validated
@@ -142,8 +196,14 @@ or an expression that it does not support. Any other mistake that MapLibre GL JS
 no message here. Validate a style that you write yourself with `@maplibre/maplibre-gl-style-spec`.
 
 ```js
-// 'circle-colour' is not a paint property. No error event and no warning come: the circles have the default colour.
-map.addLayer({id: 'stops', type: 'circle', source: 'stops', paint: {'circle-colour': '#d6453d'}});
+import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
+
+const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json', center: [-74.0065, 40.7085], zoom: 12});
+map.on('load', () => {
+  map.addSource('stops', {type: 'geojson', data: {type: 'Point', coordinates: [-74.0065, 40.7085]}});
+  // 'circle-colour' is not a paint property. No error event and no warning come: the circle has the default colour.
+  map.addLayer({id: 'stops', type: 'circle', source: 'stops', paint: {'circle-colour': '#d6453d'}});
+});
 ```
 
 ## Wrappers and plugins

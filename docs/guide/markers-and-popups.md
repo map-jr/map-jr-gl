@@ -160,52 +160,105 @@ other forms of an image.
 
 ## Change the markers
 
-Set new GeoJSON on the source. The code below continues the first example. In the main API,
-[`map.patch`](../api.md#change-the-map) replaces the fields that it is passed and keeps the other fields of the
-description.
+Set new GeoJSON on the source. In the main API, [`map.patch`](../api.md#change-the-map) replaces the fields that it
+is passed and keeps the other fields of the description.
 
 **Main API**
 
 ```js [Main API]
-places[1] = {...places[1], color: '#2e9d5b'};
-// toPoints() returns a new GeoJSON object. The map applies `data.places` only when it is a new object.
-map.patch({data: {places: toPoints(places)}});
+import {createMap, points} from '@map-jr/map-jr-gl';
 
-// Remove the markers. This removes every source that `data` created and every layer of `layers`.
-map.patch({data: {}, layers: []});
+let places = [
+  {id: 1, lng: -74.006, lat: 40.7128},
+  {id: 2, lng: -73.9857, lat: 40.7484},
+];
+const toPoints = records => points(records, {lngLat: r => [r.lng, r.lat], id: r => r.id});
+
+// Circles keep this example short. Markers with an image change in the same way.
+const map = createMap('map', {
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+  initialView: {center: [-73.996, 40.73], zoom: 11.5},
+  data: {places: toPoints(places)},
+  layers: [{id: 'places', type: 'circle', source: 'places', paint: {'circle-radius': 7, 'circle-color': '#d6453d'}}],
+});
+
+function movePlace(id, lng, lat) {
+  places = places.map(place => place.id === id ? {...place, lng, lat} : place);
+  // toPoints() returns a new GeoJSON object. The map applies `data.places` only when it is a new object.
+  map.patch({data: {places: toPoints(places)}});
+}
+
+function removePlaces() {
+  // This removes every source that `data` created and every layer of `layers`.
+  map.patch({data: {}, layers: []});
+}
 ```
 
 **MapLibre compat**
 
 ```js [MapLibre compat]
-places.features[1].properties.color = '#2e9d5b';
-// setData() always applies the data, also when it is the same object as before.
-map.getSource('places').setData(places);
+import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
-// Remove the markers.
-map.removeLayer('places');
-map.removeSource('places');
+const places = {type: 'FeatureCollection', features: [
+  {type: 'Feature', id: 1, properties: {}, geometry: {type: 'Point', coordinates: [-74.006, 40.7128]}},
+  {type: 'Feature', id: 2, properties: {}, geometry: {type: 'Point', coordinates: [-73.9857, 40.7484]}},
+]};
+
+const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json', center: [-73.996, 40.73], zoom: 11.5});
+
+// Circles keep this example short. Markers with an image change in the same way.
+map.on('load', () => {
+  map.addSource('places', {type: 'geojson', data: places});
+  map.addLayer({id: 'places', type: 'circle', source: 'places', paint: {'circle-radius': 7, 'circle-color': '#d6453d'}});
+});
+
+function movePlace(id, lng, lat) {
+  places.features.find(feature => feature.id === id).geometry.coordinates = [lng, lat];
+  // setData() always applies the data, also when it is the same object as before.
+  map.getSource('places').setData(places);
+}
+
+function removePlaces() {
+  map.removeLayer('places');
+  map.removeSource('places');
+}
 ```
 
-In Vue and React, pass a new object to the `data` prop. In the examples above, assign to `data.value` in Vue, and
-pass a new `places` array to the component in React.
+In Vue and React, pass a new object to the `data` prop. In the examples of the first section, assign to `data.value` in Vue,
+and pass a new `places` array to the component in React.
 
 ## Open a popup when the user clicks a marker
 
 A marker of a symbol layer is a feature of that layer, so a click finds it. In the main API,
 [`map.overlay`](../api.md#elements-of-the-page-on-the-map) places an element of the page at a position of the map,
-and `popup: true` shows the element in a popup. `MapOverlay` does the same in Vue and React. The code for the main
-API and for the compat entry continues the first example.
+and `popup: true` shows the element in a popup. `MapOverlay` does the same in Vue and React.
 
 **Main API**
 
 ```js [Main API]
-let popup;
-map.patch({
+import {createMap, points} from '@map-jr/map-jr-gl';
+
+const pin = '<svg viewBox="0 0 24 31"><path fill="{{color}}" stroke="#fff" d="M12 30C12 30 2 17 2 11a10 10 0 0 1 20 0c0 6-10 19-10 19z"/></svg>';
+const places = [
+  {id: 1, name: 'City Hall', lng: -74.006, lat: 40.7128, color: '#d6453d'},
+  {id: 2, name: 'Empire State Building', lng: -73.9857, lat: 40.7484, color: '#2f7fd1'},
+];
+let popup = null;
+
+const map = createMap('map', {
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+  initialView: {center: [-73.996, 40.73], zoom: 11.5},
+  images: {pin},
+  data: {places: points(places, {lngLat: r => [r.lng, r.lat], id: r => r.id})},
+  layers: [{
+    id: 'places', type: 'symbol', source: 'places',
+    layout: {'icon-image': 'pin', 'icon-anchor': 'bottom', 'icon-allow-overlap': true, 'icon-ignore-placement': true},
+  }],
   // A click reports the features of these layers.
   interactiveLayers: ['places'],
   onClick: event => {
     popup?.remove();
+    popup = null;
     const place = event.features[0];
     if (!place) return;
     const content = document.createElement('div');
@@ -219,7 +272,24 @@ map.patch({
 **MapLibre compat**
 
 ```js [MapLibre compat]
-import {Popup} from '@map-jr/map-jr-gl/maplibre-compat';
+import {Map, Popup} from '@map-jr/map-jr-gl/maplibre-compat';
+
+const pin = '<svg viewBox="0 0 24 31"><path fill="{{color}}" stroke="#fff" d="M12 30C12 30 2 17 2 11a10 10 0 0 1 20 0c0 6-10 19-10 19z"/></svg>';
+const places = {type: 'FeatureCollection', features: [
+  {type: 'Feature', id: 1, properties: {name: 'City Hall', color: '#d6453d'}, geometry: {type: 'Point', coordinates: [-74.006, 40.7128]}},
+  {type: 'Feature', id: 2, properties: {name: 'Empire State Building', color: '#2f7fd1'}, geometry: {type: 'Point', coordinates: [-73.9857, 40.7484]}},
+]};
+
+const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json', center: [-73.996, 40.73], zoom: 11.5});
+
+map.on('load', async () => {
+  await map.addImage('pin', pin);
+  map.addSource('places', {type: 'geojson', data: places});
+  map.addLayer({
+    id: 'places', type: 'symbol', source: 'places',
+    layout: {'icon-image': 'pin', 'icon-anchor': 'bottom', 'icon-allow-overlap': true, 'icon-ignore-placement': true},
+  });
+});
 
 map.on('click', 'places', event => {
   const place = event.features[0];
@@ -326,36 +396,51 @@ Two things often go wrong:
 ## Put an element of the page on the map, and let the user move it
 
 An element of the page can be a marker: an image, a button or any other HTML. With `draggable`, the user moves it
-with the mouse, a finger or a pen. The code for the main API and for the compat entry continues the first example.
+with the mouse, a finger or a pen.
 
 **Main API**
 
 ```js [Main API]
-import {defaultPin} from '@map-jr/map-jr-gl';
+import {createMap, defaultPin} from '@map-jr/map-jr-gl';
 
-let home = [-74.0065, 40.7085];
-// defaultPin() creates the pin of MapLibre GL JS. Any element of your own works in its place.
-const marker = map.overlay(defaultPin({color: '#c0392b'}), {
-  lngLat: home, anchor: 'bottom', draggable: true,
-  onDragEnd: lngLat => { home = lngLat; },
+const map = createMap('map', {
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+  initialView: {center: [-74.0065, 40.7085], zoom: 14},
 });
 
-// Later: move it from code, and remove it. `marker.update` replaces all the options, so pass each one again.
-marker.update({lngLat: [-74.0, 40.71], anchor: 'bottom', draggable: true});
-marker.remove();
+let home = [-74.0065, 40.7085];
+const options = () => ({lngLat: home, anchor: 'bottom', draggable: true, onDragEnd: lngLat => { home = lngLat; }});
+// defaultPin() creates the pin of MapLibre GL JS. Any element of your own works in its place.
+const marker = map.overlay(defaultPin({color: '#c0392b'}), options());
+
+function moveHome(lngLat) {
+  home = lngLat;
+  // `marker.update` replaces all the options, so pass each one again.
+  marker.update(options());
+}
+
+function removeHome() {
+  marker.remove();
+}
 ```
 
 **MapLibre compat**
 
 ```js [MapLibre compat]
-import {Marker} from '@map-jr/map-jr-gl/maplibre-compat';
+import {Map, Marker} from '@map-jr/map-jr-gl/maplibre-compat';
+
+const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json', center: [-74.0065, 40.7085], zoom: 14});
 
 const marker = new Marker({color: '#c0392b', draggable: true}).setLngLat([-74.0065, 40.7085]).addTo(map);
 marker.on('dragend', () => console.log(marker.getLngLat()));
 
-// Later: move it from code, and remove it.
-marker.setLngLat([-74.0, 40.71]);
-marker.remove();
+function moveHome(lngLat) {
+  marker.setLngLat(lngLat);
+}
+
+function removeHome() {
+  marker.remove();
+}
 ```
 
 **Vue**

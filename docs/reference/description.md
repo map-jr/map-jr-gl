@@ -14,8 +14,6 @@ const map = createMap('map', {
 });
 ```
 
-The other examples on this page leave out the import of `createMap`.
-
 ## `MapDescription`
 
 <!-- ref:MapDescription:start -->
@@ -35,8 +33,8 @@ The other examples on this page leave out the import of `createMap`.
 | [`controls`](#controls) | `ControlSpec[]` | | The controls of the map, from the functions of `@map-jr/map-jr-gl/controls`. |
 | [`projection`](#projection) | `ProjectionSpecification \| null` | | The projection. It overrides the projection of the style. |
 | [`globalState`](#globalstate) | `Record<string, unknown>` | | Values for the `global-state` expressions of the style, by name. |
-| [`interactiveLayers`](#interactivelayers) | `string[]` | | The ids of the style layers whose features [`state.hover`](../api.md#the-state) and `onClick` report. |
-| [`hoverState`](#hoverstate) | `boolean` | `false` | `true` sets the feature state `hover: true` on the top feature under the pointer. |
+| [`interactiveLayers`](#interactivelayers) | `string[]` | | The style layers that respond to the pointer, by id: hover and click report the features of these layers. |
+| [`hoverState`](#hoverstate) | `boolean` | `false` | `true` marks the feature under the pointer with the feature state `hover`, so that the style can highlight it. |
 | [`onClick`](#onclick) | `(event: MapPointer) => void` | | Called for a click on the map. |
 | `onError` | `(error: Error) => void` | | Called for each error of the map. Without it, the map writes each error to the console. |
 | `minZoom` | `number` | `-2` | The lowest zoom that the camera reaches. |
@@ -44,7 +42,7 @@ The other examples on this page leave out the import of `createMap`.
 | `maxPitch` | `number` | `60` | The largest pitch that the camera reaches, in degrees. The limit is 90. |
 | [`maxBounds`](#maxbounds) | `Bounds \| null` | | The box that the view stays inside. |
 | `cursor` | `string` | | The CSS cursor over the map. Without it, the cursor is `pointer` over a feature of `interactiveLayers`. |
-| [`cooperativeGestures`](#cooperativegestures) | `boolean` | `false` | `true` requires Ctrl (⌘ on a Mac) for a zoom with the wheel, and lets one finger scroll the page. |
+| [`cooperativeGestures`](#cooperativegestures) | `boolean` | `false` | For a map in a page that scrolls: `true` requires Ctrl (⌘ on a Mac) to zoom with the wheel, and lets one finger scroll the page. |
 | [`colorScheme`](#colorscheme-and-oncolorschemechange) | `'auto' \| 'light' \| 'dark'` | `'light'` | The colour scheme of the controls, the popup and the attribution. |
 | [`onColorSchemeChange`](#colorscheme-and-oncolorschemechange) | `(colorScheme: 'auto' \| 'light' \| 'dark') => void` | | Called with the new value when the button of the control `colorScheme()` changes the colour scheme. |
 | [`locale`](#locale) | `Record<string, string>` | | The texts of the controls and of the other elements that the map adds, by the keys of MapLibre GL JS. |
@@ -73,11 +71,13 @@ ignores a change in a later description. To change one, destroy the map and crea
 
 | Form | What the map does |
 |---|---|
-| A string | Loads the style from that URL. |
+| The URL of a style, as a string | Loads the style from that URL. |
 | A style object of the MapLibre style specification | Draws it. |
 | `{light, dark}`, each a URL or a style object | Draws the style that matches the resolved [`colorScheme`](#colorscheme-and-oncolorschemechange), and loads the other style when the scheme changes. |
 
 ```js
+import {createMap} from '@map-jr/map-jr-gl';
+
 createMap('map', {
   style: {
     light: 'https://styles.map-jr.org/1/openfreemap-positron.json',
@@ -94,7 +94,8 @@ keeps the view and the other fields of the description.
 
 ## `sources`
 
-A source in `sources` overrides the source of the style that has the same id. See [`layers`](#layers) for an example
+`sources` adds sources to the style, for example the source of a layer of your own. A source in `sources` overrides
+the source of the style that has the same id. See [`layers`](#layers) for an example
 of a source with its layer.
 
 To change the features of a GeoJSON source, set them in [`data`](#data). A changed source in `sources` [loads the style again](#style).
@@ -108,6 +109,8 @@ id of a style layer, and the map inserts the new layer below that layer. Without
 layer above all other layers.
 
 ```js
+import {createMap} from '@map-jr/map-jr-gl';
+
 createMap('map', {
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
   sources: {routes: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}},
@@ -120,6 +123,8 @@ The map applies a change of `layers` in place. A new paint value transitions fro
 [loads the style again](#style).
 
 ## `terrain`
+
+`terrain` sets the 3D terrain of the map.
 
 | Value | The map draws |
 |---|---|
@@ -138,13 +143,15 @@ type FontFaces = Record<string, string | {url: string; 'unicode-range'?: string[
 ```
 
 - Each key is a `text-font` name of the style, such as `Noto Sans Bold`.
-- A string is the URL of the font file for that name.
-- A list has one item for each font file. `url` is the file, and `unicode-range` is the list of the character
+- A value can be the URL of the font file for that name, as a string.
+- A value can also be a list with one item for each font file. `url` is the file, and `unicode-range` is the list of the character
   ranges that the file covers.
 
 This is the type of `font-faces` in the MapLibre style specification.
 
 ```js
+import {createMap} from '@map-jr/map-jr-gl';
+
 createMap('map', {
   style: 'https://styles.map-jr.org/1/openfreemap-liberty.json',
   fonts: {
@@ -183,6 +190,8 @@ move it from code, call [`map.moveTo`](../api.md#the-camera) or set [`view`](#vi
 | `maxZoom` | `number` | `maxZoom` of the description | The highest zoom of the fit to `bounds`. |
 
 ```js
+import {createMap} from '@map-jr/map-jr-gl';
+
 createMap('map', {
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
   initialView: {bounds: [[-74.05, 40.68], [-73.9, 40.82]], padding: 40},
@@ -202,6 +211,8 @@ When the description has `view`, the application controls the view. The applicat
 `onViewChange` reports and passes it back in the next description. To move the map, it passes a different view.
 
 ```js
+import {createMap} from '@map-jr/map-jr-gl';
+
 let view = {center: [-74.0065, 40.7085], zoom: 13.6};
 const describe = () => ({
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
@@ -227,11 +238,15 @@ application stored a moment ago, call `map.moveTo(stored)`.
 
 ## `data`
 
+`data` sets the features of GeoJSON sources. Use it for data that changes while the map is shown.
+
 Each key of `data` is the id of a GeoJSON source. Its value is the GeoJSON for that source, or the URL of a GeoJSON
 file. When neither the style nor `sources` has a source with that id, the map creates one: `{type: 'geojson'}` with
 no other option.
 
 ```js
+import {createMap} from '@map-jr/map-jr-gl';
+
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';
 const layers = [{id: 'routes', type: 'line', source: 'routes', paint: {'line-color': '#d6453d', 'line-width': 3}}];
 const route = to => ({type: 'Feature', properties: {}, geometry: {type: 'LineString', coordinates: [[-74.01, 40.70], to]}});
@@ -251,10 +266,13 @@ map.update({style, layers, data: {routes: route([-73.95, 40.78])}});
 
 ## `images`
 
-A symbol layer refers to an image in `images` by its name, in `icon-image`. An image here overrides the image of the
+`images` provides the images that the style layers draw, such as the icon of a marker. A symbol layer refers to an
+image in `images` by its name, in `icon-image`. An image here overrides the image of the
 sprite that has the same name.
 
 ```js
+import {createMap} from '@map-jr/map-jr-gl';
+
 const pin = '<svg viewBox="0 0 24 31"><path fill="#d6453d" d="M12 30C12 30 2 17 2 11a10 10 0 0 1 20 0c0 6-10 19-10 19z"/></svg>';
 
 createMap('map', {
@@ -270,8 +288,8 @@ A value (`ImageInput`) is one of these:
 
 | Value | The image |
 |---|---|
-| A string that starts with `<` | An SVG document, drawn at the pixel density of the screen. Its size in CSS pixels is that of its `viewBox`, or else of its `width` and `height` attributes. |
-| Another string | The image at that URL. The server of the image must permit the request (CORS). |
+| An SVG document as a string (`'<svg …>…</svg>'`) | The SVG, drawn at the pixel density of the screen. Its size in CSS pixels is that of its `viewBox`, or else of its `width` and `height` attributes. |
+| The URL of an image, as a string | The image at that URL. The server of the image must permit the request (CORS). |
 | An `ImageBitmap`, a canvas, an image element or `ImageData` | The pixels of the object. |
 | `{image, width, height, pixelRatio}` | One of the values above as `image`, with its size in CSS pixels. `stretchX`, `stretchY`, `content`, `textFitWidth` and `textFitHeight` work as in `addImage` of MapLibre GL JS. |
 
@@ -283,10 +301,14 @@ the name of the image, and draws the layer without it.
 
 ## `sprite`
 
+`sprite` adds sprites to the map. A sprite is one file with many small images.
+
 `sprite` is a list of `{id, url}`, as the list form of `sprite` in the MapLibre style specification. An `icon-image`
 refers to an image of such a sprite as `id:name`.
 
 ```js
+import {createMap} from '@map-jr/map-jr-gl';
+
 createMap('map', {
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
   initialView: {center: [-74.006, 40.7128], zoom: 12},
@@ -300,7 +322,7 @@ createMap('map', {
   with a pixel ratio above 1. A relative URL is resolved against the URL of the page.
 - A sprite here overrides the sprite of the style that has the same id. The sprite of a style whose `sprite` is one
   URL has the id `default`.
-- The map reports a sprite that does not load to `onError`, with its URL, and still draws the images of the other
+- The map reports a sprite that does not load to `onError`, and still draws the images of the other
   sprites.
 
 ## `controls`
@@ -322,6 +344,8 @@ See [Controls](../api.md#controls) for the functions and their options.
 
 ## `projection`
 
+`projection` selects whether the map is flat or a globe.
+
 | Value | The map draws |
 |---|---|
 | `{type: 'mercator'}` | The flat map. |
@@ -339,10 +363,15 @@ On a globe:
 
 ## `globalState`
 
+`globalState` sets values that the expressions of the style read. Use it to switch what the style shows, such as a
+season or a language, with no new style.
+
 A value in `globalState` overrides the default with the same name in the root property `state` of the style. A layer reads the value
 with `['global-state', name]`.
 
 ```js
+import {createMap} from '@map-jr/map-jr-gl';
+
 const map = createMap('map', {
   style: {
     version: 8,
@@ -360,18 +389,26 @@ overrides it.
 
 ## `interactiveLayers`
 
-`hover` of [the state of the map](../api.md#the-state) (`map.state`) has the features of these layers under the
-pointer, and `features` of [`onClick`](#onclick) has those
-under a click. In both, the top feature is first. Over such a feature the cursor is `pointer`, unless the
-description sets `cursor`.
+`interactiveLayers` selects the style layers that respond to the pointer. The map reports a feature under the
+pointer or under a click only when one of these layers draws it. The value is a list of layer ids.
+
+The features reach your code in these ways:
+
+- [`state.hover`](../api.md#the-state) is the list of the features under the pointer, the top feature first.
+- [`onClick`](#onclick) receives the features under a click.
+- [`hoverState`](#hoverstate) marks the top feature under the pointer, so that the style can highlight it.
+
+Over a feature of these layers the cursor is `pointer`, unless the description sets `cursor`.
 
 ## `hoverState`
 
-With `hoverState: true`, the map sets the feature state `hover: true` on the top feature of `interactiveLayers` under
-the pointer. It removes the state when the pointer leaves the feature or the map. A layer reads the state with
+`hoverState` highlights the feature under the pointer with no code of your own. With `hoverState: true`, the map sets
+the feature state `hover: true` on the top feature of [`interactiveLayers`](#interactivelayers) under the pointer. It removes the state when the pointer leaves the feature or the map. A layer reads the state with
 `feature-state`:
 
 ```js
+import {createMap} from '@map-jr/map-jr-gl';
+
 const block = {type: 'Feature', id: 1, properties: {}, geometry: {type: 'Polygon', coordinates: [[[-74.009, 40.707], [-74.004, 40.707], [-74.004, 40.71], [-74.009, 40.71], [-74.009, 40.707]]]}};
 
 createMap('map', {
@@ -415,7 +452,8 @@ shows a hint. Set the text of the hint in [`locale`](#locale).
 
 ## `colorScheme` and `onColorSchemeChange`
 
-`'auto'` follows the browser (`prefers-color-scheme`) and changes while the page is open. The resolved scheme is
+`colorScheme` sets whether the map is light or dark. `'auto'` follows the browser (`prefers-color-scheme`) and
+changes while the page is open. The resolved scheme is
 `colorScheme` of [the state of the map](../api.md#the-state), and it has these effects:
 
 - The controls, the popup and the attribution have the colours of the scheme, and the container has the class
@@ -433,25 +471,32 @@ See [Dark mode](../api.md#dark-mode) for a style that follows the scheme.
 
 ## `locale`
 
+`locale` translates the texts of the controls, of the popup and of the hint of `cooperativeGestures`.
+
 ```js
+import {createMap} from '@map-jr/map-jr-gl';
+
 createMap('map', {
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
   locale: {'NavigationControl.ZoomIn': 'Zoom avant', 'NavigationControl.ZoomOut': 'Zoom arrière'},
 });
 ```
 
-`locale` sets the texts of the controls, of the popup and of the hint of `cooperativeGestures`. The keys are those
-of the option `locale` of MapLibre GL JS: see [The texts of the controls](../api.md#the-texts-of-the-controls) for
+The keys are those of the option `locale` of MapLibre GL JS: see [The texts of the controls](../api.md#the-texts-of-the-controls) for
 the list. A key that is not set keeps the English text, and the library includes no translations. `locale` does not
 change the language of the labels of the map.
 
 ## `padding`
 
+`padding` reserves space at the sides of the map, for example for a panel that covers part of it.
+
 `padding` is one number for all sides, or `{top, right, bottom, left}`. A side that is not set is 0. The map centres
-the view in the area that the padding leaves free, for example beside a side panel. A change of `padding` moves the
+the view in the area that the padding leaves free. A change of `padding` moves the
 camera immediately.
 
 ```js
+import {createMap} from '@map-jr/map-jr-gl';
+
 createMap('map', {
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
   padding: {left: 320},
@@ -459,15 +504,19 @@ createMap('map', {
 ```
 
 The `padding` of [`initialView`](#initialview) and of `moveTo` is a different value: the space around `bounds` for
-one fit. The fit adds it to the `padding` of the description.
+one fit. A fit of `moveTo` adds it to the `padding` of the description. The fit of `initialView` does not.
 
 ## `transformRequest`
+
+`transformRequest` changes the requests of the map, for example to add an `Authorization` header.
 
 The map calls the function with the URL of a request and the kind of resource. The function returns
 `{url, headers, credentials}`, or `undefined` to leave the request unchanged. The signature is that of
 `transformRequest` of MapLibre GL JS.
 
 ```js
+import {createMap} from '@map-jr/map-jr-gl';
+
 const token = sessionStorage.getItem('tiles-token');
 
 createMap('map', {
@@ -482,6 +531,8 @@ does not treat a new function as a change, so a framework can pass a new functio
 
 ## `renderer`
 
+`renderer` selects the thread that draws the map.
+
 | Value | The map draws |
 |---|---|
 | `'auto'` | In a worker when the browser can draw there, and on the main thread otherwise. |
@@ -492,7 +543,8 @@ does not treat a new function as a change, so a framework can pass a new functio
 
 ## `attribution`
 
-Without this field, the map shows the attribution of its sources in the bottom right corner.
+`attribution` sets how the map shows the credits of its data. Without this field, the map shows the attribution of
+its sources in the bottom right corner.
 
 | Value | The attribution |
 |---|---|
@@ -507,13 +559,21 @@ Without this field, the map shows the attribution of its sources in the bottom r
 
 ## `hash`
 
-With `hash: true`, the map writes the view into the fragment of the URL of the page: `#zoom/lat/lng`, or
-`#zoom/lat/lng/bearing/pitch` when the map is rotated or pitched. The map updates the fragment when a movement ends,
-and moves when the fragment changes. When the page loads with a view in the fragment, that view overrides `center`,
-`zoom`, `bearing` and `pitch` of [`initialView`](#initialview) and of [`view`](#view-and-onviewchange). It does not
-override `bounds` of `initialView`.
+`hash` keeps the view in the URL of the page, so that a link or a reload shows the same view.
 
-With a string, the map writes the view under that name, so that the fragment can hold other values: `hash: 'map'`
+With `hash: true`, the map writes the view into the fragment of the URL of the page:
+
+| The map | The fragment |
+|---|---|
+| Has no rotation and no pitch | `#zoom/lat/lng` |
+| Is rotated | `#zoom/lat/lng/bearing` |
+| Is pitched | `#zoom/lat/lng/bearing/pitch` |
+
+The map updates the fragment when a movement ends, and moves when the fragment changes. When the page loads with a
+view in the fragment, that view overrides `center`, `zoom`, `bearing` and `pitch` of [`initialView`](#initialview)
+and of [`view`](#view-and-onviewchange). It does not override `bounds` of `initialView`.
+
+With a name such as `'map'`, the map writes the view under that name, so that the fragment can hold other values: `hash: 'map'`
 writes `#map=zoom/lat/lng`.
 
 ## See also

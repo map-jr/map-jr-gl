@@ -56,6 +56,8 @@ for (const file of files) {
     const lines = readFileSync(file, 'utf8').split('\n');
     const sizes = rel.endsWith(path.join('guide', 'size-and-speed.md'));
     let fence = false, h1 = 0, callouts = 0, lastCallout = -9, paragraph = [], paragraphStart = 0;
+    // The code of the open fence with its language and its line, the `##` section, and whether an example block is open.
+    let code = [], lang = '', fenceLine = 0, section = '', copied = false;
     let group = [], groupEnd = -9; // the labels of the fences that follow each other, and the line where the last one ended
     const endParagraph = () => {
         const words = paragraph.join(' ').split(/\s+/).filter(Boolean).length;
@@ -68,6 +70,7 @@ for (const file of files) {
             endParagraph();
             if (!fence) {
                 const info = open[2].trim();
+                code = []; lang = info.split(/\s/)[0]; fenceLine = i;
                 if (!info) find(i, 'this code fence has no language.');
                 const label = info.match(/\[(.+)\]\s*$/)?.[1];
                 if (label !== undefined && !labels.includes(label)) find(i, `the label [${label}] is not a variant. The labels are ${labels.map(l => `[${l}]`).join(', ')}.`);
@@ -82,11 +85,21 @@ for (const file of files) {
                     if (group.length && labels.indexOf(label) <= labels.indexOf(group.at(-1))) find(i, `[${label}] comes after [${group.at(-1)}]. Keep the order of the style guide, each variant once.`);
                     group.push(label);
                 }
-            } else groupEnd = i;
+            } else {
+                groupEnd = i;
+                // A block runs when it is pasted: it imports what it creates the map with, and it declares `map`.
+                // The fragments under "Variations" of a recipe and the copied files of an example block are not checked.
+                const text = code.join('\n');
+                if ((lang === 'js' || lang === 'ts') && !copied && section !== 'Variations') {
+                    if (/\b(?:createMap|new Map)\(/.test(text) && !/^\s*import\s/m.test(text)) find(fenceLine, 'this block creates a map and has no import. Every block is complete: add the import.');
+                    if (/\bmap\.\w/.test(text) && !/\b(?:const|let|var)\s+map\b/.test(text)) find(fenceLine, 'this block uses `map` and does not declare it. Every block is complete: create the map in the block.');
+                }
+            }
             fence = !fence;
             return;
         }
-        if (fence) return;
+        if (fence) { code.push(line); return; }
+        if (/^<!--\s*example:[\w-]+:(start|end)\s*-->/.test(line)) copied = line.includes(':start');
         const prose = line.replace(/`[^`]*`/g, '').replace(/\]\([^)]*\)/g, ']');
         for (const [pattern, what] of banned) {
             if (sizes && String(pattern).includes('KB')) continue;
@@ -96,6 +109,7 @@ for (const file of files) {
         if (heading) {
             endParagraph();
             if (heading[1].length === 1) h1++;
+            if (heading[1].length === 2) section = heading[2].trim();
             if (heading[1].length > 3) find(i, 'this heading is below the third level. Make it a list or a page.');
             if (/^(overview|introduction)$/i.test(heading[2].trim())) find(i, `the heading "${heading[2]}" names no task and no thing.`);
             return;
