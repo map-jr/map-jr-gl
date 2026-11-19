@@ -5,8 +5,28 @@ them, see [Which entry to use](which-entry.md).
 
 ## Install the package
 
-```sh
+**npm**
+
+```sh [npm]
 npm install @map-jr/map-jr-gl
+```
+
+**pnpm**
+
+```sh [pnpm]
+pnpm add @map-jr/map-jr-gl
+```
+
+**yarn**
+
+```sh [yarn]
+yarn add @map-jr/map-jr-gl
+```
+
+**bun**
+
+```sh [bun]
+bun add @map-jr/map-jr-gl
 ```
 
 The map needs a browser with WebGL2. It needs no CSS file: the library adds the styles of its controls and popups to

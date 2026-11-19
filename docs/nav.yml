@@ -21,12 +21,14 @@ sections:
       - browser-support.md
       - accessibility.md
       - size-and-speed.md
+      - server-rendering.md
   - title: Recipes
     folder: recipes
     pages: []
   - title: Reference
     folder: reference
-    pages: []
+    pages:
+      - server.md
   - title: Migrate
     folder: migrate
     pages: []
