@@ -9,13 +9,13 @@ them, see [Which entry to use](which-entry.md).
 npm install @map-jr/map-jr-gl
 ```
 
-The package has ES modules only, so load it with `import`. `require('@map-jr/map-jr-gl')` throws an error. The map
-needs a browser with WebGL2, and it needs no CSS file.
+The map needs a browser with WebGL2. It needs no CSS file: the library adds the styles of its controls and popups to
+the page.
 
 ## Show a map
 
-Each example shows a street map of Lower Manhattan in an element that is 400 pixels high. The style is a URL of a
-MapLibre style, here an official style of the library.
+Each example shows a street map of Lower Manhattan in an element that is 400 pixels high. The style is the URL of a
+MapLibre style.
 
 **Main API**
 
@@ -28,7 +28,7 @@ const map = createMap('map', {
   initialView: {center: [-74.0065, 40.7085], zoom: 13.6},
 });
 
-// The state of the map is a store. This function runs each time that the zoom changes.
+// The state of the map is a store. The function runs after each change of the zoom, and not at the start.
 map.state.subscribe(state => state.view.zoom, zoom => console.log(zoom));
 ```
 
@@ -71,12 +71,13 @@ const view = ref({center: [-74.0065, 40.7085], zoom: 13.6});
 ```vue [Nuxt]
 <!-- nuxt.config.ts has: export default defineNuxtConfig({modules: ['@map-jr/map-jr-gl/nuxt']}) -->
 <script setup>
+// Nuxt imports `ref` itself, and the module registers `MapJr`.
 const view = ref({center: [-74.0065, 40.7085], zoom: 13.6});
 </script>
 
 <template>
   <div style="height: 400px">
-    <MapJr map-style="https://styles.map-jr.org/1/elevation-zero.json" v-model:view="view" ssr />
+    <MapJr map-style="https://styles.map-jr.org/1/elevation-zero.json" v-model:view="view" />
   </div>
   <p>Zoom {{ view.zoom.toFixed(1) }}</p>
 </template>
@@ -105,41 +106,41 @@ export function CityMap() {
 
 ```svelte [Svelte]
 <script>
-  import {mapJr, mapState} from '@map-jr/map-jr-gl/svelte';
+  import {mapJr} from '@map-jr/map-jr-gl/svelte';
 
   const description = {
     style: 'https://styles.map-jr.org/1/elevation-zero.json',
     initialView: {center: [-74.0065, 40.7085], zoom: 13.6},
   };
-  let map = $state(null);
-  const live = $derived(map && mapState(map));
+  const ready = map => map.state.subscribe(state => state.view.zoom, zoom => console.log(zoom));
 </script>
 
-<div use:mapJr={{description, ready: instance => map = instance}} style="height: 400px"></div>
-{#if live}<p>Zoom {$live.view.zoom.toFixed(1)}</p>{/if}
+<div use:mapJr={{description, ready}} style="height: 400px"></div>
 ```
 
 **`<map-jr>`**
 
 ```html [<map-jr>]
-<!doctype html>
-<meta charset="utf-8">
-<script type="module">import '@map-jr/map-jr-gl/element';</script>
-
+<!-- The main file of the application has: import '@map-jr/map-jr-gl/element'; -->
 <map-jr map-style="https://styles.map-jr.org/1/elevation-zero.json" center="-74.0065,40.7085" zoom="13.6"
         style="height: 400px"></map-jr>
 ```
 
 The map shows the streets around City Hall, and the console or the paragraph shows the zoom when the user zooms.
 
-- The style is `style` in the main API and in the compat entry, and `map-style` (`mapStyle` in React) in the
-  adapters and the element, because `style` is already an attribute of every element.
 - The main API and Svelte pass one object, the description ([`MapDescription`](../reference/description.md)). The
-  components and the element set the fields of the same description as props and attributes.
-- In Nuxt, the module registers `MapJr`, so the page has no imports. With `ssr`, the server renders the first view into the page, and the map takes over in the browser. See
+  components of Vue and React and the element set the fields of the same description as props and attributes.
+- The style is `style` in the description. The components and the element name it `map-style`, and React names it
+  `mapStyle`, because `style` is already an attribute of every element.
+- [`map.state`](../api.md#the-state) is the state of the map. `subscribe` returns a function that stops the calls.
+- In Vue, [`v-model:view`](../vue.md#the-view-of-v-modelview) sets the view of the map and receives each new view.
+  React does the same with `view` and `onViewChange`.
+- The Nuxt module registers `MapJr`, `MapOverlay` and `MapImage`. See
   [The module for Nuxt](../vue.md#the-module-for-nuxt).
-- In Svelte, the action `mapJr` creates the map, and `ready` receives the map for its methods. See
-  [Svelte](../svelte.md).
+- In Svelte, the action `mapJr` creates the map, and `ready` receives the map when it is created. A new description
+  for the action updates the map. See [Svelte](../svelte.md).
+- `<map-jr>` follows changes of its attributes. See [Attributes](../element.md#attributes) for each attribute and
+  its format.
 
 ## Give the container a height
 
@@ -148,13 +149,15 @@ components fill their parent element, and `<map-jr>` is the container itself.
 
 A container with no height shows nothing. A parent that has only `min-height` gives a component a height of 0,
 because a percentage height needs a parent with a set height. Set `height` on the parent, or make the parent a flex
-or grid container. The [development build](../api.md#change-the-map) warns once when the container has a height of 0
-one second after the map was created.
+or grid container. In development, a bundler that sets the `development` export condition, as Vite does, loads the
+development build of the library. It warns once when the container has a height of 0 one second after the map was
+created.
 
 ## Load the library without a bundler
 
 A page without a bundler loads the built file from a CDN in a module script. Name the version in the URL, because
-the page file and the worker file must come from the same version.
+the page file and the worker file must come from the same version. Replace `0.9.0` with the version that you use:
+[npm](https://www.npmjs.com/package/@map-jr/map-jr-gl) shows the latest.
 
 **Main API**
 
@@ -196,9 +199,9 @@ the page file and the worker file must come from the same version.
         style="height: 400px"></map-jr>
 ```
 
-The library starts its worker from the same CDN with no setting. A page with a Content Security Policy needs
-`worker-src blob:`. See [Loading](../loading.md) for the policy, for one file that contains the worker, and for files on
-your own server.
+A page with a Content Security Policy needs the CDN in `script-src` and `blob:` in `worker-src`. See
+[Content Security Policy](../loading.md#content-security-policy) for the complete policy, and [Loading](../loading.md)
+for one file that contains the worker and for files on your own server.
 
 ## Show other content in a browser without WebGL2
 
@@ -219,7 +222,8 @@ if (supported()) {
 }
 ```
 
-Without the check, the map reports an error to `onError` and shows the text "This browser cannot show the map." in
+Without the check, the map reports an error to `onError` of the [description](../reference/description.md#mapdescription),
+or to the console when the description has no `onError`. It also shows the text "This browser cannot show the map." in
 the container. See [A browser without WebGL2](../api.md#a-browser-without-webgl2) for how to change that text.
 
 ## See also

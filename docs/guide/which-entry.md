@@ -45,7 +45,7 @@ description, with the names of props and attributes (`map-style` for `style`). N
 | Adapter | Form | Server rendering of the first view |
 |---|---|---|
 | [Vue and Nuxt](../vue.md) | Components `MapJr`, `MapOverlay` and `MapImage`, and composables | The `ssr` prop |
-| [React](../react.md) | Components `MapJr` and `MapOverlay`, and hooks | The `firstView` prop, from `renderFirstView` of `@map-jr/map-jr-gl/server` |
+| [React](../react.md) | Components `MapJr`, `MapOverlay` and `MapImage`, and hooks | The `firstView` prop, from `renderFirstView` of `@map-jr/map-jr-gl/server` |
 | [Svelte](../svelte.md) | The action `mapJr` and the store `mapState` | `renderFirstView` of `@map-jr/map-jr-gl/server` |
 | [The element](../element.md) | The custom element `<map-jr>` | `renderElement` of `@map-jr/map-jr-gl/server` |
 
@@ -75,7 +75,8 @@ differences in behaviour.
 
 Both entries draw with the same renderer and read the same styles, so one application can use the compat entry for
 old pages and the main API for new pages. A map belongs to one entry: a map of `createMap` has no `addLayer`, and a
-`new Map` has no `update`.
+`new Map` has no `update`. In the main API, a layer is added with
+[`layers`](../reference/description.md#layers) of the description.
 
 ## See also
 
