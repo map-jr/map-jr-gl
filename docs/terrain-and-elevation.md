@@ -20,27 +20,27 @@ The options of the sources and layers, and the behaviour of terrain, are the sam
 ## With the main API
 
 The fields `sources` and `layers` of the description add sources and layers to a style from a URL, and `terrain`
-sets the terrain in place of that of the style. A layer with `before` goes below the layer with that id.
+sets the terrain in place of that of the style: an object is that terrain, `null` is no terrain (a flat map), and no
+field or `undefined` keeps the terrain of the style. A layer with `before` goes below the layer with that id.
 
 ```js
 import {createMap} from '@map-jr/map-jr-gl';
 import {navigation} from '@map-jr/map-jr-gl/controls';
 
+// The style has the elevation source "terrarium", relief shading and a terrain with exaggeration 0.5.
 const elevation = on => ({
   sources: {
-    dem: {type: 'raster-dem', tiles: ['https://tiles.mapterhorn.com/{z}/{x}/{y}.webp'], encoding: 'terrarium', tileSize: 512, maxzoom: 12},
-    contours: {type: 'contour', source: 'dem', thresholds: {11: [100, 500], 12: [50, 200], 14: [20, 100]}},
+    contours: {type: 'contour', source: 'terrarium', thresholds: {11: [100, 500], 12: [50, 200], 14: [20, 100]}},
   },
   layers: [
-    {id: 'relief', type: 'hillshade', source: 'dem', before: 'water'},
     {id: 'contour-lines', type: 'line', source: 'contours', 'source-layer': 'contours', before: 'water'},
   ],
-  // 3D terrain. `null` keeps the terrain of the style, and this style has none, so the map is flat.
-  terrain: on ? {source: 'dem', exaggeration: 1.5} : null,
+  // 3D terrain in place of that of the style. `null` makes the map flat, and no field keeps the terrain of the style.
+  terrain: on ? {source: 'terrarium', exaggeration: 1.5} : null,
 });
 
 let description = {
-  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+  style: 'https://styles.map-jr.org/1/elevation.json',
   initialView: {center: [7.6586, 45.9763], zoom: 12.4, pitch: 60},
   ...elevation(true),
   controls: [navigation()],
@@ -56,7 +56,7 @@ const metres = await map.queryElevation([7.6586, 45.9763]);
 ```
 
 - When your own style object has the elevation source, the layers and `"terrain"`, you do not need these fields.
-- The control `terrain({source: 'dem', exaggeration: 1.5})` from `@map-jr/map-jr-gl/controls` is a button that turns 3D
+- The control `terrain({source: 'terrarium', exaggeration: 1.5})` from `@map-jr/map-jr-gl/controls` is a button that turns 3D
   terrain on and off. Put it in `controls`.
 - `map.queryElevation(where)` takes a position (`[lng, lat]`) or a point of the screen (`{x, y}`). The result is a
   promise, and it is `null` where there is no data.

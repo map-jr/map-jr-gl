@@ -187,6 +187,9 @@ try {
     await page.mouse.click(400, 250); await page.waitForTimeout(800);
     const click = await page.evaluate(() => ({clicks: window.t.clicks.length, features: Array.isArray(window.t.clicks[0]?.features)}));
     check('browser: a click calls onClick, with the features there', click.clicks === 1 && click.features, JSON.stringify(click));
+    // A component without the prop terrain gives `undefined` to the description, which keeps the terrain of the style; `null` would make the map flat (#1104).
+    const unsetTerrain = await page.evaluate(() => { const d = t.map.current.description; return d.terrain === undefined ? 'undefined' : JSON.stringify(d.terrain); });
+    check('browser: without the prop terrain, the description has terrain undefined, so the map keeps the terrain of the style (#1104)', unsetTerrain === 'undefined', unsetTerrain);
     // An image as a child component: the SVG of its content is a template of the map, and it follows the component.
     const child = await page.evaluate(async () => {
         const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), map = t.map.current._map, add = map.addImage, given = [];

@@ -7,11 +7,13 @@ const {renderToSVG} = await import('../../src/server.ts');
 
 const style = {version: 8, sources: {a: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}}, layers: [{id: 'bg', type: 'background'}, {id: 'top', type: 'background'}], terrain: {source: 'a'}};
 
-test('layers are added, sources are merged by key, and a terrain of null keeps that of the style', () => {
+test('layers are added, sources are merged by key, a terrain of null removes that of the style, and no terrain keeps it (#1104)', () => {
     const s = extended(style, {sources: {b: {type: 'geojson', data: 'x'}}, layers: [{id: 'mid', type: 'background', before: 'top'}, {id: 'last', type: 'background'}], terrain: null});
     assert.deepEqual(s.layers.map((l: {id: string}) => l.id), ['bg', 'mid', 'top', 'last']);
     assert.deepEqual(Object.keys(s.sources), ['a', 'b']);
-    assert.deepEqual(s.terrain, {source: 'a'});
+    assert.equal(s.terrain, undefined);
+    assert.deepEqual(extended(style, {layers: []}).terrain, {source: 'a'});
+    assert.deepEqual(extended(style, {terrain: undefined}).terrain, {source: 'a'});
     assert.deepEqual(extended(style, {terrain: {source: 'b'}}).terrain, {source: 'b'});
 });
 

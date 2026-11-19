@@ -197,6 +197,9 @@ try {
     });
     check('browser: the prop projection sets the projection of the map, and null gives back that of the style', JSON.stringify(projected) === JSON.stringify({on: 'globe', off: 'none', events: ['globe', 'mercator']}), JSON.stringify(projected));
     check('browser: v-model:view follows the map and moves it; the points of data, the layers and the images follow their props', model.image && !model.imageAfter && model.followed === 15 && model.moved === 13.5 && model.field === 14.2 && model.views > 2 && model.pushed === 1 && model.replaced === '0,1' && model.before === 1 && model.after === 0, JSON.stringify(model));
+    // A component without the prop terrain gives `undefined` to the description, which keeps the terrain of the style; `null` would make the map flat (#1104).
+    const unsetTerrain = await page.evaluate(() => { const d = t.map.value.map.description; return d.terrain === undefined ? 'undefined' : JSON.stringify(d.terrain); });
+    check('browser: without the prop terrain, the description has terrain undefined, so the map keeps the terrain of the style (#1104)', unsetTerrain === 'undefined', unsetTerrain);
     // An image as a child component: the SVG of its slot is a template of the map, and it follows the component.
     const child = await page.evaluate(async () => {
         const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), map = t.map.value.map._map, add = map.addImage, given = [];
