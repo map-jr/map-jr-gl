@@ -161,6 +161,10 @@ export function renderSVG(s: SVGScene): string {
         body[i] = `<use href="#${id}" ${attrs}/>`;
     }
 
+    // A symbol on the ground of a tilted map (`Placed.frame`) is drawn with its frame about its centre, and others turn by their angle.
+    const turn = (x: number, y: number, a: number, f?: number[]) => f
+        ? ` transform="matrix(${f.slice(0, 4).map(v => Math.round(v * 1e3) / 1e3).join(' ')} ${num(x - f[0] * x - f[2] * y)} ${num(y - f[1] * x - f[3] * y)})"`
+        : a ? ` transform="rotate(${num(a * 180 / Math.PI)} ${num(x)} ${num(y)})"` : '';
     const vectorIcons = s.labels.filter(l => l.icon?.custom && s.images?.has(l.icon.name));
     if (vectorIcons.length) {
         const ids = new Map<string, string>();
@@ -173,7 +177,7 @@ export function renderSVG(s: SVGScene): string {
                 const {viewBox, inner} = parseSVG(img.svg);
                 defs.push(`<symbol id="${id}" viewBox="${viewBox ?? '0 0 ' + svgSize(img.svg).join(' ')}" preserveAspectRatio="none">${inner}</symbol>`);
             }
-            const rot = i.angle ? ` transform="rotate(${num(i.angle * 180 / Math.PI)} ${num(i.x)} ${num(i.y)})"` : '';
+            const rot = turn(i.x, i.y, i.angle, i.frame);
             body.push(`<use href="#${id}" x="${num(i.x - i.w / 2)}" y="${num(i.y - i.h / 2)}" width="${num(i.w)}" height="${num(i.h)}"${rot}/>`);
         }
     }
@@ -185,7 +189,7 @@ export function renderSVG(s: SVGScene): string {
         for (const {icon} of icons) {
             const i = icon!, [sx, sy, sw, sh] = i.rect, n = sp.icons[i.name]?.sheet ?? 0, id = n ? 'sprite-' + n : 'sprite';
             if (!used.has(n)) { used.add(n); const sheet = sp.sheets?.[n] ?? sp; defs.push(`<image id="${id}" href="${escapeXML(sheet.image)}" width="${sheet.width}" height="${sheet.height}"/>`); }
-            const rot = i.angle ? ` transform="rotate(${num(i.angle * 180 / Math.PI)} ${num(i.x)} ${num(i.y)})"` : '';
+            const rot = turn(i.x, i.y, i.angle, i.frame);
             body.push(`<svg x="${num(i.x - i.w / 2)}" y="${num(i.y - i.h / 2)}" width="${num(i.w)}" height="${num(i.h)}" viewBox="${sx} ${sy} ${sw} ${sh}" preserveAspectRatio="none"${rot}><use href="#${id}"/></svg>`);
         }
     }
@@ -207,7 +211,7 @@ export function renderSVG(s: SVGScene): string {
                 body.push(`<text text-anchor="start" xml:space="preserve" x="${at(0)}" y="${at(1)}" rotate="${chars.map((_, i) => num(c[i * 3 + 2] * 180 / Math.PI)).join(' ')}" ${common}>${escapeXML(chars.join(''))}</text>`);
                 continue;
             }
-            const rot = l.angle ? ` transform="rotate(${num(l.angle * 180 / Math.PI)} ${num(l.x)} ${num(l.y)})"` : '';
+            const rot = turn(l.x, l.y, l.angle, l.frame);
             shaped.lines.forEach((line, i) => {
                 const y = l.y + (lineMiddle(shaped, i) + EM * BASELINE * (line.scale ?? 1)) * k;
                 const x = l.x + (l.justify ?? src.justify) * (line.width - shaped.width) / 2 * k;
