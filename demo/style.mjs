@@ -1,5 +1,8 @@
 /** Compact demo style for the OpenMapTiles schema, written against the standard MapLibre style spec. */
 const roadWidth = (k) => ['interpolate', ['exponential', 1.6], ['zoom'], 8, ['*', k, 0.3], 12, ['*', k, 1], 14, ['*', k, 2.2], 16, ['*', k, 7], 18, ['*', k, 22]];
+// The road width plus a casing that grows linearly from 0.5 at zoom 11 to 2 at zoom 16, as one zoom curve: MapLibre GL JS
+// rejects an expression with two zoom curves (#1056). The stops are the exact sums; 0.69 is roadWidth's factor at zoom 11.
+const casingWidth = (k) => ['interpolate', ['exponential', 1.6], ['zoom'], 8, ['+', ['*', k, 0.3], 0.5], 11, ['+', ['*', k, 0.69], 0.5], 12, ['+', k, 0.8], 14, ['+', ['*', k, 2.2], 1.4], 16, ['+', ['*', k, 7], 2], 18, ['+', ['*', k, 22], 2]];
 const classWidth = ['match', ['get', 'class'], 'motorway', 1.5, 'trunk', 1.3, 'primary', 1.15, 'secondary', 0.9, 'tertiary', 0.75, ['service', 'track'], 0.3, 'path', 0.15, 0.55];
 const isRoad = ['all', ['==', ['geometry-type'], 'LineString'], ['!', ['in', ['get', 'class'], ['literal', ['rail', 'transit', 'ferry', 'pier']]]]];
 
@@ -27,7 +30,7 @@ export default (tiles, attribution) => ({
         {id: 'building-outline', type: 'line', source: 'omt', 'source-layer': 'building', minzoom: 15, paint: {'line-color': '#cfc6b9', 'line-width': 0.6}},
         {id: 'road-casing', type: 'line', source: 'omt', 'source-layer': 'transportation', minzoom: 11,
             metadata: {'map-jr:ssr': {filter: ['in', ['get', 'class'], ['literal', ['motorway', 'trunk', 'primary', 'secondary']]]}}, filter: ['all', isRoad, ['!=', ['get', 'class'], 'path']],
-            paint: {'line-color': '#d3cabb', 'line-width': ['+', roadWidth(classWidth), ['interpolate', ['linear'], ['zoom'], 11, 0.5, 16, 2]]}},
+            paint: {'line-color': '#d3cabb', 'line-width': casingWidth(classWidth)}},
         {id: 'path', type: 'line', source: 'omt', 'source-layer': 'transportation', minzoom: 14, metadata: {'map-jr:ssr': {hidden: true}}, filter: ['==', ['get', 'class'], 'path'], paint: {'line-color': '#c9b9a3', 'line-width': 1}},
         {id: 'road', type: 'line', source: 'omt', 'source-layer': 'transportation', filter: ['all', isRoad, ['!=', ['get', 'class'], 'path']],
             paint: {'line-color': ['match', ['get', 'class'], 'motorway', '#f6c97a', 'trunk', '#f8d894', 'primary', '#fbe6a6', '#ffffff'], 'line-width': roadWidth(classWidth)}},

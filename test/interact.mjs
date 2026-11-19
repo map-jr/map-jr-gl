@@ -3499,6 +3499,33 @@ for (const mode of renderers) {
         const pitchedML = m1022.ml.pitched?.split(' ') ?? [];
         check('[main] maplibre-compat: coveringTiles gives the tiles of MapLibre (flat, tileSize, roundZoom, minzoom, maxzoom; pitched within them) (#1022)',
             ['flat', 'small', 'round', 'max', 'min'].every(k => m1022.ml[k] === m1022.compat[k]) && m1022.compat.pitched?.split(' ').every(t => pitchedML.includes(t)) && m1022.compat.pitched.length > 0, JSON.stringify(m1022));
+        // #1021: setSourceTileLodParams changes the tiles of a view at pitch 80 as in MapLibre GL JS (served at /ml/), with
+        // the engine on the main thread and in a worker. (A tile that a requested deeper tile covers is a placeholder and is left out.)
+        const m1021 = await page.evaluate(async () => {
+            const ml = await import('/ml/maplibre-gl.mjs');
+            ml.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const compat = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const png = await (await fetch('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==')).arrayBuffer();
+            const leaves = a => a.filter(t => { const [z, x, y] = t.split('/').map(Number); return !a.some(u => { const [c, i, j] = u.split('/').map(Number); return c > z && i >> (c - z) === x && j >> (c - z) === y; }); }).sort().join(' ');
+            const run = async (lib, lod, renderer) => {
+                const seen = new Set();
+                lib.addProtocol('lod', async p => { seen.add(p.url.slice(6)); return {data: png.slice(0)}; });
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:300px'}));
+                const m = new lib.Map({container: el, renderer, style: {version: 8, sources: {}, layers: []}, center: [10, 45], zoom: 10, pitch: 80, maxPitch: 85, fadeDuration: 0});
+                await new Promise(r => m.loaded?.() ? r() : m.once('load', r));
+                m.addSource('s', {type: 'raster', tiles: ['lod://{z}/{x}/{y}'], tileSize: 256});
+                m.setSourceTileLodParams(...lod, 's');
+                m.addLayer({id: 'r', type: 'raster', source: 's'});
+                await new Promise(r => m.once('idle', r));
+                m.remove(); el.remove(); lib.removeProtocol('lod');
+                return leaves([...seen]);
+            };
+            const out = {};
+            for (const lod of [[2, 1], [12, 5]]) out[lod] = {ml: await run(ml, lod), main: await run(compat, lod, 'main'), worker: await run(compat, lod)};
+            return out;
+        });
+        check('[main] maplibre-compat: setSourceTileLodParams gives the tiles of MapLibre at pitch 80 for two values, on the main thread and in a worker (#1021)',
+            m1021['2,1'].ml !== m1021['12,5'].ml && Object.values(m1021).every(r => r.ml && r.main === r.ml && r.worker === r.ml), JSON.stringify(m1021));
         // #1019: zoomSnap (the option and setZoomSnap) and setEventedParent work as in MapLibre GL JS (served at /ml/).
         const m1019 = await page.evaluate(async () => {
             const ml = await import('/ml/maplibre-gl.mjs');

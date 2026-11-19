@@ -1876,7 +1876,8 @@ export class GLRenderer {
         const plain = [0, 0, 0, -1];
         for (const {icon: i, opacity} of labels) {
             if (!i || !!i.custom !== custom || !(opacity > 0)) continue;
-            const cos = Math.cos(i.angle), sin = Math.sin(i.angle), [sx, sy, sw, sh] = i.rect;
+            // (An icon on the ground of a tilted map has a frame: where one pixel across and one pixel down it go.)
+            const fr = i.frame, cos = fr ? fr[0] : Math.cos(i.angle), sin = fr ? fr[1] : Math.sin(i.angle), nx = fr ? fr[2] : -sin, ny = fr ? fr[3] : cos, [sx, sy, sw, sh] = i.rect;
             // Plain icons are one quad; stretched ones are a grid whose fixed cells keep their size.
             const gx = i.gx ?? [0, 0, sw, i.w], gy = i.gy ?? [0, 0, sh, i.h];
             const col = i.color ?? plain, hw = i.w / 2, hh = i.h / 2;
@@ -1893,8 +1894,8 @@ export class GLRenderer {
                     // The two triangles of a cell: corners (0, 0), (1, 0), (0, 1) and (1, 0), (1, 1), (0, 1).
                     const x0 = gx[a + 1] - hw, x1 = gx[a + 3] - hw, y0 = gy[b + 1] - hh, y1 = gy[b + 3] - hh;
                     const u0 = sx + gx[a], u1 = sx + gx[a + 2], v0 = sy + gy[b], v1 = sy + gy[b + 2];
-                    const p00x = x + x0 * cos - y0 * sin, p00y = y + x0 * sin + y0 * cos, p10x = x + x1 * cos - y0 * sin, p10y = y + x1 * sin + y0 * cos;
-                    const p01x = x + x0 * cos - y1 * sin, p01y = y + x0 * sin + y1 * cos, p11x = x + x1 * cos - y1 * sin, p11y = y + x1 * sin + y1 * cos;
+                    const p00x = x + x0 * cos + y0 * nx, p00y = y + x0 * sin + y0 * ny, p10x = x + x1 * cos + y0 * nx, p10y = y + x1 * sin + y0 * ny;
+                    const p01x = x + x0 * cos + y1 * nx, p01y = y + x0 * sin + y1 * ny, p11x = x + x1 * cos + y1 * nx, p11y = y + x1 * sin + y1 * ny;
                     vertex(p00x, p00y, u0, v0, alpha, tint); vertex(p10x, p10y, u1, v0, alpha, tint); vertex(p01x, p01y, u0, v1, alpha, tint);
                     vertex(p10x, p10y, u1, v0, alpha, tint); vertex(p11x, p11y, u1, v1, alpha, tint); vertex(p01x, p01y, u0, v1, alpha, tint);
                 }
@@ -1962,7 +1963,8 @@ export class GLRenderer {
         for (const l of labels) {
             if (!l.shaped) continue;
             const shaped = l.shaped;
-            const s = l.size / EM, cos = Math.cos(l.angle), sin = Math.sin(l.angle), src = l.src;
+            // (Text on the ground of a tilted map has a frame in the place of its angle: see `Placed.frame`.)
+            const s = l.size / EM, fr = l.frame, cos = fr ? fr[0] : Math.cos(l.angle), sin = fr ? fr[1] : Math.sin(l.angle), nx = fr ? fr[2] : -sin, ny = fr ? fr[3] : cos, src = l.src;
             // Where the halo's outer edge sits in distance-field units, limited by how far the field extends.
             hedge = src.haloWidth > 0 && src.halo[3] > 0 ? Math.max(0.75 - (B - 0.75) / SDF_RADIUS, 0.75 - src.haloWidth / s / SDF_RADIUS) : 2;
             gamma = 0.7 / (SDF_RADIUS * s * this.dpr); haloGamma = gamma + src.haloBlur * 1.19 / s / SDF_RADIUS;
@@ -1992,11 +1994,11 @@ export class GLRenderer {
                             const k = g.scale ?? 1, x0 = (pen + (g.left - B) * k) * s, y0 = (baseline - (g.top + B) * k) * s, keep = [c0, c1, c2, gamma, haloGamma, hedge];
                             if (g.color) { c0 = Math.round(g.color[0] * 255); c1 = Math.round(g.color[1] * 255); c2 = Math.round(g.color[2] * 255); }
                             gamma /= k; haloGamma /= k; if (hedge < 2) hedge = Math.max(0.75 - (B - 0.75) / SDF_RADIUS, 0.75 - src.haloWidth / (s * k) / SDF_RADIUS);
-                            glyph(g, l.x, l.y, cos, sin, x0, y0, x0 + g.w * k * s, y0 + g.h * k * s);
+                            glyph(g, l.x, l.y, cos, sin, x0, y0, x0 + g.w * k * s, y0 + g.h * k * s, nx, ny);
                             [c0, c1, c2, gamma, haloGamma, hedge] = keep;
                         } else {
                             const x0 = (pen + g.left - B) * s, y0 = (baseline - g.top - B) * s;
-                            glyph(g, l.x, l.y, cos, sin, x0, y0, x0 + g.w * s, y0 + g.h * s);
+                            glyph(g, l.x, l.y, cos, sin, x0, y0, x0 + g.w * s, y0 + g.h * s, nx, ny);
                         }
                     }
                     pen += g.advance + step;
