@@ -161,6 +161,7 @@ Notes for Cloudflare Workers:
 | `requestTimeout` | The time in milliseconds that one request can take, with its redirects and its body. The default is 10000. `0` sets no limit. |
 | `maxBytes` | The largest body of one response in bytes, after decompression. There is no limit by default. |
 | `allowHosts` | The list of host names that the render can request. All hosts are allowed by default. |
+| `tileZoomOffset` | Builds the render from vector tiles this many zoom levels lower, drawn over-zoomed. The default is 0. A whole number of 0 or more. See [Simplify the server render](#simplify-the-server-render). |
 
 `renderToImage` also accepts `rasteriser`, `format`, `quality` and `pixelRatio`.
 
@@ -292,6 +293,23 @@ defaults of `simplify` (0.6 pixels) and `minSize` (0.8 pixels) still apply.
 | `paint`, `layout` | Different property values |
 | `simplify` | Lines and polygons are made simpler by this number of pixels |
 | `minSize` | Shapes smaller than this number of pixels do not show |
+
+The option `tileZoomOffset` builds the render from vector tiles of a lower zoom, which the server draws at the
+size of the render. With `tileZoomOffset: 2`, a render at zoom 12 fetches tiles of zoom 10. The server fetches
+fewer tiles, and the tiles have fewer features that the tile server has already made simpler. Roads are whole lines,
+the shapes are coarser, and fewer place names show. Use it for a first view that the map draws over, not for an image
+that must look like the live map. The default is 0. A value of 1 can make the SVG larger, because the tiles of one
+zoom lower can have more features for some layers; the gain starts at 2. A source does not go below its `minzoom`,
+and raster and GeoJSON sources keep the zoom of the render. A value that is not a whole number of 0 or more makes
+the render reject with an error.
+
+```js
+const {svg} = await renderToSVG({
+  style: 'https://tiles.openfreemap.org/styles/liberty',
+  center: [2.35, 48.86], zoom: 10, width: 800, height: 500,
+  tileZoomOffset: 2,
+});
+```
 
 ## The first view for a framework
 

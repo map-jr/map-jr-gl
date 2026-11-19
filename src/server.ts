@@ -101,6 +101,12 @@ export interface RenderOptions {
      * anything else (lossy WebP, for instance), returning `{width, height, data}` with RGBA bytes.
      */
     decodeImage?: ImageDecoder;
+    /**
+     * Builds the render from vector tiles this many zoom levels below the zoom of the render, drawn over-zoomed. The
+     * default is 0. With 2, a render at zoom 12 uses tiles of zoom 10: the server fetches fewer tiles, and the SVG is
+     * usually smaller, with fewer and coarser features. Use it for a first view that the map draws over.
+     */
+    tileZoomOffset?: number;
 }
 export interface RenderResult {
     svg: string;
@@ -175,6 +181,8 @@ function limitedFetch(o: RenderOptions, fetchFn: typeof fetch): typeof fetch {
 /** Renders the first frame of a map without a browser, for server-side rendering, static export or social images. */
 export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
     // Wrapped, not passed by reference: Cloudflare Workers reject calls to a detached global `fetch`.
+    const dz = o.tileZoomOffset ?? 0;
+    if (!(Number.isInteger(dz) && dz >= 0)) throw new Error(`[map-jr-gl] tileZoomOffset: ${dz} is not a whole number of 0 or more. Write for example tileZoomOffset: 2, or leave it out for 0.`);
     const fetchFn = limitedFetch(o, o.fetch ?? ((...a) => fetch(...a)));
     // (`sources`, `layers` and `data` are added to the style. A style from a URL is fetched here, to add them to it and to read its images.)
     let given = styleFor(o.style, o.colorScheme === 'dark'), base: string | undefined;
@@ -219,12 +227,13 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
     const jobs = Object.entries(style.sources).map(async ([name, src]) => {
         if (!layers.some(l => l.source === name && l.visible && tr.zoom >= l.minzoom && tr.zoom < l.maxzoom)) return;
         if (src.type === 'raster-dem') return; // hillshading is drawn by the client only
-        const ideal = tr.coveringTiles(src.minzoom, src.maxzoom, src.tileSize, src.type === 'raster'), loaded = new Map<string, TileIR | TileImage>();
+        const maxzoom = src.type === 'vector' ? Math.max(src.minzoom, Math.min(src.maxzoom, Math.floor(tr.zoom) - dz)) : src.maxzoom;
+        const ideal = tr.coveringTiles(src.minzoom, maxzoom, src.tileSize, src.type === 'raster'), loaded = new Map<string, TileIR | TileImage>();
         await Promise.all(ideal.filter((id, i) => ideal.findIndex(o => o.key === id.key) === i).map(async id => {
             const url = tileURL(src, id.z, id.x, id.y, o.highDensity ? 2 : 1);
             if (src.type === 'raster') { loaded.set(id.key, {href: o.inlineImages ? await dataURI(url) : url}); return; }
             if (src.type === 'vector') urls.push(url);
-            loaded.set(id.key, await builder.loadIR({id: req++, source: name, url, z: id.z, overscaled: id.z >= src.maxzoom && Math.floor(tr.zoom)}));
+            loaded.set(id.key, await builder.loadIR({id: req++, source: name, url, z: id.z, overscaled: id.z >= maxzoom && Math.floor(tr.zoom)}));
         }));
         const list = renderItems(tr, ideal, k => loaded.get(k));
         items.set(name, list);
