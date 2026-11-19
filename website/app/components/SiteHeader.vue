@@ -30,6 +30,7 @@ const items = computed<NavigationMenuItem[]>(() => {
     <UNavigationMenu :items="items" variant="link" aria-label="Site" />
 
     <template #right>
+      <VariantMenu />
       <UContentSearchButton :collapsed="false" class="hidden xl:inline-flex w-56" />
       <UContentSearchButton class="xl:hidden" />
       <UColorModeButton />

@@ -6,6 +6,8 @@ export interface DocsPage {
     description?: string;
     // The markdown file, relative to docs/.
     file: string;
+    // The variants of the code groups of the page (website/build/variants.ts).
+    variants: string[];
 }
 
 export interface DocsSection {
@@ -17,12 +19,12 @@ export interface DocsSection {
 
 export async function useDocs() {
     const {site} = useAppConfig();
-    const {data} = await useAsyncData('docs-pages', () => queryCollection('docs').select('path', 'title', 'description', 'stem', 'extension').all());
+    const {data} = await useAsyncData('docs-pages', () => queryCollection('docs').select('path', 'title', 'description', 'stem', 'extension', 'variants').all());
 
     const sections = computed<DocsSection[]>(() => site.sections.map((section) => {
         const base = section.folder ? '/' + section.folder : undefined;
         const pages = (data.value ?? [])
-            .map(page => ({path: page.path, title: page.title, description: page.description, file: `${page.stem}.${page.extension}`}))
+            .map(page => ({path: page.path, title: page.title, description: page.description, file: `${page.stem}.${page.extension}`, variants: page.variants ?? []}))
             .filter(page => base ? page.file.startsWith(section.folder + '/') : section.pages.includes(page.file));
         // The place of a page in the list of the manifest. A page of a folder that the list does not name comes last.
         const place = (page: DocsPage) => {

@@ -2,6 +2,7 @@ import {readFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {transformPage, repositoryUrl} from './build/markdown';
 import {navFile, readNav} from './build/nav';
+import {variantHeadScript} from './build/variants';
 
 const nav = readNav();
 const library = JSON.parse(readFileSync(resolve(import.meta.dirname, '../package.json'), 'utf8'));
@@ -16,6 +17,8 @@ export default defineNuxtConfig({
             htmlAttrs: {lang: 'en'},
             link: [{rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg'}],
             meta: [{name: 'color-scheme', content: 'light dark'}],
+            // Sets the reader's variant of the code on <html> before the first paint (build/variants.ts).
+            script: [{innerHTML: variantHeadScript, tagPosition: 'head'}],
         },
     },
     // What the application reads at run time: the navigation of docs/nav.yml and the version of the library.
