@@ -163,6 +163,9 @@ owner when a case is unclear.
 Documentation, comments, issue text and messages to the user follow the same rules. The aim is that a developer in
 a hurry gets the right answer on the first read.
 
+What belongs on a page of the user docs, the page types and their templates are in `docs/style-guide.md`. Read it
+before you write or change a page of the docs or a TSDoc comment on a public type.
+
 - **Write complete sentences.** Each sentence has a subject and a verb, and it says one thing. Do not write clipped
   fragments, and do not string short phrases together with commas where sentences belong. For example, write
   "An example has all of its imports and uses a real URL", not a list of three noun phrases.
