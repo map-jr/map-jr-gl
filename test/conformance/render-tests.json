@@ -1645,7 +1645,7 @@
 "text-translate/literal": "match",
 "text-variable-anchor-offset/all-anchors": "near",
 "text-variable-anchor-offset/all-anchors-icon-text-fit": "differ",
-"text-variable-anchor-offset/all-anchors-text-allow-overlap": "differ",
+"text-variable-anchor-offset/all-anchors-text-allow-overlap": "near",
 "text-variable-anchor-offset/icon-image": "near",
 "text-variable-anchor-offset/icon-image-all-anchors": "near",
 "text-variable-anchor-offset/icon-image-offset": "differ",
