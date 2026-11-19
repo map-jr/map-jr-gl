@@ -21,7 +21,7 @@ jobs:
       browser: ${{ steps.files.outputs.browser }}
       render: ${{ steps.files.outputs.render }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - id: files
@@ -52,9 +52,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -64,7 +64,7 @@ jobs:
       # The tarball that npm would publish: publint, the files that package.json names, and the source maps.
       - run: pnpm test:package
       - run: pnpm test
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dist
           path: |
@@ -105,9 +105,9 @@ jobs:
             suites: 'test/host.mjs test/vue.mjs test/element.mjs test/react.mjs test/loading.mjs'
             timeout: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -169,9 +169,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -181,7 +181,7 @@ jobs:
       - name: Install the browser and its system packages
         shell: bash
         run: for i in 1 2 3; do pnpm exec playwright install --with-deps chromium && exit 0; echo "::warning::the install failed (attempt $i of 3)"; sleep 30; done; exit 1
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: .cache/maplibre-gl-js
           key: maplibre-tests-${{ hashFiles('test/conformance/render.mjs') }}
