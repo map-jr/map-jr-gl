@@ -12,6 +12,8 @@ sections:
     pages:
       - getting-started.md
       - which-entry.md
+      - view-and-camera.md
+      - data.md
       - controls.md
       - images-and-fonts.md
       - color-scheme.md
