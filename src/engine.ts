@@ -41,6 +41,8 @@ export type Command =
     | {type: 'limits'; minZoom: number; maxZoom: number; maxPitch: number; minPitch?: number; maxBounds?: [number, number, number, number] | null}
     /** Throws away a source's tiles (all sources if none is named) and loads them again. */
     | {type: 'refresh'; source?: string}
+    /** The parameters of `setSourceTileLodParams` (maximum zoom levels on screen, tile count ratio) for these sources. */
+    | {type: 'lod'; sources: string[]; lod: number[]}
     | {type: 'style'; style: ResolvedStyle; reload: boolean; /** A number for each source that changes when the page changes what its tiles are built from. */ versions?: Record<string, number>;
         /** The data of the GeoJSON sources that are new or changed since the last style (the sources in `style` carry no data). */ data?: Record<string, unknown>;
         /** A whole new style (`setStyle` without `diff`): its paint values do not transition from the style before. */ instant?: boolean}
@@ -406,6 +408,8 @@ export class Engine {
     private exaggeration = 0;
     /** Counts changes to the style and its images, so cached terrain pictures know when they are out of date. */
     private styleVersion = 0;
+    /** The parameters of `setSourceTileLodParams` by source. */
+    private lod: Record<string, number[]> = {};
     private invalidate() { this.placeDirty = true; this.repaint(); }
 
     /** The deepest loaded elevation tile at or above a position, and its zoom. */
@@ -526,7 +530,7 @@ export class Engine {
             // them as tiles of twice the size, and without rounding up). The ground and the relief shading need no more,
             // and a view then needs about a quarter of the elevation data.
             const src = this.style.sources[source], ground = this.style.terrain?.source === source;
-            this.viewCovers.set(source, cover = this.tr.tileCover(src.minzoom, src.maxzoom, ground ? src.tileSize * 2 : src.tileSize, !ground));
+            this.viewCovers.set(source, cover = this.tr.tileCover(src.minzoom, src.maxzoom, ground ? src.tileSize * 2 : src.tileSize, !ground, this.lod[source]));
         }
         return cover;
     }
@@ -955,6 +959,7 @@ export class Engine {
             }
             case 'stop': this.stop(); break;
             case 'limits': Object.assign(tr, {minZoom: c.minZoom, maxZoom: c.maxZoom, maxPitch: c.maxPitch, minPitch: c.minPitch ?? 0, maxBounds: c.maxBounds ?? null}); tr.set(undefined, tr.zoom, undefined, tr.pitch); break;
+            case 'lod': for (const id of c.sources) this.lod[id] = c.lod; this.viewCovers.clear(); this.invalidate(); break;
             case 'refresh':
                 for (const [key, t] of this.tiles) if (!c.source || key.startsWith(c.source + '|')) this.dropTile(key, t);
                 // The tile workers keep the bytes of recent tiles for queries: those are old now.
@@ -969,7 +974,7 @@ export class Engine {
                 if (!this.exaggeration && this.tr.width) for (const source in this.style.sources) {
                     const src = this.style.sources[source], tr = this.tr;
                     if (src.type === 'image' || this.style.terrain?.source === source || !this.layers.some(l => l.source === source && l.visible && tr.zoom >= l.minzoom && tr.zoom < l.maxzoom)) continue;
-                    for (const id of tr.tileCover(src.minzoom, src.maxzoom, src.tileSize, src.type === 'raster' || src.type === 'raster-dem')) {
+                    for (const id of tr.tileCover(src.minzoom, src.maxzoom, src.tileSize, src.type === 'raster' || src.type === 'raster-dem', this.lod[source])) {
                         const key = source + '|' + id.key;
                         if (!this.tiles.has(key)) this.request(source, id, key);
                     }
@@ -1559,7 +1564,7 @@ export class Engine {
                 // load one layer after another, does not start again each time.)
                 // Its tiles for the view are kept too, so that the layer is there at once when the page shows it.
                 const src = this.style.sources[source];
-                if (src.type !== 'image' && this.layers.some(l => l.source === source)) for (const id of tr.tileCover(src.minzoom, src.maxzoom, src.tileSize, src.type === 'raster' || src.type === 'raster-dem')) {
+                if (src.type !== 'image' && this.layers.some(l => l.source === source)) for (const id of tr.tileCover(src.minzoom, src.maxzoom, src.tileSize, src.type === 'raster' || src.type === 'raster-dem', this.lod[source])) {
                     const key = source + '|' + id.key, t = this.tiles.get(key);
                     if (t) { t.used = frameNo; wanted.add(key); }
                 }
@@ -1570,7 +1575,7 @@ export class Engine {
             // (The elevation source of 3D terrain has the tiles of `viewCover` also while the map is seen from above and the
             // ground is flat: relief shading then looks the same as on a tilted map, and a tilt loads no other tiles.)
             const ground = this.style.terrain?.source === source;
-            const ideal = tr.tileCover(src.minzoom, src.maxzoom, ground ? src.tileSize * 2 : src.tileSize, !ground && (src.type === 'raster' || src.type === 'raster-dem'));
+            const ideal = tr.tileCover(src.minzoom, src.maxzoom, ground ? src.tileSize * 2 : src.tileSize, !ground && (src.type === 'raster' || src.type === 'raster-dem'), this.lod[source]);
             if (this.tap) for (const id of ideal) view.push(source + '|' + id.key);
             for (const id of ideal) {
                 const key = source + '|' + id.key;
@@ -1627,7 +1632,7 @@ export class Engine {
             const aim = this.target;
             if (aim) {
                 let n = 0;
-                for (const id of aim.tileCover(src.minzoom, src.maxzoom, ground ? src.tileSize * 2 : src.tileSize, !ground && (src.type === 'raster' || src.type === 'raster-dem'))) {
+                for (const id of aim.tileCover(src.minzoom, src.maxzoom, ground ? src.tileSize * 2 : src.tileSize, !ground && (src.type === 'raster' || src.type === 'raster-dem'), this.lod[source])) {
                     const key = source + '|' + id.key;
                     if (wanted.has(key)) continue;
                     if (++n > PREFETCH_TILES) break;

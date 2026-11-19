@@ -196,7 +196,6 @@ export class Map extends CoreMap {
     setCenterElevation(elevation?: number) { return this.unsupported('setCenterElevation', !elevation); }
     setAnisotropicFilterPitch(_pitch?: number | null) { return this; }
     getAnisotropicFilterPitch() { return 20; }
-    setSourceTileLodParams(..._args: unknown[]) { return this; }
     /**
      * MapLibre GL JS calls this function before each frame and draws the camera that it returns. This library does not:
      * it calls the function after each `move` and warns once when the function changes the camera, because only then
@@ -240,6 +239,13 @@ export class Map extends CoreMap {
     set showOverdrawInspector(v: boolean) { this.setDebug('showOverdrawInspector', v); }
     private debugDraw: Record<string, boolean> = {};
     private setDebug(name: string, v: boolean) { this.debugDraw[name] = !!v; this.unsupported(name, !v); }
+
+    /** Changes the level of detail of the tile cover of a pitched view for one source, or for all sources, as in MapLibre GL JS. */
+    setSourceTileLodParams(maxZoomLevelsOnScreen: number, tileCountMaxMinRatio: number, sourceId?: string) {
+        if (sourceId && !this.getSource(sourceId)) throw new Error(`[map-jr-gl] setSourceTileLodParams: there is no source "${sourceId}". Add the source first, or leave out the ID for all sources.`);
+        this.post({type: 'lod', sources: sourceId ? [sourceId] : Object.keys(this.resolved?.sources ?? {}), lod: [Math.max(1, maxZoomLevelsOnScreen), Math.max(1, tileCountMaxMinRatio)]});
+        return this;
+    }
 
     // ---- zoomSnap and setEventedParent, as in MapLibre GL JS ----
     /**

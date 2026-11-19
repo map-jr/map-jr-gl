@@ -623,7 +623,7 @@ export class Map {
 
     /** @internal Sends a command to the engine. */
 
-    private post(c: Command, transfer?: Transferable[]) {
+    protected post(c: Command, transfer?: Transferable[]) {
         // (A command that changes or reads the images goes after the updates of this task. A repaint does not wait.)
         if (c.type === 'style' || c.type === 'templates' || c.type === 'removeImage' || c.type === 'snapshot' || c.type === 'image' && !c.update) this.sendUpdates();
         if (c.type !== 'query' && c.type !== 'elevation' && c.type !== 'queryRendered' && c.type !== 'frames' && c.type !== 'snapshot' && c.type !== 'tileReport' && c.type !== 'tileLoads') { this.tilesLoaded = false; (c as {seq?: number}).seq = ++this.seq; }
