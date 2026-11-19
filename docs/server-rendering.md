@@ -287,11 +287,29 @@ defaults of `simplify` (0.6 pixels) and `minSize` (0.8 pixels) still apply.
 | Key | Effect on the server render |
 |---|---|
 | `hidden` | The layer does not show |
-| `filter` | An additional filter |
+| `filter` | An additional filter that features must also pass. It can read `["zoom"]` (see below) |
 | `minzoom`, `maxzoom` | A different zoom range |
 | `paint`, `layout` | Different property values |
 | `simplify` | Lines and polygons are made simpler by this number of pixels |
-| `minSize` | Shapes smaller than this number of pixels do not show |
+| `minSize` | Shapes smaller than this number of pixels do not show. On a line layer, keep it to a few pixels (see below) |
+
+In `filter`, `["zoom"]` is the zoom of the tile, a whole number, as in a layer filter of MapLibre GL JS. A render at
+zoom 13.5 uses tiles of zoom 13, so `[">=", ["zoom"], 13.5]` is false there and the layer shows nothing. Test for a
+whole zoom instead. This override keeps the secondary roads from zoom 13 on:
+
+```js
+import {renderToSVG} from '@map-jr/map-jr-gl/server';
+
+const {svg} = await renderToSVG({
+  style: 'https://tiles.openfreemap.org/styles/liberty',
+  center: [-73.99, 40.73], zoom: 13.5, width: 800, height: 500,
+  overrides: {road_secondary_tertiary: {filter: ['step', ['zoom'], false, 13, true]}},
+});
+```
+
+`minSize` tests each piece of a line on its own. The tiles cut a road into many short pieces (from crossing to
+crossing, and at the edges of the tiles), so a large value leaves gaps: with `minSize: 16` at zoom 12, the streets of
+Manhattan show as broken dashes. A value of a few pixels is safe for lines.
 
 ## The first view for a framework
 
