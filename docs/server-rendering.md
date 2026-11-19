@@ -300,7 +300,9 @@ fewer tiles, and the tiles have fewer features that the tile server has already 
 the shapes are coarser, and fewer place names show. Use it for a first view that the map draws over, not for an image
 that must look like the live map. The default is 0. A value of 1 can make the SVG larger, because the tiles of one
 zoom lower can have more features for some layers; the gain starts at 2. A source does not go below its `minzoom`,
-and raster and GeoJSON sources keep the zoom of the render.
+and raster and GeoJSON sources keep the zoom of the render. The option changes only the tiles that the server
+fetches to draw: the `tiles` of the result, which you give the page to prefetch, stay the tiles of the zoom of the
+render, because those are the tiles that the live map requests.
 
 A negative value does the opposite, for a detailed image: with `tileZoomOffset: -2`, a render at zoom 10 fetches
 tiles of zoom 12 and draws them at the size of zoom 10. Each step lower fetches about four times as many tiles, so

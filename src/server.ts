@@ -233,10 +233,11 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
         // (`tileZoomOffset` of vector sources: a positive value lowers the zoom through `maxzoom`, a negative one raises it through a smaller tile size.)
         const v = src.type === 'vector', maxzoom = v ? Math.max(src.minzoom, Math.min(src.maxzoom, Math.floor(tr.zoom) - dz)) : src.maxzoom;
         const ideal = tr.coveringTiles(src.minzoom, maxzoom, v && dz < 0 ? src.tileSize * 2 ** dz : src.tileSize, src.type === 'raster'), loaded = new Map<string, TileIR | TileImage>();
+        // (`tiles` of the result are those that the live map requests, at the zoom of the render, whatever `tileZoomOffset` is.)
+        if (v) for (const id of dz ? tr.coveringTiles(src.minzoom, src.maxzoom, src.tileSize) : ideal) urls.push(tileURL(src, id.z, id.x, id.y, o.highDensity ? 2 : 1));
         await Promise.all(ideal.filter((id, i) => ideal.findIndex(o => o.key === id.key) === i).map(async id => {
             const url = tileURL(src, id.z, id.x, id.y, o.highDensity ? 2 : 1);
             if (src.type === 'raster') { loaded.set(id.key, {href: o.inlineImages ? await dataURI(url) : url}); return; }
-            if (src.type === 'vector') urls.push(url);
             loaded.set(id.key, await builder.loadIR({id: req++, source: name, url, z: id.z, overscaled: id.z >= maxzoom && Math.floor(tr.zoom)}));
         }));
         const list = renderItems(tr, ideal, k => loaded.get(k));

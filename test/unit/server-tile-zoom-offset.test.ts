@@ -12,34 +12,42 @@ const style = (maxzoom = 14, minzoom = 0) => ({
     layers: [{id: 'water', type: 'fill', source: 's', 'source-layer': 'water', paint: {'fill-color': '#0af'}}],
 });
 // Every request gets the same tile, so the paths show the scale at which a tile is drawn.
-const render = (more: object, s: unknown = style()) => renderToSVG({style: s, center, zoom: 12, width: 600, height: 400,
-    fetch: (async () => new Response(bytes)) as typeof fetch, ...more});
+// `fetched` has the URLs that the server requested; `tiles` of the result has the URLs for the live map.
+const render = async (more: object, s: unknown = style()) => {
+    const fetched: string[] = [];
+    const r = await renderToSVG({style: s, center, zoom: 12, width: 600, height: 400,
+        fetch: (async (url: unknown) => { fetched.push(String(url)); return new Response(bytes); }) as typeof fetch, ...more});
+    return {...r, fetched};
+};
 
 test('tileZoomOffset: 2 at zoom 12 fetches tiles of zoom 10 and draws them at the size of zoom 12', async () => {
     const plain = await render({});
     assert.ok(plain.tiles.every(t => /\/12\//.test(t)), plain.tiles.join());
     const low = await render({tileZoomOffset: 2});
-    assert.ok(low.tiles.length > 0 && low.tiles.every(t => /\/10\//.test(t)), low.tiles.join());
-    assert.ok(low.tiles.length < plain.tiles.length, `${low.tiles.length} < ${plain.tiles.length}`);
+    assert.ok(low.fetched.length > 0 && low.fetched.every(t => /\/10\//.test(t)), low.fetched.join());
+    assert.ok(low.fetched.length < plain.tiles.length, `${low.fetched.length} < ${plain.tiles.length}`);
     assert.match(low.svg, /<path fill="#00aaff"/);
     assert.notEqual(low.svg, plain.svg);
     // The same image as a source that stops at zoom 10, which the renderer over-zooms to the size of zoom 12.
     assert.equal(low.svg, (await render({}, style(10))).svg);
+    // The URLs for the live map stay those of zoom 12.
+    assert.deepEqual(low.tiles, plain.tiles);
 });
 
 test('tileZoomOffset: 0 is the default, and a source does not go below its minzoom', async () => {
     assert.equal((await render({tileZoomOffset: 0})).svg, (await render({})).svg);
-    assert.ok((await render({tileZoomOffset: 3}, style(14, 11))).tiles.every(t => /\/11\//.test(t)));
+    assert.ok((await render({tileZoomOffset: 3}, style(14, 11))).fetched.every(t => /\/11\//.test(t)));
 });
 
 test('tileZoomOffset: -2 at zoom 10 fetches tiles of zoom 12, and the source maxzoom still holds', async () => {
     const plain = await render({zoom: 10});
     assert.ok(plain.tiles.every(t => /\/10\//.test(t)), plain.tiles.join());
     const high = await render({zoom: 10, tileZoomOffset: -2});
-    assert.ok(high.tiles.every(t => /\/12\//.test(t)), high.tiles.join());
-    assert.ok(high.tiles.length > plain.tiles.length, `${high.tiles.length} > ${plain.tiles.length}`);
+    assert.ok(high.fetched.every(t => /\/12\//.test(t)), high.fetched.join());
+    assert.ok(high.fetched.length > plain.tiles.length, `${high.fetched.length} > ${plain.tiles.length}`);
     assert.match(high.svg, /<path fill="#00aaff"/);
-    assert.ok((await render({zoom: 10, tileZoomOffset: -3}, style(11))).tiles.every(t => /\/11\//.test(t)));
+    assert.deepEqual(high.tiles, plain.tiles);
+    assert.ok((await render({zoom: 10, tileZoomOffset: -3}, style(11))).fetched.every(t => /\/11\//.test(t)));
     // The request limits still apply to the extra tiles.
     await assert.rejects(render({zoom: 10, tileZoomOffset: -2, allowHosts: ['other.test']}), /tiles\.test/);
 });
