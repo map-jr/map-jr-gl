@@ -28,7 +28,7 @@ export interface PlacedIcon {
     gx?: number[]; gy?: number[];
     opacity: number;
     /** Distance-field icons with a halo: its colour, and how far it reaches as a part of the distance field (0 to 1). */
-    halo?: number[]; haloReach?: number;
+    halo?: number[]; haloReach?: number; /** How far the halo's edge is blurred, as a part of the distance field (0 to 0.99). */ haloBlur?: number;
     /** Set for distance-field icons, which are drawn in this colour. */
     color?: number[];
     /** True for images added at runtime (drawn from the dynamic atlas) rather than the style's sprite sheet. */
@@ -349,7 +349,8 @@ export function placeLabels(
                         iconBox = box;
                         icon = {x: ix, y: iy, w: iw, h: ih, angle, rect: [meta.x, meta.y, meta.width, meta.height], custom: meta.custom, name: ic.name, gx, gy, opacity: ic.opacity * (L.p.iconOpacity.dd ? 1 : L.p.iconOpacity.eval(tr.zoom)), color: meta.sdf ? ic.color : undefined,
                             // (In the distance field of a sprite, one image pixel is one eighth of the range.)
-                            halo: meta.sdf && ic.haloWidth > 0 && ic.halo[3] > 0 ? ic.halo : undefined, haloReach: Math.min(0.7, ic.haloWidth / (isize / meta.pixelRatio) / 8)};
+                            halo: meta.sdf && ic.haloWidth > 0 && ic.halo[3] > 0 ? ic.halo : undefined, haloReach: Math.min(0.7, ic.haloWidth / (isize / meta.pixelRatio) / 8),
+                            haloBlur: Math.min(0.99, ic.haloBlur * 1.19 / (isize / meta.pixelRatio) / 8)};
                     } else if (!(hasText && (textBox || bent) && ic.optional)) { if (bent) out.push(bent); continue; }
                 }
                 if (bent) { bent.icon = icon; if (iconBox && !l.icon!.ignore) grid.insert(...iconBox); out.push(bent); continue; }
