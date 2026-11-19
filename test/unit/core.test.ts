@@ -380,6 +380,17 @@ test('style: server overrides hide layers, add filters and adjust detail', () =>
     assert.equal(b.filter!({zoom: 0, f: {type: 2, properties: {class: 'x', rank: 1}}}), false);
 });
 
+test('style: a server filter can read ["zoom"], which is the whole zoom of the tile, as in MapLibre (#984)', () => {
+    const roads = (filter: unknown) => {
+        const [l] = applySSROverrides([{id: 'r', type: 'line', source: 's', 'source-layer': 'transportation', metadata: {'map-jr:ssr': {filter}}}]);
+        return buildTile(bytes, TILE.z, [compileLayer(l)!], true).layers.r;
+    };
+    assert.ok(roads(undefined), 'the tile has roads');
+    // The tile is of zoom 14, so a render at zoom 14.5 still reads 14 here.
+    assert.ok(roads(['step', ['zoom'], false, 14, true]));
+    assert.equal(roads(['>=', ['zoom'], 14.5]), undefined);
+});
+
 test('markers: templates escape values and get explicit sizes', () => {
     assert.equal(fillTemplate('<text>{{label}}</text>', {label: '<b>&'}), '<text>&#60;b&#62;&#38;</text>');
     // (#175) Without a viewBox: the width and height attributes in CSS pixels, each 24 when missing or in another unit.

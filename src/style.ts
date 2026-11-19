@@ -74,13 +74,20 @@ const SPEC: Record<string, Record<string, [string, PropKind, any]>> = {
 export interface SSROverrides {
     /** Leave the layer out of server output. */
     hidden?: boolean;
-    /** An extra filter that features must also pass, e.g. to keep only major roads. */
+    /**
+     * An extra filter that features must also pass, e.g. to keep only major roads. It can read `["zoom"]`, which is the
+     * zoom of the tile (a whole number), as in a layer filter of MapLibre: a render at zoom 13.5 uses tiles of zoom 13,
+     * so `["step", ["zoom"], false, 13, true]` keeps the features there and `[">=", ["zoom"], 13.5]` keeps none.
+     */
     filter?: unknown;
     minzoom?: number; maxzoom?: number;
     paint?: Record<string, unknown>; layout?: Record<string, unknown>;
     /** Drop vertices closer together than this many pixels (default 0.6). */
     simplify?: number;
-    /** Drop features smaller than this many pixels (default 0.8). */
+    /**
+     * Drop features smaller than this many pixels (default 0.8). The tiles cut a road into many short pieces, and each
+     * piece is tested on its own, so a large value on a line layer leaves gaps in the roads; keep it to a few pixels there.
+     */
     minSize?: number;
 }
 export const SSR_KEY = 'map-jr:ssr';
