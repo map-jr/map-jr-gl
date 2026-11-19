@@ -3348,6 +3348,38 @@ for (const mode of renderers) {
         });
         check('[main] maplibre-compat: listens, getStyleUrl and fitScreenCoordinates (with a bearing, padding and maxZoom) agree with MapLibre (#564)',
             m564.ml.length === m564.compat.length && m564.ml.every((v, i) => typeof v === 'number' ? Math.abs(v - m564.compat[i]) < 1e-3 : v === m564.compat[i]), JSON.stringify(m564));
+        // #1018: calculateCameraOptionsFromTo, calculateCameraOptionsFromCameraLngLatAltRotation and
+        // calculateAnchoredCameraOptions give the results of MapLibre GL JS (served at /ml/) for the same inputs.
+        const m1018 = await page.evaluate(async () => {
+            const ml = await import('/ml/maplibre-gl.mjs');
+            ml.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const compat = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const run = async lib => {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+                const m = new lib.Map({container: el, renderer: 'main', style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, center: [10, 45], zoom: 4, fadeDuration: 0});
+                await new Promise(r => m.loaded?.() ? r() : m.once('load', r));
+                const out = [], put = c => out.push(c.center.lng, c.center.lat, c.zoom, c.elevation ?? null, c.pitch ?? null, c.bearing ?? null, c.roll ?? null);
+                put(m.calculateCameraOptionsFromTo(new lib.LngLat(1, 0), 1000, new lib.LngLat(1, 1), 0));
+                put(m.calculateCameraOptionsFromTo([10, 45], 5000, [10.2, 45.1], 200));
+                put(m.calculateCameraOptionsFromTo({lng: -30, lat: 60}, 100, {lng: -30.01, lat: 60.02}));
+                put(m.calculateCameraOptionsFromTo([5, 5], 10, [5, 5], -300));
+                try { m.calculateCameraOptionsFromTo([5, 5], 10, [5, 5], 10); out.push('no error'); } catch { out.push('error'); }
+                put(m.calculateCameraOptionsFromCameraLngLatAltRotation(new lib.LngLat(1, 0), 1000, 90, 30, 45));
+                put(m.calculateCameraOptionsFromCameraLngLatAltRotation([10, 45], 2000, 0, 0));
+                put(m.calculateCameraOptionsFromCameraLngLatAltRotation([10, 45], 500, 20, 95));
+                put(m.calculateCameraOptionsFromCameraLngLatAltRotation([10, 70], 1e6, -150, 60));
+                put(m.calculateAnchoredCameraOptions({anchorLocation: [11, 46], anchorScreenPoint: [50, 60], zoom: 5}));
+                put(m.calculateAnchoredCameraOptions({anchorLocation: new lib.LngLat(9, 44), anchorScreenPoint: {x: 200, y: 100}}));
+                m.jumpTo({bearing: 30, pitch: 40});
+                put(m.calculateAnchoredCameraOptions({anchorLocation: m.unproject([100, 150]), anchorScreenPoint: [140, 90], zoom: 4.5}));
+                out.push(m.getZoom(), m.getCenter().lng);
+                m.remove(); el.remove();
+                return out;
+            };
+            return {ml: await run(ml), compat: await run(compat)};
+        });
+        check('[main] maplibre-compat: calculateCameraOptionsFromTo, calculateCameraOptionsFromCameraLngLatAltRotation and calculateAnchoredCameraOptions agree with MapLibre to 1e-9 (#1018)',
+            m1018.ml.length === m1018.compat.length && m1018.ml.every((v, i) => typeof v === 'number' ? Math.abs(v - m1018.compat[i]) <= 1e-9 * Math.max(1, Math.abs(v)) : v === m1018.compat[i]), JSON.stringify(m1018));
         // #565: isSourceLoaded(id) answers for one source and fires `error` for an id that the style does not have, and
         // isActive() of a handler is true during its gesture, as in MapLibre GL JS (served at /ml/).
         const m565 = {};
