@@ -383,7 +383,7 @@ test('style: server overrides hide layers, add filters and adjust detail', () =>
 test('style: a server filter can read ["zoom"], which is the whole zoom of the tile, as in MapLibre (#984)', () => {
     const roads = (filter: unknown) => {
         const [l] = applySSROverrides([{id: 'r', type: 'line', source: 's', 'source-layer': 'transportation', metadata: {'map-jr:ssr': {filter}}}]);
-        return buildTile(bytes, TILE.z, [compileLayer(l)!], true).layers.r;
+        return buildTile(bytes, TILE.z, [compileLayer(l)!], false).layers.r;
     };
     assert.ok(roads(undefined), 'the tile has roads');
     // The tile is of zoom 14, so a render at zoom 14.5 still reads 14 here.
