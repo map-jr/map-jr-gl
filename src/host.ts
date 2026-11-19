@@ -26,19 +26,25 @@ import type {BackgroundLayerSpecification, CircleLayerSpecification, ColorRelief
  */
 declare const __DEV__: boolean;
 
-/** The description of a control: see `@map-jr/map-jr-gl/controls`. Controls with the same `key` are the same control. */
-export interface ControlSpec { key: string; position?: ControlPosition; create(instance?: () => MapInstance): Control }
+/** A control for `controls` of the description, as the functions of `@map-jr/map-jr-gl/controls` return it. */
+export interface ControlSpec {
+    /** The identity of the control. A new description with a control of the same `key` keeps the control on the map. */
+    key: string;
+    /** The corner of the map that holds the control. */
+    position?: ControlPosition;
+    /**
+     * Returns the control as MapLibre GL JS controls are, with `onAdd` and `onRemove`. The map calls it when it adds the control.
+     * @param instance A function that returns the map.
+     */
+    create(instance?: () => MapInstance): Control;
+}
 
 /**
- * A position that the application gives: `[lng, lat]`. It is `readonly number[]` and not a pair, because TypeScript
- * gives an array that is declared apart from its use (`const NYC = [-74, 40.7]`) the type `number[]`. A position
- * that the map gives (`state.view.center`, the result of `unproject`) is `[number, number]`.
+ * A position as `[lng, lat]` in degrees, for example `[-74, 40.7]`. A plain `number[]` is accepted. A position that the
+ * map returns, such as `state.view.center`, has the type `[number, number]`.
  */
 export type Position = readonly number[];
-/**
- * A box of the main API: `[[west, south], [east, north]]` or `[west, south, east, north]`, in degrees. (The map also
- * reads `LngLat` and `LngLatBounds` objects at run time, but the types of the main API take arrays only.)
- */
+/** A box in degrees, as `[[west, south], [east, north]]` or `[west, south, east, north]`. */
 export type Bounds = readonly [Position, Position] | readonly [number, number, number, number];
 /** A GeoJSON geometry (RFC 7946). */
 export type GeoJSONGeometry =
@@ -64,18 +70,43 @@ export interface ClusterFeature {type: 'Feature'; id?: string | number; properti
 export interface View { center: [number, number]; zoom: number; bearing: number; pitch: number; bounds: [[number, number], [number, number]] }
 /** A view that the application gives: each field is optional. */
 export interface ViewInput { center?: Position; zoom?: number; bearing?: number; pitch?: number }
-/**
- * A view to go to, for `initialView` and `moveTo`. `bounds` ([west, south, east, north] or [[west, south], [east, north]])
- * is fitted into the map and takes the place of `center` and `zoom`, as in MapLibre GL JS. `padding` (CSS pixels, default
- * 0) is space around `bounds` for this one fit, on top of the padding of the description, and `maxZoom` limits the zoom
- * of the fit. Without `bounds`, `padding` and `maxZoom` have no effect.
- */
-export interface InitialView extends ViewInput { bounds?: Bounds; padding?: PaddingInput; maxZoom?: number }
-/** The argument of `moveTo`: a view or `bounds` (as in `initialView`), with `duration` in milliseconds and `fly`. */
-export interface MoveToOptions extends InitialView { duration?: number; fly?: boolean | FlyOptions }
+/** A view to go to, for `initialView` and `moveTo`: a center, zoom, bearing and pitch, or a box to fit. */
+export interface InitialView extends ViewInput {
+    /** A box to fit into the map. It overrides `center` and `zoom`. */
+    bounds?: Bounds;
+    /**
+     * Space in CSS pixels around `bounds` for this fit, added to `padding` of the description. It has no effect without `bounds`.
+     * @default 0
+     */
+    padding?: PaddingInput;
+    /** The largest zoom level of the fit of `bounds`, for a small box. It has no effect without `bounds`, and it does not change `maxZoom` of the description. */
+    maxZoom?: number;
+}
+/** The argument of `moveTo`: a view or `bounds` as in `InitialView`, and how the camera moves there. */
+export interface MoveToOptions extends InitialView {
+    /**
+     * The duration of the animation in milliseconds. `0` moves the camera at once. With `fly`, a missing `duration` follows from the distance.
+     * @default 0
+     */
+    duration?: number;
+    /**
+     * Whether the camera zooms out and back in on the way. An object sets the options `curve`, `speed`, `screenSpeed`,
+     * `minZoom` and `maxDuration` of `flyTo` of MapLibre GL JS.
+     * @default false
+     */
+    fly?: boolean | FlyOptions;
+}
 /** Where the pointer is over the map: `point` in CSS pixels from the top left corner of the map, `lngLat` as `[lng, lat]`. */
 export interface PointerPosition { point: {x: number; y: number}; lngLat: [number, number] }
-export interface MapPointer { point: {x: number; y: number}; lngLat: [number, number]; /** The features of `interactiveLayers` at the point, the top one first. */ features: RenderedFeature[] }
+/** The argument of `onClick`: where the user clicked, and the features there. */
+export interface MapPointer {
+    /** The point in CSS pixels from the top left corner of the map. */
+    point: {x: number; y: number};
+    /** The position, `[lng, lat]`. */
+    lngLat: [number, number];
+    /** The features of `interactiveLayers` at the point, the top one first. */
+    features: RenderedFeature[];
+}
 
 /** The fields of `MapDescription` that add to the parts of the style: `sources`, `layers` and `terrain`. */
 type StyleParts = Pick<MapDescription, 'sources' | 'layers' | 'terrain'>;
@@ -89,216 +120,279 @@ export type ImageSource = Parameters<Map['addImage']>[1];
  */
 export type ImageInput = ImageSource | ({image: ImageSource} & ImageOptions);
 
-/** The description of a map. Each field can change in `update`, but for those of `MapSetup`. */
+/** The description of a map: one object that states the style, the data, the view and the controls. To change the map, pass a new description to `update`. */
 export interface MapDescription extends MapSetup {
     /**
-     * A style object or the URL of a style (the MapLibre style specification). A new object or URL is a new style.
-     * A pair `{light, dark}` of two styles (objects or URLs) uses the style of the resolved `colorScheme`, and changes
-     * to the other style when the scheme changes. Each change of scheme loads that style again, as a new style does.
+     * The style: a style object, the URL of a style, or `{light, dark}` with one style for each resolved `colorScheme`.
+     * With `{light, dark}`, the map loads the other style when the scheme changes.
      */
     style: string | StyleSpecification | {light: string | StyleSpecification; dark: string | StyleSpecification};
-    /**
-     * Sources to add to the sources of the style, by id. A source here replaces the source of the style that has the
-     * same id. They are added when the style has loaded, so a style from a URL can have them too.
-     */
+    /** Sources to add to the style, by id. A source here overrides the source of the style that has the same id. */
     sources?: Record<string, SourceSpecification>;
     /**
-     * Layers to add to the layers of the style: they do not replace them. A layer with `before` goes below the layer
-     * of the style with that id, and a layer without it goes on top.
+     * Layers to add to the style, in order. A layer with `before` is inserted below the style layer with that id, and a
+     * layer without `before` is drawn on top.
      */
     layers?: LayerInput[];
     /**
-     * 3D terrain from an elevation source, `{source: 'dem', exaggeration: 1.5}`, in place of the terrain of the style.
-     * `null` means no 3D terrain (a flat map), also when the style has a `terrain`. No field, or `undefined`, means the terrain of the style.
+     * 3D terrain from a raster-dem source, for example `{source: 'dem', exaggeration: 1.5}`. It overrides the `terrain`
+     * of the style, and `null` turns 3D terrain off. Without this field, the map uses the `terrain` of the style.
      */
     terrain?: TerrainSpecification | null;
     /**
-     * Web fonts for labels, in the shape of `font-faces` of the style specification: by `text-font` name, a URL or a
-     * list of `{url, 'unicode-range'}`. A name here replaces the same name in the `font-faces` of the style. A relative
-     * URL is relative to the page. A new name loads its font and the labels are drawn again. See "Web fonts" in `docs/api.md`.
+     * Web fonts for labels, by `text-font` name: a URL, or a list of `{url, 'unicode-range'}` as in `font-faces` of the
+     * style specification. A name here overrides the same name in the `font-faces` of the style.
      */
     fonts?: FontFaces;
-    /** The view at the start: a view, or `bounds` to fit with `padding`. The user then moves the map. */
+    /** The view when the map is created: a center, zoom, bearing and pitch, or `bounds` to fit. `view` overrides it, and with `hash` a view in the URL of the page overrides both. */
     initialView?: InitialView;
     /**
-     * A view that the application owns. Give it together with `onViewChange` and write each change back, or change it
-     * to move the map. (The map does not wait for the application: a view that the map itself reported is not applied again.)
+     * A view that the application controls. Set it together with `onViewChange`, and pass each view that `onViewChange`
+     * receives back to `view`. The map applies a new `view` with no animation; to animate the camera, call `moveTo`.
      */
     view?: ViewInput;
+    /** Called with the new view at each change of the view, also during a movement, and also when the change comes from `view` or `moveTo`. */
     onViewChange?: (view: View) => void;
     /**
-     * GeoJSON data for sources of the style, by the id of the source: `{routes: featureCollection}`. The source is in
-     * the style as `{type: 'geojson', data: {type: 'FeatureCollection', features: []}}`. Data here is compared by
-     * identity and goes to the map alone: use it for data that changes, so that the style stays as it is.
+     * GeoJSON data or the URL of GeoJSON, by the id of a GeoJSON source of the style or of `sources`. To change the data
+     * of a source, pass a new object; the same object again changes nothing.
      */
     data?: Record<string, GeoJSON | string>;
     /**
-     * Images for `icon-image` of style layers, by name: `{pin: '<svg ...>...</svg>'}`. A
-     * value is an SVG document, the URL of an image, or `{image, width, height}`. An image of this field is used in
-     * place of an image of the sprite that has the same name.
+     * Images for `icon-image` of style layers, by name: an SVG document as a string, the URL of an image, or `{image, width, height}`.
+     * An image here overrides the image of the sprite that has the same name.
      */
     images?: Record<string, ImageInput>;
     /**
-     * Sprites to add to the sprite of the style: `[{id: 'pins', url: 'https://example.com/sprites/pins'}]`, as the list
-     * form of `sprite` in the style specification. The URL has no extension: the map loads `url + '.json'` and
-     * `url + '.png'` (`@2x` on a screen with a pixel ratio above 1). An `icon-image` names an image of such a sprite as
-     * `id:name` (`pins:hotel`). A sprite here replaces a sprite of the style with the same id, and the id `default`
-     * replaces the sprite of a style whose `sprite` is one URL. A change of this field loads the style again.
+     * Sprites to add to the sprite of the style, as `[{id: 'pins', url: 'https://example.com/sprites/pins'}]`. A layer
+     * names an image of such a sprite as `id:name` (`pins:hotel`). A change of this field loads the style again.
      */
     sprite?: {id: string; url: string}[];
-    /** Controls from `@map-jr/map-jr-gl/controls`: `[navigation(), scale()]`. */
+    /** Controls from `@map-jr/map-jr-gl/controls`, for example `[navigation(), scale()]`. */
     controls?: ControlSpec[];
     /**
-     * The projection, in place of the property `projection` of the style: `{type: 'globe'}` or `{type: 'mercator'}`
-     * (the same name and shape as in the style). `null` or no field: the projection of the style. A globe turns into
-     * Mercator between zoom 11 and 12, as in MapLibre GL JS.
+     * The projection, `{type: 'globe'}` or `{type: 'mercator'}`. It overrides the `projection` of the style, and `null`
+     * uses the projection of the style. A globe changes to Mercator between zoom 11 and 12.
      */
     projection?: ProjectionSpecification | null;
     /**
-     * Values for the `global-state` expressions of the style, by name: `{season: 'winter'}`. A value here is used in
-     * place of the default in `state` of the style with the same name. A name that `update` leaves out, or gives
-     * `null`, goes back to the default of the style. A new style gets these values too. Values are JSON.
+     * Values for the `global-state` expressions of the style, by name, for example `{season: 'winter'}`. A value here overrides the default
+     * in `state` of the style. A name that is left out or set to `null` uses the default of the style.
      */
     globalState?: Record<string, unknown>;
-    /** Style layers whose features are found under the pointer: they are in `state.hover` and in `onClick`. */
+    /** The ids of the style layers that respond to the pointer: their features appear in `state.hover` and in `onClick`. */
     interactiveLayers?: string[];
     /**
-     * `true`: the top feature of `interactiveLayers` under the pointer has the feature state `hover: true`, which
-     * `feature-state` expressions read, and loses it when the pointer leaves it. A feature with no id gets no state.
-     * The default is `false`.
+     * Whether the top feature of `interactiveLayers` under the pointer has the feature state `hover: true`, for
+     * `feature-state` expressions. A feature with no id gets no state.
+     * @default false
      */
     hoverState?: boolean;
+    /** Called for each click on the map, with the point, the position and the features of `interactiveLayers` at the point. */
     onClick?: (event: MapPointer) => void;
-    /** Called for each error of the map. Without it, the map writes each error to the console. */
+    /**
+     * Called with each error of the map, such as a style or a tile that does not load. Without it, the map writes each error to the console.
+     */
     onError?: (error: Error) => void;
-    minZoom?: number; maxZoom?: number; maxPitch?: number; maxBounds?: Bounds | null;
-    /** The mouse cursor over the map. Without it, the cursor is a pointer over a feature of `interactiveLayers`. */
+    /**
+     * The smallest zoom level of the map. It limits gestures, `view` and `moveTo`.
+     * @default -2
+     */
+    minZoom?: number;
+    /**
+     * The largest zoom level of the map. It limits gestures, `view` and `moveTo`.
+     * @default 22
+     */
+    maxZoom?: number;
+    /**
+     * The largest pitch of the map in degrees. It limits gestures, `view` and `moveTo`, and a value above 90 is limited to 90.
+     * @default 60
+     */
+    maxPitch?: number;
+    /** A box ({@link Bounds}) that the view cannot leave. `null` removes the limit. */
+    maxBounds?: Bounds | null;
+    /**
+     * The CSS cursor over the map. It overrides the default cursor, which is `pointer` over a feature of
+     * `interactiveLayers`, `grab` elsewhere on an interactive map, and the cursor of the page on a map with `interactive: false`.
+     */
     cursor?: string;
     /**
-     * `true`: the wheel zooms the map only with Ctrl (⌘ on a Mac), one finger scrolls the page and two fingers move the
-     * map. A blocked gesture shows a hint over the map. For a map in a page that scrolls. The default is `false`.
+     * Whether the wheel zooms only with Ctrl (⌘ on a Mac) and a touch pans only with two fingers, for a map in a page
+     * that scrolls. A blocked gesture shows a hint over the map.
+     * @default false
      */
     cooperativeGestures?: boolean;
     /**
-     * The colours of the controls, the popup, the attribution and the message of a browser without WebGL 2: `'light'`
-     * (the default), `'dark'`, or `'auto'`, which follows `prefers-color-scheme` of the browser and changes with it.
-     * The container has the class `map-jr-dark` while the scheme is dark. The resolved scheme is also the global
-     * state property `color-scheme` of the style (`['global-state', 'color-scheme']`), unless `globalState` gives it.
+     * The colour scheme of the controls, the popup and the attribution. `'auto'` follows `prefers-color-scheme` of the
+     * browser. The resolved scheme is also the global state `color-scheme` of the style, unless `globalState` sets it.
+     * @default 'light'
      */
     colorScheme?: 'auto' | 'light' | 'dark';
     /**
-     * Called when the control `colorScheme()` changes `colorScheme`, with the new value. The control has changed the
-     * map already (with `patch`); an application that keeps the description in its state writes the value back.
+     * Called with the new value when the control `colorScheme()` changes `colorScheme`. The map has applied the value
+     * already; an application that keeps the description in its state stores it.
      */
     onColorSchemeChange?: (colorScheme: 'auto' | 'light' | 'dark') => void;
     /**
      * The texts of the controls, the popup, the marker and the hint of `cooperativeGestures`, by the keys of MapLibre GL
-     * JS: `{'NavigationControl.ZoomIn': 'Zoom avant'}`. A key that is left out keeps the English text. The library
-     * ships no translations. A change of this field adds the controls again with the new texts.
+     * JS, for example `{'NavigationControl.ZoomIn': 'Zoom avant'}`. A key that is left out keeps the English text.
      */
     locale?: Record<string, string>;
     /**
      * Space in CSS pixels at the sides of the map that the view keeps free, for example under a side panel: one number
-     * for all sides, or `{top, right, bottom, left}` (a side that is left out is 0). The centre of the view is the centre
-     * of the rest of the map. The default is 0.
+     * for all sides, or `{top, right, bottom, left}` with 0 for a side that is left out.
+     * @default 0
      */
     padding?: PaddingInput;
     /**
-     * Changes a request before the map makes it, as `transformRequest` of MapLibre GL JS: it gets the URL and the
-     * kind of resource (`Style`, `Source`, `Tile`, `Glyphs`, `SpriteJSON`, `SpriteImage`, `Image` or `Font`) and returns
-     * `{url, headers, credentials}`, or `undefined` to leave the request as it is. It also applies to the requests of
-     * the tile workers. The map always calls the function of the last description.
+     * A function that changes a request before the map sends it, as `transformRequest` of MapLibre GL JS. It receives the
+     * URL and the resource type, and returns `{url, headers, credentials}`, or `undefined` to send the request unchanged.
+     * `null` and a missing field send every request unchanged.
      */
     transformRequest?: RequestTransform | null;
 }
 /** The options of the built-in attribution (`attribution` of the description). */
 export interface AttributionOptions {
-    /** Whether the attribution is a button that opens the credits. @default true when the map is 640 CSS pixels wide or narrower, else false */
+    /**
+     * Whether the attribution is a button that opens the credits.
+     * @default true when the map is 640 CSS pixels wide or narrower, else false
+     */
     compact?: boolean;
     /** Credits that the attribution shows after the credits of the sources of the style. */
     customAttribution?: string | string[];
 }
-/** The fields that are read when the map is made only. */
+/** The fields of the description that the map reads only when it is created. To change one, destroy the map and create a new one. */
 export interface MapSetup {
+    /**
+     * The thread that renders the map. `'worker'` keeps the map smooth while the page is busy, and `'auto'` uses it where the browser supports it.
+     * @default 'auto'
+     */
     renderer?: 'auto' | 'worker' | 'main';
+    /**
+     * The CSS font family for labels whose `text-font` names no loaded font.
+     * @default '"Noto Sans", "Helvetica Neue", Arial, sans-serif'
+     */
     fontFamily?: string;
+    /**
+     * Whether the user can move the map with the mouse, touch and keyboard.
+     * @default true
+     */
     interactive?: boolean;
+    /**
+     * Whether the canvas uses multisample antialiasing. It smooths the edges of polygons at a cost in frame time.
+     * @default false
+     */
     antialias?: boolean;
-    /** `false` hides the built-in attribution, so that the page shows the credits itself. */
+    /** The options of the built-in attribution, or `false` to hide it when the page shows the credits itself. */
     attribution?: false | AttributionOptions;
+    /**
+     * Whether the view is kept in the hash of the URL (`#zoom/lat/lng/bearing/pitch`), so that a link shows the same view.
+     * A string is the name of the parameter in the hash.
+     * @default false
+     */
     hash?: boolean | string;
     /** The nonce of a Content Security Policy with `style-src 'nonce-…'`, for the style sheet of the map. */
     nonce?: string;
 }
 
+/** The state of a map, which `state` of `MapInstance` holds. */
 export interface MapState {
-    /** The style and the first tiles have loaded. */
+    /** Whether the style and the tiles of the view have loaded for the first time. It stays `true` afterwards. */
     loaded: boolean;
-    /** Nothing moves and nothing loads. */
+    /** Whether the camera is still and nothing loads. It becomes `false` again when the camera moves or the map loads. */
     idle: boolean;
+    /** Whether the camera moves. */
     moving: boolean;
+    /** The current view. */
     view: View;
-    /** The features of `interactiveLayers` under the pointer. */
+    /** The features of `interactiveLayers` under the pointer, the top one first. */
     hover: RenderedFeature[];
-    /** Where the pointer is while it is over the map, or `null`. It changes at each move of the mouse: subscribe with a selector. */
+    /** Where the pointer is over the map, or `null` when it is not over the map. It can be one frame late. */
     pointer: PointerPosition | null;
-    /** The thread that draws: known when the map has started. */
+    /** The thread that renders the map, or `undefined` until `loaded` is `true`. */
     renderer: 'worker' | 'main' | undefined;
     /** The colour scheme of the controls: `colorScheme` of the description, with `'auto'` resolved. */
     colorScheme: 'light' | 'dark';
 }
 
-/** Where an element of the page is on the map. */
+/** Where an element of the page is on the map, for `overlay`. */
 export interface OverlayOptions {
+    /** The position of the element, `[lng, lat]`. */
     lngLat: Position;
-    /** The part of the element that is at the position: `'center'` (the default), `'bottom'`, `'top-left'` and others. */
+    /**
+     * The part of the element that is at the position: `'center'`, `'bottom'`, `'top-left'` and the other sides and corners.
+     * @default 'center'
+     */
     anchor?: Anchor;
-    /** A distance in pixels from the position, to the right and down. */
+    /** A distance in CSS pixels from the position, to the right and down. */
     offset?: [number, number];
-    /** Show the element in a box with a pointer to the position (a popup). With `onClose`, the box has a button to close it. */
+    /**
+     * Whether the element is shown in a box with a tip that points to the position (a popup).
+     * @default false
+     */
     popup?: boolean;
+    /** Called when the user closes the popup. With it, the popup has a button to close it. */
     onClose?: () => void;
     /**
-     * The user can move the element with the mouse, a finger or a pen (default `false`; not for a `popup`). A drag
-     * starts once the pointer has moved 3 pixels, so a click stays a click, and the map does not pan under it. The
-     * callbacks get the position of the element as `[lng, lat]`. After a drag, the element stays where it was dropped
-     * until `lngLat` changes, so pass the new position to `lngLat` in `onDragEnd` to keep it in your state.
+     * Whether the user can drag the element. A popup cannot be dragged. To keep a dropped element in place across updates, pass its
+     * new position to `lngLat` in `onDragEnd`.
+     * @default false
      */
     draggable?: boolean;
+    /** Called with the position of the element, `[lng, lat]`, when a drag starts. */
     onDragStart?: (lngLat: Position) => void;
+    /** Called with the position of the element, `[lng, lat]`, at each move of a drag. */
     onDrag?: (lngLat: Position) => void;
+    /** Called with the position where the element was dropped, `[lng, lat]`. */
     onDragEnd?: (lngLat: Position) => void;
 }
-export interface MapOverlay { update(options: OverlayOptions): void; remove(): void }
+/** An element that `overlay` placed on the map. */
+export interface MapOverlay {
+    /** Replaces the options of the overlay. The element moves only when `lngLat` changes, so a dragged element stays where it was dropped. */
+    update(options: OverlayOptions): void;
+    /** Removes the element from the map. */
+    remove(): void;
+}
 
 /** What each event of `listen` has: its type, and the `MapInstance` that fired it. */
 export interface MapEventBase<T extends string = string> { type: T; target: MapInstance }
 /** An event of a drag of the map by the user (`dragstart`, `drag`, `dragend`). */
 export interface MapDragEvent extends MapEventBase<'dragstart' | 'drag' | 'dragend'> {
-    /** The event of the mouse or the touch that moved the map. */
+    /** The mouse or touch event that moved the map. */
     originalEvent: MouseEvent | TouchEvent;
 }
 /** An event of the pointer. A listener that calls `preventDefault()` stops what the map does for the event (a drag, a zoom). */
 export interface MapPointerEvent<T extends string = string, E extends MouseEvent = MouseEvent> extends MapEventBase<T> {
-    /** The place in CSS pixels from the top left corner of the map. */
+    /** The point in CSS pixels from the top left corner of the map. */
     point: {x: number; y: number};
-    /** The position under the pointer, `[lng, lat]`, as in `onClick`. */
+    /** The position under the pointer, `[lng, lat]`. */
     lngLat: [number, number];
+    /** The DOM event. */
     originalEvent: E;
+    /** Stops what the map does for this event. */
     preventDefault(): void;
+    /** Whether a listener called `preventDefault()`. */
     readonly defaultPrevented: boolean;
 }
 /** An event of a touch: `points` and `lngLats` have one entry for each finger on the map. */
 export interface MapTouchEvent<T extends string = string> extends MapPointerEvent<T, PointerEvent> { points: {x: number; y: number}[]; lngLats: [number, number][] }
-/** An event of the data of the map: `dataType` says whether the style or one source (`sourceId`) is concerned. */
-export interface MapDataEvent<T extends string = string> extends MapEventBase<T> { dataType: 'source' | 'style'; sourceId?: string; isSourceLoaded?: boolean; source?: unknown }
+/** An event of the data of the map: `dataType` says whether the style or one source (`sourceId`) changed. */
+export interface MapDataEvent<T extends string = string> extends MapEventBase<T> {
+    /** Whether the event concerns the style or one source. */
+    dataType: 'source' | 'style';
+    /** The id of the source, for `dataType: 'source'`. */
+    sourceId?: string;
+    /** Whether the tiles of the source for the view have loaded, for `dataType: 'source'`. */
+    isSourceLoaded?: boolean;
+    /** The source as the style specifies it, for `dataType: 'source'`. */
+    source?: unknown;
+}
 
 type Plain<K extends string> = {[T in K]: MapEventBase<T>};
 type Pointed<K extends string> = {[T in K]: MapPointerEvent<T>};
 /**
- * The events of `listen`, by type. The state of the map (`state`) and the callbacks of the description (`onClick`,
- * `onViewChange`, `onError`) cover the common needs. A position is `[lng, lat]` and a box is
- * `[[west, south], [east, north]]`, as in the rest of this API.
+ * The events of `listen`, by type. A position is `[lng, lat]` and a box is `[[west, south], [east, north]]`. For the
+ * common needs, read `state` or set `onClick`, `onViewChange` and `onError` in the description.
  */
 export interface MapEvents extends
     Plain<'load' | 'idle' | 'render' | 'resize' | 'remove' | 'style.load' | 'webglcontextlost' | 'webglcontextrestored'>,
@@ -307,113 +401,158 @@ export interface MapEvents extends
     Pointed<'dblclick' | 'contextmenu' | 'mousedown' | 'mousemove' | 'mouseup' | 'mouseover' | 'mouseout'>,
     Record<'touchstart' | 'touchmove' | 'touchend' | 'touchcancel', MapTouchEvent>,
     Record<'styledata' | 'sourcedata' | 'data' | 'styledataloading' | 'sourcedataloading' | 'dataloading', MapDataEvent> {
+    /** A click on the map. */
     click: MapPointerEvent<'click'>;
+    /** A turn of the mouse wheel over the map. */
     wheel: MapPointerEvent<'wheel', WheelEvent>;
-    /** The box of a zoom with the Shift key and a drag. `boxzoomend` has the bounds of the box. */
+    /** A zoom to a box drawn with the Shift key and a drag starts. `boxzoomend` has the bounds of the box. */
     boxzoomstart: MapEventBase<'boxzoomstart'> & {originalEvent: PointerEvent};
+    /** A zoom to a box is cancelled. */
     boxzoomcancel: MapEventBase<'boxzoomcancel'> & {originalEvent: Event};
+    /** A zoom to a box ends, with the bounds of the box as `boxZoomBounds`. */
     boxzoomend: MapEventBase<'boxzoomend'> & {originalEvent: Event; boxZoomBounds: [[number, number], [number, number]]};
-    /** About once a second while the map draws: frames per second, and the time of a frame on the CPU in milliseconds. */
+    /** About once a second while the map renders: the frames per second, the CPU time of a frame in milliseconds on the thread that renders, and the number of labels placed. */
     stats: MapEventBase<'stats'> & {fps: number; frameMs: number; labels: number};
     /** The style names an image (`id`) that the map does not have. */
     styleimagemissing: MapEventBase<'styleimagemissing'> & {id: string};
-    /** The terrain of the style has changed. */
+    /** The terrain changed. */
     terrain: MapEventBase<'terrain'> & {terrain: {source: string; exaggeration?: number} | null};
     /**
-     * The projection has been put in place: by each new style, and by a change of its name (`projection` in the
-     * description, the control `globe()`). `newProjection` is `mercator`, `globe` or `vertical-perspective`.
+     * The projection was applied, by a new style or a change of the projection type. `newProjection` is `mercator`, `globe`
+     * or `vertical-perspective`.
      */
     projectiontransition: MapEventBase<'projectiontransition'> & {newProjection: string};
-    /** The geolocate control of `@map-jr/map-jr-gl/controls` has a position. */
+    /** The geolocate control of `@map-jr/map-jr-gl/controls` received a position. */
     geolocate: MapEventBase<'geolocate'> & {coords: GeolocationCoordinates};
-    /** `error` is usually an `Error`. (`onError` always has an `Error`.) */
+    /** An error of the map. `error` is the value that failed, which can be other than an `Error`; `onError` of the description receives it as an `Error`. */
     error: MapEventBase<'error'> & {error: unknown};
 }
 
+/** A map that `createMap` returns. */
 export interface MapInstance {
-    /** Changes the map to a new description. Give the complete description each time: a description with no `style` throws. */
+    /**
+     * Applies a new description to the map. Pass the complete description each time.
+     * @param spec The new description.
+     */
     update(spec: MapDescription): void;
-    /** Changes only the fields of `part`: `map.update({...map.description, ...part})`. A field of `part` that is `undefined` is removed. */
+    /**
+     * Applies the fields of `part` and keeps the other fields of the current description. A field of `part` that is `undefined` is removed.
+     * @param part The fields to change.
+     */
     patch(part: Partial<MapDescription>): void;
-    /** The description of the last `createMap`, `update` or `patch`. Read only: change the map with `update` or `patch`. */
+    /** The description of the last `createMap`, `update` or `patch`. To change the map, call `update` or `patch`. */
     readonly description: Readonly<MapDescription>;
     /**
-     * For reading: the description with `style` as a copy of the style that the map loaded (the description's `style`
-     * before the first `style.load`) and `globalState` as the global state in effect. Do not pass it to `update`.
+     * Returns the description with `style` as a copy of the style that the map loaded and `globalState` as the global state in effect.
+     * Do not pass the result to `update`.
+     * @returns A new object for reading.
      */
     getResolvedDescription(): MapDescription;
+    /** Removes the map, its controls and its overlays from the page. A pending `toBlob` or `once` rejects. */
     destroy(): void;
+    /** A store of the state of the map (`MapState`): `state.get()` returns it, and `state.subscribe(fn)` calls `fn` at each change. */
     readonly state: Readable<MapState>;
     /**
-     * The features that the style layers draw, the top one first (`layers` selects layers). `at` is a point of the
-     * screen (`{x, y}`), a position (`[lng, lat]`), a rectangle of the screen (two points), or nothing for the whole map.
-     * The options can come in the place of `at`: `queryFeatures({layers: ['places']})` asks the whole map.
+     * Returns the features that the style layers render at a place, the top one first.
+     * @param at A point of the screen (`{x, y}`), a position (`[lng, lat]`), a box of the screen (two points), or nothing for the whole map. The options can be passed here instead, and `options` is then ignored.
+     * @param options `layers` (the ids of style layers), `filter` (a filter expression) and `radius` (in CSS pixels around a point).
+     * @returns A promise of the features.
      */
     queryFeatures(at?: FeaturePlace | FeatureOptions, options?: FeatureOptions): Promise<RenderedFeature[]>;
     /**
-     * The features of the tile data of the source `sourceId`. They need no style layer, and at a position they need not
-     * be on the screen (the tile is fetched if necessary). `at` is a point of the screen or a position, or nothing for
-     * the tiles of the view. The options can come in the place of `at`.
+     * Returns the features of the tile data of a source, with no need of a style layer. A position need not be in the view.
+     * @param sourceId The id of a source of the style or of `sources`.
+     * @param at A point of the screen or a position, or nothing for the tiles of the view. The options can be passed here instead, and `options` is then ignored.
+     * @param options `sourceLayers`, `filter`, `radius` (CSS pixels), `geometry` and `zoom`.
+     * @returns A promise of the features.
      */
     querySource(sourceId: string, at?: FeaturePlace | SourceOptions, options?: SourceOptions): Promise<QueriedFeature[]>;
     /**
-     * The question of `queryFeatures`, kept up to date: `listener` gets the answer now, and again each time that the
-     * answer changes (new tiles, a change of the style, and for a place on the screen also a movement of the map).
-     * Returns a function that stops it.
+     * Calls `listener` with the result of `queryFeatures` now and again each time that the result changes.
+     * @returns A function that stops the calls.
      */
     watchFeatures(at: FeaturePlace | undefined, options: FeatureOptions, listener: (features: RenderedFeature[]) => void): () => void;
-    /** The question of `querySource`, kept up to date in the same way as `watchFeatures`. Returns a function that stops it. */
+    /**
+     * Calls `listener` with the result of `querySource` now and again each time that the result changes.
+     * @returns A function that stops the calls.
+     */
     watchSource(sourceId: string, at: FeaturePlace | undefined, options: SourceOptions, listener: (features: QueriedFeature[]) => void): () => void;
     /**
-     * Merges `state` into the state of one feature, which `feature-state` expressions read (a highlight of a hovered or
-     * selected feature). `target.id` is the `id` of the feature (`RenderedFeature.id`), and `sourceLayer` is required
-     * for a vector source. The state is kept by the map, also after a new `style` in `update`, until it is removed.
+     * Merges `state` into the feature state of one feature, which `feature-state` expressions read. The map keeps the state,
+     * also after a new `style`, until it is removed.
+     * @param target `id` is the `id` of the feature; `sourceLayer` is required for a vector source.
      */
     setFeatureState(target: {source: string; sourceLayer?: string; id: number | string}, state: Record<string, unknown>): void;
-    /** Removes one key of the state of a feature, its whole state (no `key`), or the state of all features of a source (no `id`). */
+    /**
+     * Removes one key of the feature state of a feature, or its whole state when `key` is left out.
+     * @param target Without `id`, the state of all features of the source is removed.
+     */
     removeFeatureState(target: {source: string; sourceLayer?: string; id?: number | string}, key?: string): void;
-    /** The height of the ground in metres at a position (`[lng, lat]`) or a point of the screen, from the elevation source of the style. `null` where there is no data. */
+    /**
+     * Returns the height of the ground at a position (`[lng, lat]`) or a point of the screen, from the terrain source.
+     * @returns A promise of the height in metres multiplied by the `exaggeration` of the terrain, or of `null` where there is no elevation data.
+     */
     queryElevation(at: Position | {x: number; y: number}): Promise<number | null>;
     /**
-     * The map as an image, for a download or for printing. Waits until the map is idle (all tiles drawn), draws one
-     * frame and resolves to a Blob of the canvas. `type` defaults to `'image/png'`; `quality` (0 to 1) applies to
-     * `'image/jpeg'` and `'image/webp'`. The image has the size of the canvas in device pixels and has no markers or
-     * controls (they are elements of the page). The promise rejects when the map is destroyed first.
+     * Returns the map as an image once the map is idle, in the size of the canvas in device pixels. Markers, popups and controls are not in the image.
+     * @param type The MIME type of the image. Default `'image/png'`.
+     * @param quality From 0 to 1, for `'image/jpeg'` and `'image/webp'`.
+     * @returns A promise of the image. It rejects when the map is destroyed first.
      */
     toBlob(type?: string, quality?: number): Promise<Blob>;
     /**
-     * The cluster methods of a GeoJSON source with `cluster: true`. `clusterId` is `properties.cluster_id` of a cluster
-     * feature, for example from `queryFeatures`. `clusterExpansionZoom` gives the zoom level at which the cluster divides,
-     * `clusterChildren` the clusters and points that it divides into, and `clusterLeaves` its points (the options `limit`, default
-     * 10, and `offset`, default 0). The promise rejects when the source is not a GeoJSON source with clusters, or the cluster is not there.
+     * Returns the zoom level at which a cluster of a GeoJSON source with `cluster: true` divides.
+     * @param clusterId `properties.cluster_id` of the cluster feature.
+     * @returns A promise that rejects when the source has no clusters or the cluster does not exist.
      */
     clusterExpansionZoom(sourceId: string, clusterId: number): Promise<number>;
+    /**
+     * Returns the clusters and points that a cluster divides into at the next zoom level.
+     * @param clusterId `properties.cluster_id` of the cluster feature.
+     * @returns A promise that rejects when the source has no clusters or the cluster does not exist.
+     */
     clusterChildren(sourceId: string, clusterId: number): Promise<ClusterFeature[]>;
+    /**
+     * Returns the points of a cluster.
+     * @param clusterId `properties.cluster_id` of the cluster feature.
+     * @param options `limit` is the largest number of points (default 10), and `offset` the number to skip (default 0).
+     * @returns A promise that rejects when the source has no clusters or the cluster does not exist.
+     */
     clusterLeaves(sourceId: string, clusterId: number, options?: {limit?: number; offset?: number}): Promise<ClusterFeature[]>;
     /**
-     * Moves the camera now, with an animation when `duration` is not 0. With `fly` (`true` or the options `curve`,
-     * `speed`, `screenSpeed`, `minZoom`, `maxDuration` of `flyTo` of MapLibre GL JS), the camera zooms out and back in
-     * on the way, and without `duration` the duration follows from the distance. With `bounds`, the camera goes to the
-     * box fitted with `padding` and `maxZoom`. `moveTo` does not change the padding of the map: that is `padding` of the description.
+     * Moves the camera to a view or to `bounds`, with an animation when `duration` is more than 0 or `fly` is set. The
+     * padding of the map stays that of the description.
      */
     moveTo(view: MoveToOptions): void;
-    /** The short form of `moveTo({bounds, ...options})`, with `duration` 800 ms by default. */
+    /** Moves the camera to fit a box, as `moveTo({bounds, ...options})` with `duration` 800 ms unless `options` sets it. */
     fitBounds(bounds: Bounds, options?: Omit<MoveToOptions, 'bounds' | 'center' | 'zoom'>): void;
+    /**
+     * Converts a position to a point of the screen.
+     * @returns The point in CSS pixels from the top left corner of the map.
+     */
     project(lngLat: Position): {x: number; y: number};
+    /**
+     * Converts a point of the screen, in CSS pixels from the top left corner of the map, to a position.
+     * @returns The position as `[lng, lat]`.
+     */
     unproject(point: {x: number; y: number}): [number, number];
     /**
-     * Puts an element of the page at a position of the map: a marker with your own content, a label, a popup. The
-     * element moves with the map. For many points, use a symbol layer in `layers` with the points in `data`: it
-     * is drawn on the canvas and is much faster.
+     * Places an element of the page at a position of the map, as a marker, a label or a popup; the element moves with
+     * the map. For many points, a symbol layer in `layers` renders much faster.
+     * @returns An overlay with `update` and `remove`.
      */
     overlay(element: HTMLElement, options: OverlayOptions): MapOverlay;
-    /** Calls `fn` for each event of that type (the types are the names of `MapEvents`). Returns a function that stops it. */
+    /**
+     * Calls `fn` for each event of a type of `MapEvents`.
+     * @returns A function that stops the calls.
+     */
     listen<K extends keyof MapEvents>(type: K, fn: (event: MapEvents[K]) => void): () => void;
     /**
-     * A promise of the next event of that type. It rejects when the map is destroyed first. `once('load')` on a map
-     * that has loaded resolves at once, with an event of type `load`.
+     * Waits for the next event of a type of `MapEvents`. On a map that has loaded, `once('load')` resolves at once.
+     * @returns A promise of the event. It rejects when the map is destroyed first.
      */
     once<K extends keyof MapEvents>(type: K): Promise<MapEvents[K]>;
+    /** The element that holds the map. */
     readonly container: HTMLElement;
 }
 
@@ -462,7 +601,7 @@ class GlassPopup extends Popup {
 
 export function createMap(container: HTMLElement | string, spec: MapDescription): MapInstance { return makeMap(container, spec, 'createMap()'); }
 
-/** `createMap` for the adapters: `name` is what the user wrote (`<MapJr>`, `useMapJr()`), for the warnings that name it. */
+/** @internal `createMap` for the adapters of this package. */
 export function makeMap(container: HTMLElement | string, spec: MapDescription, name: string): MapInstance {
     complete(spec, 'createMap', 'Pass the URL of a style or a style object as "style".');
     if (!container) throw new Error('[map-jr-gl] createMap(): the container is ' + container + '. In a framework, make the map after the element is mounted.');

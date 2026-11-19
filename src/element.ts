@@ -6,10 +6,9 @@
  * <script type="module" src="https://unpkg.com/@map-jr/map-jr-gl/dist/element.js"></script>
  * <map-jr map-style="https://styles.map-jr.org/1/elevation-zero.json" center="13.4,52.52" zoom="11" style="height:400px"></map-jr>
  * ```
- * It is a thin layer over `makeMap` of the main API (host.ts), with no shadow root: the element is the container of
- * the map (#826). The attributes and the properties make one description, and one microtask after a change the element
- * gives the map the complete description with `update`. The events are `CustomEvent`s named `map-` and the name of
- * the event of the Vue component. See docs/element.md.
+ * The attributes and the properties of the element form one description. The element is the container of the map,
+ * and the map applies changes before the next frame. The events are `CustomEvent`s named `map-` and the name of the
+ * event of the Vue component, for example `map-click`.
  */
 import {makeMap, type MapDescription, type MapInstance} from './host.ts';
 import {logError} from './map.ts';
@@ -35,19 +34,14 @@ const Base = (globalThis.HTMLElement ?? class {}) as typeof HTMLElement;
 
 export class MapJrElement extends Base {
     static observedAttributes = Object.keys(ATTRIBUTES).map(attributeOf);
-    /** The values of the properties that the page has set. */
     private props: Properties = {};
     private made: MapInstance | null = null;
     private stops: (() => void)[] = [];
-    /** The names of the `map-` events that have a listener, without `map-`. */
     private heard = new Set<string>();
-    /** The attributes of the view that changed after the map was made: the map moves to their values. */
     private moved = new Set<string>();
     private queued = false;
-    /** The `initialView` property of the first description, and the `initialView` that the map was made with. */
     private firstProp: unknown;
     private first: MapDescription['initialView'];
-    /** (Development build) the attribute values that warned. */
     private warned = new Set<string>();
 
     static {
@@ -64,7 +58,7 @@ export class MapJrElement extends Base {
         for (const k of PROPERTIES) if (Object.hasOwn(this, k)) { const v = this[k]; delete this[k]; this[k] = v as never; }
     }
 
-    /** The map (`MapInstance`), from the microtask after the element is in the page until it is removed; `null` before. */
+    /** The map (`MapInstance`), from the microtask after the element is added to the page until it is removed, or else `null`. */
     get map(): MapInstance | null { return this.made; }
     /** The state of the map as a store (`map.state`), or `null` while there is no map. */
     get state(): MapInstance['state'] | null { return this.made?.state ?? null; }
