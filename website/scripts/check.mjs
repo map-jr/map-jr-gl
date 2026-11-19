@@ -109,7 +109,7 @@ try {
             await page.waitForFunction(scheme => document.documentElement.classList.contains(scheme), scheme);
             const blocks = await page.locator('main pre.shiki').evaluateAll(blocks => {
                 const hex = colour => '#' + colour.match(/\d+/g).slice(0, 3).map(n => Number(n).toString(16).padStart(2, '0')).join('').toUpperCase();
-                return blocks.filter(block => block.checkVisibility()).map(block => ({
+                return blocks.map(block => ({
                     sheet: hex(getComputedStyle(block).backgroundColor),
                     // A block in a language that Shiki did not load has no token colours and takes the text colour.
                     highlighted: !!block.querySelector('code span[style*="--shiki"], code span[class^="s"]'),
@@ -118,9 +118,9 @@ try {
             });
             const {sheet, colours} = themes[scheme];
             const used = [...new Set(blocks.flatMap(block => block.colours))];
-            check(`code in ${scheme}: the page has highlighted code blocks`, blocks.some(block => block.highlighted) && used.length > 1, `${blocks.filter(block => block.highlighted).length} of ${blocks.length} blocks`);
+            check(`code in ${scheme}: every code block is highlighted`, blocks.length > 0 && blocks.every(block => block.highlighted), `${blocks.filter(block => block.highlighted).length} of ${blocks.length} blocks`);
             check(`code in ${scheme}: each block has the sheet ${sheet}`, blocks.every(block => block.sheet === sheet), [...new Set(blocks.map(block => block.sheet))].join(' '));
-            const foreign = [...new Set(blocks.filter(block => block.highlighted).flatMap(block => block.colours))].filter(colour => !colours.includes(colour));
+            const foreign = used.filter(colour => !colours.includes(colour));
             check(`code in ${scheme}: the tokens have the colours of the theme`, foreign.length === 0, foreign.join(' '));
             const low = used.map(colour => [colour, contrast(colour, sheet)]).filter(([, ratio]) => ratio < 4.5);
             check(`code in ${scheme}: every token has 4.5:1 or more on the sheet`, low.length === 0, low.map(([colour, ratio]) => `${colour} ${ratio.toFixed(2)}`).join(' ') || 'lowest ' + Math.min(...used.map(colour => contrast(colour, sheet))).toFixed(2));

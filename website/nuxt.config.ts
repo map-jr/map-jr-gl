@@ -40,7 +40,9 @@ export default defineNuxtConfig({
     // keys are set because Nuxt UI gives its own theme to each of them.
     content: {
         experimental: {sqliteConnector: 'native'},
-        build: {markdown: {highlight: {theme: {light: 'github-light-default', default: 'github-light-default', dark: 'github-dark-default'}}}},
+        build: {markdown: {highlight: {theme: {light: 'github-light-default', default: 'github-light-default', dark: 'github-dark-default'},
+            // The languages of the fences of docs/. The default list of Nuxt Content has no shell and no Svelte.
+            langs: ['bash', 'css', 'html', 'js', 'json', 'jsx', 'markdown', 'sh', 'shellscript', 'svelte', 'ts', 'vue']}}},
     },
     llms: {
         domain: 'https://map-jr.org',
