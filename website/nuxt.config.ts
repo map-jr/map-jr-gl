@@ -1,7 +1,7 @@
-import {readFileSync} from 'node:fs';
+import {existsSync, readFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {transformPage, repositoryUrl} from './build/markdown';
-import {navFile, readNav} from './build/nav';
+import {docsDir, navFile, readNav, routeOf} from './build/nav';
 import {variantHeadScript} from './build/variants';
 
 const nav = readNav();
@@ -50,6 +50,16 @@ export default defineNuxtConfig({
     },
     icon: {clientBundle: {scan: true}},
     nitro: {
+        hooks: {
+            // /raw/<page>.md serves the markdown of the page for agents (Nuxt Content writes it from the parsed page,
+            // with the changes of build/markdown.ts). The site writes the source file in its place, unchanged.
+            'prerender:generate'(route) {
+                const match = /^\/raw\/(.+)\.md$/.exec(route.route);
+                if (!match || route.error) return;
+                const file = [match[1] + '.md', match[1] + '/index.md'].find(candidate => routeOf(candidate, nav) && existsSync(resolve(docsDir, candidate)));
+                if (file) route.contents = readFileSync(resolve(docsDir, file), 'utf8');
+            },
+        },
         prerender: {
             crawlLinks: true,
             failOnError: true,
