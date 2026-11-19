@@ -31,3 +31,14 @@ test('the package is excluded from the pre-bundling of Vite, and other entries a
     mod.setup({}, bare);
     assert.ok(bare.options.vite.optimizeDeps.exclude.includes('@map-jr/map-jr-gl'));
 });
+
+test('every control of src/control-specs.ts is auto-imported as <name>Control (#1126)', async () => {
+    const {readFile} = await import('node:fs/promises');
+    const src = await readFile(new URL('../../src/control-specs.ts', import.meta.url), 'utf8');
+    const exported = [...src.matchAll(/^export const (\w+)/gm)].map(m => m[1]);
+    assert.ok(exported.length >= 8);
+    // (The test above calls setup a second time, so each import is there twice.)
+    const imported = calls.imports.filter((i: any) => i.from === '@map-jr/map-jr-gl/controls');
+    assert.deepEqual([...new Set(imported.map((i: any) => i.name))].sort(), exported.sort());
+    for (const i of imported) assert.equal(i.as, i.name + 'Control');
+});

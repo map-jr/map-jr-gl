@@ -369,7 +369,8 @@ With the module, a page uses the components without an import:
 
 - `MapJr`, `MapOverlay` and `MapImage` are registered, and `useMapJr`, `useMapInstance`, `useMapFeatures` and `useMapSource`.
 - The controls have longer names, because `scale` and `navigation` are common words: `navigationControl()`,
-  `scaleControl()`, `fullscreenControl()`, `geolocateControl()`, `terrainControl()`.
+  `scaleControl()`, `fullscreenControl()`, `geolocateControl()`, `terrainControl()`, `globeControl()`,
+  `colorSchemeControl()`, `customControl()`.
 - `LazyMapJr` puts the code of the map into a file of its own. With `hydrate-on-visible`, the browser loads that file
   and starts the map when the map comes into view. Together with `ssr`, the visitor sees the map from the server at
   once, and a page with a map far down loads no map code until it is necessary.
