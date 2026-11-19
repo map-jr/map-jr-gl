@@ -32,7 +32,18 @@ test('tileZoomOffset: 0 is the default, and a source does not go below its minzo
     assert.ok((await render({tileZoomOffset: 3}, style(14, 11))).tiles.every(t => /\/11\//.test(t)));
 });
 
-test('tileZoomOffset: a negative or non-integer value rejects with a message', async () => {
-    await assert.rejects(render({tileZoomOffset: -1}), /^Error: \[map-jr-gl\] tileZoomOffset: -1 is not a whole number of 0 or more\. Write for example tileZoomOffset: 2/);
-    await assert.rejects(render({tileZoomOffset: 1.5}), /tileZoomOffset: 1\.5 is not a whole number/);
+test('tileZoomOffset: -2 at zoom 10 fetches tiles of zoom 12, and the source maxzoom still holds', async () => {
+    const plain = await render({zoom: 10});
+    assert.ok(plain.tiles.every(t => /\/10\//.test(t)), plain.tiles.join());
+    const high = await render({zoom: 10, tileZoomOffset: -2});
+    assert.ok(high.tiles.every(t => /\/12\//.test(t)), high.tiles.join());
+    assert.ok(high.tiles.length > plain.tiles.length, `${high.tiles.length} > ${plain.tiles.length}`);
+    assert.match(high.svg, /<path fill="#00aaff"/);
+    assert.ok((await render({zoom: 10, tileZoomOffset: -3}, style(11))).tiles.every(t => /\/11\//.test(t)));
+    // The request limits still apply to the extra tiles.
+    await assert.rejects(render({zoom: 10, tileZoomOffset: -2, allowHosts: ['other.test']}), /tiles\.test/);
+});
+
+test('tileZoomOffset: a value that is not a whole number rejects with a message', async () => {
+    await assert.rejects(render({tileZoomOffset: 1.5}), /^Error: \[map-jr-gl\] tileZoomOffset: 1\.5 is not a whole number\. Write for example tileZoomOffset: 2/);
 });

@@ -161,7 +161,7 @@ Notes for Cloudflare Workers:
 | `requestTimeout` | The time in milliseconds that one request can take, with its redirects and its body. The default is 10000. `0` sets no limit. |
 | `maxBytes` | The largest body of one response in bytes, after decompression. There is no limit by default. |
 | `allowHosts` | The list of host names that the render can request. All hosts are allowed by default. |
-| `tileZoomOffset` | Builds the render from vector tiles this many zoom levels lower, drawn over-zoomed. The default is 0. A whole number of 0 or more. See [Simplify the server render](#simplify-the-server-render). |
+| `tileZoomOffset` | Builds the render from vector tiles this many zoom levels lower (a positive value) or higher (a negative value). The default is 0. A whole number. See [Simplify the server render](#simplify-the-server-render). |
 
 `renderToImage` also accepts `rasteriser`, `format`, `quality` and `pixelRatio`.
 
@@ -300,8 +300,16 @@ fewer tiles, and the tiles have fewer features that the tile server has already 
 the shapes are coarser, and fewer place names show. Use it for a first view that the map draws over, not for an image
 that must look like the live map. The default is 0. A value of 1 can make the SVG larger, because the tiles of one
 zoom lower can have more features for some layers; the gain starts at 2. A source does not go below its `minzoom`,
-and raster and GeoJSON sources keep the zoom of the render. A value that is not a whole number of 0 or more makes
-the render reject with an error.
+and raster and GeoJSON sources keep the zoom of the render.
+
+A negative value does the opposite, for a detailed image: with `tileZoomOffset: -2`, a render at zoom 10 fetches
+tiles of zoom 12 and draws them at the size of zoom 10. Each step lower fetches about four times as many tiles, so
+the render takes longer and the SVG is larger. The limits for requests (`timeout`, `requestTimeout`, `maxBytes`,
+`allowHosts`) apply to these tiles as to any other. The zoom of the tiles does not go above the `maxzoom` of the
+source. The style is evaluated at the zoom of the tiles, so the filters and the property values that depend on the
+zoom are those of the higher zoom.
+
+A value that is not a whole number makes the render reject with an error.
 
 ```js
 const {svg} = await renderToSVG({

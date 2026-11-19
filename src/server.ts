@@ -104,7 +104,10 @@ export interface RenderOptions {
     /**
      * Builds the render from vector tiles this many zoom levels below the zoom of the render, drawn over-zoomed. The
      * default is 0. With 2, a render at zoom 12 uses tiles of zoom 10: the server fetches fewer tiles, and the SVG is
-     * usually smaller, with fewer and coarser features. Use it for a first view that the map draws over.
+     * usually smaller, with fewer and coarser features. Use it for a first view that the map draws over. A negative
+     * value uses tiles of a higher zoom, for a more detailed image: each step fetches about four times as many tiles.
+     * The zoom of the tiles stays within the `minzoom` and `maxzoom` of the source. A value that is not a whole number
+     * makes the render reject.
      */
     tileZoomOffset?: number;
 }
@@ -182,7 +185,7 @@ function limitedFetch(o: RenderOptions, fetchFn: typeof fetch): typeof fetch {
 export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
     // Wrapped, not passed by reference: Cloudflare Workers reject calls to a detached global `fetch`.
     const dz = o.tileZoomOffset ?? 0;
-    if (!(Number.isInteger(dz) && dz >= 0)) throw new Error(`[map-jr-gl] tileZoomOffset: ${dz} is not a whole number of 0 or more. Write for example tileZoomOffset: 2, or leave it out for 0.`);
+    if (!Number.isInteger(dz)) throw new Error(`[map-jr-gl] tileZoomOffset: ${dz} is not a whole number. Write for example tileZoomOffset: 2 (tiles 2 zooms lower) or -1 (tiles 1 zoom higher), or leave it out for 0.`);
     const fetchFn = limitedFetch(o, o.fetch ?? ((...a) => fetch(...a)));
     // (`sources`, `layers` and `data` are added to the style. A style from a URL is fetched here, to add them to it and to read its images.)
     let given = styleFor(o.style, o.colorScheme === 'dark'), base: string | undefined;
@@ -227,8 +230,9 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
     const jobs = Object.entries(style.sources).map(async ([name, src]) => {
         if (!layers.some(l => l.source === name && l.visible && tr.zoom >= l.minzoom && tr.zoom < l.maxzoom)) return;
         if (src.type === 'raster-dem') return; // hillshading is drawn by the client only
-        const maxzoom = src.type === 'vector' ? Math.max(src.minzoom, Math.min(src.maxzoom, Math.floor(tr.zoom) - dz)) : src.maxzoom;
-        const ideal = tr.coveringTiles(src.minzoom, maxzoom, src.tileSize, src.type === 'raster'), loaded = new Map<string, TileIR | TileImage>();
+        // (`tileZoomOffset` of vector sources: a positive value lowers the zoom through `maxzoom`, a negative one raises it through a smaller tile size.)
+        const v = src.type === 'vector', maxzoom = v ? Math.max(src.minzoom, Math.min(src.maxzoom, Math.floor(tr.zoom) - dz)) : src.maxzoom;
+        const ideal = tr.coveringTiles(src.minzoom, maxzoom, v && dz < 0 ? src.tileSize * 2 ** dz : src.tileSize, src.type === 'raster'), loaded = new Map<string, TileIR | TileImage>();
         await Promise.all(ideal.filter((id, i) => ideal.findIndex(o => o.key === id.key) === i).map(async id => {
             const url = tileURL(src, id.z, id.x, id.y, o.highDensity ? 2 : 1);
             if (src.type === 'raster') { loaded.set(id.key, {href: o.inlineImages ? await dataURI(url) : url}); return; }
