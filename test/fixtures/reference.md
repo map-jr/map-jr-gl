@@ -291,17 +291,6 @@ queryFeatures(at?: FeaturePlace | FeatureOptions, options?: FeatureOptions): Pro
 | `description` **required** | [`MapDescription`](../../docs/reference/description.md#mapdescription) | | The description of the map. |
 | `ready` | `(map: `[`MapInstance`](#mapinstance)`) => void` | | Called with the map once it is created. |
 <!-- ref:SvelteMapAction:end -->
-
-## `NavigationOptions`
-
-<!-- ref:NavigationOptions:start -->
-| Name | Type | Default | Description |
-|---|---|---|---|
-| `showZoom` | `boolean` | `true` | Whether the control shows the buttons to zoom in and out. |
-| `showCompass` | `boolean` | `true` | Whether the control shows the compass. |
-| `visualizePitch` | `boolean` | `false` | Whether the compass also shows the pitch, a drag on it changes the pitch, and a click on it resets the pitch. |
-<!-- ref:NavigationOptions:end -->
-
 ## `CompatMap`
 
 <!-- ref:CompatMap:start -->
