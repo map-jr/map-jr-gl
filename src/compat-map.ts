@@ -150,8 +150,6 @@ export class Map extends CoreMap {
     setRoll(roll?: number) { return this.unsupported('setRoll', !roll); }
     setVerticalFieldOfView(fov?: number) { return this.unsupported('setVerticalFieldOfView', fov === undefined || Math.abs(fov - 36.87) < 0.01); }
     getVerticalFieldOfView() { return 36.87; }
-    setZoomSnap(snap?: number) { return this.unsupported('setZoomSnap', !snap); }
-    getZoomSnap() { return 0; }
     setCenterClampedToGround(clamped?: boolean) { return this.unsupported('setCenterClampedToGround(false)', clamped !== false); }
     getCenterClampedToGround() { return true; }
     setCenterElevation(elevation?: number) { return this.unsupported('setCenterElevation', !elevation); }
@@ -201,7 +199,35 @@ export class Map extends CoreMap {
     set showOverdrawInspector(v: boolean) { this.setDebug('showOverdrawInspector', v); }
     private debugDraw: Record<string, boolean> = {};
     private setDebug(name: string, v: boolean) { this.debugDraw[name] = !!v; this.unsupported(name, !v); }
-    setEventedParent(..._args: unknown[]) { return this; }
+
+    // ---- zoomSnap and setEventedParent, as in MapLibre GL JS ----
+    /**
+     * As in MapLibre GL JS: with a `zoomSnap` above 0, the zoom of `jumpTo`, `easeTo`, `flyTo`, `zoomIn` and `zoomOut`
+     * goes to the nearest multiple of it, and `cameraForBounds` (and so `fitBounds`) to the multiple below.
+     */
+    setZoomSnap(snap: number) { this.zoomSnap = snap; return this; }
+    getZoomSnap() { return this.zoomSnap; }
+    private zoomSnap = 0;
+    private snapped<T extends {zoom?: number}>(o: T, down?: boolean): T {
+        const s = this.zoomSnap;
+        return o.zoom === undefined || !(s > 0) ? o : {...o, zoom: (down ? Math.floor(o.zoom / s + 1e-10) : Math.round(o.zoom / s)) * s};
+    }
+    cameraForBounds(...args: Parameters<CoreMap['cameraForBounds']>) { return this.snapped(super.cameraForBounds(...args), true); }
+    /**
+     * As in MapLibre GL JS: each event of the map also goes to `parent.fire`, as one object with the fields of `data`
+     * (or of what the function `data` returns), while `parent.listens(type)` is true.
+     */
+    setEventedParent(parent?: {fire(e: object): unknown; listens?(type: string): boolean} | null, data?: object | (() => object)) {
+        this.parent = parent ? [parent, data] : undefined;
+        return this;
+    }
+    declare private parent?: [{fire(e: object): unknown; listens?(type: string): boolean}, (object | (() => object))?];
+    override fire(type: string | {type: string}, data: Record<string, unknown> = {}): void | PromiseLike<unknown> {
+        if (typeof type == 'object') { data = type as Record<string, unknown>; type = type.type; }
+        const r = this.dispatch(type, data), p = this.parent, up = () => { if (p && (p[0].listens?.(type as string) ?? true)) p[0].fire({...data, ...(typeof p[1] == 'function' ? p[1]() : p[1]), type, target: this}); };
+        // (A click waits for its features: the parent gets it after the listeners of the map.)
+        return r ? r.then(up) : up();
+    }
 
     /**
      * The options of MapLibre GL JS that this library does not have give one warning each, so that a change from that
@@ -256,6 +282,7 @@ export class Map extends CoreMap {
         // (Labels here always fade for a fixed time, and a drag with the right button always turns and tilts the map.)
         this.unsupported('The option fadeDuration', o.fadeDuration === undefined || o.fadeDuration === 300);
         this.unsupported('The option pitchWithRotate: false', o.pitchWithRotate !== false);
+        if (o.zoomSnap) { this.zoomSnap = o.zoomSnap; this.jumpTo({zoom: this.tr.zoom}); }
         super.setMissingStyleImageResolver(name => this.styleImage(name));
         this.once('remove', () => { this.imagesTurn++; });
     }
@@ -325,7 +352,7 @@ export class Map extends CoreMap {
     /** The URL given as the option `style` or to the latest call of `setStyle`, as it was written; `null` when that was an object or nothing. */
     getStyleUrl() { return this.styleUrl; }
     /** Whether the map has a listener for the event `type`, a listener for a layer included. */
-    listens(type: string) { return !!this.listeners[type]?.length || this.layerListeners.some(l => l.type === type); }
+    listens(type: string): boolean { return !!this.listeners[type]?.length || this.layerListeners.some(l => l.type === type) || !!this.parent?.[0].listens?.(type); }
     /**
      * As in MapLibre GL JS 6.17: with `diff` (the default), the custom layers stay in the new style, each before the layer
      * that came after it, and get no `onRemove`. With `diff: false` they leave the map, also without `onRemove`.
@@ -358,9 +385,9 @@ export class Map extends CoreMap {
      * As in MapLibre GL JS, `eventData` goes onto the events of this move (`movestart` to `moveend`, and the zoom,
      * rotate and pitch events). A later camera call or user input replaces it; a nested call (fitBounds calls easeTo) keeps it.
      */
-    jumpTo(o: CameraInput, eventData?: EventData) { return this.camera(eventData, () => super.jumpTo(o)); }
+    jumpTo(o: CameraInput, eventData?: EventData) { return this.camera(eventData, () => super.jumpTo(this.snapped(o))); }
     easeTo(o: EaseToOptions, eventData?: EventData) {
-        return this.camera(eventData, () => super.easeTo(o));
+        return this.camera(eventData, () => super.easeTo(this.snapped(o)));
     }
     fitBounds(bounds: Parameters<CoreMap['fitBounds']>[0], o?: FitBoundsOptions, eventData?: EventData) {
         this.unsupported('The options speed, curve and linear of fitBounds', o?.speed === undefined && o?.curve === undefined && o?.linear === undefined);
@@ -389,7 +416,7 @@ export class Map extends CoreMap {
     private moveData?: EventData;
     private nested = 0;
     flyTo(o: EaseToOptions & FlyOptions, eventData?: EventData) {
-        return this.camera(eventData, () => super.flyTo(o));
+        return this.camera(eventData, () => super.flyTo(this.snapped(o)));
     }
     /** Space at the edges covered by other things (a side panel, a header). The map centre moves to the middle of what is left. */
     setPadding(padding: PaddingInput, eventData?: EventData) { return this.jumpTo({padding}, eventData); }
@@ -677,7 +704,7 @@ export class Map extends CoreMap {
      * before these events, and where a pointer rests. An event fires at once when the answer is there, and else waits
      * for it for at most 300 ms. Listeners for a layer get their features from the core map.)
      */
-    override fire(type: string, data: Record<string, unknown> = {}): void | PromiseLike<unknown> {
+    private dispatch(type: string, data: Record<string, unknown>): void | PromiseLike<unknown> {
         // The page gave new data (`setData`, a change of the style): the answers from before are old. They are not given.
         if (type === 'dataloading') { this.forget(); if (data.sourceId) this.forgetSource(data.sourceId as string); }
         // No engine could start (`cannotShow` of the core): MapLibre GL JS reports this with a GPUInitializationError (#205).
