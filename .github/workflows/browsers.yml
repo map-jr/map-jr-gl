@@ -42,9 +42,9 @@ jobs:
     env:
       BROWSER: ${{ matrix.browser }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -70,7 +70,7 @@ jobs:
           (($run node test/interact.mjs results/shots; $run node test/host.mjs; $run node test/vue.mjs; $run node test/react.mjs) 2>&1 | grep -E "^(PASS|FAIL)" | cut -c1-600 > "results/$name-tests.txt") || true
           rm -rf results/shots
           cat results/*.md >> "$GITHUB_STEP_SUMMARY" || true
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: results-${{ matrix.os }}-${{ matrix.browser }}
@@ -88,9 +88,9 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -126,7 +126,7 @@ jobs:
             node test/bench/webdriver.mjs results || echo "the benchmark did not finish" > results/ios-simulator-safari-failed.txt
       - run: cat results/*.md >> "$GITHUB_STEP_SUMMARY" || true
         if: always()
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: results-safari
@@ -136,7 +136,7 @@ jobs:
     if: ${{ always() && !inputs.safari_only }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: all
           merge-multiple: true
