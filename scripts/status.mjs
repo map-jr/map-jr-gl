@@ -5,7 +5,7 @@
 import {execSync} from 'node:child_process';
 import {existsSync, readFileSync, readdirSync, writeFileSync} from 'node:fs';
 import {gzipSync} from 'node:zlib';
-import {speedBlock, statusBlock} from './status-tables.mjs';
+import {sizesBlock, speedBlock, statusBlock} from './status-tables.mjs';
 
 const root = new URL('..', import.meta.url).pathname;
 const run = cmd => { try { return execSync(cmd, {cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe']}); } catch (e) { return String(e.stdout ?? '') + String(e.stderr ?? ''); } };
@@ -93,4 +93,11 @@ let doc = readFileSync(file, 'utf8');
 if (speed && /<!-- speed:start -->[\s\S]*<!-- speed:end -->/.test(doc)) doc = doc.replace(/<!-- speed:start -->[\s\S]*<!-- speed:end -->/, () => speedBlock(speed, ml));
 if (!/<!-- status:start -->[\s\S]*<!-- status:end -->/.test(doc)) { console.error('README.md has no status markers'); process.exit(1); }
 writeFileSync(file, doc.replace(/<!-- status:start -->[\s\S]*<!-- status:end -->/, () => block));
+// The page of the user docs that is the home of the sizes and the speeds has the same figures.
+const page = root + 'docs/guide/size-and-speed.md';
+if (existsSync(page)) {
+    let text = readFileSync(page, 'utf8').replace(/<!-- sizes:start -->[\s\S]*<!-- sizes:end -->/, () => sizesBlock(figures));
+    if (figures.speed) text = text.replace(/<!-- speed:start -->[\s\S]*<!-- speed:end -->/, () => speedBlock(figures.speed, ml, {page: true}));
+    writeFileSync(page, text);
+}
 console.log(block.split('\n').slice(3, -1).join('\n'));
