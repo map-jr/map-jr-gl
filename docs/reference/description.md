@@ -19,29 +19,29 @@ const map = createMap('map', {
 <!-- ref:MapDescription:start -->
 | Name | Type | Default | Description |
 |---|---|---|---|
-| [`style`](#style) **required** | `string \| StyleSpecification \| {light: string \| StyleSpecification; dark: string \| StyleSpecification}` | | The style: a style object, the URL of a style, or `{light, dark}` with one style for each resolved `colorScheme`. |
+| [`style`](#style) **required** | `string \| StyleSpecification \| {light: string \| StyleSpecification; dark: string \| StyleSpecification}` | | The style: a style object, the URL of a style, or `{light, dark}` with one style for the light and one for the dark colour scheme. |
 | [`sources`](#sources) | `Record<string, SourceSpecification>` | | Sources to add to the style, by id. |
 | [`layers`](#layers) | `LayerInput[]` | | Layers to add to the style, in order. |
-| [`terrain`](#terrain) | `TerrainSpecification \| null` | | 3D terrain from a raster-dem source, for example `{source: 'dem', exaggeration: 1.5}`. |
+| [`terrain`](#terrain) | `TerrainSpecification \| null` | | 3D terrain from a raster-dem source, for example `{source: 'dem', exaggeration: 1.5}`, in place of the `terrain` of the style. |
 | [`fonts`](#fonts) | `FontFaces` | | Web fonts for labels, by `text-font` name: a URL, or a list of `{url, 'unicode-range'}` as in `font-faces` of the style specification. |
 | [`initialView`](#initialview) | `InitialView` | | The view when the map is created: a center, zoom, bearing and pitch, or `bounds` to fit. |
 | [`view`](#view-and-onviewchange) | `ViewInput` | | A view that the application controls. |
 | [`onViewChange`](#view-and-onviewchange) | `(view: View) => void` | | Called with the new view at each change of the view, also during a movement, and also when the change comes from `view` or `moveTo`. |
 | [`data`](#data) | `Record<string, GeoJSON \| string>` | | GeoJSON data or the URL of GeoJSON, by the id of a GeoJSON source of the style or of `sources`. |
-| [`images`](#images) | `Record<string, ImageInput>` | | Images for `icon-image` of style layers, by name: an SVG document as a string, the URL of an image, or `{image, width, height}`. |
+| [`images`](#images) | `Record<string, ImageInput>` | | Images for `icon-image` and the pattern properties of style layers, by name: an SVG document as a string, the URL of an image, or `{image, width, height}`. |
 | [`sprite`](#sprite) | `{id: string; url: string}[]` | | Sprites to add to the sprite of the style, as `[{id: 'pins', url: 'https://example.com/sprites/pins'}]`. |
 | [`controls`](#controls) | `ControlSpec[]` | | Controls from `@map-jr/map-jr-gl/controls`, for example `[navigation(), scale()]`. |
-| [`projection`](#projection) | `ProjectionSpecification \| null` | | The projection, `{type: 'globe'}` or `{type: 'mercator'}`. |
+| [`projection`](#projection) | `ProjectionSpecification \| null` | | The projection, `{type: 'globe'}` or `{type: 'mercator'}`, in place of the `projection` of the style. |
 | [`globalState`](#globalstate) | `Record<string, unknown>` | | Values for the `global-state` expressions of the style, by name, for example `{season: 'winter'}`. |
-| [`interactiveLayers`](#interactivelayers) | `string[]` | | The ids of the style layers that respond to the pointer: their features appear in `state.hover` and in `onClick`. |
+| [`interactiveLayers`](#interactivelayers) | `string[]` | | The ids of the style layers that respond to the pointer: their features appear in [`state.hover`](../api.md#the-state) and in `onClick`. |
 | [`hoverState`](#hoverstate) | `boolean` | `false` | Whether the top feature of `interactiveLayers` under the pointer has the feature state `hover: true`, for `feature-state` expressions. |
 | [`onClick`](#onclick) | `(event: MapPointer) => void` | | Called for each click on the map, with the point, the position and the features of `interactiveLayers` at the point. |
-| `onError` | `(error: Error) => void` | | Called with each error of the map, such as a style or a tile that does not load. |
+| `onError` | `(error: Error) => void` | | Called with each error of the map, such as a style or a tile that does not load, and without it the map writes each error to the console. |
 | `minZoom` | `number` | `-2` | The smallest zoom level of the map. |
 | `maxZoom` | `number` | `22` | The largest zoom level of the map. |
-| `maxPitch` | `number` | `60` | The largest pitch of the map in degrees. |
-| [`maxBounds`](#maxbounds) | `Bounds \| null` | | A box (Bounds) that the view cannot leave. |
-| `cursor` | `string` | | The CSS cursor over the map. |
+| `maxPitch` | `number` | `60` | The largest pitch of the map in degrees, at most 90 (a larger value is limited to 90). |
+| [`maxBounds`](#maxbounds) | `Bounds \| null` | | A box that the view cannot leave, as `[[west, south], [east, north]]` or `[west, south, east, north]`. |
+| `cursor` | `string` | | The CSS cursor over the map in place of the default, which is `pointer` over a feature of `interactiveLayers`. |
 | [`cooperativeGestures`](#cooperativegestures) | `boolean` | `false` | Whether the wheel zooms only with Ctrl (⌘ on a Mac) and a touch pans only with two fingers, for a map in a page that scrolls. |
 | [`colorScheme`](#colorscheme-and-oncolorschemechange) | `'auto' \| 'light' \| 'dark'` | `'light'` | The colour scheme of the controls, the popup and the attribution. |
 | [`onColorSchemeChange`](#colorscheme-and-oncolorschemechange) | `(colorScheme: 'auto' \| 'light' \| 'dark') => void` | | Called with the new value when the control `colorScheme()` changes `colorScheme`. |
@@ -59,12 +59,12 @@ ignores a change in a later description. To change one, destroy the map and crea
 | Name | Type | Default | Description |
 |---|---|---|---|
 | [`renderer`](#renderer) | `'auto' \| 'worker' \| 'main'` | `'auto'` | The thread that renders the map. |
-| `fontFamily` | `string` | `'"Noto Sans", "Helvetica Neue", Arial, sans-serif'` | The CSS font family for labels whose `text-font` names no loaded font. |
-| `interactive` | `boolean` | `true` | Whether the user can move the map with the mouse, touch and keyboard. |
+| `fontFamily` | `string` | `'"Noto Sans", "Helvetica Neue", Arial, sans-serif'` | The CSS font family for labels that have no glyph file and no web font, after the names of `text-font`. |
+| `interactive` | `boolean` | `true` | Whether the user can move the map with the mouse, touch and keyboard, while `onClick` and `state.hover` work either way. |
 | `antialias` | `boolean` | `false` | Whether the canvas uses multisample antialiasing. |
-| [`attribution`](#attribution) | `false \| AttributionOptions` | | The options of the built-in attribution, or `false` to hide it when the page shows the credits itself. |
-| [`hash`](#hash) | `boolean \| string` | `false` | Whether the view is kept in the hash of the URL (`#zoom/lat/lng/bearing/pitch`), so that a link shows the same view. |
-| `nonce` | `string` | | The nonce of a Content Security Policy with `style-src 'nonce-…'`, for the style sheet of the map. |
+| [`attribution`](#attribution) | `false \| `[`AttributionOptions`](#attributionoptions) | | The options of the built-in attribution (`{compact, customAttribution}`), or `false` to hide it when the page shows the credits itself. |
+| [`hash`](#hash) | `boolean \| string` | `false` | `true` keeps the view in the hash of the URL (`#zoom/lat/lng/bearing/pitch`), and a string keeps it in the parameter of that name. |
+| `nonce` | `string` | | The nonce of a [Content Security Policy](../loading.md#content-security-policy) with `style-src 'nonce-…'`, for the style sheet of the map. |
 <!-- ref:MapSetup:end -->
 
 ## `style`
@@ -556,6 +556,15 @@ its sources in the bottom right corner.
 
 > **Note**
 > Most sources require their attribution. With `attribution: false`, show it elsewhere on the page.
+
+### `AttributionOptions`
+
+<!-- ref:AttributionOptions:start -->
+| Name | Type | Default | Description |
+|---|---|---|---|
+| `compact` | `boolean` | true when the map is 640 CSS pixels wide or narrower, else false | Whether the attribution is a button that opens the credits. |
+| `customAttribution` | `string \| string[]` | | Credits that the attribution shows after the credits of the sources of the style. |
+<!-- ref:AttributionOptions:end -->
 
 ## `hash`
 

@@ -127,6 +127,8 @@ const typeText = (member, optional, node, getter = false) => {
         for (const [i, c] of [...prop[1]].entries()) { if (c === '<') depth++; else if (c === '>') { if (!depth) { end = i; break; } depth--; } end = i + 1; }
         text = flat(prop[1].slice(0, end));
     }
+    // (`| undefined` of an optional member says what `?` says, also for the members of an object type inside it.)
+    text = text.replace(/\?: ([^;{}]*?) \| undefined(?=[;}])/g, '?: $1');
     return optional ? text.replace(/ \| undefined$/, '').replace(/^undefined \| /, '') : text;
 };
 /** The `@default` of a member. `{@link Type.member}` takes the default of that member. */
@@ -148,12 +150,39 @@ function anchors(text) {
     return found;
 }
 
-function table(name, links) {
+/** The page and the anchor of each block, by the name of its type: a Type cell links a type that has a block. */
+const homes = new Map();
+const hrefFrom = (page, target, anchor) => (target === page ? '' : path.posix.relative(path.posix.dirname(page), target)) + anchor;
+/** A Type cell: the type in code, where each name of a type with a block is a link to it. */
+function typeCell(text, page, self) {
+    const out = [];
+    let at = 0;
+    for (const m of text.matchAll(/\b[A-Z]\w*\b/g)) {
+        // (A page of the docs links only to the docs: the tables of the fixture are not for readers.)
+        const home = m[0] !== self && homes.get(m[0]);
+        if (home && home.page.startsWith('test/') && home.page !== page) continue;
+        if (!home) continue;
+        if (m.index > at) out.push(cell(code(text.slice(at, m.index))));
+        out.push(`[${code(m[0])}](${hrefFrom(page, home.page, home.anchor)})`);
+        at = m.index + m[0].length;
+    }
+    if (at < text.length) out.push(cell(code(text.slice(at))));
+    return out.join('');
+}
+/** A Description cell. A link of the TSDoc to a file of the repository (`docs/loading.md#…`) is made relative to the page. */
+const describe = (text, page) => cell(text.replace(/\]\(((?:docs\/|README\.md)[^)\s]*)\)/g, (_, target) => {
+    const [file, anchor = ''] = target.split(/(?=#)/);
+    return `](${hrefFrom(page, file, anchor)})`;
+}));
+
+function table(name, links, page) {
     const list = members(name);
     if (!list) return problems.push(`ref:${name}: scripts/reference/types.ts has no type "${name}". Add it there.`), null;
     for (const key of list.undeclared) problems.push(`ref:${name}: the member \`${key}\` comes from a mapped type and has no TSDoc. Declare it in the type with a comment of its own.`);
     const input = list.some(({member}) => member.flags & SymbolFlags.Optional);
-    const rows = ['| Name | Type | Default | Description |', '|---|---|---|---|'];
+    // (A type that the application only reads, such as the methods of the map or its events, has no defaults: its
+    // table has no column Default.)
+    const rows = input ? ['| Name | Type | Default | Description |', '|---|---|---|---|'] : ['| Name | Type | Description |', '|---|---|---|'];
     for (const {member, node, getter, readonly} of list) {
         const optional = !!(member.flags & SymbolFlags.Optional), method = !!(member.flags & SymbolFlags.Method);
         const doc = docOf(member);
@@ -161,12 +190,13 @@ function table(name, links) {
         const label = code(member.name), linked = links.has(member.name) ? `[${label}](${links.get(member.name)})` : label;
         const marks = [input && !optional && !method && !readonly ? ' **required**' : '', readonly ? ' (read only)' : ''].join('');
         const fallback = defaultOf(member);
-        rows.push(line([linked + marks, cell(code(typeText(member, optional, node, getter))), fallback ? cell(/^`.*`$/.test(fallback) ? fallback : code(fallback)) : '', cell(firstSentence(doc))]));
+        const type = typeCell(typeText(member, optional, node, getter), page, name), description = describe(firstSentence(doc), page);
+        rows.push(line(input ? [linked + marks, type, fallback ? cell(/^`.*`$/.test(fallback) || /\s/.test(fallback.replace(/'[^']*'/g, '')) ? fallback : code(fallback)) : '', description] : [linked + marks, type, description]));
     }
     return rows.join('\n');
 }
 
-function method(name) {
+function method(name, page) {
     const [type, key] = name.split('.');
     const entry = members(type)?.find(m => m.member.name === key);
     if (!entry) return problems.push(`ref:${name}: the type "${type}" of scripts/reference/types.ts has no member "${key}".`), null;
@@ -185,28 +215,37 @@ function method(name) {
             out.push('| Name | Type | Default | Description |\n|---|---|---|---|\n' + params.map(p => {
                 const text = tags.find(t => t.name === 'param' && t.text?.trim().split(/\s/)[0] === p.name)?.text?.trim().slice(p.name.length).replace(/^\s*-?\s*/, '') ?? '';
                 if (!text) problems.push(`ref:${name}: the parameter \`${p.name}\` has no @param text.`);
-                return line([code(p.name) + (p.optional ? '' : ' **required**'), cell(code(p.type)), '', cell(firstSentence(text))]);
+                return line([code(p.name) + (p.optional ? '' : ' **required**'), typeCell(p.type, page), '', describe(firstSentence(text), page)]);
             }).join('\n'));
         }
     }
     const returns = tags.find(t => t.name === 'returns')?.text?.trim();
     const result = flat(signatures[0].type?.getText() ?? 'void');
-    out.push(`**Returns:** ${code(result)}${returns ? '. ' + cell(returns) : '.'}`);
+    out.push(`**Returns:** ${typeCell(result, page)}${returns ? '. ' + describe(returns, page) : '.'}`);
     return out.join('\n\n');
 }
 
 // ---- The pages ----
 
+const all = pages();
+for (const page of all) {
+    const text = readFileSync(path.join(root, page), 'utf8');
+    for (const block of blocks(text)) {
+        if (block.name.includes('.') || homes.has(block.name)) continue;
+        const heading = [...text.slice(0, block.start).matchAll(/^#{2,6} (.+)$/gm)].at(-1)?.[1];
+        homes.set(block.name, {page, anchor: heading ? '#' + slug(heading) : ''});
+    }
+}
 const stale = [];
 let count = 0;
-for (const page of pages()) {
+for (const page of all) {
     const file = path.join(root, page), text = readFileSync(file, 'utf8'), found = blocks(text);
     if (!found.length) continue;
     const links = anchors(text);
     let out = '', at = 0;
     for (const block of found) {
         count++;
-        const body = block.name.includes('.') ? method(block.name) : table(block.name, links);
+        const body = block.name.includes('.') ? method(block.name, page) : table(block.name, links, page);
         out += text.slice(at, block.start) + (body === null ? text.slice(block.start, block.end) : body + '\n');
         at = block.end;
     }

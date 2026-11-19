@@ -67,9 +67,29 @@ export interface ClusterFeature {type: 'Feature'; id?: string | number; properti
  * Where the camera is. `bounds` is `[[west, south], [east, north]]`: the smallest box that contains the visible map,
  * as `getBounds()` gives it in MapLibre GL JS.
  */
-export interface View { center: [number, number]; zoom: number; bearing: number; pitch: number; bounds: [[number, number], [number, number]] }
+export interface View {
+    /** The center of the view, `[lng, lat]`. */
+    center: [number, number];
+    /** The zoom level. */
+    zoom: number;
+    /** The bearing in degrees clockwise from north. */
+    bearing: number;
+    /** The pitch in degrees from straight down. */
+    pitch: number;
+    /** The smallest box that contains the visible map, `[[west, south], [east, north]]`. */
+    bounds: [[number, number], [number, number]];
+}
 /** A view that the application gives: each field is optional. */
-export interface ViewInput { center?: Position; zoom?: number; bearing?: number; pitch?: number }
+export interface ViewInput {
+    /** The center of the view, `[lng, lat]`. */
+    center?: Position;
+    /** The zoom level. */
+    zoom?: number;
+    /** The bearing in degrees clockwise from north. */
+    bearing?: number;
+    /** The pitch in degrees from straight down. */
+    pitch?: number;
+}
 /** A view to go to, for `initialView` and `moveTo`: a center, zoom, bearing and pitch, or a box to fit. */
 export interface InitialView extends ViewInput {
     /** A box to fit into the map. It overrides `center` and `zoom`. */
@@ -97,7 +117,12 @@ export interface MoveToOptions extends InitialView {
     fly?: boolean | FlyOptions;
 }
 /** Where the pointer is over the map: `point` in CSS pixels from the top left corner of the map, `lngLat` as `[lng, lat]`. */
-export interface PointerPosition { point: {x: number; y: number}; lngLat: [number, number] }
+export interface PointerPosition {
+    /** The point in CSS pixels from the top left corner of the map. */
+    point: {x: number; y: number};
+    /** The position under the pointer, `[lng, lat]`. */
+    lngLat: [number, number];
+}
 /** The argument of `onClick`: where the user clicked, and the features there. */
 export interface MapPointer {
     /** The point in CSS pixels from the top left corner of the map. */
@@ -123,8 +148,8 @@ export type ImageInput = ImageSource | ({image: ImageSource} & ImageOptions);
 /** The description of a map: one object that states the style, the data, the view and the controls. To change the map, pass a new description to `update`. */
 export interface MapDescription extends MapSetup {
     /**
-     * The style: a style object, the URL of a style, or `{light, dark}` with one style for each resolved `colorScheme`.
-     * With `{light, dark}`, the map loads the other style when the scheme changes.
+     * The style: a style object, the URL of a style, or `{light, dark}` with one style for the light and one for the dark colour scheme.
+     * With `{light, dark}`, the map uses the style of the resolved `colorScheme`, and loads the other style when the scheme changes.
      */
     style: string | StyleSpecification | {light: string | StyleSpecification; dark: string | StyleSpecification};
     /** Sources to add to the style, by id. A source here overrides the source of the style that has the same id. */
@@ -135,8 +160,8 @@ export interface MapDescription extends MapSetup {
      */
     layers?: LayerInput[];
     /**
-     * 3D terrain from a raster-dem source, for example `{source: 'dem', exaggeration: 1.5}`. It overrides the `terrain`
-     * of the style, and `null` turns 3D terrain off. Without this field, the map uses the `terrain` of the style.
+     * 3D terrain from a raster-dem source, for example `{source: 'dem', exaggeration: 1.5}`, in place of the `terrain`
+     * of the style. `null` turns 3D terrain off. Without this field, the map uses the `terrain` of the style.
      */
     terrain?: TerrainSpecification | null;
     /**
@@ -159,7 +184,7 @@ export interface MapDescription extends MapSetup {
      */
     data?: Record<string, GeoJSON | string>;
     /**
-     * Images for `icon-image` of style layers, by name: an SVG document as a string, the URL of an image, or `{image, width, height}`.
+     * Images for `icon-image` and the pattern properties of style layers, by name: an SVG document as a string, the URL of an image, or `{image, width, height}`.
      * An image here overrides the image of the sprite that has the same name.
      */
     images?: Record<string, ImageInput>;
@@ -171,7 +196,7 @@ export interface MapDescription extends MapSetup {
     /** Controls from `@map-jr/map-jr-gl/controls`, for example `[navigation(), scale()]`. */
     controls?: ControlSpec[];
     /**
-     * The projection, `{type: 'globe'}` or `{type: 'mercator'}`. It overrides the `projection` of the style, and `null`
+     * The projection, `{type: 'globe'}` or `{type: 'mercator'}`, in place of the `projection` of the style. `null`
      * uses the projection of the style. A globe changes to Mercator between zoom 11 and 12.
      */
     projection?: ProjectionSpecification | null;
@@ -180,7 +205,7 @@ export interface MapDescription extends MapSetup {
      * in `state` of the style. A name that is left out or set to `null` uses the default of the style.
      */
     globalState?: Record<string, unknown>;
-    /** The ids of the style layers that respond to the pointer: their features appear in `state.hover` and in `onClick`. */
+    /** The ids of the style layers that respond to the pointer: their features appear in [`state.hover`](docs/api.md#the-state) and in `onClick`. */
     interactiveLayers?: string[];
     /**
      * Whether the top feature of `interactiveLayers` under the pointer has the feature state `hover: true`, for
@@ -191,7 +216,7 @@ export interface MapDescription extends MapSetup {
     /** Called for each click on the map, with the point, the position and the features of `interactiveLayers` at the point. */
     onClick?: (event: MapPointer) => void;
     /**
-     * Called with each error of the map, such as a style or a tile that does not load. Without it, the map writes each error to the console.
+     * Called with each error of the map, such as a style or a tile that does not load, and without it the map writes each error to the console.
      */
     onError?: (error: Error) => void;
     /**
@@ -205,15 +230,15 @@ export interface MapDescription extends MapSetup {
      */
     maxZoom?: number;
     /**
-     * The largest pitch of the map in degrees. It limits gestures, `view` and `moveTo`, and a value above 90 is limited to 90.
+     * The largest pitch of the map in degrees, at most 90 (a larger value is limited to 90). It limits gestures, `view` and `moveTo`.
      * @default 60
      */
     maxPitch?: number;
-    /** A box ({@link Bounds}) that the view cannot leave. `null` removes the limit. */
+    /** A box that the view cannot leave, as `[[west, south], [east, north]]` or `[west, south, east, north]`. `null` removes the limit. */
     maxBounds?: Bounds | null;
     /**
-     * The CSS cursor over the map. It overrides the default cursor, which is `pointer` over a feature of
-     * `interactiveLayers`, `grab` elsewhere on an interactive map, and the cursor of the page on a map with `interactive: false`.
+     * The CSS cursor over the map in place of the default, which is `pointer` over a feature of `interactiveLayers`.
+     * Elsewhere the default is `grab` on an interactive map, and the cursor of the page on a map with `interactive: false`.
      */
     cursor?: string;
     /**
@@ -269,12 +294,12 @@ export interface MapSetup {
      */
     renderer?: 'auto' | 'worker' | 'main';
     /**
-     * The CSS font family for labels whose `text-font` names no loaded font.
+     * The CSS font family for labels that have no glyph file and no web font, after the names of `text-font`.
      * @default '"Noto Sans", "Helvetica Neue", Arial, sans-serif'
      */
     fontFamily?: string;
     /**
-     * Whether the user can move the map with the mouse, touch and keyboard.
+     * Whether the user can move the map with the mouse, touch and keyboard, while `onClick` and `state.hover` work either way.
      * @default true
      */
     interactive?: boolean;
@@ -283,15 +308,15 @@ export interface MapSetup {
      * @default false
      */
     antialias?: boolean;
-    /** The options of the built-in attribution, or `false` to hide it when the page shows the credits itself. */
+    /** The options of the built-in attribution (`{compact, customAttribution}`), or `false` to hide it when the page shows the credits itself. */
     attribution?: false | AttributionOptions;
     /**
-     * Whether the view is kept in the hash of the URL (`#zoom/lat/lng/bearing/pitch`), so that a link shows the same view.
-     * A string is the name of the parameter in the hash.
+     * `true` keeps the view in the hash of the URL (`#zoom/lat/lng/bearing/pitch`), and a string keeps it in the parameter of that name.
+     * A link to the page then shows the same view.
      * @default false
      */
     hash?: boolean | string;
-    /** The nonce of a Content Security Policy with `style-src 'nonce-…'`, for the style sheet of the map. */
+    /** The nonce of a [Content Security Policy](docs/loading.md#content-security-policy) with `style-src 'nonce-…'`, for the style sheet of the map. */
     nonce?: string;
 }
 
@@ -355,7 +380,12 @@ export interface MapOverlay {
 }
 
 /** What each event of `listen` has: its type, and the `MapInstance` that fired it. */
-export interface MapEventBase<T extends string = string> { type: T; target: MapInstance }
+export interface MapEventBase<T extends string = string> {
+    /** The name of the event. */
+    type: T;
+    /** The map that fired the event, as `createMap` returned it. */
+    target: MapInstance;
+}
 /** An event of a drag of the map by the user (`dragstart`, `drag`, `dragend`). */
 export interface MapDragEvent extends MapEventBase<'dragstart' | 'drag' | 'dragend'> {
     /** The mouse or touch event that moved the map. */
@@ -375,7 +405,12 @@ export interface MapPointerEvent<T extends string = string, E extends MouseEvent
     readonly defaultPrevented: boolean;
 }
 /** An event of a touch: `points` and `lngLats` have one entry for each finger on the map. */
-export interface MapTouchEvent<T extends string = string> extends MapPointerEvent<T, PointerEvent> { points: {x: number; y: number}[]; lngLats: [number, number][] }
+export interface MapTouchEvent<T extends string = string> extends MapPointerEvent<T, PointerEvent> {
+    /** The point of each finger on the map, in CSS pixels from the top left corner of the map. */
+    points: {x: number; y: number}[];
+    /** The position of each finger on the map, `[lng, lat]`. */
+    lngLats: [number, number][];
+}
 /** An event of the data of the map: `dataType` says whether the style or one source (`sourceId`) changed. */
 export interface MapDataEvent<T extends string = string> extends MapEventBase<T> {
     /** Whether the event concerns the style or one source. */
