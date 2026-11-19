@@ -1512,6 +1512,12 @@ for (const renderer of renderers) {
         // (While the map moves, the engine says how many icons it placed among the labels: none of those of the buffers.)
         await page.evaluate(() => { const t = window.t; t.placed = []; t.host.listen('stats', e => t.placed.push(e.labels)); });
         const flat = await shot();
+        // (A turn in one step: the frame of the turn keeps the old order of the icons, and the frame after it, which
+        // nothing else asks for, has the order of symbol-z-order.)
+        await page.evaluate(() => window.t.host.moveTo({bearing: 40, pitch: 50}));
+        const jumped = await shot();
+        await page.evaluate(() => window.t.host.moveTo({bearing: 0, pitch: 0}));
+        await shot();
         await page.evaluate(() => window.t.host.moveTo({bearing: 40, pitch: 50, duration: 2500}));
         const tilted = await shot();
         const placedFromBuffers = await page.evaluate(() => window.t.placed.splice(0));
@@ -1533,9 +1539,9 @@ for (const renderer of renderers) {
             const t = window.t, {images: _, ...rest} = t.spec;
             t.host.update(t.spec = {...rest, style: t.style});
             return out;
-        }, [[flat, flatPlaced], [tilted, tiltedPlaced]]);
+        }, [[flat, flatPlaced], [tilted, tiltedPlaced], [jumped, tiltedPlaced]]);
         // (Some pixels can differ: the two ways round the place of an icon at different points of the calculation.)
-        check(`[${renderer}] icons from the buffers of the tiles are drawn as icons that are placed with the labels: on a flat map and on a turned and tilted map, with a size, a turn and an opacity for each feature`,
+        check(`[${renderer}] icons from the buffers of the tiles are drawn as icons that are placed with the labels: on a flat map, on a turned and tilted map and after a turn in one step, with a size, a turn and an opacity for each feature`,
             same.every(p => p.red > 3000 && p.different < 60), JSON.stringify(same));
         check(`[${renderer}] the engine places no icon among the labels when the tiles have the icons in buffers (and it places them when they are not)`,
             placedFromBuffers.length > 0 && placedFromBuffers.every(n => n === 0) && placedWithLabels.length > 0 && placedWithLabels.every(n => n > 0), JSON.stringify({placedFromBuffers, placedWithLabels}));

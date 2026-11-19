@@ -851,6 +851,8 @@ export class GLRenderer {
 
     /** Finds an image by name when the icons of a tile are made. The engine sets it. */
     iconOf?: IconOf;
+    /** Icons of a buffer kept their old order in the last frame, because the map turned: the next frame sorts them (see `drawIcons`). */
+    iconsBehind = false;
     /** The icons of a tile again, after the images of the map changed: an image came, went or has another place in its texture. */
     refreshIcons(t: GLTile, all: boolean) { for (const b of Object.values(t.icons ?? {})) if (all || b.waits) this.fillIcons(b); this.gl.bindVertexArray(null); }
     /** Writes the corners of each icon for the images that the map has now. An icon whose image is not there is not drawn. */
@@ -925,7 +927,7 @@ export class GLRenderer {
                 // (While the map turns, the icons keep their order: it is found again in the first frame in which the
                 // angle is the same as in the frame before, so that a frame of a turn does not sort 100,000 icons.)
                 const differs = Number.isNaN(angle) !== Number.isNaN(b.angle) || Math.abs(angle - b.angle) > 1e-6;
-                if (differs && (b.fresh || Object.is(angle, b.seen))) this.indexIcons(b, angle);
+                if (differs && (b.fresh || Object.is(angle, b.seen))) this.indexIcons(b, angle); else if (differs) this.iconsBehind = true;
                 b.fresh = false; b.seen = angle;
                 if (!u) {
                     u = this.use('icon', tr);
@@ -1769,6 +1771,7 @@ export class GLRenderer {
 
     /** Draws a frame. Returns true if some terrain pictures are still out of date, so another frame is wanted. */
     render(s: Scene): boolean {
+        this.iconsBehind = false;
         const gl = this.gl, tr = s.tr;
         this.frame++;
         this.dropRamps(s.layers);
