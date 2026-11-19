@@ -47,3 +47,14 @@ test('an icon with icon-pitch-alignment map lies on the ground of a tilted map',
     assert.ok(place({'text-field': '', 'icon-image': 'a', 'icon-pitch-alignment': 'map'}, point, 60, true)?.icon?.frame, 'the icon has a frame on the ground');
     assert.equal(place({'text-field': '', 'icon-image': 'a'}, point, 60, true)?.icon?.frame, undefined);
 });
+test('an image inside text with text-pitch-alignment map uses the frame of its label (#1064)', async () => {
+    const {GLRenderer} = await import('../../src/gl.ts');
+    const p = place({'text-pitch-alignment': 'map'}, point, 60);
+    // One line with one square image as wide as the em.
+    const label = {...p, opacity: 1, curve: undefined, justify: 0, shaped: {width: 24, height: 24, lineHeight: 24, lines: [{width: 24, glyphs: [{image: 'a', advance: 24, imageHeight: 24}]}]}};
+    const quads: Float32Array = (GLRenderer.prototype as any).iconQuads.call({iconData: new Float32Array(0), dpr: 1}, [label], false, () => ({x: 0, y: 0, width: 20, height: 20}));
+    assert.equal(quads.length, 54, 'one quad');
+    // Corners (0, 0), (1, 0) and (0, 1) of the image: down it, the pitch foreshortens it as it does the glyphs.
+    const across = Math.hypot(quads[9] - quads[0], quads[10] - quads[1]), down = Math.hypot(quads[18] - quads[0], quads[19] - quads[1]);
+    assert.ok(Math.abs(down / across - 0.5) < 0.05, `down / across is ${down / across}`);
+});
