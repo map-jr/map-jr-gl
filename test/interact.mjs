@@ -3517,7 +3517,12 @@ for (const mode of renderers) {
                 if (lod) m.setSourceTileLodParams(...lod, 's');
                 m.addLayer({id: 'r', type: 'raster', source: 's'});
                 await new Promise(r => m.once('idle', r));
-                if (readd) {
+                if (readd === 'setStyle') {
+                    // #1059: setStyle replaces the source with one of the same id, which starts with the default values.
+                    seen.clear();
+                    m.setStyle({version: 8, sources: {s: {type: 'raster', tiles: ['lod://{z}/{x}/{y}?again'], tileSize: 256}}, layers: [{id: 'r', type: 'raster', source: 's'}]});
+                    await new Promise(r => m.once('idle', r));
+                } else if (readd) {
                     // #1059: a source added again with the same id starts with the default values.
                     m.removeLayer('r'); m.removeSource('s'); seen.clear();
                     m.addSource('s', {type: 'raster', tiles: ['lod://{z}/{x}/{y}?again'], tileSize: 256});
@@ -3530,6 +3535,7 @@ for (const mode of renderers) {
             const out = {};
             for (const lod of [[2, 1], [12, 5]]) out[lod] = {ml: await run(ml, lod), main: await run(compat, lod, 'main'), worker: await run(compat, lod)};
             out.readd = {ml: await run(ml, [2, 1], undefined, true), base: await run(ml, null), cbase: await run(compat, null, 'main'), main: await run(compat, [2, 1], 'main', true), worker: await run(compat, [2, 1], undefined, true)};
+            out.restyle = {ml: await run(ml, [2, 1], undefined, 'setStyle'), main: await run(compat, [2, 1], 'main', 'setStyle'), worker: await run(compat, [2, 1], undefined, 'setStyle')};
             return out;
         });
         check('[main] maplibre-compat: setSourceTileLodParams gives the tiles of MapLibre at pitch 80 for two values, on the main thread and in a worker (#1021)',
@@ -3537,6 +3543,8 @@ for (const mode of renderers) {
         check('[main] maplibre-compat: a source removed and added again with the same id uses the default setSourceTileLodParams values, as in MapLibre GL JS (#1059)',
             // The compat tiles with the default values are compared with the compat tiles of a new map, because they differ from MapLibre's at pitch 80 (a separate fault).
             m1021.readd.ml === m1021.readd.base && m1021.readd.ml !== m1021['2,1'].ml && m1021.readd.main === m1021.readd.cbase && m1021.readd.worker === m1021.readd.cbase && m1021.readd.cbase !== m1021['2,1'].main, JSON.stringify(m1021.readd));
+        check('[main] maplibre-compat: setStyle that replaces a source with one of the same id drops its setSourceTileLodParams values, as in MapLibre GL JS (#1059)',
+            m1021.restyle.ml === m1021.readd.base && m1021.restyle.main === m1021.readd.cbase && m1021.restyle.worker === m1021.readd.cbase, JSON.stringify(m1021.restyle));
         // #1019: zoomSnap (the option and setZoomSnap) and setEventedParent work as in MapLibre GL JS (served at /ml/).
         const m1019 = await page.evaluate(async () => {
             const ml = await import('/ml/maplibre-gl.mjs');

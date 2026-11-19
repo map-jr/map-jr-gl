@@ -687,6 +687,8 @@ export class Engine {
     private setStyle(style: ResolvedStyle, reload: boolean, data?: Record<string, unknown>, instant?: boolean) {
         // (A new style can have an image that the style before did not have: the engine asks the page again, #628.)
         if (reload) this.missing.clear();
+        // A source that the new style removes or replaces drops its values of setSourceTileLodParams, as in MapLibre GL JS (#1059).
+        for (const id in this.lod) if (this.style?.sources[id] && JSON.stringify(style.sources[id]) !== JSON.stringify(this.style.sources[id])) delete this.lod[id];
         // `encoding: 'custom'` of a `raster-dem` source (#590): the factors and the shift come from the style or from a
         // TileJSON as they are. When one is not a finite number, the source and its contours are read as `mapbox`.
         for (const [name, src] of Object.entries(style.sources)) {
