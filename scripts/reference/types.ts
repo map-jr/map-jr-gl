@@ -8,7 +8,7 @@ import type * as svelte from '../../src/svelte.ts';
 import type * as element from '../../src/element.ts';
 import type * as server from '../../src/server.ts';
 import type * as compat from '../../src/maplibre-compat.ts';
-import type {MapJr as VueMapJr} from '../../src/vue.ts';
+import type {MapJr as VueMapJr, MapOverlay as VueMapOverlay, MapImageProps as VueMapImagePropsOf, MapJrExposed as VueMapJrExposedOf} from '../../src/vue.ts';
 
 export type MapDescription = host.MapDescription;
 export type MapSetup = host.MapSetup;
@@ -33,6 +33,12 @@ export type GeolocateOptions = controls.GeolocateOptions;
 export type TerrainOptions = controls.TerrainOptions;
 /** The props of the Vue component `MapJr` of `@map-jr/map-jr-gl/vue`. */
 export type VueMapJrProps = InstanceType<typeof VueMapJr>['$props'];
+/** What a template ref on the Vue component `MapJr` holds. */
+export type VueMapJrExposed = VueMapJrExposedOf;
+/** The props of the Vue component `MapOverlay` of `@map-jr/map-jr-gl/vue`. */
+export type VueMapOverlayProps = InstanceType<typeof VueMapOverlay>['$props'];
+/** The props of the Vue component `MapImage` of `@map-jr/map-jr-gl/vue`. */
+export type VueMapImageProps = VueMapImagePropsOf<string>;
 /** The props of the React component `MapJr` of `@map-jr/map-jr-gl/react`. */
 export type ReactMapJrProps = react.MapJrProps;
 /** The options of the Svelte action `mapJr` of `@map-jr/map-jr-gl/svelte`. */
