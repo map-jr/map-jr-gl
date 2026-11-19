@@ -216,6 +216,7 @@ export function placeLabels(
         // The same text is a duplicate only in its own layer (the same feature from two tiles, or a road name that
         // repeats). Two layers can show the same text at one point, as in MapLibre.
         seen.clear();
+        const first = out.length;
         // The labels of a layer with `symbol-sort-key` are placed in the order of the key over all tiles, as in MapLibre:
         // a label does not win only because its tile comes first.
         let runs: {it: typeof items[0]; labels: LabelSrc[]; no: number}[] = [];
@@ -224,6 +225,18 @@ export function placeLabels(
             const all: typeof runs = [];
             for (const r of runs) for (const l of r.labels) all.push({it: r.it, labels: [l], no: r.no});
             runs = all.sort((a, b) => a.labels[0].key! - b.labels[0].key!); // (the sort keeps the order of equal keys)
+        }
+        // `symbol-z-order`, as in MapLibre GL JS: with `viewport-y`, the symbols are placed from the bottom of the screen
+        // up, so the lowest wins a collision. With `viewport-y`, and with `auto` when `symbol-sort-key` is the same for all
+        // features, symbols that may overlap are drawn from the top of the screen down, so a lower symbol covers a higher one.
+        const zOrder = L.p.zOrder.eval(tr.zoom);
+        const placeByY = zOrder === 'viewport-y';
+        const drawByY = (placeByY || zOrder === 'auto' && !L.p.sortKey.dd)
+            && runs.some(r => r.labels.some(l => l.overlap || l.ignore || l.icon?.overlap || l.icon?.ignore));
+        if (placeByY) {
+            const all: (typeof runs[0] & {y: number; i: number})[] = [];
+            for (const r of runs) for (const l of r.labels) all.push({it: r.it, labels: [l], no: r.no, y: tr.projectTile(r.it.id, l.x, l.y)[1], i: all.length});
+            runs = all.sort((a, b) => b.y - a.y || a.i - b.i);
         }
         for (const {it, labels, no: itemNo} of runs) {
             const t = Math.min(1, Math.max(0, tr.zoom - (it.tile.z ?? it.id.z)));
@@ -442,6 +455,11 @@ export function placeLabels(
                 keys.set(key, same + 1);
                 out.push({x: tx, y: ty, angle: textAngle, frame, size, shaped: textBox ? shaped : null, src: l, icon, key: same ? key + '#' + same : key, layer: L.id, tile: it.id, ax, ay, depth, opacity: 1, justify, alpha, anchor});
             }
+        }
+        if (drawByY && out.length - first > 1) {
+            const mine = out.splice(first).map((p, i) => ({p, i}));
+            mine.sort((a, b) => a.p.ay - b.p.ay || b.i - a.i);
+            for (const {p} of mine) out.push(p);
         }
     }
     return out;

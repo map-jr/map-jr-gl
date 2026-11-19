@@ -55,7 +55,7 @@ const SPEC: Record<string, Record<string, [string, PropKind, any, string[]?]>> =
         rotate: ['text-rotate', 'number', 0],
         lineHeight: ['text-line-height', 'number', 1.2], translate: ['text-translate', 'string', [0, 0]], iconTranslate: ['icon-translate', 'string', [0, 0]],
         translateAnchor: ['text-translate-anchor', 'raw', 'map'], iconTranslateAnchor: ['icon-translate-anchor', 'raw', 'map'],
-        iconIgnore: ['icon-ignore-placement', 'raw', false], iconPadding: ['icon-padding', 'number', 2], sortKey: ['symbol-sort-key', 'number', 0],
+        iconIgnore: ['icon-ignore-placement', 'raw', false], iconPadding: ['icon-padding', 'number', 2], sortKey: ['symbol-sort-key', 'number', 0], zOrder: ['symbol-z-order', 'string', 'auto'],
         overlapMode: ['text-overlap', 'string', ''], iconOverlapMode: ['icon-overlap', 'string', ''],
         iconOpacity: ['icon-opacity', 'number', 1], iconAnchor: ['icon-anchor', 'string', 'center', ANCHORS], iconColor: ['icon-color', 'color', '#000'], iconHalo: ['icon-halo-color', 'color', 'rgba(0,0,0,0)'], iconHaloWidth: ['icon-halo-width', 'number', 0], iconHaloBlur: ['icon-halo-blur', 'number', 0],
         iconFit: ['icon-text-fit', 'string', 'none'], iconFitPad: ['icon-text-fit-padding', 'raw', [0, 0, 0, 0]], iconOverlap: ['icon-allow-overlap', 'raw', false],
