@@ -27,7 +27,10 @@ true satisfies (Field extends typeof PROPERTIES[number] ? true : false);
 // (A homomorphic mapped type keeps the TSDoc of each field of the description.)
 type Properties = {-readonly [K in keyof Pick<MapDescription, Exclude<Field, 'mapStyle'>>]?: MapDescription[K]} & StyleProperty;
 interface StyleProperty {
-    /** The `style` of the description: the URL of a style or a style object. The attribute `map-style` takes a URL. */
+    /**
+     * The `style` of the description: the URL of a style or a style object. The attribute `map-style` takes a URL.
+     * A new value after the map exists changes the style of the map, as `update` does.
+     */
     mapStyle?: MapDescription['style'];
 }
 
@@ -80,7 +83,10 @@ export class MapJrElement extends Base {
         this.changed();
     }
 
-    /** Adds a listener, as on any element. A listener of a `map-` event makes the element pass that event of the map on. */
+    /**
+     * Adds a listener, as on any element. The events of the map are `map-ready`, `map-load`, `map-idle`, `map-click`,
+     * `map-hover`, `map-error`, `map-viewchange`, `map-colorschemechange`, and `map-` with the name of any other event of `listen` (`map-styleload` for `style.load`).
+     */
     addEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions) {
         super.addEventListener(type, listener, options);
         const name = type.startsWith('map-') && type.slice(4);
