@@ -1966,7 +1966,7 @@ export class Engine {
                     if (ax < -100 || ay < -100 || ax > tr.width + 100 || ay > tr.height + 100) continue;
                     const size = (b.size ? b.size[i * 2] + (b.size[i * 2 + 1] - b.size[i * 2]) * t : fixed) * (tr.pitch ? Math.min(4, 0.5 + 0.5 * tr.cameraDistance / depth) : 1);
                     const [cx, cy, hw, hh] = this.iconBox(L, m.width / m.pixelRatio, m.height / m.pixelRatio, size, b.rotate ? b.rotate[i] : turn);
-                    grid.insert(ax + cx - hw - pad, ay + cy - hh - pad, ax + cx + hw + pad, ay + cy + hh + pad);
+                    grid.insert(ax + cx - hw - pad[3], ay + cy - hh - pad[0], ax + cx + hw + pad[1], ay + cy + hh + pad[2]);
                 }
             }
         }
