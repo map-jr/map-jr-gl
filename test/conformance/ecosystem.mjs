@@ -6,6 +6,7 @@ import {createRequire} from 'node:module';
 import {existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {compatSurface, methodsOf} from './compat-surface.mjs';
+import {table} from './report.mjs';
 
 const root = path.resolve(import.meta.dirname, '../..'), cache = path.join(root, '.cache/ecosystem');
 const PACKAGES = {
@@ -95,16 +96,13 @@ const lines = ['# Plugins and frameworks', '',
     'react-map-gl 7 does not work with this library, and the tables below read version 8 only. Version 7 reads the private',
     '`map.transform` of MapLibre GL JS and throws a `TypeError`. Version 8 works (the field test of #187).', '',
     '## What is missing most often', '',
-    '| Missing | Kind | Packages that use it |', '|---|---|---|',
-    ...['exports', 'methods', 'events'].flatMap(kind => top(kind).map(([n, who]) => `| \`${n}\` | ${kind === 'exports' ? 'export' : kind === 'methods' ? 'method of `Map`' : 'event'} | ${who.length}: ${who.join(', ')} |`)), '',
+    ...table(['Missing', 'Kind', 'Packages', 'Names of the packages'], ['exports', 'methods', 'events'].flatMap(kind => top(kind).map(([n, who]) => ['`' + n + '`', kind === 'exports' ? 'export' : kind === 'methods' ? 'method of `Map`' : 'event', who.length, who.join(', ')])), [2]), '',
     '## What is accepted with no effect', '',
-    '| Method of `Map` | Packages that use it |', '|---|---|',
-    ...top('inert').map(([n, who]) => `| \`${n}\` | ${who.length}: ${who.join(', ')} |`), '',
+    ...table(['Method of `Map`', 'Packages', 'Names of the packages'], top('inert').map(([n, who]) => ['`' + n + '`', who.length, who.join(', ')]), [1]), '',
     '## Each package', ''];
 for (const group of Object.keys(PACKAGES)) {
-    lines.push(`### ${group}`, '', '| Package | Version | API in use | Missing methods | Accepted, with no effect | Missing exports | Missing events |', '|---|---|---|---|---|---|---|');
-    for (const r of rows.filter(r => r.group === group)) lines.push(r.missing ? `| ${r.name} | not found on npm | | | | | |`
-        : `| ${r.name} | ${r.version} | ${r.methods} methods, ${r.exports} exports, ${r.events} events | ${code(r.noMethod)} | ${code(r.noEffect)} | ${code(r.noExport)} | ${code(r.noEvent)} |`);
+    lines.push(`### ${group}`, '', ...table(['Package', 'Version', 'Methods in use', 'Exports in use', 'Events in use', 'Missing methods', 'Accepted, with no effect', 'Missing exports', 'Missing events'],
+        rows.filter(r => r.group === group).map(r => r.missing ? [r.name, 'not found on npm', '', '', '', '', '', '', ''] : [r.name, r.version, r.methods, r.exports, r.events, code(r.noMethod), code(r.noEffect), code(r.noExport), code(r.noEvent)]), [2, 3, 4]));
     lines.push('');
 }
 console.log(`${ready} of ${read} packages use only API that this library has.`);

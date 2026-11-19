@@ -27,9 +27,9 @@ uses the same renderer and has its own tests in a browser.
 
 ## Why use this library
 
-- **It is small.** A page with a map transfers about 118 KB of script (gzip): about 42 KB for the page script of
-  `@map-jr/map-jr-gl` and about 76 KB for the worker file. MapLibre GL JS 6.17 transfers about 445 KB (page script, worker
-  and CSS), which is 3.8 times as much. `pnpm test:size` fails when the library is more than a third of that. The smaller size does not include other projections than Mercator and the globe, sky, fog and the other items in
+- **It is small.** A page with a map transfers the page script and the worker file, which together are less than a
+  third of what MapLibre GL JS transfers (page script, worker and CSS, gzip). The table of sizes in [Status](#status)
+  has the current numbers for each entry, and `pnpm test:size` fails when the library is more than a third. The smaller size does not include other projections than Mercator and the globe, sky, fog and the other items in
   [What is not available](docs/maplibre-compatibility.md#what-is-not-available). Custom layers are in the entry
   `@map-jr/map-jr-gl/maplibre-compat` and need `renderer: 'main'`; their code loads with the first custom layer.
 - **It does not block your page.** The map draws in a worker. Your page stays responsive while the map moves.
@@ -50,21 +50,34 @@ uses the same renderer and has its own tests in a browser.
 ## Status
 
 <!-- status:start -->
-These figures are written by `pnpm status`. They compare this library with MapLibre GL JS 6.17.0.
+These figures are written by `pnpm status`. They compare this library with MapLibre GL JS 6.17.0. The file [docs/status.json](docs/status.json) has the same figures.
 
-| Measure | Result |
-|---|---|
-| Unit tests | 241 pass, 0 fail |
-| MapLibre expression tests | 357 of 583 pass (61%), which is 84% of the 425 that are not left out on purpose. 158 are left out on purpose, 68 are planned for later, and 0 fail. |
-| MapLibre `Map` methods | 131 of 138 are available; 7 more are accepted and have no effect. 15 that are internal to MapLibre GL JS are not counted. |
-| Properties of the MapLibre style specification | 224 of 242 are read with every expression input that the specification allows. 16 are not read, and 2 take fewer inputs (`node test/conformance/spec.mjs --gaps` lists them). |
-| MapLibre plugins, run in a browser | 16 of 16 work (see [Plugins and frameworks](docs/ecosystem.md)) |
-| Plugins and frameworks, read from npm | 23 of 26 use only API that the library has |
-| Example pages of the MapLibre documentation, with this library in place of MapLibre | 122 of 142 work. Most of the others need a globe, another projection or a custom 3D layer. |
-| MapLibre render tests | 1209 of 1740 are the same (69.5%; 1% of pixels or less are different). 1527 of 1740 are the same or near (87.8%; 5% or less). 21 of the 213 that differ are differences that the library keeps (see [Development](docs/development.md#render-tests)). |
-| Page script (gzip) | 52 KB. MapLibre GL JS: 299 KB. |
-| Worker script (gzip) | 83 KB. MapLibre GL JS: 145 KB. |
-| Server renderer (gzip) | 46 KB |
+Unit tests: 260 pass and 0 fail.
+
+Sizes, in KB (gzip). The page script of MapLibre GL JS includes its CSS. The page script of this library is the file of the entry and the files that it imports when it loads.
+
+| File | Map Jr. GL | MapLibre GL JS | Share |
+|---|---:|---:|---:|
+| Page script of `@map-jr/map-jr-gl` | 45.2 | 300.1 | 15.1% |
+| Page script of `@map-jr/map-jr-gl/maplibre-compat` | 52.1 | 300.1 | 17.4% |
+| Worker file | 84.3 | 145.0 | 58.2% |
+| Page script and worker file of `@map-jr/map-jr-gl` | 129.5 | 445.1 | 29.1% |
+| Page script and worker file of `@map-jr/map-jr-gl/maplibre-compat` | 136.4 | 445.1 | 30.7% |
+| Hard line for the page script and the worker file | 148.4 | 445.1 | 33.3% |
+| Server renderer | 47.7 |  |  |
+
+Compatibility with MapLibre GL JS, tested with the entry `@map-jr/map-jr-gl/maplibre-compat`:
+
+| Area | Passing | Total | Share | Details |
+|---|---:|---:|---:|---|
+| MapLibre expression tests | 358 | 583 | 61.4% | [Tests against MapLibre GL JS](docs/development.md#tests-against-maplibre-gl-js) |
+| Methods of the MapLibre `Map` class | 131 | 138 | 94.9% | [Map methods](docs/maplibre-compatibility.md#map-methods) |
+| Properties of the MapLibre style specification | 224 | 242 | 92.6% | [Tests against MapLibre GL JS](docs/development.md#tests-against-maplibre-gl-js) |
+| MapLibre plugins, run in a browser | 16 | 16 | 100.0% | [Plugins that were run](docs/ecosystem.md#plugins-that-were-run) |
+| Plugins and frameworks, read from npm | 24 | 26 | 92.3% | [Each package](docs/ecosystem.md#each-package) |
+| Example pages of the MapLibre documentation | 122 | 142 | 85.9% | [Example pages](docs/ecosystem.md#the-example-pages-of-maplibre-gl-js) |
+| MapLibre render tests, the same | 1222 | 1740 | 70.2% | [Render tests](docs/development.md#render-tests) |
+| MapLibre render tests, the same or near | 1539 | 1740 | 88.4% | [Render tests](docs/development.md#render-tests) |
 <!-- status:end -->
 
 The library is new. Read [MapLibre compatibility](docs/maplibre-compatibility.md) before you use it in production.
@@ -401,24 +414,50 @@ build and other configurations.
 ## Speed
 
 <!-- speed:start -->
-Measured by the workflow [Browsers](https://github.com/map-jr/map-jr-gl/tree/bench-results) on 2026-11-19 (commit dea6a7f). Each cell is MapLibre GL JS 6.17.0 / **this library** (worker renderer where the browser has it).
+Measured by the workflow [Browsers](https://github.com/map-jr/map-jr-gl/tree/bench-results) on 2026-11-19 (commit 20280bb), next to MapLibre GL JS 6.17.0. Map Jr. GL uses the worker renderer where the browser has it. The ratio is the number of Map Jr. GL divided by the number of MapLibre GL JS.
 
-| System, browser | Load to idle, ms | Frames per second, map moving | Frames per second, 10,000 markers |
-|---|---|---|---|
-| macOS, Chromium | 904 / **431** | 22 / **26** | 5 / **23** |
-| macOS, WebKit | 915 / **315** | 60 / **52** | 8 / **50** |
-| Linux, Firefox | 1133 / **490** | 18 / **56** | 6 / **44** |
-| Linux, WebKit | 1277 / **511** | 17 / **15** | 3 / **21** |
-| Windows, Chromium | 1145 / **687** | 19 / **15** | 1 / **41** |
-| Windows, Firefox | 1219 / **754** | 22 / **15** | 6 / **29** |
-| Windows, WebKit | 1674 / **935** | 13 / **11** | 3 / **16** |
+Load to idle, in milliseconds. A ratio below 1 means that Map Jr. GL is faster.
+
+| System, browser | MapLibre GL JS | Map Jr. GL | Ratio |
+|---|---:|---:|---:|
+| macOS, Chromium | 961 | 417 | 0.43 |
+| Linux, Chromium | 879 | 663 | 0.75 |
+| Linux, Firefox | 1526 | 540 | 0.35 |
+| Linux, WebKit | 1438 | 643 | 0.45 |
+| Windows, Chromium | 780 | 521 | 0.67 |
+| Windows, Firefox | 1613 | 765 | 0.47 |
+| Windows, WebKit | 1312 | 727 | 0.55 |
+
+Frames per second while the map moves. A ratio above 1 means that Map Jr. GL is faster.
+
+| System, browser | MapLibre GL JS | Map Jr. GL | Ratio |
+|---|---:|---:|---:|
+| macOS, Chromium | 26 | 33 | 1.26 |
+| Linux, Chromium | 6 | 5 | 0.84 |
+| Linux, Firefox | 16 | 57 | 3.53 |
+| Linux, WebKit | 14 | 13 | 0.94 |
+| Windows, Chromium | 33 | 23 | 0.69 |
+| Windows, Firefox | 17 | 9 | 0.55 |
+| Windows, WebKit | 14 | 12 | 0.86 |
+
+Frames per second while a map with 10,000 markers moves. A ratio above 1 means that Map Jr. GL is faster.
+
+| System, browser | MapLibre GL JS | Map Jr. GL | Ratio |
+|---|---:|---:|---:|
+| macOS, Chromium | 5 | 25 | 4.73 |
+| Linux, Chromium | 2 | 8 | 4.01 |
+| Linux, Firefox | 7 | 43 | 6.10 |
+| Linux, WebKit | 2 | 18 | 7.91 |
+| Windows, Chromium | 3 | 45 | 12.97 |
+| Windows, Firefox | 5 | 26 | 4.97 |
+| Windows, WebKit | 3 | 20 | 6.10 |
 <!-- speed:end -->
 
-These computers are virtual machines, and those for Linux and Windows have no GPU: use the table to compare the
+These computers are virtual machines, and those for Linux and Windows have no GPU: use the tables to compare the
 two libraries, not as the speed of a real device. On an Apple M4 the two libraries draw 60 frames each second;
 this library loads faster (490 ms against 781 ms) and uses no page script for a frame.
 
-To measure on your device, open [the benchmark page](https://map-jr.github.io/map-jr-gl/bench/) of the gallery site, or run `pnpm demo` and open `http://localhost:8080/bench`. `pnpm status` writes the table.
+To measure on your device, open [the benchmark page](https://map-jr.github.io/map-jr-gl/bench/) of the gallery site, or run `pnpm demo` and open `http://localhost:8080/bench`. `pnpm status` writes the tables.
 
 ## Documents
 

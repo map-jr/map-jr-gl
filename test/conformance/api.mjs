@@ -6,6 +6,7 @@
 import {createRequire} from 'node:module';
 import {readFileSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
+import {apiBlock} from './report.mjs';
 
 const root = path.resolve(import.meta.dirname, '../..');
 /**
@@ -43,9 +44,7 @@ if (process.argv.includes('--missing')) console.log(`Missing: ${missing.join(', 
 if (process.argv.includes('--write')) {
     // Keep the compatibility document's method lists in step with the code.
     const file = path.join(root, 'docs/maplibre-compatibility.md'), doc = readFileSync(file, 'utf8');
-    const list = names => names.map(n => '`' + n + '`').join(', ');
-    const block = `<!-- api:start -->\n${have.length} of the ${theirs.size} public methods of the MapLibre \`Map\` class are available in the entry \`@map-jr/map-jr-gl/maplibre-compat\` (${(100 * have.length / theirs.size).toFixed(0)}%).\n\n` +
-        `**Available:** ${list(have)}\n\n**Accepted, with no effect** (${accepted.length}; a value that the library cannot do gives one warning): ${list(accepted)}\n\n**Only in this library:** ${list(extra)}\n\n**Not available:** ${list(missing)}\n\n**Internal to MapLibre GL JS, not counted** (${notCounted.length}; the declaration tags the method \`@internal\`, or only the class \`Camera\` has it, which the package does not export): ${list(notCounted)}\n<!-- api:end -->`;
+    const block = apiBlock({have, accepted, extra, missing, notCounted});
     writeFileSync(file, doc.replace(/<!-- api:start -->[\s\S]*<!-- api:end -->/, block));
 }
 const min = +(process.argv.find(a => a.startsWith('--min='))?.slice(6) ?? 0);

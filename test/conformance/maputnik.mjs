@@ -10,6 +10,7 @@ import {createHash} from 'node:crypto';
 import {cpSync, existsSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {launch} from '../launch.mjs';
+import {maputnikBlock} from './report.mjs';
 
 const root = path.resolve(import.meta.dirname, '../..'), dir = path.join(root, '.cache/maputnik');
 const REPO = 'https://github.com/map-jr/maputnik', BRANCH = 'map-jr-main', PORT = 8888, BASE = `http://localhost:${PORT}/maputnik/`;
@@ -125,22 +126,14 @@ for (const build of builds) {
 }
 
 // ---- The report ----
-const [ml, ours] = builds, cell = s => String(s).replaceAll('|', '\\|').replaceAll('\n', ' ');
+const [ml, ours] = builds;
 const passed = b => b.tests.filter(t => t.status === 'passed').length;
 const onlyOurs = suite ? ours.tests.filter(t => t.status !== 'passed' && ml.tests.find(m => m.title === t.title)?.status === 'passed') : [];
 for (const t of onlyOurs) console.log(`fails only with this library: ${t.title}: ${t.error}`);
 if (process.argv.includes('--write')) {
     const file = path.join(root, 'docs/ecosystem.md'), doc = readFileSync(file, 'utf8');
-    const block = ['<!-- maputnik:start -->', '## Maputnik, the style editor', '',
-        '`node test/conformance/maputnik.mjs --write` runs Maputnik in a browser two times: with MapLibre GL JS, and with the',
-        'entry `@map-jr/map-jr-gl/maplibre-compat` of this library in its place. It uses the fork',
-        `[map-jr/maputnik](${REPO}), whose preview renders with this library; the fork also accepts \`params\` of the`,
-        '`image` expression. Each build runs the end-to-end tests of Maputnik and the scenarios below, which test what those',
-        'tests do not.', '',
-        `Maputnik ${maputnikVersion} (${head}).` + (suite ? ` **Maputnik's own tests: ${passed(ours)} of ${ours.tests.length} pass with this library, and ${passed(ml)} of ${ml.tests.length} with MapLibre GL JS ${maplibreVersion}.**` : ''), '',
-        ...(onlyOurs.length ? ['The tests that fail only with this library:', '', ...onlyOurs.map(t => `- ${cell(t.title)}: ${cell(t.error ?? t.status)}`), ''] : []),
-        `| Scenario | This library | MapLibre GL JS ${maplibreVersion} |`, '|---|---|---|',
-        ...Object.keys(SCENARIOS).map(title => `| ${title} | ${ours.scenarios[title].ok ? 'Pass' : 'Fail'}: ${cell(ours.scenarios[title].detail)}${!ours.scenarios[title].ok && ISSUES[title] ? ` (${ISSUES[title]})` : ''} | ${ml.scenarios[title].ok ? 'Pass' : 'Fail'}: ${cell(ml.scenarios[title].detail)} |`),
-        '<!-- maputnik:end -->'].join('\n');
+    const block = maputnikBlock({repo: REPO, maputnikVersion, head, maplibreVersion, onlyOurs: onlyOurs.map(t => ({title: t.title, error: t.error ?? t.status})),
+        suite: suite ? {ours: {passed: passed(ours), total: ours.tests.length}, ml: {passed: passed(ml), total: ml.tests.length}} : null,
+        scenarios: Object.keys(SCENARIOS).map(title => ({title, ours: ours.scenarios[title], ml: ml.scenarios[title], issue: ISSUES[title]}))});
     writeFileSync(file, doc.includes('<!-- maputnik:start -->') ? doc.replace(/<!-- maputnik:start -->[\s\S]*<!-- maputnik:end -->/, block) : doc.replace('<!-- styles:start -->', block + '\n\n<!-- styles:start -->'));
 }

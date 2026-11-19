@@ -1,0 +1,262 @@
+{
+  "maplibre": "6.17.0",
+  "unitTests": {
+    "pass": 260,
+    "fail": 0
+  },
+  "sizes": [
+    {
+      "file": "Page script of `@map-jr/map-jr-gl`",
+      "bytes": 46251,
+      "maplibreBytes": 307262
+    },
+    {
+      "file": "Page script of `@map-jr/map-jr-gl/maplibre-compat`",
+      "bytes": 53369,
+      "maplibreBytes": 307262
+    },
+    {
+      "file": "Worker file",
+      "bytes": 86341,
+      "maplibreBytes": 148473
+    },
+    {
+      "file": "Page script and worker file of `@map-jr/map-jr-gl`",
+      "bytes": 132592,
+      "maplibreBytes": 455735
+    },
+    {
+      "file": "Page script and worker file of `@map-jr/map-jr-gl/maplibre-compat`",
+      "bytes": 139710,
+      "maplibreBytes": 455735
+    },
+    {
+      "file": "Hard line for the page script and the worker file",
+      "bytes": 151911,
+      "maplibreBytes": 455735
+    },
+    {
+      "file": "Server renderer",
+      "bytes": 48830,
+      "maplibreBytes": null
+    }
+  ],
+  "compatibility": [
+    {
+      "area": "MapLibre expression tests",
+      "passing": 358,
+      "total": 583,
+      "details": {
+        "text": "Tests against MapLibre GL JS",
+        "href": "docs/development.md#tests-against-maplibre-gl-js"
+      }
+    },
+    {
+      "area": "Methods of the MapLibre `Map` class",
+      "passing": 131,
+      "total": 138,
+      "details": {
+        "text": "Map methods",
+        "href": "docs/maplibre-compatibility.md#map-methods"
+      }
+    },
+    {
+      "area": "Properties of the MapLibre style specification",
+      "passing": 224,
+      "total": 242,
+      "details": {
+        "text": "Tests against MapLibre GL JS",
+        "href": "docs/development.md#tests-against-maplibre-gl-js"
+      }
+    },
+    {
+      "area": "MapLibre plugins, run in a browser",
+      "passing": 16,
+      "total": 16,
+      "details": {
+        "text": "Plugins that were run",
+        "href": "docs/ecosystem.md#plugins-that-were-run"
+      }
+    },
+    {
+      "area": "Plugins and frameworks, read from npm",
+      "passing": 24,
+      "total": 26,
+      "details": {
+        "text": "Each package",
+        "href": "docs/ecosystem.md#each-package"
+      }
+    },
+    {
+      "area": "Example pages of the MapLibre documentation",
+      "passing": 122,
+      "total": 142,
+      "details": {
+        "text": "Example pages",
+        "href": "docs/ecosystem.md#the-example-pages-of-maplibre-gl-js"
+      }
+    },
+    {
+      "area": "MapLibre render tests, the same",
+      "passing": 1222,
+      "total": 1740,
+      "details": {
+        "text": "Render tests",
+        "href": "docs/development.md#render-tests"
+      }
+    },
+    {
+      "area": "MapLibre render tests, the same or near",
+      "passing": 1539,
+      "total": 1740,
+      "details": {
+        "text": "Render tests",
+        "href": "docs/development.md#render-tests"
+      }
+    }
+  ],
+  "expressions": {
+    "wontfix": 158,
+    "later": 67,
+    "fail": 0
+  },
+  "mapMethods": {
+    "noEffect": 7,
+    "internal": 15
+  },
+  "styleProperties": {
+    "notRead": 16,
+    "fewerExpressionInputs": 2
+  },
+  "renderTests": {
+    "differ": 201,
+    "differWontfix": 20,
+    "differLater": 100,
+    "skipped": 20
+  },
+  "speed": {
+    "date": "2026-11-19T14:31:08.154Z",
+    "commit": "20280bb7b5f4b2931a140c427f1bee56b55b5372",
+    "rows": [
+      {
+        "system": "macOS",
+        "browser": "Chromium",
+        "renderer": "worker",
+        "load": {
+          "maplibre": 961.3499999999985,
+          "mapJr": 417.44999999997526
+        },
+        "moving": {
+          "maplibre": 26.131746766960028,
+          "mapJr": 32.79862335356416
+        },
+        "markers": {
+          "maplibre": 5.20897964065783,
+          "mapJr": 24.641236351288455
+        }
+      },
+      {
+        "system": "Linux",
+        "browser": "Chromium",
+        "renderer": "worker",
+        "load": {
+          "maplibre": 878.6000000000058,
+          "mapJr": 662.5
+        },
+        "moving": {
+          "maplibre": 6.062180652983398,
+          "mapJr": 5.099005693889641
+        },
+        "markers": {
+          "maplibre": 1.9961573970107487,
+          "mapJr": 8.007046200656678
+        }
+      },
+      {
+        "system": "Linux",
+        "browser": "Firefox",
+        "renderer": "worker",
+        "load": {
+          "maplibre": 1526,
+          "mapJr": 540
+        },
+        "moving": {
+          "maplibre": 16.192560175054705,
+          "mapJr": 57.14285714285714
+        },
+        "markers": {
+          "maplibre": 7.017543859649122,
+          "mapJr": 42.799597180261834
+        }
+      },
+      {
+        "system": "Linux",
+        "browser": "WebKit",
+        "renderer": "worker",
+        "load": {
+          "maplibre": 1438,
+          "mapJr": 643
+        },
+        "moving": {
+          "maplibre": 13.912399304131206,
+          "mapJr": 13.03644379083615
+        },
+        "markers": {
+          "maplibre": 2.3355193993183123,
+          "mapJr": 18.466997734573987
+        }
+      },
+      {
+        "system": "Windows",
+        "browser": "Chromium",
+        "renderer": "worker",
+        "load": {
+          "maplibre": 780.1000000000058,
+          "mapJr": 521.2499999999709
+        },
+        "moving": {
+          "maplibre": 33.10996392816419,
+          "mapJr": 22.761893016648067
+        },
+        "markers": {
+          "maplibre": 3.4406331141608018,
+          "mapJr": 44.62621711204544
+        }
+      },
+      {
+        "system": "Windows",
+        "browser": "Firefox",
+        "renderer": "worker",
+        "load": {
+          "maplibre": 1613,
+          "mapJr": 765
+        },
+        "moving": {
+          "maplibre": 17.152658662092627,
+          "mapJr": 9.472817133443163
+        },
+        "markers": {
+          "maplibre": 5.154639175257732,
+          "mapJr": 25.608194622279132
+        }
+      },
+      {
+        "system": "Windows",
+        "browser": "WebKit",
+        "renderer": "worker",
+        "load": {
+          "maplibre": 1312,
+          "mapJr": 726.5
+        },
+        "moving": {
+          "maplibre": 13.893776075620218,
+          "mapJr": 11.944670516043235
+        },
+        "markers": {
+          "maplibre": 3.273744748488026,
+          "mapJr": 19.955211310739074
+        }
+      }
+    ]
+  }
+}

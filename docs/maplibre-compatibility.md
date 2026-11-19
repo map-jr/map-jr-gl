@@ -178,17 +178,25 @@ The methods `calculateCameraOptionsFromTo`, `calculateCameraOptionsFromCameraLng
 `setSourceTileLodParams(maxZoomLevelsOnScreen, tileCountMaxMinRatio, sourceId?)` changes the level of detail of a pitched view for one source, or for all sources of the style when `sourceId` is left out, with the rule of MapLibre GL JS: each value below 1 counts as 1, and an unknown `sourceId` throws an error. The parameters apply above a pitch of 60° and with 3D terrain, as in MapLibre GL JS, and then near tiles can go deeper than the zoom of the centre, up to the `maxzoom` of the source. Without them, a pitched view without terrain uses the tile cover of this library. The parameters stay with the source ID when the style changes, while MapLibre GL JS drops them with a new source object. `coveringTiles` does not use them.
 
 <!-- api:start -->
-131 of the 138 public methods of the MapLibre `Map` class are available in the entry `@map-jr/map-jr-gl/maplibre-compat` (95%).
+The table counts the 138 public methods of the MapLibre `Map` class in the entry `@map-jr/map-jr-gl/maplibre-compat`. The lists below it have the names.
+
+| Methods of `Map` | Number | Share |
+|---|---:|---:|
+| Available | 131 | 94.9% |
+| Accepted, with no effect | 7 | 5.1% |
+| Not available | 0 | 0.0% |
+| Only in this library | 10 |  |
+| Internal to MapLibre GL JS, not counted | 15 |  |
 
 **Available:** `addControl`, `addImage`, `addLayer`, `addSource`, `addSprite`, `areTilesLoaded`, `calculateAnchoredCameraOptions`, `calculateCameraOptionsFromCameraLngLatAltRotation`, `calculateCameraOptionsFromTo`, `cameraForBounds`, `coveringTiles`, `easeTo`, `fire`, `fitBounds`, `fitScreenCoordinates`, `flyTo`, `getAnisotropicFilterPitch`, `getBearing`, `getBounds`, `getCameraTargetElevation`, `getCanvas`, `getCanvasContainer`, `getCenter`, `getCenterClampedToGround`, `getCenterElevation`, `getContainer`, `getFeatureState`, `getFilter`, `getFontFaces`, `getGlobalState`, `getGlyphs`, `getImage`, `getLayer`, `getLayersOrder`, `getLayoutProperty`, `getLight`, `getMaxBounds`, `getMaxPitch`, `getMaxZoom`, `getMinPitch`, `getMinZoom`, `getPadding`, `getPaintProperty`, `getPitch`, `getPixelRatio`, `getProjection`, `getRenderWorldCopies`, `getRoll`, `getSky`, `getSource`, `getSprite`, `getStyle`, `getStyleUrl`, `getTerrain`, `getVerticalFieldOfView`, `getZoom`, `getZoomSnap`, `hasControl`, `hasImage`, `isMoving`, `isRotating`, `isSourceLoaded`, `isStyleLoaded`, `isZooming`, `jumpTo`, `listImages`, `listens`, `loadImage`, `loaded`, `moveLayer`, `off`, `on`, `once`, `panBy`, `panTo`, `project`, `queryRenderedFeatures`, `querySourceFeatures`, `queryTerrainElevation`, `redraw`, `refreshTiles`, `remove`, `removeControl`, `removeFeatureState`, `removeImage`, `removeLayer`, `removeSource`, `removeSprite`, `resetNorth`, `resetNorthPitch`, `resize`, `rotateTo`, `setBearing`, `setCenter`, `setEventedParent`, `setFeatureState`, `setFilter`, `setFontFaces`, `setGlobalStateProperty`, `setGlyphs`, `setLayerZoomRange`, `setLayoutProperty`, `setLight`, `setMaxBounds`, `setMaxPitch`, `setMaxZoom`, `setMinPitch`, `setMinZoom`, `setMissingStyleImageResolver`, `setPadding`, `setPaintProperty`, `setPitch`, `setPixelRatio`, `setProjection`, `setSky`, `setSourceTileLodParams`, `setSprite`, `setStyle`, `setTerrain`, `setTransformConstrain`, `setTransformRequest`, `setZoom`, `setZoomSnap`, `snapToNorth`, `stop`, `triggerRepaint`, `unproject`, `updateImage`, `zoomIn`, `zoomOut`, `zoomTo`
 
-**Accepted, with no effect** (7; a value that the library cannot do gives one warning): `setAnisotropicFilterPitch`, `setCenterClampedToGround`, `setCenterElevation`, `setRenderWorldCopies`, `setRoll`, `setTransformCameraUpdate`, `setVerticalFieldOfView`
+**Accepted, with no effect** (a value that the library cannot do gives one warning): `setAnisotropicFilterPitch`, `setCenterClampedToGround`, `setCenterElevation`, `setRenderWorldCopies`, `setRoll`, `setTransformCameraUpdate`, `setVerticalFieldOfView`
 
 **Only in this library:** `addFonts`, `getAttributions`, `isLocationOccluded`, `isPitching`, `isRolling`, `queryElevation`, `queryFeatures`, `querySource`, `setCursor`, `toBlob`
 
 **Not available:** 
 
-**Internal to MapLibre GL JS, not counted** (15; the declaration tags the method `@internal`, or only the class `Camera` has it, which the package does not export): `applyTerrainChange`, `applyTransformChange`, `applyUpdatedTransform`, `captureRotationPivot`, `clampCenterToGround`, `getTransformForUpdate`, `holdElevation`, `isPitching`, `isRolling`, `migrateProjection`, `moveCenterOntoTerrain`, `orbitRotationPivot`, `prepareNextFrame`, `putCenterBackOnTerrain`, `releaseElevation`
+**Internal to MapLibre GL JS, not counted** (the declaration tags the method `@internal`, or only the class `Camera` has it, which the package does not export): `applyTerrainChange`, `applyTransformChange`, `applyUpdatedTransform`, `captureRotationPivot`, `clampCenterToGround`, `getTransformForUpdate`, `holdElevation`, `isPitching`, `isRolling`, `migrateProjection`, `moveCenterOntoTerrain`, `orbitRotationPivot`, `prepareNextFrame`, `putCenterBackOnTerrain`, `releaseElevation`
 <!-- api:end -->
 
 ## Source methods

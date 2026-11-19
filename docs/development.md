@@ -27,7 +27,7 @@ pnpm install
 | `node test/conformance/examples.mjs --write` | Runs each example page of the MapLibre documentation with MapLibre GL JS and with the library, and writes the pages that give an error or a different image into `docs/ecosystem.md`. It takes about 30 minutes. `--filter=<regex>` runs a part of the pages. |
 | `node test/conformance/maputnik.mjs --write` | Runs Maputnik, the style editor (the fork `map-jr/maputnik`), with MapLibre GL JS and with the library: Maputnik's own end-to-end tests and a few scenarios of its use. It writes the comparison into `docs/ecosystem.md`. It takes about 10 minutes, needs `pnpm build` and a free port 8888; `--no-suite` runs only the scenarios. |
 | `node test/conformance/styles.mjs --write` | Draws popular public styles with MapLibre GL JS and with the library, side by side, and writes how much each pair of images differs into `docs/ecosystem.md`. Start `pnpm demo` first. |
-| `pnpm status` | Writes the test results and sizes into the README |
+| `pnpm status` | Writes the test results, the sizes and the speed into the README, and the same figures to `docs/status.json`, which the docs site can read. The package on npm does not have that file. Run it two times after a change of `scripts/status-tables.mjs`, because a unit test compares the README with the file. |
 | `pnpm screenshots` | Takes the screenshots in `docs/images` from the gallery. Start `pnpm demo` first. |
 | `pnpm bench` | Compares the speed with MapLibre GL JS in a browser without a GPU |
 | `BROWSER=webkit node test/bench/browsers.mjs out` | Runs the benchmark page and a short check in one browser (`chromium`, `firefox` or `webkit`). Start `pnpm demo` first. Every tool that starts a browser through `test/launch.mjs` reads `BROWSER` this way; any other value, such as the `BROWSER=open` of macOS, uses `chromium` and prints one line that says so. |
@@ -68,11 +68,17 @@ Three tests compare the library with MapLibre GL JS:
 - **Expression tests.** `pnpm test:expressions` runs the expression tests of the MapLibre style specification.
   The list `deliberate` in `test/conformance/expressions.mjs` labels the fixtures that do not pass by a decision
   (`later` or `wontfix`), and the output counts each label. Only the owner adds a `wontfix` entry.
+  The table in the README counts every fixture, also the ones with a label. The output also gives the share without
+  the `wontfix` fixtures, and `docs/status.json` has the count of each decision (`expressions`).
 - **API check.** `pnpm test:api` compares the methods of `Map` with the type declarations of MapLibre GL JS. It
   does not count a method that the declarations tag `@internal`, or one that only the class `Camera` has.
+  A method that is accepted and has no effect does not count as available. [Map methods](maplibre-compatibility.md#map-methods)
+  has the count and the names of each group.
 - **Style specification check.** `pnpm test:spec` compares each property of the style specification (`v8.json` of
   the copy of `@maplibre/maplibre-gl-style-spec` that MapLibre GL JS uses) with what the library reads, and with the
-  expression inputs that the property allows. `--gaps` lists the gaps. A layer property that the code reads outside
+  expression inputs that the property allows. A property passes when the library reads it with every expression
+  input that the specification allows. `--gaps` lists the properties that are not read and the ones that take fewer
+  inputs, and `docs/status.json` has the two counts (`styleProperties`). A layer property that the code reads outside
   the list `SPEC` of `src/style.ts` needs an entry in the table `OTHER` of `test/conformance/spec.mjs`, and the check
   fails until it has one.
 - **Render tests.** `pnpm test:render` draws each MapLibre render test and compares the result with the expected
@@ -134,7 +140,7 @@ that affects how the map is drawn.
 
 | File | Content |
 |---|---|
-| `render-result.json` | The totals. `near` includes `match`. `differWontfix` and `differLater` are the parts of `differ` that have a label with that decision. `pnpm status` reads this file. |
+| `render-result.json` | The totals. `near` includes `match`. `differWontfix` and `differLater` are the parts of `differ` that have a label with that decision. `pnpm status` reads this file: the row "the same" of the table in the README is `match`, the row "the same or near" is `near`, and the total is `run`. `docs/status.json` has the other counts (`renderTests`), with the count of the differences that the library keeps (`differWontfix`). |
 | `render-tests.json` | The status of each test, sorted by id and without percentages. Its diff shows the tests that changed. |
 
 Each run also prints a line that starts with `CHANGED:` for a test whose status is not the status in
