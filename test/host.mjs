@@ -620,6 +620,28 @@ for (const renderer of renderers) {
             check(`[worker] after a new style, the canvas at state.idle shows the new style: no pixel differs from the canvas 1 s later (#555)`,
                 shownAtIdle.used === 'worker' && shownAtIdle.out?.every(n => n === 0), JSON.stringify(shownAtIdle));
         }
+        // 3b2b2. The first read of the canvas of the worker renderer gives the map, at `idle` and later (#965). WebKit gave
+        // blank pixels to the first task that read such a canvas, and the frame only to the tasks after it.
+        const firstReadName = '[worker] the first drawImage of the canvas of a new map gives the map, at state.idle and 300 ms later (#965)';
+        if (renderer === 'worker' && !await workerRenders(page)) skip(firstReadName, noWorkerRender);
+        else if (renderer === 'worker') {
+            const firstRead = await page.evaluate(async renderer => {
+                const t = window.t, out = [];
+                for (const wait of [0, 0, 300, 300]) {
+                    const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px;z-index:100'}));
+                    const host = t.lib.createMap(el, {style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#f0f'}}]}, renderer, attribution: false});
+                    await Promise.race([new Promise(r => host.state.subscribe(s => s.idle, v => v && r())), new Promise(r => setTimeout(r, 10000))]);
+                    if (wait) await new Promise(r => setTimeout(r, wait));
+                    const c = el.querySelector('canvas'), g = new OffscreenCanvas(1, 1).getContext('2d');
+                    g.drawImage(c, c.width / 2, c.height / 2, 1, 1, 0, 0, 1, 1);
+                    out.push([...g.getImageData(0, 0, 1, 1).data].join(','));
+                    if (host.state.get().renderer !== 'worker') out.push('renderer ' + host.state.get().renderer);
+                    host.destroy(); el.remove();
+                }
+                return out;
+            }, renderer).catch(e => [String(e)]);
+            check(firstReadName, firstRead.every(p => p === '255,0,255,255'), JSON.stringify(firstRead));
+        }
         // 3b2c. After setPixelRatio, `idle` of the worker renderer comes once the canvas of the page has the new size (#950).
         // Chromium gives the canvas the size of a resized frame only when that frame arrives, which can be more than one
         // frame of the page after the engine sent `idle`. As in the bench of #948, new maps get setPixelRatio(2) after
