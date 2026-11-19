@@ -94,6 +94,10 @@ function cornerWeights(c: number[]): number[] {
     return [(d[0] + d[2]) / d[2], (d[1] + d[3]) / d[3], (d[0] + d[2]) / d[0], (d[1] + d[3]) / d[1]];
 }
 
+/** Samples a repeating image of the icon atlas at a position in units of the image. */
+const PATTERN_GLSL = `uniform sampler2D u_img; uniform vec4 u_rect; uniform vec2 u_tex;
+vec4 tile(vec2 p) { return texture(u_img, (u_rect.xy + clamp(fract(p) * u_rect.zw, vec2(0.5), u_rect.zw - 0.5)) / u_tex); }`;
+
 const SHADERS = {
     // Heatmap, step one: every point adds a soft bump (a Gaussian, scaled by its weight) to a density picture.
     heat: [`${VS_COMMON}
@@ -219,8 +223,8 @@ void main() { ${FS_CLIP} vec4 c = v_color * u_color; o = vec4(c.rgb * c.a, c.a);
     pattern: [`${VS_COMMON}
 layout(location=0) in vec2 a_pos; uniform mat3 u_pat; out vec2 v_p; out vec2 v_tile;
 void main() { v_tile = unpole(a_pos); v_p = (u_pat * vec3(unpole(a_pos), 1.0)).xy; gl_Position = toClip(a_pos); }`, `
-uniform sampler2D u_img; uniform vec4 u_rect; uniform vec2 u_tex; uniform vec2 u_fade; uniform vec4 u_clip; in vec2 v_p; in vec2 v_tile; out vec4 o;
-vec4 tile(vec2 p) { return texture(u_img, (u_rect.xy + clamp(fract(p) * u_rect.zw, vec2(0.5), u_rect.zw - 0.5)) / u_tex); }
+uniform vec2 u_fade; uniform vec4 u_clip; in vec2 v_p; in vec2 v_tile; out vec4 o;
+${PATTERN_GLSL}
 void main() { ${FS_CLIP} o = mix(tile(v_p), tile(v_p * 2.0), u_fade.x) * u_fade.y; }`],
 
     // One-pixel antialiased lines along polygon edges: coverage falls off with distance from the ideal line.
@@ -341,8 +345,8 @@ void main() {
 
     // Buildings: roofs and walls with a height in metres and a baked light level.
     extrusion: [`uniform mat4 u_matrix; ${TERRAIN_GLSL}
-layout(location=0) in vec4 a_v; layout(location=1) in vec4 a_color; out vec4 v_color; out vec2 v_tile;
-uniform vec4 u_color; uniform vec3 u_lightPos; uniform vec3 u_lightColor; uniform float u_lightIntensity; uniform float u_gradient;
+layout(location=0) in vec4 a_v; layout(location=1) in vec4 a_color; layout(location=2) in float a_ed; out vec4 v_color; out vec2 v_tile; out vec2 v_p;
+uniform mat3 u_pat; uniform float u_hf; uniform float u_pattern; uniform vec4 u_color; uniform vec3 u_lightPos; uniform vec3 u_lightColor; uniform float u_lightIntensity; uniform float u_gradient;
 void main() {
   v_tile = a_v.xy;
   // The light model of MapLibre. A face is brighter when it looks at the light; a dark colour is made brighter by
@@ -350,18 +354,21 @@ void main() {
   bool roof = a_v.w < 0.0; float other = floor(a_v.w / ${WALL_OTHER}.0), rest = a_v.w - other * ${WALL_OTHER}.0, t = rest >= ${WALL_TOP}.0 ? 1.0 : 0.0, angle = rest - t * ${WALL_TOP}.0 - ${Math.PI};
   float base = t > 0.5 ? other : max(a_v.z, 0.0), height = t > 0.5 ? max(a_v.z, 0.0) : other;
   vec3 normal = roof ? vec3(0.0, 0.0, 1.0) : vec3(cos(angle), sin(angle), 0.0);
+  // fill-extrusion-pattern: the image lies flat on the roof and runs along the ring on the walls, as in MapLibre,
+  // and the light alone sets the shade.
+  v_p = (u_pat * vec3(roof ? a_v.xy : vec2(a_ed, max(a_v.z, 0.0) * u_hf), 1.0)).xy;
   // (As in MapLibre, a translucent colour is multiplied by its alpha and then drawn solid; only the opacity of the layer shows through.)
-  vec4 c = vec4(a_color.rgb * a_color.a * u_color.rgb, u_color.a);
-  float value = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
-  vec3 rgb = c.rgb + 0.03;
+  vec4 c = u_pattern > 0.5 ? vec4(1.0, 1.0, 1.0, u_color.a) : vec4(a_color.rgb * a_color.a * u_color.rgb, u_color.a);
+  float value = u_pattern > 0.5 ? 0.5 : dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
+  vec3 rgb = c.rgb + 0.03 * (1.0 - u_pattern);
   float lit = clamp(dot(normal, u_lightPos), 0.0, 1.0);
   lit = mix(1.0 - u_lightIntensity, max(1.0 - value + u_lightIntensity, 1.0), lit);
   if (!roof) lit *= (1.0 - u_gradient) + u_gradient * clamp((t + base) * sqrt(height / 150.0), mix(0.7, 0.98, 1.0 - u_lightIntensity), 1.0);
   v_color = vec4(clamp(rgb * lit * u_lightColor, mix(vec3(0.0), vec3(0.3), 1.0 - u_lightColor), vec3(1.0)), c.a);
   gl_Position = u_matrix * vec4(a_v.xy, a_v.z + ground(a_v.xy / ${EXTENT}.0), 1.0);
 }`, `
-uniform vec4 u_clip; in vec4 v_color; in vec2 v_tile; out vec4 o;
-void main() { ${FS_CLIP} o = vec4(v_color.rgb * v_color.a, v_color.a); }`],
+uniform vec4 u_clip; uniform float u_pattern; in vec4 v_color; in vec2 v_tile; in vec2 v_p; out vec4 o; ${PATTERN_GLSL}
+void main() { ${FS_CLIP} o = u_pattern > 0.5 ? tile(v_p) * vec4(v_color.rgb, 1.0) * v_color.a : vec4(v_color.rgb * v_color.a, v_color.a); }`],
 
     raster: [`${VS_COMMON}
 layout(location=0) in vec2 a_pos; uniform vec2 u_corners[4]; uniform vec4 u_q; out vec3 v_uvq; out vec2 v_tile;
@@ -789,6 +796,7 @@ export class GLRenderer {
                 vertices = b.v.length / 4;
                 attr(0, b.v, 4, gl.FLOAT);
                 if (b.color) attr(1, b.color, 4, gl.UNSIGNED_BYTE, true);
+                if (b.ed) attr(2, b.ed, 1, gl.FLOAT);
                 index(b.idx);
                 count = b.idx.length;
             } else if (b.type === 'line') {
@@ -1023,19 +1031,30 @@ export class GLRenderer {
         const pattern = (name: string, opacity: number) => {
             const img = s.icon?.(name);
             if (!img) return null;
-            const u = use('pattern'), pw = img.width / img.pixelRatio, ph = img.height / img.pixelRatio;
+            const u = use('pattern');
+            bindImage(u, img);
+            gl.uniform2f(u.u_fade, 0, opacity);
+            /** `m` maps the drawn coordinates to world pixels at zoom Z (column-major 3x3). */
+            return (m: number[]) => {
+                gl.uniformMatrix3fv(u.u_pat, false, patMatrix(img, m));
+                return u;
+            };
+        };
+        const bindImage = (u: Record<string, WebGLUniformLocation>, img: NonNullable<ReturnType<NonNullable<typeof s.icon>>>) => {
             gl.activeTexture(gl.TEXTURE0);
             gl.bindTexture(gl.TEXTURE_2D, img.custom ? this.spriteTex : this.iconTex);
             gl.uniform1i(u.u_img, 0);
             gl.uniform2f(u.u_tex, img.custom ? this.spriteSize : this.iconSize[0], img.custom ? this.spriteSize : this.iconSize[1]);
             gl.uniform4f(u.u_rect, img.x, img.y, img.width, img.height);
-            gl.uniform2f(u.u_fade, 0, opacity);
-            /** `m` maps the drawn coordinates to world pixels at zoom Z (column-major 3x3). */
-            return (m: number[]) => {
-                const fr = (v: number) => v - Math.floor(v);
-                gl.uniformMatrix3fv(u.u_pat, false, [m[0] / pw, m[1] / ph, 0, m[3] / pw, m[4] / ph, 0, fr(m[6] / pw), fr(m[7] / ph), 1]);
-                return u;
-            };
+        };
+        /** Maps tile coordinates to units of the image; `m` maps them to world pixels at zoom Z (column-major 3x3). */
+        const patMatrix = (img: {width: number; height: number; pixelRatio: number}, m: number[]) => {
+            const pw = img.width / img.pixelRatio, ph = img.height / img.pixelRatio, fr = (v: number) => v - Math.floor(v);
+            return [m[0] / pw, m[1] / ph, 0, m[3] / pw, m[4] / ph, 0, fr(m[6] / pw), fr(m[7] / ph), 1];
+        };
+        const tilePixels = (id: {x: number; y: number; z: number}) => {
+            const px = 512 * 2 ** (Z - id.z);
+            return [px / EXTENT, 0, 0, 0, px / EXTENT, 0, id.x * px, id.y * px, 1];
         };
 
         for (const L of only ? [only] : s.layers.slice(from, to)) {
@@ -1151,7 +1170,7 @@ export class GLRenderer {
                 if (place) for (const it of items) {
                     const b = it.tile.batches[L.id];
                     if (!b) continue;
-                    const px = 512 * 2 ** (Z - it.id.z), u = place([px / EXTENT, 0, 0, 0, px / EXTENT, 0, it.id.x * px, it.id.y * px, 1]);
+                    const u = place(tilePixels(it.id));
                     this.placeTile(u, it.id, it.matrix4);
                     gl.uniform4fv(u.u_clip, it.clip);
                     gl.bindVertexArray(b.vao);
@@ -1176,6 +1195,7 @@ export class GLRenderer {
             };
             // Buildings are the one layer that needs depth sorting; everything else is painted back to front.
             const extrude = L.type === 'fill-extrusion', pending: (() => void)[] = [];
+            let patImg: Parameters<typeof patMatrix>[0] | undefined;
             if (extrude) {
                 // The fill-extrusion layers of a frame share one depth buffer, as in MapLibre GL JS, so the roof of one
                 // layer hides the lower part of a building in a later layer. On 3D terrain the ground's depth is kept
@@ -1205,6 +1225,12 @@ export class GLRenderer {
                         gl.uniform1f(u.u_gradient, L.p.gradient.eval(zoom) === false ? 0 : 1);
                         const base = L.p.color.dd ? [1, 1, 1, 1] : L.p.color.eval(zoom);
                         gl.uniform4f(u.u_color, base[0] * base[3], base[1] * base[3], base[2] * base[3], L.p.opacity.eval(zoom));
+                        // fill-extrusion-pattern: nothing is drawn while the image is not available. A pattern for each
+                        // feature is not supported: the colour is drawn.
+                        const name = L.p.pattern.dd ? '' : L.p.pattern.eval(zoom), img = name ? s.icon?.(name) : undefined;
+                        if (name && !img) { first = true; break; }
+                        gl.uniform1f(u.u_pattern, img ? 1 : 0);
+                        if (img) { bindImage(u, img); patImg = img; }
                     }
                     if (b.type === 'line') {
                         const dash = L.p.dash.eval(zoom) as number[] | null;
@@ -1269,6 +1295,8 @@ export class GLRenderer {
                     gl.colorMask(true, true, true, true);
                     pending.push(() => {
                         gl.uniformMatrix4fv(u.u_matrix, false, m);
+                        // (The walls take the height in metres to tile units as MapLibre GL JS does, whose tiles have 8192 units.)
+                        if (patImg) { gl.uniformMatrix3fv(u.u_pat, false, patMatrix(patImg, tilePixels(it.id))); gl.uniform1f(u.u_hf, -(2 ** it.id.z) / 2 / EXTENT); }
                         this.bindDem(u, s.terrain ? s.terrain.dem(it.id) : null, s.terrain?.exaggeration ?? 0, s.terrain ? s.tr.elevation : 0);
                         gl.uniform4fv(u.u_clip, it.clip);
                         gl.bindVertexArray(b.vao);
