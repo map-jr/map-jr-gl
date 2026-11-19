@@ -2213,7 +2213,7 @@ for (const mode of renderers) {
                 await new Promise(r => { m.once('idle', r); setTimeout(r, 4000); });
                 await wait(300);
                 const found = await m.queryRenderedFeatures([100, 75]);
-                out[at] = [...found].map(f => f.layer.id).sort().join() || 'none';
+                out[at] = [...new Set([...found].map(f => f.layer.id))].sort().join() || 'none';
             }
             m.remove(); el.remove();
             return out;

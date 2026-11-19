@@ -498,7 +498,7 @@ With the `ssr` prop, the server also renders the first view as SVG:
 | Option of `ssr` | Meaning |
 |---|---|
 | `width`, `height` | The size in pixels that the map has on most screens (800 by 500 without them). The SVG is scaled to the element. |
-| `overrides` | Changes to style layers for the server render only, by the id of the layer. Use them to make the SVG smaller for a style that you do not write yourself. The values are those of `map-jr:ssr`: `hidden`, `filter`, `minzoom`, `maxzoom`, `paint`, `layout`, `simplify`, `minSize`. A `filter` can read `["zoom"]`, which is the whole zoom of the tile. `false` ignores every `map-jr:ssr` in the style. See "Simplify the server render" in [Server rendering](server-rendering.md). |
+| `overrides` | Changes to style layers for the server render only, by the id of the layer. Use them to make the SVG smaller for a style that you do not write yourself. The values are those of `map-jr:ssr`: `hidden`, `filter`, `minzoom`, `maxzoom`, `paint`, `layout`, `simplify`, `minSize`. A `filter` can read `["zoom"]`, which is the whole zoom of the render (also for a tile that is over-zoomed). `false` ignores every `map-jr:ssr` in the style. See "Simplify the server render" in [Server rendering](server-rendering.md). |
 | `attribution` | The credits to show with the SVG: a string or a list of strings. |
 | `tileZoomOffset` | Builds the server render from vector tiles this many zoom levels lower, or higher for a negative value, as in `renderToSVG`. The default is 0. |
 | `timeout`, `requestTimeout`, `maxBytes`, `allowHosts` | The limits for the requests of the server render, as in `renderToSVG`. The defaults are 30000 ms, 10000 ms, no limit and all hosts. |

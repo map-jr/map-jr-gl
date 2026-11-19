@@ -18,6 +18,8 @@ export interface QueriedFeature {
 }
 export interface TileQuery {
     source: string; z: number; x: number; y: number;
+    /** The zoom that the filters of `sets` see, when it is not `z`: the over-zoomed zoom of a tile past the source's `maxzoom`, as in MapLibre GL JS. */
+    zoom?: number;
     /** Query position and tolerance in tile units (0..EXTENT). */
     px: number; py: number; radius: number;
     sourceLayers?: string[];
@@ -104,7 +106,7 @@ export function queryTile(data: Uint8Array | TileLayers, q: TileQuery): FoundFea
             let c: number[] | null = null, geometry: QueriedFeature['geometry'];
             const ends: number[] = [];
             for (const set of mine) {
-                if ((set.test && !set.test({zoom: q.z, f})) || (set.test2 && !set.test2({zoom: q.z, f}))) continue;
+                if ((set.test && !set.test({zoom: q.zoom ?? q.z, f})) || (set.test2 && !set.test2({zoom: q.zoom ?? q.z, f}))) continue;
                 if (!c) {
                     f.geometry(EXTENT, c = [], ends);
                     // A feature that has no id is in the buffer of a neighbour tile too. As in MapLibre GL JS, the
