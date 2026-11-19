@@ -29,6 +29,8 @@ export interface PlacedIcon {
     opacity: number;
     /** Distance-field icons with a halo: its colour, and how far it reaches as a part of the distance field (0 to 1). */
     halo?: number[]; haloReach?: number; /** How far the halo's edge is blurred, as a part of the distance field (0 to 0.99). */ haloBlur?: number;
+    /** An icon that lies on the ground of a tilted map: see `Placed.frame`. Its angle is then the angle of the first pair. */
+    frame?: number[];
     /** Set for distance-field icons, which are drawn in this colour. */
     color?: number[];
     /** True for images added at runtime (drawn from the dynamic atlas) rather than the style's sprite sheet. */
@@ -52,6 +54,11 @@ export interface Placed {
      * text along the line, and the direction on the screen of one pixel of text across it (scale, x, y triples).
      */
     ground?: number[];
+    /**
+     * Text at a point that lies on the ground of a tilted map (`text-pitch-alignment`): where one pixel along the text
+     * and one pixel down the text go on the screen (two x, y pairs). It takes the place of `angle`.
+     */
+    frame?: number[];
     /** Identity that survives between placements (and between a tile and its parent), for fading. */
     key: string;
     /** The id of the symbol layer of the label, so that its text is drawn in the place of that layer. */
@@ -73,6 +80,24 @@ export interface Placed {
  */
 export const tooFar = (tr: Transform, depth: number, far: number) => !!tr.pitch && !(0.5 + 0.5 * tr.cameraDistance / depth >= 0.6 && depth > 0 && (tr.globeness > 0 || depth <= far));
 const perspective = (tr: Transform, depth: number) => tr.pitch && depth > 0 ? Math.min(4, 0.5 + 0.5 * tr.cameraDistance / depth) : 1;
+/**
+ * The size of a symbol that lies on the ground, at the distance `depth`, in pixels of the ground for each pixel of its
+ * size. As in MapLibre GL JS a far symbol is larger on the ground, by half of what the perspective takes away.
+ */
+const flatSize = (tr: Transform, depth: number) => tr.pitch && depth > 0 ? Math.min(4, 0.5 + 0.5 * depth / tr.cameraDistance) : 1;
+/** How much a symbol on the ground grows on the screen when its anchor moves from the distance `from` to `to`. */
+const flatGrow = (tr: Transform, from: number, to: number) => flatSize(tr, to) / flatSize(tr, from) * (to > 0 ? from / to : 1);
+/**
+ * Where one pixel on the ground at the point (x, y) of the tile goes on the screen, in the direction `angle` (radians
+ * clockwise from the x axis of the tile) and at a right angle to it: two x, y pairs.
+ */
+function groundFrame(tr: Transform, it: RenderItem<unknown>, x: number, y: number, ax: number, ay: number, angle: number): number[] {
+    const e = 16, d = e / it.scale, c = Math.cos(angle) * d, s = Math.sin(angle) * d;
+    const [fx, fy] = tr.projectTile(it.id, x + c, y + s), [qx, qy] = tr.projectTile(it.id, x - s, y + c);
+    return [(fx - ax) / e, (fy - ay) / e, (qx - ax) / e, (qy - ay) / e];
+}
+/** Turns the pairs of a frame by `turn` radians on the screen. */
+const turnFrame = (f: number[], to: number[], c: number, s: number) => { for (let i = 0; i < 4; i += 2) { const x = f[i], y = f[i + 1]; to[i] = x * c - y * s; to[i + 1] = x * s + y * c; } };
 
 /**
  * Moves the drawn copy `d` of the placed label `p` with the camera between placements: its anchor is now at (ax, ay)
@@ -84,7 +109,7 @@ const perspective = (tr: Transform, depth: number) => tr.pitch && depth > 0 ? Ma
  */
 export function moveLabel(tr: Transform, p: Placed, d: Placed, ax: number, ay: number, depth: number, turn: number, turned: boolean): boolean {
     const grow = perspective(tr, depth) / perspective(tr, p.depth);
-    const k = p.ground ? (depth > 0 ? p.depth / depth : 1) / grow : grow;
+    const k = p.ground ? (depth > 0 ? p.depth / depth : 1) / grow : p.frame ? flatGrow(tr, p.depth, depth) : grow;
     d.size = p.size * k;
     const rotate = !!turn && (!p.src.upright || (!p.shaped && !!p.icon && !p.src.icon!.upright));
     const tc = rotate ? Math.cos(turn) * k : k, ts = rotate ? Math.sin(turn) * k : 0, gc = rotate ? Math.cos(turn) : 1, gs = rotate ? Math.sin(turn) : 0;
@@ -93,13 +118,16 @@ export function moveLabel(tr: Transform, p: Placed, d: Placed, ax: number, ay: n
     const curve = p.curve, ground = p.ground, dc = d.curve, dg = d.ground;
     // (Ground text: the size above gives the length of the glyphs, and the triples of `ground` only their direction.)
     if (curve && dc) for (let i = 0; i < curve.length; i += 3) { const cx = curve[i], cy = curve[i + 1]; dc[i] = cx * tc - cy * ts; dc[i + 1] = cx * ts + cy * tc; dc[i + 2] = curve[i + 2] + (rotate ? turn : 0); }
+    if (p.frame && d.frame && (rotate || turned)) turnFrame(p.frame, d.frame, gc, gs);
     if (ground && dg && (rotate || turned)) for (let i = 0; i < ground.length; i += 3) { const cx = ground[i + 1], cy = ground[i + 2]; dg[i] = ground[i]; dg[i + 1] = cx * gc - cy * gs; dg[i + 2] = cx * gs + cy * gc; }
     if (p.icon && d.icon) {
         const ix = p.icon.x - p.ax, iy = p.icon.y - p.ay;
         d.icon.x = ax + ix * tc - iy * ts; d.icon.y = ay + ix * ts + iy * tc; d.icon.angle = p.icon.angle + (rotate ? turn : 0);
-        d.icon.w = p.icon.w * grow; d.icon.h = p.icon.h * grow;
+        const ig = p.icon.frame ? flatGrow(tr, p.depth, depth) : grow;
+        d.icon.w = p.icon.w * ig; d.icon.h = p.icon.h * ig;
+        if (p.icon.frame && d.icon.frame && (rotate || turned)) turnFrame(p.icon.frame, d.icon.frame, gc, gs);
         // (A stretched icon: the odd entries of its pairs are screen pixels.)
-        for (const [from, to] of [[p.icon.gx, d.icon.gx], [p.icon.gy, d.icon.gy]]) if (from && to) for (let i = 1; i < from.length; i += 2) to[i] = from[i] * grow;
+        for (const [from, to] of [[p.icon.gx, d.icon.gx], [p.icon.gy, d.icon.gy]]) if (from && to) for (let i = 1; i < from.length; i += 2) to[i] = from[i] * ig;
     }
     return rotate;
 }
@@ -213,12 +241,14 @@ export function placeLabels(
                 const ratio = 0.5 + 0.5 * tr.cameraDistance / depth;
                 if (tooFar(tr, depth, far)) continue;
                 const persp = tr.pitch ? Math.min(4, ratio) : 1;
-                const size = (L.p.size.dd ? l.size0 + (l.size1 - l.size0) * t : L.p.size.eval(tr.zoom)) * persp, s = size / EM, line = l.angle !== null;
+                const line = l.angle !== null, flat = !!tr.pitch && l.flat && !line;
+                // (Text that lies on the ground has its size on the ground: see `flatSize`.)
+                const size = (L.p.size.dd ? l.size0 + (l.size1 - l.size0) * t : L.p.size.eval(tr.zoom)) * (flat ? flatSize(tr, depth) : persp), s = size / EM;
                 const alpha = L.p.opacity.dd ? 1 : L.p.opacity.eval(tr.zoom);
                 const meta = l.icon ? icons?.(l.icon.name) : undefined;
                 const shaped = l.text ? shaper.shape(l.text, l.font, line ? 1e3 : l.maxWidth, l.spacing, l.lineHeight, l.size0) : null;
                 if (shaped?.wait) continue; // its glyph file is on its way
-                const w = shaped ? shaped.width * s : 0, h = shaped ? shaped.height * s : 0;
+                let w = shaped ? shaped.width * s : 0, h = shaped ? shaped.height * s : 0;
                 const hasText = w > 0;
                 if (!hasText && !meta) continue;
                 // Direction of the line on screen, found by projecting a second point a little way along it.
@@ -227,7 +257,7 @@ export function placeLabels(
 
                 // Where the text could go: along the line, at one of several anchors, or at its fixed anchor.
                 let twin: {layer: string; group?: string; box: Box; x: number; y: number; justify?: number} | undefined, twinKey = '';
-                let textAngle = 0, candidates: [number, number][] = [];
+                let textAngle = 0, candidates: [number, number][] = [], frame: number[] | undefined;
                 /** Text that follows its line (placed already). */
                 let bent: Placed | undefined;
                 const anchors: string[] = [];
@@ -239,7 +269,7 @@ export function placeLabels(
                         // Follow the line: each glyph sits on the path at its own distance from the anchor, turned to the path's direction.
                         // (On a tilted map the text lies on the ground, and the ground gives it the whole perspective. As in MapLibre,
                         // its size on the ground takes half of that away again, so far text stays readable.)
-                        const curved = followLine(tr, it, l, shaped!.lines[0], s, ax, ay, w, h, tr.pitch ? s / persp / persp : 0);
+                        const curved = followLine(tr, it, l, shaped!.lines[0], s, ax, ay, w, h, tr.pitch && l.flat ? s / persp / persp : 0);
                         if (!curved) continue;
                         if (seen.near(l.text, ax, ay, 300, -1)) continue;
                         if (!l.overlap && curved.boxes.some(b => grid.hits(...b))) continue;
@@ -280,7 +310,16 @@ export function placeLabels(
                     }
                     // At a point, text that is aligned with the map turns with the map (an arrow keeps its direction on the ground).
                     const turned = l.rotate + (l.upright ? 0 : north);
-                    if (!line && turned) {
+                    if (flat) {
+                        // Text on the ground: its offsets and its glyphs go through the ground at the anchor. Text that
+                        // is aligned with the viewport is turned on the ground so that it reads along the screen's x axis.
+                        frame = groundFrame(tr, it, l.x, l.y, ax, ay, turned - north);
+                        const [a, b, c, d] = frame;
+                        textAngle = Math.atan2(b, a);
+                        candidates = candidates.map(([dx, dy]) => [dx * a + dy * c, dx * b + dy * d]);
+                        // (The box for collisions is the size of the text on the screen.)
+                        w *= Math.hypot(a, b); h *= Math.hypot(c, d);
+                    } else if (!line && turned) {
                         // text-rotate turns the label about its anchor point, so the offset from the anchor turns with it.
                         const c = Math.cos(turned), sn = Math.sin(turned);
                         textAngle = turned;
@@ -300,7 +339,8 @@ export function placeLabels(
                 }
                 const n = 2 ** it.id.z, q = 2 ** 22;
                 const key = `${L.id}|${l.text}|${l.icon?.name ?? ''}|${Math.round((it.id.x + l.x / EXTENT) / n * q)},${Math.round((it.id.y + l.y / EXTENT) / n * q)},${it.id.w}`;
-                const ic = meta && l.icon, isize = ic ? (L.p.iconSize.dd ? ic.size + (ic.size1 - ic.size) * t : L.p.iconSize.eval(tr.zoom)) * persp : 0;
+                const ic = meta && l.icon, iflat = !!tr.pitch && !!ic && ic.flat && !line && ic.fit === 'none';
+                const isize = ic ? (L.p.iconSize.dd ? ic.size + (ic.size1 - ic.size) * t : L.p.iconSize.eval(tr.zoom)) * (iflat ? flatSize(tr, depth) : persp) : 0;
                 // Where the icon goes and its size, for text centred at (tx, ty).
                 const sprite = meta;
                 const iconAt = (fit: string, tx: number, ty: number) => {
@@ -372,11 +412,19 @@ export function placeLabels(
                     const {ix, iy, iw, ih, gx, gy} = iconAt(fit, tx, ty);
                     // (An icon that is fitted to text on a line turns with the text, which reads from left to right.)
                     const along = fit !== 'none' && Math.abs(lineAngle) > Math.PI / 2 ? lineAngle + Math.PI : lineAngle;
-                    const angle = (ic.upright ? 0 : line ? along : north) + ic.rotate * Math.PI / 180;
-                    const box = boxAround(ix, iy, iw, ih, angle, ic.padding);
+                    let angle = (ic.upright ? 0 : line ? along : north) + ic.rotate * Math.PI / 180, iframe: number[] | undefined;
+                    let bx = ix, by = iy, bw = iw, bh = ih;
+                    if (iflat && fit === 'none') {
+                        // An icon on the ground: its offset from the anchor and its picture go through the ground there.
+                        const [a, b, c, d] = groundFrame(tr, it, l.x, l.y, ax, ay, ic.upright ? -north : 0), ox = ix - ax, oy = iy - ay;
+                        bx = ax + ox * a + oy * c; by = ay + ox * b + oy * d;
+                        iframe = groundFrame(tr, it, l.x, l.y, ax, ay, angle - north);
+                        angle = Math.atan2(iframe[1], iframe[0]); bw = iw * Math.hypot(iframe[0], iframe[1]); bh = ih * Math.hypot(iframe[2], iframe[3]);
+                    }
+                    const box = boxAround(bx, by, bw, bh, angle, ic.padding);
                     if (ic.overlap || !grid.hits(...box)) {
                         iconBox = box;
-                        icon = {x: ix, y: iy, w: iw, h: ih, angle, rect: [meta.x, meta.y, meta.width, meta.height], custom: meta.custom, name: ic.name, gx, gy, opacity: ic.opacity * (L.p.iconOpacity.dd ? 1 : L.p.iconOpacity.eval(tr.zoom)), color: meta.sdf ? ic.color : undefined,
+                        icon = {x: bx, y: by, w: iw, h: ih, angle, frame: iframe, rect: [meta.x, meta.y, meta.width, meta.height], custom: meta.custom, name: ic.name, gx, gy, opacity: ic.opacity * (L.p.iconOpacity.dd ? 1 : L.p.iconOpacity.eval(tr.zoom)), color: meta.sdf ? ic.color : undefined,
                             // (In the distance field of a sprite, one image pixel is one eighth of the range.)
                             halo: meta.sdf && ic.haloWidth > 0 && ic.halo[3] > 0 ? ic.halo : undefined, haloReach: Math.min(0.7, ic.haloWidth / (isize / meta.pixelRatio) / 8),
                             haloBlur: Math.min(0.99, ic.haloBlur * 1.19 / (isize / meta.pixelRatio) / 8)};
@@ -391,7 +439,7 @@ export function placeLabels(
                 // Features with the same text at the same position keep separate keys, in their order in the tile.
                 const same = keys.get(key) ?? 0;
                 keys.set(key, same + 1);
-                out.push({x: tx, y: ty, angle: textAngle, size, shaped: textBox ? shaped : null, src: l, icon, key: same ? key + '#' + same : key, layer: L.id, tile: it.id, ax, ay, depth, opacity: 1, justify, alpha, anchor});
+                out.push({x: tx, y: ty, angle: textAngle, frame, size, shaped: textBox ? shaped : null, src: l, icon, key: same ? key + '#' + same : key, layer: L.id, tile: it.id, ax, ay, depth, opacity: 1, justify, alpha, anchor});
             }
         }
     }
