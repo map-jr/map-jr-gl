@@ -281,7 +281,7 @@ export function placeLabels(
                 let twin: {layer: string; group?: string; box: Box; x: number; y: number; justify?: number} | undefined, twinKey = '';
                 let textAngle = 0, candidates: [number, number][] = [], frame: number[] | undefined;
                 /** Text that follows its line (placed already). */
-                let bent: Placed | undefined;
+                let bent: Placed | undefined, bentBoxes: Box[] = [];
                 const anchors: string[] = [];
                 if (hasText) {
                     const shift = (anchor: string, r: number): [number, number] => [
@@ -295,13 +295,14 @@ export function placeLabels(
                         if (!curved) continue;
                         if (seen.near(l.text, ax, ay, 300, -1)) continue;
                         if (!l.overlap && curved.boxes.some(b => grid.hits(...b))) continue;
-                        if (!l.ignore) for (const b of curved.boxes) grid.insert(...b);
+                        // (Its boxes go into the grid after its icon is placed: as in MapLibre, an icon is not blocked by its own text.)
+                        bentBoxes = l.ignore ? [] : curved.boxes;
                         seen.add(l.text, ax, ay, itemNo);
                         const n = 2 ** it.id.z, q = 2 ** 22;
                         const key = `${L.id}|${l.text}||${Math.round((it.id.x + l.x / EXTENT) / n * q)},${Math.round((it.id.y + l.y / EXTENT) / n * q)},${it.id.w}`;
                         bent = {x: ax, y: ay, angle: 0, size: curved.ground ? size / persp / persp : size, shaped, src: l, curve: curved.curve, ground: curved.ground, key, layer: L.id, tile: it.id, ax, ay, depth, opacity: 1, alpha};
                         // (No icon: the text is all. With an icon, the icon is found below, as for other text.)
-                        if (!meta) { out.push(bent); continue; }
+                        if (!meta) { for (const b of bentBoxes) grid.insert(...b); out.push(bent); continue; }
                     } else if (line && !l.upright) {
                         if (l.len * it.scale < w * 1.15) continue; // the road is shorter than its name at this zoom
                         textAngle = Math.atan2(Math.sin(lineAngle), Math.cos(lineAngle));
@@ -451,9 +452,9 @@ export function placeLabels(
                             // (In the distance field of a sprite, one image pixel is one eighth of the range.)
                             halo: meta.sdf && ic.haloWidth > 0 && ic.halo[3] > 0 ? ic.halo : undefined, haloReach: Math.min(0.7, ic.haloWidth / (isize / meta.pixelRatio) / 8),
                             haloBlur: Math.min(0.99, ic.haloBlur * 1.19 / (isize / meta.pixelRatio) / 8)};
-                    } else if (!(hasText && (textBox || bent) && ic.optional)) { if (bent) out.push(bent); continue; }
+                    } else if (!(hasText && (textBox || bent) && ic.optional)) { if (bent) { for (const b of bentBoxes) grid.insert(...b); out.push(bent); } continue; }
                 }
-                if (bent) { bent.icon = icon; if (iconBox && !l.icon!.ignore) grid.insert(...iconBox); out.push(bent); continue; }
+                if (bent) { bent.icon = icon; for (const b of bentBoxes) grid.insert(...b); if (iconBox && !l.icon!.ignore) grid.insert(...iconBox); out.push(bent); continue; }
                 if (!textBox && !icon) continue;
                 if (textBox && twinKey && !twin) twins.set(twinKey, {layer: L.id, group: L.group, box: textBox, x: tx, y: ty, justify});
                 if (textBox && !l.ignore && !twin) grid.insert(...textBox);
