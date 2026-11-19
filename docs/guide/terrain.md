@@ -78,9 +78,10 @@ The field [`terrain`](../reference/description.md#terrain) of the description ov
 `terrain: null` draws no 3D terrain, also when the style has a `terrain`. Without the field, the map draws the terrain
 of the style. `exaggeration` multiplies the heights and is 1 by default.
 
-`source` is the id of a `raster-dem` source of the style or of [`sources`](../reference/description.md#sources). To
-use your own elevation tiles, add the source there. The map reads the encodings `terrarium` and `mapbox`, and a
-PMTiles archive with the prefix `pmtiles://` before its URL.
+`source` is the id of a `raster-dem` source of the style or of [`sources`](../reference/description.md#sources).
+The style `elevation-zero.json` has no elevation source, so this example adds one in `sources`. `encoding` is
+`mapbox` (the default), `terrarium` or `custom`. A PMTiles archive also works, with the prefix `pmtiles://` before
+its URL.
 
 **Main API**
 
@@ -99,8 +100,9 @@ const map = createMap('map', {
 
 ## Turn 3D terrain on and off
 
-The control [`terrain`](../api.md#controls) is a button that turns 3D terrain on and off. Its options are the
-`source` and the `exaggeration` of the terrain that it turns on.
+The control `terrain` of `@map-jr/map-jr-gl/controls` is a button that turns 3D terrain on and off. Its options are
+the `source` and the `exaggeration` of the terrain that it turns on. See [Controls](controls.md) for how to add
+controls to a map.
 
 **Main API**
 
@@ -128,38 +130,41 @@ map.addControl(new TerrainControl({source: 'terrarium', exaggeration: 1.5}));
 
 To turn the terrain on and off from your own code, pass a new `terrain` to
 [`patch`](../api.md#change-the-map) with the main API, or call `map.setTerrain(null)` with the MapLibre compat entry.
-A change of `terrain` in the description [loads the style again](../reference/description.md#style): the map
-requests the style and the tiles again and draws them anew. A click on the control changes the terrain without
-loading the style. The terrain of a click stays until the map loads the style again.
+With the main API, a change of `terrain` [loads the style again](../reference/description.md#style). A click on the
+control changes the terrain without loading the style. A `patch` of another field keeps the terrain of a click. A new
+`terrain` or a new `style` replaces it.
 
 **Main API**
 
 ```js [Main API]
 import {createMap} from '@map-jr/map-jr-gl';
 
+// The page has <input type="checkbox" id="relief" checked> beside the map.
 const map = createMap('map', {
   style: 'https://styles.map-jr.org/1/elevation.json',
   initialView: {center: [7.6586, 45.9763], zoom: 12.4, pitch: 60},
+  terrain: {source: 'terrarium', exaggeration: 1.5},
 });
 
 function showRelief(on) {
   map.patch({terrain: on ? {source: 'terrarium', exaggeration: 1.5} : null});
 }
-showRelief(false);
+document.getElementById('relief').addEventListener('change', e => showRelief(e.target.checked));
 ```
 
 ## What 3D terrain changes
 
 - When the camera looks straight down, the map is flat. The terrain rises during the first 10 degrees of
   [pitch](../reference/description.md#initialview).
-- Labels, symbols, buildings, elements of the page (markers and popups) and the positions of pointer events are on
-  the ground. `project` and `unproject` use the ground too.
+- Labels, symbols, buildings and elements of the page (markers and popups) are drawn at the height of the ground.
+- `e.lngLat` of a pointer event and `unproject` return the position of the ground under the point. `project` returns
+  the point of the screen where the ground at a position is drawn.
 - A label behind a mountain is hidden. A marker behind a mountain stays visible.
 - The roof of a building follows the slope of the ground under it.
 - When a movement stops, the map moves the centre of the view to the ground that the camera looks at. The view on the
   screen does not move, but the `center` and the `zoom` of the view change by a small amount.
-- With a `sky` in the style, the map draws fog on the terrain above a pitch of 60 degrees. See `sky` in
-  [MapLibre compatibility](../maplibre-compatibility.md).
+- With a `sky` in the style, the map draws fog on the terrain above a pitch of 60 degrees. The properties
+  `fog-color`, `fog-ground-blend` and `horizon-fog-blend` of `sky` set the fog.
 - On the [globe](globe.md), the map draws no 3D terrain.
 - The [server renderer](../server-rendering.md) draws no 3D terrain.
 
@@ -167,7 +172,8 @@ showRelief(false);
 
 A `hillshade` layer draws light and shadow from an elevation source. It does not need 3D terrain. The style
 `elevation.json` has such a layer with the id `terrain-rgb-terrarium`. This example adds one with four lights to
-`elevation-zero.json`, below the water.
+`elevation-zero.json`. `before: 'water'` inserts the new layer below the style layer `water`, so that the water covers
+the shading.
 
 **Main API**
 
@@ -219,10 +225,10 @@ map.on('load', () => {
 
 | `hillshade-method` | What it draws |
 |---|---|
-| `standard` | The shading of MapLibre GL JS before it had methods. Only this method uses `hillshade-accent-color`. |
+| `standard` | Shadows and highlights from one light, with `hillshade-accent-color` on steep slopes. Only this method uses that colour. |
 | `basic` | Ground that faces the light gets `hillshade-highlight-color`, and ground that faces away gets `hillshade-shadow-color`. |
 | `combined` | The shading of `basic`, multiplied by the steepness of the ground. Level ground is transparent. |
-| `igor` | Steep ground is shaded by its direction only, which gives a soft relief. |
+| `igor` | The shading follows the direction that the ground faces, and steep slopes do not turn fully dark. |
 | `multidirectional` | The shading of `basic` for several lights, averaged. |
 
 `hillshade-illumination-altitude` is the height of the light above the horizon, in degrees from 0 to 90. The default
@@ -341,9 +347,9 @@ another line. The options of a contour source:
 | Option | Default | Description |
 |---|---|---|
 | `source` **required** | | The id of a `raster-dem` source. |
-| `thresholds` **required** | | The intervals for each zoom level. |
+| `thresholds` | | The intervals for each zoom level. Without it, the source has no lines. |
 | `multiplier` | `1` | The map multiplies each height by this number. Use `3.28084` for feet. |
-| `overzoom` | `1` | How many zoom levels the elevation tiles are less detailed than the contour tiles. More gives smoother lines and fewer requests. |
+| `overzoom` | `1` | How many zoom levels the elevation tiles are below the contour tiles. `2` gives smoother, less exact lines from fewer requests. |
 | `contourLayer` | `'contours'` | The name of the layer in the contour tiles, which `source-layer` names. |
 | `elevationKey` | `'ele'` | The name of the property that has the height of a line. |
 | `levelKey` | `'level'` | The name of the property that is 1 for a major line. |
@@ -355,8 +361,9 @@ tiles that it reads.
 ## Ask for the height of the ground
 
 `queryElevation` returns a promise of the height of the ground in metres above sea level, at a position
-(`[lng, lat]`) or at a point of the screen (`{x, y}`). The promise resolves to `null` where the elevation source has
-no data, and it rejects when the style has no elevation source. The query does not need 3D terrain, and the
+(`[lng, lat]`) or at a point of the screen (`{x, y}`). Over the sea, the elevation tiles of `elevation.json` give 0.
+The promise resolves to `null` when the source has no tile at the position. It rejects with the error
+`No elevation (raster-dem) source in the style` when the style and `sources` have no `raster-dem` source. The query does not need 3D terrain, and the
 position can be outside the view.
 
 **Main API**
@@ -387,16 +394,17 @@ map.on('click', async e => {
 });
 ```
 
-With the main API, `queryElevation` reads the first elevation source of the style. With the MapLibre compat entry,
-`map.queryElevation(lngLat, {source: 'dem'})` selects the source.
+With the main API, `queryElevation` reads the first `raster-dem` source of the style, where the sources of
+[`sources`](../reference/description.md#sources) count as sources of the style. The main API cannot select another
+source. With the MapLibre compat entry, `map.queryElevation(lngLat, {source: 'dem'})` selects the source.
 
-The MapLibre compat entry also has the methods of MapLibre GL JS that read 3D terrain. They return a number at once,
-with the exaggeration applied:
+The MapLibre compat entry also has the methods of MapLibre GL JS that read 3D terrain. They return a number at once, and
+the number is the height multiplied by the exaggeration of the terrain:
 
 | Method | Returns |
 |---|---|
-| `map.queryTerrainElevation(lngLat)` | The height of the terrain at a position, in metres above sea level, or `null` with no 3D terrain. |
-| `map.getCenterElevation()` | The height of the terrain at the centre of the view, in metres. |
+| `map.queryTerrainElevation(lngLat)` | The height at a position in metres above sea level, multiplied by the exaggeration, or `null` with no 3D terrain. |
+| `map.getCenterElevation()` | The height at the centre of the view in metres, multiplied by the exaggeration, or `0` with no 3D terrain. |
 
 ## See also
 

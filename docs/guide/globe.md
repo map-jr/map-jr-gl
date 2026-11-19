@@ -76,12 +76,14 @@ The map accepts three projections:
 | `'globe'` | A globe, which turns into the flat map between zoom 11 and zoom 12, as in MapLibre GL JS. |
 | `'vertical-perspective'` | A globe at every zoom. |
 
-With `projection: null` or no field, the map uses the projection of the style, and `mercator` when the style has
-none. With the MapLibre compat entry, a style can also set the projection in its root property `projection`, as in
-MapLibre GL JS.
+`type` can also be an `interpolate` expression of `["zoom"]` between two of these names, as in the MapLibre style
+specification. Another name writes one warning, and the map draws `mercator`.
 
-A new `projection` in [`update`](../api.md#change-the-map) or `patch` switches the projection without loading the
-style again. When the map switches from the flat map to the globe, it shows the flat map until the tiles of the view
+With `projection: null` or no field, the map uses the root property `projection` of the style, and `mercator` when
+the style has none.
+
+A new `projection` switches the projection without loading the style again. Pass it to
+[`update`](../api.md#change-the-map) with the complete description, or to `patch` with only the fields that change. When the map switches from the flat map to the globe, it shows the flat map until the tiles of the view
 are ready for the globe, for at most 1 second.
 
 ## Let the user switch to the globe
@@ -115,7 +117,9 @@ map.addControl(new GlobeControl());
 map.on('projectiontransition', e => console.log(`The map is now ${e.newProjection}`));
 ```
 
-The projection of a click stays until a description with a different `projection` arrives. While the projection is
+A `patch` of another field keeps the projection of a click. A `projection` that differs from that of the last
+description replaces it, and so does a new `style`. The map then uses the `projection` of the description, or the
+projection of the style when the description has none. While the projection is
 `globe`, the button has the class `map-jr-ctrl-globe-enabled` and `aria-pressed="true"`.
 
 The event `projectiontransition` fires when the name of the projection changes and when a new style loads.
@@ -124,15 +128,16 @@ The event `projectiontransition` fires when the name of the projection changes a
 ## What the globe draws
 
 On the globe, the map draws the layers of the types `background`, `fill`, `line`, `circle`, `heatmap`, `raster`,
-`hillshade` and `symbol`. The background covers only the sphere, and the space around the sphere is transparent: set
-a background colour on the element of the map to fill it.
+`hillshade` and `symbol`. The background covers only the sphere, and the space around the sphere is transparent. To
+fill it, set the CSS `background` of the container, the element that you pass to `createMap` or as `container`.
 
-- The map draws no [3D terrain](terrain.md), no `fill-extrusion` layers and no custom layers on the globe, and writes
-  one warning for each. With `globe`, they show past zoom 12, where the map is flat. The styles of
-  `https://styles.map-jr.org/1/` have a `fill-extrusion` layer for buildings, so a globe with one of them writes the
-  warning for that layer.
+- The map draws no [3D terrain](terrain.md) and no `fill-extrusion` layers on the globe. For each of the two, it
+  writes one warning per map. With `globe`, they show past zoom 12, where the map is flat. The styles of
+  `https://styles.map-jr.org/1/` have a `fill-extrusion` layer for buildings, so a globe with one of them writes that
+  warning. The warning changes nothing else, and the buildings show past zoom 12.
+- A custom layer of the MapLibre compat entry is drawn on the globe too, with no warning.
 - With a `sky` in the style, the map draws the atmosphere around the globe, as MapLibre GL JS does. It draws no sky
-  gradient and no fog on the globe. See `sky` in [MapLibre compatibility](../maplibre-compatibility.md).
+  gradient and no fog on the globe. The property `atmosphere-blend` of `sky` sets the opacity of the atmosphere.
 - A label whose anchor turns to the far side of the globe is hidden. A `Marker` of the MapLibre compat entry on the far
   side takes the opacity `opacityWhenCovered` (0.2 by default).
 - The [server renderer](../server-rendering.md) draws the flat map.
