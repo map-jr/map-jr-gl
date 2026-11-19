@@ -50,13 +50,13 @@ test('transform: zooming around a point keeps that point fixed', () => {
 });
 
 test('transform: tile cover is uniform when flat and coarser with distance when tilted', () => {
-    const flat = camera().coveringTiles(0, 14);
+    const flat = camera().tileCover(0, 14);
     assert.ok(flat.length >= 2 && flat.every(t => t.z === 14));
     assert.equal(flat[0].key, `14/${Math.floor(mercX(-74.006) * 2 ** 14)}/${Math.floor(mercY(40.7128) * 2 ** 14)}`); // the centre's tile comes first
-    const tilted = camera(60).coveringTiles(0, 14), zooms = new Set(tilted.map(t => t.z));
+    const tilted = camera(60).tileCover(0, 14), zooms = new Set(tilted.map(t => t.z));
     assert.ok(zooms.has(14) && Math.min(...zooms) < 14, [...zooms].join());
     assert.ok(tilted.length < 60, `too many tiles: ${tilted.length}`);
-    assert.equal(camera().coveringTiles(0, 22, 256)[0].z, 15); // 256px tiles load one level deeper
+    assert.equal(camera().tileCover(0, 22, 256)[0].z, 15); // 256px tiles load one level deeper
 });
 
 test('easing: bezier hits its endpoints and is monotonic', () => {
@@ -365,7 +365,7 @@ test('placement: collision grid and tile fallback', () => {
     grid.insert(10, 10, 60, 30);
     assert.equal(grid.hits(50, 20, 90, 40), true);
     assert.equal(grid.hits(61, 10, 90, 30), false);
-    const t = camera(), ideal = t.coveringTiles(0, 14), loaded = new Map([['13/2412/3079', 'parent']]);
+    const t = camera(), ideal = t.tileCover(0, 14), loaded = new Map([['13/2412/3079', 'parent']]);
     const items = renderItems(t, ideal, k => loaded.get(k));
     const fromParent = items.filter(i => i.id.z === 13);
     assert.ok(fromParent.length > 0 && fromParent.every(i => i.clip[2] - i.clip[0] === 2048), 'a parent stands in, clipped to the missing child');
@@ -669,18 +669,18 @@ test('tiles: nothing is requested below a source\'s minimum zoom', () => {
     const tr = new Transform();
     tr.width = 800; tr.height = 600;
     tr.set([7.66, 45.98], 8.9, 0);
-    assert.equal(tr.coveringTiles(9, 15).length, 0);
+    assert.equal(tr.tileCover(9, 15).length, 0);
     tr.set([7.66, 45.98], 9.1, 0);
-    assert.ok(tr.coveringTiles(9, 15).every(t => t.z === 9) && tr.coveringTiles(9, 15).length > 0);
+    assert.ok(tr.tileCover(9, 15).every(t => t.z === 9) && tr.tileCover(9, 15).length > 0);
     tr.set([7.66, 45.98], 3, 0);
-    assert.equal(tr.coveringTiles(9, 15).length, 0);
+    assert.equal(tr.tileCover(9, 15).length, 0);
 });
 
 test('terrain: projections follow the ground height, and tile selection reaches low ground', () => {
     const t = new Transform();
     t.width = 800; t.height = 600;
     t.set([7.66, 45.98], 13, 30, 55);
-    const flat = t.coveringTiles(0, 22).length;
+    const flat = t.tileCover(0, 22).length;
     // The map centre sits on a 3,000 m summit; a point on the ground at that height projects where it did before.
     const before = t.projectTile({z: 13, x: 4270, y: 2915, w: 0, key: ''}, 2048, 2048);
     t.elevation = 3000;
@@ -691,10 +691,10 @@ test('terrain: projections follow the ground height, and tile selection reaches 
     const low = t.projectTile({z: 13, x: 4270, y: 2915, w: 0, key: ''}, 2048, 2048, 0);
     assert.ok(low[1] > same[1] + 20);
     // (With terrain, far tiles have less detail, by the rule of MapLibre: fewer tiles for the same area.)
-    const level = t.coveringTiles(0, 22).length;
+    const level = t.tileCover(0, 22).length;
     assert.ok(level <= flat, `${level} tiles with terrain, ${flat} without`);
     t.groundRange = [0, 3000];
-    assert.ok(t.coveringTiles(0, 22).length > level);
+    assert.ok(t.tileCover(0, 22).length > level);
     // Unprojecting onto a lower plane and projecting a point at that height are inverses.
     const ppm = t.pixelsPerMetre, [mx, my] = t.screenToMerc(650, 200, -3000 * ppm), n = 2 ** 13;
     const back = t.projectTile({z: 13, x: Math.floor(mx * n), y: Math.floor(my * n), w: 0, key: ''}, (mx * n % 1) * 4096, (my * n % 1) * 4096, 0);
@@ -884,13 +884,13 @@ test('terrain: tiles get less detail with distance, by the rule of MapLibre, and
     t.width = 1000; t.height = 700;
     t.set([7.70, 45.99], 12, 20, 60);
     t.elevation = 3000; t.heightAt = () => 3000; t.groundRange = [3000, 3000];
-    const levels = t.coveringTiles(0, 22).map(id => id.z);
+    const levels = t.tileCover(0, 22).map(id => id.z);
     // The ground at the centre is one level coarser than the zoom at this tilt, far ground is coarser again, and
     // ground that is nearer to the camera than the centre is finer.
     assert.ok(Math.min(...levels) <= 10 && Math.max(...levels) >= 12, levels.join());
     assert.ok(levels.length < 24, `too many tiles: ${levels.length}`);
     // Image tiles (the last argument) change level at the middle of a level, so they are finer than the others.
-    const images = t.coveringTiles(0, 22, 512, true).map(id => id.z);
+    const images = t.tileCover(0, 22, 512, true).map(id => id.z);
     assert.ok(images.reduce((a, b) => a + b) / images.length > levels.reduce((a, b) => a + b) / levels.length);
 });
 
@@ -1071,7 +1071,7 @@ test('transform: a pitch up to 90, with a tile cover and a far plane that stop a
     close(h, d * Math.min(0.85 * Math.tan(5 * Math.PI / 180), Math.tan(4.25 * Math.PI / 180)), 1e-6);
     // A point above the horizon is taken on the horizon.
     assert.deepEqual(t.screenToMerc(512, 0), t.screenToMerc(512, t.cy - h));
-    const tiles = t.coveringTiles(0, 14);
+    const tiles = t.tileCover(0, 14);
     assert.ok(tiles.length <= 40, `${tiles.length} tiles at pitch 85 (55 before the horizon)`);
     // The far plane reaches the ground at the horizon: a point there is inside the depth range, one 1.5 times as far is not.
     // (In a tile of zoom 10, so that 32-bit floats keep the depth exact.)
