@@ -57,8 +57,8 @@ const deliberate = [
         reason: 'The option "vertical-align" of "format" is not implemented (docs/maplibre-compatibility.md).'},
     {label: 'upstream-fixture', decision: 'later', match: f => f.id === 'legacy/identity/enum',
         reason: 'The fixture wants "c", which is not a value of the enum, from an identity function with no default; "legacy/identity/enum-default" and the identity function of MapLibre GL JS replace such a value. The fixture is to be corrected upstream (#656).'},
-    {label: 'array-types', decision: 'later', match: f => /^legacy\/identity\/(color_array|number_array|padding)$/.test(f.id),
-        reason: 'The library has no property of the types "colorArray", "numberArray" and "padding": "icon-padding" is one number, and the hillshade lights keep a list as it is written (#656).'},
+    {label: 'array-types', decision: 'later', match: f => /^legacy\/identity\/(color_array|number_array)$/.test(f.id),
+        reason: 'The library has no property of the types "colorArray" and "numberArray": the hillshade lights keep a list as it is written (#656).'},
 ];
 const labelled = Object.fromEntries(deliberate.map(d => [d.label, 0]));
 const results = {}, failures = [];
@@ -81,7 +81,7 @@ const walk = dir => {
             const legacy = !Array.isArray(t.expression) && typeof t.expression === 'object' && t.expression !== null;
             // The kind is the one that the table of properties in src/style.ts gives to such a property: 'discrete' is a
             // property that the specification does not interpolate, whose function steps between its zoom levels.
-            const prop = legacy ? compileProp(t.expression, isColor ? 'color' : t.propertySpec?.expression?.interpolated === false ? 'discrete' : t.propertySpec?.type === 'number' ? 'number' : 'string', t.propertySpec?.default ?? null, t.propertySpec?.values && Object.keys(t.propertySpec.values)) : null;
+            const prop = legacy ? compileProp(t.expression, isColor ? 'color' : t.propertySpec?.type === 'padding' ? 'padding' : t.propertySpec?.expression?.interpolated === false ? 'discrete' : t.propertySpec?.type === 'number' ? 'number' : 'string', t.propertySpec?.default ?? null, t.propertySpec?.values && Object.keys(t.propertySpec.values)) : null;
             const fn = prop ? c => prop.eval(c.zoom, c.f) : compileExpr(t.expression, {dd: false, zoom: false});
             t.inputs.forEach(([globals, feature], i) => {
                 // Fixtures write arrays of numbers or colours as {values: [...]}, and a colour in an array as {r, g, b, a}.
