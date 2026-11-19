@@ -172,6 +172,62 @@ The workflow in `.github/workflows/pages.yml` builds the gallery and publishes i
 To use it, do this step one time: in the repository settings, open **Pages** and set **Source** to
 **GitHub Actions**.
 
+## The docs site
+
+The docs site is the Nuxt application in the `website` folder (Nuxt UI and Nuxt Content). It shows the markdown of
+`docs/` as it is, and the workflow `.github/workflows/site.yml` publishes it at `https://map-jr.org/`.
+
+The site has its own `package.json` and lockfile, and it uses the library of the repository (`link:..`). Build the
+library before you start the site:
+
+```sh
+pnpm install && pnpm build            # in the root: the site imports dist/
+cd website
+pnpm install
+pnpm dev                              # the development server, http://localhost:3000/
+pnpm generate                         # the static site, in website/.output/public
+pnpm serve                            # a plain static server for that output, http://localhost:4173/
+pnpm check                            # checks that output in Chromium (once: pnpm exec playwright install chromium)
+```
+
+`pnpm check` opens a docs page, uses the navigation, the search and the colour mode, loads the pages at the width
+of a phone (390 px), and waits until the map of the home page is idle. `--no-map` leaves the map out, as the
+workflow does, because the map needs the style and the tiles of other hosts. `--screenshots=<path>` also saves
+pictures of the home page and of one docs page.
+
+Which files are pages:
+
+- `docs/nav.yml` names the sections of the navigation and their order. A section with a `folder` (`guide`,
+  `recipes`, `reference`, `migrate`) shows each markdown file of that folder, and `docs/guide/markers.md` has the
+  address `/guide/markers`. A section without a folder shows only the files that it lists.
+- A file of `docs/` that no section reaches is not on the site. This file, `style-guide.md` and `agents/` are for
+  people who work on the library: do not add them to `docs/nav.yml`.
+- The title of a page is its first heading. The site draws it in the header of the page.
+- A relative link to another page (`[the main API](api.md#events)`) becomes the address of that page. A relative
+  link to a file that the site does not show becomes a link to the file on GitHub. The build warns about a relative
+  link that names no file. `website/build/markdown.ts` does this.
+
+Where the design is:
+
+- `website/app/assets/css/main.css` has the design tokens: the colour scales `paper` (the neutral colour) and
+  `survey` (the primary colour), the fonts, the values of the semantic colours of Nuxt UI for the light and the dark
+  mode with their contrast, and the classes for the contour lines and the contents list.
+- `website/app/app.config.ts` gives the scales to Nuxt UI and sets the classes of its components.
+- A component uses the semantic classes of Nuxt UI (`text-muted`, `bg-elevated`, `text-primary`), and not a shade of
+  a scale.
+- `pnpm contours` draws `website/public/contours.svg` again (`website/scripts/contours.mjs`). Commit the result.
+
+Nuxt Content keeps the parsed pages in `website/.data/content`, and parses a file again only when the file changes.
+After a change of `website/build/markdown.ts` or of the hook `content:file:afterParse` in `website/nuxt.config.ts`,
+delete that folder, or the pages keep the old result.
+
+The workflow builds the library and the site for each pull request that changes `website/`, `docs/`, `examples/`,
+the root `package.json` or the workflow, runs `pnpm check --no-map`, and keeps the output as the artifact `site`. On
+`main` it then runs `wrangler deploy` with `website/wrangler.jsonc`, which publishes the output as static assets of
+the Cloudflare Worker `map-jr-site` with the custom domain `map-jr.org`. The deploy needs the repository secrets
+`CLOUDFLARE_API_TOKEN` (a token with the permission "Edit Cloudflare Workers") and `CLOUDFLARE_ACCOUNT_ID`, and the
+zone `map-jr.org` in that account. Without the secrets, the step writes a notice and the job passes.
+
 ## Source files
 
 | File | Content |

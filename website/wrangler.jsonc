@@ -1,0 +1,19 @@
+// The docs site on Cloudflare: a Worker that has only static assets, the output of `pnpm generate`.
+// The workflow .github/workflows/site.yml runs `wrangler deploy` with this file.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "map-jr-site",
+  "compatibility_date": "2026-11-19",
+  "assets": {
+    "directory": "./.output/public",
+    // An address with no file gets 404.html with the status 404.
+    "not_found_handling": "404-page",
+    // `vue/index.html` is the address /vue, and /vue/ redirects to it. The links of the site have no trailing slash.
+    "html_handling": "drop-trailing-slash"
+  },
+  // A custom domain: Cloudflare makes the DNS record and the certificate. The zone map-jr.org must be in the account,
+  // and the hostname must have no CNAME record of its own.
+  "routes": [
+    {"pattern": "map-jr.org", "custom_domain": true}
+  ]
+}

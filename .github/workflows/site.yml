@@ -1,0 +1,65 @@
+# Builds the docs site (website/) and publishes it to Cloudflare at https://map-jr.org/.
+#
+# A pull request builds and checks the site and keeps the output as an artifact. A push to main also deploys it.
+# One-time setup by the owner: the repository secrets CLOUDFLARE_API_TOKEN (a token with the permission
+# "Edit Cloudflare Workers" for the account) and CLOUDFLARE_ACCOUNT_ID, and the zone map-jr.org in that account.
+# Without the secrets, the deploy step writes a notice and the job passes.
+name: Docs site
+on:
+  pull_request:
+    # package.json is here because the header of the site shows the version of the library.
+    paths: ['website/**', 'docs/**', 'examples/**', 'package.json', '.github/workflows/site.yml']
+  push:
+    branches: [main]
+    paths: ['website/**', 'docs/**', 'examples/**', 'package.json', '.github/workflows/site.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: site-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  site:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            website/pnpm-lock.yaml
+      # The site uses the library of this commit (`link:..` in website/package.json), so the library is built first.
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm install --frozen-lockfile
+        working-directory: website
+      - run: pnpm generate
+        working-directory: website
+      - uses: actions/upload-artifact@v4
+        with:
+          name: site
+          path: website/.output/public
+          include-hidden-files: true
+          retention-days: 14
+      # The check does not wait for the map of the home page, which needs the style and the tiles of other hosts.
+      - name: Install Chromium
+        working-directory: website
+        run: for i in 1 2 3; do pnpm exec playwright install --with-deps chromium && exit 0; echo "::warning::the install failed (attempt $i of 3)"; sleep 30; done; exit 1
+      - run: pnpm check --no-map
+        working-directory: website
+      - name: Deploy to Cloudflare
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        working-directory: website
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::notice::The site was not deployed: the repository has no secrets CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID."
+            exit 0
+          fi
+          pnpm exec wrangler deploy
