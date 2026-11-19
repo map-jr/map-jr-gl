@@ -65,6 +65,8 @@ export interface SVGScene {
 export function renderSVG(s: SVGScene): string {
     const {tr} = s, zoom = tr.zoom;
     const defs: string[] = [], body: string[] = [];
+    // Lines drawn as [body index, attributes, path data]; path data written by two layers (a road and its casing) goes once into <defs>.
+    const lines: [number, string, string][] = [], seen = new Map<string, number>();
     const clipIds = new Map<RenderItem<TileIR | TileImage>, string>();
     for (const list of s.items.values()) {
         for (const it of list) {
@@ -145,9 +147,18 @@ export function renderSVG(s: SVGScene): string {
             if (!groups.size) continue;
             const m = it.matrix.map((v, i) => i < 4 ? +(v * Q).toFixed(6) : +v.toFixed(2));
             body.push(`<g transform="matrix(${m.join(' ')})" clip-path="url(#${clipIds.get(it)})"${fill ? '' : ` fill="none"${b.cap && b.cap !== 'butt' ? ` stroke-linecap="${b.cap}"` : ''}${b.join && b.join !== 'miter' ? ` stroke-linejoin="${b.join}"` : ''}`}>`);
-            for (const [attrs, d] of groups) if (d) body.push(`<path ${attrs}${fill && !outline ? '' : ' vector-effect="non-scaling-stroke"'} d="${d}"/>`);
+            for (const [attrs, d] of groups) if (d && !fill) { lines.push([body.length, attrs, d]); seen.set(d, (seen.get(d) ?? 0) + 1); body.push(''); }
+            else if (d) body.push(`<path ${attrs}${fill && !outline ? '' : ' vector-effect="non-scaling-stroke"'} d="${d}"/>`);
             body.push('</g>');
         }
+    }
+
+    const pathIds = new Map<string, string>();
+    for (const [i, attrs, d] of lines) {
+        if (seen.get(d)! < 2) { body[i] = `<path ${attrs} vector-effect="non-scaling-stroke" d="${d}"/>`; continue; }
+        let id = pathIds.get(d);
+        if (!id) { pathIds.set(d, id = 'p' + pathIds.size); defs.push(`<path id="${id}" vector-effect="non-scaling-stroke" d="${d}"/>`); }
+        body[i] = `<use href="#${id}" ${attrs}/>`;
     }
 
     const vectorIcons = s.labels.filter(l => l.icon?.custom && s.images?.has(l.icon.name));

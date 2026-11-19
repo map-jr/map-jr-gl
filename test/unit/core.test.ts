@@ -647,7 +647,7 @@ test('server: PNG elevation tiles are decoded without a browser and contours are
         contours: {type: 'contour', source: 'dem', overzoom: 0, thresholds: {0: [100, 500]}}},
         layers: [{id: 'c', type: 'line', source: 'contours', 'source-layer': 'contours', paint: {'line-color': '#963'}}]};
     const {svg} = await renderToSVG({style, width: 256, height: 256, center: [0, 0], zoom: 3, fetch: (async () => new Response(dem as BodyInit)) as typeof fetch});
-    assert.match(svg, /<path[^>]*stroke="#996633"/);
+    assert.match(svg, /<(path|use)[^>]*stroke="#996633"/);
 });
 
 test('server: lossless WebP elevation tiles decode to the same pixels as a reference decoder', () => {
