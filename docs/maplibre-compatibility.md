@@ -132,7 +132,6 @@ Properties:
 - Circle stroke and blur that are different for each feature
 - `line-gap-width` that is different for each feature. The line is drawn without a gap, and nothing warns.
 - `heatmap-radius` that is different for each feature. The layer uses the default radius of 30 pixels, and nothing warns.
-- `icon-halo-blur`. Icon halos are available for distance-field (SDF) icons.
 - `text-writing-mode`
 - `text-pitch-alignment` with a value other than `auto`. The property is not read, and nothing warns. On a tilted map, text along a line lies on the ground and other text is upright, which is what `auto` gives in MapLibre GL JS.
 - `symbol-z-order`. The property is not read, and nothing warns. Without a `symbol-sort-key`, the symbols of a layer keep the order of the source, which is what the value `source` gives in MapLibre GL JS. The values `auto` and `viewport-y` do not sort symbols that overlap by their position on the screen.

@@ -70,7 +70,7 @@ export interface LabelSrc {
     justifyAuto: boolean;
     icon?: {
         name: string; size: number; /** Size at the next zoom level, to interpolate towards. */ size1: number; offset: [number, number]; rotate: number; fit: string; fitPad: [number, number, number, number];
-        opacity: number; anchor: string; color: RGBA; /** Distance-field icons: an outline in this colour, this many pixels wide. */ halo: RGBA; haloWidth: number; ignore: boolean; padding: number;
+        opacity: number; anchor: string; color: RGBA; /** Distance-field icons: an outline in this colour, this many pixels wide, blurred over this many pixels. */ halo: RGBA; haloWidth: number; haloBlur: number; ignore: boolean; padding: number;
         overlap: boolean; optional: boolean; upright: boolean;
     };
 }
@@ -187,7 +187,7 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
                     upright: turns(p.textAlign.eval(z, f)), textOptional: !!p.textOptional.eval(z, f), ignore: !!p.ignore.eval(z, f),
                     varAnchor: p.varAnchor.eval(z, f), radial: p.radial.eval(z, f), varOffset: p.varOffset.eval(z, f), maxAngle: p.maxAngle.eval(z, f), justifyAuto: p.justify.eval(z, f) === 'auto',
                     icon: iconName ? {
-                        name: iconName, size: p.iconSize.eval(zs, f), size1: p.iconSize.eval(z1, f), opacity: p.iconOpacity.dd ? p.iconOpacity.eval(z, f) : 1, anchor: p.iconAnchor.eval(z, f), color: p.iconColor.eval(z, f), halo: p.iconHalo.eval(z, f), haloWidth: p.iconHaloWidth.eval(z, f), offset: p.iconOffset.eval(z, f), rotate: p.iconRotate.eval(z, f),
+                        name: iconName, size: p.iconSize.eval(zs, f), size1: p.iconSize.eval(z1, f), opacity: p.iconOpacity.dd ? p.iconOpacity.eval(z, f) : 1, anchor: p.iconAnchor.eval(z, f), color: p.iconColor.eval(z, f), halo: p.iconHalo.eval(z, f), haloWidth: p.iconHaloWidth.eval(z, f), haloBlur: p.iconHaloBlur.eval(z, f), offset: p.iconOffset.eval(z, f), rotate: p.iconRotate.eval(z, f),
                         fit: p.iconFit.eval(z, f), fitPad: p.iconFitPad.eval(z, f), overlap: overlaps(p.iconOverlapMode.eval(z, f), p.iconOverlap.eval(z, f)), ignore: !!p.iconIgnore.eval(z, f), padding: p.iconPadding.eval(z, f),
                         optional: !!p.iconOptional.eval(z, f), upright: turns(p.iconAlign.eval(z, f)),
                     } : undefined,
