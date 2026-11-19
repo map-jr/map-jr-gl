@@ -1131,6 +1131,33 @@ for (const mode of renderers) {
     check(`[${mode}] setData that waits behind an update in flight does not draw over the data of a later setStyle or a source added again (#856)`,
         Object.values(waited).every(v => v === '3'), JSON.stringify(waited));
 
+    // #1085: as in MapLibre GL JS, a GeoJSON source without `buffer` keeps 128 pixels past the edges of a tile, in the
+    // options of the map, through setStyle and through addSource; a buffer that is given is kept. A line 40 pixels right
+    // of a tile edge, 120 pixels wide, has its left part drawn by the tile to the left only when that tile keeps it.
+    const buffers = await page.evaluate(async mode => {
+        const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), out = {};
+        const source = buffer => ({type: 'geojson', data: {type: 'LineString', coordinates: [[14.06, 10], [14.06, 30]]}, ...buffer !== undefined && {buffer}});
+        const style = (sources, line = true) => ({version: 8, sources, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#000'}}, ...line ? [{id: 'l', type: 'line', source: 'p', paint: {'line-width': 120, 'line-color': '#f00'}}] : []]});
+        const red = async m => {
+            const bmp = await createImageBitmap(await m.toBlob()), g = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}).getContext('2d');
+            g.drawImage(bmp, 0, 0);
+            return g.getImageData(bmp.width * 180 / 400, bmp.height * 92 / 300, 1, 1).data[0];
+        };
+        for (const how of ['options', 'setStyle', 'addSource', 'buffer 16']) {
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:400px;height:300px'}));
+            const first = how === 'options' ? style({p: source()}) : how === 'buffer 16' ? style({p: source(16)}) : style({}, false);
+            const m = new mod.Map({container: el, style: first, center: [0, 0], zoom: 1, attributionControl: false, renderer: mode});
+            await new Promise(r => m.once('idle', r));
+            if (how === 'setStyle') { m.setStyle(style({p: source()})); await new Promise(r => m.once('idle', r)); }
+            if (how === 'addSource') { m.addSource('p', source()); m.addLayer({id: 'l', type: 'line', source: 'p', paint: {'line-width': 120, 'line-color': '#f00'}}); await new Promise(r => m.once('idle', r)); }
+            out[how] = await red(m);
+            m.remove(); el.remove();
+        }
+        return out;
+    }, mode).catch(e => ({error: String(e)}));
+    check(`[${mode}] a GeoJSON source without buffer keeps 128 pixels past the tile edge, from the options, setStyle and addSource, and a buffer that is given is kept (#1085)`,
+        JSON.stringify(buffers) === JSON.stringify({options: 255, setStyle: 255, addSource: 255, 'buffer 16': 0}), JSON.stringify(buffers));
+
     // A map made in a container that is not yet in the page: the container is positioned and clips once it is attached (#201).
     const detached = await page.evaluate(async mode => {
         const mod = await import('/dist/map-jr-gl-maplibre-compat.js');

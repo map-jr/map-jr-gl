@@ -552,6 +552,9 @@ map.update({style: url, layers, data: {routes: routes(1)}});
 - A key that is the id of a source of another type, such as a vector source, is an error of the map (`onError`), and
   the data has no effect.
 - `renderToSVG` (`@map-jr/map-jr-gl/server`) follows the same rule, and throws for a key of a source of another type.
+- A tile of a GeoJSON source keeps the features up to `buffer` pixels past its edges (in pixels of a tile 512 pixels
+  wide, at most 512). The default is 16 in `@map-jr/map-jr-gl`. `@map-jr/map-jr-gl/maplibre-compat` uses 128, the default
+  of MapLibre GL JS. A wide line near the edge of a tile needs a larger buffer to be drawn whole.
 
 ### Points from records
 
