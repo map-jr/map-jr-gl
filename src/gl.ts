@@ -536,6 +536,10 @@ interface IconBuffers {
     counts: [number, number];
     /** An image of an icon was not there when the vertices were made. */
     waits?: boolean;
+    /** For each icon: 1 for an image added at runtime, 2 for an image of the sprite, 0 for none. */
+    group?: Uint8Array;
+    /** The angle of the map for which the indices are sorted from the top of the screen down (`symbol-z-order`), or NaN for the order of the source. */
+    angle: number;
 }
 interface GLBuffers {
     type: GLBatch['type']; vao: WebGLVertexArrayObject; count: number; /** UNSIGNED_SHORT or UNSIGNED_INT. */ indexType: number; color: boolean; scalar: boolean; bufs: WebGLBuffer[];
@@ -836,7 +840,7 @@ export class GLRenderer {
                 gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
                 gl.enableVertexAttribArray(2 + i); gl.vertexAttribPointer(2 + i, size, gl.FLOAT, false, 0, 0);
             });
-            (icons ??= {})[id] = {src, vao, vertices, index, bufs, counts: [0, 0]};
+            (icons ??= {})[id] = {src, vao, vertices, index, bufs, counts: [0, 0], angle: NaN};
             this.fillIcons(icons[id]);
         }
         gl.bindVertexArray(null);
@@ -850,27 +854,51 @@ export class GLRenderer {
     /** Writes the corners of each icon for the images that the map has now. An icon whose image is not there is not drawn. */
     private fillIcons(b: IconBuffers) {
         const gl = this.gl, {names, name, pos} = b.src, n = name.length, images = names.map(nm => this.iconOf?.(nm));
-        const v = new Float32Array(n * 4 * ICON_VERTEX), idx = new Uint32Array(n * 6);
-        let count = 0;
-        b.counts = [0, 0];
+        const v = new Float32Array(n * 4 * ICON_VERTEX), group = b.group = new Uint8Array(n);
         b.waits = images.includes(undefined);
-        for (const custom of [true, false]) {
-            for (let i = 0; i < n; i++) {
-                const m = images[name[i]];
-                if (!m || !!m.custom !== custom) continue;
-                const w = m.width / m.pixelRatio, h = m.height / m.pixelRatio, o = i * 4;
-                for (let k = 0; k < 4; k++) {
-                    const cx = k & 1, cy = k >> 1;
-                    v.set([pos[i * 2], pos[i * 2 + 1], m.x + cx * m.width, m.y + cy * m.height, (cx - 0.5) * w, (cy - 0.5) * h, m.sdf ? 1 : 0], (o + k) * ICON_VERTEX);
-                }
-                idx.set([o, o + 1, o + 2, o + 1, o + 3, o + 2], count);
-                count += 6;
+        for (let i = 0; i < n; i++) {
+            const m = images[name[i]];
+            if (!m) continue;
+            group[i] = m.custom ? 1 : 2;
+            const w = m.width / m.pixelRatio, h = m.height / m.pixelRatio, o = i * 4;
+            for (let k = 0; k < 4; k++) {
+                const cx = k & 1, cy = k >> 1;
+                v.set([pos[i * 2], pos[i * 2 + 1], m.x + cx * m.width, m.y + cy * m.height, (cx - 0.5) * w, (cy - 0.5) * h, m.sdf ? 1 : 0], (o + k) * ICON_VERTEX);
             }
-            if (custom) b.counts[0] = count; else b.counts[1] = count - b.counts[0];
         }
         gl.bindVertexArray(b.vao);
         gl.bindBuffer(gl.ARRAY_BUFFER, b.vertices);
         gl.bufferData(gl.ARRAY_BUFFER, v, gl.DYNAMIC_DRAW);
+        this.indexIcons(b, b.angle);
+    }
+    /**
+     * Writes the indices of the icons: in the order of the source, or (for a number `angle`, the angle of the map in
+     * radians) from the top of the screen down, so that a lower icon covers a higher one, as `symbol-z-order` asks
+     * (as in MapLibre GL JS, by the turned y in the tile; equal ones with the later feature first).
+     */
+    private indexIcons(b: IconBuffers, angle: number) {
+        const gl = this.gl, {pos} = b.src, group = b.group!, n = group.length, idx = new Uint32Array(n * 6);
+        let order = Uint32Array.from({length: n}, (_, i) => i);
+        if (!Number.isNaN(angle)) {
+            // (One number for each icon, its turned y and then its index backwards, sorts fast: the map turns 100,000 icons.)
+            const sin = Math.sin(angle), cos = Math.cos(angle), keys = new Float64Array(n);
+            for (let i = 0; i < n; i++) keys[i] = Math.round(sin * pos[i * 2] + cos * pos[i * 2 + 1]) * 2 ** 21 + (2 ** 21 - 1 - i);
+            keys.sort();
+            order = Uint32Array.from(keys, k => 2 ** 21 - 1 - (k - Math.floor(k / 2 ** 21) * 2 ** 21));
+        }
+        let count = 0;
+        b.counts = [0, 0];
+        b.angle = angle;
+        for (const g of [1, 2]) {
+            for (const i of order) {
+                if (group[i] !== g) continue;
+                const o = i * 4;
+                idx.set([o, o + 1, o + 2, o + 1, o + 3, o + 2], count);
+                count += 6;
+            }
+            if (g === 1) b.counts[0] = count; else b.counts[1] = count - b.counts[0];
+        }
+        gl.bindVertexArray(b.vao);
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, b.index);
         gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, idx.subarray(0, count), gl.DYNAMIC_DRAW);
     }
@@ -889,6 +917,11 @@ export class GLRenderer {
                 const b = it.tile.icons?.[L.id];
                 if (!b || !(b.counts[0] + b.counts[1])) continue;
                 const p = L.p;
+                // (`symbol-z-order`: these icons may overlap and the layer has no `symbol-sort-key`, so `auto` and
+                // `viewport-y` draw them from the top of the screen down, as `placeLabels` does for placed symbols.)
+                const angle = p.zOrder.eval(zoom) === 'source' ? NaN : -tr.bearing * Math.PI / 180;
+                // (While the map turns, the order is found again after each half degree.)
+                if (Number.isNaN(angle) !== Number.isNaN(b.angle) || Math.abs(angle - b.angle) > 0.008) this.indexIcons(b, angle);
                 if (!u) {
                     u = this.use('icon', tr);
                     const anchor = p.iconAnchor.eval(zoom) as string, offset = p.iconOffset.eval(zoom) as number[], translate = screenTranslate(p.iconTranslate.eval(zoom), p.iconTranslateAnchor.eval(zoom), tr.bearing), color = p.iconColor.eval(zoom) as number[];

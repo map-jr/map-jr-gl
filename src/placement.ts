@@ -226,17 +226,26 @@ export function placeLabels(
             for (const r of runs) for (const l of r.labels) all.push({it: r.it, labels: [l], no: r.no});
             runs = all.sort((a, b) => a.labels[0].key! - b.labels[0].key!); // (the sort keeps the order of equal keys)
         }
-        // `symbol-z-order`, as in MapLibre GL JS: with `viewport-y`, the symbols are placed from the bottom of the screen
-        // up, so the lowest wins a collision. With `viewport-y`, and with `auto` when `symbol-sort-key` is the same for all
-        // features, symbols that may overlap are drawn from the top of the screen down, so a lower symbol covers a higher one.
+        // `symbol-z-order`, as in MapLibre GL JS, within each tile and by the y of the anchor in the tile, turned with the
+        // map: with `viewport-y`, the symbols are placed from the bottom of the screen up, so the lowest wins a collision.
+        // With `viewport-y`, and with `auto` when `symbol-sort-key` is the same for all features, symbols that may overlap
+        // are drawn from the top of the screen down, so a lower symbol covers a higher one (the same order as the icons
+        // that the tiles have in buffers: see `indexIcons` in `gl.ts`).
         const zOrder = L.p.zOrder.eval(tr.zoom);
         const placeByY = zOrder === 'viewport-y';
         const drawByY = (placeByY || zOrder === 'auto' && !L.p.sortKey.dd)
             && runs.some(r => r.labels.some(l => l.overlap || l.ignore || l.icon?.overlap || l.icon?.ignore));
+        // (For each label: the number of its tile, its turned y, and its index in the tile; equal ones: the later feature on top.)
+        const order = new Map<LabelSrc, [number, number, number]>();
+        if (drawByY || placeByY) {
+            const sin = Math.sin(north), cos = Math.cos(north);
+            for (const r of runs) r.labels.forEach((l, i) => order.set(l, [r.no, Math.round(sin * l.x + cos * l.y), i]));
+        }
+        const byY = (a: LabelSrc, b: LabelSrc) => { const p = order.get(a)!, q = order.get(b)!; return p[0] - q[0] || p[1] - q[1] || q[2] - p[2]; };
         if (placeByY) {
-            const all: (typeof runs[0] & {y: number; i: number})[] = [];
-            for (const r of runs) for (const l of r.labels) all.push({it: r.it, labels: [l], no: r.no, y: tr.projectTile(r.it.id, l.x, l.y)[1], i: all.length});
-            runs = all.sort((a, b) => b.y - a.y || a.i - b.i);
+            const all: typeof runs = [];
+            for (const r of runs) for (const l of r.labels) all.push({it: r.it, labels: [l], no: r.no});
+            runs = all.sort((a, b) => { const p = order.get(a.labels[0])!, q = order.get(b.labels[0])!; return p[0] - q[0] || -byY(a.labels[0], b.labels[0]); });
         }
         for (const {it, labels, no: itemNo} of runs) {
             const t = Math.min(1, Math.max(0, tr.zoom - (it.tile.z ?? it.id.z)));
@@ -457,9 +466,8 @@ export function placeLabels(
             }
         }
         if (drawByY && out.length - first > 1) {
-            const mine = out.splice(first).map((p, i) => ({p, i}));
-            mine.sort((a, b) => a.p.ay - b.p.ay || b.i - a.i);
-            for (const {p} of mine) out.push(p);
+            const mine = out.splice(first).sort((a, b) => byY(a.src, b.src));
+            for (const p of mine) out.push(p);
         }
     }
     return out;

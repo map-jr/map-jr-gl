@@ -134,7 +134,7 @@ Properties:
 - `heatmap-radius` that is different for each feature. The layer uses the default radius of 30 pixels, and nothing warns.
 - `text-writing-mode`
 - `text-pitch-alignment` and `icon-pitch-alignment` with `map` at a point are approximations. The symbol lies on the ground with the slant of the ground at its anchor, so a large symbol near the horizon is not as wide at its far edge as MapLibre GL JS draws it. Images inside text, and an icon with `icon-text-fit`, face the screen. The SVG output of the server renderer draws all symbols facing the screen.
-- `symbol-z-order` sorts the symbols of a layer by their position on the screen over all tiles, while MapLibre GL JS sorts them within each tile by their position in the tile. The order is found at each placement (about four times a second while the map moves), so it can lag behind a map that rotates. Icons without text that always show (`icon-allow-overlap` with no `text-field`, at a point) are drawn from the buffers of their tile and keep the order of the source.
+- `symbol-z-order` sorts the symbols within each tile by the y of their anchor in the tile, turned with the map, as MapLibre GL JS does. The order is found at each placement (about four times a second while the map moves), so it can lag behind a map that rotates. Icons without text that always show (`icon-allow-overlap` with no `text-field`, at a point) are sorted again after each half degree of turn.
 - `symbol-avoid-edges`. The property is not read, and nothing warns.
 - `symbol-height-offset`. The property is not read, and nothing warns.
 - `fill-extrusion-rounded-corner-distance`. The property is not read, and nothing warns: the corners of an extrusion are sharp.
