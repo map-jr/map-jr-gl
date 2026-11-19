@@ -442,7 +442,7 @@ export class Map extends CoreMap {
     }
     removeSource(id: string) {
         const user = this.rawStyle?.layers.find((l: any) => l.source === id);
-        return user ? this.refused(`removeSource: the layer "${user.id}" uses the source "${id}". Remove the layer first.`) : (this.forgetSource(id), super.removeSource(id));
+        return user ? this.refused(`removeSource: the layer "${user.id}" uses the source "${id}". Remove the layer first.`) : (this.forgetSource(id), this.post({type: 'lod', sources: [id], lod: []}), super.removeSource(id));
     }
 
     /**
