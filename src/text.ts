@@ -42,7 +42,7 @@ export interface ShapedLine {
     top?: number;
 }
 /** All measurements are in pixels at a font size of EM. */
-export interface Shaped { lines: ShapedLine[]; width: number; height: number; lineHeight: number; /** A glyph file of the text is on its way: the text is not drawn yet. */ wait?: boolean }
+export interface Shaped { lines: ShapedLine[]; width: number; height: number; lineHeight: number; /** A glyph file of the text is on its way: the text is not drawn yet. */ wait?: boolean; /** The names of the images inside the text, by placeholder character from U+E100. */ images?: string[] }
 /** The middle of line `i`, from the middle of the text. Lines of rich text can have different heights. */
 export function lineMiddle(shaped: Shaped, i: number): number {
     const line = shaped.lines[i];
@@ -139,6 +139,7 @@ abstract class BaseShaper implements Shaper {
             s = {lines, width: Math.max(...lines.map(l => l.width)), height, lineHeight: LINE_HEIGHT};
             // Text waiting for an image or for a glyph file is shaped again once that has arrived.
             if (this.waiting) s.wait = true;
+            if (this.inline.length) s.images = this.inline;
             if (!this.missingImage && !this.waiting) this.cache.set(key, s);
         }
         return s;

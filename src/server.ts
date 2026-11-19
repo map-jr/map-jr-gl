@@ -282,7 +282,10 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
     };
     // `coalesce` with images gives several names (see `pickImage`). The SVG gets the name of the image that is drawn.
     const picked = new Map<string, string>();
-    const labels = placeLabels(tr, all, layers, new EstimateShaper(), grid, name => {
+    // (Images inside `format` text are sized by `find`, and the SVG draws them as it draws icons.)
+    const shaper = new EstimateShaper();
+    shaper.images = find;
+    const labels = placeLabels(tr, all, layers, shaper, grid, name => {
         const one = pickImage(name, find);
         if (one !== name) picked.set(name, one);
         return find(one);

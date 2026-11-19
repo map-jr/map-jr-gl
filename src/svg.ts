@@ -165,34 +165,27 @@ export function renderSVG(s: SVGScene): string {
     const turn = (x: number, y: number, a: number, f?: number[]) => f
         ? ` transform="matrix(${f.slice(0, 4).map(v => Math.round(v * 1e3) / 1e3).join(' ')} ${num(x - f[0] * x - f[2] * y)} ${num(y - f[1] * x - f[3] * y)})"`
         : a ? ` transform="rotate(${num(a * 180 / Math.PI)} ${num(x)} ${num(y)})"` : '';
-    const vectorIcons = s.labels.filter(l => l.icon?.custom && s.images?.has(l.icon.name));
-    if (vectorIcons.length) {
-        const ids = new Map<string, string>();
-        for (const {icon} of vectorIcons) {
-            const i = icon!, img = s.images!.get(i.name)!;
-            let id = ids.get(i.name);
+    // An icon is the image of `images` as a vector symbol, or its part of a sheet of the sprite.
+    const ids = new Map<string, string>(), sheets = new Set<number>();
+    const put = (name: string, sprite: boolean, rect: number[] | undefined, x: number, y: number, w: number, h: number, rot: string) => {
+        const img = s.images?.get(name), sp = s.sprite;
+        const at = `x="${num(x - w / 2)}" y="${num(y - h / 2)}" width="${num(w)}" height="${num(h)}"`;
+        if (img && !sprite) {
+            let id = ids.get(name);
             if (!id) {
-                id = 'i' + ids.size;
-                ids.set(i.name, id);
+                ids.set(name, id = 'i' + ids.size);
                 const {viewBox, inner} = parseSVG(img.svg);
                 defs.push(`<symbol id="${id}" viewBox="${viewBox ?? '0 0 ' + svgSize(img.svg).join(' ')}" preserveAspectRatio="none">${inner}</symbol>`);
             }
-            const rot = turn(i.x, i.y, i.angle, i.frame);
-            body.push(`<use href="#${id}" x="${num(i.x - i.w / 2)}" y="${num(i.y - i.h / 2)}" width="${num(i.w)}" height="${num(i.h)}"${rot}/>`);
+            body.push(`<use href="#${id}" ${at}${rot}/>`);
+        } else if (sp && (rect ??= sp.icons[name] && [sp.icons[name].x, sp.icons[name].y, sp.icons[name].width, sp.icons[name].height])) {
+            // (One image for each sheet that an icon uses: `sprite`, and `sprite-1` and so on for the other sheets.)
+            const n = sp.icons[name]?.sheet ?? 0, id = n ? 'sprite-' + n : 'sprite';
+            if (!sheets.has(n)) { sheets.add(n); const sheet = sp.sheets?.[n] ?? sp; defs.push(`<image id="${id}" href="${escapeXML(sheet.image)}" width="${sheet.width}" height="${sheet.height}"/>`); }
+            body.push(`<svg ${at} viewBox="${rect.join(' ')}" preserveAspectRatio="none"${rot}><use href="#${id}"/></svg>`);
         }
-    }
-    const icons = s.sprite ? s.labels.filter(l => l.icon && !l.icon.custom) : [];
-    if (icons.length) {
-        const sp = s.sprite!;
-        // (One image for each sheet that an icon uses: `sprite`, and `sprite-1` and so on for the other sheets.)
-        const used = new Set<number>();
-        for (const {icon} of icons) {
-            const i = icon!, [sx, sy, sw, sh] = i.rect, n = sp.icons[i.name]?.sheet ?? 0, id = n ? 'sprite-' + n : 'sprite';
-            if (!used.has(n)) { used.add(n); const sheet = sp.sheets?.[n] ?? sp; defs.push(`<image id="${id}" href="${escapeXML(sheet.image)}" width="${sheet.width}" height="${sheet.height}"/>`); }
-            const rot = turn(i.x, i.y, i.angle, i.frame);
-            body.push(`<svg x="${num(i.x - i.w / 2)}" y="${num(i.y - i.h / 2)}" width="${num(i.w)}" height="${num(i.h)}" viewBox="${sx} ${sy} ${sw} ${sh}" preserveAspectRatio="none"${rot}><use href="#${id}"/></svg>`);
-        }
-    }
+    };
+    for (const {icon: i} of s.labels) if (i && (i.custom ? s.images?.has(i.name) : s.sprite)) put(i.name, !i.custom, i.custom ? undefined : i.rect, i.x, i.y, i.w, i.h, turn(i.x, i.y, i.angle, i.frame));
 
     if (s.labels.some(l => l.shaped)) {
         body.push(`<g font-family="${escapeXML(s.fontFamily)}" text-anchor="middle" paint-order="stroke" stroke-linejoin="round">`);
@@ -215,9 +208,16 @@ export function renderSVG(s: SVGScene): string {
             shaped.lines.forEach((line, i) => {
                 const y = l.y + (lineMiddle(shaped, i) + EM * BASELINE * (line.scale ?? 1)) * k;
                 const x = l.x + (l.justify ?? src.justify) * (line.width - shaped.width) / 2 * k;
+                // Images inside the text sit on the line where a glyph would, at their own size, as in the browser (see `iconQuads`).
+                let pen = x - line.width / 2 * k;
+                if (shaped.images) line.chars.forEach((ch, j) => {
+                    const name = shaped.images![ch.charCodeAt(0) - 0xE100] ?? '', a = line.advances[j] * k, d = s.images?.get(name), r = s.sprite?.icons[name];
+                    if (d || r) put(name, !d, undefined, pen + a / 2, l.y + lineMiddle(shaped, i) * k, a, d ? a * d.height / d.width : a * r!.height / r!.width, rot);
+                    pen += a + src.spacing * l.size;
+                });
                 // Rich text: a line is drawn in the size of its largest section (sizes inside a line are not drawn).
                 const own = line.scale && line.scale !== 1 ? ` style="font-size:${num(l.size * line.scale)}px"` : '';
-                body.push(`<text x="${num(x)}" y="${num(y)}"${rot}${own} ${common}>${escapeXML(line.text.replace(/[\uE000-\uF8FF]/g, ''))}</text>`); // images inside text are not drawn in SVG output
+                body.push(`<text x="${num(x)}" y="${num(y)}"${rot}${own} ${common}>${escapeXML(line.text.replace(/[\uE000-\uF8FF]/g, ''))}</text>`);
             });
         }
         body.push('</g>');
