@@ -426,6 +426,30 @@ for (const renderer of renderers) {
         check(terrainName, Math.min(...terrainIdle) < 200, JSON.stringify(terrainIdle));
         }
 
+        // `terrain` of the description (#1104): `null` gives a flat map also when the style has a `terrain`, no field or
+        // `undefined` gives the terrain of the style, and `patch` goes back and forth. The terrain is read from the style
+        // that the map has, so no elevation tile needs to be decoded.
+        const flat = await page.evaluate(async renderer => {
+            const t = window.t, out = [];
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+            const style = {version: 8, sources: {dem: {type: 'raster-dem', tiles: ['data:,'], tileSize: 256, maxzoom: 1}}, terrain: {source: 'dem', exaggeration: 2}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#abc'}}]};
+            const idle = host => new Promise(r => { const s = host.state.get(); if (s.loaded && s.idle) r(); else host.state.subscribe(s => s.loaded && s.idle, v => v && r()); });
+            const read = async host => { await new Promise(r => setTimeout(r, 50)); await idle(host); return JSON.stringify(host.getResolvedDescription().style.terrain ?? null); };
+            const spec = {style, initialView: {center: [0, 0], zoom: 1}, renderer, attribution: false};
+            let host = t.lib.createMap(el, {...spec, terrain: null});
+            out.push(await read(host));
+            host.patch({terrain: undefined}); out.push(await read(host));
+            host.patch({terrain: null}); out.push(await read(host));
+            host.update({...spec, terrain: {source: 'dem', exaggeration: 1.5}}); out.push(await read(host));
+            host.update(spec); out.push(await read(host));
+            host.destroy();
+            host = t.lib.createMap(el, spec); out.push(await read(host));
+            host.destroy(); el.remove();
+            return out;
+        }, renderer);
+        const flatWant = ['null', '{"source":"dem","exaggeration":2}', 'null', '{"source":"dem","exaggeration":1.5}', '{"source":"dem","exaggeration":2}', '{"source":"dem","exaggeration":2}'];
+        check(`[${renderer}] terrain: null gives a flat map with a style that has terrain, and no field or undefined gives the terrain of the style (#1104)`, JSON.stringify(flat) === JSON.stringify(flatWant), JSON.stringify(flat));
+
         // 3b. `projection` of the description (#463): it takes the place of the projection of the style, `null` gives the
         // projection of the style back, the same content does nothing, and the control `globe()` switches it.
         const projection = await page.evaluate(async renderer => {

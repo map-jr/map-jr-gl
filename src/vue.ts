@@ -231,7 +231,7 @@ const MapJrComponent = defineComponent({
         sources: Object as PropType<MapDescription['sources']>,
         /** Layers to add to the layers of the style (they do not replace them). A layer with `before` goes below the layer with that id, and one without it goes on top. */
         layers: Array as PropType<MapDescription['layers']>,
-        /** 3D terrain in place of that of the style: `{source: 'dem', exaggeration: 1.5}`. `null` or no prop means the terrain of the style. */
+        /** 3D terrain in place of that of the style: `{source: 'dem', exaggeration: 1.5}`. `null` means no 3D terrain (a flat map); no prop means the terrain of the style. */
         terrain: {type: Object as PropType<MapDescription['terrain']>, default: undefined},
         /** Images for `icon-image` of style layers, by name. A value is an SVG document, the URL of an image, or `{image, width, height}`. */
         images: Object as PropType<MapDescription['images']>,

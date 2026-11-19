@@ -73,7 +73,7 @@ export interface RenderOptions {
      * A relative URL is relative to the URL of the style.
      */
     sprite?: {id: string; url: string}[];
-    /** Terrain in place of that of the style, as `terrain` in the description of a map (`MapDescription`). */
+    /** Terrain in place of that of the style (`null` draws none), as `terrain` in the description of a map (`MapDescription`). */
     terrain?: object | null;
     /** GeoJSON data for GeoJSON sources of the style, by the id of the source, as `data` in the description of a map. */
     data?: Record<string, unknown>;
@@ -189,7 +189,7 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
     const fetchFn = limitedFetch(o, o.fetch ?? ((...a) => fetch(...a)));
     // (`sources`, `layers` and `data` are added to the style. A style from a URL is fetched here, to add them to it and to read its images.)
     let given = styleFor(o.style, o.colorScheme === 'dark'), base: string | undefined;
-    const adds = !!(o.sources || o.layers || o.terrain || o.sprite?.length);
+    const adds = !!(o.sources || o.layers || o.terrain !== undefined || o.sprite?.length);
     if (typeof given === 'string') {
         const res = await fetchFn(base = given);
         if (!res.ok) throw new Error(`Failed to load style ${given}: ${res.status}`);
