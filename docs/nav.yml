@@ -9,7 +9,9 @@
 sections:
   - title: Guide
     folder: guide
-    pages: []
+    pages:
+      - view-and-camera.md
+      - data.md
   - title: Recipes
     folder: recipes
     pages: []
