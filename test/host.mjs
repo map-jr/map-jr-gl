@@ -2906,12 +2906,12 @@ for (const renderer of renderers) {
     await page.close();
 }
 
-// The `querySource` example of the gallery (site/examples/query.js and query.compat.js; the site must be built), with
-// the usual number of tile workers.
+// The `querySource` example (examples/query.js and query.compat.js), on the harness page of the examples
+// (examples/run.html; the site must be built), with the usual number of tile workers.
 for (const code of ['core', 'compat']) {
     const page = await browser.newPage({viewport: {width: 1200, height: 800}});
     try {
-        await page.goto(`${origin}/gallery/?code=${code}#query`);
+        await page.goto(`${origin}/gallery/examples/run.html?id=query&form=${code}`);
         await page.waitForFunction(() => window.maps?.query, null, {timeout: 60000});
         await page.evaluate(async code => {
             document.getElementById('query').scrollIntoView({block: 'center'});
@@ -2956,6 +2956,24 @@ for (const code of ['core', 'compat']) {
         const shown = await answerBox();
         check(`gallery, query example (${code}): after two clicks, the answer of the last click is shown`, !!shown && !shown.includes('first-click'), JSON.stringify({shown: shown?.slice(0, 80)}));
     } catch (e) { check(`gallery, query example (${code}): the test run was completed`, false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
+// The harness page and the gallery (#1114). The harness page says which forms it runs when it is asked for a form that
+// it does not run, and for an example that no file has. The gallery has one row for each example and a live map in the
+// first row.
+{
+    const page = await browser.newPage({viewport: {width: 1200, height: 800}});
+    try {
+        const errorOf = async query => { await page.goto(`${origin}/gallery/examples/run.html?${query}`); await page.waitForFunction(() => window.exampleError || window.maps, null, {timeout: 30000}); return page.evaluate(() => [window.exampleError, document.querySelector('.readout').textContent]); };
+        const noForm = await errorOf('id=query&form=vue'), noId = await errorOf('id=nothing&form=core');
+        check('examples, harness page: a form that does not run and an unknown example each give a message on the page and in window.exampleError (#1114)',
+            /^\[map-jr-gl\] examples: the form "vue" does not run here\. Use one of: core, compat\.$/.test(noForm[0]) && noForm[1] === noForm[0] && /^\[map-jr-gl\] examples: no example has the id "nothing"/.test(noId[0]) && noId[1] === noId[0], JSON.stringify({noForm: noForm[0], noId: noId[0]}));
+        await page.goto(`${origin}/gallery/?code=vue`);
+        await page.waitForFunction(() => window.maps?.basic, null, {timeout: 60000});
+        const rows = await page.evaluate(() => [...document.querySelectorAll('#rows > article')].map(a => `${a.id}:${a.querySelector('code').textContent.length > 100 && !!a.querySelector('.live') && !!a.querySelector('.readout') && !!a.querySelector('.actions')}`).join(' '));
+        check('gallery: one row for each of the nine examples and the server row, each with its code, and a live map in the first row (#1114)',
+            rows === ['basic', 'reactive', 'markers', 'draggable', 'images', 'terrain', 'globe', 'query', 'pmtiles', 'server'].map(id => id + ':true').join(' '), rows);
+    } catch (e) { check('examples, harness page and gallery (#1114): the test run was completed', false, String(e.message).split('\n')[0]); }
     await page.close();
 }
 // Tiles before they are in view (#361). (1) The tiles of the destination of an `easeTo` and of a `flyTo` are requested

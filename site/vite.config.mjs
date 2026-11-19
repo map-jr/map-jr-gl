@@ -5,9 +5,11 @@ import {defineConfig} from 'vite';
 import path from 'node:path';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
+/** The entries of the package as the built files in dist/. The build of the harness page (scripts/site.mjs) uses them too. */
+export const alias = [{find: '@map-jr/map-jr-gl/controls', replacement: path.join(root, '../dist/controls.js')}, {find: '@map-jr/map-jr-gl/maplibre-compat', replacement: path.join(root, '../dist/map-jr-gl-maplibre-compat.js')}, {find: /^@map-jr\/map-jr-gl$/, replacement: path.join(root, '../dist/map-jr-gl.js')}];
 export default defineConfig({
     root,
     base: './', // works from any path, e.g. https://<user>.github.io/<repository>/
-    resolve: {alias: [{find: '@map-jr/map-jr-gl/controls', replacement: path.join(root, '../dist/controls.js')}, {find: '@map-jr/map-jr-gl/maplibre-compat', replacement: path.join(root, '../dist/map-jr-gl-maplibre-compat.js')}, {find: /^@map-jr\/map-jr-gl$/, replacement: path.join(root, '../dist/map-jr-gl.js')}]},
+    resolve: {alias},
     build: {outDir: path.join(root, '../site-dist'), emptyOutDir: true, target: 'es2022', rollupOptions: {input: {main: path.join(root, 'index.html'), playground: path.join(root, 'playground.html')}}},
 });

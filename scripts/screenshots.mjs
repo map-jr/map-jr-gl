@@ -1,5 +1,6 @@
-// Takes the pictures the README shows, from the built gallery. Run with the demo server up: pnpm screenshots
-// (The server is started by `pnpm demo`; set GALLERY to use another address.)
+// Takes the pictures the README shows, from the harness page of the examples (examples/run.html, built by `pnpm site`).
+// Run with the demo server up: pnpm screenshots
+// (The server is started by `pnpm demo`; set GALLERY to use another address of the built site.)
 import {createRequire} from 'node:module';
 import {copyFileSync, existsSync, mkdirSync} from 'node:fs';
 
@@ -8,17 +9,18 @@ const gallery = process.env.GALLERY ?? 'http://localhost:8080/gallery/';
 const out = new URL('../docs/images/', import.meta.url).pathname;
 mkdirSync(out, {recursive: true});
 
-// Each picture is one gallery row's map. Rows with slower data (elevation, shield definitions) get longer to settle.
-const shots = [['basic', 6], ['markers', 7], ['terrain', 14], ['shields', 12], ['query', 6], ['pmtiles', 8]];
+// Each picture is the map of one example, in its main API form. An example with slower data (elevation) gets longer to settle.
+const shots = [['basic', 6], ['markers', 7], ['terrain', 14], ['query', 6], ['pmtiles', 8]];
 const browser = await chromium.launch({args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist']});
-const page = await browser.newPage({viewport: {width: 1280, height: 900}, deviceScaleFactor: 2});
-await page.goto(gallery);
+const page = await browser.newPage({viewport: {width: 633, height: 700}, deviceScaleFactor: 2});
 for (const [id, seconds] of shots) {
-    const row = page.locator('#' + id);
-    await row.scrollIntoViewIfNeeded();
+    await page.goto(new URL(`examples/run.html?id=${id}&form=core`, gallery).href);
+    await page.waitForFunction(id => window.maps?.[id] || window.exampleError, id, {timeout: 60000});
+    const error = await page.evaluate(() => window.exampleError);
+    if (error) throw new Error(error);
     await page.waitForTimeout(seconds * 1000);
     // JPEG keeps the repository small: these are photographs of maps, not diagrams.
-    await row.locator('.map').screenshot({path: `${out}${id}.jpg`, type: 'jpeg', quality: 82});
+    await page.locator('.map').screenshot({path: `${out}${id}.jpg`, type: 'jpeg', quality: 82});
     console.log(`docs/images/${id}.jpg`);
 }
 await browser.close();

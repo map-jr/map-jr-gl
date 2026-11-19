@@ -58,7 +58,7 @@ try { createRequire(path.join(root, 'package.json')).resolve('playwright'); } ca
 
 if (!noBuild) {
     if (newest(['src', 'build.mjs', 'scripts/private-names.mjs', 'package.json']) > age('dist/map-jr-gl.js')) run('building dist/ (node build.mjs)', process.execPath, ['build.mjs']);
-    if (usesServer && newest(['site', 'dist', 'demo', 'scripts/site.mjs']) > age('site-dist/index.html')) run('building the gallery (node scripts/site.mjs)', process.execPath, ['scripts/site.mjs']);
+    if (usesServer && newest(['site', 'examples', 'dist', 'demo', 'scripts/site.mjs']) > age('site-dist/index.html')) run('building the gallery (node scripts/site.mjs)', process.execPath, ['scripts/site.mjs']);
 }
 
 /** A port that no process listens on now. */

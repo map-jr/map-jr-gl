@@ -61,7 +61,7 @@ const metres = await map.queryElevation([7.6586, 45.9763]);
 - `map.queryElevation(where)` takes a position (`[lng, lat]`) or a point of the screen (`{x, y}`). The result is a
   promise, and it is `null` where there is no data.
 
-The gallery has this example as a complete page for each entry and adapter (`site/examples/terrain.*`).
+The gallery has this example as a complete page for each entry and adapter (`examples/terrain.*`).
 
 ## The elevation source
 
