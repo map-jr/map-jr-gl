@@ -19,9 +19,19 @@ writing); this brief has the steps.
 5. Run `pnpm build && pnpm test`. When the change can affect a browser test, run the suite that covers it:
    `node scripts/agents/suite.mjs test/host.mjs` (or `test/interact.mjs`, `test/vue.mjs`, `test/react.mjs`,
    `test/loading.mjs`). It builds what is stale, starts its own demo server on a free port, prints the counts and
-   the `FAIL` lines, and stops the server. When Playwright is missing, it prints the command that installs it. Do
-   not run `pnpm test:render` or the conformance tools; CI runs them.
-6. Commit, `git push -u origin <branch>`, and open a pull request against `main`
+   the `FAIL` lines, and stops the server. When Playwright is missing, it prints the command that installs it.
+   A change of placement, of the engine or of `src/gl.ts` runs both `test/host.mjs` and `test/interact.mjs`, because
+   CI runs both: on 2026-11-19 a change of the order of symbols broke two checks of `test/host.mjs`, one of them the
+   frame time with 100,000 icons, that its worker had not run (#1074).
+6. When the change can change what a map draws (a style property, placement, a shader, the building of tiles), run
+   the render tests of the groups that it touches with and without the change
+   (`node test/conformance/render.mjs --filter='<regex>'`), and give the counts of match, near and differ. If a test
+   moves to match or away from it, merge `origin/main`, do a full run on the merged tree (about ten minutes), commit
+   `test/conformance/render-result.json` and `render-tests.json`, and set the floor of `test:render` in
+   `package.json` to the match count of that run (CI gives the same count). If no test moves, restore the two files
+   and leave the floor. Do not run the other conformance tools (example pages, plugins, styles) unless your prompt
+   asks.
+7. Commit, `git push -u origin <branch>`, and open a pull request against `main`
    (`gh pr create --repo map-jr/map-jr-gl --base main`) that follows `.github/pull_request_template.md`, says
    `Fixes #N`, and ends with the attribution line that your session instructions give. Write `Part of #N` only when
    your prompt says that the issue is a tracking issue. Then stop.
@@ -29,6 +39,12 @@ writing); this brief has the steps.
 
 ## Rules
 
+- A fault that your own change causes is not a "Found" line: fix it in your pull request, with a check. (On
+  2026-11-19 a change left the filter NEAREST on a texture that terrain shares, and reported it as found, #1071.)
+- Measure the size before the change on `origin/main` (`pnpm test:size` in the copy of `without-fix.mjs`, or in a
+  worktree of `origin/main`); do not write "not measured".
+- An entry with the label `wontfix` in `test/conformance/render-expectations.json` needs the owner: write it under
+  "Needs owner".
 - A new text or check kind of `src/mistakes.ts` takes the number of its issue (the comment above `texts[30]` says
   how). Do not take the next free number: another branch takes it too.
 - A test that fails locally but passes in the `checks` and `browser` jobs of `main` is load on this machine. Say so
