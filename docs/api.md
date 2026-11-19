@@ -387,7 +387,7 @@ any key in `metadata`, so MapLibre GL JS reads the style and ignores the images.
   error only when a layer asks for it. So a style with many images is ready as soon as a style with a sprite. An SVG
   template is known to the map at once, and each of its variants is drawn when a layer asks for it. The images that
   are drawn share the texture of the run-time images (see [An image that is a template](#an-image-that-is-a-template)):
-  that texture is full after 961 icons of the size of those of OpenFreeMap (most are 21 by 21 CSS pixels) at a pixel
+  that texture is full after 961 icons of 21 by 21 CSS pixels at a pixel
   ratio of 3.
 - The server renderer (`renderToSVG`, `renderToImage`) draws the SVG images of the style, with the same rules.
 - The compat entry (`@map-jr/map-jr-gl/maplibre-compat`) draws them too, with the same rules (#759). An image that the
