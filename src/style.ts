@@ -40,13 +40,16 @@ const SPEC: Record<string, Record<string, [string, PropKind, any, string[]?]>> =
         weight: ['heatmap-weight', 'number', 1], intensity: ['heatmap-intensity', 'number', 1], radius: ['heatmap-radius', 'number', 30],
     },
     raster: {opacity: ['raster-opacity', 'number', 1], saturation: ['raster-saturation', 'number', 0], contrast: ['raster-contrast', 'number', 0],
-        brightnessMin: ['raster-brightness-min', 'number', 0], brightnessMax: ['raster-brightness-max', 'number', 1], hueRotate: ['raster-hue-rotate', 'number', 0]},
+        brightnessMin: ['raster-brightness-min', 'number', 0], brightnessMax: ['raster-brightness-max', 'number', 1], hueRotate: ['raster-hue-rotate', 'number', 0],
+        // (`resampling` is the newer name; MapLibre GL JS reads it before `raster-resampling`.)
+        resampling: ['resampling', 'string', null], rasterResampling: ['raster-resampling', 'string', 'linear'], layerBlend: ['raster-layer-blend', 'string', 'normal']},
     hillshade: {
         shadow: ['hillshade-shadow-color', 'color', '#000'], highlight: ['hillshade-highlight-color', 'color', '#fff'], accent: ['hillshade-accent-color', 'color', '#000'],
         exaggeration: ['hillshade-exaggeration', 'number', 0.5], direction: ['hillshade-illumination-direction', 'number', 335],
         anchor: ['hillshade-illumination-anchor', 'string', 'viewport'], method: ['hillshade-method', 'string', 'standard'], altitude: ['hillshade-illumination-altitude', 'number', 45],
+        resampling: ['resampling', 'string', 'linear'],
     },
-    'color-relief': {opacity: ['color-relief-opacity', 'number', 1]},
+    'color-relief': {opacity: ['color-relief-opacity', 'number', 1], resampling: ['resampling', 'string', 'linear']},
     symbol: {
         icon: ['icon-image', 'string', ''], iconSize: ['icon-size', 'number', 1], iconOffset: ['icon-offset', 'string', [0, 0]], iconRotate: ['icon-rotate', 'number', 0],
         rotate: ['text-rotate', 'number', 0],
@@ -57,7 +60,7 @@ const SPEC: Record<string, Record<string, [string, PropKind, any, string[]?]>> =
         iconOpacity: ['icon-opacity', 'number', 1], iconAnchor: ['icon-anchor', 'string', 'center', ANCHORS], iconColor: ['icon-color', 'color', '#000'], iconHalo: ['icon-halo-color', 'color', 'rgba(0,0,0,0)'], iconHaloWidth: ['icon-halo-width', 'number', 0], iconHaloBlur: ['icon-halo-blur', 'number', 0],
         iconFit: ['icon-text-fit', 'string', 'none'], iconFitPad: ['icon-text-fit-padding', 'raw', [0, 0, 0, 0]], iconOverlap: ['icon-allow-overlap', 'raw', false],
         iconOptional: ['icon-optional', 'raw', false], textOptional: ['text-optional', 'raw', false], iconAlign: ['icon-rotation-alignment', 'string', 'auto'], iconPitch: ['icon-pitch-alignment', 'string', 'auto'],
-        textAlign: ['text-rotation-alignment', 'string', 'auto'], textPitch: ['text-pitch-alignment', 'string', 'auto'], symbolSpacing: ['symbol-spacing', 'number', 250], varAnchor: ['text-variable-anchor', 'raw', null], varOffset: ['text-variable-anchor-offset', 'raw', null], maxAngle: ['text-max-angle', 'number', 45],
+        textAlign: ['text-rotation-alignment', 'string', 'auto'], textPitch: ['text-pitch-alignment', 'string', 'auto'], symbolSpacing: ['symbol-spacing', 'number', 250], varAnchor: ['text-variable-anchor', 'raw', null], varOffset: ['text-variable-anchor-offset', 'raw', null], maxAngle: ['text-max-angle', 'number', 45], keepUpright: ['text-keep-upright', 'raw', true], iconKeepUpright: ['icon-keep-upright', 'raw', false],
         radial: ['text-radial-offset', 'number', 0], ignore: ['text-ignore-placement', 'raw', false],
         color: ['text-color', 'color', '#000'], opacity: ['text-opacity', 'number', 1],
         haloColor: ['text-halo-color', 'color', 'rgba(0,0,0,0)'], haloWidth: ['text-halo-width', 'number', 0], haloBlur: ['text-halo-blur', 'number', 0], justify: ['text-justify', 'string', 'center', ['auto', 'left', 'center', 'right']],
@@ -172,6 +175,17 @@ export function hillshadeLights(p: Record<string, Prop>, zoom: number, bearing: 
     return out;
 }
 
+/**
+ * Draws with the filter `filter` on the bound texture, and gives the texture back its usual filter (linear) after: the
+ * textures of tiles are shared with other layers and with 3D terrain, which must not see `nearest` (#1013).
+ */
+export function withFilter(gl: Pick<WebGL2RenderingContext, 'texParameteri' | 'TEXTURE_2D' | 'TEXTURE_MIN_FILTER' | 'TEXTURE_MAG_FILTER' | 'LINEAR'>, filter: number, draw: () => void) {
+    const set = (f: number) => { gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, f); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, f); };
+    if (filter !== gl.LINEAR) set(filter);
+    draw();
+    if (filter !== gl.LINEAR) set(gl.LINEAR);
+}
+
 export function compileLayer(l: LayerJSON): CompiledLayer | null {
     const spec = SPEC[l.type];
     if (!spec) return null;
@@ -182,6 +196,8 @@ export function compileLayer(l: LayerJSON): CompiledLayer | null {
         // These properties of a hillshade layer take one value or a list of values, one for each light. A list is kept as it is.
         p[k] = l.type === 'hillshade' && LIGHT_PROPS.includes(k) && Array.isArray(v) ? compileProp(typeof v[0] !== 'string' || parseColor(v[0]) ? ['literal', v] : v, 'string', def) : compileProp(v, kind, def, values);
     }
+    const fade = l.paint?.['raster-fade-duration'];
+    if (l.type === 'raster' && fade != null && fade !== 0) warnOnce(`raster-fade-duration: the property has no effect, and a raster tile shows at once when it has loaded. Remove it, or write 0.`);
     // A server-only extra filter is compiled separately, so it can be an expression even when the layer's own filter is legacy syntax.
     let relief: Float32Array | undefined, ramp: Uint8Array | undefined;
     if (l.type === 'color-relief') {
