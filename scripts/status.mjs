@@ -12,6 +12,7 @@ const num = (text, re) => +(re.exec(text)?.[1] ?? NaN);
 const unit = run('node --experimental-transform-types --no-warnings --test test/unit/*.test.ts');
 const expr = run('node test/conformance/expressions.mjs');
 const api = run('node test/conformance/api.mjs --write');
+const spec = run('node test/conformance/spec.mjs');
 const render = existsSync(root + 'test/conformance/render-result.json') ? JSON.parse(readFileSync(root + 'test/conformance/render-result.json', 'utf8')) : null;
 const gz = file => (gzipSync(readFileSync(root + 'dist/' + file), {level: 9}).length / 1024).toFixed(0);
 // The page script is map-jr-gl-maplibre-compat.js (the entry that the comparison with MapLibre GL JS uses) and the files that it imports when it loads (not the ones that it imports on demand).
@@ -43,6 +44,7 @@ const lines = [
     `| Unit tests | ${num(unit, /# pass (\d+)/)} pass, ${num(unit, /# fail (\d+)/)} fail |`,
     `| MapLibre expression tests | ${exprPass} of ${exprAll} pass (${Math.round(100 * exprPass / exprAll)}%), which is ${Math.round(100 * exprPass / (exprAll - exprWontfix))}% of the ${exprAll - exprWontfix} that are not left out on purpose. ${exprWontfix} are left out on purpose, ${exprLater} are planned for later, and ${exprFail} fail. |`,
     `| MapLibre \`Map\` methods | ${num(api, /coverage: (\d+)/)} of ${num(api, /of (\d+) methods/)} are available; ${num(api, /no effect: (\d+)/)} more are accepted and have no effect. ${num(api, /not counted: (\d+)/)} that are internal to MapLibre GL JS are not counted. |`,
+    `| Properties of the MapLibre style specification | ${num(spec, /: (\d+) of/)} of ${num(spec, /of (\d+) properties/)} are read with every expression input that the specification allows. ${num(spec, /not read: (\d+)/)} are not read, and ${num(spec, /fewer expression inputs: (\d+)/)} take fewer inputs (\`node test/conformance/spec.mjs --gaps\` lists them). |`,
     ...plugins,
     // "near" includes the tests that are the same (see test/conformance/render-summary.mjs).
     ...(render ? [`| MapLibre render tests | ${render.match} of ${render.run} are the same (${percent(render.match, render.run)}; 1% of pixels or less are different). ${render.near} of ${render.run} are the same or near (${percent(render.near, render.run)}; 5% or less).${render.differWontfix ? ` ${render.differWontfix} of the ${render.differ} that differ are differences that the library keeps (see [Development](docs/development.md#render-tests)).` : ''} |`] : []),
