@@ -51,7 +51,10 @@ jobs:
       - run: pnpm install --frozen-lockfile
       # The browser driver is not a dependency of the package: the development machine has its own copy.
       - run: pnpm add -D playwright@1.65.1
-      - run: pnpm exec playwright install --with-deps ${{ matrix.browser }}
+      # The system packages come from the Ubuntu mirror, which can be out of reach for a while (#1091): try 3 times.
+      - name: Install the browser and its system packages
+        shell: bash
+        run: for i in 1 2 3; do pnpm exec playwright install --with-deps ${{ matrix.browser }} && exit 0; echo "::warning::the install failed (attempt $i of 3)"; sleep 30; done; exit 1
       - run: node build.mjs && node scripts/site.mjs
       - name: Benchmark and checks
         run: |
