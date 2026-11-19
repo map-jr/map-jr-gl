@@ -263,7 +263,7 @@ queryFeatures(at?: FeaturePlace | FeatureOptions, options?: FeatureOptions): Pro
 | `nonce` | `string` | | The nonce of a Content Security Policy with `style-src 'nonce-…'`, for the style sheet of the map. |
 | `attribution` | `false \| {compact?: boolean; customAttribution?: string \| string[]}` | | The options of the built-in attribution, or `false` to hide it. |
 | `hash` | `string \| boolean` | `false` | Whether the view is kept in the hash of the URL; a string is the name of the parameter. |
-| `ssr` | `boolean \| {width?: number; height?: number; overrides?: false \| Record<string, SSROverrides>; attribution?: string \| string[]; timeout?: number; requestTimeout?: number; maxBytes?: number; allowHosts?: string[]; tileZoomOffset?: number}` | `false` | Whether a server renders the first view as SVG into the page: `true`, or options. |
+| `ssr` | `boolean \| {width?: number; height?: number; overrides?: false \| Record<string, `[`SSROverrides`](../../docs/reference/server.md#overrides)`>; attribution?: string \| string[]; timeout?: number; requestTimeout?: number; maxBytes?: number; allowHosts?: string[]; tileZoomOffset?: number}` | `false` | Whether a server renders the first view as SVG into the page: `true`, or options. |
 <!-- ref:VueMapJrProps:end -->
 
 ## `ReactMapJrProps`
@@ -291,13 +291,3 @@ queryFeatures(at?: FeaturePlace | FeatureOptions, options?: FeatureOptions): Pro
 | `description` **required** | [`MapDescription`](../../docs/reference/description.md#mapdescription) | | The description of the map. |
 | `ready` | `(map: `[`MapInstance`](#mapinstance)`) => void` | | Called with the map once it is created. |
 <!-- ref:SvelteMapAction:end -->
-
-## `NavigationOptions`
-
-<!-- ref:NavigationOptions:start -->
-| Name | Type | Default | Description |
-|---|---|---|---|
-| `showZoom` | `boolean` | `true` | Whether the control shows the buttons to zoom in and out. |
-| `showCompass` | `boolean` | `true` | Whether the control shows the compass. |
-| `visualizePitch` | `boolean` | `false` | Whether the compass also shows the pitch, a drag on it changes the pitch, and a click on it resets the pitch. |
-<!-- ref:NavigationOptions:end -->
