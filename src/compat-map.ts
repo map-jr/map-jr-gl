@@ -411,6 +411,8 @@ export class Map extends CoreMap {
         }
         return super.addLayer(one, beforeId);
     }
+    /** As in MapLibre GL JS, a GeoJSON source without `buffer` keeps 128 pixels around each tile (the main entry keeps 16). */
+    protected geojsonBuffer() { return 128; }
     removeLayer(id: string) { this.customs?.delete(id); return super.removeLayer(id); }
     private styleUrl: string | null = null;
     /** The URL given as the option `style` or to the latest call of `setStyle`, as it was written; `null` when that was an object or nothing. */
