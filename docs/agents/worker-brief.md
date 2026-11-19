@@ -12,8 +12,10 @@ writing); this brief has the steps.
 3. Make the smallest change that resolves the issue, with a test that fails without it. Do the parts that your
    prompt names, and leave out a part that is large or needs the owner.
 4. Run the new test against the code without the fix, and give both results in the report:
-   `node scripts/agents/without-fix.mjs -- <command>`. It runs the command in a temporary copy where `src/` is as on
-   `main` and removes the copy afterwards. Do not use `git stash`.
+   `node scripts/agents/without-fix.mjs -- <command>`. It runs the command in a temporary copy where `src/`,
+   `build.mjs` and `scripts/private-names.mjs` are as on `main` (`--paths` changes the list), builds the copy first
+   (`--no-build` skips that), links the folders of `.cache/`, and removes the copy afterwards. The arguments reach
+   the command without a shell, so `-- sh -c '…'` keeps its quoting. Do not use `git stash`.
 5. Run `pnpm build && pnpm test`. When the change can affect a browser test, run the suite that covers it:
    `node scripts/agents/suite.mjs test/host.mjs` (or `test/interact.mjs`, `test/vue.mjs`, `test/react.mjs`,
    `test/loading.mjs`). It builds what is stale, starts its own demo server on a free port, prints the counts and
