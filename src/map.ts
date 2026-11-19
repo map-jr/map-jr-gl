@@ -139,8 +139,19 @@ export class Map {
     private moving = false;
     protected ready = false;
     protected styleBase = '';
-    readonly dragPan = new InteractionHandler(); readonly scrollZoom = new InteractionHandler(); readonly doubleClickZoom = new InteractionHandler();
-    readonly dragRotate = new InteractionHandler(); readonly touchZoomRotate = new TouchZoomRotateHandler(); readonly touchPitch = new InteractionHandler();
+    /** A drag with the mouse or one finger moves the map. */
+    readonly dragPan = new InteractionHandler();
+    /** The scroll wheel and the trackpad zoom the map. */
+    readonly scrollZoom = new InteractionHandler();
+    /** A double click or a double tap zooms in by one level. */
+    readonly doubleClickZoom = new InteractionHandler();
+    /** A drag with the right mouse button, or with Ctrl and the left one, turns and tilts the map. */
+    readonly dragRotate = new InteractionHandler();
+    /** A pinch with two fingers zooms and turns the map; `disableRotation()` keeps the zoom only. */
+    readonly touchZoomRotate = new TouchZoomRotateHandler();
+    /** A drag up or down with two fingers tilts the map. */
+    readonly touchPitch = new InteractionHandler();
+    /** The arrow keys, `+` and `-` move, turn and zoom the map while it has the focus. */
     readonly keyboard = new InteractionHandler();
     /** Shift and drag draws a box, and the map zooms to it. */
     readonly boxZoom = new InteractionHandler();
@@ -902,13 +913,21 @@ export class Map {
     }
 
     // ---- camera ----
+    /** Returns the map centre. */
     getCenter() { return new LngLat(this.tr.lng, this.tr.lat); }
+    /** Returns the zoom level. */
     getZoom() { return this.tr.zoom; }
+    /** Returns the bearing in degrees clockwise from north. */
     getBearing() { return this.tr.bearing; }
+    /** Returns the pitch in degrees from straight down. */
     getPitch() { return this.tr.pitch; }
+    /** Returns the smallest zoom level that the user can reach. */
     getMinZoom() { return this.tr.minZoom; }
+    /** Returns the largest zoom level that the user can reach. */
     getMaxZoom() { return this.tr.maxZoom; }
+    /** Returns the element that holds the map. */
     getContainer() { return this.container; }
+    /** Returns the canvas that the map draws on. */
     getCanvas() { return this.canvas; }
     /**
      * The map as an image. Waits until the map is idle, draws one frame and gives the canvas of that frame as a Blob
@@ -941,8 +960,10 @@ export class Map {
     loaded() { return this.isLoaded && this.tilesLoaded && !this.styleLoading && this.restyled === this.restyles; }
     /** A `setStyle` whose style has not come yet. */
     private styleLoading = false;
+    /** Whether the camera moves now, by the user or by a camera method. */
     isMoving() { return this.moving; }
     project(lngLat: LngLatLike) { const [x, y] = this.tr.project(...toLngLat(lngLat)); return {x, y}; }
+    /** Converts a point of the screen, in CSS pixels from the top left corner of the map, to a position. */
     unproject(point: {x: number; y: number} | [number, number]) {
         const [x, y] = Array.isArray(point) ? point : [point.x, point.y];
         const [lng, lat] = this.tr.unproject(x, y);
@@ -953,6 +974,7 @@ export class Map {
         const [lng, lat] = toLngLat(lngLat);
         return !!this.tr.globeness && this.tr.globe!.hidden(this.tr, mercX(lng), mercY(lat));
     }
+    /** Returns the smallest box that contains the visible map. */
     getBounds() {
         // (On the globe: the edges of the screen and of the globe, and a pole in view; see `bounds` in globe.ts.)
         if (this.tr.globeness) return new LngLatBounds(this.tr.globe!.bounds(this.tr));
@@ -1012,6 +1034,7 @@ export class Map {
         return this.easeTo({...o, duration: o.duration ?? 1});
     }
     private flight?: number[];
+    /** Stops the animation of the camera, where it is. */
     stop() { this.eased = undefined; this.post({type: 'stop'}); return this; }
 
     /** The centre and zoom that fit `bounds` ([west, south, east, north] or [[west, south], [east, north]]) in view. */
@@ -1025,9 +1048,21 @@ export class Map {
     }
 
     private limits() { this.post({type: 'limits', minZoom: this.tr.minZoom, maxZoom: this.tr.maxZoom, maxPitch: this.tr.maxPitch, minPitch: this.tr.minPitch, maxBounds: this.tr.maxBounds}); return this; }
+    /**
+     * Sets the smallest zoom level that the user can reach.
+     * @param z The zoom level. `undefined` restores the default, -2.
+     */
     setMinZoom(z = -2) { this.tr.minZoom = z; return this.limits(); }
+    /**
+     * Sets the largest zoom level that the user can reach.
+     * @param z The zoom level. `undefined` restores the default, 22.
+     */
     setMaxZoom(z = 22) { this.tr.maxZoom = z; return this.limits(); }
     declare private pitchWarned?: boolean;
+    /**
+     * Sets the largest pitch that the user can reach, in degrees. A value above 90 is limited to 90 and warns once.
+     * @param p The pitch. `undefined` or `null` restores the default, 60.
+     */
     setMaxPitch(p?: number | null) { this.tr.maxPitch = this.pitchCap(p); return this.limits(); }
     private pitchCap(p?: number | null) {
         p ??= 60;
@@ -1035,8 +1070,14 @@ export class Map {
         if (p > MAX_PITCH && !this.pitchWarned && (this.pitchWarned = true)) console.warn(`[map-jr-gl] maxPitch ${p}: the pitch stops at ${MAX_PITCH}, because the library has no elevation of the camera yet. Pass ${MAX_PITCH} or less.`);
         return Math.min(MAX_PITCH, p);
     }
+    /** Returns the largest pitch that the user can reach, in degrees. */
     getMaxPitch() { return this.tr.maxPitch; }
+    /** Returns the smallest pitch that the user can reach, in degrees. */
     getMinPitch() { return this.tr.minPitch; }
+    /**
+     * Sets the smallest pitch that the user can reach, in degrees. The value is limited to between 0 and the largest pitch.
+     * @param p The pitch. `undefined` restores the default, 0.
+     */
     setMinPitch(p = 0) { this.tr.minPitch = Math.max(0, Math.min(p, this.tr.maxPitch)); return this.limits(); }
     /** Keeps the map centre inside a box (`[[west, south], [east, north]]`), or lifts the restriction with `null`. */
     setMaxBounds(bounds?: LngLatBoundsInput | null) {
@@ -1048,7 +1089,9 @@ export class Map {
         this.tr.constrain();
         return this.limits();
     }
+    /** Returns the box that the map centre stays in, or `null` when there is none. */
     getMaxBounds() { const b = this.tr.maxBounds; return b && {getWest: () => b[0], getSouth: () => b[1], getEast: () => b[2], getNorth: () => b[3], toArray: () => [[b[0], b[1]], [b[2], b[3]]]}; }
+    /** Returns the ratio of device pixels to CSS pixels that the canvas uses. */
     getPixelRatio() { return this.dpr; }
     /** With 3D terrain: the height of the ground at a position, in metres above sea level multiplied by the exaggeration (as in MapLibre); `null` without terrain. */
     queryTerrainElevation(lngLat: LngLatLike): number | null {
@@ -1067,12 +1110,16 @@ export class Map {
     refreshTiles(sourceId: string) { this.unloaded(sourceId); this.post({type: 'refresh', source: sourceId}); return this; }
     /** The data of a source changed: the source is not loaded until the engine says so. */
     private unloaded(id: string) { this.loadedSources.delete(id); this.tilesLoaded = false; }
+    /** Whether the style has loaded. */
     isStyleLoaded() { return this.ready; }
+    /** Whether the tiles of the current view have loaded. */
     areTilesLoaded() { return this.tilesLoaded; }
     zoomIn() { return this.easeTo({zoom: this.tr.zoom + 1, duration: 300}); }
     zoomOut() { return this.easeTo({zoom: this.tr.zoom - 1, duration: 300}); }
+    /** Draws the map again in the next frame. */
     triggerRepaint() { this.post({type: 'repaint'}); }
 
+    /** Reads the size of the container again and resizes the map to it. Call it after a change of the size that the map does not see. */
     resize() {
         this.measure();
         this.post({type: 'resize', width: this.tr.width, height: this.tr.height, dpr: this.dpr});
@@ -1282,6 +1329,7 @@ export class Map {
         if (!terrain) { this.tr.heightAt = undefined; this.tr.elevation = 0; }
         return this.editStyle(s => { if (terrain) s.terrain = terrain; else delete s.terrain; this.fire('terrain', {terrain}); });
     }
+    /** Returns the `terrain` of the style, or `null` when the map has no 3D terrain. */
     getTerrain(): {source: string; exaggeration?: number} | null { return this.rawStyle?.terrain ?? null; }
     /** Sets the light on buildings: its anchor, position (distance, azimuth, polar angle), colour and intensity. */
     setLight(light: {anchor?: 'map' | 'viewport'; position?: [number, number, number]; color?: string; intensity?: number}) {
@@ -1336,6 +1384,7 @@ export class Map {
         this.instant = !options?.diff;
         this.restyle(true);
     }
+    /** Returns the style layer with this id, or `undefined` when the style has none. */
     getLayer(id: string) { return this.rawStyle?.layers.find((l: any) => l.id === id); }
     /** The source's specification. GeoJSON sources also get MapLibre's `setData(data)` to replace their contents. */
     getSource(id: string) {
@@ -1492,7 +1541,9 @@ export class Map {
         // (The engine works out whether this needs tiles rebuilt: per-feature values are baked into their buffers.)
         return this.editStyle(s => { (s.layers[this.layerIndex(s, layerId)][group] ??= {})[name] = value; });
     }
+    /** Sets the value of a paint property of a style layer. */
     setPaintProperty(layerId: string, name: string, value: unknown) { return this.setProp('paint', layerId, name, value); }
+    /** Sets the value of a layout property of a style layer. */
     setLayoutProperty(layerId: string, name: string, value: unknown) {
         if (name === 'visibility') this.toggled.add(layerId);
         return this.setProp('layout', layerId, name, value);
@@ -1501,6 +1552,7 @@ export class Map {
     private toggled = new Set<string>();
     /** The layers that the engine hides after the last style, as it reported them (#1032). */
     private hidden = new Set<string>();
+    /** Sets the filter of a style layer. */
     setFilter(layerId: string, filter: unknown) { return this.editStyle(s => { s.layers[this.layerIndex(s, layerId)].filter = filter; }); }
 
     /**
@@ -1539,10 +1591,12 @@ export class Map {
         corner.appendChild(el);
         return this;
     }
+    /** Removes a control that `addControl` added. */
     removeControl(control: Control) {
         if (this.controls.delete(control)) control.onRemove(this);
         return this;
     }
+    /** Whether the map has this control. */
     hasControl(control: Control) { return this.controls.has(control); }
 
     // ---- fonts and images ----
@@ -1620,6 +1674,7 @@ export class Map {
             content: scale(options.content) as [number, number, number, number] | undefined, textFitWidth: options.textFitWidth, textFitHeight: options.textFitHeight, sdf: options.sdf, update}, [data.buffer]);
         return this;
     }
+    /** Removes an image that `addImage` added. */
     removeImage(name: string) {
         this.sendUpdates();
         this.imageTurn(name); this.imageNames.delete(name); this.imageInputs.delete(name);
@@ -1653,6 +1708,7 @@ export class Map {
         this.updates.clear();
         for (const [name, source] of list) if (!this.removed && this.imageNames.has(name)) this.putImage(name, source, this.imageInputs.get(name)?.[1] ?? {}, false, true);
     }
+    /** Whether the map has an image with this name. */
     hasImage(name: string) { return this.imageNames.has(name); }
     /**
      * Supplies images on demand. When a style asks for an `icon-image` nothing provides, the resolver is called with

@@ -263,7 +263,7 @@ queryFeatures(at?: FeaturePlace | FeatureOptions, options?: FeatureOptions): Pro
 | `nonce` | `string` | | The nonce of a Content Security Policy with `style-src 'nonce-…'`, for the style sheet of the map. |
 | `attribution` | `false \| {compact?: boolean; customAttribution?: string \| string[]}` | | The options of the built-in attribution, or `false` to hide it. |
 | `hash` | `string \| boolean` | `false` | Whether the view is kept in the hash of the URL; a string is the name of the parameter. |
-| `ssr` | `boolean \| {width?: number; height?: number; overrides?: false \| Record<string, SSROverrides>; attribution?: string \| string[]; timeout?: number; requestTimeout?: number; maxBytes?: number; allowHosts?: string[]; tileZoomOffset?: number}` | `false` | Whether a server renders the first view as SVG into the page: `true`, or options. |
+| `ssr` | `boolean \| {width?: number; height?: number; overrides?: false \| Record<string, `[`SSROverrides`](../../docs/reference/server.md#overrides)`>; attribution?: string \| string[]; timeout?: number; requestTimeout?: number; maxBytes?: number; allowHosts?: string[]; tileZoomOffset?: number}` | `false` | Whether a server renders the first view as SVG into the page: `true`, or options. |
 <!-- ref:VueMapJrProps:end -->
 
 ## `ReactMapJrProps`
@@ -301,3 +301,185 @@ queryFeatures(at?: FeaturePlace | FeatureOptions, options?: FeatureOptions): Pro
 | `showCompass` | `boolean` | `true` | Whether the control shows the compass. |
 | `visualizePitch` | `boolean` | `false` | Whether the compass also shows the pitch, a drag on it changes the pitch, and a click on it resets the pitch. |
 <!-- ref:NavigationOptions:end -->
+
+## `CompatMap`
+
+<!-- ref:CompatMap:start -->
+| Name | Type | Description |
+|---|---|---|
+| `on` | `<T extends keyof MapLayerEventType>(type: T, layerId: string \| string[], listener: (e: MapLayerEventType[T]) => void) => this` | `on(type, listener)`, or `on(type, layerId, listener)` to hear `click`, `mousemove`, `mouseenter` and `mouseleave` only where that style layer's features are, with the features on the event as `e.features`. |
+| `once` | `<T extends keyof MapEventType>(type: T, listener: (e: MapEventType[T]) => void) => this` | As in MapLibre GL JS: with no listener, `once` returns a promise for the event; a layer id makes it a layer event. |
+| `off` | `<T extends keyof MapLayerEventType>(type: T, layerId: string \| string[], listener: (e: MapLayerEventType[T]) => void) => this` | Removes a listener that `on` added, as in MapLibre GL JS. |
+| `getSource` | `<T extends Source = Source>(id: string) => T \| undefined` | The source's specification. |
+| `easeTo` | `(o: EaseToOptions, eventData?: EventData) => this` | `offset` ([x, y] or {x, y}, CSS pixels) puts `center` at that distance from the centre of the view, as in MapLibre GL JS. |
+| `setStyle` | `(style: unknown, options?: StyleSwapOptions) => Promise<void>` | `transformStyle` gets the style before and the new style, and returns the style to use (as in MapLibre). |
+| `getStyle` | `() => StyleSpecification` | The style, as in MapLibre GL JS. |
+| `cooperativeGestures` (read only) | `{enable(): void; disable: () => void; isEnabled: () => boolean; isActive: () => boolean}` | As in MapLibre GL JS: with it on, the wheel zooms only with Ctrl (⌘ on a Mac), and one finger scrolls the page. |
+| `project` | `(lngLat: LngLatLike) => Point` | As in MapLibre, a `Point` with methods (`dist`, `sub`, …), not a plain object. |
+| `version` (read only) | `string` | The version of this library, as the member `version` of a map of MapLibre GL JS. |
+| `setRenderWorldCopies` | `(copies?: boolean \| null \| undefined) => Map` | Accepted with no effect: the map always draws copies of the world side by side. |
+| `setRoll` | `(roll?: number \| undefined) => Map` | Accepted with no effect: the camera has no roll. |
+| `setVerticalFieldOfView` | `(fov?: number \| undefined) => Map` | Accepted with no effect: the vertical field of view is fixed at 36.87 degrees. |
+| `getVerticalFieldOfView` | `() => number` | Returns 36.87, the vertical field of view of the camera in degrees, which this library does not change. |
+| `coveringTiles` | `(o: {tileSize: number; minzoom?: number; maxzoom?: number; roundZoom?: boolean}) => {canonical: {z: number; x: number; y: number; key: string}; wrap: number; overscaledZ: number; key: string}[]` | The tiles that cover the view, as MapLibre GL JS gives them: `{canonical: {z, x, y, key}, wrap, overscaledZ, key}`. |
+| `calculateCameraOptionsFromTo` | `(from: LngLatLike, altitudeFrom: number, to: LngLatLike, altitudeTo?: number \| undefined) => {center: LngLat; elevation: number; zoom: number; pitch: number; bearing: number}` | The camera options that look from `from` at `altitudeFrom` metres to `to` at `altitudeTo` metres, as in MapLibre GL JS. |
+| `calculateCameraOptionsFromCameraLngLatAltRotation` | `(cameraLngLat: LngLatLike, cameraAlt: number, bearing: number, pitch: number, roll?: number \| undefined) => {center: LngLat; elevation: number; zoom: number; bearing: number; pitch: number; roll: number \| undefined}` | The camera options that put the camera at `cameraLngLat` and `cameraAlt` metres with this rotation, as in MapLibre GL JS. |
+| `calculateAnchoredCameraOptions` | `(o: {anchorLocation: LngLatLike; anchorScreenPoint: PointLike; zoom?: number}) => {center: LngLat; zoom: number}` | The centre and zoom that put `anchorLocation` at `anchorScreenPoint`, at `zoom` (default: the zoom of the map), as in MapLibre GL JS. |
+| `setCenterClampedToGround` | `(clamped?: boolean \| undefined) => Map` | Accepted with no effect: the map centre is always on the ground. |
+| `getCenterClampedToGround` | `() => boolean` | Returns `true`: the map centre is always on the ground. |
+| `setCenterElevation` | `(elevation?: number \| undefined) => Map` | Accepted with no effect: the map centre is always on the ground. |
+| `setAnisotropicFilterPitch` | `(_pitch?: number \| null \| undefined) => Map` | Accepted with no effect, and gives no warning. |
+| `getAnisotropicFilterPitch` | `() => number` | Returns 20, the default of MapLibre GL JS. |
+| `setTransformCameraUpdate` | `(fn?: ((tr: CameraLike) => CameraChanges \| undefined) \| null \| undefined) => Map` | MapLibre GL JS calls this function before each frame and draws the camera that it returns. |
+| `showTileBoundaries` | `boolean` | Accepted with no effect: the map does not draw tile borders. |
+| `showPadding` | `boolean` | Accepted with no effect: the map does not draw the padding. |
+| `showCollisionBoxes` | `boolean` | Accepted with no effect: the map does not draw collision boxes. |
+| `showOverdrawInspector` | `boolean` | Accepted with no effect: the map has no overdraw view. |
+| `setSourceTileLodParams` | `(maxZoomLevelsOnScreen: number, tileCountMaxMinRatio: number, sourceId?: string \| undefined) => Map` | Changes the level of detail of the tile cover of a pitched view for one source, or for all sources, as in MapLibre GL JS. |
+| `setTransformConstrain` | `(fn?: ((lngLat: LngLat, zoom: number) => {center: LngLatLike; zoom: number}) \| null \| undefined) => Map` | As in MapLibre GL JS, `fn(lngLat, zoom)` returns `{center, zoom}` and replaces the constraint of the camera; null restores it. |
+| `setZoomSnap` | `(snap: number) => Map` | As in MapLibre GL JS: with a `zoomSnap` above 0, the zoom of `jumpTo`, `easeTo`, `flyTo`, `zoomIn` and `zoomOut` goes to the nearest multiple of it, and `cameraForBounds` (and so `fitBounds`) to the multiple below. |
+| `getZoomSnap` | `() => number` | Returns the step of the zoom that the option `zoomSnap` or `setZoomSnap` set, or 0 when the zoom does not snap. |
+| `cameraForBounds` | `(bounds: LngLatBoundsInput, o?: {padding?: PaddingInput; maxZoom?: number} \| undefined) => {center: {lng: number; lat: number}; zoom: number; bearing: number}` | The centre and zoom that fit `bounds` ([west, south, east, north] or [[west, south], [east, north]]) in view. |
+| `setEventedParent` | `(parent?: {fire(e: object): unknown; listens?(type: string): boolean} \| null \| undefined, data?: object \| (() => object) \| undefined) => Map` | As in MapLibre GL JS: each event of the map also goes to `parent.fire`, as one object with the fields of `data` (or of what the function `data` returns), while `parent.listens(type)` is true. |
+| `fire` | `(type: string \| {type: string}, data: Record<string, unknown> = {}) => void \| PromiseLike<unknown>` | Dispatches an event to listeners. |
+| `setMissingStyleImageResolver` | `(resolver: ((id: string) => void \| Promise<void>) \| null) => Map` | Supplies images on demand. |
+| `addImage` | `(name: string, source: string \| ImageData \| {width: number; height: number; data: Uint8Array<ArrayBufferLike> \| Uint8ClampedArray<ArrayBufferLike>} \| CanvasImageSource, options?: `[`ImageOptions`](../../docs/reference/server.md#imageoptions)` \| undefined) => Promise<...>` | Makes an image available to `icon-image` under `name`. |
+| `addControl` | `(control: Control, position?: ControlPosition \| undefined) => Map` | Adds a control to a corner of the map, as in MapLibre GL JS. |
+| `addLayer` | `(layer: AddLayerObject, beforeId?: string \| undefined) => Map` | Adds a style layer below the layer `beforeId`, or on top when `beforeId` is left out, as in MapLibre GL JS. |
+| `removeLayer` | `(id: string) => Map` | Removes a style layer, as in MapLibre GL JS. |
+| `getStyleUrl` | `() => string \| null` | The URL given as the option `style` or to the latest call of `setStyle`, as it was written; `null` when that was an object or nothing. |
+| `listens` | `(type: string) => boolean` | Whether the map has a listener for the event `type`, a listener for a layer included. |
+| `addSource` | `(id: string, source: object) => Map` | Adds a source to the style, as in MapLibre GL JS. |
+| `removeSource` | `(id: string) => Map` | Removes a source from the style, as in MapLibre GL JS. |
+| `jumpTo` | `(o: CameraInput, eventData?: EventData \| undefined) => Map` | As in MapLibre GL JS, `eventData` goes onto the events of this move (`movestart` to `moveend`, and the zoom, rotate and pitch events). |
+| `fitBounds` | `(bounds: LngLatBoundsInput, o?: FitBoundsOptions \| undefined, eventData?: EventData \| undefined) => Map` | Moves the camera to fit a box, with `duration` 800 ms unless `o` sets it. |
+| `fitScreenCoordinates` | `(p0: PointLike, p1: PointLike, bearing: number, o?: FitBoundsOptions, eventData?: EventData \| undefined) => Map` | Moves the map so that the box between the screen points `p0` and `p1` (CSS pixels) fills the view at `bearing`, by the method of MapLibre GL JS 6.17. |
+| `flyTo` | `(o: Omit<CameraOptions, 'padding'> & {padding?: PaddingInput} & {duration?: number; around?: [number, number]; essential?: boolean; offset?: {...} \| ... 1 more ... \| undefined; easing?: ((t: number) => number)} & FlyOptions, eventData?: EventData \|...` | Moves the camera along a curve that zooms out and back in (van Wijk and Nuij), with the options of `flyTo` of MapLibre GL JS 6.17 (`curve` 1.42, `speed` 1.2, `screenSpeed`, `minZoom`, `maxDuration`; without `duration`, the duration follows from the distance). |
+| `setPadding` | `(padding: PaddingInput, eventData?: EventData \| undefined) => Map` | Space at the edges covered by other things (a side panel, a header). |
+| `getPadding` | `() => {top: number; right: number; bottom: number; left: number}` | Returns the padding of the map in CSS pixels, as `{top, right, bottom, left}`. |
+| `setCenter` | `(center: LngLatLike, eventData?: EventData \| undefined) => Map` | Moves the map centre to a position without an animation, as in MapLibre GL JS. |
+| `setZoom` | `(zoom: number, eventData?: EventData \| undefined) => Map` | Sets the zoom level without an animation, as in MapLibre GL JS. |
+| `setBearing` | `(bearing: number, eventData?: EventData \| undefined) => Map` | Sets the bearing in degrees without an animation, as in MapLibre GL JS. |
+| `setPitch` | `(pitch: number, eventData?: EventData \| undefined) => Map` | Sets the pitch in degrees without an animation, as in MapLibre GL JS. |
+| `resetNorth` | `(o?: {duration?: number}, eventData?: EventData \| undefined) => Map` | Turns the map to bearing 0 with an animation, as in MapLibre GL JS. |
+| `resetNorthPitch` | `(o?: {duration?: number}, eventData?: EventData \| undefined) => Map` | Turns the map to bearing 0 and pitch 0 with an animation, as in MapLibre GL JS. |
+| `panTo` | `(center: LngLatLike, o?: {duration?: number}, eventData?: EventData \| undefined) => Map` | Moves the map centre to a position with an animation, as in MapLibre GL JS. |
+| `panBy` | `(offset: [number, number], o?: {duration?: number}, eventData?: EventData \| undefined) => Map` | Moves the map by `offset` in CSS pixels with an animation, as in MapLibre GL JS. |
+| `zoomTo` | `(zoom: number, o?: {duration?: number}, eventData?: EventData \| undefined) => Map` | Changes the zoom level with an animation, as in MapLibre GL JS. |
+| `zoomIn` | `(o?: {duration?: number}, eventData?: EventData \| undefined) => Map` | Increases the zoom level by 1 with an animation of 300 ms unless `o` sets `duration`, as in MapLibre GL JS. |
+| `zoomOut` | `(o?: {duration?: number}, eventData?: EventData \| undefined) => Map` | Decreases the zoom level by 1 with an animation of 300 ms unless `o` sets `duration`, as in MapLibre GL JS. |
+| `rotateTo` | `(bearing: number, o?: {duration?: number}, eventData?: EventData \| undefined) => Map` | Changes the bearing in degrees with an animation, as in MapLibre GL JS. |
+| `snapToNorth` | `(o?: {duration?: number}, eventData?: EventData \| undefined) => Map` | Turns the map to bearing 0 when the bearing is less than 7 degrees from north, and else does nothing. |
+| `getRenderWorldCopies` | `() => boolean` | Returns `true`: the map always draws copies of the world. |
+| `getRoll` | `() => number` | Returns 0: the camera has no roll. |
+| `getCenterElevation` | `() => number` | With 3D terrain: the (exaggerated) height of the ground at the map centre in metres; otherwise 0. |
+| `getCameraTargetElevation` | `() => number` | Returns the height of the ground at the map centre in metres, as `getCenterElevation` does. |
+| `isZooming` | `() => boolean` | Whether the zoom level changes now, by the user or by a camera method. |
+| `isRotating` | `() => boolean` | Whether the bearing changes now, by the user or by a camera method. |
+| `isRolling` | `() => boolean` | Returns `false`: the camera has no roll. |
+| `isPitching` | `() => boolean` | Whether the pitch changes now, by the user or by a camera method. |
+| `getCanvasContainer` | `() => HTMLElement` | Returns the container of the map. |
+| `remove` | `() => void` | Removes the map and its controls from the page, as in MapLibre GL JS. |
+| `redraw` | `() => Map` | Draws the map again in the next frame. |
+| `style` (read only) | `{_loaded: boolean; tileManagers: Record<string, {_source: {id: string; type: string; vectorLayerIds?: string[]}}>; sourceCaches: Record<string, {_source: {id: string; type: string; vectorLayerIds?: string[]}}>} \| undefined` | For wrappers that read the private `style` of MapLibre GL JS: `_loaded`, and `tileManagers` (also `sourceCaches`) with the id, type and `vectorLayerIds` of each source. |
+| `getLight` | `() => any` | Returns the light of the style, with the defaults of MapLibre GL JS for the fields that the style does not set. |
+| `getLayersOrder` | `() => string[]` | Returns the ids of the style layers, from the bottom layer up. |
+| `getPaintProperty` | `(layerId: string, name: string) => any` | Returns the value of a paint property as the style sets it, or `undefined` when the style does not set it. |
+| `getLayoutProperty` | `(layerId: string, name: string) => any` | Returns the value of a layout property as the style sets it, or `undefined` when the style does not set it. |
+| `getFilter` | `(layerId: string) => any` | Returns the filter of a style layer, or `undefined` when it has none. |
+| `moveLayer` | `(id: string, beforeId?: string \| undefined) => Map` | Moves a style layer below the layer `beforeId`, or to the top when `beforeId` is left out. |
+| `getSprite` | `() => any` | Returns the sprites of the style as `{id, url}` objects. |
+| `setSprite` | `(url: string \| {id: string; url: string}[] \| null) => Map` | Replaces the sprites of the style, or removes them with `null`. |
+| `addSprite` | `(id: string, url: string) => Map` | Adds a sprite sheet. |
+| `removeSprite` | `(id: string) => Map` | Removes the sprite sheet with this id from the style. |
+| `getGlyphs` | `() => any` | Returns the URL of the glyph files of the style, or `null` when the style has none. |
+| `setGlyphs` | `(url: string \| null) => Map` | Sets the URL of the glyph files of the style. |
+| `getFontFaces` | `() => any` | Returns the `font-faces` of the style, or `{}` when the style has none. |
+| `setFontFaces` | `(faces: Record<string, unknown> \| null) => Map` | Replaces the `font-faces` of the style, or removes them with `null`. |
+| `setFeatureState` | `(feature: FeatureIdentifier, state: Record<string, unknown>) => Map` | As in MapLibre GL JS, the feature can come without an `id` (a feature of a query); then nothing changes and the map warns once. |
+| `getFeatureState` | `(feature: FeatureIdentifier) => Record<string, unknown>` | Returns the feature state of one feature. |
+| `getImage` | `(name: string) => {pixelRatio: number; sdf: boolean; data: unknown; width?: number; height?: number; stretchX?: [number, number][]; stretchY?: [number, number][]; content?: [...]; textFitWidth?: 'proportional' \| ... 2 more ...; textFitHeight?: ...` | The image that addImage was given, with its options, or undefined. |
+| `listImages` | `() => string[]` | Returns the names of the images that the map has. |
+| `loadImage` | `(url: string) => Promise<{data: ImageBitmap}>` | Fetches and decodes an image, in the shape MapLibre returns it. |
+| `querySourceFeatures` | `(sourceId: string, options: QuerySourceFeatureOptions = {}) => GeoJSONFeature[] & PromiseLike<GeoJSONFeature[]>` | The features of a source in the tiles of the present view, as in MapLibre: all the features of those tiles, also those that no layer draws and those outside the view. |
+| `queryRenderedFeatures` | `(geometry?: PointLike \| [PointLike, PointLike] \| RenderedQueryOptions, options?: RenderedQueryOptions) => MapGeoJSONFeature[] & PromiseLike<MapGeoJSONFeature[]>` | The features that the style layers draw at a point or in a rectangle of the screen (the whole map when no geometry is given), from the top layer down. |
+| `refreshTiles` | `(sourceId: string) => Map` | Loads a source's tiles again, e.g. after the data behind its URL changed. |
+| `dragPan` (read only) | `InteractionHandler` | A drag with the mouse or one finger moves the map. |
+| `scrollZoom` (read only) | `InteractionHandler` | The scroll wheel and the trackpad zoom the map. |
+| `doubleClickZoom` (read only) | `InteractionHandler` | A double click or a double tap zooms in by one level. |
+| `dragRotate` (read only) | `InteractionHandler` | A drag with the right mouse button, or with Ctrl and the left one, turns and tilts the map. |
+| `touchZoomRotate` (read only) | `TouchZoomRotateHandler` | A pinch with two fingers zooms and turns the map; `disableRotation()` keeps the zoom only. |
+| `touchPitch` (read only) | `InteractionHandler` | A drag up or down with two fingers tilts the map. |
+| `keyboard` (read only) | `InteractionHandler` | The arrow keys, `+` and `-` move, turn and zoom the map while it has the focus. |
+| `boxZoom` (read only) | `InteractionHandler` | Shift and drag draws a box, and the map zooms to it. |
+| `renderer` | `'worker' \| 'main'` | Which thread the engine ended up on. |
+| `setPixelRatio` | `(ratio?: number \| null \| undefined) => Map` | Sets the number of canvas pixels for each CSS pixel. |
+| `setTransformRequest` | `(fn: RequestTransform \| null) => Map` | Sets or removes the function that changes each request (for example, to add a header). |
+| `setCursor` | `(cursor: string) => Map` | The cursor shown over the map, e.g. 'pointer' while hovering something clickable; '' restores the default. |
+| `getCenter` | `() => LngLat` | Returns the map centre. |
+| `getZoom` | `() => number` | Returns the zoom level. |
+| `getBearing` | `() => number` | Returns the bearing in degrees clockwise from north. |
+| `getPitch` | `() => number` | Returns the pitch in degrees from straight down. |
+| `getMinZoom` | `() => number` | Returns the smallest zoom level that the user can reach. |
+| `getMaxZoom` | `() => number` | Returns the largest zoom level that the user can reach. |
+| `getContainer` | `() => HTMLElement` | Returns the element that holds the map. |
+| `getCanvas` | `() => HTMLCanvasElement` | Returns the canvas that the map draws on. |
+| `toBlob` | `(type = 'image/png', quality?: number) => Promise<Blob>` | The map as an image. |
+| `loaded` | `() => boolean` | As in MapLibre: `false` from a call of `setStyle`, a style edit, a source change or a camera move until the next complete frame (the frame that fires `idle`). |
+| `isMoving` | `() => boolean` | Whether the camera moves now, by the user or by a camera method. |
+| `unproject` | `(point: {x: number; y: number} \| [number, number]) => LngLat` | Converts a point of the screen, in CSS pixels from the top left corner of the map, to a position. |
+| `isLocationOccluded` | `(lngLat: LngLatLike) => boolean` | Whether the far side of the globe hides a position from the camera; always false for Mercator. |
+| `getBounds` | `() => LngLatBounds` | Returns the smallest box that contains the visible map. |
+| `stop` | `() => Map` | Stops the animation of the camera, where it is. |
+| `setMinZoom` | `(z?: number) => Map` | Sets the smallest zoom level that the user can reach. |
+| `setMaxZoom` | `(z?: number) => Map` | Sets the largest zoom level that the user can reach. |
+| `setMaxPitch` | `(p?: number \| null \| undefined) => Map` | Sets the largest pitch that the user can reach, in degrees. |
+| `getMaxPitch` | `() => number` | Returns the largest pitch that the user can reach, in degrees. |
+| `getMinPitch` | `() => number` | Returns the smallest pitch that the user can reach, in degrees. |
+| `setMinPitch` | `(p?: number) => Map` | Sets the smallest pitch that the user can reach, in degrees. |
+| `setMaxBounds` | `(bounds?: LngLatBoundsInput \| null \| undefined) => Map` | Keeps the map centre inside a box (`[[west, south], [east, north]]`), or lifts the restriction with `null`. |
+| `getMaxBounds` | `() => {getWest: () => number; getSouth: () => number; getEast: () => number; getNorth: () => number; toArray: () => number[][]} \| null` | Returns the box that the map centre stays in, or `null` when there is none. |
+| `getPixelRatio` | `() => number` | Returns the ratio of device pixels to CSS pixels that the canvas uses. |
+| `queryTerrainElevation` | `(lngLat: LngLatLike) => number \| null` | With 3D terrain: the height of the ground at a position, in metres above sea level multiplied by the exaggeration (as in MapLibre); `null` without terrain. |
+| `isSourceLoaded` | `(id: string) => boolean` | Whether the data of one source is loaded for the current view. |
+| `isStyleLoaded` | `() => boolean` | Whether the style has loaded. |
+| `areTilesLoaded` | `() => boolean` | Whether the tiles of the current view have loaded. |
+| `triggerRepaint` | `() => void` | Draws the map again in the next frame. |
+| `resize` | `() => Map` | Reads the size of the container again and resizes the map to it. |
+| `setProjection` | `(projection?: ProjectionSpecification \| null \| undefined) => Map` | Sets the projection of the style, as MapLibre GL JS does: `{type: 'globe'}`, `{type: 'mercator'}`, or `null` for the default (Mercator). |
+| `getProjection` | `() => ProjectionSpecification \| undefined` | The projection of the style as it was given (`undefined` when the style has none), as in MapLibre GL JS. |
+| `removeFeatureState` | `(target: {source: string; sourceLayer?: string; id?: string \| number}, key?: string \| undefined) => Map` | Removes one key of a feature's state, a feature's whole state (no `key`), or all state of a source (no `id`). |
+| `getGlobalState` | `() => Record<string, unknown>` | The values `global-state` expressions read: the style's `state` defaults with anything set since. |
+| `setGlobalStateProperty` | `(name: string, value: unknown) => Map` | Sets one global state value (`null` or `undefined` returns it to the style's default); layers that read it update. |
+| `setTerrain` | `(terrain: {source: string; exaggeration?: number} \| null) => Map` | Turns 3D terrain on (`{source, exaggeration}`, naming a raster-dem source) or off (`null`). |
+| `getTerrain` | `() => {source: string; exaggeration?: number} \| null` | Returns the `terrain` of the style, or `null` when the map has no 3D terrain. |
+| `setLight` | `(light: {anchor?: 'map' \| 'viewport'; position?: [number, number, number]; color?: string; intensity?: number}) => Map` | Sets the light on buildings: its anchor, position (distance, azimuth, polar angle), colour and intensity. |
+| `setSky` | `(sky?: Record<string, unknown> \| null \| undefined) => Map` | Sets the sky above the horizon and the fog on 3D terrain (the `sky` of the style); `null` removes them. |
+| `getSky` | `() => Record<string, unknown> \| null \| undefined` | The `sky` of the style: `undefined` when the style has none, and `null` after `setSky(null)` removed it. |
+| `getLayer` | `(id: string) => any` | Returns the style layer with this id, or `undefined` when the style has none. |
+| `setLayerZoomRange` | `(id: string, minzoom?: number \| null \| undefined, maxzoom?: number \| null \| undefined) => Map` | Changes the zooms at which a layer is drawn, without a new style. |
+| `setPaintProperty` | `(layerId: string, name: string, value: unknown) => Map` | Sets the value of a paint property of a style layer. |
+| `setLayoutProperty` | `(layerId: string, name: string, value: unknown) => Map` | Sets the value of a layout property of a style layer. |
+| `setFilter` | `(layerId: string, filter: unknown) => Map` | Sets the filter of a style layer. |
+| `removeControl` | `(control: Control) => Map` | Removes a control that `addControl` added. |
+| `hasControl` | `(control: Control) => boolean` | Whether the map has this control. |
+| `addFonts` | `(fonts: FontSource[]) => Map` | Loads more web fonts for labels after construction. |
+| `removeImage` | `(name: string) => Map` | Removes an image that `addImage` added. |
+| `updateImage` | `(name: string, source: string \| ImageData \| {width: number; height: number; data: Uint8Array<ArrayBufferLike> \| Uint8ClampedArray<ArrayBufferLike>} \| CanvasImageSource) => Promise<...>` | Replaces the pixels of an image added earlier and keeps its options (stretch, content, sdf), as MapLibre GL JS does. |
+| `hasImage` | `(name: string) => boolean` | Whether the map has an image with this name. |
+| `queryFeatures` | `(at?: FeaturePlace \| LngLatLike \| FeatureOptions, o: FeatureOptions = {}) => Promise<RenderedFeature[]>` | The features that the style layers draw, the top one first. |
+| `querySource` | `(sourceId: string, at?: FeaturePlace \| LngLatLike \| SourceOptions, o: SourceOptions = {}) => Promise<QueriedFeature[]>` | The features of the tile data of the source `sourceId`. |
+| `queryElevation` | `(at: LngLatLike \| {x: number; y: number}, options: {source?: string; zoom?: number} = {}) => Promise<number \| null>` | Ground elevation in metres at a location, read from the style's elevation (raster-dem) source; null where there is no data. |
+| `getAttributions` | `() => string[]` | Attribution strings (as provided, possibly HTML) of the sources in the current style. |
+<!-- ref:CompatMap:end -->
+
+## `MapJrElement`
+
+<!-- ref:MapJrElement:start -->
+| Name | Type | Default | Description |
+|---|---|---|---|
+| `mapStyle` | [`MapDescription`](../../docs/reference/description.md#mapdescription)`['style']` | | The `style` of the description: the URL of a style or a style object. |
+| `map` (read only) | [`MapInstance`](#mapinstance)` \| null` | | The map (`MapInstance`), from the microtask after the element is added to the page until it is removed, or else `null`. |
+| `state` (read only) | [`MapInstance`](#mapinstance)`['state'] \| null` | | The state of the map as a store (`map.state`), or `null` while there is no map. |
+| `addEventListener` | `(type: string, listener: EventListenerOrEventListenerObject, options?: boolean \| AddEventListenerOptions \| undefined) => void` | | Adds a listener, as on any element. |
+<!-- ref:MapJrElement:end -->
