@@ -109,7 +109,7 @@ export interface MapDescription extends MapSetup {
     layers?: LayerInput[];
     /**
      * 3D terrain from an elevation source, `{source: 'dem', exaggeration: 1.5}`, in place of the terrain of the style.
-     * `null` or no field means the terrain of the style.
+     * `null` means no 3D terrain (a flat map), also when the style has a `terrain`. No field, or `undefined`, means the terrain of the style.
      */
     terrain?: TerrainSpecification | null;
     /**
