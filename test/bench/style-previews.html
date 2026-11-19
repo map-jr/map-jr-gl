@@ -1,0 +1,132 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Style preview benchmark</title>
+<style>
+  body { margin: 0; font: 16px system-ui; }
+  #map { height: 75vh; }
+  #preview { position: absolute; left: -200px; top: 0; width: 120px; height: 80px; }
+  #panel { position: absolute; left: 8px; top: 48px; background: white; padding: 4px; }
+  #toggle { position: absolute; left: 8px; top: 8px; padding: 6px 12px; }
+  #panel button { display: block; width: 100%; text-align: left; }
+  img { width: 120px; height: 80px; vertical-align: middle; }
+</style>
+<div id="map"></div><div id="preview"></div>
+<button id="toggle" aria-expanded="false" disabled>Styles</button>
+<div id="panel" aria-label="Styles" hidden></div>
+<output></output>
+<script type="module">
+import {createMap} from '../../dist/map-jr-gl.js';
+
+const params = new URLSearchParams(location.search);
+const mode = params.get('mode') || 'open';
+const follow = params.has('follow');
+const base = 'https://styles.map-jr.org/1/';
+const entries = [
+    {label: 'Elevation', style: base + 'elevation.json'},
+    {label: 'Flat Elevation', style: base + 'elevation.json', terrain: null},
+    {label: 'Radar', style: base + 'elevation-radar.json', globalState: {relief: false}},
+];
+const initial = {center: [8.33, 47.03], zoom: 10, pitch: 50};
+const toggle = document.querySelector('#toggle'), panel = document.querySelector('#panel');
+const results = {idle: null, opens: [], errors: []};
+const show = () => document.querySelector('output').textContent = JSON.stringify(results);
+const report = e => { results.errors.push(String(e)); show(); };
+const main = createMap('map', {style: entries[0].style, view: initial, onError: report});
+const idle = main.once('idle').then(() => { results.idle = performance.now(); show(); });
+const pictures = entries.map(entry => {
+    const button = document.createElement('button'), image = new Image();
+    image.alt = '';
+    button.append(image, document.createTextNode(entry.label));
+    button.onclick = () => {
+        main.patch({style: entry.style, terrain: entry.terrain, globalState: entry.globalState});
+        toggle.click();
+    };
+    panel.append(button);
+    return image;
+});
+let preparation, cameraKey, opening, generation = 0;
+let previewMap;
+const urls = [];
+function camera() {
+    if (!follow) return initial;
+    const {center, zoom, pitch, bearing} = main.state.get().view;
+    return {center, zoom, pitch, bearing};
+}
+function prepare() {
+    const view = camera(), key = JSON.stringify(view);
+    if (key === cameraKey) return preparation;
+    cameraKey = key;
+    const version = ++generation;
+    previewMap?.destroy();
+    urls.splice(0).forEach(url => URL.revokeObjectURL(url));
+    pictures.forEach(img => img.removeAttribute('src'));
+    const promises = [];
+    // One renderer serves all three captures. Hosted pictures can download concurrently.
+    let renderer, last = Promise.resolve();
+    for (const [i, entry] of entries.entries()) {
+        const capture = async () => {
+            if (version !== generation) throw new Error('The preview camera changed.');
+            const description = {style: entry.style, terrain: entry.terrain, globalState: entry.globalState, view, attribution: false, onError: report};
+            if (renderer) {
+                // A URL restyle can still display the preceding frame until the replacement style loads.
+                const loaded = renderer.once('style.load');
+                renderer.update(description);
+                await loaded;
+            } else previewMap = renderer = createMap('preview', description);
+            if (!renderer.state.get().idle) await renderer.once('idle');
+            const blob = await renderer.toBlob('image/webp', 0.85);
+            if (version !== generation) throw new Error('The preview camera changed.');
+            const url = URL.createObjectURL(blob);
+            urls.push(url);
+            pictures[i].src = url;
+            await pictures[i].decode();
+        };
+        if (mode === 'hosted') {
+            pictures[i].src = '../../.cache/style-previews/' + i + '.webp';
+            promises.push(pictures[i].decode());
+        } else {
+            const picture = last.then(capture);
+            promises.push(picture);
+            last = picture.catch(() => {
+                renderer?.destroy();
+                renderer = undefined;
+            });
+        }
+    }
+    preparation = promises;
+    Promise.allSettled(promises).then(outcomes => {
+        if (version !== generation) return;
+        renderer?.destroy();
+        previewMap = undefined;
+        for (const outcome of outcomes) if (outcome.status === 'rejected') report(outcome.reason);
+    });
+    return promises;
+}
+toggle.onclick = () => {
+    panel.hidden = !panel.hidden;
+    toggle.setAttribute('aria-expanded', String(!panel.hidden));
+    if (panel.hidden) { opening = null; toggle.focus(); return; }
+    panel.querySelector('button').focus({preventScroll: true});
+    const start = performance.now(), times = [];
+    const record = opening = {first: null, all: null};
+    results.opens.push(record);
+    for (const picture of prepare()) picture.then(() => {
+        // The second animation frame gives the browser a paint opportunity after decode and unhide.
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+            if (opening !== record) return;
+            times.push(performance.now() - start);
+            record.first ??= times[0];
+            if (times.length === entries.length) record.all = Math.max(...times);
+            show();
+        }));
+    }).catch(() => {}); // prepare() reports failures once when the batch finishes.
+};
+panel.onkeydown = event => { if (event.key === 'Escape') toggle.click(); };
+if (mode === 'hosted') prepare();
+if (mode === 'idle') idle.then(prepare);
+toggle.disabled = mode === 'none';
+if (mode === 'none') toggle.hidden = true;
+window.benchmark = {results, idle, get prepared() { return preparation && Promise.all(preparation); },
+    move() { main.patch({view: {...initial, center: [8.38, 47.06]}}); return main.once('idle'); }};
+</script>
