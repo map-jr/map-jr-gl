@@ -19,7 +19,7 @@ const line = {type: 'LineString', coordinates: [[lngOf(tx + 0.9), latOf(ty + 0.5
 function place(layout: Record<string, unknown>, geometry: unknown = line, pitch = 0, icon = false, grid = new CollisionGrid()): any {
     const layer = compileLayer({id: 'r', type: 'symbol', source: 'g', layout: {'text-field': 'Main Street', 'text-size': 16, ...layout}})!;
     const data = sliceGeoJSON(prepareGeoJSON({type: 'Feature', properties: {}, geometry} as any), z, tx, ty);
-    const labels = buildTile(data, z, [layer], true).labels;
+    const labels = buildTile(data, z, [layer], false).labels;
     const tr = new Transform();
     tr.width = 800; tr.height = 600; tr.maxPitch = 90;
     tr.set([lngOf(tx + 0.5), latOf(ty + 0.5)], z, 0, pitch);
@@ -55,4 +55,63 @@ test('text along a line is not drawn when its required icon is not placed (#1080
     assert.equal(place(layout, line, 0, true, blocked()), undefined, 'icon-optional false: neither is drawn');
     const optional = place({...layout, 'icon-optional': true}, line, 0, true, blocked());
     assert.ok(optional?.curve && !optional.icon, 'icon-optional true: the text is drawn alone');
+});
+
+test('anchors along a line start at an offset and repeat every symbol-spacing, as in MapLibre GL JS (#1016)', async () => {
+    const {lineLabels} = await import('../../src/placement.ts');
+    /** The x of each anchor, in tile units from the start of a line that runs east inside the tile from `x0` to `x1` (in tiles). */
+    const anchorsX = (spacing: number, x0: number, x1: number) => {
+        const layer = compileLayer({id: 'r', type: 'symbol', source: 'g', layout: {'text-field': 'Main Street', 'text-size': 16, 'symbol-placement': 'line', 'symbol-spacing': spacing}})!;
+        const geometry = {type: 'LineString', coordinates: [[lngOf(tx + x0), latOf(ty + 0.5)], [lngOf(tx + x1), latOf(ty + 0.5)]]};
+        const labels = buildTile(sliceGeoJSON(prepareGeoJSON({type: 'Feature', properties: {}, geometry} as any), z, tx, ty), z, [layer], false).labels.r;
+        return lineLabels(labels, new EstimateShaper()).map(l => Math.round(l.x - x0 * 4096));
+    };
+    // The text is 124 pixels at 24 pixels an em, so the label is 662 tile units long at a text-size of 16 (8 tile units a
+    // pixel). The first anchor is half of that and two ems in (587), and the next ones follow every symbol-spacing while
+    // the whole label fits on the line (3686 tile units).
+    assert.deepEqual(anchorsX(250, 0.05, 0.95), [587, 2587]);
+    // A spacing (800) that leaves less than a quarter of itself free beside the label becomes the label and a quarter: 862.
+    assert.deepEqual(anchorsX(100, 0.05, 0.95), [587, 1449, 2311, 3172]);
+    // A line shorter than its label has no anchor.
+    assert.deepEqual(anchorsX(250, 0.4, 0.5), []);
+});
+
+/** A line label of the tile with its line replaced by `line` (tile units). */
+function lineLabel(line: number[], layout: Record<string, unknown> = {}) {
+    const layer = compileLayer({id: 'r', type: 'symbol', source: 'g', layout: {'text-field': 'Main Street', 'text-size': 16, 'symbol-placement': 'line', ...layout}})!;
+    const geometry = {type: 'LineString', coordinates: [[lngOf(tx + 0.1), latOf(ty + 0.5)], [lngOf(tx + 0.9), latOf(ty + 0.5)]]};
+    const l = buildTile(sliceGeoJSON(prepareGeoJSON({type: 'Feature', properties: {}, geometry} as any), z, tx, ty), z, [layer], false).labels.r[0];
+    return Object.assign(Object.create(Object.getPrototypeOf(l)), l, {line});
+}
+
+test('a line of many turns with a small symbol-spacing makes a bounded number of anchors in bounded time (#1016)', async () => {
+    const {lineLabels, MAX_LINE_ANCHORS} = await import('../../src/placement.ts');
+    const zigzag: number[] = [];
+    for (let i = 0; i < 4000; i++) zigzag.push(100 + (i % 2) * 3800, 100 + i * 3800 / 4000);
+    const t0 = performance.now();
+    const out = lineLabels([lineLabel(zigzag, {'text-field': 'A', 'symbol-spacing': 1, 'text-max-angle': 179})], new EstimateShaper());
+    const ms = performance.now() - t0;
+    assert.ok(out.length > 1000 && out.length <= MAX_LINE_ANCHORS, `${out.length} anchors`);
+    assert.ok(ms < 1500, `${Math.round(ms)} ms`);
+});
+
+test('an anchor along a line is not on the right or bottom edge of the tile, as in MapLibre GL JS (#1016)', async () => {
+    const {lineLabels} = await import('../../src/placement.ts');
+    assert.deepEqual(lineLabels([lineLabel([4096, 100, 4096, 4000])], new EstimateShaper()), []);
+    assert.ok(lineLabels([lineLabel([4095, 100, 4095, 4000])], new EstimateShaper()).length > 0);
+});
+
+test('a line label whose glyphs arrive later gets its anchors then, and the anchors are kept until the shaper changes (#1016)', async () => {
+    const {lineLabels} = await import('../../src/placement.ts');
+    const real = new EstimateShaper();
+    let ready = false, calls = 0;
+    const shaper = {generation: 0, shape(...a: Parameters<EstimateShaper['shape']>) { calls++; return ready ? real.shape(...a) : {...real.shape(...a), wait: true}; }};
+    const labels = [lineLabel([100, 2000, 4000, 2000])];
+    assert.equal(lineLabels(labels, shaper).length, 0, 'no anchors while the glyphs are on their way');
+    ready = true; shaper.generation++;
+    const placed = lineLabels(labels, shaper);
+    assert.ok(placed.length > 0, 'anchors once the glyphs are there');
+    calls = 0;
+    assert.equal(lineLabels(labels, shaper), placed, 'the same result while nothing changed');
+    assert.equal(calls, 0, 'and no text is shaped for it');
 });

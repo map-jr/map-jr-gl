@@ -16,6 +16,9 @@ BSD-3-Clause.
   and which values move. The code is new.
 - At a high pitch, the line of the horizon (`getMercatorHorizon`) and the cutoff of labels far from the camera
   (`perspectiveRatioCutoff`) follow MapLibre GL JS (BSD-3-Clause). The code is new.
+- The anchors of labels along a line (`symbol-placement: line`) follow `clipLine`, `getAnchors`, `resample`, `checkMaxAngle`
+  and `anchorIsTooClose` of MapLibre GL JS (BSD-3-Clause): the offset of the first anchor, the spacing, the fit of the
+  label on the line and the largest bend under it. The code in `src/placement.ts` is new.
 - The sky and the fog of the root property `sky` follow the formulas of MapLibre GL JS (BSD-3-Clause; the shaders `sky` and `terrain` and `fog` in `shaders/_prelude_fog`). The code in `src/gl.ts` is new. The atmosphere on the globe is a close translation of `atmosphere.fragment.glsl` of MapLibre GL JS (BSD-3-Clause), changed, and follows its `drawAtmosphere`, `getSunPos` and `getAtmosphereAltitudeBlend`; the notice is in `THIRD-PARTY-LICENSES.md`.
 - The placement of `text-variable-anchor` and `text-variable-anchor-offset` follows `placeLayerBucketPart` and `attemptAnchorPlacement` of MapLibre GL JS 6.17 (BSD-3-Clause): the anchor of the previous placement first, then every anchor without overlap, then every anchor with overlap, and an icon of `icon-text-fit` tested at each anchor. The code is new.
 - `fill-extrusion-pattern` follows the method of the shader `fill_extrusion_pattern` and of `FillExtrusionBucket` of MapLibre GL JS 6.17 (BSD-3-Clause): the image lies on the roof by tile position and on the walls by the distance along the ring and the height, and the light of a patterned wall is computed with a grey of 0.5. The code is new.

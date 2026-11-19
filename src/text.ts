@@ -48,7 +48,10 @@ export function lineMiddle(shaped: Shaped, i: number): number {
     const line = shaped.lines[i];
     return -shaped.height / 2 + (line.top ?? i * shaped.lineHeight) + shaped.lineHeight * (line.scale ?? 1) / 2;
 }
-export interface Shaper { shape(text: string, font: string, maxWidthEm: number, spacingEm: number, lineHeightEm?: number, sizePx?: number): Shaped }
+export interface Shaper {
+    /** A number that changes when the shaper has new glyphs or images, so that text shaped before can come out different. */
+    generation?: number;
+    shape(text: string, font: string, maxWidthEm: number, spacingEm: number, lineHeightEm?: number, sizePx?: number): Shaped }
 
 const COMPLEX = /[֐-ࣿऀ-႟ក-៿יִ-﷿ﹰ-﻿]/;
 const IDEOGRAPH = /[⺀-鿿가-힯豈-﫿＀-￯]/;
@@ -104,6 +107,7 @@ function wrap(text: string, maxWidth: number, measure: (s: string) => number): s
 
 abstract class BaseShaper implements Shaper {
     private cache = new Map<string, Shaped>();
+    generation = 0;
     protected abstract line(text: string, font: string, spacing: number): ShapedLine;
 
     /** Set by whoever can supply images, to allow them inside text. */
@@ -186,7 +190,7 @@ abstract class BaseShaper implements Shaper {
         const k = this.imageScale / img.pixelRatio;
         return {x: 0, y: 0, w: 0, h: 0, left: 0, top: 0, advance: img.width * k, image: name, imageHeight: img.height * k};
     }
-    reset() { this.cache.clear(); }
+    reset() { this.cache.clear(); this.generation++; }
 }
 
 /** Server-side shaper: no font access, so widths are estimated. Good enough for collision; the browser draws the actual text. */
@@ -320,7 +324,7 @@ export class GlyphAtlas extends BaseShaper {
             // canvas. The count of files on their way goes down in each case, or the map is never idle.)
             this.fetchGlyphs!(from.replace('{fontstack}', encodeURIComponent(stack)).replace('{range}', `${range * 256}-${range * 256 + 255}`))
                 .then(res => res.ok ? res.arrayBuffer() : null).then(bytes => bytes && readGlyphs(new Uint8Array(bytes))).catch(() => null)
-                .then(found => { ranges.set(key, found); this.loading--; this.onGlyphs?.(); });
+                .then(found => { ranges.set(key, found); this.loading--; this.generation++; this.onGlyphs?.(); });
         }
         return glyphs;
     }

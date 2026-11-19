@@ -36,7 +36,7 @@ test('translate: a label with text-translate moves along the turned direction on
     const id = {z, x: tx, y: ty, w: 0, key: `${z}/${tx}/${ty}`};
     const at = (bearing: number, paint: Record<string, unknown>) => {
         const layer = compileLayer({id: 'p', type: 'symbol', source: 'g', layout: {'text-field': 'A'}, paint})!;
-        const labels = buildTile(data, z, [layer], true).labels;
+        const labels = buildTile(data, z, [layer], false).labels;
         const tr = new Transform();
         tr.width = 800; tr.height = 600;
         tr.set([lng, lat], z, bearing, 0);
@@ -58,7 +58,7 @@ test('translate: text-translate and icon-translate take a legacy function of the
     const icon = {x: 0, y: 0, width: 10, height: 10, pixelRatio: 1} as any;
     const at = (zoom: number, paint: Record<string, unknown>) => {
         const layer = compileLayer({id: 'p', type: 'symbol', source: 'g', layout: {'text-field': 'A', 'icon-image': 'pin'}, paint})!;
-        const labels = buildTile(data, z, [layer], true).labels;
+        const labels = buildTile(data, z, [layer], false).labels;
         const tr = new Transform();
         tr.width = 800; tr.height = 600;
         tr.set([lng, lat], zoom, 0, 0);

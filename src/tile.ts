@@ -56,6 +56,11 @@ export interface LabelSrc {
     /** For text that follows a line: the nearby stretch of line as flat tile coordinates, and which of its points is the anchor. */
     path?: number[];
     pathIndex?: number;
+    /** `symbol-placement: line`: the whole line in tile units. The map finds the anchors along it when it places the
+     * labels (see `lineLabels`), where the width of the text and of the icon is known; `x` and `y` are its first point. */
+    line?: number[];
+    /** With `line`: `symbol-spacing` in tile units, tile units per pixel, the over-scaling of the tile, and the stretch of line kept for curved text. */
+    lineSpacing?: number; tpr?: number; ov?: number; window?: number;
     size0: number; size1: number; color: RGBA; halo: RGBA; haloWidth: number; haloBlur: number;
     /** How the lines of a multi-line label align with each other: -1 left, 0 centre, 1 right. */
     justify: number;
@@ -138,6 +143,8 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
     const under = overscaled !== false && overscaled < tz, z = under ? overscaled : tz;
     const zs = overscaled && overscaled > z ? overscaled : z, z1 = zs % 1 ? zs : zs + 1;
     const out: TileIR = {layers: {}, labels: {}, z: zs};
+    // The over-scaling of MapLibre GL JS: a tile shown deeper than its own zoom has its pixels that many times smaller.
+    const ov = zs > tz ? 2 ** Math.max(0, Math.floor(zs) - tz) : 1;
     // A filter sees the zoom that the sizes are found at, as in MapLibre GL JS (the over-zoomed zoom of the tile).
     const ctx = {zoom: zs, f: null as Feature | null};
 
@@ -153,7 +160,7 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
 
         if (L.type === 'symbol') {
             const labels: LabelSrc[] = [], keys: number[] = [], sorted = p.sortKey.dd || p.sortKey.eval(z) !== 0;
-            type Piece = {base: any; ring: number[]; type: number; along: boolean; spacing: number; key: number};
+            type Piece = {base: any; ring: number[]; type: number; along: boolean | 'center'; spacing: number; key: number};
             const pieces: Piece[] = [], starts = new Map<string, Piece>(), ends = new Map<string, Piece>();
             // (The icons of `IconBatch`. The layer gives them one anchor, offset, alignment and colour, and no order.)
             const plain = direct && !sorted && !p.iconAnchor.dd && !p.iconOffset.dd && !p.iconAlign.dd && !p.iconPitch.dd && p.iconPitch.eval(z) !== 'map' && !(p.iconPitch.eval(z) === 'auto' && p.iconAlign.eval(z) === 'map') && !p.iconColor.dd && !p.iconPadding.dd;
@@ -207,7 +214,7 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
                 const g = geometry(f), spacing = p.symbolSpacing.eval(z, f) * EXTENT / 512 * 2 ** (tz - z), key = sorted ? +p.sortKey.eval(z, f) || 0 : 0;
                 let start = 0;
                 for (const end of g.ringEnds) {
-                    const piece: Piece = {base, ring: g.coords.slice(start * 2, end * 2), type: f.type, along, spacing, key};
+                    const piece: Piece = {base, ring: g.coords.slice(start * 2, end * 2), type: f.type, along: along && (placement === 'line' || 'center'), spacing, key};
                     pieces.push(piece);
                     // A road often comes as several short lines, each too short for its name. As in MapLibre, lines with
                     // the same text that meet end to end are joined to one line before the labels are made.
@@ -239,7 +246,14 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
                 const text = base.text;
                 // Enough line either side of the anchor to lay the text along it at this tile's own zoom (8 tile units per pixel).
                 const window = along && text && !base.upright ? text.length * Math.max(base.size0, base.size1) * 0.7 * 8 * 0.6 + 200 : 0;
-                for (const a of anchors(ring, 0, ring.length / 2, type, along, spacing, !!text, window)) {
+                if (along === true && type !== 1) {
+                    // (The anchors along the line are found when the labels are placed: see `lineLabels`.)
+                    const label: LabelSrc = Object.assign(Object.create(base), {x: ring[0], y: ring[1], angle: 0, len: 0, line: ring, lineSpacing: spacing / ov, tpr: EXTENT / 512 * 2 ** (tz - z) / ov, ov, window: window / ov});
+                    labels.push(label);
+                    if (sorted) keys.push(label.key = key);
+                    continue;
+                }
+                for (const a of anchors(ring, 0, ring.length / 2, type, !!along, window, along ? [] : null)) {
                     if (a[0] < 0 || a[0] >= EXTENT || a[1] < 0 || a[1] >= EXTENT) continue;
                     // Everything a feature's labels have in common lives on a shared object behind each label, so a
                     // road with twenty anchors does not carry twenty copies of its text, colours and fonts.
@@ -332,8 +346,11 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
     return out;
 }
 
-/** Yields [x, y, angle, length, (anchor index in path, ...path)] label anchors for one ring. */
-function anchors(c: number[], start: number, end: number, type: number, along: boolean, spacing: number, hasText: boolean, window = 0): number[][] {
+/**
+ * Yields [x, y, angle, length, (anchor index in path, ...path)] label anchors for one ring. `ds` has the distances along
+ * a line of its anchors: empty for the middle of the line, and null for a label that is not along the line.
+ */
+export function anchors(c: number[], start: number, end: number, type: number, along: boolean, window: number, ds: number[] | null): number[][] {
     if (type === 1) return [[c[start * 2], c[start * 2 + 1], 0, 0]];
     if (type === 3 && !along) {
         let a = 0, cx = 0, cy = 0;
@@ -343,34 +360,37 @@ function anchors(c: number[], start: number, end: number, type: number, along: b
         }
         return a ? [[cx / (3 * a), cy / (3 * a), 0, 0]] : [];
     }
-    let len = 0;
-    for (let i = start + 1; i < end; i++) len += Math.hypot(c[i * 2] - c[i * 2 - 2], c[i * 2 + 1] - c[i * 2 - 1]);
+    // (The distance along the line at each point, so that a place on a long line is found by a binary search.)
+    const run = [0];
+    for (let i = start + 1; i < end; i++) run.push(run[run.length - 1] + Math.hypot(c[i * 2] - c[i * 2 - 2], c[i * 2 + 1] - c[i * 2 - 1]));
+    const len = run[run.length - 1];
     if (!len) return [];
-    const at = (d: number): [number, number] => {
-        for (let i = start + 1; i < end; i++) {
-            const seg = Math.hypot(c[i * 2] - c[i * 2 - 2], c[i * 2 + 1] - c[i * 2 - 1]);
-            if (d <= seg && seg) { const t = d / seg; return [c[i * 2 - 2] + (c[i * 2] - c[i * 2 - 2]) * t, c[i * 2 - 1] + (c[i * 2 + 1] - c[i * 2 - 1]) * t]; }
-            d -= seg;
-        }
-        return [c[end * 2 - 2], c[end * 2 - 1]];
+    /** The first point (index from `start`, at least 1) at or past the distance `d`. */
+    const after = (d: number) => {
+        let lo = 1, hi = run.length - 1;
+        while (lo < hi) { const m = (lo + hi) >> 1; if (run[m] < d) lo = m + 1; else hi = m; }
+        return lo;
     };
-    // Named lines always get one label; icon-only symbols (one-way arrows) need a reasonable run of line.
-    let n = along ? Math.floor(len / spacing) : 1;
-    if (!n) { if (!hasText && len < spacing / 4) return []; n = 1; }
+    const at = (d: number): [number, number] => {
+        const k = after(d), i = start + k, seg = run[k] - run[k - 1];
+        if (d > len || !seg) return [c[i * 2], c[i * 2 + 1]];
+        const t = (d - run[k - 1]) / seg;
+        return [c[i * 2 - 2] + (c[i * 2] - c[i * 2 - 2]) * t, c[i * 2 - 1] + (c[i * 2 + 1] - c[i * 2 - 1]) * t];
+    };
+    // (An empty list of distances stands for the middle of the line: `line-center`, or a label at a point of a line.)
+    if (!ds?.length) ds = [len / 2];
     const out: number[][] = [];
-    for (let i = 0; i < n; i++) {
-        const d = (i + 0.5) / n * len, span = Math.min(d, len - d, 250);
+    for (const d of ds) {
+        const span = Math.min(d, len - d, 250);
         const [x, y] = at(d), [ax, ay] = at(d - span), [bx, by] = at(d + span);
         const anchor = [x, y, Math.atan2(by - ay, bx - ax), len];
         if (along && window > 0) {
             // The stretch of line around the anchor, for text that follows the curve: its points, then the index of the anchor among them.
             const d0 = Math.max(0, d - window), d1 = Math.min(len, d + window), path = [...at(d0)];
-            let run = 0, index = -1;
-            for (let k = start + 1; k < end; k++) {
-                const before = run;
-                run += Math.hypot(c[k * 2] - c[k * 2 - 2], c[k * 2 + 1] - c[k * 2 - 1]);
-                if (index < 0 && d <= run && d >= before) { index = path.length / 2; path.push(x, y); }
-                if (run > d0 && run < d1 && run !== d) path.push(c[k * 2], c[k * 2 + 1]);
+            let index = -1;
+            for (let k = Math.max(1, after(d0) - 1); k < run.length && run[k - 1] < d1; k++) {
+                if (index < 0 && d <= run[k] && d >= run[k - 1]) { index = path.length / 2; path.push(x, y); }
+                if (run[k] > d0 && run[k] < d1 && run[k] !== d) path.push(c[(start + k) * 2], c[(start + k) * 2 + 1]);
             }
             if (index < 0) { index = path.length / 2; path.push(x, y); }
             path.push(...at(d1));

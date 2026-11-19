@@ -17,7 +17,7 @@ const layers = [
     {id: 'roads', type: 'line', source: 's', 'source-layer': 'transportation', paint: {'line-width': 2}},
     {id: 'buildings', type: 'fill-extrusion', source: 's', 'source-layer': 'building', paint: {'fill-extrusion-height': ['get', 'render_height']}},
 ].map(l => compileLayer(l)!);
-const tile = (globe?: GlobeBuild) => toGL(buildTile(bytes, 14, layers, true), globe).tile as any;
+const tile = (globe?: GlobeBuild) => toGL(buildTile(bytes, 14, layers, false), globe).tile as any;
 const square = (x0: number, y0: number, x1: number, y1: number, hole?: number[]): Batch => ({type: 'fill', antialias: false,
     geom: {coords: Int16Array.from([x0, y0, x1, y0, x1, y1, x0, y1, ...hole ?? []]), ringEnds: Uint32Array.from(hole ? [4, 8] : [4]), featEnds: Uint32Array.from([hole ? 2 : 1])}});
 const area = (pos: ArrayLike<number>, idx: ArrayLike<number>, skip = (_: number) => false) => {
