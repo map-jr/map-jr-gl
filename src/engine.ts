@@ -1463,7 +1463,15 @@ export class Engine {
         // (After the last paint transition the layers get their new values back, and a frame does no work for them, #960.)
         if (this.transitionEnd && began >= this.transitionEnd) { this.transitionEnd = 0; for (const l of this.layers) for (const k in l.p) l.p[k] = (l.p[k] as any).to ?? l.p[k]; }
         compileFor(this.states); // (the light of the style is compiled when it is drawn)
-        if (!tr.width || !tr.height || this.lost || (tr.globeStops && !tr.globe)) return;
+        if (this.lost || (tr.globeStops && !tr.globe)) return;
+        // A map of size 0 (a container with `display: none`) needs no tiles and draws nothing. As in MapLibre GL JS, it is
+        // idle once the sprite and the glyphs have loaded (#964); a resize starts the usual frames.
+        if (!tr.width || !tr.height) {
+            const idle = !this.spritePending && !this.atlas.loading;
+            if (idle && !this.wasIdle) this.emit({type: 'idle', seq: this.seq});
+            this.wasIdle = idle;
+            return;
+        }
         // The fonts of the labels are looked up while the tiles load, and not in the first label placement (#326).
         if (this.warmed !== this.layers) {
             this.warmed = this.layers;
