@@ -42,7 +42,7 @@ const spec = <O extends object, M = typeof More>(name: string, make: (m: M, opti
  */
 export const navigation = spec('navigation', (m, o: NavigationOptions) => new m.NavigationControl(o));
 /**
- * Creates a scale bar. The control is placed at `'bottom-left'` unless `position` sets it.
+ * Creates a scale bar. The control is placed at `'top-right'` unless `position` sets it.
  * @param options The options of `ScaleOptions`, and `position`.
  * @returns A control for `controls` of the description.
  */

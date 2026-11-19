@@ -18,8 +18,8 @@ export {decodePNG, decodeWebPLossless, type ImageDecoder};
 /** The options of `renderToSVG` and `renderFirstView`. */
 export interface RenderOptions {
     /**
-     * The style: a style object, the URL of a style, or `{light, dark}`. Of `{light, dark}`, the server renders `dark`
-     * when `colorScheme` is `'dark'`, and `light` otherwise.
+     * The style: a style object, the URL of a style, or `{light, dark}` with one style or URL for each scheme, as
+     * `style` of `MapDescription`. Of `{light, dark}`, the server renders `dark` when `colorScheme` is `'dark'`, and `light` otherwise.
      */
     style: unknown;
     /** The colour scheme that selects the style of `{light, dark}` in `style`, and the colours of the credits of `renderFirstView`. */
@@ -51,7 +51,7 @@ export interface RenderOptions {
     images?: Record<string, string | {image: string; width?: number; height?: number}>;
     /**
      * The CSS font family of labels.
-     * @default '"Noto Sans", "Helvetica Neue", Arial, sans-serif'
+     * @default the `@default` of {@link MapSetup.fontFamily} in the main API
      */
     fontFamily?: string;
     /**
@@ -64,12 +64,12 @@ export interface RenderOptions {
     layerFilter?: (layerId: string) => boolean;
     /**
      * Whether raster tiles and the icon sheet are embedded as data URIs instead of linked. A rasterised SVG needs it.
-     * @default false
+     * @default false in `renderToSVG`, true in `renderToImage`
      */
     inlineImages?: boolean;
     /**
-     * Whether the render uses the high-density (@2x) icon sheet.
-     * @default false
+     * Whether the render uses the high-density (@2x) icon sheet and requests raster tiles at @2x.
+     * @default false in `renderToSVG`; in `renderToImage`, true when `pixelRatio` is above 1
      */
     highDensity?: boolean;
     /**
@@ -381,8 +381,9 @@ export interface ElementRenderOptions extends Omit<RenderOptions, 'style' | 'col
 }
 
 /**
- * Renders the element `<map-jr>` of `@map-jr/map-jr-gl/element` for a description, with an attribute for each field that has
- * one and the first view as its content. Set the fields that have no attribute (`layers`, `data`, a style object) as properties in the page, with the same values.
+ * Renders the element `<map-jr>` of `@map-jr/map-jr-gl/element` for a description, with the first view as its content.
+ * A field that has an attribute of `<map-jr>` and a value that is not an object, such as `zoom` or the URL of a style,
+ * becomes that attribute. Set the other fields, such as `layers`, `data` or a style object, as properties of the element in the page, with the same values.
  * @returns A promise of the HTML. When the render fails, the element has no first view and the error is written to the console.
  */
 export async function renderElement(description: MapDescription, options: ElementRenderOptions = {}): Promise<string> {
@@ -436,7 +437,7 @@ export interface ImageOptions extends RenderOptions {
      */
     quality?: number;
     /**
-     * The number of image pixels for one CSS pixel. Above 1, the render uses the high-density icon sheet.
+     * The number of image pixels for one CSS pixel. Above 1, the render uses `highDensity` unless the options set it to `false`.
      * @default 1
      */
     pixelRatio?: number;

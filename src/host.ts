@@ -26,19 +26,25 @@ import type {BackgroundLayerSpecification, CircleLayerSpecification, ColorRelief
  */
 declare const __DEV__: boolean;
 
-/** The description of a control: see `@map-jr/map-jr-gl/controls`. Controls with the same `key` are the same control. */
-export interface ControlSpec { key: string; position?: ControlPosition; create(instance?: () => MapInstance): Control }
+/** A control for `controls` of the description, as the functions of `@map-jr/map-jr-gl/controls` return it. */
+export interface ControlSpec {
+    /** The identity of the control. A new description with a control of the same `key` keeps the control on the map. */
+    key: string;
+    /** The corner of the map that holds the control. */
+    position?: ControlPosition;
+    /**
+     * Returns the control as MapLibre GL JS controls are, with `onAdd` and `onRemove`. The map calls it when it adds the control.
+     * @param instance A function that returns the map.
+     */
+    create(instance?: () => MapInstance): Control;
+}
 
 /**
- * A position that the application gives: `[lng, lat]`. It is `readonly number[]` and not a pair, because TypeScript
- * gives an array that is declared apart from its use (`const NYC = [-74, 40.7]`) the type `number[]`. A position
- * that the map gives (`state.view.center`, the result of `unproject`) is `[number, number]`.
+ * A position as `[lng, lat]` in degrees, for example `[-74, 40.7]`. A plain `number[]` is accepted. A position that the
+ * map returns, such as `state.view.center`, has the type `[number, number]`.
  */
 export type Position = readonly number[];
-/**
- * A box of the main API: `[[west, south], [east, north]]` or `[west, south, east, north]`, in degrees. (The map also
- * reads `LngLat` and `LngLatBounds` objects at run time, but the types of the main API take arrays only.)
- */
+/** A box in degrees, as `[[west, south], [east, north]]` or `[west, south, east, north]`. */
 export type Bounds = readonly [Position, Position] | readonly [number, number, number, number];
 /** A GeoJSON geometry (RFC 7946). */
 export type GeoJSONGeometry =
@@ -64,18 +70,43 @@ export interface ClusterFeature {type: 'Feature'; id?: string | number; properti
 export interface View { center: [number, number]; zoom: number; bearing: number; pitch: number; bounds: [[number, number], [number, number]] }
 /** A view that the application gives: each field is optional. */
 export interface ViewInput { center?: Position; zoom?: number; bearing?: number; pitch?: number }
-/**
- * A view to go to, for `initialView` and `moveTo`. `bounds` ([west, south, east, north] or [[west, south], [east, north]])
- * is fitted into the map and takes the place of `center` and `zoom`, as in MapLibre GL JS. `padding` (CSS pixels, default
- * 0) is space around `bounds` for this one fit, on top of the padding of the description, and `maxZoom` limits the zoom
- * of the fit. Without `bounds`, `padding` and `maxZoom` have no effect.
- */
-export interface InitialView extends ViewInput { bounds?: Bounds; padding?: PaddingInput; maxZoom?: number }
-/** The argument of `moveTo`: a view or `bounds` (as in `initialView`), with `duration` in milliseconds and `fly`. */
-export interface MoveToOptions extends InitialView { duration?: number; fly?: boolean | FlyOptions }
+/** A view to go to, for `initialView` and `moveTo`: a center, zoom, bearing and pitch, or a box to fit. */
+export interface InitialView extends ViewInput {
+    /** A box to fit into the map. It overrides `center` and `zoom`. */
+    bounds?: Bounds;
+    /**
+     * Space in CSS pixels around `bounds` for this fit, added to `padding` of the description. It has no effect without `bounds`.
+     * @default 0
+     */
+    padding?: PaddingInput;
+    /** The largest zoom level of the fit of `bounds`, for a small box. It has no effect without `bounds`, and it does not change `maxZoom` of the description. */
+    maxZoom?: number;
+}
+/** The argument of `moveTo`: a view or `bounds` as in `InitialView`, and how the camera moves there. */
+export interface MoveToOptions extends InitialView {
+    /**
+     * The duration of the animation in milliseconds. `0` moves the camera at once. With `fly`, a missing `duration` follows from the distance.
+     * @default 0
+     */
+    duration?: number;
+    /**
+     * Whether the camera zooms out and back in on the way. An object sets the options `curve`, `speed`, `screenSpeed`,
+     * `minZoom` and `maxDuration` of `flyTo` of MapLibre GL JS.
+     * @default false
+     */
+    fly?: boolean | FlyOptions;
+}
 /** Where the pointer is over the map: `point` in CSS pixels from the top left corner of the map, `lngLat` as `[lng, lat]`. */
 export interface PointerPosition { point: {x: number; y: number}; lngLat: [number, number] }
-export interface MapPointer { point: {x: number; y: number}; lngLat: [number, number]; /** The features of `interactiveLayers` at the point, the top one first. */ features: RenderedFeature[] }
+/** The argument of `onClick`: where the user clicked, and the features there. */
+export interface MapPointer {
+    /** The point in CSS pixels from the top left corner of the map. */
+    point: {x: number; y: number};
+    /** The position, `[lng, lat]`. */
+    lngLat: [number, number];
+    /** The features of `interactiveLayers` at the point, the top one first. */
+    features: RenderedFeature[];
+}
 
 /** The fields of `MapDescription` that add to the parts of the style: `sources`, `layers` and `terrain`. */
 type StyleParts = Pick<MapDescription, 'sources' | 'layers' | 'terrain'>;
@@ -113,18 +144,18 @@ export interface MapDescription extends MapSetup {
      * style specification. A name here overrides the same name in the `font-faces` of the style.
      */
     fonts?: FontFaces;
-    /** The view when the map is created: a center, zoom, bearing and pitch, or `bounds` to fit. With `hash`, a view in the URL of the page overrides it. */
+    /** The view when the map is created: a center, zoom, bearing and pitch, or `bounds` to fit. `view` overrides it, and with `hash` a view in the URL of the page overrides both. */
     initialView?: InitialView;
     /**
-     * A view that the application controls. Set it together with `onViewChange` and pass each reported view back. The
-     * map applies a new `view` with no animation; to animate the camera, call `moveTo`.
+     * A view that the application controls. Set it together with `onViewChange`, and pass each view that `onViewChange`
+     * receives back to `view`. The map applies a new `view` with no animation; to animate the camera, call `moveTo`.
      */
     view?: ViewInput;
-    /** Called with the new view at each change of the view, also during a movement, by the user or by the application. */
+    /** Called with the new view at each change of the view, also during a movement, and also when the change comes from `view` or `moveTo`. */
     onViewChange?: (view: View) => void;
     /**
-     * GeoJSON data or the URL of GeoJSON, by the id of a GeoJSON source of the style. The map compares each value by identity
-     * and sets only the data that changed. A source that the style does not have gets no data.
+     * GeoJSON data or the URL of GeoJSON, by the id of a GeoJSON source of the style or of `sources`. To change the data
+     * of a source, pass a new object; the same object again changes nothing.
      */
     data?: Record<string, GeoJSON | string>;
     /**
@@ -164,25 +195,25 @@ export interface MapDescription extends MapSetup {
      */
     onError?: (error: Error) => void;
     /**
-     * The smallest zoom level that the user can reach.
+     * The smallest zoom level of the map. It limits gestures, `view` and `moveTo`.
      * @default -2
      */
     minZoom?: number;
     /**
-     * The largest zoom level that the user can reach.
+     * The largest zoom level of the map. It limits gestures, `view` and `moveTo`.
      * @default 22
      */
     maxZoom?: number;
     /**
-     * The largest pitch that the user can reach, in degrees. A value above 90 is limited to 90.
+     * The largest pitch of the map in degrees. It limits gestures, `view` and `moveTo`, and a value above 90 is limited to 90.
      * @default 60
      */
     maxPitch?: number;
-    /** The box that the user cannot move the view out of, as `[[west, south], [east, north]]`. `null` removes the limit. */
+    /** A box ({@link Bounds}) that the view cannot leave. `null` removes the limit. */
     maxBounds?: Bounds | null;
     /**
-     * The CSS cursor over the map. Without it, the cursor is `pointer` over a feature of `interactiveLayers` and `grab`
-     * elsewhere on an interactive map.
+     * The CSS cursor over the map. It overrides the default cursor, which is `pointer` over a feature of
+     * `interactiveLayers`, `grab` elsewhere on an interactive map, and the cursor of the page on a map with `interactive: false`.
      */
     cursor?: string;
     /**
@@ -216,6 +247,7 @@ export interface MapDescription extends MapSetup {
     /**
      * A function that changes a request before the map sends it, as `transformRequest` of MapLibre GL JS. It receives the
      * URL and the resource type, and returns `{url, headers, credentials}`, or `undefined` to send the request unchanged.
+     * `null` and a missing field send every request unchanged.
      */
     transformRequest?: RequestTransform | null;
 }
@@ -265,9 +297,9 @@ export interface MapSetup {
 
 /** The state of a map, which `state` of `MapInstance` holds. */
 export interface MapState {
-    /** Whether the style and the first tiles have loaded. */
+    /** Whether the style and the tiles of the view have loaded for the first time. It stays `true` afterwards. */
     loaded: boolean;
-    /** Whether the camera is still and nothing loads. */
+    /** Whether the camera is still and nothing loads. It becomes `false` again when the camera moves or the map loads. */
     idle: boolean;
     /** Whether the camera moves. */
     moving: boolean;
@@ -277,7 +309,7 @@ export interface MapState {
     hover: RenderedFeature[];
     /** Where the pointer is over the map, or `null` when it is not over the map. It can be one frame late. */
     pointer: PointerPosition | null;
-    /** The thread that renders the map, or `undefined` until the map has started. */
+    /** The thread that renders the map, or `undefined` until `loaded` is `true`. */
     renderer: 'worker' | 'main' | undefined;
     /** The colour scheme of the controls: `colorScheme` of the description, with `'auto'` resolved. */
     colorScheme: 'light' | 'dark';
@@ -345,7 +377,16 @@ export interface MapPointerEvent<T extends string = string, E extends MouseEvent
 /** An event of a touch: `points` and `lngLats` have one entry for each finger on the map. */
 export interface MapTouchEvent<T extends string = string> extends MapPointerEvent<T, PointerEvent> { points: {x: number; y: number}[]; lngLats: [number, number][] }
 /** An event of the data of the map: `dataType` says whether the style or one source (`sourceId`) changed. */
-export interface MapDataEvent<T extends string = string> extends MapEventBase<T> { dataType: 'source' | 'style'; sourceId?: string; isSourceLoaded?: boolean; source?: unknown }
+export interface MapDataEvent<T extends string = string> extends MapEventBase<T> {
+    /** Whether the event concerns the style or one source. */
+    dataType: 'source' | 'style';
+    /** The id of the source, for `dataType: 'source'`. */
+    sourceId?: string;
+    /** Whether the tiles of the source for the view have loaded, for `dataType: 'source'`. */
+    isSourceLoaded?: boolean;
+    /** The source as the style specifies it, for `dataType: 'source'`. */
+    source?: unknown;
+}
 
 type Plain<K extends string> = {[T in K]: MapEventBase<T>};
 type Pointed<K extends string> = {[T in K]: MapPointerEvent<T>};
@@ -370,7 +411,7 @@ export interface MapEvents extends
     boxzoomcancel: MapEventBase<'boxzoomcancel'> & {originalEvent: Event};
     /** A zoom to a box ends, with the bounds of the box as `boxZoomBounds`. */
     boxzoomend: MapEventBase<'boxzoomend'> & {originalEvent: Event; boxZoomBounds: [[number, number], [number, number]]};
-    /** About once a second while the map renders: the frames per second, and the CPU time of a frame in milliseconds. */
+    /** About once a second while the map renders: the frames per second, the CPU time of a frame in milliseconds on the thread that renders, and the number of labels placed. */
     stats: MapEventBase<'stats'> & {fps: number; frameMs: number; labels: number};
     /** The style names an image (`id`) that the map does not have. */
     styleimagemissing: MapEventBase<'styleimagemissing'> & {id: string};
@@ -383,7 +424,7 @@ export interface MapEvents extends
     projectiontransition: MapEventBase<'projectiontransition'> & {newProjection: string};
     /** The geolocate control of `@map-jr/map-jr-gl/controls` received a position. */
     geolocate: MapEventBase<'geolocate'> & {coords: GeolocationCoordinates};
-    /** An error of the map. `error` is usually an `Error`; `onError` of the description always receives an `Error`. */
+    /** An error of the map. `error` is the value that failed, which can be other than an `Error`; `onError` of the description receives it as an `Error`. */
     error: MapEventBase<'error'> & {error: unknown};
 }
 
@@ -413,15 +454,16 @@ export interface MapInstance {
     readonly state: Readable<MapState>;
     /**
      * Returns the features that the style layers render at a place, the top one first.
-     * @param at A point of the screen (`{x, y}`), a position (`[lng, lat]`), a box of the screen (two points), or nothing for the whole map. The options can be passed here instead.
-     * @param options `layers` selects the style layers, and `filter` the features.
+     * @param at A point of the screen (`{x, y}`), a position (`[lng, lat]`), a box of the screen (two points), or nothing for the whole map. The options can be passed here instead, and `options` is then ignored.
+     * @param options `layers` (the ids of style layers), `filter` (a filter expression) and `radius` (in CSS pixels around a point).
      * @returns A promise of the features.
      */
     queryFeatures(at?: FeaturePlace | FeatureOptions, options?: FeatureOptions): Promise<RenderedFeature[]>;
     /**
-     * Returns the features of the tile data of a source, with no need of a style layer. At a position, the map loads the tile when it is not on the screen.
+     * Returns the features of the tile data of a source, with no need of a style layer. A position need not be in the view.
      * @param sourceId The id of a source of the style or of `sources`.
-     * @param at A point of the screen or a position, or nothing for the tiles of the view. The options can be passed here instead.
+     * @param at A point of the screen or a position, or nothing for the tiles of the view. The options can be passed here instead, and `options` is then ignored.
+     * @param options `sourceLayers`, `filter`, `radius` (CSS pixels), `geometry` and `zoom`.
      * @returns A promise of the features.
      */
     querySource(sourceId: string, at?: FeaturePlace | SourceOptions, options?: SourceOptions): Promise<QueriedFeature[]>;
@@ -448,7 +490,7 @@ export interface MapInstance {
     removeFeatureState(target: {source: string; sourceLayer?: string; id?: number | string}, key?: string): void;
     /**
      * Returns the height of the ground at a position (`[lng, lat]`) or a point of the screen, from the terrain source.
-     * @returns A promise of the height in metres, or of `null` where there is no elevation data.
+     * @returns A promise of the height in metres multiplied by the `exaggeration` of the terrain, or of `null` where there is no elevation data.
      */
     queryElevation(at: Position | {x: number; y: number}): Promise<number | null>;
     /**
@@ -478,8 +520,8 @@ export interface MapInstance {
      */
     clusterLeaves(sourceId: string, clusterId: number, options?: {limit?: number; offset?: number}): Promise<ClusterFeature[]>;
     /**
-     * Moves the camera to a view or to `bounds`, with an animation when `duration` is more than 0. `fly` zooms out and
-     * back in on the way. The padding of the map stays that of the description.
+     * Moves the camera to a view or to `bounds`, with an animation when `duration` is more than 0 or `fly` is set. The
+     * padding of the map stays that of the description.
      */
     moveTo(view: MoveToOptions): void;
     /** Moves the camera to fit a box, as `moveTo({bounds, ...options})` with `duration` 800 ms unless `options` sets it. */
@@ -559,7 +601,7 @@ class GlassPopup extends Popup {
 
 export function createMap(container: HTMLElement | string, spec: MapDescription): MapInstance { return makeMap(container, spec, 'createMap()'); }
 
-/** `createMap` for the adapters: `name` is what the user wrote (`<MapJr>`, `useMapJr()`), for the warnings that name it. */
+/** @internal `createMap` for the adapters of this package. */
 export function makeMap(container: HTMLElement | string, spec: MapDescription, name: string): MapInstance {
     complete(spec, 'createMap', 'Pass the URL of a style or a style object as "style".');
     if (!container) throw new Error('[map-jr-gl] createMap(): the container is ' + container + '. In a framework, make the map after the element is mounted.');
