@@ -55,3 +55,15 @@ test('tileZoomOffset: -2 at zoom 10 fetches tiles of zoom 12, and the source max
 test('tileZoomOffset: a value that is not a whole number rejects with a message', async () => {
     await assert.rejects(render({tileZoomOffset: 1.5}), /^Error: \[map-jr-gl\] tileZoomOffset: 1\.5 is not a whole number\. Write for example tileZoomOffset: 2/);
 });
+
+test('tileZoomOffset: with -2 the style is evaluated at the zoom of the render, not of the tiles', async () => {
+    const s: any = style();
+    s.layers.push({id: 'deep', type: 'fill', source: 's', 'source-layer': 'water', filter: ['>=', ['zoom'], 11], paint: {'fill-color': '#f00'}},
+        {id: 'edge', type: 'line', source: 's', 'source-layer': 'water', paint: {'line-color': '#0f0', 'line-width': ['interpolate', ['linear'], ['zoom'], 10, ['coalesce', ['get', 'none'], 1], 12, ['coalesce', ['get', 'none'], 9]]}});
+    const high = await render({zoom: 10, tileZoomOffset: -2}, s);
+    assert.ok(high.fetched.every(t => /\/12\//.test(t)), high.fetched.join());
+    assert.doesNotMatch(high.svg, /#ff0000/, 'a filter of zoom 11 and above draws nothing at zoom 10');
+    const widths = [...high.svg.matchAll(/stroke="#00ff00"[^>]*?stroke-width="([\d.]+)"|stroke-width="([\d.]+)"[^>]*?stroke="#00ff00"/g)].map(m => +(m[1] ?? m[2]));
+    assert.ok(widths.length > 0, 'the line layer draws');
+    assert.ok(widths.every(w => Math.abs(w - 1) < 0.01), `the line width of zoom 10 is 1, not ${widths}`);
+});

@@ -238,7 +238,7 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
         await Promise.all(ideal.filter((id, i) => ideal.findIndex(o => o.key === id.key) === i).map(async id => {
             const url = tileURL(src, id.z, id.x, id.y, o.highDensity ? 2 : 1);
             if (src.type === 'raster') { loaded.set(id.key, {href: o.inlineImages ? await dataURI(url) : url}); return; }
-            loaded.set(id.key, await builder.loadIR({id: req++, source: name, url, z: id.z, overscaled: id.z >= maxzoom && Math.floor(tr.zoom)}));
+            loaded.set(id.key, await builder.loadIR({id: req++, source: name, url, z: id.z, overscaled: (id.z >= maxzoom || dz < 0) && Math.floor(tr.zoom)}));
         }));
         const list = renderItems(tr, ideal, k => loaded.get(k));
         items.set(name, list);

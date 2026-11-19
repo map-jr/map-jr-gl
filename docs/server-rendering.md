@@ -308,8 +308,8 @@ A negative value does the opposite, for a detailed image: with `tileZoomOffset: 
 tiles of zoom 12 and draws them at the size of zoom 10. Each step lower fetches about four times as many tiles, so
 the render takes longer and the SVG is larger. The limits for requests (`timeout`, `requestTimeout`, `maxBytes`,
 `allowHosts`) apply to these tiles as to any other. The zoom of the tiles does not go above the `maxzoom` of the
-source. The style is evaluated at the zoom of the tiles, so the filters and the property values that depend on the
-zoom are those of the higher zoom.
+source. The style is evaluated at the zoom of the render, as with a positive value: the layers, the filters, the widths
+and the other values that depend on the zoom are those of the live map at that zoom, and only the shapes are finer.
 
 A value that is not a whole number makes the render reject with an error.
 
