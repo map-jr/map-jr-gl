@@ -86,8 +86,14 @@ export interface SSROverrides {
      * so `["step", ["zoom"], false, 13, true]` keeps the features there and `[">=", ["zoom"], 13.5]` keeps none.
      */
     filter?: unknown;
-    minzoom?: number; maxzoom?: number;
-    paint?: Record<string, unknown>; layout?: Record<string, unknown>;
+    /** Replaces the `minzoom` of the layer in server output. */
+    minzoom?: number;
+    /** Replaces the `maxzoom` of the layer in server output. */
+    maxzoom?: number;
+    /** Paint properties for server output; each replaces the property of the same name of the layer, and the others stay. */
+    paint?: Record<string, unknown>;
+    /** Layout properties for server output; each replaces the property of the same name of the layer, and the others stay. */
+    layout?: Record<string, unknown>;
     /** Drop vertices closer together than this many pixels (default 0.6). */
     simplify?: number;
     /**
