@@ -10,6 +10,8 @@ sections:
   - title: Guide
     folder: guide
     pages:
+      - getting-started.md
+      - which-entry.md
       - view-and-camera.md
       - data.md
   - title: Recipes

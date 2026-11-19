@@ -1,4 +1,4 @@
-import {defineCollection, defineContentConfig} from '@nuxt/content';
+import {defineCollection, defineContentConfig, z} from '@nuxt/content';
 import {docsDir, readNav} from './build/nav';
 
 // One collection reads the markdown of docs/ in the repository, which is outside the Nuxt root. docs/nav.yml says
@@ -12,6 +12,8 @@ export default defineContentConfig({
         docs: defineCollection({
             type: 'page',
             source: [...folders, ...files.map(file => ({cwd: docsDir, include: file, prefix: '/'}))],
+            // The variants of the code groups of the page, in the order of the page. website/build/markdown.ts sets it.
+            schema: z.object({variants: z.array(z.string()).optional()}),
         }),
     },
 });
