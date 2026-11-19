@@ -540,6 +540,8 @@ interface IconBuffers {
     group?: Uint8Array;
     /** The angle of the map for which the indices are sorted from the top of the screen down (`symbol-z-order`), or NaN for the order of the source. */
     angle: number;
+    /** The angle of the map in the last frame that drew these icons, and whether no frame has drawn them yet. */
+    seen?: number; fresh?: boolean;
 }
 interface GLBuffers {
     type: GLBatch['type']; vao: WebGLVertexArrayObject; count: number; /** UNSIGNED_SHORT or UNSIGNED_INT. */ indexType: number; color: boolean; scalar: boolean; bufs: WebGLBuffer[];
@@ -840,7 +842,7 @@ export class GLRenderer {
                 gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
                 gl.enableVertexAttribArray(2 + i); gl.vertexAttribPointer(2 + i, size, gl.FLOAT, false, 0, 0);
             });
-            (icons ??= {})[id] = {src, vao, vertices, index, bufs, counts: [0, 0], angle: NaN};
+            (icons ??= {})[id] = {src, vao, vertices, index, bufs, counts: [0, 0], angle: NaN, fresh: true};
             this.fillIcons(icons[id]);
         }
         gl.bindVertexArray(null);
@@ -920,8 +922,11 @@ export class GLRenderer {
                 // (`symbol-z-order`: these icons may overlap and the layer has no `symbol-sort-key`, so `auto` and
                 // `viewport-y` draw them from the top of the screen down, as `placeLabels` does for placed symbols.)
                 const angle = p.zOrder.eval(zoom) === 'source' ? NaN : -tr.bearing * Math.PI / 180;
-                // (While the map turns, the order is found again after each half degree.)
-                if (Number.isNaN(angle) !== Number.isNaN(b.angle) || Math.abs(angle - b.angle) > 0.008) this.indexIcons(b, angle);
+                // (While the map turns, the icons keep their order: it is found again in the first frame in which the
+                // angle is the same as in the frame before, so that a frame of a turn does not sort 100,000 icons.)
+                const differs = Number.isNaN(angle) !== Number.isNaN(b.angle) || Math.abs(angle - b.angle) > 1e-6;
+                if (differs && (b.fresh || Object.is(angle, b.seen))) this.indexIcons(b, angle);
+                b.fresh = false; b.seen = angle;
                 if (!u) {
                     u = this.use('icon', tr);
                     const anchor = p.iconAnchor.eval(zoom) as string, offset = p.iconOffset.eval(zoom) as number[], translate = screenTranslate(p.iconTranslate.eval(zoom), p.iconTranslateAnchor.eval(zoom), tr.bearing), color = p.iconColor.eval(zoom) as number[];
