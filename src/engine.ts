@@ -79,7 +79,8 @@ export type Command =
     /** The compat entry, when a listener wants `data` or `sourcedata`: report each tile that has loaded with a `tileLoaded` event. */
     | {type: 'tileLoads'; on: boolean}
     /** The compat entry, with the engine on the main thread: draws its custom layers (custom-layers.ts). The answer is the WebGL context. */
-    | {type: 'custom'; id: number; draw: GLRenderer['custom']};
+    | {type: 'custom'; id: number; draw: GLRenderer['custom']}
+    | {type: 'bound'; id: number; fn: ((tr: Transform) => void) | null};
 export type EngineEvent =
     | {type: 'camera'; lng: number; lat: number; zoom: number; bearing: number; pitch: number; /** Ground height at the centre with 3D terrain, else 0. */ elevation: number; exaggeration: number; groundRange?: [number, number]; padding: [number, number, number, number]; moving: boolean;
         /** During a drag: the ground that it grabbed, and the number of the command that grabbed it (#38). */
@@ -1034,6 +1035,7 @@ export class Engine {
             case 'tileReport': this.tap = c.on; return;
             case 'tileLoads': this.tellLoads = c.on; return;
             case 'custom': this.renderer.custom = c.draw; this.emit({type: 'result', id: c.id, value: this.renderer.gl}); break;
+            case 'bound': tr.customConstrain = c.fn; tr.set(undefined); this.emit({type: 'result', id: c.id, value: 0}); break;
         }
         this.repaint();
     }

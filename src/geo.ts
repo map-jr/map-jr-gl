@@ -171,7 +171,10 @@ export class Transform {
     get zoomFloor() { return globenessAt(this.globeStops, this.minZoom) ? this.minZoom : Math.max(this.minZoom, Math.log2(this.height / TILE_SIZE)); }
 
     /** Keeps the view on the map, and inside `maxBounds` if there are any (as MapLibre GL JS does). */
+    /** A function that replaces this constraint (`setTransformConstrain` of the compat entry). */
+    customConstrain?: ((tr: Transform) => void) | null;
     constrain() {
+        if (this.customConstrain) return this.customConstrain(this);
         // As in MapLibre, the view does not go past the top or the bottom of the world (when the world is taller than the view).
         // (A latitude that needs no change is left exactly as it was given.)
         // The world is never less tall than the view: the zoom stops there (as in MapLibre).

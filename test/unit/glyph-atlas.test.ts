@@ -22,16 +22,27 @@ test('the glyph atlas starts small and grows, keeping the pixels it has', () => 
 // The first use of a font family can take half a second, so the fonts of the style are looked up before the first
 // label placement needs them, one font in each task (#326).
 test('warm() looks up each font of the style once, in later tasks, and not when the style has glyph files', async () => {
+    // The test waits for the lookups themselves, with a bound, and not for a fixed time: on a busy runner the timers
+    // of warm() can fire late (#712).
     const atlas = new GlyphAtlas('sans-serif') as any, measured: string[] = [];
-    atlas.ctx = {font: '', measureText() { measured.push(this.font); return {width: 0}; }};
+    let inTask = false, sameTask = 0;
+    atlas.ctx = {font: '', measureText() {
+        if (inTask) sameTask++;
+        inTask = true; queueMicrotask(() => { inTask = false; });
+        measured.push(this.font); return {width: 0};
+    }};
+    const turn = () => new Promise(r => setTimeout(r, 1));
+    const until = async (done: () => boolean) => { for (const end = Date.now() + 5000; !done() && Date.now() < end;) await turn(); };
     atlas.warm(['Noto Sans Bold', ['Open Sans Italic', 'Arial Unicode MS Regular'], 'Noto Sans Bold']);
     assert.deepEqual(measured, [], 'nothing is looked up in the task that asks');
-    await new Promise(r => setTimeout(r, 20));
+    await until(() => measured.length >= 2);
+    for (let i = 0; i < 5; i++) await turn();
     assert.deepEqual(measured, ['700 24px "Noto Sans", sans-serif', 'italic 400 24px "Open Sans", "Arial Unicode MS", sans-serif']);
+    assert.equal(sameTask, 0, 'each font is looked up in a task of its own');
     atlas.setGlyphs('https://example.com/{fontstack}/{range}.pbf');
     atlas.fetchGlyphs = () => new Promise(() => {});
     atlas.warm(['Roboto Regular']);
-    await new Promise(r => setTimeout(r, 20));
+    for (let i = 0; i < 5; i++) await turn();
     assert.equal(measured.length, 2, 'glyph files of the style make the lookup unnecessary');
 });
 
