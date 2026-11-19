@@ -1,7 +1,13 @@
 // The types that scripts/reference.mjs writes as tables. A block `<!-- ref:Name:start -->` of a page names one of
 // these types, and `<!-- ref:Name.member:start -->` one method of it. Add a type here to give a page a new table.
 // (Each is an alias of its own: the script reads the aliases of this file, and a re-export is not one.)
+import type * as index from '../../src/index.ts';
 import type * as host from '../../src/host.ts';
+import type * as map from '../../src/map.ts';
+import type * as store from '../../src/store.ts';
+import type * as loader from '../../src/loader.ts';
+import type * as pointsModule from '../../src/points.ts';
+import type * as query from '../../src/query.ts';
 import type * as controls from '../../src/control-specs.ts';
 import type * as react from '../../src/react.ts';
 import type * as svelte from '../../src/svelte.ts';
@@ -27,6 +33,20 @@ export type ViewInput = host.ViewInput;
 export type InitialView = host.InitialView;
 export type MoveToOptions = host.MoveToOptions;
 export type OverlayOptions = host.OverlayOptions;
+export type MapOverlay = host.MapOverlay;
+export type FeatureOptions = host.FeatureOptions;
+export type SourceOptions = host.SourceOptions;
+export type FlyOptions = map.FlyOptions;
+export type RenderedFeature = map.RenderedFeature;
+export type StyleLayer = map.StyleLayer;
+export type QueriedFeature = query.QueriedFeature;
+export type ClusterFeature = host.ClusterFeature;
+export type Readable = store.Readable<unknown>;
+export type Store = store.Store<object>;
+export type LoadOptions = loader.LoadOptions;
+export type PointsOptions = pointsModule.PointsOptions<unknown>;
+/** The functions that `@map-jr/map-jr-gl` exports. */
+export type MainExports = typeof index;
 export type NavigationOptions = controls.NavigationOptions;
 export type ScaleOptions = controls.ScaleOptions;
 export type GeolocateOptions = controls.GeolocateOptions;

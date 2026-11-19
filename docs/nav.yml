@@ -24,6 +24,14 @@ sections:
   - title: Reference
     folder: reference
     pages:
+      - create-map.md
+      - description.md
+      - map.md
+      - state.md
+      - events.md
+      - exports.md
+      - types.md
+      - css.md
       - server.md
   - title: Migrate
     folder: migrate

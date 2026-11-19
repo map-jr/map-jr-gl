@@ -12,11 +12,20 @@ export const protocols = new Map<string, ProtocolFunction>();
 export const protocolListeners = new Set<() => void>();
 
 let warnedPmtiles = false;
+/**
+ * Loads each URL that starts with `name://` through `fn`, for every map of the page.
+ * @param name The scheme of the URLs, without `://`.
+ * @param fn The function that returns the data of a request.
+ */
 export function addProtocol(name: string, fn: ProtocolFunction) {
     // (Accepted with no effect for `pmtiles://` URLs, so it warns in every build, once per page: the registry is too.)
     if (name == 'pmtiles' && !warnedPmtiles) { warnedPmtiles = true; console.warn('[map-jr-gl] addProtocol("pmtiles"): the library reads pmtiles:// URLs itself and does not use this protocol. Remove the addProtocol call.'); }
     protocols.set(name, fn); for (const f of protocolListeners) f();
 }
+/**
+ * Removes a protocol that `addProtocol` added.
+ * @param name The scheme of the URLs, without `://`.
+ */
 export function removeProtocol(name: string) { protocols.delete(name); for (const f of protocolListeners) f(); }
 
 /** The data that a protocol returned, as bytes: tiles come as buffers, and JSON as objects or text. */

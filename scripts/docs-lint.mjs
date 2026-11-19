@@ -92,7 +92,8 @@ for (const file of files) {
             } else {
                 groupEnd = i;
                 // A block runs when it is pasted: it imports what it creates the map with, and it declares `map`.
-                // The fragments under "Variations" of a recipe and the copied files of an example block are not checked.
+                // The fragments under "Variations" of a recipe, the copied files of an example block and the signatures of a
+                // reference block are not checked.
                 const text = code.join('\n');
                 if ((lang === 'js' || lang === 'ts') && !copied && section !== 'Variations') {
                     if (/\b(?:createMap|new Map)\(/.test(text) && !/^\s*import\s/m.test(text)) find(fenceLine, 'this block creates a map and has no import. Every block is complete: add the import.');
@@ -103,7 +104,7 @@ for (const file of files) {
             return;
         }
         if (fence) { code.push(line); return; }
-        if (/^<!--\s*example:[\w-]+:(start|end)\s*-->/.test(line)) copied = line.includes(':start');
+        if (/^<!--\s*(?:example:[\w-]+|ref:[\w.]+):(start|end)\s*-->/.test(line)) copied = line.includes(':start');
         const prose = line.replace(/`[^`]*`/g, '').replace(/\]\([^)]*\)/g, ']');
         for (const [pattern, what] of banned) {
             if (sizes && String(pattern).includes('KB')) continue;

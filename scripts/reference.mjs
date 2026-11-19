@@ -81,7 +81,9 @@ function members(name) {
     const type = checker.getDeclaredTypeOfSymbol(symbol), self = keyOf(type.getSymbol()?.declarations?.[0]);
     const list = [];
     list.undeclared = [];
-    for (const member of checker.getPropertiesOfType(type)) {
+    for (const property of checker.getPropertiesOfType(type)) {
+        // (An export of a module, for `typeof` an entry, is an alias: the TSDoc is on the function that it names.)
+        const member = property.flags & SymbolFlags.Alias ? checker.getAliasedSymbol(property) : property;
         const handle = member.declarations?.[0];
         // (A member that a mapped type makes, such as `Record<'a' | 'b', T>`, has no declaration and so no TSDoc.)
         // A listener `onX` of that kind is an event of the component (the `emits` of Vue, `MapEventProps` of React),
@@ -93,7 +95,7 @@ function members(name) {
         // (Private members, members that start with `_` for wrappers, and the callbacks of a custom element that the browser calls.)
         if (modifiers.includes('private') || modifiers.includes('protected') || /^[#_]/.test(member.name) || lifecycle.has(member.name)) continue;
         const parent = node?.parent?.name ? `${handle.path}#${node.parent.name.getText()}` : '';
-        if (parent !== self && named.has(parent)) continue;
+        if (parent && parent !== self && named.has(parent)) continue;
         // (A getter without a setter is read only, and its type is the type that it returns.)
         const getter = /^(\w+\s+)*get\s/.test(node?.getText() ?? ''), setter = member.declarations.some(d => /^(\w+\s+)*set\s/.test(d.resolve(project)?.getText() ?? ''));
         list.push({member, node, getter, file: String(handle.path), index: handle.index, readonly: modifiers.includes('readonly') || (getter && !setter)});
@@ -116,7 +118,9 @@ const typeText = (member, optional, node, getter = false) => {
     const flat = text => text.replace(/\s*\n\s*/g, ' ');
     if (node?.type && node.parameters && !getter) {
         const generics = node.typeParameters?.length ? `<${node.typeParameters.map(p => p.getText()).join(', ')}>` : '';
-        return flat(`${generics}(${node.parameters.map(p => p.getText()).join(', ')}) => ${node.type.getText()}`);
+        // (A parameter with a default value is optional, and the value is not part of the type.)
+        const param = p => `${p.dotDotDotToken ? '...' : ''}${p.name.getText()}${p.questionToken || p.initializer ? '?' : ''}${p.type ? ': ' + p.type.getText() : ''}`;
+        return flat(`${generics}(${node.parameters.map(param).join(', ')}) => ${node.type.getText()}`);
     }
     if (node?.type) return flat(node.type.getText());
     let text = checker.typeToString(checker.getTypeOfSymbol(member)).replace(/"([^"']*)"/g, "'$1'").replace(/\{ /g, '{').replace(/;? \}/g, '}');

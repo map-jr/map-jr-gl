@@ -5,14 +5,24 @@
  * identity.
  */
 export interface Readable<T> {
+    /** Returns the current value. */
     get(): T;
     /** Calls `fn` after each change. Returns a function that stops it. */
     subscribe(fn: (value: T) => void): () => void;
     /** Calls `fn` when the part that `select` returns has changed (compared with `Object.is`). */
     subscribe<S>(select: (value: T) => S, fn: (part: S, value: T) => void): () => void;
 }
-export interface Store<T> extends Readable<T> { set(part: Partial<T>): void }
+/** A store that code can also change, as `createStore` returns it. */
+export interface Store<T> extends Readable<T> {
+    /** Merges `part` into the value as a new object, and calls the subscribers when a field changed (compared with `Object.is`). */
+    set(part: Partial<T>): void;
+}
 
+/**
+ * Creates a store of the kind that `state` of a map is, with `get`, `subscribe` and `set`.
+ * @param value The first value.
+ * @returns The store.
+ */
 export function createStore<T extends object>(value: T): Store<T> {
     const listeners = new Set<(value: T) => void>();
     return {
