@@ -1695,12 +1695,14 @@ export class Engine {
             this.placeZoom = tr.zoom;
             this.placeAngle = -tr.bearing * Math.PI / 180;
             const keep = new Set<string>(), resets = this.atlas.resets, start = performance.now();
-            let placed = placeLabels(tr, all, this.layers, this.atlas, grid!, this.icon, L => this.reserve(grid!, items, L));
+            // (A label with several anchors tries the one that it shows first, as in MapLibre GL JS.)
+            const shown = (key: string) => { const st = this.labels.get(key); return st?.target ? st.placed.anchor : undefined; };
+            let placed = placeLabels(tr, all, this.layers, this.atlas, grid!, this.icon, L => this.reserve(grid!, items, L), shown);
             if (this.atlas.resets !== resets) {
                 // The glyph atlas filled up and was emptied part-way through: earlier labels now point at stale
                 // glyphs. Place again; the fresh atlas only has to hold this view's text.
                 const again = new CollisionGrid();
-                placed = placeLabels(tr, all, this.layers, this.atlas, again, this.icon, L => this.reserve(again, items, L));
+                placed = placeLabels(tr, all, this.layers, this.atlas, again, this.icon, L => this.reserve(again, items, L), shown);
             }
             for (const p of placed) {
                 keep.add(p.key);

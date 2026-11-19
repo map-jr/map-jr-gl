@@ -41,6 +41,8 @@ export interface Placed {
     angle: number; size: number; shaped: Shaped | null; src: LabelSrc; icon?: PlacedIcon;
     /** Line alignment chosen at placement (`text-justify: auto` with a list of anchors); otherwise the label's own. */
     justify?: number;
+    /** The anchor of `text-variable-anchor` (or `text-variable-anchor-offset`) that the placement chose. */
+    anchor?: string;
     /** The `text-opacity` of the layer at the zoom of the map (1 when it is a value for each feature, which is in the colours). */
     alpha?: number;
     /** Text following a line: for each glyph, where its baseline starts relative to the label's anchor, and its rotation (x, y, angle triples). */
@@ -170,6 +172,8 @@ export function placeLabels(
     icons?: IconLookup,
     /** Called when the placement comes to a symbol layer, before its labels: for what takes space with that layer and is not placed here. */
     before?: (layer: CompiledLayer) => void,
+    /** The anchor of `text-variable-anchor` that a label (by its key) had in the previous placement, if it was shown. */
+    prev?: (key: string) => string | undefined,
 ): Placed[] {
     const out: Placed[] = [], seen = new SameText(), far = tr.depthRange()[1];
     let itemNo = 0;
@@ -257,7 +261,8 @@ export function placeLabels(
                         // from the point by the radial offset, or `text-offset` turned to point away from the anchor.
                         const side = (a: string, r: number): [number, number] => [
                             a.includes('left') ? r : a.includes('right') ? -r : 0, a.includes('top') ? r : a.includes('bottom') ? -r : 0];
-                        // MapLibre moves text at a top or bottom anchor towards the point, to allow for the space above the letters.
+                        // MapLibre moves text at a top or bottom anchor towards the point, to allow for the space above the
+                        // letters. (It moves it by 7/24 em, from a taller box than this text has: 0.15 em gives the same place.)
                         const add = (a: string, ox: number, oy: number) => {
                             const [sx, sy] = shift(a, 0), near = a.includes('top') ? -0.15 : a.includes('bottom') ? 0.15 : 0;
                             anchors.push(a); candidates.push([sx + ox * size, sy + (oy + near) * size]);
@@ -265,7 +270,7 @@ export function placeLabels(
                         if (l.varOffset?.length) {
                             for (let i = 0; i + 1 < l.varOffset.length; i += 2) { const o = l.varOffset[i + 1] as [number, number]; add(l.varOffset[i] as string, o[0], o[1]); }
                         } else for (const a of l.varAnchor!) {
-                            if (l.radial) { const [rx, ry] = side(a, rx_(a, l.radial)); add(a, rx, ry); }
+                            if (l.radial) { const [rx, ry] = side(a, rx_(a, Math.max(0, l.radial))); add(a, rx, ry); }
                             else add(a, side(a, Math.abs(l.offset[0]))[0], side(a, Math.abs(l.offset[1]))[1]);
                         }
                     }
@@ -293,23 +298,13 @@ export function placeLabels(
                     // Point labels from one tile are separate features, also when they have the same position.
                     if (!twin && !bent && seen.near(l.text, ax, ay, line ? 300 : 1, line ? -1 : itemNo)) continue; // (text on its line has passed this test already)
                 }
-                let textBox: Box | null = null, tx = ax, ty = ay;
-                let justify: number | undefined;
-                if (twin) { textBox = twin.box; tx = twin.x; ty = twin.y; justify = twin.justify; }
-                else for (let i = 0; i < candidates.length; i++) {
-                    const [dx, dy] = candidates[i], box = boxAround(ax + dx, ay + dy, w, h, textAngle, l.padding);
-                    if (l.overlap || !grid.hits(...box)) {
-                        textBox = box; tx = ax + dx; ty = ay + dy;
-                        if (l.justifyAuto && anchors[i]) justify = justification('auto', anchors[i]);
-                        break;
-                    }
-                }
-                if (hasText && !textBox && !bent && !(meta && l.textOptional)) continue;
-
-                let icon: PlacedIcon | undefined, iconBox: Box | null = null;
-                // (An icon that is fitted to text is not drawn where there is no text, as in MapLibre.)
-                if (meta && l.icon && (hasText || l.icon.fit === 'none')) {
-                    const ic = l.icon, fit = hasText && (textBox || bent) ? ic.fit : 'none', isize = (L.p.iconSize.dd ? ic.size + (ic.size1 - ic.size) * t : L.p.iconSize.eval(tr.zoom)) * persp;
+                const n = 2 ** it.id.z, q = 2 ** 22;
+                const key = `${L.id}|${l.text}|${l.icon?.name ?? ''}|${Math.round((it.id.x + l.x / EXTENT) / n * q)},${Math.round((it.id.y + l.y / EXTENT) / n * q)},${it.id.w}`;
+                const ic = meta && l.icon, isize = ic ? (L.p.iconSize.dd ? ic.size + (ic.size1 - ic.size) * t : L.p.iconSize.eval(tr.zoom)) * persp : 0;
+                // Where the icon goes and its size, for text centred at (tx, ty).
+                const sprite = meta;
+                const iconAt = (fit: string, tx: number, ty: number) => {
+                    const ic = l.icon!, meta = sprite!;
                     let iw = meta.width / meta.pixelRatio * isize, ih = meta.height / meta.pixelRatio * isize;
                     // The anchor names the part of the icon that sits on the point.
                     let ix = ax + ic.offset[0] * isize + (ic.anchor.includes('left') ? iw / 2 : ic.anchor.includes('right') ? -iw / 2 : 0);
@@ -339,11 +334,45 @@ export function placeLabels(
                             ih = f.len; iy = ay + top - f.off + ih / 2 + oy; gy = f.cuts;
                         } else iy = ty + oy;
                     }
+                    const move = screenTranslate(L.p.iconTranslate.eval(tr.zoom), L.p.iconTranslateAnchor.eval(tr.zoom), tr.bearing);
+                    return {ix: ix + move[0], iy: iy + move[1], iw, ih, gx, gy};
+                };
+                let textBox: Box | null = null, tx = ax, ty = ay;
+                let justify: number | undefined, anchor: string | undefined;
+                if (twin) { textBox = twin.box; tx = twin.x; ty = twin.y; justify = twin.justify; }
+                else {
+                    // As in MapLibre GL JS: the anchor of the previous placement first, then every anchor where nothing
+                    // is in the way, and only then, when the text may overlap, every anchor again with overlap. With
+                    // `icon-text-fit`, the icon that follows the text must fit too.
+                    const before = anchors.length ? anchors.indexOf(prev?.(key) ?? '') : -1;
+                    const fitted = anchors.length && ic && ic.fit !== 'none' && !ic.overlap;
+                    const tries: number[] = before < 0 ? [] : [before];
+                    for (let i = 0; i < candidates.length; i++) tries.push(i);
+                    if (l.overlap) for (let i = 0; i < candidates.length; i++) tries.push(i + candidates.length);
+                    for (const k of tries) {
+                        const i = k % candidates.length, overlap = k >= candidates.length;
+                        const [dx, dy] = candidates[i], box = boxAround(ax + dx, ay + dy, w, h, textAngle, l.padding);
+                        if (!overlap && grid.hits(...box)) continue;
+                        if (fitted && !overlap) {
+                            const f = iconAt(ic.fit, ax + dx, ay + dy);
+                            if (grid.hits(...boxAround(f.ix, f.iy, f.iw, f.ih, (ic.upright ? 0 : north) + ic.rotate * Math.PI / 180, ic.padding))) continue;
+                        }
+                        textBox = box; tx = ax + dx; ty = ay + dy;
+                        anchor = anchors[i];
+                        if (anchor && l.justifyAuto) justify = justification('auto', anchors[i]);
+                        break;
+                    }
+                }
+                if (hasText && !textBox && !bent && !(meta && l.textOptional)) continue;
+
+                let icon: PlacedIcon | undefined, iconBox: Box | null = null;
+                // (An icon that is fitted to text is not drawn where there is no text, as in MapLibre.)
+                if (ic && (hasText || ic.fit === 'none')) {
+                    const fit = hasText && (textBox || bent) ? ic.fit : 'none';
+                    const {ix, iy, iw, ih, gx, gy} = iconAt(fit, tx, ty);
                     // (An icon that is fitted to text on a line turns with the text, which reads from left to right.)
                     const along = fit !== 'none' && Math.abs(lineAngle) > Math.PI / 2 ? lineAngle + Math.PI : lineAngle;
                     const angle = (ic.upright ? 0 : line ? along : north) + ic.rotate * Math.PI / 180;
-                    const move = screenTranslate(L.p.iconTranslate.eval(tr.zoom), L.p.iconTranslateAnchor.eval(tr.zoom), tr.bearing);
-                    ix += move[0]; iy += move[1];
                     const box = boxAround(ix, iy, iw, ih, angle, ic.padding);
                     if (ic.overlap || !grid.hits(...box)) {
                         iconBox = box;
@@ -358,12 +387,10 @@ export function placeLabels(
                 if (textBox && !l.ignore && !twin) grid.insert(...textBox);
                 if (iconBox && !l.icon!.ignore) grid.insert(...iconBox);
                 if (textBox) seen.add(l.text, ax, ay, itemNo);
-                const n = 2 ** it.id.z, q = 2 ** 22;
-                const key = `${L.id}|${l.text}|${l.icon?.name ?? ''}|${Math.round((it.id.x + l.x / EXTENT) / n * q)},${Math.round((it.id.y + l.y / EXTENT) / n * q)},${it.id.w}`;
                 // Features with the same text at the same position keep separate keys, in their order in the tile.
                 const same = keys.get(key) ?? 0;
                 keys.set(key, same + 1);
-                out.push({x: tx, y: ty, angle: textAngle, size, shaped: textBox ? shaped : null, src: l, icon, key: same ? key + '#' + same : key, layer: L.id, tile: it.id, ax, ay, depth, opacity: 1, justify, alpha});
+                out.push({x: tx, y: ty, angle: textAngle, size, shaped: textBox ? shaped : null, src: l, icon, key: same ? key + '#' + same : key, layer: L.id, tile: it.id, ax, ay, depth, opacity: 1, justify, alpha, anchor});
             }
         }
     }
