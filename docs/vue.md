@@ -23,12 +23,12 @@ const hovered = ref([]);
 <template>
   <div style="height: 400px">
     <MapJr
-      map-style="https://tiles.openfreemap.org/styles/liberty"
+      map-style="https://styles.map-jr.org/1/elevation-zero.json"
       v-model:view="view"
       :images="{dot}"
       :data="{places}"
       :layers="[pinLayer]"
-      :interactive-layers="['places', 'poi_r1']"
+      :interactive-layers="['places', 'poi_z14']"
       @hover="hovered = $event"
       @click="event => console.log(event.lngLat, event.features)"
     />
@@ -96,7 +96,7 @@ function missing(event) {
 </script>
 
 <template>
-  <MapJr map-style="https://tiles.openfreemap.org/styles/liberty" :images="images" @styleimagemissing="missing" />
+  <MapJr map-style="https://styles.map-jr.org/1/elevation-zero.json" :images="images" @styleimagemissing="missing" />
 </template>
 ```
 
@@ -160,7 +160,7 @@ state, set it in `@dragend`:
 import {ref} from 'vue';
 import {MapJr, MapOverlay} from '@map-jr/map-jr-gl/vue';
 
-const style = 'https://tiles.openfreemap.org/styles/liberty';
+const style = 'https://styles.map-jr.org/1/elevation-zero.json';
 const home = ref([-74.0065, 40.7085]);
 </script>
 
@@ -199,7 +199,7 @@ const additions = {
 </script>
 
 <template>
-  <MapJr map-style="https://tiles.openfreemap.org/styles/liberty" :initial-view="{center: [-73.996, 40.73], zoom: 11.5}" v-bind="additions">
+  <MapJr map-style="https://styles.map-jr.org/1/elevation-zero.json" :initial-view="{center: [-73.996, 40.73], zoom: 11.5}" v-bind="additions">
     <MapImage name="pin" :params="['color']" v-slot="{color}">
       <svg viewBox="0 0 24 31"><path :fill="color" stroke="#fff" d="M12 30C12 30 2 17 2 11a10 10 0 0 1 20 0c0 6-10 19-10 19z"/></svg>
     </MapImage>
@@ -274,7 +274,7 @@ let stored = view.value;
 
 <template>
   <div style="height: 400px">
-    <MapJr ref="map" map-style="https://tiles.openfreemap.org/styles/liberty" v-model:view="view" />
+    <MapJr ref="map" map-style="https://styles.map-jr.org/1/elevation-zero.json" v-model:view="view" />
   </div>
   <button @click="stored = view">Remember this view</button>
   <button @click="map.map.moveTo({...stored, duration: 500})">Back to where I was</button>
@@ -317,7 +317,7 @@ import {useMapJr} from '@map-jr/map-jr-gl/vue';
 
 const measuring = ref(false);
 const {map, state} = useMapJr(useTemplateRef('el'), computed(() => ({
-  style: 'https://tiles.openfreemap.org/styles/liberty',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
   initialView: {center: [-74.0065, 40.7085], zoom: 13.6},
   cursor: measuring.value ? 'crosshair' : undefined,
 })));
@@ -361,7 +361,7 @@ With the module, a page uses the components without an import:
 ```vue
 <template>
   <div style="height: 400px">
-    <LazyMapJr hydrate-on-visible map-style="https://tiles.openfreemap.org/styles/liberty"
+    <LazyMapJr hydrate-on-visible map-style="https://styles.map-jr.org/1/elevation-zero.json"
       :initial-view="{center: [-74.0065, 40.7085], zoom: 13.6}" :controls="[navigationControl()]" ssr />
   </div>
 </template>
@@ -407,7 +407,7 @@ The component under test, `app/components/StoreMap.vue`:
 ```vue
 <template>
   <div style="height: 400px">
-    <MapJr map-style="https://tiles.openfreemap.org/styles/liberty" :initial-view="{center: [-74.0065, 40.7085], zoom: 13.6}" />
+    <MapJr map-style="https://styles.map-jr.org/1/elevation-zero.json" :initial-view="{center: [-74.0065, 40.7085], zoom: 13.6}" />
   </div>
 </template>
 ```
@@ -435,7 +435,7 @@ vi.mock('@map-jr/map-jr-gl/vue', async importOriginal => {
 describe('StoreMap', () => {
     it('passes the style to the map', async () => {
         const wrapper = await mountSuspended(StoreMap);
-        expect(wrapper.find('[data-test="map"]').attributes('data-style')).toBe('https://tiles.openfreemap.org/styles/liberty');
+        expect(wrapper.find('[data-test="map"]').attributes('data-style')).toBe('https://styles.map-jr.org/1/elevation-zero.json');
     });
 });
 ```
@@ -464,7 +464,7 @@ With the `ssr` prop, the server also renders the first view as SVG:
 
 ```vue
 <MapJr
-  map-style="https://tiles.openfreemap.org/styles/liberty"
+  map-style="https://styles.map-jr.org/1/elevation-zero.json"
   :initial-view="view"
   :images="{dot}"
   :data="{places}"
@@ -472,7 +472,7 @@ With the `ssr` prop, the server also renders the first view as SVG:
   :controls="[navigation()]"
   :ssr="{
     width: 800, height: 500,
-    overrides: {building: {hidden: true}, 'road_minor': {minzoom: 15}, poi_r20: {hidden: true}},
+    overrides: {building: {hidden: true}, 'road_minor': {minzoom: 15}, poi_z18: {hidden: true}},
   }"
 />
 ```

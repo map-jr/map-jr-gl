@@ -40,7 +40,7 @@ const elevation = on => ({
 });
 
 let description = {
-  style: 'https://tiles.openfreemap.org/styles/liberty',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
   initialView: {center: [7.6586, 45.9763], zoom: 12.4, pitch: 60},
   ...elevation(true),
   controls: [navigation()],

@@ -1,7 +1,7 @@
 import {createMap} from '@map-jr/map-jr-gl';
 import {navigation, scale, fullscreen} from '@map-jr/map-jr-gl/controls';
 
-const style = 'https://tiles.openfreemap.org/styles/liberty';
+const style = 'https://styles.map-jr.org/1/elevation-zero.json';
 const NYC = [-74.0065, 40.7085];
 
 export default function (container, {show}) {

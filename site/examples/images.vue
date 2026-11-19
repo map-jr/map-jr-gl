@@ -1,7 +1,7 @@
 <script setup>
 import {MapJr} from '@map-jr/map-jr-gl/vue';
 
-const style = 'https://tiles.openfreemap.org/styles/liberty';
+const style = 'https://styles.map-jr.org/1/elevation-zero.json';
 // An SVG image with a slot ({{color}}). The symbol layer fills the slot for each feature.
 const pin = '<svg viewBox="0 0 24 31"><path d="M12 30C12 30 2 19 2 11.5a10 10 0 1 1 20 0C22 19 12 30 12 30z" fill="{{color}}" stroke="#fff" stroke-width="1.5"/><circle cx="12" cy="11.5" r="4" fill="#fff"/></svg>';
 const places = {type: 'FeatureCollection', features: [

@@ -1,6 +1,6 @@
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
-const style = 'https://tiles.openfreemap.org/styles/liberty';
+const style = 'https://styles.map-jr.org/1/elevation-zero.json';
 
 export default function (container, {show}) {
   const map = new Map({container, style, center: [-74.1, 40.75], zoom: 9.2, attributionControl: {compact: true}});

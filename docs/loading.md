@@ -108,7 +108,7 @@ import {configure, createMap} from '@map-jr/map-jr-gl';
 configure({workerUrl: '/assets/map-jr-gl-worker.js', tileWorkers: 2});
 
 const map = createMap(document.getElementById('map'), {
-  style: 'https://tiles.openfreemap.org/styles/liberty',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
   initialView: {center: [-74.0065, 40.7085], zoom: 13.6},
 });
 ```
@@ -229,7 +229,7 @@ import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 export default function MapView() {
   const el = useRef(null);
   useEffect(() => {
-    const map = new Map({container: el.current, style: 'https://tiles.openfreemap.org/styles/liberty', center: [0, 0], zoom: 1});
+    const map = new Map({container: el.current, style: 'https://styles.map-jr.org/1/elevation-zero.json', center: [0, 0], zoom: 1});
     return () => map.remove();
   }, []);
   return <div ref={el} style={{height: 400}} />;

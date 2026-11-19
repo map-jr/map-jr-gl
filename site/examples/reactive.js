@@ -1,6 +1,6 @@
 import {createMap, points} from '@map-jr/map-jr-gl';
 
-const style = 'https://tiles.openfreemap.org/styles/liberty';
+const style = 'https://styles.map-jr.org/1/elevation-zero.json';
 const NYC = [-74.0065, 40.7085];
 
 const dot = '<svg viewBox="0 0 12 12"><circle cx="6" cy="6" r="4.5" fill="{{color}}" stroke="#fff" stroke-width="1.5"/></svg>';

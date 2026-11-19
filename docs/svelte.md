@@ -15,7 +15,7 @@ package, so they work with each version of Svelte.
   // A point for each place: its properties are the place, so the slot {{color}} gets its colour.
   const pins = $derived(points(places, {lngLat: p => p.lngLat}));
   const description = $derived({
-    style: 'https://tiles.openfreemap.org/styles/liberty',
+    style: 'https://styles.map-jr.org/1/elevation-zero.json',
     initialView: {center: [-74.0065, 40.7085], zoom: 13.6},
     images: {dot},
     data: {places: pins},
