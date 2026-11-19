@@ -7,7 +7,7 @@ import {compileExpr, compileFilter} from './expr.ts';
  */
 export const GEOJSON_PREFIX = 'geojson://';
 export const GEOJSON_LAYER = '_geojson';
-const BUFFER = 128;
+const DEFAULT_BUFFER = 128;
 
 interface Prepared {
     type: 1 | 2 | 3; id?: number | string; properties: Record<string, unknown>;
@@ -33,6 +33,8 @@ export interface GeoJSONOptions {
     generateId?: boolean;
     /** Only features that pass this filter are in the source. */
     filter?: unknown;
+    /** How far past its edges a tile keeps the features, in pixels of a tile 512 pixels wide (MapLibre's `buffer`). */
+    buffer?: number;
 }
 
 interface ClusterNode { x: number; y: number; count: number; id: number; props: Record<string, unknown>; children?: ClusterNode[]; taken: number; leaf?: Prepared }
@@ -130,15 +132,17 @@ export class ClusterIndex {
 }
 
 /** Features and, with `cluster`, the cluster index of a GeoJSON source. */
-export interface PreparedSource { features: Prepared[]; clusters?: ClusterIndex; points?: Prepared[] }
+export interface PreparedSource { features: Prepared[]; clusters?: ClusterIndex; points?: Prepared[]; /** In tile units. */ buffer?: number }
 export function prepareSource(data: unknown, o: GeoJSONOptions = {}, sourceMaxZoom = 18): PreparedSource {
     let all = prepareGeoJSON(data, typeof o.promoteId === 'string' ? o.promoteId : o.promoteId?._geojsonTileLayer, o.generateId);
     const keep = o.filter ? compileFilter(o.filter) : null;
     if (keep) all = all.filter(f => keep({zoom: 0, f: f as any}));
-    if (!o.cluster) return {features: all};
+    // (Without `buffer`, tiles keep 16 pixels, where MapLibre GL JS keeps 128.)
+    const buffer = typeof o.buffer === 'number' && o.buffer >= 0 ? Math.min(o.buffer, 512) * EXTENT / 512 : undefined;
+    if (!o.cluster) return {features: all, buffer};
     // Clusters are made of single points. Other features stay as they are.
     const points = all.filter(f => f.type === 1 && f.rings.length === 1), rest = all.filter(f => !(f.type === 1 && f.rings.length === 1));
-    return {features: rest, points, clusters: new ClusterIndex(points, o, sourceMaxZoom)};
+    return {features: rest, points, clusters: new ClusterIndex(points, o, sourceMaxZoom), buffer};
 }
 
 export function prepareGeoJSON(data: any, promoteId?: string, generateId?: boolean): Prepared[] {
@@ -229,7 +233,7 @@ function clipLine(pts: number[], lo: number, hi: number, ranges?: number[]): num
 
 /** The features of one tile, clipped and in tile units. */
 export function sliceGeoJSON(source: Prepared[] | PreparedSource, z: number, x: number, y: number, metrics = false): Record<string, {features: SlicedFeature[]}> {
-    const src = Array.isArray(source) ? {features: source} : source;
+    const src: PreparedSource = Array.isArray(source) ? {features: source} : source, BUFFER = src.buffer ?? DEFAULT_BUFFER;
     const features = src.clusters ? [...src.features, ...(src.clusters.at(z) ?? src.points!)] : src.features;
     const n = 2 ** z, pad = BUFFER / EXTENT / n, x0 = x / n - pad, y0 = y / n - pad, x1 = (x + 1) / n + pad, y1 = (y + 1) / n + pad;
     const out: SlicedFeature[] = [];
