@@ -170,7 +170,9 @@ for (const mode of renderers) {
             return n;
         }, (await page.screenshot({clip: {x: 0, y: 0, width: 400, height: 400}})).toString('base64'));
         const front = await redPixels();
-        await page.evaluate(() => new Promise(r => { window.farMap.jumpTo({center: [170, 0]}); requestAnimationFrame(() => requestAnimationFrame(r)); }));
+        // (The first frame of the new camera, then two frames of the page to show it: in WebKit the frame of the worker
+        // renderer can come later than two frames of the page after jumpTo; #965.)
+        await page.evaluate(() => new Promise(r => { window.farMap.once('render', () => requestAnimationFrame(() => requestAnimationFrame(r))); window.farMap.jumpTo({center: [170, 0]}); }));
         const back = await redPixels();
         await page.evaluate(() => { const el = window.farMap.getContainer(); window.farMap.remove(); el.remove(); });
         check(`[${mode}] the globe: a label that turns behind the globe is not drawn in the next frame`, front > 50 && back === 0, JSON.stringify({front, back}));

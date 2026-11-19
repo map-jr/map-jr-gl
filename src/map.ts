@@ -658,6 +658,14 @@ export class Map {
     private shown?: EngineEvent;
     /** The size of the drawing buffer after the last resize, as the engine reports it, and the time until which an `idle` waits for the canvas to have it (see `onEngineEvent`). */
     private buffer?: [number, number, number];
+    /**
+     * In WebKit the first task that reads the canvas of a worker after a frame came, with `drawImage`, `toDataURL` or
+     * `createImageBitmap`, reads blank pixels, and each later task reads the frame (#965). This read is that first one.
+     * The page makes it at the engine's first frame and when an `idle` report comes, in tasks before the page fires `idle`.
+     */
+    private firstRead() {
+        if (this.renderer === 'worker' && navigator.vendor.startsWith('Apple')) try { new OffscreenCanvas(1, 1).getContext('2d')!.drawImage(this.canvas, 0, 0); } catch { /* (nothing to read yet) */ }
+    }
     private onEngineEvent(e: EngineEvent) {
         if (__DEV__ && e.type !== 'camera' && e.type !== 'heights' && e.type !== 'result') this.note('engine: ' + e.type, e.type === 'pong' ? e.n : e.type === 'idle' ? {seq: e.seq, expected: this.seq} : e.type === 'frame' ? {first: !this.drew} : e.type === 'error' ? e.message : undefined);
         if (e.type === 'camera') {
@@ -703,6 +711,7 @@ export class Map {
         } else if (e.type === 'pong') {
             this.pong = e.n;
         } else if (e.type === 'frame') {
+            if (!this.drew) this.firstRead();
             this.drew = true; // (an engine reports its first frame also when the page did not ask for frames)
             this.fire('render');
         } else if (e.type === 'source') {
@@ -721,6 +730,7 @@ export class Map {
             // size of the drawing buffer after the last resize, until a second after that resize. (The engine reports that size: the
             // browser clamps a large canvas.)
             if (this.renderer === 'worker' && this.shown !== e) {
+                if (!this.tilesLoaded) this.firstRead();
                 let done = false;
                 const c = this.canvas;
                 const go = () => {
