@@ -33,6 +33,15 @@ async function open(path, {width = 1440, height = 900, scheme = 'light'} = {}) {
     await page.goto(base + path, {waitUntil: path === '/' ? 'load' : 'networkidle'});
     return {page, problems, close: () => context.close()};
 }
+// The contrast ratio of WCAG 2 between two colours written as #RRGGBB.
+function contrast(a, b) {
+    const luminance = hex => {
+        const [r, g, b] = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255).map(c => c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    };
+    const [high, low] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+    return (high + 0.05) / (low + 0.05);
+}
 const overflow = page => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 
 try {
@@ -85,6 +94,39 @@ try {
         check('colour mode: the choice stays after a load', await page.evaluate(() => document.documentElement.classList.contains('dark')));
         check('docs page: no failed request and no error', problems.length === 0, problems.join(' | '));
         await close();
+    }
+
+    // The colours of the code (#1209): the tokens have the colours of the theme of the scheme, the block has the
+    // sheet of the site, and each token has 4.5:1 or more against it. The lists are the foreground colours of the
+    // themes github-light-default and github-dark-default of Shiki 4.6.0.
+    {
+        const themes = {
+            light: {sheet: '#FFFFFF', colours: ['#1F2328', '#6E7781', '#CF222E', '#0550AE', '#953800', '#8250DF', '#116329', '#0A3069', '#82071E', '#57606A']},
+            dark: {sheet: '#1C1D20', colours: ['#E6EDF3', '#8B949E', '#FF7B72', '#79C0FF', '#FFA657', '#D2A8FF', '#7EE787', '#A5D6FF', '#FFA198', '#F0F6FC']},
+        };
+        for (const scheme of ['light', 'dark']) {
+            const {page, problems, close} = await open('/guide/getting-started', {scheme});
+            await page.waitForFunction(scheme => document.documentElement.classList.contains(scheme), scheme);
+            const blocks = await page.locator('main pre.shiki').evaluateAll(blocks => {
+                const hex = colour => '#' + colour.match(/\d+/g).slice(0, 3).map(n => Number(n).toString(16).padStart(2, '0')).join('').toUpperCase();
+                return blocks.filter(block => block.checkVisibility()).map(block => ({
+                    sheet: hex(getComputedStyle(block).backgroundColor),
+                    // A block in a language that Shiki did not load has no token colours and takes the text colour.
+                    highlighted: !!block.querySelector('code span[style*="--shiki"], code span[class^="s"]'),
+                    colours: [...block.querySelectorAll('code span')].filter(span => !span.children.length && span.textContent.trim()).map(span => hex(getComputedStyle(span).color)),
+                }));
+            });
+            const {sheet, colours} = themes[scheme];
+            const used = [...new Set(blocks.flatMap(block => block.colours))];
+            check(`code in ${scheme}: the page has highlighted code blocks`, blocks.some(block => block.highlighted) && used.length > 1, `${blocks.filter(block => block.highlighted).length} of ${blocks.length} blocks`);
+            check(`code in ${scheme}: each block has the sheet ${sheet}`, blocks.every(block => block.sheet === sheet), [...new Set(blocks.map(block => block.sheet))].join(' '));
+            const foreign = [...new Set(blocks.filter(block => block.highlighted).flatMap(block => block.colours))].filter(colour => !colours.includes(colour));
+            check(`code in ${scheme}: the tokens have the colours of the theme`, foreign.length === 0, foreign.join(' '));
+            const low = used.map(colour => [colour, contrast(colour, sheet)]).filter(([, ratio]) => ratio < 4.5);
+            check(`code in ${scheme}: every token has 4.5:1 or more on the sheet`, low.length === 0, low.map(([colour, ratio]) => `${colour} ${ratio.toFixed(2)}`).join(' ') || 'lowest ' + Math.min(...used.map(colour => contrast(colour, sheet))).toFixed(2));
+            check(`code in ${scheme}: no failed request and no error`, problems.length === 0, problems.join(' | '));
+            await close();
+        }
     }
 
     // The pages of the header, and an address with no page.

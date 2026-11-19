@@ -35,7 +35,13 @@ export default defineNuxtConfig({
     // A change of the manifest starts the development server again, because the collection is made from it.
     watch: [navFile],
     // The native connector needs no build of better-sqlite3.
-    content: {experimental: {sqliteConnector: 'native'}},
+    // The themes of the code keep every token at 4.5:1 or more on the sheets (#1209). The colour mode sets the class
+    // `light` or `dark` on <html>, and each key names the theme for that class (`default` is for neither). All three
+    // keys are set because Nuxt UI gives its own theme to each of them.
+    content: {
+        experimental: {sqliteConnector: 'native'},
+        build: {markdown: {highlight: {theme: {light: 'github-light-default', default: 'github-light-default', dark: 'github-dark-default'}}}},
+    },
     llms: {
         domain: 'https://map-jr.org',
         title: 'Map Jr. GL',
