@@ -1739,7 +1739,7 @@ export class Engine {
             if (tooFar(tr, q[2], far)) continue;
             let d = st.drawn!;
             if (st.drawnFrom !== p) {
-                d = st.drawn = {...p, icon: p.icon && {...p.icon, gx: p.icon.gx?.slice(), gy: p.icon.gy?.slice()}, curve: p.curve?.slice(), ground: p.ground?.slice()};
+                d = st.drawn = {...p, icon: p.icon && {...p.icon, gx: p.icon.gx?.slice(), gy: p.icon.gy?.slice(), frame: p.icon.frame?.slice()}, curve: p.curve?.slice(), ground: p.ground?.slice(), frame: p.frame?.slice()};
                 st.drawnFrom = p; st.turned = false;
             }
             d.opacity = st.opacity;

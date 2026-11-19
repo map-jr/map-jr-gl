@@ -133,7 +133,7 @@ Properties:
 - `line-gap-width` that is different for each feature. The line is drawn without a gap, and nothing warns.
 - `heatmap-radius` that is different for each feature. The layer uses the default radius of 30 pixels, and nothing warns.
 - `text-writing-mode`
-- `text-pitch-alignment` with a value other than `auto`. The property is not read, and nothing warns. On a tilted map, text along a line lies on the ground and other text is upright, which is what `auto` gives in MapLibre GL JS.
+- `text-pitch-alignment` and `icon-pitch-alignment` with `map` at a point are approximations. The symbol lies on the ground with the slant of the ground at its anchor, so a large symbol near the horizon is not as wide at its far edge as MapLibre GL JS draws it. Images inside text, and an icon with `icon-text-fit`, face the screen. The SVG output of the server renderer draws all symbols facing the screen.
 - `symbol-z-order`. The property is not read, and nothing warns. Without a `symbol-sort-key`, the symbols of a layer keep the order of the source, which is what the value `source` gives in MapLibre GL JS. The values `auto` and `viewport-y` do not sort symbols that overlap by their position on the screen.
 - `symbol-avoid-edges`. The property is not read, and nothing warns.
 - `symbol-height-offset`. The property is not read, and nothing warns.
