@@ -10,6 +10,7 @@ import {existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync} from 'n
 import http from 'node:http';
 import path from 'node:path';
 import {launch} from '../launch.mjs';
+import {examplesBlock} from './report.mjs';
 
 const root = path.resolve(import.meta.dirname, '../..'), pages = path.join(root, '.cache/maplibre-gl-js/test/examples');
 const out = process.argv.slice(2).find(a => !a.startsWith('--')) ?? path.join(root, '.cache/examples');
@@ -105,16 +106,6 @@ console.log(`${rows.length} example pages: ${count('works')} work, ${count('diff
 for (const r of rows.filter(r => r.state !== 'works')) console.log(`${r.state.padEnd(8)} ${r.name} ${r.diff ?? ''}${r.diff !== undefined ? '% ' : ''}${r.newErrors[0]?.slice(0, 140) ?? ''}`);
 
 if (process.argv.includes('--write') && !process.argv.some(a => a.startsWith('--filter=')) && !renderer) {
-    const cell = s => String(s).replaceAll('|', '\\|').replace(/https?:\/\/localhost:\d+\/\S*/g, '').slice(0, 160);
-    const lines = ['<!-- examples:start -->', '## The example pages of MapLibre GL JS', '',
-        'The documentation of MapLibre GL JS has an example page for each common task. `node test/conformance/examples.mjs --write`',
-        'runs each page two times: with MapLibre GL JS, and with this library in its place (the page itself is not changed).',
-        `A page works when this library gives no error that MapLibre GL JS does not give, and at most ${LIMIT} percent of the`,
-        'pixels of the two images differ clearly (labels and controls are drawn in different ways).', '',
-        `**${count('works')} of ${rows.length} pages work.** ${count('error')} give an error, ${count('differs')} draw a different image, ${count('no image') + count('not run')} were not compared.`, '',
-        '| Example page | Result | Pixels that differ | First error of this library |', '|---|---|---|---|',
-        ...rows.filter(r => r.state !== 'works').map(r => `| ${r.name} | ${r.state} | ${r.diff ?? ''} | ${cell(r.newErrors[0] ?? '')} |`),
-        '<!-- examples:end -->'];
-    const file = path.join(root, 'docs/ecosystem.md'), doc = readFileSync(file, 'utf8'), block = lines.join('\n');
+    const file = path.join(root, 'docs/ecosystem.md'), doc = readFileSync(file, 'utf8'), block = examplesBlock(rows, LIMIT);
     writeFileSync(file, doc.includes('<!-- examples:start -->') ? doc.replace(/<!-- examples:start -->[\s\S]*<!-- examples:end -->/, block) : doc.replace('## What is missing most often', block + '\n\n## What is missing most often'));
 }

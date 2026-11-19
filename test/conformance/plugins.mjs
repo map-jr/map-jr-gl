@@ -8,6 +8,7 @@ import {existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync} from 'n
 import http from 'node:http';
 import path from 'node:path';
 import {launch} from '../launch.mjs';
+import {pluginsBlock} from './report.mjs';
 
 const root = path.resolve(import.meta.dirname, '../..'), dir = path.join(root, '.cache/plugins'), scenarios = path.join(import.meta.dirname, 'plugins');
 const PACKAGES = {draw: '@mapbox/mapbox-gl-draw', 'terra-draw': 'terra-draw terra-draw-maplibre-gl-adapter', compare: '@maplibre/maplibre-gl-compare', 'sync-move': '@mapbox/mapbox-gl-sync-move',
@@ -82,12 +83,6 @@ await browser.close();
 server.close();
 
 if (process.argv.includes('--write')) {
-    const file = path.join(root, 'docs/ecosystem.md'), doc = readFileSync(file, 'utf8'), cell = s => String(s).replaceAll('|', '\\|').replaceAll('\n', ' ');
-    const block = ['<!-- plugins:start -->', '## Plugins that were run', '',
-        'These plugins were run with this library in a browser by `node test/conformance/plugins.mjs --write`. Each one has a',
-        'short scenario in `test/conformance/plugins/`. The plugin imports `maplibre-gl` and gets this library.', '',
-        `**${results.filter(r => r.ok).length} of ${results.length} scenarios pass.**`, '',
-        '| Plugin | Result | What the scenario found |', '|---|---|---|',
-        ...results.map(r => `| ${cell(r.version)} | ${r.ok ? 'Pass' : 'Fail'} | ${cell(r.detail)}${r.errors.length ? ' Errors: ' + cell(r.errors.join('; ')) : ''} |`), '<!-- plugins:end -->'].join('\n');
+    const file = path.join(root, 'docs/ecosystem.md'), doc = readFileSync(file, 'utf8'), block = pluginsBlock(results);
     writeFileSync(file, doc.includes('<!-- plugins:start -->') ? doc.replace(/<!-- plugins:start -->[\s\S]*<!-- plugins:end -->/, block) : doc.replace('## What is missing most often', block + '\n\n## What is missing most often'));
 }
