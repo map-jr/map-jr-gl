@@ -380,7 +380,7 @@ test('style: server overrides hide layers, add filters and adjust detail', () =>
     assert.equal(b.filter!({zoom: 0, f: {type: 2, properties: {class: 'x', rank: 1}}}), false);
 });
 
-test('style: a server filter can read ["zoom"], which is the whole zoom of the tile, as in MapLibre (#984)', () => {
+test('style: a server filter can read ["zoom"], the zoom of the tile, or the over-zoomed zoom, as in MapLibre (#984, #991)', () => {
     const roads = (filter: unknown, overscaled: number | false = false) => {
         const [l] = applySSROverrides([{id: 'r', type: 'line', source: 's', 'source-layer': 'transportation', metadata: {'map-jr:ssr': {filter}}}]);
         return buildTile(bytes, TILE.z, [compileLayer(l)!], overscaled).layers.r;
