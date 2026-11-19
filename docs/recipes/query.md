@@ -3,82 +3,41 @@
 To find what is at a position of the map, query the data of a source. This example lists every feature within 8
 pixels of a click, also features that the style does not draw.
 
-Each block below is a file of the gallery. In the two `js` files, the gallery calls the exported function with the
-container of the map and with `show`, a function that writes a line of text beside the map: in your code, create the
-map in the same way and replace `show`. The Vue and React components fill their parent element, so give the parent a
-height.
+Each block below is a file of the gallery. The two `js` files are the module script of a page that has
+`<div id="map" style="height: 500px"></div>`, and each one creates the line of text below the map itself. The Vue and
+React components fill their parent element, so give the parent a height.
 
 <!-- example:query:start -->
 **Main API**
 
 ```js [Main API]
+// The module script of a page that has <div id="map" style="height: 500px"></div>. The answer to a click shows in a
+// box on the map, and a line of text below the map counts the features.
 import {createMap} from '@map-jr/map-jr-gl';
 
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';
 const NYC = [-74.0065, 40.7085];
 
-export default function (container, {show}) {
-  // The answer shows in a box in a corner of the map. The box takes no pointer events, so a click on it reaches the map.
-  const box = document.createElement('div');
-  box.style.cssText = 'position:absolute;top:8px;left:8px;z-index:1;pointer-events:none;max-width:240px;padding:8px 10px;border-radius:8px;background:#fff;color:#222;font:12px/1.5 system-ui,sans-serif;box-shadow:0 1px 6px #0004';
-  box.hidden = true;
+const container = document.getElementById('map');
+const readout = document.createElement('p');
+container.after(readout);
+const show = text => { readout.textContent = text; };
 
-  let clicks = 0;
-  const map = createMap(container, {
-    style,
-    initialView: {center: NYC, zoom: 16.2},
-    attribution: {compact: true},
-    cursor: 'crosshair',   // a click asks about one position
-    onClick: async e => {
-      const click = ++clicks;
-      // `querySource` reads the tile data of one source within 8 pixels of the click. It also finds
-      // features that the style does not draw. "openmaptiles" is the id of the vector source in this style.
-      // A query fails when its tile cannot be loaded: the answer is then `null` here.
-      const features = await map.querySource('openmaptiles', e.lngLat, {radius: 8}).catch(() => null);
-      // An earlier click can get its answer after a later click. Only the last click is shown.
-      if (click !== clicks) return;
+// The answer shows in a box in a corner of the map. The box takes no pointer events, so a click on it reaches the map.
+const box = document.createElement('div');
+box.style.cssText = 'position:absolute;top:8px;left:8px;z-index:1;pointer-events:none;max-width:240px;padding:8px 10px;border-radius:8px;background:#fff;color:#222;font:12px/1.5 system-ui,sans-serif;box-shadow:0 1px 6px #0004';
+box.hidden = true;
 
-      box.replaceChildren();
-      for (const f of features?.slice(0, 8) ?? []) {
-        const line = box.appendChild(document.createElement('div'));
-        line.appendChild(document.createElement('b')).textContent = f.sourceLayer;
-        line.append(' ' + (f.properties.name ?? f.properties.class ?? ''));
-      }
-      if (!features?.length) box.textContent = features ? 'Nothing here' : 'The tile data did not load';
-      box.hidden = false;
-      show(features ? `${features.length} features within 8 pixels` : 'The query failed');
-    },
-  });
-  container.append(box);
-  show('Click the map to list what is there.');
-  return map;
-}
-```
-
-**MapLibre compat**
-
-```js [MapLibre compat]
-import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
-
-const style = 'https://styles.map-jr.org/1/elevation-zero.json';
-const NYC = [-74.0065, 40.7085];
-
-export default function (container, {show}) {
-  const map = new Map({container, style, center: NYC, zoom: 16.2, attributionControl: {compact: true}});
-  map.setCursor('crosshair');
-
-  // The answer shows in a box in a corner of the map. The box takes no pointer events, so a click on it reaches the map.
-  const box = document.createElement('div');
-  box.style.cssText = 'position:absolute;top:8px;left:8px;z-index:1;pointer-events:none;max-width:240px;padding:8px 10px;border-radius:8px;background:#fff;color:#222;font:12px/1.5 system-ui,sans-serif;box-shadow:0 1px 6px #0004';
-  box.hidden = true;
-  map.getContainer().append(box);
-
-  let clicks = 0;
-  map.on('click', async e => {
+let clicks = 0;
+const map = createMap(container, {
+  style,
+  initialView: {center: NYC, zoom: 16.2},
+  attribution: {compact: true},
+  cursor: 'crosshair',   // a click asks about one position
+  onClick: async e => {
     const click = ++clicks;
-    // `querySource` is an addition of this library. It reads the tile data of one source within
-    // 8 pixels of the click, and it also finds features that the style does not draw. "openmaptiles" is the id of
-    // the vector source in this style. (`queryRenderedFeatures` of MapLibre GL JS is there also.)
+    // `querySource` reads the tile data of one source within 8 pixels of the click. It also finds
+    // features that the style does not draw. "openmaptiles" is the id of the vector source in this style.
     // A query fails when its tile cannot be loaded: the answer is then `null` here.
     const features = await map.querySource('openmaptiles', e.lngLat, {radius: 8}).catch(() => null);
     // An earlier click can get its answer after a later click. Only the last click is shown.
@@ -93,9 +52,55 @@ export default function (container, {show}) {
     if (!features?.length) box.textContent = features ? 'Nothing here' : 'The tile data did not load';
     box.hidden = false;
     show(features ? `${features.length} features within 8 pixels` : 'The query failed');
-  });
-  return map;
-}
+  },
+});
+container.append(box);
+show('Click the map to list what is there.');
+```
+
+**MapLibre compat**
+
+```js [MapLibre compat]
+// The module script of a page that has <div id="map" style="height: 500px"></div>. The answer to a click shows in a
+// box on the map, and a line of text below the map counts the features.
+import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
+
+const style = 'https://styles.map-jr.org/1/elevation-zero.json';
+const NYC = [-74.0065, 40.7085];
+
+const map = new Map({container: 'map', style, center: NYC, zoom: 16.2, attributionControl: {compact: true}});
+map.setCursor('crosshair');
+const readout = document.createElement('p');
+map.getContainer().after(readout);
+
+// The answer shows in a box in a corner of the map. The box takes no pointer events, so a click on it reaches the map.
+const box = document.createElement('div');
+box.style.cssText = 'position:absolute;top:8px;left:8px;z-index:1;pointer-events:none;max-width:240px;padding:8px 10px;border-radius:8px;background:#fff;color:#222;font:12px/1.5 system-ui,sans-serif;box-shadow:0 1px 6px #0004';
+box.hidden = true;
+map.getContainer().append(box);
+
+let clicks = 0;
+map.on('click', async e => {
+  const click = ++clicks;
+  // `querySource` is an addition of this library. It reads the tile data of one source within
+  // 8 pixels of the click, and it also finds features that the style does not draw. "openmaptiles" is the id of
+  // the vector source in this style. (`queryRenderedFeatures` of MapLibre GL JS is there also.)
+  // A query fails when its tile cannot be loaded: the answer is then `null` here.
+  const features = await map.querySource('openmaptiles', e.lngLat, {radius: 8}).catch(() => null);
+  // An earlier click can get its answer after a later click. Only the last click is shown.
+  if (click !== clicks) return;
+
+  box.replaceChildren();
+  for (const f of features?.slice(0, 8) ?? []) {
+    const line = box.appendChild(document.createElement('div'));
+    line.appendChild(document.createElement('b')).textContent = f.sourceLayer;
+    line.append(' ' + (f.properties.name ?? f.properties.class ?? ''));
+  }
+  if (!features?.length) box.textContent = features ? 'Nothing here' : 'The tile data did not load';
+  box.hidden = false;
+  readout.textContent = features ? `${features.length} features within 8 pixels` : 'The query failed';
+});
+readout.textContent = 'Click the map to list what is there.';
 ```
 
 **Vue**

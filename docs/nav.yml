@@ -21,6 +21,8 @@ sections:
       - browser-support.md
       - accessibility.md
       - size-and-speed.md
+      - terrain.md
+      - globe.md
       - server-rendering.md
   - title: Recipes
     folder: recipes

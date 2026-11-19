@@ -3,7 +3,7 @@
 // visitors.
 //
 // The page has the same elements as a row of the gallery: <article id="<example>"> with the map in `.map > .live`, the
-// line of text of the example in `.readout` and its buttons in `.actions`. When the map exists, it is
+// line of text of the example in `.readout` (the <p> of the example) and its buttons in `.actions`. When the map exists, it is
 // `window.maps[<example>]`. When the example cannot run, `window.exampleError` is the message.
 import {configure} from '@map-jr/map-jr-gl';
 import {mount} from './mount.js';
@@ -15,8 +15,8 @@ configure({renderer: query.get('renderer') ?? 'auto'});
 const article = document.createElement('article');
 article.id = id;
 article.innerHTML = '<div class="map"><div class="live"></div></div><div class="readout"></div><div class="actions"></div>';
-const readout = article.querySelector('.readout');
 document.body.append(article);
 document.title = `${id} (${form})`;
-mount(id, form, {stage: article.querySelector('.live'), actions: article.querySelector('.actions'), out: text => { readout.textContent = text; }})
-    .then(map => { (window.maps ||= {})[id] = map; }, err => { window.exampleError = readout.textContent = String(err.message); console.error(err); });
+// (The line of text of the example replaces the element .readout, so it is looked up when a message is shown.)
+mount(id, form, {stage: article.querySelector('.live'), actions: article.querySelector('.actions'), readout: article.querySelector('.readout')})
+    .then(map => { (window.maps ||= {})[id] = map; }, err => { window.exampleError = article.querySelector('.readout').textContent = String(err.message); console.error(err); });

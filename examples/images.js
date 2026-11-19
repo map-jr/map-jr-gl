@@ -1,3 +1,5 @@
+// The module script of a page that has <div id="map" style="height: 500px"></div>. The map shows four places. Each has
+// an SVG image of the description in the colour of its kind, and its name beside it.
 import {createMap} from '@map-jr/map-jr-gl';
 
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';
@@ -10,29 +12,25 @@ const places = {type: 'FeatureCollection', features: [
   {type: 'Feature', properties: {name: 'Brooklyn Bridge', kind: 'civic'}, geometry: {type: 'Point', coordinates: [-73.9969, 40.7061]}},
 ]};
 
-export default function (container, {show}) {
-  const map = createMap(container, {
-    style,
-    initialView: {center: [-74.006, 40.7175], zoom: 12.7},
-    attribution: {compact: true},
-    images: {pin},
-    // Additions to the style: a GeoJSON source and a symbol layer.
-    sources: {places: {type: 'geojson', data: places}},
-    // A symbol layer draws the image and a label beside it.
-    layers: [{
-      id: 'places', type: 'symbol', source: 'places',
-      layout: {
-        'icon-image': ['image', 'pin', {params: {color: ['match', ['get', 'kind'], 'park', '#2e9d5b', '#d6453d']}}],
-        'icon-anchor': 'bottom',
-        'text-field': ['get', 'name'],
-        'text-font': ['Noto Sans Regular'],
-        'text-size': 13,
-        'text-anchor': 'left',
-        'text-offset': [0.9, -1.1],
-      },
-      paint: {'text-color': '#222', 'text-halo-color': '#fff', 'text-halo-width': 1.5},
-    }],
-  });
-  show('Four places. Each has an SVG image of the description in the colour of its kind, and its name beside it.');
-  return map;
-}
+const map = createMap(document.getElementById('map'), {
+  style,
+  initialView: {center: [-74.006, 40.7175], zoom: 12.7},
+  attribution: {compact: true},
+  images: {pin},
+  // Additions to the style: a GeoJSON source and a symbol layer.
+  sources: {places: {type: 'geojson', data: places}},
+  // A symbol layer draws the image and a label beside it.
+  layers: [{
+    id: 'places', type: 'symbol', source: 'places',
+    layout: {
+      'icon-image': ['image', 'pin', {params: {color: ['match', ['get', 'kind'], 'park', '#2e9d5b', '#d6453d']}}],
+      'icon-anchor': 'bottom',
+      'text-field': ['get', 'name'],
+      'text-font': ['Noto Sans Regular'],
+      'text-size': 13,
+      'text-anchor': 'left',
+      'text-offset': [0.9, -1.1],
+    },
+    paint: {'text-color': '#222', 'text-halo-color': '#fff', 'text-halo-width': 1.5},
+  }],
+});
