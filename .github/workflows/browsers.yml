@@ -5,7 +5,7 @@ name: Browsers
 on:
   push:
     branches: [main]
-    paths: ['src/**', 'demo/**', 'test/**', 'scripts/**', 'site/**', 'build.mjs', 'package.json', '.github/workflows/browsers.yml']
+    paths: ['src/**', 'demo/**', 'test/**', 'scripts/**', 'site/**', 'examples/**', 'build.mjs', 'package.json', '.github/workflows/browsers.yml']
   workflow_dispatch:
     inputs:
       safari:

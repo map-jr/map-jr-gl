@@ -2,37 +2,34 @@
 // a phone is never asked for many WebGL contexts at once.
 //
 // Each example file is complete: it does not import from another file of the gallery, so a visitor can copy it.
-// The code of a row is in files, one for each form (site/examples/<row>.js for the main API, .vue, .jsx, and
-// .compat.js for the API of MapLibre GL JS). The live map of a row runs the file of the main API form, or of the
-// MapLibre form when that form is selected: so for these two forms, the code that a visitor reads is the code that
-// runs. The Vue and React forms are shown as text; `node test/examples.mjs` checks that they compile.
+// The code of a row is in files, one for each form (examples/<row>.js for the main API, .vue, .jsx, and
+// .compat.js for the API of MapLibre GL JS). The live map of a row runs the file of the selected form through the
+// harness (examples/harness/mount.js), when the harness can run that form: so for the main API form and the MapLibre
+// form, the code that a visitor reads is the code that runs. The Vue and React forms are shown as text, and the live
+// map runs the main API form; `node test/examples.mjs` checks that they compile.
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 import {configure} from '@map-jr/map-jr-gl';
 import {markers, view, addImages, addMarkers} from '../demo/markers.mjs';
 import {shield} from '../demo/shields.mjs';
 import makeStyle from '../demo/style.mjs';
+import {FORMS, runs, mount, button as addButton} from '../examples/harness/mount.js';
 
 // (The style of the server row: the one that scripts/site.mjs gives to the server renderer. The row compares the server
 // renders with this live map, so both draw the same hand-built style of demo/style.mjs and not elevation-zero.)
 const STYLE = makeStyle('https://tiles.openfreemap.org/planet', '<a href="https://openfreemap.org">OpenFreeMap</a> <a href="https://www.openmaptiles.org/">© OpenMapTiles</a> Data from <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>');
-const modules = import.meta.glob('./examples/*.js');
-const texts = import.meta.glob('./examples/*', {query: '?raw', import: 'default', eager: true});
-const FORMS = [['core', 'Main API', '.js'], ['vue', 'Vue', '.vue'], ['react', 'React', '.jsx'], ['compat', 'MapLibre compatible', '.compat.js']];
+const texts = import.meta.glob('../examples/*.{js,vue,jsx}', {query: '?raw', import: 'default', eager: true});
 const query = new URLSearchParams(location.search), stored = (() => { try { return localStorage.getItem('map-jr-code'); } catch { return null; } })();
 let form = FORMS.some(f => f[0] === query.get('code')) ? query.get('code') : FORMS.some(f => f[0] === stored) ? stored : 'core';
 // Add ?renderer=main (or worker) to the address to choose where the maps are drawn.
 configure({renderer: query.get('renderer') ?? 'auto'});
 const base = (container, extra = {}) => new Map({container, style: structuredClone(STYLE), center: [-74.0065, 40.7085], zoom: 13.6, attributionControl: {compact: true}, ...extra});
 const loaded = map => new Promise(done => map.once('load', () => done(map)));
-const button = (row, label, onClick) => { const b = Object.assign(document.createElement('button'), {textContent: label}); b.onclick = () => onClick(b); row.actions.append(b); return b; };
+const button = (row, label, onClick) => addButton(row.actions, label, onClick);
+/** The form that the live maps run: the selected form, or the main API form when the harness cannot run the selected form. */
+const running = () => runs(form) ? form : 'core';
 
-/** A row whose code is in the files site/examples/<id>.*: the live map runs one of them. */
-const example = (id, title, points) => ({id, title, points,
-    make: async (el, row) => (await modules[`./examples/${id}${form === 'compat' ? '.compat' : ''}.js`]()).default(el, {
-        show: row.out,
-        button: (label, onClick) => button(row, label, onClick),
-        legend: (heading, items, note) => el.insertAdjacentHTML('beforeend', `<div class="legend"><b>${heading}</b>${items.map(([line, text]) => `<span><i style="border-top:${line}"></i>${text}</span>`).join('')}<small>${note}</small></div>`),
-    })});
+/** A row whose code is in the files examples/<id>.*: the live map runs one of them. */
+const example = (id, title, points) => ({id, title, points, make: (el, row) => mount(id, running(), row)});
 
 const rows = [
     example('basic', 'A MapLibre style, drawn off the main thread', ['Reads the MapLibre style specification: sources, layers, expressions.', 'Draws in a worker when the browser allows it, so a busy page does not make the map stutter.', 'Zoom, compass, scale and fullscreen controls are included.']),
@@ -100,8 +97,8 @@ const far = new IntersectionObserver(entries => { for (const e of entries) if (!
 /** The code of a row in the selected form. A row with one text for each form (the server row) shows that text. */
 const showCode = el => {
     const spec = el.row.spec, ext = FORMS.find(f => f[0] === form)[2];
-    el.querySelector('code').textContent = spec.code ?? texts[`./examples/${spec.id}${ext}`].trim();
-    el.querySelector('.runs').textContent = spec.code || form === 'core' || form === 'compat' ? '' : 'The live map runs the Main API form of this code.';
+    el.querySelector('code').textContent = spec.code ?? texts[`../examples/${spec.id}${ext}`].trim();
+    el.querySelector('.runs').textContent = spec.code || runs(form) ? '' : 'The live map runs the Main API form of this code.';
 };
 for (const spec of rows) {
     const el = document.createElement('article');
@@ -126,8 +123,9 @@ for (const [id, label] of FORMS) {
     b.onclick = async () => {
         if (id === form) return;
         // The live maps are made again only when the form that runs changes (to the MapLibre API or back from it).
-        const again = (id === 'compat') !== (form === 'compat');
+        const before = running();
         form = id;
+        const again = running() !== before;
         try { localStorage.setItem('map-jr-code', id); } catch { /* no storage */ }
         query.set('code', id);
         history.replaceState(history.state, '', '?' + query + location.hash);

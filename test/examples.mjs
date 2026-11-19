@@ -1,4 +1,4 @@
-// Checks the example files of the gallery that the gallery shows as text and does not run (site/examples/*.vue and
+// Checks the example files of the gallery that the gallery shows as text and does not run (examples/*.vue and
 // *.jsx): each must compile, and must import only names that the adapters and the other example files have.
 //   node test/examples.mjs   (after pnpm build)
 import {readFileSync, readdirSync} from 'node:fs';
@@ -7,7 +7,7 @@ import {createRequire} from 'node:module';
 import {spawnSync} from 'node:child_process';
 import {parse, compileScript, compileTemplate} from 'vue/compiler-sfc';
 
-const dir = path.resolve(import.meta.dirname, '../site/examples'), dist = path.resolve(import.meta.dirname, '../dist');
+const dir = path.resolve(import.meta.dirname, '../examples'), dist = path.resolve(import.meta.dirname, '../dist');
 const {transformSync} = createRequire(import.meta.url)('esbuild');
 let failed = 0;
 const check = (name, ok, detail = '') => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${name} ${detail}`); if (!ok) failed++; };
@@ -17,7 +17,8 @@ const exportsOf = file => { const code = readFileSync(path.join(dist, file), 'ut
 const entries = {'@map-jr/map-jr-gl': exportsOf('map-jr-gl.js'), '@map-jr/map-jr-gl/vue': exportsOf('vue.js'), '@map-jr/map-jr-gl/react': exportsOf('react.js'), '@map-jr/map-jr-gl/controls': exportsOf('controls.js'), '@map-jr/map-jr-gl/maplibre-compat': exportsOf('map-jr-gl-maplibre-compat.js')};
 const unknownImports = code => [...code.matchAll(/import\s*\{([^}]*)\}\s*from\s*'(@map-jr\/map-jr-gl[^']*)'/g)].flatMap(m => m[1].split(',').map(n => n.trim().split(/\s+as\s+/)[0]).filter(n => n && !entries[m[2]]?.has(n)).map(n => `${n} from ${m[2]}`));
 
-for (const file of readdirSync(dir).sort()) {
+// (The folder also has the harness page, run.html, and its folder: only the example files are checked.)
+for (const file of readdirSync(dir).filter(f => /\.(js|vue|jsx)$/.test(f)).sort()) {
     const code = readFileSync(path.join(dir, file), 'utf8'), problems = unknownImports(code);
     try {
         if (file.endsWith('.vue')) {

@@ -63,9 +63,9 @@ for (const [, list] of read('src/index.ts').matchAll(/^export \{([^}]*)\}/gm)) {
 }
 
 // 4. Each row of the gallery has its four forms.
-const examples = readdirSync(path.join(root, 'site/examples'));
+const examples = readdirSync(path.join(root, 'examples')).filter(f => /\.(js|vue|jsx)$/.test(f));
 for (const row of new Set(examples.map(f => f.split('.')[0]))) {
-    for (const ext of ['.js', '.vue', '.jsx', '.compat.js']) if (!examples.includes(row + ext)) fail('site/examples', `the example "${row}" has no ${ext} form`);
+    for (const ext of ['.js', '.vue', '.jsx', '.compat.js']) if (!examples.includes(row + ext)) fail('examples', `the example "${row}" has no ${ext} form`);
 }
 
 // 5. Each entry of the package has its source file, and a document names it.
