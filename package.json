@@ -17,7 +17,7 @@
     "test:unit": "node --experimental-transform-types --no-warnings --test test/unit/*.test.ts",
     "test:expressions": "node test/conformance/expressions.mjs --min=357",
     "test:api": "node test/conformance/api.mjs --min=122",
-    "test:spec": "node test/conformance/spec.mjs --min=200",
+    "test:spec": "node test/conformance/spec.mjs --min=210",
     "test:browser": "node test/interact.mjs .cache/shots && node test/host.mjs",
     "bench": "node test/bench/compare.mjs",
     "test:loading": "node test/loading.mjs",
