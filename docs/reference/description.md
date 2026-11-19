@@ -2,7 +2,8 @@
 
 The description (`MapDescription`) is one object that states everything that a map of `@map-jr/map-jr-gl` shows: the
 style, the data, the view and the controls. To change the map, pass a new description to
-[`update`](../api.md#change-the-map), and the map applies what is different.
+[`update`](../api.md#change-the-map), and the map applies what is different. The map shows what the last description
+states: a field that it leaves out is reset to its default.
 
 ```js
 import {createMap} from '@map-jr/map-jr-gl';
@@ -12,6 +13,8 @@ const map = createMap('map', {
   initialView: {center: [-74.0065, 40.7085], zoom: 13.6},
 });
 ```
+
+The other examples on this page leave out the import of `createMap`.
 
 ## `MapDescription`
 
@@ -32,7 +35,7 @@ const map = createMap('map', {
 | [`controls`](#controls) | `ControlSpec[]` | | The controls of the map, from the functions of `@map-jr/map-jr-gl/controls`. |
 | [`projection`](#projection) | `ProjectionSpecification \| null` | | The projection. It overrides the projection of the style. |
 | [`globalState`](#globalstate) | `Record<string, unknown>` | | Values for the `global-state` expressions of the style, by name. |
-| [`interactiveLayers`](#interactivelayers) | `string[]` | | The ids of the style layers whose features `state.hover` and `onClick` report. |
+| [`interactiveLayers`](#interactivelayers) | `string[]` | | The ids of the style layers whose features [`state.hover`](../api.md#the-state) and `onClick` report. |
 | [`hoverState`](#hoverstate) | `boolean` | `false` | `true` sets the feature state `hover: true` on the top feature under the pointer. |
 | [`onClick`](#onclick) | `(event: MapPointer) => void` | | Called for a click on the map. |
 | `onError` | `(error: Error) => void` | | Called for each error of the map. Without it, the map writes each error to the console. |
@@ -43,7 +46,7 @@ const map = createMap('map', {
 | `cursor` | `string` | | The CSS cursor over the map. Without it, the cursor is `pointer` over a feature of `interactiveLayers`. |
 | [`cooperativeGestures`](#cooperativegestures) | `boolean` | `false` | `true` requires Ctrl (⌘ on a Mac) for a zoom with the wheel, and lets one finger scroll the page. |
 | [`colorScheme`](#colorscheme-and-oncolorschemechange) | `'auto' \| 'light' \| 'dark'` | `'light'` | The colour scheme of the controls, the popup and the attribution. |
-| [`onColorSchemeChange`](#colorscheme-and-oncolorschemechange) | `(colorScheme: 'auto' \| 'light' \| 'dark') => void` | | Called with the new value when the control `colorScheme()` changes the colour scheme. |
+| [`onColorSchemeChange`](#colorscheme-and-oncolorschemechange) | `(colorScheme: 'auto' \| 'light' \| 'dark') => void` | | Called with the new value when the button of the control `colorScheme()` changes the colour scheme. |
 | [`locale`](#locale) | `Record<string, string>` | | The texts of the controls and of the other elements that the map adds, by the keys of MapLibre GL JS. |
 | [`padding`](#padding) | `PaddingInput` | `0` | Space in CSS pixels at the sides of the map that the view keeps free. |
 | [`transformRequest`](#transformrequest) | `RequestTransform \| null` | | Changes a request before the map sends it. |
@@ -51,7 +54,8 @@ const map = createMap('map', {
 
 ## `MapSetup`
 
-The map reads these fields only when it is created. To change one, destroy the map and create a new one.
+Write these fields in the description, with the other fields. The map reads them only when it is created, and
+ignores a change in a later description. To change one, destroy the map and create a new one.
 
 <!-- ref:MapSetup:start -->
 | Name | Type | Default | Description |
@@ -83,17 +87,17 @@ createMap('map', {
 });
 ```
 
-The map applies a changed `style` in place where it can. When only the layers of a style object changed, the map
-updates those layers. For any other change, the map loads the new style and draws it from the start. The view and
-the other fields of the description stay.
+The map compares styles by content, so a new object with the same content changes nothing. It applies a changed
+`style` in place where it can: when only the layers of a style object changed, the map updates those layers. For any
+other change, the map loads the new style. It then draws the map from the start, as when the map is created, and
+keeps the view and the other fields of the description.
 
 ## `sources`
 
 A source in `sources` overrides the source of the style that has the same id. See [`layers`](#layers) for an example
 of a source with its layer.
 
-To change the features of a GeoJSON source, set them in [`data`](#data). A changed source in `sources` loads the
-style again.
+To change the features of a GeoJSON source, set them in [`data`](#data). A changed source in `sources` [loads the style again](#style).
 
 ## `layers`
 
@@ -112,8 +116,8 @@ createMap('map', {
 ```
 
 The map applies a change of `layers` in place. A new paint value transitions from the old value: see
-[Paint transitions](../api.md#paint-transitions). Only a new `type`, `source` or `source-layer` of a layer loads the
-style again.
+[Paint transitions](../api.md#paint-transitions). Only a new `type`, `source` or `source-layer` of a layer
+[loads the style again](#style).
 
 ## `terrain`
 
@@ -123,7 +127,7 @@ style again.
 | `null` | No 3D terrain. `null` overrides the `terrain` of the style. |
 | `undefined`, or no field | The terrain of the style. |
 
-A change of `terrain` loads the style again. See [Terrain and elevation](../terrain-and-elevation.md).
+A change of `terrain` [loads the style again](#style). See [Terrain and elevation](../terrain-and-elevation.md).
 
 ## `fonts`
 
@@ -166,7 +170,7 @@ createMap('map', {
 ## `initialView`
 
 `initialView` (`InitialView`) sets the camera once, when the map is created. After that, the user moves the map. To
-move it from code, call `moveTo` or set [`view`](#view-and-onviewchange).
+move it from code, call [`map.moveTo`](../api.md#the-camera) or set [`view`](#view-and-onviewchange).
 
 | Name | Type | Default | Description |
 |---|---|---|---|
@@ -185,7 +189,7 @@ createMap('map', {
 });
 ```
 
-Two other fields can override `initialView`:
+Two other fields can override `initialView` when the map is created:
 
 - When the description also has [`view`](#view-and-onviewchange), each member of `view` overrides the same member of
   `initialView`, and the map ignores `bounds`.
@@ -212,14 +216,14 @@ map.update(describe());
 ```
 
 `view` (`ViewInput`) has `center`, `zoom`, `bearing` and `pitch`. Each is optional. The map applies a new `view`
-with no animation. To animate the camera, call `map.moveTo({...view, duration: 500})` or
-`map.moveTo({...view, fly: true})`.
+with no animation. To animate the camera, call [`map.moveTo`](../api.md#the-camera) with `duration` in milliseconds or with
+`fly: true`: `map.moveTo({...view, duration: 500})`.
 
 `onViewChange` receives a `View`: the same four members and `bounds`. `bounds` is the smallest box
 `[[west, south], [east, north]]` that contains the visible map.
 
-The map ignores a `view` that it reported itself. So to return to a view that the application stored a moment ago,
-call `map.moveTo(stored)`.
+A `view` with the values of a view that the map reported does not move the map. So to return to a view that the
+application stored a moment ago, call `map.moveTo(stored)`.
 
 ## `data`
 
@@ -242,8 +246,8 @@ map.update({style, layers, data: {routes: route([-73.95, 40.78])}});
   no effect.
 - To set options of the source (`cluster`, `promoteId`, `attribution`), declare the source in `sources` or in the
   style, with no features. `data` then sets its features.
-- When a key is removed from `data`, the map removes the source that it created for that key. Remove the layers that
-  use the source in the same description.
+- When a key is removed from `data`, the map removes the source that it created for that key. A layer that still
+  uses the source draws nothing, so remove such a layer in the same description.
 
 ## `images`
 
@@ -327,14 +331,15 @@ See [Controls](../api.md#controls) for the functions and their options.
 
 On a globe:
 
-- The map does not draw 3D terrain and `fill-extrusion` layers. They show past zoom 12.
+- The map does not draw 3D terrain and `fill-extrusion` layers. With `globe`, they show past zoom 12, where the map
+  is flat.
 - `maxBounds` has no effect.
-- A move to a new centre with no `zoom` keeps the size of the globe on the screen, so `state.view.zoom` changes with
-  the latitude. A `zoom` that is passed is applied unchanged.
+- A move to a new centre with no `zoom` keeps the size of the globe on the screen, so the zoom of the view changes
+  with the latitude. A `zoom` that is passed is applied unchanged.
 
 ## `globalState`
 
-A value in `globalState` overrides the default with the same name in `state` of the style. A layer reads the value
+A value in `globalState` overrides the default with the same name in the root property `state` of the style. A layer reads the value
 with `['global-state', name]`.
 
 ```js
@@ -355,7 +360,8 @@ overrides it.
 
 ## `interactiveLayers`
 
-`state.hover` has the features of these layers under the pointer, and `features` of [`onClick`](#onclick) has those
+`hover` of [the state of the map](../api.md#the-state) (`map.state`) has the features of these layers under the
+pointer, and `features` of [`onClick`](#onclick) has those
 under a click. In both, the top feature is first. Over such a feature the cursor is `pointer`, unless the
 description sets `cursor`.
 
@@ -381,13 +387,13 @@ createMap('map', {
 });
 ```
 
-The map can set the state only on a feature that has an id. Set ids on the features, or set `promoteId` on the
-source, or `generateId: true` on a GeoJSON source.
+The map can set the state only on a feature that has an id. For a GeoJSON source, set ids on the features, or set
+`promoteId` or `generateId: true` on the source. A feature of a vector source needs an id in its tile.
 
 ## `onClick`
 
 The map calls `onClick` with one object (`MapPointer`) for each click on the map. It does not call `onClick` for a
-click on a control or on an element that `overlay` placed.
+click on a control or on an element that [`map.overlay`](../api.md#elements-of-the-page-on-the-map) placed on the map.
 
 | Name | Type | Description |
 |---|---|---|
@@ -410,7 +416,7 @@ shows a hint. Set the text of the hint in [`locale`](#locale).
 ## `colorScheme` and `onColorSchemeChange`
 
 `'auto'` follows the browser (`prefers-color-scheme`) and changes while the page is open. The resolved scheme is
-`state.colorScheme`, and it has these effects:
+`colorScheme` of [the state of the map](../api.md#the-state), and it has these effects:
 
 - The controls, the popup and the attribution have the colours of the scheme, and the container has the class
   `map-jr-dark` while the scheme is dark.
@@ -418,7 +424,8 @@ shows a hint. Set the text of the hint in [`locale`](#locale).
   `['global-state', 'color-scheme']`. A value for `color-scheme` in [`globalState`](#globalstate) overrides it.
 - For a [`style`](#style) that is a pair `{light, dark}`, the map draws the style that matches the scheme.
 
-The control `colorScheme()` changes the scheme of the map and then calls `onColorSchemeChange` with the new value.
+The control `colorScheme()` of `@map-jr/map-jr-gl/controls` is a button that switches the scheme. It changes the
+scheme of the map and then calls `onColorSchemeChange` with the new value.
 An application that keeps the description in its state must store the value there. Otherwise its next `update`
 passes the old value and changes the map back.
 
@@ -445,11 +452,14 @@ the view in the area that the padding leaves free, for example beside a side pan
 camera immediately.
 
 ```js
-map.patch({padding: {left: 320}});
+createMap('map', {
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+  padding: {left: 320},
+});
 ```
 
 The `padding` of [`initialView`](#initialview) and of `moveTo` is a different value: the space around `bounds` for
-one fit.
+one fit. The fit adds it to the `padding` of the description.
 
 ## `transformRequest`
 
@@ -458,6 +468,8 @@ The map calls the function with the URL of a request and the kind of resource. T
 `transformRequest` of MapLibre GL JS.
 
 ```js
+const token = sessionStorage.getItem('tiles-token');
+
 createMap('map', {
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
   transformRequest: (url, resourceType) =>
@@ -465,8 +477,8 @@ createMap('map', {
 });
 ```
 
-The kinds are `Style`, `Source`, `Tile`, `Glyphs`, `SpriteJSON`, `SpriteImage`, `Image` and `Font`. A framework can
-pass a new function in each render at no cost.
+The kinds are `Style`, `Source`, `Tile`, `Glyphs`, `SpriteJSON`, `SpriteImage`, `Image` and `Font`. The map
+does not treat a new function as a change, so a framework can pass a new function in each render.
 
 ## `renderer`
 
@@ -476,7 +488,7 @@ pass a new function in each render at no cost.
 | `'worker'` | As `'auto'`, and the map warns once when it draws on the main thread instead. |
 | `'main'` | On the main thread. |
 
-`state.renderer` is the thread that draws. See [Loading](../loading.md) for the worker file and how the map loads it.
+`renderer` of [the state of the map](../api.md#the-state) is the thread that draws. See [Loading](../loading.md) for the worker file and how the map loads it.
 
 ## `attribution`
 

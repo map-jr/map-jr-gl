@@ -1,6 +1,12 @@
 # Query what is at a position
 
-A click on the map lists the features of the tile data at that position, also those that the style does not draw.
+To find what is at a position of the map, query the data of a source. This example lists every feature within 8
+pixels of a click, also features that the style does not draw.
+
+Each block below is a file of the gallery. In the two `js` files, the gallery calls the exported function with the
+container of the map and with `show`, a function that writes a line of text beside the map: in your code, create the
+map in the same way and replace `show`. The Vue and React components fill their parent element, so give the parent a
+height.
 
 <!-- example:query:start -->
 **Main API**
@@ -172,27 +178,30 @@ export default function Query() {
 
 ## How it works
 
-- [`querySource(sourceId, at, options)`](../api.md#queries) reads the tile data of one source. `'openmaptiles'` is the
-  id of the vector source of this style: use the id of a source of your style.
+- [`querySource(sourceId, at, options)`](../api.md#queries) reads the features of one source, from its tiles.
+  `'openmaptiles'` is the id of the vector source of this style. For another style, the ids of the sources are the
+  keys of `sources` in the style JSON, and its layers name the source layers in `source-layer`.
 - `at` is the position of the click as `[lng, lat]`, and `radius` is the distance around it in pixels of the screen.
   The default radius is 3.
 - The result is a promise of a list of features (`QueriedFeature`). Each has `id`, `properties`, `source`,
-  `sourceLayer` and `type`.
+  `sourceLayer` and `type`, the type of its geometry: `'Point'`, `'LineString'` or `'Polygon'`.
 - The promise rejects when the tile does not load, and when the map is removed before the answer comes. The example
   catches the rejection and shows a text.
 - The answers of two clicks can arrive in the other order. The example counts the clicks and shows only the answer
   of the last one.
 
-In the files for the main API and the compat entry, the default export is a function that receives the container
-of the map. `show` writes a line of text beside the map. In Vue, `map.value.map` is the map of the component. In
-React, the ref of `MapJr` is the map.
+In Vue, `map.value.map` is the map of the component. In React, the ref of `MapJr` is the map.
 
 ## Variations
 
+Each variation replaces the query in the click handler of the example. `e` is the event of the click, and `map` is
+the map.
+
 ### Ask only for what the style draws
 
-`queryFeatures` finds the features that the style layers draw at a point of the screen, the top one first. Each
-feature has `layer`, the style layer that draws it.
+`queryFeatures` returns the features that the style layers draw at a point of the screen, the top one first. Each
+feature has `layer`, the style layer that draws it. In the compat entry, `queryRenderedFeatures` of MapLibre GL JS
+answers the same question.
 
 ```js
 const features = await map.queryFeatures(e.point, {radius: 8}).catch(() => null);
@@ -210,7 +219,8 @@ const features = await map.querySource('openmaptiles', e.lngLat, {
 
 ### Get the geometry of each feature
 
-At a position, a feature has no `geometry` unless the query asks for it.
+At a position, a feature has no `geometry` unless the query sets `geometry: true`. The geometry is GeoJSON in
+longitude and latitude, and it is the part of the feature that lies in its tile.
 
 ```js
 const features = await map.querySource('openmaptiles', e.lngLat, {radius: 8, geometry: true}).catch(() => null);
@@ -218,10 +228,11 @@ const features = await map.querySource('openmaptiles', e.lngLat, {radius: 8, geo
 
 ### Ask for everything in the view
 
-Without a position, `querySource` returns the features of the tiles of the view, each with its `geometry`.
+`at` is optional. Without it, `querySource(sourceId, options)` returns the features of the source in the view, each
+with its `geometry`.
 
 ```js
-const buildings = await map.querySource('openmaptiles', {sourceLayers: ['building']});
+const features = await map.querySource('openmaptiles', {sourceLayers: ['building']}).catch(() => null);
 ```
 
 ## See also

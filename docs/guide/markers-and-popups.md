@@ -8,10 +8,9 @@ move a marker.
 | | A symbol layer with an image | An element of the page |
 |---|---|---|
 | Use it for | Many markers that look alike | A few markers with HTML content, or a marker that the user moves |
-| Number of markers | 100,000 and more | Tens. The browser becomes slow with thousands. |
+| Number of markers | 100,000 and more | Hundreds at most. The browser becomes slow with thousands. |
 | A click | Finds the feature of the marker | Is an event of the element |
 | During a movement of the map | Is drawn with the map | Can trail the map by about one frame |
-| With 3D terrain | On the ground. Ground in front does not hide it. | On the ground |
 
 Start with a symbol layer when you are not sure.
 
@@ -31,7 +30,7 @@ const places = [
   {id: 1, name: 'City Hall', lng: -74.006, lat: 40.7128, color: '#d6453d'},
   {id: 2, name: 'Empire State Building', lng: -73.9857, lat: 40.7484, color: '#2f7fd1'},
 ];
-// A GeoJSON point for each record. The properties of a point are its record.
+// A GeoJSON point for each record. The properties of a point are all the fields of its record.
 const toPoints = records => points(records, {lngLat: r => [r.lng, r.lat], id: r => r.id});
 
 const map = createMap('map', {
@@ -152,7 +151,7 @@ The layout properties decide how the markers behave among each other and among t
 | Every marker shows, also where markers cover each other | `'icon-allow-overlap': true` |
 | The labels of the map do not keep away from the markers | `'icon-ignore-placement': true` |
 | Markers in a zoom range only | `minzoom` and `maxzoom` of the layer |
-| Markers below the labels of the map | `before` of the layer (main API), or the second argument of `addLayer` |
+| Markers below the labels of the map | `before` of the layer (main API), or the second argument of `addLayer`: the id of a symbol layer in `layers` of the style JSON |
 | Text beside the image | `text-field` in `layout` |
 
 A marker has the size of its image, and an SVG image has the size of its `viewBox` in CSS pixels. For another size,
@@ -161,16 +160,18 @@ other forms of an image.
 
 ## Change the markers
 
-Set new GeoJSON on the source. The code below continues the first example.
+Set new GeoJSON on the source. The code below continues the first example. In the main API,
+[`map.patch`](../api.md#change-the-map) replaces the fields that it is passed and keeps the other fields of the
+description.
 
 **Main API**
 
 ```js [Main API]
-// The map compares the data by identity: create new GeoJSON, and do not change the old one in place.
 places[1] = {...places[1], color: '#2e9d5b'};
+// toPoints() returns a new GeoJSON object. The map applies `data.places` only when it is a new object.
 map.patch({data: {places: toPoints(places)}});
 
-// Remove the markers.
+// Remove the markers. This removes every source that `data` created and every layer of `layers`.
 map.patch({data: {}, layers: []});
 ```
 
@@ -178,6 +179,7 @@ map.patch({data: {}, layers: []});
 
 ```js [MapLibre compat]
 places.features[1].properties.color = '#2e9d5b';
+// setData() always applies the data, also when it is the same object as before.
 map.getSource('places').setData(places);
 
 // Remove the markers.
@@ -186,12 +188,14 @@ map.removeSource('places');
 ```
 
 In Vue and React, pass a new object to the `data` prop. In the examples above, assign to `data.value` in Vue, and
-pass other `places` to the component in React.
+pass a new `places` array to the component in React.
 
 ## Open a popup when the user clicks a marker
 
-A marker of a symbol layer is a feature of that layer, so a click finds it. The code for the main API and for the
-compat entry continues the first example.
+A marker of a symbol layer is a feature of that layer, so a click finds it. In the main API,
+[`map.overlay`](../api.md#elements-of-the-page-on-the-map) places an element of the page at a position of the map,
+and `popup: true` shows the element in a popup. `MapOverlay` does the same in Vue and React. The code for the main
+API and for the compat entry continues the first example.
 
 **Main API**
 
@@ -206,8 +210,8 @@ map.patch({
     if (!place) return;
     const content = document.createElement('div');
     content.textContent = place.properties.name;
-    // The pin is 31 pixels tall, so the popup points at a place 30 pixels above the position.
-    popup = map.overlay(content, {lngLat: place.geometry.coordinates, popup: true, offset: [0, -30], onClose: () => popup.remove()});
+    // `offset` is [right, down] in pixels. The pin is 31 pixels tall, so [0, -30] moves the tip of the popup to the top of the pin.
+    popup = map.overlay(content, {lngLat: place.geometry.coordinates, popup: true, offset: [0, -30], onClose: () => { popup = null; }});
   },
 });
 ```
@@ -219,6 +223,7 @@ import {Popup} from '@map-jr/map-jr-gl/maplibre-compat';
 
 map.on('click', 'places', event => {
   const place = event.features[0];
+  // As in MapLibre GL JS, a number as `offset` moves the popup that many pixels away from the position, here up.
   new Popup({offset: 30}).setLngLat(place.geometry.coordinates).setText(place.properties.name).addTo(map);
 });
 ```
@@ -256,7 +261,7 @@ const selected = shallowRef(null);
       :interactive-layers="['places']"
       @click="event => selected = event.features[0] ?? null"
     >
-      <!-- The pin is 31 pixels tall, so the popup points at a place 30 pixels above the position. -->
+      <!-- `offset` is [right, down] in pixels. The pin is 31 pixels tall, so [0, -30] moves the tip of the popup to the top of the pin. -->
       <MapOverlay v-if="selected" :lng-lat="selected.geometry.coordinates" :offset="[0, -30]" popup @close="selected = null">
         {{ selected.properties.name }}
       </MapOverlay>
@@ -296,7 +301,7 @@ export function Places({places}) {
         interactiveLayers={interactiveLayers}
         onClick={event => setSelected(event.features[0] ?? null)}
       >
-        {/* The pin is 31 pixels tall, so the popup points at a place 30 pixels above the position. */}
+        {/* `offset` is [right, down] in pixels. The pin is 31 pixels tall, so [0, -30] moves the tip of the popup to the top of the pin. */}
         {selected && (
           <MapOverlay lngLat={selected.geometry.coordinates} offset={[0, -30]} popup onClose={() => setSelected(null)}>
             {selected.properties.name}
@@ -315,8 +320,8 @@ Two things often go wrong:
 
 - `features` is empty. In the main API and the adapters, a click reports only the features of the layers in
   `interactiveLayers`.
-- The popup has no button to close it. A popup of `overlay` and of `MapOverlay` has the button only with `onClose`
-  (`@close` in Vue), and it stays open until your code removes it.
+- The popup has no button to close it. A popup of `overlay` and of `MapOverlay` has a close button only when
+  `onClose` (`@close` in Vue) is set. The button closes the popup and then calls `onClose`.
 
 ## Put an element of the page on the map, and let the user move it
 
@@ -335,7 +340,7 @@ const marker = map.overlay(defaultPin({color: '#c0392b'}), {
   onDragEnd: lngLat => { home = lngLat; },
 });
 
-// Later: move it from code, and remove it. Pass all the options to `update` again.
+// Later: move it from code, and remove it. `marker.update` replaces all the options, so pass each one again.
 marker.update({lngLat: [-74.0, 40.71], anchor: 'bottom', draggable: true});
 marker.remove();
 ```
@@ -403,17 +408,19 @@ export function Home() {
 The user drags the pin, and the new position arrives as `[lng, lat]` when the drag ends.
 
 After a drag, the pin stays where the user dropped it until `lngLat` changes. So store the position that the drag
-reports and pass it back, as the examples do. In Svelte and in the `<map-jr>` element, call `overlay` of the map.
+reports and pass it back, as the examples do. With Svelte and with the custom element `<map-jr>`, call `map.overlay` as in the main API. See
+[Svelte](../svelte.md) and [The element](../element.md) for how to get the map.
 
 ## Keep many markers fast
 
-A symbol layer draws its icons at a cost that does not grow with their number when the layer has no text, has
+A frame takes the same time for 100 markers and for 100,000 when the symbol layer has no text, has
 `symbol-placement: 'point'` (the default) and has `icon-allow-overlap: true`. The layers of this page are such
 layers. See [Which icons are fast](../markers.md#which-icons-are-fast) for the other conditions, and for how such
 icons differ from icons that the map places among the labels.
 
-With very many markers in view, also set `icon-ignore-placement: true`. Without it, the labels of the map keep away
-from each marker, and that work grows with the number of markers.
+One cost still grows with the number of markers in view. Without `icon-ignore-placement: true`, the labels of the
+map avoid each marker, and the map does that work each time that it places the labels. So set
+`icon-ignore-placement: true` for very many markers.
 
 To show groups in place of single markers, see [Clusters](../api.md#clusters).
 

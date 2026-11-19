@@ -73,6 +73,11 @@ A writer who has the source open tends to write what the source shows. These rul
   failure where the reader meets it only when a correct program can meet it, such as a style that does not load.
 - **Do not refer to something that the page does not define.** "The default options" and "the usual rules" tell the
   reader nothing. State the values, or link to the place that lists them.
+- **Link every name where it first appears,** before the first example that uses it: a method (`patch`, `moveTo`,
+  `overlay`), a member of the state, a control, the development build. The link goes to the entry of the name, and a
+  few words beside it say what the name is.
+- **Say once what the user sees** when the page says that the map does something "again" or "in place" ("loads the
+  style again"). Every other use of the phrase links to that place.
 
 ## Sentences
 
@@ -90,7 +95,9 @@ often.
   both be set, say which value the map uses.
 - **Show the shape of a value as code:** a type, or a short example with real values. Then write one sentence for
   each part. Do not describe a nested shape in prose.
-- **After a sentence that says what does not happen, say how to get it.** Name the real method and option.
+- **After a sentence that says what does not happen, say how to get it.** Name the real method and option. After an
+  instruction to avoid something, say what happens otherwise, when a correct program can meet it. After "use the id
+  of a source", say where the reader finds the ids.
 - **No sentence whose only job is to point** ("X teaches this", "Y has an example", "Z lists them"). Put the link on
   the words of the sentence that it supports, or write "See [X] for …" and say what the reader finds there.
 
@@ -100,6 +107,10 @@ A fact is written on one page. Other pages link to it. The home of a field, a me
 reference entry. The home of a task is its recipe or its guide. When two pages need the same paragraph, one of them
 needs a link. A fact about another member lives in the entry of that member: what `patch` does is not on the page
 of the description.
+
+When two settings, two entries or two pages touch the same thing, state the rule once, say which value the map
+uses, and check that the other places agree. Two pages of the pilot disagreed about `promoteId` and about the
+offset of a popup until a reader compared them.
 
 ## The page types
 
@@ -213,6 +224,8 @@ for a mistake, what is not supported, one short example, and "See also".
   `openfreemap-bright.json`, `-dark`, `-fiord`, `-liberty` and `-positron` (with `glyphs` and a sprite). An example
   that needs a second style takes it from the same host. Use another host only when the example is about that host.
 - An example relies only on layer ids and source ids that the style has. Run the example to check them.
+- An example has no code of a test or of the gallery around it (a wrapper function, a `show` callback). Where a
+  recipe must copy such a file, one or two sentences directly before the first block say what the wrapper is.
 - Use names from a real application (`stations`, `selectedTrail`), not `foo` or `myLayer1`.
 - A comment in the code says why a line is there, for the one or two lines that need it.
 - Every fence has a language (lint).
@@ -299,6 +312,16 @@ it becomes an issue with the label `area: dx`.
 
 Every pull request for the user docs gets two reviews before it goes to the owner. Each reviewer is an agent or a
 person who did not write the page. The writer fixes the findings of both.
+
+The writer resolves a finding of the reader review in one of three ways, in this order of preference:
+
+1. **Link.** An undefined name gets a link to its entry on first use, with a few words that say what it is.
+2. **State.** An ambiguous sentence is replaced by the exact fact, checked in `src/` or by running it.
+3. **Cut.** A sentence that raises a question which no user needs answered is removed. The question is not
+   answered, and no mechanism goes back in to satisfy the reviewer.
+
+The pull request lists the findings that were resolved by cutting, and the findings that were not accepted with the
+reason for each.
 
 - **The reader review.** The reviewer reads only the rendered page: not the source, not the old page, not the pull
   request. For each sentence that fails the checklist below, the reviewer reports the sentence and what a reader

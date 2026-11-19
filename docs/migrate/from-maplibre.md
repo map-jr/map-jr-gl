@@ -1,8 +1,8 @@
 # From MapLibre GL JS
 
-The entry `@map-jr/map-jr-gl/maplibre-compat` has the API of MapLibre GL JS: `new Map({...})`, `map.on(...)`,
-`map.addLayer(...)`, the controls, `Marker` and `Popup`. An application changes its imports and a few calls, and
-keeps the rest of its code.
+The entry `@map-jr/map-jr-gl/maplibre-compat` has the API of MapLibre GL JS 6: `new Map({...})`, `map.on(...)`,
+`map.addLayer(...)`, the controls, `Marker` and `Popup`. To migrate an application, change its imports and the calls
+that this page lists.
 
 ## Steps
 
@@ -24,8 +24,8 @@ keeps the rest of its code.
    import * as maplibregl from '@map-jr/map-jr-gl/maplibre-compat';
    ```
 
-3. Remove the CSS file and the worker file of MapLibre GL JS. The library adds its own styles and finds its own
-   worker file.
+3. Remove the CSS file and the worker file of MapLibre GL JS. The library adds its own styles and loads its own
+   worker file. See [Loading](../loading.md) for a page with a Content Security Policy or files on a CDN.
 
    ```js
    // Before
@@ -51,16 +51,17 @@ keeps the rest of its code.
    });
    ```
 
-5. Create the map with `strict: true` while you migrate, and run your application. The map then throws an error where
-   it would write a warning for an option or a method that has no effect in this library. Remove the option
-   when the application runs.
+5. Create the map with `strict: true`, and run your application. With `strict: true`, the map throws an error for
+   an option or a method that has no effect in this library, where it otherwise writes a warning. Remove
+   `strict: true` after the migration.
 
    ```js
    const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json', strict: true});
    ```
 
-6. Read the console of the browser. The map writes a warning for each layer type and each expression of the style
-   that it does not have.
+6. Read the console of the browser. The map writes a warning for a layer type and for an expression that it does
+   not support. It does not draw such a layer, and such an expression returns `null`. See
+   [What is not available](#what-is-not-available) for the list.
 
 7. If a wrapper or a plugin imports `maplibre-gl` itself, set an alias for that name: see
    [Wrappers and plugins](#wrappers-and-plugins).
@@ -69,13 +70,13 @@ keeps the rest of its code.
 
 | MapLibre GL JS | Map Jr. GL | Notes |
 |---|---|---|
-| `'maplibre-gl'` | `'@map-jr/map-jr-gl/maplibre-compat'` | The same named exports, and a default export with the same names. |
+| `'maplibre-gl'` | `'@map-jr/map-jr-gl/maplibre-compat'` | The same named exports. The default export is an object with the same names, for `import maplibregl from 'maplibre-gl'`. |
 | `maplibre-gl/dist/maplibre-gl.css` | None | The map adds its styles to the page. |
 | `setWorkerUrl(url)`, `workerUrl` of react-map-gl | None | A URL of the worker file of MapLibre GL JS is ignored with one warning. |
 | `map.queryRenderedFeatures(...)` | `await map.queryRenderedFeatures(...)` | The arguments and the features are the same. |
 | `map.querySourceFeatures(...)` | `await map.querySourceFeatures(...)` | The arguments and the features are the same. |
 | `map.getCanvas().toDataURL()` with `preserveDrawingBuffer` | `await map.toBlob()` | See [Read the canvas with `toBlob`](#read-the-canvas-with-toblob). |
-| `map.addImage(name, image)` | `await map.addImage(name, image)` | It returns a promise. It also accepts an SVG document or a URL as the image. |
+| `map.addImage(name, image)` | `map.addImage(name, image)` | It also accepts an SVG document or a URL as the image, and returns a promise that resolves when the image is loaded. |
 | `maxPitch` up to 180 | `maxPitch` up to 90 | A higher value is limited to 90, with one warning. The default is 60 in both. |
 | `setRoll`, `setVerticalFieldOfView` | None | Accepted with no effect. A value other than the default warns once. |
 | The `pmtiles` protocol of the PMTiles library | None | A source URL that starts with `pmtiles://` works with no plugin. |
@@ -87,8 +88,9 @@ keeps the rest of its code.
 
 ### Queries return a promise
 
-The complete result of `queryRenderedFeatures` and `querySourceFeatures` is a promise. The value is also an array, for code that reads it at once, but that array can lack the features of tile
-sources. `await` also works in MapLibre GL JS, so the same code runs with both.
+`queryRenderedFeatures` and `querySourceFeatures` return a promise of the complete result. Without `await`, the
+value is an array that has the features of GeoJSON sources and can lack the features of tile sources. `await` also
+works in MapLibre GL JS, so the same code runs with both.
 
 ```js
 map.on('mousemove', async event => {
@@ -99,8 +101,8 @@ map.on('mousemove', async event => {
 
 ### Read the canvas with `toBlob`
 
-`canvasContextAttributes: {preserveDrawingBuffer: true}` has no effect and warns once. Read the image with
-`map.toBlob(type, quality)`: it waits until the map is idle and resolves to a `Blob` of the canvas.
+`canvasContextAttributes: {preserveDrawingBuffer: true}` has no effect and warns once. To read the image of the
+map, call `map.toBlob(type, quality)`. It waits until the map is idle and resolves to a `Blob` of the canvas.
 
 ```js
 const blob = await map.toBlob('image/png');
@@ -121,8 +123,9 @@ map.on('load', () => map.addLayer(customLayer));
 ### Private members do not exist
 
 The map has no `map.transform` and no `map.painter`. A plugin that reads private members of MapLibre GL JS does not
-work, and a plugin that uses only public methods usually does. The development build warns once for each public
-member of MapLibre GL JS that the code reads and this library does not have.
+work, and a plugin that uses only public methods usually does. The development build, which a bundler uses in
+development (see [Change the map](../api.md#change-the-map)), warns once for each public member of MapLibre GL JS
+that the code reads and this library does not have.
 
 ```js
 // Before
@@ -134,9 +137,9 @@ const zoom = map.getZoom();
 
 ### The style is not validated
 
-The library does not validate the style and does not check the types of expressions. A mistake that MapLibre GL JS
-reports with an `error` event can pass here with no message. Validate a style that you write yourself with
-`@maplibre/maplibre-gl-style-spec`.
+The library does not validate the style and does not check the types of expressions. It warns only for a layer type
+or an expression that it does not support. Any other mistake that MapLibre GL JS reports with an `error` event gets
+no message here. Validate a style that you write yourself with `@maplibre/maplibre-gl-style-spec`.
 
 ```js
 // 'circle-colour' is not a paint property. No error event and no warning come: the circles have the default colour.
@@ -146,8 +149,8 @@ map.addLayer({id: 'stops', type: 'circle', source: 'stops', paint: {'circle-colo
 ## Wrappers and plugins
 
 A wrapper (react-map-gl, for example) or a plugin imports `maplibre-gl` itself. Map that name to this library in your
-bundler. The alias must match the name `maplibre-gl` exactly: an alias that also matches `maplibre-gl/dist/...`
-stops the build.
+bundler. The alias must match the name `maplibre-gl` exactly. An alias that also matches `maplibre-gl/dist/...`
+makes the bundler look for those files in this package, which does not have them, and the build stops.
 
 ```js
 // vite.config.js
@@ -178,10 +181,10 @@ See [Ecosystem](../ecosystem.md) for the plugins and wrappers that are tested.
 
 ## What is not available
 
-These parts of MapLibre GL JS are used most often among those that the library does not have:
+The library does not have these parts of MapLibre GL JS, among others:
 
 - Video and canvas sources, and MapLibre Tiles (MLT).
-- `promoteId` in vector sources.
+- `promoteId` in vector sources. It works in GeoJSON sources.
 - The expressions `within` and `distance`.
 - `text-writing-mode`.
 - Roll, a field of view other than the default, and a pitch above 90 degrees.
