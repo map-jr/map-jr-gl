@@ -39,13 +39,16 @@ const SPEC: Record<string, Record<string, [string, PropKind, any, string[]?]>> =
         weight: ['heatmap-weight', 'number', 1], intensity: ['heatmap-intensity', 'number', 1], radius: ['heatmap-radius', 'number', 30],
     },
     raster: {opacity: ['raster-opacity', 'number', 1], saturation: ['raster-saturation', 'number', 0], contrast: ['raster-contrast', 'number', 0],
-        brightnessMin: ['raster-brightness-min', 'number', 0], brightnessMax: ['raster-brightness-max', 'number', 1], hueRotate: ['raster-hue-rotate', 'number', 0]},
+        brightnessMin: ['raster-brightness-min', 'number', 0], brightnessMax: ['raster-brightness-max', 'number', 1], hueRotate: ['raster-hue-rotate', 'number', 0],
+        // (`resampling` is the newer name; MapLibre GL JS reads it before `raster-resampling`.)
+        resampling: ['resampling', 'string', null], rasterResampling: ['raster-resampling', 'string', 'linear'], layerBlend: ['raster-layer-blend', 'string', 'normal']},
     hillshade: {
         shadow: ['hillshade-shadow-color', 'color', '#000'], highlight: ['hillshade-highlight-color', 'color', '#fff'], accent: ['hillshade-accent-color', 'color', '#000'],
         exaggeration: ['hillshade-exaggeration', 'number', 0.5], direction: ['hillshade-illumination-direction', 'number', 335],
         anchor: ['hillshade-illumination-anchor', 'string', 'viewport'], method: ['hillshade-method', 'string', 'standard'], altitude: ['hillshade-illumination-altitude', 'number', 45],
+        resampling: ['resampling', 'string', 'linear'],
     },
-    'color-relief': {opacity: ['color-relief-opacity', 'number', 1]},
+    'color-relief': {opacity: ['color-relief-opacity', 'number', 1], resampling: ['resampling', 'string', 'linear']},
     symbol: {
         icon: ['icon-image', 'string', ''], iconSize: ['icon-size', 'number', 1], iconOffset: ['icon-offset', 'string', [0, 0]], iconRotate: ['icon-rotate', 'number', 0],
         rotate: ['text-rotate', 'number', 0],
@@ -181,6 +184,8 @@ export function compileLayer(l: LayerJSON): CompiledLayer | null {
         // These properties of a hillshade layer take one value or a list of values, one for each light. A list is kept as it is.
         p[k] = l.type === 'hillshade' && LIGHT_PROPS.includes(k) && Array.isArray(v) ? compileProp(typeof v[0] !== 'string' || parseColor(v[0]) ? ['literal', v] : v, 'string', def) : compileProp(v, kind, def, values);
     }
+    const fade = l.paint?.['raster-fade-duration'];
+    if (l.type === 'raster' && fade != null && fade !== 0) warnOnce(`raster-fade-duration: the property has no effect, and a raster tile shows at once when it has loaded. Remove it, or write 0.`);
     // A server-only extra filter is compiled separately, so it can be an expression even when the layer's own filter is legacy syntax.
     let relief: Float32Array | undefined, ramp: Uint8Array | undefined;
     if (l.type === 'color-relief') {
