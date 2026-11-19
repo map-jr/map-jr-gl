@@ -17,6 +17,8 @@ sections:
       - controls.md
       - images-and-fonts.md
       - color-scheme.md
+      - terrain.md
+      - globe.md
       - server-rendering.md
   - title: Recipes
     folder: recipes
