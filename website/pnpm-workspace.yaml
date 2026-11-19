@@ -1,0 +1,10 @@
+# The site has its own install. This file makes website/ the root of its own workspace, so that the install of the
+# library and its lockfile do not change.
+onlyBuiltDependencies:
+  - esbuild
+ignoredBuiltDependencies:
+  - vue-demi
+  - '@parcel/watcher'
+  - sharp
+  - workerd
+  - unrs-resolver

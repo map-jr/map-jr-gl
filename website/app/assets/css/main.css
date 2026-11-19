@@ -1,0 +1,246 @@
+/*
+ * The design tokens of the site. The look is cartographic: the paper and ink of a printed map, one survey colour,
+ * and contour lines as the only ornament.
+ *
+ * - The scales `paper` and `survey` are below. app/app.config.ts makes them the neutral and the primary colour of
+ *   Nuxt UI, and sets the classes of the components.
+ * - Components use the semantic classes of Nuxt UI (`text-muted`, `bg-elevated`, `border-default`, `text-primary`),
+ *   never a shade of a scale, so a change here changes the whole site.
+ */
+@import "tailwindcss";
+@import "@nuxt/ui";
+
+/* The markdown of the repository is outside the Nuxt root. */
+@source "../../../../docs/**/*.md";
+
+@theme static {
+  /* @nuxt/fonts loads the families that these names start with, and serves them from the site. */
+  --font-display: 'Fraunces', 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
+  --font-sans: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  /* Paper and ink. 50 is the paper of the gallery (#f6f5f2), 900 its ink (#1d1d1f) and 950 its night (#17181a). */
+  --color-paper-50: #f6f5f2;
+  --color-paper-100: #eeece7;
+  --color-paper-200: #e3e1dc;
+  --color-paper-300: #cfccc5;
+  --color-paper-400: #a2a09a;
+  --color-paper-500: #7b7a76;
+  --color-paper-600: #5f5e5a;
+  --color-paper-700: #48494d;
+  --color-paper-800: #34353a;
+  --color-paper-900: #1d1d1f;
+  --color-paper-950: #17181a;
+
+  /* Survey vermilion, the red-orange of a benchmark and of the overprint on a topographic sheet. */
+  --color-survey-50: #fdf3ee;
+  --color-survey-100: #fbe4d9;
+  --color-survey-200: #f7c9b4;
+  --color-survey-300: #f5ab87;
+  --color-survey-400: #ee8a5c;
+  --color-survey-500: #d95f30;
+  --color-survey-600: #b4441c;
+  --color-survey-700: #933818;
+  --color-survey-800: #752f18;
+  --color-survey-900: #5e2917;
+  --color-survey-950: #33130a;
+}
+
+/*
+ * The day map. Contrast on the paper (#f6f5f2), computed with the formula of WCAG 2: body text 11.2, muted text
+ * 5.9, dimmed text 3.9 (used for marks that carry no information), the survey colour 5.1 (4.7 on an elevated
+ * surface), and the paper on a solid survey button 5.1.
+ */
+:root {
+  --ui-radius: 0.125rem;
+  --ui-container: 86rem;
+  --ui-header-height: 3.75rem;
+
+  --ui-primary: var(--ui-color-primary-600);
+
+  --ui-bg: var(--ui-color-neutral-50);
+  --ui-bg-muted: var(--ui-color-neutral-100);
+  --ui-bg-elevated: var(--ui-color-neutral-100);
+  --ui-bg-accented: var(--ui-color-neutral-200);
+  --ui-bg-inverted: var(--ui-color-neutral-900);
+
+  --ui-text-dimmed: var(--ui-color-neutral-500);
+  --ui-text-muted: var(--ui-color-neutral-600);
+  --ui-text-toned: var(--ui-color-neutral-700);
+  --ui-text: var(--ui-color-neutral-800);
+  --ui-text-highlighted: var(--ui-color-neutral-900);
+  --ui-text-inverted: var(--ui-color-neutral-50);
+
+  --ui-border: var(--ui-color-neutral-200);
+  --ui-border-muted: var(--ui-color-neutral-200);
+  --ui-border-accented: var(--ui-color-neutral-300);
+  --ui-border-inverted: var(--ui-color-neutral-900);
+
+  /* The colour of the contour lines, and of the sheet that a code block is printed on. */
+  --site-contour: var(--ui-color-neutral-300);
+  --site-sheet: #ffffff;
+}
+
+/*
+ * The night map. Contrast on the night (#17181a): body text 13.6, muted text 6.8, dimmed text 4.1, the survey
+ * colour 7.1. The ink of the day (#1d1d1f) on a solid survey button is 6.8.
+ */
+.dark {
+  --ui-primary: var(--ui-color-primary-400);
+
+  --ui-bg: var(--ui-color-neutral-950);
+  --ui-bg-muted: var(--ui-color-neutral-900);
+  --ui-bg-elevated: #222326;
+  --ui-bg-accented: var(--ui-color-neutral-800);
+  --ui-bg-inverted: var(--ui-color-neutral-50);
+
+  --ui-text-dimmed: var(--ui-color-neutral-500);
+  --ui-text-muted: var(--ui-color-neutral-400);
+  --ui-text-toned: var(--ui-color-neutral-300);
+  --ui-text: var(--ui-color-neutral-200);
+  --ui-text-highlighted: var(--ui-color-neutral-50);
+  --ui-text-inverted: var(--ui-color-neutral-900);
+
+  --ui-border: var(--ui-color-neutral-800);
+  --ui-border-muted: var(--ui-color-neutral-800);
+  --ui-border-accented: var(--ui-color-neutral-700);
+  --ui-border-inverted: var(--ui-color-neutral-50);
+
+  --site-contour: var(--ui-color-neutral-700);
+  --site-sheet: #1c1d20;
+}
+
+@layer base {
+  :root {
+    accent-color: var(--ui-primary);
+  }
+
+  body {
+    text-rendering: optimizeLegibility;
+  }
+
+  h1, h2, h3, h4 {
+    font-family: var(--font-display);
+    font-optical-sizing: auto;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+
+  ::selection {
+    background-color: color-mix(in oklab, var(--ui-primary) 24%, transparent);
+  }
+}
+
+/*
+ * Contour lines. An element with this class is filled with the colour of the lines, and public/contours.svg cuts
+ * the lines out of it as a mask. The second mask fades the lines towards the text. The element is an ornament: it
+ * takes no pointer events, and it is not drawn when the browser has no masks or forces its own colours.
+ */
+.contours {
+  display: none;
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-color: var(--site-contour);
+}
+
+@supports (mask-composite: intersect) {
+  .contours {
+    display: block;
+    mask-image: url('/contours.svg'), linear-gradient(to right, transparent 0%, rgb(0 0 0 / 0.35) 45%, #000 100%);
+    mask-size: 900px 600px, 100% 100%;
+    mask-position: right top, 0 0;
+    mask-repeat: repeat, no-repeat;
+    mask-composite: intersect;
+  }
+
+  .contours-rising {
+    mask-image: url('/contours.svg'), linear-gradient(to bottom, transparent 0%, #000 100%);
+  }
+}
+
+@media (forced-colors: active) {
+  .contours {
+    display: none;
+  }
+}
+
+/* The graduated rule of a map border: segments of ink and paper in turn. */
+.graduated-rule {
+  height: 5px;
+  border-block: 1px solid var(--ui-border-inverted);
+  background-image: repeating-linear-gradient(to right, var(--ui-border-inverted) 0 2.5rem, transparent 2.5rem 5rem);
+  opacity: 0.8;
+}
+
+/* Coordinates, versions and other figures: the mono face, small, with the digits in columns. */
+.figure-text {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.label-text {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  line-height: 1.4;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+/*
+ * The contents of a page as the legend of a map. From the width where it stands at the right (the breakpoint lg of
+ * Tailwind), it is a box with a title in the mono face, and each entry has the symbol of a line: a solid line for
+ * a section, a dashed line for a part of a section. The entry of the section in view has the survey colour.
+ */
+@media (min-width: 64rem) {
+  .legend-box {
+    border: 1px solid var(--ui-border-accented);
+    background-color: var(--site-sheet);
+    padding: 0.875rem 1rem 0.75rem;
+    box-shadow: 3px 3px 0 var(--ui-border);
+  }
+
+  .legend-title {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ui-text-muted);
+    padding-bottom: 0.5rem;
+    margin-bottom: 0.375rem;
+    border-bottom: 1px solid var(--ui-border);
+  }
+
+  .legend-link {
+    gap: 0.625rem;
+    align-items: flex-start;
+    font-size: 0.8125rem;
+    line-height: 1.35;
+  }
+
+  .legend-link::before {
+    content: '';
+    flex: none;
+    width: 1.125rem;
+    margin-top: 0.6em;
+    border-top: 2px solid currentColor;
+    opacity: 0.55;
+  }
+
+  .legend-sublist {
+    margin-inline-start: 0;
+  }
+
+  .legend-sublist .legend-link::before {
+    border-top: 1px dashed currentColor;
+  }
+
+  .legend-link[aria-current]::before,
+  .legend-link.text-primary::before {
+    opacity: 1;
+  }
+}

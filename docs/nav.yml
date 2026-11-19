@@ -1,0 +1,36 @@
+# The navigation of the docs site (website/, published at https://map-jr.org/).
+#
+# Each section has a title and its pages. A section with a "folder" shows every page of that folder of docs/: the
+# pages that "pages" names come first, in that order, and the other pages follow by file name. A section without a
+# folder shows only the files of docs/ that "pages" names. The title of a page is its first heading.
+#
+# A file of docs/ that no section reaches is not on the site (development.md, style-guide.md and the other files
+# for people who work on the library).
+sections:
+  - title: Guide
+    folder: guide
+    pages: []
+  - title: Recipes
+    folder: recipes
+    pages: []
+  - title: Reference
+    folder: reference
+    pages: []
+  - title: Migrate
+    folder: migrate
+    pages: []
+  # The documents from before the docs site. A document leaves this list when the four folders have its content.
+  - title: Current docs
+    pages:
+      - api.md
+      - vue.md
+      - react.md
+      - svelte.md
+      - element.md
+      - markers.md
+      - terrain-and-elevation.md
+      - loading.md
+      - server-rendering.md
+      - maplibre-compatibility.md
+      - accessibility.md
+      - browser-support.md
