@@ -5,7 +5,8 @@
 export interface Feature { type: number; id?: number | string; properties: Record<string, any>; /** Set while a tile is built: the feature's state, for `feature-state`. */ state?: Record<string, unknown> }
 export interface Ctx { zoom: number; f: Feature | null; /** The value so far, when a cluster property is combined from its points. */ accumulated?: unknown; /** Heatmap colour ramps are evaluated over this, from 0 to 1. */ density?: number }
 export type Fn = (c: Ctx) => any;
-export interface Flags { dd: boolean; zoom: boolean }
+/** `list`: a value of a `raw` property; when its first item is no operator, it is a list of values (fonts, anchors). */
+export interface Flags { dd: boolean; zoom: boolean; list?: unknown }
 export type RGBA = [number, number, number, number];
 import {bezier} from './geo.ts';
 import {VARIANT} from './markers.ts';
@@ -489,6 +490,7 @@ export function compileExpr(e: any, flags: Flags): Fn {
         }
         default:
             if (math1[op]) { const a = arg(1), f = math1[op]; return c => f(a(c)); }
+            if (e === flags.list) return () => e;
             warnOnce(`Unsupported expression "${op}"`);
             return () => null;
     }
@@ -595,8 +597,9 @@ export function compileProp(v: any, kind: PropKind, def: any, values?: readonly 
     const flags: Flags = {dd: false, zoom: false};
     let fn: Fn, expression = false;
     if (v === undefined || v === null) v = def;
-    if (kind !== 'raw' && Array.isArray(v) && typeof v[0] === 'string') { fn = compileExpr(v, flags); expression = true; }
-    else if (kind !== 'raw' && v && typeof v === 'object' && !Array.isArray(v) && (v.stops || v.type === 'identity')) fn = legacyFunction(v, flags, kind, values);
+    if (kind === 'raw') flags.list = v;
+    if (Array.isArray(v) && typeof v[0] === 'string') { fn = compileExpr(v, flags); expression = true; }
+    else if (v && typeof v === 'object' && !Array.isArray(v) && (v.stops || v.type === 'identity')) fn = legacyFunction(v, flags, kind, values);
     else { const k = v; fn = () => k; }
     const defColor = kind === 'color' ? (typeof def === 'string' ? parseColor(def) : def) ?? [0, 0, 0, 1] : null;
     const finish = kind === 'color'

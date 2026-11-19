@@ -9,7 +9,7 @@ import {dataTypeError, extended, styleFor, fillTemplate, svgSize, templateSlots,
 import {renderSVG} from './svg.ts';
 import {ATTRIBUTES, VIEW_FIELDS, attributeOf, readAttribute} from './element-attributes.ts';
 import type {MapDescription} from './host.ts';
-import {pickImage} from './expr.ts';
+import {compileFor, pickImage} from './expr.ts';
 import {styleImages} from './style-images.ts';
 import type {ImageDecoder} from './contour.ts';
 import {decodeImage, decodePNG, decodeWebPLossless} from './webp.ts';
@@ -202,6 +202,7 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
     style.layers = over === false ? style.layers.map(l => l.metadata?.[SSR_KEY] ? {...l, metadata: {...l.metadata, [SSR_KEY]: undefined}} : l)
         : applySSROverrides(over ? style.layers.map(l => over[l.id] ? {...l, metadata: {...l.metadata, [SSR_KEY]: {...(l.metadata?.[SSR_KEY] as object), ...over[l.id]}}} : l) : style.layers);
     if (o.layerFilter) style.layers = style.layers.filter(l => o.layerFilter!(l.id));
+    compileFor({g: style.state ?? {}, f: {}});
     const layers = style.layers.map(compileLayer).filter((l): l is CompiledLayer => !!l);
     const tr = new Transform();
     tr.width = o.width; tr.height = o.height;

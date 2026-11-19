@@ -1105,7 +1105,7 @@ export class Engine {
         // (The symbol layers of the question whose features are tested with their icon, and the distance in pixels for their text.)
         const radii = new Map<string, number>(), shown = new Map<string, {x: number; y: number; box: number[]}[]>();
         for (const [name, src] of Object.entries(this.style.sources)) {
-            const mine = c.sets.filter(s => s.source === name);
+            const mine = c.sets.filter(s => s.source === name && this.layers.find(l => l.id === s.layer)?.visible !== false);
             if (!mine.length || !isGeometrySource(src)) continue;
             // A feature of a symbol layer is found where its icon is drawn. The tiles are asked with a rectangle that
             // has grown by the farthest reach of an icon of the layer, in the other direction (an icon that reaches 30
