@@ -3442,6 +3442,23 @@ for (const mode of renderers) {
         });
         check('[main] maplibre-compat: setTransformConstrain and transformConstrain limit the camera as in MapLibre (#1020)',
             m1020.ml.length === m1020.compat.length && m1020.ml.every((v, i) => Math.abs(v - m1020.compat[i]) < 1e-6), JSON.stringify(m1020));
+        // On a map that draws in a worker, the function has no effect and warns once; it fires no error (#1020).
+        const w1020 = await page.evaluate(async () => {
+            const compat = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+            const m = new compat.Map({container: el, renderer: 'worker', style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, center: [10, 45], zoom: 2});
+            const warnings = [], errors = [], warn = console.warn;
+            console.warn = (...a) => { warnings.push(String(a[0])); warn(...a); };
+            m.on('error', e => errors.push(e.error?.message));
+            const fn = (lngLat, zoom) => ({center: lngLat, zoom: Math.min(zoom, 1)});
+            m.setTransformConstrain(fn); m.setTransformConstrain(fn);
+            console.warn = warn;
+            const zoom = m.getZoom();
+            m.remove(); el.remove();
+            return {warnings: warnings.filter(w => w.includes('setTransformConstrain')), errors, zoom};
+        });
+        check('[main] maplibre-compat: setTransformConstrain on a map that draws in a worker warns once and fires no error (#1020)',
+            w1020.warnings.length === 1 && w1020.warnings[0].includes("renderer: 'main'") && !w1020.errors.length && w1020.zoom === 2, JSON.stringify(w1020));
         // #1019: zoomSnap (the option and setZoomSnap) and setEventedParent work as in MapLibre GL JS (served at /ml/).
         const m1019 = await page.evaluate(async () => {
             const ml = await import('/ml/maplibre-gl.mjs');

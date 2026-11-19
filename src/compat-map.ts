@@ -238,7 +238,12 @@ export class Map extends CoreMap {
     /** As in MapLibre GL JS, `fn(lngLat, zoom)` returns `{center, zoom}` and replaces the constraint of the camera; null restores it. */
     setTransformConstrain(fn?: ((lngLat: LngLat, zoom: number) => {center: LngLatLike; zoom: number}) | null) {
         // The engine calls the function on each change of the camera, so it must run on this thread, as a custom layer does.
-        if (fn && !this.mainThread) return this.refused("setTransformConstrain: the function needs the map to draw on the main thread. Pass renderer: 'main' to new Map().");
+        if (fn && !this.mainThread) {
+            const message = "[map-jr-gl] setTransformConstrain has no effect: the function needs the map to draw on the main thread. Pass renderer: 'main' to new Map().";
+            if (this.strict) throw new Error(message);
+            if (!this.warned.has('setTransformConstrain')) { this.warned.add('setTransformConstrain'); console.warn(message); }
+            return this;
+        }
         const wrap = fn ? (t: typeof this.tr) => { const r = fn(new LngLat(t.lng, t.lat), t.zoom); [t.lng, t.lat] = toLngLat(r.center); t.zoom = r.zoom; } : null;
         this.tr.customConstrain = wrap;
         this.tr.set(undefined);
