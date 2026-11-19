@@ -49,6 +49,7 @@ texts[10524] = () => 'the description has no field "extend", so the map ignores 
 texts[826] = (a, b) => `<map-jr>: the attribute ${a} cannot be read, so the element ignores it. ${({n: 'Write a number, for example zoom="11".', c: 'Write the longitude and the latitude with a comma between them, for example center="13.4,52.52".', p: 'Write "globe" or "mercator".', b: 'An attribute that is there switches the option on, whatever its value: remove it to switch the option off.'} as Record<string, string>)[b] ?? ''}`;
 texts[10826] = () => '<map-jr>: the element has no style, so it shows no map. Write the URL of a style in the attribute "map-style", or set the property "mapStyle".';
 texts[20826] = () => '<map-jr>: the attribute "map-style" was removed and the element has no "mapStyle", so the map keeps the style that it has. To change the style, give another URL in "map-style" or set "mapStyle".';
+texts[1057] = (a, b) => `the layer "${a}" has in "${b}" a zoom-based "step" or "interpolate" that is inside another expression, or a second one. The map draws it, but MapLibre GL JS rejects the style. Write one ["step", ["zoom"], ...] or ["interpolate", ..., ["zoom"], ...] at the top of the expression (or as the result of a top-level "let", or as one argument of a top-level "coalesce"), and put the other parts in its outputs.`;
 texts[55] = a => `sprite: ${a} is not a list of sprites. Write a list of {id, url}, for example [{id: 'pins', url: 'https://example.com/sprites/pins'}], and name an image of it in "icon-image" as "pins:name".`;
 
 /** The message with the number `code` for the names `a` and `b`. */
@@ -73,6 +74,24 @@ const setupOnly = ['renderer', 'fontFamily', 'interactive', 'antialias', 'attrib
 const descriptionFields = new Set(['renderer', 'fontFamily', 'interactive', 'antialias', 'attribution', 'hash', 'nonce', 'style', 'sources', 'layers', 'terrain', 'fonts', 'initialView', 'view', 'onViewChange', 'data', 'images', 'sprite', 'controls', 'projection', 'globalState', 'interactiveLayers', 'hoverState', 'onClick', 'onError', 'minZoom', 'maxZoom', 'maxPitch', 'maxBounds', 'cursor', 'cooperativeGestures', 'colorScheme', 'onColorSchemeChange', 'padding', 'transformRequest', 'locale']);
 /** A query at a point or a position, and not in a rectangle or on the whole map. */
 const place = (at: unknown) => !!at && !(Array.isArray(at) && typeof at[0] !== 'number');
+/** True when the expression `e` has a zoom-based `step` or `interpolate` where MapLibre GL JS does not accept one: nested in
+ * another expression, or twice. A curve may stand at the top, as the result of a top-level `let` and as one argument of
+ * a top-level `coalesce` (#1057). */
+const badZoomCurve = (e: unknown): boolean => {
+    let bad = false;
+    /** The number of curves in `e`, where `top` says that a curve may stand at `e`. */
+    const count = (e: unknown, top: boolean): number => {
+        if (!Array.isArray(e) || e[0] === 'literal') return 0;
+        const op = e[0], curve = (op === 'step' || op === 'interpolate' || op === 'interpolate-hcl' || op === 'interpolate-lab') && JSON.stringify(e[op === 'step' ? 1 : 2]) === '["zoom"]';
+        let n = 0;
+        e.forEach((x, i) => { n += count(x, top && ((op === 'let' && i === e.length - 1) || op === 'coalesce')); });
+        if (curve) { if (n || !top) bad = true; return 1; }
+        if (n > 1 || (n && !top)) bad = true;
+        return n;
+    };
+    count(e, true);
+    return bad;
+};
 const differ = (a: unknown, b: unknown) => a !== b && JSON.stringify(a) !== JSON.stringify(b);
 
 /**
@@ -144,6 +163,7 @@ export function check(c: Checked, kind: number, a?: any, b?: any) {
     else if (kind === 7) warn(23);
     else {
         slots(a.layers, b?.layers);
+        for (const l of [...a.layers, ...b?.layers ?? []]) for (const group of [l.paint, l.layout]) for (const k in group) if (badZoomCurve(group[k])) warn(1057, l.id, k);
         if (!b) return;
         const extend = b as Pick<MapDescription, 'sources' | 'layers'>, sources = {...a.sources, ...extend.sources}, ids = new Set<string>(a.layers.map((l: {id: string}) => l.id));
         for (const {id, before, source} of extend.layers ?? []) {
