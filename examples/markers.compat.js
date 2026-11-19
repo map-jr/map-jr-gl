@@ -1,3 +1,5 @@
+// The module script of a page that has <div id="map" style="height: 500px"></div>. A line of text below the map gives
+// the frame rate.
 import {Map, Popup} from '@map-jr/map-jr-gl/maplibre-compat';
 
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';
@@ -17,29 +19,28 @@ const points = list => ({type: 'FeatureCollection', features: list.map((place, i
 
 // The sources and the layers are those of MapLibre GL JS. One thing is an addition of this library: an image can be an
 // SVG template with {{slots}}, and each feature fills the slots from its properties.
-export default function (container, {show}) {
-  const map = new Map({container, style, center: NYC, zoom: 11.4, attributionControl: {compact: true}});
+const map = new Map({container: 'map', style, center: NYC, zoom: 11.4, attributionControl: {compact: true}});
+const readout = document.createElement('p');
+map.getContainer().after(readout);
 
-  map.on('load', async () => {
-    await map.addImage('dot', dot);
-    await map.addImage('pin', pin);
-    map.addSource('rest', {type: 'geojson', data: points(places.slice(500))});
-    map.addSource('some', {type: 'geojson', data: points(some)});
-    // Icons that are always shown: the cost of a frame does not grow with their number.
-    const always = {'icon-image': 'dot', 'icon-allow-overlap': true, 'icon-ignore-placement': true};
-    map.addLayer({id: 'dots', type: 'symbol', source: 'rest', layout: always});
-    // 500 of the places are pins when the zoom is 12 or more, and dots below that.
-    map.addLayer({id: 'dots-below-pins', type: 'symbol', source: 'some', maxzoom: 12, layout: always});
-    // (Without `icon-allow-overlap`, the pins do not pile up, and map labels keep clear.)
-    map.addLayer({id: 'pins', type: 'symbol', source: 'some', minzoom: 12, layout: {'icon-image': 'pin', 'icon-anchor': 'bottom'}});
-  });
+map.on('load', async () => {
+  await map.addImage('dot', dot);
+  await map.addImage('pin', pin);
+  map.addSource('rest', {type: 'geojson', data: points(places.slice(500))});
+  map.addSource('some', {type: 'geojson', data: points(some)});
+  // Icons that are always shown: the cost of a frame does not grow with their number.
+  const always = {'icon-image': 'dot', 'icon-allow-overlap': true, 'icon-ignore-placement': true};
+  map.addLayer({id: 'dots', type: 'symbol', source: 'rest', layout: always});
+  // 500 of the places are pins when the zoom is 12 or more, and dots below that.
+  map.addLayer({id: 'dots-below-pins', type: 'symbol', source: 'some', maxzoom: 12, layout: always});
+  // (Without `icon-allow-overlap`, the pins do not pile up, and map labels keep clear.)
+  map.addLayer({id: 'pins', type: 'symbol', source: 'some', minzoom: 12, layout: {'icon-image': 'pin', 'icon-anchor': 'bottom'}});
+});
 
-  let popup = null;
-  for (const id of ['pins', 'dots-below-pins', 'dots']) map.on('click', id, e => {
-    const at = e.features[0].geometry.coordinates;
-    popup?.remove();
-    popup = new Popup({offset: id === 'pins' ? 30 : 6}).setLngLat(at).setText(`Marker at ${at.map(v => v.toFixed(3)).join(', ')}`).addTo(map);
-  });
-  map.on('stats', e => show(`50,000 markers, ${e.fps.toFixed(0)} frames per second.`));
-  return map;
-}
+let popup = null;
+for (const id of ['pins', 'dots-below-pins', 'dots']) map.on('click', id, e => {
+  const at = e.features[0].geometry.coordinates;
+  popup?.remove();
+  popup = new Popup({offset: id === 'pins' ? 30 : 6}).setLngLat(at).setText(`Marker at ${at.map(v => v.toFixed(3)).join(', ')}`).addTo(map);
+});
+map.on('stats', e => { readout.textContent = `50,000 markers, ${e.fps.toFixed(0)} frames per second.`; });
