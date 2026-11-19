@@ -76,7 +76,7 @@ export interface SSROverrides {
     hidden?: boolean;
     /**
      * An extra filter that features must also pass, e.g. to keep only major roads. It can read `["zoom"]`, which is the
-     * zoom of the tile (a whole number), as in a layer filter of MapLibre: a render at zoom 13.5 uses tiles of zoom 13,
+     * whole zoom of the render (of an over-zoomed tile too), as in a layer filter of MapLibre: a render at zoom 13.5 uses tiles of zoom 13,
      * so `["step", ["zoom"], false, 13, true]` keeps the features there and `[">=", ["zoom"], 13.5]` keeps none.
      */
     filter?: unknown;

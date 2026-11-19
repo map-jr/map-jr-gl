@@ -294,8 +294,9 @@ defaults of `simplify` (0.6 pixels) and `minSize` (0.8 pixels) still apply.
 | `simplify` | Lines and polygons are made simpler by this number of pixels |
 | `minSize` | Shapes smaller than this number of pixels do not show. On a line layer, keep it to a few pixels (see below) |
 
-In `filter`, `["zoom"]` is the zoom of the tile, a whole number, as in a layer filter of MapLibre GL JS. A render at
-zoom 13.5 uses tiles of zoom 13, so `[">=", ["zoom"], 13.5]` is false there and the layer shows nothing. Test for a
+In `filter`, `["zoom"]` is the whole zoom of the render, as in a layer filter of MapLibre GL JS. It is the zoom of
+the tile, or, for a tile that is over-zoomed (past the `maxzoom` of the source, or with a positive `tileZoomOffset`),
+the whole zoom that the tile is drawn at. A render at zoom 13.5 uses tiles of zoom 13, so `[">=", ["zoom"], 13.5]` is false there and the layer shows nothing. Test for a
 whole zoom instead. This override keeps the secondary roads from zoom 13 on:
 
 ```js
@@ -320,7 +321,9 @@ that must look like the live map. The default is 0. A value of 1 can make the SV
 zoom lower can have more features for some layers; the gain starts at 2. A source does not go below its `minzoom`,
 and raster and GeoJSON sources keep the zoom of the render. The option changes only the tiles that the server
 fetches to draw: the `tiles` of the result, which you give the page to prefetch, stay the tiles of the zoom of the
-render, because those are the tiles that the live map requests.
+render, because those are the tiles that the live map requests. The style is evaluated at the whole zoom of the
+render, not at the zoom of the tiles: with `tileZoomOffset: 2` at zoom 15, a filter `[">=", ["zoom"], 15]` passes,
+and the widths are those of zoom 15.
 
 A negative value does the opposite, for a detailed image: with `tileZoomOffset: -2`, a render at zoom 10 fetches
 tiles of zoom 12 and draws them at the size of zoom 10. Each step lower fetches about four times as many tiles, so
