@@ -63,6 +63,8 @@ export interface LabelSrc {
     upright: boolean;
     /** The text lies flat on the ground of a tilted map (`text-pitch-alignment`). */
     flat: boolean;
+    /** `text-keep-upright`: text along a line turns over when it would read upside down. */
+    keepUpright: boolean;
     textOptional: boolean; ignore: boolean; varAnchor: string[] | null; radial: number;
     /** `text-variable-anchor-offset`: anchors to try in turn, each with its own offset in ems. */
     varOffset: (string | [number, number])[] | null;
@@ -73,7 +75,7 @@ export interface LabelSrc {
     icon?: {
         name: string; size: number; /** Size at the next zoom level, to interpolate towards. */ size1: number; offset: [number, number]; rotate: number; fit: string; fitPad: [number, number, number, number];
         opacity: number; anchor: string; color: RGBA; /** Distance-field icons: an outline in this colour, this many pixels wide, blurred over this many pixels. */ halo: RGBA; haloWidth: number; haloBlur: number; ignore: boolean; padding: number;
-        overlap: boolean; optional: boolean; upright: boolean; /** `icon-pitch-alignment` */ flat: boolean;
+        overlap: boolean; optional: boolean; upright: boolean; /** `icon-pitch-alignment` */ flat: boolean; /** `icon-keep-upright` */ keepUpright: boolean;
     };
 }
 /**
@@ -188,12 +190,12 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
                     halo: [haloColor[0], haloColor[1], haloColor[2], haloColor[3] * op] as RGBA, haloWidth: p.haloWidth.eval(z, f), haloBlur: p.haloBlur.eval(z, f), rotate: p.rotate.eval(z, f) * Math.PI / 180, justify: justification(p.justify.eval(z, f), p.anchor.eval(z, f)), font: fontKey(p.font.eval(z, f)),
                     maxWidth: p.maxWidth.eval(z, f), spacing: p.spacing.eval(z, f), offset: p.offset.eval(z, f), anchor: p.anchor.eval(z, f),
                     padding: p.padding.eval(z, f), overlap: overlaps(p.overlapMode.eval(z, f), p.overlap.eval(z, f)), lineHeight: p.lineHeight.eval(z, f),
-                    upright: turns(p.textAlign.eval(z, f)), flat: flat(p.textPitch.eval(z, f), p.textAlign.eval(z, f)), textOptional: !!p.textOptional.eval(z, f), ignore: !!p.ignore.eval(z, f),
+                    upright: turns(p.textAlign.eval(z, f)), flat: flat(p.textPitch.eval(z, f), p.textAlign.eval(z, f)), keepUpright: p.keepUpright.eval(z, f) !== false, textOptional: !!p.textOptional.eval(z, f), ignore: !!p.ignore.eval(z, f),
                     varAnchor: p.varAnchor.eval(z, f), radial: p.radial.eval(z, f), varOffset: p.varOffset.eval(z, f), maxAngle: p.maxAngle.eval(z, f), justifyAuto: p.justify.eval(z, f) === 'auto',
                     icon: iconName ? {
                         name: iconName, size: p.iconSize.eval(zs, f), size1: p.iconSize.eval(z1, f), opacity: p.iconOpacity.dd ? p.iconOpacity.eval(z, f) : 1, anchor: p.iconAnchor.eval(z, f), color: p.iconColor.eval(z, f), halo: p.iconHalo.eval(z, f), haloWidth: p.iconHaloWidth.eval(z, f), haloBlur: p.iconHaloBlur.eval(z, f), offset: p.iconOffset.eval(z, f), rotate: p.iconRotate.eval(z, f),
                         fit: p.iconFit.eval(z, f), fitPad: p.iconFitPad.eval(z, f), overlap: overlaps(p.iconOverlapMode.eval(z, f), p.iconOverlap.eval(z, f)), ignore: !!p.iconIgnore.eval(z, f), padding: p.iconPadding.eval(z, f),
-                        optional: !!p.iconOptional.eval(z, f), upright: turns(p.iconAlign.eval(z, f)), flat: flat(p.iconPitch.eval(z, f), p.iconAlign.eval(z, f)),
+                        optional: !!p.iconOptional.eval(z, f), upright: turns(p.iconAlign.eval(z, f)), flat: flat(p.iconPitch.eval(z, f), p.iconAlign.eval(z, f)), keepUpright: p.iconKeepUpright.eval(z, f) === true,
                     } : undefined,
                 };
                 // symbol-spacing is in pixels; tiles are EXTENT units across TILE_SIZE pixels.

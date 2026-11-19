@@ -283,7 +283,7 @@ export function placeLabels(
                     } else if (line && !l.upright) {
                         if (l.len * it.scale < w * 1.15) continue; // the road is shorter than its name at this zoom
                         textAngle = Math.atan2(Math.sin(lineAngle), Math.cos(lineAngle));
-                        if (textAngle > Math.PI / 2) textAngle -= Math.PI; else if (textAngle <= -Math.PI / 2) textAngle += Math.PI;
+                        if (l.keepUpright) { if (textAngle > Math.PI / 2) textAngle -= Math.PI; else if (textAngle <= -Math.PI / 2) textAngle += Math.PI; }
                         const oy = l.offset[1] * size;
                         candidates = [[-Math.sin(textAngle) * oy, Math.cos(textAngle) * oy]];
                     } else if (!line && (l.varOffset?.length || l.varAnchor?.length)) {
@@ -410,8 +410,9 @@ export function placeLabels(
                 if (ic && (hasText || ic.fit === 'none')) {
                     const fit = hasText && (textBox || bent) ? ic.fit : 'none';
                     const {ix, iy, iw, ih, gx, gy} = iconAt(fit, tx, ty);
-                    // (An icon that is fitted to text on a line turns with the text, which reads from left to right.)
-                    const along = fit !== 'none' && Math.abs(lineAngle) > Math.PI / 2 ? lineAngle + Math.PI : lineAngle;
+                    // (An icon that is fitted to text on a line turns over with the text when `text-keep-upright` keeps the text
+                    // upright. Another icon turns over by `icon-keep-upright`.)
+                    const along = (fit !== 'none' ? l.keepUpright : ic.keepUpright) && Math.abs(lineAngle) > Math.PI / 2 ? lineAngle + Math.PI : lineAngle;
                     let angle = (ic.upright ? 0 : line ? along : north) + ic.rotate * Math.PI / 180, iframe: number[] | undefined;
                     let bx = ix, by = iy, bw = iw, bh = ih;
                     if (iflat && fit === 'none') {
@@ -464,8 +465,9 @@ function followLine(
     let xs: number[] = [], ys: number[] = [], us: number[] = [], vs: number[] = [];
     for (let i = 0; i < n; i++) { const u = path[i * 2], v = path[i * 2 + 1], [x, y] = tr.projectTile(it.id, u, v); xs.push(x); ys.push(y); us.push(u); vs.push(v); }
     let anchorIndex = l.pathIndex!;
-    // Text should read left to right: run the path in whichever direction heads rightwards overall.
-    if (xs[n - 1] < xs[0]) { xs = xs.reverse(); ys = ys.reverse(); us = us.reverse(); vs = vs.reverse(); anchorIndex = n - 1 - anchorIndex; }
+    // Text should read left to right (`text-keep-upright`): run the path in whichever direction heads rightwards overall.
+    // Without it, the text follows the direction of the line.
+    if (l.keepUpright && xs[n - 1] < xs[0]) { xs = xs.reverse(); ys = ys.reverse(); us = us.reverse(); vs = vs.reverse(); anchorIndex = n - 1 - anchorIndex; }
     // Distances along the line. Flat text is measured on the ground, in pixels of the map without tilt: each glyph then
     // takes the length on the screen that its piece of ground has.
     const cum = [0], k = flat && it.scale, size = flat || s;
