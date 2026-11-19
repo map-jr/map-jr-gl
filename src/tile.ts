@@ -129,7 +129,8 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
     const under = overscaled !== false && overscaled < tz, z = under ? overscaled : tz;
     const zs = overscaled && overscaled > z ? overscaled : z, z1 = zs % 1 ? zs : zs + 1;
     const out: TileIR = {layers: {}, labels: {}, z: zs};
-    const ctx = {zoom: z, f: null as Feature | null};
+    // A filter sees the zoom that the sizes are found at, as in MapLibre GL JS (the over-zoomed zoom of the tile).
+    const ctx = {zoom: zs, f: null as Feature | null};
 
     for (const L of layers) {
         if (L.type === 'background' || !L.visible && !L.keep) continue;

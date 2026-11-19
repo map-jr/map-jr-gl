@@ -56,6 +56,17 @@ test('tileZoomOffset: a value that is not a whole number rejects with a message'
     await assert.rejects(render({tileZoomOffset: 1.5}), /^Error: \[map-jr-gl\] tileZoomOffset: 1\.5 is not a whole number\. Write for example tileZoomOffset: 2/);
 });
 
+test('tileZoomOffset: with 2 a filter sees the zoom of the render, not of the tiles (#991)', async () => {
+    const s: any = style();
+    s.layers.push({id: 'deep', type: 'fill', source: 's', 'source-layer': 'water', filter: ['>=', ['zoom'], 12], paint: {'fill-color': '#f00'}});
+    const low = await render({tileZoomOffset: 2}, s);
+    assert.ok(low.fetched.every(t => /\/10\//.test(t)), low.fetched.join());
+    assert.match(low.svg, /#ff0000/, 'a filter of zoom 12 and above draws at a render of zoom 12 from tiles of 10');
+    // (A source that stops at zoom 10, over-zoomed to 12, is the same.)
+    s.sources.s.maxzoom = 10;
+    assert.match((await render({}, s)).svg, /#ff0000/);
+});
+
 test('tileZoomOffset: with -2 the style is evaluated at the zoom of the render, not of the tiles', async () => {
     const s: any = style();
     s.layers.push({id: 'deep', type: 'fill', source: 's', 'source-layer': 'water', filter: ['>=', ['zoom'], 11], paint: {'fill-color': '#f00'}},

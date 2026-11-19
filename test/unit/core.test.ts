@@ -381,14 +381,17 @@ test('style: server overrides hide layers, add filters and adjust detail', () =>
 });
 
 test('style: a server filter can read ["zoom"], which is the whole zoom of the tile, as in MapLibre (#984)', () => {
-    const roads = (filter: unknown) => {
+    const roads = (filter: unknown, overscaled: number | false = false) => {
         const [l] = applySSROverrides([{id: 'r', type: 'line', source: 's', 'source-layer': 'transportation', metadata: {'map-jr:ssr': {filter}}}]);
-        return buildTile(bytes, TILE.z, [compileLayer(l)!], true).layers.r;
+        return buildTile(bytes, TILE.z, [compileLayer(l)!], overscaled).layers.r;
     };
     assert.ok(roads(undefined), 'the tile has roads');
     // The tile is of zoom 14, so a render at zoom 14.5 still reads 14 here.
     assert.ok(roads(['step', ['zoom'], false, 14, true]));
     assert.equal(roads(['>=', ['zoom'], 14.5]), undefined);
+    // A tile over-zoomed to 16 reads 16, as in MapLibre GL JS (#991).
+    assert.ok(roads(['>=', ['zoom'], 16], 16));
+    assert.equal(roads(['>=', ['zoom'], 17], 16), undefined);
 });
 
 test('markers: templates escape values and get explicit sizes', () => {

@@ -2195,6 +2195,33 @@ for (const mode of renderers) {
         check(`[${mode}] compat: a GeoJSON source that fails is requested and fires error as in MapLibre GL JS after a paint change and setStyle (#809)`,
             JSON.stringify(ours) === JSON.stringify(ml), JSON.stringify({ours, maplibre: ml}));
     }
+    // A filter with ["zoom"] on a tile that is over-zoomed past the source's maxzoom sees the over-zoomed zoom, as in
+    // MapLibre GL JS 6.17 (`overscaledZ`): at zoom 16 on a source that stops at 14, [">=", ["zoom"], 15] passes (#991).
+    {
+        const run = (lib, mode) => page.evaluate(async ([lib, mode]) => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js'), wait = ms => new Promise(r => setTimeout(r, ms));
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const square = {type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[-0.01, -0.01], [0.01, -0.01], [0.01, 0.01], [-0.01, 0.01], [-0.01, -0.01]]]}};
+            const layer = (id, z) => ({id, type: 'fill', source: 'g', filter: ['>=', ['zoom'], z], paint: {'fill-color': '#f00'}});
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const m = new mod.Map({container: el, ...lib === 'ml' ? {} : {renderer: mode}, attributionControl: false, center: [0, 0], zoom: 16,
+                style: {version: 8, sources: {g: {type: 'geojson', data: square, maxzoom: 14}}, layers: [layer('z15', 15), layer('z17', 17)]}});
+            await new Promise(r => { m.once('idle', r); setTimeout(r, 8000); });
+            const out = {};
+            for (const at of [16, 14.5]) {
+                m.jumpTo({zoom: at});
+                await new Promise(r => { m.once('idle', r); setTimeout(r, 4000); });
+                await wait(300);
+                const found = await m.queryRenderedFeatures([100, 75]);
+                out[at] = [...found].map(f => f.layer.id).sort().join() || 'none';
+            }
+            m.remove(); el.remove();
+            return out;
+        }, [lib, mode]);
+        const ours = await run('ours', mode), ml = mode === 'main' ? await run('ml', mode) : {16: 'z15', 14.5: 'none'};
+        check(`[${mode}] compat: a filter with ["zoom"] on an over-zoomed tile sees the over-zoomed zoom, as in MapLibre GL JS (#991)`,
+            JSON.stringify(ours) === JSON.stringify(ml), JSON.stringify({ours, maplibre: ml}));
+    }
     // The kept network result of a source: new data at the same URL stays after a change of the style, and two maps
     // that are given the same source object both load it.
     {
