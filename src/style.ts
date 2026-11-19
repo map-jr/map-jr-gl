@@ -17,6 +17,7 @@ const SPEC: Record<string, Record<string, [string, PropKind, any, string[]?]>> =
     line: {
         color: ['line-color', 'color', '#000'], opacity: ['line-opacity', 'number', 1], width: ['line-width', 'number', 1],
         gap: ['line-gap-width', 'number', 0], pattern: ['line-pattern', 'string', ''], dash: ['line-dasharray', 'discrete', null], cap: ['line-cap', 'string', 'butt'], join: ['line-join', 'string', 'miter'],
+        miterLimit: ['line-miter-limit', 'number', 2], roundLimit: ['line-round-limit', 'number', 1.05],
         offset: ['line-offset', 'number', 0], blur: ['line-blur', 'number', 0],
         translate: ['line-translate', 'string', [0, 0]], translateAnchor: ['line-translate-anchor', 'string', 'map'], sortKey: ['line-sort-key', 'number', 0],
         layerOpacity: ['line-layer-opacity', 'number', 1], layerBlend: ['line-layer-blend', 'string', 'normal'],

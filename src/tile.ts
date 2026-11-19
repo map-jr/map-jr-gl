@@ -32,6 +32,9 @@ export interface Batch {
     progress?: Float32Array;
     cap?: string;
     join?: string;
+    /** `line-miter-limit` and `line-round-limit`: the longest miter (in line widths) drawn as a miter or kept sharp instead of rounded. */
+    miterLimit?: number;
+    roundLimit?: number;
     /** Fill layers with an explicit outline colour. */
     outline?: boolean;
     /** False when the style turns edge smoothing off for a fill layer. */
@@ -318,7 +321,7 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
         if (scalarProp?.dd) batch[L.type === 'line' ? 'width' : 'radius'] = Float32Array.from(scalar);
         if (scalarProp?.dd && grows) batch[L.type === 'line' ? 'width1' : 'radius1'] = Float32Array.from(scalar1);
         if (extrude) { batch.height = Float32Array.from(heights); batch.base = Float32Array.from(bases); }
-        if (L.type === 'line') { batch.cap = p.cap.eval(z); batch.join = p.join.eval(z); }
+        if (L.type === 'line') { batch.cap = p.cap.eval(z); batch.join = p.join.eval(z); batch.miterLimit = p.miterLimit.eval(z); batch.roundLimit = p.roundLimit.eval(z); }
         if (L.type === 'fill') { batch.outline = p.outline.eval(z)[3] > 0; batch.antialias = p.antialias.eval(z) !== false; }
         out.layers[L.id] = batch;
     }
@@ -605,7 +608,10 @@ export const LINE_VERTEX = 16, LINE_NORMAL = 8192;
 function tessellateLine(b: Batch): GLBatch | null {
     const {coords, ringEnds, featEnds} = b.geom;
     const v: number[] = [], idx: number[] = [], color: number[] = [], width: number[] = [], width1: number[] = [];
-    const round = b.join === 'round', miter = !round && b.join !== 'bevel';
+    const round = b.join === 'round';
+    // As in MapLibre GL JS: a corner whose miter is longer than the limit (1 / cos of half the turn, in line widths)
+    // gets a bevel or a round join; a bevel join keeps sharp the corners whose miter is shorter than 1.05.
+    const limit = round ? b.roundLimit ?? 1.05 : b.join === 'bevel' ? 1.05 : b.miterLimit ?? 2, minCos = 1 / Math.max(1, limit);
     let count = 0, f = 0, ringLength = 1;
     const vert = (x: number, y: number, nx: number, ny: number, side: number, dist: number) => {
         if (b.progress) {
@@ -659,7 +665,7 @@ function tessellateLine(b: Batch): GLBatch | null {
                 } else {
                     const pnx = -pdy, pny = pdx, mx = pnx + nx, my = pny + ny, ml = Math.hypot(mx, my);
                     const cos = ml ? (mx * pnx + my * pny) / ml : 0;
-                    if (cos > (miter ? 0.5 : 0.98)) pair(x, y, mx / (ml * cos), my / (ml * cos));
+                    if (cos >= minCos) pair(x, y, mx / (ml * cos), my / (ml * cos));
                     else {
                         // Two pairs at the corner give a bevel; a fan on the outer side rounds it off.
                         pair(x, y, pnx, pny);
