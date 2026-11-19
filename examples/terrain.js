@@ -1,3 +1,5 @@
+// The module script of a page that has <div id="map" style="height: 500px"></div>. Below the map, it adds a line of
+// text with the elevation at a click and two buttons.
 import {createMap} from '@map-jr/map-jr-gl';
 
 const style = 'https://styles.map-jr.org/1/elevation.json';
@@ -25,30 +27,33 @@ const elevation = (unit, terrain) => ({
   ],
 });
 
-export default function (container, {show, button}) {
-  let unit = 'ft', terrain = true;
-  const describe = () => ({
-    style,
-    ...elevation(unit, terrain),
-    initialView: {center: MATTERHORN, zoom: 12.4, pitch: 60, bearing: 25},
-    attribution: {compact: true},
-    onClick: async e => {
-      const metres = await map.queryElevation(e.lngLat);
-      show(metres === null ? 'No elevation data here' : `${metres.toFixed(0)} m (${(metres * 3.28084).toFixed(0)} ft) above sea level`);
-    },
-  });
-  const map = createMap(container, describe());
+const container = document.getElementById('map');
+const readout = document.createElement('p');
+const units = Object.assign(document.createElement('button'), {textContent: 'Contours in metres'});
+const flat = Object.assign(document.createElement('button'), {textContent: 'Flat map'});
+container.after(readout, units, flat);
 
-  button('Contours in metres', b => {
-    unit = unit === 'ft' ? 'm' : 'ft';
-    b.textContent = unit === 'ft' ? 'Contours in metres' : 'Contours in feet';
-    map.update(describe());
-  });
-  button('Flat map', b => {
-    terrain = !terrain;
-    b.textContent = terrain ? 'Flat map' : '3D terrain';
-    map.update(describe());
-  });
-  show('Click the map to read the elevation');
-  return map;
-}
+let unit = 'ft', terrain = true;
+const describe = () => ({
+  style,
+  ...elevation(unit, terrain),
+  initialView: {center: MATTERHORN, zoom: 12.4, pitch: 60, bearing: 25},
+  attribution: {compact: true},
+  onClick: async e => {
+    const metres = await map.queryElevation(e.lngLat);
+    readout.textContent = metres === null ? 'No elevation data here' : `${metres.toFixed(0)} m (${(metres * 3.28084).toFixed(0)} ft) above sea level`;
+  },
+});
+const map = createMap(container, describe());
+
+units.onclick = () => {
+  unit = unit === 'ft' ? 'm' : 'ft';
+  units.textContent = unit === 'ft' ? 'Contours in metres' : 'Contours in feet';
+  map.update(describe());
+};
+flat.onclick = () => {
+  terrain = !terrain;
+  flat.textContent = terrain ? 'Flat map' : '3D terrain';
+  map.update(describe());
+};
+readout.textContent = 'Click the map to read the elevation';

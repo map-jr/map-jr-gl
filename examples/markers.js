@@ -1,3 +1,5 @@
+// The module script of a page that has <div id="map" style="height: 500px"></div>. A line of text below the map gives
+// the frame rate.
 import {createMap, points} from '@map-jr/map-jr-gl';
 
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';
@@ -16,40 +18,41 @@ const some = places.slice(0, 500);
 const pointsOf = list => points(list, {lngLat: p => p.lngLat, properties: p => p.props});
 const always = {'icon-image': 'dot', 'icon-allow-overlap': true, 'icon-ignore-placement': true};
 
-export default function (container, {show}) {
-  let popup = null;
-  const map = createMap(container, {
-    style,
-    initialView: {center: NYC, zoom: 11.4},
-    attribution: {compact: true},
-    // An image is an SVG template with {{slots}}. Each feature fills the slots from its properties.
-    images: {dot, pin},
-    // Each key of `data` makes a GeoJSON source with that id.
-    data: {rest: pointsOf(places.slice(500)), some: pointsOf(some)},
-    // Symbol layers draw an image at each point of a source.
-    layers: [
-      // Icons that are always shown: the cost of a frame does not grow with their number.
-      {id: 'dots', type: 'symbol', source: 'rest', layout: always},
-      // 500 of the places are pins when the zoom is 12 or more, and dots below that.
-      {id: 'dots-below-pins', type: 'symbol', source: 'some', maxzoom: 12, layout: always},
-      // (Without `icon-allow-overlap`, the pins do not pile up, and map labels keep clear.)
-      {id: 'pins', type: 'symbol', source: 'some', minzoom: 12, layout: {'icon-image': 'pin', 'icon-anchor': 'bottom'}},
-    ],
-    // A click finds the features of these layers.
-    interactiveLayers: ['pins', 'dots-below-pins', 'dots'],
-    onClick: e => {
-      popup?.remove();
-      popup = null;
-      const marker = e.features[0];
-      if (!marker) return;
-      const at = marker.geometry.coordinates, text = document.createElement('div');
-      text.textContent = `Marker at ${at.map(v => v.toFixed(3)).join(', ')}`;
-      // A popup that points at the marker, above it.
-      popup = map.overlay(text, {lngLat: at, popup: true, offset: [0, marker.layer.id === 'pins' ? -30 : -6], onClose: () => { popup?.remove(); popup = null; }});
-    },
-  });
+const container = document.getElementById('map');
+const readout = document.createElement('p');
+container.after(readout);
 
-  map.listen('stats', e => show(`50,000 markers, ${e.fps.toFixed(0)} frames per second. Past zoom 12, 500 of them become pins.`));
-  show('50,000 markers. Zoom in past 12: 500 of them become pins. Click one.');
-  return map;
-}
+let popup = null;
+const map = createMap(container, {
+  style,
+  initialView: {center: NYC, zoom: 11.4},
+  attribution: {compact: true},
+  // An image is an SVG template with {{slots}}. Each feature fills the slots from its properties.
+  images: {dot, pin},
+  // Each key of `data` makes a GeoJSON source with that id.
+  data: {rest: pointsOf(places.slice(500)), some: pointsOf(some)},
+  // Symbol layers draw an image at each point of a source.
+  layers: [
+    // Icons that are always shown: the cost of a frame does not grow with their number.
+    {id: 'dots', type: 'symbol', source: 'rest', layout: always},
+    // 500 of the places are pins when the zoom is 12 or more, and dots below that.
+    {id: 'dots-below-pins', type: 'symbol', source: 'some', maxzoom: 12, layout: always},
+    // (Without `icon-allow-overlap`, the pins do not pile up, and map labels keep clear.)
+    {id: 'pins', type: 'symbol', source: 'some', minzoom: 12, layout: {'icon-image': 'pin', 'icon-anchor': 'bottom'}},
+  ],
+  // A click finds the features of these layers.
+  interactiveLayers: ['pins', 'dots-below-pins', 'dots'],
+  onClick: e => {
+    popup?.remove();
+    popup = null;
+    const marker = e.features[0];
+    if (!marker) return;
+    const at = marker.geometry.coordinates, text = document.createElement('div');
+    text.textContent = `Marker at ${at.map(v => v.toFixed(3)).join(', ')}`;
+    // A popup that points at the marker, above it.
+    popup = map.overlay(text, {lngLat: at, popup: true, offset: [0, marker.layer.id === 'pins' ? -30 : -6], onClose: () => { popup?.remove(); popup = null; }});
+  },
+});
+
+map.listen('stats', e => { readout.textContent = `50,000 markers, ${e.fps.toFixed(0)} frames per second. Past zoom 12, 500 of them become pins.`; });
+readout.textContent = '50,000 markers. Zoom in past 12: 500 of them become pins. Click one.';
