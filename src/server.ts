@@ -15,52 +15,72 @@ import type {ImageDecoder} from './contour.ts';
 import {decodeImage, decodePNG, decodeWebPLossless} from './webp.ts';
 export {decodePNG, decodeWebPLossless, type ImageDecoder};
 
+/** The options of `renderToSVG` and `renderFirstView`. */
 export interface RenderOptions {
     /**
-     * A style object or URL, exactly as passed to the client-side map. Of a pair `{light, dark}` the server uses the
-     * style of `colorScheme`: `'dark'` uses `dark`, and `'light'`, `'auto'` or no value use `light`, because the server
-     * cannot read the scheme of the browser.
+     * The style: a style object, the URL of a style, or `{light, dark}` with one style or URL for each scheme, as
+     * `style` of `MapDescription`. Of `{light, dark}`, the server renders `dark` when `colorScheme` is `'dark'`, and `light` otherwise.
      */
     style: unknown;
-    /** The colour scheme for a pair `{light, dark}` in `style`, and for the credits of `renderFirstView`. */
+    /** The colour scheme that selects the style of `{light, dark}` in `style`, and the colours of the credits of `renderFirstView`. */
     colorScheme?: 'auto' | 'light' | 'dark';
+    /** The center of the view, `[lng, lat]`. `bounds` overrides it. */
     center: LngLatLike;
+    /** The zoom level of the view. `bounds` overrides it. */
     zoom: number;
+    /**
+     * The bearing of the view in degrees.
+     * @default 0
+     */
     bearing?: number;
-    /** A box [west, south, east, north] to fit into the view, in place of `center` and `zoom`, with `padding` in pixels. */
+    /** A box `[west, south, east, north]` to fit into the view. It overrides `center` and `zoom`. */
     bounds?: LngLatBoundsInput;
+    /**
+     * Space in CSS pixels around `bounds` for the fit: one number, or `{top, right, bottom, left}`.
+     * @default 0
+     */
     padding?: PaddingInput;
+    /** The width of the render in CSS pixels. */
     width: number;
+    /** The height of the render in CSS pixels. */
     height: number;
     /**
-     * Images for the style layers, by name: SVG documents. An SVG with slots (`{{name}}`) is a
-     * template, as in the description of a map. `{image, width, height}` gives a size in CSS pixels; without it the
-     * size is the size of the `viewBox`, or else of the `width` and `height` attributes, or 24 by 24. An image that is not an SVG document is not drawn.
+     * Images for the style layers, by name: an SVG document as a string, or `{image, width, height}` with the size in CSS pixels.
+     * An SVG with slots (`{{name}}`) is a template. An image that is not an SVG document is not rendered.
      */
     images?: Record<string, string | {image: string; width?: number; height?: number}>;
+    /**
+     * The CSS font family of labels.
+     * @default the `@default` of {@link MapSetup.fontFamily} in the main API
+     */
     fontFamily?: string;
     /**
-     * The name of the SVG for assistive technology. The SVG has `role="img"` and this text as its `aria-label`.
-     * The default is "Map". It has no effect on the image of `renderToImage`. Say what the map shows, for example "Map of the hotels in Bern".
+     * The `aria-label` of the SVG, which has `role="img"`. Say what the map shows, for example "Map of the hotels in Bern".
+     * The image of `renderToImage` has no label.
+     * @default 'Map'
      */
     label?: string;
-    /** Return false to leave a style layer out of the server output, e.g. dense building footprints, to keep the markup small. */
+    /** A function that returns `false` for the ids of style layers to leave out of the render, for example dense building footprints. */
     layerFilter?: (layerId: string) => boolean;
-    /** Embed raster tiles and the icon sheet as data URIs instead of linking to them. Needed when the SVG is rasterised. */
+    /**
+     * Whether raster tiles and the icon sheet are embedded as data URIs instead of linked. A rasterised SVG needs it.
+     * @default false in `renderToSVG`, true in `renderToImage`
+     */
     inlineImages?: boolean;
-    /** Use the high-density (@2x) icon sheet. */
+    /**
+     * Whether the render uses the high-density (@2x) icon sheet and requests raster tiles at @2x.
+     * @default false in `renderToSVG`; in `renderToImage`, true when `pixelRatio` is above 1
+     */
     highDensity?: boolean;
     /**
-     * Supplies icons the sprite sheet lacks, as SVG: the server-side counterpart of `map.setMissingStyleImageResolver`.
-     * Return undefined for names you do not handle. The SVG goes into the output as vector artwork.
+     * A function that returns an SVG icon for an image name that the sprite does not have, or `undefined` for a name that
+     * it does not handle. It is the server counterpart of `map.setMissingStyleImageResolver`.
      */
     resolveImage?: (name: string) => {svg: string; width: number; height: number} | undefined;
     /**
      * Changes for the server render, for each id of a style layer: the same values as `map-jr:ssr` in the metadata of a
-     * layer. Use this for a style that you do not write yourself (a style from a URL), to make the render smaller:
-     * `{building: {hidden: true}, 'road-minor': {minzoom: 15}}`. A value here comes before the value in the style.
-     * Without the option, the values of `map-jr:ssr` in the style apply. `false` renders the style with no override:
-     * every value of `map-jr:ssr` in the style is ignored, `simplify` and `minSize` included.
+     * layer, for example `{building: {hidden: true}, 'road-minor': {minzoom: 15}}`. A value here overrides the value in
+     * the style, and `false` ignores every `map-jr:ssr` of the style.
      */
     overrides?: false | Record<string, SSROverrides>;
     /** Sources to add to the style, by id, as `sources` in the description of a map (`MapDescription`). */
@@ -73,47 +93,52 @@ export interface RenderOptions {
      * A relative URL is relative to the URL of the style.
      */
     sprite?: {id: string; url: string}[];
-    /** Terrain in place of that of the style (`null` draws none), as `terrain` in the description of a map (`MapDescription`). */
+    /** 3D terrain, as `terrain` in the description of a map (`MapDescription`). It overrides the `terrain` of the style, and `null` renders none. */
     terrain?: object | null;
     /** GeoJSON data for GeoJSON sources of the style, by the id of the source, as `data` in the description of a map. */
     data?: Record<string, unknown>;
+    /**
+     * The function that the render uses for its requests.
+     * @default globalThis.fetch
+     */
     fetch?: typeof fetch;
     /**
-     * The time in milliseconds that all requests of one render can take together. The default is 30000. The render
-     * rejects when the time is over. `0` sets no limit.
+     * The time in milliseconds that all requests of one render can take together. The render rejects when the time is over, and `0` sets no limit.
+     * @default 30000
      */
     timeout?: number;
     /**
-     * The time in milliseconds that one request can take, with its redirects and its body. The default is 10000. The
-     * render rejects when a request takes longer. `0` sets no limit.
+     * The time in milliseconds that one request can take, with its redirects and its body. The render rejects when a request takes longer, and `0` sets no limit.
+     * @default 10000
      */
     requestTimeout?: number;
-    /** The largest body of one response in bytes, after decompression. The render rejects for a larger body. There is no limit by default. */
+    /**
+     * The largest body of one response in bytes, after decompression. The render rejects for a larger body, and `0` sets no limit.
+     * @default 0
+     */
     maxBytes?: number;
     /**
-     * The host names that the render can request, for example `['tiles.openfreemap.org']`. Each name is compared with
-     * the complete host name of the URL, without the port. The render rejects for a request or a redirect to another
-     * host. All hosts are allowed by default.
+     * The host names that the render can request, for example `['tiles.openfreemap.org']`, compared with the host of the
+     * URL without the port. The render rejects for a request or a redirect to another host. Without it, all hosts are allowed.
      */
     allowHosts?: string[];
     /**
-     * Decodes elevation tile images for contour sources. PNG and lossless WebP are built in; pass a function for
-     * anything else (lossy WebP, for instance), returning `{width, height, data}` with RGBA bytes.
+     * A function that decodes elevation tile images of another format than PNG and lossless WebP, such as lossy WebP.
+     * It returns `{width, height, data}` with RGBA bytes.
      */
     decodeImage?: ImageDecoder;
     /**
-     * Builds the render from vector tiles this many zoom levels below the zoom of the render, drawn over-zoomed. The
-     * default is 0. With 2, a render at zoom 12 uses tiles of zoom 10: the server fetches fewer tiles, and the SVG is
-     * usually smaller, with fewer and coarser features. Use it for a first view that the map draws over. A negative
-     * value uses tiles of a higher zoom, for a more detailed image: each step fetches about four times as many tiles.
-     * The zoom of the tiles stays within the `minzoom` and `maxzoom` of the source. A value that is not a whole number
-     * makes the render reject.
+     * The number of zoom levels below the zoom of the render at which the server loads vector tiles, as a whole number.
+     * With 2, a render at zoom 12 uses tiles of zoom 10, which makes the SVG smaller and coarser; a negative value loads more detailed tiles.
+     * @default 0
      */
     tileZoomOffset?: number;
 }
+/** The result of `renderToSVG`. */
 export interface RenderResult {
+    /** The SVG document of the render. */
     svg: string;
-    /** Tile URLs this view needs: emit them as `<link rel="preload" as="fetch" crossorigin>` so the client starts warm. */
+    /** The URLs of the tiles of the view. Write them as `<link rel="preload" as="fetch" crossorigin>` so that the browser loads them early. */
     tiles: string[];
     /** The credits of the sources of the style, as HTML. Show them with the render. */
     attribution: string[];
@@ -181,7 +206,10 @@ function limitedFetch(o: RenderOptions, fetchFn: typeof fetch): typeof fetch {
     };
 }
 
-/** Renders the first frame of a map without a browser, for server-side rendering, static export or social images. */
+/**
+ * Renders the first frame of a map as SVG without a browser, for server-side rendering, a static export or a social image.
+ * @returns A promise of the SVG, the URLs of the tiles and the credits. It rejects when the style or a limit of the options fails.
+ */
 export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
     // Wrapped, not passed by reference: Cloudflare Workers reject calls to a detached global `fetch`.
     const dz = o.tileZoomOffset ?? 0;
@@ -299,20 +327,8 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
 }
 
 /**
- * The first view of a map as HTML for a page from a server: the SVG, and the credits of the sources over it. Put the
- * HTML into the element of the map. In the browser the map removes it when it has drawn its first frame. (The
- * adapters for the frameworks use this.)
- *
- * `attribution` gives the credits to show, when they must not come from the sources; `false` shows none.
- * `colorScheme` gives the colours of the credits: `'light'` (the default) or `'dark'`. The server cannot read the
- * scheme of the browser, so `'auto'` writes both colours with the CSS function `light-dark()`, and a browser without
- * it (before 2024) shows the light colours.
- * Only text and links to http(s) addresses are kept from the HTML of the credits.
- */
-/**
- * The HTML of credits, made safe: text, and links to http(s) addresses that this function writes itself. Each other
- * tag is taken out, also one that is not complete, and the text is escaped. (The credits can come from the TileJSON
- * of another party, and the page puts this HTML into the document.)
+ * Returns HTML of credits that is safe to put into a page: the text, escaped, and links to http and https URLs. Every other tag is removed.
+ * @returns The cleaned HTML.
  */
 export function cleanCredits(html: string): string {
     const text = (t: string) => t.replace(/&(?!#?\w+;)/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -328,6 +344,13 @@ export function cleanCredits(html: string): string {
     return out + '</a>'.repeat(open);
 }
 
+/**
+ * Renders the first view of a map as HTML for a page from a server: the SVG, with the credits over it. Put the HTML into
+ * the element of the map; the map removes it when it has rendered its first frame.
+ * @param o The options of `renderToSVG`. `attribution` sets the credits instead of those of the sources, and `false` shows none.
+ * `colorScheme` sets the colours of the credits; `'auto'` follows the browser where it supports the CSS function `light-dark()`.
+ * @returns A promise of the HTML. It rejects as `renderToSVG` does.
+ */
 export async function renderFirstView(o: RenderOptions & {attribution?: string | string[] | false; colorScheme?: 'auto' | 'light' | 'dark'}): Promise<string> {
     const made = await renderToSVG(o);
     const credits = o.attribution === false ? [] : [o.attribution ?? made.attribution].flat().map(cleanCredits).filter(Boolean);
@@ -338,25 +361,30 @@ export async function renderFirstView(o: RenderOptions & {attribution?: string |
 
 /** The options of `renderElement`: those of `renderToSVG` that the description does not give, and the attributes of the element. */
 export interface ElementRenderOptions extends Omit<RenderOptions, 'style' | 'colorScheme' | 'center' | 'zoom' | 'bearing' | 'bounds' | 'padding' | 'width' | 'height' | 'images' | 'fontFamily' | 'sources' | 'layers' | 'sprite' | 'terrain' | 'data'> {
-    /** The size in CSS pixels that the element has on most screens. The default is 800 by 500. */
+    /**
+     * The width in CSS pixels that the element has on most screens.
+     * @default 800
+     */
     width?: number;
+    /**
+     * The height in CSS pixels that the element has on most screens.
+     * @default 500
+     */
     height?: number;
     /** The credits to show, when the server must not take them from the sources of the style. */
     attribution?: string | string[];
     /**
-     * More attributes of the element, by name: `{id: 'map', class: 'map', style: 'height:400px'}`. The text of `style`
-     * comes after `display:block;position:relative;overflow:hidden`, which the first view needs before the script runs.
+     * More attributes of the element, by name, for example `{id: 'map', class: 'map', style: 'height:400px'}`. The text of
+     * `style` is appended to `display:block;position:relative;overflow:hidden`. A name that starts with `on` throws.
      */
     attributes?: Record<string, string>;
 }
 
 /**
- * The markup of the element `<map-jr>` of `@map-jr/map-jr-gl/element` for a description (`MapDescription`): an
- * attribute for each field that has one, and the first view (the result of `renderFirstView`) as its children. The
- * browser shows the first view before any script runs, and the map removes it after its first frame. The page gives
- * the fields that have no attribute (`layers`, `data`, a style object) to the element as properties, with the same
- * values as here. A render that fails does not fail the page: the result is the element without the first view, and
- * the console has the error.
+ * Renders the element `<map-jr>` of `@map-jr/map-jr-gl/element` for a description, with the first view as its content.
+ * A field that has an attribute of `<map-jr>` and a value that is not an object, such as `zoom` or the URL of a style,
+ * becomes that attribute. Set the other fields, such as `layers`, `data` or a style object, as properties of the element in the page, with the same values.
+ * @returns A promise of the HTML. When the render fails, the element has no first view and the error is written to the console.
  */
 export async function renderElement(description: MapDescription, options: ElementRenderOptions = {}): Promise<string> {
     const d = description as MapDescription & Record<string, unknown>, quote = (t: string) => t.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
@@ -387,23 +415,40 @@ export async function renderElement(description: MapDescription, options: Elemen
 }
 
 /**
- * The part of takumi's `Renderer` this library uses. Pass an instance from `@takumi-rs/core` (Node, Bun) or
- * `@takumi-rs/wasm` (Cloudflare Workers and other edge runtimes); nothing is imported here, so the choice is yours.
+ * The part of the `Renderer` of takumi that `renderToImage` uses: an instance from `@takumi-rs/core` (Node.js, Bun) or
+ * `@takumi-rs/wasm` (Cloudflare Workers and other edge runtimes).
  */
 export interface Rasteriser {
+    /** Renders HTML to an image. */
     render(source: string, options: Record<string, unknown>): Promise<Uint8Array>;
 }
+/** The options of `renderToImage`: those of `renderToSVG`, and the options of the image. */
 export interface ImageOptions extends RenderOptions {
+    /** The renderer that converts the SVG to an image. */
     rasteriser: Rasteriser;
-    /** 'jpeg' is the compact choice everywhere. Lossy 'webp' is smaller still but only the native build supports it. */
+    /**
+     * The format of the image. Lossy `'webp'` works only with `@takumi-rs/core`.
+     * @default 'jpeg'
+     */
     format?: 'jpeg' | 'webp' | 'png';
+    /**
+     * The quality of a `'jpeg'` or `'webp'` image, as the rasteriser reads it.
+     * @default 75
+     */
     quality?: number;
-    /** Output pixels per CSS pixel, for sharp results on high-density screens. */
+    /**
+     * The number of image pixels for one CSS pixel. Above 1, the render uses `highDensity` unless the options set it to `false`.
+     * @default 1
+     */
     pixelRatio?: number;
 }
+/** The result of `renderToImage`: the bytes of the image, its MIME type (`image/jpeg` and others), and the URLs of the tiles. */
 export interface ImageResult { image: Uint8Array; contentType: string; tiles: string[] }
 
-/** Renders the first frame as a raster image: a fixed, predictable payload however dense the map data is. */
+/**
+ * Renders the first frame of a map as a raster image, whose size does not depend on how dense the data is.
+ * @returns A promise of the image. It rejects as `renderToSVG` does.
+ */
 export async function renderToImage(o: ImageOptions): Promise<ImageResult> {
     const {svg, tiles} = await renderToSVG({inlineImages: true, highDensity: (o.pixelRatio ?? 1) > 1, ...o});
     const format = o.format ?? 'jpeg', ratio = o.pixelRatio ?? 1;

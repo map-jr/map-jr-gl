@@ -15,8 +15,18 @@
  */
 import {makeMap, type MapInstance, type MapDescription, type MapState} from './host.ts';
 
-export interface MapAction { description: MapDescription; /** Called with the map when it has been made. */ ready?: (map: MapInstance) => void }
+/** The options of the action `mapJr`. */
+export interface MapAction {
+    /** The description of the map. A new object applies it with `update`. */
+    description: MapDescription;
+    /** Called with the map once it is created. */
+    ready?: (map: MapInstance) => void;
+}
 
+/**
+ * A Svelte action that creates a map in the element, applies each new `description`, and destroys the map with the element.
+ * @returns The object with `update` and `destroy` that Svelte calls.
+ */
 export function mapJr(node: HTMLElement, options: MapAction) {
     const map = makeMap(node, options.description, 'use:mapJr');
     options.ready?.(map);
@@ -26,7 +36,10 @@ export function mapJr(node: HTMLElement, options: MapAction) {
     };
 }
 
-/** The state of a map as a store of Svelte: `subscribe` calls the function at once with the state, and after each change. */
+/**
+ * Returns the state of a map as a Svelte store: `subscribe` calls the function at once with the state, and after each change.
+ * @returns A readable store of `MapState`.
+ */
 export function mapState(map: MapInstance) {
     return {subscribe(fn: (state: MapState) => void) { fn(map.state.get()); return map.state.subscribe(fn); }};
 }
