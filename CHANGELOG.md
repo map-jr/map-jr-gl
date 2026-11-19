@@ -7,6 +7,116 @@ number, and its entry starts with a section "Breaking changes". See
 `#12` is a link to pull request 12. A change without a number comes from before 2026-11-11, when the repository had
 no pull requests.
 
+## 0.9.0 (2026-11-19)
+
+This entry covers the changes after 0.8.0 (the tag `v0.8.0`).
+
+### Breaking changes
+
+- Both entries: a layer filter that reads `["zoom"]` sees the over-zoomed zoom of a tile, as in MapLibre GL JS. Past
+  the `maxzoom` of a source, a filter such as `[">=", ["zoom"], 15]` now passes, and `["<", ["zoom"], 15]` now hides
+  its features from zoom 15. `queryRenderedFeatures` and `queryFeatures` return what the map draws there. In
+  `@map-jr/map-jr-gl/server`, a render with a `tileZoomOffset` above 0 evaluates filters at the zoom of the render, so
+  write a `map-jr:ssr` filter for that zoom and not for the zoom of the tiles ([#993]).
+- Both entries: a value of `text-anchor`, `icon-anchor`, `text-justify` or `text-transform` that is not one of the
+  values of the specification gives the default, as in MapLibre GL JS. Write a value from the specification
+  ([#1026]).
+- Both entries: `text-keep-upright: false` is read, so labels along lines that run to the west are drawn upside down,
+  as in MapLibre GL JS. Leave the property out to keep them upright ([#1070]).
+- Both entries: with `symbol-z-order` `auto` and `text-allow-overlap` or `icon-allow-overlap`, the symbols of a layer
+  are drawn in the order of their position on the screen. Set `symbol-z-order` to `source` to keep the order of the
+  data ([#1074]).
+- Both entries: a changed paint value moves from the old value to the new one over 300 ms, as in MapLibre GL JS, and
+  `idle` waits for the end. Set `transition` of the style (or the `*-transition` of the property) to
+  `{"duration": 0, "delay": 0}` to change the value at once ([#970]).
+- `@map-jr/map-jr-gl/maplibre-compat`: `updateImage` takes two arguments, as in MapLibre GL JS. Leave out the third
+  argument (`options`); the image keeps the options of `addImage` ([#956]). Pixels that the page changes after
+  `updateImage` and before the end of the task are sent as they are at the end of the task ([#980]).
+
+### New
+
+- Both entries: paint transitions, as in MapLibre GL JS ([#970]). Symbol layers, fill-extrusion layers and
+  `fill-outline-color` change at once.
+- Both entries: `text-pitch-alignment` and `icon-pitch-alignment` are read, so symbols can lie on the ground of a
+  tilted map ([#1062], [#1077]). `text-keep-upright` and `icon-keep-upright` are read ([#1070]).
+- Both entries: `fill-extrusion-pattern` draws its image on the walls and roofs of extrusions ([#1065]), and a GeoJSON
+  source reads its `buffer` ([#1084]).
+- Both entries: `raster-resampling`, `resampling` and `raster-layer-blend` are read. A `raster-fade-duration` other
+  than 0 has no effect and warns once ([#1071]).
+- Both entries: joins of lines follow `line-miter-limit` and `line-round-limit` ([#1068]), `icon-padding` takes one to
+  four values ([#1088]), and `icon-halo-blur` is read ([#1041]).
+- Both entries: a layer whose `visibility` is an expression of the global state is hidden with its tiles ([#1031]),
+  and the attribution follows it ([#1090]).
+- `@map-jr/map-jr-gl/maplibre-compat`: the map has `coveringTiles` ([#1042]), `calculateCameraOptionsFromTo` and two
+  other camera methods ([#1030]). `setTransformConstrain` and the option `transformConstrain` limit the camera with
+  `renderer: 'main'` ([#1049]). `setZoomSnap` and `setEventedParent` work ([#1037]), and `setSourceTileLodParams`
+  changes the level of detail of a pitched view ([#1058]).
+- `@map-jr/map-jr-gl/server`: `tileZoomOffset` builds the render from tiles of another zoom ([#989]). Path data that
+  two line layers share is written once, with `<use>` ([#990]).
+- Both entries: the development build warns about a nested or repeated zoom curve ([#1086]).
+
+### Fixed
+
+- Both entries: a map in a `display: none` container fires `load` and `idle`, as in MapLibre GL JS ([#1055]).
+- Both entries: the fill-extrusion layers of a frame share one depth buffer ([#1038]), and SDF icons are not snapped
+  to pixels, so their halo sits where MapLibre GL JS draws it ([#1041]).
+- Both entries: a zoom or feature expression in `text-font`, `text-variable-anchor`, `*-allow-overlap` and the other
+  properties of kind `raw` is evaluated, where it was taken as a literal value ([#1034]).
+- Both entries: `text-variable-anchor` tries the anchors in the order of MapLibre GL JS ([#1046]). Text along a line
+  is not drawn when its required icon is not placed ([#1082]), and an icon along a line is not dropped because of its
+  own bent text ([#1078]).
+- Both entries: a new order of the layers keeps the tiles ([#975]). `updateImage` copies pixels of the same size into
+  the texture in place ([#956]) and sends the pixels once per task ([#980]).
+- Both entries: with the worker renderer, `idle` waits until the canvas has the size of the last resize ([#958]). In
+  WebKit, `toBlob` and reads of the canvas at `idle` give the drawn map ([#969], [#1014]).
+- Both entries: a rotate drag whose moves come less than 16 ms apart has inertia ([#946]).
+- `@map-jr/map-jr-gl/maplibre-compat`: `removeSource` drops the `setSourceTileLodParams` values of the source
+  ([#1075]).
+- `@map-jr/map-jr-gl/server`: `renderToSVG` lays symbols with a ground frame on the ground of a pitched map
+  ([#1073]), draws images inside `format` text ([#1081]), and writes no paths for a layer that draws nothing at the
+  zoom ([#988]).
+
+[#946]: https://github.com/map-jr/map-jr-gl/pull/946
+[#956]: https://github.com/map-jr/map-jr-gl/pull/956
+[#958]: https://github.com/map-jr/map-jr-gl/pull/958
+[#969]: https://github.com/map-jr/map-jr-gl/pull/969
+[#970]: https://github.com/map-jr/map-jr-gl/pull/970
+[#975]: https://github.com/map-jr/map-jr-gl/pull/975
+[#980]: https://github.com/map-jr/map-jr-gl/pull/980
+[#988]: https://github.com/map-jr/map-jr-gl/pull/988
+[#989]: https://github.com/map-jr/map-jr-gl/pull/989
+[#990]: https://github.com/map-jr/map-jr-gl/pull/990
+[#993]: https://github.com/map-jr/map-jr-gl/pull/993
+[#1014]: https://github.com/map-jr/map-jr-gl/pull/1014
+[#1026]: https://github.com/map-jr/map-jr-gl/pull/1026
+[#1030]: https://github.com/map-jr/map-jr-gl/pull/1030
+[#1031]: https://github.com/map-jr/map-jr-gl/pull/1031
+[#1034]: https://github.com/map-jr/map-jr-gl/pull/1034
+[#1037]: https://github.com/map-jr/map-jr-gl/pull/1037
+[#1038]: https://github.com/map-jr/map-jr-gl/pull/1038
+[#1041]: https://github.com/map-jr/map-jr-gl/pull/1041
+[#1042]: https://github.com/map-jr/map-jr-gl/pull/1042
+[#1046]: https://github.com/map-jr/map-jr-gl/pull/1046
+[#1049]: https://github.com/map-jr/map-jr-gl/pull/1049
+[#1055]: https://github.com/map-jr/map-jr-gl/pull/1055
+[#1058]: https://github.com/map-jr/map-jr-gl/pull/1058
+[#1062]: https://github.com/map-jr/map-jr-gl/pull/1062
+[#1065]: https://github.com/map-jr/map-jr-gl/pull/1065
+[#1068]: https://github.com/map-jr/map-jr-gl/pull/1068
+[#1070]: https://github.com/map-jr/map-jr-gl/pull/1070
+[#1071]: https://github.com/map-jr/map-jr-gl/pull/1071
+[#1073]: https://github.com/map-jr/map-jr-gl/pull/1073
+[#1074]: https://github.com/map-jr/map-jr-gl/pull/1074
+[#1075]: https://github.com/map-jr/map-jr-gl/pull/1075
+[#1077]: https://github.com/map-jr/map-jr-gl/pull/1077
+[#1078]: https://github.com/map-jr/map-jr-gl/pull/1078
+[#1081]: https://github.com/map-jr/map-jr-gl/pull/1081
+[#1082]: https://github.com/map-jr/map-jr-gl/pull/1082
+[#1084]: https://github.com/map-jr/map-jr-gl/pull/1084
+[#1086]: https://github.com/map-jr/map-jr-gl/pull/1086
+[#1088]: https://github.com/map-jr/map-jr-gl/pull/1088
+[#1090]: https://github.com/map-jr/map-jr-gl/pull/1090
+
 ## 0.8.0 (2026-11-18)
 
 This entry covers the changes after 0.7.0 (the tag `v0.7.0`).

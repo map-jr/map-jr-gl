@@ -34,20 +34,20 @@ in `@map-jr/map-jr-gl`, and `map.renderer` in `@map-jr/map-jr-gl/maplibre-compat
 ### The workflow `Browsers`, in the browsers of Playwright
 
 The workflow runs after each merge on hosted GitHub runners. These lines are from the branch `bench-results` for
-commit `ef240c6` (2026-11-15). "Renderer" is the renderer that the map took when the page asked for the worker
-renderer. The behaviour tests are `test/interact.mjs`, `test/host.mjs`, `test/vue.mjs` and `test/react.mjs`.
+commit `94a114f` (2026-11-19). "Renderer" is the renderer that the map took when the page asked for the worker
+renderer. The behaviour tests are `test/interact.mjs`, `test/host.mjs`, `test/vue.mjs` and `test/react.mjs`. That run
+has no line for Chromium on Linux.
 
 | System | Browser | GPU of the machine | Renderer | Behaviour tests |
 |---|---|---|---|---|
-| macOS (Apple M1, virtual) | Chromium 153 | Apple paravirtual device | Worker | 403 pass, 3 fail |
-| macOS (Apple M1, virtual) | Firefox 155 | Apple M1 (as the browser reports it) | Worker | 307 pass, 17 fail |
-| macOS (Apple M1, virtual) | WebKit 26.6 | Not known (the browser reports "Apple GPU") | Worker | 399 pass, 4 fail |
-| Linux | Chromium 153 | None (SwiftShader) | Worker | 404 pass, 2 fail |
-| Linux | Firefox 155 | None (llvmpipe) | Worker | 400 pass, 5 fail |
-| Linux | WebKit 26.6 | Not known (the browser reports "Apple GPU") | Main thread | 373 pass, 32 fail |
-| Windows | Chromium 153 | None (Microsoft Basic Render Driver) | Worker | 406 pass, 0 fail |
-| Windows | Firefox 155 | None (Microsoft Basic Render Driver) | Worker | 405 pass, 0 fail |
-| Windows | WebKit 26.6 | Not known (the browser reports "Apple GPU") | Main thread | 343 pass, 23 fail |
+| macOS (Apple M1, virtual) | Chromium 159 | Apple paravirtual device | Worker | 685 pass, 1 fail |
+| macOS (Apple M2 Pro, virtual) | Firefox 159 | Apple M1 (as the browser reports it) | Worker | 546 pass, 13 fail |
+| macOS (Apple M1, virtual) | WebKit 27.2 | Not known (the browser reports "Apple GPU") | Worker | 683 pass, 0 fail |
+| Linux | Firefox 159 | None (llvmpipe) | Worker | 678 pass, 4 fail |
+| Linux | WebKit 27.2 | Not known (the browser reports "Apple GPU") | Main thread | 662 pass, 3 fail |
+| Windows | Chromium 159 | None (Microsoft Basic Render Driver) | Worker | 686 pass, 0 fail |
+| Windows | Firefox 159 | None (Microsoft Basic Render Driver) | Worker | 676 pass, 5 fail |
+| Windows | WebKit 27.2 | Not known (the browser reports "Apple GPU") | Main thread | 648 pass, 1 fail |
 
 Notes on these lines:
 
@@ -57,7 +57,7 @@ Notes on these lines:
 - On Windows, WebKit has no `OffscreenCanvas`. Some tests fail with "Can't find variable: OffscreenCanvas". The
   benchmark page reports a terrain height of 0 m at the centre there and 10 m in the other browsers. This is the
   same condition as Safari before 16.4.
-- On macOS, the worker renderer loads in Chromium, Firefox and WebKit 26.6 on the hosted runner.
+- On macOS, the worker renderer loads in Chromium, Firefox and WebKit 27.2 on the hosted runner.
 - The branch lists each failed test by name. Read it with
   `git fetch origin bench-results && git show origin/bench-results:README.md`.
 
