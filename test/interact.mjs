@@ -1,15 +1,17 @@
 // Drives the demo in Chromium and checks behaviour in both renderer modes: node test/interact.mjs [outDir] (default .cache/shots)
 import {launch, browserName, workerRenders, noWorkerRender} from './launch.mjs';
 import {watchdog} from './watchdog.mjs';
+import {guard} from './suite-guard.mjs';
 import {checkCustomLayers} from './custom-layers.mjs';
 const out = process.argv[2] || '.cache/shots'; // (the directory for the screenshots; Playwright creates it)
 const browser = await launch();
 const origin = `http://localhost:${process.env.PORT || 8080}`; // (the demo server; PORT lets two runs use two servers)
 let failed = 0, mainFrames = 0;
-const check = (name, ok, detail = '') => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${name} ${detail}`); if (!ok) failed++; finished(name); };
+const check = (name, ok, detail = '') => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${name} ${detail}`); if (!ok) failed++; counted(); finished(name); };
 const finished = watchdog(browser, message => { console.log(`FAIL  ${message}`); failed++; });
+const {counted, tally} = guard(message => { console.log(`FAIL  ${message}`); failed++; });
 // A check that cannot run in this browser prints SKIP with the reason; it is neither passed nor failed.
-const skip = (name, reason) => { console.log(`SKIP  ${name} (${reason})`); finished(name); };
+const skip = (name, reason) => { console.log(`SKIP  ${name} (${reason})`); counted(); finished(name); };
 const noCDP = `${browserName} has no CDP session for touch events`;
 // The map is settled when it does not move and the camera has been the same for a quarter of a second. (A browser
 // can report that the mouse was released before the page has handled the events, so `isMoving()` alone can be
@@ -4418,5 +4420,7 @@ check('[ssr] SVG removed after the client takes over', await page.evaluate(() =>
 await page.screenshot({path: `${out}/ssr-after.png`});
 const preloads = await page.evaluate(() => document.querySelectorAll('link[rel=preload]').length);
 check('[ssr] tile preload links emitted', preloads > 0, `${preloads} links`);
+// (Chromium on 2026-11-19 printed 218 results with RENDERER=main and 160 with RENDERER=worker.)
+tally((renderers.includes('main') ? 195 : 0) + (renderers.includes('worker') ? 145 : 0));
 await browser.close();
 process.exit(failed ? 1 : 0);
