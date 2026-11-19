@@ -7,6 +7,16 @@ number, and its entry starts with a section "Breaking changes". See
 `#12` is a link to pull request 12. A change without a number comes from before 2026-11-11, when the repository had
 no pull requests.
 
+## Unreleased
+
+### Breaking changes
+
+- `@map-jr/map-jr-gl`: `terrain: null` in the description draws a flat map, also when the style has a `terrain`, as
+  `setTerrain(null)` does in MapLibre GL JS. No field, or `undefined`, keeps the terrain of the style. Code that passed
+  `null` to keep the terrain of the style leaves the field out instead ([#1105]).
+
+[#1105]: https://github.com/map-jr/map-jr-gl/pull/1105
+
 ## 0.9.0 (2026-11-19)
 
 This entry covers the changes after 0.8.0 (the tag `v0.8.0`).
