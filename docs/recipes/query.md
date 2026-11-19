@@ -173,7 +173,7 @@ export default function Query() {
 ## How it works
 
 - [`querySource(sourceId, at, options)`](../api.md#queries) reads the tile data of one source. `'openmaptiles'` is the
-  id of the vector source of this style: write an id from `sources` of your style.
+  id of the vector source of this style: use the id of a source of your style.
 - `at` is the position of the click as `[lng, lat]`, and `radius` is the distance around it in pixels of the screen.
   The default radius is 3.
 - The result is a promise of a list of features (`QueriedFeature`). Each has `id`, `properties`, `source`,
@@ -183,8 +183,8 @@ export default function Query() {
 - The answers of two clicks can arrive in the other order. The example counts the clicks and shows only the answer
   of the last one.
 
-In the files for the main API and the compat entry, the default export is a function that gets the container of the
-map, and `show` writes a line of text beside the map. In Vue, `map.value.map` is the map of the component. In
+In the files for the main API and the compat entry, the default export is a function that receives the container
+of the map. `show` writes a line of text beside the map. In Vue, `map.value.map` is the map of the component. In
 React, the ref of `MapJr` is the map.
 
 ## Variations
@@ -218,7 +218,7 @@ const features = await map.querySource('openmaptiles', e.lngLat, {radius: 8, geo
 
 ### Ask for everything in the view
 
-Without a position, `querySource` gives the features of the tiles of the view, each with its `geometry`.
+Without a position, `querySource` returns the features of the tiles of the view, each with its `geometry`.
 
 ```js
 const buildings = await map.querySource('openmaptiles', {sourceLayers: ['building']});

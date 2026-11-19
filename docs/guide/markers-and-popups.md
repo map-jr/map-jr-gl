@@ -141,8 +141,8 @@ export function Places({places}) {
 
 The map shows a red and a blue pin, each with its tip on its position.
 
-In the main API and the adapters, the key `places` of `data` makes the GeoJSON source `places`, and
-[`points`](../api.md#points-from-records) makes its GeoJSON from the records.
+In the main API and the adapters, the key `places` in `data` creates the GeoJSON source `places`.
+[`points`](../api.md#points-from-records) converts the records to GeoJSON.
 
 The layout properties decide how the markers behave among each other and among the labels of the map:
 
@@ -156,16 +156,17 @@ The layout properties decide how the markers behave among each other and among t
 | Text beside the image | `text-field` in `layout` |
 
 A marker has the size of its image, and an SVG image has the size of its `viewBox` in CSS pixels. For another size,
-give the image as `{image: pin, width: 36, height: 46}`: see [`images`](../reference/description.md#images).
+set the image to `{image: pin, width: 36, height: 46}`. See [`images`](../reference/description.md#images) for the
+other forms of an image.
 
 ## Change the markers
 
-Give the source new GeoJSON. The code below continues the first example.
+Set new GeoJSON on the source. The code below continues the first example.
 
 **Main API**
 
 ```js [Main API]
-// The map compares the data by identity: make new GeoJSON, and do not change the old one in place.
+// The map compares the data by identity: create new GeoJSON, and do not change the old one in place.
 places[1] = {...places[1], color: '#2e9d5b'};
 map.patch({data: {places: toPoints(places)}});
 
@@ -184,8 +185,8 @@ map.removeLayer('places');
 map.removeSource('places');
 ```
 
-In Vue and React, give the `data` prop a new object: in the examples above, assign to `data.value`, or pass other
-`places`.
+In Vue and React, pass a new object to the `data` prop. In the examples above, assign to `data.value` in Vue, and
+pass other `places` to the component in React.
 
 ## Open a popup when the user clicks a marker
 
@@ -328,13 +329,13 @@ with the mouse, a finger or a pen. The code for the main API and for the compat 
 import {defaultPin} from '@map-jr/map-jr-gl';
 
 let home = [-74.0065, 40.7085];
-// defaultPin() makes the pin of MapLibre GL JS. Any element of your own works in its place.
+// defaultPin() creates the pin of MapLibre GL JS. Any element of your own works in its place.
 const marker = map.overlay(defaultPin({color: '#c0392b'}), {
   lngLat: home, anchor: 'bottom', draggable: true,
   onDragEnd: lngLat => { home = lngLat; },
 });
 
-// Later: move it from code, and remove it. `update` takes all the options again.
+// Later: move it from code, and remove it. Pass all the options to `update` again.
 marker.update({lngLat: [-74.0, 40.71], anchor: 'bottom', draggable: true});
 marker.remove();
 ```
@@ -408,8 +409,8 @@ reports and pass it back, as the examples do. In Svelte and in the `<map-jr>` el
 
 A symbol layer draws its icons at a cost that does not grow with their number when the layer has no text, has
 `symbol-placement: 'point'` (the default) and has `icon-allow-overlap: true`. The layers of this page are such
-layers. [Which icons are fast](../markers.md#which-icons-are-fast) has the other conditions and what differs for
-such icons.
+layers. See [Which icons are fast](../markers.md#which-icons-are-fast) for the other conditions, and for how such
+icons differ from icons that the map places among the labels.
 
 With very many markers in view, also set `icon-ignore-placement: true`. Without it, the labels of the map keep away
 from each marker, and that work grows with the number of markers.
@@ -424,4 +425,4 @@ To show groups in place of single markers, see [Clusters](../api.md#clusters).
 - [Elements of the page on the map](../api.md#elements-of-the-page-on-the-map) for every option of `overlay`.
 - [An image that is a template](../api.md#an-image-that-is-a-template) for slots that an expression fills.
 - [Query what is at a position](../recipes/query.md) to find features that are not markers.
-- [Server rendering](../server-rendering.md) for markers in an image that a server makes.
+- [Server rendering](../server-rendering.md) for markers in an image that a server renders.

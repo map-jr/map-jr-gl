@@ -32,11 +32,18 @@ A fact about the inside of the library stays in two cases, and it is then writte
 | "Up to version 0.5, these three fields were inside a field `extend`, which no longer exists." | History belongs in `CHANGELOG.md`. | Nothing. |
 | "The map makes this texture with its first such image at 256 by 256 pixels (256 KB), and doubles its width and height, up to 2048 by 2048 pixels (16 MB), when the images do not fit." | Only the upper limit can matter to a user. | The limit and what happens to an image beyond it, or nothing when no user reaches it. |
 | "Checked: the configuration above with Next.js 16.4.6. The development servers were not run for this page." | A test log is not documentation. | The configuration, and the versions that it supports in a table when the answer differs by version. |
-| "`createMap` takes it, and `update` and `patch` take it again to change the map." | It lists the functions that accept the thing and does not say what the thing is. | "The description is one object that states everything that a map shows: the style, the data, the view and the controls. To change the map, give a new description." |
-| "`MapDescription` extends `MapSetup`, so these fields are written in the same object." | It describes how the types are built. | "The map reads these fields only when it is made. To change one, destroy the map and make a new one." |
+| "`createMap` takes it, and `update` and `patch` take it again to change the map." | It lists the functions that accept the thing and does not say what the thing is. | "The description is one object that states everything that a map shows: the style, the data, the view and the controls. To change the map, pass a new description to `update`." |
+| "`MapDescription` extends `MapSetup`, so these fields are written in the same object." | It describes how the types are built. | "The map reads these fields only when it is created. To change one, destroy the map and create a new one." |
 | "A name that is not in the tables below has no effect." "A description with no `style` throws an error in `createMap`, `update` and `patch`." | Every developer assumes both. | Nothing. |
 | "`patch` keeps the fields that it is not given." (on the page of the description) | It is a fact about `patch`. | The sentence in the entry of `patch`. |
-| "A new URL or a new object loads that style. Two cases load nothing: an object with the same content […], an object that differs only in its `layers` […]." | It lists the branches of the code. | "The map applies a changed `style` in place where it can. Any other new style is loaded, and the map draws from the start." |
+| "A new URL or a new object loads that style. Two cases load nothing: an object with the same content […], an object that differs only in its `layers` […]." | It lists the branches of the code. | "The map applies a changed `style` in place where it can. When only the layers of a style object changed, the map updates those layers. For any other change, the map loads the new style." |
+| "[Change the map] teaches this." "[`layers`] has an example." | The sentence only points. | The link on the words that it supports ("pass a new description to [`update`]"), or "See [`layers`] for an example of a source with its layer." |
+| "A layer of `layers` is a layer of the style specification with one more member, `before`: the id of the layer of the style that it goes below." | It has three ideas and a chain of "of". | "Each item is a layer of the MapLibre style specification, with one more optional member: `before`. `before` is the id of a style layer, and the map inserts the new layer below that layer." |
+| "`null`: a flat map, also when the style has a `terrain`." | It does not say which setting wins. | "`null`: no 3D terrain. `null` overrides the `terrain` of the style." |
+| "A view in the URL of the page and a `view` in the description come before `initialView`." | "Come before" can mean an order or a precedence. | "With `hash`, a view in the URL of the page overrides `center`, `zoom`, `bearing` and `pitch` of `initialView`." |
+| "`fonts` has the shape of `font-faces` of the style specification: for each `text-font` name, the URL of a font file or a list of `{url, 'unicode-range'}`." | A nested shape in prose cannot be read. | The type as a code block, and then one sentence for each part. |
+| "The map jumps to it with no animation." | It says what does not happen and stops. | "The map applies a new `view` with no animation. To animate the camera, call `map.moveTo({...view, duration: 500})`." |
+| "…makes a GeoJSON source with that id and the default options." | The page does not say what the default options are. | "…the map creates one: `{type: 'geojson'}` with no other option." |
 
 The user docs never contain these (lint):
 
@@ -64,6 +71,28 @@ A writer who has the source open tends to write what the source shows. These rul
   the cases in which the user must act.
 - **Leave out the errors of plain misuse,** or put them in a short section at the end of the entry. Describe a
   failure where the reader meets it only when a correct program can meet it, such as a style that does not load.
+- **Do not refer to something that the page does not define.** "The default options" and "the usual rules" tell the
+  reader nothing. State the values, or link to the place that lists them.
+
+## Sentences
+
+"Writing" of [CLAUDE.md](../CLAUDE.md) has the general rules. These are the ones that the user docs break most
+often.
+
+- **Use the precise verb that developers use:** create, initialize, set, pass, apply, override, load, call, return,
+  throw, accept, receive. Do not write "make", "give", "take", "get", "come before", "has the shape of" or "goes
+  below" where one of these says it exactly. A map is created, an option is set, a function is called with its
+  arguments and returns a value.
+- **One idea in each sentence.** Define a term in a sentence of its own before the sentence that uses it. Put at
+  most one "of the …" after a noun: "the id of the layer of the style that it goes below" needs two sentences.
+- **State precedence with "overrides" or "takes precedence over",** and name what is set on each side: "`null`
+  overrides the `terrain` of the style", not "a flat map, also when the style has a terrain". When two settings can
+  both be set, say which value the map uses.
+- **Show the shape of a value as code:** a type, or a short example with real values. Then write one sentence for
+  each part. Do not describe a nested shape in prose.
+- **After a sentence that says what does not happen, say how to get it.** Name the real method and option.
+- **No sentence whose only job is to point** ("X teaches this", "Y has an example", "Z lists them"). Put the link on
+  the words of the sentence that it supports, or write "See [X] for …" and say what the reader finds there.
 
 ## One home for each fact
 
@@ -139,7 +168,7 @@ Short changes of the code above, each with its own heading and only the lines th
 ```markdown
 # The description
 
-One sentence that says what the thing is, and a link to the guide that teaches it.
+One or two sentences that say what the thing is and what it is for, with a link to its guide on the words that the guide explains.
 
 ## `MapDescription`
 
@@ -178,14 +207,19 @@ for a mistake, what is not supported, one short example, and "See also".
   it uses the names that the first block declares (`map`, `places`), and the sentence before the group says so. A
   component (`vue`, `jsx`, `svelte`) is complete each time. On a reference page, a block can leave out the import of
   `createMap` after the first block of the page.
-- Use the style `https://styles.map-jr.org/1/elevation-zero.json` unless the example is about another style.
+- Use the official styles at `https://styles.map-jr.org/1/`: they have images and colour schemes that the library
+  draws with no further setup. The default is `elevation-zero.json`. The others are `elevation.json` (with
+  elevation tiles, for terrain and hillshade), `elevation-radar.json` (a neutral base for an overlay) and
+  `openfreemap-bright.json`, `-dark`, `-fiord`, `-liberty` and `-positron` (with `glyphs` and a sprite). An example
+  that needs a second style takes it from the same host. Use another host only when the example is about that host.
+- An example relies only on layer ids and source ids that the style has. Run the example to check them.
 - Use names from a real application (`stations`, `selectedTrail`), not `foo` or `myLayer1`.
 - A comment in the code says why a line is there, for the one or two lines that need it.
 - Every fence has a language (lint).
 
 ### Variants
 
-The library has seven ways to write the same map. A page gives a variant when its code differs.
+The library has seven ways to write the same map. A page shows a variant when its code differs.
 
 | Label | For | Fence |
 |---|---|---|
@@ -243,7 +277,7 @@ The comment on a public member is the row of the reference and the text that an 
 
 ```ts
 /**
- * The largest pitch that the user can reach, in degrees. A value above 90 gives 90 and one warning.
+ * The largest pitch that the user can reach, in degrees. A value above 90 is limited to 90.
  * @default 60
  */
 maxPitch?: number;
@@ -261,6 +295,35 @@ name for its type, a mistake that gives no message. Do not hide this with more t
 is, in the shortest form, and name the change that would remove the paragraph in the report of your work, so that
 it becomes an issue with the label `area: dx`.
 
+## Review
+
+Every pull request for the user docs gets two reviews before it goes to the owner. Each reviewer is an agent or a
+person who did not write the page. The writer fixes the findings of both.
+
+- **The reader review.** The reviewer reads only the rendered page: not the source, not the old page, not the pull
+  request. For each sentence that fails the checklist below, the reviewer reports the sentence and what a reader
+  cannot tell from it, and nothing else.
+- **The source review.** The reviewer checks every claim and every default against `src/`, and runs the examples.
+
+Give the reader reviewer this checklist as it is:
+
+1. **Ambiguous.** Can the sentence be read in two ways? Does "it", "this" or "here" have two possible referents?
+2. **Undefined term.** Does the sentence use a name, a type or a phrase ("the default options") that the page has
+   not defined and does not link?
+3. **Vague verb.** Does it say "make", "give", "take", "get", "come before", "goes", "has the shape of" where
+   create, set, pass, return, override or another exact verb is meant?
+4. **Unclear precedence.** When two settings can both be set, does the page say which value the map uses, with
+   "overrides"?
+5. **Pointer without a reason.** Does a sentence only point ("X has an example") and not say what the reader finds
+   there?
+6. **Run-on.** Does the sentence hold more than one idea, or a chain of "of the … of the …"?
+7. **Shape in prose.** Is a nested value described in words where a type or an example would show it?
+8. **Dead end.** Does a sentence say what does not happen and not say how to get it?
+9. **Written from the source.** Does a sentence say how the types are built, list the cases of the code, state what
+   every developer assumes, or describe an error that only plain misuse causes?
+10. **Opening.** Do the first two sentences say what the thing is and what it is for?
+11. **Example.** Can each code block run as it is written? Does it use a style from `https://styles.map-jr.org/1/`?
+
 ## Before you open the pull request
 
 1. Run `node scripts/docs-lint.mjs` and `pnpm test:consistency`.
@@ -269,6 +332,7 @@ it becomes an issue with the label `area: dx`.
    name how things are composed, list the branches of the code, or state a guarantee that nobody would doubt. Cut
    them.
 4. Check every claim against `src/` or by running the code. The pull request lists what was run.
-5. List in the pull request the facts that the old page had and the new page does not, with one reason for each
+5. Get the two reviews of "Review", and fix their findings.
+6. List in the pull request the facts that the old page had and the new page does not, with one reason for each
    group ("history", "mechanism", "moved to the reference").
-6. Read the page on GitHub in the branch: it must read well there with no site.
+7. Read the page on GitHub in the branch: it must read well there with no site.

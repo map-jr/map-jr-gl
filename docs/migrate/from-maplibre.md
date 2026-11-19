@@ -37,7 +37,7 @@ keeps the rest of its code.
    ```
 
 4. Add `await` to each call of `queryRenderedFeatures` and `querySourceFeatures`. See
-   [Queries return a promise](#queries-return-a-promise).
+   [Queries return a promise](#queries-return-a-promise) for what the result holds without `await`.
 
    ```js
    // Before
@@ -51,7 +51,7 @@ keeps the rest of its code.
    });
    ```
 
-5. Make the map with `strict: true` while you migrate, and run your application. The map then throws an error where
+5. Create the map with `strict: true` while you migrate, and run your application. The map then throws an error where
    it would write a warning for an option or a method that has no effect in this library. Remove the option
    when the application runs.
 
@@ -62,7 +62,7 @@ keeps the rest of its code.
 6. Read the console of the browser. The map writes a warning for each layer type and each expression of the style
    that it does not have.
 
-7. If a wrapper or a plugin imports `maplibre-gl` itself, see
+7. If a wrapper or a plugin imports `maplibre-gl` itself, set an alias for that name: see
    [Wrappers and plugins](#wrappers-and-plugins).
 
 ## Names that change
@@ -75,8 +75,8 @@ keeps the rest of its code.
 | `map.queryRenderedFeatures(...)` | `await map.queryRenderedFeatures(...)` | The arguments and the features are the same. |
 | `map.querySourceFeatures(...)` | `await map.querySourceFeatures(...)` | The arguments and the features are the same. |
 | `map.getCanvas().toDataURL()` with `preserveDrawingBuffer` | `await map.toBlob()` | See [Read the canvas with `toBlob`](#read-the-canvas-with-toblob). |
-| `map.addImage(name, image)` | `await map.addImage(name, image)` | It returns a promise. It also takes an SVG document or a URL as the image. |
-| `maxPitch` up to 180 | `maxPitch` up to 90 | A higher value gives 90 and one warning. The default is 60 in both. |
+| `map.addImage(name, image)` | `await map.addImage(name, image)` | It returns a promise. It also accepts an SVG document or a URL as the image. |
+| `maxPitch` up to 180 | `maxPitch` up to 90 | A higher value is limited to 90, with one warning. The default is 60 in both. |
 | `setRoll`, `setVerticalFieldOfView` | None | Accepted with no effect. A value other than the default warns once. |
 | The `pmtiles` protocol of the PMTiles library | None | A source URL that starts with `pmtiles://` works with no plugin. |
 | `setRTLTextPlugin(...)` | None | Accepted with no effect. The browser shapes right-to-left text. |
@@ -111,7 +111,7 @@ link.click();
 ### A custom layer needs the main-thread renderer
 
 The map draws in a worker where the browser permits it, and a custom layer (`type: 'custom'`) cannot draw there.
-Make the map with `renderer: 'main'`. Without it, `addLayer` fires an `error` event and adds nothing.
+Create the map with `renderer: 'main'`. Without it, `addLayer` fires an `error` event and adds nothing.
 
 ```js
 const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json', renderer: 'main'});
@@ -168,13 +168,13 @@ Without a bundler, use an import map:
 
 | Case | What to do |
 |---|---|
-| Next.js | See [Next.js](../loading.md#nextjs). |
-| Vite 5 in development | See [Vite in development](../loading.md#vite-in-development). |
+| Next.js | See [Next.js](../loading.md#nextjs) for the alias in webpack and in Turbopack. |
+| Vite 5 in development | See [Vite in development](../loading.md#vite-in-development) for the option `optimizeDeps` that it needs. |
 | react-map-gl 8 (`react-map-gl/maplibre`, `@vis.gl/react-maplibre`) | It works through the alias. |
 | react-map-gl 7 | It does not work, because it reads `map.transform`. Upgrade to version 8 first. |
 | TypeScript with a wrapper | Keep `maplibre-gl` installed for its types. Values that are typed with `maplibre-gl` fit the types of this library, but not always the reverse. |
 
-[Ecosystem](../ecosystem.md) lists the plugins and wrappers that are tested.
+See [Ecosystem](../ecosystem.md) for the plugins and wrappers that are tested.
 
 ## What is not available
 
@@ -187,8 +187,8 @@ These parts of MapLibre GL JS are used most often among those that the library d
 - Roll, a field of view other than the default, and a pitch above 90 degrees.
 - Custom layers with the worker renderer.
 
-[MapLibre compatibility](../maplibre-compatibility.md) has the full list of differences, every method of `Map` and
-what is not available.
+See [MapLibre compatibility](../maplibre-compatibility.md) for the full list of differences, for every method of
+`Map`, and for everything that is not available.
 
 ## See also
 
