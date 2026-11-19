@@ -10,6 +10,8 @@ sections:
   - title: Guide
     folder: guide
     pages:
+      - getting-started.md
+      - which-entry.md
       - controls.md
       - images-and-fonts.md
       - color-scheme.md
