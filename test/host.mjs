@@ -73,6 +73,20 @@ for (const renderer of renderers) {
         });
         check(`[${renderer}] once: resolves with the next event, and once('load') on a loaded map resolves at once`, once.load === 'load' && once.moved === 'moveend' && once.zoom === 14.5, JSON.stringify(once));
 
+        // 1b2. A map in a `display: none` container fires `load` and `idle`, as in MapLibre GL JS, and `display: block`
+        // later draws it and fires `idle` again (#964).
+        const hidden = await page.evaluate(async renderer => {
+            const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'display:none;width:300px;height:200px'}));
+            const h = t.lib.createMap(el, {style: t.style, initialView: {center: [-74.0065, 40.7085], zoom: 14.3}, renderer, attribution: false});
+            const within = (p, ms) => Promise.race([p.then(() => true), new Promise(r => setTimeout(() => r(false), ms))]);
+            const idle = await within(h.once('idle'), 10000);
+            el.style.display = 'block';
+            const shown = await within(h.once('idle'), 10000), c = el.querySelector('canvas'), out = {idle, shown, width: c.width, want: Math.round(300 * devicePixelRatio)};
+            h.destroy(); el.remove();
+            return out;
+        }, renderer).catch(e => ({error: String(e)}));
+        check(`[${renderer}] a map in a display:none container fires idle, and draws once shown (#964)`, hidden.idle && hidden.shown && hidden.width === hidden.want, JSON.stringify(hidden));
+
         // 1c. The events of `listen` and `once` (#500): positions as `[lng, lat]`, a box as `[[west, south], [east, north]]`,
         // the host as `target`, and `preventDefault()` still stops what the map does.
         await page.evaluate(() => {
