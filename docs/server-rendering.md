@@ -161,6 +161,7 @@ Notes for Cloudflare Workers:
 | `requestTimeout` | The time in milliseconds that one request can take, with its redirects and its body. The default is 10000. `0` sets no limit. |
 | `maxBytes` | The largest body of one response in bytes, after decompression. There is no limit by default. |
 | `allowHosts` | The list of host names that the render can request. All hosts are allowed by default. |
+| `tileZoomOffset` | Builds the render from vector tiles this many zoom levels lower (a positive value) or higher (a negative value). The default is 0. A whole number. See [Simplify the server render](#simplify-the-server-render). |
 
 `renderToImage` also accepts `rasteriser`, `format`, `quality` and `pixelRatio`.
 
@@ -310,6 +311,33 @@ const {svg} = await renderToSVG({
 `minSize` tests each piece of a line on its own. The tiles cut a road into many short pieces (from crossing to
 crossing, and at the edges of the tiles), so a large value leaves gaps: with `minSize: 16` at zoom 12, the streets of
 Manhattan show as broken dashes. A value of a few pixels is safe for lines.
+
+The option `tileZoomOffset` builds the render from vector tiles of a lower zoom, which the server draws at the
+size of the render. With `tileZoomOffset: 2`, a render at zoom 12 fetches tiles of zoom 10. The server fetches
+fewer tiles, and the tiles have fewer features that the tile server has already made simpler. Roads are whole lines,
+the shapes are coarser, and fewer place names show. Use it for a first view that the map draws over, not for an image
+that must look like the live map. The default is 0. A value of 1 can make the SVG larger, because the tiles of one
+zoom lower can have more features for some layers; the gain starts at 2. A source does not go below its `minzoom`,
+and raster and GeoJSON sources keep the zoom of the render. The option changes only the tiles that the server
+fetches to draw: the `tiles` of the result, which you give the page to prefetch, stay the tiles of the zoom of the
+render, because those are the tiles that the live map requests.
+
+A negative value does the opposite, for a detailed image: with `tileZoomOffset: -2`, a render at zoom 10 fetches
+tiles of zoom 12 and draws them at the size of zoom 10. Each step lower fetches about four times as many tiles, so
+the render takes longer and the SVG is larger. The limits for requests (`timeout`, `requestTimeout`, `maxBytes`,
+`allowHosts`) apply to these tiles as to any other. The zoom of the tiles does not go above the `maxzoom` of the
+source. The style is evaluated at the zoom of the render, as with a positive value: the layers, the filters, the widths
+and the other values that depend on the zoom are those of the live map at that zoom, and only the shapes are finer.
+
+A value that is not a whole number makes the render reject with an error.
+
+```js
+const {svg} = await renderToSVG({
+  style: 'https://tiles.openfreemap.org/styles/liberty',
+  center: [2.35, 48.86], zoom: 10, width: 800, height: 500,
+  tileZoomOffset: 2,
+});
+```
 
 ## The first view for a framework
 

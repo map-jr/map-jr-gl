@@ -113,7 +113,7 @@ const WHITE: RGBA = [1, 1, 1, 1];
 export type TileLayers = Record<string, {features: TileFeature[]}>;
 export interface TileFeature extends Feature { /** See `SlicedFeature`. */ index?: number; geometry(extent: number, coords: number[], ringEnds: number[]): number }
 
-export function buildTile(data: Uint8Array | TileLayers, z: number, layers: CompiledLayer[], overscaled: number | false, states?: MapStates['f'], templates?: Record<string, string[]>, /** Icons that need no place among the labels go to `icons` (see `IconBatch`). */ direct?: boolean): TileIR {
+export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: CompiledLayer[], overscaled: number | false, states?: MapStates['f'], templates?: Record<string, string[]>, /** Icons that need no place among the labels go to `icons` (see `IconBatch`). */ direct?: boolean): TileIR {
     const vt: TileLayers = data instanceof Uint8Array ? decodeVectorTile(data) : data;
     const geomCache = new Map<TileFeature, {coords: number[]; ringEnds: number[]}>();
     const geometry = (f: TileFeature) => {
@@ -125,6 +125,8 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
     // map (see `buildZoom` in the engine) has the correct size already. A tile of the deepest level that is shown at a
     // higher zoom finds its sizes at that zoom (`zs`), because the zoom part of a size that also reads the feature
     // continues past the level of the tile.
+    // (An `overscaled` below the zoom of the tile comes from the server with `tileZoomOffset` < 0: the style is evaluated at that zoom, the zoom of the render.)
+    const under = overscaled !== false && overscaled < tz, z = under ? overscaled : tz;
     const zs = overscaled && overscaled > z ? overscaled : z, z1 = zs % 1 ? zs : zs + 1;
     const out: TileIR = {layers: {}, labels: {}, z: zs};
     const ctx = {zoom: z, f: null as Feature | null};
@@ -133,7 +135,7 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
         if (L.type === 'background' || !L.visible && !L.keep) continue;
         // A tile is drawn from its own zoom up to the next one. A tile of the source's deepest level is drawn further: it has
         // all the shapes, and the labels of the layers that show up to one level above the zoom of the map.
-        if (L.minzoom >= (overscaled === false ? z + 1 : L.type === 'symbol' ? overscaled + 2 : 99)) continue;
+        if (L.minzoom >= (overscaled === false || under ? z + 1 : L.type === 'symbol' ? overscaled + 2 : 99)) continue;
         if (L.maxzoom <= z) continue;
         const vl = vt[L.sourceLayer ?? GEOJSON_LAYER];
         if (!vl) continue;
@@ -190,7 +192,7 @@ export function buildTile(data: Uint8Array | TileLayers, z: number, layers: Comp
                     } : undefined,
                 };
                 // symbol-spacing is in pixels; tiles are EXTENT units across TILE_SIZE pixels.
-                const g = geometry(f), spacing = p.symbolSpacing.eval(z, f) * EXTENT / 512, key = sorted ? +p.sortKey.eval(z, f) || 0 : 0;
+                const g = geometry(f), spacing = p.symbolSpacing.eval(z, f) * EXTENT / 512 * 2 ** (tz - z), key = sorted ? +p.sortKey.eval(z, f) || 0 : 0;
                 let start = 0;
                 for (const end of g.ringEnds) {
                     const piece: Piece = {base, ring: g.coords.slice(start * 2, end * 2), type: f.type, along, spacing, key};
