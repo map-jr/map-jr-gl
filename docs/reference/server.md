@@ -44,35 +44,35 @@ and the sprite.
 <!-- ref:RenderOptions:start -->
 | Name | Type | Default | Description |
 |---|---|---|---|
-| [`style`](#style) **required** | `unknown` | | The style: the URL of a style, a style object, or `{light, dark}` with one style for each colour scheme. |
-| `center` **required** | `LngLatLike` | | The centre of the view: `[lng, lat]`, `{lng, lat}` or `{lon, lat}`. |
-| `zoom` **required** | `number` | | The zoom of the view. |
+| [`style`](#style) **required** | `unknown` | | The style: a style object, the URL of a style, or `{light, dark}` with one style or URL for each scheme, as `style` of `MapDescription`. |
+| `colorScheme` | `'auto' \| 'light' \| 'dark'` | | The colour scheme that selects the style of `{light, dark}` in `style`, and the colours of the credits of `renderFirstView`. |
+| `center` **required** | `LngLatLike` | | The center of the view, `[lng, lat]`. |
+| `zoom` **required** | `number` | | The zoom level of the view. |
+| `bearing` | `number` | `0` | The bearing of the view in degrees. |
+| [`bounds`](#bounds-and-padding) | `LngLatBoundsInput` | | A box `[west, south, east, north]` to fit into the view. |
+| [`padding`](#bounds-and-padding) | `PaddingInput` | `0` | Space in CSS pixels around `bounds` for the fit: one number, or `{top, right, bottom, left}`. |
 | `width` **required** | `number` | | The width of the render in CSS pixels. |
 | `height` **required** | `number` | | The height of the render in CSS pixels. |
-| `bearing` | `number` | `0` | The rotation of the map in degrees, clockwise from north. |
-| [`bounds`](#bounds-and-padding) | `LngLatBoundsInput` | | A box to fit into the view, `[west, south, east, north]` or `[[west, south], [east, north]]`. It overrides `center` and `zoom`. |
-| [`padding`](#bounds-and-padding) | `PaddingInput` | `0` | Space in CSS pixels around `bounds`: a number, or `{top, right, bottom, left}`. |
-| `colorScheme` | `'auto' \| 'light' \| 'dark'` | `'light'` | `'dark'` selects the `dark` style of a pair `{light, dark}`. Each other value selects `light`. |
-| [`images`](#images) | `Record<string, string \| {image, width?, height?}>` | | Images for the style layers, by name, as SVG documents. |
-| `resolveImage` | `(name: string) => {svg, width, height} \| undefined` | | Returns an icon as SVG for a name that neither the sprite nor `images` has. |
-| `sources` | `Record<string, object>` | | Sources to add to the sources of the style, as [`sources`](description.md#sources) of the description. |
-| `layers` | `({id: string; before?: string} & Record<string, unknown>)[]` | | Layers to add to the layers of the style, as [`layers`](description.md#layers) of the description. |
-| `sprite` | `{id: string; url: string}[]` | | Sprites to add to the sprite of the style, as [`sprite`](description.md#sprite) of the description. |
-| `terrain` | `object \| null` | | A terrain specification, or `null`, that overrides the terrain of the style. The render is flat in either case. |
-| `data` | `Record<string, unknown>` | | GeoJSON for GeoJSON sources, by the id of the source, as [`data`](description.md#data) of the description. |
-| [`overrides`](#overrides) | `false \| Record<string, SSROverrides>` | | Changes for the server render, by the id of a style layer. |
-| `layerFilter` | `(layerId: string) => boolean` | | Leaves out each style layer for which the function returns `false`. |
-| [`tileZoomOffset`](#tilezoomoffset) | `number` | `0` | Builds the render from vector tiles this many zoom levels lower, or higher for a negative value. |
-| `inlineImages` | `boolean` | `false` | `true` embeds raster tiles and the sprite in the SVG as data URLs, in place of links to them. |
-| `highDensity` | `boolean` | `false` | `true` uses the high-density (`@2x`) sprite, and `@2x` for `{ratio}` in the tile URLs. |
-| `fontFamily` | `string` | `'"Noto Sans", "Helvetica Neue", Arial, sans-serif'` | The CSS font family of the labels of the SVG. |
-| `label` | `string` | `'Map'` | The accessible name of the SVG, which the SVG has as `aria-label` with `role="img"`. |
-| [`fetch`](#fetch) | `typeof fetch` | `globalThis.fetch` | The function that loads each resource. |
-| [`timeout`](#limits-for-requests) | `number` | `30000` | The time in milliseconds that all requests of the render can take together. `0` sets no limit. |
-| [`requestTimeout`](#limits-for-requests) | `number` | `10000` | The time in milliseconds that one request can take, with its redirects and its body. `0` sets no limit. |
-| [`maxBytes`](#limits-for-requests) | `number` | `0` | The largest body of one response in bytes, after decompression. `0` sets no limit. |
-| [`allowHosts`](#limits-for-requests) | `string[]` | | The host names that the render can request. Without it, every host is allowed. |
-| [`decodeImage`](#decodepng-and-decodewebplossless) | `ImageDecoder` | PNG and lossless WebP | Decodes the elevation tiles that a [contour source](../terrain-and-elevation.md#contour-lines) reads. |
+| [`images`](#images) | `Record<string, string \| {image: string; width?: number; height?: number}>` | | Images for the style layers, by name: an SVG document as a string, or `{image, width, height}` with the size in CSS pixels. |
+| `fontFamily` | `string` | `'"Noto Sans", "Helvetica Neue", Arial, sans-serif'` | The CSS font family of labels. |
+| `label` | `string` | `'Map'` | The `aria-label` of the SVG, which has `role="img"`. |
+| `layerFilter` | `(layerId: string) => boolean` | | A function that returns `false` for the ids of style layers to leave out of the render, for example dense building footprints. |
+| `inlineImages` | `boolean` | false in `renderToSVG`, true in `renderToImage` | Whether raster tiles and the icon sheet are embedded as data URIs instead of linked. |
+| `highDensity` | `boolean` | false in `renderToSVG`; in `renderToImage`, true when `pixelRatio` is above 1 | Whether the render uses the high-density (@2x) icon sheet and requests raster tiles at @2x. |
+| `resolveImage` | `(name: string) => {svg: string; width: number; height: number} \| undefined` | | A function that returns an SVG icon for an image name that the sprite does not have, or `undefined` for a name that it does not handle. |
+| [`overrides`](#overrides) | `false \| Record<string, `[`SSROverrides`](#overrides)`>` | | Changes for the server render, for each id of a style layer: the same values as `map-jr:ssr` in the metadata of a layer, for example `{building: {hidden: true}, 'road-minor': {minzoom: 15}}`. |
+| `sources` | `Record<string, object>` | | Sources to add to the style, by id, as `sources` in the description of a map (`MapDescription`). |
+| `layers` | `({id: string; before?: string} & Record<string, unknown>)[]` | | Layers to add to the layers of the style, as `layers` in the description of a map (`MapDescription`). |
+| `sprite` | `{id: string; url: string}[]` | | Sprites to add to the sprite of the style, as `sprite` in the description of a map (`MapDescription`): `[{id: 'pins', url: 'https://example.com/sprites/pins'}]`. |
+| `terrain` | `object \| null` | | 3D terrain, as `terrain` in the description of a map (`MapDescription`). |
+| `data` | `Record<string, unknown>` | | GeoJSON data for GeoJSON sources of the style, by the id of the source, as `data` in the description of a map. |
+| [`fetch`](#fetch) | `typeof fetch` | `globalThis.fetch` | The function that the render uses for its requests. |
+| `timeout` | `number` | `30000` | The time in milliseconds that all requests of one render can take together. |
+| `requestTimeout` | `number` | `10000` | The time in milliseconds that one request can take, with its redirects and its body. |
+| `maxBytes` | `number` | `0` | The largest body of one response in bytes, after decompression. |
+| `allowHosts` | `string[]` | | The host names that the render can request, for example `['tiles.openfreemap.org']`, compared with the host of the URL without the port. |
+| `decodeImage` | `ImageDecoder` | | A function that decodes elevation tile images of another format than PNG and lossless WebP, such as lossy WebP. |
+| [`tileZoomOffset`](#tilezoomoffset) | `number` | `0` | The number of zoom levels below the zoom of the render at which the server loads vector tiles, as a whole number. |
 <!-- ref:RenderOptions:end -->
 
 ### `style`
@@ -134,14 +134,14 @@ ignores this key.
 <!-- ref:SSROverrides:start -->
 | Name | Type | Default | Description |
 |---|---|---|---|
-| `hidden` | `boolean` | `false` | `true` leaves the layer out of the render. |
-| `filter` | `Expression` | | A filter that each feature must pass in addition to the filter of the layer. |
-| `minzoom` | `number` | the `minzoom` of the layer | The lowest zoom at which the render shows the layer. |
-| `maxzoom` | `number` | the `maxzoom` of the layer | The zoom from which the render no longer shows the layer. |
-| `paint` | `Record<string, unknown>` | | Paint properties that override those of the layer. |
-| `layout` | `Record<string, unknown>` | | Layout properties that override those of the layer. |
-| `simplify` | `number` | `0.6` | Removes the points of lines and polygons that are closer together than this number of pixels. |
-| `minSize` | `number` | `0.8` | Leaves out shapes that are smaller than this number of pixels. |
+| `hidden` | `boolean` | | Leave the layer out of server output. |
+| `filter` | `unknown` | | An extra filter that features must also pass, e.g. to keep only major roads. |
+| `minzoom` | `number` | | Replaces the `minzoom` of the layer in server output. |
+| `maxzoom` | `number` | | Replaces the `maxzoom` of the layer in server output. |
+| `paint` | `Record<string, unknown>` | | Paint properties for server output; each replaces the property of the same name of the layer, and the others stay. |
+| `layout` | `Record<string, unknown>` | | Layout properties for server output; each replaces the property of the same name of the layer, and the others stay. |
+| `simplify` | `number` | | Drop vertices closer together than this many pixels (default 0.6). |
+| `minSize` | `number` | | Drop features smaller than this many pixels (default 0.8). |
 <!-- ref:SSROverrides:end -->
 
 In `filter`, `["zoom"]` is the zoom of the render rounded down to a whole number. At zoom 13.5,
@@ -199,9 +199,9 @@ names the option.
 <!-- ref:RenderResult:start -->
 | Name | Type | Description |
 |---|---|---|
-| `svg` | `string` | The SVG document, positioned to fill the element that contains it. |
-| `tiles` | `string[]` | The URLs of the vector tiles that the live map requests for the same view. |
-| `attribution` | `string[]` | The attribution of the sources of the style, as HTML strings. |
+| `svg` | `string` | The SVG document of the render. |
+| `tiles` | `string[]` | The URLs of the tiles of the view. |
+| `attribution` | `string[]` | The credits of the sources of the style, as HTML. |
 <!-- ref:RenderResult:end -->
 
 The SVG has the attribute `data-map-jr-ssr`, and its style is `position: absolute; inset: 0; width: 100%;
@@ -262,8 +262,8 @@ the first view, and the console of the server has the error.
 |---|---|---|---|
 | `width` | `number` | `800` | The width in CSS pixels that the element has on most screens. |
 | `height` | `number` | `500` | The height in CSS pixels that the element has on most screens. |
-| `attribution` | `string \| string[]` | the attribution of the sources | The attribution to show, as HTML. |
-| `attributes` | `Record<string, string>` | | More attributes of the element, by name: `{id: 'map', class: 'map'}`. |
+| `attribution` | `string \| string[]` | | The credits to show, when the server must not take them from the sources of the style. |
+| `attributes` | `Record<string, string>` | | More attributes of the element, by name, for example `{id: 'map', class: 'map', style: 'height:400px'}`. |
 <!-- ref:ElementRenderOptions:end -->
 
 `ElementRenderOptions` also accepts `overrides`, `layerFilter`, `tileZoomOffset`, `inlineImages`, `highDensity`,
@@ -294,10 +294,10 @@ default of `highDensity` is `true` when `pixelRatio` is more than 1. A value tha
 <!-- ref:ImageOptions:start -->
 | Name | Type | Default | Description |
 |---|---|---|---|
-| `rasteriser` **required** | `Rasteriser` | | A `Renderer` of `@takumi-rs/core` (Node.js, Bun) or of `@takumi-rs/wasm` (Cloudflare Workers). |
-| `format` | `'jpeg' \| 'webp' \| 'png'` | `'jpeg'` | The format of the image. The build `@takumi-rs/wasm` writes only lossless WebP. |
-| `quality` | `number` | `75` | The quality of a JPEG or lossy WebP image. |
-| `pixelRatio` | `number` | `1` | The pixels of the image for each CSS pixel of `width` and `height`. |
+| `rasteriser` **required** | `Rasteriser` | | The renderer that converts the SVG to an image. |
+| `format` | `'jpeg' \| 'webp' \| 'png'` | `'jpeg'` | The format of the image. |
+| `quality` | `number` | `75` | The quality of a `'jpeg'` or `'webp'` image, as the rasteriser reads it. |
+| `pixelRatio` | `number` | `1` | The number of image pixels for one CSS pixel. |
 <!-- ref:ImageOptions:end -->
 
 The image has no accessible name, so `label` has no effect.
@@ -307,9 +307,9 @@ The image has no accessible name, so `label` has no effect.
 <!-- ref:ImageResult:start -->
 | Name | Type | Description |
 |---|---|---|
-| `image` | `Uint8Array` | The bytes of the image. |
-| `contentType` | `string` | The media type of the image: `'image/jpeg'`, `'image/webp'` or `'image/png'`. |
-| `tiles` | `string[]` | The URLs of the vector tiles that the live map requests for the same view. |
+| `image` | `Uint8Array` | The bytes of the image, in the format of `format`. |
+| `contentType` | `string` | The media type of the image, for example `image/jpeg`, for the `Content-Type` header. |
+| `tiles` | `string[]` | The URLs of the tiles that the render used, as in `RenderResult`. |
 <!-- ref:ImageResult:end -->
 
 ## `decodePNG` and `decodeWebPLossless`
