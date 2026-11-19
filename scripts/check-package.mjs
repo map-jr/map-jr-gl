@@ -84,8 +84,9 @@ for (const file of [...packed].filter(f => /^dist\/[^/]+\.js$/.test(f))) {
             // (Only the files of the library: the build changes nothing in the files of a dependency.)
             if (path.dirname(source) !== path.join(root, 'src')) continue;
             if (!sources.has(source)) sources.set(source, readFileSync(source, 'utf8').split('\n'));
-            // (The minifier copies the value of a constant to where another file uses it. Such a string is not in the file.)
-            if (!sources.get(source).some(l => l.includes(m[2]))) continue;
+            // (The minifier copies the value of a constant to where another file uses it. Such a string is not in the code
+            // of the file; a comment that quotes it, such as an `@default`, does not count.)
+            if (!sources.get(source).some(l => !/^\s*(\/\*\*|\*|\/\/)/.test(l) && l.includes(m[2]))) continue;
             messages++;
             if (!sources.get(source)[entry.originalLine]?.includes(m[2])) failures.push(`${mapFile} puts the string "${m[2]}" of ${file} at ${path.relative(root, source)}:${entry.originalLine + 1}, and it is not there`);
         }
