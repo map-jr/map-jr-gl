@@ -1,0 +1,25 @@
+{
+  "name": "map-jr-gl-website",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "nuxt dev",
+    "generate": "nuxt generate"
+  },
+  "dependencies": {
+    "@map-jr/map-jr-gl": "link:..",
+    "@nuxt/content": "3.17.0",
+    "@nuxt/ui": "4.13.0",
+    "nuxt": "4.6.4",
+    "nuxt-llms": "0.3.2",
+    "tailwindcss": "4.3.5",
+    "vue": "3.5.45"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"],
+    "ignoredBuiltDependencies": ["vue-demi"]
+  }
+}
