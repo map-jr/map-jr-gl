@@ -51,8 +51,8 @@ const open = async (browser, query = '') => {
     return {p, errors};
 };
 const SCENARIOS = {
-    'Loads the style elevation-color of map-jr-styles': async browser => {
-        const {p, errors} = await open(browser, `?style=${STYLES}elevation-color.json`);
+    'Loads the style elevation of map-jr-styles': async browser => {
+        const {p, errors} = await open(browser, `?style=${STYLES}elevation.json`);
         const layers = await p.locator('.maputnik-layer-list-item').count(), messages = await p.locator('.maputnik-message-panel').count();
         await p.close();
         return {ok: layers > 100 && !messages && !errors.length, detail: `layers: ${layers}; messages of the editor: ${messages}; errors: ${errors.length ? errors.slice(0, 2).join('; ') : 0}`};

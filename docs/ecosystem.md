@@ -57,7 +57,7 @@ Maputnik 3.1.0 (2ca0ccc). **Maputnik's own tests: 194 of 194 pass with this libr
 
 | Scenario | This library | MapLibre GL JS 6.18.0 |
 |---|---|---|
-| Loads the style elevation-color of map-jr-styles | Pass: layers: 113; messages of the editor: 0; errors: 0 | Pass: layers: 113; messages of the editor: 0; errors: 0 |
+| Loads the style elevation of map-jr-styles | Pass: layers: 113; messages of the editor: 0; errors: 0 | Pass: layers: 113; messages of the editor: 0; errors: 0 |
 | Loads the style liberty of OpenFreeMap | Pass: layers: 111; errors: 0 | Pass: layers: 111; errors: 0 |
 | Opens with the empty default style | Pass: errors: 0 | Pass: errors: 0 |
 | Suggests the properties of a source layer in the filter editor | Pass: properties of the layer "building": render_height, render_min_height, colour, hide_3d | Pass: properties of the layer "building": render_height, render_min_height, colour, hide_3d |
