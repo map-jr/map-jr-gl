@@ -2939,7 +2939,7 @@ for (const code of ['core', 'compat']) {
             const answered = await page.waitForFunction(() => /features within 8 pixels/.test(document.querySelector('#query .readout').textContent), null, {timeout: LIMIT, polling: 20}).then(() => true, () => false);
             if (answered) times.push(Date.now() - start); else late.push(`${i}${jump ? ' (after a jump)' : ''}${onBox ? ' (on the box)' : ''}`);
         }
-        check(`gallery, query example (${code}): each of 10 clicks gets an answer within ${LIMIT / 1000} seconds, also after a jump and on the box of the answer`, !late.length && !!(await answerBox()), JSON.stringify({withoutAnswer: late, slowestMs: Math.max(...times)}));
+        check(`examples, query example (${code}): each of 10 clicks gets an answer within ${LIMIT / 1000} seconds, also after a jump and on the box of the answer`, !late.length && !!(await answerBox()), JSON.stringify({withoutAnswer: late, slowestMs: Math.max(...times)}));
 
         // 2. The answer to an earlier click arrives after the answer to a later click: the example shows the later click.
         await page.evaluate(() => {
@@ -2954,8 +2954,8 @@ for (const code of ['core', 'compat']) {
         await page.waitForFunction(() => window.asked === 2, null, {timeout: 10000});
         await page.waitForTimeout(3500); // (the late answer of the first click has arrived)
         const shown = await answerBox();
-        check(`gallery, query example (${code}): after two clicks, the answer of the last click is shown`, !!shown && !shown.includes('first-click'), JSON.stringify({shown: shown?.slice(0, 80)}));
-    } catch (e) { check(`gallery, query example (${code}): the test run was completed`, false, String(e.message).split('\n')[0]); }
+        check(`examples, query example (${code}): after two clicks, the answer of the last click is shown`, !!shown && !shown.includes('first-click'), JSON.stringify({shown: shown?.slice(0, 80)}));
+    } catch (e) { check(`examples, query example (${code}): the test run was completed`, false, String(e.message).split('\n')[0]); }
     await page.close();
 }
 // The harness page and the gallery (#1114). The harness page says which forms it runs when it is asked for a form that
@@ -2970,7 +2970,7 @@ for (const code of ['core', 'compat']) {
             /^\[map-jr-gl\] examples: the form "vue" does not run here\. Use one of: core, compat\.$/.test(noForm[0]) && noForm[1] === noForm[0] && /^\[map-jr-gl\] examples: no example has the id "nothing"/.test(noId[0]) && noId[1] === noId[0], JSON.stringify({noForm: noForm[0], noId: noId[0]}));
         await page.goto(`${origin}/gallery/?code=vue`);
         await page.waitForFunction(() => window.maps?.basic, null, {timeout: 60000});
-        const rows = await page.evaluate(() => [...document.querySelectorAll('#rows > article')].map(a => `${a.id}:${a.querySelector('code').textContent.length > 100 && !!a.querySelector('.live') && !!a.querySelector('.readout') && !!a.querySelector('.actions')}`).join(' '));
+        const rows = await page.evaluate(() => [...document.querySelectorAll('#rows > article')].map(a => `${a.id}:${a.querySelector('code').textContent.length > 100 && !!a.querySelector('.live, .pair') && !!a.querySelector('.readout') && !!a.querySelector('.actions')}`).join(' '));
         check('gallery: one row for each of the nine examples and the server row, each with its code, and a live map in the first row (#1114)',
             rows === ['basic', 'reactive', 'markers', 'draggable', 'images', 'terrain', 'globe', 'query', 'pmtiles', 'server'].map(id => id + ':true').join(' '), rows);
     } catch (e) { check('examples, harness page and gallery (#1114): the test run was completed', false, String(e.message).split('\n')[0]); }
