@@ -509,9 +509,10 @@ uniform sampler2D u_img; in vec2 v_uv; in float v_alpha; in vec4 v_color; out ve
 void main() {
   vec4 t = texture(u_img, v_uv);
   if (v_color.a < 0.0) { o = t * fract(v_alpha) / 0.999; return; }
-  // The whole part of the alpha value is the reach of a halo, in hundredths of the distance field; the rest is the opacity.
-  float reach = floor(v_alpha) / 100.0, alpha = fract(v_alpha) / 0.999, edge = 0.75 - reach;
-  float g = max(fwidth(t.a) * 0.7, 0.01), a = smoothstep(edge - g, edge + g, t.a) * v_color.a * alpha;
+  // The whole part of the alpha value is the blur (above 100) and the reach (below 100) of a halo, in hundredths of
+  // the distance field; the rest is the opacity.
+  float w = floor(v_alpha), reach = mod(w, 100.0) / 100.0, alpha = fract(v_alpha) / 0.999, edge = 0.75 - reach;
+  float g = max(fwidth(t.a) * 0.7, 0.01) + floor(w / 100.0) / 100.0, a = smoothstep(edge - g, edge + g, t.a) * v_color.a * alpha;
   o = vec4(v_color.rgb * a, a);
 }`],
 };
@@ -1176,8 +1177,11 @@ export class GLRenderer {
             // Buildings are the one layer that needs depth sorting; everything else is painted back to front.
             const extrude = L.type === 'fill-extrusion', pending: (() => void)[] = [];
             if (extrude) {
-                // On 3D terrain the ground's depth is kept, so hills hide the buildings behind them.
-                gl.clear(s.terrain ? gl.STENCIL_BUFFER_BIT : gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
+                // The fill-extrusion layers of a frame share one depth buffer, as in MapLibre GL JS, so the roof of one
+                // layer hides the lower part of a building in a later layer. On 3D terrain the ground's depth is kept
+                // too, so hills hide the buildings behind them.
+                gl.clear(s.terrain || this.extrusionDepth ? gl.STENCIL_BUFFER_BIT : gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
+                this.extrusionDepth = true;
                 gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL);
             }
             for (const it of items) {
@@ -1307,6 +1311,8 @@ export class GLRenderer {
         this.current = null;
     }
 
+    /** True once a fill-extrusion layer of this frame has cleared the depth buffer. */
+    private extrusionDepth = false;
     private uids = 0;
     private current: Program | null = null;
     /** Selects a program, telling it the size of the view being drawn (the screen, or a terrain tile's texture). */
@@ -1706,6 +1712,7 @@ export class GLRenderer {
         gl.clearColor(0, 0, 0, 0);
         gl.clear(gl.COLOR_BUFFER_BIT);
         this.current = null;
+        this.extrusionDepth = false;
         this.drawSky(s);
         const target: [number, number] = [this.canvas.width, this.canvas.height];
         const use = (name: keyof typeof SHADERS) => this.use(name, tr);
@@ -1846,13 +1853,14 @@ export class GLRenderer {
             const gx = i.gx ?? [0, 0, sw, i.w], gy = i.gy ?? [0, 0, sh, i.h];
             const col = i.color ?? plain, hw = i.w / 2, hh = i.h / 2;
             // Upright icons are placed on whole device pixels. Between pixels, the texture filter would smear fine
-            // detail such as a one-pixel outline into its neighbours.
-            const ox = i.angle === 0 ? snap(i.x - hw) - (i.x - hw) : 0, oy = i.angle === 0 ? snap(i.y - hh) - (i.y - hh) : 0;
+            // detail such as a one-pixel outline into its neighbours. A distance field has no such detail, and
+            // MapLibre GL JS draws it where it falls.
+            const ox = i.angle === 0 && !i.color ? snap(i.x - hw) - (i.x - hw) : 0, oy = i.angle === 0 && !i.color ? snap(i.y - hh) - (i.y - hh) : 0;
             const x = i.x + ox, y = i.y + oy;
             room((i.halo ? 2 : 1) * ((gx.length - 2) >> 1) * ((gy.length - 2) >> 1) * 54);
             // A halo is the same picture drawn first, in the halo colour and out to a lower level of the distance field.
             for (let pass = i.halo ? 0 : 1; pass < 2; pass++) {
-                const halo = pass === 0, tint = halo ? i.halo! : col, alpha = Math.min(1, Math.max(0, opacity * i.opacity)) * 0.999 + (halo ? Math.round(i.haloReach! * 100) : 0);
+                const halo = pass === 0, tint = halo ? i.halo! : col, alpha = Math.min(1, Math.max(0, opacity * i.opacity)) * 0.999 + (halo ? Math.round(i.haloReach! * 100) + 100 * Math.round(i.haloBlur! * 100) : 0);
                 for (let a = 0; a + 3 < gx.length; a += 2) for (let b = 0; b + 3 < gy.length; b += 2) {
                     // The two triangles of a cell: corners (0, 0), (1, 0), (0, 1) and (1, 0), (1, 1), (0, 1).
                     const x0 = gx[a + 1] - hw, x1 = gx[a + 3] - hw, y0 = gy[b + 1] - hh, y1 = gy[b + 3] - hh;

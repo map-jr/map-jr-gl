@@ -3410,6 +3410,43 @@ for (const mode of renderers) {
         });
         check('[main] maplibre-compat: calculateCameraOptionsFromTo, calculateCameraOptionsFromCameraLngLatAltRotation and calculateAnchoredCameraOptions agree with MapLibre to 1e-9 (#1018)',
             m1018.ml.length === m1018.compat.length && m1018.ml.every((v, i) => typeof v === 'number' ? Math.abs(v - m1018.compat[i]) <= 1e-9 * Math.max(1, Math.abs(v)) : v === m1018.compat[i]), JSON.stringify(m1018));
+        // #1019: zoomSnap (the option and setZoomSnap) and setEventedParent work as in MapLibre GL JS (served at /ml/).
+        const m1019 = await page.evaluate(async () => {
+            const ml = await import('/ml/maplibre-gl.mjs');
+            ml.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const compat = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const run = async lib => {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+                const m = new lib.Map({container: el, renderer: 'main', style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, center: [10, 45], zoom: 4.3, zoomSnap: 0.5, fadeDuration: 0});
+                await new Promise(r => m.loaded?.() ? r() : m.once('load', r));
+                const out = [m.getZoom(), m.getZoomSnap()];
+                m.setZoom(3.2); out.push(m.getZoom());
+                m.jumpTo({zoom: 3.3}); out.push(m.getZoom());
+                m.easeTo({zoom: 5.74, duration: 0}); out.push(m.getZoom());
+                m.zoomIn({duration: 0}); out.push(m.getZoom());
+                m.setZoomSnap(0.25);
+                out.push(m.cameraForBounds([[0, 0], [10, 10]]).zoom);
+                m.fitBounds([[0, 0], [10, 10]], {duration: 0}); out.push(m.getZoom());
+                m.setZoomSnap(0); out.push(m.getZoomSnap()); m.setZoom(3.3); out.push(m.getZoom());
+                const wait = () => new Promise(r => setTimeout(r, 100));
+                // (MapLibre GL JS passes the parent every event that the map listens to, and its own listeners are many. An
+                // Evented parent drops the events that it has no listener for, and so does this one.)
+                const parent = {got: [], listens: t => t === 'custom' || t === 'zoomend', fire(e) { if (this.listens(e.type)) this.got.push([e.type, e.a ?? null, e.extra ?? null, e.target === m]); }};
+                out.push(m.listens('custom'));
+                m.setEventedParent(parent, {extra: 7}); out.push(m.listens('custom'), m.listens('other'));
+                m.fire('custom', {a: 1}); m.fire('other', {a: 2});
+                m.setZoom(4); await wait();
+                m.setEventedParent(parent, () => ({extra: 8})); m.fire('custom', {a: 3});
+                m.setEventedParent(null); m.fire('custom', {a: 4}); out.push(m.listens('custom'));
+                await wait();
+                out.push(JSON.stringify(parent.got));
+                m.remove(); el.remove();
+                return out;
+            };
+            return {ml: await run(ml), compat: await run(compat)};
+        });
+        check('[main] maplibre-compat: zoomSnap snaps the zoom of camera calls and fitBounds, and setEventedParent passes events to the parent, as in MapLibre (#1019)',
+            m1019.ml.length === m1019.compat.length && m1019.ml.every((v, i) => typeof v === 'number' ? Math.abs(v - m1019.compat[i]) < 1e-9 : v === m1019.compat[i]), JSON.stringify(m1019));
         // #565: isSourceLoaded(id) answers for one source and fires `error` for an id that the style does not have, and
         // isActive() of a handler is true during its gesture, as in MapLibre GL JS (served at /ml/).
         const m565 = {};
