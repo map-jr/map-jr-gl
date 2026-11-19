@@ -12,12 +12,14 @@ sections:
     pages:
       - getting-started.md
       - which-entry.md
+      - server-rendering.md
   - title: Recipes
     folder: recipes
     pages: []
   - title: Reference
     folder: reference
-    pages: []
+    pages:
+      - server.md
   - title: Migrate
     folder: migrate
     pages: []
