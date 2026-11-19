@@ -2,7 +2,8 @@
 
 The functions of `@map-jr/map-jr-gl/controls` create the controls of a map: the zoom buttons and the compass, the
 scale bar, and the buttons for the full screen, the position of the user, terrain, the globe and the colour scheme.
-Each function returns an item for [`controls`](description.md#controls) of the description. See
+Each function returns a `ControlSpec`: an item for [`controls`](description.md#controls) of the description. Create
+a `ControlSpec` only with these functions, and use [`custom`](#custom) for a control of your own. See
 [Controls](../guide/controls.md) for how to add, change and style them.
 
 ```js
@@ -20,16 +21,21 @@ const map = createMap('map', {
 
 The map shows the controls of the last description, and each item of `controls` is one control.
 
-- **Identity.** Two items are the same control when they come from the same function with the same options,
-  `position` included. For [`custom`](#custom), two items are the same control when they have the same `key`.
-- **A new list.** The map keeps a control that the new list has. It removes a control that the new list does not
-  have. A control whose options changed is a different control: the map removes the old one and adds the new one.
+- **Identity.** Two items are the same control when they come from the same function with options that are equal
+  as JSON, with the properties in the same order. `position` is one of the options, and
+  `scale({unit: 'imperial', maxWidth: 80})` and `scale({maxWidth: 80, unit: 'imperial'})` are two different controls.
+- **A new list.** The map keeps a control that the new list has, also when the function is called again for each
+  description. It removes a control that the new list does not have. A control whose options changed is a
+  different control: the map removes the old one and adds the new one last in its corner.
+- **`custom`.** Two items of [`custom`](#custom) are the same control when they have the same `key`. A new
+  `position` with the same `key` has no effect and no warning. To move the control, pass a new `key`.
 - **A duplicate.** When the list has the same control twice, the map shows it once. It gives no warning.
 - **Order.** When the map is created, the first control of a corner in the list is nearest to the corner. A control
   that a later description adds goes after the controls that the corner has.
-- **Loading.** The map loads the code of the controls in one file when it adds the first control, so each control
-  except [`custom`](#custom) appears a moment after the map adds it. When the file does not load, the console shows
-  the error `[map-jr-gl] The control "<name>" could not be loaded` and the map works without the control.
+- **Loading.** Each control except [`custom`](#custom) appears a moment after the map adds it, because the map
+  loads the code of the controls then. When that code does not load, the console shows the error
+  `[map-jr-gl] The control "<name>" could not be loaded`, and the map works without the control. Serve every file of
+  `dist/` of the package from the folder of the file that the page imports.
 - **Texts.** A change of [`locale`](description.md#locale) removes every control and adds it again with the new
   texts. See [The texts of the controls](#the-texts-of-the-controls).
 
@@ -38,7 +44,7 @@ turn it off.
 
 ## `position`
 
-Every function accepts `position`: the corner of the map that the control is placed in.
+Every function accepts `position` with its other options: the corner of the map that the control is placed in.
 
 ```ts
 type ControlPosition = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
@@ -51,10 +57,12 @@ The default is `'top-right'` for every control, `scale()` included.
 Creates buttons to zoom in and out, and a compass that turns the map to the north.
 
 ```ts
-navigation(options?: NavigationOptions & {position?: ControlPosition}): ControlSpec
+navigation(options?: NavigationOptions): ControlSpec
 ```
 
-A click on the compass sets the bearing to 0. A drag sideways on the compass rotates the map. The zoom in button is
+A click on the compass sets the bearing to 0, and with `visualizePitch: true` also the pitch. A drag sideways on the
+compass changes the bearing. With `visualizePitch: true`, the compass tilts with the pitch, and a drag up or down on
+it changes the pitch. The zoom in button is
 disabled at the largest zoom level of the map, and the zoom out button at the smallest.
 
 ### `NavigationOptions`
@@ -64,15 +72,16 @@ disabled at the largest zoom level of the map, and the zoom out button at the sm
 |---|---|---|---|
 | `showZoom` | `boolean` | `true` | Whether the control shows the buttons to zoom in and out. |
 | `showCompass` | `boolean` | `true` | Whether the control shows the compass. |
-| `visualizePitch` | `boolean` | `false` | Whether the compass also shows the pitch, a drag on it changes the pitch, and a click on it resets the pitch. |
+| `visualizePitch` | `boolean` | `false` | Whether the compass shows and changes the pitch as well as the bearing. |
 <!-- ref:NavigationOptions:end -->
 
 ## `scale()`
 
-Creates a scale bar that shows a round distance at the scale of the map.
+Creates a scale bar. The bar shows a distance of 1, 2, 3 or 5 times a power of ten, and its length on the screen
+is that distance at the scale of the map.
 
 ```ts
-scale(options?: ScaleOptions & {position?: ControlPosition}): ControlSpec
+scale(options?: ScaleOptions): ControlSpec
 ```
 
 The bar shows metres and kilometres with `unit: 'metric'`, feet and miles with `'imperial'`, and nautical miles with
@@ -96,21 +105,25 @@ fullscreen(options?: {position?: ControlPosition}): ControlSpec
 ```
 
 Where the browser has no Fullscreen API, as Safari on iPhone, the container of the map receives the class
-`map-jr-pseudo-fullscreen` and fills the window.
+`map-jr-pseudo-fullscreen` and fills the window. A second click removes the class.
 
 ## `geolocate()`
 
 Creates a button that moves the map to the position of the user.
 
 ```ts
-geolocate(options?: GeolocateOptions & {position?: ControlPosition}): ControlSpec
+geolocate(options?: GeolocateOptions): ControlSpec
 ```
 
-When the browser returns a position, the map moves to it and fires the event `geolocate` with `coords`. The map
-zooms in to `zoom`, and a map that is zoomed in further keeps its zoom. When the
-browser returns an error, for example because the user denied the request, the map fires the event `error`. Listen
-to both with [`map.listen`](../api.md#events). For a position outside of [`maxBounds`](description.md#maxbounds),
-the map does not move and fires no `geolocate`.
+When the browser returns a position, the map moves to it and zooms in to `zoom`. A map that is zoomed in further
+keeps its zoom. The map fires these events of [`MapEvents`](../api.md#events), which `map.listen` receives:
+
+| Event | Fields |
+|---|---|
+| `geolocate` | `coords`: the `GeolocationCoordinates` of the browser. |
+| `error` | `error`: an `Error` with the message of the browser, for example when the user denies the request. |
+
+For a position outside of [`maxBounds`](description.md#maxbounds), the map does not move and fires no event.
 
 ### `GeolocateOptions`
 
@@ -128,11 +141,12 @@ the map does not move and fires no `geolocate`.
 Creates a button that turns 3D terrain on and off.
 
 ```ts
-terrain(options: TerrainOptions & {position?: ControlPosition}): ControlSpec
+terrain(options?: TerrainOptions): ControlSpec
 ```
 
-A click turns on the terrain of `source` with `exaggeration`, or turns the terrain off. It changes the map until a
-description with a different [`terrain`](description.md#terrain) is passed.
+A click turns on the terrain of `source` with `exaggeration`, or turns the terrain off. The description keeps its
+[`terrain`](description.md#terrain), and no callback reports the click. A later description whose `terrain` differs
+from that of the description before it overrides the click.
 
 ```js
 import {createMap} from '@map-jr/map-jr-gl';
@@ -162,8 +176,9 @@ Creates a button that switches the projection between `globe` and `mercator`.
 globe(options?: {position?: ControlPosition}): ControlSpec
 ```
 
-While the projection is `globe`, the button has the class `map-jr-ctrl-globe-enabled` and `aria-pressed="true"`. A
-click changes the map until a description with a different [`projection`](description.md#projection) is passed.
+While the projection is `globe`, the button has the class `map-jr-ctrl-globe-enabled` and `aria-pressed="true"`. The
+description keeps its [`projection`](description.md#projection), and no callback reports the click. A later
+description whose `projection` differs from that of the description before it overrides the click.
 
 ## `colorScheme()`
 
@@ -173,9 +188,10 @@ Creates a button that switches the map between the light and the dark colour sch
 colorScheme(options?: {position?: ControlPosition}): ControlSpec
 ```
 
-The button shows the scheme that the map has. A click sets [`colorScheme`](description.md#colorscheme-and-oncolorschemechange)
+The button shows a sun while the map is light and a moon while it is dark, also with `'auto'`. A click sets [`colorScheme`](description.md#colorscheme-and-oncolorschemechange)
 of the description and calls `onColorSchemeChange` with the new value. When `colorScheme` is `'auto'`, a click sets
-the scheme opposite to that of the system, and the next click sets `'auto'` again. See
+the scheme opposite to that of the system, and the next click sets `'auto'` again. With
+`'light'`, `'dark'` or no value, a click switches between `'light'` and `'dark'`. See
 [Light and dark maps](../guide/color-scheme.md#let-the-user-switch-the-scheme) for an example.
 
 ## `custom()`
@@ -183,7 +199,8 @@ the scheme opposite to that of the system, and the next click sets `'auto'` agai
 Creates a control from an element of your page, or from a control written for MapLibre GL JS.
 
 ```ts
-custom(options: {key: string; position?: ControlPosition} & ({element: HTMLElement} | {onAdd(map): HTMLElement; onRemove(map): void})): ControlSpec
+custom(options: {key: string; position?: ControlPosition; element: HTMLElement}): ControlSpec
+custom(options: {key: string; position?: ControlPosition; onAdd(map: Map): HTMLElement; onRemove(map: Map): void}): ControlSpec
 ```
 
 | Name | Type | Description |
@@ -199,9 +216,11 @@ Pass `element`, or `onAdd` with `onRemove`.
 - The map adds the class `map-jr-ctrl` to `element`, and an element without it receives no clicks. An assignment to
   `className` removes the class: add your own classes with `classList.add`.
 - The map keeps the element that it received first for a `key`. To show another element, pass it with a new `key`.
-- `onAdd` receives the map on which the main API is built, and not the object that `createMap` returns. That map has
-  methods such as `on`, `off`, `getContainer`, `getCanvas`, `project`, `unproject`, `getZoom`, `getCenter` and
-  `getBearing`, but not every method of a map of MapLibre GL JS.
+- `onAdd` receives the map on which the main API is built (`Map`), and not the object that `createMap` returns. Its
+  methods `on`, `off`, `getContainer`, `getCanvas`, `project`, `unproject`, `getZoom`, `getCenter` and `getBearing`
+  work as in MapLibre GL JS. A control that calls another method works only in the compat entry.
+
+The button of this example calls [`map.moveTo`](../api.md#the-camera) on a click, after `createMap` has returned.
 
 ```js
 import {createMap} from '@map-jr/map-jr-gl';

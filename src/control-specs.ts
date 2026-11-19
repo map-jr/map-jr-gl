@@ -102,7 +102,7 @@ export interface NavigationOptions {
      */
     showCompass?: boolean;
     /**
-     * Whether the compass also shows the pitch, a drag on it changes the pitch, and a click on it resets the pitch.
+     * Whether the compass shows and changes the pitch as well as the bearing.
      * @default false
      */
     visualizePitch?: boolean;
