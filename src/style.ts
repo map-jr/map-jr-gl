@@ -174,6 +174,17 @@ export function hillshadeLights(p: Record<string, Prop>, zoom: number, bearing: 
     return out;
 }
 
+/**
+ * Draws with the filter `filter` on the bound texture, and gives the texture back its usual filter (linear) after: the
+ * textures of tiles are shared with other layers and with 3D terrain, which must not see `nearest` (#1013).
+ */
+export function withFilter(gl: Pick<WebGL2RenderingContext, 'texParameteri' | 'TEXTURE_2D' | 'TEXTURE_MIN_FILTER' | 'TEXTURE_MAG_FILTER' | 'LINEAR'>, filter: number, draw: () => void) {
+    const set = (f: number) => { gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, f); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, f); };
+    if (filter !== gl.LINEAR) set(filter);
+    draw();
+    if (filter !== gl.LINEAR) set(gl.LINEAR);
+}
+
 export function compileLayer(l: LayerJSON): CompiledLayer | null {
     const spec = SPEC[l.type];
     if (!spec) return null;

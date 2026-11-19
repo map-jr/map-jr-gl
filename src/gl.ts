@@ -1,5 +1,5 @@
 import {EXTENT, clamp, latFromMerc, mercX, mercY, type TileID, type Transform} from './geo.ts';
-import {hillshadeLights, LIGHTS, screenTranslate, type CompiledLayer, type Light} from './style.ts';
+import {hillshadeLights, LIGHTS, withFilter, screenTranslate, type CompiledLayer, type Light} from './style.ts';
 import {compileProp} from './expr.ts';
 import type {Sky} from './resolve.ts';
 import {LOSE_CONTEXT} from './gl-names.ts';
@@ -1144,8 +1144,7 @@ export class GLRenderer {
                     if (L.type === 'raster') { gl.uniform2fv(u.u_corners, it.corners ?? SQUARE); gl.uniform4fv(u.u_q, it.corners ? cornerWeights(it.corners) : ONES); }
                     if (L.relief) gl.uniform4fv(u.u_unpack, it.tile.unpack!);
                     gl.bindTexture(gl.TEXTURE_2D, L.relief ? it.tile.raw! : it.tile.tex);
-                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
-                    if (this.globe) this.drawGrid(it.id); else gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+                    withFilter(gl, filter, () => this.globe ? this.drawGrid(it.id) : gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4));
                 }
                 continue;
             }

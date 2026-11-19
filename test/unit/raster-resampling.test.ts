@@ -1,7 +1,7 @@
 // `raster-resampling`, `resampling`, `raster-layer-blend` and `raster-fade-duration` (#1013). Run with: pnpm test:unit
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {compileLayer} from '../../src/style.ts';
+import {compileLayer, withFilter} from '../../src/style.ts';
 
 const layer = (type: string, paint: object) => compileLayer({id: 'r', type, source: 's', paint} as any)!.p;
 const resampling = (p: ReturnType<typeof layer>) => p.resampling?.eval(0) ?? p.rasterResampling?.eval(0);
@@ -33,4 +33,15 @@ test('raster: raster-fade-duration other than 0 warns once', () => {
         layer('raster', {'raster-fade-duration': 500});
         assert.equal(warnings.filter(m => m.includes('raster-fade-duration')).length, 1);
     } finally { console.warn = warn; }
+});
+
+test('withFilter: a draw with nearest leaves the texture linear, and a linear draw changes nothing', () => {
+    const filter: Record<number, number> = {}, gl = {TEXTURE_2D: 1, TEXTURE_MIN_FILTER: 2, TEXTURE_MAG_FILTER: 3, LINEAR: 4, texParameteri: (_: number, k: number, v: number) => { filter[k] = v; }};
+    let during: number[] = [];
+    withFilter(gl as any, 5, () => { during = [filter[2], filter[3]]; });
+    assert.deepEqual(during, [5, 5]);
+    assert.deepEqual([filter[2], filter[3]], [4, 4]);
+    delete filter[2]; delete filter[3];
+    withFilter(gl as any, 4, () => {});
+    assert.deepEqual(filter, {});
 });
