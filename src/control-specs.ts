@@ -36,15 +36,15 @@ const spec = <O extends object, M = typeof More>(name: string, make: (m: M, opti
     return {key: name + JSON.stringify(options), position, create} as ControlSpec;
 };
 /** Buttons to zoom in and out, and a compass that turns the map to the north. With `visualizePitch: true`, the compass also shows and resets the pitch. */
-export const navigation = spec('navigation', (m, o: {showZoom?: boolean; showCompass?: boolean; visualizePitch?: boolean}) => new m.NavigationControl(o));
+export const navigation = spec('navigation', (m, o: NavigationOptions) => new m.NavigationControl(o));
 /** A scale bar. */
-export const scale = spec('scale', (m, o: {maxWidth?: number; unit?: 'metric' | 'imperial' | 'nautical'}) => new m.ScaleControl(o));
+export const scale = spec('scale', (m, o: ScaleOptions) => new m.ScaleControl(o));
 /** A button that shows the map on the full screen. */
 export const fullscreen = spec('fullscreen', (m, _o: {}) => new m.FullscreenControl());
 /** A button that moves the map to the position of the user. With `trackUserLocation`, it turns tracking on and off and shows a dot at the position. */
-export const geolocate = spec('geolocate', (m, o: {zoom?: number; positionOptions?: PositionOptions; trackUserLocation?: boolean; showUserLocation?: boolean}) => new m.GeolocateControl(o));
+export const geolocate = spec('geolocate', (m, o: GeolocateOptions) => new m.GeolocateControl(o));
 /** A button that turns 3D terrain on and off. `source` is the id of an elevation source of the style. */
-export const terrain = spec('terrain', (m, o: {source: string; exaggeration?: number}) => new m.TerrainControl(o));
+export const terrain = spec('terrain', (m, o: TerrainOptions) => new m.TerrainControl(o));
 /** A button that switches the projection between the globe and Mercator. */
 export const globe = spec('globe', (m, _o: {}) => new m.GlobeControl());
 /**
@@ -65,5 +65,39 @@ export const custom = (options: {key: string; position?: ControlPosition} & ({el
         onRemove: () => options.element.remove(),
     } : options};
 };
+/** The options of `navigation()`. */
+export interface NavigationOptions {
+    /** Whether the control shows the buttons to zoom in and out. @default true */
+    showZoom?: boolean;
+    /** Whether the control shows the compass. @default true */
+    showCompass?: boolean;
+    /** Whether the compass also shows the pitch, a drag of it also pitches the map, and a click resets the pitch. @default false */
+    visualizePitch?: boolean;
+}
+/** The options of `scale()`. */
+export interface ScaleOptions {
+    /** The largest width of the scale bar, in CSS pixels. @default 100 */
+    maxWidth?: number;
+    /** The unit of the distances that the scale bar shows. @default 'metric' */
+    unit?: 'metric' | 'imperial' | 'nautical';
+}
+/** The options of `geolocate()`. */
+export interface GeolocateOptions {
+    /** The zoom that the map moves to when it finds the position; a map that is zoomed in further keeps its zoom. @default 14 */
+    zoom?: number;
+    /** The options that the control passes to `navigator.geolocation`. */
+    positionOptions?: PositionOptions;
+    /** Whether the button turns tracking of the position on and off, instead of moving the map once. @default false */
+    trackUserLocation?: boolean;
+    /** Whether the map shows a dot at the position while it tracks the position. @default true */
+    showUserLocation?: boolean;
+}
+/** The options of `terrain()`. */
+export interface TerrainOptions {
+    /** The id of the `raster-dem` source of the style that gives the heights. This option is required. */
+    source: string;
+    /** The factor by which the heights of the terrain are multiplied. */
+    exaggeration?: number;
+}
 declare const __DEV__: boolean;
 export type {ControlSpec, ControlPosition};

@@ -211,13 +211,21 @@ export interface MapDescription extends MapSetup {
      */
     transformRequest?: RequestTransform | null;
 }
+/** The options of the built-in attribution (`attribution` of the description). */
+export interface AttributionOptions {
+    /** Whether the attribution is a button that opens the credits. @default true when the map is 640 CSS pixels wide or narrower, else false */
+    compact?: boolean;
+    /** Credits that the attribution shows after the credits of the sources of the style. */
+    customAttribution?: string | string[];
+}
 /** The fields that are read when the map is made only. */
 export interface MapSetup {
     renderer?: 'auto' | 'worker' | 'main';
     fontFamily?: string;
     interactive?: boolean;
     antialias?: boolean;
-    attribution?: false | {compact?: boolean; customAttribution?: string | string[]};
+    /** `false` hides the built-in attribution, so that the page shows the credits itself. */
+    attribution?: false | AttributionOptions;
     hash?: boolean | string;
     /** The nonce of a Content Security Policy with `style-src 'nonce-…'`, for the style sheet of the map. */
     nonce?: string;
