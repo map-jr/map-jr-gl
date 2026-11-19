@@ -152,6 +152,10 @@ for a mistake, what is not supported, one short example, and "See also".
 
 - Code comes first. At most one sentence stands before a code block, and it says what the code does.
 - Every example runs as it is written: it has its imports, a real URL and the setup.
+- On a guide, the first block of each variant is complete. A later `js` block of the same variant can continue it:
+  it uses the names that the first block declares (`map`, `places`), and the sentence before the group says so. A
+  component (`vue`, `jsx`, `svelte`) is complete each time. On a reference page, a block can leave out the import of
+  `createMap` after the first block of the page.
 - Use the style `https://styles.map-jr.org/1/elevation-zero.json` unless the example is about another style.
 - Use names from a real application (`stations`, `selectedTrail`), not `foo` or `myLayer1`.
 - A comment in the code says why a line is there, for the one or two lines that need it.
@@ -171,9 +175,28 @@ The library has seven ways to write the same map. A page gives a variant when it
 | `[Svelte]` | `@map-jr/map-jr-gl/svelte` | `svelte` |
 | `[<map-jr>]` | `@map-jr/map-jr-gl/element` | `html` |
 
-- Write the label after the language: ```` ```vue [Vue] ````. GitHub shows the fences one after the other, and the
-  site joins adjacent fences into one switcher that remembers the reader's choice.
-- Keep the order of the table, and put no text between the fences of one group (lint).
+- Write the label after the language: ```` ```vue [Vue] ````. The site joins adjacent fences into one switcher that
+  remembers the reader's choice.
+- Write the label again in bold on a line of its own before the fence: `**Vue**`, and the element as
+  ``**`<map-jr>`**`` (lint). GitHub and the package show the fences one after the other and do not show the label of
+  a fence, so this line is what tells the reader there which variant the code is. The site removes the line when it
+  builds the switcher.
+
+  ````markdown
+  **Main API**
+
+  ```js [Main API]
+  map.patch({cursor: 'crosshair'});
+  ```
+
+  **MapLibre compat**
+
+  ```js [MapLibre compat]
+  map.getCanvas().style.cursor = 'crosshair';
+  ```
+  ````
+
+- Keep the order of the table, and put no other text between the fences of one group (lint).
 - Leave out a variant whose code would be the same as another one. Leave out `[Nuxt]` when it differs from `[Vue]`
   only in the imports, and say once on the page for Nuxt that the imports are not needed.
 - A page about one entry (`reference/vue.md`) has no labels.
@@ -188,8 +211,9 @@ The library has seven ways to write the same map. A page gives a variant when it
 - A heading names the task or the thing: "Change the data of a source", not "Data handling". No page has a
   heading "Overview" or "Introduction" (lint). A page has one `#` heading, and no level below `###` (lint).
 - A paragraph is at most 90 words (lint).
-- Link with the name of the target: "see [`moveTo`](../reference/map.md#moveto)", not "see here" or "see above".
-  Links between pages are relative and end in `.md`, so that they work on GitHub and in the package.
+- Link with the name of the target: "see [`padding`](reference/description.md#padding)", not "see here" or "see
+  above". Links between pages are relative and end in `.md`, so that they work on GitHub and in the package. A link
+  leads to a file that exists, and its anchor to a heading of that file (lint).
 
 ## TSDoc
 

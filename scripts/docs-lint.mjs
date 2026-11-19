@@ -1,6 +1,7 @@
 // Checks the user docs against the rules of docs/style-guide.md that a script can check.
 // It reads docs/guide, docs/reference, docs/recipes and docs/migrate, prints one line for each finding, and exits
 // with 0. With `--strict` it exits with 1 when there is a finding. Give paths to check only those files.
+// It also checks that each relative link of a page leads to a file, and each anchor to a heading of that file.
 //
 // Usage: node scripts/docs-lint.mjs [--strict] [file.md ...]
 import {existsSync, readFileSync, readdirSync} from 'node:fs';
@@ -27,6 +28,26 @@ const banned = [
     [/\b\d+(?:\.\d+)? KB\b/, 'has a size in bytes. guide/size-and-speed.md is the home of sizes.'],
     [/\b(?:simply|blazing|obviously)\b/i, 'uses a word that the writing rules exclude.'],
 ];
+/** The variant that a line names (`**Vue**`, or **`<map-jr>`**), or undefined for any other line. */
+const variantOf = line => { const name = line.trim().match(/^\*\*`?([^*`]+)`?\*\*$/)?.[1]; return labels.includes(name) ? name : undefined; };
+/** The anchors that GitHub gives the headings of a markdown file. */
+const anchorsOf = new Map();
+const anchors = file => {
+    if (!anchorsOf.has(file)) {
+        const seen = new Map(), all = new Set();
+        let fence = false;
+        for (const line of readFileSync(file, 'utf8').split('\n')) {
+            if (/^\s*(```|~~~)/.test(line)) fence = !fence;
+            const text = !fence && line.match(/^#+\s+(.*)$/)?.[1];
+            if (!text) continue;
+            const slug = text.trim().toLowerCase().replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/[^\p{L}\p{N}\s_-]/gu, '').replace(/\s/g, '-'), n = seen.get(slug) ?? 0;
+            seen.set(slug, n + 1);
+            all.add(n ? `${slug}-${n}` : slug);
+        }
+        anchorsOf.set(file, all);
+    }
+    return anchorsOf.get(file);
+};
 const findings = [];
 
 for (const file of files) {
@@ -50,9 +71,14 @@ for (const file of files) {
                 if (!info) find(i, 'this code fence has no language.');
                 const label = info.match(/\[(.+)\]\s*$/)?.[1];
                 if (label !== undefined && !labels.includes(label)) find(i, `the label [${label}] is not a variant. The labels are ${labels.map(l => `[${l}]`).join(', ')}.`);
-                // A fence continues a group when only blank lines stand between it and the fence before.
-                if (label === undefined || lines.slice(groupEnd + 1, i).some(l => l.trim())) group = [];
+                // GitHub does not show the label of a fence, so a line with the label in bold stands directly before the
+                // fence: `**Vue**`, and `<map-jr>` as code. A fence continues a group when only that line and blank
+                // lines stand between it and the fence before.
+                const between = lines.slice(groupEnd + 1, i).filter(l => l.trim());
+                if (label === undefined || between.some(l => !variantOf(l))) group = [];
                 if (label !== undefined) {
+                    const name = variantOf(lines.slice(0, i).findLast(l => l.trim()) ?? '');
+                    if (name !== label) find(i, `the line before this fence is not the name of its variant. Write **${label.startsWith('<') ? '`' + label + '`' : label}** on a line of its own before the fence, because GitHub does not show the label.`);
                     if (group.length && labels.indexOf(label) <= labels.indexOf(group.at(-1))) find(i, `[${label}] comes after [${group.at(-1)}]. Keep the order of the style guide, each variant once.`);
                     group.push(label);
                 }
@@ -87,15 +113,23 @@ for (const file of files) {
         if (/^>\s*\*\*(Note|Warning|Tip|Important)\b|^>\s*\[!/.test(line)) {
             endParagraph();
             callouts++;
-            if (lines.slice(lastCallout + 1, i).every(l => !l.trim() || l.startsWith('>'))) find(i, 'two callouts follow each other. Keep one.');
+            if (lastCallout >= 0 && lines.slice(lastCallout + 1, i).every(l => !l.trim() || l.startsWith('>'))) find(i, 'two callouts follow each other. Keep one.');
             lastCallout = i;
             return;
         }
-        if (!line.trim() || /^\s*(?:[-*+]|\d+\.)\s|^>|^<!--/.test(line)) { endParagraph(); return; }
+        if (!line.trim() || variantOf(line) || /^\s*(?:[-*+]|\d+\.)\s|^>|^<!--/.test(line)) { endParagraph(); return; }
         if (!paragraph.length) paragraphStart = i;
         paragraph.push(line);
     });
     endParagraph();
+    // A relative link leads to a file that exists, and its anchor to a heading of that file.
+    lines.forEach((line, i) => {
+        for (const [, target, anchor] of line.replace(/`[^`]*`/g, '').matchAll(/\]\((?!https?:|mailto:)([^)#\s]*)(?:#([^)\s]*))?\)/g)) {
+            const to = target ? path.join(path.dirname(file), target) : file;
+            if (!existsSync(to)) find(i, `the link to ${target} leads to no file.`);
+            else if (anchor && to.endsWith('.md') && !anchors(to).has(anchor)) find(i, `the link to ${target}#${anchor} leads to no heading of that file.`);
+        }
+    });
     if (fence) find(lines.length - 1, 'a code fence is not closed.');
     if (h1 !== 1) find(0, `the page has ${h1} headings of the first level. It needs one.`);
     if (callouts > 2) find(0, `the page has ${callouts} callouts. The limit is two.`);
