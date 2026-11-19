@@ -554,7 +554,15 @@ export interface Prop {
     eval(zoom: number, f?: Feature | null): any;
 }
 /** 'discrete' values (e.g. dash arrays) step between stops instead of interpolating. */
-export type PropKind = 'color' | 'number' | 'string' | 'discrete' | 'raw';
+export type PropKind = 'color' | 'number' | 'string' | 'discrete' | 'raw' | 'padding';
+
+/** A value of the padding type (one to four numbers, as in CSS) as [top, right, bottom, left], or null when it is not one. */
+export function toPadding(x: any): [number, number, number, number] | null {
+    if (typeof x === 'number') return isNaN(x) ? null : [x, x, x, x];
+    if (!Array.isArray(x) || x.length < 1 || x.length > 4 || x.some(n => typeof n !== 'number' || isNaN(n))) return null;
+    const [t, r = t, b = t, l = r] = x;
+    return [t, r, b, l];
+}
 
 function legacyFunction(v: any, flags: Flags, kind: PropKind, values?: readonly string[]): Fn {
     const discrete = kind === 'discrete';
@@ -578,7 +586,7 @@ function legacyFunction(v: any, flags: Flags, kind: PropKind, values?: readonly 
     // kind does not say the type (a text, a boolean, an array), the type is the one of the `default`.
     if (v.type === 'identity') return c => {
         const x = c.f?.properties[key];
-        return (kind === 'number' ? typeof x === 'number' : kind === 'color' ? Array.isArray(colorize(x)) : values ? values.includes(x)
+        return (kind === 'number' ? typeof x === 'number' : kind === 'padding' ? !!toPadding(x) : kind === 'color' ? Array.isArray(colorize(x)) : values ? values.includes(x)
             : def === null ? x != null : typeof x === typeof def && Array.isArray(x) === Array.isArray(def)) ? x : def;
     };
     if (v.type === 'categorical' || typeof stops[0]?.[0] !== 'number') {
@@ -605,6 +613,7 @@ export function compileProp(v: any, kind: PropKind, def: any, values?: readonly 
     const finish = kind === 'color'
         ? (x: any) => Array.isArray(x) ? x : (typeof x === 'string' && parseColor(x)) || defColor
         : kind === 'number' ? (x: any) => typeof x === 'number' && !isNaN(x) ? x : def
+        : kind === 'padding' ? (x: any) => toPadding(x) ?? toPadding(def)
         : values ? (x: any) => x == null || values.includes(x) ? x ?? def : def
         : (x: any) => x ?? def;
     if (!flags.dd && !flags.zoom) {
