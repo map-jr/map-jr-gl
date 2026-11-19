@@ -70,6 +70,11 @@ Three tests compare the library with MapLibre GL JS:
   (`later` or `wontfix`), and the output counts each label. Only the owner adds a `wontfix` entry.
 - **API check.** `pnpm test:api` compares the methods of `Map` with the type declarations of MapLibre GL JS. It
   does not count a method that the declarations tag `@internal`, or one that only the class `Camera` has.
+- **Style specification check.** `pnpm test:spec` compares each property of the style specification (`v8.json` of
+  the copy of `@maplibre/maplibre-gl-style-spec` that MapLibre GL JS uses) with what the library reads, and with the
+  expression inputs that the property allows. `--gaps` lists the gaps. A layer property that the code reads outside
+  the list `SPEC` of `src/style.ts` needs an entry in the table `OTHER` of `test/conformance/spec.mjs`, and the check
+  fails until it has one.
 - **Render tests.** `pnpm test:render` draws each MapLibre render test and compares the result with the expected
   image. The first run downloads the MapLibre GL JS repository and two fonts into `.cache`.
 
