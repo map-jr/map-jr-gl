@@ -1917,6 +1917,34 @@ for (const mode of renderers) {
             off.length === 0 && pOff.join() === p0.join() && pDrag[0] !== p0[0] && pWheel[2] > pDrag[2], JSON.stringify({off, p0, pOff, pDrag, pWheel}));
         check(`[${mode}] interactive: false still fires click, mousemove and the click of a layer (#253)`, seen.join() === 'click,click sq,mousemove', JSON.stringify(seen));
     }
+    // #998: a `visibility` that is an expression of the global state hides a hillshade layer and a line layer together, as the Elevation style of map-jr-styles does. The
+    // raster-dem source requests no tiles and the line is not found by a query until setGlobalStateProperty shows them.
+    {
+        const vis = await page.evaluate(async mode => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:200px;height:150px;z-index:1000'}));
+            const urls = [], line = {type: 'Feature', properties: {}, geometry: {type: 'LineString', coordinates: [[-30, 0], [30, 0]]}};
+            const map = new mod.Map({container: el, renderer: mode, attributionControl: false, center: [0, 0], zoom: 1,
+                transformRequest: url => { if (url.includes('no-such-dem-998')) urls.push(url); return {url}; },
+                style: {version: 8, state: {relief: {default: false}},
+                    sources: {dem: {type: 'raster-dem', tiles: [location.origin + '/no-such-dem-998/{z}/{x}/{y}.png'], tileSize: 256}, g: {type: 'geojson', data: line}},
+                    layers: [{id: 'relief', type: 'hillshade', source: 'dem', layout: {visibility: ['case', ['global-state', 'relief'], 'visible', 'none']}},
+                        {id: 'line', type: 'line', source: 'g', layout: {visibility: ['case', ['global-state', 'relief'], 'visible', 'none']}, paint: {'line-width': 10}}]}});
+            const idle = () => new Promise(r => { map.once('idle', r); setTimeout(r, 5000); });
+            await idle();
+            await new Promise(r => setTimeout(r, 300));
+            const out = {hidden: urls.length, foundHidden: (await map.queryRenderedFeatures([100, 75], {layers: ['line']})).length};
+            map.setGlobalStateProperty('relief', true);
+            await idle();
+            for (let i = 0; i < 50 && !urls.length; i++) await new Promise(r => setTimeout(r, 100));
+            out.shown = urls.length > 0;
+            out.found = (await map.queryRenderedFeatures([100, 75], {layers: ['line']})).length;
+            map.remove(); el.remove();
+            return out;
+        }, mode).catch(e => ({error: String(e)}));
+        check(`[${mode}] visibility: an expression of the global state hides a hillshade and a line layer, loads no DEM tiles, and setGlobalStateProperty shows them (#998)`,
+            vis.hidden === 0 && vis.foundHidden === 0 && vis.shown && vis.found > 0, JSON.stringify(vis));
+    }
     // Two maps on one page with the same source name: each has its own feature state and its own global state.
     {
         const clip = id => page.evaluate(id => { const r = document.getElementById(id).getBoundingClientRect(); return {x: r.left + r.width / 2 - 2, y: r.top + r.height / 2 - 2, width: 4, height: 4}; }, id);

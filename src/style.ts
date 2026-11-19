@@ -194,7 +194,8 @@ export function compileLayer(l: LayerJSON): CompiledLayer | null {
         id: l.id, type: l.type, source: l.source, sourceLayer: l['source-layer'],
         minzoom: l.minzoom ?? -2, maxzoom: l.maxzoom ?? 24,
         // Pattern fills need sprite images, which are not supported yet; hiding them beats drawing solid black.
-        visible: l.layout?.visibility !== 'none', keep: l.keep, filter: own && extra ? c => own(c) && extra(c) : own ?? extra, p,
+        // `visibility` can be an expression of the global state (as in MapLibre GL JS); a change of that state compiles the layers again.
+        visible: (Array.isArray(l.layout?.visibility) ? compileProp(l.layout.visibility, 'string', 'visible').eval(0) : l.layout?.visibility) !== 'none', keep: l.keep, filter: own && extra ? c => own(c) && extra(c) : own ?? extra, p,
         paint: Object.fromEntries(Object.entries(l.paint ?? {}).map(([k, v]) => [k, JSON.stringify(v)])),
     };
 }
