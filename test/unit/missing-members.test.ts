@@ -12,12 +12,12 @@ test('a missing member of MapLibre warns once, and other reads do not warn', () 
     const warnings: string[] = [], warn = console.warn;
     console.warn = (m: string) => { warnings.push(m); };
     try {
-        watchMembers({Map, ScaleControl}, {Map: ['getZoom', 'on', 'transform', 'coveringTiles'], ScaleControl: ['onAdd', 'setUnit']});
+        watchMembers({Map, ScaleControl}, {Map: ['getZoom', 'on', 'transform', 'cameraHelper'], ScaleControl: ['onAdd', 'setUnit']});
         const map = new Map() as any, scale = new ScaleControl() as any;
         assert.equal(map.getZoom(), 3);
         assert.equal(map.on(), map);
-        assert.equal(map.coveringTiles, undefined);
-        map.coveringTiles;
+        assert.equal(map.cameraHelper, undefined);
+        map.cameraHelper;
         assert.equal(scale.setUnit, undefined);
         assert.equal(map.transform, undefined);
         // Names that frameworks probe, and names that MapLibre does not have, do not warn.
@@ -26,7 +26,7 @@ test('a missing member of MapLibre warns once, and other reads do not warn', () 
         assert.equal(typeof map.toString, 'function');
         assert.ok(map instanceof Map && map instanceof Base);
         assert.deepEqual(warnings, [
-            '[map-jr-gl] map.coveringTiles is not available in @map-jr/map-jr-gl/maplibre-compat. Remove the use, or see docs/maplibre-compatibility.md for what replaces it.',
+            '[map-jr-gl] map.cameraHelper is not available in @map-jr/map-jr-gl/maplibre-compat. Remove the use, or see docs/maplibre-compatibility.md for what replaces it.',
             '[map-jr-gl] ScaleControl.setUnit is not available in @map-jr/map-jr-gl/maplibre-compat. Remove the use, or see docs/maplibre-compatibility.md for what replaces it.',
             '[map-jr-gl] map.transform is private state of MapLibre GL JS and does not exist in @map-jr/map-jr-gl/maplibre-compat. Use getCenter(), getZoom(), getBearing(), getPitch() and project(). react-map-gl 8 does not read it.',
         ]);

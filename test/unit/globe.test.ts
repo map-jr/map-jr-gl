@@ -58,17 +58,17 @@ test('globe: the far side is hidden, and the tiles in view are chosen, also over
     const tr = make([0, 0], 1);
     assert.equal(globe.hidden(tr, mercX(180), mercY(0)), true);
     assert.equal(globe.hidden(tr, mercX(30), mercY(10)), false);
-    assert.deepEqual(tr.coveringTiles(0, 22, 512).map(t => t.key).sort(), ['1/0/0', '1/0/1', '1/1/0', '1/1/1']);
+    assert.deepEqual(tr.tileCover(0, 22, 512).map(t => t.key).sort(), ['1/0/0', '1/0/1', '1/1/0', '1/1/1']);
     // Zoomed in, the tile under the centre is that of Mercator.
     const close = make([-118.12, 36.6], 4.5);
     close.width = close.height = 256;
-    assert.deepEqual(close.coveringTiles(0, 22, 512, true).map(t => t.key), ['5/5/12']);
+    assert.deepEqual(close.tileCover(0, 22, 512, true).map(t => t.key), ['5/5/12']);
     // Over the north pole, the tiles of the top row of the zoom are all there (they meet at the pole).
     const pole = make([0, 84], 2);
-    const top = pole.coveringTiles(0, 22, 512).filter(t => t.y === 0 && t.z === 2);
+    const top = pole.tileCover(0, 22, 512).filter(t => t.y === 0 && t.z === 2);
     assert.equal(top.length, 4);
     // Each tile has w 0: a globe has one world.
-    assert.ok(pole.coveringTiles(0, 22, 512).every(t => t.w === 0));
+    assert.ok(pole.tileCover(0, 22, 512).every(t => t.w === 0));
 });
 
 test('globe: a drag turns the globe so that the place stays under the pointer, and keeps the size of the planet', () => {

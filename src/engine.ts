@@ -526,7 +526,7 @@ export class Engine {
             // them as tiles of twice the size, and without rounding up). The ground and the relief shading need no more,
             // and a view then needs about a quarter of the elevation data.
             const src = this.style.sources[source], ground = this.style.terrain?.source === source;
-            this.viewCovers.set(source, cover = this.tr.coveringTiles(src.minzoom, src.maxzoom, ground ? src.tileSize * 2 : src.tileSize, !ground));
+            this.viewCovers.set(source, cover = this.tr.tileCover(src.minzoom, src.maxzoom, ground ? src.tileSize * 2 : src.tileSize, !ground));
         }
         return cover;
     }
@@ -556,7 +556,7 @@ export class Engine {
             cover.zoom = id.z;
             // (A little less than the tile: a view that ends exactly on the tile's edge would take the tiles beyond it too.)
             cover.width = cover.height = TILE_SIZE - 2;
-            const ideal = image ? this.viewCover(source).filter(t => touches(t, id)) : cover.coveringTiles(src.minzoom, src.maxzoom, src.tileSize);
+            const ideal = image ? this.viewCover(source).filter(t => touches(t, id)) : cover.tileCover(src.minzoom, src.maxzoom, src.tileSize);
             for (const t of ideal) {
                 const key = source + '|' + t.key, have = this.tiles.get(key);
                 keys.push(key);
@@ -590,7 +590,7 @@ export class Engine {
         for (const [k, m] of this.meshHeights) if (this.frameNo - m.used > 120) this.meshHeights.delete(k);
         for (const [k, m] of this.groundCache) if (this.frameNo - (m.used ?? 0) > 120) this.groundCache.delete(k);
         const viewLit = this.layers.some(l => l.type === 'hillshade' && l.visible && l.p.anchor.eval(tr.zoom) === 'viewport');
-        for (const id of tr.coveringTiles(0, 22, TILE_SIZE).slice(0, 96)) { // nearest first; a cap keeps odd views affordable
+        for (const id of tr.tileCover(0, 22, TILE_SIZE).slice(0, 96)) { // nearest first; a cap keeps odd views affordable
             // Each tile's picture is drawn once for a whole level of zoom: with the style as it is three quarters of the way
             // through the level of the map, and stretched as the map zooms inside that level. A ground tile can be of a
             // coarser level than the map (far ground, and with a steep tilt also the ground at the centre) or of a finer one
@@ -969,7 +969,7 @@ export class Engine {
                 if (!this.exaggeration && this.tr.width) for (const source in this.style.sources) {
                     const src = this.style.sources[source], tr = this.tr;
                     if (src.type === 'image' || this.style.terrain?.source === source || !this.layers.some(l => l.source === source && l.visible && tr.zoom >= l.minzoom && tr.zoom < l.maxzoom)) continue;
-                    for (const id of tr.coveringTiles(src.minzoom, src.maxzoom, src.tileSize, src.type === 'raster' || src.type === 'raster-dem')) {
+                    for (const id of tr.tileCover(src.minzoom, src.maxzoom, src.tileSize, src.type === 'raster' || src.type === 'raster-dem')) {
                         const key = source + '|' + id.key;
                         if (!this.tiles.has(key)) this.request(source, id, key);
                     }
@@ -1413,7 +1413,7 @@ export class Engine {
             const src = this.style.sources[source];
             // (Only the tiles of geometry are cut; and only those of the layers that the globe draws at this zoom.)
             if (!this.sourceSigs.get(source)?.[1] || !this.layers.some(l => l.source === source && l.visible && g.zoom >= l.minzoom && g.zoom < l.maxzoom)) continue;
-            for (const id of g.coveringTiles(src.minzoom, src.maxzoom, src.tileSize, false)) {
+            for (const id of g.tileCover(src.minzoom, src.maxzoom, src.tileSize, false)) {
                 const key = source + '|' + id.key;
                 wanted.add(key);
                 const t = this.retried(source, id, key);
@@ -1559,7 +1559,7 @@ export class Engine {
                 // load one layer after another, does not start again each time.)
                 // Its tiles for the view are kept too, so that the layer is there at once when the page shows it.
                 const src = this.style.sources[source];
-                if (src.type !== 'image' && this.layers.some(l => l.source === source)) for (const id of tr.coveringTiles(src.minzoom, src.maxzoom, src.tileSize, src.type === 'raster' || src.type === 'raster-dem')) {
+                if (src.type !== 'image' && this.layers.some(l => l.source === source)) for (const id of tr.tileCover(src.minzoom, src.maxzoom, src.tileSize, src.type === 'raster' || src.type === 'raster-dem')) {
                     const key = source + '|' + id.key, t = this.tiles.get(key);
                     if (t) { t.used = frameNo; wanted.add(key); }
                 }
@@ -1570,7 +1570,7 @@ export class Engine {
             // (The elevation source of 3D terrain has the tiles of `viewCover` also while the map is seen from above and the
             // ground is flat: relief shading then looks the same as on a tilted map, and a tilt loads no other tiles.)
             const ground = this.style.terrain?.source === source;
-            const ideal = tr.coveringTiles(src.minzoom, src.maxzoom, ground ? src.tileSize * 2 : src.tileSize, !ground && (src.type === 'raster' || src.type === 'raster-dem'));
+            const ideal = tr.tileCover(src.minzoom, src.maxzoom, ground ? src.tileSize * 2 : src.tileSize, !ground && (src.type === 'raster' || src.type === 'raster-dem'));
             if (this.tap) for (const id of ideal) view.push(source + '|' + id.key);
             for (const id of ideal) {
                 const key = source + '|' + id.key;
@@ -1627,7 +1627,7 @@ export class Engine {
             const aim = this.target;
             if (aim) {
                 let n = 0;
-                for (const id of aim.coveringTiles(src.minzoom, src.maxzoom, ground ? src.tileSize * 2 : src.tileSize, !ground && (src.type === 'raster' || src.type === 'raster-dem'))) {
+                for (const id of aim.tileCover(src.minzoom, src.maxzoom, ground ? src.tileSize * 2 : src.tileSize, !ground && (src.type === 'raster' || src.type === 'raster-dem'))) {
                     const key = source + '|' + id.key;
                     if (wanted.has(key)) continue;
                     if (++n > PREFETCH_TILES) break;
@@ -1768,7 +1768,7 @@ export class Engine {
         let globeScene;
         if (globeness) {
             const f = tr.globe!.frame(tr);
-            globeScene = {m: Float32Array.from(f.m), horizon: f.horizon, cam: f.cam, rays: tr.globe!.rays(tr), t: globeness, cosLat: Math.cos(Math.min(Math.abs(tr.lat), 85.051129) * Math.PI / 180), tiles: tr.coveringTiles(0, 5, TILE_SIZE)};
+            globeScene = {m: Float32Array.from(f.m), horizon: f.horizon, cam: f.cam, rays: tr.globe!.rays(tr), t: globeness, cosLat: Math.cos(Math.min(Math.abs(tr.lat), 85.051129) * Math.PI / 180), tiles: tr.tileCover(0, 5, TILE_SIZE)};
         }
         const behind = hold || this.renderer.render({tr, layers: this.layers, items, labels, atlas: this.atlas, icon: this.pattern, light: this.style.light, sky: this.style.sky, moving: settling, globe: globeScene,
             // (Past the time limit and still unplaced: draw flat rather than raise terrain around a camera in the wrong place.)
