@@ -141,8 +141,8 @@ export function Places({places}) {
 
 The map shows a red and a blue pin, each with its tip on its position.
 
-In the main API and the adapters, the key `places` of `data` makes the GeoJSON source `places`.
-[`points`](../api.md#points-from-records) leaves out a record whose position is not two finite numbers.
+In the main API and the adapters, the key `places` of `data` makes the GeoJSON source `places`, and
+[`points`](../api.md#points-from-records) makes its GeoJSON from the records.
 
 The layout properties decide how the markers behave among each other and among the labels of the map:
 
@@ -307,8 +307,8 @@ export function Places({places}) {
 }
 ```
 
-A click on a pin opens a popup with the name of the place. A click anywhere on the image finds the marker, and where
-markers cover each other, the one on top is the first of `features`.
+A click on a pin opens a popup with the name of the place. Where markers cover each other, the one on top is the
+first of `features`.
 
 Two things often go wrong:
 
@@ -399,8 +399,7 @@ export function Home() {
 }
 ```
 
-The user drags the pin, and the new position arrives as `[lng, lat]` when the drag ends. A press that moves less
-than 3 pixels stays a click, and the map does not pan under a drag.
+The user drags the pin, and the new position arrives as `[lng, lat]` when the drag ends.
 
 After a drag, the pin stays where the user dropped it until `lngLat` changes. So store the position that the drag
 reports and pass it back, as the examples do. In Svelte and in the `<map-jr>` element, call `overlay` of the map.
@@ -412,8 +411,8 @@ A symbol layer draws its icons at a cost that does not grow with their number wh
 layers. [Which icons are fast](../markers.md#which-icons-are-fast) has the other conditions and what differs for
 such icons.
 
-With very many markers in view, also set `icon-ignore-placement: true`. Without it, the map keeps the labels away
-from every marker each time that it places the labels, and that work grows with the number of markers.
+With very many markers in view, also set `icon-ignore-placement: true`. Without it, the labels of the map keep away
+from each marker, and that work grows with the number of markers.
 
 To show groups in place of single markers, see [Clusters](../api.md#clusters).
 

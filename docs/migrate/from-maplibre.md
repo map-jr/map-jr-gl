@@ -87,8 +87,7 @@ keeps the rest of its code.
 
 ### Queries return a promise
 
-The tile data is in a worker, so the complete result of `queryRenderedFeatures` and `querySourceFeatures` is a
-promise. The value is also an array, for code that reads it at once, but that array can lack the features of tile
+The complete result of `queryRenderedFeatures` and `querySourceFeatures` is a promise. The value is also an array, for code that reads it at once, but that array can lack the features of tile
 sources. `await` also works in MapLibre GL JS, so the same code runs with both.
 
 ```js

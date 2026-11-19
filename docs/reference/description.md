@@ -1,7 +1,8 @@
 # The description
 
-The description (`MapDescription`) is the object that says what a map of `@map-jr/map-jr-gl` shows. `createMap` takes
-it, and `update` and `patch` take it again to change the map: see [Change the map](../api.md#change-the-map).
+The description (`MapDescription`) is one object that states everything that a map of `@map-jr/map-jr-gl` shows: the
+style, the data, the view and the controls. To change the map, give a new description, and the map applies what is
+different. [Change the map](../api.md#change-the-map) teaches this.
 
 ```js
 import {createMap} from '@map-jr/map-jr-gl';
@@ -11,14 +12,6 @@ const map = createMap('map', {
   initialView: {center: [-74.0065, 40.7085], zoom: 13.6},
 });
 ```
-
-These rules hold for every field:
-
-- A field that a later description leaves out goes back to its default. `patch` keeps the fields that it is not
-  given.
-- A name that is not in the tables below has no effect.
-- The development build writes one warning to the console for each mistake that this page names. The production
-  build does not check.
 
 ## `MapDescription`
 
@@ -45,7 +38,7 @@ These rules hold for every field:
 | `onError` | `(error: Error) => void` | | Called for each error of the map. Without it, the map writes each error to the console. |
 | `minZoom` | `number` | `-2` | The lowest zoom that the camera reaches. |
 | `maxZoom` | `number` | `22` | The highest zoom that the camera reaches. |
-| `maxPitch` | `number` | `60` | The largest pitch that the camera reaches, in degrees. A value above 90 gives 90 and one warning. |
+| `maxPitch` | `number` | `60` | The largest pitch that the camera reaches, in degrees. The limit is 90. |
 | [`maxBounds`](#maxbounds) | `Bounds \| null` | | The box that the view stays inside. |
 | `cursor` | `string` | | The CSS cursor over the map. Without it, the cursor is `pointer` over a feature of `interactiveLayers`. |
 | [`cooperativeGestures`](#cooperativegestures) | `boolean` | `false` | `true` makes the wheel zoom the map only with Ctrl (⌘ on a Mac), and lets one finger scroll the page. |
@@ -58,8 +51,7 @@ These rules hold for every field:
 
 ## `MapSetup`
 
-`MapDescription` extends `MapSetup`, so these fields are written in the same object. The map reads them only when it
-is made. A change of one of them in `update` or `patch` has no effect: destroy the map and make a new one.
+The map reads these fields only when it is made. To change one, destroy the map and make a new one.
 
 <!-- ref:MapSetup:start -->
 | Name | Type | Default | Description |
@@ -75,8 +67,6 @@ is made. A change of one of them in `update` or `patch` has no effect: destroy t
 
 ## `style`
 
-`style` takes one of three forms. A description with no `style` throws an error in `createMap`, `update` and `patch`.
-
 | Form | What the map does |
 |---|---|
 | A string | Requests the style from that URL. |
@@ -90,24 +80,16 @@ createMap('map', {
 });
 ```
 
-A new URL or a new object loads that style: the map draws from the start, and the view and the other fields of the
-description stay. Two cases load nothing:
-
-- An object or a pair with the same content as the last one is the same style.
-- An object that differs from the last one only in its `layers` changes the layers in place, by the rule of
-  [`layers`](#layers).
-
-An object that is neither a style nor a pair is an error of the map (`onError`), and the map draws nothing. A pair
-with only one of `light` and `dark` uses that style in both schemes and warns.
+The map applies a changed `style` in place where it can: a style object whose layers changed keeps the map as it
+is, and only those layers change. Any other new style is loaded, and the map draws from the start with the view and
+the other fields of the description.
 
 ## `sources`
 
-A source of `sources` replaces the source of the style that has the same id. The map adds the sources when the style
-has loaded, so they work with a style from a URL. [`layers`](#layers) has an example.
+A source of `sources` replaces the source of the style that has the same id. [`layers`](#layers) has an example.
 
-`update` adds a source with a new id and removes a source that the description leaves out, in place. A source whose
-content changes, and a source with the id of a source of the style, load the style again. To change the features of
-a GeoJSON source, use [`data`](#data).
+To change the features of a GeoJSON source, use [`data`](#data): a changed source in `sources` loads the style
+again.
 
 ## `layers`
 
@@ -122,17 +104,9 @@ createMap('map', {
 });
 ```
 
-| A change in `update` | What the map does |
-|---|---|
-| `paint`, `layout`, `filter`, `minzoom`, `maxzoom` or `before` of a layer | Changes the layer in place. |
-| A new layer, a removed layer, another order | Changes the layers in place. |
-| `type`, `source`, `source-layer` or another member of a layer | Loads the style again. |
-
-A new paint value moves from the old value to the new one: see
-[Paint transitions](../api.md#paint-transitions).
-
-Mistakes that warn: a `before` that is not the id of a layer of the style (the layer goes on top), and a `source`
-that is not in the style, in `sources` or in `data`.
+The map applies a change of `layers` in place, and a new paint value moves from the old value to the new one (see
+[Paint transitions](../api.md#paint-transitions)). Only a new `type`, `source` or `source-layer` of a layer loads the
+style again.
 
 ## `terrain`
 
@@ -170,13 +144,11 @@ createMap('map', {
 - A name of `fonts` replaces the same name in the `font-faces` of the style. A relative URL is relative to the page.
 - A font file that does not load is an error of the map (`onError`). The labels then use the next name of their
   `text-font`, then `fontFamily`.
-- A name that leaves `fonts` keeps its font until the page is loaded again. To replace a font, give another URL for
-  the same name.
 
 ## `initialView`
 
-`initialView` (`InitialView`) places the camera once, when the map is made. The user then moves the map. A change of
-it in `update` has no effect and warns: change [`view`](#view-and-onviewchange) or call `moveTo`.
+`initialView` (`InitialView`) places the camera once, when the map is made. The user then moves the map. To move it
+from code, call `moveTo` or use [`view`](#view-and-onviewchange).
 
 | Name | Type | Default | Description |
 |---|---|---|---|
@@ -195,8 +167,8 @@ createMap('map', {
 });
 ```
 
-Two other fields come before `initialView`. With `view` in the description, the map starts at `view`, and `bounds`
-has no effect. With [`hash`](#hash), a view in the URL of the page comes first.
+A view in the URL of the page ([`hash`](#hash)) and a [`view`](#view-and-onviewchange) in the description come before
+`initialView`.
 
 ## `view` and `onViewChange`
 
@@ -221,9 +193,8 @@ map.update(describe());
 animation. `onViewChange` gets a `View`: the same four members and `bounds`, the smallest box
 `[[west, south], [east, north]]` that contains the visible map.
 
-The map does not wait for the application, so a view that the map reported does not move the map when it comes back.
-This holds for the last 60 views that the map reported. To go back to a view that the application stored a moment
-ago, call `map.moveTo(stored)`, which always moves the map.
+A view that the map itself reported does not move the map when the application gives it back. So to return to a
+view that the application stored a moment ago, call `map.moveTo(stored)`.
 
 ## `data`
 
@@ -244,13 +215,10 @@ map.update({style, layers, data: {routes: route([-73.95, 40.78])}});
 
 - The map compares the value of a key by identity. Give a new object to change the data: a change inside the old
   object has no effect.
-- A change of `data` alone sends only the data to the map, and the data stays when the style changes.
 - A source that needs options (`cluster`, `promoteId`, `attribution`) is written in `sources` or in the style with
   no features, and `data` gives it the features.
-- A key that leaves `data` removes the source that the key made. A layer that still names the source draws nothing
-  and warns.
-- A key that is the id of a source of another type, such as a vector source, is an error of the map (`onError`), and
-  the data has no effect.
+- A key that leaves `data` removes the source that it made, so remove the layers of that source in the same
+  description.
 
 ## `images`
 
@@ -281,8 +249,7 @@ A value (`ImageInput`) is one of these:
 An SVG document with slots (`{{name}}`) is a template: each feature fills the slots from its properties. See
 [An image that is a template](../api.md#an-image-that-is-a-template) for the parameters and the limits.
 
-The map compares a string by its content and any other value by identity, so give a new object to replace a bitmap.
-An image that does not load is an error of the map (`onError`) with the name of the image, and the layer is drawn
+To replace a bitmap or a canvas, give a new object. An image that does not load is an error of the map (`onError`) with the name of the image, and the layer is drawn
 without it.
 
 ## `sprite`
@@ -306,13 +273,10 @@ createMap('map', {
   whose `sprite` is one URL.
 - A sprite that does not load is an error of the map (`onError`) with its URL, and the map draws the images of the
   other sprites.
-- A change of `sprite` loads the style again.
-- A value that is not a list of `{id, url}` warns.
 
 ## `controls`
 
-Each function of `@map-jr/map-jr-gl/controls` returns the description of a control (`ControlSpec`). The map adds the
-controls of the list, and removes a control when a later description does not have it.
+The list has the controls that the map shows. The functions of `@map-jr/map-jr-gl/controls` make its items.
 
 ```js
 import {createMap} from '@map-jr/map-jr-gl';
@@ -335,11 +299,9 @@ createMap('map', {
 | `{type: 'vertical-perspective'}` | A globe at every zoom. |
 | `null`, or no field | The projection of the style. |
 
-A change in `update` switches the projection and loads no style.
-
 On a globe:
 
-- The map does not draw 3D terrain and `fill-extrusion` layers. It writes one warning, and they show past zoom 12.
+- The map does not draw 3D terrain and `fill-extrusion` layers. They show past zoom 12.
 - `maxBounds` has no effect.
 - A move to a new centre with no `zoom` keeps the size of the globe on the screen, so `state.view.zoom` changes with
   the latitude. A `zoom` that is given is used as it is.
@@ -361,19 +323,14 @@ const map = createMap('map', {
 });
 ```
 
-- A name that a later description leaves out, or gives `null`, goes back to the default of the style.
-- A change repaints the layers that read the name, and loads no style. A new style gets the values of the
-  description.
-- A value is JSON: a string, a number, a boolean, an array or a plain object. Another value, such as a function or
-  `NaN`, warns.
-- The map sets the name `color-scheme` itself (see [`colorScheme`](#colorscheme-and-oncolorschemechange)). A value
-  for that name here comes first.
+A value is JSON: a string, a number, a boolean, an array or a plain object. The map sets the name `color-scheme`
+itself (see [`colorScheme`](#colorscheme-and-oncolorschemechange)), and a value for that name here comes first.
 
 ## `interactiveLayers`
 
 The features of these layers under the pointer are in `state.hover`, and those under a click are in `features` of
 [`onClick`](#onclick), the top one first. The cursor is `pointer` over such a feature, unless the description has
-`cursor`. An id that is not a layer of the style or of `layers` warns.
+`cursor`.
 
 ## `hoverState`
 
@@ -397,8 +354,8 @@ createMap('map', {
 });
 ```
 
-A feature needs an id. A feature with no id gets no state, and the map warns for its layer: give the features ids,
-or set `promoteId` of the source, or `generateId: true` for a GeoJSON source.
+A feature needs an id to get the state: give the features ids, or set `promoteId` of the source, or
+`generateId: true` for a GeoJSON source.
 
 ## `onClick`
 
@@ -415,8 +372,8 @@ or set `promoteId` of the source, or `generateId: true` for a GeoJSON source.
 
 `maxBounds` keeps the whole view inside a box: `[[west, south], [east, north]]` or `[west, south, east, north]`.
 When the box is smaller than the view, the zoom rises until the box fills the view. A west edge east of the east
-edge, such as `[[150, -50], [-120, 10]]`, gives a box that crosses the antimeridian. `null` or no field means no
-limit. `maxBounds` has no effect on a globe.
+edge, such as `[[150, -50], [-120, 10]]`, gives a box that crosses the antimeridian. `maxBounds` has no effect on a
+globe.
 
 ## `cooperativeGestures`
 
@@ -426,14 +383,8 @@ comes from [`locale`](#locale).
 
 ## `colorScheme` and `onColorSchemeChange`
 
-| Value | The scheme |
-|---|---|
-| `'light'` | Light. |
-| `'dark'` | Dark. |
-| `'auto'` | That of the browser (`prefers-color-scheme`). It changes while the page is open. |
-
-A value that is not one of these gives the light scheme and warns. The resolved scheme is `state.colorScheme`, and
-it has these effects:
+`'auto'` follows the browser (`prefers-color-scheme`) and changes while the page is open. The resolved scheme is
+`state.colorScheme`, and it has these effects:
 
 - The controls, the popup and the attribution have the colours of the scheme, and the container has the class
   `map-jr-dark` while the scheme is dark.
@@ -459,7 +410,6 @@ createMap('map', {
 The keys are those of the option `locale` of MapLibre GL JS:
 [The texts of the controls](../api.md#the-texts-of-the-controls) lists them. A key that is left out keeps the
 English text, and the library ships no translations. `locale` does not change the language of the labels of the map.
-A value that is not an object of strings warns.
 
 ## `padding`
 
@@ -486,8 +436,8 @@ createMap('map', {
 });
 ```
 
-The kinds are `Style`, `Source`, `Tile`, `Glyphs`, `SpriteJSON`, `SpriteImage`, `Image` and `Font`. The map always
-calls the function of the last description, so a framework can pass a new function in each render at no cost.
+The kinds are `Style`, `Source`, `Tile`, `Glyphs`, `SpriteJSON`, `SpriteImage`, `Image` and `Font`. A framework can
+pass a new function in each render at no cost.
 
 ## `renderer`
 
@@ -526,7 +476,7 @@ A string gives the view a name, so that the fragment can hold other values: `has
 
 ## See also
 
-- [Change the map](../api.md#change-the-map) for `update`, `patch` and the builds that have the warnings.
+- [Change the map](../api.md#change-the-map) for `update` and `patch`.
 - [Types](../api.md#types) for `Position`, `Bounds`, `LayerInput` and the style types.
 - [Vue and Nuxt](../vue.md), [React](../react.md) and [Svelte](../svelte.md): the components take the fields of the
   description as props.

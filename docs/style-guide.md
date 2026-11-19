@@ -32,6 +32,11 @@ A fact about the inside of the library stays in two cases, and it is then writte
 | "Up to version 0.5, these three fields were inside a field `extend`, which no longer exists." | History belongs in `CHANGELOG.md`. | Nothing. |
 | "The map makes this texture with its first such image at 256 by 256 pixels (256 KB), and doubles its width and height, up to 2048 by 2048 pixels (16 MB), when the images do not fit." | Only the upper limit can matter to a user. | The limit and what happens to an image beyond it, or nothing when no user reaches it. |
 | "Checked: the configuration above with Next.js 16.4.6. The development servers were not run for this page." | A test log is not documentation. | The configuration, and the versions that it supports in a table when the answer differs by version. |
+| "`createMap` takes it, and `update` and `patch` take it again to change the map." | It lists the functions that accept the thing and does not say what the thing is. | "The description is one object that states everything that a map shows: the style, the data, the view and the controls. To change the map, give a new description." |
+| "`MapDescription` extends `MapSetup`, so these fields are written in the same object." | It describes how the types are built. | "The map reads these fields only when it is made. To change one, destroy the map and make a new one." |
+| "A name that is not in the tables below has no effect." "A description with no `style` throws an error in `createMap`, `update` and `patch`." | Every developer assumes both. | Nothing. |
+| "`patch` keeps the fields that it is not given." (on the page of the description) | It is a fact about `patch`. | The sentence in the entry of `patch`. |
+| "A new URL or a new object loads that style. Two cases load nothing: an object with the same content […], an object that differs only in its `layers` […]." | It lists the branches of the code. | "The map applies a changed `style` in place where it can. Any other new style is loaded, and the map draws from the start." |
 
 The user docs never contain these (lint):
 
@@ -44,11 +49,28 @@ The user docs never contain these (lint):
 Such a fact is not lost. A decision goes into its issue, history into `CHANGELOG.md`, a measurement into its pull
 request, and a note for contributors into `docs/development.md`.
 
+## Write for the user, not from the source
+
+A writer who has the source open tends to write what the source shows. These rules keep that out of a page.
+
+- **An opening says what the thing is and what it is for.** It does not list the functions that take or return the
+  thing.
+- **The content starts at once.** A page has no section of general rules before it. Do not state what every
+  developer assumes: that an unknown name has no effect, that a missing required field is an error, that the
+  development build warns about a mistake.
+- **Do not describe how the types are built.** Phrases such as "A extends B" and "is a union of" tell the reader
+  nothing to do. Say what the reader does differently.
+- **State behaviour as what the user can rely on, in one statement.** A list of cases comes after it, and has only
+  the cases in which the user must act.
+- **Leave out the errors of plain misuse,** or put them in a short section at the end of the entry. Describe a
+  failure where the reader meets it only when a correct program can meet it, such as a style that does not load.
+
 ## One home for each fact
 
 A fact is written on one page. Other pages link to it. The home of a field, a method, an event or an option is its
 reference entry. The home of a task is its recipe or its guide. When two pages need the same paragraph, one of them
-needs a link.
+needs a link. A fact about another member lives in the entry of that member: what `patch` does is not on the page
+of the description.
 
 ## The page types
 
@@ -243,7 +265,10 @@ it becomes an issue with the label `area: dx`.
 
 1. Run `node scripts/docs-lint.mjs` and `pnpm test:consistency`.
 2. Do the delete test on every sentence.
-3. Check every claim against `src/` or by running the code. The pull request lists what was run.
-4. List in the pull request the facts that the old page had and the new page does not, with one reason for each
+3. Do the smell test. Read the page for sentences that only a person who looks at the source could write: they
+   name how things are composed, list the branches of the code, or state a guarantee that nobody would doubt. Cut
+   them.
+4. Check every claim against `src/` or by running the code. The pull request lists what was run.
+5. List in the pull request the facts that the old page had and the new page does not, with one reason for each
    group ("history", "mechanism", "moved to the reference").
-5. Read the page on GitHub in the branch: it must read well there with no site.
+6. Read the page on GitHub in the branch: it must read well there with no site.
