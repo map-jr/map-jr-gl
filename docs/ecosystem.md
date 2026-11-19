@@ -95,41 +95,30 @@ runs each page two times: with MapLibre GL JS, and with this library in its plac
 A page works when this library gives no error that MapLibre GL JS does not give, and at most 12 percent of the
 pixels of the two images differ clearly (labels and controls are drawn in different ways).
 
-**111 of 142 pages work.** 16 give an error, 15 draw a different image, 0 were not compared.
+**122 of 142 pages work.** 13 give an error, 7 draw a different image, 0 were not compared.
 
 | Example page | Result | Pixels that differ | First error of this library |
 |---|---|---|---|
-| add-3d-terrain-from-quantized-mesh-tiles | error | 65.4 | [map-jr-gl] Error: The source image could not be decoded. |
 | add-3d-tiles-3d-objects-and-models-using-threejs | error | 41.7 | Error: [map-jr-gl] addLayer: the custom layer "maplibre-gl-three-1" needs the map to draw on the main thread. Pass renderer: 'main' to new Map(). |
 | add-a-3d-model-with-babylonjs | error | 0.8 | Error: [map-jr-gl] addLayer: the custom layer "3d-model" needs the map to draw on the main thread. Pass renderer: 'main' to new Map(). |
-| add-a-cog-raster-source | error | 49.1 | [map-jr-gl] AggregateError: Request failed |
-| add-a-color-relief-layer | differs | 99.2 |  |
-| add-a-custom-layer-with-tiles-to-a-globe | error | 49.2 | Error: [map-jr-gl] addLayer: the custom layer "highlight" needs the map to draw on the main thread. Pass renderer: 'main' to new Map(). |
+| add-a-custom-layer-with-tiles-to-a-globe | error | 42.5 | Error: [map-jr-gl] addLayer: the custom layer "highlight" needs the map to draw on the main thread. Pass renderer: 'main' to new Map(). |
 | add-a-custom-style-layer | error | 3.4 | Error: [map-jr-gl] addLayer: the custom layer "highlight" needs the map to draw on the main thread. Pass renderer: 'main' to new Map(). |
-| add-a-multidirectional-hillshade-layer | differs | 56.2 |  |
-| add-a-simple-custom-layer-on-a-globe | error | 14.5 | Error: [map-jr-gl] addLayer: the custom layer "highlight" needs the map to draw on the main thread. Pass renderer: 'main' to new Map(). |
+| add-a-simple-custom-layer-on-a-globe | error | 5.2 | Error: [map-jr-gl] addLayer: the custom layer "highlight" needs the map to draw on the main thread. Pass renderer: 'main' to new Map(). |
 | add-a-video | differs | 28.1 |  |
 | add-custom-layers-that-follow-the-terrain | error | 15.7 | Error: [map-jr-gl] addLayer: the custom layer "grid" needs the map to draw on the main thread. Pass renderer: 'main' to new Map(). |
-| add-live-realtime-data | differs | 48.9 |  |
-| animate-an-icon-on-the-gpu | error | 0.7 | Failed to construct 'ImageData': The input data has zero elements. |
-| create-a-heatmap-layer-on-a-globe-with-terrain-elevation | differs | 19 |  |
-| customize-the-map-transform-constrain | differs | 92 |  |
-| display-a-globe-with-a-fill-extrusion-layer | differs | 14 |  |
-| display-a-globe-with-a-vector-map | differs | 23 |  |
-| display-a-globe-with-an-atmosphere | differs | 47.2 |  |
-| display-a-hybrid-satellite-map-with-terrain-elevation | differs | 13 |  |
+| add-live-realtime-data | differs | 45.8 |  |
+| animate-an-icon-on-the-gpu | error | 0.7 | [map-jr-gl] addImage("rainbow-triangle"): images that draw themselves with WebGL (renderWithWebGL) are not supported. Pass pixels, a canvas, an image or SVG tex |
+| create-a-heatmap-layer-on-a-globe-with-terrain-elevation | differs | 20.7 |  |
+| customize-the-map-transform-constrain | differs | 23 |  |
+| display-a-hybrid-satellite-map-with-terrain-elevation | differs | 13.7 |  |
 | display-a-map-in-a-polar-stereographic-projection | error | 87.3 | maplibregl.addProjection is not a function |
 | display-a-map-in-utm-zone-32n | error | 69.5 | maplibregl.addProjection is not a function |
 | display-a-map-with-mlt | error | 11.1 | [map-jr-gl] Error: Unsupported protobuf wire type 6 |
 | display-geojson-in-a-polar-stereographic-projection | error | 86.9 | maplibregl.importScriptInWorkers is not a function |
-| display-line-that-crosses-180th-meridian | error | 1.7 | Error: [map-jr-gl] addLayer: the layer "route-label" names the source "route", which the style does not have. Add the source first. |
 | enter-a-360-photosphere | error | 7.2 | Error: [map-jr-gl] addLayer: the custom layer "photosphere-2286828-48856625" needs the map to draw on the main thread. Pass renderer: 'main' to new Map(). |
-| level-of-detail-control | differs | 27.9 |  |
 | navigate-the-map-with-game-like-controls | differs | 36.4 |  |
-| raycast-3d-tiles-using-threejs | error | 88.5 | Error: [map-jr-gl] addLayer: the custom layer "agi-hq-3d" needs the map to draw on the main thread. Pass renderer: 'main' to new Map(). |
+| raycast-3d-tiles-using-threejs | error | 88.8 | Error: [map-jr-gl] addLayer: the custom layer "agi-hq-3d" needs the map to draw on the main thread. Pass renderer: 'main' to new Map(). |
 | set-center-point-above-ground | differs | 95.6 |  |
-| sky-fog-terrain | differs | 25.2 |  |
-| zoom-and-planet-size-relation-on-globe | differs | 21.5 |  |
 <!-- examples:end -->
 
 Custom layers need `renderer: 'main'`, which the example pages do not pass, so the pages with a custom layer give the
