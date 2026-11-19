@@ -108,13 +108,20 @@ Three things often go wrong:
 - A key is removed from `data`, and a layer still uses its source. The map removes the source, and the layer draws
   nothing. Remove the layer in the same description.
 - A key names a source of the style that is not a GeoJSON source, such as a vector source. The data has no effect,
-  and the map reports an error to [`onError`](../reference/description.md#mapdescription).
-- A wide line is cut off at the edges of the tiles. A tile of a GeoJSON source keeps the features up to `buffer`
-  pixels past its edges, in pixels of a tile 512 pixels wide. The default is 16 in `@map-jr/map-jr-gl` and 128 in
-  `@map-jr/map-jr-gl/maplibre-compat`. Declare the source in `sources` with a larger `buffer`, at most 512.
+  and the map calls `onError` of the description with an `Error` that names the key. Without `onError`, the map
+  writes the error to the console.
+- A wide line is cut off at the edges of the tiles. Set a larger `buffer` on the source, as in the table below.
 
-In Vue, a `ref` or a `reactive()` object also works as data. The map then sends a JSON copy of the data to its
-workers, which costs time for large GeoJSON. A `shallowRef` or `toRaw()` avoids the copy.
+`buffer` is the margin around each tile in which a GeoJSON source keeps the features that cross the edge of the
+tile. It is an option of the source, so declare the source in [`sources`](#set-the-options-of-a-source) to set it.
+
+| Entry | Default `buffer` | Largest value |
+|---|---|---|
+| `@map-jr/map-jr-gl` | `16` | `512` |
+| `@map-jr/map-jr-gl/maplibre-compat` | `128` | `512` |
+
+The unit is the pixel of a tile 512 pixels wide. The default applies to every GeoJSON source that does not set
+`buffer`: a source that `data` creates, and a source of `sources` or of the style.
 
 ## Set the options of a source
 
