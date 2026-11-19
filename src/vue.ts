@@ -165,7 +165,7 @@ const forwarded = Object.fromEntries(FORWARDED.map(name => [name.replace('.', ''
 export interface MapImageProps<P extends string = never> {
     /** The name of the image, for `icon-image` of a style layer. */
     name: string;
-    /** The names of the parameters of the image. The slot gets a prop for each one. */
+    /** The names of the parameters of the image, as an array of strings. The slot gets a prop for each one. */
     params?: readonly P[];
     /** The URL of an image, in place of an SVG in the slot. */
     src?: string;
@@ -232,16 +232,16 @@ export const MapImage = defineComponent(<P extends string>(props: MapImageProps<
  */
 /** What a template ref on `MapJr` holds. */
 export interface MapJrExposed {
-    /** The map, or `null` until the component is mounted. */
+    /** The map, or `null` until the code of the map has loaded after the component is mounted. */
     readonly map: MapInstance | null;
-    /** The state of the map, or `null` until the component is mounted. */
+    /** The state of the map, or `null` until the code of the map has loaded after the component is mounted. */
     readonly state: MapState | null;
 }
 
 const MapJrComponent = defineComponent({
     name: 'MapJr',
     props: {
-        /** The style: a style object, the URL of a style, or `{light, dark}` with one style for each resolved `colorScheme`. */
+        /** The style: a style object, the URL of a style, or `{light, dark}`, of which the map draws the style that matches `colorScheme`. */
         mapStyle: {type: [String, Object] as PropType<MapDescription['style']>, required: true},
         /** The view that the application controls, for `v-model:view`. Without it, the map starts at `initialView` and the user moves it. */
         view: Object as PropType<ViewInput>,

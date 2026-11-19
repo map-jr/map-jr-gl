@@ -29,14 +29,14 @@ flex or grid container. A parent with only `min-height` gives the map a height o
 
 Each prop sets the field of the description with the same name, except `mapStyle`, which sets `style`, and `ssr`.
 See [the description](description.md) for what each field does. In a template, write a prop in kebab-case
-(`initial-view`) or in camelCase. The props `renderer`, `fontFamily`, `interactive`, `antialias`, `attribution` and
-`hash` are read only when the map is created. To change one of them, create the component again, for example with a
+(`initial-view`) or in camelCase. The props `renderer`, `fontFamily`, `interactive`, `antialias`, `nonce`, `attribution`
+and `hash` are read only when the map is created. To change one of them, create the component again, for example with a
 new `key`.
 
 <!-- ref:VueMapJrProps:start -->
 | Name | Type | Default | Description |
 |---|---|---|---|
-| [`mapStyle`](#mapstyle) **required** | `string \| StyleSpecification \| {light: string \| StyleSpecification; dark: string \| StyleSpecification}` | | The style: a style object, the URL of a style, or `{light, dark}` with one style for each resolved `colorScheme`. |
+| [`mapStyle`](#mapstyle) **required** | `string \| StyleSpecification \| {light: string \| StyleSpecification; dark: string \| StyleSpecification}` | | The style: a style object, the URL of a style, or `{light, dark}`, of which the map draws the style that matches `colorScheme`. |
 | [`view`](#view) | `ViewInput` | | The view that the application controls, for `v-model:view`. |
 | `initialView` | `InitialView` | | The view when the map is created: a center, zoom, bearing and pitch, or `bounds` to fit. |
 | `sources` | `Record<string, SourceSpecification>` | | Sources to add to the style, by id. |
@@ -74,19 +74,26 @@ new `key`.
 ### `mapStyle`
 
 `mapStyle` sets the field [`style`](description.md#style) of the description. A Vue element reserves the name
-`style` for its CSS. The component sees a change inside a reactive style object, such as
+`style` for its CSS. With `{light, dark}`, the map draws the style that matches
+[`colorScheme`](description.md#colorscheme-and-oncolorschemechange): `'auto'` follows `prefers-color-scheme` of the
+browser, and the map loads the other style when the scheme changes. The component sees a change inside a reactive style object, such as
 `style.layers[4].paint['fill-color'] = '#d6453d'`.
 
 ### `view`
 
 `view` and the event `update:view` together form `v-model:view`. The component emits `update:view` with the new
 view at each change of the view, while the user moves the map and when your code changes `view`. It does not emit
-`update:view` for the first view. To read the first view, read `map.state.get().view` in the handler of `@load`.
+`update:view` for the first view. To read the first view, call `map.state.get()` in the handler of `@load`, which
+receives the map: the [state](../api.md#the-state) has the view in `view`.
+
+When `view` and `initialView` are both set, the fields of `view` override those of `initialView` when the map is
+created.
 
 The component sees a new object and a change of one field (`view.zoom = 15`). The map applies a new `view` with no
 animation. A `view` that equals one of the views that the map reported does not move the map: see
 [`view` and `onViewChange`](description.md#view-and-onviewchange). To return to a stored view, or to animate the
-camera, call `moveTo` of the map, which the [template ref](#the-template-ref) holds.
+camera, call [`moveTo`](../guide/view-and-camera.md#move-the-camera-from-code) of the map, which the
+[template ref](#the-template-ref) holds.
 
 ```vue
 <script setup>
@@ -95,7 +102,12 @@ import {MapJr} from '@map-jr/map-jr-gl/vue';
 
 const view = ref({center: [-74.0065, 40.7085], zoom: 13.6, bearing: 0, pitch: 0});
 const mapRef = useTemplateRef('mapRef');
-let stored = view.value;
+let stored = {...view.value};
+
+function remember() {
+  const {center, zoom, bearing, pitch} = view.value;
+  stored = {center, zoom, bearing, pitch};
+}
 
 function returnToStored() {
   mapRef.value.map.moveTo({...stored, duration: 500});
@@ -106,7 +118,7 @@ function returnToStored() {
   <div style="height: 400px">
     <MapJr ref="mapRef" map-style="https://styles.map-jr.org/1/elevation-zero.json" v-model:view="view" />
   </div>
-  <button @click="stored = view">Remember this view</button>
+  <button @click="remember">Remember this view</button>
   <button @click="returnToStored">Back to the stored view</button>
 </template>
 ```
@@ -140,8 +152,7 @@ function addPlace(event) {
 ```
 
 A reactive object (from `ref()` or `reactive()`) in `data` works, and the map sends a JSON copy of it to its
-workers. For large GeoJSON, that copy costs time: use `shallowRef` or `toRaw()`. Data that JSON cannot copy, such as
-an object that contains itself, is an `error` event.
+workers. For large GeoJSON, that copy costs time: use `shallowRef` or `toRaw()`.
 
 ### `ssr`
 
@@ -156,7 +167,7 @@ in the browser.
 |---|---|---|
 | `update:view` | `View` | At each change of the view. See [`view`](#view). |
 | `update:colorScheme` | `'auto' \| 'light' \| 'dark'` | When a control sets the colour scheme. With `v-model:color-scheme`, the prop follows. |
-| `click` | `MapPointer`: `{point, lngLat, features}` | At each click on the map. `features` are those of `interactiveLayers` at the point. |
+| `click` | `{point: {x, y}, lngLat: [lng, lat], features}` | At each click on the map. `features` are those of `interactiveLayers` at the point. |
 | `hover` | `RenderedFeature[]` | When the features of `interactiveLayers` under the pointer change. |
 | `load` | `MapInstance` | Once, when the style and the first tiles have loaded. The map is not yet idle then. |
 | `idle` | none | Each time the map has drawn everything and nothing moves. |
@@ -164,9 +175,12 @@ in the browser.
 
 The component also emits each other event of [`listen`](../api.md#events) of the main API, with the same value:
 `@moveend`, `@zoomend`, `@styleimagemissing`, `@sourcedata` and the others. The event `style.load` is `@styleload`,
-because a dot in an event name is a modifier in a template. The component listens to such an event only when the
-component has a listener for it when it is created. For the events of the map named `click`, `load`, `idle` and
-`error`, call `map.listen`.
+because a dot in an event name is a modifier in a template.
+
+The component checks for a listener of `error` and of each of these events once, when it is created. A listener
+that is added later, for example in a `v-on` object that changes, is not called. To listen later, call `map.listen`
+on the map of the [template ref](#the-template-ref). `map.listen` also receives the events of the map named
+`click`, `load`, `idle` and `error`, whose values differ from those of the component events.
 
 ### The slot
 
@@ -191,14 +205,15 @@ import {MapJr} from '@map-jr/map-jr-gl/vue';
 
 ### The template ref
 
-A template ref on `MapJr` holds these members. The map is `mapRef.value.map`. In TypeScript, type the ref as
+A template ref on `MapJr` holds these members. The map is `mapRef.value.map`. It is `null` until the code of the
+map has loaded, which is after `onMounted` of the component that has the ref. In TypeScript, type the ref as
 `useTemplateRef<InstanceType<typeof MapJr>>('mapRef')`.
 
 <!-- ref:VueMapJrExposed:start -->
 | Name | Type | Description |
 |---|---|---|
-| `map` (read only) | `MapInstance \| null` | The map, or `null` until the component is mounted. |
-| `state` (read only) | `MapState \| null` | The state of the map, or `null` until the component is mounted. |
+| `map` (read only) | `MapInstance \| null` | The map, or `null` until the code of the map has loaded after the component is mounted. |
+| `state` (read only) | `MapState \| null` | The state of the map, or `null` until the code of the map has loaded after the component is mounted. |
 <!-- ref:VueMapJrExposed:end -->
 
 ## `MapOverlay`
@@ -282,14 +297,13 @@ const layers = [{id: 'stations', type: 'symbol', source: 'stations', layout: {'i
 | Name | Type | Default | Description |
 |---|---|---|---|
 | `name` **required** | `string` | | The name of the image, for `icon-image` of a style layer. |
-| `params` | `readonly P[]` | | The names of the parameters of the image. |
+| `params` | `readonly P[]` | | The names of the parameters of the image, as an array of strings. |
 | `src` | `string` | | The URL of an image, in place of an SVG in the slot. |
 | `width` | `number` | | The width in CSS pixels. |
 | `height` | `number` | | The height in CSS pixels. |
 | `pixelRatio` | `number` | `1` | The number of image pixels for one CSS pixel, for example 2 for an image "@2x". |
 <!-- ref:VueMapImageProps:end -->
 
-`P` is the type of the names in `params`.
 
 - The slot receives a prop for each name of `params`. Bind it to an attribute (`:fill="color"`) or write it as text
   (`<text>{{ label }}</text>`). With TypeScript, a prop of the slot that is not in `params` is a type error.
@@ -298,8 +312,8 @@ const layers = [{id: 'stations', type: 'symbol', source: 'stations', layout: {'i
 - Vue renders the SVG once. The map draws it once for each different set of values.
 - When the content of the slot changes, the map receives the new image.
 - The SVG is not in the page, so a `<style>` or an `id` inside it has no effect on the page.
-- An image of `MapImage` overrides the image of the prop `images` with the same name. Of two `MapImage` with one
-  name, the map uses either image while one of them is mounted.
+- An image of `MapImage` overrides the image of the prop `images` with the same name. When two `MapImage` have
+  one name, the map uses the image of the one that was mounted last.
 - The server render of [`ssr`](#ssr) does not draw the image.
 
 ## `useMapJr`
@@ -344,7 +358,9 @@ const {map, state} = useMapJr(useTemplateRef('el'), computed(() => ({
 `useMapJr` calls [`update`](../api.md#change-the-map) of the map each time that `spec` returns a new object. A
 computed value or a function returns one when a ref that it reads changes. A change inside a ref is not seen:
 after `const description = ref({style, cursor: ''})`, the assignment `description.value.cursor = 'crosshair'`
-changes nothing. Write `description.value = {...description.value, cursor: 'crosshair'}`.
+changes nothing. Write `description.value = {...description.value, cursor: 'crosshair'}`. The props of `MapJr`
+differ: the component sees the changes inside a value that [How `MapJr` sees changes](#how-mapjr-sees-changes)
+lists.
 
 ## `useMapInstance`
 
@@ -361,9 +377,21 @@ created, and also in a component outside `MapJr`.
 useMapFeatures(at: MaybeRefOrGetter<FeaturePlace | undefined>, options?: MaybeRefOrGetter<FeatureOptions>): ShallowRef<RenderedFeature[]>
 ```
 
+```ts
+type FeaturePlace = {x: number; y: number} | [lng: number, lat: number] | {x: number; y: number}[];
+interface FeatureOptions {layers?: string[]; filter?: FilterSpecification; radius?: number}
+interface SourceOptions {sourceLayers?: string[]; filter?: FilterSpecification; radius?: number; geometry?: boolean; zoom?: number}
+```
+
+- `FeaturePlace` is a point in CSS pixels, a position `[lng, lat]`, or the two corners of a rectangle of the screen.
+- `FeatureOptions` limits the result to the style layers in `layers` and to the features that `filter` matches, and
+  `radius` widens the place by that many CSS pixels.
+- [Queries](../api.md#queries) describes `SourceOptions` for `useMapSource`.
+
 **Returns** a ref with the features that the style layers draw at `at`, kept up to date as
 [`watchFeatures`](../api.md#queries) of the map keeps them. Call it in a component inside `MapJr`. The place and the
-options can be refs or functions.
+options can be refs or functions. The example is a component that a page puts inside `MapJr` with the style
+`elevation-zero.json`, which has the layer `building`.
 
 ```vue
 <script setup>

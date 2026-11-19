@@ -1,8 +1,9 @@
 # Nuxt
 
 The module `@map-jr/map-jr-gl/nuxt` sets up the [Vue components and composables](vue.md) of `@map-jr/map-jr-gl/vue`
-in Nuxt 3 or 4. With the module, a page uses them without an import, and Vite loads the tile workers in
-development. The module has no options.
+in Nuxt. With the module, a page uses them without an import, and Vite loads the tile workers in development. The
+module requires `@nuxt/kit` 3 or 4 as a peer dependency. The module has no options: a key `mapJr` in
+`nuxt.config.ts` is accepted and has no effect.
 
 ```ts
 // nuxt.config.ts
@@ -10,7 +11,7 @@ export default defineNuxtConfig({modules: ['@map-jr/map-jr-gl/nuxt']});
 ```
 
 ```vue
-<!-- app/pages/index.vue -->
+<!-- app/pages/index.vue (pages/index.vue in Nuxt 3) -->
 <template>
   <div style="height: 400px">
     <LazyMapJr hydrate-on-visible ssr map-style="https://styles.map-jr.org/1/elevation-zero.json"
@@ -47,15 +48,36 @@ export default defineNuxtConfig({
 that file and starts the map when the map comes into view, so a page with a map far down loads no map code before
 then. With the prop [`ssr`](vue.md#ssr), the page shows the first view from the server at once.
 
+The Nitro server then
+fetches the style and the tiles while it renders the page, within the
+[limits for requests](server.md#limits-for-requests) of the server renderer: see
+[Server rendering](../guide/server-rendering.md). A route that Nuxt does not render on the server (`ssr: false`)
+has no first view, and the map starts in the browser.
+
 The other exports of `@map-jr/map-jr-gl/vue` do not load the code of the map. A component that uses `MapOverlay`,
 `MapImage` or `useMapInstance` next to a `LazyMapJr` does not bring that code into the page.
 
 A template ref on `LazyMapJr` with `hydrate-on-visible`, or with another `hydrate-*` prop, holds the wrapper that
 Nuxt puts around `MapJr`. It has no `map` and no `state`, also after hydration. Reach the map in one of these ways:
 
-- `@load` receives the map: `<LazyMapJr hydrate-on-visible @load="instance => (map = instance)" />`.
+- `@load` receives the map, as in the example below.
 - The default slot receives `map` and `state`: `<LazyMapJr hydrate-on-visible v-slot="{map}">`.
 - `useMapInstance()` in a component of your own inside `LazyMapJr` returns a ref with the map.
+
+```vue
+<script setup>
+// Nuxt imports `shallowRef` itself. A shallowRef keeps the map as it is, with no reactive proxy around it.
+const map = shallowRef(null);
+</script>
+
+<template>
+  <div style="height: 400px">
+    <LazyMapJr hydrate-on-visible map-style="https://styles.map-jr.org/1/elevation-zero.json"
+      :initial-view="{center: [-74.0065, 40.7085], zoom: 13.6}" @load="instance => (map = instance)" />
+  </div>
+  <button @click="map?.moveTo({zoom: 15, duration: 500})">Zoom to 15</button>
+</template>
+```
 
 Without a `hydrate-*` prop, the template ref on `LazyMapJr` holds [the members of `MapJr`](vue.md#the-template-ref).
 
