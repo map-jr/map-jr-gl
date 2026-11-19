@@ -12,6 +12,8 @@ sections:
     pages:
       - getting-started.md
       - which-entry.md
+      - terrain.md
+      - globe.md
   - title: Recipes
     folder: recipes
     pages: []
