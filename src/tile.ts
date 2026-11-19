@@ -129,6 +129,8 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
     const under = overscaled !== false && overscaled < tz, z = under ? overscaled : tz;
     const zs = overscaled && overscaled > z ? overscaled : z, z1 = zs % 1 ? zs : zs + 1;
     const out: TileIR = {layers: {}, labels: {}, z: zs};
+    // The over-scaling of MapLibre GL JS: a tile shown deeper than its own zoom has its pixels that many times smaller.
+    const ov = zs > tz ? 2 ** Math.max(0, Math.floor(zs) - tz) : 1;
     // A filter sees the zoom that the sizes are found at, as in MapLibre GL JS (the over-zoomed zoom of the tile).
     const ctx = {zoom: zs, f: null as Feature | null};
 
@@ -179,7 +181,7 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
                 // (The flag is named for the usual case at a point: the symbol stays upright when the map turns.)
                 const turns = (alignment: unknown) => along ? alignment === 'viewport' : alignment !== 'map';
                 const base = {
-                    text, size0: p.size.eval(zs, f), size1: p.size.eval(z1, f),
+                    center: placement === 'line-center', text, size0: p.size.eval(zs, f), size1: p.size.eval(z1, f),
                     color: [color[0], color[1], color[2], color[3] * op] as RGBA,
                     halo: [haloColor[0], haloColor[1], haloColor[2], haloColor[3] * op] as RGBA, haloWidth: p.haloWidth.eval(z, f), haloBlur: p.haloBlur.eval(z, f), rotate: p.rotate.eval(z, f) * Math.PI / 180, justify: justification(p.justify.eval(z, f), p.anchor.eval(z, f)), font: fontKey(p.font.eval(z, f)),
                     maxWidth: p.maxWidth.eval(z, f), spacing: p.spacing.eval(z, f), offset: p.offset.eval(z, f), anchor: p.anchor.eval(z, f),
@@ -193,7 +195,7 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
                     } : undefined,
                 };
                 // symbol-spacing is in pixels; tiles are EXTENT units across TILE_SIZE pixels.
-                const g = geometry(f), spacing = p.symbolSpacing.eval(z, f) * EXTENT / 512 * 2 ** (tz - z), key = sorted ? +p.sortKey.eval(z, f) || 0 : 0;
+                const g = geometry(f), spacing = p.symbolSpacing.eval(z, f) * EXTENT / 512 * 2 ** (tz - z) / ov, key = sorted ? +p.sortKey.eval(z, f) || 0 : 0;
                 let start = 0;
                 for (const end of g.ringEnds) {
                     const piece: Piece = {base, ring: g.coords.slice(start * 2, end * 2), type: f.type, along, spacing, key};
@@ -228,7 +230,9 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
                 const text = base.text;
                 // Enough line either side of the anchor to lay the text along it at this tile's own zoom (8 tile units per pixel).
                 const window = along && text && !base.upright ? text.length * Math.max(base.size0, base.size1) * 0.7 * 8 * 0.6 + 200 : 0;
-                for (const a of anchors(ring, 0, ring.length / 2, type, along, spacing, !!text, window)) {
+                // As in MapLibre GL JS, the label length is in tile units at the tile's zoom; the width of the text is estimated here (0.6 em a character).
+                const size = Math.max(base.size0, base.size1), labelLength = text ? text.length * size * 0.6 * EXTENT / 512 / ov : 0;
+                for (const a of anchors(ring, 0, ring.length / 2, type, along, spacing, window, {labelLength, glyph: size * EXTENT / 512 / ov, ov, center: base.center})) {
                     if (a[0] < 0 || a[0] >= EXTENT || a[1] < 0 || a[1] >= EXTENT) continue;
                     // Everything a feature's labels have in common lives on a shared object behind each label, so a
                     // road with twenty anchors does not carry twenty copies of its text, colours and fonts.
@@ -321,8 +325,28 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
     return out;
 }
 
+type AnchorOptions = {labelLength: number; glyph: number; ov: number; center?: boolean};
+/** The distances along a line of its label anchors, by the method of MapLibre GL JS (`getAnchors`): from an offset, every `symbol-spacing`, where the label fits on the line. */
+function lineAnchors(c: number[], start: number, end: number, len: number, spacing: number, {labelLength, glyph, ov}: AnchorOptions): number[] {
+    const x0 = c[start * 2], y0 = c[start * 2 + 1];
+    // A line that comes in over the edge of the tile continues in the next tile: its anchors keep the rhythm of the spacing.
+    const continued = x0 === 0 || x0 === EXTENT || y0 === 0 || y0 === EXTENT;
+    // A long label keeps at least a quarter of the spacing free between it and the next.
+    if (spacing - labelLength < spacing / 4) spacing = labelLength + spacing / 4;
+    // (The text of a line that is not continued starts a little way in, which keeps labels apart at T junctions.)
+    const offset = continued ? spacing / 2 * ov % spacing : (labelLength / 2 + glyph * 2) * ov % spacing;
+    const resample = (from: number) => {
+        const out: number[] = [];
+        for (let d = from; d <= len; d += spacing) if (d - labelLength / 2 >= 0 && d + labelLength / 2 <= len) out.push(d);
+        return out;
+    };
+    const ds = resample(offset);
+    // When no anchor fits, a line that is not continued tries once more from its middle.
+    return ds.length || continued ? ds : resample(len / 2);
+}
+
 /** Yields [x, y, angle, length, (anchor index in path, ...path)] label anchors for one ring. */
-function anchors(c: number[], start: number, end: number, type: number, along: boolean, spacing: number, hasText: boolean, window = 0): number[][] {
+function anchors(c: number[], start: number, end: number, type: number, along: boolean, spacing: number, window: number, o: AnchorOptions): number[][] {
     if (type === 1) return [[c[start * 2], c[start * 2 + 1], 0, 0]];
     if (type === 3 && !along) {
         let a = 0, cx = 0, cy = 0;
@@ -343,12 +367,10 @@ function anchors(c: number[], start: number, end: number, type: number, along: b
         }
         return [c[end * 2 - 2], c[end * 2 - 1]];
     };
-    // Named lines always get one label; icon-only symbols (one-way arrows) need a reasonable run of line.
-    let n = along ? Math.floor(len / spacing) : 1;
-    if (!n) { if (!hasText && len < spacing / 4) return []; n = 1; }
+    const ds = !along ? [len / 2] : o.center ? [len / 2] : lineAnchors(c, start, end, len, spacing, o);
     const out: number[][] = [];
-    for (let i = 0; i < n; i++) {
-        const d = (i + 0.5) / n * len, span = Math.min(d, len - d, 250);
+    for (const d of ds) {
+        const span = Math.min(d, len - d, 250);
         const [x, y] = at(d), [ax, ay] = at(d - span), [bx, by] = at(d + span);
         const anchor = [x, y, Math.atan2(by - ay, bx - ax), len];
         if (along && window > 0) {
