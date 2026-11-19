@@ -17,6 +17,7 @@ BSD-3-Clause.
 - At a high pitch, the line of the horizon (`getMercatorHorizon`) and the cutoff of labels far from the camera
   (`perspectiveRatioCutoff`) follow MapLibre GL JS (BSD-3-Clause). The code is new.
 - The sky and the fog of the root property `sky` follow the formulas of MapLibre GL JS (BSD-3-Clause; the shaders `sky` and `terrain` and `fog` in `shaders/_prelude_fog`). The code in `src/gl.ts` is new. The atmosphere on the globe is a close translation of `atmosphere.fragment.glsl` of MapLibre GL JS (BSD-3-Clause), changed, and follows its `drawAtmosphere`, `getSunPos` and `getAtmosphereAltitudeBlend`; the notice is in `THIRD-PARTY-LICENSES.md`.
+- The placement of `text-variable-anchor` and `text-variable-anchor-offset` follows `placeLayerBucketPart` and `attemptAnchorPlacement` of MapLibre GL JS 6.17 (BSD-3-Clause): the anchor of the previous placement first, then every anchor without overlap, then every anchor with overlap, and an icon of `icon-text-fit` tested at each anchor. The code is new.
 - glsl-atmosphere (github.com/wwwtyro/glsl-atmosphere, Unlicense): the atmosphere shader of MapLibre GL JS, which the shader of the atmosphere on the globe copies, follows its scattering method.
 - Some methods follow MapLibre GL JS, so that a map looks the same in the two libraries. Examples: the line breaks
   in labels, the light on buildings, the size of dashes, the size of circles on a map with pitch, and the movement of the camera

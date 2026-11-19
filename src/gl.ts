@@ -1177,8 +1177,11 @@ export class GLRenderer {
             // Buildings are the one layer that needs depth sorting; everything else is painted back to front.
             const extrude = L.type === 'fill-extrusion', pending: (() => void)[] = [];
             if (extrude) {
-                // On 3D terrain the ground's depth is kept, so hills hide the buildings behind them.
-                gl.clear(s.terrain ? gl.STENCIL_BUFFER_BIT : gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
+                // The fill-extrusion layers of a frame share one depth buffer, as in MapLibre GL JS, so the roof of one
+                // layer hides the lower part of a building in a later layer. On 3D terrain the ground's depth is kept
+                // too, so hills hide the buildings behind them.
+                gl.clear(s.terrain || this.extrusionDepth ? gl.STENCIL_BUFFER_BIT : gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
+                this.extrusionDepth = true;
                 gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL);
             }
             for (const it of items) {
@@ -1308,6 +1311,8 @@ export class GLRenderer {
         this.current = null;
     }
 
+    /** True once a fill-extrusion layer of this frame has cleared the depth buffer. */
+    private extrusionDepth = false;
     private uids = 0;
     private current: Program | null = null;
     /** Selects a program, telling it the size of the view being drawn (the screen, or a terrain tile's texture). */
@@ -1707,6 +1712,7 @@ export class GLRenderer {
         gl.clearColor(0, 0, 0, 0);
         gl.clear(gl.COLOR_BUFFER_BIT);
         this.current = null;
+        this.extrusionDepth = false;
         this.drawSky(s);
         const target: [number, number] = [this.canvas.width, this.canvas.height];
         const use = (name: keyof typeof SHADERS) => this.use(name, tr);

@@ -1050,13 +1050,13 @@ for (const mode of renderers) {
             await new Promise(r => m.once('idle', r));
             // (Only the warnings about members, which name the entry: a browser with no WebGL2 adds a warning about the renderer.)
             const member = w => w.includes('in @map-jr/map-jr-gl/maplibre-compat'), usual = warns.filter(member);
-            for (let i = 0; i < 2; i++) { void attribution.styleOwner; void scale.setUnit; void m.transform; void m.coveringTiles; void m.then; void m.$$typeof; void m.__v_skip; void m.toJSON; }
+            for (let i = 0; i < 2; i++) { void attribution.styleOwner; void scale.setUnit; void m.transform; void m.cameraHelper; void m.then; void m.$$typeof; void m.__v_skip; void m.toJSON; }
             return {usual, after: warns.filter(member)};
         } finally { console.warn = warn; m?.remove(); el.remove(); }
     });
     check(`[${mode}] the development build warns once for each member of MapLibre GL JS that a class here does not have, and not in usual use`,
         missing.usual.length === 0 && missing.after.length === 3 && missing.after.every(w => w.startsWith('[map-jr-gl] ')) &&
-        ['AttributionControl.styleOwner', 'map.transform', 'map.coveringTiles'].every(n => missing.after.some(w => w.includes(n))), JSON.stringify(missing));
+        ['AttributionControl.styleOwner', 'map.transform', 'map.cameraHelper'].every(n => missing.after.some(w => w.includes(n))), JSON.stringify(missing));
     // The AbortController that a protocol gets is aborted when the request is no longer wanted: a newer setData, a newer
     // setData that drops the diffs of updateData, and the removal of the map (#92).
     const aborts = await page.evaluate(async mode => {
@@ -3459,6 +3459,29 @@ for (const mode of renderers) {
         });
         check('[main] maplibre-compat: setTransformConstrain on a map that draws in a worker warns once and fires no error (#1020)',
             w1020.warnings.length === 1 && w1020.warnings[0].includes("renderer: 'main'") && !w1020.errors.length && w1020.zoom === 2, JSON.stringify(w1020));
+        // #1022: coveringTiles gives the tiles of MapLibre GL JS (served at /ml/) for the same view and options.
+        const m1022 = await page.evaluate(async () => {
+            const ml = await import('/ml/maplibre-gl.mjs');
+            ml.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const compat = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const run = async lib => {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+                const m = new lib.Map({container: el, renderer: 'main', style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, center: [179.9, 45], zoom: 4.6, fadeDuration: 0});
+                await new Promise(r => m.loaded?.() ? r() : m.once('load', r));
+                const cover = o => m.coveringTiles(o).map(t => `${t.overscaledZ}/${t.wrap}/${t.canonical.z}/${t.canonical.x}/${t.canonical.y}`).sort().join(' ');
+                const out = {};
+                for (const [name, o] of Object.entries({flat: {tileSize: 512}, small: {tileSize: 256}, round: {tileSize: 512, roundZoom: true}, max: {tileSize: 512, maxzoom: 3}, min: {tileSize: 512, minzoom: 6}})) out[name] = cover(o);
+                m.jumpTo({pitch: 60, bearing: 20});
+                out.pitched = cover({tileSize: 512, maxzoom: 14});
+                m.remove(); el.remove();
+                return out;
+            };
+            return {ml: await run(ml), compat: await run(compat)};
+        });
+        // Pitched, MapLibre GL JS can take one more tile at the edge of the view (4/0/6 here): the compat tiles are a part of its tiles.
+        const pitchedML = m1022.ml.pitched?.split(' ') ?? [];
+        check('[main] maplibre-compat: coveringTiles gives the tiles of MapLibre (flat, tileSize, roundZoom, minzoom, maxzoom; pitched within them) (#1022)',
+            ['flat', 'small', 'round', 'max', 'min'].every(k => m1022.ml[k] === m1022.compat[k]) && m1022.compat.pitched?.split(' ').every(t => pitchedML.includes(t)) && m1022.compat.pitched.length > 0, JSON.stringify(m1022));
         // #1019: zoomSnap (the option and setZoomSnap) and setEventedParent work as in MapLibre GL JS (served at /ml/).
         const m1019 = await page.evaluate(async () => {
             const ml = await import('/ml/maplibre-gl.mjs');

@@ -448,7 +448,7 @@ export class Transform {
     }
 
     /** `tileSize` shifts the zoom level chosen: 256px tiles are fetched one level deeper than 512px ones. */
-    coveringTiles(minzoom: number, maxzoom: number, tileSize = TILE_SIZE, round = false): TileID[] {
+    tileCover(minzoom: number, maxzoom: number, tileSize = TILE_SIZE, round = false): TileID[] {
         // Image tiles switch level at the half-way point (as MapLibre does) so they are never stretched more than about 1.4x.
         // (Below zoom 0 the tiles of zoom 0 are drawn smaller.)
         const want = Math.max(0, (round ? Math.round : Math.floor)(this.zoom + Math.log2(TILE_SIZE / tileSize)));

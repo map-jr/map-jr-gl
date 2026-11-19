@@ -233,9 +233,9 @@ export async function renderToSVG(o: RenderOptions): Promise<RenderResult> {
         if (src.type === 'raster-dem') return; // hillshading is drawn by the client only
         // (`tileZoomOffset` of vector sources: a positive value lowers the zoom through `maxzoom`, a negative one raises it through a smaller tile size.)
         const v = src.type === 'vector', maxzoom = v ? Math.max(src.minzoom, Math.min(src.maxzoom, Math.floor(tr.zoom) - dz)) : src.maxzoom;
-        const ideal = tr.coveringTiles(src.minzoom, maxzoom, v && dz < 0 ? src.tileSize * 2 ** dz : src.tileSize, src.type === 'raster'), loaded = new Map<string, TileIR | TileImage>();
+        const ideal = tr.tileCover(src.minzoom, maxzoom, v && dz < 0 ? src.tileSize * 2 ** dz : src.tileSize, src.type === 'raster'), loaded = new Map<string, TileIR | TileImage>();
         // (`tiles` of the result are those that the live map requests, at the zoom of the render, whatever `tileZoomOffset` is.)
-        if (v) for (const id of dz ? tr.coveringTiles(src.minzoom, src.maxzoom, src.tileSize) : ideal) urls.push(tileURL(src, id.z, id.x, id.y, o.highDensity ? 2 : 1));
+        if (v) for (const id of dz ? tr.tileCover(src.minzoom, src.maxzoom, src.tileSize) : ideal) urls.push(tileURL(src, id.z, id.x, id.y, o.highDensity ? 2 : 1));
         await Promise.all(ideal.filter((id, i) => ideal.findIndex(o => o.key === id.key) === i).map(async id => {
             const url = tileURL(src, id.z, id.x, id.y, o.highDensity ? 2 : 1);
             if (src.type === 'raster') { loaded.set(id.key, {href: o.inlineImages ? await dataURI(url) : url}); return; }

@@ -150,6 +150,11 @@ export class Map extends CoreMap {
     setRoll(roll?: number) { return this.unsupported('setRoll', !roll); }
     setVerticalFieldOfView(fov?: number) { return this.unsupported('setVerticalFieldOfView', fov === undefined || Math.abs(fov - 36.87) < 0.01); }
     getVerticalFieldOfView() { return 36.87; }
+    /** The tiles that cover the view, as MapLibre GL JS gives them: `{canonical: {z, x, y, key}, wrap, overscaledZ, key}`. */
+    coveringTiles(o: {tileSize: number, minzoom?: number, maxzoom?: number, roundZoom?: boolean}) {
+        return this.tr.tileCover(o.minzoom ?? 0, o.maxzoom ?? 30, o.tileSize, o.roundZoom).map(({z, x, y, w, key}) =>
+            ({canonical: {z, x, y, key}, wrap: w, overscaledZ: z, key: `${w}/${key}`}));
+    }
     // The camera math of MapLibre GL JS 6 (mercator). Heights in metres convert to mercator units with the
     // circumference of MapLibre GL JS (6,371,008.8 m radius), so that the results agree with it.
     /** The camera options that look from `from` at `altitudeFrom` metres to `to` at `altitudeTo` metres, as in MapLibre GL JS. */
