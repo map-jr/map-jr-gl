@@ -3410,6 +3410,38 @@ for (const mode of renderers) {
         });
         check('[main] maplibre-compat: calculateCameraOptionsFromTo, calculateCameraOptionsFromCameraLngLatAltRotation and calculateAnchoredCameraOptions agree with MapLibre to 1e-9 (#1018)',
             m1018.ml.length === m1018.compat.length && m1018.ml.every((v, i) => typeof v === 'number' ? Math.abs(v - m1018.compat[i]) <= 1e-9 * Math.max(1, Math.abs(v)) : v === m1018.compat[i]), JSON.stringify(m1018));
+        // #1020: setTransformConstrain and the option transformConstrain limit the camera as in MapLibre GL JS (served at /ml/).
+        const m1020 = await page.evaluate(async () => {
+            const ml = await import('/ml/maplibre-gl.mjs');
+            ml.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const compat = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const free = (lngLat, zoom) => ({center: lngLat, zoom: zoom ?? 0});
+            const run = async lib => {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+                const style = {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]};
+                const out = [], put = m => out.push(+m.getZoom().toFixed(6), +m.getCenter().lng.toFixed(6), +m.getCenter().lat.toFixed(6));
+                // The example page of MapLibre GL JS: under the zoom at which the world fills the view, and past the bounds.
+                let m = new lib.Map({container: el, style, transformConstrain: free, zoom: -2, center: [360, 0], fadeDuration: 0});
+                await new Promise(r => m.loaded?.() ? r() : m.once('load', r));
+                put(m);
+                m.jumpTo({center: [20, 89], zoom: -1}); put(m);
+                m.remove();
+                m = new lib.Map({container: el, renderer: 'main', style, center: [10, 45], zoom: 2, fadeDuration: 0});
+                await new Promise(r => m.loaded?.() ? r() : m.once('load', r));
+                // A function that keeps the zoom at 3 or less and the centre east of 0.
+                m.setTransformConstrain((lngLat, zoom) => ({center: new lib.LngLat(Math.max(0, lngLat.lng), lngLat.lat), zoom: Math.min(zoom, 3)}));
+                m.jumpTo({center: [-20, 10], zoom: 6}); put(m);
+                await new Promise(r => { m.once('moveend', r); m.easeTo({center: [-5, 20], zoom: 5, duration: 100}); });
+                put(m);
+                m.setTransformConstrain(null);
+                m.jumpTo({center: [-20, 10], zoom: 6}); put(m);
+                m.remove(); el.remove();
+                return out;
+            };
+            return {ml: await run(ml), compat: await run(compat)};
+        });
+        check('[main] maplibre-compat: setTransformConstrain and transformConstrain limit the camera as in MapLibre (#1020)',
+            m1020.ml.length === m1020.compat.length && m1020.ml.every((v, i) => Math.abs(v - m1020.compat[i]) < 1e-6), JSON.stringify(m1020));
         // #1019: zoomSnap (the option and setZoomSnap) and setEventedParent work as in MapLibre GL JS (served at /ml/).
         const m1019 = await page.evaluate(async () => {
             const ml = await import('/ml/maplibre-gl.mjs');
