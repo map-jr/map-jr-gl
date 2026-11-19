@@ -1,6 +1,7 @@
 // Tests of the main API (`createMap`, see src/host.ts) in a real browser: node test/host.mjs (demo server running)
 import {launch, browserName, workerRenders, inWorker, noWorkerRender} from './launch.mjs';
 import {watchdog} from './watchdog.mjs';
+import {guard} from './suite-guard.mjs';
 import {crc32, deflateSync} from 'node:zlib';
 
 const browser = await launch();
@@ -19,11 +20,12 @@ const check = (name, ok, detail = '') => {
     const s = process.env.TIMINGS ? `[${((performance.now() - lastCheck) / 1000).toFixed(1)} s] ` : '';
     lastCheck = performance.now();
     console.log(`${ok ? 'PASS' : 'FAIL'}  ${s}${name} ${detail}`); if (!ok) failed++;
-    finished(name);
+    counted(); finished(name);
 };
 const finished = watchdog(browser, message => { console.log(`FAIL  ${message}`); failed++; });
+const {counted, tally} = guard(message => { console.log(`FAIL  ${message}`); failed++; });
 // A check that cannot run in this browser prints SKIP with the reason; it is neither passed nor failed.
-const skip = (name, reason) => { console.log(`SKIP  ${name} (${reason})`); finished(name); };
+const skip = (name, reason) => { console.log(`SKIP  ${name} (${reason})`); counted(); finished(name); };
 // Touch events through a CDP session (newCDPSession) exist in Chromium only.
 const cdpTouch = browserName === 'chromium', noCDP = `${browserName} has no CDP session for touch events`;
 
@@ -3344,5 +3346,7 @@ for (const renderer of renderers) {
     } catch (e) { check(`[${renderer}] the text-font stack was checked`, false, String(e.message).split('\n')[0]); }
     finally { await page.close(); }
 }
+// (Chromium on 2026-11-19 printed 158 results with RENDERER=main and 94 with RENDERER=worker.)
+tally((renderers.includes('main') ? 140 : 0) + (renderers.includes('worker') ? 85 : 0));
 await browser.close();
 process.exit(failed ? 1 : 0);

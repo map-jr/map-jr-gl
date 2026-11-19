@@ -1,15 +1,17 @@
 // Drives the demo in Chromium and checks behaviour in both renderer modes: node test/interact.mjs [outDir] (default .cache/shots)
 import {launch, browserName, workerRenders, noWorkerRender} from './launch.mjs';
 import {watchdog} from './watchdog.mjs';
+import {guard} from './suite-guard.mjs';
 import {checkCustomLayers} from './custom-layers.mjs';
 const out = process.argv[2] || '.cache/shots'; // (the directory for the screenshots; Playwright creates it)
 const browser = await launch();
 const origin = `http://localhost:${process.env.PORT || 8080}`; // (the demo server; PORT lets two runs use two servers)
 let failed = 0, mainFrames = 0;
-const check = (name, ok, detail = '') => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${name} ${detail}`); if (!ok) failed++; finished(name); };
+const check = (name, ok, detail = '') => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${name} ${detail}`); if (!ok) failed++; counted(); finished(name); };
 const finished = watchdog(browser, message => { console.log(`FAIL  ${message}`); failed++; });
+const {counted, tally} = guard(message => { console.log(`FAIL  ${message}`); failed++; });
 // A check that cannot run in this browser prints SKIP with the reason; it is neither passed nor failed.
-const skip = (name, reason) => { console.log(`SKIP  ${name} (${reason})`); finished(name); };
+const skip = (name, reason) => { console.log(`SKIP  ${name} (${reason})`); counted(); finished(name); };
 const noCDP = `${browserName} has no CDP session for touch events`;
 // The map is settled when it does not move and the camera has been the same for a quarter of a second. (A browser
 // can report that the mouse was released before the page has handled the events, so `isMoving()` alone can be
@@ -3425,6 +3427,55 @@ for (const mode of renderers) {
         });
         check('[main] maplibre-compat: calculateCameraOptionsFromTo, calculateCameraOptionsFromCameraLngLatAltRotation and calculateAnchoredCameraOptions agree with MapLibre to 1e-9 (#1018)',
             m1018.ml.length === m1018.compat.length && m1018.ml.every((v, i) => typeof v === 'number' ? Math.abs(v - m1018.compat[i]) <= 1e-9 * Math.max(1, Math.abs(v)) : v === m1018.compat[i]), JSON.stringify(m1018));
+        // #1020: setTransformConstrain and the option transformConstrain limit the camera as in MapLibre GL JS (served at /ml/).
+        const m1020 = await page.evaluate(async () => {
+            const ml = await import('/ml/maplibre-gl.mjs');
+            ml.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const compat = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const free = (lngLat, zoom) => ({center: lngLat, zoom: zoom ?? 0});
+            const run = async lib => {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+                const style = {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]};
+                const out = [], put = m => out.push(+m.getZoom().toFixed(6), +m.getCenter().lng.toFixed(6), +m.getCenter().lat.toFixed(6));
+                // The example page of MapLibre GL JS: under the zoom at which the world fills the view, and past the bounds.
+                let m = new lib.Map({container: el, style, transformConstrain: free, zoom: -2, center: [360, 0], fadeDuration: 0});
+                await new Promise(r => m.loaded?.() ? r() : m.once('load', r));
+                put(m);
+                m.jumpTo({center: [20, 89], zoom: -1}); put(m);
+                m.remove();
+                m = new lib.Map({container: el, renderer: 'main', style, center: [10, 45], zoom: 2, fadeDuration: 0});
+                await new Promise(r => m.loaded?.() ? r() : m.once('load', r));
+                // A function that keeps the zoom at 3 or less and the centre east of 0.
+                m.setTransformConstrain((lngLat, zoom) => ({center: new lib.LngLat(Math.max(0, lngLat.lng), lngLat.lat), zoom: Math.min(zoom, 3)}));
+                m.jumpTo({center: [-20, 10], zoom: 6}); put(m);
+                await new Promise(r => { m.once('moveend', r); m.easeTo({center: [-5, 20], zoom: 5, duration: 100}); });
+                put(m);
+                m.setTransformConstrain(null);
+                m.jumpTo({center: [-20, 10], zoom: 6}); put(m);
+                m.remove(); el.remove();
+                return out;
+            };
+            return {ml: await run(ml), compat: await run(compat)};
+        });
+        check('[main] maplibre-compat: setTransformConstrain and transformConstrain limit the camera as in MapLibre (#1020)',
+            m1020.ml.length === m1020.compat.length && m1020.ml.every((v, i) => Math.abs(v - m1020.compat[i]) < 1e-6), JSON.stringify(m1020));
+        // On a map that draws in a worker, the function has no effect and warns once; it fires no error (#1020).
+        const w1020 = await page.evaluate(async () => {
+            const compat = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:200px'}));
+            const m = new compat.Map({container: el, renderer: 'worker', style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}, center: [10, 45], zoom: 2});
+            const warnings = [], errors = [], warn = console.warn;
+            console.warn = (...a) => { warnings.push(String(a[0])); warn(...a); };
+            m.on('error', e => errors.push(e.error?.message));
+            const fn = (lngLat, zoom) => ({center: lngLat, zoom: Math.min(zoom, 1)});
+            m.setTransformConstrain(fn); m.setTransformConstrain(fn);
+            console.warn = warn;
+            const zoom = m.getZoom();
+            m.remove(); el.remove();
+            return {warnings: warnings.filter(w => w.includes('setTransformConstrain')), errors, zoom};
+        });
+        check('[main] maplibre-compat: setTransformConstrain on a map that draws in a worker warns once and fires no error (#1020)',
+            w1020.warnings.length === 1 && w1020.warnings[0].includes("renderer: 'main'") && !w1020.errors.length && w1020.zoom === 2, JSON.stringify(w1020));
         // #1022: coveringTiles gives the tiles of MapLibre GL JS (served at /ml/) for the same view and options.
         const m1022 = await page.evaluate(async () => {
             const ml = await import('/ml/maplibre-gl.mjs');
@@ -4456,5 +4507,7 @@ check('[ssr] SVG removed after the client takes over', await page.evaluate(() =>
 await page.screenshot({path: `${out}/ssr-after.png`});
 const preloads = await page.evaluate(() => document.querySelectorAll('link[rel=preload]').length);
 check('[ssr] tile preload links emitted', preloads > 0, `${preloads} links`);
+// (Chromium on 2026-11-19 printed 218 results with RENDERER=main and 160 with RENDERER=worker.)
+tally((renderers.includes('main') ? 195 : 0) + (renderers.includes('worker') ? 145 : 0));
 await browser.close();
 process.exit(failed ? 1 : 0);
