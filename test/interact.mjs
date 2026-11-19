@@ -47,6 +47,21 @@ for (const mode of renderers) {
     if (!workerCan) console.log('INFO  [worker] this browser cannot render in a worker: the map must use the main thread');
     check(`[${mode}] loads with requested renderer`, await page.evaluate(() => window.map.renderer) === (workerCan ? mode : 'main'));
 
+    // A map in a `display: none` container fires `load` and `idle`, as in MapLibre GL JS 6.17, and after `display: block`
+    // the map draws at its new size and fires `idle` again (#964).
+    const hidden = await page.evaluate(async renderer => {
+        const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+        const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'display:none;width:300px;height:200px'}));
+        const m = new mod.Map({container: el, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#123'}}]}, renderer, attributionControl: false});
+        const within = (type, ms) => new Promise(r => { m.once(type, () => r(true)); setTimeout(() => r(false), ms); });
+        const [load, idle] = await Promise.all([within('load', 10000), within('idle', 10000)]);
+        el.style.display = 'block';
+        const shown = await within('idle', 10000), out = {load, idle, shown, width: m.getCanvas().width, want: Math.round(300 * devicePixelRatio)};
+        m.remove(); el.remove();
+        return out;
+    }, mode).catch(e => ({error: String(e)}));
+    check(`[${mode}] a map in a display:none container fires load and idle, and draws once shown (#964)`, hidden.load && hidden.idle && hidden.shown && hidden.width === hidden.want, JSON.stringify(hidden));
+
     // Paint transitions (#960), as in MapLibre GL JS: setPaintProperty and setStyle with `diff` move a colour over the
     // layer's `*-transition` (here 3 s), `idle` waits for the end, and setStyle with `diff: false` changes it at once.
     // (`toBlob` waits for `idle`, so a screenshot of the page reads the colour in the middle.)
