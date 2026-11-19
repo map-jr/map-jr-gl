@@ -35,6 +35,10 @@ BSD-3-Clause.
   update that waits. The code in `src/map.ts`, `src/engine.ts` and `src/tiles.ts` is new.
 - The inertia after a rotate drag follows the method of `HandlerInertia` in `src/ui/handler_inertia.ts` of MapLibre GL JS
   (BSD-3-Clause): the window of 60 ms, the linearity 0.3, the deceleration and the easing. The code in `src/map.ts` is new.
+- `calculateCameraOptionsFromTo`, `calculateCameraOptionsFromCameraLngLatAltRotation` and
+  `calculateAnchoredCameraOptions` of the compat entry follow the Mercator camera math of MapLibre GL JS 6.17
+  (BSD-3-Clause; `mercator_transform.ts`, `mercator_camera_helper.ts` and `camera.ts`), including its earth radius and its search
+  for the centre along the view. The code in `src/compat-map.ts` is new.
 - The texts and the CSS of the hint of `cooperativeGestures` in the compat entry follow MapLibre GL JS
   (BSD-3-Clause): `src/ui/handler/cooperative_gestures.ts` and `maplibre-gl.css`.
 - The option `locale` of the compat entry reads the keys of `src/ui/default_locale.ts` of MapLibre GL JS 6.17.0

@@ -554,13 +554,13 @@ export interface Prop {
 /** 'discrete' values (e.g. dash arrays) step between stops instead of interpolating. */
 export type PropKind = 'color' | 'number' | 'string' | 'discrete' | 'raw';
 
-function legacyFunction(v: any, flags: Flags, kind: PropKind): Fn {
+function legacyFunction(v: any, flags: Flags, kind: PropKind, values?: readonly string[]): Fn {
     const discrete = kind === 'discrete';
     const stops: any[][] = v.stops ?? [];
     if (stops[0]?.[0] && typeof stops[0][0] === 'object') {
         // Zoom-and-property function: one property function per zoom level, blended across zoom.
         const zooms = [...new Set(stops.map(s => s[0].zoom as number))].sort((a, b) => a - b);
-        const per = zooms.map(z => legacyFunction({...v, stops: stops.filter(s => s[0].zoom === z).map(s => [s[0].value, s[1]])}, flags, kind));
+        const per = zooms.map(z => legacyFunction({...v, stops: stops.filter(s => s[0].zoom === z).map(s => [s[0].value, s[1]])}, flags, kind, values));
         flags.zoom = true;
         return interpolator(1, zooms, per, c => c.zoom, discrete);
     }
@@ -576,7 +576,7 @@ function legacyFunction(v: any, flags: Flags, kind: PropKind): Fn {
     // kind does not say the type (a text, a boolean, an array), the type is the one of the `default`.
     if (v.type === 'identity') return c => {
         const x = c.f?.properties[key];
-        return (kind === 'number' ? typeof x === 'number' : kind === 'color' ? Array.isArray(colorize(x))
+        return (kind === 'number' ? typeof x === 'number' : kind === 'color' ? Array.isArray(colorize(x)) : values ? values.includes(x)
             : def === null ? x != null : typeof x === typeof def && Array.isArray(x) === Array.isArray(def)) ? x : def;
     };
     if (v.type === 'categorical' || typeof stops[0]?.[0] !== 'number') {
@@ -587,17 +587,22 @@ function legacyFunction(v: any, flags: Flags, kind: PropKind): Fn {
     return c => typeof c.f?.properties[key] === 'number' ? f(c) : def;
 }
 
-export function compileProp(v: any, kind: PropKind, def: any): Prop {
+/**
+ * `values` are the values of an enum property: a value of a function or an expression that is not one of them gives
+ * the default, as in MapLibre GL JS.
+ */
+export function compileProp(v: any, kind: PropKind, def: any, values?: readonly string[]): Prop {
     const flags: Flags = {dd: false, zoom: false};
     let fn: Fn, expression = false;
     if (v === undefined || v === null) v = def;
     if (kind !== 'raw' && Array.isArray(v) && typeof v[0] === 'string') { fn = compileExpr(v, flags); expression = true; }
-    else if (kind !== 'raw' && v && typeof v === 'object' && !Array.isArray(v) && (v.stops || v.type === 'identity')) fn = legacyFunction(v, flags, kind);
+    else if (kind !== 'raw' && v && typeof v === 'object' && !Array.isArray(v) && (v.stops || v.type === 'identity')) fn = legacyFunction(v, flags, kind, values);
     else { const k = v; fn = () => k; }
     const defColor = kind === 'color' ? (typeof def === 'string' ? parseColor(def) : def) ?? [0, 0, 0, 1] : null;
     const finish = kind === 'color'
         ? (x: any) => Array.isArray(x) ? x : (typeof x === 'string' && parseColor(x)) || defColor
         : kind === 'number' ? (x: any) => typeof x === 'number' && !isNaN(x) ? x : def
+        : values ? (x: any) => x == null || values.includes(x) ? x ?? def : def
         : (x: any) => x ?? def;
     if (!flags.dd && !flags.zoom) {
         const k = finish(fn({zoom: 0, f: null}));

@@ -6,7 +6,9 @@ import {colorRamp, compileFilter, compileProp, parseColor, warnOnce, type Fn, ty
 export const isGeometrySource = (s: {type: string}) => s.type === 'vector' || s.type === 'geojson' || s.type === 'contour';
 
 /** Supported properties per layer type: [style-spec name, kind, default]. Anything else in a style is ignored. */
-const SPEC: Record<string, Record<string, [string, PropKind, any]>> = {
+/** The values of `text-anchor` and `icon-anchor`. */
+const ANCHORS = ['center', 'left', 'right', 'top', 'bottom', 'top-left', 'top-right', 'bottom-left', 'bottom-right'];
+const SPEC: Record<string, Record<string, [string, PropKind, any, string[]?]>> = {
     custom: {},
     background: {color: ['background-color', 'color', '#000'], opacity: ['background-opacity', 'number', 1], pattern: ['background-pattern', 'string', null]}, // null when unset: an empty name draws nothing, as in MapLibre GL JS
     fill: {color: ['fill-color', 'color', '#000'], opacity: ['fill-opacity', 'number', 1], outline: ['fill-outline-color', 'color', 'rgba(0,0,0,0)'], antialias: ['fill-antialias', 'raw', true], pattern: ['fill-pattern', 'string', ''],
@@ -51,17 +53,17 @@ const SPEC: Record<string, Record<string, [string, PropKind, any]>> = {
         translateAnchor: ['text-translate-anchor', 'raw', 'map'], iconTranslateAnchor: ['icon-translate-anchor', 'raw', 'map'],
         iconIgnore: ['icon-ignore-placement', 'raw', false], iconPadding: ['icon-padding', 'number', 2], sortKey: ['symbol-sort-key', 'number', 0],
         overlapMode: ['text-overlap', 'string', ''], iconOverlapMode: ['icon-overlap', 'string', ''],
-        iconOpacity: ['icon-opacity', 'number', 1], iconAnchor: ['icon-anchor', 'string', 'center'], iconColor: ['icon-color', 'color', '#000'], iconHalo: ['icon-halo-color', 'color', 'rgba(0,0,0,0)'], iconHaloWidth: ['icon-halo-width', 'number', 0],
+        iconOpacity: ['icon-opacity', 'number', 1], iconAnchor: ['icon-anchor', 'string', 'center', ANCHORS], iconColor: ['icon-color', 'color', '#000'], iconHalo: ['icon-halo-color', 'color', 'rgba(0,0,0,0)'], iconHaloWidth: ['icon-halo-width', 'number', 0],
         iconFit: ['icon-text-fit', 'string', 'none'], iconFitPad: ['icon-text-fit-padding', 'raw', [0, 0, 0, 0]], iconOverlap: ['icon-allow-overlap', 'raw', false],
         iconOptional: ['icon-optional', 'raw', false], textOptional: ['text-optional', 'raw', false], iconAlign: ['icon-rotation-alignment', 'string', 'auto'],
         textAlign: ['text-rotation-alignment', 'string', 'auto'], symbolSpacing: ['symbol-spacing', 'number', 250], varAnchor: ['text-variable-anchor', 'raw', null], varOffset: ['text-variable-anchor-offset', 'raw', null], maxAngle: ['text-max-angle', 'number', 45],
         radial: ['text-radial-offset', 'number', 0], ignore: ['text-ignore-placement', 'raw', false],
         color: ['text-color', 'color', '#000'], opacity: ['text-opacity', 'number', 1],
-        haloColor: ['text-halo-color', 'color', 'rgba(0,0,0,0)'], haloWidth: ['text-halo-width', 'number', 0], haloBlur: ['text-halo-blur', 'number', 0], justify: ['text-justify', 'string', 'center'],
+        haloColor: ['text-halo-color', 'color', 'rgba(0,0,0,0)'], haloWidth: ['text-halo-width', 'number', 0], haloBlur: ['text-halo-blur', 'number', 0], justify: ['text-justify', 'string', 'center', ['auto', 'left', 'center', 'right']],
         field: ['text-field', 'string', ''], size: ['text-size', 'number', 16], font: ['text-font', 'raw', ['Open Sans Regular', 'Arial Unicode MS Regular']],
         maxWidth: ['text-max-width', 'number', 10], spacing: ['text-letter-spacing', 'number', 0],
-        offset: ['text-offset', 'string', [0, 0]], anchor: ['text-anchor', 'string', 'center'],
-        transform: ['text-transform', 'string', 'none'], padding: ['text-padding', 'number', 2],
+        offset: ['text-offset', 'string', [0, 0]], anchor: ['text-anchor', 'string', 'center', ANCHORS],
+        transform: ['text-transform', 'string', 'none', ['none', 'uppercase', 'lowercase']], padding: ['text-padding', 'number', 2],
         overlap: ['text-allow-overlap', 'raw', false], placement: ['symbol-placement', 'string', 'point'],
     },
 };
@@ -174,10 +176,10 @@ export function compileLayer(l: LayerJSON): CompiledLayer | null {
     if (!spec) return null;
     const p: Record<string, Prop> = {};
     for (const k in spec) {
-        const [name, kind, def] = spec[k];
+        const [name, kind, def, values] = spec[k];
         const v = l.paint?.[name] ?? l.layout?.[name];
         // These properties of a hillshade layer take one value or a list of values, one for each light. A list is kept as it is.
-        p[k] = l.type === 'hillshade' && LIGHT_PROPS.includes(k) && Array.isArray(v) ? compileProp(typeof v[0] !== 'string' || parseColor(v[0]) ? ['literal', v] : v, 'string', def) : compileProp(v, kind, def);
+        p[k] = l.type === 'hillshade' && LIGHT_PROPS.includes(k) && Array.isArray(v) ? compileProp(typeof v[0] !== 'string' || parseColor(v[0]) ? ['literal', v] : v, 'string', def) : compileProp(v, kind, def, values);
     }
     // A server-only extra filter is compiled separately, so it can be an expression even when the layer's own filter is legacy syntax.
     let relief: Float32Array | undefined, ramp: Uint8Array | undefined;
@@ -194,7 +196,8 @@ export function compileLayer(l: LayerJSON): CompiledLayer | null {
         id: l.id, type: l.type, source: l.source, sourceLayer: l['source-layer'],
         minzoom: l.minzoom ?? -2, maxzoom: l.maxzoom ?? 24,
         // Pattern fills need sprite images, which are not supported yet; hiding them beats drawing solid black.
-        visible: l.layout?.visibility !== 'none', keep: l.keep, filter: own && extra ? c => own(c) && extra(c) : own ?? extra, p,
+        // `visibility` can be an expression of the global state (as in MapLibre GL JS); a change of that state compiles the layers again.
+        visible: (Array.isArray(l.layout?.visibility) ? compileProp(l.layout.visibility, 'string', 'visible').eval(0) : l.layout?.visibility) !== 'none', keep: l.keep, filter: own && extra ? c => own(c) && extra(c) : own ?? extra, p,
         paint: Object.fromEntries(Object.entries(l.paint ?? {}).map(([k, v]) => [k, JSON.stringify(v)])),
     };
 }
