@@ -32,6 +32,9 @@ This entry covers the changes after 0.8.0 (the tag `v0.8.0`).
 - `@map-jr/map-jr-gl/maplibre-compat`: `updateImage` takes two arguments, as in MapLibre GL JS. Leave out the third
   argument (`options`); the image keeps the options of `addImage` ([#956]). Pixels that the page changes after
   `updateImage` and before the end of the task are sent as they are at the end of the task ([#980]).
+- `@map-jr/map-jr-gl/maplibre-compat`: a GeoJSON source without the option `buffer` clips its features 128 px past the
+  tile edge, as in MapLibre GL JS, where it clipped them 16 px past the edge. `@map-jr/map-jr-gl` keeps 16 px. Pass
+  `buffer` to the source to choose the distance ([#1097]).
 
 ### New
 
@@ -116,6 +119,7 @@ This entry covers the changes after 0.8.0 (the tag `v0.8.0`).
 [#1086]: https://github.com/map-jr/map-jr-gl/pull/1086
 [#1088]: https://github.com/map-jr/map-jr-gl/pull/1088
 [#1090]: https://github.com/map-jr/map-jr-gl/pull/1090
+[#1097]: https://github.com/map-jr/map-jr-gl/pull/1097
 
 ## 0.8.0 (2026-11-18)
 
