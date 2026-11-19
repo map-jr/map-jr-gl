@@ -19,7 +19,7 @@ const points = [0.5, 0.47, 0.53].map((y, i) => ({type: 'Feature', properties: {n
 function order(layout: Record<string, unknown>): string[] {
     const layer = compileLayer({id: 'r', type: 'symbol', source: 'g', layout: {'text-field': '{name}', 'text-size': 40, ...layout}})!;
     const data = sliceGeoJSON(prepareGeoJSON({type: 'FeatureCollection', features: points} as any), z, tx, ty);
-    const labels = buildTile(data, z, [layer], true).labels;
+    const labels = buildTile(data, z, [layer], false).labels;
     const tr = new Transform();
     tr.width = 800; tr.height = 600;
     tr.set([lngOf(tx + 0.5), latOf(ty + 0.5)], z, 0, 0);

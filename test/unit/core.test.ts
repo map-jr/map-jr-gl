@@ -222,7 +222,7 @@ test('tiles: a {token} stands for a property only in a constant and in a zoom fu
     const data: any = {type: 'Feature', properties: {name: '{A}', kind: 'x', A: 'wrong'}, geometry: {type: 'Point', coordinates: [lng, lat]}};
     const label = (layout: object) => {
         const layer = compileLayer({id: 'p', type: 'symbol', source: 'g', layout})!;
-        return buildTile(sliceGeoJSON(prepareGeoJSON(data), TILE.z, TILE.x, TILE.y), TILE.z, [layer], true).labels.p[0];
+        return buildTile(sliceGeoJSON(prepareGeoJSON(data), TILE.z, TILE.x, TILE.y), TILE.z, [layer], false).labels.p[0];
     };
     for (const [value, want] of [
         ['{kind}', 'x'],
@@ -283,7 +283,7 @@ test('tiles: a real tile builds layers and labels from a style', () => {
         {id: 'names', type: 'symbol', source: 's', 'source-layer': 'transportation_name', layout: {'text-field': '{name}', 'symbol-placement': 'line', 'text-font': ['Open Sans Semibold Italic']}},
         {id: 'buildings', type: 'fill-extrusion', source: 's', 'source-layer': 'building', paint: {'fill-extrusion-height': ['get', 'render_height']}},
     ].map(l => compileLayer(l)!);
-    const ir = buildTile(bytes, TILE.z, layers, true);
+    const ir = buildTile(bytes, TILE.z, layers, false);
     assert.deepEqual(Object.keys(ir.layers).sort(), ['buildings', 'roads', 'water']);
     assert.ok(ir.layers.roads.width, 'data-driven width is carried per feature');
     assert.ok(ir.layers.buildings.height!.some(h => h > 50), 'building heights come from the data');
@@ -959,14 +959,14 @@ test('labels: text along a line that is too short for it is rejected before the 
     const {placeLabels} = await import('../../src/placement.ts');
     const {EstimateShaper} = await import('../../src/text.ts');
     const layer = compileLayer({id: 'names', type: 'symbol', source: 's', 'source-layer': 'transportation_name', layout: {'text-field': '{name}', 'symbol-placement': 'line'}})!;
-    const real = buildTile(bytes, TILE.z, [layer], true).labels.names.find(l => l.path && l.text.length > 8)!;
+    const real = buildTile(bytes, TILE.z, [layer], false).labels.names.find(l => l.line && l.text.length > 8)!;
     const id = {...TILE, w: 0, key: `${TILE.z}/${TILE.x}/${TILE.y}`}, n = 2 ** TILE.z;
     for (const pitch of [0, 50]) {
         const tr = camera(pitch, 20);
         // A straight line of 41 points through the centre of the view, `step` tile units apart.
         const x = (mercX(-74.006) * n - TILE.x) * 4096, y = (mercY(40.7128) * n - TILE.y) * 4096;
         // (A label has most of its fields, the text among them, on its prototype, so it is changed in place rather than copied.)
-        const line = (step: number) => Object.assign(real, {x, y, angle: 0, path: Array.from({length: 82}, (_, i) => i % 2 ? y : x + (i / 2 - 20) * step), pathIndex: 20});
+        const line = (step: number) => Object.assign(real, {x, y, angle: 0, line: undefined, path: Array.from({length: 82}, (_, i) => i % 2 ? y : x + (i / 2 - 20) * step), pathIndex: 20});
         let calls = 0;
         const project = tr.projectTile.bind(tr);
         tr.projectTile = (...a: Parameters<typeof project>) => { calls++; return project(...a); };
@@ -985,7 +985,7 @@ test('labels: the test for the same text nearby reads only nearby labels when on
     const layer = compileLayer({id: 'p', type: 'symbol', source: 'g', layout: {'text-field': 'Parking', 'text-allow-overlap': true}})!;
     const n = 2 ** TILE.z, lng = (TILE.x + 0.5) / n * 360 - 180, lat = Math.atan(Math.sinh(Math.PI * (1 - 2 * (TILE.y + 0.5) / n))) * 180 / Math.PI;
     const point = {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [lng, lat]}};
-    const base = buildTile(sliceGeoJSON(prepareGeoJSON(point), TILE.z, TILE.x, TILE.y), TILE.z, [layer], true).labels.p[0];
+    const base = buildTile(sliceGeoJSON(prepareGeoJSON(point), TILE.z, TILE.x, TILE.y), TILE.z, [layer], false).labels.p[0];
     // Two tiles side by side, each with 3000 labels "Parking" at random places away from the edges. 40 labels of the left tile lie at its
     // right edge, less than a pixel from 40 labels of the right tile, which are duplicates of them.
     let seed = 7;

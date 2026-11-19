@@ -19,7 +19,7 @@ const line = {type: 'LineString', coordinates: [[lngOf(tx + 0.1), latOf(ty + 0.5
 function place(layout: Record<string, unknown>, geometry: unknown, pitch: number, icon = false): any {
     const layer = compileLayer({id: 'r', type: 'symbol', source: 'g', layout: {'text-field': 'Main Street', 'text-size': 16, ...layout}})!;
     const data = sliceGeoJSON(prepareGeoJSON({type: 'Feature', properties: {}, geometry} as any), z, tx, ty);
-    const labels = buildTile(data, z, [layer], true).labels;
+    const labels = buildTile(data, z, [layer], false).labels;
     const tr = new Transform();
     tr.width = 800; tr.height = 600; tr.maxPitch = 90;
     tr.set([lngOf(tx + 0.5), latOf(ty + 0.5)], z, 0, pitch);

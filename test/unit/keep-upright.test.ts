@@ -19,7 +19,7 @@ const line = {type: 'LineString', coordinates: [[lngOf(tx + 0.9), latOf(ty + 0.5
 function place(layout: Record<string, unknown>, geometry: unknown = line, pitch = 0, icon = false, grid = new CollisionGrid()): any {
     const layer = compileLayer({id: 'r', type: 'symbol', source: 'g', layout: {'text-field': 'Main Street', 'text-size': 16, ...layout}})!;
     const data = sliceGeoJSON(prepareGeoJSON({type: 'Feature', properties: {}, geometry} as any), z, tx, ty);
-    const labels = buildTile(data, z, [layer], true).labels;
+    const labels = buildTile(data, z, [layer], false).labels;
     const tr = new Transform();
     tr.width = 800; tr.height = 600; tr.maxPitch = 90;
     tr.set([lngOf(tx + 0.5), latOf(ty + 0.5)], z, 0, pitch);
@@ -55,4 +55,23 @@ test('text along a line is not drawn when its required icon is not placed (#1080
     assert.equal(place(layout, line, 0, true, blocked()), undefined, 'icon-optional false: neither is drawn');
     const optional = place({...layout, 'icon-optional': true}, line, 0, true, blocked());
     assert.ok(optional?.curve && !optional.icon, 'icon-optional true: the text is drawn alone');
+});
+
+test('anchors along a line start at an offset and repeat every symbol-spacing, as in MapLibre GL JS (#1016)', async () => {
+    const {lineLabels} = await import('../../src/placement.ts');
+    /** The x of each anchor, in tile units from the start of a line that runs east inside the tile from `x0` to `x1` (in tiles). */
+    const anchorsX = (spacing: number, x0: number, x1: number) => {
+        const layer = compileLayer({id: 'r', type: 'symbol', source: 'g', layout: {'text-field': 'Main Street', 'text-size': 16, 'symbol-placement': 'line', 'symbol-spacing': spacing}})!;
+        const geometry = {type: 'LineString', coordinates: [[lngOf(tx + x0), latOf(ty + 0.5)], [lngOf(tx + x1), latOf(ty + 0.5)]]};
+        const labels = buildTile(sliceGeoJSON(prepareGeoJSON({type: 'Feature', properties: {}, geometry} as any), z, tx, ty), z, [layer], false).labels.r;
+        return lineLabels(labels, new EstimateShaper()).map(l => Math.round(l.x - x0 * 4096));
+    };
+    // The text is 124 pixels at 24 pixels an em, so the label is 662 tile units long at a text-size of 16 (8 tile units a
+    // pixel). The first anchor is half of that and two ems in (587), and the next ones follow every symbol-spacing while
+    // the whole label fits on the line (3686 tile units).
+    assert.deepEqual(anchorsX(250, 0.05, 0.95), [587, 2587]);
+    // A spacing (800) that leaves less than a quarter of itself free beside the label becomes the label and a quarter: 862.
+    assert.deepEqual(anchorsX(100, 0.05, 0.95), [587, 1449, 2311, 3172]);
+    // A line shorter than its label has no anchor.
+    assert.deepEqual(anchorsX(250, 0.4, 0.5), []);
 });

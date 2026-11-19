@@ -25,7 +25,7 @@ test('a frame does not draw a label whose anchor a forward pan took behind the c
     const tooFar = (placement as any).tooFar;
     const layer = compileLayer({id: 'r', type: 'symbol', source: 'g', layout: {'text-field': 'Broadway', 'symbol-placement': 'line', 'text-allow-overlap': true}})!;
     const geometry = {type: 'LineString', coordinates: [[lngOf(tx + 0.3), latOf(ty + 0.5)], [lngOf(tx + 0.7), latOf(ty + 0.5)]]};
-    const labels = buildTile(sliceGeoJSON(prepareGeoJSON({type: 'Feature', properties: {}, geometry} as any), z, tx, ty), z, [layer], true).labels;
+    const labels = buildTile(sliceGeoJSON(prepareGeoJSON({type: 'Feature', properties: {}, geometry} as any), z, tx, ty), z, [layer], false).labels;
     // The label is placed near the bottom of the screen, a little ahead of the camera.
     const a = camera(ty + 0.18);
     const [p] = placeLabels(a, renderItems(a, [id], () => ({labels})), [layer], new EstimateShaper(), new CollisionGrid());

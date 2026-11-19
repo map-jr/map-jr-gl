@@ -18,7 +18,7 @@ const icon = {x: 0, y: 0, width: 10, height: 10, pixelRatio: 1} as any;
 
 const place = (layout: Record<string, unknown>, grid = new CollisionGrid(), prev?: (key: string) => string | undefined) => {
     const layer = compileLayer({id: 'p', type: 'symbol', source: 'g', layout: {'text-field': 'Name', ...layout}})!;
-    const labels = buildTile(data, z, [layer], true).labels;
+    const labels = buildTile(data, z, [layer], false).labels;
     const tr = new Transform();
     tr.width = 800; tr.height = 600;
     tr.set([lng, lat], z, 0, 0);

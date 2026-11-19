@@ -18,7 +18,7 @@ const id = {z, x: tx, y: ty, w: 0, key: `${z}/${tx}/${ty}`};
 function place(layout: Record<string, unknown>, geometry: any, cy: number, pitch: number) {
     const layer = compileLayer({id: 'r', type: 'symbol', source: 'g', layout: {'text-field': 'Main Street', 'text-size': 16, ...layout}})!;
     const data = sliceGeoJSON(prepareGeoJSON({type: 'Feature', properties: {}, geometry}), z, tx, ty);
-    const labels = buildTile(data, z, [layer], true).labels;
+    const labels = buildTile(data, z, [layer], false).labels;
     const tr = new Transform();
     tr.width = 800; tr.height = 600;
     tr.maxPitch = 90;
