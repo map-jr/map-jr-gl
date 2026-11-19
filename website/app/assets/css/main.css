@@ -294,6 +294,30 @@
   box-shadow: inset 0 -2px 0 var(--ui-primary);
 }
 
+/*
+ * The package managers are a second set with its own choice: `data-package-manager` on <html> and `data-shows-pm`
+ * on a panel and its tab. Without the script, npm shows ("none").
+ */
+:root:not([data-package-manager]) .code-variant[data-shows-pm~="none"],
+:root[data-package-manager="none"] .code-variant[data-shows-pm~="none"],
+:root[data-package-manager="npm"] .code-variant[data-shows-pm~="npm"],
+:root[data-package-manager="pnpm"] .code-variant[data-shows-pm~="pnpm"],
+:root[data-package-manager="yarn"] .code-variant[data-shows-pm~="yarn"],
+:root[data-package-manager="bun"] .code-variant[data-shows-pm~="bun"] {
+  display: block;
+}
+
+:root:not([data-package-manager]) .code-variants-tab[data-shows-pm~="none"],
+:root[data-package-manager="none"] .code-variants-tab[data-shows-pm~="none"],
+:root[data-package-manager="npm"] .code-variants-tab[data-shows-pm~="npm"],
+:root[data-package-manager="pnpm"] .code-variants-tab[data-shows-pm~="pnpm"],
+:root[data-package-manager="yarn"] .code-variants-tab[data-shows-pm~="yarn"],
+:root[data-package-manager="bun"] .code-variants-tab[data-shows-pm~="bun"] {
+  background-color: var(--ui-bg-elevated);
+  color: var(--ui-text-highlighted);
+  box-shadow: inset 0 -2px 0 var(--ui-primary);
+}
+
 /* The fence of a panel joins the tabs above it. */
 .code-variant > div {
   margin-block: 0;

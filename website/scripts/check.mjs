@@ -12,6 +12,8 @@ const screenshots = process.argv.find(argument => argument.startsWith('--screens
 const docsPage = '/vue';
 // A page with several groups of code variants and without Nuxt.
 const variantsPage = '/guide/markers-and-popups';
+// A page with a group of package managers first and then groups of code variants.
+const installPage = '/guide/getting-started';
 
 const server = await serve(0);
 const base = `http://localhost:${server.address().port}`;
@@ -156,6 +158,48 @@ try {
         const hrefs = await page.locator('main a').evaluateAll(links => links.map(link => link.getAttribute('href')));
         check('variants page: no link names a .md file of the site', !hrefs.some(href => href && !href.startsWith('http') && /\.md(#|$)/.test(href)), hrefs.filter(href => href && /\.md(#|$)/.test(href)).join(' '));
         check('variants page: no failed request and no error', problems.length === 0, problems.join(' | '));
+        await close();
+    }
+
+    // The package managers (build/variants.ts): a second set with its own choice, not in the header.
+    {
+        const {page, problems, close} = await open(installPage);
+        const group = page.locator('.code-variants').first();
+        const shownPm = () => group.locator('.code-variant:visible').evaluateAll(panels => panels.map(panel => panel.dataset.variant).join(' '));
+        const tabNames = await group.getByRole('tab').allTextContents();
+        check('package managers: the install block has the tabs npm, pnpm, yarn, bun', tabNames.map(name => name.trim()).join(' ') === 'npm pnpm yarn bun', tabNames.join(' '));
+        check('package managers: with no choice, the block shows npm', await shownPm() === 'npm', await shownPm());
+        const menuLabels = await page.locator('.variant-menu .variant-label').allTextContents();
+        check('package managers: the menu in the header does not list them', !menuLabels.some(label => ['npm', 'pnpm', 'yarn', 'bun'].includes(label.trim())), menuLabels.join(' '));
+        await group.getByRole('tab', {name: 'pnpm', exact: true}).click();
+        check('package managers: a tab switches the block', await shownPm() === 'pnpm' && await group.getByRole('tab', {name: 'pnpm', exact: true}).getAttribute('aria-selected') === 'true', await shownPm());
+        const variantAttribute = () => page.evaluate(() => document.documentElement.getAttribute('data-variant'));
+        check('package managers: the choice does not change the code variant', await variantAttribute() === 'none',await variantAttribute());
+        await page.locator('.code-variants').nth(1).getByRole('tab', {name: 'React', exact: true}).click();
+        check('package managers: a choice of a code variant does not change the package manager', await shownPm() === 'pnpm', await shownPm());
+        await page.locator('aside').getByRole('link', {name: 'Markers and popups', exact: true}).click();
+        await page.waitForURL('**' + variantsPage);
+        await page.locator('aside').getByRole('link', {name: 'Getting started', exact: true}).click();
+        await page.waitForURL('**' + installPage);
+        await group.waitFor();
+        check('package managers: the choice stays after a navigation', await shownPm() === 'pnpm', await shownPm());
+        await page.reload({waitUntil: 'networkidle'});
+        check('package managers: the choice stays after a reload', await shownPm() === 'pnpm' && await variantAttribute() === 'react', `${await shownPm()} / ${await variantAttribute()}`);
+        const shift = await page.evaluate(() => new Promise(done => {
+            new PerformanceObserver(list => done(list.getEntries().reduce((sum, entry) => sum + entry.value, 0))).observe({type: 'layout-shift', buffered: true});
+            setTimeout(() => done(0), 500);
+        }));
+        check('package managers: a reload with a stored choice has no layout shift', shift < 0.01, `CLS ${shift}`);
+        check('package managers page: no failed request and no error', problems.length === 0, problems.join(' | '));
+        if (screenshots) {
+            for (const width of [1440, 390]) {
+                await page.setViewportSize({width, height: width === 390 ? 844 : 900});
+                await group.scrollIntoViewIfNeeded();
+                const file = `${screenshots}-install-${width}.png`;
+                await page.screenshot({path: file});
+                console.log('screenshot', file);
+            }
+        }
         await close();
     }
 

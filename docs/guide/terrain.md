@@ -166,7 +166,7 @@ document.getElementById('relief').addEventListener('change', e => showRelief(e.t
 - With a `sky` in the style, the map draws fog on the terrain above a pitch of 60 degrees. The properties
   `fog-color`, `fog-ground-blend` and `horizon-fog-blend` of `sky` set the fog.
 - On the [globe](globe.md), the map draws no 3D terrain.
-- The [server renderer](../server-rendering.md) draws no 3D terrain.
+- The [server renderer](server-rendering.md) draws no 3D terrain.
 
 ## Shade the relief
 
@@ -355,7 +355,7 @@ another line. The options of a contour source:
 | `levelKey` | `'level'` | The name of the property that is 1 for a major line. |
 | `maxzoom` | `15` | The most detailed zoom level of the contour tiles. |
 
-The server renderer draws contour lines. See [Server rendering](../server-rendering.md) for the formats of elevation
+The server renderer draws contour lines. See [Server rendering](server-rendering.md) for the formats of elevation
 tiles that it reads.
 
 ## Ask for the height of the ground
@@ -411,4 +411,4 @@ the number is the height multiplied by the exaggeration of the terrain:
 - [`terrain`](../reference/description.md#terrain), [`sources`](../reference/description.md#sources) and
   [`layers`](../reference/description.md#layers) of the description.
 - [The globe](globe.md), which draws no 3D terrain.
-- [Server rendering](../server-rendering.md) for contour lines in an image that a server renders.
+- [Server rendering](server-rendering.md) for contour lines in an image that a server renders.

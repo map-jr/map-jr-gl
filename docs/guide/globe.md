@@ -140,7 +140,7 @@ fill it, set the CSS `background` of the container, the element that you pass to
   gradient and no fog on the globe. The property `atmosphere-blend` of `sky` sets the opacity of the atmosphere.
 - A label whose anchor turns to the far side of the globe is hidden. A `Marker` of the MapLibre compat entry on the far
   side takes the opacity `opacityWhenCovered` (0.2 by default).
-- The [server renderer](../server-rendering.md) draws the flat map.
+- The [server renderer](server-rendering.md) draws the flat map.
 
 ## How the camera moves on the globe
 

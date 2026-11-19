@@ -143,5 +143,23 @@ for (const [what, query] of [['same origin', ''], ['another origin', `&from=http
     check('worker blob URL: not revoked while a worker loads it, and a map made after the revoke starts', result.first === 'worker' && result.second === 'worker' && !result.early && !errors.length, `${JSON.stringify(result)} errors=${errors.join(' | ')}`);
     await page.close();
 }
+// The .js and .compat.js forms of the gallery run as they are written: each is the module script of a bare page with
+// <div id="map"> and an import map, and reaches idle with no page error (#1156). The route appends only
+// `window.map = map` so that the test can read the map.
+{
+    const {readdirSync, readFileSync} = await import('node:fs');
+    const imports = {'@map-jr/map-jr-gl': '/dist/map-jr-gl.js', '@map-jr/map-jr-gl/maplibre-compat': '/dist/map-jr-gl-maplibre-compat.js', '@map-jr/map-jr-gl/controls': '/dist/controls.js'};
+    for (const file of readdirSync(new URL('../examples/', import.meta.url)).filter(f => f.endsWith('.js')).sort()) {
+        const page = await browser.newPage({viewport: {width: 800, height: 600}}), errors = [];
+        page.on('pageerror', e => errors.push(e.message));
+        await page.route(`**/example-page/${file}`, r => r.fulfill({contentType: 'text/javascript', body: readFileSync(new URL(`../examples/${file}`, import.meta.url), 'utf8') + '\nwindow.map = map;\n'}));
+        await page.route('**/example-page/', r => r.fulfill({contentType: 'text/html', body: `<!doctype html><meta charset="utf-8"><script type="importmap">${JSON.stringify({imports})}</script><div id="map" style="height: 500px"></div><script type="module" src="./${file}"></script>`}));
+        await page.goto(`http://localhost:${port}/example-page/`);
+        const compat = file.endsWith('.compat.js');
+        const ok = await page.waitForFunction(compat => window.map && (compat ? window.map.loaded() : window.map.state.get().idle), compat, {timeout: 30000}).then(() => true, () => false);
+        check(`example ${file} runs as written on a bare page and reaches idle`, ok && !errors.length, `idle=${ok} errors=${errors.join(' | ')}`);
+        await page.close();
+    }
+}
 await browser.close();
 process.exit(failed ? 1 : 0);

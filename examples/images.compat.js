@@ -1,3 +1,5 @@
+// The module script of a page that has <div id="map" style="height: 500px"></div>. The map shows four places. Each has
+// an SVG image from addImage, and its name beside it.
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';
@@ -11,27 +13,23 @@ const places = {type: 'FeatureCollection', features: [
   {type: 'Feature', properties: {name: 'Brooklyn Bridge', kind: 'civic'}, geometry: {type: 'Point', coordinates: [-73.9969, 40.7061]}},
 ]};
 
-export default function (container, {show}) {
-  const map = new Map({container, style, center: [-74.006, 40.7175], zoom: 12.7, attributionControl: {compact: true}});
-  map.on('load', () => {
-    map.addImage('pin', pin);
-    map.addImage('pin-park', parkPin);
-    map.addSource('places', {type: 'geojson', data: places});
-    // A symbol layer draws the image and a label beside it.
-    map.addLayer({
-      id: 'places', type: 'symbol', source: 'places',
-      layout: {
-        'icon-image': ['match', ['get', 'kind'], 'park', 'pin-park', 'pin'],
-        'icon-anchor': 'bottom',
-        'text-field': ['get', 'name'],
-        'text-font': ['Noto Sans Regular'],
-        'text-size': 13,
-        'text-anchor': 'left',
-        'text-offset': [0.9, -1.1],
-      },
-      paint: {'text-color': '#222', 'text-halo-color': '#fff', 'text-halo-width': 1.5},
-    });
+const map = new Map({container: 'map', style, center: [-74.006, 40.7175], zoom: 12.7, attributionControl: {compact: true}});
+map.on('load', () => {
+  map.addImage('pin', pin);
+  map.addImage('pin-park', parkPin);
+  map.addSource('places', {type: 'geojson', data: places});
+  // A symbol layer draws the image and a label beside it.
+  map.addLayer({
+    id: 'places', type: 'symbol', source: 'places',
+    layout: {
+      'icon-image': ['match', ['get', 'kind'], 'park', 'pin-park', 'pin'],
+      'icon-anchor': 'bottom',
+      'text-field': ['get', 'name'],
+      'text-font': ['Noto Sans Regular'],
+      'text-size': 13,
+      'text-anchor': 'left',
+      'text-offset': [0.9, -1.1],
+    },
+    paint: {'text-color': '#222', 'text-halo-color': '#fff', 'text-halo-width': 1.5},
   });
-  show('Four places. Each has an SVG image from addImage, and its name beside it.');
-  return map;
-}
+});

@@ -3,9 +3,10 @@
 //
 // Each example file is complete: it does not import from another file of the gallery, so a visitor can copy it.
 // The code of a row is in files, one for each form (examples/<row>.js for the main API, .vue, .jsx, and
-// .compat.js for the API of MapLibre GL JS). The live map of a row runs the file of the selected form through the
-// harness (examples/harness/mount.js), when the harness can run that form: so for the main API form and the MapLibre
-// form, the code that a visitor reads is the code that runs. The Vue and React forms are shown as text, and the live
+// .compat.js for the API of MapLibre GL JS). The .js and .compat.js files are module scripts for a page with
+// <div id="map">, and they run as they are written there. The live map of a row runs the file of the selected form
+// through the harness (examples/harness/mount.js), when the harness can run that form: so for the main API form and
+// the MapLibre form, the code that a visitor reads is the code that runs. The Vue and React forms are shown as text, and the live
 // map runs the main API form; `node test/examples.mjs` checks that they compile.
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 import {configure} from '@map-jr/map-jr-gl';
@@ -29,7 +30,7 @@ const button = (row, label, onClick) => addButton(row.actions, label, onClick);
 const running = () => runs(form) ? form : 'core';
 
 /** A row whose code is in the files examples/<id>.*: the live map runs one of them. */
-const example = (id, title, points) => ({id, title, points, make: (el, row) => mount(id, running(), row)});
+const example = (id, title, points) => ({id, title, points, make: (el, row) => mount(id, running(), {stage: row.stage, actions: row.actions, readout: row.readout()})});
 
 const rows = [
     example('basic', 'A MapLibre style, drawn off the main thread', ['Reads the MapLibre style specification: sources, layers, expressions.', 'Draws in a worker when the browser allows it, so a busy page does not make the map stutter.', 'Zoom, compass, scale and fullscreen controls are included.']),
@@ -107,8 +108,9 @@ for (const spec of rows) {
         '<div class="text"><h2></h2><ul></ul><div class="readout"></div><div class="actions"></div><pre><code></code></pre><small class="runs"></small></div>';
     el.querySelector('h2').textContent = spec.title;
     for (const p of spec.points) el.querySelector('ul').append(Object.assign(document.createElement('li'), {textContent: p}));
-    const readout = el.querySelector('.readout');
-    el.row = {spec, stage: spec.pair ? el.querySelector('.pair') : el.querySelector('.live'), actions: el.querySelector('.actions'), out: text => { readout.textContent = text; }};
+    // (The line of text of an example replaces the element .readout, so it is looked up each time.)
+    const readout = () => el.querySelector('.readout');
+    el.row = {spec, stage: spec.pair ? el.querySelector('.pair') : el.querySelector('.live'), actions: el.querySelector('.actions'), readout, out: text => { readout().textContent = text; }};
     showCode(el);
     main.append(el);
     observer.observe(el);
