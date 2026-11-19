@@ -9,7 +9,10 @@
 sections:
   - title: Guide
     folder: guide
-    pages: []
+    pages:
+      - controls.md
+      - images-and-fonts.md
+      - color-scheme.md
   - title: Recipes
     folder: recipes
     pages: []
