@@ -47,7 +47,7 @@ writing); this brief has the steps.
 
 ## On the owner's Mac (`uname` prints Darwin)
 
-- The shell sets `BROWSER=open` (`suite.mjs` uses `chromium` then; other commands need `BROWSER=chromium`), aliases
+- The shell sets `BROWSER=open` (`test/launch.mjs` and `suite.mjs` use `chromium` then), aliases
   `cp` to `cp -i` (write `command cp`), and sets `noclobber` (write `>|` to replace a file).
 - Headless Chromium draws WebGL in software. Playwright's WebKit draws on the GPU.
 - An iOS Simulator can open a page of your server: `xcrun simctl openurl booted http://localhost:<port>/…`.
