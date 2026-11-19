@@ -507,8 +507,8 @@ What to know about a template:
   an image is removed, a later image that does not fit gives the error again. The map
   makes this texture with its first such image at 256 by 256 pixels (256 KB), and doubles its width and height, up
   to 2048 by 2048 pixels (16 MB), when the images do not fit. The texture does not become smaller again.
-- A template works in `icon-image`, in an image of `format` text, and in `fill-pattern`, `line-pattern` and
-  `background-pattern`. In a pattern property, a slot that has no parameter gets an empty text, because a pattern
+- A template works in `icon-image`, in an image of `format` text, and in `fill-pattern`, `fill-extrusion-pattern`,
+  `line-pattern` and `background-pattern`. In a pattern property, a slot that has no parameter gets an empty text, because a pattern
   is the same for the whole layer and reads no property of a feature.
 - A template that is not well-formed gives one error of the map with the name of the image.
 - A slot in the `href` of an `<image>` element makes the page request the URL that a feature gives. Use such a
