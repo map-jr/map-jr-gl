@@ -54,16 +54,17 @@ These figures are written by `pnpm status`. They compare this library with MapLi
 
 | Measure | Result |
 |---|---|
-| Unit tests | 204 pass, 0 fail |
-| MapLibre expression tests | 357 of 583 pass (61%), which is 84% of the 425 that are not left out on purpose. 158 are left out on purpose, 61 are planned for later, and 7 fail. |
-| MapLibre `Map` methods | 123 of 138 are available; 11 more are accepted and have no effect. 15 that are internal to MapLibre GL JS are not counted. |
+| Unit tests | 241 pass, 0 fail |
+| MapLibre expression tests | 357 of 583 pass (61%), which is 84% of the 425 that are not left out on purpose. 158 are left out on purpose, 68 are planned for later, and 0 fail. |
+| MapLibre `Map` methods | 131 of 138 are available; 7 more are accepted and have no effect. 15 that are internal to MapLibre GL JS are not counted. |
+| Properties of the MapLibre style specification | 224 of 242 are read with every expression input that the specification allows. 16 are not read, and 2 take fewer inputs (`node test/conformance/spec.mjs --gaps` lists them). |
 | MapLibre plugins, run in a browser | 16 of 16 work (see [Plugins and frameworks](docs/ecosystem.md)) |
 | Plugins and frameworks, read from npm | 23 of 26 use only API that the library has |
-| Example pages of the MapLibre documentation, with this library in place of MapLibre | 111 of 142 work. Most of the others need a globe, another projection or a custom 3D layer. |
-| MapLibre render tests | 1184 of 1740 are the same (68.0%; 1% of pixels or less are different). 1515 of 1740 are the same or near (87.1%; 5% or less). 21 of the 225 that differ are differences that the library keeps (see [Development](docs/development.md#render-tests)). |
-| Page script (gzip) | 51 KB. MapLibre GL JS: 299 KB. |
-| Worker script (gzip) | 80 KB. MapLibre GL JS: 145 KB. |
-| Server renderer (gzip) | 44 KB |
+| Example pages of the MapLibre documentation, with this library in place of MapLibre | 122 of 142 work. Most of the others need a globe, another projection or a custom 3D layer. |
+| MapLibre render tests | 1209 of 1740 are the same (69.5%; 1% of pixels or less are different). 1527 of 1740 are the same or near (87.8%; 5% or less). 21 of the 213 that differ are differences that the library keeps (see [Development](docs/development.md#render-tests)). |
+| Page script (gzip) | 52 KB. MapLibre GL JS: 299 KB. |
+| Worker script (gzip) | 83 KB. MapLibre GL JS: 145 KB. |
+| Server renderer (gzip) | 46 KB |
 <!-- status:end -->
 
 The library is new. Read [MapLibre compatibility](docs/maplibre-compatibility.md) before you use it in production.
@@ -400,17 +401,17 @@ build and other configurations.
 ## Speed
 
 <!-- speed:start -->
-Measured by the workflow [Browsers](https://github.com/map-jr/map-jr-gl/tree/bench-results) on 2026-11-18 (commit b6f96e9). Each cell is MapLibre GL JS 6.17.0 / **this library** (worker renderer where the browser has it).
+Measured by the workflow [Browsers](https://github.com/map-jr/map-jr-gl/tree/bench-results) on 2026-11-19 (commit dea6a7f). Each cell is MapLibre GL JS 6.17.0 / **this library** (worker renderer where the browser has it).
 
 | System, browser | Load to idle, ms | Frames per second, map moving | Frames per second, 10,000 markers |
 |---|---|---|---|
-| macOS, WebKit | 1298 / **389** | 60 / **53** | 7 / **53** |
-| Linux, Chromium | 579 / **390** | 9 / **9** | 3 / **11** |
-| Linux, Firefox | 1795 / **687** | 14 / **60** | 5 / **42** |
-| Linux, WebKit | 1266 / **579** | 16 / **15** | 3 / **22** |
-| Windows, Chromium | 978 / **559** | 25 / **19** | 3 / **41** |
-| Windows, Firefox | 1116 / **699** | 22 / **15** | 5 / **28** |
-| Windows, WebKit | 1583 / **931** | 13 / **11** | 2 / **16** |
+| macOS, Chromium | 904 / **431** | 22 / **26** | 5 / **23** |
+| macOS, WebKit | 915 / **315** | 60 / **52** | 8 / **50** |
+| Linux, Firefox | 1133 / **490** | 18 / **56** | 6 / **44** |
+| Linux, WebKit | 1277 / **511** | 17 / **15** | 3 / **21** |
+| Windows, Chromium | 1145 / **687** | 19 / **15** | 1 / **41** |
+| Windows, Firefox | 1219 / **754** | 22 / **15** | 6 / **29** |
+| Windows, WebKit | 1674 / **935** | 13 / **11** | 3 / **16** |
 <!-- speed:end -->
 
 These computers are virtual machines, and those for Linux and Windows have no GPU: use the table to compare the
