@@ -17,7 +17,7 @@ with this entry.
 import {createMap} from '@map-jr/map-jr-gl';
 
 const map = createMap(document.getElementById('map'), {
-  style: 'https://tiles.openfreemap.org/styles/liberty',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
   initialView: {center: [-74.0065, 40.7085], zoom: 13.6},
 });
 ```
@@ -37,7 +37,7 @@ import {createMap, supported} from '@map-jr/map-jr-gl';
 const container = document.getElementById('map');
 if (supported()) {
   createMap(container, {
-    style: 'https://tiles.openfreemap.org/styles/liberty',
+    style: 'https://styles.map-jr.org/1/elevation-zero.json',
     initialView: {center: [-74.0065, 40.7085], zoom: 13.6},
   });
 } else {
@@ -228,6 +228,10 @@ createMap('map', {
 });
 ```
 
+This example is about the pair, so it names two styles. A style that reads `color-scheme` needs no pair:
+`createMap('map', {style: 'https://styles.map-jr.org/1/elevation-zero.json', colorScheme: 'auto'})` draws the light
+and the dark map from one style.
+
 A change of scheme is a new style: the map requests the other style (for a URL) and draws the map from the start.
 `sources`, `layers`, `terrain`, `data`, `images` and the view of the description stay, as with each new
 `style`. To change the colours without a request, use one style that reads the global state property `color-scheme`: see
@@ -241,9 +245,9 @@ build warns once; so does an object that is neither a style nor a pair. The serv
 
 ```js
 createMap(container, {
-  style: 'https://tiles.openfreemap.org/styles/liberty',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
   sources: {routes: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}},
-  layers: [{id: 'routes', type: 'line', source: 'routes', before: 'water_name', paint: {'line-color': '#d6453d', 'line-width': 3}}],
+  layers: [{id: 'routes', type: 'line', source: 'routes', before: 'water_name_line', paint: {'line-color': '#d6453d', 'line-width': 3}}],
   terrain: {source: 'dem', exaggeration: 1.5},   // if the style or `sources` has an elevation source
 });
 ```
@@ -282,7 +286,7 @@ specification: an object by `text-font` name, whose value is the URL of a font f
 import {createMap} from '@map-jr/map-jr-gl';
 
 createMap('map', {
-  style: 'https://tiles.openfreemap.org/styles/liberty',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
   fonts: {
     'Noto Sans Regular': 'https://example.com/fonts/NotoSans-Regular.woff2',
     'Noto Sans Bold': [{url: 'https://example.com/fonts/NotoSans-Bold-Latin.woff2', 'unicode-range': ['U+0000-00FF']}],
@@ -330,7 +334,7 @@ import {createMap} from '@map-jr/map-jr-gl';
 
 const pin = '<svg viewBox="0 0 24 31"><path fill="#d6453d" d="M12 30C12 30 2 17 2 11a10 10 0 0 1 20 0c0 6-10 19-10 19z"/></svg>';
 const map = createMap(document.getElementById('map'), {
-  style: 'https://tiles.openfreemap.org/styles/liberty',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
   initialView: {center: [-74.006, 40.7128], zoom: 12},
   images: {pin},
   sources: {places: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [-74.006, 40.7128]}}}},
@@ -402,7 +406,7 @@ names an image of a sprite with an id other than `default`.
 import {createMap} from '@map-jr/map-jr-gl';
 
 const map = createMap(document.getElementById('map'), {
-  style: 'https://tiles.openfreemap.org/styles/liberty',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
   initialView: {center: [-74.006, 40.7128], zoom: 12},
   sprite: [{id: 'maki', url: 'https://demotiles.maplibre.org/styles/osm-bright-gl-style/sprite'}],
   sources: {places: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [-74.006, 40.7128]}}}},
@@ -434,7 +438,7 @@ each style: after a new style, it reports a name again that is still missing.
 import {createMap} from '@map-jr/map-jr-gl';
 
 const map = createMap(document.getElementById('map'), {
-  style: 'https://tiles.openfreemap.org/styles/liberty',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
   initialView: {center: [-74.006, 40.7128], zoom: 12},
   images: {},
 });
@@ -472,7 +476,7 @@ const places = {type: 'FeatureCollection', features: [
   {type: 'Feature', id: 2, properties: {kind: 'park'}, geometry: {type: 'Point', coordinates: [-73.9857, 40.7484]}},
 ]};
 const map = createMap(document.getElementById('map'), {
-  style: 'https://tiles.openfreemap.org/styles/liberty',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
   initialView: {center: [-73.996, 40.73], zoom: 11.5},
   images: {pin},
   sources: {places: {type: 'geojson', data: places}},
@@ -534,7 +538,7 @@ import {createMap} from '@map-jr/map-jr-gl';
 const container = document.getElementById('map');
 const routes = id => ({type: 'FeatureCollection', features: [{type: 'Feature', properties: {}, geometry: {type: 'LineString', coordinates: [[-74.01, 40.70], [-73.97, 40.75 + id / 100]]}}]});
 const layers = [{id: 'routes', type: 'line', source: 'routes', paint: {'line-color': '#d6453d', 'line-width': 3}}];
-const url = 'https://tiles.openfreemap.org/styles/liberty';
+const url = 'https://styles.map-jr.org/1/elevation-zero.json';
 
 const map = createMap(container, {style: url, layers, data: {routes: routes(0)}});
 
@@ -700,7 +704,7 @@ import {createMap} from '@map-jr/map-jr-gl';
 import {navigation, fullscreen} from '@map-jr/map-jr-gl/controls';
 
 createMap('map', {
-  style: 'https://tiles.openfreemap.org/styles/liberty',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
   controls: [navigation(), fullscreen()],
   locale: {'NavigationControl.ZoomIn': 'Zoom avant', 'NavigationControl.ZoomOut': 'Zoom arrière'},
 });
@@ -744,7 +748,7 @@ button.textContent = 'Layers';
 button.addEventListener('click', () => console.log('open the layer list'));
 
 createMap(document.getElementById('map'), {
-  style: 'https://tiles.openfreemap.org/styles/liberty',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
   controls: [navigation(), custom({key: 'layers', position: 'top-right', element: button})],
 });
 ```
@@ -768,7 +772,7 @@ export function App() {
   const corner = useMemo(() => document.createElement('div'), []);
   const controls = useMemo(() => [navigation(), custom({key: 'styles', position: 'top-right', element: corner})], [corner]);
   return <>
-    <div style={{height: 400}}><MapJr mapStyle="https://tiles.openfreemap.org/styles/liberty" controls={controls} /></div>
+    <div style={{height: 400}}><MapJr mapStyle="https://styles.map-jr.org/1/elevation-zero.json" controls={controls} /></div>
     {createPortal(<button onClick={() => console.log('switch the style')}>Styles</button>, corner)}
   </>;
 }
@@ -786,7 +790,7 @@ const controls = [navigation(), custom({key: 'styles', position: 'top-right', el
 </script>
 
 <template>
-  <div style="height: 400px"><MapJr map-style="https://tiles.openfreemap.org/styles/liberty" :controls="controls" /></div>
+  <div style="height: 400px"><MapJr map-style="https://styles.map-jr.org/1/elevation-zero.json" :controls="controls" /></div>
   <Teleport :to="corner"><button @click="console.log('switch the style')">Styles</button></Teleport>
 </template>
 ```

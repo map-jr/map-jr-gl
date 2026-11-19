@@ -128,7 +128,7 @@ This example uses the entry `@map-jr/map-jr-gl`.
   import {createMap} from '@map-jr/map-jr-gl';
 
   const map = createMap(document.getElementById('map'), {
-    style: 'https://tiles.openfreemap.org/styles/liberty',
+    style: 'https://styles.map-jr.org/1/elevation-zero.json',
     initialView: {center: [-74.0065, 40.7085], zoom: 13.6},
   });
 
@@ -154,7 +154,7 @@ const view = ref({center: [-74.0065, 40.7085], zoom: 13.6});
 
 <template>
   <div style="height: 400px">
-    <MapJr map-style="https://tiles.openfreemap.org/styles/liberty" v-model:view="view" ssr />
+    <MapJr map-style="https://styles.map-jr.org/1/elevation-zero.json" v-model:view="view" ssr />
   </div>
 </template>
 ```
@@ -243,7 +243,7 @@ const records = [
 ];
 
 const map = createMap(document.getElementById('map'), {
-  style: 'https://tiles.openfreemap.org/styles/liberty',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
   initialView: {center: [-73.996, 40.73], zoom: 11.5},
   images: {disc: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="{{color}}"/></svg>'},
   data: {places: points(records, {lngLat: r => [r.lng, r.lat]})},
@@ -270,7 +270,7 @@ With `@map-jr/map-jr-gl`, the elevation source, the layers and the terrain are a
 import {createMap} from '@map-jr/map-jr-gl';
 
 const map = createMap(document.getElementById('map'), {
-  style: 'https://tiles.openfreemap.org/styles/liberty',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
   initialView: {center: [7.6586, 45.9763], zoom: 12.4, pitch: 60},
   sources: {
     dem: {type: 'raster-dem', tiles: ['https://tiles.mapterhorn.com/{z}/{x}/{y}.webp'], encoding: 'terrarium', tileSize: 512, maxzoom: 12},
@@ -322,7 +322,7 @@ layers draw, and it never reads other data. `radius` is the distance around the 
 import {createMap} from '@map-jr/map-jr-gl';
 
 const map = createMap(document.getElementById('map'), {
-  style: 'https://tiles.openfreemap.org/styles/liberty',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
   initialView: {center: [-74.0065, 40.7085], zoom: 16},
   onClick: async event => {
     // "openmaptiles" is the id of the vector source in this style.
@@ -338,7 +338,7 @@ With `@map-jr/map-jr-gl/maplibre-compat`, `map.queryFeatures` and `map.querySour
 ```js
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
-const map = new Map({container: 'map', style: 'https://tiles.openfreemap.org/styles/liberty', center: [-74.0065, 40.7085], zoom: 16});
+const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json', center: [-74.0065, 40.7085], zoom: 16});
 map.on('click', async event => {
   const features = await map.querySource('openmaptiles', event.lngLat, {radius: 8});
   console.log(features.map(feature => feature.properties));
@@ -355,7 +355,7 @@ This example uses the entry `@map-jr/map-jr-gl/server`.
 import {renderToSVG} from '@map-jr/map-jr-gl/server';
 
 const {svg} = await renderToSVG({
-  style: 'https://tiles.openfreemap.org/styles/liberty',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
   center: [-74.0065, 40.7085],
   zoom: 14.3,
   width: 800,

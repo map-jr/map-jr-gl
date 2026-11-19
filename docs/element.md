@@ -14,7 +14,7 @@ The entry is new: it is in the first release after version 0.7.0.
 <meta charset="utf-8">
 <script type="module" src="https://unpkg.com/@map-jr/map-jr-gl/dist/element.js"></script>
 
-<map-jr map-style="https://tiles.openfreemap.org/styles/liberty" center="-74.0065,40.7085" zoom="13.6"
+<map-jr map-style="https://styles.map-jr.org/1/elevation-zero.json" center="-74.0065,40.7085" zoom="13.6"
         color-scheme="auto" style="height: 400px"></map-jr>
 ```
 
@@ -109,7 +109,7 @@ import {navigation} from '@map-jr/map-jr-gl/controls';
 
 const map = document.createElement('map-jr');
 map.style.height = '400px';
-map.mapStyle = 'https://tiles.openfreemap.org/styles/liberty';
+map.mapStyle = 'https://styles.map-jr.org/1/elevation-zero.json';
 map.initialView = {center: [-74.0065, 40.7085], zoom: 13.6};
 map.controls = [navigation()];
 map.data = {places: {type: 'FeatureCollection', features: [{type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [-74.0065, 40.7085]}}]}};
@@ -145,8 +145,8 @@ table names, but no other event of the map. A listener that was added before the
 add it after `import` of the entry, or after `await customElements.whenDefined('map-jr')`.
 
 ```html
-<map-jr id="map" map-style="https://tiles.openfreemap.org/styles/liberty" center="13.4,52.52" zoom="11"
-        interactive-layers="poi_r1" style="height: 400px"></map-jr>
+<map-jr id="map" map-style="https://styles.map-jr.org/1/elevation-zero.json" center="13.4,52.52" zoom="11"
+        interactive-layers="poi_z14" style="height: 400px"></map-jr>
 <p id="where"></p>
 <script type="module">
   import 'https://unpkg.com/@map-jr/map-jr-gl/dist/element.js';
@@ -186,10 +186,10 @@ first frame, as with the Vue and React components.
 import {renderElement} from '@map-jr/map-jr-gl/server';
 
 const html = await renderElement(
-  {style: 'https://tiles.openfreemap.org/styles/liberty', initialView: {center: [13.4, 52.52], zoom: 11}},
+  {style: 'https://styles.map-jr.org/1/elevation-zero.json', initialView: {center: [13.4, 52.52], zoom: 11}},
   {width: 800, height: 400, attributes: {id: 'map', style: 'height: 400px'}},
 );
-// <map-jr map-style="https://tiles.openfreemap.org/styles/liberty" center="13.4,52.52" zoom="11" id="map"
+// <map-jr map-style="https://styles.map-jr.org/1/elevation-zero.json" center="13.4,52.52" zoom="11" id="map"
 //   style="display:block;position:relative;overflow:hidden;height: 400px"><svg data-map-jr-ssr="" …>…</svg>…</map-jr>
 ```
 

@@ -4,7 +4,7 @@
  *
  * ```html
  * <script type="module" src="https://unpkg.com/@map-jr/map-jr-gl/dist/element.js"></script>
- * <map-jr map-style="https://tiles.openfreemap.org/styles/liberty" center="13.4,52.52" zoom="11" style="height:400px"></map-jr>
+ * <map-jr map-style="https://styles.map-jr.org/1/elevation-zero.json" center="13.4,52.52" zoom="11" style="height:400px"></map-jr>
  * ```
  * It is a thin layer over `makeMap` of the main API (host.ts), with no shadow root: the element is the container of
  * the map (#826). The attributes and the properties make one description, and one microtask after a change the element
