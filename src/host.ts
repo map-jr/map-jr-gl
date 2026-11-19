@@ -388,19 +388,91 @@ export interface MapDataEvent<T extends string = string> extends MapEventBase<T>
     source?: unknown;
 }
 
-type Plain<K extends string> = {[T in K]: MapEventBase<T>};
-type Pointed<K extends string> = {[T in K]: MapPointerEvent<T>};
 /**
  * The events of `listen`, by type. A position is `[lng, lat]` and a box is `[[west, south], [east, north]]`. For the
  * common needs, read `state` or set `onClick`, `onViewChange` and `onError` in the description.
  */
-export interface MapEvents extends
-    Plain<'load' | 'idle' | 'render' | 'resize' | 'remove' | 'style.load' | 'webglcontextlost' | 'webglcontextrestored'>,
-    Plain<'movestart' | 'move' | 'moveend' | 'zoomstart' | 'zoom' | 'zoomend' | 'rotatestart' | 'rotate' | 'rotateend' | 'pitchstart' | 'pitch' | 'pitchend'>,
-    Record<'dragstart' | 'drag' | 'dragend', MapDragEvent>,
-    Pointed<'dblclick' | 'contextmenu' | 'mousedown' | 'mousemove' | 'mouseup' | 'mouseover' | 'mouseout'>,
-    Record<'touchstart' | 'touchmove' | 'touchend' | 'touchcancel', MapTouchEvent>,
-    Record<'styledata' | 'sourcedata' | 'data' | 'styledataloading' | 'sourcedataloading' | 'dataloading', MapDataEvent> {
+export interface MapEvents {
+    /** The style and the first tiles have loaded. It comes once, before the first `idle`. */
+    load: MapEventBase<'load'>;
+    /** Nothing moves and nothing loads. */
+    idle: MapEventBase<'idle'>;
+    /** The map has drawn a frame. */
+    render: MapEventBase<'render'>;
+    /** The size of the map has changed. */
+    resize: MapEventBase<'resize'>;
+    /** The map is removed. */
+    remove: MapEventBase<'remove'>;
+    /** A complete style has loaded. */
+    'style.load': MapEventBase<'style.load'>;
+    /** The browser has taken the WebGL context away. The map starts again on a new canvas with the same view and data. */
+    webglcontextlost: MapEventBase<'webglcontextlost'>;
+    /** The map has a WebGL context again after `webglcontextlost`. */
+    webglcontextrestored: MapEventBase<'webglcontextrestored'>;
+    /** The view starts to change. */
+    movestart: MapEventBase<'movestart'>;
+    /** The view changes. */
+    move: MapEventBase<'move'>;
+    /** The view has stopped changing. */
+    moveend: MapEventBase<'moveend'>;
+    /** The zoom starts to change. */
+    zoomstart: MapEventBase<'zoomstart'>;
+    /** The zoom changes. */
+    zoom: MapEventBase<'zoom'>;
+    /** The zoom has stopped changing. */
+    zoomend: MapEventBase<'zoomend'>;
+    /** The bearing starts to change. */
+    rotatestart: MapEventBase<'rotatestart'>;
+    /** The bearing changes. */
+    rotate: MapEventBase<'rotate'>;
+    /** The bearing has stopped changing. */
+    rotateend: MapEventBase<'rotateend'>;
+    /** The pitch starts to change. */
+    pitchstart: MapEventBase<'pitchstart'>;
+    /** The pitch changes. */
+    pitch: MapEventBase<'pitch'>;
+    /** The pitch has stopped changing. */
+    pitchend: MapEventBase<'pitchend'>;
+    /** The user starts to drag the map. */
+    dragstart: MapDragEvent;
+    /** The user drags the map. */
+    drag: MapDragEvent;
+    /** The user stops dragging the map. */
+    dragend: MapDragEvent;
+    /** A double click on the map. */
+    dblclick: MapPointerEvent<'dblclick'>;
+    /** The browser asks for a context menu over the map, usually after a click with the right mouse button. */
+    contextmenu: MapPointerEvent<'contextmenu'>;
+    /** A mouse button is pressed over the map. */
+    mousedown: MapPointerEvent<'mousedown'>;
+    /** The mouse moves over the map. */
+    mousemove: MapPointerEvent<'mousemove'>;
+    /** A mouse button is released over the map. */
+    mouseup: MapPointerEvent<'mouseup'>;
+    /** The mouse enters the map. */
+    mouseover: MapPointerEvent<'mouseover'>;
+    /** The mouse leaves the map. */
+    mouseout: MapPointerEvent<'mouseout'>;
+    /** A finger touches the map. */
+    touchstart: MapTouchEvent<'touchstart'>;
+    /** A finger moves on the map. */
+    touchmove: MapTouchEvent<'touchmove'>;
+    /** A finger leaves the map. */
+    touchend: MapTouchEvent<'touchend'>;
+    /** The browser cancels a touch on the map. */
+    touchcancel: MapTouchEvent<'touchcancel'>;
+    /** The style has changed. */
+    styledata: MapDataEvent<'styledata'>;
+    /** A source has new data. */
+    sourcedata: MapDataEvent<'sourcedata'>;
+    /** Each time that `styledata` or `sourcedata` fires. */
+    data: MapDataEvent<'data'>;
+    /** The style starts to load. */
+    styledataloading: MapDataEvent<'styledataloading'>;
+    /** A source starts to load. */
+    sourcedataloading: MapDataEvent<'sourcedataloading'>;
+    /** Each time that `styledataloading` or `sourcedataloading` fires. */
+    dataloading: MapDataEvent<'dataloading'>;
     /** A click on the map. */
     click: MapPointerEvent<'click'>;
     /** A turn of the mouse wheel over the map. */

@@ -343,6 +343,13 @@ no documentation, when a member of the map is not in `docs/api.md`, when a galle
 forms, when no document names an entry of the package, when a link between documents is broken, or when a number of
 a text or of a kind of check in `src/mistakes.ts` is taken twice.
 
+The same command runs `node scripts/reference.mjs --check`. The script writes the reference tables (Name, Type,
+Default, Description) of the blocks `<!-- ref:Name:start -->` of `README.md`, `docs/` and
+`test/fixtures/reference.md` from the types and the TSDoc of `src/`, and `--check` fails when a table is out of date
+or a member has no TSDoc. `Name` is a type of `scripts/reference/types.ts`, or `Type.method` for the signature and
+the parameters of one method. After a change of a type or a comment, run `node scripts/reference.mjs --write` and
+commit the pages.
+
 ## Helpers for agents
 
 The scripts in `scripts/agents/` serve the workflow of `docs/agents/` and run on macOS and Linux with no dependency
