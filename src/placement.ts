@@ -215,30 +215,16 @@ function clipLine(c: number[]): number[][] {
     return out;
 }
 
-/** Whether the line turns by more than `maxAngle` (radians) within any stretch of `window` in the label around the anchor at `d` (`checkMaxAngle` of MapLibre GL JS). */
-function bendsTooMuch(c: number[], seg: number[], d: number, length: number, window: number, maxAngle: number) {
-    const n = c.length / 2, corners: [number, number][] = [];
-    let sum = 0;
-    for (let i = 1; i < n - 1; i++) {
-        const at = seg[i] - d;
-        if (at <= -length / 2) continue;
-        if (at >= length / 2) break;
-        let turn = Math.atan2(c[i * 2 + 1] - c[i * 2 - 1], c[i * 2] - c[i * 2 - 2]) - Math.atan2(c[i * 2 + 3] - c[i * 2 + 1], c[i * 2 + 2] - c[i * 2]);
-        turn = Math.abs((turn + 3 * Math.PI) % (2 * Math.PI) - Math.PI);
-        corners.push([at, turn]); sum += turn;
-        while (at - corners[0][0] > window) sum -= corners.shift()![1];
-        if (sum > maxAngle) return true;
-    }
-    // (The label runs past an end of the line.)
-    return d - length / 2 < 0 || d + length / 2 > seg[n - 1];
-}
+/** The most labels that the anchors along the lines of one tile layer make. Tiles come from other parties, and a line of many short turns with a small `symbol-spacing` could otherwise make millions. */
+export const MAX_LINE_ANCHORS = 20000;
 
 /**
- * The anchors along one line (`symbol-placement: line`), by the method of MapLibre GL JS (`getAnchors` and `resample`):
- * from an offset, every `symbol-spacing`, where the whole label fits on the line and the line does not bend too much
- * under it. A line that ends in the tile and has no such place tries once more from its middle.
+ * The anchors along one line (`symbol-placement: line`), by the method of MapLibre GL JS (`getAnchors`, `resample` and
+ * `checkMaxAngle`): from an offset, every `symbol-spacing`, inside the tile, where the whole label fits on the line and
+ * the line turns by no more than `maxAngle` (radians) within any stretch of `window` under it. A line that ends in the
+ * tile and has no such place tries once more from its middle. At most `most` distances.
  */
-function anchorDistances(c: number[], spacing: number, length: number, glyph: number, ov: number, window: number, maxAngle: number): number[] {
+function anchorDistances(c: number[], spacing: number, length: number, glyph: number, ov: number, window: number, maxAngle: number, most: number): number[] {
     const n = c.length / 2, seg = [0];
     for (let i = 1; i < n; i++) seg.push(seg[i - 1] + Math.hypot(c[i * 2] - c[i * 2 - 2], c[i * 2 + 1] - c[i * 2 - 1]));
     const total = seg[n - 1], x0 = c[0], y0 = c[1];
@@ -246,11 +232,33 @@ function anchorDistances(c: number[], spacing: number, length: number, glyph: nu
     const continued = x0 === 0 || x0 === EXTENT || y0 === 0 || y0 === EXTENT;
     // A long label keeps at least a quarter of the spacing free between it and the next.
     if (spacing - length < spacing / 4) spacing = length + spacing / 4;
+    // (The turn at each inner point of the line.)
+    const turn = (i: number) => {
+        const t = Math.atan2(c[i * 2 + 1] - c[i * 2 - 1], c[i * 2] - c[i * 2 - 2]) - Math.atan2(c[i * 2 + 3] - c[i * 2 + 1], c[i * 2 + 2] - c[i * 2]);
+        return Math.abs((t + 3 * Math.PI) % (2 * Math.PI) - Math.PI);
+    };
     const resample = (from: number) => {
         const out: number[] = [];
-        for (let d = from; d < total; d += spacing) {
+        // (The distances grow, so the segment of the anchor and the first point under the label only move forward.)
+        let k = 1, first = 1;
+        for (let d = from; d < total && out.length < most; d += spacing) {
             if (d - length / 2 < 0 || d + length / 2 > total) continue;
-            if (window && bendsTooMuch(c, seg, d, length, window, maxAngle)) continue;
+            while (k < n - 1 && seg[k] < d) k++;
+            const t = seg[k] > seg[k - 1] ? (d - seg[k - 1]) / (seg[k] - seg[k - 1]) : 0;
+            const x = c[k * 2 - 2] + (c[k * 2] - c[k * 2 - 2]) * t, y = c[k * 2 - 1] + (c[k * 2 + 1] - c[k * 2 - 1]) * t;
+            if (x < 0 || x >= EXTENT || y < 0 || y >= EXTENT) continue;
+            if (window) {
+                while (first < n - 1 && seg[first] - d <= -length / 2) first++;
+                const corners: [number, number][] = [];
+                let sum = 0, bent = false;
+                for (let i = first; i < n - 1 && seg[i] - d < length / 2 && !bent; i++) {
+                    const at = seg[i] - d, a = turn(i);
+                    corners.push([at, a]); sum += a;
+                    while (at - corners[0][0] > window) sum -= corners.shift()![1];
+                    bent = sum > maxAngle;
+                }
+                if (bent) continue;
+            }
             out.push(d);
         }
         return out;
@@ -259,51 +267,60 @@ function anchorDistances(c: number[], spacing: number, length: number, glyph: nu
     return ds.length || continued ? ds : resample(total / 2);
 }
 
-/** The text and icon width that the anchors of a line label were found for, and the labels at those anchors. */
-const alongLine = new WeakMap<LabelSrc[], {lengths: string; out: LabelSrc[]}>();
+/**
+ * The labels at the anchors of the line labels of one tile layer, for one shaper (one map), with the `generation` of
+ * the shaper that they were found at. `final` is false while a glyph file or an icon was missing.
+ */
+const alongLine = new WeakMap<LabelSrc[], {shaper: Shaper; generation: number; final: boolean; out: LabelSrc[]}>();
 /**
  * The labels of a tile with each line label (`LabelSrc.line`) made into one label at each of its anchors. The anchors
- * need the width of the label, which is known only here: a label whose glyph file is on its way has none yet. The
- * result is kept while the widths stay the same.
+ * need the width of the label, which is known only here: a label whose glyph file is on its way has none yet, and is
+ * placed when the file has arrived (the engine places the labels again then). The result is kept until the shaper has
+ * new glyphs or images. (The cache holds no state of a map: its key is the label array of a tile, which belongs to one
+ * map, and the entry names its shaper.)
  */
 export function lineLabels(labels: LabelSrc[], shaper: Shaper, icons?: IconLookup): LabelSrc[] {
     if (!labels.some(l => l.line)) return labels;
-    // (For each line label: its length in tile units, or -1 while its glyphs are on their way.)
-    const lengths = labels.map(l => {
-        if (!l.line) return 0;
-        const shaped = l.text ? shaper.shape(l.text, l.font, 1e3, l.spacing, l.lineHeight, l.size0) : null;
-        if (shaped?.wait) return -1;
-        const meta = l.icon ? icons?.(l.icon.name) : undefined;
-        // As in MapLibre GL JS, the wider of text and icon, scaled as text of `text-size` one zoom level in.
-        return Math.max(shaped?.width ?? 0, meta ? meta.width / meta.pixelRatio : 0) * l.tpr! * l.size1 / EM;
-    });
-    const key = lengths.join();
+    const generation = shaper.generation ?? 0;
     let done = alongLine.get(labels);
-    if (done?.lengths === key) return done.out;
-    const out: LabelSrc[] = [], seen = new Map<string, number[]>();
-    labels.forEach((l, i) => {
-        if (!l.line) { out.push(l); return; }
-        const length = lengths[i], scale = l.tpr! * l.size1 / EM;
-        if (length < 0) return;
+    if (done && done.final && done.shaper === shaper && done.generation === generation) return done.out;
+    const out: LabelSrc[] = [], seen = new Map<string, Map<number, number[]>>();
+    let final = true, made = 0;
+    for (const l of labels) {
+        if (!l.line) { out.push(l); continue; }
+        const shaped = l.text ? shaper.shape(l.text, l.font, 1e3, l.spacing, l.lineHeight, l.size0) : null;
+        if (shaped?.wait) { final = false; continue; }
+        const meta = l.icon ? icons?.(l.icon.name) : undefined;
+        if (l.icon && !meta) final = false;
+        // As in MapLibre GL JS, the wider of text and icon, scaled as text of `text-size` one zoom level in.
+        const scale = l.tpr! * l.size1 / EM, length = Math.max(shaped?.width ?? 0, meta ? meta.width / meta.pixelRatio : 0) * scale;
+        // As in MapLibre GL JS, the same text is not repeated within half of `symbol-spacing` in the tile (looked up in a grid of that size).
+        const repeat = Math.max(1, l.lineSpacing! / 2), cells = l.text ? seen.get(l.text) ?? new Map<number, number[]>() : null;
+        if (cells) seen.set(l.text, cells);
         for (const part of clipLine(l.line)) {
-            const ds = anchorDistances(part, l.lineSpacing!, length, EM * scale, l.ov!, l.text ? 0.6 * EM * scale : 0, l.maxAngle * Math.PI / 180);
+            if (made >= MAX_LINE_ANCHORS) break;
+            const ds = anchorDistances(part, l.lineSpacing!, length, EM * scale, l.ov!, l.text ? 0.6 * EM * scale : 0, l.maxAngle * Math.PI / 180, MAX_LINE_ANCHORS - made);
             if (!ds.length) continue;
             for (const a of lineAnchors(part, 0, part.length / 2, 2, true, l.window!, ds)) {
-                // As in MapLibre GL JS, the same text is not repeated within half of `symbol-spacing` in the tile.
-                if (l.text) {
-                    const near = seen.get(l.text) ?? [];
+                if (cells) {
+                    const cx = Math.floor(a[0] / repeat), cy = Math.floor(a[1] / repeat);
                     let close = false;
-                    for (let k = 0; k < near.length && !close; k += 2) close = Math.hypot(near[k] - a[0], near[k + 1] - a[1]) < l.lineSpacing! / 2;
+                    for (let i = -1; i <= 1 && !close; i++) for (let j = -1; j <= 1 && !close; j++) {
+                        const near = cells.get((cx + i) * 65536 + cy + j);
+                        if (near) for (let k = 0; k < near.length && !close; k += 2) close = Math.hypot(near[k] - a[0], near[k + 1] - a[1]) < repeat;
+                    }
                     if (close) continue;
-                    near.push(a[0], a[1]); seen.set(l.text, near);
+                    const key = cx * 65536 + cy, list = cells.get(key);
+                    if (list) list.push(a[0], a[1]); else cells.set(key, [a[0], a[1]]);
                 }
                 const one: LabelSrc = Object.assign(Object.create(Object.getPrototypeOf(l)), l, {x: a[0], y: a[1], angle: a[2], len: a[3], line: undefined});
                 if (a.length > 4) { one.pathIndex = a[4]; one.path = a.slice(5); }
                 out.push(one);
+                made++;
             }
         }
-    });
-    alongLine.set(labels, done = {lengths: key, out});
+    }
+    alongLine.set(labels, {shaper, generation, final, out});
     return out;
 }
 

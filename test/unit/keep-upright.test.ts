@@ -75,3 +75,43 @@ test('anchors along a line start at an offset and repeat every symbol-spacing, a
     // A line shorter than its label has no anchor.
     assert.deepEqual(anchorsX(250, 0.4, 0.5), []);
 });
+
+/** A line label of the tile with its line replaced by `line` (tile units). */
+function lineLabel(line: number[], layout: Record<string, unknown> = {}) {
+    const layer = compileLayer({id: 'r', type: 'symbol', source: 'g', layout: {'text-field': 'Main Street', 'text-size': 16, 'symbol-placement': 'line', ...layout}})!;
+    const geometry = {type: 'LineString', coordinates: [[lngOf(tx + 0.1), latOf(ty + 0.5)], [lngOf(tx + 0.9), latOf(ty + 0.5)]]};
+    const l = buildTile(sliceGeoJSON(prepareGeoJSON({type: 'Feature', properties: {}, geometry} as any), z, tx, ty), z, [layer], false).labels.r[0];
+    return Object.assign(Object.create(Object.getPrototypeOf(l)), l, {line});
+}
+
+test('a line of many turns with a small symbol-spacing makes a bounded number of anchors in bounded time (#1016)', async () => {
+    const {lineLabels, MAX_LINE_ANCHORS} = await import('../../src/placement.ts');
+    const zigzag: number[] = [];
+    for (let i = 0; i < 4000; i++) zigzag.push(100 + (i % 2) * 3800, 100 + i * 3800 / 4000);
+    const t0 = performance.now();
+    const out = lineLabels([lineLabel(zigzag, {'text-field': 'A', 'symbol-spacing': 1, 'text-max-angle': 179})], new EstimateShaper());
+    const ms = performance.now() - t0;
+    assert.ok(out.length > 1000 && out.length <= MAX_LINE_ANCHORS, `${out.length} anchors`);
+    assert.ok(ms < 1500, `${Math.round(ms)} ms`);
+});
+
+test('an anchor along a line is not on the right or bottom edge of the tile, as in MapLibre GL JS (#1016)', async () => {
+    const {lineLabels} = await import('../../src/placement.ts');
+    assert.deepEqual(lineLabels([lineLabel([4096, 100, 4096, 4000])], new EstimateShaper()), []);
+    assert.ok(lineLabels([lineLabel([4095, 100, 4095, 4000])], new EstimateShaper()).length > 0);
+});
+
+test('a line label whose glyphs arrive later gets its anchors then, and the anchors are kept until the shaper changes (#1016)', async () => {
+    const {lineLabels} = await import('../../src/placement.ts');
+    const real = new EstimateShaper();
+    let ready = false, calls = 0;
+    const shaper = {generation: 0, shape(...a: Parameters<EstimateShaper['shape']>) { calls++; return ready ? real.shape(...a) : {...real.shape(...a), wait: true}; }};
+    const labels = [lineLabel([100, 2000, 4000, 2000])];
+    assert.equal(lineLabels(labels, shaper).length, 0, 'no anchors while the glyphs are on their way');
+    ready = true; shaper.generation++;
+    const placed = lineLabels(labels, shaper);
+    assert.ok(placed.length > 0, 'anchors once the glyphs are there');
+    calls = 0;
+    assert.equal(lineLabels(labels, shaper), placed, 'the same result while nothing changed');
+    assert.equal(calls, 0, 'and no text is shaped for it');
+});
