@@ -213,62 +213,103 @@ export const MapImage = defineComponent(<P extends string>(props: MapImageProps<
  * ```
  * The style is the prop `map-style` (`style` is the CSS style of an element in Vue).
  */
-/** What a template ref on `MapJr` has: the map (`null` until it is made) and its state. */
+/** What a template ref on `MapJr` holds. */
 export interface MapJrExposed {
+    /** The map, or `null` until the component is mounted. */
     readonly map: MapInstance | null;
+    /** The state of the map, or `null` until the component is mounted. */
     readonly state: MapState | null;
 }
 
 const MapJrComponent = defineComponent({
     name: 'MapJr',
     props: {
-        /** A style object or the URL of a style. */
+        /** The style: a style object, the URL of a style, or `{light, dark}` with one style for each resolved `colorScheme`. */
         mapStyle: {type: [String, Object] as PropType<MapDescription['style']>, required: true},
-        /** The view, for `v-model:view`. Without it the map starts at `initialView` and the user moves it. */
+        /** The view that the application controls, for `v-model:view`. Without it, the map starts at `initialView` and the user moves it. */
         view: Object as PropType<ViewInput>,
+        /** The view when the map is created: a center, zoom, bearing and pitch, or `bounds` to fit. */
         initialView: Object as PropType<InitialView>,
-        /** Sources to add to the sources of the style, by id. A source here replaces the source of the style with the same id. */
+        /** Sources to add to the style, by id. A source here overrides the source of the style that has the same id. */
         sources: Object as PropType<MapDescription['sources']>,
-        /** Layers to add to the layers of the style (they do not replace them). A layer with `before` goes below the layer with that id, and one without it goes on top. */
+        /** Layers to add to the style. A layer with `before` is inserted below the style layer with that id, and a layer without it is drawn on top. */
         layers: Array as PropType<MapDescription['layers']>,
-        /** 3D terrain in place of that of the style: `{source: 'dem', exaggeration: 1.5}`. `null` means no 3D terrain (a flat map); no prop means the terrain of the style. */
+        /** 3D terrain from a raster-dem source. It overrides the `terrain` of the style, and `null` turns 3D terrain off. */
         terrain: {type: Object as PropType<MapDescription['terrain']>, default: undefined},
-        /** Images for `icon-image` of style layers, by name. A value is an SVG document, the URL of an image, or `{image, width, height}`. */
+        /** Images for `icon-image` of style layers, by name: an SVG document as a string, the URL of an image, or `{image, width, height}`. */
         images: Object as PropType<MapDescription['images']>,
-        /** Sprites to add to the sprite of the style: `[{id: 'pins', url}]`. An `icon-image` names an image of one as `id:name`. */
+        /** Sprites to add to the sprite of the style, as `[{id: 'pins', url}]`. A layer names an image of such a sprite as `id:name`. */
         sprite: Array as PropType<MapDescription['sprite']>,
-        /** GeoJSON data for sources of the style, by the id of the source. Each value is compared by identity: give a new object to change it. */
+        /** GeoJSON data or the URL of GeoJSON, by the id of a GeoJSON source of the style. To change the data, pass a new object. */
         data: Object as PropType<MapDescription['data']>,
+        /** The ids of the style layers that respond to the pointer: their features are in the events `click` and `hover`. */
         interactiveLayers: Array as PropType<string[]>,
+        /**
+         * Whether the top feature of `interactive-layers` under the pointer has the feature state `hover: true`.
+         * @default false
+         */
         hoverState: {type: Boolean, default: undefined},
+        /** The smallest and largest zoom levels (default -2 and 22) and the largest pitch in degrees (default 60) that the user can reach. */
         minZoom: Number, maxZoom: Number, maxPitch: Number,
+        /** The box that the user cannot move the view out of, as `[[west, south], [east, north]]`. */
         maxBounds: [Array, Object] as unknown as PropType<MapDescription['maxBounds']>,
+        /** The CSS cursor over the map. Without it, the cursor is `pointer` over a feature of `interactive-layers`. */
         cursor: String,
+        /**
+         * Whether the wheel zooms only with Ctrl (⌘ on a Mac) and a touch pans only with two fingers, for a map in a page that scrolls.
+         * @default false
+         */
         cooperativeGestures: {type: Boolean, default: undefined},
-        /** The colours of the controls, the popup and the attribution: `'light'` (the default), `'dark'`, or `'auto'` to follow the browser. */
+        /**
+         * The colour scheme of the controls, the popup and the attribution, for `v-model:color-scheme`. `'auto'` follows the browser.
+         * @default 'light'
+         */
         colorScheme: String as PropType<MapDescription['colorScheme']>,
-        /** The texts of the controls by the keys of MapLibre GL JS: `{'NavigationControl.ZoomIn': 'Zoom avant'}`. */
+        /** The texts of the controls by the keys of MapLibre GL JS, for example `{'NavigationControl.ZoomIn': 'Zoom avant'}`. */
         locale: Object as PropType<MapDescription['locale']>,
-        /** Space in CSS pixels at the sides of the map that the view keeps free: one number, or `{top, right, bottom, left}`. */
+        /**
+         * Space in CSS pixels at the sides of the map that the view keeps free: one number, or `{top, right, bottom, left}`.
+         * @default 0
+         */
         padding: [Number, Object] as PropType<MapDescription['padding']>,
-        /** Controls from `@map-jr/map-jr-gl/controls`: `[navigation(), scale()]`. */
+        /** Controls from `@map-jr/map-jr-gl/controls`, for example `[navigation(), scale()]`. */
         controls: Array as PropType<ControlSpec[]>,
-        /** The projection in place of that of the style: `{type: 'globe'}` or `{type: 'mercator'}`. */
+        /** The projection, `{type: 'globe'}` or `{type: 'mercator'}`. It overrides the `projection` of the style. */
         projection: Object as PropType<MapDescription['projection']>,
-        /** Values for the `global-state` expressions of the style, by name: `{season: 'winter'}`. */
+        /** Values for the `global-state` expressions of the style, by name, for example `{season: 'winter'}`. */
         globalState: Object as PropType<MapDescription['globalState']>,
-        /** Changes a request before the map makes it, as `transformRequest` of MapLibre GL JS. */
+        /** A function that changes a request before the map sends it, as `transformRequest` of MapLibre GL JS. */
         transformRequest: Function as PropType<MapDescription['transformRequest']>,
+        /**
+         * The thread that renders the map. Read only when the map is created.
+         * @default 'auto'
+         */
         renderer: String as PropType<'auto' | 'worker' | 'main'>,
-        /** Web fonts for labels in the shape of `font-faces` of the style specification: by `text-font` name, a URL or a list of `{url, 'unicode-range'}`. */
+        /** Web fonts for labels, by `text-font` name: a URL, or a list of `{url, 'unicode-range'}` as in `font-faces` of the style specification. */
         fonts: Object as PropType<MapDescription['fonts']>,
+        /**
+         * The CSS font family for labels whose `text-font` names no loaded font. Read only when the map is created.
+         * @default '"Noto Sans", "Helvetica Neue", Arial, sans-serif'
+         */
         fontFamily: String,
-        /** `false`: the user cannot move the map. */
+        /**
+         * Whether the user can move the map. Read only when the map is created.
+         * @default true
+         */
         interactive: {type: Boolean, default: undefined},
+        /**
+         * Whether the canvas uses multisample antialiasing. Read only when the map is created.
+         * @default false
+         */
         antialias: {type: Boolean, default: undefined},
         /** The nonce of a Content Security Policy with `style-src 'nonce-…'`, for the style sheet of the map. */
         nonce: String,
+        /** The options of the built-in attribution, or `false` to hide it. Read only when the map is created. */
         attribution: {type: [Boolean, Object] as PropType<false | {compact?: boolean; customAttribution?: string | string[]}>, default: undefined},
+        /**
+         * Whether the view is kept in the hash of the URL; a string is the name of the parameter. Read only when the map is created.
+         * @default false
+         */
         hash: {type: [Boolean, String] as PropType<boolean | string>, default: undefined},
         /**
          * On a server: render the first view as SVG into the page. `true`, or options: the size in pixels that the map
@@ -284,7 +325,7 @@ const MapJrComponent = defineComponent({
         'update:colorScheme': (_scheme: 'auto' | 'light' | 'dark') => true,
         click: (_event: MapPointer) => true,
         hover: (_features: RenderedFeature[]) => true,
-        /** The map. */
+        /** Emitted with the map when the style and the first tiles have loaded. */
         load: (_map: MapInstance) => true,
         idle: () => true,
         error: (_error: Error) => true,

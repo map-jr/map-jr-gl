@@ -35,27 +35,51 @@ const spec = <O extends object, M = typeof More>(name: string, make: (m: M, opti
     };
     return {key: name + JSON.stringify(options), position, create} as ControlSpec;
 };
-/** Buttons to zoom in and out, and a compass that turns the map to the north. With `visualizePitch: true`, the compass also shows and resets the pitch. */
+/**
+ * Creates buttons to zoom in and out, and a compass that turns the map to the north. The control is placed at `'top-right'` unless `position` sets it.
+ * @param options The options of `NavigationOptions`, and `position`.
+ * @returns A control for `controls` of the description.
+ */
 export const navigation = spec('navigation', (m, o: NavigationOptions) => new m.NavigationControl(o));
-/** A scale bar. */
+/**
+ * Creates a scale bar. The control is placed at `'bottom-left'` unless `position` sets it.
+ * @param options The options of `ScaleOptions`, and `position`.
+ * @returns A control for `controls` of the description.
+ */
 export const scale = spec('scale', (m, o: ScaleOptions) => new m.ScaleControl(o));
-/** A button that shows the map on the full screen. */
+/**
+ * Creates a button that shows the map on the full screen. The control is placed at `'top-right'` unless `position` sets it.
+ * @returns A control for `controls` of the description.
+ */
 export const fullscreen = spec('fullscreen', (m, _o: {}) => new m.FullscreenControl());
-/** A button that moves the map to the position of the user. With `trackUserLocation`, it turns tracking on and off and shows a dot at the position. */
+/**
+ * Creates a button that moves the map to the position of the user. The control is placed at `'top-right'` unless `position` sets it.
+ * @param options The options of `GeolocateOptions`, and `position`.
+ * @returns A control for `controls` of the description.
+ */
 export const geolocate = spec('geolocate', (m, o: GeolocateOptions) => new m.GeolocateControl(o));
-/** A button that turns 3D terrain on and off. `source` is the id of an elevation source of the style. */
+/**
+ * Creates a button that turns 3D terrain on and off. The control is placed at `'top-right'` unless `position` sets it.
+ * @param options The options of `TerrainOptions`, and `position`.
+ * @returns A control for `controls` of the description.
+ */
 export const terrain = spec('terrain', (m, o: TerrainOptions) => new m.TerrainControl(o));
-/** A button that switches the projection between the globe and Mercator. */
+/**
+ * Creates a button that switches the projection between the globe and Mercator. The control is placed at `'top-right'` unless `position` sets it.
+ * @returns A control for `controls` of the description.
+ */
 export const globe = spec('globe', (m, _o: {}) => new m.GlobeControl());
 /**
- * A button that switches the colour scheme of the map between light and dark, and shows the scheme that the map has
- * (a prototype). It changes `colorScheme` of the description and calls `onColorSchemeChange`.
+ * Creates a button that switches `colorScheme` of the map between light and dark, and calls `onColorSchemeChange` of
+ * the description with the new value. The control is placed at `'top-right'` unless `position` sets it.
+ * @returns A control for `controls` of the description.
  */
 export const colorScheme = spec('colorScheme', (m, _o: {}, instance) => new m.ColorSchemeControl(instance), () => import('./color-scheme-control.ts'));
 /**
- * A control of your own. Give `element` (the map puts it into the corner and takes it out again), or `onAdd` and
- * `onRemove` as MapLibre GL JS controls have them (`onAdd` receives the core map and returns the element).
- * `key` names the control: a description with the same `key` keeps the control that the map has.
+ * Creates a control from your own element, or from `onAdd` and `onRemove` as a MapLibre GL JS control has them.
+ * @param options `key` identifies the control: a new description with the same `key` keeps the control on the map.
+ * `element` is the element to place in the corner; `onAdd` receives the map and returns the element instead.
+ * @returns A control for `controls` of the description.
  */
 export const custom = (options: {key: string; position?: ControlPosition} & ({element: HTMLElement} | Control)): ControlSpec => {
     const {key, position} = options;
@@ -67,36 +91,63 @@ export const custom = (options: {key: string; position?: ControlPosition} & ({el
 };
 /** The options of `navigation()`. */
 export interface NavigationOptions {
-    /** Whether the control shows the buttons to zoom in and out. @default true */
+    /**
+     * Whether the control shows the buttons to zoom in and out.
+     * @default true
+     */
     showZoom?: boolean;
-    /** Whether the control shows the compass. @default true */
+    /**
+     * Whether the control shows the compass.
+     * @default true
+     */
     showCompass?: boolean;
-    /** Whether the compass also shows the pitch, a drag of it also pitches the map, and a click resets the pitch. @default false */
+    /**
+     * Whether the compass also shows the pitch, a drag on it changes the pitch, and a click on it resets the pitch.
+     * @default false
+     */
     visualizePitch?: boolean;
 }
 /** The options of `scale()`. */
 export interface ScaleOptions {
-    /** The largest width of the scale bar, in CSS pixels. @default 100 */
+    /**
+     * The largest width of the scale bar, in CSS pixels.
+     * @default 100
+     */
     maxWidth?: number;
-    /** The unit of the distances that the scale bar shows. @default 'metric' */
+    /**
+     * The unit of the distances that the scale bar shows.
+     * @default 'metric'
+     */
     unit?: 'metric' | 'imperial' | 'nautical';
 }
 /** The options of `geolocate()`. */
 export interface GeolocateOptions {
-    /** The zoom that the map moves to when it finds the position; a map that is zoomed in further keeps its zoom. @default 14 */
+    /**
+     * The zoom level that the map moves to when it finds the position. A map that is zoomed in further keeps its zoom.
+     * @default 14
+     */
     zoom?: number;
     /** The options that the control passes to `navigator.geolocation`. */
     positionOptions?: PositionOptions;
-    /** Whether the button turns tracking of the position on and off, instead of moving the map once. @default false */
+    /**
+     * Whether the button turns tracking of the position on and off, instead of moving the map once.
+     * @default false
+     */
     trackUserLocation?: boolean;
-    /** Whether the map shows a dot at the position while it tracks the position. @default true */
+    /**
+     * Whether the map shows a dot at the position of the user while it tracks the position.
+     * @default true
+     */
     showUserLocation?: boolean;
 }
 /** The options of `terrain()`. */
 export interface TerrainOptions {
-    /** The id of the `raster-dem` source of the style that gives the heights. This option is required. */
+    /** The id of the `raster-dem` source of the style that provides the heights. */
     source: string;
-    /** The factor by which the heights of the terrain are multiplied. */
+    /**
+     * The factor by which the heights of the terrain are multiplied.
+     * @default 1
+     */
     exaggeration?: number;
 }
 declare const __DEV__: boolean;
