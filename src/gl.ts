@@ -1948,7 +1948,8 @@ export class GLRenderer {
         if (lookup) for (const l of labels) {
             const shaped = l.shaped;
             if (!shaped || l.curve || l.opacity <= 0) continue;
-            const k = l.size / EM, cos = Math.cos(l.angle), sin = Math.sin(l.angle);
+            // (On the ground of a tilted map the images use the frame of their label, as its glyphs do.)
+            const k = l.size / EM, fr = l.frame, cos = fr ? fr[0] : Math.cos(l.angle), sin = fr ? fr[1] : Math.sin(l.angle), nx = fr ? fr[2] : -sin, ny = fr ? fr[3] : cos, flat = l.angle === 0 && !fr;
             shaped.lines.forEach((line, row) => {
                 if (!line.glyphs?.some(g => g.image)) return;
                 const justify = l.justify ?? l.src.justify;
@@ -1958,11 +1959,11 @@ export class GLRenderer {
                     const img = g.image ? lookup(g.image) : undefined;
                     if (img && !!img.custom === custom) {
                         const w = g.advance * k, h = g.imageHeight! * k, cx = (pen + g.advance / 2) * k, cy = mid * k;
-                        const x0 = l.angle === 0 ? snap(l.x + cx - w / 2) - l.x : cx - w / 2, y0 = l.angle === 0 ? snap(l.y + cy - h / 2) - l.y : cy - h / 2;
+                        const x0 = flat ? snap(l.x + cx - w / 2) - l.x : cx - w / 2, y0 = flat ? snap(l.y + cy - h / 2) - l.y : cy - h / 2;
                         room(54);
                         for (const [ux, uy] of [[0, 0], [1, 0], [0, 1], [1, 0], [1, 1], [0, 1]]) {
                             const dx = x0 + ux * w, dy = y0 + uy * h;
-                            vertex(l.x + dx * cos - dy * sin, l.y + dx * sin + dy * cos, img.x + ux * img.width, img.y + uy * img.height, Math.min(1, l.opacity) * 0.999, plain);
+                            vertex(l.x + dx * cos + dy * nx, l.y + dx * sin + dy * ny, img.x + ux * img.width, img.y + uy * img.height, Math.min(1, l.opacity) * 0.999, plain);
                         }
                     }
                     pen += g.advance + l.src.spacing * EM;
