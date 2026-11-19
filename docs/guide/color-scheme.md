@@ -69,14 +69,15 @@ export function CityMap() {
 On a system with a dark appearance, the map, the controls and the attribution are dark.
 
 - `colorScheme` is `'light'` (the default), `'dark'` or `'auto'`. Without the field, the map is light also on a dark
-  system.
+  system, so write `colorScheme: 'auto'` to follow the system.
 - The scheme sets the colours of the controls, the popups and the attribution. While the scheme is dark, the
   container of the map has the class `map-jr-dark`.
-- The canvas follows the scheme only when the style reads it. The official styles at `https://styles.map-jr.org/1/`
-  that have no `-dark` or `-light` in their name, such as `elevation-zero.json`, read it. For another style, see
+- The canvas follows the scheme only when the style reads it. Of the official styles at
+  `https://styles.map-jr.org/1/`, `elevation-zero.json`, `elevation.json` and `elevation-radar.json` read it. The
+  `openfreemap-*` styles do not. For another style, see
   [Write a style that follows the scheme](#write-a-style-that-follows-the-scheme) and
   [Use a light style and a dark style](#use-a-light-style-and-a-dark-style).
-- The scheme that the map shows, `'light'` or `'dark'`, is `colorScheme` of [the state](../api.md#the-state):
+- The scheme that the map shows, `'light'` or `'dark'`, is `colorScheme` of [the state](../api.md#the-state), the store of the values that the map reports:
   `map.state.get().colorScheme`.
 
 The compat entry has no `colorScheme`. See [In the compat entry](#in-the-compat-entry).
@@ -195,7 +196,8 @@ The background and Central Park are light on a light system and dark on a dark s
 
 - A change of the scheme requests neither the style nor the tiles. A paint property that reads `color-scheme` changes
   at the next frame.
-- A layout property, a filter, and the parameter of an image template that read `color-scheme` are part of the tiles.
+- A layout property, a filter, and a parameter of an [image template](../api.md#an-image-that-is-a-template) (a value
+  that `params` of the `image` expression sets) that read `color-scheme` are part of the tiles.
   The map builds the tiles of their sources again, from the data that it has.
 - A style that already uses a state property `color-scheme` for something else receives the value of the map. Rename
   the property of the style.
@@ -285,7 +287,8 @@ The map draws the style of the scheme that it shows.
 - A style that reads `color-scheme` changes its colours without a request. Prefer it when you can write or edit the
   style.
 - A pair with only one of the two values uses that style for both schemes, and the
-  [development build](../api.md#change-the-map) warns once.
+  development build warns once. The development build is the build of the `development` export condition, which
+  bundlers such as Vite use in their development server.
 
 ## In the compat entry
 

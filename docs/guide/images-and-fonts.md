@@ -94,6 +94,10 @@ map.on('load', () => {
 });
 ```
 
+The official styles at `https://styles.map-jr.org/1/` have no sprite, so this example uses a sprite of the MapLibre
+demo tiles. The names of the images of a sprite are the keys of its JSON file, here
+`https://demotiles.maplibre.org/styles/osm-bright-gl-style/sprite.json`.
+
 - `url` has no file extension. The map requests `url + '.json'` and `url + '.png'`, and `url + '@2x.json'` and
   `url + '@2x.png'` on a screen with a pixel ratio above 1.
 - A sprite of `sprite` overrides the sprite of the style with the same `id`. The sprite of a style whose `sprite` is
@@ -101,6 +105,7 @@ map.on('load', () => {
 - A sprite that does not load is reported to `onError` with its URL. The map still draws the images of the other
   sprites.
 - In the main API, a change of `sprite` loads the style again: the map requests the style and draws it from the start.
+  The view, and the `sources`, `layers`, `data` and `images` of the description, stay.
 
 ## Create an image when a layer asks for it
 
@@ -132,6 +137,10 @@ map.listen('styleimagemissing', event => {
   map.patch({images: {...map.description.images, [event.id]: badge}});
 });
 ```
+
+[`map.patch`](../api.md#change-the-map) replaces the field `images` whole, so the listener passes the images that the
+map has (`map.description.images`, the `images` of the last description) with the new one. Where the description
+has no `images`, `map.description.images` is `undefined`, and the spread adds nothing.
 
 **MapLibre compat**
 
@@ -187,17 +196,18 @@ A value is an SVG document or the URL of an image, as a string, or `{image, widt
 
 - The map takes at most 500 images from a style, and each image has at most 200,000 characters. An SVG image of the
   style must not refer to another file: an `href` or a `url(...)` may only point to `#...` or to a `data:` URL. The
-  map leaves out an image that breaks one of these rules and reports it to `onError` with its name.
+  map leaves out each image that breaks one of these rules and reports one error for each to `onError`, with the name
+  of the image. These limits apply only to the images of a style.
 - The map draws an image of the style only when a layer asks for it. An image that no layer in view uses costs no
   time.
 - An image of `images` of the description, or of `addImage` in the compat entry, overrides the image of the style with
-  the same name. An image of the style overrides the image of the sprite with the same name.
+  the same name. An image of the sprite overrides the image of the style with the same name: the map uses an image of
+  the style only for a name that the sprite does not have.
 - A new style removes the images of the old style.
 
 ## Draw labels with web fonts
 
-[`fonts`](../reference/description.md#fonts) sets a font file for each `text-font` name. The map loads the files, also
-when it draws in a worker, which does not see the fonts that the CSS of the page loads.
+[`fonts`](../reference/description.md#fonts) sets a font file for each `text-font` name.
 
 **Main API**
 
@@ -285,8 +295,11 @@ the operating system at weight 600.
 
 A font file that does not load is reported to `onError`, for example
 `[map-jr-gl] fonts: the font "Inter Semibold" did not load from …`. The labels then use the next name of their
-`text-font` list, then `fontFamily`, and then the fonts of the browser. `fontFamily` is a CSS font family list that
-the map reads only when it is created. Its default is `"Noto Sans", "Helvetica Neue", Arial, sans-serif`.
+`text-font` list, then `fontFamily`, and then the fonts of the browser.
+
+`fontFamily` is a CSS font family list, a field of the description of
+the main API and an option of `Map` in the compat entry. Its default is `"Noto Sans", "Helvetica Neue", Arial,
+sans-serif`. The map reads it only when it is created: to change it, destroy the map and create a new one.
 
 - An entry of `fonts` overrides the entry with the same name in the `font-faces` of the style.
 - A relative URL in `fonts` is resolved against the URL of the page. A relative URL in the style is resolved against
