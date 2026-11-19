@@ -95,6 +95,8 @@ export type EngineEvent =
     /** About once a second while drawing: frames drawn per second and the engine's average CPU time per frame. */
     /** `labels`: how many labels and icons of the last frame were placed among the labels (the icons that the tiles have in buffers are not counted). */
     | {type: 'stats'; fps: number; frameMs: number; labels: number}
+    /** The layers that the last style hides, also by a `visibility` expression of the global state. */
+    | {type: 'hidden'; layers: string[]}
     | {type: 'frame'}
     /** The tile workers have indexed the data of the last `geojson` command for this source. The page sends the next data then. */
     | {type: 'geojsonDone'; source: string}
@@ -722,6 +724,8 @@ export class Engine {
         compileFor(this.states);
         const olds = new Map(this.layers.map(l => [l.id, l])), at = performance.now();
         this.layers = style.layers.map(compileLayer).filter((l): l is CompiledLayer => !!l);
+        // (The page names in the attribution only the sources that a visible layer uses, #1032.)
+        this.emit({type: 'hidden', layers: this.layers.filter(l => !l.visible).map(l => l.id)});
         // (A changed paint value of a layer that stays moves to the new value over its transition, #960.)
         if (before && !instant) {
             const json = new Map(style.layers.map(l => [l.id, l]));
@@ -1966,7 +1970,7 @@ export class Engine {
                     if (ax < -100 || ay < -100 || ax > tr.width + 100 || ay > tr.height + 100) continue;
                     const size = (b.size ? b.size[i * 2] + (b.size[i * 2 + 1] - b.size[i * 2]) * t : fixed) * (tr.pitch ? Math.min(4, 0.5 + 0.5 * tr.cameraDistance / depth) : 1);
                     const [cx, cy, hw, hh] = this.iconBox(L, m.width / m.pixelRatio, m.height / m.pixelRatio, size, b.rotate ? b.rotate[i] : turn);
-                    grid.insert(ax + cx - hw - pad, ay + cy - hh - pad, ax + cx + hw + pad, ay + cy + hh + pad);
+                    grid.insert(ax + cx - hw - pad[3], ay + cy - hh - pad[0], ax + cx + hw + pad[1], ay + cy + hh + pad[2]);
                 }
             }
         }

@@ -151,10 +151,12 @@ export {CollisionGrid};
 
 
 type Box = [number, number, number, number];
-function boxAround(x: number, y: number, w: number, h: number, angle: number, pad: number): Box {
+/** `pad` is one number for every side, or [top, right, bottom, left] (`icon-padding`). */
+export function boxAround(x: number, y: number, w: number, h: number, angle: number, pad: number | readonly number[]): Box {
     const cos = Math.abs(Math.cos(angle)), sin = Math.abs(Math.sin(angle));
-    const hw = (w * cos + h * sin) / 2 + pad, hh = (w * sin + h * cos) / 2 + pad;
-    return [x - hw, y - hh, x + hw, y + hh];
+    const hw = (w * cos + h * sin) / 2, hh = (w * sin + h * cos) / 2;
+    const [t, r, b, l] = typeof pad === 'number' ? [pad, pad, pad, pad] : pad;
+    return [x - hw - l, y - hh - t, x + hw + r, y + hh + b];
 }
 
 /**

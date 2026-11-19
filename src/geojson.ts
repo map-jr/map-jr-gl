@@ -137,7 +137,7 @@ export function prepareSource(data: unknown, o: GeoJSONOptions = {}, sourceMaxZo
     let all = prepareGeoJSON(data, typeof o.promoteId === 'string' ? o.promoteId : o.promoteId?._geojsonTileLayer, o.generateId);
     const keep = o.filter ? compileFilter(o.filter) : null;
     if (keep) all = all.filter(f => keep({zoom: 0, f: f as any}));
-    // (Without `buffer`, tiles keep 16 pixels, where MapLibre GL JS keeps 128.)
+    // (Without `buffer`, tiles keep 16 pixels. The compat entry passes 128, the default of MapLibre GL JS.)
     const buffer = typeof o.buffer === 'number' && o.buffer >= 0 ? Math.min(o.buffer, 512) * EXTENT / 512 : undefined;
     if (!o.cluster) return {features: all, buffer};
     // Clusters are made of single points. Other features stay as they are.

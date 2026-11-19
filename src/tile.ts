@@ -84,7 +84,7 @@ export interface LabelSrc {
     justifyAuto: boolean;
     icon?: {
         name: string; size: number; /** Size at the next zoom level, to interpolate towards. */ size1: number; offset: [number, number]; rotate: number; fit: string; fitPad: [number, number, number, number];
-        opacity: number; anchor: string; color: RGBA; /** Distance-field icons: an outline in this colour, this many pixels wide, blurred over this many pixels. */ halo: RGBA; haloWidth: number; haloBlur: number; ignore: boolean; padding: number;
+        opacity: number; anchor: string; color: RGBA; /** Distance-field icons: an outline in this colour, this many pixels wide, blurred over this many pixels. */ halo: RGBA; haloWidth: number; haloBlur: number; ignore: boolean; /** `icon-padding`: top, right, bottom, left. */ padding: [number, number, number, number];
         overlap: boolean; optional: boolean; upright: boolean; /** `icon-pitch-alignment` */ flat: boolean; /** `icon-keep-upright` */ keepUpright: boolean;
     };
 }

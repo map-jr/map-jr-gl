@@ -338,7 +338,7 @@ export class Map {
         // the camera: with a zoom in the options and no centre, the centre is [0, 0], not that of the style.
         const sc = this.rawStyle;
         if (o.center === undefined && o.zoom === undefined && o.bearing === undefined && o.pitch === undefined && !o.bounds) this.tr.set(sc.center, sc.zoom, sc.bearing, sc.pitch);
-        const restyled = this.restyled, [first] = await Promise.all([resolveStyle(this.rawStyle, this.fetchAs('Source'), this.styleBase, undefined, this.sourceFailed), this.globeReady()]);
+        const restyled = this.restyled, [first] = await Promise.all([resolveStyle(this.rawStyle, this.fetchAs('Source'), this.styleBase, undefined, this.sourceFailed, this.geojsonBuffer()), this.globeReady()]);
         // (Values set before the style was there.)
         if (Object.keys(this.globalState).length) first.state = {...first.state, ...this.globalState};
         // A globe is not kept inside the height of the world as Mercator is: the camera of the options is set again now
@@ -705,6 +705,8 @@ export class Map {
             this.answer(e.url, e.kind).then(a => a, (err): RequestAnswer => ({error: String(err.message)})).then(a => this.post({type: 'resourceResult', id: e.id, ...a}, a.data ? [a.data] : undefined));
         } else if (e.type === 'contextlost') {
             this.contextLost();
+        } else if (e.type === 'hidden') {
+            this.hidden = new Set(e.layers);
         } else if (e.type === 'geojsonDone') {
             this.geoBusy.delete(e.source);
             if (this.geoPending.has(e.source) && this.restyled === this.restyles) this.sendGeo();
@@ -1099,6 +1101,8 @@ export class Map {
     protected reportTiles() { if (!this.wantsTiles) { this.wantsTiles = true; this.post({type: 'tileLoads', on: true}); } }
     /** Called when the style has changed, before it is resolved (for a class that extends this one). */
     protected styleChanged() {}
+    /** The buffer of a GeoJSON source that gives none, in pixels; `undefined` keeps the default of the tiles (16). */
+    protected geojsonBuffer(): number | undefined { return undefined; }
     private reloadPending = false;
     /** The next resolve of the style uses `resolved` as it is, without requests (see `restyle`). */
     private reuse = false;
@@ -1138,7 +1142,7 @@ export class Map {
         const partial = this.newStyle || !this.resolved ? undefined : {late: () => { if (this.rawStyle) this.restyle(true); }, fail: this.sourceFailed};
         const reuse = this.reuse && this.resolved;
         this.reuse = false;
-        Promise.all([reuse || resolveStyle(this.rawStyle, this.fetchAs('Source'), this.styleBase, partial, this.sourceFailed), this.globeReady()]).then(([style]) => {
+        Promise.all([reuse || resolveStyle(this.rawStyle, this.fetchAs('Source'), this.styleBase, partial, this.sourceFailed, this.geojsonBuffer()), this.globeReady()]).then(([style]) => {
             if (turn !== this.restyles) return;
             const reload = this.reloadPending;
             this.reloadPending = false;
@@ -1495,6 +1499,8 @@ export class Map {
     }
     /** The layers that the page has hidden or shown. Their tiles are built also while they are hidden: the next change is at once. */
     private toggled = new Set<string>();
+    /** The layers that the engine hides after the last style, as it reported them (#1032). */
+    private hidden = new Set<string>();
     setFilter(layerId: string, filter: unknown) { return this.editStyle(s => { s.layers[this.layerIndex(s, layerId)].filter = filter; }); }
 
     /**
@@ -2059,7 +2065,8 @@ export class Map {
     getAttributions(): string[] {
         // As in MapLibre GL JS: only the sources that a visible layer uses at the current zoom, and no blank text.
         const z = this.tr.zoom, sources = this.resolved?.sources ?? {}, layers: any[] = this.rawStyle?.layers ?? [];
-        const used = new Set(layers.filter(l => l.source && l.layout?.visibility !== 'none' && z >= (l.minzoom ?? 0) && z < (l.maxzoom ?? 24)).map(l => l.source as string));
+        // A `visibility` expression of the global state is evaluated by the engine, which reports the layers it hides (#1032).
+        const used = new Set(layers.filter(l => l.source && (Array.isArray(l.layout?.visibility) ? !this.hidden.has(l.id) : l.layout?.visibility !== 'none') && z >= (l.minzoom ?? 0) && z < (l.maxzoom ?? 24)).map(l => l.source as string));
         return [...new Set(Object.entries(sources).filter(([id]) => used.has(id)).map(([, s]) => s.attribution?.trim()).filter((a): a is string => !!a))];
     }
 

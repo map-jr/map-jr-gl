@@ -61,7 +61,10 @@ to protect those qualities.
   - changes the hard line of the size or a ceiling in `scripts/size-check.mjs` (see "Size");
   - adds a dependency to the built files, or takes code or a method from a project whose licence is not on the list
     in "Code and methods from other projects";
-  - changes this file, the CI workflows, or the release process;
+  - changes this file or the release process (the workflow `Release` included);
+  - changes what the CI workflows check: removes or skips a job or a test, lowers a floor, or makes a job pass when
+    a check fails. A change of how a workflow runs needs no owner: a retry, a cache, a timeout, a version of a tool
+    or of an action, or the order of steps. Its pull request says why the change is needed;
   - is labelled `needs: owner`.
 - **Before version 1.0, a correction does not need the owner.** A change that makes the types stricter, or that
   corrects a result, so that an entry agrees with its documentation or with MapLibre GL JS can be merged on green CI,
