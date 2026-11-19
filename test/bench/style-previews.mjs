@@ -13,7 +13,7 @@ const browser = await chromium.launch({
     ...(process.env.BENCH_PROXY ? {proxy: {server: process.env.BENCH_PROXY, bypass: 'localhost,127.0.0.1'}} : {}),
 });
 const fixtureDir = new URL('../../.cache/style-previews/', import.meta.url);
-async function run(mode, timing, seed = false) {
+async function run(mode, timing, seed = false, slowImages = false) {
     const context = await browser.newContext({viewport: {width: 390, height: 844}, deviceScaleFactor: 2, isMobile: true, hasTouch: true});
     const page = await context.newPage();
     const deadline = setTimeout(() => context.close().catch(() => {}), 180000);
@@ -27,6 +27,14 @@ async function run(mode, timing, seed = false) {
     page.on('pageerror', err => failures.push([page.url(), err.message]));
     const follow = timing === 'move' && mode !== 'hosted';
     try {
+        if (slowImages) {
+            const cdp = await context.newCDPSession(page);
+            await cdp.send('Network.enable');
+            await cdp.send('Network.emulateNetworkConditionsByRule', {
+                offline: false, matchedNetworkConditions: [{urlPattern: base + '/.cache/style-previews/*', latency: 150,
+                    downloadThroughput: 187500, uploadThroughput: -1}],
+            });
+        }
         await page.goto(base + '/test/bench/style-previews.html?mode=' + mode + (follow ? '&follow' : ''), {waitUntil: 'commit'});
         await page.waitForFunction(() => window.benchmark);
         if (mode !== 'none') {
@@ -53,7 +61,7 @@ async function run(mode, timing, seed = false) {
         const result = await page.evaluate(() => benchmark.results);
         const sizes = await Promise.all(requests);
         const bytes = sizes.reduce((n, s) => n + Math.max(0, s?.responseBodySize || 0), 0);
-        console.log(JSON.stringify({mode, timing, seed, ...result, requests: sizes.length, sized: sizes.filter(Boolean).length, bytes, failures}));
+        console.log(JSON.stringify({mode, timing, seed, slowImages, ...result, requests: sizes.length, sized: sizes.filter(Boolean).length, bytes, failures}));
         if (result.errors.length || failures.some(([, e]) => e !== 'net::ERR_ABORTED')) process.exitCode = 1;
     } catch (error) {
         console.log(JSON.stringify({mode, timing, error: error.message, failures, result: await page.evaluate(() => window.benchmark?.results).catch(() => null)}));
@@ -65,7 +73,10 @@ try {
     if (!process.exitCode) for (let n = 0; n < Number(process.env.REPEATS || 3); n++) {
         const modes = ['open', 'idle', 'hosted'];
         await run('none', 'idle');
-        for (const timing of ['early', 'prepared', 'move']) for (let i = 0; i < modes.length; i++)
-            await run(modes[(n + i) % modes.length], timing);
+        for (const timing of ['early', 'prepared', 'move']) {
+            for (let i = 0; i < modes.length; i++) await run(modes[(n + i) % modes.length], timing);
+        }
+        // Local hosting is optimistic. Repeat cold-open with 150 ms latency and 1.5 Mbit/s shared by the thumbnails.
+        await run('hosted', 'early', false, true);
     }
 } finally { await browser.close(); }
