@@ -248,7 +248,7 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
                 const window = along && text && !base.upright ? text.length * Math.max(base.size0, base.size1) * 0.7 * 8 * 0.6 + 200 : 0;
                 if (along === true && type !== 1) {
                     // (The anchors along the line are found when the labels are placed: see `lineLabels`.)
-                    const label: LabelSrc = Object.assign(Object.create(base), {x: ring[0], y: ring[1], angle: 0, len: 0, line: ring, lineSpacing: spacing / ov, tpr: EXTENT / 512 * 2 ** (tz - z) / ov, ov, window});
+                    const label: LabelSrc = Object.assign(Object.create(base), {x: ring[0], y: ring[1], angle: 0, len: 0, line: ring, lineSpacing: spacing / ov, tpr: EXTENT / 512 * 2 ** (tz - z) / ov, ov, window: window / ov});
                     labels.push(label);
                     if (sorted) keys.push(label.key = key);
                     continue;
@@ -360,16 +360,22 @@ export function anchors(c: number[], start: number, end: number, type: number, a
         }
         return a ? [[cx / (3 * a), cy / (3 * a), 0, 0]] : [];
     }
-    let len = 0;
-    for (let i = start + 1; i < end; i++) len += Math.hypot(c[i * 2] - c[i * 2 - 2], c[i * 2 + 1] - c[i * 2 - 1]);
+    // (The distance along the line at each point, so that a place on a long line is found by a binary search.)
+    const run = [0];
+    for (let i = start + 1; i < end; i++) run.push(run[run.length - 1] + Math.hypot(c[i * 2] - c[i * 2 - 2], c[i * 2 + 1] - c[i * 2 - 1]));
+    const len = run[run.length - 1];
     if (!len) return [];
+    /** The first point (index from `start`, at least 1) at or past the distance `d`. */
+    const after = (d: number) => {
+        let lo = 1, hi = run.length - 1;
+        while (lo < hi) { const m = (lo + hi) >> 1; if (run[m] < d) lo = m + 1; else hi = m; }
+        return lo;
+    };
     const at = (d: number): [number, number] => {
-        for (let i = start + 1; i < end; i++) {
-            const seg = Math.hypot(c[i * 2] - c[i * 2 - 2], c[i * 2 + 1] - c[i * 2 - 1]);
-            if (d <= seg && seg) { const t = d / seg; return [c[i * 2 - 2] + (c[i * 2] - c[i * 2 - 2]) * t, c[i * 2 - 1] + (c[i * 2 + 1] - c[i * 2 - 1]) * t]; }
-            d -= seg;
-        }
-        return [c[end * 2 - 2], c[end * 2 - 1]];
+        const k = after(d), i = start + k, seg = run[k] - run[k - 1];
+        if (d > len || !seg) return [c[i * 2], c[i * 2 + 1]];
+        const t = (d - run[k - 1]) / seg;
+        return [c[i * 2 - 2] + (c[i * 2] - c[i * 2 - 2]) * t, c[i * 2 - 1] + (c[i * 2 + 1] - c[i * 2 - 1]) * t];
     };
     // (An empty list of distances stands for the middle of the line: `line-center`, or a label at a point of a line.)
     if (!ds?.length) ds = [len / 2];
@@ -381,12 +387,10 @@ export function anchors(c: number[], start: number, end: number, type: number, a
         if (along && window > 0) {
             // The stretch of line around the anchor, for text that follows the curve: its points, then the index of the anchor among them.
             const d0 = Math.max(0, d - window), d1 = Math.min(len, d + window), path = [...at(d0)];
-            let run = 0, index = -1;
-            for (let k = start + 1; k < end; k++) {
-                const before = run;
-                run += Math.hypot(c[k * 2] - c[k * 2 - 2], c[k * 2 + 1] - c[k * 2 - 1]);
-                if (index < 0 && d <= run && d >= before) { index = path.length / 2; path.push(x, y); }
-                if (run > d0 && run < d1 && run !== d) path.push(c[k * 2], c[k * 2 + 1]);
+            let index = -1;
+            for (let k = Math.max(1, after(d0) - 1); k < run.length && run[k - 1] < d1; k++) {
+                if (index < 0 && d <= run[k] && d >= run[k - 1]) { index = path.length / 2; path.push(x, y); }
+                if (run[k] > d0 && run[k] < d1 && run[k] !== d) path.push(c[(start + k) * 2], c[(start + k) * 2 + 1]);
             }
             if (index < 0) { index = path.length / 2; path.push(x, y); }
             path.push(...at(d1));
