@@ -1771,9 +1771,9 @@ for (const mode of renderers) {
             m.addSource('p', {type: 'geojson', data: {type: 'Point', coordinates: [0, 0]}});
             m.addLayer({id: 'p', type: 'symbol', source: 'p', layout: {'icon-image': 'dot'}, paint: {'icon-color': '#f00'}});
             await new Promise(res => { m.once('idle', res); setTimeout(res, 8000); });
-            const url = await new Promise(res => { m.once('render', () => res(m.getCanvas().toDataURL())); m.triggerRepaint(); setTimeout(() => res(null), 5000); });
+            const url = await Promise.race([m.toBlob(), new Promise(res => setTimeout(() => res(null), 5000))]);
             let px = null;
-            if (url) { const bmp = await createImageBitmap(await (await fetch(url)).blob()), c = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}), g = c.getContext('2d'); g.drawImage(bmp, 0, 0); px = Array.from(g.getImageData(bmp.width >> 1, bmp.height >> 1, 1, 1).data); }
+            if (url) { const bmp = await createImageBitmap(url), c = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}), g = c.getContext('2d'); g.drawImage(bmp, 0, 0); px = Array.from(g.getImageData(bmp.width >> 1, bmp.height >> 1, 1, 1).data); }
             const meta = m.getImage('dot');
             m.remove(); el.remove();
             return {px, sdf: meta?.sdf};
@@ -1791,9 +1791,9 @@ for (const mode of renderers) {
             const square = (n, r, g, b) => { const data = new Uint8Array(n * n * 4); for (let i = 0; i < data.length; i += 4) data.set([r, g, b, 255], i); return {width: n, height: n, data}; };
             const centre = async () => {
                 await new Promise(res => { m.once('idle', res); setTimeout(res, 8000); });
-                const url = await new Promise(res => { m.once('render', () => res(m.getCanvas().toDataURL())); m.triggerRepaint(); setTimeout(() => res(null), 5000); });
+                const url = await Promise.race([m.toBlob(), new Promise(res => setTimeout(() => res(null), 5000))]);
                 if (!url) return null;
-                const bmp = await createImageBitmap(await (await fetch(url)).blob()), c = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}), g = c.getContext('2d');
+                const bmp = await createImageBitmap(url), c = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}), g = c.getContext('2d');
                 g.drawImage(bmp, 0, 0);
                 return Array.from(g.getImageData(bmp.width >> 1, bmp.height >> 1, 1, 1).data);
             };
@@ -1837,10 +1837,10 @@ for (const mode of renderers) {
                 await new Promise(res => setTimeout(res, 0));
             } finally { [Worker.prototype.postMessage, MessagePort.prototype.postMessage] = posts; }
             await new Promise(res => { m.once('idle', res); setTimeout(res, 8000); });
-            const url = await new Promise(res => { m.once('render', () => res(m.getCanvas().toDataURL())); m.triggerRepaint(); setTimeout(() => res(null), 5000); });
+            const url = await Promise.race([m.toBlob(), new Promise(res => setTimeout(() => res(null), 5000))]);
             let px = null;
             if (url) {
-                const bmp = await createImageBitmap(await (await fetch(url)).blob()), c = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}), g = c.getContext('2d');
+                const bmp = await createImageBitmap(url), c = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}), g = c.getContext('2d');
                 g.drawImage(bmp, 0, 0);
                 px = Array.from(g.getImageData(bmp.width >> 1, bmp.height >> 1, 1, 1).data);
             }
@@ -1864,9 +1864,9 @@ for (const mode of renderers) {
             const square = (r, g, b) => { const data = new Uint8Array(16 * 16 * 4); for (let i = 0; i < data.length; i += 4) data.set([r, g, b, 255], i); return {width: 16, height: 16, data}; };
             const centre = async () => {
                 await new Promise(res => { m.once('idle', res); setTimeout(res, 8000); });
-                const url = await new Promise(res => { m.once('render', () => res(m.getCanvas().toDataURL())); m.triggerRepaint(); setTimeout(() => res(null), 5000); });
+                const url = await Promise.race([m.toBlob(), new Promise(res => setTimeout(() => res(null), 5000))]);
                 if (!url) return null;
-                const bmp = await createImageBitmap(await (await fetch(url)).blob()), c = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}), g = c.getContext('2d');
+                const bmp = await createImageBitmap(url), c = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}), g = c.getContext('2d');
                 g.drawImage(bmp, 0, 0);
                 return Array.from(g.getImageData(bmp.width >> 1, bmp.height >> 1, 1, 1).data);
             };
