@@ -448,7 +448,7 @@ export class Transform {
     }
 
     /** `tileSize` shifts the zoom level chosen: 256px tiles are fetched one level deeper than 512px ones. */
-    tileCover(minzoom: number, maxzoom: number, tileSize = TILE_SIZE, round = false): TileID[] {
+    tileCover(minzoom: number, maxzoom: number, tileSize = TILE_SIZE, round = false, lod?: number[]): TileID[] {
         // Image tiles switch level at the half-way point (as MapLibre does) so they are never stretched more than about 1.4x.
         // (Below zoom 0 the tiles of zoom 0 are drawn smaller.)
         const want = Math.max(0, (round ? Math.round : Math.floor)(this.zoom + Math.log2(TILE_SIZE / tileSize)));
@@ -458,7 +458,7 @@ export class Transform {
         if (want < minzoom) return [];
         const z = Math.min(want, maxzoom), n = 2 ** z;
         // (With 3D terrain, ground that is nearer to the camera than the centre can take a deeper level, as in MapLibre.)
-        if (this.pitch > 0.5) return this.coveringPitched(this.heightAt ? maxzoom : z, this.zoom + Math.log2(TILE_SIZE / tileSize), round);
+        if (this.pitch > 0.5) return this.coveringPitched(this.heightAt || lod && this.pitch > 60 ? maxzoom : z, this.zoom + Math.log2(TILE_SIZE / tileSize), round, lod);
         let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
         for (const [mx, my] of this.footprints().flat()) {
             x0 = Math.min(x0, mx); x1 = Math.max(x1, mx);
@@ -479,7 +479,7 @@ export class Transform {
      * Tile cover for a tilted camera. The view is a trapezoid on the ground whose far edge covers much more area,
      * drawn much smaller, so tiles are chosen by descending a quadtree and stopping earlier the farther away a tile is.
      */
-    private coveringPitched(maxZ: number, exact: number, round: boolean): TileID[] {
+    private coveringPitched(maxZ: number, exact: number, round: boolean, lod?: number[]): TileID[] {
         // The area to cover: the screen's footprint on the ground (with 3D terrain, the hull of its lowest and highest footprints).
         const pts = this.footprints().flat().sort((p, q) => p[0] - q[0] || p[1] - q[1]);
         const cross = (o: number[], p: number[], q: number[]) => (p[0] - o[0]) * (q[1] - o[1]) - (p[1] - o[1]) * (q[0] - o[0]);
@@ -506,12 +506,11 @@ export class Transform {
             if (!overlaps(x0, y0, x1, y1)) return;
             // Depth of the tile's nearest point decides how much detail it needs: half the on-screen scale, one level less.
             let wanted: number;
-            if (this.heightAt) {
-                // With 3D terrain the rule is that of MapLibre, so that both show the same tiles: less detail with the
-                // distance from the camera to the nearest point of the tile, and less again for ground that is seen at
-                // a flat angle. (MapLibre: createCalculateTileZoomFunction, with its default values.)
-                const far = Math.hypot(clamp(cam[0], x0, x1) - cam[0], clamp(cam[1], y0, y1) - cam[1], camZ);
-                wanted = Math.min(maxZ, (round ? Math.round : Math.floor)(exact + Math.log2(d / ws / far) + 0.076 + Math.log2(camZ / far) / 2));
+            if (this.heightAt || lod && this.pitch > 60) {
+                // With 3D terrain, or with the parameters of `setSourceTileLodParams` above a pitch of 60°, the rule is
+                // that of MapLibre GL JS, so that both show the same tiles.
+                wanted = Math.min(maxZ, (round ? Math.round : Math.floor)(lodZoom(lod ?? [9.314, 3], exact,
+                    Math.hypot(clamp(cam[0], x0, x1) - cam[0], clamp(cam[1], y0, y1) - cam[1]), camZ, d / ws)));
             } else {
                 const near = Math.min(depthAt(clamp(cx, x0, x1), clamp(cy, y0, y1)), depthAt(x0, y0), depthAt(x1, y0), depthAt(x0, y1), depthAt(x1, y1));
                 wanted = maxZ - Math.max(0, Math.floor(Math.log2(Math.max(near, 1) / d) + 0.35));
@@ -524,6 +523,20 @@ export class Transform {
         const dist = (t: TileID) => { const n = 2 ** t.z; return ((t.x + 0.5) / n + t.w - cx) ** 2 + ((t.y + 0.5) / n - cy) ** 2; };
         return out.sort((a, b) => dist(a) - dist(b));
     }
+}
+
+/**
+ * The zoom that a tile wants in a pitched view, as `createCalculateTileZoomFunction` of MapLibre GL JS computes it:
+ * less detail with the distance from the camera to the nearest point of the tile, less again for ground seen at a flat
+ * angle (more so with more `levels` on screen), and less everywhere when the view would need more than `ratio` times
+ * the tiles of an unpitched view. `d2` is the distance on the ground, `dz` the height of the camera and `d3` the
+ * distance to the centre, all in the same unit.
+ */
+function lodZoom([levels, ratio]: number[], zoom: number, d2: number, dz: number, d3: number) {
+    const R = Math.PI / 180, H = 89.25 * R, f = 36.87 * R, b = 2 * ((levels - 1) / Math.log2(Math.cos(H - f) / Math.cos(H)) - 1);
+    const sum = (a: number, c: number) => { let s = 0; for (let i = 0; i < 10; i++) s += Math.cos(a + (i + 0.5) / 10 * (c - a)) ** (b - 1); return s * (c - a) / 10; };
+    const pitch = Math.acos(dz / d3), hi = Math.min(H, pitch + f / 2), lo = Math.min(hi, pitch - f / 2), d = Math.hypot(d2, dz);
+    return zoom + Math.log2(d3 / d / Math.cos(f / 2)) + b * Math.log2(dz / d) / 2 - Math.log2(Math.max(1, sum(lo, hi) / sum(-f / 2, f / 2) / ratio)) / 2;
 }
 
 /** The globeness at a zoom from stops [zoom, value, ...]: linear between stops, and the nearest stop outside them. */
