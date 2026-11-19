@@ -17,8 +17,11 @@ const walk = dir => !existsSync(dir) ? [] : readdirSync(dir, {withFileTypes: tru
     e.isDirectory() ? walk(path.join(dir, e.name)) : e.name.endsWith('.md') ? [path.join(dir, e.name)] : []);
 const files = named.length ? named.map(f => path.resolve(f)) : folders.flatMap(f => walk(path.join(root, 'docs', f)));
 
-/** The labels of the variants in the order of the style guide. */
-const labels = ['Main API', 'MapLibre compat', 'Vue', 'Nuxt', 'React', 'Svelte', '<map-jr>'];
+/** The labels of the variants and of the package managers, each set in the order of the style guide. */
+const codeLabels = ['Main API', 'MapLibre compat', 'Vue', 'Nuxt', 'React', 'Svelte', '<map-jr>'];
+const packageManagerLabels = ['npm', 'pnpm', 'yarn', 'bun'];
+const labels = [...codeLabels, ...packageManagerLabels];
+const setOf = label => codeLabels.includes(label) ? 'code' : 'pm';
 /** Patterns that the user docs do not contain, each with what to do. Checked outside code. */
 const banned = [
     [/\b(?:src|scripts|test)\/[\w./-]+/, 'names a file of the repository. Say what the user sees.'],
@@ -82,7 +85,8 @@ for (const file of files) {
                 if (label !== undefined) {
                     const name = variantOf(lines.slice(0, i).findLast(l => l.trim()) ?? '');
                     if (name !== label) find(i, `the line before this fence is not the name of its variant. Write **${label.startsWith('<') ? '`' + label + '`' : label}** on a line of its own before the fence, because GitHub does not show the label.`);
-                    if (group.length && labels.indexOf(label) <= labels.indexOf(group.at(-1))) find(i, `[${label}] comes after [${group.at(-1)}]. Keep the order of the style guide, each variant once.`);
+                    if (group.length && setOf(label) !== setOf(group.at(-1))) find(i, `[${label}] follows [${group.at(-1)}]. A group has the labels of one table of the style guide: put text between the two groups.`);
+                    else if (group.length && labels.indexOf(label) <= labels.indexOf(group.at(-1))) find(i, `[${label}] comes after [${group.at(-1)}]. Keep the order of the style guide, each variant once.`);
                     group.push(label);
                 }
             } else {

@@ -5,7 +5,8 @@
 // - Adjacent fences with the label of a variant (```vue [Vue]) become one group (`code-variants`,
 //   app/components/content/CodeVariants.vue). The bold line with the label before each fence, which GitHub needs, is
 //   removed. A single fence with such a label keeps the label as its caption. `variants` of the page lists the
-//   variants of its groups, for the control in the header.
+//   variants of its groups, for the control in the header. Fences with the label of a package manager (```sh [npm])
+//   become a group of their own set, which has its own choice and is not in the header.
 // - A table with the columns Name, Type, Default and Description is a reference table: each row has an id and a link
 //   to itself, and "**required**" is a mark.
 //
@@ -14,7 +15,7 @@
 import {existsSync} from 'node:fs';
 import {dirname, relative, resolve} from 'node:path';
 import {docsDir, routeOf, type NavSection} from './nav';
-import {showsOf, variantOfLabel} from './variants';
+import {showsOf, variantOfLabel, type VariantSet} from './variants';
 
 const repository = resolve(docsDir, '..');
 export const repositoryUrl = 'https://github.com/map-jr/map-jr-gl';
@@ -57,11 +58,13 @@ function groupFences(nodes: Node[], state: {groups: number; variants: string[]})
     for (let i = 0; i < nodes.length;) {
         const run: Node[] = [];
         const slugs: string[] = [];
+        let set: VariantSet | undefined;
         while (i < nodes.length) {
             const lined = !variantOfFence(nodes[i]) && variantOfFence(nodes[i + 1]) && isLabelLine(nodes[i], variantOfFence(nodes[i + 1])!.label);
             const fence = lined ? nodes[i + 1]! : nodes[i]!;
             const variant = variantOfFence(fence);
-            if (!variant || slugs.includes(variant.slug)) break;
+            if (!variant || slugs.includes(variant.slug) || (set && variant.set !== set)) break;
+            set = variant.set;
             run.push(fence);
             slugs.push(variant.slug);
             i += lined ? 2 : 1;
@@ -69,13 +72,13 @@ function groupFences(nodes: Node[], state: {groups: number; variants: string[]})
         if (run.length === 1) out.push(run[0]!);
         if (run.length > 1) {
             const id = `variants-${++state.groups}`;
-            const shows = showsOf(slugs);
-            out.push(['code-variants', {id, variants: slugs.join(' ')}, ...run.map((fence, index): Node => {
+            const shows = showsOf(slugs, set);
+            out.push(['code-variants', {id, variants: slugs.join(' '), ...(set!.id === 'code' ? {} : {set: set!.id})}, ...run.map((fence, index): Node => {
                 const [, {filename, ...props}, ...children] = fence as [string, Record<string, any>, ...Node[]];
                 const slug = slugs[index]!;
-                return ['div', {class: 'code-variant', id: `${id}-${slug}`, role: 'tabpanel', 'aria-labelledby': `${id}-tab-${slug}`, 'data-variant': slug, 'data-shows': shows[slug]}, ['pre', props, ...children]];
+                return ['div', {class: 'code-variant', id: `${id}-${slug}`, role: 'tabpanel', 'aria-labelledby': `${id}-tab-${slug}`, 'data-variant': slug, [set!.showsAttribute]: shows[slug]}, ['pre', props, ...children]];
             })]);
-            for (const slug of slugs) if (!state.variants.includes(slug)) state.variants.push(slug);
+            if (set!.menu) for (const slug of slugs) if (!state.variants.includes(slug)) state.variants.push(slug);
         }
         if (run.length) continue;
         const node = nodes[i++]!;

@@ -282,6 +282,20 @@ The library has seven ways to write the same map. A page shows a variant when it
   only in the imports, and say once on the page for Nuxt that the imports are not needed.
 - A page about one entry (`reference/vue.md`) has no labels.
 
+An install command is written for each package manager, with the same rules for the labels, the bold lines and the
+order. The site joins these fences into a switcher of their own. The reader's choice of package manager is separate
+from the choice of variant, and the menu of variants in the header does not list it. With no choice, the site shows
+npm.
+
+| Label | Fence | Command |
+|---|---|---|
+| `[npm]` | `sh` | `npm install <package>` |
+| `[pnpm]` | `sh` | `pnpm add <package>` |
+| `[yarn]` | `sh` | `yarn add <package>` |
+| `[bun]` | `sh` | `bun add <package>` |
+
+Do not mix the labels of the two tables in one group.
+
 ## Tables, callouts and headings
 
 - Use a table for parallel items with the same parts, and a list for steps.
