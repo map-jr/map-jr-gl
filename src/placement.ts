@@ -452,7 +452,7 @@ export function placeLabels(
                             // (In the distance field of a sprite, one image pixel is one eighth of the range.)
                             halo: meta.sdf && ic.haloWidth > 0 && ic.halo[3] > 0 ? ic.halo : undefined, haloReach: Math.min(0.7, ic.haloWidth / (isize / meta.pixelRatio) / 8),
                             haloBlur: Math.min(0.99, ic.haloBlur * 1.19 / (isize / meta.pixelRatio) / 8)};
-                    } else if (!(hasText && (textBox || bent) && ic.optional)) { if (bent) { for (const b of bentBoxes) grid.insert(...b); out.push(bent); } continue; }
+                    } else if (!(hasText && (textBox || bent) && ic.optional)) continue; // (a required icon that is not placed drops its text too, as in MapLibre)
                 }
                 if (bent) { bent.icon = icon; for (const b of bentBoxes) grid.insert(...b); if (iconBox && !l.icon!.ignore) grid.insert(...iconBox); out.push(bent); continue; }
                 if (!textBox && !icon) continue;

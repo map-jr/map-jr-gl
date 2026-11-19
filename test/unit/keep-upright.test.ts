@@ -16,7 +16,7 @@ const id = {z, x: tx, y: ty, w: 0, key: `${z}/${tx}/${ty}`};
 const line = {type: 'LineString', coordinates: [[lngOf(tx + 0.9), latOf(ty + 0.5)], [lngOf(tx + 0.1), latOf(ty + 0.5)]]};
 
 /** The first label of the line, placed on a map with no pitch. `icon`: the layer has an icon of 20 pixels. */
-function place(layout: Record<string, unknown>, geometry: unknown = line, pitch = 0, icon = false): any {
+function place(layout: Record<string, unknown>, geometry: unknown = line, pitch = 0, icon = false, grid = new CollisionGrid()): any {
     const layer = compileLayer({id: 'r', type: 'symbol', source: 'g', layout: {'text-field': 'Main Street', 'text-size': 16, ...layout}})!;
     const data = sliceGeoJSON(prepareGeoJSON({type: 'Feature', properties: {}, geometry} as any), z, tx, ty);
     const labels = buildTile(data, z, [layer], true).labels;
@@ -24,7 +24,7 @@ function place(layout: Record<string, unknown>, geometry: unknown = line, pitch 
     tr.width = 800; tr.height = 600; tr.maxPitch = 90;
     tr.set([lngOf(tx + 0.5), latOf(ty + 0.5)], z, 0, pitch);
     const icons = icon ? () => ({x: 0, y: 0, width: 20, height: 20, pixelRatio: 1} as any) : undefined;
-    return (placeLabels as any)(tr, renderItems(tr, [id], () => ({labels})), [layer], new EstimateShaper(), new CollisionGrid(), icons)[0];
+    return (placeLabels as any)(tr, renderItems(tr, [id], () => ({labels})), [layer], new EstimateShaper(), grid, icons)[0];
 }
 
 test('text along a line turns over to stay upright by default, and follows the line with text-keep-upright false', () => {
@@ -47,4 +47,12 @@ test('an icon along a line is not dropped because of its own bent text (#1072)',
     const placed = place({'symbol-placement': 'line', 'icon-image': 'a'}, line, 0, true);
     assert.ok(placed?.curve, 'the text follows the line');
     assert.ok(placed.icon, 'the icon is placed with its text');
+});
+test('text along a line is not drawn when its required icon is not placed (#1080)', () => {
+    // A box over the whole screen blocks the icon. The text may overlap it.
+    const blocked = () => { const g = new CollisionGrid(); g.insert(-1e4, -1e4, 1e4, 1e4); return g; };
+    const layout = {'symbol-placement': 'line', 'icon-image': 'a', 'text-allow-overlap': true};
+    assert.equal(place(layout, line, 0, true, blocked()), undefined, 'icon-optional false: neither is drawn');
+    const optional = place({...layout, 'icon-optional': true}, line, 0, true, blocked());
+    assert.ok(optional?.curve && !optional.icon, 'icon-optional true: the text is drawn alone');
 });
