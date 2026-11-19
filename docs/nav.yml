@@ -9,7 +9,9 @@
 sections:
   - title: Guide
     folder: guide
-    pages: []
+    pages:
+      - getting-started.md
+      - which-entry.md
   - title: Recipes
     folder: recipes
     pages: []
