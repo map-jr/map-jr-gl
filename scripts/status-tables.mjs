@@ -30,15 +30,30 @@ export function statusBlock(f) {
 }
 
 /**
+ * The size table of docs/guide/size-and-speed.md: the sizes of the status block, with no links, because the links of
+ * the README do not lead anywhere from that page.
+ * @param f the figures of docs/status.json, as for `statusBlock`.
+ */
+export function sizesBlock(f) {
+    return ['<!-- sizes:start -->',
+        `Sizes in KB, compressed with gzip, next to MapLibre GL JS ${f.maplibre}. The page script of MapLibre GL JS includes its CSS. The page script of Map Jr. GL is the file of the entry and the files that it imports when it loads.`, '',
+        ...table(['File', 'Map Jr. GL', 'MapLibre GL JS', 'Share'], f.sizes.map(s => [s.file, kb(s.bytes), kb(s.maplibreBytes), s.maplibreBytes ? share(s.bytes, s.maplibreBytes) : '']), [1, 2, 3]),
+        '<!-- sizes:end -->'].join('\n');
+}
+
+/**
  * The speed block of the README: one table for each measure, with one number in each cell.
  * @param speed `date`, `commit` and `rows`. A row has `system`, `browser` and, for each key of `speedMeasures`, the
  * pair `{maplibre, mapJr}` or null when the run has no result for it.
  * @param maplibre the version of MapLibre GL JS.
+ * @param options `page: true` for docs/guide/size-and-speed.md, whose first sentence has no date and no commit.
  */
-export function speedBlock(speed, maplibre) {
+export function speedBlock(speed, maplibre, {page = false} = {}) {
     const number = (n, digits = 0) => typeof n === 'number' && isFinite(n) ? n.toFixed(digits) : '';
-    return ['<!-- speed:start -->',
-        `Measured by the workflow [Browsers](https://github.com/map-jr/map-jr-gl/tree/bench-results) on ${speed.date.slice(0, 10)} (commit ${speed.commit.slice(0, 7)}), next to MapLibre GL JS ${maplibre}. Map Jr. GL uses the worker renderer where the browser has it. The ratio is the number of Map Jr. GL divided by the number of MapLibre GL JS.`,
+    // The page of the user docs has no date and no commit: they belong to the README and to the branch of results.
+    return ['<!-- speed:start -->', page
+        ? `The workflow [Browsers](https://github.com/map-jr/map-jr-gl/tree/bench-results) runs the same page with both libraries after each change, next to MapLibre GL JS ${maplibre}. Map Jr. GL uses the worker renderer where the browser has it. The ratio is the number of Map Jr. GL divided by the number of MapLibre GL JS.`
+        : `Measured by the workflow [Browsers](https://github.com/map-jr/map-jr-gl/tree/bench-results) on ${speed.date.slice(0, 10)} (commit ${speed.commit.slice(0, 7)}), next to MapLibre GL JS ${maplibre}. Map Jr. GL uses the worker renderer where the browser has it. The ratio is the number of Map Jr. GL divided by the number of MapLibre GL JS.`,
         ...speedMeasures.flatMap(m => ['', m.title, '',
             ...table(['System, browser', 'MapLibre GL JS', 'Map Jr. GL', 'Ratio'], speed.rows.filter(r => r[m.key]).map(r => [`${r.system}, ${r.browser}`, number(r[m.key].maplibre), number(r[m.key].mapJr), number(r[m.key].mapJr / r[m.key].maplibre, 2)]), [1, 2, 3])]),
         '<!-- speed:end -->'].join('\n');

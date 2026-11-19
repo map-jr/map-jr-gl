@@ -17,6 +17,10 @@ sections:
       - controls.md
       - images-and-fonts.md
       - color-scheme.md
+      - loading.md
+      - browser-support.md
+      - accessibility.md
+      - size-and-speed.md
   - title: Recipes
     folder: recipes
     pages: []
