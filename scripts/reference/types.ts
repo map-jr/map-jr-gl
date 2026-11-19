@@ -7,6 +7,7 @@ import type * as react from '../../src/react.ts';
 import type * as svelte from '../../src/svelte.ts';
 import type * as element from '../../src/element.ts';
 import type * as server from '../../src/server.ts';
+import type * as style from '../../src/style.ts';
 import type * as compat from '../../src/maplibre-compat.ts';
 import type {MapJr as VueMapJr, MapOverlay as VueMapOverlay, MapImageProps as VueMapImagePropsOf, MapJrExposed as VueMapJrExposedOf} from '../../src/vue.ts';
 
@@ -49,6 +50,7 @@ export type RenderResult = server.RenderResult;
 export type ElementRenderOptions = server.ElementRenderOptions;
 export type ImageOptions = server.ImageOptions;
 export type ImageResult = server.ImageResult;
+export type SSROverrides = style.SSROverrides;
 /** The class `Map` of `@map-jr/map-jr-gl/maplibre-compat`. */
 export type CompatMap = compat.Map;
 export type MarkerOptions = compat.MarkerOptions;

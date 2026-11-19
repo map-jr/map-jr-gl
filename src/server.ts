@@ -443,7 +443,14 @@ export interface ImageOptions extends RenderOptions {
     pixelRatio?: number;
 }
 /** The result of `renderToImage`: the bytes of the image, its MIME type (`image/jpeg` and others), and the URLs of the tiles. */
-export interface ImageResult { image: Uint8Array; contentType: string; tiles: string[] }
+export interface ImageResult {
+    /** The bytes of the image, in the format of `format`. */
+    image: Uint8Array;
+    /** The media type of the image, for example `image/jpeg`, for the `Content-Type` header. */
+    contentType: string;
+    /** The URLs of the tiles that the render used, as in `RenderResult`. */
+    tiles: string[];
+}
 
 /**
  * Renders the first frame of a map as a raster image, whose size does not depend on how dense the data is.
