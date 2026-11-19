@@ -132,6 +132,11 @@ alone cannot.
 
 - **`node test/conformance/render.mjs` has no `--help`:** an argument that it does not know starts the whole run of
   about ten minutes. Its options are in the comment at the top of the file.
+- **Pull requests that commit the render results merge one at a time.** After each merge, the worker of the next
+  one merges `main` and does a full run on the merged tree, and its result files and floor come from that run. On
+  2026-11-18 and 2026-11-19, seven such pull requests merged this way with no conflict left in the totals.
+- **The floor of `test:render` is the match count of the last full run.** CI's render job gave the same count as a
+  local run on 2026-11-19 (1205 of 1740), so a floor below the count only lets a regression through.
 - **A run with `--filter` rewrites `render-result.json` and `render-tests.json`** with the totals of that part.
   Commit the result of `pnpm status` before you run single tests, and restore the two files afterwards
   (`git checkout -- test/conformance/render-result.json test/conformance/render-tests.json`).
@@ -139,6 +144,12 @@ alone cannot.
   prints the percentage), and at the commit before the suspected merge in a temporary worktree. On 2026-11-17
   `terrain/low-zoom` moved for good (#793, caused by #726), while `terrain/tile-stiching` gave 2.7% or 33.5% from one
   run to the next, also before the suspected merge (#820).
+
+- **The example pages** (`node test/conformance/examples.mjs --write`, about 30 minutes) need
+  `.cache/maplibre-gl-js` and `python3` with Pillow. In a new worktree, link the clone of another worktree
+  (`ln -s <worktree>/.cache/maplibre-gl-js .cache/`), and make a virtual environment with Pillow in the scratchpad
+  and put its `bin` first on `PATH`. The run takes the pages first and compares them at the end, so a missing Pillow
+  fails only after about ten minutes.
 
 ## A release
 
@@ -167,6 +178,12 @@ alone cannot.
 
 - `gh pr edit` and `gh issue view --comments` fail on this repository with an error about Projects (classic). Use
   `gh api -X PATCH repos/map-jr/map-jr-gl/pulls/N -F body=@file` and `gh issue view N --json body,comments`.
+- `gh pr edit --add-label` fails in the same way: add a label with
+  `gh api -X POST repos/map-jr/map-jr-gl/issues/N/labels -f 'labels[]=<label>'`.
+- `gh pr merge --delete-branch` in a checkout with a detached `HEAD` merges and then fails with "could not determine
+  current branch", so the command reads as failed. Merge without it, read the state with `gh pr view N --json state`,
+  and delete the branch with `git push origin --delete <branch>`.
+- In zsh, `set -- $var` does not split the value into words: read each field with its own `gh … -q` call.
 - The shell of the owner's Mac sets `noclobber`, so `cat > file` does not replace a file that exists: write `>|`.
 - A command that writes the body of an issue into a file must succeed before `gh issue edit --body-file` reads it;
   join the two with `&&`. A `sed` with `#` as its delimiter fails on a text with an issue number, and an empty file
