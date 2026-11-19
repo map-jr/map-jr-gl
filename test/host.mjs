@@ -482,6 +482,25 @@ for (const renderer of renderers) {
         }, renderer).catch(e => ({error: String(e)}));
         check(`[${renderer}] globalState: the description replaces the default of the style, a change repaints without a style request, a name left out goes back to the default, a new style keeps the values`,
             JSON.stringify(globalState) === JSON.stringify({start: '#00f', changed: '#0f0', requests: 0, cleared: '#f00', restyled: '#0f0'}), JSON.stringify(globalState));
+        // #1085: in the main entry, a GeoJSON source without `buffer` keeps 16 pixels past the edges of a tile (the compat
+        // entry keeps 128). A line 40 pixels right of a tile edge, 120 pixels wide, is cut at that edge: the tile to the
+        // left does not have it. With buffer 128 the tile to the left draws its part.
+        const buffer16 = await page.evaluate(async renderer => {
+            const t = window.t, out = {};
+            for (const [k, buffer] of [['none', undefined], ['128', 128]]) {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:400px;height:300px'}));
+                const style = {version: 8, sources: {p: {type: 'geojson', data: {type: 'LineString', coordinates: [[14.06, 10], [14.06, 30]]}, ...buffer !== undefined && {buffer}}}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#000'}}, {id: 'l', type: 'line', source: 'p', paint: {'line-width': 120, 'line-color': '#f00'}}]};
+                const host = t.lib.createMap(el, {style, initialView: {center: [0, 0], zoom: 1}, renderer, attribution: false});
+                await new Promise(r => host.state.subscribe(s => s.idle, i => i && r()));
+                const bmp = await createImageBitmap(await host.toBlob()), g = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}).getContext('2d');
+                g.drawImage(bmp, 0, 0);
+                out[k] = g.getImageData(bmp.width * 180 / 400, bmp.height * 92 / 300, 1, 1).data[0];
+                host.destroy(); el.remove();
+            }
+            return out;
+        }, renderer).catch(e => ({error: String(e)}));
+        check(`[${renderer}] a GeoJSON source without buffer keeps 16 pixels past the tile edge in the main entry, and a buffer that is given is used (#1085)`,
+            buffer16.none === 0 && buffer16['128'] === 255, JSON.stringify(buffer16));
         // #998: a `visibility` that is an expression of the global state hides a hillshade layer, and its raster-dem
         // source requests no tiles until the state shows the layer.
         const hiddenDem = await page.evaluate(async renderer => {

@@ -147,7 +147,7 @@ function once(raw: object, url: string, load: () => Promise<any>, partial?: Part
  * With `fail`, a source that cannot be used (its request failed, or it has no tiles) is reported to that function and
  * left out: the other sources and their layers are drawn. Without it, such a source makes the whole style fail.
  */
-export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) => fetch(...a), base?: string, partial?: Partial, fail = partial?.fail): Promise<ResolvedStyle> {
+export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) => fetch(...a), base?: string, partial?: Partial, fail = partial?.fail, geojsonBuffer?: number): Promise<ResolvedStyle> {
     const bad = (error: unknown): typeof SKIP => { if (!fail) throw error; fail(error); return SKIP; };
     // (With `partial` or `fail`, `once` reports a failure itself, one time for each map.)
     const get = (raw: object, url: string, load: () => Promise<any>) => partial || fail ? once(raw, url, load, partial, fail) : once(raw, url, load);
@@ -172,7 +172,9 @@ export async function resolveStyle(style: any, fetchFn: typeof fetch = (...a) =>
                 });
                 if (data === SKIP) return;
             }
-            return {type: 'geojson', data, options: raw.cluster || raw.promoteId || raw.filter || raw.generateId || raw.buffer !== undefined ? {filter: raw.filter, buffer: raw.buffer, cluster: raw.cluster, clusterRadius: raw.clusterRadius, clusterMaxZoom: raw.clusterMaxZoom, clusterMinPoints: raw.clusterMinPoints, clusterProperties: raw.clusterProperties, promoteId: raw.promoteId, generateId: raw.generateId} : undefined, tiles: [`geojson://${name}/{z}/{x}/{y}`], minzoom: 0, maxzoom: raw.maxzoom ?? 18, tileSize: 512, attribution: raw.attribution};
+            // (`geojsonBuffer` is the buffer of a source that gives none: 128 in the compat entry, as in MapLibre GL JS.)
+            const buffer = raw.buffer ?? geojsonBuffer;
+            return {type: 'geojson', data, options: raw.cluster || raw.promoteId || raw.filter || raw.generateId || buffer !== undefined ? {filter: raw.filter, buffer, cluster: raw.cluster, clusterRadius: raw.clusterRadius, clusterMaxZoom: raw.clusterMaxZoom, clusterMinPoints: raw.clusterMinPoints, clusterProperties: raw.clusterProperties, promoteId: raw.promoteId, generateId: raw.generateId} : undefined, tiles: [`geojson://${name}/{z}/{x}/{y}`], minzoom: 0, maxzoom: raw.maxzoom ?? 18, tileSize: 512, attribution: raw.attribution};
         }
         if (raw.type === 'image' && raw.url && raw.coordinates?.length === 4) {
             return {type: 'image', url: absolute(raw.url, base), coordinates: raw.coordinates, tiles: [], minzoom: 0, maxzoom: 22, tileSize: 512};
