@@ -42,6 +42,8 @@ export interface Batch {
     /** Building extrusions: per-feature top and bottom heights in metres. */
     height?: Float32Array;
     base?: Float32Array;
+    /** Building extrusions with fill-extrusion-pattern: the walls carry the distance along their ring, for the image. */
+    ed?: boolean;
 }
 export interface LabelSrc {
     x: number; y: number; text: string;
@@ -101,7 +103,7 @@ export interface TileIR { layers: Record<string, Batch>; labels: Record<string, 
 
 export type GLBatch =
     | {type: 'fill'; pos: Int16Array; idx: Uint32Array; color?: Uint8Array; /** Polygon edges as vertex index pairs, drawn as one-pixel antialiased lines. */ edges?: Uint32Array}
-    | {type: 'extrusion'; v: Float32Array; idx: Uint32Array; color?: Uint8Array}
+    | {type: 'extrusion'; v: Float32Array; idx: Uint32Array; color?: Uint8Array; /** Distance along the ring per vertex, for a pattern. */ ed?: Float32Array}
     | {type: 'line'; /** Packed vertices, LINE_VERTEX bytes each: see tessellateLine. */ v: Uint8Array; idx: Uint32Array; color?: Uint8Array; width?: Float32Array; width1?: Float32Array}
     | {type: 'circle'; /** x, y, cornerX, cornerY per vertex */ pos: Int16Array; idx: Uint32Array; color?: Uint8Array; radius?: Float32Array; radius1?: Float32Array};
 export interface TileGL { layers: Record<string, GLBatch>; labels: Record<string, LabelSrc[]>; icons?: Record<string, IconBatch>; z?: number }
@@ -320,7 +322,7 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
         if (progress) batch.progress = Float32Array.from(progress);
         if (scalarProp?.dd) batch[L.type === 'line' ? 'width' : 'radius'] = Float32Array.from(scalar);
         if (scalarProp?.dd && grows) batch[L.type === 'line' ? 'width1' : 'radius1'] = Float32Array.from(scalar1);
-        if (extrude) { batch.height = Float32Array.from(heights); batch.base = Float32Array.from(bases); }
+        if (extrude) { batch.height = Float32Array.from(heights); batch.base = Float32Array.from(bases); if (p.pattern.zoom || p.pattern.eval(z)) batch.ed = true; }
         if (L.type === 'line') { batch.cap = p.cap.eval(z); batch.join = p.join.eval(z); batch.miterLimit = p.miterLimit.eval(z); batch.roundLimit = p.roundLimit.eval(z); }
         if (L.type === 'fill') { batch.outline = p.outline.eval(z)[3] > 0; batch.antialias = p.antialias.eval(z) !== false; }
         out.layers[L.id] = batch;
@@ -553,12 +555,13 @@ export const ROOF = -1, WALL_TOP = 8, WALL_OTHER = 16;
 
 /** Buildings: a roof at the feature's height and a wall under every edge. Each vertex says which way its face looks, for the light. */
 function tessellateExtrusion(b: Batch): GLBatch | null {
-    const {coords, featEnds} = b.geom, v: number[] = [], idx: number[] = [], color: number[] = [];
+    const {coords, featEnds} = b.geom, v: number[] = [], idx: number[] = [], color: number[] = [], ed: number[] = [];
     let count = 0;
     for (let f = 0; f < featEnds.length; f++) {
         const top = b.height![f], bottom = Math.min(b.base ? b.base[f] : 0, top);
-        const vert = (x: number, y: number, z: number, light: number) => {
+        const vert = (x: number, y: number, z: number, light: number, d = 0) => {
             v.push(x, y, z, light);
+            if (b.ed) ed.push(d);
             if (b.color) color.push(b.color[f * 4], b.color[f * 4 + 1], b.color[f * 4 + 2], b.color[f * 4 + 3]);
             return count++;
         };
@@ -573,14 +576,22 @@ function tessellateExtrusion(b: Batch): GLBatch | null {
             for (let i = p0, j = p0 + bounds[1] - 1; i < p0 + bounds[1]; j = i++) area += coords[j * 2] * coords[i * 2 + 1] - coords[i * 2] * coords[j * 2 + 1];
             const out = area >= 0 ? 1 : -1;
             for (let r = 0; r + 1 < bounds.length; r++) {
-                const s = p0 + bounds[r], e = p0 + bounds[r + 1];
+                const s = p0 + bounds[r], e = p0 + bounds[r + 1], n = e - s, dist: number[] = [];
+                // For fill-extrusion-pattern: the distance along the ring where each wall starts, counted from the
+                // corner where MapLibre GL JS starts, so that the image on the walls lines up as it does there.
+                for (let k = 1, d = 0; b.ed && k <= n; k++) {
+                    const i = s + k % n, j = s + k - 1, len = Math.hypot(coords[i * 2] - coords[j * 2], coords[i * 2 + 1] - coords[j * 2 + 1]);
+                    if (len && d + len > EXTENT * 4) d = 0; // (32768 units of MapLibre GL JS)
+                    dist.push(d); d += len;
+                }
                 for (let i = s, j = e - 1; i < e; j = i++) {
                     const ax = coords[j * 2], ay = coords[j * 2 + 1], bx = coords[i * 2], by = coords[i * 2 + 1], len = Math.hypot(bx - ax, by - ay);
                     if (!len) continue;
                     const facing = Math.atan2(-(bx - ax) * out, (by - ay) * out) + Math.PI, other = (h: number) => WALL_OTHER * Math.floor(Math.min(60000, Math.max(0, h)));
                     const low = facing + other(top), high = facing + WALL_TOP + other(bottom);
-                    const q = vert(ax, ay, bottom, low);
-                    vert(bx, by, bottom, low); vert(bx, by, top, high); vert(ax, ay, top, high);
+                    const d = dist[(i - s + n - 1) % n] ?? 0;
+                    const q = vert(ax, ay, bottom, low, d + len);
+                    vert(bx, by, bottom, low, d); vert(bx, by, top, high, d); vert(ax, ay, top, high, d + len);
                     idx.push(q, q + 1, q + 2, q, q + 2, q + 3);
                 }
             }
@@ -589,6 +600,7 @@ function tessellateExtrusion(b: Batch): GLBatch | null {
     if (!idx.length) return null;
     const out: GLBatch = {type: 'extrusion', v: Float32Array.from(v), idx: Uint32Array.from(idx)};
     if (b.color) out.color = Uint8Array.from(color);
+    if (b.ed) out.ed = Float32Array.from(ed);
     return out;
 }
 

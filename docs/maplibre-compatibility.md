@@ -121,7 +121,6 @@ Sources:
 Layers:
 
 - Custom layers with the worker renderer (see "Custom layers" in [What is different](#what-is-different))
-- `fill-extrusion-pattern`
 - Patterns that are different for each feature
 - Distance-field (SDF) images as `fill-pattern`. The image is drawn as it is stored, without the colour of the layer.
 

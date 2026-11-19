@@ -1588,7 +1588,8 @@ for (const renderer of renderers) {
 
         // A label of a layer below the layer of an icon from a buffer keeps away from the icon, unless the layer of the icon
         // has `icon-ignore-placement`. A label of a layer above it is placed first and shows, as with a placed icon. The
-        // text is at the point of the icon. (While the map moves, the engine says how many labels it placed.)
+        // text is at the point of the icon. (While the map moves, the engine says how many labels it placed. The number of
+        // these reports depends on the frame rate, so the check compares the distinct counts and not the list (#1061).)
         const avoided = await page.evaluate(async () => {
             const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms));
             const placed = async (icon, text) => {
@@ -1597,7 +1598,7 @@ for (const renderer of renderers) {
                 t.placed.length = 0;
                 t.host.moveTo({bearing: 20, duration: 1800}); await wait(2200);
                 t.host.moveTo({bearing: 0}); await wait(300);
-                return t.placed.splice(0).join();
+                return [...new Set(t.placed.splice(0))].join();
             };
             const out = {avoid: await placed({}, 'below'), ignore: await placed({'icon-ignore-placement': true}, 'below'), above: await placed({}, 'above')};
             const {images: _, ...rest} = t.spec;
@@ -1605,7 +1606,7 @@ for (const renderer of renderers) {
             return out;
         });
         check(`[${renderer}] a label of a layer below keeps away from an icon from a buffer, and not when the layer of the icon has icon-ignore-placement; a label of a layer above shows`,
-            /^0(,0)*$/.test(avoided.avoid) && /^1(,1)*$/.test(avoided.ignore) && /^1(,1)*$/.test(avoided.above), JSON.stringify(avoided));
+            avoided.avoid === '0' && avoided.ignore === '1' && avoided.above === '1', JSON.stringify(avoided));
         }
 
         // GeoJSON data apart from the style: it goes to its source alone, and stays over a new style.

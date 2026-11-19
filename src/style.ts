@@ -25,7 +25,7 @@ const SPEC: Record<string, Record<string, [string, PropKind, any, string[]?]>> =
     'fill-extrusion': {
         color: ['fill-extrusion-color', 'color', '#000'], opacity: ['fill-extrusion-opacity', 'number', 1],
         height: ['fill-extrusion-height', 'number', 0], base: ['fill-extrusion-base', 'number', 0],
-        gradient: ['fill-extrusion-vertical-gradient', 'raw', true],
+        gradient: ['fill-extrusion-vertical-gradient', 'raw', true], pattern: ['fill-extrusion-pattern', 'string', ''],
         translate: ['fill-extrusion-translate', 'string', [0, 0]], translateAnchor: ['fill-extrusion-translate-anchor', 'string', 'map'],
     },
     circle: {
