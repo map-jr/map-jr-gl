@@ -78,6 +78,11 @@ test('expressions: data, zoom and legacy forms evaluate', () => {
     assert.equal(compileExpr(['match', ['get', 'class'], ['primary', 'trunk'], 'big', 'small'], {dd: false, zoom: false})({zoom: 0, f}), 'big');
     assert.equal(compileProp(['interpolate', ['linear'], ['zoom'], 10, 1, 20, 11], 'number', 0).eval(15), 6);
     assert.equal(compileProp({stops: [[10, 1], [20, 11]]}, 'number', 0).eval(15), 6);
+    // A value that is not one of the values of an enum gives the default, as in MapLibre GL JS (#656).
+    const anchor = compileProp({type: 'identity', property: 'p'}, 'string', 'center', ['center', 'top']);
+    assert.equal(anchor.eval(0, {type: 1, properties: {p: 'top'}} as any), 'top');
+    assert.equal(anchor.eval(0, {type: 1, properties: {p: 'middle'}} as any), 'center');
+    assert.equal(compileProp(['get', 'p'], 'string', 'center', ['center', 'top']).eval(0, {type: 1, properties: {p: 'middle'}} as any), 'center');
     assert.equal(compileProp({property: 'lanes', type: 'identity'}, 'number', 0).eval(0, f), 3); // regression: identity functions
     assert.deepEqual(compileProp({stops: [[5, [1, 2]], [10, [3, 4]]]}, 'discrete', null).eval(7), [1, 2]); // dash arrays step, not blend
     assert.equal(compileFilter(['all', ['==', 'class', 'primary'], ['!in', 'class', 'path']])!({zoom: 0, f}), true);
