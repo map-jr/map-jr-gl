@@ -1,7 +1,7 @@
 import {createMap} from '@map-jr/map-jr-gl';
 import {globe, navigation} from '@map-jr/map-jr-gl/controls';
 
-const style = 'https://tiles.openfreemap.org/styles/liberty';
+const style = 'https://styles.map-jr.org/1/elevation-zero.json';
 
 export default function (container, {show}) {
   const map = createMap(container, {

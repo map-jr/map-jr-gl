@@ -30,7 +30,7 @@ const records = [
   {id: 2, lng: -73.9857, lat: 40.7484, color: '#2f7fd1', name: 'Empire State Building'},
 ];
 let description = {
-  style: 'https://tiles.openfreemap.org/styles/liberty',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
   initialView: {center: [-73.996, 40.73], zoom: 11.5},
   images: {pin},
   data: {places: points(records, {lngLat: r => [r.lng, r.lat], id: r => r.id})},
@@ -162,7 +162,7 @@ feature fills its slots from its properties.
 ```js
 import {Map, Popup} from '@map-jr/map-jr-gl/maplibre-compat';
 
-const map = new Map({container: 'map', style: 'https://tiles.openfreemap.org/styles/liberty', center: [-73.996, 40.73], zoom: 11.5});
+const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json', center: [-73.996, 40.73], zoom: 11.5});
 const pin = '<svg viewBox="0 0 24 31"><path fill="{{color}}" stroke="#fff" d="M12 30C12 30 2 17 2 11a10 10 0 0 1 20 0c0 6-10 19-10 19z"/></svg>';
 
 map.on('load', async () => {

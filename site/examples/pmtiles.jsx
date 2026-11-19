@@ -1,7 +1,7 @@
 import {useRef, useState} from 'react';
 import {MapJr} from '@map-jr/map-jr-gl/react';
 
-const style = 'https://tiles.openfreemap.org/styles/liberty';
+const style = 'https://styles.map-jr.org/1/elevation-zero.json';
 
 // Additions to the style: a PMTiles file on a usual file host. The map reads the tiles that it needs with HTTP
 // range requests.

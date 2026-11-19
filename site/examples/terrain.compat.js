@@ -1,6 +1,6 @@
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
-const style = 'https://tiles.openfreemap.org/styles/liberty';
+const style = 'https://styles.map-jr.org/1/elevation-zero.json';
 const MATTERHORN = [7.6586, 45.9763];
 
 export default function (container, {show}) {

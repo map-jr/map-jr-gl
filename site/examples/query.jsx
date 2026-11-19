@@ -1,7 +1,7 @@
 import {useRef, useState} from 'react';
 import {MapJr} from '@map-jr/map-jr-gl/react';
 
-const style = 'https://tiles.openfreemap.org/styles/liberty';
+const style = 'https://styles.map-jr.org/1/elevation-zero.json';
 const NYC = [-74.0065, 40.7085];
 // The answer shows in a box in a corner of the map. The box takes no pointer events, so a click on it reaches the map.
 const box = {position: 'absolute', top: '8px', left: '8px', zIndex: 1, pointerEvents: 'none', maxWidth: '240px', padding: '8px 10px', borderRadius: '8px', background: '#fff', color: '#222', font: '12px/1.5 system-ui,sans-serif', boxShadow: '0 1px 6px #0004'};

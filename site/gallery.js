@@ -12,7 +12,8 @@ import {markers, view, addImages, addMarkers} from '../demo/markers.mjs';
 import {shield} from '../demo/shields.mjs';
 import makeStyle from '../demo/style.mjs';
 
-// (The style of the server row: the one that scripts/site.mjs gives to the server renderer.)
+// (The style of the server row: the one that scripts/site.mjs gives to the server renderer. The row compares the server
+// renders with this live map, so both draw the same hand-built style of demo/style.mjs and not elevation-zero.)
 const STYLE = makeStyle('https://tiles.openfreemap.org/planet', '<a href="https://openfreemap.org">OpenFreeMap</a> <a href="https://www.openmaptiles.org/">© OpenMapTiles</a> Data from <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>');
 const modules = import.meta.glob('./examples/*.js');
 const texts = import.meta.glob('./examples/*', {query: '?raw', import: 'default', eager: true});

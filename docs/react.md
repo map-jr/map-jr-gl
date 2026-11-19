@@ -22,13 +22,13 @@ export function Places({places}) {
   return (
     <div style={{height: 400}}>
       <MapJr
-        mapStyle="https://tiles.openfreemap.org/styles/liberty"
+        mapStyle="https://styles.map-jr.org/1/elevation-zero.json"
         view={view} onViewChange={setView}
         images={{dot}}
         data={data}
         layers={[{id: 'places', type: 'symbol', source: 'places', layout: {'icon-image': 'dot', 'icon-allow-overlap': true}}]}
         controls={[navigation(), scale({position: 'bottom-left'})]}
-        interactiveLayers={['poi_r1']}
+        interactiveLayers={['poi_z14']}
         onClick={e => setSelected(e.features[0] ? {lngLat: e.lngLat, name: e.features[0].properties.name} : null)}
       >
         {selected && <MapOverlay lngLat={selected.lngLat} popup onClose={() => setSelected(null)}>{selected.name}</MapOverlay>}
@@ -76,7 +76,7 @@ export function HomePicker() {
   const [home, setHome] = useState([-74.0065, 40.7085]);
   return (
     <div style={{height: 400}}>
-      <MapJr mapStyle="https://tiles.openfreemap.org/styles/liberty" initialView={{center: home, zoom: 14}}>
+      <MapJr mapStyle="https://styles.map-jr.org/1/elevation-zero.json" initialView={{center: home, zoom: 14}}>
         <MapOverlay lngLat={home} anchor="bottom" draggable onDragEnd={setHome}>
           <img src="/pin.svg" alt="Home" width={27} height={41} />
         </MapOverlay>
@@ -163,7 +163,7 @@ const additions = {
 export default function Places() {
   return (
     <div style={{height: 400}}>
-      <MapJr mapStyle="https://tiles.openfreemap.org/styles/liberty" initialView={{center: [-73.996, 40.73], zoom: 11.5}} {...additions}>
+      <MapJr mapStyle="https://styles.map-jr.org/1/elevation-zero.json" initialView={{center: [-73.996, 40.73], zoom: 11.5}} {...additions}>
         <MapImage name="pin" params={['color']}>
           {({color}) => <svg viewBox="0 0 24 31"><path fill={color} stroke="#fff" d="M12 30C12 30 2 17 2 11a10 10 0 0 1 20 0c0 6-10 19-10 19z"/></svg>}
         </MapImage>
@@ -195,7 +195,7 @@ the server with `renderFirstView`, and give it to the component:
 import {renderFirstView} from '@map-jr/map-jr-gl/server';
 
 const firstView = await renderFirstView({
-  style: 'https://tiles.openfreemap.org/styles/liberty',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
   center: [-74.0065, 40.7085], zoom: 13.6,
   width: 800, height: 500,
   overrides: {building: {hidden: true}},      // changes to style layers, for the server only

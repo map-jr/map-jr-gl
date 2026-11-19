@@ -1,7 +1,7 @@
 // The playground page: one map of the compat entry and a panel with controls. The state lives in the URL hash.
 import {Map, NavigationControl} from '@map-jr/map-jr-gl/maplibre-compat';
 
-const style = 'https://tiles.openfreemap.org/styles/liberty';
+const style = 'https://styles.map-jr.org/1/elevation-zero.json';
 const dem = {type: 'raster-dem', tiles: ['https://tiles.mapterhorn.com/{z}/{x}/{y}.webp'], encoding: 'terrarium', tileSize: 512, maxzoom: 12, attribution: '<a href="https://mapterhorn.com/attribution">© Mapterhorn</a>'};
 
 const defaults = {

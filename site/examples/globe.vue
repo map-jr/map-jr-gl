@@ -3,7 +3,7 @@ import {ref} from 'vue';
 import {MapJr} from '@map-jr/map-jr-gl/vue';
 import {globe, navigation} from '@map-jr/map-jr-gl/controls';
 
-const style = 'https://tiles.openfreemap.org/styles/liberty';
+const style = 'https://styles.map-jr.org/1/elevation-zero.json';
 const projection = ref('globe');
 </script>
 

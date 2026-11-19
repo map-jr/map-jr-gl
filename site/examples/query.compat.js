@@ -1,6 +1,6 @@
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
-const style = 'https://tiles.openfreemap.org/styles/liberty';
+const style = 'https://styles.map-jr.org/1/elevation-zero.json';
 const NYC = [-74.0065, 40.7085];
 
 export default function (container, {show}) {

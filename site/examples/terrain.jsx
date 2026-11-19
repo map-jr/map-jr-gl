@@ -1,7 +1,7 @@
 import {useMemo, useRef, useState} from 'react';
 import {MapJr} from '@map-jr/map-jr-gl/react';
 
-const style = 'https://tiles.openfreemap.org/styles/liberty';
+const style = 'https://styles.map-jr.org/1/elevation-zero.json';
 const MATTERHORN = [7.6586, 45.9763];
 const thresholds = {
   ft: {9: [500, 1000], 11: [200, 1000], 12: [100, 500], 14: [50, 200], 15: [20, 100]},

@@ -15,7 +15,7 @@ It works on Node.js, on Cloudflare Workers, in a browser, and in other JavaScrip
 import {renderToSVG} from '@map-jr/map-jr-gl/server';
 
 const {svg, tiles} = await renderToSVG({
-  style: 'https://tiles.openfreemap.org/styles/liberty',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
   center: [-74.0065, 40.7085],
   zoom: 14.3,
   width: 800,
@@ -56,7 +56,7 @@ import {renderToSVG} from '@map-jr/map-jr-gl/server';
 
 document.querySelector('#export').addEventListener('click', async () => {
   const {svg} = await renderToSVG({
-    style: 'https://tiles.openfreemap.org/styles/liberty',
+    style: 'https://styles.map-jr.org/1/elevation-zero.json',
     center: [-74.0065, 40.7085],
     zoom: 14.3,
     width: 800,
@@ -175,7 +175,7 @@ view comes from a visitor, or when the style comes from another party.
 import {renderToSVG} from '@map-jr/map-jr-gl/server';
 
 const {svg} = await renderToSVG({
-  style: 'https://tiles.openfreemap.org/styles/liberty',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
   center: [-74.0065, 40.7085],
   zoom: 14.3,
   width: 800,
@@ -183,7 +183,7 @@ const {svg} = await renderToSVG({
   timeout: 5000,
   requestTimeout: 2000,
   maxBytes: 4 * 1024 * 1024,
-  allowHosts: ['tiles.openfreemap.org'],
+  allowHosts: ['styles.map-jr.org', 'tiles.openfreemap.org'],
 });
 ```
 
@@ -236,7 +236,7 @@ writes one message to the console of the server.
 ```js
 import {renderFirstView} from '@map-jr/map-jr-gl/server';
 
-const options = {style: 'https://tiles.openfreemap.org/styles/liberty', center: [-74.0065, 40.7085], zoom: 14.3, width: 800, height: 500};
+const options = {style: 'https://styles.map-jr.org/1/elevation-zero.json', center: [-74.0065, 40.7085], zoom: 14.3, width: 800, height: 500};
 let firstView = '';
 try {
   firstView = await renderFirstView({...options, timeout: 3000});
@@ -274,9 +274,9 @@ by the id of the layer:
 
 ```js
 const {svg, attribution} = await renderToSVG({
-  style: 'https://tiles.openfreemap.org/styles/liberty',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
   center, zoom, width: 800, height: 500,
-  overrides: {building: {hidden: true}, poi_r20: {hidden: true}},
+  overrides: {building: {hidden: true}, poi_z18: {hidden: true}},
 });
 ```
 
@@ -303,7 +303,7 @@ whole zoom instead. This override keeps the secondary roads from zoom 13 on:
 import {renderToSVG} from '@map-jr/map-jr-gl/server';
 
 const {svg} = await renderToSVG({
-  style: 'https://tiles.openfreemap.org/styles/liberty',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
   center: [-73.99, 40.73], zoom: 13.5, width: 800, height: 500,
   overrides: {road_secondary_tertiary: {filter: ['step', ['zoom'], false, 13, true]}},
 });
@@ -336,7 +336,7 @@ A value that is not a whole number makes the render reject with an error.
 
 ```js
 const {svg} = await renderToSVG({
-  style: 'https://tiles.openfreemap.org/styles/liberty',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
   center: [2.35, 48.86], zoom: 10, width: 800, height: 500,
   tileZoomOffset: 2,
 });
