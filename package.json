@@ -24,7 +24,7 @@
     "test:vue": "node test/vue.mjs",
     "test:react": "node test/react.mjs",
     "test:element": "node test/element.mjs",
-    "test:render": "node test/conformance/render.mjs --min=1166"
+    "test:render": "node test/conformance/render.mjs --min=1168"
   },
   "keywords": [
     "map",
