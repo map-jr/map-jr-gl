@@ -228,7 +228,6 @@ export class Map extends CoreMap {
         this.warned.add('setTransformCameraUpdate');
         console.warn('[map-jr-gl] setTransformCameraUpdate: the function changed the camera of a movement. This library draws that camera only when the movement ends (react-map-gl: onMove did not set viewState to e.viewState). To keep the map in a region, use the option maxBounds.');
     }
-    setTransformConstrain(fn?: unknown) { return this.unsupported('setTransformConstrain', !fn); }
     // The debug drawing of MapLibre GL JS is not available (#752): setting one of these to true warns once.
     get showTileBoundaries() { return !!this.debugDraw.showTileBoundaries; }
     set showTileBoundaries(v: boolean) { this.setDebug('showTileBoundaries', v); }
@@ -240,6 +239,22 @@ export class Map extends CoreMap {
     set showOverdrawInspector(v: boolean) { this.setDebug('showOverdrawInspector', v); }
     private debugDraw: Record<string, boolean> = {};
     private setDebug(name: string, v: boolean) { this.debugDraw[name] = !!v; this.unsupported(name, !v); }
+
+    /** As in MapLibre GL JS, `fn(lngLat, zoom)` returns `{center, zoom}` and replaces the constraint of the camera; null restores it. */
+    setTransformConstrain(fn?: ((lngLat: LngLat, zoom: number) => {center: LngLatLike; zoom: number}) | null) {
+        // The engine calls the function on each change of the camera, so it must run on this thread, as a custom layer does.
+        if (fn && !this.mainThread) {
+            const message = "[map-jr-gl] setTransformConstrain has no effect: the function needs the map to draw on the main thread. Pass renderer: 'main' to new Map().";
+            if (this.strict) throw new Error(message);
+            if (!this.warned.has('setTransformConstrain')) { this.warned.add('setTransformConstrain'); console.warn(message); }
+            return this;
+        }
+        const wrap = fn ? (t: typeof this.tr) => { const r = fn(new LngLat(t.lng, t.lat), t.zoom); [t.lng, t.lat] = toLngLat(r.center); t.zoom = r.zoom; } : null;
+        this.tr.customConstrain = wrap;
+        this.tr.set(undefined);
+        void this.ask(id => ({type: 'bound', id, fn: wrap}));
+        return this;
+    }
 
     // ---- zoomSnap and setEventedParent, as in MapLibre GL JS ----
     /**
@@ -283,9 +298,12 @@ export class Map extends CoreMap {
         // MapLibre GL JS does: CSS on `.maplibregl-map` can give the container its size.
         (typeof o.container == 'string' ? document.getElementById(o.container) : o.container)?.classList?.add('maplibregl-map');
         // (MapLibre GL JS has `antialias` in `canvasContextAttributes`.)
-        super(context?.antialias === undefined ? options : {...options, antialias: context.antialias});
+        // (A transformConstrain function runs in the engine, so without a renderer the map draws on the main thread.)
+        super({...options, ...context?.antialias !== undefined && {antialias: context.antialias}, ...o.transformConstrain && !o.renderer && {renderer: 'main'}});
         this.strict = !!o.strict;
-        this.mainThread = (o.renderer ?? loadDefaults.renderer) === 'main';
+        this.mainThread = (o.transformConstrain && !o.renderer ? 'main' : o.renderer ?? loadDefaults.renderer) === 'main';
+        // (The core constrained the camera of the options already: it is set again with the function.)
+        if (o.transformConstrain) { this.setTransformConstrain(o.transformConstrain); this.jumpTo({center: o.center, zoom: o.zoom}); }
         // (A canvas that replaces this one is a copy of it.)
         this.getCanvas().classList.add('maplibregl-canvas');
         // As in MapLibre GL JS, the element of getCanvasContainer() has `maplibregl-touch-drag-pan` while dragPan is

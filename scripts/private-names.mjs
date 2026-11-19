@@ -23,7 +23,7 @@ import {pathToFileURL} from 'node:url';
 // (On Windows, a module can be imported by a file URL only, not by a path with a drive letter.)
 const {parseAst} = await import(pathToFileURL(createRequire(createRequire(import.meta.url).resolve('vite')).resolve('rolldown/parseAst')).href);
 const src = path.resolve(import.meta.dirname, '../src');
-const INTERNAL = ['heightAt', 'cameraDistance', 'pixelsPerMetre', 'worldSize', 'screenToMerc', 'screenToGround', 'tileCover', 'projectTile', 'mercToScreen',
+const INTERNAL = ['heightAt', 'cameraDistance', 'pixelsPerMetre', 'worldSize', 'screenToMerc', 'screenToGround', 'tileCover', 'customConstrain', 'projectTile', 'mercToScreen',
     'createImageTile', 'createTile', 'destroyTile', 'setLocationAt', 'tileMatrix4', 'tileMatrix',
     'tileScale', 'cameraPosition', 'unprojectFlat', 'recenterOnGround', 'uploadSprite', 'setIcons', 'zoomFloor',
     'varint', 'svarint', 'skip', 'constrain', 'occluded', 'loadIR', 'onReset', 'resets', 'expansionZoom', 'setFetch', 'dirty', 'hits', 'command', 'leaves'];
