@@ -501,6 +501,23 @@ for (const renderer of renderers) {
         }, renderer).catch(e => ({error: String(e)}));
         check(`[${renderer}] visibility: an expression of the global state hides a hillshade layer, whose raster-dem source requests no tiles until the state shows it (#998)`,
             JSON.stringify(hiddenDem) === JSON.stringify({hidden: 0, shown: true}), JSON.stringify(hiddenDem));
+        // #1032: the attribution names a source only while a layer that the global state shows uses it.
+        const credits = await page.evaluate(async renderer => {
+            const t = window.t, el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const style = {version: 8, state: {relief: {default: true}}, sources: {g: {type: 'geojson', attribution: 'Relief-1032', data: {type: 'FeatureCollection', features: []}}},
+                layers: [{id: 'c', type: 'circle', source: 'g', layout: {visibility: ['case', ['global-state', 'relief'], 'visible', 'none']}}]};
+            let spec = {style, globalState: {relief: false}, renderer, attribution: {compact: false}, initialView: {center: [0, 0], zoom: 1}};
+            const host = t.lib.createMap(el, spec), out = [], wait = ms => new Promise(r => setTimeout(r, ms));
+            const text = () => !!el.querySelector('.map-jr-ctrl-attrib')?.textContent.includes('Relief-1032');
+            await new Promise(r => host.state.subscribe(s => s.idle, i => i && r()));
+            await wait(300); out.push(text());
+            host.update(spec = {...spec, globalState: {relief: true}}); await wait(1000); out.push(text());
+            host.update(spec = {...spec, globalState: {relief: false}}); await wait(1000); out.push(text());
+            host.destroy(); el.remove();
+            return out;
+        }, renderer).catch(e => ({error: String(e)}));
+        check(`[${renderer}] attribution: a source whose layers a visibility expression of the global state hides is not named, and is named while the state shows them (#1032)`,
+            JSON.stringify(credits) === '[false,true,false]', JSON.stringify(credits));
         // Paint transitions (#960): a new paint value in update() moves over the style's `transition` (here 3 s), the map
         // is not idle until it ends, and a `*-transition` of duration 0 changes the value at once. (`toBlob` waits for
         // `idle`, so a screenshot of the page reads the colour in the middle.)

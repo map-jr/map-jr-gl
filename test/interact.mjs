@@ -2208,6 +2208,31 @@ for (const mode of renderers) {
         check(`[${mode}] compat: the style.load events of setStyle are those of MapLibre GL JS (the same style, a paint change, another sprite, diff: false, setStyle in a listener of style.load) (#743)`,
             JSON.stringify(ours) === JSON.stringify(ml), JSON.stringify({ours, maplibre: ml}));
     }
+    // The attribution names a source only while one of its layers is visible, also when a `visibility` expression of
+    // the global state hides the layers, and it follows a change of that state, as in MapLibre GL JS 6.17 (#1032).
+    {
+        const run = (lib, mode) => page.evaluate(async ([lib, mode]) => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js'), wait = ms => new Promise(r => setTimeout(r, ms));
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const style = {version: 8, state: {relief: {default: false}}, sources: {g: {type: 'geojson', attribution: 'Relief-1032', data: {type: 'FeatureCollection', features: []}}},
+                layers: [{id: 'c', type: 'circle', source: 'g', layout: {visibility: ['case', ['global-state', 'relief'], 'visible', 'none']}}]};
+            const m = new mod.Map({container: el, style, ...lib === 'ml' ? {} : {renderer: mode}, attributionControl: {compact: false}, center: [0, 0], zoom: 1});
+            await new Promise(r => m.once('load', r));
+            const text = () => !!el.querySelector('.maplibregl-ctrl-attrib')?.textContent.includes('Relief-1032');
+            const out = [];
+            await wait(500); out.push(text());
+            m.setGlobalStateProperty('relief', true); await wait(1000); out.push(text());
+            m.setGlobalStateProperty('relief', false); await wait(1000); out.push(text());
+            m.remove(); el.remove();
+            return out;
+        }, [lib, mode]);
+        // (MapLibre GL JS 6.17 keeps the source in the attribution after the state hides its layers again, until a
+        // source changes: this library drops it, so only the first two steps are compared, see maplibre-compatibility.md.)
+        const ours = await run('ours', mode), ml = mode === 'main' ? await run('ml', mode) : [false, true, true];
+        check(`[${mode}] compat: the attribution follows a visibility expression of the global state, as in MapLibre GL JS, and drops the source when the state hides it again (#1032)`,
+            JSON.stringify(ours) === JSON.stringify([...ml.slice(0, 2), false]) && JSON.stringify(ml.slice(0, 2)) === '[false,true]', JSON.stringify({ours, maplibre: ml}));
+    }
     // A GeoJSON source whose URL fails (404) is requested, and fires `error`, as often as in MapLibre GL JS 6.17: one time,
     // and not again after a paint change or a setStyle (with `diff`) that keeps the source. `diff: false` loads it again.
     // A second map with the same style object gets its own `error` (#809). MapLibre GL JS in WebKit requests the
