@@ -141,13 +141,16 @@ export function reflowComments(code, language, width) {
     const base = commentKinds[language?.toLowerCase()];
     if (!base) return code;
     const lines = code.split('\n');
+    // In Vue, Svelte and HTML, the lines of a <script> or <style> element have the comments of JavaScript and CSS
+    // (#1271). An element that opens and closes on one line, such as <script src="…"></script>, is markup.
     let inScript = false;
     const kinds = lines.map(line => {
-        if (base !== 'vue') return base;
-        if (/^\s*<script\b/.test(line)) inScript = true;
-        const kind = inScript || /^\s*<style\b/.test(line) ? 'js' : 'html';
-        if (/^\s*<\/script>/.test(line)) inScript = false;
-        return kind;
+        if (base !== 'vue' && base !== 'html') return base;
+        const opens = /^\s*<(script|style)\b/.test(line), closes = /<\/(script|style)>/.test(line);
+        if (opens && closes) return 'html';
+        if (opens) { inScript = true; return 'html'; }
+        if (closes && inScript) { inScript = false; return /^\s*<\//.test(line) ? 'html' : 'js'; }
+        return inScript ? 'js' : 'html';
     });
     const out = [];
     for (let i = 0; i < lines.length;) {
