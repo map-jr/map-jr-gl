@@ -31,7 +31,7 @@ function onKeydown(event: KeyboardEvent, index: number) {
 
 <template>
   <div :id="props.id" class="code-variants my-5">
-    <div role="tablist" :aria-label="set.name" class="flex items-center gap-1 overflow-x-auto rounded-t-md border border-b-0 border-muted bg-default p-2">
+    <div role="tablist" :aria-label="set.name" class="flex items-center gap-1 overflow-x-auto rounded-t-md border border-b-0 border-muted bg-(--site-pre-header-bg) p-2">
       <button
         v-for="(slug, index) in slugs" :id="`${props.id}-tab-${slug}`" :key="slug" ref="tabs" type="button" role="tab"
         :aria-controls="`${props.id}-${slug}`" :aria-selected="shown === slug" :tabindex="shown === slug ? 0 : -1"

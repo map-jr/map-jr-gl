@@ -79,6 +79,20 @@
   /* The colour of the contour lines, and of the sheet that a code block is printed on. */
   --site-contour: var(--ui-color-neutral-300);
   --site-sheet: #ffffff;
+
+  /*
+   * Monospace text (#1331). Contrast of the text on its background: inline code 5.95 (the muted text on the paper),
+   * code blocks 15.4. The tokens of a block (github-light-default) keep 4.5 or more on the block background.
+   */
+  --site-code-bg: var(--color-paper-50);
+  --site-code-fg: var(--color-paper-600);
+  --site-code-padding: 0.1em 0.35em;
+  --site-code-radius: 0.25rem;
+  --site-code-size: 0.875em;
+  /* paper-50 at 35% on white, and at 70% for the header of a block (the filename, the variant tabs). */
+  --site-pre-bg: #fcfcfa;
+  --site-pre-header-bg: #f9f8f6;
+  --site-pre-fg: #1f2328;
 }
 
 /* The light page is white (#1332). Surfaces that use --ui-bg (the header, the cards) keep the paper. */
@@ -113,6 +127,14 @@
 
   --site-contour: var(--ui-color-neutral-700);
   --site-sheet: #1c1d20;
+
+  /* Contrast of the text on its background: inline code 6.0 (#a2a09a on #222326), code blocks 14.4. */
+  --site-code-bg: #222326;
+  --site-code-fg: var(--color-paper-400);
+  /* The elevated surface (#222326) at 35% on the night, and at 70% for the header of a block. */
+  --site-pre-bg: #1b1c1e;
+  --site-pre-header-bg: #1f2022;
+  --site-pre-fg: #e6edf3;
 }
 
 @layer base {
@@ -350,6 +372,32 @@
   .code-phone {
     display: block;
   }
+}
+
+/* Monospace text has its own background and colour (#1331). The tokens of a block set their own colours. */
+:not(pre) > code {
+  background-color: var(--site-code-bg);
+  color: var(--site-code-fg);
+  padding: var(--site-code-padding);
+  border-radius: var(--site-code-radius);
+  font-size: var(--site-code-size);
+  font-weight: 500;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+/* Inline code in a link has the colour of the link, also on hover. */
+a > code,
+a code {
+  color: inherit;
+}
+
+/*
+ * The comment colour of github-light-default (#6e7781) is 4.43:1 on the block background (#fcfcfa). In the light mode,
+ * every token of a block is darkened by 15%, which puts the lowest token at 5.7:1 and keeps the others above 4.5.
+ */
+html:not(.dark) pre.shiki code span {
+  color: color-mix(in srgb, var(--shiki-light) 85%, #000);
 }
 
 /* Inline code in a paragraph or a list wraps anywhere when one word of it is wider than the column, so that a long
