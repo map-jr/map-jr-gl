@@ -562,6 +562,59 @@ try {
             check(`${engine}: /play: at 390 the last example can be reached`, await small.getByRole('menuitem').last().isVisible());
             await phone.close();
         }
+
+        // The grabber between the editor and the map (#1337): a pointer and the keys change the split, the map follows,
+        // and the page below the width "lg" has no grabber.
+        await page.goto(base + '/play', {waitUntil: 'load'});
+        await shown(playFrame.locator('#map canvas').first());
+        const grabber = page.getByRole('separator', {name: 'Width of the editor and the map'});
+        const sizes = async () => {
+            const editorBox = await page.locator('.code-editor').boundingBox();
+            const frameBox = await page.locator('.map-frame iframe').boundingBox();
+            await page.waitForTimeout(300);
+            const canvas = await playFrame.locator('#map canvas').first().evaluate(element => element.getBoundingClientRect().width);
+            return {editor: Math.round(editorBox.width), map: Math.round(frameBox.width), canvas: Math.round(canvas)};
+        };
+        check(`${engine}: /play: the grabber has a name, a value and the keyboard focus`, await grabber.getAttribute('aria-valuenow') === '50' && await grabber.getAttribute('tabindex') === '0' && await grabber.getAttribute('aria-orientation') === 'vertical');
+        const first = await sizes();
+        check(`${engine}: /play: the split starts at half`, Math.abs(first.editor - first.map) <= 2, JSON.stringify(first));
+        const spot = await grabber.boundingBox();
+        await page.mouse.move(spot.x + spot.width / 2, spot.y + spot.height / 2);
+        await page.mouse.down();
+        await page.mouse.move(spot.x + spot.width / 2 + 100, spot.y + spot.height / 2, {steps: 5});
+        // Over the frame of the map, the drag goes on.
+        await page.mouse.move(spot.x + spot.width / 2 + 200, spot.y + spot.height / 2, {steps: 5});
+        await page.mouse.up();
+        const dragged = await sizes();
+        check(`${engine}: /play: a drag of 200 px makes the editor 200 px wider and the map narrower`, Math.abs(dragged.editor - first.editor - 200) <= 3 && Math.abs(first.map - dragged.map - 200) <= 3, JSON.stringify({first, dragged}));
+        check(`${engine}: /play: the canvas of the map follows the split`, Math.abs(dragged.canvas - dragged.map) <= 2 && dragged.canvas < first.canvas - 150, `${first.canvas} -> ${dragged.canvas}`);
+        await page.mouse.move(0, spot.y + 100);
+        await page.mouse.down();
+        await page.mouse.move(2, spot.y + 100);
+        await page.mouse.up();
+        // (A drag that starts away from the grabber does not move it.)
+        check(`${engine}: /play: a press away from the grabber does not move the split`, (await sizes()).editor === dragged.editor);
+        await grabber.focus();
+        await page.keyboard.press('ArrowLeft');
+        const left = await sizes();
+        check(`${engine}: /play: ArrowLeft makes the editor narrower by 2% and ArrowRight wider`, left.editor < dragged.editor && Math.abs(dragged.editor - left.editor - 0.02 * 1440) <= 3, `${dragged.editor} -> ${left.editor}`);
+        await page.keyboard.press('ArrowRight');
+        check(`${engine}: /play: ArrowRight undoes ArrowLeft`, Math.abs((await sizes()).editor - dragged.editor) <= 2);
+        await page.keyboard.press('Home');
+        const least = await sizes();
+        check(`${engine}: /play: Home gives the editor 20% of the width`, await grabber.getAttribute('aria-valuenow') === '20' && Math.abs(least.editor - 0.2 * 1440) <= 3, JSON.stringify(least));
+        await page.keyboard.press('ArrowLeft');
+        check(`${engine}: /play: the split stops at 20%`, (await sizes()).editor === least.editor);
+        await page.keyboard.press('End');
+        check(`${engine}: /play: End gives the editor 80% of the width`, await grabber.getAttribute('aria-valuenow') === '80' && Math.abs((await sizes()).editor - 0.8 * 1440) <= 3);
+        // The split stays while the visitor moves around the site.
+        await page.locator('header a[href="/recipes"]').first().click();
+        await page.waitForURL('**/recipes');
+        await page.goBack();
+        await page.locator('.code-editor').waitFor({timeout: 30000});
+        check(`${engine}: /play: the split stays after a visit to another page`, await grabber.getAttribute('aria-valuenow') === '80');
+        await page.setViewportSize({width: 390, height: 844});
+        check(`${engine}: /play: below the width "lg" there is no grabber`, !(await grabber.isVisible()));
         check(`${engine}: /play: no error of the page`, problems.length === 0, problems.join(' | '));
         // The button reads "Copy link", and a popover says what the link keeps.
         check(`${engine}: /play: the button reads "Copy link"`, await page.getByRole('button', {name: 'Copy link', exact: true}).count() === 1);

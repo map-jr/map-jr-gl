@@ -120,11 +120,45 @@ onBeforeUnmount(() => {
     clearTimeout(sending);
     clearTimeout(timer);
 });
+
+// The split: the width of the editor, in percent of the page, at the width "lg" and above. The grabber between the editor
+// and the map moves it with a pointer (the drag keeps the pointer, so it goes on over the frame of the map) and with the
+// keys. The value is kept while the visitor moves around the site, and it is not in the address.
+const splitMin = 20;
+const splitMax = 80;
+const splitStep = 2;
+const split = useState('play-split', () => 50);
+const grid = useTemplateRef<HTMLElement>('grid');
+const dragging = ref(false);
+let dragFrom: {x: number; split: number; width: number} | undefined;
+const setSplit = (value: number) => { split.value = Math.min(splitMax, Math.max(splitMin, Math.round(value * 10) / 10)); };
+function onGrab(event: PointerEvent) {
+    if (event.button !== 0 || !grid.value) return;
+    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+    dragFrom = {x: event.clientX, split: split.value, width: grid.value.getBoundingClientRect().width};
+    dragging.value = true;
+}
+function onDrag(event: PointerEvent) {
+    if (dragFrom) setSplit(dragFrom.split + (event.clientX - dragFrom.x) / dragFrom.width * 100);
+}
+function onRelease() {
+    dragFrom = undefined;
+    dragging.value = false;
+}
+function onSplitKey(event: KeyboardEvent) {
+    const next = {ArrowLeft: split.value - splitStep, ArrowRight: split.value + splitStep, Home: splitMin, End: splitMax}[event.key];
+    if (next === undefined) return;
+    event.preventDefault();
+    setSplit(next);
+}
 </script>
 
 <template>
-  <div class="grid grid-cols-1 lg:h-[calc(100dvh-var(--ui-header-height))] lg:grid-cols-2">
-    <section class="flex min-h-0 min-w-0 flex-col border-muted lg:border-e">
+  <div
+    ref="grid" class="grid grid-cols-1 lg:h-[calc(100dvh-var(--ui-header-height))] lg:grid-cols-[minmax(0,var(--split))_minmax(0,1fr)]"
+    :style="{'--split': split + '%'}"
+  >
+    <section class="relative flex min-h-0 min-w-0 flex-col border-muted lg:border-e">
       <div class="flex flex-wrap items-center gap-2 border-b border-muted px-4 py-3">
         <h1 class="me-auto font-display text-2xl text-highlighted">Play</h1>
         <UDropdownMenu :items="menu" :content="{align: 'start'}">
@@ -146,6 +180,13 @@ onBeforeUnmount(() => {
         class="h-[50vh] lg:h-auto lg:flex-1" @run="send"
       />
       <div v-else class="h-[50vh] lg:flex-1" />
+      <div
+        role="separator" aria-orientation="vertical" aria-label="Width of the editor and the map" tabindex="0"
+        :aria-valuenow="Math.round(split)" :aria-valuemin="splitMin" :aria-valuemax="splitMax" :aria-valuetext="`Editor ${Math.round(split)}%, map ${100 - Math.round(split)}%`"
+        class="split-grabber absolute inset-y-0 -end-1.5 z-10 hidden w-3 cursor-col-resize touch-none select-none outline-none lg:block"
+        :class="{'is-dragging': dragging}"
+        @pointerdown="onGrab" @pointermove="onDrag" @pointerup="onRelease" @pointercancel="onRelease" @keydown="onSplitKey"
+      />
     </section>
     <MapFrame
       v-if="code !== undefined" :key="frameKey" form="description" :code="sent" :view="start" title="The map of the description"
@@ -154,3 +195,8 @@ onBeforeUnmount(() => {
     <div v-else class="h-[70vh] lg:h-full" />
   </div>
 </template>
+
+<style>
+.split-grabber::after { content: ''; position: absolute; inset-block: 0; inset-inline-start: 50%; width: 2px; margin-inline-start: -1px; background: transparent; }
+.split-grabber:hover::after, .split-grabber:focus-visible::after, .split-grabber.is-dragging::after { background: var(--ui-primary); }
+</style>
