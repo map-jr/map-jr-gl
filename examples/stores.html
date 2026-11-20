@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Stores on a map, with a button for each</title>
+<!-- The map shows three stores, and a button below the map for each store moves the map to it. -->
+<map-jr id="map" map-style="https://styles.map-jr.org/1/elevation-zero.json" center="-73.995,40.72" zoom="11.5"
+        attribution-compact style="height: 500px"></map-jr>
+<script type="module">
+  import '@map-jr/map-jr-gl/element';
+  import {points} from '@map-jr/map-jr-gl';
+
+  const stores = [
+    {name: 'Downtown', at: [-74.0089, 40.7096]},
+    {name: 'Midtown', at: [-73.9857, 40.7484]},
+    {name: 'Brooklyn', at: [-73.9903, 40.6928]},
+  ];
+  const map = document.getElementById('map');
+  // A key of `data` makes a GeoJSON source with that id. A circle layer draws its points.
+  map.data = {stores: points(stores, {lngLat: s => s.at, properties: s => ({name: s.name})})};
+  map.layers = [{id: 'stores', type: 'circle', source: 'stores', paint: {'circle-radius': 7, 'circle-color': '#d6453d', 'circle-stroke-color': '#fff', 'circle-stroke-width': 2}}];
+
+  map.after(...stores.map(store => {
+    const button = Object.assign(document.createElement('button'), {textContent: store.name});
+    button.onclick = () => map.map.moveTo({center: store.at, zoom: 15, duration: 500});
+    return button;
+  }));
+</script>

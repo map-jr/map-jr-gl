@@ -777,7 +777,7 @@ One cost still grows with the number of markers in view. Without `icon-ignore-pl
 map avoid each marker, and the map does that work each time that it places the labels. So set
 `icon-ignore-placement: true` for very many markers.
 
-To show groups in place of single markers, see [Clusters](../api.md#clusters).
+To show groups in place of single markers, see [Group points into clusters](../recipes/clusters.md).
 
 ## See also
 

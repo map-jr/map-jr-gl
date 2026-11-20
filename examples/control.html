@@ -1,0 +1,30 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>A control of your own</title>
+<!-- A button of your own in the top left corner of the map shows the next style, and a line of text below the map
+     names the style. -->
+<map-jr id="map" map-style="https://styles.map-jr.org/1/elevation-zero.json" center="-74.0065,40.7085" zoom="13"
+        attribution-compact style="height: 500px"></map-jr>
+<p id="readout">Style: elevation-zero</p>
+<script type="module">
+  import '@map-jr/map-jr-gl/element';
+  import {navigation, custom} from '@map-jr/map-jr-gl/controls';
+
+  const styles = ['elevation-zero', 'openfreemap-positron', 'openfreemap-dark'];
+  let current = 0;
+  const map = document.getElementById('map');
+  const readout = document.getElementById('readout');
+
+  // The element of the control. The map places it in its corner and gives it the class map-jr-ctrl, which lets it
+  // take clicks. Its look is yours.
+  const button = document.createElement('button');
+  button.textContent = 'Next style';
+  button.style.cssText = 'padding:6px 12px;border:0;border-radius:16px;background:#fff;color:#222;font:13px system-ui,sans-serif;box-shadow:0 1px 4px #0004;cursor:pointer';
+  button.addEventListener('click', () => {
+    current = (current + 1) % styles.length;
+    map.setAttribute('map-style', `https://styles.map-jr.org/1/${styles[current]}.json`);
+    readout.textContent = `Style: ${styles[current]}`;
+  });
+  // `key` names the control: the map keeps it while the list has a control with this key.
+  map.controls = [navigation(), custom({key: 'next-style', position: 'top-left', element: button})];
+</script>
