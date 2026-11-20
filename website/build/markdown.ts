@@ -19,7 +19,7 @@ import {existsSync} from 'node:fs';
 import {dirname, relative, resolve} from 'node:path';
 import {docsDir, routeOf, type NavSection} from './nav';
 import {showsOf, variantOfLabel, type VariantSet} from './variants';
-import {desktopWidth, formatCode, parserOf, phoneWidth} from './format.mjs';
+import {desktopWidth, formatCode, formatsLanguage, phoneWidth} from './format.mjs';
 
 const repository = resolve(docsDir, '..');
 export const repositoryUrl = 'https://github.com/map-jr/map-jr-gl';
@@ -51,7 +51,7 @@ export async function formatFences(markdown: string): Promise<string> {
     let last = 0;
     for (const match of markdown.matchAll(fence)) {
         const [whole, indent = '', language = '', info = '', body = ''] = match;
-        if (!parserOf(language)) continue;
+        if (!formatsLanguage(language)) continue;
         parts.push(markdown.slice(last, match.index));
         last = match.index! + whole.length;
         const code = body.split('\n').map(line => line.slice(indent.length)).join('\n').replace(/\n$/, '');

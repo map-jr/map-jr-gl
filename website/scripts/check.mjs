@@ -261,7 +261,7 @@ try {
     }
 
     // The forms of the code (#1250): a code line never wraps, the phone form shows below 48rem and the desktop form
-    // from it, and no code block is wider than its column.
+    // from it, and no code block or its code is wider than its column (scrollWidth <= clientWidth).
     for (const path of [installPage, '/reference/server']) {
         for (const width of [1440, 390]) {
             const {page, problems, close} = await open(path, {width, height: width === 390 ? 844 : 900});
@@ -270,8 +270,13 @@ try {
                 const wrapped = [], wide = [];
                 let lines = 0, scrolling = 0;
                 for (const block of shown) {
-                    if (block.offsetWidth > block.parentElement.clientWidth || block.getBoundingClientRect().right > document.documentElement.clientWidth) wide.push(block.textContent.slice(0, 30));
-                    if (block.scrollWidth > block.clientWidth) scrolling++;
+                    // A block is wider than its column, or its code is wider than the block.
+                    if (block.offsetWidth > block.parentElement.clientWidth || block.getBoundingClientRect().right > document.documentElement.clientWidth) wide.push('block: ' + block.textContent.slice(0, 30));
+                    if (block.scrollWidth > block.clientWidth) {
+                        scrolling++;
+                        const longest = [...block.querySelectorAll('.line')].sort((a, b) => b.textContent.length - a.textContent.length)[0];
+                        wide.push(`code ${block.scrollWidth - block.clientWidth} px: ${longest?.textContent.trim().slice(0, 50)}`);
+                    }
                     for (const line of block.querySelectorAll('.line')) {
                         lines++;
                         const range = document.createRange();
@@ -283,7 +288,7 @@ try {
                 return {blocks: shown.length, lines, scrolling, wrapped, wide, forms};
             });
             check(`code at ${width} on ${path}: no code line wraps`, found.lines > 0 && found.wrapped.length === 0, `${found.wrapped.length} of ${found.lines} lines wrap ${found.wrapped.join(' | ')}`);
-            check(`code at ${width} on ${path}: no code block is wider than its column`, found.wide.length === 0, `${found.blocks} blocks, ${found.scrolling} scroll sideways ${found.wide.join(' | ')}`);
+            check(`code at ${width} on ${path}: no code block is wider than its column`, found.wide.length === 0, `${found.blocks} blocks, ${found.scrolling} scroll sideways; ${found.wide.join(' | ')}`);
             check(`code at ${width} on ${path}: the ${width === 390 ? 'phone' : 'desktop'} form shows`, width === 390 ? found.forms.phone > 0 && found.forms.desktop === 0 : found.forms.desktop > 0 && found.forms.phone === 0, JSON.stringify(found.forms));
             // /reference/server has a table of options that is wider than a phone, which is not a code block.
             if (path === installPage) check(`code at ${width} on ${path}: no horizontal scroll of the page`, await overflow(page) <= 0, (await overflow(page)) + ' px');

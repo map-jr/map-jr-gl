@@ -166,18 +166,26 @@ if (!format) {
     console.log('docs-lint: the format of the code is not checked, because website/ has no packages. Run pnpm install in website/.');
 } else {
     const fix = args.includes('--fix');
-    let unformatted = 0;
+    let unformatted = 0, tooLong = 0;
     for (const file of files) {
         const text = readFileSync(file, 'utf8');
         const parts = [];
         let last = 0;
-        for (const match of text.matchAll(/^( *)```(\w+)([^\n]*)\n([\s\S]*?)^\1```$/gm)) {
+        for (const match of text.matchAll(/^( *)```([\w-]*)([^\n]*)\n([\s\S]*?)^\1```$/gm)) {
             const [whole, indent, language, info, body] = match;
             const code = body.split('\n').map(line => line.slice(indent.length)).join('\n').replace(/\n$/, '');
+            const at = text.slice(0, match.index).split('\n').length;
+            // The phone form fits 38 columns. What the formatter cannot break (a string, a URL, a long name) is the
+            // writer's to shorten.
+            const phone = await format.formatCode(code, language, format.phoneWidth) ?? code;
+            for (const line of phone.split('\n').filter(line => line.length > format.phoneWidth)) {
+                tooLong++;
+                console.log(`${path.relative(root, file)}:${at}: error: the ${language || 'plain'} fence has a line of ${line.length} columns on a phone, more than ${format.phoneWidth}. Shorten it: ${line.trim()}`);
+            }
             const formatted = await format.formatCode(code, language, format.desktopWidth);
             if (formatted === undefined || formatted === code) continue;
             unformatted++;
-            if (!fix) console.log(`${path.relative(root, file)}:${text.slice(0, match.index).split('\n').length}: warning: the ${language} fence is not formatted at ${format.desktopWidth} columns.`);
+            if (!fix) console.log(`${path.relative(root, file)}:${at}: warning: the ${language} fence is not formatted at ${format.desktopWidth} columns.`);
             parts.push(text.slice(last, match.index), `${indent}\`\`\`${language}${info}\n${formatted.split('\n').map(line => line ? indent + line : line).join('\n')}\n${indent}\`\`\``);
             last = match.index + whole.length;
         }
@@ -185,5 +193,11 @@ if (!format) {
     }
     if (fix) console.log(`docs-lint: formatted ${unformatted} fences.`);
     else if (unformatted) console.log(`docs-lint: ${unformatted} fences are not formatted (warnings). node scripts/docs-lint.mjs --fix formats them.`);
+    if (tooLong) {
+        // These do not fail the run yet: the package names and the URLs of the styles are longer than the phone width,
+        // and the owner decides the width (#1250).
+        console.log(`docs-lint: ${tooLong} lines of code are longer than ${format.phoneWidth} columns on a phone (errors; they fail only with --strict).`);
+        if (strict) process.exitCode = 1;
+    }
 }
 if (strict && findings.length) process.exit(1);
