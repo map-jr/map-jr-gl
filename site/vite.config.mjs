@@ -48,9 +48,23 @@ export const svelteExamples = {
         return {code: compile(code, {filename: id.split('?')[0], generate: 'client', css: 'injected'}).js.code, map: null};
     },
 };
+/**
+ * Loads a recipe (docs/recipes/<id>.md) imported with `?intro` as `{title, intro}`: its first heading and the paragraph
+ * under it, or `null` when it does not start so. The gallery shows them on the row of the example <id> (#1119), and
+ * the rest of the page stays out of the bundle.
+ */
+export const recipeIntros = {
+    name: 'map-jr-recipe-intros',
+    enforce: 'pre',
+    transform(code, id) {
+        if (!/[\\/]docs[\\/]recipes[\\/][\w-]+\.md\?intro$/.test(id)) return;
+        const [, title, intro] = code.match(/^# (.+)\n\n((?:.+\n)+)/) ?? [];
+        return {code: `export default ${JSON.stringify(title ? {title, intro: intro.trim().replace(/\s+/g, ' ')} : null)};\n`, map: null};
+    },
+};
 export default defineConfig({
     root,
-    plugins: [examplesAsFunctions, svelteExamples],
+    plugins: [examplesAsFunctions, svelteExamples, recipeIntros],
     base: './', // works from any path, e.g. https://<user>.github.io/<repository>/
     resolve: {alias},
     build: {outDir: path.join(root, '../site-dist'), emptyOutDir: true, target: 'es2022', rollupOptions: {input: {main: path.join(root, 'index.html'), playground: path.join(root, 'playground.html')}}},

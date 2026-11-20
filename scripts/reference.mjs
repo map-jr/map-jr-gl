@@ -83,7 +83,8 @@ const snapshot = api.updateSnapshot({openProjects: [config]});
 const project = snapshot.getProject(config) ?? snapshot.getProjects()[0];
 const {checker, program} = project;
 const typesFile = program.getSourceFile(path.join(root, 'scripts/reference/types.ts'));
-const src = path.join(root, 'src') + path.sep;
+// (On a file system that ignores case, as on macOS, the paths of the declarations are in lower case.)
+const src = (path.join(root, 'src') + path.sep).toLowerCase();
 const problems = [];
 
 /** `file#name` of the interface or class that a declaration handle points to. */
@@ -116,7 +117,7 @@ function readMembers(name) {
         // A listener `onX` of that kind is an event of the component (the `emits` of Vue, `MapEventProps` of React),
         // which the table of `MapEvents` describes, and is left out.
         if (!handle) { if (!/^on[A-Z]/.test(member.name)) list.undeclared.push(member.name); continue; }
-        if (!String(handle.path).startsWith(src)) continue;
+        if (!String(handle.path).toLowerCase().startsWith(src)) continue;
         const node = handle.resolve(project);
         const modifiers = node?.modifiers?.map(m => m.getText()) ?? [];
         // (Private members, members that start with `_` for wrappers, and the callbacks of a custom element that the browser calls.)

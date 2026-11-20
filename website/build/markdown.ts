@@ -12,6 +12,9 @@
 //   puts both in a `code-forms` block; CSS shows one of them (app/assets/css/main.css, "Forms of the code").
 // - A table with the columns Name, Type, Default and Description is a reference table: each row has an id and a link
 //   to itself, and "**required**" is a mark.
+// - The code of an example of examples/ between the marks <!-- example:<id>:start --> and <!-- example:<id>:end -->
+//   (scripts/recipes.mjs writes them) becomes a `live-example` block, which shows the map of the code above it and
+//   lets the reader edit the code (app/components/content/LiveExample.vue). `liveExamples` does this before the parse.
 //
 // Nuxt Content keeps the parsed pages in website/.data/content. A change of this file does not parse them again:
 // delete that folder.
@@ -62,6 +65,11 @@ export async function formatFences(markdown: string): Promise<string> {
     parts.push(markdown.slice(last));
     return (await Promise.all(parts)).join('');
 }
+
+// Puts the code between the marks of an example into a `live-example` block of MDC.
+export const liveExamples = (markdown: string) => markdown
+    .replace(/^<!-- example:([\w-]+):start -->$/gm, '::live-example{id="$1"}')
+    .replace(/^<!-- example:[\w-]+:end -->$/gm, '::');
 
 const isPhoneForm = (node: Node | undefined) => Array.isArray(node) && node[0] === 'pre' && String(node[1]?.meta ?? '').split(/\s+/).includes(phoneMark);
 

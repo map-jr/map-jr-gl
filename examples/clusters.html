@@ -1,0 +1,39 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Group points into clusters</title>
+<!-- The map groups about 6,100 earthquakes into clusters, and a line of text below the map says what a click on a
+     cluster did. -->
+<map-jr id="map" map-style="https://styles.map-jr.org/1/elevation-zero.json" center="-103.6,40.7" zoom="3"
+        interactive-layers="clusters" attribution-compact style="height: 500px"></map-jr>
+<p id="readout">Click a cluster to zoom in to it.</p>
+<script type="module">
+  import '@map-jr/map-jr-gl/element';
+
+  const earthquakes = 'https://maplibre.org/maplibre-gl-js/docs/assets/earthquakes.geojson';
+  const map = document.getElementById('map');
+  const readout = document.getElementById('readout');
+  // A source with options is declared in `sources`. With `cluster: true`, the points that are near each other on the
+  // screen become one cluster feature with the properties `cluster_id` and `point_count`.
+  map.sources = {earthquakes: {type: 'geojson', data: earthquakes, cluster: true, clusterRadius: 50}};
+  map.layers = [
+    // A circle for each cluster, larger for more points, with the number of points on it.
+    {id: 'clusters', type: 'circle', source: 'earthquakes', filter: ['has', 'point_count'],
+      paint: {'circle-color': '#2f7fd1', 'circle-radius': ['step', ['get', 'point_count'], 14, 100, 18, 750, 24], 'circle-stroke-color': '#fff', 'circle-stroke-width': 2}},
+    {id: 'cluster-count', type: 'symbol', source: 'earthquakes', filter: ['has', 'point_count'],
+      layout: {'text-field': ['get', 'point_count_abbreviated'], 'text-font': ['Noto Sans Bold'], 'text-size': 12},
+      paint: {'text-color': '#fff'}},
+    // A small dot for each point that is in no cluster.
+    {id: 'earthquakes', type: 'circle', source: 'earthquakes', filter: ['!', ['has', 'point_count']],
+      paint: {'circle-color': '#d6453d', 'circle-radius': 4, 'circle-stroke-color': '#fff', 'circle-stroke-width': 1}},
+  ];
+
+  // A click reports the features of the layers of `interactive-layers` in `features`.
+  map.addEventListener('map-click', async event => {
+    const cluster = event.detail.features[0];
+    if (!cluster) return;
+    // The zoom level at which the cluster divides into smaller clusters or points.
+    const zoom = await map.map.clusterExpansionZoom('earthquakes', cluster.properties.cluster_id);
+    map.map.moveTo({center: cluster.geometry.coordinates, zoom, duration: 500});
+    readout.textContent = `${cluster.properties.point_count} earthquakes. The cluster divides at zoom ${zoom}.`;
+  });
+</script>

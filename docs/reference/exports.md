@@ -61,9 +61,7 @@ points(
 **Returns:** `PointCollection`. A `FeatureCollection` of points.
 <!-- ref:MainExports.points:end -->
 
-A record whose position is not two finite numbers is left out. The
-[development build](create-map.md#the-development-build) warns once with the index of the first such record.
-`points` needs no map, so a server can call it.
+A record whose position is not two finite numbers is left out. `points` needs no map, so a server can call it.
 
 ### `PointsOptions`
 
@@ -164,7 +162,7 @@ type ProtocolFunction = (
 | A style, a TileJSON, GeoJSON, the JSON of a sprite, glyphs | `'json'` | An object, a string or bytes. |
 
 The protocols are the same for every map of the page, and a map that exists already uses a protocol added later. The
-map reads `pmtiles://` URLs itself: `addProtocol('pmtiles', fn)` has no effect and writes a warning.
+map reads `pmtiles://` URLs itself, and `addProtocol('pmtiles', fn)` has no effect.
 
 ```js
 import {addProtocol, createMap} from '@map-jr/map-jr-gl';
@@ -222,7 +220,8 @@ configure(options: LoadOptions): void
 <!-- ref:MainExports.configure:end -->
 
 `renderer` of a description overrides `renderer` of `configure`. A change of `tileWorkers` has no effect while a map
-of the page uses workers of the same `workerUrl` or `createWorker`. See [Loading](../loading.md) for the worker file.
+of the page uses workers of the same `workerUrl` or `createWorker`. To change it, destroy every map of the page, call
+`configure`, and create the maps again. See [Loading](../loading.md) for the worker file.
 
 ```js
 import {configure, createMap} from '@map-jr/map-jr-gl';

@@ -1,15 +1,20 @@
-// Checks the output of `pnpm generate` in Chromium, behind the plain static server of scripts/serve.mjs.
+// Checks the output of `pnpm generate` in Chromium, the table of contents on a phone also in WebKit, and the editor in
+// the browsers of --browsers, behind the plain static server of scripts/serve.mjs.
 //
-// Usage: node scripts/check.mjs [--no-map] [--screenshots=<path and start of the file names>]
+// Usage: node scripts/check.mjs [--no-map] [--screenshots=<path and start of the file names>] [--browsers=<list>]
 //   --no-map       does not wait for the map of the home page. The map needs the style and the tiles of other hosts.
 //   --screenshots  also saves pictures of the home page and of one docs page (light and dark), of the install block
 //                  and of the code of /reference/server, each 1440 and 390 wide.
+//   --browsers     the browsers of Playwright for the checks of the editor and of /play, separated by commas
+//                  (chromium, firefox, webkit). The default is chromium.
 import {readFileSync} from 'node:fs';
-import {chromium} from 'playwright';
+import * as playwright from 'playwright';
 import {serve} from './serve.mjs';
 
+const {chromium, devices, webkit} = playwright;
 const withMap = !process.argv.includes('--no-map');
 const screenshots = process.argv.find(argument => argument.startsWith('--screenshots='))?.slice('--screenshots='.length);
+const editorBrowsers = process.argv.find(argument => argument.startsWith('--browsers='))?.slice('--browsers='.length).split(',') ?? ['chromium'];
 const docsPage = '/vue';
 // A page with several groups of code variants and without Nuxt.
 const variantsPage = '/guide/markers-and-popups';
@@ -377,6 +382,112 @@ try {
         check('table of contents without JavaScript: no entry is active', await plain.locator('a.toc-active').count() === 0);
         check('table of contents without JavaScript: the entries link to the headings', (await plainEntries.count()) === ids.length && (await plainEntries.first().getAttribute('href')) === '#' + encodeURIComponent(ids[0]));
         await context.close();
+    }
+
+    // The map of a recipe and its editor (#1121), and /play, in each browser of --browsers. The map runs in a sandboxed
+    // frame (app/utils/map-frame.ts); the checks look for its canvas, which the map makes before the style loads, so
+    // they do not need other hosts.
+    for (const engine of editorBrowsers) {
+        const own = engine === 'chromium' ? browser : await playwright[engine].launch();
+        const context = await own.newContext({viewport: {width: 1440, height: 900}});
+        const page = await context.newPage();
+        // (Playwright reports the errors of the frames here too, so the check runs before the code with an error.)
+        const problems = [];
+        page.on('pageerror', error => problems.push('error: ' + error.message.slice(0, 200)));
+        // The scripts of the site that the page loads (the library of the frame in /lib/ is not counted).
+        const scripts = [];
+        page.on('response', response => {
+            if (response.request().resourceType() === 'script' && response.url().startsWith(base) && !response.url().startsWith(base + '/lib/')) scripts.push(response.body().then(body => body.toString(), () => ''));
+        });
+        const loaded = async () => { const bodies = await Promise.all(scripts); return {bytes: bodies.reduce((sum, body) => sum + body.length, 0), editor: bodies.some(body => body.includes('cm-content'))}; };
+        const replace = async (editor, text) => {
+            await editor.click();
+            await page.keyboard.press('ControlOrMeta+a');
+            await page.keyboard.insertText(text);
+        };
+        const shown = (locator, state = 'visible') => locator.waitFor({state, timeout: 30000}).then(() => true, () => false);
+        // The text of a CodeMirror editor that shows all of its lines.
+        const textOf = editor => editor.evaluate(content => [...content.querySelectorAll('.cm-line')].map(line => line.textContent).join('\n'));
+
+        await page.goto(base + '/recipes/basic', {waitUntil: 'load'});
+        const frame = page.frameLocator('.live-example iframe');
+        check(`${engine}: recipe: the map of the Main API code starts`, await shown(frame.locator('#map canvas').first()));
+        const before = await loaded();
+        check(`${engine}: recipe: the page loads no code of the editor before "Edit"`, !before.editor, `${(before.bytes / 1024).toFixed(1)} KB of scripts`);
+        await page.getByRole('button', {name: 'Edit the Main API code'}).click();
+        const editor = page.locator('.live-example .cm-content');
+        await shown(editor);
+        const after = await loaded();
+        check(`${engine}: recipe: "Edit" loads the editor`, after.editor, `${((after.bytes - before.bytes) / 1024).toFixed(1)} KB more`);
+
+        const code = await page.locator('.live-example .code-variant[data-variant="main"] pre').first().textContent();
+        await replace(editor, code + "\ndocument.body.append(Object.assign(document.createElement('output'), {id: 'edited'}));\n");
+        await page.getByRole('button', {name: 'Run', exact: true}).click();
+        check(`${engine}: recipe: a changed example runs`, await shown(frame.locator('#edited'), 'attached') && await frame.locator('#map canvas').count() > 0);
+        check(`${engine}: recipe: no error of the page`, problems.length === 0, problems.join(' | '));
+        await replace(editor, "import {createMap} from '@map-jr/map-jr-gl';\nconst map = createMap(;\n");
+        await page.keyboard.press('ControlOrMeta+Enter');
+        const log = page.locator('.live-example [role="log"]');
+        const logged = await shown(log) ? await log.textContent() : '';
+        check(`${engine}: recipe: an error of the code shows as text below the map, with its line`, /SyntaxError/.test(logged) && /line 2/.test(logged), logged.trim());
+        problems.length = 0;
+
+        // /play keeps the code and the view in the address, and a copied address shows both again.
+        await page.goto(base + '/play', {waitUntil: 'load'});
+        const playFrame = page.frameLocator('.map-frame iframe');
+        const playEditor = page.locator('.cm-content');
+        check(`${engine}: /play: the editor and the map start`, await shown(playEditor) && await shown(playFrame.locator('#map canvas').first()));
+        const changed = "import {navigation} from '@map-jr/map-jr-gl/controls';\n\nexport default {\n  style: 'https://styles.map-jr.org/1/elevation-zero.json',\n  initialView: {center: [2.35, 48.86], zoom: 5},\n  controls: [navigation()],\n};";
+        await replace(playEditor, changed);
+        const written = await page.waitForFunction(() => location.hash.includes('code=') && location.hash.includes('view=5/48.86/2.35'), null, {timeout: 30000}).then(() => true, () => false);
+        check(`${engine}: /play: the address follows the code and the map`, written, new URL(page.url()).hash.slice(0, 80));
+        const copied = new URL(page.url());
+        copied.hash = copied.hash.replace(/view=[^&]*/, 'view=7/48.9/2.4/20/30');
+        const second = await context.newPage();
+        await second.goto(copied.href, {waitUntil: 'load'});
+        await shown(second.locator('.cm-content'));
+        await shown(second.frameLocator('.map-frame iframe').locator('#map canvas').first());
+        await second.waitForTimeout(2000);
+        const text = await textOf(second.locator('.cm-content'));
+        check(`${engine}: /play: a copied address shows the same code`, text.trim() === changed, text.slice(0, 80));
+        const view = new URLSearchParams(new URL(second.url()).hash.slice(1)).get('view');
+        check(`${engine}: /play: a copied address shows the same view`, view === '7/48.9/2.4/20/30', view);
+        check(`${engine}: /play: no error of the page`, problems.length === 0, problems.join(' | '));
+        await context.close();
+        if (own !== browser) await own.close();
+    }
+
+    // The table of contents on a phone, in Chromium and in WebKit with touch: a tap on an entry closes the list and
+    // shows the heading below the bar of the list (#1311). The page has no scroll anchoring, as in Safari before 27.
+    for (const type of [chromium, webkit]) {
+        const name = `table of contents on a phone in ${type.name()}`;
+        const engine = type === chromium ? browser : await type.launch();
+        const context = await engine.newContext(devices['iPhone 13']);
+        const page = await context.newPage();
+        const problems = [];
+        page.on('pageerror', error => problems.push('error: ' + error.message.slice(0, 200)));
+        await page.goto(base + '/reference/map', {waitUntil: 'networkidle'});
+        await page.addStyleTag({content: '* {overflow-anchor: none}'});
+        const trigger = page.getByRole('button', {name: 'On this page'});
+        const entries = page.locator('nav').filter({has: trigger}).locator('[data-slot="content"][data-state="open"] a');
+        await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight / 2));
+        await trigger.tap();
+        await entries.first().waitFor();
+        const entry = entries.nth(Math.floor((await entries.count()) / 2));
+        const id = decodeURIComponent((await entry.getAttribute('href')).slice(1));
+        await entry.tap();
+        await page.waitForTimeout(1000);
+        const state = await trigger.getAttribute('data-state');
+        const place = await page.evaluate(id => ({
+            heading: Math.round(document.getElementById(id).getBoundingClientRect().top),
+            bar: Math.round(document.querySelector('nav:has(button[data-slot="trigger"])').getBoundingClientRect().bottom),
+            window: innerHeight,
+        }), id);
+        check(`${name}: a tap on an entry closes the list`, state === 'closed', state);
+        check(`${name}: the heading "${id}" is in view below the bar`, place.heading >= place.bar && place.heading < place.window / 2, JSON.stringify(place));
+        check(`${name}: no error`, problems.length === 0, problems.join(' | '));
+        await context.close();
+        if (engine !== browser) await engine.close();
     }
 
     // The raw Markdown of a page is the file of docs/.

@@ -33,9 +33,16 @@ sections:
       - draggable.md
       - images.md
       - query.md
+      - hover.md
+      - fit.md
+      - back.md
       - pmtiles.md
       - terrain.md
       - globe.md
+      - clusters.md
+      - control.md
+      - shields.md
+      - stores.md
   - title: Reference
     folder: reference
     pages:
