@@ -616,8 +616,8 @@ export class Map extends CoreMap {
     }
     _render() { this.triggerRepaint(); }
     _update() { this.triggerRepaint(); }
-    /** Returns the light of the style with the defaults filled in for the fields that the style does not set; MapLibre GL JS returns only the fields that the style sets. */
-    getLight(): {anchor?: string; position?: number[]; color?: string; intensity?: number} { return {anchor: 'viewport', position: [1.15, 210, 30], color: '#ffffff', intensity: 0.5, ...this.rawStyle?.light}; }
+    /** Returns the fields of the light that the style sets, or `{}` when the style has no light. */
+    getLight(): {anchor?: string; position?: number[]; color?: string; intensity?: number} { return {...this.rawStyle?.light}; }
     /** The style, as in MapLibre GL JS: without its custom layers. */
     getStyle() { const style = super.getStyle(); if (style) style.layers = style.layers.filter((l: {type: string}) => l.type !== 'custom'); return style; }
     /** Returns the ids of the style layers, from the bottom layer up. */
