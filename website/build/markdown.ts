@@ -7,6 +7,9 @@
 //   removed. A single fence with such a label keeps the label as its caption. `variants` of the page lists the
 //   variants of its groups, for the control in the header. Fences with the label of a package manager (```sh [npm])
 //   become a group of their own set, which has its own choice and is not in the header.
+// - A JavaScript, TypeScript, Vue or JSX fence has two forms, formatted by Prettier at 80 and at 38 columns
+//   (build/format.mjs). `formatFences` writes the phone form as a second fence before the parse, and `pairForms`
+//   puts both in a `code-forms` block; CSS shows one of them (app/assets/css/main.css, "Forms of the code").
 // - A table with the columns Name, Type, Default and Description is a reference table: each row has an id and a link
 //   to itself, and "**required**" is a mark.
 //
@@ -16,6 +19,7 @@ import {existsSync} from 'node:fs';
 import {dirname, relative, resolve} from 'node:path';
 import {docsDir, routeOf, type NavSection} from './nav';
 import {showsOf, variantOfLabel, type VariantSet} from './variants';
+import {desktopWidth, formatCode, parserOf, phoneWidth} from './format.mjs';
 
 const repository = resolve(docsDir, '..');
 export const repositoryUrl = 'https://github.com/map-jr/map-jr-gl';
@@ -36,10 +40,56 @@ export function linkTarget(href: string, file: string, nav: NavSection[]): strin
     return `${repositoryUrl}/blob/main/${relative(repository, found)}${hash}`;
 }
 
+// The word in the meta of a fence that marks the phone form.
+const phoneMark = 'phone-form';
+
+// Formats each fence of the markdown that Prettier can parse at the desktop width, and writes the phone form as a
+// fence with the same label and the mark directly after it, when the two forms differ.
+export async function formatFences(markdown: string): Promise<string> {
+    const fence = /^( *)```(\w+)([^\n]*)\n([\s\S]*?)^\1```$/gm;
+    const parts: (string | Promise<string>)[] = [];
+    let last = 0;
+    for (const match of markdown.matchAll(fence)) {
+        const [whole, indent = '', language = '', info = '', body = ''] = match;
+        if (!parserOf(language)) continue;
+        parts.push(markdown.slice(last, match.index));
+        last = match.index! + whole.length;
+        const code = body.split('\n').map(line => line.slice(indent.length)).join('\n').replace(/\n$/, '');
+        const block = (text: string, extra = '') => `${indent}\`\`\`${language}${info}${extra}\n${text.split('\n').map(line => line ? indent + line : line).join('\n')}\n${indent}\`\`\``;
+        parts.push(Promise.all([formatCode(code, language, desktopWidth), formatCode(code, language, phoneWidth)]).then(([desktop = code, phone = code]) =>
+            phone === desktop ? block(desktop) : `${block(desktop)}\n${block(phone, ' ' + phoneMark)}`));
+    }
+    parts.push(markdown.slice(last));
+    return (await Promise.all(parts)).join('');
+}
+
+const isPhoneForm = (node: Node | undefined) => Array.isArray(node) && node[0] === 'pre' && String(node[1]?.meta ?? '').split(/\s+/).includes(phoneMark);
+
+// Puts each fence that has a phone form after it, also inside lists and quotes, into one `code-forms` block.
+function pairForms(nodes: Node[]): Node[] {
+    const out: Node[] = [];
+    for (let i = 0; i < nodes.length; i++) {
+        const node = nodes[i]!;
+        if (Array.isArray(node) && node[0] === 'pre' && isPhoneForm(nodes[i + 1])) {
+            out.push(['div', {class: 'code-forms'}, ['div', {class: 'code-desktop'}, node], ['div', {class: 'code-phone'}, nodes[++i]!]]);
+        } else if (Array.isArray(node) && node[0] !== 'pre') {
+            out.push([node[0], node[1], ...pairForms(node.slice(2) as Node[])]);
+        } else {
+            out.push(node);
+        }
+    }
+    return out;
+}
+
+// The fences of a node: the node itself, or the two forms of a `code-forms` block.
+const isForms = (node: Node | undefined): node is [string, Record<string, any>, ...Node[]] => Array.isArray(node) && node[0] === 'div' && node[1]?.class === 'code-forms';
+const fencesOf = (node: Node): [string, Record<string, any>, ...Node[]][] =>
+    isForms(node) ? node.slice(2).map(form => (form as Node[])[2] as [string, Record<string, any>, ...Node[]]) : [node as [string, Record<string, any>, ...Node[]]];
+
 const textOf = (node: Node): string => typeof node === 'string' ? node : node.slice(2).map(child => textOf(child as Node)).join('');
 
 // The variant of a fence, from its label.
-const variantOfFence = (node: Node | undefined) => Array.isArray(node) && node[0] === 'pre' ? variantOfLabel(node[1]?.filename) : undefined;
+const variantOfFence = (node: Node | undefined) => Array.isArray(node) && (node[0] === 'pre' || isForms(node)) ? variantOfLabel(fencesOf(node)[0]![1]?.filename) : undefined;
 
 // Whether a node is the bold line that names `label`: **Vue**, or **`<map-jr>`** for the element.
 function isLabelLine(node: Node | undefined, label: string): boolean {
@@ -74,15 +124,15 @@ function groupFences(nodes: Node[], state: {groups: number; variants: string[]})
             const id = `variants-${++state.groups}`;
             const shows = showsOf(slugs, set);
             out.push(['code-variants', {id, variants: slugs.join(' '), ...(set!.id === 'code' ? {} : {set: set!.id})}, ...run.map((fence, index): Node => {
-                const [, {filename, ...props}, ...children] = fence as [string, Record<string, any>, ...Node[]];
+                for (const pre of fencesOf(fence)) delete pre[1].filename;
                 const slug = slugs[index]!;
-                return ['div', {class: 'code-variant', id: `${id}-${slug}`, role: 'tabpanel', 'aria-labelledby': `${id}-tab-${slug}`, 'data-variant': slug, [set!.showsAttribute]: shows[slug]}, ['pre', props, ...children]];
+                return ['div', {class: 'code-variant', id: `${id}-${slug}`, role: 'tabpanel', 'aria-labelledby': `${id}-tab-${slug}`, 'data-variant': slug, [set!.showsAttribute]: shows[slug]}, fence];
             })]);
             if (set!.menu) for (const slug of slugs) if (!state.variants.includes(slug)) state.variants.push(slug);
         }
         if (run.length) continue;
         const node = nodes[i++]!;
-        out.push(Array.isArray(node) && node[0] !== 'pre' ? [node[0], node[1], ...groupFences(node.slice(2) as Node[], state)] : node);
+        out.push(Array.isArray(node) && node[0] !== 'pre' && !isForms(node) ? [node[0], node[1], ...groupFences(node.slice(2) as Node[], state)] : node);
     }
     return out;
 }
@@ -136,7 +186,7 @@ export function transformPage(ctx: {file: {path: string}; content: Record<string
     const first = body.value[0];
     if (Array.isArray(first) && first[0] === 'h1') body.value.shift();
     const state = {groups: 0, variants: [] as string[]};
-    body.value = groupFences(body.value, state);
+    body.value = groupFences(pairForms(body.value), state);
     ctx.content.variants = state.variants;
     markReferenceTables(body.value);
     const missing: string[] = [];

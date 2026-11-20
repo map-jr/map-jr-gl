@@ -319,13 +319,32 @@
 }
 
 /* The fence of a panel joins the tabs above it. */
-.code-variant > div {
+.code-variant > div,
+.code-variant > .code-forms > div > div {
   margin-block: 0;
 }
 
 .code-variant pre {
   border-start-start-radius: 0;
   border-start-end-radius: 0;
+}
+
+/*
+ * Forms of the code: build/markdown.ts gives a fence the desktop form (80 columns) and the phone form (38 columns).
+ * The phone form shows below 48rem, the width at which the reference tables stack, and the desktop form from it.
+ */
+.code-phone {
+  display: none;
+}
+
+@media (width < 48rem) {
+  .code-desktop {
+    display: none;
+  }
+
+  .code-phone {
+    display: block;
+  }
 }
 
 /*

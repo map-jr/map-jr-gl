@@ -48,10 +48,10 @@ export default defineAppConfig({
             h2: {slots: {base: 'font-medium text-3xl mt-14 pb-2 border-b border-default'}},
             h3: {slots: {base: 'font-medium text-2xl'}},
             h4: {slots: {base: 'font-medium text-xl'}},
-            // Below md (48rem, the width at which the reference tables stack) the lines wrap; from md up each line stays
-            // whole and the block scrolls sideways (#1250). The code is as wide as its longest line, so that the
-            // background of a highlighted line reaches the end of the scroll.
-            pre: {slots: {base: 'bg-(--site-sheet) border-accented md:whitespace-pre md:wrap-normal md:*:[code]:inline-block md:*:[code]:min-w-full'}},
+            // A code block never wraps its lines (#1250). The site formats the code to the width of the screen
+            // (build/format.mjs); a line that is still longer scrolls sideways. The code is as wide as its longest
+            // line, so that the background of a highlighted line reaches the end of the scroll.
+            pre: {slots: {base: 'bg-(--site-sheet) border-accented whitespace-pre wrap-normal *:[code]:inline-block *:[code]:min-w-full'}},
             code: {slots: {base: 'font-normal'}},
             th: {slots: {base: 'label-text font-medium text-muted normal-case tracking-wider'}},
         },

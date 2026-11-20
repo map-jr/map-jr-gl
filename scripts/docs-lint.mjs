@@ -3,8 +3,12 @@
 // with 0. With `--strict` it exits with 1 when there is a finding. Give paths to check only those files.
 // It also checks that each relative link of a page leads to a file, and each anchor to a heading of that file.
 //
-// Usage: node scripts/docs-lint.mjs [--strict] [file.md ...]
-import {existsSync, readFileSync, readdirSync} from 'node:fs';
+// It warns about a JavaScript, TypeScript, Vue or JSX fence that is not formatted as Prettier formats it at 80
+// columns (website/build/format.mjs, #1250); `--fix` formats those fences. These warnings do not fail `--strict`. The
+// check needs the packages of website/ (`pnpm install` in website/) and is left out without them.
+//
+// Usage: node scripts/docs-lint.mjs [--strict] [--fix] [file.md ...]
+import {existsSync, readFileSync, readdirSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 
@@ -155,4 +159,31 @@ for (const file of files) {
 
 for (const f of findings) console.log(f);
 console.log(`docs-lint: ${files.length} pages, ${findings.length} findings${strict ? '' : ' (warnings only; --strict fails)'}`);
+
+// The format of the code.
+const format = await import('../website/build/format.mjs').catch(() => undefined);
+if (!format) {
+    console.log('docs-lint: the format of the code is not checked, because website/ has no packages. Run pnpm install in website/.');
+} else {
+    const fix = args.includes('--fix');
+    let unformatted = 0;
+    for (const file of files) {
+        const text = readFileSync(file, 'utf8');
+        const parts = [];
+        let last = 0;
+        for (const match of text.matchAll(/^( *)```(\w+)([^\n]*)\n([\s\S]*?)^\1```$/gm)) {
+            const [whole, indent, language, info, body] = match;
+            const code = body.split('\n').map(line => line.slice(indent.length)).join('\n').replace(/\n$/, '');
+            const formatted = await format.formatCode(code, language, format.desktopWidth);
+            if (formatted === undefined || formatted === code) continue;
+            unformatted++;
+            if (!fix) console.log(`${path.relative(root, file)}:${text.slice(0, match.index).split('\n').length}: warning: the ${language} fence is not formatted at ${format.desktopWidth} columns.`);
+            parts.push(text.slice(last, match.index), `${indent}\`\`\`${language}${info}\n${formatted.split('\n').map(line => line ? indent + line : line).join('\n')}\n${indent}\`\`\``);
+            last = match.index + whole.length;
+        }
+        if (fix && parts.length) writeFileSync(file, parts.join('') + text.slice(last));
+    }
+    if (fix) console.log(`docs-lint: formatted ${unformatted} fences.`);
+    else if (unformatted) console.log(`docs-lint: ${unformatted} fences are not formatted (warnings). node scripts/docs-lint.mjs --fix formats them.`);
+}
 if (strict && findings.length) process.exit(1);

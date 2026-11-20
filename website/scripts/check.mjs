@@ -3,7 +3,7 @@
 // Usage: node scripts/check.mjs [--no-map] [--screenshots=<path and start of the file names>]
 //   --no-map       does not wait for the map of the home page. The map needs the style and the tiles of other hosts.
 //   --screenshots  also saves pictures of the home page and of one docs page (light and dark), of the install block
-//                  and of a long line of code, each 1440 and 390 wide.
+//                  and of the code of /reference/server, each 1440 and 390 wide.
 import {readFileSync} from 'node:fs';
 import {chromium} from 'playwright';
 import {serve} from './serve.mjs';
@@ -260,41 +260,37 @@ try {
         await close();
     }
 
-    // Long lines of code (#1250): from 1440 a line stays whole and its block scrolls sideways; at 390 the lines wrap
-    // and the page does not scroll sideways.
+    // The forms of the code (#1250): a code line never wraps, the phone form shows below 48rem and the desktop form
+    // from it, and no code block is wider than its column.
     for (const path of [installPage, '/reference/server']) {
         for (const width of [1440, 390]) {
             const {page, problems, close} = await open(path, {width, height: width === 390 ? 844 : 900});
-            // The longest visible line of the page, with the number of its line boxes and the scroll of its block.
-            const longest = await page.locator('main pre').evaluateAll(blocks => {
-                let found = null;
-                for (const block of blocks) {
-                    if (!block.checkVisibility()) continue;
+            const found = await page.locator('main pre').evaluateAll(blocks => {
+                const shown = blocks.filter(block => block.checkVisibility());
+                const wrapped = [], wide = [];
+                let lines = 0, scrolling = 0;
+                for (const block of shown) {
+                    if (block.offsetWidth > block.parentElement.clientWidth || block.getBoundingClientRect().right > document.documentElement.clientWidth) wide.push(block.textContent.slice(0, 30));
+                    if (block.scrollWidth > block.clientWidth) scrolling++;
                     for (const line of block.querySelectorAll('.line')) {
-                        const length = line.textContent.length;
-                        if (found && length <= found.length) continue;
+                        lines++;
                         const range = document.createRange();
                         range.selectNodeContents(line);
-                        const tops = new Set([...range.getClientRects()].map(rect => Math.round(rect.top)));
-                        found = {length, boxes: tops.size, scrolls: block.scrollWidth > block.clientWidth, text: line.textContent.slice(0, 40)};
+                        if (new Set([...range.getClientRects()].map(rect => Math.round(rect.top))).size > 1) wrapped.push(line.textContent.slice(0, 30));
                     }
                 }
-                return found;
+                const forms = {phone: shown.filter(block => block.closest('.code-phone')).length, desktop: shown.filter(block => block.closest('.code-desktop')).length};
+                return {blocks: shown.length, lines, scrolling, wrapped, wide, forms};
             });
-            const detail = longest ? `${longest.length} characters, ${longest.boxes} line boxes, scrolls ${longest.scrolls}: ${longest.text}` : 'no line';
-            if (width === 1440) {
-                check(`long code at 1440 on ${path}: the longest line is one line box and its block scrolls sideways`, !!longest && longest.boxes === 1 && longest.scrolls, detail);
-            } else {
-                check(`long code at 390 on ${path}: the longest line wraps and its block does not scroll`, !!longest && longest.boxes > 1 && !longest.scrolls, detail);
-            }
-            const beyond = await page.locator('main pre').evaluateAll(blocks => blocks.filter(block => block.checkVisibility() && block.getBoundingClientRect().right > document.documentElement.clientWidth).length);
-            check(`long code at ${width} on ${path}: no code block reaches past the page`, beyond === 0, `${beyond} blocks`);
+            check(`code at ${width} on ${path}: no code line wraps`, found.lines > 0 && found.wrapped.length === 0, `${found.wrapped.length} of ${found.lines} lines wrap ${found.wrapped.join(' | ')}`);
+            check(`code at ${width} on ${path}: no code block is wider than its column`, found.wide.length === 0, `${found.blocks} blocks, ${found.scrolling} scroll sideways ${found.wide.join(' | ')}`);
+            check(`code at ${width} on ${path}: the ${width === 390 ? 'phone' : 'desktop'} form shows`, width === 390 ? found.forms.phone > 0 && found.forms.desktop === 0 : found.forms.desktop > 0 && found.forms.phone === 0, JSON.stringify(found.forms));
             // /reference/server has a table of options that is wider than a phone, which is not a code block.
-            if (path === installPage) check(`long code at ${width} on ${path}: no horizontal scroll of the page`, await overflow(page) <= 0, (await overflow(page)) + ' px');
-            check(`long code at ${width} on ${path}: no failed request and no error`, problems.length === 0, problems.join(' | '));
+            if (path === installPage) check(`code at ${width} on ${path}: no horizontal scroll of the page`, await overflow(page) <= 0, (await overflow(page)) + ' px');
+            check(`code at ${width} on ${path}: no failed request and no error`, problems.length === 0, problems.join(' | '));
             if (screenshots && path === '/reference/server') {
-                await page.locator('main pre').filter({hasText: longest?.text ?? ''}).first().scrollIntoViewIfNeeded();
-                const file = `${screenshots}-long-code-${width}.png`;
+                await page.locator('main pre:visible').filter({hasText: 'ImageDecoder'}).first().scrollIntoViewIfNeeded();
+                const file = `${screenshots}-server-code-${width}.png`;
                 await page.screenshot({path: file});
                 console.log('screenshot', file);
             }
