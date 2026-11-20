@@ -59,13 +59,29 @@ export const useMap = () => useContext(Host);
 /**
  * Returns a part of the state of the map, and renders the component again when that part changes:
  * `const zoom = useMapState(s => s.view.zoom)`.
- * @param select A function that returns a part of the state as it is, or a number or a string. A new object or array at each call makes React render without end.
+ * @param select A function that returns a part of the state. It can return a new plain object or array, such as `s => ({zoom: s.view.zoom, pitch: s.view.pitch})`: the hook compares the result with the last one, one level deep, and keeps the last one when each member is identical.
  * @param map The map to read. Without it, the map of the `MapJr` that the component is in.
  * @returns The part of the state, or `undefined` until the map has started.
  */
 export function useMapState<T>(select: (state: MapState) => T, map?: MapInstance | null): T | undefined {
-    const host = useContext(Host), from = map === undefined ? host : map;
-    return useSyncExternalStore(fn => from ? from.state.subscribe(fn) : () => {}, () => from ? select(from.state.get()) : undefined, () => undefined);
+    const host = useContext(Host), from = map === undefined ? host : map, last = useRef<[MapState?, unknown?, T?]>([]);
+    return useSyncExternalStore(fn => from ? from.state.subscribe(fn) : () => {}, () => {
+        if (!from) return undefined;
+        // (The same state and the same function give the last result; React calls this function more than once.)
+        const s = from.state.get(), [was, by, old] = last.current;
+        if (s === was && select === by) return old;
+        const v = select(s);
+        last.current = [s, select, same(v, old) ? old : v];
+        return last.current[2];
+    }, () => undefined);
+}
+/** Whether two results of a selector are equal: identical, or plain objects or arrays with identical members. */
+const plain = (v: any) => v && typeof v === 'object' && (Array.isArray(v) || Object.getPrototypeOf(v) === Object.prototype);
+function same(a: any, b: any): boolean {
+    if (Object.is(a, b)) return true;
+    if (!plain(a) || !plain(b) || Array.isArray(a) !== Array.isArray(b)) return false;
+    const ka = Object.keys(a);
+    return ka.length === Object.keys(b).length && ka.every(k => Object.prototype.hasOwnProperty.call(b, k) && Object.is(a[k], b[k]));
 }
 
 /** The map as a component. It fills its parent element, so give the parent a height. A ref receives the map (`MapInstance`). */

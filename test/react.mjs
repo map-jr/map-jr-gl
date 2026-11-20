@@ -73,13 +73,15 @@ function App() {
 createRoot(document.getElementById('app')).render(h(StrictMode, null, h(App)));
 window.ready = true;`;
 await require('esbuild').build({entryPoints, bundle: true, splitting: true, format: 'esm', outdir: esm, absWorkingDir: root, define: {'process.env.NODE_ENV': '"development"'}, logLevel: 'silent'});
-const client = `import {createElement as h, useState, useRef} from 'react';
+const client = `import {createElement as h, useState, useRef, memo} from 'react';
 import {createRoot, hydrateRoot} from 'react-dom/client';
 import {MapJr, MapOverlay, MapImage, useMapState} from '/dist/react.js';
 import {navigation, scale} from '/dist/controls.js';
 const style = await (await fetch('/style.json')).json();
-const pins = ${JSON.stringify(pins)}, images = {disc: ${JSON.stringify(disc)}}, t = window.t = {dragged: [], loads: 0, views: 0, clicks: [], closed: 0, renders: 0, moves: [], asked: []};
+const pins = ${JSON.stringify(pins)}, images = {disc: ${JSON.stringify(disc)}}, t = window.t = {dragged: [], loads: 0, views: 0, clicks: [], closed: 0, renders: 0, moves: [], asked: [], objectRenders: 0, objectZooms: new Set()};
 function Zoom() { const zoom = useMapState(s => s.view.zoom); return h('p', {id: 'zoom'}, zoom === undefined ? '' : zoom.toFixed(1)); }
+// (A selector that returns a new object at each call: one render for each change of the zoom, #1263.)
+const ZoomObject = memo(function ZoomObject() { const part = useMapState(s => ({z: s.view.zoom})); t.objectRenders++; if (part) t.objectZooms.add(part.z); return h('i', {id: 'zoom-object'}, part ? part.z.toFixed(1) : ''); });
 // (A component inside the SVG of an image: its own change must reach the map.)
 function Dot() { const [r, setR] = useState(2); t.setRadius = setR; return h('circle', {cx: 4, cy: 4, r}); }
 function App({ssr}) {
@@ -95,7 +97,7 @@ function App({ssr}) {
             onClick: e => t.clicks.push(e), onLoad: () => t.loads++, attribution: false, onMoveend: e => t.moves.push(e.type + ' ' + typeof e.target.state.get().view.zoom),
             // An image that the style asks for and the map does not have: the application adds it to the prop images.
             onStyleimagemissing: e => { t.asked.push(e.id); setMore(more => ({...more, [e.id]: '<svg viewBox="0 0 4 4"><rect width="4" height="4"/></svg>'})); }},
-            h(Zoom), h(MapOverlay, {lngLat: pin, anchor: 'bottom'}, h('b', {id: 'own-pin'}, 'here')),
+            h(Zoom), h(ZoomObject), h(MapOverlay, {lngLat: pin, anchor: 'bottom'}, h('b', {id: 'own-pin'}, 'here')),
             h(MapOverlay, {lngLat: home, draggable: true, onDragStart: p => t.dragged.push('start ' + p.length), onDrag: () => setMore(m => m), onDragEnd: p => { t.dragged.push('end'); setHome(p); }}, h('u', {id: 'drag-pin', style: {display: 'block', width: 16, height: 16}, onClick: () => t.dragged.push('click')})),
             arrow && h(MapImage, {name: 'arrow', params: ['color']}, ({color}) => h('svg', {viewBox: '0 0 8 8'}, h('path', {d: 'M4 0 8 8 0 8z', fill: color, stroke: tone}))),
             twin && h(MapImage, {name: 'arrow'}, h('svg', {viewBox: '0 0 8 8'}, h('path', {d: 'M4 0 8 8 0 8z'}))),
@@ -150,6 +152,8 @@ try {
         host.moveTo({zoom: 15, duration: 200});
         for (let i = 0; i < 80 && !(host.state.get().view.zoom === 15 && !host.state.get().moving); i++) await wait(100);
         await wait(300);
+        // (The component is memo: it renders only for its state, once at the start and once for each zoom it shows.)
+        const object = {text: document.getElementById('zoom-object')?.textContent, renders: t.objectRenders, zooms: t.objectZooms.size};
         const followed = t.view.zoom, shown = document.getElementById('zoom').textContent, controls = document.querySelectorAll('#frame .map-jr-ctrl-compass, #frame .map-jr-ctrl-scale').length;
         t.setView({center: [-74.0065, 40.7085], zoom: 14, bearing: 0, pitch: 0}); // the application moves the map
         for (let i = 0; i < 80 && host.state.get().view.zoom !== 14; i++) await wait(100);
@@ -161,9 +165,10 @@ try {
         // (A point is a feature of the symbol layer "pins".)
         const before = (await host.queryFeatures(host.project([-74.0065, 40.7085]), {layers: ['pins']})).length ? 1 : 0;
         t.setMarkers({}); await wait(600);
-        return {events: t.moves[0], asked: t.asked.length, added: t.asked.length > 0 && t.asked.every(id => host._map.hasImage(id)), followed, shown, controls, moved, pinOk, tip, pinMoved, closed: t.closed, tipGone: !document.getElementById('own-tip'), views: t.views, before, after: host._map.getLayer('pins') ? 1 : 0};
+        return {events: t.moves[0], asked: t.asked.length, added: t.asked.length > 0 && t.asked.every(id => host._map.hasImage(id)), followed, shown, controls, moved, pinOk, tip, pinMoved, closed: t.closed, tipGone: !document.getElementById('own-tip'), views: t.views, before, after: host._map.getLayer('pins') ? 1 : 0, object};
     });
     check('browser: an event of the map is a prop of the component (onMoveend), and an image that the style asks for (onStyleimagemissing) is on the map after the listener adds it to the prop images', model.events === 'moveend number' && model.asked > 0 && model.added, JSON.stringify({events: model.events, asked: model.asked, added: model.added}));
+    check('browser: useMapState with a selector that returns a new object renders once for each change and keeps the tree (#1263)', model.object?.text === '15.0' && model.object.renders <= model.object.zooms + 1, JSON.stringify(model.object));
     check('browser: the view follows the map and moves it; useMapState, controls, overlays and markers follow React', model.followed === 15 && model.shown === '15.0' && model.controls === 2 && model.moved === 14 && model.pinOk && model.tip && model.pinMoved
         && model.closed === 1 && model.tipGone && model.views > 1 && model.before === 1 && model.after === 0, JSON.stringify(model));
     // A draggable MapOverlay (#167): a click is a click, onDragStart and onDragEnd get [lng, lat], and renders during the
