@@ -111,8 +111,8 @@ try {
     {
         const darken = colour => '#' + [1, 3, 5].map(i => Math.round(parseInt(colour.slice(i, i + 2), 16) * 0.85).toString(16).padStart(2, '0')).join('').toUpperCase();
         const themes = {
-            light: {sheet: '#F6F8FA', colours: ['#1F2328', '#6E7781', '#CF222E', '#0550AE', '#953800', '#8250DF', '#116329', '#0A3069', '#82071E', '#57606A'].map(darken)},
-            dark: {sheet: '#0F1013', colours: ['#E6EDF3', '#8B949E', '#FF7B72', '#79C0FF', '#FFA657', '#D2A8FF', '#7EE787', '#A5D6FF', '#FFA198', '#F0F6FC']},
+            light: {sheet: '#FCFCFA', colours: ['#1F2328', '#6E7781', '#CF222E', '#0550AE', '#953800', '#8250DF', '#116329', '#0A3069', '#82071E', '#57606A'].map(darken)},
+            dark: {sheet: '#1B1C1E', colours: ['#E6EDF3', '#8B949E', '#FF7B72', '#79C0FF', '#FFA657', '#D2A8FF', '#7EE787', '#A5D6FF', '#FFA198', '#F0F6FC']},
         };
         for (const scheme of ['light', 'dark']) {
             const {page, problems, close} = await open('/guide/getting-started', {scheme});
