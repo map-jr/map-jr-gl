@@ -191,8 +191,9 @@ export interface MapDescription extends MapSetup {
      */
     view?: ViewInput | null;
     /**
-     * Called with the first view once, right after `createMap` returns (before `load`), and then with the new view at each
-     * change of the view, also during a movement, and also when the change comes from `view` or `moveTo`.
+     * Called with the first view once, right after `createMap` returns, and then with the new view at each change of the
+     * view. The first call comes before `load`. The map also calls it during a movement, and when the change comes from
+     * `view` or `moveTo`.
      */
     onViewChange?: ((view: View) => void) | null;
     /**
