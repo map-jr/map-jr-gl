@@ -23,7 +23,9 @@ gives it the focus but shows no outline. The colour is the custom property
 import {createMap} from '@map-jr/map-jr-gl';
 
 // The page has <div id="map" style="height: 400px"></div>.
-document.getElementById('map').style.setProperty('--map-control-focus', '#b00020');
+document
+  .getElementById('map')
+  .style.setProperty('--map-control-focus', '#b00020');
 const map = createMap('map', {
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
   initialView: {center: [-74.0065, 40.7085], zoom: 13.6},

@@ -50,25 +50,32 @@ const view = {center: [-74.0065, 40.7085], zoom: 13.6};
 // The page imports the library from the built files of the package.
 const dist = path.resolve('node_modules/@map-jr/map-jr-gl/dist');
 
-http.createServer(async (req, res) => {
-  if (req.url.startsWith('/map-jr-gl/')) {
-    res.writeHead(200, {'content-type': 'text/javascript'});
-    return res.end(await readFile(path.join(dist, path.basename(req.url))));
-  }
-  // A failed render must not fail the page: the map then draws in the browser.
-  const firstView = await renderFirstView({style, ...view, width: 800, height: 500}).catch(error => {
-    console.error(error.message);
-    return '';
-  });
-  res.writeHead(200, {'content-type': 'text/html'});
-  res.end(`<!doctype html>
+http
+  .createServer(async (req, res) => {
+    if (req.url.startsWith('/map-jr-gl/')) {
+      res.writeHead(200, {'content-type': 'text/javascript'});
+      return res.end(await readFile(path.join(dist, path.basename(req.url))));
+    }
+    // A failed render must not fail the page: the map then draws in the browser.
+    const firstView = await renderFirstView({
+      style,
+      ...view,
+      width: 800,
+      height: 500,
+    }).catch(error => {
+      console.error(error.message);
+      return '';
+    });
+    res.writeHead(200, {'content-type': 'text/html'});
+    res.end(`<!doctype html>
 <script type="importmap">{"imports": {"@map-jr/map-jr-gl": "/map-jr-gl/map-jr-gl.js"}}</script>
 <div id="map" style="position: relative; width: 800px; height: 500px">${firstView}</div>
 <script type="module">
   import {createMap} from '@map-jr/map-jr-gl';
   createMap('map', {style: ${JSON.stringify(style)}, initialView: ${JSON.stringify(view)}});
 </script>`);
-}).listen(3000);
+  })
+  .listen(3000);
 ```
 
 **Vue**
@@ -117,19 +124,28 @@ import {renderElement} from '@map-jr/map-jr-gl/server';
 
 const dist = path.resolve('node_modules/@map-jr/map-jr-gl/dist');
 
-http.createServer(async (req, res) => {
-  if (req.url.startsWith('/map-jr-gl/')) {
-    res.writeHead(200, {'content-type': 'text/javascript'});
-    return res.end(await readFile(path.join(dist, path.basename(req.url))));
-  }
-  const element = await renderElement(
-    {style: 'https://styles.map-jr.org/1/elevation-zero.json', initialView: {center: [-74.0065, 40.7085], zoom: 13.6}},
-    // width and height set the size of the render. The CSS height in attributes sets the size of the element.
-    {width: 800, height: 500, attributes: {id: 'map', style: 'height: 500px'}},
-  );
-  res.writeHead(200, {'content-type': 'text/html'});
-  res.end((await readFile('page.html', 'utf8')).replace('MAP', element));
-}).listen(3000);
+http
+  .createServer(async (req, res) => {
+    if (req.url.startsWith('/map-jr-gl/')) {
+      res.writeHead(200, {'content-type': 'text/javascript'});
+      return res.end(await readFile(path.join(dist, path.basename(req.url))));
+    }
+    const element = await renderElement(
+      {
+        style: 'https://styles.map-jr.org/1/elevation-zero.json',
+        initialView: {center: [-74.0065, 40.7085], zoom: 13.6},
+      },
+      // width and height set the size of the render. The CSS height in attributes sets the size of the element.
+      {
+        width: 800,
+        height: 500,
+        attributes: {id: 'map', style: 'height: 500px'},
+      },
+    );
+    res.writeHead(200, {'content-type': 'text/html'});
+    res.end((await readFile('page.html', 'utf8')).replace('MAP', element));
+  })
+  .listen(3000);
 ```
 
 With React, call `renderFirstView` on the server and pass the HTML to the `firstView` prop of `<MapJr>`. The
@@ -151,7 +167,12 @@ const style = 'https://styles.map-jr.org/1/elevation-zero.json';
 const view = {center: [-74.0065, 40.7085], zoom: 13.6};
 
 export default async function Page() {
-  const firstView = await renderFirstView({style, ...view, width: 800, height: 500}).catch(() => '');
+  const firstView = await renderFirstView({
+    style,
+    ...view,
+    width: 800,
+    height: 500,
+  }).catch(() => '');
   return (
     <div style={{height: 500}}>
       <MapJr mapStyle={style} initialView={view} firstView={firstView} />
@@ -191,7 +212,9 @@ const {svg, tiles} = await renderToSVG({
   width: 800,
   height: 500,
 });
-const head = tiles.map(url => `<link rel="preload" as="fetch" crossorigin href="${url}">`).join('\n');
+const head = tiles
+  .map(url => `<link rel="preload" as="fetch" crossorigin href="${url}">`)
+  .join('\n');
 ```
 
 `renderFirstView` does not return the tile URLs. To have both, call `renderToSVG` and write the attribution of its

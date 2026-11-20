@@ -97,7 +97,7 @@ const {svg} = await renderToSVG({
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
   center: [0, 0],
   zoom: 0,
-  bounds: [-74.02, 40.70, -73.97, 40.72],
+  bounds: [-74.02, 40.7, -73.97, 40.72],
   padding: 20,
   width: 800,
   height: 500,
@@ -211,7 +211,9 @@ height: 100%`. A map of `@map-jr/map-jr-gl` or of `@map-jr/map-jr-gl/maplibre-co
 ## `renderFirstView`
 
 ```ts
-renderFirstView(options: RenderOptions & {attribution?: string | string[] | false}): Promise<string>
+renderFirstView(
+  options: RenderOptions & {attribution?: string | string[] | false},
+): Promise<string>
 ```
 
 Returns the HTML of the first view of a map: the SVG of `renderToSVG`, and the attribution in a box at the bottom
@@ -235,7 +237,10 @@ A browser without `light-dark()` shows the light colours.
 ## `renderElement`
 
 ```ts
-renderElement(description: MapDescription, options?: ElementRenderOptions): Promise<string>
+renderElement(
+  description: MapDescription,
+  options?: ElementRenderOptions,
+): Promise<string>
 ```
 
 Returns the markup of the element `<map-jr>` of `@map-jr/map-jr-gl/element`, with the first view inside it.
@@ -315,12 +320,18 @@ The image has no accessible name, so `label` has no effect.
 ## `decodePNG` and `decodeWebPLossless`
 
 ```ts
-decodePNG(bytes: Uint8Array): Promise<{width: number; height: number; data: Uint8Array}>
-decodeWebPLossless(bytes: Uint8Array): {width: number; height: number; data: Uint8Array}
+decodePNG(
+  bytes: Uint8Array,
+): Promise<{width: number; height: number; data: Uint8Array}>
+decodeWebPLossless(bytes: Uint8Array): {
+  width: number;
+  height: number;
+  data: Uint8Array;
+}
 ```
 
 ```ts
-type ImageDecoder = (bytes: Uint8Array) => Pixels | Promise<Pixels>;  // Pixels is {width, height, data}
+type ImageDecoder = (bytes: Uint8Array) => Pixels | Promise<Pixels>; // Pixels is {width, height, data}
 ```
 
 The decoders that `decodeImage` uses by default. `data` has the RGBA bytes of the image, and `bytes` is the file of

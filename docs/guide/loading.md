@@ -76,7 +76,10 @@ worker file twice into the build, and the map requests only one of the two.
 ```js
 import {configure, createMap} from '@map-jr/map-jr-gl';
 
-configure({createWorker: () => new Worker(new URL('@map-jr/map-jr-gl/worker', import.meta.url))});
+configure({
+  createWorker: () =>
+    new Worker(new URL('@map-jr/map-jr-gl/worker', import.meta.url)),
+});
 
 // The page has <div id="map" style="height: 400px"></div>.
 const map = createMap('map', {
@@ -121,10 +124,14 @@ const visit = file => {
   if (seen.has(file)) return;
   seen.add(file);
   // The static imports of a built file are its parts.
-  for (const [, part] of readFileSync(dist + file, 'utf8').matchAll(/\bimport\s*(?:[^'"();]*?from\s*)?["']\.\/([^"']+)["']/g)) visit(part);
+  for (const [, part] of readFileSync(dist + file, 'utf8').matchAll(
+    /\bimport\s*(?:[^'"();]*?from\s*)?["']\.\/([^"']+)["']/g,
+  ))
+    visit(part);
 };
 visit(entry);
-for (const file of seen) console.log(`<link rel="modulepreload" href="${base}${file}">`);
+for (const file of seen)
+  console.log(`<link rel="modulepreload" href="${base}${file}">`);
 ```
 
 The file of `@map-jr/map-jr-gl` is `map-jr-gl.js`, and the file of `@map-jr/map-jr-gl/maplibre-compat` is
@@ -155,7 +162,12 @@ const map = createMap('map', {
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat/standalone';
 
 // The page has <div id="map" style="height: 400px"></div>.
-const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json', center: [-74.0065, 40.7085], zoom: 13.6});
+const map = new Map({
+  container: 'map',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+  center: [-74.0065, 40.7085],
+  zoom: 13.6,
+});
 ```
 
 ## Load the library from a CDN
@@ -223,7 +235,11 @@ names. This applies to Vite 8 as well:
 import {defineConfig} from 'vite';
 
 export default defineConfig({
-  resolve: {alias: [{find: /^maplibre-gl$/, replacement: '@map-jr/map-jr-gl/maplibre-compat'}]},
+  resolve: {
+    alias: [
+      {find: /^maplibre-gl$/, replacement: '@map-jr/map-jr-gl/maplibre-compat'},
+    ],
+  },
   optimizeDeps: {exclude: ['@map-jr/map-jr-gl', 'maplibre-gl']},
 });
 ```
@@ -245,7 +261,12 @@ import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 export default function MapView() {
   const container = useRef(null);
   useEffect(() => {
-    const map = new Map({container: container.current, style: 'https://styles.map-jr.org/1/elevation-zero.json', center: [-74.0065, 40.7085], zoom: 13.6});
+    const map = new Map({
+      container: container.current,
+      style: 'https://styles.map-jr.org/1/elevation-zero.json',
+      center: [-74.0065, 40.7085],
+      zoom: 13.6,
+    });
     // StrictMode runs each effect twice in development, so the cleanup removes the map.
     return () => map.remove();
   }, []);

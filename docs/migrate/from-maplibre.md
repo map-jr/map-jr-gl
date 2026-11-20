@@ -54,9 +54,14 @@ that this page lists. The page is written for an application that uses MapLibre 
    ```js
    import {Map} from 'maplibre-gl';
 
-   const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json'});
+   const map = new Map({
+     container: 'map',
+     style: 'https://styles.map-jr.org/1/elevation-zero.json',
+   });
    map.on('click', event => {
-     const features = map.queryRenderedFeatures(event.point, {layers: ['building']});
+     const features = map.queryRenderedFeatures(event.point, {
+       layers: ['building'],
+     });
      console.log(features);
    });
    ```
@@ -66,9 +71,14 @@ that this page lists. The page is written for an application that uses MapLibre 
    ```js
    import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
-   const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json'});
+   const map = new Map({
+     container: 'map',
+     style: 'https://styles.map-jr.org/1/elevation-zero.json',
+   });
    map.on('click', async event => {
-     const features = await map.queryRenderedFeatures(event.point, {layers: ['building']});
+     const features = await map.queryRenderedFeatures(event.point, {
+       layers: ['building'],
+     });
      console.log(features);
    });
    ```
@@ -80,7 +90,11 @@ that this page lists. The page is written for an application that uses MapLibre 
    ```js
    import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
-   const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json', strict: true});
+   const map = new Map({
+     container: 'map',
+     style: 'https://styles.map-jr.org/1/elevation-zero.json',
+     strict: true,
+   });
    ```
 
 6. Read the console of the browser. The map writes a warning for a layer type and for an expression that it does
@@ -120,9 +134,16 @@ works in MapLibre GL JS, so the same code runs with both.
 ```js
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
-const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json', center: [-74.0065, 40.7085], zoom: 15});
+const map = new Map({
+  container: 'map',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+  center: [-74.0065, 40.7085],
+  zoom: 15,
+});
 map.on('mousemove', async event => {
-  const features = await map.queryRenderedFeatures(event.point, {layers: ['building']});
+  const features = await map.queryRenderedFeatures(event.point, {
+    layers: ['building'],
+  });
   map.getCanvas().style.cursor = features.length ? 'pointer' : '';
 });
 ```
@@ -135,11 +156,17 @@ map, call `map.toBlob(type, quality)`. It waits until the map is idle and resolv
 ```js
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
-const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json'});
+const map = new Map({
+  container: 'map',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+});
 
 async function download() {
   const blob = await map.toBlob('image/png');
-  const link = Object.assign(document.createElement('a'), {href: URL.createObjectURL(blob), download: 'map.png'});
+  const link = Object.assign(document.createElement('a'), {
+    href: URL.createObjectURL(blob),
+    download: 'map.png',
+  });
   link.click();
 }
 ```
@@ -160,7 +187,11 @@ const overlay = {
   },
 };
 
-const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json', renderer: 'main'});
+const map = new Map({
+  container: 'map',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+  renderer: 'main',
+});
 map.on('load', () => map.addLayer(overlay));
 ```
 
@@ -176,7 +207,10 @@ Before:
 ```js
 import {Map} from 'maplibre-gl';
 
-const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json'});
+const map = new Map({
+  container: 'map',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+});
 map.on('moveend', () => console.log(map.transform.zoom));
 ```
 
@@ -185,7 +219,10 @@ After:
 ```js
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
-const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json'});
+const map = new Map({
+  container: 'map',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+});
 map.on('moveend', () => console.log(map.getZoom()));
 ```
 
@@ -198,11 +235,24 @@ no message here. Validate a style that you write yourself with `@maplibre/maplib
 ```js
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
-const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json', center: [-74.0065, 40.7085], zoom: 12});
+const map = new Map({
+  container: 'map',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+  center: [-74.0065, 40.7085],
+  zoom: 12,
+});
 map.on('load', () => {
-  map.addSource('stops', {type: 'geojson', data: {type: 'Point', coordinates: [-74.0065, 40.7085]}});
+  map.addSource('stops', {
+    type: 'geojson',
+    data: {type: 'Point', coordinates: [-74.0065, 40.7085]},
+  });
   // 'circle-colour' is not a paint property. No error event and no warning come: the circle has the default colour.
-  map.addLayer({id: 'stops', type: 'circle', source: 'stops', paint: {'circle-colour': '#d6453d'}});
+  map.addLayer({
+    id: 'stops',
+    type: 'circle',
+    source: 'stops',
+    paint: {'circle-colour': '#d6453d'},
+  });
 });
 ```
 
@@ -218,7 +268,9 @@ import {defineConfig} from 'vite';
 
 export default defineConfig({
   resolve: {
-    alias: [{find: /^maplibre-gl$/, replacement: '@map-jr/map-jr-gl/maplibre-compat'}],
+    alias: [
+      {find: /^maplibre-gl$/, replacement: '@map-jr/map-jr-gl/maplibre-compat'},
+    ],
   },
 });
 ```
