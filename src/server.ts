@@ -346,7 +346,7 @@ export function cleanCredits(html: string): string {
 
 /**
  * Renders the first view of a map as HTML for a page from a server: the SVG, with the credits over it. Put the HTML into
- * the element of the map; the map removes it when it has rendered its first frame.
+ * the element of the map; the map removes it when it has loaded the tiles of its first view, just before `load`.
  * @param o The options of `renderToSVG`. `attribution` sets the credits instead of those of the sources, and `false` shows none.
  * `colorScheme` sets the colours of the credits; `'auto'` follows the browser where it supports the CSS function `light-dark()`.
  * @returns A promise of the HTML. It rejects as `renderToSVG` does.
