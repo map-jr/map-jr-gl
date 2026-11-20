@@ -906,8 +906,8 @@ map.moveTo({center: [2.35, 48.86], zoom: 12, fly: true});
 map.moveTo({bounds: [[-74.05, 40.68], [-73.9, 40.82]], padding: 40, pitch: 30, duration: 800});
 ```
 
-`map.fitBounds(bounds, options)` is the short form of `map.moveTo({bounds, ...options})`, with `duration` 800 by
-default.
+`map.fitBounds(bounds, options)` is the short form of `map.moveTo({bounds, ...options})`. Like `moveTo`, it jumps
+unless `options` sets `duration` or `fly`.
 
 ## Queries
 
@@ -1158,7 +1158,7 @@ symbol layer with an image: it is drawn on the canvas, and 100,000 markers cost 
 | `getResolvedDescription()` | The description with `style` and `globalState` resolved, for reading (see below). |
 | `destroy()` | Removes the map and frees its memory. It also removes the elements of `overlay()` from the page at once, without the closing animation of a popup, and it does not call `onClose`. It can be called while the map loads. Call it before you make another map in the same element: a second map in an element that has a map leaves two canvases in the element, and the library warns in the console. |
 | `moveTo(target)` | Moves the camera now to a view or to `bounds` (with `padding` and `maxZoom` for the fit), with `bearing`, `pitch`, `duration` (milliseconds) and `fly`. It does not change the padding of the map. See [The camera](#the-camera). |
-| `fitBounds(bounds, options)` | The short form of `moveTo({bounds, ...options})`: the options are those of `moveTo` other than `center` and `zoom`, and `duration` is 800 ms by default. |
+| `fitBounds(bounds, options)` | The short form of `moveTo({bounds, ...options})`: the options are those of `moveTo` other than `center` and `zoom`. The camera jumps unless the options set `duration` or `fly`. |
 | `queryFeatures(at, options)`, `watchFeatures(at, options, listener)` | Find the features that the style layers draw, one time or kept up to date. See [Queries](#queries). |
 | `querySource(sourceId, at, options)`, `watchSource(sourceId, at, options, listener)` | Find the features of the tile data of one source, one time or kept up to date. See [Queries](#queries). |
 | `queryElevation(at)` | The height of the ground in metres at a position (`[lng, lat]`) or a point of the screen (`{x, y}`), from the elevation source of the style. A promise; `null` where there is no data. |

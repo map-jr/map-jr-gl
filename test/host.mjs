@@ -198,6 +198,23 @@ for (const renderer of renderers) {
         check(`[${renderer}] moveTo with bounds fits the box with its padding, with bearing and pitch, and with fly, and a destructured fitBounds works (#501)`,
             padding.bounds.bearing === 20 && padding.bounds.pitch === 30 && near(P.flown[0], rest) && near(P.flown[1], P.h / 2) && padding.detached === 'ok', JSON.stringify(padding));
 
+        // 2c. fitBounds jumps by default like moveTo, and animates with a duration (#1154).
+        const fitJump = await page.evaluate(async () => {
+            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms));
+            const zoom = () => t.host.state.get().view.zoom;
+            t.host.moveTo({center: [-74.01, 40.71], zoom: 3});
+            t.host.fitBounds([[-74.02, 40.70], [-74.00, 40.72]]);
+            const jumped = zoom();
+            t.host.moveTo({center: [-74.01, 40.71], zoom: 3});
+            t.host.fitBounds([[-74.02, 40.70], [-74.00, 40.72]], {duration: 800});
+            await wait(150);
+            const during = zoom(), moving = t.host.state.get().moving;
+            for (let i = 0; i < 50 && t.host.state.get().moving; i++) await wait(100);
+            return {jumped, during, moving, end: zoom()};
+        });
+        check(`[${renderer}] fitBounds jumps without a duration and animates with duration 800 (#1154)`,
+            fitJump.jumped > 12 && fitJump.moving && fitJump.during < fitJump.jumped - 1 && Math.abs(fitJump.end - fitJump.jumped) < 0.25, JSON.stringify(fitJump));
+
         // 3. A new style object: a layer is added and found by a query; with the old style again it is gone.
         const style = await page.evaluate(async () => {
             const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms));
