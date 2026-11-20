@@ -34,6 +34,9 @@ BSD-3-Clause.
   `hillshade-illumination-altitude` follow the formulas of MapLibre GL JS (BSD-3-Clause; the shader `hillshade` and
   `hillshade_style_layer.ts`), which says that it bases them on `gdaldem` of GDAL (MIT). The code in `src/style.ts`
   and `src/gl.ts` is new.
+- With `cooperativeGestures`, a move of two fingers cancels the default of `touchmove` on the canvas, which has
+  `touch-action: pan-x pan-y`. This follows the method of MapLibre GL JS (BSD-3-Clause; the non-passive `touchmove`
+  listener of `src/ui/handler_manager.ts` and `preventDefault` in `two_fingers_touch.ts`). The code in `src/map.ts` is new.
 - The tile URL tokens `{prefix}` and `{ratio}` follow the rules of `CanonicalTileID.url` in `src/source/tile_id.ts`
   of MapLibre GL JS (BSD-3-Clause). The code in `src/resolve.ts` is new.
 - New data of a GeoJSON source follows the method of `GeoJSONSource` in `src/source/geojson_source.ts` of MapLibre
