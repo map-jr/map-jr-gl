@@ -4,7 +4,7 @@
 // The Nuxt form is left out when it differs from the Vue form only in its imports and its first comment, as the style
 // guide asks; the page then says once that Nuxt needs no imports.
 //
-// Usage: node scripts/recipes.mjs [--check]
+// Usage: node scripts/recipes.mjs [--write | --check]   (writing is the default)
 //   --check  writes nothing, and fails when a block differs from its files or names an example that does not exist.
 import {readdirSync, readFileSync, writeFileSync, existsSync} from 'node:fs';
 import path from 'node:path';
@@ -37,8 +37,12 @@ async function block(id) {
     const parts = [];
     const read = suffix => readFileSync(path.join(root, 'examples', id + suffix), 'utf8').replace(/\n+$/, '');
     for (const [label, suffix, language] of forms) {
-        const code = read(suffix);
-        if (label === 'Nuxt' && body(code) === body(read('.vue'))) continue;
+        const raw = read(suffix);
+        // A comment of several lines is one paragraph: its lines are joined, so that the re-flow breaks it only where the
+        // width needs (the re-flow breaks each long line on its own).
+        const code = raw.replace(/^([ \t]*)\/\/ (.*)\n(?:\1\/\/ .*\n?)+/gm, (run, indent) =>
+            indent + '// ' + run.split('\n').filter(Boolean).map(l => l.trim().slice(3)).join(' ') + (run.endsWith('\n') ? '\n' : ''));
+        if (label === 'Nuxt' && body(raw) === body(read('.vue'))) continue;
         let formatted = await format.formatCode(code, language, format.desktopWidth);
         // The site does not re-flow the comments of a script in an HTML page, and the phone shows them at 38 columns.
         // The comments of the page are written at that width here, with a comment of several lines joined first.

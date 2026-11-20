@@ -1,20 +1,23 @@
 # Change the map from the state of your application
 
-This example adds and removes markers with a button, tilts the camera with another button, and shows the zoom and
-the style layer under the pointer. The map follows a description that the application changes.
+This example adds and removes markers with a button, tilts the camera with another button, and shows the zoom and the
+style layer under the pointer. The map follows a description that the application changes.
 
-Each block below is a file of the gallery. The two `js` files are the module script of a page that has
-`<div id="map" style="height: 500px"></div>`, and each one creates the text and the buttons below the map. The Vue and React components fill their parent element, so give the parent a height. The Svelte component and
-the `<map-jr>` page give the element of the map a height of 500 pixels. In Nuxt, the code is the Vue code without the
-imports, which the module for Nuxt does.
+Each block below is a complete file of the [gallery](https://map-jr.github.io/map-jr-gl/). The two `js` files are the
+module script of a page that has `<div id="map" style="height: 500px"></div>`, and each one creates the text and the
+buttons below the map itself. The Vue and React components fill their parent element, so give the parent a height. The
+Svelte component and the `<map-jr>` page give the element of the map a height of 500 pixels.
+
+In Nuxt, the code is the Vue code without the imports, because the [module for Nuxt](../reference/nuxt.md) imports the
+components, the composables and the controls automatically.
 
 <!-- example:reactive:start -->
 **Main API**
 
 ```js [Main API]
 // The module script of a page that has <div id="map" style="height:
-// 500px"></div>. Below the map, it adds a line of
-// text with the state of the map and two buttons.
+// 500px"></div>. Below the map, it adds a line of text with the state of the
+// map and two buttons.
 import {createMap, points} from '@map-jr/map-jr-gl';
 
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';
@@ -94,8 +97,8 @@ tilt.onclick = () =>
 
 ```js [MapLibre compat]
 // The module script of a page that has <div id="map" style="height:
-// 500px"></div>. Below the map, it adds a line of
-// text with the state of the map and two buttons.
+// 500px"></div>. Below the map, it adds a line of text with the state of the
+// map and two buttons.
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';
@@ -143,8 +146,8 @@ map.on('mousemove', async e => {
 });
 
 // The markers: a source with a point for each place, and a symbol layer with an
-// image. The image is an SVG template
-// (an addition of this library), and each feature fills its slot `color`.
+// image. The image is an SVG template (an addition of this library), and each
+// feature fills its slot `color`.
 map.addImage('dot', dot, {width: 14, height: 14});
 let shown = false;
 markers.onclick = () => {
@@ -366,8 +369,7 @@ export default function Reactive() {
   let view = $state.raw({center: NYC, zoom: 13.6, bearing: 0, pitch: 0});
   let shown = $state(false);
   // A key of `data` makes a GeoJSON source with that id. The data is compared
-  // by identity: $derived keeps the
-  // object until `shown` changes.
+  // by identity: $derived keeps the object until `shown` changes.
   const pins = $derived(
     points(shown ? places : [], {
       lngLat: p => p,
@@ -503,27 +505,27 @@ export default function Reactive() {
 
 ## How it works
 
-- [`update`](../reference/map.md#update) applies a new description. The map compares it with the one before and
-  changes only what differs. Pass the complete description each time; [`patch`](../reference/map.md#patch) changes
-  some fields and keeps the others.
+- [`update`](../reference/map.md#update) applies a new description. The map compares it with the one before and changes
+  only what differs. Pass the complete description each time; [`patch`](../reference/map.md#patch) changes some fields
+  and keeps the others.
 - Each key of [`data`](../reference/description.md#data) is the id of a GeoJSON source, and
-  [`points`](../reference/exports.md#points) converts records to the points of that source. The map compares the
-  data by identity, so a change of the markers is a new object.
-- [`state`](../reference/state.md) is a store. `subscribe` calls its listener after each change, with `view`,
-  `moving`, `idle` and `hover`.
-- `hover` lists the features of [`interactiveLayers`](../reference/description.md#interactivelayers) under the
-  pointer, the top one first. `park` and `water` are layer ids of this style.
+  [`points`](../reference/exports.md#points) converts records to the points of that source. The map compares the data by
+  identity, so a change of the markers is a new object.
+- [`state`](../reference/state.md) is a store. `subscribe` calls its listener after each change, with `view`, `moving`,
+  `idle` and `hover`.
+- `hover` lists the features of [`interactiveLayers`](../reference/description.md#interactivelayers) under the pointer,
+  the top one first. `park` and `water` are layer ids of this style.
 - [`moveTo`](../reference/map.md#moveto) animates the camera for `duration` milliseconds.
 
-The Vue, React and Svelte forms keep the view in the application with
-[`view` and `onViewChange`](../reference/description.md#view-and-onviewchange), so the Tilt button sets the view
-with no animation. In the compat entry, the code calls a method of MapLibre GL JS for each change (`addSource`,
-`removeLayer`, `easeTo`) and queries the features under the pointer itself.
+The Vue, React and Svelte forms keep the view in the application with [`view` and
+`onViewChange`](../reference/description.md#view-and-onviewchange), so the Tilt button sets the view with no animation.
+In the compat entry, the code calls a method of MapLibre GL JS for each change (`addSource`, `removeLayer`, `easeTo`)
+and queries the features under the pointer itself.
 
 ## See also
 
-- [Keep the view in the application](../guide/view-and-camera.md#keep-the-view-in-the-application) for the view as
-  state of a framework.
+- [Keep the view in the application](../guide/view-and-camera.md#keep-the-view-in-the-application) for the view as state
+  of a framework.
 - [Set the data of a source](../guide/data.md#set-the-data-of-a-source) for `data` and its updates.
-- [Draw markers with a symbol layer](../guide/markers-and-popups.md#draw-markers-with-a-symbol-layer) for the image
-  of the markers.
+- [Draw markers with a symbol layer](../guide/markers-and-popups.md#draw-markers-with-a-symbol-layer) for the image of
+  the markers.

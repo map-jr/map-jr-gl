@@ -1,21 +1,22 @@
 # Show many markers and open a popup on click
 
-This example draws 50,000 markers with symbol layers and opens a popup at the marker that the user clicks. Past zoom
-12, 500 of the markers change from a dot to a pin.
+This example draws 50,000 markers with symbol layers and opens a popup at the marker that the user clicks. Past zoom 12,
+500 of the markers change from a dot to a pin.
 
-Each block below is a file of the gallery. The two `js` files are the module script of a page that has
-`<div id="map" style="height: 500px"></div>`, and each one creates the line of text below the map itself. The Vue and
-React components fill their parent element, so give the parent a height. The Svelte component and the `<map-jr>` page
-give the element of the map a height of 500 pixels. In Nuxt, the code is the Vue code without the imports, which the
-module for Nuxt does.
+Each block below is a complete file of the [gallery](https://map-jr.github.io/map-jr-gl/). The two `js` files are the
+module script of a page that has `<div id="map" style="height: 500px"></div>`, and each one creates the line of text
+below the map itself. The Vue and React components fill their parent element, so give the parent a height. The Svelte
+component and the `<map-jr>` page give the element of the map a height of 500 pixels.
+
+In Nuxt, the code is the Vue code without the imports, because the [module for Nuxt](../reference/nuxt.md) imports the
+components, the composables and the controls automatically.
 
 <!-- example:markers:start -->
 **Main API**
 
 ```js [Main API]
 // The module script of a page that has <div id="map" style="height:
-// 500px"></div>. A line of text below the map gives
-// the frame rate.
+// 500px"></div>. A line of text below the map gives the frame rate.
 import {createMap, points} from '@map-jr/map-jr-gl';
 
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';
@@ -118,8 +119,7 @@ readout.textContent =
 
 ```js [MapLibre compat]
 // The module script of a page that has <div id="map" style="height:
-// 500px"></div>. A line of text below the map gives
-// the frame rate.
+// 500px"></div>. A line of text below the map gives the frame rate.
 import {Map, Popup} from '@map-jr/map-jr-gl/maplibre-compat';
 
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';
@@ -152,9 +152,8 @@ const points = list => ({
 });
 
 // The sources and the layers are those of MapLibre GL JS. One thing is an
-// addition of this library: an image can be an
-// SVG template with {{slots}}, and each feature fills the slots from its
-// properties.
+// addition of this library: an image can be an SVG template with {{slots}}, and
+// each feature fills the slots from its properties.
 const map = new Map({
   container: 'map',
   style,
@@ -651,15 +650,18 @@ export default function Markers() {
 
 ## How it works
 
-- [`images`](../reference/description.md#images) provides the images that `icon-image` names. An SVG document with
-  slots (`{{color}}`) is a template, and each feature fills the slots from its properties.
+- [`images`](../reference/description.md#images) provides the images that `icon-image` names. An SVG document with slots
+  (`{{color}}`) is a template, and each feature fills the slots from its properties.
 - Each key of [`data`](../reference/description.md#data) is the id of a GeoJSON source.
-  [`points`](../reference/exports.md#points) converts the records to the points of that source.
-- A symbol layer of [`layers`](../reference/description.md#layers) draws the image at each point. With
-  `icon-allow-overlap` and `icon-ignore-placement`, every marker is drawn, and the cost of a frame does not grow with
-  their number. Without them, markers that overlap others are hidden.
-- A click reports the features of [`interactiveLayers`](../reference/description.md#interactivelayers) under the
-  pointer in `e.features`, the top one first.
+  [`points`](../reference/exports.md#points) converts the records to the points of that source: `rest` has 49,500 points
+  and `some` has 500.
+- Symbol layers of [`layers`](../reference/description.md#layers) draw the images. The layer `dots` draws `rest` at
+  every zoom. The 500 points of `some` are drawn by `dots-below-pins` below zoom 12 (`maxzoom: 12`) and by `pins` from
+  zoom 12 (`minzoom: 12`).
+- With `icon-allow-overlap` and `icon-ignore-placement`, every dot is drawn. The pins have neither, so a pin that
+  overlaps another pin or a label of the map is hidden.
+- A click reports the features of [`interactiveLayers`](../reference/description.md#interactivelayers) under the pointer
+  in `e.features`, the top one first.
 - [`overlay`](../reference/map.md#overlay) with `popup: true` shows an element of the page in a popup at a position.
   `offset` moves it up, so that its tip points at the top of the marker.
 
@@ -668,12 +670,12 @@ layers with `addSource` and `addLayer` on `load`, and opens a `Popup` of MapLibr
 
 ## Variations
 
-Each variation changes the Main API example. `places`, `some`, `pointsOf` and `map` are the names of that example.
+Each variation changes the Main API example. `places`, `pointsOf` and `map` are the names of that example.
 
-### Let markers hide each other
+### Let the dots hide each other
 
-Without `icon-allow-overlap` and `icon-ignore-placement`, a marker that overlaps another marker or a label of the map
-is not drawn. Replace the definition of `always`:
+Without `icon-allow-overlap` and `icon-ignore-placement`, a dot that overlaps another dot or a label of the map is not
+drawn. Replace the definition of `always`:
 
 ```js
 const always = {'icon-image': 'dot'};
@@ -681,16 +683,18 @@ const always = {'icon-image': 'dot'};
 
 ### Change the colour of the markers
 
-Each point fills the slot `color` from its property `color`. To show other colours, pass new data. `patch` replaces
-the whole field `data`, so pass both sources:
+Each point fills the slot `color` from its property `color`. To show other colours, pass new data.
+[`patch`](../reference/map.md#patch) replaces the whole field `data`, so pass both sources:
 
 ```js
 const grey = places.map(p => ({...p, props: {color: '#888'}}));
-map.patch({data: {rest: pointsOf(grey.slice(500)), some: pointsOf(some)}});
+map.patch({
+  data: {rest: pointsOf(grey.slice(500)), some: pointsOf(grey.slice(0, 500))},
+});
 ```
 
 ## See also
 
 - [Markers and popups](../guide/markers-and-popups.md) to choose between a symbol layer and an element of the page.
 - [Keep many markers fast](../guide/markers-and-popups.md#keep-many-markers-fast).
-- [An image that is a template](../api.md#an-image-that-is-a-template) for the slots and their limits.
+- [`images`](../reference/description.md#images) for the images of the description and their slots.

@@ -3,18 +3,21 @@
 This example shows the Matterhorn in 3D with relief shading and labelled contour lines, and reads the height of the
 ground at a click. Two buttons switch the contour lines between feet and metres and turn the 3D terrain on and off.
 
-Each block below is a file of the gallery. The two `js` files are the module script of a page that has
-`<div id="map" style="height: 500px"></div>`, and each one creates the text and the buttons below the map. The Vue and React components fill their parent element, so give the parent a height. The Svelte component and
-the `<map-jr>` page give the element of the map a height of 500 pixels. In Nuxt, the code is the Vue code without the
-imports, which the module for Nuxt does.
+Each block below is a complete file of the [gallery](https://map-jr.github.io/map-jr-gl/). The two `js` files are the
+module script of a page that has `<div id="map" style="height: 500px"></div>`, and each one creates the text and the
+buttons below the map itself. The Vue and React components fill their parent element, so give the parent a height. The
+Svelte component and the `<map-jr>` page give the element of the map a height of 500 pixels.
+
+In Nuxt, the code is the Vue code without the imports, because the [module for Nuxt](../reference/nuxt.md) imports the
+components, the composables and the controls automatically.
 
 <!-- example:terrain:start -->
 **Main API**
 
 ```js [Main API]
 // The module script of a page that has <div id="map" style="height:
-// 500px"></div>. Below the map, it adds a line of
-// text with the elevation at a click and two buttons.
+// 500px"></div>. Below the map, it adds a line of text with the elevation at a
+// click and two buttons.
 import {createMap} from '@map-jr/map-jr-gl';
 
 const style = 'https://styles.map-jr.org/1/elevation.json';
@@ -37,13 +40,13 @@ const thresholds = {
 };
 
 // Additions to the style, which has the elevation source "terrarium" and relief
-// shading: contour lines and
-// stronger 3D terrain. `null` makes the map flat, although the style has a
-// terrain.
+// shading: contour lines and stronger 3D terrain. `null` makes the map flat,
+// although the style has a terrain.
 const elevation = (unit, terrain) => ({
   terrain: terrain ? {source: 'terrarium', exaggeration: 1.5} : null,
   sources: {
-    // Contour lines are made from the elevation tiles, in the tile workers.
+    // For each zoom level, `thresholds` sets the interval between lines and
+    // between major lines, in feet or metres.
     contours: {
       type: 'contour',
       source: 'terrarium',
@@ -133,8 +136,7 @@ readout.textContent = 'Click the map to read the elevation';
 
 ```js [MapLibre compat]
 // The module script of a page that has <div id="map" style="height:
-// 500px"></div>. A line of text below the map gives
-// the elevation at a click.
+// 500px"></div>. A line of text below the map gives the elevation at a click.
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
 const style = 'https://styles.map-jr.org/1/elevation.json';
@@ -213,13 +215,13 @@ const thresholds = {
 };
 
 // Additions to the style, which has the elevation source "terrarium" and relief
-// shading: contour lines and
-// stronger 3D terrain. `null` makes the map flat, although the style has a
-// terrain.
+// shading: contour lines and stronger 3D terrain. `null` makes the map flat,
+// although the style has a terrain.
 const elevation = (unit, terrain) => ({
   terrain: terrain ? {source: 'terrarium', exaggeration: 1.5} : null,
   sources: {
-    // Contour lines are made from the elevation tiles, in the tile workers.
+    // For each zoom level, `thresholds` sets the interval between lines and
+    // between major lines, in feet or metres.
     contours: {
       type: 'contour',
       source: 'terrarium',
@@ -327,13 +329,13 @@ const thresholds = {
 };
 
 // Additions to the style, which has the elevation source "terrarium" and relief
-// shading: contour lines and
-// stronger 3D terrain. `null` makes the map flat, although the style has a
-// terrain.
+// shading: contour lines and stronger 3D terrain. `null` makes the map flat,
+// although the style has a terrain.
 const elevation = (unit, terrain) => ({
   terrain: terrain ? {source: 'terrarium', exaggeration: 1.5} : null,
   sources: {
-    // Contour lines are made from the elevation tiles, in the tile workers.
+    // For each zoom level, `thresholds` sets the interval between lines and
+    // between major lines, in feet or metres.
     contours: {
       type: 'contour',
       source: 'terrarium',
@@ -438,13 +440,13 @@ export default function Terrain() {
   };
 
   // Additions to the style, which has the elevation source "terrarium" and
-  // relief shading: contour lines and
-  // stronger 3D terrain. `null` makes the map flat, although the style has a
-  // terrain.
+  // relief shading: contour lines and stronger 3D terrain. `null` makes the map
+  // flat, although the style has a terrain.
   const elevation = (unit, terrain) => ({
     terrain: terrain ? {source: 'terrarium', exaggeration: 1.5} : null,
     sources: {
-      // Contour lines are made from the elevation tiles, in the tile workers.
+      // For each zoom level, `thresholds` sets the interval between lines and
+      // between major lines, in feet or metres.
       contours: {
         type: 'contour',
         source: 'terrarium',
@@ -592,9 +594,11 @@ export default function Terrain() {
   const showElevation = () => {
     map.terrain = terrain ? {source: 'terrarium', exaggeration: 1.5} : null;
     map.sources = {
-      // Contour lines are made
-      // from the elevation tiles,
-      // in the tile workers.
+      // For each zoom level,
+      // `thresholds` sets the
+      // interval between lines
+      // and between major lines,
+      // in feet or metres.
       contours: {
         type: 'contour',
         source: 'terrarium',
@@ -669,34 +673,30 @@ export default function Terrain() {
   [`terrain`](../reference/description.md#terrain) of the description overrides the terrain of the style, and `null`
   shows a flat map.
 - A source of the type `contour` in [`sources`](../reference/description.md#sources) creates contour lines from the
-  elevation source. `thresholds` sets the interval between lines and between major lines for each zoom level, in the
-  unit that `multiplier` converts to.
+  elevation source. Each key of `thresholds` is a zoom level, and its value is two intervals: between lines, and between
+  major lines. The intervals are in metres multiplied by `multiplier`, so in feet with `3.28084`.
 - The `line` layer draws the lines below the layer `water` of the style (`before`), and the `symbol` layer labels the
   major lines with the property `ele`.
-- [`queryElevation`](../reference/map.md#queryelevation) resolves to the height at a position in metres, multiplied
-  by the `exaggeration` of the terrain, or to `null` where the map has no elevation data.
-- Each button calls [`update`](../reference/map.md#update) with a new description. A change of `terrain` or of a
-  source in `sources` [loads the style again](../reference/description.md#style).
+- [`queryElevation`](../reference/map.md#queryelevation) resolves to the height of the ground in metres. It resolves to
+  `null` when the elevation tile has no data, and it rejects when the style has no `raster-dem` source.
+- Each button calls [`update`](../reference/map.md#update) with a new description from `describe`. A change of `terrain`
+  or of a source in `sources` [loads the style again](../reference/description.md#style).
 
 The compat example sets the terrain with `setTerrain` and adds the contour source and one `line` layer on `load`.
 
 ## Variations
 
-Each variation changes the description of the Main API example.
+Each variation changes the Main API example. The buttons call `describe` again, so a change goes into `describe` or
+`elevation`, not into one call of `update`.
 
-### Contour lines on a flat map
+### Start with a flat map
 
-```js
-map.update({...describe(), terrain: null});
-```
+Write `let unit = 'ft', terrain = false;`. The button then turns the 3D terrain on.
 
 ### Change how high the terrain is drawn
 
-`exaggeration` multiplies the heights of the ground. The default is `1`.
-
-```js
-map.update({...describe(), terrain: {source: 'terrarium', exaggeration: 2.5}});
-```
+In `elevation`, change `exaggeration: 1.5` to another number. `exaggeration` multiplies the heights of the ground as
+they are drawn, and the default is `1`.
 
 ## See also
 

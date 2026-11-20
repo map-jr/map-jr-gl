@@ -11,7 +11,7 @@
   const elevation = (unit, terrain) => ({
     terrain: terrain ? {source: 'terrarium', exaggeration: 1.5} : null,
     sources: {
-      // Contour lines are made from the elevation tiles, in the tile workers.
+      // For each zoom level, `thresholds` sets the interval between lines and between major lines, in feet or metres.
       contours: {type: 'contour', source: 'terrarium', multiplier: unit === 'ft' ? 3.28084 : 1, thresholds: thresholds[unit]},
     },
     layers: [

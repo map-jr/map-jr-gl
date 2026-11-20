@@ -1,21 +1,22 @@
 # Let the user move a pin
 
-This example puts a pin on the map that the user drags with the mouse, a finger or a pen, and shows its position
-while it moves and where it is dropped.
+This example puts a pin on the map that the user drags with the mouse, a finger or a pen, and shows its position while
+it moves and where it is dropped.
 
-Each block below is a file of the gallery. The two `js` files are the module script of a page that has
-`<div id="map" style="height: 500px"></div>`, and each one creates the line of text below the map itself. The Vue and
-React components fill their parent element, so give the parent a height. The Svelte component and the `<map-jr>` page
-give the element of the map a height of 500 pixels. In Nuxt, the code is the Vue code without the imports, which the
-module for Nuxt does.
+Each block below is a complete file of the [gallery](https://map-jr.github.io/map-jr-gl/). The two `js` files are the
+module script of a page that has `<div id="map" style="height: 500px"></div>`, and each one creates the line of text
+below the map itself. The Vue and React components fill their parent element, so give the parent a height. The Svelte
+component and the `<map-jr>` page give the element of the map a height of 500 pixels.
+
+In Nuxt, the code is the Vue code without the imports, because the [module for Nuxt](../reference/nuxt.md) imports the
+components, the composables and the controls automatically.
 
 <!-- example:draggable:start -->
 **Main API**
 
 ```js [Main API]
 // The module script of a page that has <div id="map" style="height:
-// 500px"></div>. A line of text below the map gives
-// the position of the pin.
+// 500px"></div>. A line of text below the map gives the position of the pin.
 import {createMap, defaultPin} from '@map-jr/map-jr-gl';
 
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';
@@ -51,8 +52,7 @@ show(`Drag the pin. It is at ${at(NYC)}`);
 
 ```js [MapLibre compat]
 // The module script of a page that has <div id="map" style="height:
-// 500px"></div>. A line of text below the map gives
-// the position of the pin.
+// 500px"></div>. A line of text below the map gives the position of the pin.
 import {Map, Marker} from '@map-jr/map-jr-gl/maplibre-compat';
 
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';
@@ -264,22 +264,23 @@ export default function Draggable() {
 
 ## How it works
 
-- [`overlay`](../reference/map.md#overlay) places an element of the page at a position of the map, and returns an
-  object with `update` and `remove`.
+- [`overlay`](../reference/map.md#overlay) places an element of the page at a position of the map, and returns an object
+  with `update` and `remove`.
 - [`defaultPin`](../reference/exports.md#defaultpin) returns the pin of `Marker` of MapLibre GL JS as an element.
   `anchor: 'bottom'` puts the tip of the pin at the position.
-- With `draggable: true`, a drag starts once the pointer has moved 3 pixels, so a click stays a click. The map does
-  not pan under the drag.
-- `onDrag` receives the position as `[lng, lat]` at each move, and `onDragEnd` receives the position where the pin
-  was dropped. See [`OverlayOptions`](../reference/map.md#overlayoptions) for every option.
+- With `draggable: true`, a drag starts once the pointer has moved 3 CSS pixels, so a click stays a click. The map does
+  not pan while the pin is dragged.
+- `onDrag` receives the position as `[lng, lat]` at each move, and `onDragEnd` receives the position where the pin was
+  dropped. See [`OverlayOptions`](../reference/map.md#overlayoptions) for every option.
 
-In Vue and React, the `MapOverlay` component holds the pin, and its content is an SVG element in the template. The
-pin stays where it was dropped until its `lng-lat` changes, so the `dragend` handler stores the new position. In the
-compat entry, a `Marker` of MapLibre GL JS with `draggable: true` fires `drag` and `dragend`.
+In Vue and React, the `MapOverlay` component holds the pin, and its content is an SVG element in the template. The pin
+stays where it was dropped until its `lng-lat` changes, so the `dragend` handler stores the new position. In the compat
+entry, a `Marker` of MapLibre GL JS with `draggable: true` fires `drag` and `dragend`.
 
 ## Variations
 
-The variation changes the call of `overlay` in the Main API example.
+The variation changes the call of `overlay` in the Main API example. `map`, `NYC`, `show` and `at` are the names of that
+example.
 
 ### Put your own element on the map
 
@@ -297,5 +298,6 @@ map.overlay(label, {
 
 ## See also
 
-- [Put an element of the page on the map, and let the user move it](../guide/markers-and-popups.md#put-an-element-of-the-page-on-the-map-and-let-the-user-move-it).
-- [Show many markers and open a popup on click](markers.md) for markers that are drawn by the map.
+- [Put an element of the page on the map, and let the user move
+  it](../guide/markers-and-popups.md#put-an-element-of-the-page-on-the-map-and-let-the-user-move-it).
+- [Show many markers and open a popup on click](markers.md) for markers that the map draws.

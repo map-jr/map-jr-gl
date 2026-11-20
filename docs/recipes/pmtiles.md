@@ -1,21 +1,23 @@
 # Show vector tiles from a PMTiles file
 
-This example draws the county and ZIP code boundaries of the United States from one PMTiles file on a file host, over
-a base map, and lists the names of the areas at a click.
+This example draws the county and ZIP code boundaries of the United States from one PMTiles file on a file host, over a
+base map, and lists the names of the areas at a click.
 
-Each block below is a file of the gallery. The two `js` files are the module script of a page that has
-`<div id="map" style="height: 500px"></div>`, and each one creates the line of text below the map itself. The Vue and
-React components fill their parent element, so give the parent a height. The Svelte component and the `<map-jr>` page
-give the element of the map a height of 500 pixels. In Nuxt, the code is the Vue code without the imports, which the
-module for Nuxt does.
+Each block below is a complete file of the [gallery](https://map-jr.github.io/map-jr-gl/). The two `js` files are the
+module script of a page that has `<div id="map" style="height: 500px"></div>`, and each one creates the line of text
+below the map itself. The Vue and React components fill their parent element, so give the parent a height. The Svelte
+component and the `<map-jr>` page give the element of the map a height of 500 pixels.
+
+In Nuxt, the code is the Vue code without the imports, because the [module for Nuxt](../reference/nuxt.md) imports the
+components, the composables and the controls automatically.
 
 <!-- example:pmtiles:start -->
 **Main API**
 
 ```js [Main API]
 // The module script of a page that has <div id="map" style="height:
-// 500px"></div>. A legend is on the map, and a line
-// of text below the map lists what a click finds.
+// 500px"></div>. A legend is on the map, and a line of text below the map lists
+// what a click finds.
 import {createMap} from '@map-jr/map-jr-gl';
 
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';
@@ -23,8 +25,7 @@ const boundaryFile =
   'https://tiles.whatismyelevation.com/2025-state-county-zip.pmtiles';
 
 // Additions to the style: a PMTiles file on a usual file host. The map reads
-// the tiles that it needs with HTTP
-// range requests.
+// the tiles that it needs with HTTP range requests.
 const boundaries = {
   sources: {
     admin: {type: 'vector', url: 'pmtiles://' + boundaryFile},
@@ -61,7 +62,7 @@ const map = createMap(container, {
   initialView: {center: [-74.1, 40.75], zoom: 9.2},
   attribution: {compact: true},
   onClick: async e => {
-    const features = await map.querySource('admin', e.point);
+    const features = await map.querySource('admin', e.lngLat);
     show(
       features
         .map(
@@ -100,8 +101,7 @@ show('Click to list the county, state and ZIP code');
 
 ```js [MapLibre compat]
 // The module script of a page that has <div id="map" style="height:
-// 500px"></div>. A line of text below the map lists
-// what a click finds.
+// 500px"></div>. A line of text below the map lists what a click finds.
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';
@@ -164,8 +164,7 @@ const boundaryFile =
   'https://tiles.whatismyelevation.com/2025-state-county-zip.pmtiles';
 
 // Additions to the style: a PMTiles file on a usual file host. The map reads
-// the tiles that it needs with HTTP
-// range requests.
+// the tiles that it needs with HTTP range requests.
 const boundaries = {
   sources: {
     admin: {type: 'vector', url: 'pmtiles://' + boundaryFile},
@@ -192,7 +191,7 @@ const map = useTemplateRef('map'),
   names = ref('Click to list the county, state and ZIP code');
 
 async function ask(event) {
-  const features = await map.value.map.querySource('admin', event.point);
+  const features = await map.value.map.querySource('admin', event.lngLat);
   names.value =
     features
       .map(f => f.properties.NAMELSAD ?? f.properties.NAME)
@@ -224,8 +223,7 @@ const boundaryFile =
   'https://tiles.whatismyelevation.com/2025-state-county-zip.pmtiles';
 
 // Additions to the style: a PMTiles file on a usual file host. The map reads
-// the tiles that it needs with HTTP
-// range requests.
+// the tiles that it needs with HTTP range requests.
 const boundaries = {
   sources: {
     admin: {type: 'vector', url: 'pmtiles://' + boundaryFile},
@@ -256,7 +254,7 @@ export default function Boundaries() {
   );
 
   async function ask(event) {
-    const features = await map.current.querySource('admin', event.point);
+    const features = await map.current.querySource('admin', event.lngLat);
     setNames(
       features
         .map(f => f.properties.NAMELSAD ?? f.properties.NAME)
@@ -294,8 +292,7 @@ export default function Boundaries() {
   const description = {
     style: 'https://styles.map-jr.org/1/elevation-zero.json',
     // Additions to the style: a PMTiles file on a usual file host. The map
-    // reads the tiles that it needs with HTTP
-    // range requests.
+    // reads the tiles that it needs with HTTP range requests.
     sources: {
       admin: {type: 'vector', url: 'pmtiles://' + boundaryFile},
     },
@@ -323,7 +320,7 @@ export default function Boundaries() {
     initialView: {center: [-74.1, 40.75], zoom: 9.2},
     attribution: {compact: true},
     onClick: async e => {
-      const features = await map.querySource('admin', e.point);
+      const features = await map.querySource('admin', e.lngLat);
       names =
         features
           .map(
@@ -468,8 +465,8 @@ export default function Boundaries() {
   // Additions to the style: a
   // PMTiles file on a usual file
   // host. The map reads the tiles
-  // that it needs with HTTP
-  // range requests.
+  // that it needs with HTTP range
+  // requests.
   map.sources = {
     admin: {type: 'vector', url: 'pmtiles://' + boundaryFile},
   };
@@ -492,7 +489,7 @@ export default function Boundaries() {
   ];
 
   map.addEventListener('map-click', async event => {
-    const features = await map.map.querySource('admin', event.detail.point);
+    const features = await map.map.querySource('admin', event.detail.lngLat);
     readout.textContent =
       features
         .map(
@@ -508,27 +505,27 @@ export default function Boundaries() {
 
 ## How it works
 
-- A PMTiles archive is one static file of tiles. A `url` that starts with `pmtiles://` followed by the URL of the
-  file loads the tiles from it, with HTTP range requests. The host must answer range requests, and it must allow
-  them from other origins (CORS) when the file is on another host than the page.
-- The source in [`sources`](../reference/description.md#sources) is a usual `vector` source. Its layers name the
-  layers of the file in `source-layer`: `county_features` and `zip_features`.
+- A PMTiles archive is one static file of tiles. A `url` that starts with `pmtiles://` followed by the URL of the file
+  loads the tiles from it, with HTTP range requests. The host must answer range requests, and it must allow them from
+  other origins (CORS) when the file is on another host than the page.
+- The source in [`sources`](../reference/description.md#sources) is a usual `vector` source. Its layers name the layers
+  of the file in `source-layer`: `county_features` and `zip_features`.
 - `minzoom: 9` on the layer `zips` hides the ZIP code areas below zoom 9.
-- [`querySource`](../reference/map.md#querysource) reads the features of the source at the click, also the ones that
-  no layer draws, and the example lists their names.
+- [`querySource`](../reference/map.md#querysource) reads the features of the source at the position of the click, also
+  the ones that no layer draws, and the example lists their names.
 
 In the compat entry, the `pmtiles://` URL works with no `addProtocol` and no pmtiles library.
 
 ## Variations
 
-The variation changes the click handler of the Main API example.
+The variation changes the click handler of the Main API example. `e` is the event of the click, and `map` is the map.
 
 ### Handle a tile that does not load
 
 The promise of `querySource` rejects when the tile does not load. Catch the rejection:
 
 ```js
-const features = await map.querySource('admin', e.point).catch(() => []);
+const features = await map.querySource('admin', e.lngLat).catch(() => []);
 ```
 
 ## See also

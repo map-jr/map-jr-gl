@@ -34,7 +34,7 @@
   ];
 
   map.addEventListener('map-click', async event => {
-    const features = await map.map.querySource('admin', event.detail.point);
+    const features = await map.map.querySource('admin', event.detail.lngLat);
     readout.textContent = features.map(f => f.properties.NAMELSAD ?? f.properties.NAME ?? f.properties.GEOID20).filter(Boolean).join(' · ') || 'Nothing here';
   });
 </script>

@@ -23,7 +23,7 @@ export default function Boundaries() {
   const [names, setNames] = useState('Click to list the county, state and ZIP code');
 
   async function ask(event) {
-    const features = await map.current.querySource('admin', event.point);
+    const features = await map.current.querySource('admin', event.lngLat);
     setNames(features.map(f => f.properties.NAMELSAD ?? f.properties.NAME).filter(Boolean).join(' · ') || 'Nothing here');
   }
 

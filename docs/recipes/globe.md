@@ -3,18 +3,20 @@
 This example shows the map as a globe with a button that switches between the globe and the flat map, and names the
 projection below the map.
 
-Each block below is a file of the gallery. The two `js` files are the module script of a page that has
-`<div id="map" style="height: 500px"></div>`, and each one creates the line of text below the map itself. The Vue and
-React components fill their parent element, so give the parent a height. The Svelte component and the `<map-jr>` page
-give the element of the map a height of 500 pixels.
+Each block below is a complete file of the [gallery](https://map-jr.github.io/map-jr-gl/). The two `js` files are the
+module script of a page that has `<div id="map" style="height: 500px"></div>`, and each one creates the line of text
+below the map itself. The Vue and React components fill their parent element, so give the parent a height. The Svelte
+component and the `<map-jr>` page give the element of the map a height of 500 pixels.
+
+The Nuxt form has no imports, because the [module for Nuxt](../reference/nuxt.md) imports the components and the
+controls automatically, and it names the controls `navigationControl`, `globeControl` and so on.
 
 <!-- example:globe:start -->
 **Main API**
 
 ```js [Main API]
 // The module script of a page that has <div id="map" style="height:
-// 500px"></div>. A line of text below the map names
-// the projection.
+// 500px"></div>. A line of text below the map names the projection.
 import {createMap} from '@map-jr/map-jr-gl';
 import {globe, navigation} from '@map-jr/map-jr-gl/controls';
 
@@ -44,8 +46,7 @@ readout.textContent = 'Projection: globe';
 
 ```js [MapLibre compat]
 // The module script of a page that has <div id="map" style="height:
-// 500px"></div>. A line of text below the map names
-// the projection.
+// 500px"></div>. A line of text below the map names the projection.
 import {
   Map,
   NavigationControl,
@@ -110,10 +111,9 @@ const projection = ref('globe');
 ```vue [Nuxt]
 <script setup>
 // A page of a Nuxt app whose nuxt.config.ts has modules:
-// ['@map-jr/map-jr-gl/nuxt']. The module imports MapJr and
-// the other components, the composables and the controls (as
-// navigationControl() and so on), and Nuxt imports the
-// functions of Vue.
+// ['@map-jr/map-jr-gl/nuxt']. The module imports MapJr and the other
+// components, the composables and the controls (as navigationControl() and so
+// on), and Nuxt imports the functions of Vue.
 
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';
 const projection = ref('globe');
@@ -234,15 +234,15 @@ export default function Globe() {
 
 ## How it works
 
-- [`projection`](../reference/description.md#projection) `{type: 'globe'}` draws the map on a sphere. Between zoom
-  11 and 12, the globe turns into the flat map, as in MapLibre GL JS.
-- The control [`globe()`](../reference/controls.md#globe) is a button that switches the projection between `globe`
-  and `mercator`.
-- The [`projectiontransition`](../reference/events.md#mapevents) event fires when a projection is applied, with its
-  name in `newProjection`.
+- [`projection`](../reference/description.md#projection) `{type: 'globe'}` draws the map on a sphere. Between zoom 11
+  and 12, the globe turns into the flat map, as in MapLibre GL JS.
+- The control [`globe()`](../reference/controls.md#globe) is a button that switches the projection between `globe` and
+  `mercator`.
+- The [`projectiontransition`](../reference/events.md#mapevents) event fires when a projection is applied, with its name
+  in `newProjection`.
 
-In Nuxt, the module imports the controls as `navigationControl` and `globeControl`. In the compat entry, the code sets
-the projection with `setProjection` on `style.load`, as in MapLibre GL JS, and adds a `GlobeControl`.
+In the compat entry, the code sets the projection with `setProjection` on `style.load`, as in MapLibre GL JS, and adds a
+`GlobeControl`.
 
 ## Variations
 
@@ -250,8 +250,14 @@ The variation changes `projection` in the description of the Main API example.
 
 ### A globe at every zoom
 
+The projection `vertical-perspective` draws a globe at every zoom, also zoomed in. See [the values of
+`projection`](../reference/description.md#projection).
+
 ```js
-projection: {type: 'vertical-perspective'},
+const map = createMap(container, {
+  style,
+  projection: {type: 'vertical-perspective'},
+});
 ```
 
 ## See also

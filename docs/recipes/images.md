@@ -1,21 +1,23 @@
 # Draw an SVG icon with a label for each place
 
-This example draws an SVG pin with the name of the place beside it for four places, and colours each pin by the kind
-of the place.
+This example draws an SVG pin with the name of the place beside it for four places, and colours each pin by the kind of
+the place.
 
-Each block below is a file of the gallery. The two `js` files are the module script of a page that has
-`<div id="map" style="height: 500px"></div>`. The Vue and React components fill their parent element, so give the
-parent a height. The Svelte component and the `<map-jr>` page give the element of the map a height of 500 pixels. In
-Nuxt, the code is the Vue code without the imports, which the module for Nuxt does.
+Each block below is a complete file of the [gallery](https://map-jr.github.io/map-jr-gl/). The two `js` files are the
+module script of a page that has `<div id="map" style="height: 500px"></div>`. The Vue and React components fill their
+parent element, so give the parent a height. The Svelte component and the `<map-jr>` page give the element of the map a
+height of 500 pixels.
+
+In Nuxt, the code is the Vue code without the imports, because the [module for Nuxt](../reference/nuxt.md) imports the
+components, the composables and the controls automatically.
 
 <!-- example:images:start -->
 **Main API**
 
 ```js [Main API]
 // The module script of a page that has <div id="map" style="height:
-// 500px"></div>. The map shows four places. Each has
-// an SVG image of the description in the colour of its kind, and its name
-// beside it.
+// 500px"></div>. The map shows four places. Each has an SVG image of the
+// description in the colour of its kind, and its name beside it.
 import {createMap} from '@map-jr/map-jr-gl';
 
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';
@@ -93,8 +95,8 @@ const map = createMap(document.getElementById('map'), {
 
 ```js [MapLibre compat]
 // The module script of a page that has <div id="map" style="height:
-// 500px"></div>. The map shows four places. Each has
-// an SVG image from addImage, and its name beside it.
+// 500px"></div>. The map shows four places. Each has an SVG image from
+// addImage, and its name beside it.
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';
@@ -517,33 +519,29 @@ export default function Images() {
 - `text-field` draws the name beside the icon. `text-font` names a font of the `glyphs` of the style; `Noto Sans
   Regular` is a font of this style.
 
-In the compat entry, `addImage` accepts an SVG document as a string, which MapLibre GL JS does not. The compat
-example adds one image for each colour and selects it with `match`, as an application for MapLibre GL JS does.
+In the compat entry, `addImage` accepts an SVG document as a string, which MapLibre GL JS does not. The compat example
+adds one image for each colour and selects it with `match`, as an application for MapLibre GL JS does.
 
 ## Variations
 
-Each variation changes `icon-image` in the layer of the Main API example.
-
-### One image with no slots
-
-Without slots, the image is drawn as it is written. Replace `{{color}}` in `pin` with a colour and write:
-
-```js
-'icon-image': 'pin',
-```
+The variation changes the Main API example. `places` is the name of its GeoJSON.
 
 ### Fill the slots from the properties
 
-Without `params`, each feature fills a slot from the property of the same name. With a property `color` on each
-feature, write:
+Without `params`, each feature fills a slot from its property of the same name. Give each feature a property `color`
+before `createMap`:
 
 ```js
-'icon-image': 'pin',
+for (const f of places.features) {
+  f.properties.color = f.properties.kind === 'park' ? '#2e9d5b' : '#d6453d';
+}
 ```
+
+Then set `'icon-image': 'pin'` in the layout of the layer.
 
 ## See also
 
 - [Add an image for a style layer](../guide/images-and-fonts.md#add-an-image-for-a-style-layer).
-- [An image that is a template](../api.md#an-image-that-is-a-template) for the parameters and the limits.
-- [Draw labels with web fonts](../guide/images-and-fonts.md#draw-labels-with-web-fonts) for a font that the style
-  does not have.
+- [`images`](../reference/description.md#images) for the images of the description and their slots.
+- [Draw labels with web fonts](../guide/images-and-fonts.md#draw-labels-with-web-fonts) for a font that the style does
+  not have.
