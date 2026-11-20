@@ -1294,7 +1294,7 @@ export class Map {
     private projectionWarned = new Set<string>();
     /**
      * Warns once per map for a projection that the library does not draw (it draws Mercator), and for 3D terrain and
-     * buildings on the globe, which come with later pull requests of #463.
+     * buildings on the globe, which come with later pull requests of #463, and for custom layers on the globe (#1225).
      */
     private checkProjection() {
         const t = this.rawStyle?.projection?.type, said = this.projectionWarned;
@@ -1303,6 +1303,7 @@ export class Map {
         if (!globeStops(t)) return warn('name', `The style has the projection ${JSON.stringify(t)}, which is not supported, so the map uses "mercator".`);
         if (this.rawStyle.terrain) warn('terrain', 'The globe is drawn without 3D terrain in this version: the terrain shows when the map is zoomed past the globe, or with the projection "mercator".');
         if (this.rawStyle.layers?.some((l: {type: string}) => l.type === 'fill-extrusion')) warn('extrusion', 'Layers of the type "fill-extrusion" are not drawn on the globe in this version: they show when the map is zoomed past the globe, or with the projection "mercator".');
+        if (this.rawStyle.layers?.some((l: {type: string}) => l.type === 'custom')) warn('custom', 'Custom layers (the type "custom") are not drawn on the globe: they show when the map is zoomed past the globe, or with the projection "mercator".');
     }
     /**
      * Sets the projection of the style, as MapLibre GL JS does: `{type: 'globe'}`, `{type: 'mercator'}`, or `null` for

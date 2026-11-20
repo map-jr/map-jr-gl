@@ -157,7 +157,9 @@ fill it, set the CSS `background` of the container, the element that you pass to
   writes one warning per map. With `globe`, they show past zoom 12, where the map is flat. The styles of
   `https://styles.map-jr.org/1/` have a `fill-extrusion` layer for buildings, so a globe with one of them writes that
   warning. The warning changes nothing else, and the buildings show past zoom 12.
-- A custom layer of the MapLibre compat entry is drawn on the globe too, with no warning.
+- The map draws no custom layers (the type `custom` of `@map-jr/map-jr-gl/maplibre-compat`) on the globe, also while
+  it changes between the globe and Mercator, because a custom layer draws in Mercator. It writes one warning per map.
+  Custom layers show past zoom 12 and with the projection `mercator`.
 - With a `sky` in the style, the map draws the atmosphere around the globe, as MapLibre GL JS does. It draws no sky
   gradient and no fog on the globe. The property `atmosphere-blend` of `sky` sets the opacity of the atmosphere.
 - A label whose anchor turns to the far side of the globe is hidden. A `Marker` of the MapLibre compat entry on the far
