@@ -2,12 +2,13 @@
 // a phone is never asked for many WebGL contexts at once.
 //
 // Each example file is complete: it does not import from another file of the gallery, so a visitor can copy it.
-// The code of a row is in files, one for each form (examples/<row>.js for the main API, .vue, .jsx, and
-// .compat.js for the API of MapLibre GL JS). The .js and .compat.js files are module scripts for a page with
-// <div id="map">, and they run as they are written there. The live map of a row runs the file of the selected form
-// through the harness (examples/harness/mount.js), when the harness can run that form: so for the main API form and
-// the MapLibre form, the code that a visitor reads is the code that runs. The Vue and React forms are shown as text, and the live
-// map runs the main API form; `node test/examples.mjs` checks that they compile.
+// The code of a row is in files, one for each form: examples/<row>.js for the main API, .compat.js for the API of
+// MapLibre GL JS, .vue, .nuxt.vue, .jsx, .svelte, and .html for the element <map-jr>. The .js and .compat.js files
+// are module scripts for a page with <div id="map">, and they run as they are written there. The live map of a row
+// runs the file of the selected form through the harness (examples/harness/mount.js), when the harness can run that
+// form: for the main API, MapLibre, Svelte and <map-jr> forms, the code that a visitor reads is the code that runs.
+// The Vue, Nuxt and React forms are shown as text, and the live map runs the main API form; `node test/examples.mjs`
+// checks that they compile.
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 import {configure} from '@map-jr/map-jr-gl';
 import {markers, view, addImages, addMarkers} from '../demo/markers.mjs';
@@ -18,7 +19,7 @@ import {FORMS, runs, mount, button as addButton} from '../examples/harness/mount
 // (The style of the server row: the one that scripts/site.mjs gives to the server renderer. The row compares the server
 // renders with this live map, so both draw the same hand-built style of demo/style.mjs and not elevation-zero.)
 const STYLE = makeStyle('https://tiles.openfreemap.org/planet', '<a href="https://openfreemap.org">OpenFreeMap</a> <a href="https://www.openmaptiles.org/">© OpenMapTiles</a> Data from <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>');
-const texts = import.meta.glob('../examples/*.{js,vue,jsx}', {query: '?raw', import: 'default', eager: true});
+const texts = import.meta.glob(['../examples/*.{js,vue,jsx,svelte,html}', '!../examples/run.html'], {query: '?raw', import: 'default', eager: true});
 const query = new URLSearchParams(location.search), stored = (() => { try { return localStorage.getItem('map-jr-code'); } catch { return null; } })();
 let form = FORMS.some(f => f[0] === query.get('code')) ? query.get('code') : FORMS.some(f => f[0] === stored) ? stored : 'core';
 // Add ?renderer=main (or worker) to the address to choose where the maps are drawn.

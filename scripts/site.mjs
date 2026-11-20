@@ -8,7 +8,7 @@ import {renderToSVG, renderToImage} from '../dist/server.js';
 import makeStyle from '../demo/style.mjs';
 import {markers, images, view, asSpec} from '../demo/markers.mjs';
 import {shield} from '../demo/shields.mjs';
-import {alias, examplesAsFunctions} from '../site/vite.config.mjs';
+import {alias, examplesAsFunctions, svelteExamples} from '../site/vite.config.mjs';
 
 // The "server rendering" row shows pictures made here, at build time, with no browser involved.
 // Each request (the TileJSON, and the tiles, sprites and glyphs of the renders) is tried three times, 2 s apart: the
@@ -49,7 +49,7 @@ console.log(`server pictures: SVG ${(svg.length / 1024).toFixed(0)} KB, JPEG ${(
 await build({configFile: fileURLToPath(new URL('../site/vite.config.mjs', import.meta.url)), logLevel: 'warn'}); // (fileURLToPath: a URL's pathname is not a path on Windows)
 // The harness page (examples/run.html?id=&form=) runs one form of one example. It is a build of its own, into
 // site-dist/examples/, because its page is not in the folder of the gallery.
-await build({configFile: false, root: fileURLToPath(new URL('../examples', import.meta.url)), base: './', resolve: {alias}, plugins: [examplesAsFunctions], logLevel: 'warn',
+await build({configFile: false, root: fileURLToPath(new URL('../examples', import.meta.url)), base: './', resolve: {alias}, plugins: [examplesAsFunctions, svelteExamples], logLevel: 'warn',
     build: {outDir: fileURLToPath(new URL('../site-dist/examples', import.meta.url)), emptyOutDir: true, target: 'es2022', rollupOptions: {input: fileURLToPath(new URL('../examples/run.html', import.meta.url))}}});
 
 // The benchmark page (demo/bench.html) is part of the site, at bench/: a phone or a device farm can open it with no

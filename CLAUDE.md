@@ -115,8 +115,8 @@ A change is done when all of these that apply are true. The pull request templat
 4. **Documentation.** `docs/api.md` for the main API; `docs/vue.md` / `docs/react.md` / `docs/svelte.md` for
    adapters; `docs/maplibre-compatibility.md` when behaviour differs from MapLibre (including anything accepted
    that has no effect). If the README shows it, update the README.
-5. **Examples.** A gallery row has four forms in `site/examples/` (`.js`, `.vue`, `.jsx`, `.compat.js`), each
-   complete on its own. Comments in examples must stay true: reread them when behaviour changes.
+5. **Examples.** A gallery row has seven forms in `examples/` (`.js`, `.compat.js`, `.vue`, `.nuxt.vue`, `.jsx`,
+   `.svelte`, and `.html` for `<map-jr>`), each complete on its own. Comments in examples must stay true: reread them when behaviour changes.
 6. **Mistakes get a message.** A mistake by the user gets a message that says what is wrong and what to write
    instead. An option or method that is accepted but has no effect warns once. The library does not ignore input
    in silence.
