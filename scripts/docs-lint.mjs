@@ -182,7 +182,10 @@ if (!format) {
             // line on the desktop only when that token alone is longer than 80 columns.
             for (const [form, width, strictForm] of [['phone', format.phoneWidth, false], ['desktop', format.desktopWidth, true]]) {
                 const lines = (await format.formatCode(code, language, width) ?? code).split('\n');
+                // On a phone, a line of code that Prettier leaves long cannot be broken; only a comment can.
+                const prettier = !strictForm && await format.prettierFormat(code, language, width) !== undefined;
                 for (const line of lines) {
+                    if (prettier && !/^\s*(\/\/|\/\*|\*|<!--|#)/.test(line)) continue;
                     const why = format.overflowOf(line, width, strictForm);
                     if (!why) continue;
                     tooLong++;

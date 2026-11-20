@@ -12,13 +12,13 @@ export const phoneWidth = 38;
 // The style of the code in docs/.
 const options = {tabWidth: 2, singleQuote: true, bracketSpacing: false, arrowParens: 'avoid', trailingComma: 'all'};
 
-const parsers = {js: 'babel', javascript: 'babel', jsx: 'babel', ts: 'typescript', typescript: 'typescript', tsx: 'typescript', vue: 'vue'};
+const parsers = {js: 'babel', javascript: 'babel', jsx: 'babel', ts: 'typescript', typescript: 'typescript', tsx: 'typescript', vue: 'vue', css: 'css', html: 'html', json: 'json'};
 
 // The parser of Prettier for the language of a fence, or undefined when Prettier does not format that language.
 export const parserOf = language => parsers[language?.toLowerCase()];
 
 // The kinds of comment of each language whose comments the site re-flows.
-const commentKinds = {js: 'js', javascript: 'js', jsx: 'js', ts: 'js', typescript: 'js', tsx: 'js', css: 'js', vue: 'vue', html: 'html', sh: 'sh', bash: 'sh', shell: 'sh', shellscript: 'sh', text: 'text', txt: 'text'};
+const commentKinds = {js: 'js', javascript: 'js', jsx: 'js', ts: 'js', typescript: 'js', tsx: 'js', css: 'js', vue: 'vue', html: 'html', sh: 'sh', bash: 'sh', shell: 'sh', shellscript: 'sh', text: 'text', txt: 'text', json: 'js'};
 
 // Whether the site formats the fences of the language.
 export const formatsLanguage = language => !!commentKinds[language?.toLowerCase()];
@@ -115,7 +115,8 @@ export async function formatCode(code, language, width) {
     return reflowComments(await prettierFormat(code, language, width) ?? code, language, width);
 }
 
-async function prettierFormat(code, language, width) {
+// The code formatted by Prettier alone, or undefined when Prettier does not format the language or cannot parse it.
+export async function prettierFormat(code, language, width) {
     const parser = parserOf(language);
     if (!parser) return undefined;
     const format = async text => (await prettier.format(text, {...options, parser, printWidth: width})).replace(/\n$/, '');
@@ -131,7 +132,7 @@ async function prettierFormat(code, language, width) {
     try {
         const out = await format(code.split('\n').map(line => starts(line) ? declare + line : line).join('\n'));
         // Prettier ends each declaration with ";", which the signatures of the page do not have.
-        const ends = /;\s*$/m.test(code);
+        const ends = /^\S.*;\s*$/m.test(code);
         return out.split('\n').map(line => line.startsWith(declare) ? line.slice(declare.length) : line)
             .map(line => ends || /^\s/.test(line) && !/^\)/.test(line.trim()) ? line : line.replace(/;$/, '')).join('\n');
     } catch {
