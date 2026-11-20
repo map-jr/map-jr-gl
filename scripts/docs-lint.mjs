@@ -4,7 +4,9 @@
 // It also checks that each relative link of a page leads to a file, and each anchor to a heading of that file.
 //
 // It warns about a JavaScript, TypeScript, Vue or JSX fence that is not formatted as Prettier formats it at 80
-// columns (website/build/format.mjs, #1250); `--fix` formats those fences. These warnings do not fail `--strict`. The
+// columns (website/build/format.mjs, #1250); `--fix` formats those fences. These warnings do not fail `--strict`. It
+// reports as an error a line of code that is longer than 38 columns on a phone or 80 on the desktop, unless one
+// string, URL or regular expression makes it long (on the desktop, only when that token alone is longer). The
 // check needs the packages of website/ (`pnpm install` in website/) and is left out without them.
 //
 // Usage: node scripts/docs-lint.mjs [--strict] [--fix] [file.md ...]
@@ -99,7 +101,7 @@ for (const file of files) {
                 // The fragments under "Variations" of a recipe and the copied files of an example block are not checked.
                 const text = code.join('\n');
                 if ((lang === 'js' || lang === 'ts') && !copied && section !== 'Variations') {
-                    if (/\b(?:createMap|new Map)\(/.test(text) && !/^\s*import\s/m.test(text)) find(fenceLine, 'this block creates a map and has no import. Every block is complete: add the import.');
+                    if (/\b(?:createMap|new Map)\(/.test(text) && !/^\s*import\s|\bawait import\(/m.test(text)) find(fenceLine, 'this block creates a map and has no import. Every block is complete: add the import.');
                     if (/\bmap\.\w/.test(text) && !/\b(?:const|let|var)\s+map\b/.test(text)) find(fenceLine, 'this block uses `map` and does not declare it. Every block is complete: create the map in the block.');
                 }
             }
@@ -175,12 +177,16 @@ if (!format) {
             const [whole, indent, language, info, body] = match;
             const code = body.split('\n').map(line => line.slice(indent.length)).join('\n').replace(/\n$/, '');
             const at = text.slice(0, match.index).split('\n').length;
-            // The phone form fits 38 columns. What the formatter cannot break (a string, a URL, a long name) is the
-            // writer's to shorten.
-            const phone = await format.formatCode(code, language, format.phoneWidth) ?? code;
-            for (const line of phone.split('\n').filter(line => line.length > format.phoneWidth)) {
-                tooLong++;
-                console.log(`${path.relative(root, file)}:${at}: error: the ${language || 'plain'} fence has a line of ${line.length} columns on a phone, more than ${format.phoneWidth}. Shorten it: ${line.trim()}`);
+            // Both forms fit their width. A line on a phone may be longer only because of one string or URL, and a
+            // line on the desktop only when that token alone is longer than 80 columns.
+            for (const [form, width, strictForm] of [['phone', format.phoneWidth, false], ['desktop', format.desktopWidth, true]]) {
+                const lines = (await format.formatCode(code, language, width) ?? code).split('\n');
+                for (const line of lines) {
+                    const why = format.overflowOf(line, width, strictForm);
+                    if (!why) continue;
+                    tooLong++;
+                    console.log(`${path.relative(root, file)}:${at}: error: the ${language || 'plain'} fence has ${why} on the ${form}. Shorten it: ${line.trim()}`);
+                }
             }
             const formatted = await format.formatCode(code, language, format.desktopWidth);
             if (formatted === undefined || formatted === code) continue;
@@ -194,9 +200,8 @@ if (!format) {
     if (fix) console.log(`docs-lint: formatted ${unformatted} fences.`);
     else if (unformatted) console.log(`docs-lint: ${unformatted} fences are not formatted (warnings). node scripts/docs-lint.mjs --fix formats them.`);
     if (tooLong) {
-        // These do not fail the run yet: the package names and the URLs of the styles are longer than the phone width,
-        // and the owner decides the width (#1250).
-        console.log(`docs-lint: ${tooLong} lines of code are longer than ${format.phoneWidth} columns on a phone (errors; they fail only with --strict).`);
+        // They fail only with --strict until the pages of the open pull requests of 2026-11-20 are formatted (#1250).
+        console.log(`docs-lint: ${tooLong} lines of code are too long for the phone or the desktop (errors; --strict fails).`);
         if (strict) process.exitCode = 1;
     }
 }

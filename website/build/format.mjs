@@ -18,7 +18,7 @@ const parsers = {js: 'babel', javascript: 'babel', jsx: 'babel', ts: 'typescript
 export const parserOf = language => parsers[language?.toLowerCase()];
 
 // The kinds of comment of each language whose comments the site re-flows.
-const commentKinds = {js: 'js', javascript: 'js', jsx: 'js', ts: 'js', typescript: 'js', tsx: 'js', css: 'js', vue: 'vue', html: 'html', sh: 'sh', bash: 'sh', shell: 'sh', shellscript: 'sh'};
+const commentKinds = {js: 'js', javascript: 'js', jsx: 'js', ts: 'js', typescript: 'js', tsx: 'js', css: 'js', vue: 'vue', html: 'html', sh: 'sh', bash: 'sh', shell: 'sh', shellscript: 'sh', text: 'text', txt: 'text'};
 
 // Whether the site formats the fences of the language.
 export const formatsLanguage = language => !!commentKinds[language?.toLowerCase()];
@@ -69,7 +69,7 @@ function commentLines(indent, marker, text, width) {
 export function reflowComments(code, language, width) {
     const base = commentKinds[language?.toLowerCase()];
     if (!base) return code;
-    let inScript = false;
+    let inScript = false, inComment = false;
     return code.split('\n').flatMap(line => {
         let kind = base;
         if (base === 'vue') {
@@ -77,8 +77,20 @@ export function reflowComments(code, language, width) {
             kind = inScript || /^\s*<style\b/.test(line) ? 'js' : 'html';
             if (/^\s*<\/script>/.test(line)) inScript = false;
         }
+        // A line inside an HTML comment that spans several lines wraps as text.
+        const wasInComment = inComment;
+        if (kind === 'html' || kind === 'vue') {
+            if (inComment && line.includes('-->')) inComment = false;
+            else if (!inComment && line.includes('<!--') && !line.includes('-->')) inComment = true;
+        }
         if (line.length <= width) return [line];
+        if (wasInComment && inComment) {
+            const indent = line.match(/^\s*/)[0];
+            return wrapWords(line.trim(), width - indent.length).map(part => indent + part);
+        }
         const indent = line.match(/^\s*/)[0];
+        // A plain text fence, such as a message of the library, wraps at the spaces.
+        if (kind === 'text') return wrapWords(line.trim(), width - indent.length).map(part => indent + part);
         // A line inside a block comment that starts with "*".
         const star = /^(\s*)\* (.*)$/.exec(line);
         if (kind === 'js' && star && !star[2].includes('*/')) return commentLines(star[1], '*', star[2], width);
@@ -113,9 +125,11 @@ async function prettierFormat(code, language, width) {
     // A list of signatures, as in the reference pages ("decodePNG(bytes: Uint8Array): Promise<…>"), parses as
     // declarations of functions.
     const declare = 'declare function ';
-    if (parser !== 'typescript' || !code.split('\n').every(line => !line.trim() || /^[A-Za-z_$][\w$]*\s*[(<]/.test(line))) return undefined;
+    // A signature can span several lines: the lines after its first are indented or start with ")" or "}".
+    const starts = line => /^[A-Za-z_$][\w$]*\s*[(<]/.test(line);
+    if (parser !== 'typescript' || !starts(code) || !code.split('\n').every(line => !line.trim() || starts(line) || /^[\s)}]/.test(line))) return undefined;
     try {
-        const out = await format(code.split('\n').map(line => line.trim() ? declare + line : line).join('\n'));
+        const out = await format(code.split('\n').map(line => starts(line) ? declare + line : line).join('\n'));
         // Prettier ends each declaration with ";", which the signatures of the page do not have.
         const ends = /;\s*$/m.test(code);
         return out.split('\n').map(line => line.startsWith(declare) ? line.slice(declare.length) : line)
@@ -123,4 +137,17 @@ async function prettierFormat(code, language, width) {
     } catch {
         return undefined;
     }
+}
+
+// The tokens that no formatter can break: a string, a quoted attribute, a URL, or a regular expression.
+const tokenPattern = /'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|`[^`]*`|https?:\/\/\S+|\/(?:[^/\\\n]|\\.)+\/[dgimsuy]*/g;
+
+// Why a line of a form is too long for `width`, or undefined when it fits or when its overflow comes from one token
+// that no formatter can break (#1250). On the desktop form (`strict`), such a token is accepted only when it is itself
+// longer than the width.
+export function overflowOf(line, width, strict = false) {
+    if (line.length <= width) return undefined;
+    const longest = Math.max(0, ...[...line.matchAll(tokenPattern)].map(match => match[0].length));
+    if (strict ? longest > width : longest && line.length - longest <= width) return undefined;
+    return `a line of ${line.length} columns, more than ${width}`;
 }

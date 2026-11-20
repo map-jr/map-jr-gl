@@ -265,19 +265,26 @@ try {
     for (const path of [installPage, '/reference/server']) {
         for (const width of [1440, 390]) {
             const {page, problems, close} = await open(path, {width, height: width === 390 ? 844 : 900});
-            const found = await page.locator('main pre').evaluateAll(blocks => {
+            // At 390 a block may scroll only for a line that one string, URL or regular expression makes long
+            // (build/format.mjs, overflowOf); at 1440 no block scrolls.
+            const found = await page.locator('main pre').evaluateAll((blocks, [phone, tokens]) => {
                 const shown = blocks.filter(block => block.checkVisibility());
                 const wrapped = [], wide = [];
                 let lines = 0, scrolling = 0;
+                const unbreakable = text => {
+                    const longest = Math.max(0, ...[...text.matchAll(new RegExp(tokens, 'g'))].map(match => match[0].length));
+                    return longest > 0 && text.length - longest <= 38;
+                };
                 for (const block of shown) {
-                    // A block is wider than its column, or its code is wider than the block.
                     if (block.offsetWidth > block.parentElement.clientWidth || block.getBoundingClientRect().right > document.documentElement.clientWidth) wide.push('block: ' + block.textContent.slice(0, 30));
+                    const blockLines = [...block.querySelectorAll('.line')];
                     if (block.scrollWidth > block.clientWidth) {
                         scrolling++;
-                        const longest = [...block.querySelectorAll('.line')].sort((a, b) => b.textContent.length - a.textContent.length)[0];
-                        wide.push(`code ${block.scrollWidth - block.clientWidth} px: ${longest?.textContent.trim().slice(0, 50)}`);
+                        const widest = blockLines.reduce((a, b) => b.textContent.length > a.textContent.length ? b : a, blockLines[0]);
+                        const text = widest?.textContent ?? '';
+                        if (!phone || !unbreakable(text)) wide.push(`code ${block.scrollWidth - block.clientWidth} px: ${text.trim().slice(0, 50)}`);
                     }
-                    for (const line of block.querySelectorAll('.line')) {
+                    for (const line of blockLines) {
                         lines++;
                         const range = document.createRange();
                         range.selectNodeContents(line);
@@ -286,12 +293,12 @@ try {
                 }
                 const forms = {phone: shown.filter(block => block.closest('.code-phone')).length, desktop: shown.filter(block => block.closest('.code-desktop')).length};
                 return {blocks: shown.length, lines, scrolling, wrapped, wide, forms};
-            });
+            }, [width === 390, String.raw`'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|\x60[^\x60]*\x60|https?:\/\/\S+|\/(?:[^/\\\n]|\\.)+\/[dgimsuy]*`]);
             check(`code at ${width} on ${path}: no code line wraps`, found.lines > 0 && found.wrapped.length === 0, `${found.wrapped.length} of ${found.lines} lines wrap ${found.wrapped.join(' | ')}`);
-            check(`code at ${width} on ${path}: no code block is wider than its column`, found.wide.length === 0, `${found.blocks} blocks, ${found.scrolling} scroll sideways; ${found.wide.join(' | ')}`);
+            check(`code at ${width} on ${path}: no code block scrolls${width === 390 ? ' except for a string or URL' : ''}`, found.wide.length === 0, `${found.blocks} blocks, ${found.scrolling} scroll sideways; ${found.wide.join(' | ')}`);
             check(`code at ${width} on ${path}: the ${width === 390 ? 'phone' : 'desktop'} form shows`, width === 390 ? found.forms.phone > 0 && found.forms.desktop === 0 : found.forms.desktop > 0 && found.forms.phone === 0, JSON.stringify(found.forms));
-            // /reference/server has a table of options that is wider than a phone, which is not a code block.
-            if (path === installPage) check(`code at ${width} on ${path}: no horizontal scroll of the page`, await overflow(page) <= 0, (await overflow(page)) + ' px');
+            // The table of options of /reference/server is wider than a phone (#1221).
+            if (path === installPage || width === 1440) check(`code at ${width} on ${path}: no horizontal scroll of the page`, await overflow(page) <= 0, (await overflow(page)) + ' px');
             check(`code at ${width} on ${path}: no failed request and no error`, problems.length === 0, problems.join(' | '));
             if (screenshots && path === '/reference/server') {
                 await page.locator('main pre:visible').filter({hasText: 'ImageDecoder'}).first().scrollIntoViewIfNeeded();
