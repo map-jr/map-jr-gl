@@ -21,7 +21,7 @@ concurrency:
 jobs:
   site:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -47,9 +47,15 @@ jobs:
           retention-days: 14
       # The check does not wait for the map of the home page, which needs the style and the tiles of other hosts. It
       # checks the table of contents on a phone also in WebKit.
+      # A stalled download from the Ubuntu mirror hung this step (#1328). apt gets its own network timeouts and retries, so
+      # that a stalled download fails and is retried inside apt. A timeout around the install is not used: it kills pnpm
+      # but not the root apt-get, which then keeps the dpkg lock and fails the next attempt.
       - name: Install Chromium and WebKit
+        timeout-minutes: 19
         working-directory: website
-        run: for i in 1 2 3; do pnpm exec playwright install --with-deps chromium webkit && exit 0; echo "::warning::the install failed (attempt $i of 3)"; sleep 30; done; exit 1
+        run: |
+          echo 'Acquire::http::Timeout "30"; Acquire::https::Timeout "30"; Acquire::Retries "5";' | sudo tee /etc/apt/apt.conf.d/99ci-timeouts
+          for i in 1 2 3; do pnpm exec playwright install --with-deps chromium webkit && exit 0; echo "::warning::the install failed (attempt $i of 3)"; sleep 30; done; exit 1
       - run: pnpm check --no-map
         working-directory: website
       - name: Deploy to Cloudflare
