@@ -16,19 +16,15 @@ that set attributes and properties and listen for events.
 
 ## Define the element
 
-Loading `dist/element.js` with a `<script>` defines `<map-jr>`, unless the page has defined that name already. The
-entry also exports the class `MapJrElement`. With a bundler, import the class and use it: the package declares that
-its files have no side effects, so a bundler can remove `import '@map-jr/map-jr-gl/element'`, which imports no name,
-and the element is then never defined.
+Importing the entry defines `<map-jr>`, unless the page has defined that name already. With a bundler, import it
+once, for example in the main file of the application.
 
 ```js
-import {MapJrElement} from '@map-jr/map-jr-gl/element';
-
-if (!customElements.get('map-jr')) customElements.define('map-jr', MapJrElement);
+import '@map-jr/map-jr-gl/element';
 ```
 
-To define the element under another name, define a subclass: `customElements.define('city-map', class extends
-MapJrElement {});`.
+The entry also exports the class `MapJrElement`. To define the element under another name, define a subclass:
+`customElements.define('city-map', class extends MapJrElement {});`.
 
 The element is the container of the map, so give it a height in CSS. It has `display: block` from a rule with no
 specificity, and a rule of the page overrides it. The element has no shadow root, so the CSS of the page styles the
@@ -109,10 +105,8 @@ The element applies all changes of one task to the map with one `update`, in the
 page sets right after it creates the element are part of the first description.
 
 ```js
-import {MapJrElement} from '@map-jr/map-jr-gl/element';
+import '@map-jr/map-jr-gl/element';
 import {navigation} from '@map-jr/map-jr-gl/controls';
-
-if (!customElements.get('map-jr')) customElements.define('map-jr', MapJrElement);
 
 const el = document.createElement('map-jr');
 el.style.height = '400px';
