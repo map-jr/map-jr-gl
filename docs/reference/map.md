@@ -34,7 +34,7 @@ map.moveTo({zoom: 15, duration: 500});
 | [`watchSource`](#watchsource) | `(sourceId: string, at: FeaturePlace \| undefined, options: `[`SourceOptions`](#sourceoptions)`, listener: (features: `[`QueriedFeature`](types.md#queriedfeature)`[]) => void) => () => void` | Calls `listener` with the result of `querySource` now and again each time that the result changes. |
 | [`setFeatureState`](#setfeaturestate) | `(target: {source: string; sourceLayer?: string; id: number \| string}, state: Record<string, unknown>) => void` | Merges `state` into the feature state of one feature, which `feature-state` expressions read. |
 | [`removeFeatureState`](#removefeaturestate) | `(target: {source: string; sourceLayer?: string; id?: number \| string}, key?: string) => void` | Removes one key of the feature state of a feature, or its whole state when `key` is left out. |
-| [`queryElevation`](#queryelevation) | `(at: Position \| {x: number; y: number}) => Promise<number \| null>` | Returns the height of the ground at a position (`[lng, lat]`) or a point of the screen, from the terrain source. |
+| [`queryElevation`](#queryelevation) | `(at: Position \| {x: number; y: number}) => Promise<number \| null>` | Returns the height of the ground at a position (`[lng, lat]`) or a point of the screen, read from the elevation tiles of the first `raster-dem` source of the style. |
 | [`toBlob`](#toblob) | `(type?: string, quality?: number) => Promise<Blob>` | Returns the map as an image once the map is idle, in the size of the canvas in device pixels. |
 | [`clusterExpansionZoom`](#clusterexpansionzoom) | `(sourceId: string, clusterId: number) => Promise<number>` | Returns the zoom level at which a cluster of a GeoJSON source with `cluster: true` divides. |
 | [`clusterChildren`](#clusterchildren) | `(sourceId: string, clusterId: number) => Promise<`[`ClusterFeature`](types.md#clusterfeature)`[]>` | Returns the clusters and points that a cluster divides into at the next zoom level. |
@@ -190,7 +190,10 @@ closing animation of a popup, and it does not call `onClose`. After `destroy`:
 
 <!-- ref:MapInstance.queryFeatures:start -->
 ```ts
-queryFeatures(at?: FeaturePlace | FeatureOptions, options?: FeatureOptions): Promise<RenderedFeature[]>
+queryFeatures(
+  at?: FeaturePlace | FeatureOptions,
+  options?: FeatureOptions,
+): Promise<RenderedFeature[]>
 ```
 
 | Name | Type | Default | Description |
@@ -259,7 +262,11 @@ for the other rejections.
 
 <!-- ref:MapInstance.querySource:start -->
 ```ts
-querySource(sourceId: string, at?: FeaturePlace | SourceOptions, options?: SourceOptions): Promise<QueriedFeature[]>
+querySource(
+  sourceId: string,
+  at?: FeaturePlace | SourceOptions,
+  options?: SourceOptions,
+): Promise<QueriedFeature[]>
 ```
 
 | Name | Type | Default | Description |
@@ -317,7 +324,11 @@ effect: `layers`, `radius` for a box or the view, and `geometry: false` or `zoom
 
 <!-- ref:MapInstance.watchFeatures:start -->
 ```ts
-watchFeatures(at: FeaturePlace | undefined, options: FeatureOptions, listener: (features: RenderedFeature[]) => void): () => void
+watchFeatures(
+  at: FeaturePlace | undefined,
+  options: FeatureOptions,
+  listener: (features: RenderedFeature[]) => void,
+): () => void
 ```
 
 | Name | Type | Default | Description |
@@ -356,7 +367,12 @@ changes.
 
 <!-- ref:MapInstance.watchSource:start -->
 ```ts
-watchSource(sourceId: string, at: FeaturePlace | undefined, options: SourceOptions, listener: (features: QueriedFeature[]) => void): () => void
+watchSource(
+  sourceId: string,
+  at: FeaturePlace | undefined,
+  options: SourceOptions,
+  listener: (features: QueriedFeature[]) => void,
+): () => void
 ```
 
 | Name | Type | Default | Description |
@@ -392,7 +408,10 @@ const stop = map.watchSource(
 
 <!-- ref:MapInstance.setFeatureState:start -->
 ```ts
-setFeatureState(target: {source: string; sourceLayer?: string; id: number | string}, state: Record<string, unknown>): void
+setFeatureState(
+  target: {source: string; sourceLayer?: string; id: number | string},
+  state: Record<string, unknown>,
+): void
 ```
 
 | Name | Type | Default | Description |
@@ -474,7 +493,10 @@ const map = createMap('map', {
 
 <!-- ref:MapInstance.removeFeatureState:start -->
 ```ts
-removeFeatureState(target: {source: string; sourceLayer?: string; id?: number | string}, key?: string): void
+removeFeatureState(
+  target: {source: string; sourceLayer?: string; id?: number | string},
+  key?: string,
+): void
 ```
 
 | Name | Type | Default | Description |
@@ -491,18 +513,20 @@ removeFeatureState(target: {source: string; sourceLayer?: string; id?: number | 
 
 <!-- ref:MapInstance.queryElevation:start -->
 ```ts
-queryElevation(at: Position | {x: number; y: number}): Promise<number | null>
+queryElevation(
+  at: Position | {x: number; y: number},
+): Promise<number | null>
 ```
 
 | Name | Type | Default | Description |
 |---|---|---|---|
 | `at` **required** | `Position \| {x: number; y: number}` | | A position, `[lng, lat]`, or a point of the screen, `{x, y}` in CSS pixels. |
 
-**Returns:** `Promise<number \| null>`. A promise of the height in metres multiplied by the `exaggeration` of the terrain, or of `null` where there is no elevation data.
+**Returns:** `Promise<number \| null>`. A promise of the height in metres, or of `null` when the tile has no data. It rejects when the style has no `raster-dem` source.
 <!-- ref:MapInstance.queryElevation:end -->
 
-The terrain source is the source of `terrain` of the description or of the style. The promise resolves to `null`
-where the map has no elevation data.
+The height is in metres, and the `exaggeration` of the terrain does not change it. The promise resolves to `null`
+when the elevation tile has no data, and it rejects when the style has no `raster-dem` source.
 
 ## `toBlob`
 
@@ -541,7 +565,10 @@ document.body.append(
 
 <!-- ref:MapInstance.clusterExpansionZoom:start -->
 ```ts
-clusterExpansionZoom(sourceId: string, clusterId: number): Promise<number>
+clusterExpansionZoom(
+  sourceId: string,
+  clusterId: number,
+): Promise<number>
 ```
 
 | Name | Type | Default | Description |
@@ -599,7 +626,10 @@ const map = createMap('map', {
 
 <!-- ref:MapInstance.clusterChildren:start -->
 ```ts
-clusterChildren(sourceId: string, clusterId: number): Promise<ClusterFeature[]>
+clusterChildren(
+  sourceId: string,
+  clusterId: number,
+): Promise<ClusterFeature[]>
 ```
 
 | Name | Type | Default | Description |
@@ -614,7 +644,11 @@ clusterChildren(sourceId: string, clusterId: number): Promise<ClusterFeature[]>
 
 <!-- ref:MapInstance.clusterLeaves:start -->
 ```ts
-clusterLeaves(sourceId: string, clusterId: number, options?: {limit?: number; offset?: number}): Promise<ClusterFeature[]>
+clusterLeaves(
+  sourceId: string,
+  clusterId: number,
+  options?: {limit?: number; offset?: number},
+): Promise<ClusterFeature[]>
 ```
 
 | Name | Type | Default | Description |
@@ -706,7 +740,10 @@ The options of a flight, for `fly`, as in `flyTo` of MapLibre GL JS:
 
 <!-- ref:MapInstance.fitBounds:start -->
 ```ts
-fitBounds(bounds: Bounds, options?: Omit<MoveToOptions, 'bounds' | 'center' | 'zoom'>): void
+fitBounds(
+  bounds: Bounds,
+  options?: Omit<MoveToOptions, 'bounds' | 'center' | 'zoom'>,
+): void
 ```
 
 | Name | Type | Default | Description |
@@ -749,7 +786,10 @@ unproject(point: {x: number; y: number}): [number, number]
 
 <!-- ref:MapInstance.overlay:start -->
 ```ts
-overlay(element: HTMLElement, options: OverlayOptions): MapOverlay
+overlay(
+  element: HTMLElement,
+  options: OverlayOptions,
+): MapOverlay
 ```
 
 | Name | Type | Default | Description |

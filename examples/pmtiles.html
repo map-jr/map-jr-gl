@@ -16,13 +16,15 @@
 <script type="module">
   import '@map-jr/map-jr-gl/element';
 
+  const boundaryFile = 'https://tiles.whatismyelevation.com/2025-state-county-zip.pmtiles';
+
   const map = document.getElementById('map');
   const readout = document.getElementById('readout');
   map.attribution = {compact: true};
   // Additions to the style: a PMTiles file on a usual file host. The map reads the tiles that it needs with HTTP
   // range requests.
   map.sources = {
-    admin: {type: 'vector', url: 'pmtiles://https://tiles.whatismyelevation.com/2025-state-county-zip.pmtiles'},
+    admin: {type: 'vector', url: 'pmtiles://' + boundaryFile},
   };
   map.layers = [
     {id: 'zips', type: 'line', source: 'admin', 'source-layer': 'zip_features', minzoom: 9,
@@ -32,7 +34,7 @@
   ];
 
   map.addEventListener('map-click', async event => {
-    const features = await map.map.querySource('admin', event.detail.point);
+    const features = await map.map.querySource('admin', event.detail.lngLat);
     readout.textContent = features.map(f => f.properties.NAMELSAD ?? f.properties.NAME ?? f.properties.GEOID20).filter(Boolean).join(' · ') || 'Nothing here';
   });
 </script>

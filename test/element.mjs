@@ -67,8 +67,12 @@ const pages = {
   window.Element_ = MapJrElement;
   window.ready = true;
 </script>`,
+    // The boolean attributes of #1258: `no-` for a field that is on by default, and `attribution-compact`.
+    '/booleans': `<map-jr id="a" map-style="/style.json" center="-74.0065,40.7085" zoom="14" no-interactive antialias no-attribution style="width:400px;height:300px"></map-jr>
+<map-jr id="b" map-style="/style.json" center="-74.0065,40.7085" zoom="14" attribution-compact style="width:400px;height:300px"></map-jr>
+<script type="module">await import('/dist/element.js'); window.ready = true;</script>`,
     // The development build: attributes that cannot be read, and an element without a style.
-    '/dev': `<map-jr id="a" map-style="/style.json" center="Berlin" zoom="near" hover-state="false" projection="flat" style="width:400px;height:300px"></map-jr>
+    '/dev': `<map-jr id="a" map-style="/style.json" center="Berlin" zoom="near" hover-state="false" no-attribution="false" projection="flat" style="width:400px;height:300px"></map-jr>
 <map-jr id="b" style="width:400px;height:300px"></map-jr>
 <script type="module">await import('/dist/element.dev.js'); window.ready = true;</script>`,
 };
@@ -108,7 +112,7 @@ try {
     ssrPage = await renderElement(description, {width: 600, height: 400, attributes: {id: 'a', 'data-x': 'a"b', style: 'width:600px;height:400px'}});
     const open_ = ssrPage.slice(0, ssrPage.indexOf('>'));
     check('server: renderElement writes the attributes of the description, escaped, and leaves out objects and false booleans',
-        open_ === `<map-jr map-style="${origin}/style.json" center="-74.0065,40.7085" zoom="14" interactive-layers="dot water" projection="globe" hover-state id="a" data-x="a&quot;b" style="display:block;position:relative;overflow:hidden;width:600px;height:400px"`, open_);
+        open_ === `<map-jr map-style="${origin}/style.json" center="-74.0065,40.7085" zoom="14" interactive-layers="dot water" projection="globe" hover-state no-attribution id="a" data-x="a&quot;b" style="display:block;position:relative;overflow:hidden;width:600px;height:400px"`, open_);
     check('server: the first view is the children of the element, with the layers and the data of the description', /<map-jr[^>]*><svg[^>]*data-map-jr-ssr/.test(ssrPage) && ssrPage.includes('#123456') && ssrPage.endsWith('</map-jr>'), `${(ssrPage.length / 1024).toFixed(0)} KB`);
     let thrown = '';
     try { await renderElement(description, {attributes: {'on click': 'x'}}); } catch (e) { thrown = e.message; }
@@ -265,15 +269,32 @@ try {
         errors.none.events === 0 && errors.none.console === 2 && errors.once.events === 1 && errors.once.console === 2 && errors.removed.events === 0 && errors.removed.console === 2 && errors.prevent.events === 2 && errors.prevent.console === 0, JSON.stringify(errors));
     await page.close();
 
-    // 6. The development build warns once for each attribute that cannot be read, and for an element with no style.
+    // 6. The boolean attributes of #1258.
+    const written = (await renderElement({style: 'http://127.0.0.1:1/s.json', interactive: false, antialias: true, attribution: {compact: true}}, {timeout: 1}).catch(() => '')).match(/^<map-jr[^>]*/)?.[0] ?? '';
+    check('server: renderElement writes no-interactive, antialias and attribution-compact', written.includes(' no-interactive') && written.includes(' antialias') && written.includes(' attribution-compact') && !written.includes('no-attribution'), written);
+    page = await open('/booleans');
+    await page.waitForFunction(() => ['a', 'b'].every(id => document.getElementById(id).map?.state.get().loaded), null, {timeout: 60000});
+    const fields = await page.evaluate(() => ['a', 'b'].map(id => { const d = document.getElementById(id).map.description; return {interactive: d.interactive, antialias: d.antialias, attribution: d.attribution}; }));
+    check('browser: no-interactive, antialias, no-attribution and attribution-compact set their fields', JSON.stringify(fields) === JSON.stringify([{interactive: false, antialias: true, attribution: false}, {attribution: {compact: true}}]), JSON.stringify(fields));
+    const centerOf = () => page.evaluate(() => JSON.stringify(document.getElementById('a').map.state.get().view.center));
+    const c0 = await centerOf();
+    await page.mouse.move(200, 150); await page.mouse.down(); await page.mouse.move(300, 220, {steps: 8}); await page.mouse.up();
+    await page.waitForTimeout(300);
+    check('browser: no-interactive turns the gestures off: a drag does not move the map', c0 === await centerOf(), c0);
+    await page.close();
+
+    // 7. The development build warns once for each attribute that cannot be read, and for an element with no style.
     page = await open('/dev');
     await page.waitForFunction(() => document.getElementById('a').map?.state.get().loaded, null, {timeout: 60000});
     await page.evaluate(() => { const a = document.getElementById('a'); a.cursor = 'wait'; a.removeAttribute('map-style'); setTimeout(() => { a.maxZoom = 18; }, 100); });
     await page.waitForTimeout(1500);
     const warned = page.warnings.filter(w => w.includes('<map-jr>'));
-    const expected = ['center="Berlin"', 'zoom="near"', 'hover-state="false"', 'projection="flat"'];
+    const expected = ['center="Berlin"', 'zoom="near"', 'projection="flat"'];
     check('browser, development build: each attribute that cannot be read warns once, with what to write', expected.every(a => warned.filter(w => w.includes(`the attribute ${a} cannot be read`)).length === 1) && warned.some(w => w.includes('zoom="near" cannot be read, so the element ignores it. Write a number')),
         JSON.stringify(warned.map(w => w.slice(0, 110))));
+    check('browser, development build: hover-state="false" and no-attribution="false" warn once each with the form to write, and the attributes take effect',
+        warned.filter(w => w.includes('hover-state="false" switches the option on all the same') && w.includes('remove hover-state.')).length === 1 && warned.filter(w => w.includes('no-attribution="false" switches the option off')).length === 1
+        && !warned.some(w => w.includes('hover-state="false" cannot be read')) && await page.evaluate(() => { const d = document.getElementById('a').map.description; return d.hoverState === true && d.attribution === false; }), JSON.stringify(warned.map(w => w.slice(0, 110))));
     check('browser, development build: an element with no style warns', warned.filter(w => w.includes('the element has no style')).length === 1, '');
     check('browser, development build: removing map-style from an element with a map warns once, and the map keeps its style', warned.filter(w => w.includes('"map-style" was removed')).length === 1 && await page.evaluate(() => document.getElementById('a').map.description.style === '/style.json'), '');
     await page.close();

@@ -17,7 +17,10 @@ const map = createMap('map', {
 
 <!-- ref:MainExports.createMap:start -->
 ```ts
-createMap(container: HTMLElement | string, spec: MapDescription): MapInstance
+createMap(
+  container: HTMLElement | string,
+  spec: MapDescription,
+): MapInstance
 ```
 
 | Name | Type | Default | Description |

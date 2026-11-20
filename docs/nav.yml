@@ -26,7 +26,16 @@ sections:
       - server-rendering.md
   - title: Recipes
     folder: recipes
-    pages: []
+    pages:
+      - basic.md
+      - reactive.md
+      - markers.md
+      - draggable.md
+      - images.md
+      - query.md
+      - pmtiles.md
+      - terrain.md
+      - globe.md
   - title: Reference
     folder: reference
     pages:

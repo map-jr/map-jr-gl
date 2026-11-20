@@ -3,6 +3,7 @@
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';
+const boundaryFile = 'https://tiles.whatismyelevation.com/2025-state-county-zip.pmtiles';
 
 const map = new Map({container: 'map', style, center: [-74.1, 40.75], zoom: 9.2, attributionControl: {compact: true}});
 const readout = document.createElement('p');
@@ -10,7 +11,7 @@ map.getContainer().after(readout);
 
 map.on('load', () => {
   // A PMTiles file on a usual file host. You do not need the pmtiles library or `addProtocol`.
-  map.addSource('admin', {type: 'vector', url: 'pmtiles://https://tiles.whatismyelevation.com/2025-state-county-zip.pmtiles'});
+  map.addSource('admin', {type: 'vector', url: 'pmtiles://' + boundaryFile});
   map.addLayer({id: 'zips', type: 'line', source: 'admin', 'source-layer': 'zip_features', minzoom: 9,
     paint: {'line-color': '#7c66dc', 'line-width': 0.6, 'line-opacity': 0.6}});
   map.addLayer({id: 'counties', type: 'line', source: 'admin', 'source-layer': 'county_features',

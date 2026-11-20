@@ -19,10 +19,10 @@ map.getContainer().append(box);
 let clicks = 0;
 map.on('click', async e => {
   const click = ++clicks;
-  // `querySource` is an addition of this library. It reads the tile data of one source within
+  // `querySource` is an addition of this library. It reads the features of one source within
   // 8 pixels of the click, and it also finds features that the style does not draw. "openmaptiles" is the id of
   // the vector source in this style. (`queryRenderedFeatures` of MapLibre GL JS is there also.)
-  // A query fails when its tile cannot be loaded: the answer is then `null` here.
+  // When the tile does not load, the query rejects, and the example shows a text instead.
   const features = await map.querySource('openmaptiles', e.lngLat, {radius: 8}).catch(() => null);
   // An earlier click can get its answer after a later click. Only the last click is shown.
   if (click !== clicks) return;
