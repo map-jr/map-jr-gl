@@ -198,7 +198,7 @@ library" names a member that MapLibre GL JS does not have.
 | `setMaxPitch` | `(p?: number \| null \| undefined) => Map` | Sets the largest pitch that the user can reach, in degrees. |
 | `getMaxPitch` | `() => number` | Returns the largest pitch that the user can reach, in degrees. |
 | `getMinPitch` | `() => number` | Returns the smallest pitch that the user can reach, in degrees. |
-| `setMinPitch` | `(p?: number) => Map` | Sets the smallest pitch that the user can reach, in degrees. |
+| `setMinPitch` | `(p?: number \| null \| undefined) => Map` | Sets the smallest pitch that the user can reach, in degrees. |
 | `setMaxBounds` | `(bounds?: LngLatBoundsInput \| null \| undefined) => Map` | Keeps the map center inside a box (`[[west, south], [east, north]]`), or lifts the restriction with `null`. |
 | `getMaxBounds` | `() => {getWest: () => number; getSouth: () => number; getEast: () => number; getNorth: () => number; toArray: () => number[][]} \| null` | Returns the box that the map center stays in, or `null` when there is none. |
 | `getPixelRatio` | `() => number` | Returns the ratio of device pixels to CSS pixels that the canvas uses. |

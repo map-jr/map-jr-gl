@@ -1137,10 +1137,15 @@ export class Map {
     /** Returns the smallest pitch that the user can reach, in degrees. */
     getMinPitch() { return this.tr.minPitch; }
     /**
-     * Sets the smallest pitch that the user can reach, in degrees. The value is limited to between 0 and the largest pitch, where MapLibre GL JS throws an error.
-     * @param p The pitch. `undefined` restores the default, 0.
+     * Sets the smallest pitch that the user can reach, in degrees, from 0 to the largest pitch.
+     * @param p The pitch. `undefined` or `null` restores the default, 0.
      */
-    setMinPitch(p = 0) { this.tr.minPitch = Math.max(0, Math.min(p, this.tr.maxPitch)); return this.limits(); }
+    setMinPitch(p?: number | null) {
+        p ??= 0;
+        if (!(p >= 0 && p <= this.tr.maxPitch)) throw new Error(`[map-jr-gl] setMinPitch(${p}): the pitch must be between 0 and the largest pitch, ${this.tr.maxPitch}. Pass a value in that range, or raise the largest pitch with setMaxPitch first.`);
+        this.tr.minPitch = p;
+        return this.limits();
+    }
     /** Keeps the map center inside a box (`[[west, south], [east, north]]`), or lifts the restriction with `null`. */
     setMaxBounds(bounds?: LngLatBoundsInput | null) {
         // The corners are kept as given (as MapLibre keeps them): a west edge east of the east edge crosses the antimeridian.
