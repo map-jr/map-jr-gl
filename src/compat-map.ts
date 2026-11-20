@@ -686,8 +686,8 @@ The options `speed`, `curve` and `linear` have no effect and warn once.
         const source = {minzoom, maxzoom, tiles, ...spec, ...more, id, setTiles: (t: string[]) => set('tiles', t, Array.isArray(t) && t.every(x => typeof x === 'string')), setUrl: (u: string) => set('url', u, typeof u === 'string'), reload: () => { this.refreshTiles(id); }};
         return source;
     }
-    /** Returns the `font-faces` of the style, or `{}` when the style has none, where MapLibre GL JS returns `null`. */
-    getFontFaces(): Record<string, unknown> { return this.rawStyle?.['font-faces'] ?? {}; }
+    /** Returns the `font-faces` of the style, or `null` when the style has none. */
+    getFontFaces(): Record<string, unknown> | null { return this.rawStyle?.['font-faces'] || null; }
     /** Replaces the `font-faces` of the style, or removes them with `null`. */
     setFontFaces(faces: Record<string, unknown> | null) { return this.editStyle(s => { if (faces) s['font-faces'] = faces; else delete s['font-faces']; }); }
     /** Merges `state` into the feature state of one feature. A feature without an `id` changes nothing and warns once, where MapLibre GL JS fires `error`. */
