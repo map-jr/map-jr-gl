@@ -7,6 +7,7 @@ import {createRequire} from 'node:module';
 import {readFileSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {apiBlock} from './report.mjs';
+import {compatSurface} from './compat-surface.mjs';
 
 const root = path.resolve(import.meta.dirname, '../..');
 /**
@@ -46,6 +47,25 @@ if (process.argv.includes('--write')) {
     const file = path.join(root, 'docs/maplibre-compatibility.md'), doc = readFileSync(file, 'utf8');
     const block = apiBlock({have, accepted, extra, missing, notCounted});
     writeFileSync(file, doc.replace(/<!-- api:start -->[\s\S]*<!-- api:end -->/, block));
+}
+// The values (classes, functions and constants) that `maplibre-gl` exports and the entry does not. A name that the
+// entry exports as a type only is listed apart: it compiles in a type position, and fails as a value.
+const dtsText = readFileSync(dts, 'utf8'), exportList = dtsText.slice(dtsText.lastIndexOf('export {'));
+const theirValues = new Set([
+    ...[...dtsText.matchAll(/^export declare (?:abstract )?(?:class|function|const|let|var) (\w+)/gm)].map(m => m[1]),
+    ...[...exportList.matchAll(/[{,]\s*(?!type )(?:[\w$]+ as )?(\w+)(?=\s*[,}])/g)].map(m => m[1]),
+]);
+const surface = compatSurface(root), absent = [...theirValues].filter(n => !surface.values.has(n)).sort();
+const typeOnly = absent.filter(n => surface.types.has(n)), none = absent.filter(n => !surface.types.has(n));
+console.log(`Exports of maplibre-gl that the entry lacks: ${absent.length} (${typeOnly.length} of them are types here)`);
+if (process.argv.includes('--write')) {
+    const file = path.join(root, 'docs/reference/maplibre-compat.md'), doc = readFileSync(file, 'utf8');
+    const list = names => names.map(n => '`' + n + '`').join(', ');
+    const block = ['<!-- exports:start -->',
+        `**A type here, not a value** (${typeOnly.length}): ${list(typeOnly)}.`, '',
+        `**Not exported** (${none.length}): ${list(none)}.`, '',
+        '<!-- exports:end -->'].join('\n');
+    writeFileSync(file, doc.replace(/<!-- exports:start -->[\s\S]*<!-- exports:end -->/, block));
 }
 const min = +(process.argv.find(a => a.startsWith('--min='))?.slice(6) ?? 0);
 if (have.length < min) { console.error(`FAIL: expected at least ${min}`); process.exit(1); }
