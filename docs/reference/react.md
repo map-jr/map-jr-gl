@@ -18,10 +18,22 @@ export function OfficeMap() {
         initialView={{center: [-74.0065, 40.7085], zoom: 15}}
         controls={[navigation()]}
         interactiveLayers={['poi_z14', 'poi_z15', 'poi_z16']}
-        onClick={event => setSelected(event.features[0] ? {lngLat: event.lngLat, name: event.features[0].properties.name} : null)}
+        onClick={event =>
+          setSelected(
+            event.features[0]
+              ? {lngLat: event.lngLat, name: event.features[0].properties.name}
+              : null,
+          )
+        }
       >
         {selected && (
-          <MapOverlay lngLat={selected.lngLat} popup onClose={() => setSelected(null)}>{selected.name}</MapOverlay>
+          <MapOverlay
+            lngLat={selected.lngLat}
+            popup
+            onClose={() => setSelected(null)}
+          >
+            {selected.name}
+          </MapOverlay>
         )}
       </MapJr>
     </div>
@@ -69,17 +81,39 @@ import {MapJr} from '@map-jr/map-jr-gl/react';
 
 export function Stations({stations}) {
   // A new FeatureCollection only when the list of stations changes.
-  const data = useMemo(() => ({stations: {type: 'FeatureCollection', features: stations.map(s => ({
-    type: 'Feature', properties: {name: s.name}, geometry: {type: 'Point', coordinates: s.lngLat},
-  }))}}), [stations]);
+  const data = useMemo(
+    () => ({
+      stations: {
+        type: 'FeatureCollection',
+        features: stations.map(s => ({
+          type: 'Feature',
+          properties: {name: s.name},
+          geometry: {type: 'Point', coordinates: s.lngLat},
+        })),
+      },
+    }),
+    [stations],
+  );
   return (
     <div style={{height: 400}}>
       <MapJr
         mapStyle="https://styles.map-jr.org/1/elevation-zero.json"
         initialView={{center: [-74.0065, 40.7085], zoom: 12}}
-        sources={{stations: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}}}
+        sources={{
+          stations: {
+            type: 'geojson',
+            data: {type: 'FeatureCollection', features: []},
+          },
+        }}
         data={data}
-        layers={[{id: 'stations', type: 'circle', source: 'stations', paint: {'circle-radius': 6, 'circle-color': '#d6453d'}}]}
+        layers={[
+          {
+            id: 'stations',
+            type: 'circle',
+            source: 'stations',
+            paint: {'circle-radius': 6, 'circle-color': '#d6453d'},
+          },
+        ]}
       />
     </div>
   );
@@ -117,8 +151,22 @@ export function ZoomToCity() {
   const map = useRef(null);
   return (
     <div style={{height: 400}}>
-      <button onClick={() => map.current?.moveTo({center: [-74.0065, 40.7085], zoom: 11, duration: 800})}>New York</button>
-      <MapJr ref={map} mapStyle="https://styles.map-jr.org/1/elevation-zero.json" initialView={{center: [0, 20], zoom: 1}} />
+      <button
+        onClick={() =>
+          map.current?.moveTo({
+            center: [-74.0065, 40.7085],
+            zoom: 11,
+            duration: 800,
+          })
+        }
+      >
+        New York
+      </button>
+      <MapJr
+        ref={map}
+        mapStyle="https://styles.map-jr.org/1/elevation-zero.json"
+        initialView={{center: [0, 20], zoom: 1}}
+      />
     </div>
   );
 }
@@ -158,7 +206,8 @@ import {renderFirstView} from '@map-jr/map-jr-gl/server';
 import {ServerMap} from './server-map.jsx';
 
 export default async function Page() {
-  // The same style and view as the map in the browser, at the size that the map has on most screens.
+  // The same style and view as the map in the browser, at the size that the map
+  // has on most screens.
   const firstView = await renderFirstView({
     style: 'https://styles.map-jr.org/1/elevation-zero.json',
     center: [-74.0065, 40.7085],
@@ -190,9 +239,21 @@ export function HomePicker() {
   const [home, setHome] = useState([-74.0065, 40.7085]);
   return (
     <div style={{height: 400}}>
-      <MapJr mapStyle="https://styles.map-jr.org/1/elevation-zero.json" initialView={{center: home, zoom: 14}}>
+      <MapJr
+        mapStyle="https://styles.map-jr.org/1/elevation-zero.json"
+        initialView={{center: home, zoom: 14}}
+      >
         <MapOverlay lngLat={home} anchor="bottom" draggable onDragEnd={setHome}>
-          <div style={{background: '#d6453d', color: '#fff', padding: '4px 8px', borderRadius: 4}}>Home</div>
+          <div
+            style={{
+              background: '#d6453d',
+              color: '#fff',
+              padding: '4px 8px',
+              borderRadius: 4,
+            }}
+          >
+            Home
+          </div>
         </MapOverlay>
       </MapJr>
     </div>
@@ -233,10 +294,21 @@ feature of the layer: from the property of the feature with the name of the para
 ```jsx
 import {MapJr, MapImage} from '@map-jr/map-jr-gl/react';
 
-const places = {type: 'FeatureCollection', features: [
-  {type: 'Feature', properties: {color: '#d6453d'}, geometry: {type: 'Point', coordinates: [-74.006, 40.7128]}},
-  {type: 'Feature', properties: {color: '#2f7fd1'}, geometry: {type: 'Point', coordinates: [-73.9857, 40.7484]}},
-]};
+const places = {
+  type: 'FeatureCollection',
+  features: [
+    {
+      type: 'Feature',
+      properties: {color: '#d6453d'},
+      geometry: {type: 'Point', coordinates: [-74.006, 40.7128]},
+    },
+    {
+      type: 'Feature',
+      properties: {color: '#2f7fd1'},
+      geometry: {type: 'Point', coordinates: [-73.9857, 40.7484]},
+    },
+  ],
+};
 
 export function Places() {
   return (
@@ -245,10 +317,29 @@ export function Places() {
         mapStyle="https://styles.map-jr.org/1/elevation-zero.json"
         initialView={{center: [-73.996, 40.73], zoom: 11.5}}
         sources={{places: {type: 'geojson', data: places}}}
-        layers={[{id: 'places', type: 'symbol', source: 'places', layout: {'icon-image': 'pin', 'icon-anchor': 'bottom', 'icon-allow-overlap': true}}]}
+        layers={[
+          {
+            id: 'places',
+            type: 'symbol',
+            source: 'places',
+            layout: {
+              'icon-image': 'pin',
+              'icon-anchor': 'bottom',
+              'icon-allow-overlap': true,
+            },
+          },
+        ]}
       >
         <MapImage name="pin" params={['color']}>
-          {({color}) => <svg viewBox="0 0 24 31"><path fill={color} stroke="#fff" d="M12 30C12 30 2 17 2 11a10 10 0 0 1 20 0c0 6-10 19-10 19z"/></svg>}
+          {({color}) => (
+            <svg viewBox="0 0 24 31">
+              <path
+                fill={color}
+                stroke="#fff"
+                d="M12 30C12 30 2 17 2 11a10 10 0 0 1 20 0c0 6-10 19-10 19z"
+              />
+            </svg>
+          )}
         </MapImage>
       </MapJr>
     </div>
@@ -275,7 +366,10 @@ component inside `MapJr`.
 ## `useMapState`
 
 ```ts
-useMapState<T>(select: (state: MapState) => T, map?: MapInstance | null): T | undefined
+useMapState<T>(
+  select: (state: MapState) => T,
+  map?: MapInstance | null,
+): T | undefined
 ```
 
 Returns a part of the [state of the map](state.md#mapstate), and renders the component again when that part
@@ -300,7 +394,10 @@ function ZoomButton() {
   const map = useMap();
   const zoom = useMapState(state => state.view.zoom);
   return (
-    <button style={{position: 'absolute', top: 8, left: 8}} onClick={() => map?.moveTo({zoom: zoom + 1, duration: 300})}>
+    <button
+      style={{position: 'absolute', top: 8, left: 8}}
+      onClick={() => map?.moveTo({zoom: zoom + 1, duration: 300})}
+    >
       Zoom {zoom?.toFixed(1)}
     </button>
   );
@@ -309,7 +406,10 @@ function ZoomButton() {
 export function ZoomMap() {
   return (
     <div style={{height: 400}}>
-      <MapJr mapStyle="https://styles.map-jr.org/1/elevation-zero.json" initialView={{center: [-74.0065, 40.7085], zoom: 12}}>
+      <MapJr
+        mapStyle="https://styles.map-jr.org/1/elevation-zero.json"
+        initialView={{center: [-74.0065, 40.7085], zoom: 12}}
+      >
         <ZoomButton />
       </MapJr>
     </div>

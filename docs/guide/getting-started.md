@@ -48,8 +48,12 @@ const map = createMap('map', {
   initialView: {center: [-74.0065, 40.7085], zoom: 13.6},
 });
 
-// The state of the map is a store. The function runs after each change of the zoom, and not at the start.
-map.state.subscribe(state => state.view.zoom, zoom => console.log(zoom));
+// The state of the map is a store. The function runs after each change of the
+// zoom, and not at the start.
+map.state.subscribe(
+  state => state.view.zoom,
+  zoom => console.log(zoom),
+);
 ```
 
 **MapLibre compat**
@@ -80,7 +84,10 @@ const view = ref({center: [-74.0065, 40.7085], zoom: 13.6});
 
 <template>
   <div style="height: 400px">
-    <MapJr map-style="https://styles.map-jr.org/1/elevation-zero.json" v-model:view="view" />
+    <MapJr
+      map-style="https://styles.map-jr.org/1/elevation-zero.json"
+      v-model:view="view"
+    />
   </div>
   <p>Zoom {{ view.zoom.toFixed(1) }}</p>
 </template>
@@ -89,7 +96,10 @@ const view = ref({center: [-74.0065, 40.7085], zoom: 13.6});
 **Nuxt**
 
 ```vue [Nuxt]
-<!-- nuxt.config.ts has: export default defineNuxtConfig({modules: ['@map-jr/map-jr-gl/nuxt']}) -->
+<!--
+  nuxt.config.ts has: export default defineNuxtConfig({modules:
+  ['@map-jr/map-jr-gl/nuxt']})
+-->
 <script setup>
 // Nuxt imports `ref` itself, and the module registers `MapJr`.
 const view = ref({center: [-74.0065, 40.7085], zoom: 13.6});
@@ -97,7 +107,10 @@ const view = ref({center: [-74.0065, 40.7085], zoom: 13.6});
 
 <template>
   <div style="height: 400px">
-    <MapJr map-style="https://styles.map-jr.org/1/elevation-zero.json" v-model:view="view" />
+    <MapJr
+      map-style="https://styles.map-jr.org/1/elevation-zero.json"
+      v-model:view="view"
+    />
   </div>
   <p>Zoom {{ view.zoom.toFixed(1) }}</p>
 </template>
@@ -114,7 +127,11 @@ export function CityMap() {
   return (
     <>
       <div style={{height: 400}}>
-        <MapJr mapStyle="https://styles.map-jr.org/1/elevation-zero.json" view={view} onViewChange={setView} />
+        <MapJr
+          mapStyle="https://styles.map-jr.org/1/elevation-zero.json"
+          view={view}
+          onViewChange={setView}
+        />
       </div>
       <p>Zoom {view.zoom.toFixed(1)}</p>
     </>
@@ -130,9 +147,16 @@ export function CityMap() {
 
   const description = {
     style: 'https://styles.map-jr.org/1/elevation-zero.json',
-    initialView: {center: [-74.0065, 40.7085], zoom: 13.6},
+    initialView: {
+      center: [-74.0065, 40.7085],
+      zoom: 13.6,
+    },
   };
-  const ready = map => map.state.subscribe(state => state.view.zoom, zoom => console.log(zoom));
+  const ready = map =>
+    map.state.subscribe(
+      state => state.view.zoom,
+      zoom => console.log(zoom),
+    );
 </script>
 
 <div use:mapJr={{description, ready}} style="height: 400px"></div>
@@ -141,9 +165,15 @@ export function CityMap() {
 **`<map-jr>`**
 
 ```html [<map-jr>]
-<!-- The main file of the application has: import '@map-jr/map-jr-gl/element'; -->
-<map-jr map-style="https://styles.map-jr.org/1/elevation-zero.json" center="-74.0065,40.7085" zoom="13.6"
-        style="height: 400px"></map-jr>
+<!--
+  The main file of the application has: import '@map-jr/map-jr-gl/element';
+-->
+<map-jr
+  map-style="https://styles.map-jr.org/1/elevation-zero.json"
+  center="-74.0065,40.7085"
+  zoom="13.6"
+  style="height: 400px"
+></map-jr>
 ```
 
 The map shows the streets around City Hall, and the console or the paragraph shows the zoom when the user zooms.
@@ -183,10 +213,12 @@ the page file and the worker file must come from the same version. Replace `0.9.
 
 ```html [Main API]
 <!doctype html>
-<meta charset="utf-8">
+<meta charset="utf-8" />
 <div id="map" style="height: 400px"></div>
 <script type="module">
-  import {createMap} from 'https://unpkg.com/@map-jr/map-jr-gl@0.9.0/dist/map-jr-gl.js';
+  const {createMap} = await import(
+    'https://unpkg.com/@map-jr/map-jr-gl@0.9.0/dist/map-jr-gl.js'
+  );
 
   createMap('map', {
     style: 'https://styles.map-jr.org/1/elevation-zero.json',
@@ -199,12 +231,18 @@ the page file and the worker file must come from the same version. Replace `0.9.
 
 ```html [MapLibre compat]
 <!doctype html>
-<meta charset="utf-8">
+<meta charset="utf-8" />
 <div id="map" style="height: 400px"></div>
 <script type="module">
-  import {Map} from 'https://unpkg.com/@map-jr/map-jr-gl@0.9.0/dist/map-jr-gl-maplibre-compat.js';
+  const cdn = 'https://unpkg.com/@map-jr/map-jr-gl@0.9.0/dist/';
+  const {Map} = await import(cdn + 'map-jr-gl-maplibre-compat.js');
 
-  new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json', center: [-74.0065, 40.7085], zoom: 13.6});
+  new Map({
+    container: 'map',
+    style: 'https://styles.map-jr.org/1/elevation-zero.json',
+    center: [-74.0065, 40.7085],
+    zoom: 13.6,
+  });
 </script>
 ```
 
@@ -212,11 +250,18 @@ the page file and the worker file must come from the same version. Replace `0.9.
 
 ```html [<map-jr>]
 <!doctype html>
-<meta charset="utf-8">
-<script type="module" src="https://unpkg.com/@map-jr/map-jr-gl@0.9.0/dist/element.js"></script>
+<meta charset="utf-8" />
+<script
+  type="module"
+  src="https://unpkg.com/@map-jr/map-jr-gl@0.9.0/dist/element.js"
+></script>
 
-<map-jr map-style="https://styles.map-jr.org/1/elevation-zero.json" center="-74.0065,40.7085" zoom="13.6"
-        style="height: 400px"></map-jr>
+<map-jr
+  map-style="https://styles.map-jr.org/1/elevation-zero.json"
+  center="-74.0065,40.7085"
+  zoom="13.6"
+  style="height: 400px"
+></map-jr>
 ```
 
 A page with a Content Security Policy needs the CDN in `script-src` and `blob:` in `worker-src`. See
@@ -238,7 +283,8 @@ if (supported()) {
     initialView: {center: [-74.0065, 40.7085], zoom: 13.6},
   });
 } else {
-  container.textContent = 'This browser cannot show the map. The office is at 1 Centre Street, New York.';
+  container.textContent =
+    'This browser cannot show the map. The office is at 1 Centre Street, NYC.';
 }
 ```
 

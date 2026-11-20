@@ -2,7 +2,8 @@
 //
 // Usage: node scripts/check.mjs [--no-map] [--screenshots=<path and start of the file names>]
 //   --no-map       does not wait for the map of the home page. The map needs the style and the tiles of other hosts.
-//   --screenshots  also saves pictures of the home page and of one docs page: light and dark, 1440 and 390 wide.
+//   --screenshots  also saves pictures of the home page and of one docs page (light and dark), of the install block
+//                  and of the code of /reference/server, each 1440 and 390 wide.
 import {readFileSync} from 'node:fs';
 import {chromium} from 'playwright';
 import {serve} from './serve.mjs';
@@ -257,6 +258,56 @@ try {
         check(`reference table at ${width}: a link to a row shows it below the header`, top > 0 && top < 300, `${Math.round(top)} px`);
         check(`reference table at ${width}: no failed request and no error`, problems.length === 0, problems.join(' | '));
         await close();
+    }
+
+    // The forms of the code (#1250): a code line never wraps, the phone form shows below 48rem and the desktop form
+    // from it, and no code block or its code is wider than its column (scrollWidth <= clientWidth).
+    for (const path of [installPage, '/reference/server']) {
+        for (const width of [1440, 390]) {
+            const {page, problems, close} = await open(path, {width, height: width === 390 ? 844 : 900});
+            // At 390 a block may scroll only for a line that one string, URL or regular expression makes long
+            // (build/format.mjs, overflowOf); at 1440 no block scrolls.
+            const found = await page.locator('main pre').evaluateAll((blocks, [phone, tokens]) => {
+                const shown = blocks.filter(block => block.checkVisibility());
+                const wrapped = [], wide = [];
+                let lines = 0, scrolling = 0;
+                const unbreakable = text => {
+                    const longest = Math.max(0, ...[...text.matchAll(new RegExp(tokens, 'g'))].map(match => match[0].length));
+                    return longest > 0 && text.length - longest <= 38;
+                };
+                for (const block of shown) {
+                    if (block.offsetWidth > block.parentElement.clientWidth || block.getBoundingClientRect().right > document.documentElement.clientWidth) wide.push('block: ' + block.textContent.slice(0, 30));
+                    const blockLines = [...block.querySelectorAll('.line')];
+                    if (block.scrollWidth > block.clientWidth) {
+                        scrolling++;
+                        const widest = blockLines.reduce((a, b) => b.textContent.length > a.textContent.length ? b : a, blockLines[0]);
+                        const text = widest?.textContent ?? '';
+                        if (!phone || !unbreakable(text)) wide.push(`code ${block.scrollWidth - block.clientWidth} px: ${text.trim().slice(0, 50)}`);
+                    }
+                    for (const line of blockLines) {
+                        lines++;
+                        const range = document.createRange();
+                        range.selectNodeContents(line);
+                        if (new Set([...range.getClientRects()].map(rect => Math.round(rect.top))).size > 1) wrapped.push(line.textContent.slice(0, 30));
+                    }
+                }
+                const forms = {phone: shown.filter(block => block.closest('.code-phone')).length, desktop: shown.filter(block => block.closest('.code-desktop')).length};
+                return {blocks: shown.length, lines, scrolling, wrapped, wide, forms};
+            }, [width === 390, String.raw`'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|\x60[^\x60]*\x60|https?:\/\/\S+|\/(?:[^/\\\n]|\\.)+\/[dgimsuy]*`]);
+            check(`code at ${width} on ${path}: no code line wraps`, found.lines > 0 && found.wrapped.length === 0, `${found.wrapped.length} of ${found.lines} lines wrap ${found.wrapped.join(' | ')}`);
+            check(`code at ${width} on ${path}: no code block scrolls${width === 390 ? ' except for a string or URL' : ''}`, found.wide.length === 0, `${found.blocks} blocks, ${found.scrolling} scroll sideways; ${found.wide.join(' | ')}`);
+            check(`code at ${width} on ${path}: the ${width === 390 ? 'phone' : 'desktop'} form shows`, width === 390 ? found.forms.phone > 0 && found.forms.desktop === 0 : found.forms.desktop > 0 && found.forms.phone === 0, JSON.stringify(found.forms));
+            // The table of options of /reference/server is wider than a phone (#1221).
+            if (path === installPage || width === 1440) check(`code at ${width} on ${path}: no horizontal scroll of the page`, await overflow(page) <= 0, (await overflow(page)) + ' px');
+            check(`code at ${width} on ${path}: no failed request and no error`, problems.length === 0, problems.join(' | '));
+            if (screenshots && path === '/reference/server') {
+                await page.locator('main pre:visible').filter({hasText: 'ImageDecoder'}).first().scrollIntoViewIfNeeded();
+                const file = `${screenshots}-server-code-${width}.png`;
+                await page.screenshot({path: file});
+                console.log('screenshot', file);
+            }
+            await close();
+        }
     }
 
     // The table of contents (useTocActive) marks exactly one entry: the section that the reader is in (#1251).

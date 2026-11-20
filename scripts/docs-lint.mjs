@@ -3,8 +3,14 @@
 // with 0. With `--strict` it exits with 1 when there is a finding. Give paths to check only those files.
 // It also checks that each relative link of a page leads to a file, and each anchor to a heading of that file.
 //
-// Usage: node scripts/docs-lint.mjs [--strict] [file.md ...]
-import {existsSync, readFileSync, readdirSync} from 'node:fs';
+// It warns about a JavaScript, TypeScript, Vue or JSX fence that is not formatted as Prettier formats it at 80
+// columns (website/build/format.mjs, #1250); `--fix` formats those fences. These warnings do not fail `--strict`. It
+// reports as an error a line of code that is longer than 38 columns on a phone or 80 on the desktop, unless one
+// string, URL or regular expression makes it long (on the desktop, only when that token alone is longer). The
+// check needs the packages of website/ (`pnpm install` in website/) and is left out without them.
+//
+// Usage: node scripts/docs-lint.mjs [--strict] [--fix] [file.md ...]
+import {existsSync, readFileSync, readdirSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 
@@ -96,7 +102,7 @@ for (const file of files) {
                 // reference block are not checked.
                 const text = code.join('\n');
                 if ((lang === 'js' || lang === 'ts') && !copied && section !== 'Variations') {
-                    if (/\b(?:createMap|new Map)\(/.test(text) && !/^\s*import\s/m.test(text)) find(fenceLine, 'this block creates a map and has no import. Every block is complete: add the import.');
+                    if (/\b(?:createMap|new Map)\(/.test(text) && !/^\s*import\s|\bawait import\(/m.test(text)) find(fenceLine, 'this block creates a map and has no import. Every block is complete: add the import.');
                     if (/\bmap\.\w/.test(text) && !/\b(?:const|let|var)\s+map\b/.test(text)) find(fenceLine, 'this block uses `map` and does not declare it. Every block is complete: create the map in the block.');
                 }
             }
@@ -156,4 +162,50 @@ for (const file of files) {
 
 for (const f of findings) console.log(f);
 console.log(`docs-lint: ${files.length} pages, ${findings.length} findings${strict ? '' : ' (warnings only; --strict fails)'}`);
+
+// The format of the code.
+const format = await import('../website/build/format.mjs').catch(() => undefined);
+if (!format) {
+    console.log('docs-lint: the format of the code is not checked, because website/ has no packages. Run pnpm install in website/.');
+} else {
+    const fix = args.includes('--fix');
+    let unformatted = 0, tooLong = 0;
+    for (const file of files) {
+        const text = readFileSync(file, 'utf8');
+        const parts = [];
+        let last = 0;
+        for (const match of text.matchAll(/^( *)```([\w-]*)([^\n]*)\n([\s\S]*?)^\1```$/gm)) {
+            const [whole, indent, language, info, body] = match;
+            const code = body.split('\n').map(line => line.slice(indent.length)).join('\n').replace(/\n$/, '');
+            const at = text.slice(0, match.index).split('\n').length;
+            // Both forms fit their width. A line on a phone may be longer only because of one string or URL, and a
+            // line on the desktop only when that token alone is longer than 80 columns.
+            for (const [form, width, strictForm] of [['phone', format.phoneWidth, false], ['desktop', format.desktopWidth, true]]) {
+                const lines = (await format.formatCode(code, language, width) ?? code).split('\n');
+                // On a phone, a line of code that Prettier leaves long cannot be broken; only a comment can.
+                const prettier = !strictForm && await format.prettierFormat(code, language, width) !== undefined;
+                for (const line of lines) {
+                    if (prettier && !/^\s*(\/\/|\/\*|\*|<!--|#)/.test(line)) continue;
+                    const why = format.overflowOf(line, width, strictForm);
+                    if (!why) continue;
+                    tooLong++;
+                    console.log(`${path.relative(root, file)}:${at}: error: the ${language || 'plain'} fence has ${why} on the ${form}. Shorten it: ${line.trim()}`);
+                }
+            }
+            const formatted = await format.formatCode(code, language, format.desktopWidth);
+            if (formatted === undefined || formatted === code) continue;
+            unformatted++;
+            if (!fix) console.log(`${path.relative(root, file)}:${at}: warning: the ${language} fence is not formatted at ${format.desktopWidth} columns.`);
+            parts.push(text.slice(last, match.index), `${indent}\`\`\`${language}${info}\n${formatted.split('\n').map(line => line ? indent + line : line).join('\n')}\n${indent}\`\`\``);
+            last = match.index + whole.length;
+        }
+        if (fix && parts.length) writeFileSync(file, parts.join('') + text.slice(last));
+    }
+    if (fix) console.log(`docs-lint: formatted ${unformatted} fences.`);
+    else if (unformatted) console.log(`docs-lint: ${unformatted} fences are not formatted (warnings). node scripts/docs-lint.mjs --fix formats them.`);
+    if (tooLong) {
+        console.log(`docs-lint: ${tooLong} lines of code are too long for the phone or the desktop (errors).`);
+        process.exitCode = 1;
+    }
+}
 if (strict && findings.length) process.exit(1);

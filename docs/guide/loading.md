@@ -76,7 +76,10 @@ worker file twice into the build, and the map requests only one of the two.
 ```js
 import {configure, createMap} from '@map-jr/map-jr-gl';
 
-configure({createWorker: () => new Worker(new URL('@map-jr/map-jr-gl/worker', import.meta.url))});
+configure({
+  createWorker: () =>
+    new Worker(new URL('@map-jr/map-jr-gl/worker', import.meta.url)),
+});
 
 // The page has <div id="map" style="height: 400px"></div>.
 const map = createMap('map', {
@@ -98,8 +101,10 @@ The page script and the worker file must come from the same version of the packa
 a worker file of another version, the map writes this warning once and still starts, but it can fail later:
 
 ```text
-[map-jr-gl] The worker file is version 0.1.0 and the page file is version 0.2.0. Serve map-jr-gl-worker.js from the
-same version of the package as the page file, or pass `workerUrl` with the URL of that file.
+[map-jr-gl] The worker file is version 0.1.0 and the page file is version 0.2.0.
+Serve map-jr-gl-worker.js from the
+same version of the package as the page file, or pass `workerUrl` with the URL
+of that file.
 ```
 
 ## Preload the parts of the page script
@@ -110,7 +115,8 @@ browser requests them together. The names of the parts have a hash that changes 
 prints the lines for an entry from the files of the installed package:
 
 ```js
-// preload-links.mjs: prints the <link rel="modulepreload"> lines for an entry of the library.
+// preload-links.mjs: prints the <link rel="modulepreload"> lines for an entry
+// of the library.
 // Run it with: node preload-links.mjs map-jr-gl.js /assets/
 import {readFileSync} from 'node:fs';
 
@@ -121,10 +127,14 @@ const visit = file => {
   if (seen.has(file)) return;
   seen.add(file);
   // The static imports of a built file are its parts.
-  for (const [, part] of readFileSync(dist + file, 'utf8').matchAll(/\bimport\s*(?:[^'"();]*?from\s*)?["']\.\/([^"']+)["']/g)) visit(part);
+  for (const [, part] of readFileSync(dist + file, 'utf8').matchAll(
+    /\bimport\s*(?:[^'"();]*?from\s*)?["']\.\/([^"']+)["']/g,
+  ))
+    visit(part);
 };
 visit(entry);
-for (const file of seen) console.log(`<link rel="modulepreload" href="${base}${file}">`);
+for (const file of seen)
+  console.log(`<link rel="modulepreload" href="${base}${file}">`);
 ```
 
 The file of `@map-jr/map-jr-gl` is `map-jr-gl.js`, and the file of `@map-jr/map-jr-gl/maplibre-compat` is
@@ -155,7 +165,12 @@ const map = createMap('map', {
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat/standalone';
 
 // The page has <div id="map" style="height: 400px"></div>.
-const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json', center: [-74.0065, 40.7085], zoom: 13.6});
+const map = new Map({
+  container: 'map',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+  center: [-74.0065, 40.7085],
+  zoom: 13.6,
+});
 ```
 
 ## Load the library from a CDN
@@ -163,7 +178,9 @@ const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/eleva
 Import the entry from the CDN with the version in the URL. The map finds the worker file next to it on the CDN.
 
 ```js
-import {createMap} from 'https://unpkg.com/@map-jr/map-jr-gl@0.9.0/dist/map-jr-gl.js';
+const {createMap} = await import(
+  'https://unpkg.com/@map-jr/map-jr-gl@0.9.0/dist/map-jr-gl.js'
+);
 
 // The page has <div id="map" style="height: 400px"></div>.
 const map = createMap('map', {
@@ -223,7 +240,11 @@ names. This applies to Vite 8 as well:
 import {defineConfig} from 'vite';
 
 export default defineConfig({
-  resolve: {alias: [{find: /^maplibre-gl$/, replacement: '@map-jr/map-jr-gl/maplibre-compat'}]},
+  resolve: {
+    alias: [
+      {find: /^maplibre-gl$/, replacement: '@map-jr/map-jr-gl/maplibre-compat'},
+    ],
+  },
   optimizeDeps: {exclude: ['@map-jr/map-jr-gl', 'maplibre-gl']},
 });
 ```
@@ -245,8 +266,14 @@ import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 export default function MapView() {
   const container = useRef(null);
   useEffect(() => {
-    const map = new Map({container: container.current, style: 'https://styles.map-jr.org/1/elevation-zero.json', center: [-74.0065, 40.7085], zoom: 13.6});
-    // StrictMode runs each effect twice in development, so the cleanup removes the map.
+    const map = new Map({
+      container: container.current,
+      style: 'https://styles.map-jr.org/1/elevation-zero.json',
+      center: [-74.0065, 40.7085],
+      zoom: 13.6,
+    });
+    // StrictMode runs each effect twice in development, so the cleanup removes
+    // the map.
     return () => map.remove();
   }, []);
   return <div ref={container} style={{height: 400}} />;

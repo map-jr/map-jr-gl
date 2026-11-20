@@ -19,14 +19,20 @@ examples on this page use the runes of Svelte 5 (`$state`, `$derived`, `$props`)
   const live = $derived(map && mapState(map));
 </script>
 
-<div use:mapJr={{description, ready: instance => (map = instance)}} style="height: 400px"></div>
+<div
+  use:mapJr={{description, ready: instance => (map = instance)}}
+  style="height: 400px"
+></div>
 {#if live}<p>Zoom {$live.view.zoom.toFixed(1)}</p>{/if}
 ```
 
 ## `mapJr`
 
 ```ts
-mapJr(node: HTMLElement, options: MapAction): {update(options: MapAction): void; destroy(): void}
+mapJr(
+  node: HTMLElement,
+  options: MapAction,
+): {update(options: MapAction): void; destroy(): void}
 ```
 
 Creates a map in `node` with `options.description`, and calls `options.ready` with the map. Write it as
@@ -54,14 +60,38 @@ for a marker or a popup ([Elements of the page on the map](map.md#overlay)).
 <script>
   import {mapJr} from '@map-jr/map-jr-gl/svelte';
 
-  let stations = $state([[-74.0065, 40.7085], [-73.9857, 40.7484]]);
+  let stations = $state([
+    [-74.0065, 40.7085],
+    [-73.9857, 40.7484],
+  ]);
   // A new object when `stations` changes, so the action passes it to the map.
   const description = $derived({
     style: 'https://styles.map-jr.org/1/elevation-zero.json',
     initialView: {center: [-73.996, 40.73], zoom: 11.5},
-    sources: {stations: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}},
-    data: {stations: {type: 'FeatureCollection', features: stations.map(c => ({type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: c}}))}},
-    layers: [{id: 'stations', type: 'circle', source: 'stations', paint: {'circle-radius': 6, 'circle-color': '#d6453d'}}],
+    sources: {
+      stations: {
+        type: 'geojson',
+        data: {type: 'FeatureCollection', features: []},
+      },
+    },
+    data: {
+      stations: {
+        type: 'FeatureCollection',
+        features: stations.map(c => ({
+          type: 'Feature',
+          properties: {},
+          geometry: {type: 'Point', coordinates: c},
+        })),
+      },
+    },
+    layers: [
+      {
+        id: 'stations',
+        type: 'circle',
+        source: 'stations',
+        paint: {'circle-radius': 6, 'circle-color': '#d6453d'},
+      },
+    ],
   });
 
   function ready(map) {
@@ -79,7 +109,9 @@ state and pass it back as `colorScheme`, or the next description sets the old va
 ## `mapState`
 
 ```ts
-mapState(map: MapInstance): {subscribe(fn: (state: MapState) => void): () => void}
+mapState(map: MapInstance): {
+  subscribe(fn: (state: MapState) => void): () => void;
+}
 ```
 
 Returns the state of `map` as a readable Svelte store. `subscribe` calls `fn` at once with the state, and again

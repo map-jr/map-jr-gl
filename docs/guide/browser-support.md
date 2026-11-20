@@ -24,7 +24,8 @@ if (supported()) {
     initialView: {center: [-74.0065, 40.7085], zoom: 13.6},
   });
 } else {
-  container.textContent = 'This browser cannot show the map. The office is at 1 Centre Street, New York.';
+  container.textContent =
+    'This browser cannot show the map. The office is at 1 Centre Street, NYC.';
 }
 ```
 
@@ -60,7 +61,10 @@ const map = createMap('map', {
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
   initialView: {center: [-74.0065, 40.7085], zoom: 13.6},
 });
-map.state.subscribe(state => state.renderer, renderer => console.log(renderer));
+map.state.subscribe(
+  state => state.renderer,
+  renderer => console.log(renderer),
+);
 ```
 
 ## Browsers that the tests run in

@@ -20,7 +20,12 @@ engine and read the same styles, so the map looks the same.
    ```js
    import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
-   const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json', center: [-74.0065, 40.7085], zoom: 13});
+   const map = new Map({
+     container: 'map',
+     style: 'https://styles.map-jr.org/1/elevation-zero.json',
+     center: [-74.0065, 40.7085],
+     zoom: 13,
+   });
    ```
 
    After:
@@ -44,10 +49,23 @@ engine and read the same styles, so the map looks the same.
    ```js
    import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
-   const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json', center: [-74.0065, 40.7085], zoom: 13});
+   const map = new Map({
+     container: 'map',
+     style: 'https://styles.map-jr.org/1/elevation-zero.json',
+     center: [-74.0065, 40.7085],
+     zoom: 13,
+   });
    map.on('load', () => {
-     map.addSource('stations', {type: 'geojson', data: {type: 'Point', coordinates: [-74.0065, 40.7085]}});
-     map.addLayer({id: 'stations', type: 'circle', source: 'stations', paint: {'circle-radius': 8, 'circle-color': '#d6453d'}});
+     map.addSource('stations', {
+       type: 'geojson',
+       data: {type: 'Point', coordinates: [-74.0065, 40.7085]},
+     });
+     map.addLayer({
+       id: 'stations',
+       type: 'circle',
+       source: 'stations',
+       paint: {'circle-radius': 8, 'circle-color': '#d6453d'},
+     });
    });
    ```
 
@@ -59,8 +77,20 @@ engine and read the same styles, so the map looks the same.
    const map = createMap('map', {
      style: 'https://styles.map-jr.org/1/elevation-zero.json',
      initialView: {center: [-74.0065, 40.7085], zoom: 13},
-     sources: {stations: {type: 'geojson', data: {type: 'Point', coordinates: [-74.0065, 40.7085]}}},
-     layers: [{id: 'stations', type: 'circle', source: 'stations', paint: {'circle-radius': 8, 'circle-color': '#d6453d'}}],
+     sources: {
+       stations: {
+         type: 'geojson',
+         data: {type: 'Point', coordinates: [-74.0065, 40.7085]},
+       },
+     },
+     layers: [
+       {
+         id: 'stations',
+         type: 'circle',
+         source: 'stations',
+         paint: {'circle-radius': 8, 'circle-color': '#d6453d'},
+       },
+     ],
    });
    ```
 
@@ -75,10 +105,23 @@ engine and read the same styles, so the map looks the same.
    ```js
    import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
-   const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json', center: [-74.0065, 40.7085], zoom: 13});
+   const map = new Map({
+     container: 'map',
+     style: 'https://styles.map-jr.org/1/elevation-zero.json',
+     center: [-74.0065, 40.7085],
+     zoom: 13,
+   });
    map.on('load', () => {
-     map.addSource('stations', {type: 'geojson', data: {type: 'FeatureCollection', features: []}});
-     map.addLayer({id: 'stations', type: 'circle', source: 'stations', paint: {'circle-radius': 8, 'circle-color': '#d6453d'}});
+     map.addSource('stations', {
+       type: 'geojson',
+       data: {type: 'FeatureCollection', features: []},
+     });
+     map.addLayer({
+       id: 'stations',
+       type: 'circle',
+       source: 'stations',
+       paint: {'circle-radius': 8, 'circle-color': '#d6453d'},
+     });
    });
 
    function showStation(lngLat) {
@@ -92,7 +135,12 @@ engine and read the same styles, so the map looks the same.
    ```js
    import {createMap} from '@map-jr/map-jr-gl';
 
-   const station = color => ({id: 'stations', type: 'circle', source: 'stations', paint: {'circle-radius': 8, 'circle-color': color}});
+   const station = color => ({
+     id: 'stations',
+     type: 'circle',
+     source: 'stations',
+     paint: {'circle-radius': 8, 'circle-color': color},
+   });
    const map = createMap('map', {
      style: 'https://styles.map-jr.org/1/elevation-zero.json',
      initialView: {center: [-74.0065, 40.7085], zoom: 13},
@@ -101,7 +149,10 @@ engine and read the same styles, so the map looks the same.
    });
 
    function showStation(lngLat) {
-     map.patch({data: {stations: {type: 'Point', coordinates: lngLat}}, layers: [station('#2b6cb0')]});
+     map.patch({
+       data: {stations: {type: 'Point', coordinates: lngLat}},
+       layers: [station('#2b6cb0')],
+     });
    }
    ```
 
@@ -120,7 +171,12 @@ engine and read the same styles, so the map looks the same.
    ```js
    import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
-   const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json', center: [-74.0065, 40.7085], zoom: 15});
+   const map = new Map({
+     container: 'map',
+     style: 'https://styles.map-jr.org/1/elevation-zero.json',
+     center: [-74.0065, 40.7085],
+     zoom: 15,
+   });
    map.on('click', 'building', event => console.log(event.features[0].properties));
    map.on('moveend', () => console.log(map.getZoom()));
    ```

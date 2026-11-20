@@ -68,7 +68,11 @@ const terrain = {source: 'terrarium', exaggeration: 1.5};
 export default function Matterhorn() {
   return (
     <div style={{height: 400}}>
-      <MapJr mapStyle="https://styles.map-jr.org/1/elevation.json" initialView={initialView} terrain={terrain} />
+      <MapJr
+        mapStyle="https://styles.map-jr.org/1/elevation.json"
+        initialView={initialView}
+        terrain={terrain}
+      />
     </div>
   );
 }
@@ -92,7 +96,13 @@ const map = createMap('map', {
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
   initialView: {center: [7.6586, 45.9763], zoom: 12.4, pitch: 60},
   sources: {
-    dem: {type: 'raster-dem', tiles: ['https://tiles.mapterhorn.com/{z}/{x}/{y}.webp'], encoding: 'terrarium', tileSize: 512, maxzoom: 12},
+    dem: {
+      type: 'raster-dem',
+      tiles: ['https://tiles.mapterhorn.com/{z}/{x}/{y}.webp'],
+      encoding: 'terrarium',
+      tileSize: 512,
+      maxzoom: 12,
+    },
   },
   terrain: {source: 'dem', exaggeration: 1.5},
 });
@@ -113,7 +123,7 @@ import {navigation, terrain} from '@map-jr/map-jr-gl/controls';
 const map = createMap('map', {
   style: 'https://styles.map-jr.org/1/elevation.json',
   initialView: {center: [7.6586, 45.9763], zoom: 12.4, pitch: 60},
-  terrain: null,   // flat until the user clicks the button
+  terrain: null, // flat until the user clicks the button
   controls: [navigation(), terrain({source: 'terrarium', exaggeration: 1.5})],
 });
 ```
@@ -121,9 +131,19 @@ const map = createMap('map', {
 **MapLibre compat**
 
 ```js [MapLibre compat]
-import {Map, NavigationControl, TerrainControl} from '@map-jr/map-jr-gl/maplibre-compat';
+import {
+  Map,
+  NavigationControl,
+  TerrainControl,
+} from '@map-jr/map-jr-gl/maplibre-compat';
 
-const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation.json', center: [7.6586, 45.9763], zoom: 12.4, pitch: 60});
+const map = new Map({
+  container: 'map',
+  style: 'https://styles.map-jr.org/1/elevation.json',
+  center: [7.6586, 45.9763],
+  zoom: 12.4,
+  pitch: 60,
+});
 map.addControl(new NavigationControl());
 map.addControl(new TerrainControl({source: 'terrarium', exaggeration: 1.5}));
 ```
@@ -149,7 +169,9 @@ const map = createMap('map', {
 function showRelief(on) {
   map.patch({terrain: on ? {source: 'terrarium', exaggeration: 1.5} : null});
 }
-document.getElementById('relief').addEventListener('change', e => showRelief(e.target.checked));
+document
+  .getElementById('relief')
+  .addEventListener('change', e => showRelief(e.target.checked));
 ```
 
 ## What 3D terrain changes
@@ -184,18 +206,29 @@ const map = createMap('map', {
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
   initialView: {center: [7.6586, 45.9763], zoom: 11},
   sources: {
-    dem: {type: 'raster-dem', tiles: ['https://tiles.mapterhorn.com/{z}/{x}/{y}.webp'], encoding: 'terrarium', tileSize: 512, maxzoom: 12},
-  },
-  layers: [{
-    id: 'relief', type: 'hillshade', source: 'dem', before: 'water',
-    paint: {
-      'hillshade-method': 'multidirectional',
-      'hillshade-illumination-direction': [270, 315, 0, 45],
-      'hillshade-illumination-altitude': [30, 30, 30, 30],
-      'hillshade-highlight-color': '#ffffff',
-      'hillshade-shadow-color': '#000000',
+    dem: {
+      type: 'raster-dem',
+      tiles: ['https://tiles.mapterhorn.com/{z}/{x}/{y}.webp'],
+      encoding: 'terrarium',
+      tileSize: 512,
+      maxzoom: 12,
     },
-  }],
+  },
+  layers: [
+    {
+      id: 'relief',
+      type: 'hillshade',
+      source: 'dem',
+      before: 'water',
+      paint: {
+        'hillshade-method': 'multidirectional',
+        'hillshade-illumination-direction': [270, 315, 0, 45],
+        'hillshade-illumination-altitude': [30, 30, 30, 30],
+        'hillshade-highlight-color': '#ffffff',
+        'hillshade-shadow-color': '#000000',
+      },
+    },
+  ],
 });
 ```
 
@@ -204,20 +237,36 @@ const map = createMap('map', {
 ```js [MapLibre compat]
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
-const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json', center: [7.6586, 45.9763], zoom: 11});
+const map = new Map({
+  container: 'map',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+  center: [7.6586, 45.9763],
+  zoom: 11,
+});
 
 map.on('load', () => {
-  map.addSource('dem', {type: 'raster-dem', tiles: ['https://tiles.mapterhorn.com/{z}/{x}/{y}.webp'], encoding: 'terrarium', tileSize: 512, maxzoom: 12});
-  map.addLayer({
-    id: 'relief', type: 'hillshade', source: 'dem',
-    paint: {
-      'hillshade-method': 'multidirectional',
-      'hillshade-illumination-direction': [270, 315, 0, 45],
-      'hillshade-illumination-altitude': [30, 30, 30, 30],
-      'hillshade-highlight-color': '#ffffff',
-      'hillshade-shadow-color': '#000000',
+  map.addSource('dem', {
+    type: 'raster-dem',
+    tiles: ['https://tiles.mapterhorn.com/{z}/{x}/{y}.webp'],
+    encoding: 'terrarium',
+    tileSize: 512,
+    maxzoom: 12,
+  });
+  map.addLayer(
+    {
+      id: 'relief',
+      type: 'hillshade',
+      source: 'dem',
+      paint: {
+        'hillshade-method': 'multidirectional',
+        'hillshade-illumination-direction': [270, 315, 0, 45],
+        'hillshade-illumination-altitude': [30, 30, 30, 30],
+        'hillshade-highlight-color': '#ffffff',
+        'hillshade-shadow-color': '#000000',
+      },
     },
-  }, 'water');
+    'water',
+  );
 });
 ```
 
@@ -252,15 +301,38 @@ const map = createMap('map', {
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
   initialView: {center: [7.6586, 45.9763], zoom: 9},
   sources: {
-    dem: {type: 'raster-dem', tiles: ['https://tiles.mapterhorn.com/{z}/{x}/{y}.webp'], encoding: 'terrarium', tileSize: 512, maxzoom: 12},
-  },
-  layers: [{
-    id: 'heights', type: 'color-relief', source: 'dem', before: 'water',
-    paint: {
-      'color-relief-opacity': 0.8,
-      'color-relief-color': ['interpolate', ['linear'], ['elevation'], 0, '#2e7d32', 1000, '#fdd835', 2500, '#8d6e63', 4000, '#ffffff'],
+    dem: {
+      type: 'raster-dem',
+      tiles: ['https://tiles.mapterhorn.com/{z}/{x}/{y}.webp'],
+      encoding: 'terrarium',
+      tileSize: 512,
+      maxzoom: 12,
     },
-  }],
+  },
+  layers: [
+    {
+      id: 'heights',
+      type: 'color-relief',
+      source: 'dem',
+      before: 'water',
+      paint: {
+        'color-relief-opacity': 0.8,
+        'color-relief-color': [
+          'interpolate',
+          ['linear'],
+          ['elevation'],
+          0,
+          '#2e7d32',
+          1000,
+          '#fdd835',
+          2500,
+          '#8d6e63',
+          4000,
+          '#ffffff',
+        ],
+      },
+    },
+  ],
 });
 ```
 
@@ -269,17 +341,45 @@ const map = createMap('map', {
 ```js [MapLibre compat]
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
-const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json', center: [7.6586, 45.9763], zoom: 9});
+const map = new Map({
+  container: 'map',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+  center: [7.6586, 45.9763],
+  zoom: 9,
+});
 
 map.on('load', () => {
-  map.addSource('dem', {type: 'raster-dem', tiles: ['https://tiles.mapterhorn.com/{z}/{x}/{y}.webp'], encoding: 'terrarium', tileSize: 512, maxzoom: 12});
-  map.addLayer({
-    id: 'heights', type: 'color-relief', source: 'dem',
-    paint: {
-      'color-relief-opacity': 0.8,
-      'color-relief-color': ['interpolate', ['linear'], ['elevation'], 0, '#2e7d32', 1000, '#fdd835', 2500, '#8d6e63', 4000, '#ffffff'],
+  map.addSource('dem', {
+    type: 'raster-dem',
+    tiles: ['https://tiles.mapterhorn.com/{z}/{x}/{y}.webp'],
+    encoding: 'terrarium',
+    tileSize: 512,
+    maxzoom: 12,
+  });
+  map.addLayer(
+    {
+      id: 'heights',
+      type: 'color-relief',
+      source: 'dem',
+      paint: {
+        'color-relief-opacity': 0.8,
+        'color-relief-color': [
+          'interpolate',
+          ['linear'],
+          ['elevation'],
+          0,
+          '#2e7d32',
+          1000,
+          '#fdd835',
+          2500,
+          '#8d6e63',
+          4000,
+          '#ffffff',
+        ],
+      },
     },
-  }, 'water');
+    'water',
+  );
 });
 ```
 
@@ -299,17 +399,36 @@ const map = createMap('map', {
   style: 'https://styles.map-jr.org/1/elevation.json',
   initialView: {center: [7.6586, 45.9763], zoom: 13},
   sources: {
-    contours: {type: 'contour', source: 'terrarium', multiplier: 3.28084, thresholds: {11: [200, 1000], 12: [100, 500], 14: [50, 200]}},
+    contours: {
+      type: 'contour',
+      source: 'terrarium',
+      multiplier: 3.28084,
+      thresholds: {11: [200, 1000], 12: [100, 500], 14: [50, 200]},
+    },
   },
   layers: [
     {
-      id: 'contour-lines', type: 'line', source: 'contours', 'source-layer': 'contours', before: 'water',
-      paint: {'line-color': '#8a6f55', 'line-width': ['match', ['get', 'level'], 1, 1.2, 0.5]},
+      id: 'contour-lines',
+      type: 'line',
+      source: 'contours',
+      'source-layer': 'contours',
+      before: 'water',
+      paint: {
+        'line-color': '#8a6f55',
+        'line-width': ['match', ['get', 'level'], 1, 1.2, 0.5],
+      },
     },
     {
-      id: 'contour-labels', type: 'symbol', source: 'contours', 'source-layer': 'contours',
+      id: 'contour-labels',
+      type: 'symbol',
+      source: 'contours',
+      'source-layer': 'contours',
       filter: ['>', ['get', 'level'], 0],
-      layout: {'symbol-placement': 'line', 'text-size': 10, 'text-field': ['concat', ['get', 'ele'], ' ft']},
+      layout: {
+        'symbol-placement': 'line',
+        'text-size': 10,
+        'text-field': ['concat', ['get', 'ele'], ' ft'],
+      },
     },
   ],
 });
@@ -320,18 +439,44 @@ const map = createMap('map', {
 ```js [MapLibre compat]
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
-const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation.json', center: [7.6586, 45.9763], zoom: 13});
+const map = new Map({
+  container: 'map',
+  style: 'https://styles.map-jr.org/1/elevation.json',
+  center: [7.6586, 45.9763],
+  zoom: 13,
+});
 
 map.on('load', () => {
-  map.addSource('contours', {type: 'contour', source: 'terrarium', multiplier: 3.28084, thresholds: {11: [200, 1000], 12: [100, 500], 14: [50, 200]}});
+  map.addSource('contours', {
+    type: 'contour',
+    source: 'terrarium',
+    multiplier: 3.28084,
+    thresholds: {11: [200, 1000], 12: [100, 500], 14: [50, 200]},
+  });
+  map.addLayer(
+    {
+      id: 'contour-lines',
+      type: 'line',
+      source: 'contours',
+      'source-layer': 'contours',
+      paint: {
+        'line-color': '#8a6f55',
+        'line-width': ['match', ['get', 'level'], 1, 1.2, 0.5],
+      },
+    },
+    'water',
+  );
   map.addLayer({
-    id: 'contour-lines', type: 'line', source: 'contours', 'source-layer': 'contours',
-    paint: {'line-color': '#8a6f55', 'line-width': ['match', ['get', 'level'], 1, 1.2, 0.5]},
-  }, 'water');
-  map.addLayer({
-    id: 'contour-labels', type: 'symbol', source: 'contours', 'source-layer': 'contours',
+    id: 'contour-labels',
+    type: 'symbol',
+    source: 'contours',
+    'source-layer': 'contours',
     filter: ['>', ['get', 'level'], 0],
-    layout: {'symbol-placement': 'line', 'text-size': 10, 'text-field': ['concat', ['get', 'ele'], ' ft']},
+    layout: {
+      'symbol-placement': 'line',
+      'text-size': 10,
+      'text-field': ['concat', ['get', 'ele'], ' ft'],
+    },
   });
 });
 ```
@@ -376,7 +521,9 @@ const map = createMap('map', {
   initialView: {center: [7.6586, 45.9763], zoom: 12},
   onClick: async e => {
     const metres = await map.queryElevation(e.lngLat);
-    console.log(metres === null ? 'No elevation data here' : `${Math.round(metres)} m`);
+    console.log(
+      metres === null ? 'No elevation data here' : `${Math.round(metres)} m`,
+    );
   },
 });
 ```
@@ -386,11 +533,18 @@ const map = createMap('map', {
 ```js [MapLibre compat]
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
-const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation.json', center: [7.6586, 45.9763], zoom: 12});
+const map = new Map({
+  container: 'map',
+  style: 'https://styles.map-jr.org/1/elevation.json',
+  center: [7.6586, 45.9763],
+  zoom: 12,
+});
 
 map.on('click', async e => {
   const metres = await map.queryElevation(e.lngLat);
-  console.log(metres === null ? 'No elevation data here' : `${Math.round(metres)} m`);
+  console.log(
+    metres === null ? 'No elevation data here' : `${Math.round(metres)} m`,
+  );
 });
 ```
 

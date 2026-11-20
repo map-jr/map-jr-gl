@@ -1,6 +1,6 @@
 import {existsSync, readFileSync} from 'node:fs';
 import {resolve} from 'node:path';
-import {transformPage, repositoryUrl} from './build/markdown';
+import {formatFences, transformPage, repositoryUrl} from './build/markdown';
 import {docsDir, navFile, readNav, routeOf} from './build/nav';
 import {variantHeadScript} from './build/variants';
 
@@ -76,6 +76,10 @@ export default defineNuxtConfig({
         },
     },
     hooks: {
+        // The desktop and the phone form of the code (build/format.mjs).
+        async 'content:file:beforeParse'(ctx) {
+            if (ctx.file.extension === '.md' && typeof ctx.file.body === 'string') ctx.file.body = await formatFences(ctx.file.body);
+        },
         'content:file:afterParse'(ctx) {
             transformPage(ctx as any, nav);
         },

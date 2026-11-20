@@ -48,7 +48,8 @@ The map requires WebGL2. In a browser without it, the map does not load, and it 
 [`onError`](events.md#mapevents) with this message:
 
 ```text
-[map-jr-gl] The map cannot be shown: WebGL2 is not available. Call supported() before you make a map, and show other content when it returns false.
+[map-jr-gl] The map cannot be shown: WebGL2 is not available. Call supported()
+before you make a map, and show other content when it returns false.
 ```
 
 The map also adds an element with the class `map-jr-unavailable` and the text "This browser cannot show the map." to
@@ -68,7 +69,8 @@ if (supported()) {
     initialView: {center: [-74.0065, 40.7085], zoom: 13.6},
   });
 } else {
-  container.textContent = 'This browser cannot show the map. Our address is 1 Example Street.';
+  container.textContent =
+    'This browser cannot show the map. Our address is 1 Example Street.';
 }
 ```
 

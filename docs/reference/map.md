@@ -96,7 +96,9 @@ its layers loads again, and its values change at once.
 `update` throws an `Error` when `spec` has no `style`, for example for `map.update({cursor: 'crosshair'})`:
 
 ```text
-[map-jr-gl] update(): the description has no "style". update() takes the complete description, not only the changed fields. Write map.patch({cursor: …}) to change only some fields.
+[map-jr-gl] update(): the description has no "style". update() takes the
+complete description, not only the changed fields. Write map.patch({cursor: …})
+to change only some fields.
 ```
 
 The
@@ -123,7 +125,9 @@ is removed, as in `map.patch({cursor: undefined})`.
 ```js
 import {createMap} from '@map-jr/map-jr-gl';
 
-const map = createMap('map', {style: 'https://styles.map-jr.org/1/elevation-zero.json'});
+const map = createMap('map', {
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+});
 map.patch({cursor: 'crosshair'});
 ```
 
@@ -202,7 +206,10 @@ queryFeatures(at?: FeaturePlace | FeatureOptions, options?: FeatureOptions): Pro
 `FeaturePlace` is the type of a place of a query:
 
 ```ts
-type FeaturePlace = {x: number; y: number} | readonly number[] | readonly {x: number; y: number}[];
+type FeaturePlace =
+  | {x: number; y: number}
+  | readonly number[]
+  | readonly {x: number; y: number}[];
 ```
 
 For `queryFeatures`, `at` accepts these forms:
@@ -226,7 +233,10 @@ const map = createMap('map', {
   initialView: {center: [-74.0065, 40.7085], zoom: 15},
 });
 await map.once('idle');
-const nearby = await map.queryFeatures({x: 200, y: 150}, {layers: ['park', 'building-3d'], radius: 8});
+const nearby = await map.queryFeatures(
+  {x: 200, y: 150},
+  {layers: ['park', 'building-3d'], radius: 8},
+);
 const all = await map.queryFeatures({layers: ['building-3d']});
 ```
 
@@ -281,7 +291,10 @@ const map = createMap('map', {
   initialView: {center: [-74.0065, 40.7085], zoom: 15},
 });
 await map.once('idle');
-const atPosition = await map.querySource('openmaptiles', [-74.0065, 40.7085], {sourceLayers: ['building'], geometry: true});
+const atPosition = await map.querySource('openmaptiles', [-74.0065, 40.7085], {
+  sourceLayers: ['building'],
+  geometry: true,
+});
 const inView = await map.querySource('openmaptiles', {sourceLayers: ['park']});
 ```
 
@@ -325,9 +338,13 @@ const map = createMap('map', {
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
   initialView: {center: [-74.0065, 40.7085], zoom: 15},
 });
-const stop = map.watchFeatures({x: 200, y: 150}, {layers: ['building-3d']}, buildings => {
-  console.log(buildings.length);
-});
+const stop = map.watchFeatures(
+  {x: 200, y: 150},
+  {layers: ['building-3d']},
+  buildings => {
+    console.log(buildings.length);
+  },
+);
 ```
 
 A watch asks again by itself after a lost WebGL context, and it stops after [`destroy`](#destroy). When the listener
@@ -361,9 +378,14 @@ const map = createMap('map', {
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
   initialView: {center: [-74.0065, 40.7085], zoom: 15},
 });
-const stop = map.watchSource('openmaptiles', [-74.0065, 40.7085], {sourceLayers: ['building']}, buildings => {
-  console.log(buildings[0]?.properties);
-});
+const stop = map.watchSource(
+  'openmaptiles',
+  [-74.0065, 40.7085],
+  {sourceLayers: ['building']},
+  buildings => {
+    console.log(buildings[0]?.properties);
+  },
+);
 ```
 
 ## `setFeatureState`
@@ -399,19 +421,51 @@ let selected;
 const map = createMap('map', {
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
   initialView: {center: [-74.0065, 40.7085], zoom: 13.6},
-  sources: {stations: {type: 'geojson', data: {type: 'FeatureCollection', features: [
-    {type: 'Feature', id: 1, properties: {name: 'Bowling Green'}, geometry: {type: 'Point', coordinates: [-74.0141, 40.7047]}},
-    {type: 'Feature', id: 2, properties: {name: 'Wall Street'}, geometry: {type: 'Point', coordinates: [-74.0091, 40.7074]}},
-  ]}}},
-  layers: [{id: 'stations', type: 'circle', source: 'stations', paint: {
-    'circle-radius': 8,
-    'circle-color': ['case', ['boolean', ['feature-state', 'selected'], false], '#e00', '#28f'],
-  }}],
+  sources: {
+    stations: {
+      type: 'geojson',
+      data: {
+        type: 'FeatureCollection',
+        features: [
+          {
+            type: 'Feature',
+            id: 1,
+            properties: {name: 'Bowling Green'},
+            geometry: {type: 'Point', coordinates: [-74.0141, 40.7047]},
+          },
+          {
+            type: 'Feature',
+            id: 2,
+            properties: {name: 'Wall Street'},
+            geometry: {type: 'Point', coordinates: [-74.0091, 40.7074]},
+          },
+        ],
+      },
+    },
+  },
+  layers: [
+    {
+      id: 'stations',
+      type: 'circle',
+      source: 'stations',
+      paint: {
+        'circle-radius': 8,
+        'circle-color': [
+          'case',
+          ['boolean', ['feature-state', 'selected'], false],
+          '#e00',
+          '#28f',
+        ],
+      },
+    },
+  ],
   interactiveLayers: ['stations'],
   onClick: e => {
-    if (selected !== undefined) map.removeFeatureState({source: 'stations', id: selected}, 'selected');
+    if (selected !== undefined)
+      map.removeFeatureState({source: 'stations', id: selected}, 'selected');
     selected = e.features[0]?.id;
-    if (selected !== undefined) map.setFeatureState({source: 'stations', id: selected}, {selected: true});
+    if (selected !== undefined)
+      map.setFeatureState({source: 'stations', id: selected}, {selected: true});
   },
 });
 ```
@@ -474,9 +528,13 @@ image in an `<img>`, because the canvas itself can print blank.
 ```js
 import {createMap} from '@map-jr/map-jr-gl';
 
-const map = createMap('map', {style: 'https://styles.map-jr.org/1/elevation-zero.json'});
+const map = createMap('map', {
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+});
 const url = URL.createObjectURL(await map.toBlob());
-document.body.append(Object.assign(document.createElement('img'), {src: url, alt: 'Map'}));
+document.body.append(
+  Object.assign(document.createElement('img'), {src: url, alt: 'Map'}),
+);
 ```
 
 ## `clusterExpansionZoom`
@@ -505,15 +563,33 @@ The three cluster methods reject with an `Error` in these cases, shown for `clus
 ```js
 import {createMap} from '@map-jr/map-jr-gl';
 
+const earthquakes =
+  'https://maplibre.org/maplibre-gl-js/docs/assets/earthquakes.geojson';
 const map = createMap('map', {
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
-  sources: {quakes: {type: 'geojson', cluster: true, data: 'https://maplibre.org/maplibre-gl-js/docs/assets/earthquakes.geojson'}},
-  layers: [{id: 'quakes', type: 'circle', source: 'quakes', paint: {'circle-radius': 12, 'circle-color': '#28f'}}],
+  sources: {
+    quakes: {
+      type: 'geojson',
+      cluster: true,
+      data: earthquakes,
+    },
+  },
+  layers: [
+    {
+      id: 'quakes',
+      type: 'circle',
+      source: 'quakes',
+      paint: {'circle-radius': 12, 'circle-color': '#28f'},
+    },
+  ],
   interactiveLayers: ['quakes'],
   onClick: async e => {
     const cluster = e.features[0];
     if (!cluster?.properties.cluster) return;
-    const zoom = await map.clusterExpansionZoom('quakes', cluster.properties.cluster_id);
+    const zoom = await map.clusterExpansionZoom(
+      'quakes',
+      cluster.properties.cluster_id,
+    );
     map.moveTo({center: cluster.geometry.coordinates, zoom, duration: 500});
   },
 });
@@ -583,7 +659,15 @@ function showParis() {
   map.moveTo({center: [2.35, 48.86], zoom: 12, fly: true});
 }
 function showManhattan() {
-  map.moveTo({bounds: [[-74.05, 40.68], [-73.9, 40.82]], padding: 40, pitch: 30, duration: 800});
+  map.moveTo({
+    bounds: [
+      [-74.05, 40.68],
+      [-73.9, 40.82],
+    ],
+    padding: 40,
+    pitch: 30,
+    duration: 800,
+  });
 }
 ```
 
@@ -685,13 +769,21 @@ const map = createMap('map', {
 });
 let home = [-74.0065, 40.7085];
 const pin = map.overlay(defaultPin({color: '#c0392b'}), {
-  lngLat: home, anchor: 'bottom', draggable: true,
-  onDragEnd: lngLat => { home = lngLat; },
+  lngLat: home,
+  anchor: 'bottom',
+  draggable: true,
+  onDragEnd: lngLat => {
+    home = lngLat;
+  },
 });
 
 const content = document.createElement('p');
 content.textContent = 'Battery Park';
-const popup = map.overlay(content, {lngLat: [-74.0165, 40.7033], popup: true, onClose: () => popup.remove()});
+const popup = map.overlay(content, {
+  lngLat: [-74.0165, 40.7033],
+  popup: true,
+  onClose: () => popup.remove(),
+});
 ```
 
 [`defaultPin`](exports.md#defaultpin) returns the default pin as an element. For many points, a symbol layer in
@@ -759,8 +851,12 @@ event, and a type that is not in `MapEvents` does not compile.
 ```js
 import {createMap} from '@map-jr/map-jr-gl';
 
-const map = createMap('map', {style: 'https://styles.map-jr.org/1/elevation-zero.json'});
-const stop = map.listen('moveend', () => console.log(map.state.get().view.zoom));
+const map = createMap('map', {
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+});
+const stop = map.listen('moveend', () =>
+  console.log(map.state.get().view.zoom),
+);
 ```
 
 A listener that throws does not stop the other listeners. The map reports what it threw as an `error` event, and a
@@ -786,7 +882,9 @@ that waits for `load` need not read [`state.loaded`](state.md#mapstate) first.
 ```js
 import {createMap} from '@map-jr/map-jr-gl';
 
-const map = createMap('map', {style: 'https://styles.map-jr.org/1/elevation-zero.json'});
+const map = createMap('map', {
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+});
 await map.once('idle');
 ```
 

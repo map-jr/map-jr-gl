@@ -23,7 +23,9 @@ in the bundler or in an import map. The code of the wrapper does not change.
 
    export default defineConfig({
      resolve: {
-       alias: [{find: /^maplibre-gl$/, replacement: '@map-jr/map-jr-gl/maplibre-compat'}],
+       alias: [
+         {find: /^maplibre-gl$/, replacement: '@map-jr/map-jr-gl/maplibre-compat'},
+       ],
      },
    });
    ```
@@ -31,7 +33,10 @@ in the bundler or in an import map. The code of the wrapper does not change.
    Without a bundler, use an import map:
 
    ```html
-   <script type="importmap">{"imports": {"maplibre-gl": "/node_modules/@map-jr/map-jr-gl/dist/map-jr-gl-maplibre-compat.js"}}</script>
+   <script type="importmap">
+     {"imports": {"maplibre-gl":
+       "/node_modules/@map-jr/map-jr-gl/dist/map-jr-gl-maplibre-compat.js"}}
+   </script>
    ```
 
 3. Remove the imports of `maplibre-gl/dist/maplibre-gl.css` and of the worker file, and the `workerUrl` prop of
@@ -78,12 +83,19 @@ import {useState} from 'react';
 import Map from 'react-map-gl/maplibre';
 
 export function StationMap() {
-  const [viewState, setViewState] = useState({longitude: -74.0065, latitude: 40.7085, zoom: 13});
+  const [viewState, setViewState] = useState({
+    longitude: -74.0065,
+    latitude: 40.7085,
+    zoom: 13,
+  });
   return (
     <Map
       {...viewState}
       onMove={e => setViewState(e.viewState)}
-      maxBounds={[[-74.3, 40.5], [-73.7, 40.95]]}
+      maxBounds={[
+        [-74.3, 40.5],
+        [-73.7, 40.95],
+      ]}
       mapStyle="https://styles.map-jr.org/1/elevation-zero.json"
       style={{width: '100%', height: 400}}
     />

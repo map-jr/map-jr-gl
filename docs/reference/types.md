@@ -9,7 +9,10 @@ the queries return. The types of the description, the map, the state and the eve
 import {createMap, type Bounds, type Position} from '@map-jr/map-jr-gl';
 
 const battery: Position = [-74.0165, 40.7033];
-const manhattan: Bounds = [[-74.05, 40.68], [-73.9, 40.82]];
+const manhattan: Bounds = [
+  [-74.05, 40.68],
+  [-73.9, 40.82],
+];
 const map = createMap('map', {
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
   initialView: {bounds: manhattan},
@@ -30,7 +33,9 @@ returns, such as `state.view.center` or the result of `unproject`, has the type 
 ## `Bounds`
 
 ```ts
-type Bounds = readonly [Position, Position] | readonly [number, number, number, number];
+type Bounds =
+  | readonly [Position, Position]
+  | readonly [number, number, number, number];
 ```
 
 A box is `[[west, south], [east, north]]` or `[west, south, east, north]`, in degrees. `maxBounds`, `fitBounds`,
@@ -73,7 +78,12 @@ type GeoJSON =
   | {type: 'FeatureCollection'; features: readonly GeoJSONFeature[]}
   | GeoJSONFeature
   | GeoJSONGeometry;
-interface GeoJSONFeature {type: 'Feature'; id?: string | number; geometry: GeoJSONGeometry | null; properties: object | null}
+interface GeoJSONFeature {
+  type: 'Feature';
+  id?: string | number;
+  geometry: GeoJSONGeometry | null;
+  properties: object | null;
+}
 ```
 
 `GeoJSONGeometry` is a `Point`, `MultiPoint`, `LineString`, `MultiLineString`, `Polygon`, `MultiPolygon` or
@@ -170,8 +180,17 @@ not compile. Declare the type of the variable:
 ```ts
 import {createMap, type FillLayerSpecification} from '@map-jr/map-jr-gl';
 
-const parks: FillLayerSpecification = {id: 'parks-tint', type: 'fill', source: 'openmaptiles', 'source-layer': 'park', paint: {'fill-color': '#4caf50'}};
-const map = createMap('map', {style: 'https://styles.map-jr.org/1/elevation-zero.json', layers: [parks]});
+const parks: FillLayerSpecification = {
+  id: 'parks-tint',
+  type: 'fill',
+  source: 'openmaptiles',
+  'source-layer': 'park',
+  paint: {'fill-color': '#4caf50'},
+};
+const map = createMap('map', {
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+  layers: [parks],
+});
 ```
 
 ## Other exported types

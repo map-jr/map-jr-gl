@@ -14,8 +14,13 @@ export default defineNuxtConfig({modules: ['@map-jr/map-jr-gl/nuxt']});
 <!-- app/pages/index.vue (pages/index.vue in Nuxt 3) -->
 <template>
   <div style="height: 400px">
-    <LazyMapJr hydrate-on-visible ssr map-style="https://styles.map-jr.org/1/elevation-zero.json"
-      :initial-view="{center: [-74.0065, 40.7085], zoom: 13.6}" :controls="[navigationControl()]" />
+    <LazyMapJr
+      hydrate-on-visible
+      ssr
+      map-style="https://styles.map-jr.org/1/elevation-zero.json"
+      :initial-view="{center: [-74.0065, 40.7085], zoom: 13.6}"
+      :controls="[navigationControl()]"
+    />
   </div>
 </template>
 ```
@@ -38,7 +43,15 @@ the module, set it yourself:
 ```ts
 // nuxt.config.ts
 export default defineNuxtConfig({
-  vite: {optimizeDeps: {exclude: ['@map-jr/map-jr-gl', '@map-jr/map-jr-gl/vue', '@map-jr/map-jr-gl/controls']}},
+  vite: {
+    optimizeDeps: {
+      exclude: [
+        '@map-jr/map-jr-gl',
+        '@map-jr/map-jr-gl/vue',
+        '@map-jr/map-jr-gl/controls',
+      ],
+    },
+  },
 });
 ```
 
@@ -66,14 +79,19 @@ Nuxt puts around `MapJr`. It has no `map` and no `state`, also after hydration. 
 
 ```vue
 <script setup>
-// Nuxt imports `shallowRef` itself. A shallowRef keeps the map as it is, with no reactive proxy around it.
+// Nuxt imports `shallowRef` itself. A shallowRef keeps the map as it is, with
+// no reactive proxy around it.
 const map = shallowRef(null);
 </script>
 
 <template>
   <div style="height: 400px">
-    <LazyMapJr hydrate-on-visible map-style="https://styles.map-jr.org/1/elevation-zero.json"
-      :initial-view="{center: [-74.0065, 40.7085], zoom: 13.6}" @load="instance => (map = instance)" />
+    <LazyMapJr
+      hydrate-on-visible
+      map-style="https://styles.map-jr.org/1/elevation-zero.json"
+      :initial-view="{center: [-74.0065, 40.7085], zoom: 13.6}"
+      @load="instance => (map = instance)"
+    />
   </div>
   <button @click="map?.moveTo({zoom: 15, duration: 500})">Zoom to 15</button>
 </template>
@@ -95,14 +113,22 @@ import {describe, expect, it, vi} from 'vitest';
 import {mountSuspended} from '@nuxt/test-utils/runtime';
 import StoreMap from '../app/components/StoreMap.vue';
 
-// The stub replaces only MapJr. The other exports of the adapter stay as they are.
+// The stub replaces only MapJr. The other exports of the adapter stay as they
+// are.
 vi.mock('@map-jr/map-jr-gl/vue', async importOriginal => {
   const {defineComponent, h} = await import('vue');
   return {
-    ...await importOriginal<typeof import('@map-jr/map-jr-gl/vue')>(),
+    ...(await importOriginal<typeof import('@map-jr/map-jr-gl/vue')>()),
     MapJr: defineComponent({
       props: {mapStyle: String},
-      setup: (props, {slots}) => () => h('div', {'data-test': 'map', 'data-style': props.mapStyle}, slots.default?.()),
+      setup:
+        (props, {slots}) =>
+        () =>
+          h(
+            'div',
+            {'data-test': 'map', 'data-style': props.mapStyle},
+            slots.default?.(),
+          ),
     }),
   };
 });
@@ -110,7 +136,9 @@ vi.mock('@map-jr/map-jr-gl/vue', async importOriginal => {
 describe('StoreMap', () => {
   it('passes the style to the map', async () => {
     const wrapper = await mountSuspended(StoreMap);
-    expect(wrapper.find('[data-test="map"]').attributes('data-style')).toBe('https://styles.map-jr.org/1/elevation-zero.json');
+    expect(wrapper.find('[data-test="map"]').attributes('data-style')).toBe(
+      'https://styles.map-jr.org/1/elevation-zero.json',
+    );
   });
 });
 ```

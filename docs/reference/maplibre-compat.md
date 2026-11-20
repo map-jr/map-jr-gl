@@ -5,9 +5,18 @@ GL JS run with a change of the import. This page lists what the entry exports an
 [From MapLibre GL JS](../migrate/from-maplibre.md) for the steps to move an application to it.
 
 ```js
-import {Map, Marker, NavigationControl} from '@map-jr/map-jr-gl/maplibre-compat';
+import {
+  Map,
+  Marker,
+  NavigationControl,
+} from '@map-jr/map-jr-gl/maplibre-compat';
 
-const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json', center: [-74.0065, 40.7085], zoom: 13});
+const map = new Map({
+  container: 'map',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+  center: [-74.0065, 40.7085],
+  zoom: 13,
+});
 map.addControl(new NavigationControl());
 new Marker().setLngLat([-74.0065, 40.7085]).addTo(map);
 ```
@@ -236,9 +245,16 @@ MapLibre GL JS, so the same code runs with both libraries.
 ```js
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
-const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json', center: [-74.0065, 40.7085], zoom: 15});
+const map = new Map({
+  container: 'map',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+  center: [-74.0065, 40.7085],
+  zoom: 15,
+});
 map.on('click', async event => {
-  const buildings = await map.queryRenderedFeatures(event.point, {layers: ['building']});
+  const buildings = await map.queryRenderedFeatures(event.point, {
+    layers: ['building'],
+  });
   console.log(buildings.length);
 });
 ```
@@ -251,7 +267,16 @@ When `remove()` is called before the answer, the promise rejects with the error
 `setStyle(style, options)` replaces the style and returns a promise that resolves when the new style has loaded.
 
 ```ts
-setStyle(style: string | StyleSpecification, options?: {diff?: boolean; transformStyle?: (previous: StyleSpecification, next: StyleSpecification) => StyleSpecification}): Promise<void>
+setStyle(
+  style: string | StyleSpecification,
+  options?: {
+    diff?: boolean;
+    transformStyle?: (
+      previous: StyleSpecification,
+      next: StyleSpecification,
+    ) => StyleSpecification
+  },
+): Promise<void>
 ```
 
 The sources and layers that `addSource` and `addLayer` added are removed with the old style, as in MapLibre GL JS.
@@ -262,7 +287,10 @@ writes no warning.
 ```js
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
-const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json'});
+const map = new Map({
+  container: 'map',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+});
 
 async function showDark() {
   await map.setStyle('https://styles.map-jr.org/1/openfreemap-dark.json');
@@ -280,13 +308,27 @@ its `viewBox` in CSS pixels and is sharp at every pixel ratio.
 ```js
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
-const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json', center: [-74.0065, 40.7085], zoom: 13});
-const pin = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="#d6453d"/></svg>';
+const map = new Map({
+  container: 'map',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+  center: [-74.0065, 40.7085],
+  zoom: 13,
+});
+const pin =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="#d6453d"/></svg>';
 
 map.on('load', async () => {
   await map.addImage('station', pin);
-  map.addSource('stations', {type: 'geojson', data: {type: 'Point', coordinates: [-74.0065, 40.7085]}});
-  map.addLayer({id: 'stations', type: 'symbol', source: 'stations', layout: {'icon-image': 'station'}});
+  map.addSource('stations', {
+    type: 'geojson',
+    data: {type: 'Point', coordinates: [-74.0065, 40.7085]},
+  });
+  map.addLayer({
+    id: 'stations',
+    type: 'symbol',
+    source: 'stations',
+    layout: {'icon-image': 'station'},
+  });
 });
 ```
 

@@ -34,7 +34,10 @@ const map = createMap('map', {
 
 function showRelief() {
   // A new description in place of the old one. The map changes only the style.
-  map.update({...map.description, style: 'https://styles.map-jr.org/1/elevation.json'});
+  map.update({
+    ...map.description,
+    style: 'https://styles.map-jr.org/1/elevation.json',
+  });
 }
 ```
 
@@ -59,11 +62,24 @@ import. The calls that differ, such as queries that return a promise, are listed
 ```js
 import {Map} from '@map-jr/map-jr-gl/maplibre-compat';
 
-const map = new Map({container: 'map', style: 'https://styles.map-jr.org/1/elevation-zero.json', center: [-74.0065, 40.7085], zoom: 13.6});
+const map = new Map({
+  container: 'map',
+  style: 'https://styles.map-jr.org/1/elevation-zero.json',
+  center: [-74.0065, 40.7085],
+  zoom: 13.6,
+});
 
 map.on('load', () => {
-  map.addSource('office', {type: 'geojson', data: {type: 'Point', coordinates: [-74.0065, 40.7085]}});
-  map.addLayer({id: 'office', type: 'circle', source: 'office', paint: {'circle-radius': 8, 'circle-color': '#d6453d'}});
+  map.addSource('office', {
+    type: 'geojson',
+    data: {type: 'Point', coordinates: [-74.0065, 40.7085]},
+  });
+  map.addLayer({
+    id: 'office',
+    type: 'circle',
+    source: 'office',
+    paint: {'circle-radius': 8, 'circle-color': '#d6453d'},
+  });
 });
 ```
 

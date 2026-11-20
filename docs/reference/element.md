@@ -7,11 +7,18 @@ that set attributes and properties and listen for events.
 
 ```html
 <!doctype html>
-<meta charset="utf-8">
-<script type="module" src="https://unpkg.com/@map-jr/map-jr-gl/dist/element.js"></script>
+<meta charset="utf-8" />
+<script
+  type="module"
+  src="https://unpkg.com/@map-jr/map-jr-gl/dist/element.js"
+></script>
 
-<map-jr map-style="https://styles.map-jr.org/1/elevation-zero.json" center="-74.0065,40.7085" zoom="13.6"
-        style="height: 400px"></map-jr>
+<map-jr
+  map-style="https://styles.map-jr.org/1/elevation-zero.json"
+  center="-74.0065,40.7085"
+  zoom="13.6"
+  style="height: 400px"
+></map-jr>
 ```
 
 ## Define the element
@@ -71,7 +78,8 @@ An attribute that the element cannot read, such as `zoom="near"`, is ignored, an
 [development build](create-map.md#the-development-build) warns once for each element:
 
 ```text
-[map-jr-gl] <map-jr>: the attribute zoom="near" cannot be read, so the element ignores it. Write a number, for example zoom="11".
+[map-jr-gl] <map-jr>: the attribute zoom="near" cannot be read, so the element
+ignores it. Write a number, for example zoom="11".
 ```
 
 When `map-style` is removed from an element whose map exists, and the element has no property `mapStyle`, the map
@@ -113,9 +121,29 @@ el.style.height = '400px';
 el.mapStyle = 'https://styles.map-jr.org/1/elevation-zero.json';
 el.initialView = {center: [-74.0065, 40.7085], zoom: 13.6};
 el.controls = [navigation()];
-el.sources = {offices: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}};
-el.data = {offices: {type: 'FeatureCollection', features: [{type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [-74.0065, 40.7085]}}]}};
-el.layers = [{id: 'offices', type: 'circle', source: 'offices', paint: {'circle-radius': 8, 'circle-color': '#d6453d'}}];
+el.sources = {
+  offices: {type: 'geojson', data: {type: 'FeatureCollection', features: []}},
+};
+el.data = {
+  offices: {
+    type: 'FeatureCollection',
+    features: [
+      {
+        type: 'Feature',
+        properties: {},
+        geometry: {type: 'Point', coordinates: [-74.0065, 40.7085]},
+      },
+    ],
+  },
+};
+el.layers = [
+  {
+    id: 'offices',
+    type: 'circle',
+    source: 'offices',
+    paint: {'circle-radius': 8, 'circle-color': '#d6453d'},
+  },
+];
 document.body.append(el);
 ```
 
@@ -150,8 +178,14 @@ element also has one. To add a listener before the element is defined, first `aw
 is not `null` once the map exists, and `el.state.get().loaded`.
 
 ```html
-<map-jr id="map" map-style="https://styles.map-jr.org/1/elevation-zero.json" center="-74.0065,40.7085" zoom="15"
-        interactive-layers="poi_z14 poi_z15 poi_z16" style="height: 400px"></map-jr>
+<map-jr
+  id="map"
+  map-style="https://styles.map-jr.org/1/elevation-zero.json"
+  center="-74.0065,40.7085"
+  zoom="15"
+  interactive-layers="poi_z14 poi_z15 poi_z16"
+  style="height: 400px"
+></map-jr>
 <p id="where"></p>
 <script type="module">
   import 'https://unpkg.com/@map-jr/map-jr-gl/dist/element.js';
@@ -159,9 +193,12 @@ is not `null` once the map exists, and `el.state.get().loaded`.
   const el = document.getElementById('map');
   const where = document.getElementById('where');
   el.addEventListener('map-click', event => {
-    where.textContent = event.detail.features[0]?.properties.name ?? 'No place here';
+    where.textContent =
+      event.detail.features[0]?.properties.name ?? 'No place here';
   });
-  el.addEventListener('map-moveend', () => console.log(el.state.get().view.zoom));
+  el.addEventListener('map-moveend', () =>
+    console.log(el.state.get().view.zoom),
+  );
 </script>
 ```
 
@@ -171,14 +208,22 @@ The element has no component for a marker or a popup. Call [`overlay`](map.md#ov
 the map after `map-ready`.
 
 ```html
-<map-jr id="office-map" map-style="https://styles.map-jr.org/1/elevation-zero.json" center="-74.0065,40.7085"
-        zoom="14" style="height: 400px"></map-jr>
+<map-jr
+  id="office-map"
+  map-style="https://styles.map-jr.org/1/elevation-zero.json"
+  center="-74.0065,40.7085"
+  zoom="14"
+  style="height: 400px"
+></map-jr>
 <script type="module">
   import 'https://unpkg.com/@map-jr/map-jr-gl/dist/element.js';
 
   const element = document.getElementById('office-map');
   element.addEventListener('map-ready', event => {
-    const pin = Object.assign(document.createElement('div'), {className: 'pin', textContent: 'Office'});
+    const pin = Object.assign(document.createElement('div'), {
+      className: 'pin',
+      textContent: 'Office',
+    });
     event.detail.overlay(pin, {lngLat: [-74.0065, 40.7085], anchor: 'bottom'});
   });
 </script>
