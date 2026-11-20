@@ -10,12 +10,13 @@
 //      must be on that line of the source file.
 //   5. An application (test/consumer) that has the tarball in its node_modules builds with Vite in production mode,
 //      and its client build does not contain the server renderer.
-//   6. A page of test/consumer that only imports the element entry, built with esbuild and with Vite, defines <map-jr>.
+//   6. A page of test/consumer that only imports the element entry, built with esbuild and with Vite, defines <map-jr>
+//      (in Node with a stub customElements; test/loading.mjs opens the pages in a browser).
 import {execFileSync} from 'node:child_process';
-import {cpSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync} from 'node:fs';
-import {createServer} from 'node:http';
+import {cpSync, mkdirSync, readFileSync, rmSync, statSync} from 'node:fs';
 import {SourceMap} from 'node:module';
 import path from 'node:path';
+import {pathToFileURL} from 'node:url';
 
 const root = path.resolve(import.meta.dirname, '..'), out = path.join(root, '.cache/package'), failures = [];
 const pkg = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
@@ -56,38 +57,27 @@ try { run('pnpm', ['exec', 'attw', tarball, '--ignore-rules', 'cjs-resolves-to-e
     } catch (e) { failures.push(`the application of test/consumer does not build against the tarball: ${String(e.message ?? e).split('\n').slice(0, 3).join(' ')}`); }
 }
 
-// 6. A page that only imports `${pkg.name}/element`, for its side effect, built with esbuild and with Vite: the element is
-//    defined in Chromium after load. ("sideEffects" of package.json must name the files of the element, or a bundler
-//    drops the import.)
+// 6. A page that only imports `${pkg.name}/element`, for its side effect, built with esbuild and with Vite, keeps the
+//    definition of the element ("sideEffects" of package.json must name the files of the element, or a bundler drops
+//    the import, #1256). The entry script of each build runs in Node with a stub `customElements`; test/loading.mjs
+//    opens the same pages in a browser.
 {
-    const app = path.join(out, 'consumer'), dirs = {esbuild: path.join(app, 'dist-element-esbuild'), Vite: path.join(app, 'dist-element-vite')};
+    const installed = path.join(out, 'consumer', 'node_modules', ...pkg.name.split('/'));
     try {
-        const esbuild = await import('esbuild');
-        mkdirSync(dirs.esbuild, {recursive: true});
-        await esbuild.build({absWorkingDir: app, entryPoints: ['element.js'], bundle: true, format: 'esm', splitting: true, minify: true, outdir: dirs.esbuild, logLevel: 'error'});
-        writeFileSync(path.join(dirs.esbuild, 'element.html'), readFileSync(path.join(app, 'element.html'), 'utf8'));
-        const {build} = await import('vite');
-        await build({root: app, configFile: false, logLevel: 'error', mode: 'production', base: './', build: {outDir: dirs.Vite, emptyOutDir: true, rollupOptions: {input: path.join(app, 'element.html')}}});
-        const {chromium} = await import('playwright');
-        const types = {'.html': 'text/html', '.js': 'text/javascript'};
-        const server = createServer((req, res) => {
-            const [name, ...rest] = decodeURIComponent(req.url.split('?')[0]).split('/').filter(Boolean), dir = dirs[name], file = dir && path.join(dir, ...rest);
-            if (!file || !file.startsWith(dir) || !existsSync(file)) { res.writeHead(404).end(); return; }
-            res.writeHead(200, {'content-type': types[path.extname(file)] ?? 'application/octet-stream'}).end(readFileSync(file));
-        });
-        await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-        const browser = await chromium.launch();
-        try {
-            for (const name of Object.keys(dirs)) {
-                const page = await browser.newPage();
-                await page.goto(`http://127.0.0.1:${server.address().port}/${name}/element.html`, {waitUntil: 'load'});
-                const defined = await page.evaluate(() => Promise.race([customElements.whenDefined('map-jr').then(() => true), new Promise(r => setTimeout(() => r(false), 2000))]));
-                if (!defined) failures.push(`a page that only imports ${pkg.name}/element, built with ${name}, does not define <map-jr>: "sideEffects" of package.json must name the built files of the element`);
-                else console.log(`ok    a page that only imports ${pkg.name}/element, built with ${name}, defines <map-jr>`);
-                await page.close();
-            }
-        } finally { await browser.close(); server.close(); }
-    } catch (e) { failures.push(`the page test/consumer/element.html could not be built or opened: ${String(e.message ?? e).split('\n').slice(0, 3).join(' ')}`); }
+        const {buildElementPages} = await import('../test/consumer/build-element.mjs');
+        for (const [name, dir] of Object.entries(await buildElementPages(installed, path.join(out, 'element')))) {
+            // (A build that dropped the import has no script at all.)
+            const entry = /<script[^>]*src="\.\/([^"]+)"/.exec(readFileSync(path.join(dir, 'element.html'), 'utf8'))?.[1];
+            const defined = [], g = globalThis, saved = {};
+            const stubs = {HTMLElement: class {}, customElements: {get: n => defined.includes(n) ? class {} : undefined, define: n => defined.push(n)}};
+            for (const k of Object.keys(stubs)) { saved[k] = Object.getOwnPropertyDescriptor(g, k); g[k] = stubs[k]; }
+            if (entry) try { await import(pathToFileURL(path.join(dir, entry)).href); }
+            catch (e) { failures.push(`the build with ${name} of test/consumer/element.html does not run in Node with a stub customElements: ${e.message}`); }
+            finally { for (const k of Object.keys(stubs)) if (saved[k]) Object.defineProperty(g, k, saved[k]); else delete g[k]; }
+            if (!defined.includes('map-jr')) failures.push(`a page that only imports ${pkg.name}/element, built with ${name}, does not define <map-jr>: "sideEffects" of package.json must name the built files of the element`);
+            else console.log(`ok    a page that only imports ${pkg.name}/element, built with ${name}, defines <map-jr>`);
+        }
+    } catch (e) { failures.push(`the page test/consumer/element.html does not build against the tarball: ${String(e.message ?? e).split('\n').slice(0, 3).join(' ')}`); }
 }
 
 const named = new Map();
