@@ -10,10 +10,13 @@
 //      must be on that line of the source file.
 //   5. An application (test/consumer) that has the tarball in its node_modules builds with Vite in production mode,
 //      and its client build does not contain the server renderer.
+//   6. A page of test/consumer that only imports the element entry, built with esbuild and with Vite, defines <map-jr>
+//      (in Node with a stub customElements; test/loading.mjs opens the pages in a browser).
 import {execFileSync} from 'node:child_process';
 import {cpSync, mkdirSync, readFileSync, rmSync, statSync} from 'node:fs';
 import {SourceMap} from 'node:module';
 import path from 'node:path';
+import {pathToFileURL} from 'node:url';
 
 const root = path.resolve(import.meta.dirname, '..'), out = path.join(root, '.cache/package'), failures = [];
 const pkg = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
@@ -52,6 +55,29 @@ try { run('pnpm', ['exec', 'attw', tarball, '--ignore-rules', 'cjs-resolves-to-e
         else if (/map-jr-gl-mistakes/.test(code)) failures.push('the application of test/consumer got the development build of the library in a production build');
         else console.log(`ok    test/consumer imports ${pkg.name}, ${pkg.name}/maplibre-compat and ${pkg.name}/vue from the tarball and builds with Vite (${(code.length / 1024).toFixed(0)} KB of scripts)`);
     } catch (e) { failures.push(`the application of test/consumer does not build against the tarball: ${String(e.message ?? e).split('\n').slice(0, 3).join(' ')}`); }
+}
+
+// 6. A page that only imports `${pkg.name}/element`, for its side effect, built with esbuild and with Vite, keeps the
+//    definition of the element ("sideEffects" of package.json must name the files of the element, or a bundler drops
+//    the import, #1256). The entry script of each build runs in Node with a stub `customElements`; test/loading.mjs
+//    opens the same pages in a browser.
+{
+    const installed = path.join(out, 'consumer', 'node_modules', ...pkg.name.split('/'));
+    try {
+        const {buildElementPages} = await import('../test/consumer/build-element.mjs');
+        for (const [name, dir] of Object.entries(await buildElementPages(installed, path.join(out, 'element')))) {
+            // (A build that dropped the import has no script at all.)
+            const entry = /<script[^>]*src="\.\/([^"]+)"/.exec(readFileSync(path.join(dir, 'element.html'), 'utf8'))?.[1];
+            const defined = [], g = globalThis, saved = {};
+            const stubs = {HTMLElement: class {}, customElements: {get: n => defined.includes(n) ? class {} : undefined, define: n => defined.push(n)}};
+            for (const k of Object.keys(stubs)) { saved[k] = Object.getOwnPropertyDescriptor(g, k); g[k] = stubs[k]; }
+            if (entry) try { await import(pathToFileURL(path.join(dir, entry)).href); }
+            catch (e) { failures.push(`the build with ${name} of test/consumer/element.html does not run in Node with a stub customElements: ${e.message}`); }
+            finally { for (const k of Object.keys(stubs)) if (saved[k]) Object.defineProperty(g, k, saved[k]); else delete g[k]; }
+            if (!defined.includes('map-jr')) failures.push(`a page that only imports ${pkg.name}/element, built with ${name}, does not define <map-jr>: "sideEffects" of package.json must name the built files of the element`);
+            else console.log(`ok    a page that only imports ${pkg.name}/element, built with ${name}, defines <map-jr>`);
+        }
+    } catch (e) { failures.push(`the page test/consumer/element.html does not build against the tarball: ${String(e.message ?? e).split('\n').slice(0, 3).join(' ')}`); }
 }
 
 const named = new Map();
