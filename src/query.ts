@@ -18,7 +18,7 @@ export interface QueriedFeature {
     layer?: string;
     /** The properties of the feature. */
     properties: Record<string, unknown>;
-    /** The geometry as GeoJSON, in longitude and latitude. A query of the view always sets it, and a query at a place sets it with `geometry: true`. */
+    /** The geometry as GeoJSON, in longitude and latitude. `querySource` sets it only with `geometry: true`. */
     geometry?: {type: string; coordinates: unknown};
 }
 export interface TileQuery {

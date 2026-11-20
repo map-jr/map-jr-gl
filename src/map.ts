@@ -111,7 +111,7 @@ export interface FeatureOptions {
     filter?: FilterSpecification;
     /**
      * At a point or a position, the distance in CSS pixels around the place within which a feature is found. It has no effect for a box or the whole map.
-     * @default 0
+     * @default 3
      */
     radius?: number;
 }
@@ -127,7 +127,7 @@ export interface SourceOptions {
      */
     radius?: number;
     /**
-     * At a point or a position, whether each feature has `geometry`. In a query of the view, each feature has it either way.
+     * Whether each feature has `geometry`, at a point, at a position and in a query of the view.
      * @default false
      */
     geometry?: boolean;
@@ -1807,7 +1807,7 @@ export class Map {
      */
     queryFeatures(at?: FeaturePlace | LngLatLike | FeatureOptions, o: FeatureOptions = {}): Promise<RenderedFeature[]> {
         if (isOptions(at)) { o = at as FeatureOptions; at = undefined; }
-        const corners = Array.isArray(at) && typeof at[0] !== 'number' ? at as {x: number; y: number}[] : undefined, r = o.radius ?? 0;
+        const corners = Array.isArray(at) && typeof at[0] !== 'number' ? at as {x: number; y: number}[] : undefined, r = o.radius ?? 3;
         const place = at && !corners ? at as LngLatLike | {x: number; y: number} : undefined;
         const p = place ? 'x' in place ? place : this.project(place) : undefined;
         return this.queryLayers(p ? [[p.x - r, p.y - r], [p.x + r, p.y + r]] : corners as [PointLike, PointLike] | undefined, {layers: o.layers, filter: o.filter});
@@ -1828,7 +1828,7 @@ export class Map {
         }
         const sets = (o.sourceLayers ?? [undefined]).map(sourceLayer => ({layer: '', source: sourceId, sourceLayer, filter: o.filter, radius: 0}));
         const box: [number, number, number, number] = corners ? [corners[0].x, corners[0].y, corners[1].x, corners[1].y] : [0, 0, this.tr.width, this.tr.height];
-        return this.ask<QueriedFeature[]>(id => ({type: 'queryRendered', id, box, sets, geometry: true}));
+        return this.ask<QueriedFeature[]>(id => ({type: 'queryRendered', id, box, sets, geometry: o.geometry}));
     }
 
     /**
