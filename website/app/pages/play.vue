@@ -205,11 +205,6 @@ function onSplitKey(event: KeyboardEvent) {
         <UButton v-for="item in starts" :key="item.label" size="sm" color="neutral" variant="outline" @click="begin(item.code)">{{ item.label }}</UButton>
         <UButton size="sm" icon="i-lucide-link" @click="copy">Copy the link</UButton>
       </div>
-      <p class="border-b border-muted px-4 py-2 text-sm text-muted">
-        The code is a module of the Main API whose default export is a
-        <NuxtLink to="/reference/description" class="text-primary">description</NuxtLink>. The map changes when the code
-        changes. The address of the page keeps the code and the view, so a copied link shows the same map.
-      </p>
       <p v-if="problem" class="border-b border-muted px-4 py-2 text-sm text-error" role="status">{{ problem }}</p>
       <LazyCodeEditor
         v-if="code !== undefined" v-model="code" language="js" label="The description of the map"

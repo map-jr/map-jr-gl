@@ -496,6 +496,7 @@ try {
         const playFrame = page.frameLocator('.map-frame iframe');
         const playEditor = page.locator('.cm-content');
         check(`${engine}: /play: the editor and the map start`, await shown(playEditor) && await shown(playFrame.locator('#map canvas').first()));
+        check(`${engine}: /play: has no section "The code"`, await page.getByText('The code is a module').count() === 0 && await page.locator('main p').filter({hasText: 'default export'}).count() === 0);
         const changed = "import {navigation} from '@map-jr/map-jr-gl/controls';\n\nexport default {\n  style: 'https://styles.map-jr.org/1/elevation-zero.json',\n  initialView: {center: [2.35, 48.86], zoom: 5},\n  controls: [navigation()],\n};";
         await replace(playEditor, changed);
         const written = await page.waitForFunction(() => location.hash.includes('code=') && location.hash.includes('view=5/48.86/2.35'), null, {timeout: 30000}).then(() => true, () => false);
