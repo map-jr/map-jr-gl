@@ -144,6 +144,10 @@ try {
     page.on('pageerror', e => errors.push(e.message));
     await page.goto(origin + '/');
     await page.waitForFunction(() => window.t?.loads > 0, null, {timeout: 60000});
+    // onViewChange gets the first view once, and the view that the component gives back moves nothing: a move would report a second view (#1135).
+    await page.waitForTimeout(500);
+    const firstView = await page.evaluate(() => ({views: window.t.views}));
+    check('browser: onViewChange comes once with the first view, and giving it back to view moves nothing (#1135)', firstView.views === 1, JSON.stringify(firstView));
     const model = await page.evaluate(async () => {
         const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), host = t.map.current;
         const frame = document.getElementById('frame').getBoundingClientRect();
