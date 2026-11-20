@@ -1,0 +1,293 @@
+# React
+
+The entry `@map-jr/map-jr-gl/react` renders a map of `@map-jr/map-jr-gl` as a React component, for React 18 and 19.
+The component `MapJr` passes its props to the map as one [description](description.md) after each render, and the
+map applies what is different.
+
+```jsx
+import {useState} from 'react';
+import {MapJr, MapOverlay} from '@map-jr/map-jr-gl/react';
+import {navigation} from '@map-jr/map-jr-gl/controls';
+
+export function OfficeMap() {
+  const [selected, setSelected] = useState(null);
+  return (
+    <div style={{height: 400}}>
+      <MapJr
+        mapStyle="https://styles.map-jr.org/1/elevation-zero.json"
+        initialView={{center: [-74.0065, 40.7085], zoom: 15}}
+        controls={[navigation()]}
+        interactiveLayers={['poi_z14', 'poi_z15', 'poi_z16']}
+        onClick={event => setSelected(event.features[0] ? {lngLat: event.lngLat, name: event.features[0].properties.name} : null)}
+      >
+        {selected && (
+          <MapOverlay lngLat={selected.lngLat} popup onClose={() => setSelected(null)}>{selected.name}</MapOverlay>
+        )}
+      </MapJr>
+    </div>
+  );
+}
+```
+
+## `MapJr`
+
+The map as a component. It fills its parent element, so give the parent a height.
+
+Every field of the [description](description.md#mapdescription) is a prop with the same name and the same value,
+except `style`, which is the prop `mapStyle`. The prop `style` is the CSS style of the element. The table lists the
+props that the description does not have, and those whose meaning differs.
+
+<!-- ref:ReactMapJrProps:start -->
+<!-- ref:ReactMapJrProps:end -->
+
+### Props that are created in each render
+
+The map compares each prop with the value of the last render. A new object or list with the same content does no
+work, so `controls={[navigation()]}`, `interactiveLayers={['poi_z14']}` and a style object can be written in the JSX.
+A function prop, such as `onClick` or `transformRequest`, can also be a new arrow function in each render: the map
+calls the function of the last render.
+
+The map compares each value of [`data`](description.md#data) by identity. A new object loads the data again, also when
+its content is the same. Keep the object in state or in `useMemo` until the data changes.
+
+```jsx
+import {useMemo} from 'react';
+import {MapJr} from '@map-jr/map-jr-gl/react';
+
+export function Stations({stations}) {
+  // A new FeatureCollection only when the list of stations changes.
+  const data = useMemo(() => ({stations: {type: 'FeatureCollection', features: stations.map(s => ({
+    type: 'Feature', properties: {name: s.name}, geometry: {type: 'Point', coordinates: s.lngLat},
+  }))}}), [stations]);
+  return (
+    <div style={{height: 400}}>
+      <MapJr
+        mapStyle="https://styles.map-jr.org/1/elevation-zero.json"
+        initialView={{center: [-74.0065, 40.7085], zoom: 12}}
+        sources={{stations: {type: 'geojson', data: {type: 'FeatureCollection', features: []}}}}
+        data={data}
+        layers={[{id: 'stations', type: 'circle', source: 'stations', paint: {'circle-radius': 6, 'circle-color': '#d6453d'}}]}
+      />
+    </div>
+  );
+}
+```
+
+### Events of the map
+
+Each event of the map has a prop: `on` and the name of the event with a capital first letter, such as `onMoveend`,
+`onZoomend`, `onSourcedata` and `onStyleimagemissing`. The prop for `style.load` is `onStyleload`. The handler
+receives the event object of [`listen`](../api.md#events), which lists the events.
+
+`onLoad`, `onIdle`, `onError` and `onHover` are props of the table above, and `onClick` and `onViewChange` are
+fields of the description. These six props receive the value that their entry states, not an event object of
+`listen`.
+
+Without `onError`, the map writes each error to the console. With `onError`, the map calls it and writes nothing.
+
+### The ref
+
+A ref on `MapJr` receives the map, a [`MapInstance`](../api.md) of the main API, for methods such as `queryFeatures`
+and `moveTo`. It is not the `Map` of `@map-jr/map-jr-gl/maplibre-compat`: to animate the camera, call
+`moveTo({...view, duration: 500})` in place of `flyTo`.
+
+The component creates the map in an effect. The ref is `null` during the first render and in the effects of the
+parent that run when it mounts. Read it in an event handler or after `onLoad`, or call [`useMap`](#usemap) in a
+child component.
+
+```jsx
+import {useRef} from 'react';
+import {MapJr} from '@map-jr/map-jr-gl/react';
+
+export function ZoomToCity() {
+  const map = useRef(null);
+  return (
+    <div style={{height: 400}}>
+      <button onClick={() => map.current?.moveTo({center: [-74.0065, 40.7085], zoom: 11, duration: 800})}>New York</button>
+      <MapJr ref={map} mapStyle="https://styles.map-jr.org/1/elevation-zero.json" initialView={{center: [0, 20], zoom: 1}} />
+    </div>
+  );
+}
+```
+
+### `firstView`
+
+`firstView` shows a first view that a server rendered, before the map in the browser has drawn. Its value is the
+HTML that [`renderFirstView`](server.md#renderfirstview) of `@map-jr/map-jr-gl/server` returns. The component reads
+the prop on its first render only, and the map removes the HTML when it has loaded the tiles of its first view. In
+the browser the prop can be left out, so that the HTML is not sent to the browser a second time.
+
+The entry has no `'use client'` directive. In the App Router of Next.js, render `MapJr` in a file of your own that
+starts with `'use client'`, and pass `firstView` to it from a server component.
+
+```jsx
+'use client';
+import {MapJr} from '@map-jr/map-jr-gl/react';
+
+export function ServerMap({firstView}) {
+  return (
+    <div style={{height: 500}}>
+      <MapJr
+        mapStyle="https://styles.map-jr.org/1/elevation-zero.json"
+        initialView={{center: [-74.0065, 40.7085], zoom: 13.6}}
+        firstView={firstView}
+      />
+    </div>
+  );
+}
+```
+
+```jsx
+import {renderFirstView} from '@map-jr/map-jr-gl/server';
+import {ServerMap} from './server-map.jsx';
+
+export default async function Page() {
+  // The same style and view as the map in the browser, at the size that the map has on most screens.
+  const firstView = await renderFirstView({
+    style: 'https://styles.map-jr.org/1/elevation-zero.json',
+    center: [-74.0065, 40.7085],
+    zoom: 13.6,
+    width: 800,
+    height: 500,
+  });
+  return <ServerMap firstView={firstView} />;
+}
+```
+
+See [Show the first view before the script runs](../guide/server-rendering.md#show-the-first-view-before-the-script-runs) for the size of the render and how the page shows it.
+
+## `MapOverlay`
+
+`MapOverlay` places its React children at a position of the map, as a marker or a popup. Use it inside `MapJr`. Its
+props are the options of [`overlay`](../api.md#elements-of-the-page-on-the-map) of the map, such as `lngLat`
+(required), `anchor`, `offset`, `popup`, `onClose` and `draggable`.
+
+With `draggable`, the user can move the element. After a drag, the element stays where the user dropped it until
+`lngLat` changes. To keep the position, set it in `onDragEnd`, which receives `[lng, lat]`.
+
+```jsx
+import {useState} from 'react';
+import {MapJr, MapOverlay} from '@map-jr/map-jr-gl/react';
+
+export function HomePicker() {
+  const [home, setHome] = useState([-74.0065, 40.7085]);
+  return (
+    <div style={{height: 400}}>
+      <MapJr mapStyle="https://styles.map-jr.org/1/elevation-zero.json" initialView={{center: home, zoom: 14}}>
+        <MapOverlay lngLat={home} anchor="bottom" draggable onDragEnd={setHome}>
+          <div style={{background: '#d6453d', color: '#fff', padding: '4px 8px', borderRadius: 4}}>Home</div>
+        </MapOverlay>
+      </MapJr>
+    </div>
+  );
+}
+```
+
+For many points, a symbol layer in [`layers`](description.md#layers) renders much faster than one `MapOverlay` for
+each point.
+
+## `MapImage`
+
+`MapImage` adds an image for the style layers of the map, for `icon-image` and the pattern properties. Use it inside
+`MapJr`. The image is an `<svg>` element in the children, or the URL of an image in `src`.
+
+<!-- ref:ReactMapImageProps:start -->
+<!-- ref:ReactMapImageProps:end -->
+
+The children can be a function that receives the parameters of `params` and returns an `<svg>` element. Each
+parameter is a slot of an [image template](description.md#images), not a value of React. The map fills it for each
+feature of the layer, from the property of the feature with the name of the parameter. With TypeScript, a parameter
+that is not in `params` is a type error.
+
+```jsx
+import {MapJr, MapImage} from '@map-jr/map-jr-gl/react';
+
+const places = {type: 'FeatureCollection', features: [
+  {type: 'Feature', properties: {color: '#d6453d'}, geometry: {type: 'Point', coordinates: [-74.006, 40.7128]}},
+  {type: 'Feature', properties: {color: '#2f7fd1'}, geometry: {type: 'Point', coordinates: [-73.9857, 40.7484]}},
+]};
+
+export function Places() {
+  return (
+    <div style={{height: 400}}>
+      <MapJr
+        mapStyle="https://styles.map-jr.org/1/elevation-zero.json"
+        initialView={{center: [-73.996, 40.73], zoom: 11.5}}
+        sources={{places: {type: 'geojson', data: places}}}
+        layers={[{id: 'places', type: 'symbol', source: 'places', layout: {'icon-image': 'pin', 'icon-anchor': 'bottom', 'icon-allow-overlap': true}}]}
+      >
+        <MapImage name="pin" params={['color']}>
+          {({color}) => <svg viewBox="0 0 24 31"><path fill={color} stroke="#fff" d="M12 30C12 30 2 17 2 11a10 10 0 0 1 20 0c0 6-10 19-10 19z"/></svg>}
+        </MapImage>
+      </MapJr>
+    </div>
+  );
+}
+```
+
+React renders the SVG once, outside the page, and the map draws it once for each different set of values. A
+component inside the SVG can change it, and the map then uses the new SVG. An image of `MapImage` overrides an image
+of the prop `images` with the same name.
+
+The [development build](../api.md#make-a-map) warns when `MapImage` is not inside `MapJr`, and when it has neither an `<svg>`
+element nor `src` one second after it mounts.
+
+## `useMap`
+
+```ts
+useMap(): MapInstance | null
+```
+
+**Returns** the map of the `MapJr` that the component is in, or `null` until the map is created. Call it in a
+component inside `MapJr`.
+
+## `useMapState`
+
+```ts
+useMapState<T>(select: (state: MapState) => T, map?: MapInstance | null): T | undefined
+```
+
+Returns a part of the [state of the map](../api.md#the-state), and renders the component again when that part
+changes.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `select` | `(state: MapState) => T` | A function that returns a part of the state, such as `state.view.zoom`. |
+| `map` | `MapInstance \| null` | The map to read. Without it, the map of the `MapJr` that the component is in. |
+
+**Returns** the value of `select`, or `undefined` until the map is created.
+
+The component renders again when `select` returns a value that is not identical to the last one. Return a part of
+the state as it is (`state.hover`, `state.view`). A new object or list in each call renders the component at each
+change of the state.
+
+```jsx
+import {MapJr, useMap, useMapState} from '@map-jr/map-jr-gl/react';
+
+function ZoomButton() {
+  const map = useMap();
+  const zoom = useMapState(state => state.view.zoom);
+  return (
+    <button style={{position: 'absolute', top: 8, left: 8}} onClick={() => map?.moveTo({zoom: zoom + 1, duration: 300})}>
+      Zoom {zoom?.toFixed(1)}
+    </button>
+  );
+}
+
+export function ZoomMap() {
+  return (
+    <div style={{height: 400}}>
+      <MapJr mapStyle="https://styles.map-jr.org/1/elevation-zero.json" initialView={{center: [-74.0065, 40.7085], zoom: 12}}>
+        <ZoomButton />
+      </MapJr>
+    </div>
+  );
+}
+```
+
+To read the state once, in an event handler, without a render at each change, call `map.state.get()`.
+
+## See also
+
+- [The description](description.md) for every field that is also a prop of `MapJr`.
+- [Server rendering](../guide/server-rendering.md) for `firstView` and the options of the server render.

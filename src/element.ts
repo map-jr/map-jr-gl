@@ -28,7 +28,7 @@ true satisfies (Field extends typeof PROPERTIES[number] ? true : false);
 type Properties = {-readonly [K in keyof Pick<MapDescription, Exclude<Field, 'mapStyle'>>]?: MapDescription[K]} & StyleProperty;
 interface StyleProperty {
     /**
-     * The `style` of the description: the URL of a style or a style object. The attribute `map-style` takes a URL.
+     * The `style` of the description: the URL of a style, a style object, or `{light, dark}`. The attribute `map-style` takes a URL.
      * A new value after the map exists changes the style of the map, as `update` does.
      */
     mapStyle?: MapDescription['style'];

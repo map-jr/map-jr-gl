@@ -36,6 +36,8 @@ export type TerrainOptions = controls.TerrainOptions;
 export type VueMapJrProps = InstanceType<typeof VueMapJr>['$props'];
 /** The props of the React component `MapJr` of `@map-jr/map-jr-gl/react`. */
 export type ReactMapJrProps = react.MapJrProps;
+/** The props of the React component `MapImage` of `@map-jr/map-jr-gl/react`. */
+export type ReactMapImageProps = react.MapImageProps<string>;
 /** The options of the Svelte action `mapJr` of `@map-jr/map-jr-gl/svelte`. */
 export type SvelteMapAction = svelte.MapAction;
 export type MapJrElement = element.MapJrElement;

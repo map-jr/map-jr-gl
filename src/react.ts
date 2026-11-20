@@ -141,8 +141,10 @@ export interface MapImageProps<P extends string = never> {
     params?: readonly P[];
     /** The URL of an image, in place of an SVG in `children`. */
     src?: string;
-    /** The size in CSS pixels. Without it, an SVG has the size of its `viewBox`, or else of its `width` and `height` attributes, and another image has its own size. */
-    width?: number; height?: number;
+    /** The width in CSS pixels. Without it, an SVG has the width of its `viewBox`, or else of its `width` attribute, and another image has its own width. */
+    width?: number;
+    /** The height in CSS pixels. Without it, an SVG has the height of its `viewBox`, or else of its `height` attribute, and another image has its own height. */
+    height?: number;
     /**
      * The number of image pixels for one CSS pixel, for example 2 for an image "@2x".
      * @default 1
